@@ -440,40 +440,133 @@ pub fn download_bytes(name: &str, bytes: &[u8]) {
     let _ = web_sys::Url::revoke_object_url(&url);
 }
 
-/// Open `bytes` (e.g. a generated PDF) in a new browser tab. Web only.
-/// Falls back to a download when the popup is blocked, so the output is
-/// never lost. Used for plot preview and as the web stand-in for printing.
+/// Show a plot preview as an in-page overlay. The plotted PDF arrives already
+/// rasterised to PNG pages: inline `<img>` elements render in every browser,
+/// with no popup permission and no PDF viewer plugin — both of which embedded
+/// browser hosts routinely withhold. A Download button still hands out the
+/// vector PDF, Close drops the overlay. Web only.
 #[cfg(target_arch = "wasm32")]
-pub fn open_bytes_in_new_tab(name: &str, bytes: &[u8]) {
+pub fn show_pdf_preview(name: &str, pdf_bytes: &[u8], page_pngs: &[Vec<u8>]) {
     use wasm_bindgen::JsCast;
-    let Some(window) = web_sys::window() else { return };
-    let array = js_sys::Uint8Array::from(bytes);
-    let parts = js_sys::Array::new();
-    parts.push(&array.buffer());
-    let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence(&parts) else {
+    let Some(window) = web_sys::window() else {
         return;
     };
-    let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) else {
+    let Some(document) = window.document() else {
         return;
     };
-    let tab = window.open_with_url_and_target(&url, "_blank").ok().flatten();
-    if tab.is_none() {
-        // Popup blocked: free the URL right away and fall back to a plain
-        // download so the rendered output is never lost.
-        let _ = web_sys::Url::revoke_object_url(&url);
-        download_bytes(name, bytes);
+    if page_pngs.is_empty() {
+        // Rasterisation produced nothing: deliver the PDF itself rather than
+        // show an empty frame.
+        download_bytes(name, pdf_bytes);
         return;
     }
-    // The new tab loads the blob asynchronously, so the URL must outlive this
-    // call; revoke it a minute later, once the viewer has the content. The
-    // one-shot closure is owned by the timer, not stored Rust-side.
-    let revoke = wasm_bindgen::closure::Closure::once_into_js(move || {
-        let _ = web_sys::Url::revoke_object_url(&url);
-    });
-    let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
-        revoke.unchecked_ref(),
-        60_000,
-    );
+    let Ok(el) = document.create_element("div") else {
+        download_bytes(name, pdf_bytes);
+        return;
+    };
+    let backdrop: web_sys::HtmlElement = el.unchecked_into();
+    backdrop
+        .set_attribute(
+            "style",
+            "position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:30000;overflow:auto;\
+             display:flex;flex-direction:column;align-items:center;gap:14px;padding:24px;\
+             font-family:system-ui,sans-serif;color:#ddd",
+        )
+        .ok();
+
+    let mut urls = Vec::new();
+    for png in page_pngs {
+        let array = js_sys::Uint8Array::from(png.as_slice());
+        let parts = js_sys::Array::new();
+        parts.push(&array.buffer());
+        let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence(&parts) else {
+            continue;
+        };
+        let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) else {
+            continue;
+        };
+        if let Ok(el) = document.create_element("img") {
+            let img: web_sys::HtmlImageElement = el.unchecked_into();
+            img.set_src(&url);
+            img.set_attribute(
+                "style",
+                "max-width:min(92vw,1000px);height:auto;background:#fff;\
+                 box-shadow:0 2px 14px rgba(0,0,0,.6)",
+            )
+            .ok();
+            backdrop.append_child(&img).ok();
+            urls.push(url);
+        }
+    }
+    if urls.is_empty() {
+        download_bytes(name, pdf_bytes);
+        return;
+    }
+
+    // Sticky action bar so Download/Close stay reachable while pages scroll.
+    let bar: web_sys::HtmlElement = document
+        .create_element("div")
+        .ok()
+        .and_then(|el| {
+            let bar: web_sys::HtmlElement = el.unchecked_into();
+            bar.set_attribute(
+                "style",
+                "position:sticky;top:0;display:flex;gap:12px;align-items:center;\
+                 background:rgba(0,0,0,.88);padding:4px 8px",
+            )
+            .ok()?;
+            Some(bar)
+        })
+        .unwrap_or_else(|| backdrop.clone());
+    if let Ok(el) = document.create_element("span") {
+        let label: web_sys::HtmlElement = el.unchecked_into();
+        label.set_inner_text(&format!(
+            "Plot preview — {} page{}",
+            urls.len(),
+            if urls.len() == 1 { "" } else { "s" }
+        ));
+        bar.append_child(&label).ok();
+    }
+    let button = |text: &str| -> Option<web_sys::HtmlElement> {
+        let el = document.create_element("button").ok()?;
+        let btn: web_sys::HtmlElement = el.unchecked_into();
+        btn.set_inner_text(text);
+        btn.set_attribute(
+            "style",
+            "padding:8px 18px;border:0;border-radius:4px;cursor:pointer;\
+             background:#3399e6;color:#fff;font-size:14px",
+        )
+        .ok()?;
+        Some(btn)
+    };
+    if let Some(dl) = button("Download PDF") {
+        let name = name.to_string();
+        let bytes = pdf_bytes.to_vec();
+        let click = wasm_bindgen::closure::Closure::once_into_js(move || {
+            download_bytes(&name, &bytes);
+        });
+        let click: js_sys::Function = click.unchecked_into();
+        dl.set_onclick(Some(&click));
+        bar.append_child(&dl).ok();
+    }
+    if let Some(close) = button("Close") {
+        let backdrop = backdrop.clone();
+        let click = wasm_bindgen::closure::Closure::once_into_js(move || {
+            for url in &urls {
+                let _ = web_sys::Url::revoke_object_url(url);
+            }
+            backdrop.remove();
+        });
+        let click: js_sys::Function = click.unchecked_into();
+        close.set_onclick(Some(&click));
+        bar.append_child(&close).ok();
+    }
+    if let Some(first) = backdrop.first_child() {
+        let _ = backdrop.insert_before(&bar, Some(&first));
+    }
+    if let Some(body) = document.body() {
+        body.append_child(&backdrop).ok();
+    }
 }
 
 /// Short platform string for bug reports: OS + architecture on the desktop,

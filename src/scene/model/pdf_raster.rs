@@ -126,7 +126,13 @@ fn rasterize_uncached(path: &str, page: &str, dpi: f32, transparent: bool) -> Op
     let bytes = source_bytes(path)?;
     let pdf = Pdf::new(bytes).ok()?;
     let page_no = page.trim().parse::<usize>().unwrap_or(1).max(1);
-    let page = pdf.pages().get(page_no - 1)?;
+    raster_pdf_page(&pdf, page_no - 1, dpi, transparent)
+}
+
+/// Rasterise one 0-based page index at `dpi`. Screen DPIs clamp the longest
+/// side; higher (print) DPIs refuse an oversized page instead of rescaling.
+fn raster_pdf_page(pdf: &Pdf, index: usize, dpi: f32, transparent: bool) -> Option<Arc<PdfPage>> {
+    let page = pdf.pages().get(index)?;
     let mut scale = dpi / 72.0;
     let mut effective_dpi = dpi;
     // Page size in points, straight from the file's MediaBox/CropBox.
@@ -177,6 +183,19 @@ fn rasterize_uncached(path: &str, page: &str, dpi: f32, transparent: bool) -> Op
         height,
         dpi: effective_dpi,
     }))
+}
+
+/// One-shot rasterisation of freshly generated PDF bytes (plot preview).
+/// Uncached: the bytes differ on every plot, so a cache would only grow.
+/// Returns at most `max_pages` pages; larger plots preview their first pages.
+pub fn rasterize_bytes_pages(bytes: Arc<Vec<u8>>, dpi: f32, max_pages: usize) -> Vec<Arc<PdfPage>> {
+    let Ok(pdf) = Pdf::new(bytes) else {
+        return Vec::new();
+    };
+    let count = pdf.pages().len().min(max_pages);
+    (0..count)
+        .filter_map(|index| raster_pdf_page(&pdf, index, dpi, false))
+        .collect()
 }
 
 fn unpremultiply(pixels: &mut [u8]) {
@@ -440,5 +459,24 @@ mod tests {
             rasterize_page_at_dpi(path, "1", 300.0).is_none(),
             "a print raster over the pixel budget is refused, not rescaled"
         );
+    }
+
+    #[test]
+    fn bytes_pages_render_every_page_up_to_the_cap() {
+        let mut document = PdfDocument::new("multi-page");
+        for _ in 0..3 {
+            document
+                .pages
+                .push(OutputPage::new(Mm(50.8), Mm(25.4), Vec::new()));
+        }
+        let bytes = Arc::new(document.save(&PdfSaveOptions::default(), &mut Vec::new()));
+
+        let all = rasterize_bytes_pages(bytes.clone(), 72.0, 10);
+        assert_eq!(all.len(), 3);
+        assert_eq!((all[0].width, all[0].height), (144, 72));
+        assert_eq!(all[0].dpi, 72.0);
+
+        let capped = rasterize_bytes_pages(bytes, 72.0, 2);
+        assert_eq!(capped.len(), 2);
     }
 }

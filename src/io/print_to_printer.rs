@@ -8,8 +8,9 @@
 // The function is async so the UI remains responsive while the job is queued.
 //
 // The web build has no system printers: `preview_page_pdf` /
-// `preview_pages_pdf` render the same PDF bytes and open them in a browser
-// tab, where the browser's own print dialog takes over.
+// `preview_pages_pdf` render the same PDF bytes, rasterise them, and show
+// the pages in an in-page overlay — the way AutoCAD previews plot output on
+// screen rather than handing a file to an external viewer.
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::io::pdf_export;
@@ -1220,7 +1221,7 @@ fn shell_print_to(path: &std::path::Path, printer: &str, copies: u32) -> Result<
 }
 
 /// Render a page and show it the way each platform previews: the OS PDF
-/// viewer on desktop, a new browser tab on the web.
+/// viewer on desktop, an in-page rasterised overlay on the web.
 pub fn preview_page_pdf(page: &crate::io::pdf_export::PdfPageInput) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -1231,17 +1232,45 @@ pub fn preview_page_pdf(page: &crate::io::pdf_export::PdfPageInput) -> Result<()
     #[cfg(target_arch = "wasm32")]
     {
         let bytes = crate::io::pdf_export::render_pdf_bytes(std::slice::from_ref(page), None)?;
-        crate::sys::open_bytes_in_new_tab("plot_preview.pdf", &bytes);
-        Ok(())
+        web_preview_overlay(&bytes)
     }
 }
 
 /// Web-only multi-page variant used by print-all: render every layout into
-/// one PDF and open it in a browser tab.
+/// one PDF and preview the first pages in the overlay.
 #[cfg(target_arch = "wasm32")]
 pub fn preview_pages_pdf(pages: &[crate::io::pdf_export::PdfPageInput]) -> Result<(), String> {
     let bytes = crate::io::pdf_export::render_pdf_bytes(pages, None)?;
-    crate::sys::open_bytes_in_new_tab("plot_preview.pdf", &bytes);
+    web_preview_overlay(&bytes)
+}
+
+/// Web preview: rasterise the plotted PDF (the same hayro pipeline that draws
+/// PDF underlays) and show the pages in an in-page overlay. The browser gets
+/// plain PNGs, so neither popup permission nor a PDF viewer plugin is needed.
+#[cfg(target_arch = "wasm32")]
+fn web_preview_overlay(bytes: &[u8]) -> Result<(), String> {
+    const PREVIEW_DPI: f32 = 150.0;
+    const MAX_PREVIEW_PAGES: usize = 12;
+    let pages = crate::scene::model::pdf_raster::rasterize_bytes_pages(
+        std::sync::Arc::new(bytes.to_vec()),
+        PREVIEW_DPI,
+        MAX_PREVIEW_PAGES,
+    );
+    let mut pngs = Vec::with_capacity(pages.len());
+    for page in &pages {
+        let encoded =
+            image::RgbaImage::from_raw(page.width, page.height, page.pixels.as_ref().clone())
+                .and_then(|img| {
+                    let mut out = Vec::new();
+                    img.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+                        .ok()?;
+                    Some(out)
+                });
+        if let Some(png) = encoded {
+            pngs.push(png);
+        }
+    }
+    crate::sys::show_pdf_preview("plot_preview.pdf", bytes, &pngs);
     Ok(())
 }
 
