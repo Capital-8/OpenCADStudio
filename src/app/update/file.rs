@@ -1868,6 +1868,22 @@ impl OpenCADStudio {
         if self.opening.is_none() {
             return Task::none();
         }
+        // Web drawings live under bare file names: two tabs sharing a name
+        // also share the single browser-stored copy, and the last save
+        // silently replaces the other tab's. Warn at open time — the
+        // desktop identifies drawings by full path and needs no such check.
+        #[cfg(target_arch = "wasm32")]
+        if self.tab_showing(&path).is_some() {
+            self.command_line.push_warning(
+                crate::tf!(
+                    "\"{}\" is already open in another tab. On the web both \
+                     tabs share one stored copy — the last save overwrites \
+                     the other.",
+                    name
+                )
+                .as_ref(),
+            );
+        }
         let open_started = self.opening.as_ref().map(|p| p.started);
         let size_bytes = self
             .opening
