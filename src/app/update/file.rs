@@ -5881,6 +5881,7 @@ impl OpenCADStudio {
             },
             stamp: d.stamp,
             merge_lines: d.merge_lines,
+            quality: crate::io::pdf_export::PlotQuality::from_dialog(&d.quality),
         }
     }
 

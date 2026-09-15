@@ -33,6 +33,36 @@ pub struct PlotImage {
     pub clips: Vec<Vec<[f64; 2]>>,
 }
 
+/// Image resolution preset from the plot dialog's Quality dropdown. Vector
+/// output is resolution-independent; this only caps raster content. Normal
+/// and High keep the native pixels; Low trades raster detail for size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PlotQuality {
+    Low,
+    #[default]
+    Normal,
+    High,
+}
+
+impl PlotQuality {
+    /// Accepts the dialog's raw string, including legacy names.
+    pub fn from_dialog(value: &str) -> Self {
+        match value {
+            "Low" | "Draft" => Self::Low,
+            "High" | "Presentation" | "Maximum" | "Custom" => Self::High,
+            _ => Self::Normal,
+        }
+    }
+
+    /// Maximum effective DPI for embedded raster images; `None` keeps native pixels.
+    pub(crate) fn target_dpi(self) -> Option<u32> {
+        match self {
+            Self::Low => Some(150),
+            Self::Normal | Self::High => None,
+        }
+    }
+}
+
 /// Output controls shared by preview, plot exports, and printer rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlotOptions {
@@ -41,6 +71,7 @@ pub struct PlotOptions {
     pub transparency: bool,
     pub stamp: bool,
     pub merge_lines: bool,
+    pub quality: PlotQuality,
 }
 
 /// End indexes of the first paper/model render group in each flat input list.
@@ -86,6 +117,7 @@ impl Default for PlotOptions {
             transparency: false,
             stamp: false,
             merge_lines: false,
+            quality: PlotQuality::Normal,
         }
     }
 }
