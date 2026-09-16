@@ -271,6 +271,12 @@ command-copy =
     .mode = COPY  Podaj tryb kopiowania [Single/Multiple] <Multiple>:
 
 common =
+    .recover-drawing = Odzyskaj rysunek
+    .restore-it-as-a-recovered-tab-or-discard-the-copy = Przywróć go jako odzyskaną kartę lub odrzuć kopię.
+    .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" ma kopię autozapisu nowszą niż ostatni zapis.
+    .autosave-copy-could-not-be-stored = Nie można zapisać kopii autozapisu: __ocs_fmt_0__
+    .restored-from-the-autosave-copy = Przywrócono "__ocs_fmt_0__" z kopii autozapisu
+    .autosave-copy-could-not-be-read = Nie można odczytać kopii autozapisu: __ocs_fmt_0__
     .jogged-radius = Promień łamany
     .none-use-shortcuts-set-key-command =(brak — użyj: SHORTCUTS SET <key> <command>)
     .alignment-indented-label-title-case =   Wyrównanie:

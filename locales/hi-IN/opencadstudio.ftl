@@ -260,6 +260,12 @@ command-copy =
     .mode = COPY  कॉपी मोड विकल्प दर्ज करें [Single/Multiple] <Multiple>:
 
 common =
+    .recover-drawing = चित्र पुनर्प्राप्त करें
+    .restore-it-as-a-recovered-tab-or-discard-the-copy = इसे पुनर्प्राप्त टैब के रूप में पुनर्स्थापित करें, या प्रतिलिपि त्याग दें।
+    .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" के पास अंतिम सहेजने से नई ऑटोसेव प्रतिलिपि है।
+    .autosave-copy-could-not-be-stored = ऑटोसेव प्रतिलिपि संग्रहित नहीं की जा सकी: __ocs_fmt_0__
+    .restored-from-the-autosave-copy = "__ocs_fmt_0__" को ऑटोसेव प्रतिलिपि से पुनर्स्थापित किया गया
+    .autosave-copy-could-not-be-read = ऑटोसेव प्रतिलिपि पढ़ी नहीं जा सकी: __ocs_fmt_0__
     .jogged-radius = मोड़ वाला त्रिज्या माप
     .none-use-shortcuts-set-key-command = (कोई नहीं — उपयोग: SHORTCUTS SET <key> <command>)
     .alignment-indented-label-title-case = संरेखण:

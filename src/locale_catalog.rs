@@ -5805,6 +5805,12 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Reset angle" => Some(("graphic-attributes", "reset-angle")),
         "One Color" => Some(("graphic-attributes", "one-color")),
         "Two Colors" => Some(("graphic-attributes", "two-colors")),
+        "Recover Drawing" => Some(("common", "recover-drawing")),
+        "Restore it as a recovered tab, or discard the copy." => Some(("common", "restore-it-as-a-recovered-tab-or-discard-the-copy")),
+        "\"{name}\" has an autosave copy newer than the last save." => Some(("common", "name-has-an-autosave-copy-newer-than-the-last-save")),
+        "Autosave copy could not be stored: {error}" => Some(("common", "autosave-copy-could-not-be-stored")),
+        "Restored \"{}\" from the autosave copy" => Some(("common", "restored-from-the-autosave-copy")),
+        "Autosave copy could not be read: {error}" => Some(("common", "autosave-copy-could-not-be-read")),
         _ => None,
     }
 }

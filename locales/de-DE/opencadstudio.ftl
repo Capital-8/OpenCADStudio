@@ -272,6 +272,12 @@ command-copy =
     .mode = COPY  Kopiermodus eingeben [Single/Multiple] <Multiple>:
 
 common =
+    .recover-drawing = Zeichnung wiederherstellen
+    .restore-it-as-a-recovered-tab-or-discard-the-copy = Als wiederhergestellte Registerkarte öffnen oder die Kopie verwerfen.
+    .name-has-an-autosave-copy-newer-than-the-last-save = Für „__ocs_fmt_0__“ existiert eine automatische Sicherungskopie, die neuer ist als die letzte gespeicherte Version.
+    .autosave-copy-could-not-be-stored = Automatische Sicherungskopie konnte nicht gespeichert werden: __ocs_fmt_0__
+    .restored-from-the-autosave-copy = „__ocs_fmt_0__“ wurde aus der automatischen Sicherungskopie wiederhergestellt
+    .autosave-copy-could-not-be-read = Automatische Sicherungskopie konnte nicht gelesen werden: __ocs_fmt_0__
     .jogged-radius = Geknickter Radius
     .none-use-shortcuts-set-key-command = (keine — verwenden: SHORTCUTS SET <key> <command>)
     .alignment-indented-label-title-case = Ausrichtung:
