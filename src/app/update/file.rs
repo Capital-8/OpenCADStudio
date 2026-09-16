@@ -4395,19 +4395,33 @@ impl OpenCADStudio {
         }
 
         // Model space keeps its established extents + 5% margin behaviour.
+        // A sheet edge below this floor (drawing with tiny extents, or the
+        // 0×0 paper a fresh unsaved drawing carries) cannot be previewed,
+        // printed, or measured meaningfully; the standard-sheet fallback
+        // keeps the output a real page instead of a speck.
+        const MIN_MODEL_SHEET_MM: f64 = 10.0;
+        let standard_sheet = {
+            let (w, h) = selected_sheet;
+            (w.min(h) >= MIN_MODEL_SHEET_MM).then_some((w, h))
+        };
         let (page_w, page_h, offset_x, offset_y) =
             if let Some((min, max)) = scene.model_space_extents() {
                 let margin = 1.05_f64;
                 let width = ((max.x - min.x) as f64 * margin).max(1.0);
                 let height = ((max.y - min.y) as f64 * margin).max(1.0);
-                let pad_x = (width - (max.x - min.x) as f64) * 0.5;
-                let pad_y = (height - (max.y - min.y) as f64) * 0.5;
-                (
-                    width,
-                    height,
-                    -(min.x as f64) + pad_x,
-                    -(min.y as f64) + pad_y,
-                )
+                if width < MIN_MODEL_SHEET_MM || height < MIN_MODEL_SHEET_MM {
+                    let (w, h) = standard_sheet.unwrap_or((297.0, 210.0));
+                    (w, h, -min.x as f64, -min.y as f64)
+                } else {
+                    let pad_x = (width - (max.x - min.x) as f64) * 0.5;
+                    let pad_y = (height - (max.y - min.y) as f64) * 0.5;
+                    (
+                        width,
+                        height,
+                        -(min.x as f64) + pad_x,
+                        -(min.y as f64) + pad_y,
+                    )
+                }
             } else {
                 (297.0, 210.0, 0.0, 0.0)
             };

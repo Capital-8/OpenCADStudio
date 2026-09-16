@@ -31,6 +31,8 @@ pub mod visual_styles;
 pub(crate) mod web_recent;
 #[cfg(target_arch = "wasm32")]
 mod web_worker;
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod web_drop;
 pub mod windows_media;
 pub mod xref;
 pub mod xref_model;
