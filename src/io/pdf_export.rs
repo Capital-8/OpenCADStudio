@@ -472,6 +472,17 @@ fn append_pdf_page(
     fallback_plot_style: Option<&PlotStyleTable>,
     fonts: &SearchableFontSet,
 ) -> Result<(), String> {
+    // Paper dimensions are validated like the content coordinates below: a
+    // NaN/inf/zero sheet (`width < MIN` compares false for NaN) would be
+    // serialized verbatim into a MediaBox no conforming viewer can display,
+    // and printpdf's own parser would still accept it.
+    if !page.paper_w.is_finite()
+        || !page.paper_h.is_finite()
+        || page.paper_w <= 0.0
+        || page.paper_h <= 0.0
+    {
+        return Err("plot sheet size is not valid".into());
+    }
     let PlotContent {
         wires,
         hatches,
