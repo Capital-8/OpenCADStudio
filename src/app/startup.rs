@@ -26,14 +26,21 @@ impl OpenCADStudio {
 
     /// Queue the web crash-recovery prompt behind whatever startup modal is
     /// already showing (donation, GPU warning…); the after-message hook in
-    /// `update` surfaces it as soon as the slot is free.
+    /// `update` surfaces it as soon as the slot is free. No-op when nothing
+    /// is pending: once the autosave OPFS directory merely exists (even with
+    /// no entries), queueing unconditionally would show an empty
+    /// "Recover Drawing" modal on every boot.
     #[cfg(target_arch = "wasm32")]
     pub(super) fn queue_autosave_restore_prompt(&mut self) {
+        if self.web_autosave_pending.is_empty() {
+            return;
+        }
         if !self
             .pending_startup_modals
             .contains(&ModalKind::AutosaveRestore)
         {
-            self.pending_startup_modals.push_back(ModalKind::AutosaveRestore);
+            self.pending_startup_modals
+                .push_back(ModalKind::AutosaveRestore);
         }
         self.show_next_startup_modal();
     }
