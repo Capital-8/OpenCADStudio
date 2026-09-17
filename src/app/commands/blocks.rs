@@ -1612,9 +1612,20 @@ impl OpenCADStudio {
             "XRELOAD" => {
                 // Reload all xrefs for the current drawing. Every direct key
                 // leaves the session-unloaded set (reloaded content is live
-                // again) with fresh stat baselines on the next refresh.
-                if let Some(path) = &self.tabs[i].current_path.clone() {
-                    if let Some(base_dir) = path.parent() {
+                // again) with fresh stat baselines on the next refresh. Web:
+                // xrefs re-read from the in-session bytes registry, so an
+                // unsaved drawing reloads too; native needs the drawing's own
+                // folder for relative xref paths.
+                #[cfg(target_arch = "wasm32")]
+                let base_dir: Option<std::path::PathBuf> = Some(std::path::PathBuf::new());
+                #[cfg(not(target_arch = "wasm32"))]
+                let base_dir: Option<std::path::PathBuf> = self.tabs[i]
+                    .current_path
+                    .as_ref()
+                    .and_then(|path| path.parent().map(std::path::Path::to_path_buf));
+                if let Some(base_dir) = base_dir {
+                    {
+                        let base_dir: &std::path::Path = &base_dir;
                         let reload_keys: Vec<u64> = crate::io::xref::collect_entries_with_prev(
                             &self.tabs[i].scene.document,
                             base_dir,
@@ -1631,7 +1642,7 @@ impl OpenCADStudio {
                         }
                         let (infos, _dropped) = crate::io::xref::resolve_xrefs(
                             &mut self.tabs[i].scene.document,
-                            base_dir,
+                            &base_dir,
                         );
                         // `resolve_xrefs` re-merges ALL references — refresh stat
                         // baselines for every currently-Loaded entry so no row
@@ -1652,8 +1663,17 @@ impl OpenCADStudio {
                             }
                         }
                         for info in &infos {
+                            // Web: unresolved references surface once below,
+                            // with the drop hint, instead of a filesystem path
+                            // no browser can open.
+                            #[cfg(target_arch = "wasm32")]
+                            if info.status == crate::io::xref::XrefStatus::NotFound {
+                                continue;
+                            }
                             self.report_xref_status(info);
                         }
+                        #[cfg(target_arch = "wasm32")]
+                        self.warn_unresolved_xrefs(&infos);
                         self.post_ref_op(i);
                     }
                 } else {

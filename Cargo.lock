@@ -44,6 +44,7 @@ dependencies = [
  "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
  "ocs_plugin_api",
+ "ocs_save",
  "open",
  "opencadcodec",
  "opencadgraph",
@@ -4167,6 +4168,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ocs_save"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "opencadcodec",
+ "serde",
+]
+
+[[package]]
 name = "ocs_web_worker"
 version = "0.1.0"
 dependencies = [
@@ -4174,6 +4184,7 @@ dependencies = [
  "console_error_panic_hook",
  "getrandom 0.3.4",
  "js-sys",
+ "ocs_save",
  "opencadcodec",
  "serde",
  "sha2 0.10.9",

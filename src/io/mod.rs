@@ -42,8 +42,13 @@ pub mod xref_model;
 
 use crate::scene::DerivedCaches;
 use codec::entities::EntityType;
+// The path-based readers are native-only; web parsing runs through the
+// parse worker / the xref bytes registry instead.
+#[cfg(not(target_arch = "wasm32"))]
 use codec::io::dwg::DwgReader;
-use codec::{CadDocument, DwgReadOptions, DwgWriter, DxfReader, DxfReaderConfiguration, DxfWriter};
+#[cfg(not(target_arch = "wasm32"))]
+use codec::{DwgReadOptions, DxfReader, DxfReaderConfiguration};
+use codec::{CadDocument, DwgWriter, DxfWriter};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
@@ -608,6 +613,10 @@ pub async fn open_bytes_web(
     bytes: Arc<[u8]>,
     progress: Arc<OpenProgressState>,
 ) -> WebOpenOutcome {
+    // The opened drawing's own bytes enter the xref registry too: another
+    // open drawing may reference it by name, and the registry — not the
+    // absent filesystem — is what re-resolves that reference in-session.
+    crate::io::xref::register_source(&name, Arc::new(bytes.to_vec()));
     let size_bytes = bytes.len() as u64;
     let result = load_web_bytes(&name, &bytes, progress.clone(), false, "", None).await;
     let keep_for_recovery = result
@@ -758,9 +767,16 @@ async fn load_web_bytes(
             recovery_available: true,
         });
     }
+    // XREFs inside the opened drawing resolve from the in-session bytes
+    // registry (see `resolve_web_xrefs`) before the caches snapshot the
+    // document, so merged xref geometry is part of the caches — the same
+    // phase order the native open uses.
+    let (xref_infos, xref_dropped) = resolve_web_xrefs(&mut doc, progress.clone()).await;
     let mut caches = crate::scene::build_derived_caches(&doc);
     caches.corrupt_dropped = dropped;
     caches.read_stats = Some(outcome.stats);
+    caches.xrefs = xref_infos;
+    caches.xref_dropped = xref_dropped;
     if source_sha256.is_none() && recovery_fingerprint_needed(&caches) {
         source_sha256 = web_worker::sha256_document(bytes).await.ok();
     }
@@ -812,6 +828,91 @@ pub async fn pick_and_parse_web(
     let bytes = handle.read().await;
     let document = parse_web_document(&name, &bytes).await?;
     Ok(Some((name, document)))
+}
+
+/// Web: parse drawing bytes already in hand on the shared worker — the
+/// byte-level counterpart of `load_file` for callers that ran their own
+/// picker (Data Extraction's multi-file source list). Same normalization as
+/// every other web-opened drawing.
+#[cfg(target_arch = "wasm32")]
+pub async fn parse_drawing_bytes_web(name: &str, bytes: &[u8]) -> Result<CadDocument, String> {
+    parse_web_document(name, bytes).await
+}
+
+/// Web: resolve the XREF blocks inside a freshly opened drawing against the
+/// in-session bytes registry — the browser counterpart of the native open's
+/// xref phase. Every referenced file whose bytes are registered (picked or
+/// dropped earlier this session) is parsed on the shared worker first, so
+/// the UI thread only runs the (cheap) merge; unregistered references come
+/// back as `NotFound` for the open handler to warn about.
+#[cfg(target_arch = "wasm32")]
+async fn resolve_web_xrefs(
+    doc: &mut CadDocument,
+    progress: Arc<OpenProgressState>,
+) -> (Vec<crate::io::xref::XrefInfo>, usize) {
+    let pending: Vec<String> = doc
+        .block_records
+        .iter()
+        .filter(|br| (br.flags.is_xref || br.flags.is_xref_overlay) && !br.xref_path.is_empty())
+        .map(|br| br.xref_path.clone())
+        .collect();
+    let total = pending.len().max(1);
+    for (index, raw_path) in pending.iter().enumerate() {
+        progress.set(crate::app::OPEN_PHASE_XREF, 5900, index, total);
+        let Some(key) = crate::io::xref::find_registered_source(raw_path) else {
+            continue;
+        };
+        let Some(bytes) = crate::io::xref::registered_bytes(&key) else {
+            continue;
+        };
+        // The strict worker refuses recoverable parses; those fall through
+        // to a direct registry read inside the resolve so their stats (and
+        // the Failed status derived from them) match the native loader.
+        if let Ok((outcome, _)) = web_worker::parse_document(&key, &bytes, false, "").await {
+            crate::io::xref::register_parsed(&key, outcome);
+        }
+    }
+    progress.set(crate::app::OPEN_PHASE_XREF, 5900, total, total);
+    // `set_fraction` is native-only; the web phase reports completed/total
+    // directly, which the open overlay surfaces alongside the fixed weight.
+    let xref_progress: Arc<dyn Fn(usize, usize) + Send + Sync> = {
+        let progress = Arc::clone(&progress);
+        Arc::new(move |completed, total| {
+            progress.set(crate::app::OPEN_PHASE_XREF, 5900, completed, total);
+        })
+    };
+    crate::io::xref::resolve_xrefs_with_progress(doc, Path::new(""), Some(xref_progress))
+}
+
+/// Web XATTACH pick: read the chosen drawing's bytes, keep them in the xref
+/// registry (so later reloads and re-opens of the host drawing re-resolve
+/// the reference in-session), and pre-parse on the worker so the
+/// commit-time merge stays cheap. A parse failure defers to commit time,
+/// which re-reads the registered bytes and reports the same Failed status
+/// the native attach would. `Err("Cancelled")` mirrors the native pick.
+#[cfg(target_arch = "wasm32")]
+pub async fn pick_and_register_xref_web() -> Result<PathBuf, String> {
+    let Some(handle) = crate::sys::file_dialog()
+        .set_title(crate::t!("Select External Reference File").as_ref())
+        .add_filter(
+            crate::t!("CAD Files").as_ref(),
+            &["dwg", "dxf", "bak", "DWG", "DXF", "BAK"],
+        )
+        .add_filter(crate::t!("DWG Files").as_ref(), &["dwg", "DWG"])
+        .add_filter(crate::t!("DXF Files").as_ref(), &["dxf", "DXF"])
+        .add_filter(crate::t!("Backup Files").as_ref(), &["bak", "BAK"])
+        .pick_file()
+        .await
+    else {
+        return Err("Cancelled".to_string());
+    };
+    let name = handle.file_name();
+    let bytes = handle.read().await;
+    crate::io::xref::register_source(&name, Arc::new(bytes.clone()));
+    if let Ok((outcome, _)) = web_worker::parse_document(&name, &bytes, false, "").await {
+        crate::io::xref::register_parsed(&name, outcome);
+    }
+    Ok(PathBuf::from(name))
 }
 
 /// Parse a drawing from bytes using its name or recovery-file signature.
@@ -870,6 +971,8 @@ pub fn load_bytes_finalized(path: &Path, bytes: Vec<u8>) -> Result<(CadDocument,
 /// Load a DWG or DXF file directly from a path (auto-detect by extension).
 /// Peek at a file's leading bytes to tell a DWG (version tag "AC10xx") from a
 /// DXF. Used for `.bak` copies, whose extension hides the real format.
+/// Native-only: the web reads registered bytes instead of the filesystem.
+#[cfg(not(target_arch = "wasm32"))]
 fn sniff_dwg_or_dxf(path: &Path) -> String {
     use std::io::Read;
     let mut buf = [0u8; 6];
@@ -905,6 +1008,10 @@ pub fn load_file(_path: &Path) -> Result<CadDocument, String> {
     Err(crate::t!("Opening a drawing by path is not available in the browser.").into_owned())
 }
 
+/// Path-based reader with progress — native-only: on the web xrefs resolve
+/// from the bytes registry (`io::xref::read_registered_outcome`), never a
+/// filesystem path.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn load_file_with_progress(
     path: &Path,
     _progress: Option<Arc<dyn Fn(u16) + Send + Sync>>,
@@ -1001,12 +1108,14 @@ fn load_file_for_open(
     finalize_loaded_outcome(path, outcome).map_err(OpenAttemptFailure::from)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct ReaderFailure {
     message: String,
     #[cfg(not(target_arch = "wasm32"))]
     recoverable: bool,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl ReaderFailure {
     fn from_reader(error: codec::DxfError) -> Self {
         Self {
@@ -1067,6 +1176,7 @@ fn merge_read_stats(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn read_file_attempt(
     path: &Path,
     progress: Option<Arc<dyn Fn(u16) + Send + Sync>>,
@@ -1094,6 +1204,7 @@ fn read_file_attempt(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn finalize_loaded_outcome(
     path: &Path,
     mut outcome: codec::ReadOutcome,
@@ -1116,6 +1227,7 @@ fn finalize_loaded_outcome(
     Ok(outcome)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn read_dwg_path(
     path: &Path,
     progress: Option<Arc<dyn Fn(u16) + Send + Sync>>,
@@ -1236,6 +1348,7 @@ fn read_drawing_snapshot(path: &Path) -> std::io::Result<Vec<u8>> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn read_dxf_path(path: &Path, failsafe: bool) -> Result<codec::ReadOutcome, ReaderFailure> {
     DxfReader::from_file(path)
         .map_err(ReaderFailure::from_reader)?
@@ -1312,6 +1425,7 @@ fn normalize_block_origins(doc: &mut CadDocument) {
 /// are untouched. File handles are reused when still free so a repair +
 /// resave stays handle-stable; otherwise a fresh handle is minted and the
 /// record is pointed at it.
+#[cfg(not(target_arch = "wasm32"))]
 fn materialize_missing_block_markers(doc: &mut CadDocument) {
     use codec::entities::{Block, BlockEnd};
     use codec::{EntityType, Handle};
@@ -1386,6 +1500,9 @@ fn materialize_missing_block_markers(doc: &mut CadDocument) {
 /// that doesn't exist on this machine. Resolve each image to a usable path:
 /// the stored path if it exists, otherwise the same file name next to the
 /// drawing — and write the result onto the entity so the renderer finds it.
+/// Native-only: its callers resolve against a real folder; web images bind
+/// through the name-keyed byte registry instead.
+#[cfg(not(target_arch = "wasm32"))]
 fn resolve_raster_image_paths(doc: &mut CadDocument, base_dir: Option<&Path>) {
     use codec::objects::ObjectType;
     use codec::EntityType;
@@ -2133,6 +2250,13 @@ pub fn save(doc: &CadDocument, path: &Path) -> Result<(), String> {
 /// `doc.version`). Used by the web build, which hands the bytes to a browser
 /// download instead of writing a path — the byte-buffer counterpart to
 /// [`save_as_version`].
+///
+/// This is the *inline* path (main thread on wasm). The web SAVE/AUTOSAVE
+/// flows prefer [`prepare_document_for_save`] +
+/// [`serialize_prepared_document`], which runs the writer half on the browser
+/// worker; both routes share the same preparation and the same writer
+/// dispatch (`ocs_save::serialize_document`), so the produced bytes are
+/// identical.
 #[allow(dead_code)] // web/wasm build only; unused in the native target
 pub fn save_to_bytes(
     doc: &CadDocument,
@@ -2141,35 +2265,14 @@ pub fn save_to_bytes(
 ) -> Result<Vec<u8>, String> {
     let perf = crate::perf::enabled();
     let total_started = iced::time::Instant::now();
-    let clone_started = iced::time::Instant::now();
-    let mut doc = doc.clone();
-    let clone_ms = clone_started.elapsed().as_secs_f64() * 1000.0;
-    doc.version = version;
-    let styles_started = iced::time::Instant::now();
-    sync_current_styles_on_save(&mut doc);
-    let styles_ms = styles_started.elapsed().as_secs_f64() * 1000.0;
-    let dimensions_started = iced::time::Instant::now();
-    crate::modules::draw::modify::explode::bake_dimension_blocks(&mut doc);
-    let dimensions_ms = dimensions_started.elapsed().as_secs_f64() * 1000.0;
+    let doc = prepare_document_for_save(doc.clone(), version);
     let write_started = iced::time::Instant::now();
-    let result = match ext.to_lowercase().as_str() {
-        "dxf" => DxfWriter::new(&doc)
-            .write_to_vec()
-            .map_err(|e| e.to_string()),
-        _ => {
-            let mut buf = std::io::Cursor::new(Vec::new());
-            DwgWriter::write_to_writer(&mut buf, &doc).map_err(|e| e.to_string())?;
-            Ok(buf.into_inner())
-        }
-    };
+    let result = ocs_save::serialize_document(&doc, ext);
     if perf {
         let bytes = result.as_ref().map_or(0, Vec::len);
         crate::perf_record!(
-            "[perf] save-bytes total={:.1}ms clone={:.1} styles={:.1} dimensions={:.1} write={:.1} bytes={} entities={} objects={}",
+            "[perf] save-bytes total={:.1}ms write={:.1} bytes={} entities={} objects={}",
             total_started.elapsed().as_secs_f64() * 1000.0,
-            clone_ms,
-            styles_ms,
-            dimensions_ms,
             write_started.elapsed().as_secs_f64() * 1000.0,
             bytes,
             doc.entities().count(),
@@ -2177,6 +2280,59 @@ pub fn save_to_bytes(
         );
     }
     result
+}
+
+/// Prepare a save copy of a document: stamp the target DXF version, sync the
+/// current-style markers into their header handles / dictionary variables, and
+/// bake missing dimension geometry blocks. The app-side half of the save
+/// pipeline — it must run where the live document lives (the worker crate
+/// cannot reach the app's style/dimension modules). It takes the copy by
+/// value, so callers that already built one (`document_for_save`) pay no
+/// second clone and the live document is never touched. Both
+/// [`save_to_bytes`] and the web worker offload call this exactly once per
+/// save, so there is one implementation of the preparation for every target.
+pub fn prepare_document_for_save(mut doc: CadDocument, version: codec::DxfVersion) -> CadDocument {
+    let perf = crate::perf::enabled();
+    doc.version = version;
+    let styles_started = perf.then(iced::time::Instant::now);
+    sync_current_styles_on_save(&mut doc);
+    let styles_ms = crate::perf::elapsed_ms(styles_started);
+    let dimensions_started = perf.then(iced::time::Instant::now);
+    crate::modules::draw::modify::explode::bake_dimension_blocks(&mut doc);
+    let dimensions_ms = crate::perf::elapsed_ms(dimensions_started);
+    if perf {
+        crate::perf_record!(
+            "[perf] save-prepare styles={:.1} dimensions={:.1} entities={} objects={}",
+            styles_ms,
+            dimensions_ms,
+            doc.entities().count(),
+            doc.objects.len(),
+        );
+    }
+    doc
+}
+
+/// Web SAVE/AUTOSAVE: offload the DWG/DXF writer pass to the browser worker.
+/// `prepared` comes from [`prepare_document_for_save`] — the serialization
+/// itself (the expensive half) runs off the UI thread and the encoded bytes
+/// come back here. Falls back to inline serialization when the worker cannot
+/// spawn or errors, so a save never hard-fails just because the worker is
+/// unavailable.
+#[cfg(target_arch = "wasm32")]
+pub async fn serialize_prepared_document(
+    prepared: &CadDocument,
+    ext: &str,
+) -> Result<Vec<u8>, String> {
+    let encoded = match ocs_save::encode_request(prepared, ext) {
+        Ok(encoded) => encoded,
+        // The worker cannot help if the document cannot even be encoded —
+        // serialize inline from the document we still hold.
+        Err(error) => {
+            log::warn!("{error}; serializing inline");
+            return ocs_save::serialize_document(prepared, ext);
+        }
+    };
+    web_worker::serialize_document(encoded).await
 }
 
 // ── Post-load fixups ──────────────────────────────────────────────────────
@@ -3257,5 +3413,112 @@ mod pre_r2000_layer_plot_tests {
             "{dropped} of {} wires would be dropped from the plot",
             wires.len()
         );
+    }
+}
+
+// ── Save-pipeline prepare tests ────────────────────────────────────────────
+//
+// `prepare_document_for_save` is the extracted app-side half of the save
+// pipeline, shared by the inline `save_to_bytes` and the web worker offload —
+// these pin the behaviours both routes depend on.
+
+#[cfg(test)]
+mod prepare_save_tests {
+    use super::*;
+    use codec::entities::{Dimension, DimensionLinear};
+    use codec::tables::TextStyle;
+    use codec::types::Vector3;
+
+    // The live document must never observe the save preparation: version
+    // stamp, style sync and dimension baking all happen on the clone only.
+    #[test]
+    fn prepare_stamps_version_and_leaves_live_document_untouched() {
+        let mut doc = CadDocument::new();
+        doc.version = codec::DxfVersion::AC1027;
+        let prepared = prepare_document_for_save(doc.clone(), codec::DxfVersion::AC1032);
+        assert_eq!(prepared.version, codec::DxfVersion::AC1032);
+        assert_eq!(doc.version, codec::DxfVersion::AC1027);
+    }
+
+    // The current text style marker must resolve from its name to the table
+    // entry's handle on the prepared clone (the DWG header stores a handle),
+    // while the live document keeps its previous marker.
+    #[test]
+    fn prepare_syncs_current_style_markers() {
+        let mut doc = CadDocument::new();
+        crate::io::linetypes::populate_document(&mut doc);
+        let mut style = TextStyle::new("ANNOT");
+        style.handle = doc.allocate_handle();
+        let style_handle = style.handle;
+        doc.text_styles.add(style).unwrap();
+        doc.header.current_text_style_name = "ANNOT".to_string();
+        let live_handle = doc.header.current_text_style_handle;
+        let prepared = prepare_document_for_save(doc.clone(), doc.version);
+        assert_eq!(prepared.header.current_text_style_handle, style_handle);
+        assert_eq!(doc.header.current_text_style_handle, live_handle);
+    }
+
+    // A dimension without its anonymous geometry block must get one baked on
+    // the clone (the writer emits the *D block), with the group-10 definition
+    // point mirrored into `base` — while the live document keeps neither.
+    #[test]
+    fn prepare_bakes_missing_dimension_blocks() {
+        let mut doc = CadDocument::new();
+        crate::io::linetypes::populate_document(&mut doc);
+        let mut dim = DimensionLinear::new(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(10.0, 0.0, 0.0),
+        );
+        dim.definition_point = Vector3::new(5.0, 7.0, 0.0);
+        dim.base.definition_point = Vector3::ZERO;
+        dim.base.common.handle = doc.allocate_handle();
+        let handle = dim.base.common.handle;
+        doc.add_entity(EntityType::Dimension(Dimension::Linear(dim)))
+            .unwrap();
+
+        let prepared = prepare_document_for_save(doc.clone(), doc.version);
+        let EntityType::Dimension(Dimension::Linear(linear)) =
+            prepared.get_entity(handle).unwrap()
+        else {
+            panic!("dimension missing from prepared clone");
+        };
+        assert!(
+            linear.base.block_name.starts_with("*D"),
+            "anonymous dimension block not baked: {}",
+            linear.base.block_name
+        );
+        assert!(prepared.block_records.get(&linear.base.block_name).is_some());
+        assert_eq!(linear.base.definition_point, linear.definition_point);
+
+        // The live document is untouched: no block name, stale group-10.
+        let EntityType::Dimension(Dimension::Linear(live)) =
+            doc.get_entity(handle).unwrap()
+        else {
+            panic!("dimension missing from live document");
+        };
+        assert!(live.base.block_name.is_empty());
+        assert_eq!(live.base.definition_point, Vector3::ZERO);
+    }
+
+    // The whole point of the split: the inline fallback (`save_to_bytes`) and
+    // the worker route (`prepare_document_for_save` → `ocs_save` on the
+    // worker) must produce identical bytes for the same input.
+    #[test]
+    fn save_to_bytes_equals_prepare_then_shared_serialize() {
+        let mut doc = CadDocument::new();
+        crate::io::linetypes::populate_document(&mut doc);
+        let mut dim = DimensionLinear::new(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(10.0, 0.0, 0.0),
+        );
+        dim.base.common.handle = doc.allocate_handle();
+        doc.add_entity(EntityType::Dimension(Dimension::Linear(dim)))
+            .unwrap();
+        for ext in ["dwg", "dxf"] {
+            let inline = save_to_bytes(&doc, ext, codec::DxfVersion::AC1032).expect("inline");
+            let prepared = prepare_document_for_save(doc.clone(), codec::DxfVersion::AC1032);
+            let shared = ocs_save::serialize_document(&prepared, ext).expect("shared");
+            assert_eq!(inline, shared, "inline and shared serialize diverge for {ext}");
+        }
     }
 }
