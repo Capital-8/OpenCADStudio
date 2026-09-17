@@ -6,6 +6,7 @@ use codec::tables::TableEntry;
 use codec::types::{Handle, Vector3};
 use codec::{CadDocument, EntityType};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -51,7 +52,18 @@ pub fn unresolved_xref_names(infos: &[XrefInfo]) -> Vec<String> {
     infos
         .iter()
         .filter(|info| info.status == XrefStatus::NotFound)
-        .map(|info| info.name.clone())
+        // The file name is what the user must drop on the page; the block
+        // name may be a renamed `A$C$...` alias that matches no file.
+        // Split on both separators: drawings carry Windows paths, which
+        // `Path` does not split off Windows.
+        .map(|info| {
+            info.path
+                .rsplit(['/', '\\'])
+                .next()
+                .map(str::trim)
+                .filter(|n| !n.is_empty())
+                .map_or_else(|| info.name.clone(), str::to_string)
+        })
         .collect()
 }
 
@@ -89,9 +101,16 @@ pub(crate) fn same_file_name(a: &str, b: &str) -> bool {
     !a.is_empty() && a == b
 }
 
-fn source_cache() -> &'static Mutex<HashMap<String, Arc<Vec<u8>>>> {
-    static SOURCES: OnceLock<Mutex<HashMap<String, Arc<Vec<u8>>>>> = OnceLock::new();
-    SOURCES.get_or_init(|| Mutex::new(HashMap::default()))
+/// Upper bound on registered drawings. Every open, drop, and XATTACH pick
+/// registers its bytes; without a cap a day of opening large drawings grows
+/// the wasm heap until the tab dies. Oldest registrations leave first —
+/// enough for a parent drawing plus its usual handful of references.
+const SOURCE_CAP: usize = 6;
+
+fn source_cache() -> &'static Mutex<(HashMap<String, Arc<Vec<u8>>>, VecDeque<String>)> {
+    static SOURCES: OnceLock<Mutex<(HashMap<String, Arc<Vec<u8>>>, VecDeque<String>)>> =
+        OnceLock::new();
+    SOURCES.get_or_init(|| Mutex::new((HashMap::default(), VecDeque::new())))
 }
 
 fn parsed_cache() -> &'static Mutex<HashMap<String, codec::ReadOutcome>> {
@@ -105,10 +124,21 @@ fn parsed_cache() -> &'static Mutex<HashMap<String, codec::ReadOutcome>> {
 /// finally supplies a missing reference) reloads from the new bytes.
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // mirrors image_model::register_source
 pub fn register_source(name: &str, bytes: Arc<Vec<u8>>) {
-    source_cache()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(name.to_string(), bytes);
+    {
+        let mut cache = source_cache()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (map, order) = &mut *cache;
+        if !map.contains_key(name) {
+            order.push_back(name.to_string());
+            while order.len() > SOURCE_CAP {
+                if let Some(evicted) = order.pop_front() {
+                    map.remove(&evicted);
+                }
+            }
+        }
+        map.insert(name.to_string(), bytes);
+    }
     parsed_cache()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -133,6 +163,7 @@ pub(crate) fn find_registered_source(raw: &str) -> Option<String> {
     source_cache()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .0
         .keys()
         .find(|key| same_file_name(key, raw))
         .cloned()
@@ -144,6 +175,7 @@ pub(crate) fn registered_bytes(key: &str) -> Option<Arc<Vec<u8>>> {
     source_cache()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .0
         .get(key)
         .cloned()
 }

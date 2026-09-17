@@ -585,6 +585,14 @@ impl OpenCADStudio {
             .unwrap_or_else(|| format!("{stem}.{ext}"));
         let version = self.tabs[i].scene.document.version;
 
+        // The same save preparation a web Save performs — without it the
+        // archived copy ships kernel solids without their ACIS data and a
+        // staler view/sysvar header than a real save would produce.
+        self.sync_view_state_for_save(i);
+        crate::app::update::util::sync_annotation_scale_header(&mut self.tabs[i].scene);
+        self.stamp_header_sysvars(i);
+        self.sync_solid_models_for_save(i);
+        self.tabs[i].scene.sync_native_parametric_graph();
         // The drawing itself: the same serialization a web Save performs
         // (native copies the last-saved file; the web build has none, so the
         // current document is re-serialized).

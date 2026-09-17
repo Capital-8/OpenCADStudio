@@ -671,7 +671,7 @@ impl OpenCADStudio {
     /// have no ACIS data before saving. A solid that has ACIS data keeps its
     /// own wireframe cache: display edges are not written into a solid OCS
     /// did not create or edit (those get their wires when they are built).
-    fn sync_solid_models_for_save(&mut self, i: usize) {
+    pub(in crate::app) fn sync_solid_models_for_save(&mut self, i: usize) {
         use codec::EntityType;
         let scene = &mut self.tabs[i].scene;
         let targets: Vec<(codec::Handle, bool)> = scene
@@ -2460,7 +2460,7 @@ impl OpenCADStudio {
         )
     }
 
-    fn sync_view_state_for_save(&mut self, i: usize) {
+    pub(in crate::app) fn sync_view_state_for_save(&mut self, i: usize) {
         self.sync_vport_display(i);
         if self.tabs[i].active_block_edit.is_none() {
             self.tabs[i].scene.sync_camera_to_document();
