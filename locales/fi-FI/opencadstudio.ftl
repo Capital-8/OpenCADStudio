@@ -2394,6 +2394,7 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT-sijoittelu [Korvaa/etuliite/liite] <Overwrite>:
 
 file =
+    .already-loaded-different-contents-kept = "__ocs_fmt_0__" on jo ladattu eri sisällöllä; olemassa oleva tiedosto säilytettiin.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   jäsentää __ocs_fmt_0__ms · tyhjentää __ocs_fmt_1__ms · välimuistit __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · yhteensä __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: tallenna piirustus ensin (sillä ei ole vielä tiedostopolkua).
     .autosaved-1-drawing = Automaattisesti tallennettu 1 piirros

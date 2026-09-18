@@ -1338,7 +1338,7 @@ impl OpenCADStudio {
         if let Some(name) = take_last_collision().take() {
             self.command_line.push_warning(
                 crate::tf!(
-                    "\"{name}\" is already loaded from another folder with different contents; re-picking it was ignored to keep the existing link."
+                    "\"{name}\" is already loaded with different contents; the existing file was kept."
                 )
                 .as_ref(),
             );
@@ -1911,6 +1911,16 @@ impl OpenCADStudio {
                     .pick_files()
                     .await
                     .unwrap_or_default();
+                // Each picked file becomes a full parsed document held in
+                // the registry for the session; a bound keeps a giant
+                // multi-pick from exhausting the wasm heap (tab death).
+                const MAX_EXTRACTION_SOURCES: usize = 16;
+                if handles.len() > MAX_EXTRACTION_SOURCES {
+                    return Err(crate::tf!(
+                        "At most {MAX_EXTRACTION_SOURCES} drawings can be added in the browser."
+                    )
+                    .into_owned());
+                }
                 let mut paths = Vec::new();
                 for handle in handles {
                     let name = handle.file_name();

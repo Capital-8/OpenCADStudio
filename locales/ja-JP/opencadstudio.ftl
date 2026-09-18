@@ -2385,6 +2385,7 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  配置 [Overwrite/Prefix/Suffix] <Overwrite>:
 
 file =
+    .already-loaded-different-contents-kept = "__ocs_fmt_0__" は既に別の内容で読み込まれています。既存のファイルを保持しました。
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   解析 __ocs_fmt_0__ms · パージ __ocs_fmt_1__ms · キャッシュ __ocs_fmt_2__ms · 外部参照 __ocs_fmt_3__ms · 合計 __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: 先に図面を保存してください（まだファイルパスがありません）。
     .autosaved-1-drawing = 1 件の図面を自動保存しました

@@ -2395,6 +2395,7 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  placement [Overwrite/Prefix/Suffix] <Overwrite>:
 
 file =
+    .already-loaded-different-contents-kept = "__ocs_fmt_0__" is already loaded with different contents; the existing file was kept.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   parse __ocs_fmt_0__ms · purge __ocs_fmt_1__ms · caches __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · total __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: save the drawing first (it has no file path yet).
     .autosaved-1-drawing = Autosaved 1 drawing

@@ -2394,6 +2394,7 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = Umístění TCOUNT [přepsat/předpona/přípona] <Overwrite>:
 
 file =
+    .already-loaded-different-contents-kept = "__ocs_fmt_0__" je již načten s jiným obsahem; existující soubor byl zachován.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   analyzovat __ocs_fmt_0__ms · vyčistit __ocs_fmt_1__ms · mezipaměti __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · celkem __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: nejprve uložte výkres (ještě nemá žádnou cestu k souboru).
     .autosaved-1-drawing = Automaticky uložen 1 výkres

@@ -2379,6 +2379,7 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Yerleştirme [Üzerine yaz/Önek/Sonek] <Üzerine yaz>:
 
 file =
+    .already-loaded-different-contents-kept = "__ocs_fmt_0__" zaten farklı içerikle yüklü; mevcut dosya tutuldu.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = ayrıştırma __ocs_fmt_0__ ms · temizleme __ocs_fmt_1__ ms · önbellekler __ocs_fmt_2__ ms · xref __ocs_fmt_3__ ms · toplam __ocs_fmt_4__ ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: önce çizimi kaydedin; çizimin henüz bir dosya yolu yok.
     .autosaved-1-drawing = 1 çizim otomatik kaydedildi

@@ -3529,6 +3529,16 @@ fn relative_point_cloud_path(doc: &mut CadDocument, handle: Handle, host: &Path)
 mod web_registry_tests {
     use super::*;
 
+    /// The registries are process-global and the default harness runs tests
+    /// in parallel; the eviction test's inserts can evict a sibling test's
+    /// entry mid-assert. Registry tests hold this lock for their duration.
+    fn registry_guard() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn outcome() -> codec::ReadOutcome {
         codec::ReadOutcome::new(CadDocument::new(), codec::ReadStats::default())
     }
@@ -3560,6 +3570,7 @@ mod web_registry_tests {
 
     #[test]
     fn registry_finds_a_registered_source_by_trailing_name() {
+        let _registry = registry_guard();
         let registered = "Registry-Find-Site.dwg";
         register_source(registered, Arc::new(vec![1, 2, 3]));
         // The drawing's stored path is the author's absolute foreign path;
@@ -3579,6 +3590,7 @@ mod web_registry_tests {
     /// re-registration of a live name neither evicts nor duplicates it.
     #[test]
     fn source_registry_evicts_oldest_beyond_the_cap() {
+        let _registry = registry_guard();
         for i in 0..(SOURCE_CAP + 2) {
             register_source(&format!("f{i}.dwg"), Arc::new(vec![i as u8]));
         }
@@ -3618,6 +3630,7 @@ mod web_registry_tests {
 
     #[test]
     fn register_source_supersedes_a_cached_parse_of_the_same_file() {
+        let _registry = registry_guard();
         let name = "Registry-Supersede-Plan.dwg";
         register_parsed(name, outcome());
         // Re-registering the same file under a differently-cased path name

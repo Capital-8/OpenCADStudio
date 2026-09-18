@@ -2394,6 +2394,7 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT 배치 [덮어쓰기/접두사/접미사] <Overwrite>:
 
 file =
+    .already-loaded-different-contents-kept = "__ocs_fmt_0__"이(가) 이미 다른 내용으로 로드되었습니다. 기존 파일을 유지했습니다.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   __ocs_fmt_0__ms 구문 분석 · __ocs_fmt_1__ms 제거 · 캐시 __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · 총 __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: 먼저 도면을 저장합니다(아직 파일 경로가 없음).
     .autosaved-1-drawing = 그림 1개 자동 저장됨

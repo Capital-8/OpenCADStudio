@@ -2394,6 +2394,7 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = Umieszczenie TCOUNT [Nadpisanie/Przedrostek/Sufiks] <Overwrite>:
 
 file =
+    .already-loaded-different-contents-kept = "__ocs_fmt_0__" jest już wczytany z inną zawartością; zachowano istniejący plik.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   analizuj __ocs_fmt_0__ms · usuwaj __ocs_fmt_1__ms · pamięci podręczne __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · łącznie __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: najpierw zapisz rysunek (nie ma on jeszcze ścieżki do pliku).
     .autosaved-1-drawing = Automatycznie zapisano 1 rysunek

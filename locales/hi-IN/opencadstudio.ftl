@@ -2383,6 +2383,7 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  स्थान [अधिलेखित/उपसर्ग/प्रत्यय] <अधिलेखित>:
 
 file =
+    .already-loaded-different-contents-kept = "__ocs_fmt_0__" अलग सामग्री के साथ पहले से लोड है; मौजूदा फ़ाइल रखी गई।
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   पार्स __ocs_fmt_0__ms · purge __ocs_fmt_1__Ms · कैश __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · कुल __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: पहले ड्रॉइंग सहेजें (अभी फ़ाइल पथ निर्धारित नहीं है)।
     .autosaved-1-drawing = 1 ड्रॉइंग स्वतः सहेजी गई

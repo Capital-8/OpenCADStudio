@@ -2395,6 +2395,7 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  posicionamento [Sobrescrever/Prefixo/Sufixo] <Sobrescrever>:
 
 file =
+    .already-loaded-different-contents-kept = "__ocs_fmt_0__" já está carregado com conteúdo diferente; o ficheiro existente foi mantido.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   análise __ocs_fmt_0__ms · limpeza __ocs_fmt_1__ms · caches __ocs_fmt_2__ms · ref. externa __ocs_fmt_3__ms · total __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: salve o desenho primeiro (ele ainda não tem um caminho de arquivo).
     .autosaved-1-drawing = 1 desenho salvo automaticamente
