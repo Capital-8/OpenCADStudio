@@ -1910,6 +1910,10 @@ common =
     .geometric = Geometriai
     .dimensional = Méretkényszerek
     .show-hide = Megjelenítés/elrejtés
+    .remote-image-url-could-not-be-fetched-the-network-request-failed-offline-dns-or-cors = A(z) "__ocs_fmt_0__" távoli kép nem tölthető le: a hálózati kérés sikertelen (kapcsolat nélkül, DNS vagy CORS).
+    .remote-image-url-could-not-be-fetched-the-server-returned-http-status = A(z) "__ocs_fmt_0__" távoli kép nem tölthető le: a kiszolgáló HTTP __ocs_fmt_1__ választ adott.
+    .remote-image-url-was-not-loaded-it-exceeds-the-64-mb-remote-image-limit = A(z) "__ocs_fmt_0__" távoli kép nem lett betöltve: meghaladja a távoli képek 64 MB-os korlátját.
+    .remote-image-url-could-not-be-fetched-the-request-timed-out = A(z) "__ocs_fmt_0__" távoli kép nem tölthető le: a kérés túllépte az időkorlátot.
 
     .enter-a-valid-cell-range-such-as-a1-d10 = Adjon meg érvényes cellatartományt, például A1:D10.
     .named-ranges-require-a-spreadsheet-file = Elnevezett tartományokhoz táblázatkezelő-fájl szükséges.
@@ -2484,6 +2488,7 @@ file =
     .pick-the-file-again-to-load-its-contents = Válaszd ki újra a fájlt a tartalmának böngészőbe töltéséhez.
     .adding-folders-is-not-available-in-the-browser = Mappák hozzáadása nem érhető el a böngészőben. Ehelyett rajzfájlokat adj hozzá.
     .drawing-not-loaded-in-the-browser = A raj nincs betöltve a böngészőben: __ocs_fmt_0__.
+    .image-over-the-decode-limit-cannot-be-attached = A(z) "__ocs_fmt_0__" __ocs_fmt_1__×__ocs_fmt_2__ px felbontású, és a dekódolása __ocs_fmt_3__ MB-ot igényelne — ez meghaladja e build __ocs_fmt_4__ MB-os képhatárát, ezért nem csatolható. A határon belüli képek szükség esetén automatikusan csökkentett megjelenítési felbontással csatolódnak.
 
 selection =
     .cmd-select-objects-count-selected-enter-to-app = __ocs_arg_cmd__  Válasszon objektumokat (__ocs_arg_count__ kijelölve, Enter az alkalmazáshoz):

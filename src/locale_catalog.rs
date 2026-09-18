@@ -1617,6 +1617,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "IMAGE  Specify insertion point (%{name}):  " => Some(("draw", "image-specify-insertion-point-name")),
         "IMAGE  Specify width (drag right):" => Some(("draw", "image-specify-width-drag-right")),
         "IMAGE: {e}" => Some(("common", "image-e")),
+        "\"{name}\" is {width}×{height} px and would decode to {decoded} MB, over the {limit} MB image limit of this build — it cannot be attached. Images within the limit are attached at a reduced display resolution when needed." => Some(("file", "image-over-the-decode-limit-cannot-be-attached")),
         "IMPORTOBJ: imported \"{file_stem}\" as mesh." => Some(("common", "importobj-imported-file-stem-as-mesh")),
         "IMPORTOBJ: target drawing was closed." => Some(("common", "importobj-target-drawing-was-closed")),
         "IMPORTOBJ: {error}" => Some(("common", "importobj-error")),
@@ -5822,6 +5823,10 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Autosave copy could not be read: {error}" => Some(("common", "autosave-copy-could-not-be-read")),
         "An open is already in progress." => Some(("common", "an-open-is-already-in-progress")),
         "Autosave copy could not be queued: too many pending opens" => Some(("common", "autosave-copy-could-not-be-queued-too-many-pending-opens")),
+        "Remote image \"{url}\" could not be fetched: the network request failed (offline, DNS, or CORS)." => Some(("common", "remote-image-url-could-not-be-fetched-the-network-request-failed-offline-dns-or-cors")),
+        "Remote image \"{url}\" could not be fetched: the server returned HTTP {status}." => Some(("common", "remote-image-url-could-not-be-fetched-the-server-returned-http-status")),
+        "Remote image \"{url}\" was not loaded: it exceeds the 64 MB remote-image limit." => Some(("common", "remote-image-url-was-not-loaded-it-exceeds-the-64-mb-remote-image-limit")),
+        "Remote image \"{url}\" could not be fetched: the request timed out." => Some(("common", "remote-image-url-could-not-be-fetched-the-request-timed-out")),
         _ => None,
     }
 }

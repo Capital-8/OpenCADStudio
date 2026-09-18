@@ -1900,6 +1900,10 @@ common =
     .geometric = Геометрические
     .dimensional = Размерные
     .show-hide = Показать/Скрыть
+    .remote-image-url-could-not-be-fetched-the-network-request-failed-offline-dns-or-cors = Не удалось загрузить удалённое изображение «__ocs_fmt_0__»: сетевой запрос завершился ошибкой (нет сети, DNS или CORS).
+    .remote-image-url-could-not-be-fetched-the-server-returned-http-status = Не удалось загрузить удалённое изображение «__ocs_fmt_0__»: сервер вернул HTTP __ocs_fmt_1__.
+    .remote-image-url-was-not-loaded-it-exceeds-the-64-mb-remote-image-limit = Удалённое изображение «__ocs_fmt_0__» не загружено: оно превышает лимит 64 МБ для удалённых изображений.
+    .remote-image-url-could-not-be-fetched-the-request-timed-out = Не удалось загрузить удалённое изображение «__ocs_fmt_0__»: время ожидания запроса истекло.
 
     .enter-a-valid-cell-range-such-as-a1-d10 = Enter a valid cell range such as A1:D10.
     .named-ranges-require-a-spreadsheet-file = Named ranges require a spreadsheet file.
@@ -2475,6 +2479,7 @@ file =
     .pick-the-file-again-to-load-its-contents = Выберите файл ещё раз, чтобы загрузить его содержимое в браузер.
     .adding-folders-is-not-available-in-the-browser = Добавление папок в браузере недоступно. Вместо этого добавьте файлы чертежей.
     .drawing-not-loaded-in-the-browser = Чертёж не загружен в браузере: __ocs_fmt_0__.
+    .image-over-the-decode-limit-cannot-be-attached = "__ocs_fmt_0__" — __ocs_fmt_1__×__ocs_fmt_2__ px; для декодирования потребовалось бы __ocs_fmt_3__ МБ, что превышает ограничение __ocs_fmt_4__ МБ на изображение в этой сборке, поэтому вложить его нельзя. Изображения в пределах ограничения при необходимости вкладываются автоматически с пониженным разрешением отображения.
 
 selection =
     .cmd-select-objects-count-selected-enter-to-app = __ocs_arg_cmd__ Выберите объекты (__ocs_arg_count__ Выберите, Введите для применения):
