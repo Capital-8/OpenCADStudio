@@ -168,6 +168,8 @@ modal =
     .those-objects = それらのオブジェクト
 
 clipboard =
+    .pasted-image = 画像 "{ $name }" を貼り付けました: { $width }×{ $height } px
+    .image-unsupported = 貼り付けた画像 "{ $name }" をデコードできませんでした。
     .no-supported-content = クリップボードに対応するテキストまたは図面オブジェクトがありません。
     .unavailable = システムのクリップボードを使用できません。
     .occupied = システムのクリップボードは現在使用中です。もう一度お試しください。
@@ -2390,6 +2392,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  配置 [Overwrite/Prefix/Suffix] <Overwrite>:
 
 file =
+    .in-place-save-failed-downloaded = その場での保存に失敗しました(__ocs_fmt_0__)。代わりにコピーをダウンロードしました
+    .save-picker-failed-downloading = 保存先の選択に失敗しました: __ocs_fmt_0__。代わりにコピーをダウンロードしています
     .restore-all = すべて復元
     .restoring-drawing-s = __ocs_fmt_0__ 件の図面を復元しています…
     .session-had-open-drawing-s = セッションでは __ocs_fmt_0__ 件の図面が開いていました。

@@ -168,6 +168,8 @@ modal =
     .those-objects = te obiekty
 
 clipboard =
+    .pasted-image = Wklejono obraz "{ $name }": { $width }×{ $height } px
+    .image-unsupported = Nie udało się zdekodować wklejonego obrazu "{ $name }".
     .no-supported-content = Schowek nie zawiera obsługiwanego tekstu ani obiektów rysunku.
     .unavailable = Schowek systemowy jest niedostępny.
     .occupied = Schowek systemowy jest obecnie używany. Spróbuj ponownie.
@@ -2399,6 +2401,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = Umieszczenie TCOUNT [Nadpisanie/Przedrostek/Sufiks] <Overwrite>:
 
 file =
+    .in-place-save-failed-downloaded = Zapis w miejscu nie powiódł się (__ocs_fmt_0__); pobrano kopię
+    .save-picker-failed-downloading = Wybór miejsca zapisu nie powiódł się: __ocs_fmt_0__; pobieranie kopii
     .restore-all = Przywróć wszystkie
     .restoring-drawing-s = Przywracanie __ocs_fmt_0__ rysunków…
     .session-had-open-drawing-s = Sesja miała __ocs_fmt_0__ otwartych rysunków.

@@ -167,6 +167,8 @@ modal =
     .those-objects = 這些物件
 
 clipboard =
+    .pasted-image = 已貼上影像 "{ $name }"：{ $width }×{ $height } px
+    .image-unsupported = 無法解碼貼上的影像 "{ $name }"。
     .no-supported-content = 剪貼簿中沒有受支援的文字或圖形物件。
     .unavailable = 系統剪貼簿不可用。
     .occupied = 系統剪貼簿目前正被使用，請重試。
@@ -2399,6 +2401,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  放置方式 [覆蓋/前綴/後綴] <覆蓋>：
 
 file =
+    .in-place-save-failed-downloaded = 就地儲存失敗(__ocs_fmt_0__);已下載副本
+    .save-picker-failed-downloading = 選擇儲存目標失敗:__ocs_fmt_0__;正在下載副本
     .restore-all = 全部恢復
     .restoring-drawing-s = 正在恢復 __ocs_fmt_0__ 繪圖…
     .session-had-open-drawing-s = 工作階段中有 __ocs_fmt_0__ 個開啟的繪圖。

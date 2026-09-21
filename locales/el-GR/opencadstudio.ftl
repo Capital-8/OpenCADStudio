@@ -168,6 +168,8 @@ modal =
     .those-objects = αυτά τα αντικείμενα
 
 clipboard =
+    .pasted-image = Επικολλήθηκε η εικόνα "{ $name }": { $width }×{ $height } px
+    .image-unsupported = Δεν ήταν δυνατή η αποκωδικοποίηση της επικολλημένης εικόνας "{ $name }".
     .no-supported-content = Το πρόχειρο δεν περιέχει υποστηριζόμενο κείμενο ή αντικείμενα σχεδίου.
     .unavailable = Το πρόχειρο του συστήματος δεν είναι διαθέσιμο.
     .occupied = Το πρόχειρο του συστήματος χρησιμοποιείται αυτή τη στιγμή. Δοκιμάστε ξανά.
@@ -2399,6 +2401,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  τοποθέτηση [Αντικατάσταση/Πρόθεμα/Κατάληξη] <Αντικατάσταση>:
 
 file =
+    .in-place-save-failed-downloaded = Απέτυχε η αποθήκευση επί τόπου (__ocs_fmt_0__)· λήφθηκε αντίγραφο
+    .save-picker-failed-downloading = Απέτυχε η επιλογή προορισμού αποθήκευσης: __ocs_fmt_0__· γίνεται λήψη αντιγράφου
     .restore-all = Επαναφορά όλων
     .restoring-drawing-s = Επαναφορά __ocs_fmt_0__ σχέδιο(α)…
     .session-had-open-drawing-s = Η συνεδρία είχε __ocs_fmt_0__ ανοιχτά σχέδια.

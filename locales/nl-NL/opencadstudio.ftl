@@ -168,6 +168,8 @@ modal =
     .those-objects = die objecten
 
 clipboard =
+    .pasted-image = Afbeelding "{ $name }" geplakt: { $width }×{ $height } px
+    .image-unsupported = De geplakte afbeelding "{ $name }" kon niet worden gedecodeerd.
     .no-supported-content = Het klembord bevat geen ondersteunde tekst of tekenobjecten.
     .unavailable = Het systeemklembord is niet beschikbaar.
     .occupied = Het systeemklembord is momenteel in gebruik. Probeer het opnieuw.
@@ -2400,6 +2402,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Plaatsing [Overschrijven/Voorvoegsel/Achtervoegsel] <Overschrijven>:
 
 file =
+    .in-place-save-failed-downloaded = Ter plekke opslaan mislukt (__ocs_fmt_0__); een kopie is gedownload
+    .save-picker-failed-downloading = Kiezen van opslagbestemming mislukt: __ocs_fmt_0__; een kopie wordt gedownload
     .restore-all = Alles herstellen
     .restoring-drawing-s = __ocs_fmt_0__ tekening(en) worden hersteld…
     .session-had-open-drawing-s = De sessie had __ocs_fmt_0__ tekening(en) open.

@@ -168,6 +168,8 @@ modal =
     .those-objects = kyseiset objektit
 
 clipboard =
+    .pasted-image = Liitetty kuva "{ $name }": { $width }×{ $height } px
+    .image-unsupported = Liitettyä kuvaa "{ $name }" ei voitu purkaa.
     .no-supported-content = Leikepöydällä ei ole tuettua tekstiä tai piirustusobjekteja.
     .unavailable = Järjestelmän leikepöytä ei ole käytettävissä.
     .occupied = Järjestelmän leikepöytä on parhaillaan käytössä. Yritä uudelleen.
@@ -2399,6 +2401,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT-sijoittelu [Korvaa/etuliite/liite] <Overwrite>:
 
 file =
+    .in-place-save-failed-downloaded = Tallennus paikallaan epäonnistui (__ocs_fmt_0__); kopio ladattiin
+    .save-picker-failed-downloading = Tallennuskohteen valinta epäonnistui: __ocs_fmt_0__; ladataan kopio
     .restore-all = Palauta kaikki
     .restoring-drawing-s = Palautetaan __ocs_fmt_0__ piirustusta…
     .session-had-open-drawing-s = Istunnossa oli __ocs_fmt_0__ avointa piirustusta.

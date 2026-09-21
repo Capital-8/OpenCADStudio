@@ -1541,9 +1541,27 @@ impl OpenCADStudio {
                 }
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
             image
                 .save_with_format(&path, image::ImageFormat::Png)
                 .map_err(|e| e.to_string())?;
+            // No filesystem behind a web "path": encode the PNG in memory and
+            // hand it to the browser as a download named after the request's
+            // file name — the delivery every other web output uses.
+            #[cfg(target_arch = "wasm32")]
+            {
+                let mut png = Vec::new();
+                image
+                    .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                    .map_err(|e| e.to_string())?;
+                let download = path
+                    .rsplit(['/', '\\'])
+                    .next()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or("capture.png")
+                    .to_string();
+                crate::sys::download_bytes(&download, &png);
+            }
 
             let doc_unit = crate::app::properties::insunits_name(
                 self.tabs[self.active_tab]
@@ -1624,6 +1642,19 @@ impl OpenCADStudio {
             self.control.capture_frame_pending = false;
             return Task::none();
         };
+        // Web: iced's window screenshot needs a synchronous GPU map wasm
+        // cannot provide; the canvas readback (the save-thumbnail technique)
+        // only sees the drawing right after a presented frame, before the
+        // browser clears the WebGL buffer — so wait for a real frame.
+        #[cfg(target_arch = "wasm32")]
+        {
+            if !redrew {
+                return Task::none();
+            }
+            self.control.capture_frame_pending = false;
+            self.control.capture_after_redraw = true;
+            return Task::done(Message::ControlScreenshot(path, crate::sys::capture_canvas()));
+        }
         self.control.capture_frame_pending = false;
         self.control.capture_after_redraw = redrew;
         let Some(window) = self.main_window else {

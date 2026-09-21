@@ -168,6 +168,8 @@ modal =
     .those-objects = esos objetos
 
 clipboard =
+    .pasted-image = Imagen "{ $name }" pegada: { $width }×{ $height } px
+    .image-unsupported = No se pudo decodificar la imagen pegada "{ $name }".
     .no-supported-content = El portapapeles no contiene texto ni objetos de dibujo compatibles.
     .unavailable = El portapapeles del sistema no está disponible.
     .occupied = El portapapeles del sistema está en uso. Inténtelo de nuevo.
@@ -2400,6 +2402,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  colocación [Sobrescribir/Prefijo/Sufijo] <Sobrescribir>:
 
 file =
+    .in-place-save-failed-downloaded = Error al guardar en el sitio (__ocs_fmt_0__); se descargó una copia
+    .save-picker-failed-downloading = Falló la selección del destino de guardado: __ocs_fmt_0__; descargando una copia
     .restore-all = Restaurar todo
     .restoring-drawing-s = Restaurando __ocs_fmt_0__ dibujos…
     .session-had-open-drawing-s = La sesión tenía __ocs_fmt_0__ dibujos abiertos.

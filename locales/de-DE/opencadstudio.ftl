@@ -168,6 +168,8 @@ modal =
     .those-objects = diese Objekte
 
 clipboard =
+    .pasted-image = Bild "{ $name }" eingefügt: { $width }×{ $height } px
+    .image-unsupported = Das eingefügte Bild "{ $name }" konnte nicht dekodiert werden.
     .no-supported-content = Die Zwischenablage enthält keinen unterstützten Text und keine Zeichnungsobjekte.
     .unavailable = Die Systemzwischenablage ist nicht verfügbar.
     .occupied = Die Systemzwischenablage wird gerade verwendet. Versuchen Sie es erneut.
@@ -2400,6 +2402,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Platzierung [Überschreiben/Präfix/Suffix] <Überschreiben>:
 
 file =
+    .in-place-save-failed-downloaded = Direktes Speichern fehlgeschlagen (__ocs_fmt_0__); eine Kopie wurde heruntergeladen
+    .save-picker-failed-downloading = Speicherziel-Auswahl fehlgeschlagen: __ocs_fmt_0__; eine Kopie wird heruntergeladen
     .restore-all = Alle wiederherstellen
     .restoring-drawing-s = __ocs_fmt_0__ Zeichnung(en) werden wiederhergestellt…
     .session-had-open-drawing-s = Die Sitzung hatte __ocs_fmt_0__ geöffnete Zeichnung(en).

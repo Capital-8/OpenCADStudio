@@ -168,6 +168,8 @@ modal =
     .those-objects = उन ऑब्जेक्ट को
 
 clipboard =
+    .pasted-image = छवि "{ $name }" पेस्ट की गई: { $width }×{ $height } px
+    .image-unsupported = पेस्ट की गई छवि "{ $name }" को डिकोड नहीं किया जा सका।
     .no-supported-content = क्लिपबोर्ड में समर्थित टेक्स्ट या ड्रॉइंग ऑब्जेक्ट नहीं है।
     .unavailable = सिस्टम क्लिपबोर्ड उपलब्ध नहीं है।
     .occupied = सिस्टम क्लिपबोर्ड अभी उपयोग में है। फिर प्रयास करें।
@@ -2388,6 +2390,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  स्थान [अधिलेखित/उपसर्ग/प्रत्यय] <अधिलेखित>:
 
 file =
+    .in-place-save-failed-downloaded = इन-प्लेस सेव विफल (__ocs_fmt_0__); प्रतिलिपि डाउनलोड की गई
+    .save-picker-failed-downloading = सेव गंतव्य चुनना विफल: __ocs_fmt_0__; प्रतिलिपि डाउनलोड हो रही है
     .restore-all = सभी पुनर्स्थापित करें
     .restoring-drawing-s = __ocs_fmt_0__ ड्रॉइंग पुनर्स्थापित की जा रही हैं…
     .session-had-open-drawing-s = सत्र में __ocs_fmt_0__ ड्रॉइंग खुली थीं।

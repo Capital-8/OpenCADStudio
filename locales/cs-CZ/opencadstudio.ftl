@@ -168,6 +168,8 @@ modal =
     .those-objects = dané objekty
 
 clipboard =
+    .pasted-image = Vložen obrázek "{ $name }": { $width }×{ $height } px
+    .image-unsupported = Vložený obrázek "{ $name }" se nepodařilo dekódovat.
     .no-supported-content = Schránka neobsahuje podporovaný text ani objekty výkresu.
     .unavailable = Systémová schránka není dostupná.
     .occupied = Systémová schránka se právě používá. Zkuste to znovu.
@@ -2399,6 +2401,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = Umístění TCOUNT [přepsat/předpona/přípona] <Overwrite>:
 
 file =
+    .in-place-save-failed-downloaded = Uložení na místo selhalo (__ocs_fmt_0__); kopie byla stažena
+    .save-picker-failed-downloading = Výběr cíle uložení selhal: __ocs_fmt_0__; stahuje se kopie
     .restore-all = Obnovit vše
     .restoring-drawing-s = Obnovování __ocs_fmt_0__ výkres(ů)…
     .session-had-open-drawing-s = Relace měla otevřeno __ocs_fmt_0__ výkres(ů).

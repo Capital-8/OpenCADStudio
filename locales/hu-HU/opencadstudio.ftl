@@ -168,6 +168,8 @@ modal =
     .those-objects = azokat az objektumokat
 
 clipboard =
+    .pasted-image = "{ $name }" kép beillesztve: { $width }×{ $height } px
+    .image-unsupported = A beillesztett "{ $name }" kép nem dekódolható.
     .no-supported-content = A vágólap nem tartalmaz támogatott szöveget vagy rajzobjektumot.
     .unavailable = A rendszer vágólapja nem érhető el.
     .occupied = A rendszer vágólapja jelenleg használatban van. Próbálja újra.
@@ -2412,6 +2414,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT elhelyezés [Overwrite (Felülírás) / Prefix (Előtag) / Suffix (Utótag)] <Overwrite>:
 
 file =
+    .in-place-save-failed-downloaded = A helyben mentés nem sikerült (__ocs_fmt_0__); másolat lett letöltve
+    .save-picker-failed-downloading = A mentési cél kiválasztása nem sikerült: __ocs_fmt_0__; másolat letöltése
     .restore-all = Összes visszaállítása
     .restoring-drawing-s = __ocs_fmt_0__ rajz(ok) visszaállítása…
     .session-had-open-drawing-s = A munkamenetben __ocs_fmt_0__ rajz volt megnyitva.

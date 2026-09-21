@@ -168,6 +168,8 @@ modal =
     .those-objects = ces objets
 
 clipboard =
+    .pasted-image = Image collée "{ $name }" : { $width }×{ $height } px
+    .image-unsupported = L'image collée "{ $name }" n'a pas pu être décodée.
     .no-supported-content = Le presse-papiers ne contient aucun texte ni objet de dessin pris en charge.
     .unavailable = Le presse-papiers système n’est pas disponible.
     .occupied = Le presse-papiers système est en cours d’utilisation. Réessayez.
@@ -2400,6 +2402,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Position [Remplacer/Préfixe/Suffixe] <Remplacer> :
 
 file =
+    .in-place-save-failed-downloaded = Échec de l’enregistrement local (__ocs_fmt_0__) ; une copie a été téléchargée
+    .save-picker-failed-downloading = Échec du sélecteur de destination : __ocs_fmt_0__ ; téléchargement d’une copie
     .restore-all = Tout restaurer
     .restoring-drawing-s = Restauration de __ocs_fmt_0__ dessin(s)…
     .session-had-open-drawing-s = La session avait __ocs_fmt_0__ dessin(s) ouvert(s).

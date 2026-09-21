@@ -168,6 +168,8 @@ modal =
     .those-objects = esses objetos
 
 clipboard =
+    .pasted-image = Imagem "{ $name }" colada: { $width }×{ $height } px
+    .image-unsupported = Não foi possível decodificar a imagem colada "{ $name }".
     .no-supported-content = A área de transferência não contém texto nem objetos de desenho compatíveis.
     .unavailable = A área de transferência do sistema não está disponível.
     .occupied = A área de transferência do sistema está em uso. Tente novamente.
@@ -2400,6 +2402,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  posicionamento [Sobrescrever/Prefixo/Sufixo] <Sobrescrever>:
 
 file =
+    .in-place-save-failed-downloaded = A gravação no local falhou (__ocs_fmt_0__); foi descarregada uma cópia
+    .save-picker-failed-downloading = A escolha do destino de gravação falhou: __ocs_fmt_0__; a descarregar uma cópia
     .restore-all = Restaurar tudo
     .restoring-drawing-s = Restaurando __ocs_fmt_0__ desenhos…
     .session-had-open-drawing-s = A sessão tinha __ocs_fmt_0__ desenhos abertos.

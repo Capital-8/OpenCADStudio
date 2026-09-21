@@ -168,6 +168,8 @@ modal =
     .those-objects = quegli oggetti
 
 clipboard =
+    .pasted-image = Immagine "{ $name }" incollata: { $width }×{ $height } px
+    .image-unsupported = Impossibile decodificare l'immagine incollata "{ $name }".
     .no-supported-content = Gli Appunti non contengono testo o oggetti di disegno supportati.
     .unavailable = Gli Appunti di sistema non sono disponibili.
     .occupied = Gli Appunti di sistema sono attualmente in uso. Riprova.
@@ -2399,6 +2401,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = Posizionamento TCOUNT [Sovrascrivi/Prefisso/Suffisso] <Overwrite>:
 
 file =
+    .in-place-save-failed-downloaded = Salvataggio sul posto non riuscito (__ocs_fmt_0__); è stata scaricata una copia
+    .save-picker-failed-downloading = Selezione della destinazione non riuscita: __ocs_fmt_0__; scarico una copia
     .restore-all = Ripristina tutto
     .restoring-drawing-s = Ripristino di __ocs_fmt_0__ disegno/i…
     .session-had-open-drawing-s = La sessione aveva __ocs_fmt_0__ disegni aperti.

@@ -168,6 +168,8 @@ modal =
     .those-objects = тези обекти
 
 clipboard =
+    .pasted-image = Вставено изображение "{ $name }": { $width }×{ $height } px
+    .image-unsupported = Вставеното изображение "{ $name }" не може да бъде декодирано.
     .no-supported-content = Клипбордът не съдържа поддържан текст или чертожни обекти.
     .unavailable = Системният клипборд не е наличен.
     .occupied = Системният клипборд в момента се използва. Опитай отново.
@@ -2399,6 +2401,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  поставяне [Замяна/Префикс/Суфикс] <Замяна>:
 
 file =
+    .in-place-save-failed-downloaded = Записът на място се провали (__ocs_fmt_0__); изтеглено е копие
+    .save-picker-failed-downloading = Изборът на място за запис се провали: __ocs_fmt_0__; изтегля се копие
     .restore-all = Възстанови всички
     .restoring-drawing-s = Възстановяване на __ocs_fmt_0__ чертеж(а)…
     .session-had-open-drawing-s = Сесията е имала __ocs_fmt_0__ отворени чертежа.

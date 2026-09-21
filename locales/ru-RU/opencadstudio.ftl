@@ -168,6 +168,8 @@ modal =
     .those-objects = эти объекты
 
 clipboard =
+    .pasted-image = Вставлено изображение "{ $name }": { $width }×{ $height } px
+    .image-unsupported = Не удалось декодировать вставленное изображение "{ $name }".
     .no-supported-content = Буфер обмена не содержит поддерживаемого текста или объектов чертежа.
     .unavailable = Системный буфер обмена недоступен.
     .occupied = Системный буфер обмена сейчас используется. Повторите попытку.
@@ -2403,6 +2405,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Размещение [Заменить/Префикс/Суффикс] <Заменить>:
 
 file =
+    .in-place-save-failed-downloaded = Не удалось сохранить в файл (__ocs_fmt_0__); копия загружена
+    .save-picker-failed-downloading = Не удалось выбрать место сохранения: __ocs_fmt_0__; загружается копия
     .restore-all = Восстановить все
     .restoring-drawing-s = Восстановление __ocs_fmt_0__ чертежа(ей)…
     .session-had-open-drawing-s = В сессии было открыто __ocs_fmt_0__ чертежа(ей).

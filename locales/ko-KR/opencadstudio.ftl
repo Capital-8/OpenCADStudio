@@ -168,6 +168,8 @@ modal =
     .those-objects = 해당 객체들
 
 clipboard =
+    .pasted-image = 이미지 "{ $name }" 붙여넣음: { $width }×{ $height } px
+    .image-unsupported = 붙여넣은 이미지 "{ $name }"을(를) 디코딩할 수 없습니다.
     .no-supported-content = 클립보드에 지원되는 텍스트나 도면 객체가 없습니다.
     .unavailable = 시스템 클립보드를 사용할 수 없습니다.
     .occupied = 시스템 클립보드가 현재 사용 중입니다. 다시 시도하세요.
@@ -2399,6 +2401,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT 배치 [덮어쓰기/접두사/접미사] <Overwrite>:
 
 file =
+    .in-place-save-failed-downloaded = 제자리 저장 실패(__ocs_fmt_0__); 대신 사본을 내려받았습니다
+    .save-picker-failed-downloading = 저장 대상 선택 실패: __ocs_fmt_0__; 대신 사본을 내려받는 중
     .restore-all = 모두 복원
     .restoring-drawing-s = __ocs_fmt_0__ 도면을 복원하는 중…
     .session-had-open-drawing-s = 세션에서 __ocs_fmt_0__ 도면이 열려 있었습니다.

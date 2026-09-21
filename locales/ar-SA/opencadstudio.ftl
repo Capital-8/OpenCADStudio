@@ -168,6 +168,8 @@ modal =
     .those-objects = تلك الكائنات
 
 clipboard =
+    .pasted-image = تم لصق الصورة "{ $name }": { $width }×{ $height } px
+    .image-unsupported = تعذّر فك ترميز الصورة الملصقة "{ $name }".
     .no-supported-content = لا تحتوي الحافظة على نص أو كائنات رسم مدعومة.
     .unavailable = حافظة النظام غير متاحة.
     .occupied = حافظة النظام قيد الاستخدام حاليًا. حاول مرة أخرى.
@@ -2412,6 +2414,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  الموضع [استبدال/بادئة/لاحقة] <استبدال>:
 
 file =
+    .in-place-save-failed-downloaded = فشل الحفظ في الموقع (__ocs_fmt_0__)؛ تم تنزيل نسخة
+    .save-picker-failed-downloading = فشل اختيار وجهة الحفظ: __ocs_fmt_0__؛ يتم تنزيل نسخة
     .restore-all = استعادة الكل
     .restoring-drawing-s = جارٍ استعادة __ocs_fmt_0__ رسم…
     .session-had-open-drawing-s = كانت الجلسة تضم __ocs_fmt_0__ رسمًا مفتوحًا.

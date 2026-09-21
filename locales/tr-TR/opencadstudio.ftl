@@ -166,6 +166,8 @@ modal =
     .those-objects = bu nesneleri
 
 clipboard =
+    .pasted-image = "{ $name }" görseli yapıştırıldı: { $width }×{ $height } px
+    .image-unsupported = Yapıştırılan "{ $name }" görseli çözümlenemedi.
     .no-supported-content = Panoda desteklenen metin veya çizim nesnesi yok.
     .unavailable = Sistem panosuna erişilemiyor.
     .occupied = Sistem panosu şu anda kullanılıyor. Yeniden deneyin.
@@ -2384,6 +2386,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Yerleştirme [Üzerine yaz/Önek/Sonek] <Üzerine yaz>:
 
 file =
+    .in-place-save-failed-downloaded = Yerine kayıt başarısız (__ocs_fmt_0__); bir kopya indirildi
+    .save-picker-failed-downloading = Kayıt hedefi seçimi başarısız: __ocs_fmt_0__; bir kopya indiriliyor
     .restore-all = Tümünü geri yükle
     .restoring-drawing-s = __ocs_fmt_0__ çizim geri yükleniyor…
     .session-had-open-drawing-s = Oturumda __ocs_fmt_0__ açık çizim vardı.

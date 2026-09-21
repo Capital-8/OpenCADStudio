@@ -2703,6 +2703,8 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "SAVEALL: saved {saved} drawing(s){}." => Some(("file", "saveall-saved-saved-drawing-s")),
         "SAVEALL: {} already has a save running" => Some(("file", "saveall-already-has-a-save-running")),
         "SAVEALL: {} failed: {e}" => Some(("file", "saveall-failed-e")),
+        "Save destination picker failed: {error}; downloading a copy instead" => Some(("file", "save-picker-failed-downloading")),
+        "In-place save failed ({error}); a copy was downloaded instead" => Some(("file", "in-place-save-failed-downloaded")),
         "Restore all" => Some(("file", "restore-all")),
         "Restoring {} drawing(s)…" => Some(("file", "restoring-drawing-s")),
         "Session had {count} open drawing(s)." => Some(("file", "session-had-open-drawing-s")),

@@ -168,6 +168,8 @@ modal =
     .those-objects = those objects
 
 clipboard =
+    .pasted-image = Pasted image "{ $name }": { $width }×{ $height } px
+    .image-unsupported = The pasted image "{ $name }" could not be decoded.
     .no-supported-content = Clipboard does not contain supported text or drawing objects.
     .unavailable = System clipboard is unavailable.
     .occupied = System clipboard is currently in use. Try again.
@@ -2403,6 +2405,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  placement [Overwrite/Prefix/Suffix] <Overwrite>:
 
 file =
+    .in-place-save-failed-downloaded = In-place save failed (__ocs_fmt_0__); a copy was downloaded instead
+    .save-picker-failed-downloading = Save destination picker failed: __ocs_fmt_0__; downloading a copy instead
     .restore-all = Restore all
     .restoring-drawing-s = Restoring __ocs_fmt_0__ drawing(s)…
     .session-had-open-drawing-s = Session had __ocs_fmt_0__ open drawing(s).

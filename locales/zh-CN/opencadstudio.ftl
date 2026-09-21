@@ -167,6 +167,8 @@ modal =
     .those-objects = 这些对象
 
 clipboard =
+    .pasted-image = 已粘贴图像 "{ $name }"：{ $width }×{ $height } px
+    .image-unsupported = 无法解码粘贴的图像 "{ $name }"。
     .no-supported-content = 剪贴板中没有受支持的文本或图形对象。
     .unavailable = 系统剪贴板不可用。
     .occupied = 系统剪贴板当前正被使用，请重试。
@@ -2387,6 +2389,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  放置方式 [覆盖/前缀/后缀] <覆盖>：
 
 file =
+    .in-place-save-failed-downloaded = 就地保存失败(__ocs_fmt_0__);已下载副本
+    .save-picker-failed-downloading = 选择保存目标失败:__ocs_fmt_0__;正在下载副本
     .restore-all = 全部恢复
     .restoring-drawing-s = 正在恢复 __ocs_fmt_0__ 绘图…
     .session-had-open-drawing-s = 会话中有 __ocs_fmt_0__ 个打开的绘图。
