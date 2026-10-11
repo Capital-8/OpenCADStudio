@@ -552,28 +552,25 @@ impl ColorPicker {
                     v * 360.0
                 )))
                 .wheel_step(1.0 / 360.0),
-                number_box(h.round() as u16, 360, |v| {
+                number_box(h.round() as u16, 360, Some('°'), |v| {
                     picker_msg(ColorPickerMsg::Hue(f32::from(v)))
                 }),
-                "°",
             ),
             slider_row(
                 "S",
                 GradientSlider::new(s, sat_stops, |v| picker_msg(ColorPickerMsg::Saturation(v))),
-                number_box((s * 100.0).round() as u16, 100, |v| {
+                number_box((s * 100.0).round() as u16, 100, Some('%'), |v| {
                     picker_msg(ColorPickerMsg::Saturation(f32::from(v) / 100.0))
                 }),
-                "%",
             ),
             slider_row(
                 "B",
                 GradientSlider::new(b, bright_stops, |v| picker_msg(ColorPickerMsg::Brightness(
                     v
                 ))),
-                number_box((b * 100.0).round() as u16, 100, |v| {
+                number_box((b * 100.0).round() as u16, 100, Some('%'), |v| {
                     picker_msg(ColorPickerMsg::Brightness(f32::from(v) / 100.0))
                 }),
-                "%",
             ),
         ]
         .spacing(10)
@@ -597,10 +594,9 @@ impl ColorPicker {
                     picker_msg(ColorPickerMsg::Red(byte(v)))
                 })
                 .wheel_step(1.0 / 255.0),
-                number_box(u16::from(r), 255, |v| picker_msg(ColorPickerMsg::Red(
-                    v as u8
-                ))),
-                "",
+                number_box(u16::from(r), 255, None, |v| picker_msg(
+                    ColorPickerMsg::Red(v as u8)
+                )),
             ),
             slider_row(
                 "G",
@@ -608,10 +604,9 @@ impl ColorPicker {
                     picker_msg(ColorPickerMsg::Green(byte(v)))
                 })
                 .wheel_step(1.0 / 255.0),
-                number_box(u16::from(g), 255, |v| picker_msg(ColorPickerMsg::Green(
-                    v as u8
-                ))),
-                "",
+                number_box(u16::from(g), 255, None, |v| picker_msg(
+                    ColorPickerMsg::Green(v as u8)
+                )),
             ),
             slider_row(
                 "B",
@@ -619,10 +614,9 @@ impl ColorPicker {
                     picker_msg(ColorPickerMsg::Blue(byte(v)))
                 })
                 .wheel_step(1.0 / 255.0),
-                number_box(u16::from(b), 255, |v| picker_msg(ColorPickerMsg::Blue(
-                    v as u8
-                ))),
-                "",
+                number_box(u16::from(b), 255, None, |v| picker_msg(
+                    ColorPickerMsg::Blue(v as u8)
+                )),
             ),
         ]
         .spacing(10)
@@ -643,38 +637,31 @@ impl ColorPicker {
         .height(Length::Fixed(118.0))
         .wheel_step(1.0 / 360.0);
 
-        let field = |letter: &'static str, input: Element<'static, Message>, unit: &'static str| {
-            row![
-                text(letter).size(12).font(iced::Font::MONOSPACE),
-                input,
-                text(unit).size(11).style(muted_text),
-            ]
-            .spacing(4)
-            .align_y(iced::Center)
+        let field = |letter: &'static str, input: Element<'static, Message>| {
+            row![text(letter).size(12).font(iced::Font::MONOSPACE), input]
+                .spacing(4)
+                .align_y(iced::Center)
         };
         let values = row![
             field(
                 "H",
-                number_box(h.round() as u16, 360, |v| picker_msg(ColorPickerMsg::Hue(
-                    f32::from(v)
-                ))),
-                "°",
+                number_box(h.round() as u16, 360, Some('°'), |v| picker_msg(
+                    ColorPickerMsg::Hue(f32::from(v))
+                )),
             ),
             Space::new().width(Length::Fill),
             field(
                 "S",
-                number_box((s * 100.0).round() as u16, 100, |v| {
+                number_box((s * 100.0).round() as u16, 100, Some('%'), |v| {
                     picker_msg(ColorPickerMsg::Saturation(f32::from(v) / 100.0))
                 }),
-                "%",
             ),
             Space::new().width(Length::Fill),
             field(
                 "B",
-                number_box((b * 100.0).round() as u16, 100, |v| {
+                number_box((b * 100.0).round() as u16, 100, Some('%'), |v| {
                     picker_msg(ColorPickerMsg::Brightness(f32::from(v) / 100.0))
                 }),
-                "%",
             ),
         ]
         .align_y(iced::Center);
@@ -781,7 +768,6 @@ fn slider_row<'a>(
     letter: &'static str,
     slider: GradientSlider<'a, Message>,
     number: Element<'a, Message>,
-    unit: &'static str,
 ) -> Element<'a, Message> {
     row![
         container(text(letter).size(12).font(iced::Font::MONOSPACE))
@@ -789,7 +775,6 @@ fn slider_row<'a>(
             .align_x(iced::Center),
         slider,
         number,
-        container(text(unit).size(11).style(muted_text)).width(10),
     ]
     .spacing(8)
     .align_y(iced::Center)
@@ -801,12 +786,13 @@ fn slider_row<'a>(
 fn number_box(
     value: u16,
     max: u16,
+    unit: Option<char>,
     on_change: impl Fn(u16) -> Message + Clone + 'static,
 ) -> Element<'static, Message> {
-    iced_aw::widget::NumberInput::new(&value, 0..=max, on_change)
+    let input = iced_aw::widget::NumberInput::new(&value, 0..=max, on_change)
         .set_size(12.0)
         .font(iced::Font::MONOSPACE)
-        .width(Length::Fixed(64.0))
+        .width(Length::Fixed(68.0))
         // Extra right padding keeps the digits clear of the arrows; padding
         // below 5 would make NumberInput swap its arrows for + / − buttons.
         .padding(iced::Padding {
@@ -821,8 +807,20 @@ fn number_box(
                 button_background: None,
                 icon_color: theme.palette().background.base.text.scale_alpha(0.75),
             },
-        )
-        .into()
+        );
+    // The unit is drawn inside the box, after the digits, but is not part
+    // of the value: the user only ever types the number.
+    let input = match unit {
+        Some(code_point) => input.icon(text_input::Icon {
+            font: iced::Font::MONOSPACE,
+            code_point,
+            size: Some(iced::Pixels(12.0)),
+            spacing: 1.0,
+            side: text_input::Side::Right,
+        }),
+        None => input,
+    };
+    input.into()
 }
 
 fn hue_stops() -> Vec<(f32, Color)> {
