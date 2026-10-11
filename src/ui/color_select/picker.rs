@@ -13,7 +13,7 @@ use iced::widget::{button, column, container, row, text, text_input, Space};
 use iced::{Background, Border, Color, Element, Length, Theme};
 
 const PANEL_WIDTH: f32 = 400.0;
-const BODY_HEIGHT: f32 = 300.0;
+const BODY_HEIGHT: f32 = 352.0;
 const CONTROL_HEIGHT: f32 = 28.0;
 const SWATCH_WIDTH: f32 = 104.0;
 
@@ -168,9 +168,7 @@ impl ColorPicker {
             ColorPickerMsg::Hue(h) => self.set_hsb(Hsb { h, ..self.hsb }),
             ColorPickerMsg::Saturation(s) => self.set_hsb(Hsb { s, ..self.hsb }),
             ColorPickerMsg::Brightness(b) => self.set_hsb(Hsb { b, ..self.hsb }),
-            ColorPickerMsg::SaturationBrightness(s, b) => {
-                self.set_hsb(Hsb { s, b, ..self.hsb })
-            }
+            ColorPickerMsg::SaturationBrightness(s, b) => self.set_hsb(Hsb { s, b, ..self.hsb }),
             ColorPickerMsg::Red(red) => {
                 let (_, g, b) = self.rgb();
                 self.set_rgb(red, g, b);
@@ -236,7 +234,9 @@ impl ColorPicker {
                 .width(12)
                 .height(12)
                 .style(move |theme: &Theme| swatch_style(theme, rgb_color(sr, sg, sb))),
-            text(math::describe(self.pending)).size(11).font(iced::Font::MONOSPACE),
+            text(math::describe(self.pending))
+                .size(11)
+                .font(iced::Font::MONOSPACE),
         ]
         .spacing(8)
         .align_y(iced::Center);
@@ -249,9 +249,7 @@ impl ColorPicker {
                     .width(Length::Fill)
                     .height(1)
                     .style(|theme: &Theme| container::Style {
-                        background: Some(Background::Color(
-                            theme.palette().background.weak.color
-                        )),
+                        background: Some(Background::Color(theme.palette().background.weak.color)),
                         ..Default::default()
                     }),
                 info,
@@ -372,7 +370,15 @@ impl ColorPicker {
                 background: Some(Background::Color(new_bg)),
                 ..Default::default()
             });
-        let swatch = container(row![current, new])
+        let divider =
+            container(Space::new())
+                .width(1)
+                .height(Length::Fill)
+                .style(|_theme: &Theme| container::Style {
+                    background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.35))),
+                    ..Default::default()
+                });
+        let swatch = container(row![current, divider, new])
             .width(SWATCH_WIDTH)
             .height(CONTROL_HEIGHT)
             .padding(1)
@@ -537,10 +543,7 @@ impl ColorPicker {
     fn hsb_sliders(&self) -> Element<'_, Message> {
         let Hsb { h, s, b } = self.hsb;
         let hue_stops = hue_stops();
-        let sat_stops = vec![
-            (0.0, hsb_color(h, 0.0, b)),
-            (1.0, hsb_color(h, 1.0, b)),
-        ];
+        let sat_stops = vec![(0.0, hsb_color(h, 0.0, b)), (1.0, hsb_color(h, 1.0, b))];
         let bright_stops = vec![(0.0, Color::BLACK), (1.0, hsb_color(h, s, 1.0))];
         column![
             slider_row(
@@ -580,7 +583,10 @@ impl ColorPicker {
     fn rgb_sliders(&self) -> Element<'_, Message> {
         let (r, g, b) = self.rgb();
         let ends = |lo: (u8, u8, u8), hi: (u8, u8, u8)| {
-            vec![(0.0, rgb_color(lo.0, lo.1, lo.2)), (1.0, rgb_color(hi.0, hi.1, hi.2))]
+            vec![
+                (0.0, rgb_color(lo.0, lo.1, lo.2)),
+                (1.0, rgb_color(hi.0, hi.1, hi.2)),
+            ]
         };
         let channel = |value: u8| f32::from(value) / 255.0;
         let byte = |v: f32| (v * 255.0).round() as u8;
@@ -591,7 +597,9 @@ impl ColorPicker {
                     picker_msg(ColorPickerMsg::Red(byte(v)))
                 })
                 .wheel_step(1.0 / 255.0),
-                number_box(u16::from(r), 255, |v| picker_msg(ColorPickerMsg::Red(v as u8))),
+                number_box(u16::from(r), 255, |v| picker_msg(ColorPickerMsg::Red(
+                    v as u8
+                ))),
                 "",
             ),
             slider_row(
@@ -600,7 +608,9 @@ impl ColorPicker {
                     picker_msg(ColorPickerMsg::Green(byte(v)))
                 })
                 .wheel_step(1.0 / 255.0),
-                number_box(u16::from(g), 255, |v| picker_msg(ColorPickerMsg::Green(v as u8))),
+                number_box(u16::from(g), 255, |v| picker_msg(ColorPickerMsg::Green(
+                    v as u8
+                ))),
                 "",
             ),
             slider_row(
@@ -609,7 +619,9 @@ impl ColorPicker {
                     picker_msg(ColorPickerMsg::Blue(byte(v)))
                 })
                 .wheel_step(1.0 / 255.0),
-                number_box(u16::from(b), 255, |v| picker_msg(ColorPickerMsg::Blue(v as u8))),
+                number_box(u16::from(b), 255, |v| picker_msg(ColorPickerMsg::Blue(
+                    v as u8
+                ))),
                 "",
             ),
         ]
@@ -643,9 +655,9 @@ impl ColorPicker {
         let values = row![
             field(
                 "H",
-                number_box(h.round() as u16, 360, |v| picker_msg(ColorPickerMsg::Hue(f32::from(
-                    v
-                )))),
+                number_box(h.round() as u16, 360, |v| picker_msg(ColorPickerMsg::Hue(
+                    f32::from(v)
+                ))),
                 "°",
             ),
             Space::new().width(Length::Fill),
@@ -795,7 +807,21 @@ fn number_box(
         .set_size(12.0)
         .font(iced::Font::MONOSPACE)
         .width(Length::Fixed(64.0))
+        // Extra right padding keeps the digits clear of the arrows; padding
+        // below 5 would make NumberInput swap its arrows for + / − buttons.
+        .padding(iced::Padding {
+            top: 5.0,
+            right: 18.0,
+            bottom: 5.0,
+            left: 6.0,
+        })
         .align_x(iced::alignment::Horizontal::Right)
+        .style(
+            |theme: &Theme, _status| iced_aw::style::number_input::Style {
+                button_background: None,
+                icon_color: theme.palette().background.base.text.scale_alpha(0.75),
+            },
+        )
         .into()
 }
 
@@ -972,7 +998,14 @@ mod tests {
         p.update(ColorPickerMsg::Hue(120.0));
         assert_eq!(p.pending(), AcadColor::Rgb { r: 0, g: 255, b: 0 });
         p.update(ColorPickerMsg::Red(10));
-        assert_eq!(p.pending(), AcadColor::Rgb { r: 10, g: 255, b: 0 });
+        assert_eq!(
+            p.pending(),
+            AcadColor::Rgb {
+                r: 10,
+                g: 255,
+                b: 0
+            }
+        );
     }
 
     #[test]
@@ -1027,8 +1060,11 @@ mod tests {
 
     fn simulator(picker: &ColorPicker) -> iced_test::simulator::Simulator<'_, Message> {
         iced_test::simulator::Simulator::with_size(
-            iced::Settings::default(),
-            (PANEL_WIDTH + 24.0, 440.0),
+            iced::Settings {
+                fonts: vec![std::borrow::Cow::Borrowed(iced_aw::ICED_AW_FONT_BYTES)],
+                ..iced::Settings::default()
+            },
+            (PANEL_WIDTH + 24.0, 560.0),
             container(picker.view()).padding(12),
         )
     }
@@ -1076,12 +1112,60 @@ mod tests {
     fn every_view_renders() {
         let folder = std::env::var_os("OCS_COLOR_PICKER_SNAPSHOTS").map(std::path::PathBuf::from);
         let views: [(&str, AcadColor, ColorPickerTab, TrueColorMode, bool); 6] = [
-            ("index", AcadColor::Index(140), ColorPickerTab::Index, TrueColorMode::Hsb, false),
-            ("varies", AcadColor::Index(30), ColorPickerTab::Index, TrueColorMode::Hsb, true),
-            ("hsb", AcadColor::Rgb { r: 57, g: 191, b: 252 }, ColorPickerTab::TrueColor, TrueColorMode::Hsb, false),
-            ("rgb", AcadColor::Rgb { r: 57, g: 191, b: 252 }, ColorPickerTab::TrueColor, TrueColorMode::Rgb, false),
-            ("gradient", AcadColor::Rgb { r: 57, g: 191, b: 252 }, ColorPickerTab::TrueColor, TrueColorMode::Gradient, false),
-            ("exact", AcadColor::Rgb { r: 255, g: 0, b: 0 }, ColorPickerTab::TrueColor, TrueColorMode::Hsb, false),
+            (
+                "index",
+                AcadColor::Index(140),
+                ColorPickerTab::Index,
+                TrueColorMode::Hsb,
+                false,
+            ),
+            (
+                "varies",
+                AcadColor::Index(30),
+                ColorPickerTab::Index,
+                TrueColorMode::Hsb,
+                true,
+            ),
+            (
+                "hsb",
+                AcadColor::Rgb {
+                    r: 57,
+                    g: 191,
+                    b: 252,
+                },
+                ColorPickerTab::TrueColor,
+                TrueColorMode::Hsb,
+                false,
+            ),
+            (
+                "rgb",
+                AcadColor::Rgb {
+                    r: 57,
+                    g: 191,
+                    b: 252,
+                },
+                ColorPickerTab::TrueColor,
+                TrueColorMode::Rgb,
+                false,
+            ),
+            (
+                "gradient",
+                AcadColor::Rgb {
+                    r: 57,
+                    g: 191,
+                    b: 252,
+                },
+                ColorPickerTab::TrueColor,
+                TrueColorMode::Gradient,
+                false,
+            ),
+            (
+                "exact",
+                AcadColor::Rgb { r: 255, g: 0, b: 0 },
+                ColorPickerTab::TrueColor,
+                TrueColorMode::Hsb,
+                false,
+            ),
         ];
         for theme in [
             crate::ui::style::fusion_theme::fusion_black(),
