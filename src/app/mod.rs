@@ -894,10 +894,8 @@ pub(super) struct OpenCADStudio {
     #[cfg(target_arch = "wasm32")]
     pending_web_thumbnail_save: Option<PendingWebThumbnailSave>,
     // ── Floating panel windows ────────────────────────────────────────────
-    /// Active `iced_aw` colour picker: destination plus its initial colour.
-    color_pick_target: Option<(ColorPickTarget, AcadColor)>,
-    /// Visible page in the shared CAD colour picker.
-    color_picker_tab: ColorPickerTab,
+    /// The open Select Color panel, if any.
+    color_picker: Option<crate::ui::color_select::ColorPicker>,
     /// Recently committed real colours, newest first.
     /// ACI and True Color remain semantically distinct even when their RGB matches.
     recent_colors: Vec<AcadColor>,
@@ -1590,13 +1588,6 @@ pub enum BgTarget {
     Desk,
 }
 
-/// Active page in the shared CAD colour picker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ColorPickerTab {
-    #[default]
-    Index,
-    TrueColor,
-}
 /// Where a colour chosen in the standalone palette window should be applied.
 #[derive(Debug, Clone)]
 pub enum ColorPickTarget {
@@ -3911,10 +3902,8 @@ pub enum Message {
     DsColorMore(DsField),
     /// Open the shared CAD colour picker for a field and its current colour.
     OpenColorWindow(ColorPickTarget, AcadColor),
-    /// Switch between Index Color and True Color.
-    ColorPickerTabChanged(ColorPickerTab),
-    /// Change the pending colour without committing it yet.
-    ColorPickerColorChanged(AcadColor),
+    /// Interaction inside the Select Color panel.
+    ColorPicker(crate::ui::color_select::ColorPickerMsg),
     /// Close the colour picker without choosing.
     CloseColorPicker,
     /// Commit the colour chosen in the shared picker.
@@ -4318,8 +4307,7 @@ impl OpenCADStudio {
             pending_native_thumbnail_save: None,
             #[cfg(target_arch = "wasm32")]
             pending_web_thumbnail_save: None,
-            color_pick_target: None,
-            color_picker_tab: ColorPickerTab::Index,
+            color_picker: None,
             recent_colors: Vec::new(),
             active_modal: None,
             hyperlink_editor_handles: Vec::new(),

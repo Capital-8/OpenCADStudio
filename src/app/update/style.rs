@@ -1137,10 +1137,10 @@ impl OpenCADStudio {
 
     pub(super) fn on_color_window_pick(&mut self, color: codec::types::Color) -> Task<Message> {
         if matches!(
-            self.color_pick_target.as_ref().map(|(target, _)| target),
+            self.color_picker.as_ref().map(|picker| &picker.target),
             Some(crate::app::ColorPickTarget::PlotStyle)
         ) {
-            self.color_pick_target = None;
+            self.color_picker = None;
 
             let rgb = match color {
                 codec::types::Color::Rgb { r, g, b } => Some((r, g, b)),
@@ -1155,7 +1155,7 @@ impl OpenCADStudio {
             return self.on_plot_style_panel_apply();
         }
         let s = crate::ui::color_select::color_to_aci_string(color);
-        let edit = match self.color_pick_target.take().map(|(target, _)| target) {
+        let edit = match self.color_picker.take().map(|picker| picker.target) {
             Some(crate::app::ColorPickTarget::DimStyle(f)) => Some(Message::DsEdit(f, s)),
             Some(crate::app::ColorPickTarget::MLeader(f)) => {
                 Some(Message::MLeaderStyleEdit { field: f, value: s })
