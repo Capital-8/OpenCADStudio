@@ -145,33 +145,37 @@ impl ColorEditor {
         let Hsb { h, s, b } = self.hsb;
         let (r, g, bl) = self.rgb;
 
-        let mode_button = |content: Element<'a, Message>, mode: EditorMode| {
+        let mode_button = |content: Element<'a, Message>, mode: EditorMode, padding: u16| {
             let active = self.mode == mode;
-            button(container(content).center_y(Length::Fill))
+            button(container(content).center(Length::Fill))
                 .on_press(msg(EditorMsg::Mode(mode)))
+                .width(52)
                 .height(28)
-                .padding([0, 10])
+                .padding(padding)
                 .style(move |theme: &Theme, status| {
                     super::picker::toggle_style(theme, active, status)
                 })
         };
+        // The field button is all gradient; it only takes colour when active.
+        let field_active = self.mode == EditorMode::Field;
         let field_icon = container(Space::new())
-            .width(26)
-            .height(16)
-            .style(|_theme: &Theme| {
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(move |_theme: &Theme| {
+                let middle = if field_active {
+                    Color::from_rgb8(0x3A, 0xA0, 0xFF)
+                } else {
+                    Color::from_rgb8(0x80, 0x80, 0x80)
+                };
                 gradient_box(
                     3.0 * std::f32::consts::FRAC_PI_4,
-                    &[
-                        (0.0, Color::WHITE),
-                        (0.5, Color::from_rgb8(0x3A, 0xA0, 0xFF)),
-                        (1.0, Color::BLACK),
-                    ],
+                    &[(0.0, Color::WHITE), (0.5, middle), (1.0, Color::BLACK)],
                 )
             });
         let mut modes = row![
-            mode_button(text("HSB").size(12).into(), EditorMode::Hsb),
-            mode_button(text("RGB").size(12).into(), EditorMode::Rgb),
-            mode_button(field_icon.into(), EditorMode::Field),
+            mode_button(text("HSB").size(12).into(), EditorMode::Hsb, 0),
+            mode_button(text("RGB").size(12).into(), EditorMode::Rgb, 0),
+            mode_button(field_icon.into(), EditorMode::Field, 3),
             Space::new().width(Length::Fill),
         ]
         .spacing(6);
@@ -291,8 +295,8 @@ impl ColorEditor {
                 .on_submit(msg(EditorMsg::HexSubmit))
                 .size(12)
                 .font(iced::Font::MONOSPACE)
-                .padding([5, 8])
-                .width(Length::Fixed(92.0)),
+                .padding([5, 6])
+                .width(Length::Fixed(74.0)),
             Space::new().width(Length::Fill),
         ]
         .spacing(8)
@@ -359,14 +363,14 @@ fn number_box(
         })
         .set_size(12.0)
         .font(iced::Font::MONOSPACE)
-        .width(Length::Fixed(68.0))
+        .width(Length::Fixed(54.0))
         // Padding under 5 would make NumberInput swap its arrows for + / −;
         // the extra right padding keeps the digits clear of the arrows.
         .padding(iced::Padding {
             top: 5.0,
             right: 18.0,
             bottom: 5.0,
-            left: 6.0,
+            left: 2.0,
         })
         .align_x(iced::alignment::Horizontal::Right)
         .style(

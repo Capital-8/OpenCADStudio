@@ -397,6 +397,11 @@ impl OpenCADStudio {
                     Some("ENTER" | "RETURN") => {
                         return self.update(Message::ColorPicker(ColorPickerMsg::Ok));
                     }
+                    Some("TAB") => {
+                        return crate::ui::color_select::picker::focus_step(
+                            !key.contains("SHIFT+"),
+                        );
+                    }
                     _ => {}
                 },
                 Message::ArrowKeyPressed { direction, .. } => {

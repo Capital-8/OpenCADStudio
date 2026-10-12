@@ -98,56 +98,11 @@ pub fn parse_hex(text: &str) -> Option<(u8, u8, u8)> {
     Some(((value >> 16) as u8, (value >> 8) as u8, value as u8))
 }
 
-/// Parse what the user typed in the Color field.
-///
-/// Accepts an index (`140`, `aci 140`), a standard colour name (`red`), an
-/// `r,g,b` triple, or hex (`#39BFFC`). Logical colours are not accepted: the
-/// panel has no ByLayer / ByBlock entry.
-pub fn parse_color_input(text: &str) -> Option<AcadColor> {
-    let text = text.trim().to_ascii_lowercase();
-    if text.is_empty() {
-        return None;
-    }
-    let named = match text.as_str() {
-        "red" => Some(1),
-        "yellow" => Some(2),
-        "green" => Some(3),
-        "cyan" => Some(4),
-        "blue" => Some(5),
-        "magenta" => Some(6),
-        "white" | "black" => Some(7),
-        _ => None,
-    };
-    if let Some(index) = named {
-        return Some(AcadColor::Index(index));
-    }
-    let number = text.strip_prefix("aci").map(str::trim).unwrap_or(&text);
-    if !number.is_empty() && number.chars().all(|c| c.is_ascii_digit()) {
-        return match number.parse::<u16>() {
-            Ok(n @ 1..=255) => Some(AcadColor::Index(n as u8)),
-            _ => None,
-        };
-    }
-    if text.contains(',') {
-        let parts: Vec<&str> = text.split(',').map(str::trim).collect();
-        if let [r, g, b] = parts.as_slice() {
-            let (r, g, b) = (r.parse().ok()?, g.parse().ok()?, b.parse().ok()?);
-            return Some(AcadColor::Rgb { r, g, b });
-        }
-        return None;
-    }
-    if text.starts_with('#') || text.len() == 6 {
-        let (r, g, b) = parse_hex(&text)?;
-        return Some(AcadColor::Rgb { r, g, b });
-    }
-    None
-}
-
-/// The text the Color field shows for a colour.
-pub fn color_field_text(color: AcadColor) -> String {
+/// The short name shown on the Current / New swatch.
+pub fn short_name(color: AcadColor) -> String {
     match color {
-        AcadColor::Index(i) => i.to_string(),
-        AcadColor::Rgb { r, g, b } => format!("{r}, {g}, {b}"),
+        AcadColor::Index(i) => format!("ACI {i}"),
+        AcadColor::Rgb { r, g, b } => hex_string(r, g, b),
         AcadColor::ByLayer => "ByLayer".to_string(),
         AcadColor::ByBlock => "ByBlock".to_string(),
         AcadColor::None => "None".to_string(),
@@ -162,7 +117,7 @@ pub fn describe(color: AcadColor) -> String {
             format!("ACI {i} · RGB {r}, {g}, {b}")
         }
         AcadColor::Rgb { r, g, b } => format!("RGB {r}, {g}, {b} · {}", hex_string(r, g, b)),
-        other => color_field_text(other),
+        other => short_name(other),
     }
 }
 
@@ -213,6 +168,20 @@ mod tests {
     }
 
     #[test]
+    fn short_names() {
+        assert_eq!(short_name(AcadColor::Index(140)), "ACI 140");
+        assert_eq!(
+            short_name(AcadColor::Rgb {
+                r: 57,
+                g: 191,
+                b: 252
+            }),
+            "#39BFFC"
+        );
+        assert_eq!(short_name(AcadColor::ByLayer), "ByLayer");
+    }
+
+    #[test]
     fn hex_formats_and_parses() {
         assert_eq!(hex_string(57, 191, 252), "#39BFFC");
         assert_eq!(parse_hex("#39bffc"), Some((57, 191, 252)));
@@ -220,53 +189,5 @@ mod tests {
         assert_eq!(parse_hex("#3bf"), Some((0x33, 0xBB, 0xFF)));
         assert_eq!(parse_hex("#39BFF"), None);
         assert_eq!(parse_hex("zzzzzz"), None);
-    }
-
-    #[test]
-    fn colour_field_accepts_index_name_rgb_and_hex() {
-        assert_eq!(parse_color_input("140"), Some(AcadColor::Index(140)));
-        assert_eq!(parse_color_input(" ACI 7 "), Some(AcadColor::Index(7)));
-        assert_eq!(parse_color_input("Red"), Some(AcadColor::Index(1)));
-        assert_eq!(
-            parse_color_input("57, 191,252"),
-            Some(AcadColor::Rgb {
-                r: 57,
-                g: 191,
-                b: 252
-            })
-        );
-        assert_eq!(
-            parse_color_input("#39BFFC"),
-            Some(AcadColor::Rgb {
-                r: 57,
-                g: 191,
-                b: 252
-            })
-        );
-    }
-
-    #[test]
-    fn colour_field_rejects_logical_and_out_of_range_values() {
-        assert_eq!(parse_color_input("bylayer"), None);
-        assert_eq!(parse_color_input("byblock"), None);
-        assert_eq!(parse_color_input("0"), None);
-        assert_eq!(parse_color_input("256"), None);
-        assert_eq!(parse_color_input("300,0,0"), None);
-        assert_eq!(parse_color_input("1,2"), None);
-        assert_eq!(parse_color_input(""), None);
-    }
-
-    #[test]
-    fn field_text_matches_parser() {
-        for color in [
-            AcadColor::Index(140),
-            AcadColor::Rgb {
-                r: 57,
-                g: 191,
-                b: 252,
-            },
-        ] {
-            assert_eq!(parse_color_input(&color_field_text(color)), Some(color));
-        }
     }
 }
