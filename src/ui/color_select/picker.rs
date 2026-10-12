@@ -20,8 +20,6 @@ const PANEL_WIDTH: f32 = 400.0;
 /// fields instead of the dialogs and command line underneath.
 const PANEL_ID: &str = "select-color-panel";
 const BODY_HEIGHT: f32 = 352.0;
-/// The interface picker has no tabs or info line, only the editor.
-const EDITOR_ONLY_HEIGHT: f32 = 258.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ColorPickerTab {
@@ -179,8 +177,11 @@ impl ColorPicker {
             self.index_tab()
         };
 
-        let mut body = column![body, Space::new().height(Length::Fill)].spacing(8);
+        // The interface picker shrinks to the editor; the CAD panel keeps one
+        // height across its tabs, with the info line at the bottom.
+        let mut body = column![body].spacing(8);
         if !editor_only {
+            body = body.push(Space::new().height(Length::Fill));
             let fill =
                 math::color_rgb(self.pending).map_or(Color::from_rgb8(128, 128, 128), rgb_color);
             body = body
@@ -208,9 +209,9 @@ impl ColorPicker {
             .padding(12)
             .width(Length::Fill)
             .height(if editor_only {
-                EDITOR_ONLY_HEIGHT
+                Length::Shrink
             } else {
-                BODY_HEIGHT
+                Length::Fixed(BODY_HEIGHT)
             })
             .style(panel_style);
 
@@ -396,10 +397,10 @@ impl ColorPicker {
             None
         } else {
             Some(
-                button(crate::ui::icons::themed(crate::ui::icons::EYEDROPPER, 16.0))
+                button(crate::ui::icons::themed(crate::ui::icons::EYEDROPPER, 14.0))
                     .on_press(picker_msg(ColorPickerMsg::Eyedropper(EyedropperMsg::Start)))
-                    .height(28)
-                    .padding([0, 8])
+                    .height(24)
+                    .padding([0, 7])
                     .style(|theme: &Theme, status| toggle_style(theme, false, status))
                     .into(),
             )

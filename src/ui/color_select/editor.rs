@@ -15,7 +15,12 @@ use iced::{Background, Border, Color, Element, Gradient, Length, Radians, Theme}
 const ROW_HEIGHT: f32 = 26.0;
 const TRACK: f32 = 18.0;
 const STRIP_WIDTH: f32 = 22.0;
-const FIELD_HEIGHT: f32 = 118.0;
+/// Gap between slider rows. Together with `FIELD_HEIGHT` it puts the hex row
+/// at the same height in every mode: 3 × 26 + 2 × 14 + 12 = 108 + 10.
+const ROW_GAP: f32 = 14.0;
+const FIELD_HEIGHT: f32 = 108.0;
+const MODE_WIDTH: f32 = 44.0;
+const MODE_HEIGHT: f32 = 24.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EditorMode {
@@ -149,8 +154,8 @@ impl ColorEditor {
             let active = self.mode == mode;
             button(container(content).center(Length::Fill))
                 .on_press(msg(EditorMsg::Mode(mode)))
-                .width(52)
-                .height(28)
+                .width(MODE_WIDTH)
+                .height(MODE_HEIGHT)
                 .padding(0)
                 .style(move |theme: &Theme, status| {
                     super::picker::toggle_style(theme, active, status)
@@ -159,7 +164,7 @@ impl ColorEditor {
         // The field button is only its gradient, without a frame; it takes
         // colour when its mode is active and stays gray otherwise.
         let field_active = self.mode == EditorMode::Field;
-        let field_button = button(Space::new().width(52).height(28))
+        let field_button = button(Space::new().width(MODE_WIDTH).height(MODE_HEIGHT))
             .on_press(msg(EditorMsg::Mode(EditorMode::Field)))
             .padding(0)
             .style(move |_theme: &Theme, _status| {
@@ -182,8 +187,8 @@ impl ColorEditor {
                 }
             });
         let mut modes = row![
-            mode_button(text("HSB").size(12).into(), EditorMode::Hsb),
-            mode_button(text("RGB").size(12).into(), EditorMode::Rgb),
+            mode_button(text("HSB").size(11).into(), EditorMode::Hsb),
+            mode_button(text("RGB").size(11).into(), EditorMode::Rgb),
             field_button,
             Space::new().width(Length::Fill),
         ]
@@ -232,7 +237,7 @@ impl ColorEditor {
                     EditorMsg::Brightness,
                 ),
             ]
-            .spacing(10)
+            .spacing(ROW_GAP)
             .into(),
             EditorMode::Rgb => {
                 let ends = |lo: (u8, u8, u8), hi: (u8, u8, u8)| {
@@ -310,23 +315,25 @@ impl ColorEditor {
                     .spacing(10)
                     .align_y(iced::Center),
                 ]
+                // 108 + 10 matches the slider views' 3 × 26 + 2 × 14 + 12.
                 .spacing(10)
                 .into()
             }
         };
 
-        // Below the editor: the hex value (unless the field view already
-        // shows it) and, on the right, the nearest index colour.
-        let mut hex_row = row![].spacing(8).align_y(iced::Center);
+        // The field view shows the hex value beside H, S and B and leaves out
+        // the nearest index colour; the slider views end on a hex row.
+        let mut view = column![modes, editor].spacing(12);
         if !field_mode {
-            hex_row = hex_row.push(hex_field());
+            let mut hex_row = row![hex_field(), Space::new().width(Length::Fill)]
+                .spacing(8)
+                .align_y(iced::Center);
+            if let Some(end) = hex_end {
+                hex_row = hex_row.push(end);
+            }
+            view = view.push(hex_row);
         }
-        hex_row = hex_row.push(Space::new().width(Length::Fill));
-        if let Some(end) = hex_end {
-            hex_row = hex_row.push(end);
-        }
-
-        column![modes, editor, hex_row].spacing(12).into()
+        view.into()
     }
 }
 
