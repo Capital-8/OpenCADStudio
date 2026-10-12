@@ -1038,7 +1038,20 @@ pub fn expand_insert(
         scale_policy,
     );
     let name = ins_handle.value().to_string();
-    let prototype_key = if !ins.is_array() && cache.prototype_blocks.contains(&ins.block_name) {
+    // Mask-bearing blocks must not reuse translated GPU prototypes: ordinary
+    // strokes and wipeout fills have different upload paths. Their shared
+    // source_id plus per-copy translated geometry can make a moved INSERT
+    // display stale wipeout geometry or disappear as the view changes.
+    // Expand these from their definition until both GPU paths share a
+    // verified identical instancing convention.
+    let has_masks = defn.subs.iter().any(|sub| match sub {
+        LocalSub::Wire(wire) => wire.canvas_color,
+        LocalSub::Nested(_) => false,
+    });
+    let prototype_key = if !ins.is_array()
+        && !has_masks
+        && cache.prototype_blocks.contains(&ins.block_name)
+    {
         Some(expansion_prototype_key(
             ins,
             &xform,
