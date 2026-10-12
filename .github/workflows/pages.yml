@@ -20,7 +20,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
   discussions: read
   pages: write
   id-token: write
@@ -144,6 +144,19 @@ jobs:
         run: |
           jq -n --arg version "${RELEASE_TAG#v}" --arg commit "$RELEASE_COMMIT" \
             '{version: $version, commit: $commit}' > dist/app/release.json
+
+      # Attach the bundle to the release so a version can be pinned and
+      # self-hosted; it expects to be served from /app/. Taken before the
+      # site data below is added, and skipped for hotfixes built from main.
+      - name: Attach web bundle to the release
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.build_main) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.source.outputs.tag }}
+        run: |
+          ASSET="OpenCADStudio-$RELEASE_TAG-web.zip"
+          (cd dist && zip -qr "../$ASSET" app)
+          gh release upload "$RELEASE_TAG" "$ASSET" --clobber --repo "$GITHUB_REPOSITORY"
 
       # GitHub Pages runs Jekyll, which ignores files; opt out so the
       # wasm-bindgen output is served verbatim.
