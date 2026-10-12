@@ -75,10 +75,6 @@ impl ColorEditor {
         self.rgb
     }
 
-    pub fn mode(&self) -> EditorMode {
-        self.mode
-    }
-
     pub fn set_rgb(&mut self, (r, g, b): (u8, u8, u8)) {
         let next = math::rgb_to_hsb(r, g, b);
         // A gray has no hue and black no saturation; keep the previous ones

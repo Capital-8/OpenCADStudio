@@ -9,7 +9,8 @@ pub mod math;
 pub mod picker;
 pub mod widgets;
 
-pub use picker::{ColorPicker, ColorPickerMsg, ColorPickerTab, Outcome};
+pub use math::nearest_aci;
+pub use picker::{ColorPicker, ColorPickerMsg, Outcome};
 
 use crate::app::Message;
 use crate::t;
@@ -40,11 +41,6 @@ pub fn color_to_aci_string(c: AcadColor) -> String {
         AcadColor::Index(i) => i.to_string(),
         AcadColor::Rgb { r, g, b } => nearest_aci(r, g, b).to_string(),
     }
-}
-
-/// Return the closest CAD Color Index for an RGB colour.
-pub fn nearest_aci(r: u8, g: u8, b: u8) -> u8 {
-    math::nearest_aci(r, g, b)
 }
 
 /// Decode an ACI integer string back into an `AcadColor`.

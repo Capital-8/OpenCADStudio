@@ -370,19 +370,11 @@ impl OpenCADStudio {
             let tab = &self.tabs[self.active_tab];
             (started, tab.id, tab.scene.geometry_epoch)
         });
-        // A modal dialog must capture the keyboard the same way it already
-        // captures the mouse. Otherwise keystrokes from the global key
-        // subscription leak past the modal into the command line and fire as
-        // commands once the dialog closes. While a modal is open, Escape
-        // closes it and every other keystroke-derived message is swallowed;
-        // the modal's own text fields keep working because they emit their own
-        // (non-blocked) messages. (#126)
         // The Select Color panel can open on top of another dialog, so it
         // takes the keyboard first: Esc cancels, Enter confirms, the arrows
         // walk the index palette, and every other keystroke is swallowed.
         if self.color_picker.is_some() {
             use crate::ui::color_select::ColorPickerMsg;
-            let last_key = |key: &str| key.rsplit('+').next().map(str::to_owned);
             match &msg {
                 Message::CommandEscape => {
                     return self.update(Message::ColorPicker(ColorPickerMsg::Cancel));
@@ -390,7 +382,7 @@ impl OpenCADStudio {
                 Message::CommandFinalize => {
                     return self.update(Message::ColorPicker(ColorPickerMsg::Ok));
                 }
-                Message::ShortcutPressed(key) => match last_key(key).as_deref() {
+                Message::ShortcutPressed(key) => match key.rsplit('+').next() {
                     Some("ESCAPE") => {
                         return self.update(Message::ColorPicker(ColorPickerMsg::Cancel));
                     }
@@ -413,6 +405,13 @@ impl OpenCADStudio {
                 return Task::none();
             }
         }
+        // A modal dialog must capture the keyboard the same way it already
+        // captures the mouse. Otherwise keystrokes from the global key
+        // subscription leak past the modal into the command line and fire as
+        // commands once the dialog closes. While a modal is open, Escape
+        // closes it and every other keystroke-derived message is swallowed;
+        // the modal's own text fields keep working because they emit their own
+        // (non-blocked) messages. (#126)
         if self.active_modal.is_some() {
             if matches!(msg, Message::CommandEscape)
                 || matches!(&msg, Message::ShortcutPressed(key) if key.rsplit('+').next() == Some("ESCAPE"))

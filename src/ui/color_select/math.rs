@@ -1,8 +1,8 @@
-//! Colour maths and text parsing for the Select Color panel.
+//! Colour maths and formatting for the Select Color panel.
 //!
 //! Everything here is pure so it can be unit tested without a UI: HSB/RGB
-//! conversion, hex formatting, nearest-index lookup and the parser behind the
-//! panel's Color field.
+//! conversion, hex formatting and parsing, nearest-index lookup and the
+//! short names the panel shows.
 
 use codec::types::Color as AcadColor;
 

@@ -5,6 +5,7 @@
 //! the window; a magnifier beside the cursor shows the pixels around it from
 //! that screenshot, and a click picks the centre pixel.
 
+use super::editor::rgb_color;
 use super::{math, ColorPickerMsg};
 use crate::app::Message;
 use iced::widget::{column, container, mouse_area, pin, row, stack, text, Space};
@@ -23,7 +24,6 @@ pub enum EyedropperMsg {
     Move(Point),
     Shot(Screenshot),
     Pick,
-    Cancel,
 }
 
 #[derive(Default)]
@@ -68,7 +68,7 @@ impl Eyedropper {
         for dy in -half..=half {
             let mut line = row![];
             for dx in -half..=half {
-                let fill = sample(shot, cursor, dx, dy).map_or(Color::TRANSPARENT, rgb);
+                let fill = sample(shot, cursor, dx, dy).map_or(Color::TRANSPARENT, rgb_color);
                 let centre = dx == 0 && dy == 0;
                 line = line.push(container(Space::new()).width(CELL).height(CELL).style(
                     move |_theme: &Theme| container::Style {
@@ -131,10 +131,6 @@ impl Eyedropper {
         };
         stack![catcher, pin(loupe).x(x).y(y)].into()
     }
-}
-
-fn rgb((r, g, b): (u8, u8, u8)) -> Color {
-    Color::from_rgb8(r, g, b)
 }
 
 /// The screenshot pixel `dx`, `dy` physical pixels away from a logical point.

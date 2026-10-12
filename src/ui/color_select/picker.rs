@@ -2,7 +2,7 @@
 //!
 //! The panel edits a pending colour and only reports it back on OK, so every
 //! caller keeps applying colours through the same `ColorWindowPick` path.
-//! Opened for an interface colour (an Options background) it shows only the
+//! Opened for an interface colour (any colour in Options) it shows only the
 //! colour editor: no tabs, no index colours.
 
 use super::editor::{rgb_color, ColorEditor, EditorMsg};
@@ -91,7 +91,7 @@ impl ColorPicker {
         self.tab
     }
 
-    /// Interface colours (Options backgrounds) only get the colour editor.
+    /// Interface colours (Options) only get the colour editor.
     fn editor_only(&self) -> bool {
         matches!(self.target, ColorPickTarget::Interface(_))
     }
@@ -122,9 +122,8 @@ impl ColorPicker {
                         self.set_pending(AcadColor::Rgb { r, g, b });
                     }
                 }
-                ColorPickerMsg::Eyedropper(EyedropperMsg::Cancel) | ColorPickerMsg::Cancel => {
-                    self.eyedropper = None;
-                }
+                // Esc leaves the eyedropper but keeps the panel open.
+                ColorPickerMsg::Cancel => self.eyedropper = None,
                 _ => {}
             }
             return None;
