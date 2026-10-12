@@ -262,6 +262,7 @@ command-copy =
     .mode = COPY  コピーモードを入力 [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = ブラウザは入力されたパスを開けません。ファイルを選択してください。
     .recover-drawing = 図面の復元
     .restore-it-as-a-recovered-tab-or-discard-the-copy = 復元タブとして開くか、コピーを破棄してください。
     .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" には最終保存より新しい自動保存コピーがあります。

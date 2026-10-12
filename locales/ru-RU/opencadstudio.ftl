@@ -275,6 +275,7 @@ command-copy =
     .mode = COPY  Задайте режим копирования [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = Браузер не может открыть введённый путь; выберите файл.
     .recover-drawing = Восстановление чертежа
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Восстановите его на отдельной вкладке или удалите копию.
     .name-has-an-autosave-copy-newer-than-the-last-save = У «__ocs_fmt_0__» есть копия автосохранения новее последнего сохранения.

@@ -259,6 +259,7 @@ command-copy =
     .mode = COPY  输入复制模式选项 [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = 浏览器无法打开键入的路径；请改为选择文件。
     .recover-drawing = 恢复图形
     .restore-it-as-a-recovered-tab-or-discard-the-copy = 将其恢复为已恢复的标签页，或放弃该副本。
     .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" 有一份比上次保存更新的自动保存副本。

@@ -272,6 +272,7 @@ command-copy =
     .mode = COPY  Kopiermodus eingeben [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = Der Browser kann einen eingegebenen Pfad nicht öffnen; wähle die Datei.
     .recover-drawing = Zeichnung wiederherstellen
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Als wiederhergestellte Registerkarte öffnen oder die Kopie verwerfen.
     .name-has-an-autosave-copy-newer-than-the-last-save = Für „__ocs_fmt_0__“ existiert eine automatische Sicherungskopie, die neuer ist als die letzte gespeicherte Version.

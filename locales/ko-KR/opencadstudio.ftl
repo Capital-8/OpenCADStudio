@@ -271,6 +271,7 @@ command-copy =
     .mode = COPY  복사 모드 옵션 입력 [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = 브라우저는 입력한 경로를 열 수 없습니다. 파일을 선택하세요.
     .recover-drawing = 도면 복구
     .restore-it-as-a-recovered-tab-or-discard-the-copy = 복구된 탭으로 열거나 사본을 삭제하세요.
     .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__"에 마지막 저장보다 새로운 자동 저장 사본이 있습니다.

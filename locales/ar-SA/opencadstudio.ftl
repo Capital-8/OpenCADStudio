@@ -284,6 +284,7 @@ command-copy =
     .mode = COPY  أدخل خيار وضع النسخ [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = لا يستطيع المتصفح فتح مسار مكتوب؛ اختر الملف بدلاً من ذلك.
     .recover-drawing = استرداد الرسم
     .restore-it-as-a-recovered-tab-or-discard-the-copy = استعده كعلامة تبويب مستردة أو تجاهل النسخة.
     .name-has-an-autosave-copy-newer-than-the-last-save = لدى "__ocs_fmt_0__" نسخة حفظ تلقائي أحدث من آخر حفظ.

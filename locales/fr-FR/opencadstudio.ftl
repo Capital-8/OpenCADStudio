@@ -272,6 +272,7 @@ command-copy =
     .mode = COPY  Entrez le mode de copie [Single/Multiple] <Multiple> :
 
 common =
+    .browser-cannot-open-typed-path = Le navigateur ne peut pas ouvrir un chemin saisi ; choisissez le fichier.
     .recover-drawing = Récupérer le dessin
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Restaurez-le dans un onglet récupéré ou supprimez la copie.
     .name-has-an-autosave-copy-newer-than-the-last-save = «__ocs_fmt_0__» dispose d’une copie de sauvegarde automatique plus récente que le dernier enregistrement.

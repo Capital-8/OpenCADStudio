@@ -271,6 +271,7 @@ command-copy =
     .mode = COPY  Podaj tryb kopiowania [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = Przeglądarka nie otworzy wpisanej ścieżki; wybierz plik.
     .recover-drawing = Odzyskaj rysunek
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Przywróć go jako odzyskaną kartę lub odrzuć kopię.
     .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" ma kopię autozapisu nowszą niż ostatni zapis.

@@ -257,6 +257,7 @@ command-copy =
     .mode = COPY  Kopyalama modu seçin [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = Tarayıcı yazılan bir yolu açamaz; dosyayı seçin.
     .recover-drawing = Çizimi Kurtar
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Onu kurtarılan bir sekme olarak geri yükleyin veya kopyayı atın.
     .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" son kayıttan daha yeni bir otomatik kayıt kopyasına sahip.

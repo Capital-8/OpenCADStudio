@@ -271,6 +271,7 @@ command-copy =
     .mode = COPY  Enter a copy mode option [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = The browser cannot open a typed path; pick the file instead.
     .recover-drawing = Recover Drawing
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Restore it as a recovered tab, or discard the copy.
     .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" has an autosave copy newer than the last save.

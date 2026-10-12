@@ -1158,7 +1158,7 @@ fn apply_updates(
 fn json_values_match(actual: &Value, expected: &Value) -> bool {
     match (actual, expected) {
         (Value::Number(a), Value::Number(b)) if a.is_f64() || b.is_f64() => {
-            a.as_f64() == b.as_f64()
+            numbers_match(a, b)
         }
         (Value::Array(a), Value::Array(b)) => {
             a.len() == b.len() && a.iter().zip(b).all(|(a, b)| json_values_match(a, b))
@@ -1169,6 +1169,28 @@ fn json_values_match(actual: &Value, expected: &Value) -> bool {
                     .all(|(key, a)| b.get(key).is_some_and(|b| json_values_match(a, b)))
         }
         _ => actual == expected,
+    }
+}
+
+/// `10.0` matches `10`, but an integer past f64 precision never matches a
+/// float it merely rounds onto: a mixed pair is equal only when the float is
+/// whole and converts back to exactly that integer.
+fn numbers_match(a: &serde_json::Number, b: &serde_json::Number) -> bool {
+    let (int, float) = match (a.as_f64(), b.as_f64()) {
+        (Some(x), Some(y)) if a.is_f64() && b.is_f64() => return x == y,
+        (_, Some(y)) if b.is_f64() => (a, y),
+        (Some(x), _) => (b, x),
+        _ => return false,
+    };
+    if !float.is_finite() || float.fract() != 0.0 {
+        return false;
+    }
+    if let Some(i) = int.as_i64() {
+        i as f64 == float && float as i64 == i
+    } else if let Some(u) = int.as_u64() {
+        u as f64 == float && float as u64 == u
+    } else {
+        false
     }
 }
 
@@ -1644,6 +1666,21 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::OpenCADStudio;
+
+    /// Whole floats match their integer; integers past f64 precision never
+    /// match the neighbouring float they round onto.
+    #[test]
+    fn numbers_match_by_value_without_precision_loss() {
+        let number = |value: Value| match value {
+            Value::Number(number) => number,
+            _ => unreachable!(),
+        };
+        assert!(super::numbers_match(&number(json!(10)), &number(json!(10.0))));
+        assert!(!super::numbers_match(&number(json!(10)), &number(json!(10.5))));
+        let past_precision = number(json!(9_007_199_254_740_993_u64));
+        assert!(!super::numbers_match(&past_precision, &number(json!(9_007_199_254_740_992.0))));
+        assert!(super::numbers_match(&number(json!(-3)), &number(json!(-3.0))));
+    }
 
     fn execute(app: &mut OpenCADStudio, mut request: Value, id: &str) -> Value {
         let state = app.automation_op(r#"{"protocol":1,"op":"state"}"#);

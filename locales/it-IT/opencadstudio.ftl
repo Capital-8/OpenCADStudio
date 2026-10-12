@@ -271,6 +271,7 @@ command-copy =
     .mode = COPY  Specificare modalità di copia [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = Il browser non può aprire un percorso digitato; scegli il file.
     .recover-drawing = Recupera disegno
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Ripristinalo in una scheda recuperata oppure elimina la copia.
     .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" ha una copia di salvataggio automatico più recente dell’ultimo salvataggio.

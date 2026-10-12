@@ -271,6 +271,7 @@ command-copy =
     .mode = COPY  Adja meg a másolási módot [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = A böngésző nem nyithat meg beírt útvonalat; válaszd a fájlt.
     .jogged-radius = Megtört sugárméret
     .none-use-shortcuts-set-key-command = (nincs – használat: SHORTCUTS SET <key> <command>)
     .alignment-indented-label-title-case = Igazítás:

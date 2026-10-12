@@ -271,6 +271,7 @@ command-copy =
     .mode = COPY  Valitse kopiointitila [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = Selain ei voi avata kirjoitettua polkua; valitse tiedosto.
     .recover-drawing = Palauta piirustus
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Palauta se palautettuna välilehtenä tai hylkää kopio.
     .name-has-an-autosave-copy-newer-than-the-last-save = Kohteella "__ocs_fmt_0__" on automaattisen tallennuksen kopio, joka on uudempi kuin viimeisin tallennus.

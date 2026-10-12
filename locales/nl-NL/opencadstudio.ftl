@@ -272,6 +272,7 @@ command-copy =
     .mode = COPY  Geef kopieermodus op [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = De browser kan een getypt pad niet openen; kies het bestand.
     .recover-drawing = Tekening herstellen
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Herstel het als een hersteld tabblad of verwijder de kopie.
     .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" heeft een automatisch opgeslagen kopie die nieuwer is dan de laatste opslag.

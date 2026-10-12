@@ -20,8 +20,12 @@
 
   let readyResolve;
   const ready = new Promise(resolve => { readyResolve = resolve; });
+  // Built before the first settle() can run (`request` is a hoisted
+  // function declaration): `ready` resolves with this object even when the
+  // bridge already exists as the script runs.
+  const apiObject = {ready, request};
   const settle = () => {
-    readyResolve(window.ocsControl);
+    readyResolve(apiObject);
     window.dispatchEvent(new Event("ocs-ready"));
   };
   const poll = setInterval(() => {
@@ -68,5 +72,5 @@
     return reply;
   }
 
-  window.ocsControl = {ready, request};
+  window.ocsControl = apiObject;
 })();

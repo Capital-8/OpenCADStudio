@@ -4188,6 +4188,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Data Extraction Settings" => Some(("common", "data-extraction-settings")),
         "Add Drawings" => Some(("common", "add-drawings")),
         "CSV" => Some(("common", "csv")),
+        "The browser cannot open a typed path; pick the file instead." => Some(("common", "browser-cannot-open-typed-path")),
         "CSV Files" => Some(("common", "csv-files")),
         "Link a CSV data source" => Some(("common", "link-a-csv-data-source")),
         "Pick the file again to load its contents in the browser." => Some(("file", "pick-the-file-again-to-load-its-contents")),

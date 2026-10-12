@@ -260,6 +260,7 @@ command-copy =
     .mode = COPY  कॉपी मोड विकल्प दर्ज करें [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = ब्राउज़र टाइप किए गए पथ को नहीं खोल सकता; इसके बजाय फ़ाइल चुनें।
     .recover-drawing = चित्र पुनर्प्राप्त करें
     .restore-it-as-a-recovered-tab-or-discard-the-copy = इसे पुनर्प्राप्त टैब के रूप में पुनर्स्थापित करें, या प्रतिलिपि त्याग दें।
     .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" के पास अंतिम सहेजने से नई ऑटोसेव प्रतिलिपि है।

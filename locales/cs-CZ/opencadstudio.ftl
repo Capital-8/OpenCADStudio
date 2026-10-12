@@ -271,6 +271,7 @@ command-copy =
     .mode = COPY  Zadejte režim kopírování [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = Prohlížeč nemůže otevřít zadanou cestu; vyberte soubor.
     .recover-drawing = Obnovit výkres
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Obnovte jej jako obnovenou kartu nebo kopii zahoďte.
     .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" má kopii automatického uložení novější než poslední uložení.

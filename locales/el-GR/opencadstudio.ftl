@@ -271,6 +271,7 @@ command-copy =
     .mode = COPY  Επιλέξτε λειτουργία αντιγραφής [Single/Multiple] <Multiple>:
 
 common =
+    .browser-cannot-open-typed-path = Ο browser δεν μπορεί να ανοίξει πληκτρολογημένη διαδρομή· διάλεξε το αρχείο.
     .recover-drawing = Ανάκτηση σχεδίου
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Επαναφέρετέ το ως ανακτημένη καρτέλα ή απορρίψτε το αντίγραφο.
     .name-has-an-autosave-copy-newer-than-the-last-save = Το "__ocs_fmt_0__" έχει αντίγραφο αυτόματης αποθήκευσης νεότερο της τελευταίας αποθήκευσης.

@@ -271,6 +271,7 @@ command-copy =
     .displacement = COPY  Задайте преместване:
     .mode = COPY  Въведете режим на копиране [Single/Multiple] <Multiple>:
 common =
+    .browser-cannot-open-typed-path = Браузърът не може да отвори въведен път; изберете файла.
     .recover-drawing = Възстановяване на чертеж
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Възстановете го като възстановен раздел или отхвърлете копието.
     .name-has-an-autosave-copy-newer-than-the-last-save = "__ocs_fmt_0__" има копие от автоматично записване, по-ново от последния запис.
