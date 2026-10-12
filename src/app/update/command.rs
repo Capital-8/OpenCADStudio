@@ -4265,11 +4265,11 @@ impl OpenCADStudio {
             Some(codec::EntityType::Insert(ins)) if !ins.attributes.is_empty() => {
                 // The prompt text lives on the block's ATTDEFs, not on the
                 // attribute instances — map tag → prompt from the definition.
-                let prompts = block_attr_prompts(doc, &ins.block_name);
+                let meta = block_attr_meta(doc, &ins.block_name);
                 let rows = ins
                     .attributes
                     .iter()
-                    .map(|a| attr_row_from_entity(a, &prompts))
+                    .map(|a| attr_row_from_entity(a, &meta))
                     .collect::<Vec<_>>();
                 Ok((ins.block_name.clone(), rows))
             }
@@ -4363,16 +4363,47 @@ impl OpenCADStudio {
     }
 }
 
+pub(crate) struct BlockAttrMeta {
+    pub(crate) prompt: String,
+    pub(crate) constant: bool,
+}
+
+/// Map each attribute tag to the metadata (prompt text, constant flag) declared on
+/// the block's matching ATTDEF. Tags with no definition are absent.
+pub(crate) fn block_attr_meta(
+    doc: &codec::CadDocument,
+    block_name: &str,
+) -> rustc_hash::FxHashMap<String, BlockAttrMeta> {
+    let mut map = rustc_hash::FxHashMap::default();
+    if let Some(br) = doc.block_records.get(block_name) {
+        for &eh in &br.entity_handles {
+            if let Some(codec::EntityType::AttributeDefinition(ad)) = doc.get_entity(eh) {
+                map.insert(
+                    ad.tag.clone(),
+                    BlockAttrMeta {
+                        prompt: ad.prompt.clone(),
+                        constant: ad.flags.constant,
+                    },
+                );
+            }
+        }
+    }
+    map
+}
+
 /// Build the editor's working copy of one attribute. Angles are shown in
 /// degrees; numeric fields become strings so the user can type freely.
-fn attr_row_from_entity(
+pub(crate) fn attr_row_from_entity(
     a: &codec::entities::AttributeEntity,
-    prompts: &rustc_hash::FxHashMap<String, String>,
+    meta: &rustc_hash::FxHashMap<String, BlockAttrMeta>,
 ) -> AttrRow {
     let fmt = |v: f64| format!("{v}");
+    let ad_meta = meta.get(&a.tag);
+    let prompt = ad_meta.map(|m| m.prompt.clone()).unwrap_or_default();
+    let is_constant = a.flags.constant || ad_meta.map_or(false, |m| m.constant);
     AttrRow {
         tag: a.tag.clone(),
-        prompt: prompts.get(&a.tag).cloned().unwrap_or_default(),
+        prompt,
         value: a.get_value().to_string(),
         text_style: a.text_style.clone(),
         height: fmt(a.height),
@@ -4387,15 +4418,16 @@ fn attr_row_from_entity(
         color: a.common.color,
         linetype: a.common.linetype.clone(),
         line_weight: a.common.line_weight,
+        is_constant,
     }
 }
 
 /// Write one edited row back onto its attribute; returns whether anything
 /// changed. Numeric fields are parsed (angles from degrees); an unparseable
-/// field is left as-is.
-fn apply_attr_row(a: &mut codec::entities::AttributeEntity, row: &AttrRow) -> bool {
+/// field is left as-is. Constant attributes ignore edits to their value.
+pub(crate) fn apply_attr_row(a: &mut codec::entities::AttributeEntity, row: &AttrRow) -> bool {
     let mut ch = false;
-    if a.get_value() != row.value {
+    if !row.is_constant && a.get_value() != row.value {
         a.set_value(row.value.clone());
         ch = true;
     }
@@ -4464,24 +4496,6 @@ fn apply_attr_row(a: &mut codec::entities::AttributeEntity, row: &AttrRow) -> bo
         ch = true;
     }
     ch
-}
-
-/// Map each attribute tag to the prompt text declared on the block's matching
-/// ATTDEF. Attribute instances (ATTRIB) carry only tag + value; the prompt is
-/// defined once on the block definition. Tags with no definition are absent.
-fn block_attr_prompts(
-    doc: &codec::CadDocument,
-    block_name: &str,
-) -> rustc_hash::FxHashMap<String, String> {
-    let mut map = rustc_hash::FxHashMap::default();
-    if let Some(br) = doc.block_records.get(block_name) {
-        for &eh in &br.entity_handles {
-            if let Some(codec::EntityType::AttributeDefinition(ad)) = doc.get_entity(eh) {
-                map.insert(ad.tag.clone(), ad.prompt.clone());
-            }
-        }
-    }
-    map
 }
 
 #[cfg(test)]

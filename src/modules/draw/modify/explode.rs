@@ -115,18 +115,49 @@ pub fn explode_entity(entity: &EntityType, document: &CadDocument) -> Vec<Entity
                 // contents, not on the insert.
                 let base = crate::scene::render_graph::block_base_point(document, &ins.block_name);
                 let to_block = Transform::from_translation(Vector3::new(-base.x, -base.y, -base.z));
+                let mut attdefs: Vec<EntityType> = Vec::new();
                 let entities: Vec<EntityType> = document
                     .entities_in_block(&ins.block_name)
                     .map(|entity| {
                         let mut shifted = entity.clone();
                         Entity::apply_transform(shifted.as_entity_mut(), &to_block);
+                        if let EntityType::AttributeDefinition(_) = &shifted {
+                            attdefs.push(shifted.clone());
+                        }
                         shifted
                     })
                     .collect();
-                ins.explode(&entities)
+                let mut pieces: Vec<EntityType> = ins
+                    .explode(&entities)
                     .into_iter()
                     .map(normalize_insert_entity)
-                    .collect()
+                    .collect();
+
+                // Exploding an INSERT drops attribute values (ATTRIBs)
+                // and the attribute definitions (ATTDEF tags) reappear as ATTDEF entities.
+                // The codec's `ins.explode` skips `AttributeDefinition` entities, so we
+                // transform and append them here.
+                if !attdefs.is_empty() {
+                    let insert_xform = ins.get_transform();
+                    for ad_ent in &attdefs {
+                        let mut exploded_ad = ad_ent.clone();
+                        Entity::apply_transform(exploded_ad.as_entity_mut(), &insert_xform);
+                        // Resolve common properties (layer "0", ByBlock color / line weight)
+                        let common = exploded_ad.common_mut();
+                        if common.layer == "0" {
+                            common.layer = ins.common.layer.clone();
+                        }
+                        if common.color == codec::types::Color::ByBlock {
+                            common.color = ins.common.color;
+                        }
+                        if common.line_weight == codec::types::LineWeight::ByBlock {
+                            common.line_weight = ins.common.line_weight;
+                        }
+                        pieces.push(exploded_ad);
+                    }
+                }
+
+                pieces
             }
         }
         EntityType::MLine(ml) => explode_mline(ml),

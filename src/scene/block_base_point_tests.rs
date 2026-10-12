@@ -679,7 +679,7 @@ fn locked_explode_places_geometry_at_convention_positions() {
     let mut line_start = None;
     let mut line_end = None;
     let mut circle_center = None;
-    for piece in pieces {
+    for piece in &pieces {
         match piece {
             EntityType::Line(line) => {
                 if line_end.is_none() {
@@ -709,6 +709,20 @@ fn locked_explode_places_geometry_at_convention_positions() {
         EXPECTED_CIRCLE_CENTER,
         1e-6,
         "exploded circle center",
+    );
+    // Exploding an INSERT drops attribute values and the
+    // attribute definitions (tags) reappear as ATTDEF entities.
+    let attdef_piece = pieces.iter().find_map(|p| match p {
+        EntityType::AttributeDefinition(ad) => Some(ad.clone()),
+        _ => None,
+    });
+    let ad = attdef_piece.expect("the exploded ATTDEF");
+    assert_eq!(ad.tag, "TAG1");
+    assert_close(
+        ad.insertion_point,
+        EXPECTED_ATTR_POINT,
+        1e-6,
+        "exploded attdef insertion point",
     );
     // Same numbers as the render path: EXPLODE and the renderer agree.
     let (render_start, render_end) = instance_line_world(&scene, BP_TEST);
@@ -1034,5 +1048,108 @@ fn locked_nested_reference_explode_matches_the_render_path() {
         [93.339746, 103.535898, 0.0],
         1e-6,
         "render path: inner line end",
+    );
+}
+
+#[test]
+fn locked_nested_insert_with_attributes_exploded_one_level() {
+    // When an outer block containing an inner INSERT and attributes is exploded one level,
+    // the outer block's attributes drop their values and its ATTDEFs reappear, while
+    // the inner INSERT remains an intact INSERT with its attributes preserved.
+    const INNER: &str = "BP_ATTR_INNER";
+    const OUTER: &str = "BP_ATTR_OUTER";
+    let mut scene = Scene::new();
+
+    // INNER block: base (0,0,0), has a LINE and an ATTDEF
+    let inner_ad = AttributeDefinition {
+        insertion_point: v(1.0, 1.0, 0.0),
+        height: 1.0,
+        ..AttributeDefinition::new(
+            "INNER_TAG".to_string(),
+            "Inner prompt".to_string(),
+            "Inner val".to_string(),
+        )
+    };
+    scene.define_block_raw(
+        INNER,
+        v(0.0, 0.0, 0.0),
+        vec![
+            EntityType::Line(Line::from_points(v(0.0, 0.0, 0.0), v(5.0, 0.0, 0.0))),
+            EntityType::AttributeDefinition(inner_ad),
+        ],
+    );
+
+    // OUTER block: base (10.0, 5.0, 0.0), has a nested INSERT of INNER (with an attribute instance) and an ATTDEF
+    let mut inner_ins = Insert::new(INNER.to_string(), v(5.0, 3.0, 0.0));
+    let mut inner_attr =
+        AttributeEntity::new("INNER_TAG".to_string(), "Actual inner value".to_string());
+    inner_attr.insertion_point = v(6.0, 4.0, 0.0);
+    inner_ins.attributes.push(inner_attr);
+
+    let outer_ad = AttributeDefinition {
+        insertion_point: v(12.0, 8.0, 0.0),
+        height: 1.0,
+        ..AttributeDefinition::new(
+            "OUTER_TAG".to_string(),
+            "Outer prompt".to_string(),
+            "Outer val".to_string(),
+        )
+    };
+
+    scene.define_block_raw(
+        OUTER,
+        v(10.0, 5.0, 0.0),
+        vec![
+            EntityType::Insert(inner_ins),
+            EntityType::AttributeDefinition(outer_ad),
+        ],
+    );
+
+    // Model space: instance of OUTER at (100, 100), 30°, scale 2
+    let mut outer_instance = Insert::new(OUTER.to_string(), v(100.0, 100.0, 0.0));
+    outer_instance.set_x_scale(2.0);
+    outer_instance.set_y_scale(2.0);
+    outer_instance.set_z_scale(2.0);
+    outer_instance.rotation = DEG30;
+    let mut outer_attr =
+        AttributeEntity::new("OUTER_TAG".to_string(), "Actual outer value".to_string());
+    outer_attr.insertion_point = v(100.464102, 107.196152, 0.0);
+    outer_instance.attributes.push(outer_attr);
+
+    // Explode outer instance one level
+    let pieces = crate::modules::draw::modify::explode::explode_entity(
+        &EntityType::Insert(outer_instance),
+        &scene.document,
+    );
+
+    // Expected pieces: the nested inner INSERT (with its attribute still intact) and the outer ATTDEF
+    let nested_insert = pieces
+        .iter()
+        .find_map(|p| match p {
+            EntityType::Insert(ins) if ins.block_name == INNER => Some(ins.clone()),
+            _ => None,
+        })
+        .expect("nested inner INSERT among pieces");
+
+    assert_eq!(nested_insert.attributes.len(), 1);
+    assert_eq!(nested_insert.attributes[0].tag, "INNER_TAG");
+    assert_eq!(
+        nested_insert.attributes[0].get_value(),
+        "Actual inner value"
+    );
+
+    let outer_attdef = pieces
+        .iter()
+        .find_map(|p| match p {
+            EntityType::AttributeDefinition(ad) if ad.tag == "OUTER_TAG" => Some(ad.clone()),
+            _ => None,
+        })
+        .expect("reappeared outer ATTDEF among pieces");
+
+    assert_close(
+        outer_attdef.insertion_point,
+        EXPECTED_ATTR_POINT,
+        1e-6,
+        "outer attdef insertion point",
     );
 }

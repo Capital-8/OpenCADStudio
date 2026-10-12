@@ -1347,3 +1347,175 @@ fn locked_purge_skips_a_block_with_an_open_bedit_session() {
     assert!(record_exists(&app, &name));
     let _ = app.dispatch_command("BEDIT_DISCARD");
 }
+
+#[test]
+fn locked_attedit_attribute_flags_cases() {
+    use crate::ui::window::attribute_editor::AttrRow;
+    use codec::entities::{AttributeDefinition, AttributeEntity};
+    use codec::tables::BlockRecord;
+
+    // Verify flag behavior in ATTEDIT conversion and apply:
+    // 1. Normal attribute: editable, modifies value
+    let mut normal_entity =
+        AttributeEntity::new("NORM_TAG".to_string(), "original_norm".to_string());
+    let normal_row = AttrRow {
+        tag: "NORM_TAG".to_string(),
+        prompt: "Enter norm:".to_string(),
+        value: "edited_norm".to_string(),
+        text_style: "STANDARD".to_string(),
+        height: "2.5".to_string(),
+        rotation: "0".to_string(),
+        width_factor: "1".to_string(),
+        oblique: "0".to_string(),
+        h_align: codec::entities::HorizontalAlignment::Left,
+        v_align: codec::entities::VerticalAlignment::Baseline,
+        backwards: false,
+        upside_down: false,
+        layer: "0".to_string(),
+        color: codec::types::Color::ByLayer,
+        linetype: "ByLayer".to_string(),
+        line_weight: codec::types::LineWeight::ByLayer,
+        is_constant: false,
+    };
+    assert!(!normal_row.is_constant);
+
+    // 2. Constant attribute: is_constant is true, apply ignores value edit
+    let mut const_entity =
+        AttributeEntity::new("CONST_TAG".to_string(), "original_const".to_string());
+    const_entity.flags.constant = true;
+    let mut const_row = normal_row.clone();
+    const_row.tag = "CONST_TAG".to_string();
+    const_row.value = "attempted_edit".to_string();
+    const_row.is_constant = true;
+
+    // 3. Invisible attribute: editable in ATTEDIT (flags.invisible is true, but is_constant is false)
+    let mut invis_entity =
+        AttributeEntity::new("INVIS_TAG".to_string(), "original_invis".to_string());
+    invis_entity.flags.invisible = true;
+    let mut invis_row = normal_row.clone();
+    invis_row.tag = "INVIS_TAG".to_string();
+    invis_row.value = "edited_invis".to_string();
+    invis_row.is_constant = false;
+
+    // 4. Preset attribute: editable in ATTEDIT (preset only affects initial insertion prompt)
+    let mut preset_entity =
+        AttributeEntity::new("PRESET_TAG".to_string(), "original_preset".to_string());
+    preset_entity.flags.preset = true;
+    let mut preset_row = normal_row.clone();
+    preset_row.tag = "PRESET_TAG".to_string();
+    preset_row.value = "edited_preset".to_string();
+    preset_row.is_constant = false;
+
+    // Verify metadata mapping from CadDocument
+    let mut doc = codec::CadDocument::new();
+    let next = doc.next_handle();
+    let br_h = Handle::new(next);
+    let mut br = BlockRecord::new("FLAG_BLOCK");
+    br.handle = br_h;
+    br.block_entity_handle = Handle::new(next + 1);
+    br.block_end_handle = Handle::new(next + 2);
+
+    let mut ad_norm = AttributeDefinition::new(
+        "NORM_TAG".to_string(),
+        "Enter norm:".to_string(),
+        "def".to_string(),
+    );
+    let mut ad_const = AttributeDefinition::new(
+        "CONST_TAG".to_string(),
+        "Enter const:".to_string(),
+        "def".to_string(),
+    );
+    ad_const.flags.constant = true;
+    let mut ad_invis = AttributeDefinition::new(
+        "INVIS_TAG".to_string(),
+        "Enter invis:".to_string(),
+        "def".to_string(),
+    );
+    ad_invis.flags.invisible = true;
+    let mut ad_preset = AttributeDefinition::new(
+        "PRESET_TAG".to_string(),
+        "Enter preset:".to_string(),
+        "def".to_string(),
+    );
+    ad_preset.flags.preset = true;
+
+    let h1 = Handle::new(next + 3);
+    let h2 = Handle::new(next + 4);
+    let h3 = Handle::new(next + 5);
+    let h4 = Handle::new(next + 6);
+    ad_norm.common.handle = h1;
+    ad_const.common.handle = h2;
+    ad_invis.common.handle = h3;
+    ad_preset.common.handle = h4;
+    br.entity_handles = vec![h1, h2, h3, h4];
+
+    doc.block_records.add(br).unwrap();
+    doc.add_entity(EntityType::AttributeDefinition(ad_norm))
+        .unwrap();
+    doc.add_entity(EntityType::AttributeDefinition(ad_const))
+        .unwrap();
+    doc.add_entity(EntityType::AttributeDefinition(ad_invis))
+        .unwrap();
+    doc.add_entity(EntityType::AttributeDefinition(ad_preset))
+        .unwrap();
+
+    let meta = crate::app::update::command::block_attr_meta(&doc, "FLAG_BLOCK");
+    assert!(!meta.get("NORM_TAG").unwrap().constant);
+    assert!(meta.get("CONST_TAG").unwrap().constant);
+    assert!(!meta.get("INVIS_TAG").unwrap().constant);
+    assert!(!meta.get("PRESET_TAG").unwrap().constant);
+
+    // Test conversion from AttributeEntity to AttrRow
+    let r_norm = crate::app::update::command::attr_row_from_entity(&normal_entity, &meta);
+    assert!(!r_norm.is_constant);
+    assert_eq!(r_norm.prompt, "Enter norm:");
+
+    let r_const = crate::app::update::command::attr_row_from_entity(&const_entity, &meta);
+    assert!(r_const.is_constant);
+    assert_eq!(r_const.prompt, "Enter const:");
+
+    let r_invis = crate::app::update::command::attr_row_from_entity(&invis_entity, &meta);
+    assert!(!r_invis.is_constant);
+    assert_eq!(r_invis.prompt, "Enter invis:");
+
+    let r_preset = crate::app::update::command::attr_row_from_entity(&preset_entity, &meta);
+    assert!(!r_preset.is_constant);
+    assert_eq!(r_preset.prompt, "Enter preset:");
+
+    // Test apply_attr_row behavior on constant vs non-constant
+    // Normal: applies
+    let mut edited_norm_row = r_norm.clone();
+    edited_norm_row.value = "edited_norm".to_string();
+    assert!(crate::app::update::command::apply_attr_row(
+        &mut normal_entity,
+        &edited_norm_row
+    ));
+    assert_eq!(normal_entity.get_value(), "edited_norm");
+
+    // Constant: ignores value change!
+    let mut edited_const_row = r_const.clone();
+    edited_const_row.value = "attempted_edit".to_string();
+    assert!(!crate::app::update::command::apply_attr_row(
+        &mut const_entity,
+        &edited_const_row
+    ));
+    assert_eq!(const_entity.get_value(), "original_const");
+
+    // Invisible: applies
+    let mut edited_invis_row = r_invis.clone();
+    edited_invis_row.value = "edited_invis".to_string();
+    assert!(crate::app::update::command::apply_attr_row(
+        &mut invis_entity,
+        &edited_invis_row
+    ));
+    assert_eq!(invis_entity.get_value(), "edited_invis");
+
+    // Preset: applies
+    let mut edited_preset_row = r_preset.clone();
+    edited_preset_row.value = "edited_preset".to_string();
+    assert!(crate::app::update::command::apply_attr_row(
+        &mut preset_entity,
+        &edited_preset_row
+    ));
+    assert_eq!(preset_entity.get_value(), "edited_preset");
+}
