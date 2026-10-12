@@ -223,10 +223,42 @@ impl std::fmt::Display for QSelectPropertyChoice {
     }
 }
 
-/// Open Quick Select panel state. The filter is one
-/// `(scope, type, property, op, value)` row plus result behavior.
+/// One committed condition in the Quick Select filter list.
+#[derive(Clone, Debug)]
+pub struct QSelectCondition {
+    pub type_filter: Option<String>,
+    pub property: Option<QSelectPropertyChoice>,
+    pub operator: QSelectOp,
+    pub value: String,
+}
+
+impl QSelectCondition {
+    pub fn validation_error(&self) -> Option<String> {
+        if self.type_filter.is_none() && self.property.is_none() {
+            return Some(crate::t!("Choose an object type or property.").into_owned());
+        }
+        let Some(property) = &self.property else { return None; };
+        if matches!(self.operator, QSelectOp::Any) { return None; }
+        if matches!(self.operator, QSelectOp::Gt | QSelectOp::Lt)
+            && !matches!(property.editor, QSelectValueEditor::Number) {
+            return Some(crate::t!("This operator requires a numeric property.").into_owned());
+        }
+        match &property.editor {
+            QSelectValueEditor::Number if crate::entities::common::parse_f64(&self.value)
+                .is_none_or(|value| !value.is_finite()) =>
+                Some(crate::t!("Enter a valid number.").into_owned()),
+            QSelectValueEditor::Choice(_) if self.value.is_empty() =>
+                Some(crate::t!("Choose a value.").into_owned()),
+            _ => None,
+        }
+    }
+}
+
+/// Quick Select editor and committed conditions (combined with AND).
 #[derive(Clone, Debug)]
 pub struct QSelectState {
+    pub conditions: Vec<QSelectCondition>,
+    pub editing_condition: Option<usize>,
     pub scope: QSelectScope,
     pub available_types: Vec<String>,
     pub available_properties: Vec<QSelectPropertyChoice>,
@@ -242,8 +274,30 @@ pub struct QSelectState {
     pub error: Option<String>,
 }
 
+impl QSelectState {
+    pub fn normalize_operator(&mut self) {
+        if matches!(self.operator, QSelectOp::Gt | QSelectOp::Lt)
+            && !self.property.as_ref().is_some_and(|property| {
+                matches!(property.editor, QSelectValueEditor::Number)
+            })
+        {
+            self.operator = QSelectOp::Eq;
+        }
+    }
+
+    pub fn draft_condition(&self) -> QSelectCondition {
+        QSelectCondition {
+            type_filter: self.type_filter.clone(),
+            property: self.property.clone(),
+            operator: self.operator,
+            value: self.value.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct QSelectSettings {
+    conditions: Vec<QSelectCondition>,
     scope: QSelectScope,
     type_filter: Option<String>,
     property_field: Option<String>,
@@ -256,6 +310,7 @@ struct QSelectSettings {
 impl From<&QSelectState> for QSelectSettings {
     fn from(state: &QSelectState) -> Self {
         Self {
+            conditions: state.conditions.clone(),
             scope: state.scope,
             type_filter: state.type_filter.clone(),
             property_field: state
@@ -3891,6 +3946,13 @@ pub enum Message {
     /// Append-to-current-selection toggle.
     QSelectSetAppend(bool),
     /// Apply the current filter and close the panel.
+    QSelectAddCondition,
+    /// Hide the filter and sample an object's filterable properties.
+    QSelectPickObject,
+    QSelectEditCondition(usize),
+    QSelectRemoveCondition(usize),
+    QSelectClearConditions,
+    QSelectCancelEdit,
     QSelectApply,
     /// The user clicked the title-bar ✕ (fires before the window closes).
     WindowCloseRequested(window::Id),
