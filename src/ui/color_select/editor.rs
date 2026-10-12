@@ -138,14 +138,25 @@ impl ColorEditor {
 
     /// `mode_end` sits at the far right of the mode buttons (the pipette);
     /// `hex_end` at the far right of the hex row (the nearest index colour).
+    /// The field view shows the hex value beside H, S and B and leaves out
+    /// `hex_end`; the slider views end on a hex row.
     pub fn view<'a>(
         &'a self,
         mode_end: Option<Element<'a, Message>>,
         hex_end: Option<Element<'a, Message>>,
     ) -> Element<'a, Message> {
-        let Hsb { h, s, b } = self.hsb;
-        let (r, g, bl) = self.rgb;
+        let view = column![self.mode_row(mode_end)].spacing(12);
+        match self.mode {
+            EditorMode::Hsb | EditorMode::Rgb => view
+                .push(self.slider_rows())
+                .push(self.hex_row(hex_end))
+                .into(),
+            EditorMode::Field => view.push(self.field_view()).into(),
+        }
+    }
 
+    /// HSB, RGB and the gradient-field button, with `end` at the far right.
+    fn mode_row<'a>(&self, end: Option<Element<'a, Message>>) -> Element<'a, Message> {
         let mode_button = |content: Element<'a, Message>, mode: EditorMode| {
             let active = self.mode == mode;
             button(container(content).center(Length::Fill))
@@ -189,32 +200,50 @@ impl ColorEditor {
             Space::new().width(Length::Fill),
         ]
         .spacing(6);
-        if let Some(end) = mode_end {
+        if let Some(end) = end {
             modes = modes.push(end);
         }
+        modes.into()
+    }
 
-        let hex = self
-            .hex_draft
-            .clone()
-            .unwrap_or_else(|| math::hex_string(r, g, bl));
-        let hex_field = move || {
-            row![
-                text(t!("Hex")).size(11).style(super::picker::muted_text),
-                text_input("", &hex)
-                    .on_input(|value| msg(EditorMsg::HexInput(value)))
-                    .on_submit(msg(EditorMsg::HexSubmit))
-                    .size(12)
-                    .font(iced::Font::MONOSPACE)
-                    .padding([5, 6])
-                    .width(Length::Fixed(74.0)),
+    /// Three gradient sliders: hue, saturation and brightness, or red, green
+    /// and blue.
+    fn slider_rows<'a>(&self) -> Element<'a, Message> {
+        let Hsb { h, s, b } = self.hsb;
+        let (r, g, bl) = self.rgb;
+        let rows = if self.mode == EditorMode::Rgb {
+            let ends = |lo: (u8, u8, u8), hi: (u8, u8, u8)| {
+                vec![(0.0, rgb_color(lo)), (1.0, rgb_color(hi))]
+            };
+            let byte = |f: fn(u8) -> EditorMsg| move |v: f32| f(v.round() as u8);
+            column![
+                channel(
+                    "R",
+                    f32::from(r),
+                    255.0,
+                    None,
+                    ends((0, g, bl), (255, g, bl)),
+                    byte(EditorMsg::Red)
+                ),
+                channel(
+                    "G",
+                    f32::from(g),
+                    255.0,
+                    None,
+                    ends((r, 0, bl), (r, 255, bl)),
+                    byte(EditorMsg::Green)
+                ),
+                channel(
+                    "B",
+                    f32::from(bl),
+                    255.0,
+                    None,
+                    ends((r, g, 0), (r, g, 255)),
+                    byte(EditorMsg::Blue)
+                ),
             ]
-            .spacing(8)
-            .align_y(iced::Center)
-        };
-        let field_mode = self.mode == EditorMode::Field;
-
-        let editor: Element<'a, Message> = match self.mode {
-            EditorMode::Hsb => column![
+        } else {
+            column![
                 channel("H", h, 360.0, Some('°'), hue_stops(), EditorMsg::Hue),
                 channel(
                     "S",
@@ -233,103 +262,85 @@ impl ColorEditor {
                     EditorMsg::Brightness,
                 ),
             ]
-            .spacing(ROW_GAP)
-            .into(),
-            EditorMode::Rgb => {
-                let ends = |lo: (u8, u8, u8), hi: (u8, u8, u8)| {
-                    vec![(0.0, rgb_color(lo)), (1.0, rgb_color(hi))]
-                };
-                let byte = |f: fn(u8) -> EditorMsg| move |v: f32| f(v.round() as u8);
-                column![
-                    channel(
-                        "R",
-                        f32::from(r),
-                        255.0,
-                        None,
-                        ends((0, g, bl), (255, g, bl)),
-                        byte(EditorMsg::Red)
-                    ),
-                    channel(
-                        "G",
-                        f32::from(g),
-                        255.0,
-                        None,
-                        ends((r, 0, bl), (r, 255, bl)),
-                        byte(EditorMsg::Green)
-                    ),
-                    channel(
-                        "B",
-                        f32::from(bl),
-                        255.0,
-                        None,
-                        ends((r, g, 0), (r, g, 255)),
-                        byte(EditorMsg::Blue)
-                    ),
-                ]
-                .spacing(ROW_GAP)
-                .into()
-            }
-            EditorMode::Field => {
-                let area =
-                    ColorArea::new(hsb_color(h, 1.0, 1.0), rgb_color(self.rgb), s, b, |s, b| {
-                        msg(EditorMsg::Field(s, b))
-                    })
-                    .height(Length::Fixed(FIELD_HEIGHT));
-                // A vertical slider grows upwards; the strip runs red at the top.
-                let strip = stack![
-                    container(Space::new())
-                        .width(STRIP_WIDTH)
-                        .height(FIELD_HEIGHT)
-                        .style(|_theme: &Theme| gradient_box(std::f32::consts::PI, &hue_stops())),
-                    vertical_slider(0.0..=360.0, 360.0 - h, |v| msg(EditorMsg::Hue(360.0 - v)))
-                        .width(STRIP_WIDTH)
-                        .height(FIELD_HEIGHT)
-                        .style(handle_style),
-                ];
-                let value = |letter: &'static str,
-                             v: f32,
-                             max: f32,
-                             unit: char,
-                             f: fn(f32) -> EditorMsg| {
-                    row![
-                        text(letter).size(12).font(iced::Font::MONOSPACE),
-                        number_box(v, max, Some(unit), f),
-                    ]
-                    .spacing(4)
-                    .align_y(iced::Center)
-                };
-                column![
-                    row![area, strip].spacing(12),
-                    // H, S and B on the left, the hex value on the right.
-                    row![
-                        value("H", h, 360.0, '°', EditorMsg::Hue),
-                        value("S", s * 100.0, 100.0, '%', EditorMsg::Saturation),
-                        value("B", b * 100.0, 100.0, '%', EditorMsg::Brightness),
-                        Space::new().width(Length::Fill),
-                        hex_field(),
-                    ]
-                    .spacing(10)
-                    .align_y(iced::Center),
-                ]
-                // 108 + 10 matches the slider views' 3 × 26 + 2 × 14 + 12.
-                .spacing(10)
-                .into()
-            }
         };
+        rows.spacing(ROW_GAP).into()
+    }
 
-        // The field view shows the hex value beside H, S and B and leaves out
-        // the nearest index colour; the slider views end on a hex row.
-        let mut view = column![modes, editor].spacing(12);
-        if !field_mode {
-            let mut hex_row = row![hex_field(), Space::new().width(Length::Fill)]
-                .spacing(8)
-                .align_y(iced::Center);
-            if let Some(end) = hex_end {
-                hex_row = hex_row.push(end);
-            }
-            view = view.push(hex_row);
+    /// The saturation/brightness field with its hue strip, and below it H, S
+    /// and B on the left and the hex value on the right.
+    fn field_view<'a>(&self) -> Element<'a, Message> {
+        let Hsb { h, s, b } = self.hsb;
+        let area = ColorArea::new(hsb_color(h, 1.0, 1.0), rgb_color(self.rgb), s, b, |s, b| {
+            msg(EditorMsg::Field(s, b))
+        })
+        .height(Length::Fixed(FIELD_HEIGHT));
+        // A vertical slider grows upwards; the strip runs red at the top.
+        let strip = stack![
+            container(Space::new())
+                .width(STRIP_WIDTH)
+                .height(FIELD_HEIGHT)
+                .style(|_theme: &Theme| gradient_box(std::f32::consts::PI, &hue_stops())),
+            vertical_slider(0.0..=360.0, 360.0 - h, |v| msg(EditorMsg::Hue(360.0 - v)))
+                .width(STRIP_WIDTH)
+                .height(FIELD_HEIGHT)
+                .style(handle_style),
+        ];
+        let value =
+            |letter: &'static str, v: f32, max: f32, unit: char, f: fn(f32) -> EditorMsg| {
+                row![
+                    text(letter).size(12).font(iced::Font::MONOSPACE),
+                    number_box(v, max, Some(unit), f),
+                ]
+                .spacing(4)
+                .align_y(iced::Center)
+            };
+        column![
+            row![area, strip].spacing(12),
+            row![
+                value("H", h, 360.0, '°', EditorMsg::Hue),
+                value("S", s * 100.0, 100.0, '%', EditorMsg::Saturation),
+                value("B", b * 100.0, 100.0, '%', EditorMsg::Brightness),
+                Space::new().width(Length::Fill),
+                self.hex_field(),
+            ]
+            .spacing(10)
+            .align_y(iced::Center),
+        ]
+        // 108 + 10 matches the slider views' 3 × 26 + 2 × 14 + 12.
+        .spacing(10)
+        .into()
+    }
+
+    /// The hex value with `end` (the nearest index colour) at the far right.
+    fn hex_row<'a>(&self, end: Option<Element<'a, Message>>) -> Element<'a, Message> {
+        let mut hex_row = row![self.hex_field(), Space::new().width(Length::Fill)]
+            .spacing(8)
+            .align_y(iced::Center);
+        if let Some(end) = end {
+            hex_row = hex_row.push(end);
         }
-        view.into()
+        hex_row.into()
+    }
+
+    fn hex_field<'a>(&self) -> Element<'a, Message> {
+        let (r, g, b) = self.rgb;
+        let hex = self
+            .hex_draft
+            .clone()
+            .unwrap_or_else(|| math::hex_string(r, g, b));
+        row![
+            text(t!("Hex")).size(11).style(super::picker::muted_text),
+            text_input("", &hex)
+                .on_input(|value| msg(EditorMsg::HexInput(value)))
+                .on_submit(msg(EditorMsg::HexSubmit))
+                .size(12)
+                .font(iced::Font::MONOSPACE)
+                .padding([5, 6])
+                .width(Length::Fixed(74.0)),
+        ]
+        .spacing(8)
+        .align_y(iced::Center)
+        .into()
     }
 }
 

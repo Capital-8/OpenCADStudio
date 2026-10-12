@@ -11039,13 +11039,16 @@ impl OpenCADStudio {
                     }
                     Some(crate::ui::color_select::Outcome::Screenshot) => {
                         use crate::ui::color_select::{eyedropper::EyedropperMsg, ColorPickerMsg};
-                        self.main_window.map_or_else(Task::none, |id| {
-                            iced::window::screenshot(id).map(|shot| {
+                        match self.main_window {
+                            Some(id) => iced::window::screenshot(id).map(|shot| {
                                 Message::ColorPicker(ColorPickerMsg::Eyedropper(
                                     EyedropperMsg::Shot(shot),
                                 ))
-                            })
-                        })
+                            }),
+                            // Nothing to capture: leave the eyedropper instead
+                            // of waiting for a screenshot that never comes.
+                            None => self.update(Message::ColorPicker(ColorPickerMsg::Cancel)),
+                        }
                     }
                     None => Task::none(),
                 }

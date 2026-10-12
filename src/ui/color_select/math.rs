@@ -78,12 +78,13 @@ pub fn nearest_aci(r: u8, g: u8, b: u8) -> u8 {
     codec::types::aci_table::nearest_aci(r, g, b)
 }
 
-/// `#RRGGBB`, upper case.
+/// `#RRGGBB`, upper case — the same format the Options hex fields store.
 pub fn hex_string(r: u8, g: u8, b: u8) -> String {
-    format!("#{r:02X}{g:02X}{b:02X}")
+    crate::app::config::rgb_to_hex([r, g, b])
 }
 
-/// Parse `#RRGGBB`, `RRGGBB`, `#RGB` or `RGB`.
+/// Parse `#RRGGBB`, `RRGGBB`, `#RGB` or `RGB`. Unlike `config::parse_hex`,
+/// which Options uses, this also accepts the short three-digit form.
 pub fn parse_hex(text: &str) -> Option<(u8, u8, u8)> {
     let digits = text.trim().trim_start_matches('#');
     if !digits.chars().all(|c| c.is_ascii_hexdigit()) {

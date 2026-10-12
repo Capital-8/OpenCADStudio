@@ -119,16 +119,19 @@ impl Eyedropper {
         let size = GRID as f32 * CELL + 8.0;
         let window_w = shot.size.width as f32 / shot.scale_factor;
         let window_h = shot.size.height as f32 / shot.scale_factor;
+        // In a very small window neither side fits; stay inside the top-left.
         let x = if cursor.x + OFFSET + size > window_w {
             cursor.x - OFFSET - size
         } else {
             cursor.x + OFFSET
-        };
+        }
+        .max(0.0);
         let y = if cursor.y + OFFSET + size + 20.0 > window_h {
             cursor.y - OFFSET - size - 20.0
         } else {
             cursor.y + OFFSET
-        };
+        }
+        .max(0.0);
         stack![catcher, pin(loupe).x(x).y(y)].into()
     }
 }

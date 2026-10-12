@@ -510,8 +510,8 @@ fn picker_msg(msg: ColorPickerMsg) -> Message {
 }
 
 fn ink_is_dark(color: Color) -> bool {
-    let byte = |c: f32| (c * 255.0).round() as u8;
-    math::ink_is_dark(byte(color.r), byte(color.g), byte(color.b))
+    let [r, g, b, _] = color.into_rgba8();
+    math::ink_is_dark(r, g, b)
 }
 
 fn filled(color: Color) -> container::Style {
