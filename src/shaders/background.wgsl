@@ -120,11 +120,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let horizon = clamp(u.background_params.y, 0.0, 1.0);
         let half_height = abs(u.background_params.z) * 0.5;
         if half_height <= 1e-6 {
-            // Two colours: one blend from the bottom to the top.
-            color = mix(u.background_bottom.rgb, u.background_top.rgb, coordinate);
+            // Two colours: one blend from the bottom to the top, over twice
+            // the viewport (the reference's two-colour gradient reaches the
+            // end colours a viewport beyond the edges).
+            color = mix(u.background_bottom.rgb, u.background_top.rgb, 0.25 + 0.5 * coordinate);
         } else {
-            let lower = smoothstep(horizon - half_height, horizon, coordinate);
-            let upper = smoothstep(horizon, horizon + half_height, coordinate);
+            let lower = clamp((coordinate - (horizon - half_height)) / half_height, 0.0, 1.0);
+            let upper = clamp((coordinate - horizon) / half_height, 0.0, 1.0);
             let low_color = mix(u.background_bottom.rgb, u.background_middle.rgb, lower);
             color = mix(low_color, u.background_top.rgb, upper);
         }
