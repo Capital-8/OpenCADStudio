@@ -9,8 +9,8 @@
 //
 // The web build has no system printers: `preview_page_pdf` /
 // `preview_pages_pdf` render the same PDF bytes, rasterise them, and show
-// the pages in an in-page overlay — the way AutoCAD previews plot output on
-// screen rather than handing a file to an external viewer.
+// the pages in an in-page overlay — the plot preview stays on screen
+// rather than handing a file to an external viewer.
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::io::pdf_export;

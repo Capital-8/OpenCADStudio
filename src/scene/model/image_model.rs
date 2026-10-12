@@ -721,10 +721,11 @@ fn decode_reference(path: &str) -> Option<DecodedImage> {
 /// exceed it run with `image::Limits` pinned to the budget, so the decoder
 /// errors instead of ballooning the heap; this module turns that error into a
 /// localized refusal (see `refusal_message`) — the pixels are simply not
-/// available at full size. Desktops have RAM to spare and rarely hit theirs;
+/// available at full size. Desktops have more headroom than a tab, but the
+/// whole decode transient lands at once, so it stays well below typical RAM;
 /// wasm lives inside a browser tab whose heap the decode must not pop.
 #[cfg(not(target_arch = "wasm32"))]
-const MAX_DECODE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+const MAX_DECODE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// wasm: 512 MB of decoded RGBA — comfortably inside a tab's heap.
 #[cfg(target_arch = "wasm32")]
 const MAX_DECODE_BYTES: u64 = 512 * 1024 * 1024;
@@ -836,11 +837,23 @@ fn tier_for_native(
         .saturating_mul(codec_factor)
         > max_decode_bytes
     {
+        return DecodeTier::OverBudget;
+    }
+    if pixels <= max_display_pixels {
+        return DecodeTier::Full;
+    }
+    // The downsample holds the decoded RGBA, the resize's vertical-pass
+    // intermediate (width × new height in RGBA f32, 16 B/px) and the output
+    // at once, so that sum must fit the budget too.
+    let (target_w, target_h) = downsample_to_cap(width, height, max_display_pixels);
+    let resize_peak = pixels
+        .saturating_mul(4)
+        .saturating_add((width as u64).saturating_mul(target_h as u64).saturating_mul(16))
+        .saturating_add(target_w as u64 * target_h as u64 * 4);
+    if resize_peak > max_decode_bytes {
         DecodeTier::OverBudget
-    } else if pixels > max_display_pixels {
-        DecodeTier::Downsample
     } else {
-        DecodeTier::Full
+        DecodeTier::Downsample
     }
 }
 
@@ -1524,7 +1537,10 @@ mod tests {
         assert_eq!(tier_for(64, 64, 1_000_000, 10_000), DecodeTier::Full);
         // Pixels over the display cap while RGBA stays within the decode
         // budget: decode, then downsample before storing.
-        assert_eq!(tier_for(400, 400, 1_000_000, 10_000), DecodeTier::Downsample);
+        assert_eq!(tier_for(400, 400, 2_000_000, 10_000), DecodeTier::Downsample);
+        // …unless the resize transient (decoded + f32 intermediate + output)
+        // is what overflows the budget.
+        assert_eq!(tier_for(400, 400, 1_000_000, 10_000), DecodeTier::OverBudget);
         // RGBA over the decode budget.
         assert_eq!(tier_for(2_000, 2_000, 1_000_000, 10_000), DecodeTier::OverBudget);
         // Exact boundary counts stay in the lower tier (limits are ">").

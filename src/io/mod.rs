@@ -2038,11 +2038,11 @@ pub async fn pick_plot_style() -> Result<Option<plot_style::PlotStyleTable>, Str
 /// Show a file-open dialog for raster images and decode the selected file.
 /// Returns `(path, pixel_width, pixel_height)` or an error string.
 ///
-/// The bytes are read through the dialog handle and registered against the
-/// returned path (name-only on the web — there is no filesystem behind it),
-/// mirroring the PDF-underlay pick. Decoding then comes from those bytes, and
-/// the entity the IMAGE command commits resolves through the same registry
-/// instead of a `image::open` on a path that only exists natively.
+/// On the web the bytes are read through the dialog handle and registered
+/// against the returned name-only path (there is no filesystem behind it),
+/// mirroring the PDF-underlay pick; decoding then comes from those bytes, and
+/// the entity the IMAGE command commits resolves through the same registry.
+/// Native decodes straight from the picked file.
 ///
 /// The filter names exactly the formats the `image` crate features build
 /// (Cargo.toml) — png/jpeg/bmp/tiff/webp/gif — and `io::web_drop` accepts the
@@ -2061,13 +2061,19 @@ pub async fn pick_image_file() -> Result<(PathBuf, u32, u32), String> {
         .await
         .ok_or_else(|| "Cancelled".to_string())?;
     let path = crate::sys::handle_path(&handle);
-    let bytes = std::sync::Arc::new(handle.read().await);
     let reference = path.to_string_lossy().into_owned();
     let short = std::path::Path::new(&reference)
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| reference.clone());
-    crate::scene::model::image_model::register_source(&reference, bytes);
+    // Web only: the name-only path has nothing behind it, so the bytes go
+    // into the registry. Native decodes from the file itself, so an edited
+    // image reloads and the bytes are not held for the session.
+    #[cfg(target_arch = "wasm32")]
+    crate::scene::model::image_model::register_source(
+        &reference,
+        std::sync::Arc::new(handle.read().await),
+    );
     let decoded = crate::scene::model::image_model::resolve_image(&reference).ok_or_else(|| {
         // An over-budget decode refusal explains itself (dims + limit);
         // anything else stays the generic unsupported/corrupt message.
