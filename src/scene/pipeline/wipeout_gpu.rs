@@ -172,23 +172,16 @@ impl WipeoutGpu {
         models: &[HatchModel],
         bgl1: &wgpu::BindGroupLayout,
     ) -> Vec<Self> {
-        let mut slots = rustc_hash::FxHashMap::default();
-        let mut groups: Vec<Vec<&HatchModel>> = Vec::new();
-        for (index, model) in models.iter().enumerate() {
-            let key = model
-                .render_instance
-                .map(|instance| (true, instance.source_id))
-                .unwrap_or((false, index as u64));
-            let slot = *slots.entry(key).or_insert_with(|| {
-                let slot = groups.len();
-                groups.push(Vec::new());
-                slot
-            });
-            groups[slot].push(model);
-        }
-        groups
-            .into_iter()
-            .map(|group| Self::new(device, queue, &group, bgl1))
+        // A source_id only identifies reusable render geometry, not an
+        // interchangeable hatch boundary in world space. Grouping masks by
+        // source_id can incorrectly reuse the first model's boundary, origin,
+        // plane and uniform for later INSERT copies. Unlike wires, a mask's
+        // GPU shader clips against its own boundary, so build each mask from
+        // its actual transformed model until we have a geometry-local,
+        // translation-safe instancing path.
+        models
+            .iter()
+            .map(|model| Self::new(device, queue, &[*model], bgl1))
             .collect()
     }
 
