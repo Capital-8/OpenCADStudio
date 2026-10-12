@@ -270,7 +270,7 @@ impl ColorEditor {
                         byte(EditorMsg::Blue)
                     ),
                 ]
-                .spacing(10)
+                .spacing(ROW_GAP)
                 .into()
             }
             EditorMode::Field => {
