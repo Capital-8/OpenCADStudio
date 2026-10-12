@@ -19,7 +19,7 @@ const STRIP_WIDTH: f32 = 22.0;
 /// at the same height in every mode: 3 × 26 + 2 × 14 + 12 = 108 + 10.
 const ROW_GAP: f32 = 14.0;
 const FIELD_HEIGHT: f32 = 108.0;
-const MODE_WIDTH: f32 = 44.0;
+const MODE_WIDTH: f32 = 40.0;
 const MODE_HEIGHT: f32 = 24.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -187,8 +187,8 @@ impl ColorEditor {
                 }
             });
         let mut modes = row![
-            mode_button(text("HSB").size(11).into(), EditorMode::Hsb),
-            mode_button(text("RGB").size(11).into(), EditorMode::Rgb),
+            mode_button(text("HSB").size(13).into(), EditorMode::Hsb),
+            mode_button(text("RGB").size(13).into(), EditorMode::Rgb),
             field_button,
             Space::new().width(Length::Fill),
         ]

@@ -397,11 +397,11 @@ impl ColorPicker {
             None
         } else {
             Some(
-                button(crate::ui::icons::themed(crate::ui::icons::EYEDROPPER, 14.0))
+                // Just the icon, without a button frame.
+                button(crate::ui::icons::themed(crate::ui::icons::EYEDROPPER, 24.0))
                     .on_press(picker_msg(ColorPickerMsg::Eyedropper(EyedropperMsg::Start)))
-                    .height(24)
-                    .padding([0, 7])
-                    .style(|theme: &Theme, status| toggle_style(theme, false, status))
+                    .padding(0)
+                    .style(|_theme: &Theme, _status| button::Style::default())
                     .into(),
             )
         };
