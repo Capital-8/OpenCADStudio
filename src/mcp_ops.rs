@@ -935,26 +935,20 @@ fn ty_schema(ty: &Ty) -> Value {
 }
 
 pub fn shared_defs() -> Value {
-    let batch_variants: Vec<Value> = OPS
-        .iter()
-        .filter(|op| op.batchable)
-        .map(|op| op_schema(op))
-        .collect();
-
-    json!({
+    let mut defs = json!({
         "point":  {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 3},
         "window": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
         "handle": {"type": "string", "pattern": "^(0[xX])?[0-9A-Fa-f]+$"},
-        "batch_step": {
-            "type": "object",
-            "properties": {
-                "op": {"type": "string"},
-                "document_id": {"type": "integer", "minimum": 0}
-            },
-            "required": ["op"],
-            "anyOf": batch_variants
-        }
-    })
+        "batch_step": batch_step_schema()
+    });
+    for op in OPS {
+        defs[format!("op_{}", op.name)] = op_schema(op);
+    }
+    defs
+}
+
+fn op_ref(op: &OpDef) -> Value {
+    json!({"$ref": format!("#/$defs/op_{}", op.name)})
 }
 
 fn rules_text(op: &OpDef) -> String {
@@ -996,7 +990,7 @@ pub fn op_schema(op: &OpDef) -> Value {
 }
 
 pub fn execute_request_schema() -> Value {
-    let variants: Vec<Value> = OPS.iter().map(|op| op_schema(op)).collect();
+    let variants: Vec<Value> = OPS.iter().map(|op| op_ref(op)).collect();
     let op_names: Vec<&str> = OPS.iter().map(|op| op.name).collect();
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1021,7 +1015,7 @@ pub fn batch_step_schema() -> Value {
     let batch_variants: Vec<Value> = OPS
         .iter()
         .filter(|op| op.batchable)
-        .map(|op| op_schema(op))
+        .map(|op| op_ref(op))
         .collect();
 
     json!({

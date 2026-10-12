@@ -53,8 +53,20 @@ def legacy(server: Path) -> None:
     assert names == TOOLS, names
     execute_request = definitions["ocs_execute"]["inputSchema"]["properties"]["request"]
     variants = execute_request.get("anyOf") or execute_request.get("oneOf")
-    assert len(variants) == 39
+    # Resolve local references from the complete tool input schema.
+    root = definitions["ocs_execute"]["inputSchema"]
+    def resolve(variant):
+        if "$ref" not in variant:
+            return variant
+        ref = variant["$ref"]
+        assert ref.startswith("#/")
+        resolved = root
+        for part in ref[2:].split("/"):
+            resolved = resolved[part.replace("~1", "/").replace("~0", "~")]
+        return resolved
+    variants = [resolve(variant) for variant in variants]
     op_enum = execute_request["properties"]["op"]["enum"]
+    assert len(variants) == len(op_enum)
     for shipped in ("entities_create", "entities_delete", "entities_transform",
                     "block_define", "block_delete", "file_identity", "xdata_set",
                     "view_focus", "wblock", "plot",
@@ -139,9 +151,12 @@ def modern(server: Path) -> None:
             "_meta": meta,
         },
     })
-    error = missing_cmd["result"]["structuredContent"]
-    assert error["code"] == "invalid_arguments"
-    assert "LINE 0,0 10,10" in error["error"]
+    # Tool errors are text content; the output schema covers successes only.
+    assert missing_cmd["result"]["isError"] is True
+    assert "structuredContent" not in missing_cmd["result"]
+    error = missing_cmd["result"]["content"][0]["text"]
+    assert "Missing cmd" in error
+    assert "LINE 0,0 10,10" in error
 
     invalid_mutation = request(process, {
         "jsonrpc": "2.0",
@@ -154,7 +169,8 @@ def modern(server: Path) -> None:
         },
     })
     assert invalid_mutation["result"]["isError"] is True
-    assert "request_id" in invalid_mutation["result"]["structuredContent"]["error"]
+    assert "structuredContent" not in invalid_mutation["result"]
+    assert "request_id" in invalid_mutation["result"]["content"][0]["text"]
 
     rejected = request(process, {
         "jsonrpc": "2.0",

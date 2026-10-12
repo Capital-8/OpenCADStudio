@@ -31,7 +31,7 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 ///
 /// `block_delete` gained its optional `force` parameter.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "c16572f139198d90807ede156370879106672ed97566c16ab6ae001c996059e8";
+const TOOL_SCHEMA_DIGEST: &str = "d597165afb46e8f067a77a3b827851b49be99d4739b15cf939b3be5b6c780bb1";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
@@ -2252,6 +2252,17 @@ fn execute_request_schema() -> Value {
     crate::mcp_ops::execute_request_schema()
 }
 
+// Local references resolve from the tool input schema root, not from request.
+fn execute_input_schema() -> Value {
+    let mut schema = json!({"type":"object","properties":{"ocs_session_id":{"type":"string","minLength":1,"description":"Value of session_id returned by ocs_sessions."},"request":execute_request_schema(),"wait_seconds":{"type":"number","minimum":0,"maximum":60,"default":30,"description":"Total time to wait for completion before returning."},"response_detail":{"type":"string","enum":["compact","changed_entities","full"],"default":"compact","description":"compact returns only state needed for the next edit; changed_entities also returns current geometry for changed handles; full preserves the complete editor state."}},"required":["ocs_session_id","request"],"additionalProperties":false});
+    let request = schema["properties"]["request"].as_object_mut().unwrap();
+    let defs = request.remove("$defs").unwrap();
+    let dialect = request.remove("$schema").unwrap();
+    schema["$defs"] = defs;
+    schema["$schema"] = dialect;
+    schema
+}
+
 fn read_output_schema() -> Value {
     json!({
         "type":"object",
@@ -2297,7 +2308,7 @@ pub(crate) fn tool_definitions() -> Value {
         {
             "name":"ocs_execute",
             "description":"Execute semantic OCS actions, batch drafting, and mutations. Supports batch creation (entities_create), reference image underlays (embed_image), block definitions (block_define), and block reference insertions (INSERT). MANDATORY: For architectural drafting, all doors and windows must be inserted as CAD blocks (type: INSERT), never loose lines.",
-            "inputSchema":{"type":"object","properties":{"ocs_session_id":{"type":"string","minLength":1,"description":"Value of session_id returned by ocs_sessions."},"request":execute_request_schema(),"wait_seconds":{"type":"number","minimum":0,"maximum":60,"default":30,"description":"Total time to wait for completion before returning."},"response_detail":{"type":"string","enum":["compact","changed_entities","full"],"default":"compact","description":"compact returns only state needed for the next edit; changed_entities also returns current geometry for changed handles; full preserves the complete editor state."}},"required":["ocs_session_id","request"],"additionalProperties":false},
+            "inputSchema":execute_input_schema(),
             "outputSchema":execute_output_schema(),
             "title":"Execute OCS action","annotations":{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":true,"openWorldHint":false}
         },
@@ -3030,6 +3041,11 @@ mod tests {
         let find_variant = |op_name: &str| {
             request_variants
                 .iter()
+                .map(|v| {
+                    tools[2]["inputSchema"]
+                        .pointer(v["$ref"].as_str().unwrap().strip_prefix('#').unwrap())
+                        .expect("operation reference resolves")
+                })
                 .find(|v| v["properties"]["op"]["enum"][0] == op_name)
                 .cloned()
                 .unwrap_or_else(|| panic!("variant for {op_name} exists"))
@@ -4264,6 +4280,65 @@ mod tests {
             err4.contains("operation 'stop' cannot be used in a batch step"),
             "{err4}"
         );
+    }
+
+    #[test]
+    fn execute_schema_shares_operations_and_resolves_local_references() {
+        fn check_refs(value: &Value, root: &Value) {
+            match value {
+                Value::Object(object) => {
+                    if let Some(reference) = object.get("$ref") {
+                        let pointer = reference.as_str().unwrap().strip_prefix('#').unwrap();
+                        assert!(root.pointer(pointer).is_some(), "unresolved {reference}");
+                    }
+                    for child in object.values() {
+                        check_refs(child, root);
+                    }
+                }
+                Value::Array(array) => {
+                    for child in array {
+                        check_refs(child, root);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let schema = execute_input_schema();
+        check_refs(&schema, &schema);
+        let standalone = execute_request_schema();
+        check_refs(&standalone, &standalone);
+        assert!(schema["properties"]["request"].get("$defs").is_none());
+        let variants = schema["properties"]["request"]["anyOf"].as_array().unwrap();
+        let batch = schema["$defs"]["batch_step"]["anyOf"].as_array().unwrap();
+        for (op, variant) in crate::mcp_ops::OPS.iter().zip(variants) {
+            assert_eq!(variant, &json!({"$ref":format!("#/$defs/op_{}", op.name)}));
+            assert_eq!(batch.contains(variant), op.batchable);
+            assert_eq!(
+                schema["$defs"][format!("op_{}", op.name)],
+                crate::mcp_ops::op_schema(op)
+            );
+        }
+
+        // Reconstruct the old duplicated layout using the same operation
+        // definitions, so the size comparison stays meaningful as ops evolve.
+        let mut old = standalone.clone();
+        old["anyOf"] = json!(crate::mcp_ops::OPS
+            .iter()
+            .map(|op| crate::mcp_ops::op_schema(op))
+            .collect::<Vec<_>>());
+        old["$defs"]["batch_step"]["anyOf"] = json!(crate::mcp_ops::OPS
+            .iter()
+            .filter(|op| op.batchable)
+            .map(|op| crate::mcp_ops::op_schema(op))
+            .collect::<Vec<_>>());
+        old["$defs"]
+            .as_object_mut()
+            .unwrap()
+            .retain(|key, _| !key.starts_with("op_"));
+        let before = old.to_string().len();
+        let after = standalone.to_string().len();
+        eprintln!("Execute request schema: {before} -> {after} bytes");
+        assert!(after * 100 < before * 70, "expected at least 30% reduction");
     }
 
     #[test]
