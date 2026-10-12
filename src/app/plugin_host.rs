@@ -149,6 +149,18 @@ impl<'a> HostSession<'a> {
         }
     }
 
+    /// Plugin-driven edits refresh the app-side selection caches exactly
+    /// like built-in edit paths: a selected entity's grip markers are cached
+    /// and would otherwise rest at their pre-edit positions (found by the
+    /// civil plugin's manual QA, 2026-10-12).
+    fn refresh_grips_of_active_tab(&mut self) {
+        // The grip cache mirrors the active tab's scene; a session may target
+        // a background tab, whose edits must not disturb it.
+        if self.tab == self.app.active_tab {
+            self.app.refresh_selected_grips();
+        }
+    }
+
     /// Recompute host-derived state for entities a script created or edited.
     fn normalize_scripted_entity(
         &self,
@@ -408,6 +420,7 @@ impl<'a> HostSession<'a> {
         self.app.sync_registered_layers(self.tab);
         if ok {
             self.publish_document_view();
+            self.refresh_grips_of_active_tab();
         }
         ok
     }
@@ -467,6 +480,7 @@ impl<'a> HostSession<'a> {
         self.app.sync_registered_layers(self.tab);
         self.set_dirty();
         self.publish_document_view();
+        self.refresh_grips_of_active_tab();
         Ok(())
     }
 
@@ -526,6 +540,7 @@ impl<'a> HostSession<'a> {
                 .update_entity(EntityType::Insert(insert));
             if removed {
                 self.publish_document_view();
+                self.refresh_grips_of_active_tab();
             }
             return removed;
         }
@@ -550,6 +565,7 @@ impl<'a> HostSession<'a> {
                 }
             }
             self.publish_document_view();
+            self.refresh_grips_of_active_tab();
         }
         removed
     }
@@ -13421,6 +13437,194 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
 
         // Removing an already-gone handle reports false.
         assert!(!host.remove_entity(h));
+    }
+
+    #[test]
+    fn update_entity_refreshes_selected_grips() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let handle = {
+            let mut host = HostSession::new(&mut app, 0);
+            let mut line = codec::entities::Line::new();
+            line.start = codec::types::Vector3::new(1.0, 1.0, 0.0);
+            line.end = codec::types::Vector3::new(3.0, 1.0, 0.0);
+            let handle = host.add_entity(EntityType::Line(line));
+            host.set_selection(&[handle]).unwrap();
+            handle
+        };
+        // A real selection event rebuilt the grip cache the way the app's
+        // own paths do.
+        app.refresh_selected_grips();
+        assert_eq!(app.tabs[0].selected_grips.len(), 3);
+        assert_eq!(
+            app.tabs[0]
+                .selected_grips
+                .iter()
+                .map(|grip| grip.world)
+                .collect::<Vec<_>>(),
+            vec![
+                glam::DVec3::new(1.0, 1.0, 0.0),
+                glam::DVec3::new(3.0, 1.0, 0.0),
+                glam::DVec3::new(2.0, 1.0, 0.0),
+            ]
+        );
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            let mut edited = host.document().get_entity(handle).cloned().unwrap();
+            if let EntityType::Line(line) = &mut edited {
+                line.start = codec::types::Vector3::new(101.0, 1.0, 0.0);
+                line.end = codec::types::Vector3::new(103.0, 1.0, 0.0);
+            }
+            assert!(host.update_entity(edited));
+        }
+        // The cached grip markers must sit on the refreshed geometry, not at
+        // their pre-edit positions.
+        assert_eq!(
+            app.tabs[0]
+                .selected_grips
+                .iter()
+                .map(|grip| grip.world)
+                .collect::<Vec<_>>(),
+            vec![
+                glam::DVec3::new(101.0, 1.0, 0.0),
+                glam::DVec3::new(103.0, 1.0, 0.0),
+                glam::DVec3::new(102.0, 1.0, 0.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn update_entities_transaction_refreshes_selected_grips() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let handle = {
+            let mut host = HostSession::new(&mut app, 0);
+            let mut line = codec::entities::Line::new();
+            line.start = codec::types::Vector3::new(0.0, 0.0, 0.0);
+            line.end = codec::types::Vector3::new(2.0, 0.0, 0.0);
+            let handle = host.add_entity(EntityType::Line(line));
+            host.set_selection(&[handle]).unwrap();
+            handle
+        };
+        app.refresh_selected_grips();
+        assert_eq!(app.tabs[0].selected_grips.len(), 3);
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            let mut edited = host.document().get_entity(handle).cloned().unwrap();
+            if let EntityType::Line(line) = &mut edited {
+                line.start = codec::types::Vector3::new(50.0, 0.0, 0.0);
+                line.end = codec::types::Vector3::new(52.0, 0.0, 0.0);
+            }
+            host.update_entities_transaction("Move line", vec![edited])
+                .unwrap();
+        }
+        app.finish_pending_history(0);
+        assert_eq!(
+            app.tabs[0]
+                .selected_grips
+                .iter()
+                .map(|grip| grip.world)
+                .collect::<Vec<_>>(),
+            vec![
+                glam::DVec3::new(50.0, 0.0, 0.0),
+                glam::DVec3::new(52.0, 0.0, 0.0),
+                glam::DVec3::new(51.0, 0.0, 0.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn remove_entity_clears_selected_grips_of_removed_entity() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let handle = {
+            let mut host = HostSession::new(&mut app, 0);
+            let mut line = codec::entities::Line::new();
+            line.start = codec::types::Vector3::new(1.0, 1.0, 0.0);
+            line.end = codec::types::Vector3::new(3.0, 1.0, 0.0);
+            let handle = host.add_entity(EntityType::Line(line));
+            host.set_selection(&[handle]).unwrap();
+            handle
+        };
+        app.refresh_selected_grips();
+        assert_eq!(app.tabs[0].selected_grips.len(), 3);
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            assert!(host.remove_entity(handle));
+        }
+        // Erase deselects the handle; the grip cache must drop the markers
+        // of the removed entity instead of keeping them until the next
+        // selection event.
+        assert!(app.tabs[0].selected_grips.is_empty());
+    }
+
+    #[test]
+    fn update_entity_without_selection_keeps_grip_cache_empty() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let handle = {
+            let mut host = HostSession::new(&mut app, 0);
+            let mut line = codec::entities::Line::new();
+            line.start = codec::types::Vector3::new(1.0, 1.0, 0.0);
+            line.end = codec::types::Vector3::new(3.0, 1.0, 0.0);
+            host.add_entity(EntityType::Line(line))
+        };
+        app.refresh_selected_grips();
+        assert!(app.tabs[0].selected_grips.is_empty());
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            let mut edited = host.document().get_entity(handle).cloned().unwrap();
+            if let EntityType::Line(line) = &mut edited {
+                line.start = codec::types::Vector3::new(10.0, 1.0, 0.0);
+            }
+            // Still succeeds; nothing was selected, so no panic, no phantom
+            // grips.
+            assert!(host.update_entity(edited));
+        }
+        assert!(app.tabs[0].selected_grips.is_empty());
+    }
+
+    #[test]
+    fn background_tab_update_leaves_active_grips_untouched() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let _handle = {
+            let mut host = HostSession::new(&mut app, 0);
+            let mut line = codec::entities::Line::new();
+            line.start = codec::types::Vector3::new(1.0, 1.0, 0.0);
+            line.end = codec::types::Vector3::new(3.0, 1.0, 0.0);
+            let handle = host.add_entity(EntityType::Line(line));
+            host.set_selection(&[handle]).unwrap();
+            handle
+        };
+        app.refresh_selected_grips();
+        assert_eq!(app.tabs[0].selected_grips.len(), 3);
+        // Mark one cached grip so an accidental refresh (which would rebuild
+        // it from the active tab's unchanged scene) is observable.
+        app.tabs[0].selected_grips[0].world = glam::DVec3::new(999.0, 999.0, 0.0);
+        // A second document tab is background while tab 0 stays active.
+        app.push_test_document();
+        assert_eq!(app.active_tab, 0);
+        {
+            let mut host = HostSession::new(&mut app, 1);
+            let mut line = codec::entities::Line::new();
+            line.start = codec::types::Vector3::new(100.0, 100.0, 0.0);
+            line.end = codec::types::Vector3::new(102.0, 100.0, 0.0);
+            let background = host.add_entity(EntityType::Line(line));
+            host.set_selection(&[background]).unwrap();
+            let mut edited = host.document().get_entity(background).cloned().unwrap();
+            if let EntityType::Line(line) = &mut edited {
+                line.start = codec::types::Vector3::new(200.0, 100.0, 0.0);
+            }
+            assert!(host.update_entity(edited));
+        }
+        // The background-tab session neither refreshed nor disturbed the
+        // active tab's cached grips.
+        assert_eq!(
+            app.tabs[0].selected_grips[0].world,
+            glam::DVec3::new(999.0, 999.0, 0.0)
+        );
+        assert_eq!(app.tabs[0].selected_grips.len(), 3);
     }
 
     /// A plugin command: second point commits a Point and ends.
