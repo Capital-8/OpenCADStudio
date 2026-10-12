@@ -947,6 +947,14 @@ impl Scene {
         &mut self,
         options: CreateBlockOptions,
     ) -> Result<Handle, String> {
+        // Base-point contract: the contents are stored *relative to the picked
+        // base* because `world_to_block` already subtracts it, so the
+        // definition's own `Block.base_point` stays ZERO and the picked base
+        // becomes the block origin (inserting at a point puts that point where
+        // the base was). Callers must not also store the picked base in the
+        // definition — that would subtract it twice. Imported definitions,
+        // whose geometry arrives relative to their own base point, keep that
+        // base point and are never rewritten here.
         let name = options.name.trim();
         if name.is_empty() {
             return Err("Block name cannot be empty.".into());
@@ -988,6 +996,11 @@ impl Scene {
             // Update existing Block entity fields
             if let Some(EntityType::Block(b)) = self.document.get_entity_mut(existing_blk_h) {
                 b.description = options.description.clone();
+                // The new contents are baked relative to the picked base (see
+                // the contract above), so the definition's base point has to
+                // go back to ZERO. Leaving an imported definition's non-zero
+                // base point here would subtract the picked base twice.
+                b.base_point = codec::types::Vector3::ZERO;
             }
             if options.annotative {
                 let annotative_vals = vec![codec::xdata::XDataValue::Integer16(1)];

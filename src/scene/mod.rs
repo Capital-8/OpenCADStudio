@@ -26,6 +26,8 @@ pub enum BlockScalePolicy {
 
 // Topic submodules split out of this root (each contributes `impl Scene`
 // blocks and/or free functions). Pure text-move from the original mod.rs.
+#[cfg(test)]
+mod block_base_point_tests;
 mod boundary;
 mod camera_ops;
 pub(crate) mod centerline;

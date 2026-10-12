@@ -2269,8 +2269,8 @@ impl OpenCADStudio {
         let host = self.tabs[i].scene.document.header.insertion_units;
         let k = crate::app::properties::insert_unit_scale(host, units).unwrap_or(1.0);
         let mut insert = codec::entities::Insert::new(name.to_string(), at).with_scale(k, k, k);
-        let transform = insert.get_transform();
         let doc = &self.tabs[i].scene.document;
+        let transform = crate::scene::render_graph::insert_transform(doc, &insert);
         let attdefs: Vec<codec::entities::AttributeDefinition> = doc
             .block_records
             .get(name)

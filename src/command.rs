@@ -3035,6 +3035,11 @@ pub trait CadCommand: Send {
         None
     }
 
+    /// Supply the referenced block's insertion base point so the attributes
+    /// the command now owns are placed through the same base-point convention
+    /// as the render path. Default: no-op (no base point).
+    fn attreq_set_block_base(&mut self, _base: codec::types::Vector3) {}
+
     /// After the host commits an ATTREQ insert: keep the command running
     /// (repeated placement) instead of ending it.
     fn attreq_continue(&self) -> bool {

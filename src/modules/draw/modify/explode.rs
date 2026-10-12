@@ -23,8 +23,8 @@ use codec::entities::{
 };
 use codec::entities::{Polyline, Polyline2D};
 use codec::tables::BlockRecord;
-use codec::types::Vector3;
-use codec::{CadDocument, EntityType, Handle};
+use codec::types::{Transform, Vector3};
+use codec::{CadDocument, Entity, EntityType, Handle};
 
 use crate::command::{CadCommand, CmdResult, WorkingPlane};
 use crate::entities::curve::lwpolyline_world_xy;
@@ -106,7 +106,24 @@ pub fn explode_entity(entity: &EntityType, document: &CadDocument) -> Vec<Entity
             if !explodable {
                 vec![]
             } else {
-                ins.explode_from_document(document)
+                // The codec applies only `Insert::get_transform`, which does
+                // not know the block's base point, so shift the definition's
+                // contents by -base first: get_transform(P - base) is exactly
+                // world = insert_point + Rot*Scale*(P - base), the placement
+                // the render path uses. MINSERT cells and nested references
+                // get the same treatment because the shift happens on the
+                // contents, not on the insert.
+                let base = crate::scene::render_graph::block_base_point(document, &ins.block_name);
+                let to_block = Transform::from_translation(Vector3::new(-base.x, -base.y, -base.z));
+                let entities: Vec<EntityType> = document
+                    .entities_in_block(&ins.block_name)
+                    .map(|entity| {
+                        let mut shifted = entity.clone();
+                        Entity::apply_transform(shifted.as_entity_mut(), &to_block);
+                        shifted
+                    })
+                    .collect();
+                ins.explode(&entities)
                     .into_iter()
                     .map(normalize_insert_entity)
                     .collect()

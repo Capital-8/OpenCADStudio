@@ -506,7 +506,11 @@ impl Scene {
 
         // ATTRIBs live inline on each INSERT in that reference's owner space.
         // Conjugate the block-local reframe through the INSERT transform:
-        // owner' = M · local_from_old · M⁻¹ · owner.
+        // owner' = M · local_from_old · M⁻¹ · owner. M is the block-local →
+        // world map the render path uses (`insert_transform`), because that is
+        // the map the attribute positions on the INSERT were placed through;
+        // the codec's base-ignoring transform would conjugate them through a
+        // displaced frame whenever the definition has a non-zero base point.
         let references: Vec<(Handle, codec::types::Transform)> = self
             .document
             .entities()
@@ -516,7 +520,8 @@ impl Scene {
                         && !reference.attributes.is_empty()
                         && !owned.contains(&reference.common.handle) =>
                 {
-                    let insertion = reference.get_transform();
+                    let insertion =
+                        crate::scene::render_graph::insert_transform(&self.document, reference);
                     let inverse = inverse_affine(&insertion)?;
                     Some((
                         reference.common.handle,

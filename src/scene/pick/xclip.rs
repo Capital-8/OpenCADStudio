@@ -250,7 +250,12 @@ pub fn set_insert_clip(
     let Some(codec::EntityType::Insert(ins)) = doc.get_entity(insert) else {
         return false;
     };
-    let t = ins.get_transform().matrix.m;
+    // The stored inverse is the inverse of the transform every consumer
+    // composes the boundary back with — the base-point-aware instance
+    // transform the render path uses. Storing the codec's base-ignoring
+    // inverse would displace the ring by exactly -base on the next render.
+    let forward = crate::scene::render_graph::insert_transform(doc, ins);
+    let t = forward.matrix.m;
     let forward = glam::DMat4::from_cols_array_2d(&[
         [t[0][0], t[1][0], t[2][0], t[3][0]],
         [t[0][1], t[1][1], t[2][1], t[3][1]],

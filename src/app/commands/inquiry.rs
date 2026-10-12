@@ -809,12 +809,19 @@ impl OpenCADStudio {
                 };
 
                 // Build the INSERT's full placement transform (OCS + rotation +
-                // scale, including non-uniform / mirrored) and its inverse, so
-                // edits round-trip back to block-local coordinates on SAVE.
+                // scale, including non-uniform / mirrored, minus the block base
+                // point) and its inverse, so edits round-trip back to
+                // block-local coordinates on SAVE. The base point is part of
+                // the placement: without it the working copy sits Rot*Scale*base
+                // away from the reference the user picked.
                 let sx = insert.x_scale();
                 let sy = insert.y_scale();
                 let sz = insert.z_scale();
-                let forward = insert.get_transform();
+                let base = crate::scene::render_graph::block_base_point(
+                    &self.tabs[i].scene.document,
+                    &insert.block_name,
+                );
+                let forward = crate::scene::render_graph::insert_transform_with_base(&insert, base);
                 let inverse = {
                     use codec::types::{Matrix3, Matrix4, Transform};
                     let ocs_t =
@@ -826,8 +833,11 @@ impl OpenCADStudio {
                     );
                     let r_inv = Matrix4::rotation_z(-insert.rotation);
                     let s_inv = Matrix4::scaling(1.0 / sx, 1.0 / sy, 1.0 / sz);
-                    // inverse(OCS·T·R·S) = S⁻¹·R⁻¹·T⁻¹·OCSᵀ
-                    Transform::from_matrix(s_inv * r_inv * t_inv * ocs_t)
+                    // inverse(T(-base)·OCS·T·R·S) = T(+base)·S⁻¹·R⁻¹·T⁻¹·OCSᵀ
+                    Transform::from_matrix(
+                        Matrix4::translation(base.x, base.y, base.z)
+                            * (s_inv * r_inv * t_inv * ocs_t),
+                    )
                 };
 
                 // Find the block record.

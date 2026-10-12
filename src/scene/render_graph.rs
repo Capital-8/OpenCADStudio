@@ -688,7 +688,14 @@ pub(crate) fn clear_dim_picture_placement(entity: &mut EntityType) {
 }
 
 pub fn insert_transform(document: &CadDocument, insert: &Insert) -> Transform {
-    let base = block_base_point(document, &insert.block_name);
+    insert_transform_with_base(insert, block_base_point(document, &insert.block_name))
+}
+
+/// [`insert_transform`] for a caller that already resolved the block's base
+/// point (the `-INSERT` command builds the INSERT before the drawing is in
+/// scope), so the base-point convention lives in exactly one place:
+/// world = insert_point + Rot(rotation) * Scale * (P - base).
+pub fn insert_transform_with_base(insert: &Insert, base: Vector3) -> Transform {
     Transform::from_translation(Vector3::new(-base.x, -base.y, -base.z))
         .then(&insert.get_transform())
 }

@@ -5017,9 +5017,16 @@ impl OpenCADStudio {
             }
             Message::BlockDefNameSelect(chosen) => {
                 if let Some(state) = self.block_definition.as_mut() {
-                    state.name = chosen;
+                    state.name = chosen.clone();
                     state.error_message = None;
                     state.confirm_redefine = None;
+                    // Redefining an existing block starts from the base point
+                    // that definition already has (0.0000 for a new block).
+                    let base = crate::scene::render_graph::block_base_point(
+                        &self.tabs[self.active_tab].scene.document,
+                        &chosen,
+                    );
+                    state.set_base_point(glam::DVec3::new(base.x, base.y, base.z));
                 }
                 Task::none()
             }
