@@ -2982,7 +2982,8 @@ impl Scene {
                     2.0,
                     background.horizon as f32,
                     background.height as f32,
-                    background.rotation as f32,
+                    // Stored in degrees.
+                    (background.rotation as f32).to_radians(),
                 ];
                 result
             }

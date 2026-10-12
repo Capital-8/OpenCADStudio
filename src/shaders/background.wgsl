@@ -108,15 +108,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if mode == 1u {
         color = u.viewport_background.rgb;
     } else if mode == 2u {
+        // Bottom to top across the viewport, the "up" direction turned
+        // counter-clockwise by the rotation; in pixels, so the angle holds
+        // whatever the viewport's shape, and spanning corner to corner.
         let angle = u.background_params.w;
-        let axis = vec2<f32>(-sin(angle), cos(angle));
-        let coordinate = dot(in.uv - vec2<f32>(0.5), axis) + 0.5;
+        let up = vec2<f32>(-sin(angle), cos(angle));
+        let size = max(u.viewport_size, vec2<f32>(1.0));
+        let pixel = (vec2<f32>(in.uv.x, 1.0 - in.uv.y) - vec2<f32>(0.5)) * size;
+        let extent = max(abs(up.x) * size.x + abs(up.y) * size.y, 1.0);
+        let coordinate = clamp(dot(pixel, up) / extent + 0.5, 0.0, 1.0);
         let horizon = clamp(u.background_params.y, 0.0, 1.0);
-        let half_height = max(abs(u.background_params.z) * 0.5, 1e-3);
-        let lower = smoothstep(horizon - half_height, horizon, coordinate);
-        let upper = smoothstep(horizon, horizon + half_height, coordinate);
-        let low_color = mix(u.background_bottom.rgb, u.background_middle.rgb, lower);
-        color = mix(low_color, u.background_top.rgb, upper);
+        let half_height = abs(u.background_params.z) * 0.5;
+        if half_height <= 1e-6 {
+            // Two colours: one blend from the bottom to the top.
+            color = mix(u.background_bottom.rgb, u.background_top.rgb, coordinate);
+        } else {
+            let lower = smoothstep(horizon - half_height, horizon, coordinate);
+            let upper = smoothstep(horizon, horizon + half_height, coordinate);
+            let low_color = mix(u.background_bottom.rgb, u.background_middle.rgb, lower);
+            color = mix(low_color, u.background_top.rgb, upper);
+        }
     } else if mode == 3u {
         let direction = world_direction(in.ndc);
         if direction.z >= 0.0 {
