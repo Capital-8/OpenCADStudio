@@ -4423,6 +4423,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <layer> = تجميد | T <layer> = إلغاء التجميد | Enter = خروج
 
 view =
+    .color-scheme-set-to-system-currently-name = تم تعيين نظام الألوان على "النظام" (حاليًا __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = يتطلب عددًا صحيحًا بين __ocs_fmt_0__ و __ocs_fmt_1__.
     .ss-new-sheet = New Sheet

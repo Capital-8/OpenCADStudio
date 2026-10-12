@@ -4410,6 +4410,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER F <layer> = Jäädytys | T <layer> = Sulatus | Enter = Poistu
 
 view =
+    .color-scheme-set-to-system-currently-name = Väriteema asetettu arvoon "Järjestelmä" (tällä hetkellä __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Vaatii kokonaisluvun väliltä __ocs_fmt_0__–__ocs_fmt_1__.
     .ss-new-sheet = New Sheet

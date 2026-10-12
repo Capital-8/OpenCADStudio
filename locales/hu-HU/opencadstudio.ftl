@@ -4421,6 +4421,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER F <layer> = Fagyasztás | T <layer> = Felengedés | Enter = Kilépés
 
 view =
+    .color-scheme-set-to-system-currently-name = Színséma beállítva: „Rendszer” (jelenleg __ocs_fmt_0__).
     .ss-create-sheet-set = Tervlapkészlet létrehozása
     .ss-requires-integer-between = __ocs_fmt_0__ és __ocs_fmt_1__ közötti egész szám szükséges.
     .ss-new-sheet = Új tervlap

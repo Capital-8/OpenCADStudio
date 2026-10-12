@@ -1162,6 +1162,8 @@ common =
     .save-block-as = Save Block As
     .save-data-extraction = Save Data Extraction
     .csv = CSV
+    .csv-files = CSV Files
+    .link-a-csv-data-source = Link a CSV data source
     .export-stl = Export STL
     .stl-files = STL Files
     .export-step-ap203 = Export STEP AP203
@@ -4415,6 +4417,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <layer> = Freeze  |  T <layer> = Thaw  |  Enter = Exit
 
 view =
+    .color-scheme-set-to-system-currently-name = Color scheme set to 'System' (currently __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Requires an integer between __ocs_fmt_0__ and __ocs_fmt_1__.
     .ss-new-sheet = New Sheet

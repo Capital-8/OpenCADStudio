@@ -4411,6 +4411,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <camada> = Congelar | T <camada> = Descongelar | Enter = Sair
 
 view =
+    .color-scheme-set-to-system-currently-name = Esquema de cores definido como "Sistema" (atualmente __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Requer um número inteiro entre __ocs_fmt_0__ e __ocs_fmt_1__.
     .ss-new-sheet = New Sheet

@@ -4371,6 +4371,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <layer> = Dondur | T <layer> = Çöz | Enter = Çık
 
 view =
+    .color-scheme-set-to-system-currently-name = Renk düzeni 'Sistem' olarak ayarlandı (şu anda __ocs_fmt_0__).
     .ss-create-sheet-set = Sayfa Kümesi Oluştur
     .ss-requires-integer-between = __ocs_fmt_0__ ile __ocs_fmt_1__ arasında bir tam sayı gerekir.
     .ss-new-sheet = Yeni Sayfa

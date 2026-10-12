@@ -4399,6 +4399,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER F <लेयर> = फ़्रीज़ | T <लेयर> = थॉ | Enter = बाहर निकलें
 
 view =
+    .color-scheme-set-to-system-currently-name = रंग योजना 'सिस्टम' पर सेट की गई (वर्तमान में __ocs_fmt_0__)।
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = __ocs_fmt_0__ और __ocs_fmt_1__ के बीच एक पूर्णांक आवश्यक है।
     .ss-new-sheet = New Sheet

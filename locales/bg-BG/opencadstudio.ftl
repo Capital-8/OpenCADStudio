@@ -4410,6 +4410,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <слой> = Замрази  |  T <слой> = Размрази  |  Enter = Изход
 
 view =
+    .color-scheme-set-to-system-currently-name = Цветовата схема е зададена на „Системна“ (в момента __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Изисква се цяло число между __ocs_fmt_0__ и __ocs_fmt_1__.
     .ss-new-sheet = New Sheet

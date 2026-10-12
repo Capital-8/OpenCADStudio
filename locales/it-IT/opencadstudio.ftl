@@ -4410,6 +4410,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER F <layer> = Congela | T <layer> = Scongela | Enter = Esci
 
 view =
+    .color-scheme-set-to-system-currently-name = Combinazione colori impostata su "Sistema" (attualmente __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Richiede un numero intero compreso tra __ocs_fmt_0__ e __ocs_fmt_1__.
     .ss-new-sheet = New Sheet

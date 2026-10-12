@@ -4394,6 +4394,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <图层> = 冻结  |  T <图层> = 解冻  |  Enter = 退出
 
 view =
+    .color-scheme-set-to-system-currently-name = 颜色方案已设为“系统”（当前：__ocs_fmt_0__）。
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = 需要介于 __ocs_fmt_0__ 和 __ocs_fmt_1__ 之间的整数。
     .ss-new-sheet = New Sheet

@@ -4399,6 +4399,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <layer> = フリーズ  |  T <layer> = フリーズ解除  |  Enter = 終了
 
 view =
+    .color-scheme-set-to-system-currently-name = カラースキームを「システム」に設定しました（現在: __ocs_fmt_0__）。
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = __ocs_fmt_0__ から __ocs_fmt_1__ までの整数が必要です。
     .ss-new-sheet = New Sheet

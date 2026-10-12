@@ -4411,6 +4411,7 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <επίπεδο> = Πάγωμα  |  T <επίπεδο> = Ξεπάγωμα  |  Enter = Έξοδος
 
 view =
+    .color-scheme-set-to-system-currently-name = Ο χρωματικός συνδυασμός ρυθμίστηκε σε „Σύστημα“ (αυτή τη στιγμή __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Απαιτείται ακέραιος αριθμός μεταξύ __ocs_fmt_0__ και __ocs_fmt_1__.
     .ss-new-sheet = New Sheet
