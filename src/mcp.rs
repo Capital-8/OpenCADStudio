@@ -31,7 +31,7 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 ///
 /// `block_delete` gained its optional `force` parameter.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "7b0660f06aac861ac7892334e11694d18b17c71fbba9819f24091d90a71908ac";
+const TOOL_SCHEMA_DIGEST: &str = "1cd356f6b9352458e8318c1424722ec3d8d2e4730dc89ac339dfdecafc5dee9f";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
@@ -39,7 +39,7 @@ const CACHE_TTL_MS: u64 = 3_600_000;
 /// land. Tools and discovery are static by comparison, so they keep the hour.
 const RESOURCE_TTL_MS: u64 = 60_000;
 const TASK_TTL_MS: u64 = 3_600_000;
-pub(crate) const INSTRUCTIONS: &str = "Call ocs_sessions, then pass its session_id as ocs_session_id to ocs_read, ocs_execute and ocs_capture. Read capabilities to discover the complete CAD automation surface. Call record_schema to discover every record type, property path, JSON type, enum, unit, constraint and write rule before editing unfamiliar data. Use records to inspect every serializable entity, object, table, header and document record; filter with RFC 6901 JSON Pointer paths. Use set_properties for atomic, type-checked record edits and preserve document_id, revision and request_id. Use commands with parameters.name for a command manifest. Use batch when several steps are known, and request changed_entities when resulting geometry is needed. For interactive work, call start and follow state.command.accepts, options and input_example. To have the person at the screen pick entities for you, call user_select and keep polling until it completes; running means they are still picking. A run.cmd contains the command name followed by prompt answers separated by spaces; points use x,y or x,y,z. After a timeout, query the existing operation and never replay a mutation with a new request_id. waiting_input and running are not completion. Let OCS and its geometry kernel calculate geometry; use query near, contains_point and intersections for exact relationships. ARCHITECTURAL VECTORIZATION DIRECTIVE: When converting or vectorizing a floorplan from an image or sketch: 1. Attach reference images as Xref underlays via embed_image on layer _XREF and lock it. 2. NEVER draw loose lines or arcs for doors or windows; always query records (collection: 'block_records') and insert Block References (type: 'INSERT') on A-DOOR and A-GLAZ. If a block is missing, draft standard geometry at origin (0,0) and register it with block_define before inserting. 3. Categorize layers cleanly: A-WALL-EXTR, A-WALL-INTR, A-WALL-HATCH, A-DOOR, A-GLAZ, A-ANNO-TEXT, A-ANNO-DIMS. 4. Always verify drafted geometry using ocs_capture with annotate: true (Set-of-Marks entity IDs) and diff: true (visual dirty streaming). ocs_capture operates quietly in background and overlapped window states without stealing user focus. Viewports and captured snapshots are available as MCP resources under cad://session/{session_id}/viewport.png and cad://session/{session_id}/snapshot/{hash}.png; ocs_capture accepts delivery: 'resource' to avoid large inline base64 payloads, supplies standardized spatial grounding in _spatial, supports diff: true for streaming dirty visual regions, and provides multiscale DeepZoom pyramidal tiling via tile: {level, x, y} or cad://session/{session_id}/pyramid/manifest.json and cad://session/{session_id}/tile/{level}/{x}/{y}.png. Before delivery call audit with the intended target_format and target_version; use save_verified with an explicit absolute path to save, reopen, hash and compare the semantic manifest. When you first connect, announce the build you are working with to the user from the `bridge` object on ocs_sessions states and hello/capabilities responses (OpenCADStudio version, build_rev, tool_schema digest); repeat the announcement if a later handshake reports a different build.";
+pub(crate) const INSTRUCTIONS: &str = "Call ocs_sessions and pass session_id as ocs_session_id. Read capabilities and record_schema before unfamiliar operations. Preserve document_id, revision and request_id. After a timeout query the existing operation; never replay a mutation with a new request_id. running and waiting_input are not completion: follow state.command.accepts, options and input_example. Let the geometry kernel calculate geometry. Before delivery audit the target format/version and use save_verified with an absolute path. Announce the bridge build on first connection and when it changes. Use batch with response_detail: summary for known steps; bindings can reuse earlier results. Read guides on demand via cad://guides/{name} or ocs_read op: guide with parameters.name: workflow, architecture, capture, batch-bindings. Read architecture before floorplan vectorization and capture before advanced visual verification. Omit parameters.name to list guides.";
 const READ_OPS: &[&str] = &[
     "state",
     "hello",
@@ -60,6 +60,7 @@ const READ_OPS: &[&str] = &[
     "events",
     "operation",
     "batch_result",
+    "guide",
     "xdata_get",
     "audit",
     "text_search",
@@ -1724,6 +1725,43 @@ fn shape_execute_response(
     Ok(response)
 }
 
+const GUIDES: &[(&str, &str, &str)] = &[
+    (
+        "workflow",
+        "CAD automation workflow",
+        include_str!("../docs/automation/guides/workflow.md"),
+    ),
+    (
+        "architecture",
+        "Architectural vectorization",
+        include_str!("../docs/automation/guides/architecture.md"),
+    ),
+    (
+        "capture",
+        "Captures and visual verification",
+        include_str!("../docs/automation/guides/capture.md"),
+    ),
+    (
+        "batch-bindings",
+        "Dependent batch steps",
+        include_str!("../docs/automation/batch-bindings.md"),
+    ),
+];
+
+fn guide_resources() -> Vec<Value> {
+    GUIDES.iter().map(|(name, title, _)| json!({
+        "uri":format!("cad://guides/{name}"), "name":name, "title":title, "mimeType":"text/markdown"
+    })).collect()
+}
+
+fn guide_resource(name: &str) -> Result<Value, String> {
+    let (_, _, text) = GUIDES.iter().find(|(key, _, _)| *key == name)
+        .ok_or_else(|| format!("Unknown guide '{name}'; use ocs_read op guide without parameters.name to list guides"))?;
+    Ok(
+        json!({"contents":[{"uri":format!("cad://guides/{name}"),"mimeType":"text/markdown","text":text}]}),
+    )
+}
+
 fn read_resource(
     uri: &str,
     clients: &mut HashMap<String, GuiClient>,
@@ -1731,6 +1769,9 @@ fn read_resource(
     pump: &mut CancelPump,
     mcp_id: Option<&Value>,
 ) -> Result<Value, String> {
+    if let Some(name) = uri.strip_prefix("cad://guides/") {
+        return guide_resource(name);
+    }
     if !uri.starts_with("cad://") {
         return Err(format!("Unsupported resource URI scheme: {uri}"));
     }
@@ -2029,6 +2070,15 @@ fn call_tool(
             let op = arguments["op"].as_str().unwrap_or("state");
             if !READ_OPS.contains(&op) {
                 return Err("Use ocs_execute for mutations".to_string().into());
+            }
+            if op == "guide" {
+                let mut result = match arguments["parameters"]["name"].as_str() {
+                    Some(name) => guide_resource(name).map_err(CallError::Tool)?,
+                    None => json!({"guides":guide_resources()}),
+                };
+                result["ok"] = json!(true);
+                result["status"] = json!("completed");
+                return Ok(result);
             }
             if op == "batch_result" {
                 let request_id = required_string(&arguments["parameters"], "request_id")?;
@@ -2486,21 +2536,21 @@ pub(crate) fn tool_definitions() -> Value {
         },
         {
             "name":"ocs_read",
-            "description":"Discover capabilities and record schemas, or read state, complete database records, command manifests, entities, properties, kernel measurements and spatial relationships, history, events or operation status from a live OCS session. Use batch_result with parameters.request_id to retrieve retained batch details without executing steps; available only in the originating MCP connection, for up to 64 retained batches per session.",
+            "description":"Use guide with parameters.name to read workflow, architecture, capture or batch-bindings guidance (omit name to list). Discover capabilities and record schemas, or read state, complete database records, command manifests, entities, properties, kernel measurements and spatial relationships, history, events or operation status from a live OCS session. Use batch_result with parameters.request_id to retrieve retained batch details without executing steps; available only in the originating MCP connection, for up to 64 retained batches per session.",
             "inputSchema":{"type":"object","properties":{"ocs_session_id":{"type":"string","minLength":1,"description":"Value of session_id returned by ocs_sessions."},"op":{"type":"string","enum":READ_OPS,"default":"state"},"parameters":{"type":"object","description":"Operation-specific filters.","properties":{"name":{"type":"string","description":"Command name or record name."},"search":{"type":"string","description":"Case-insensitive command or record-type search."},"find":{"type":"string","description":"Text query string for text_search."},"match_case":{"type":"boolean","default":false,"description":"Case-sensitive text search."},"whole_word":{"type":"boolean","default":false,"description":"Match only whole words."},"ignore_accents":{"type":"boolean","description":"Ignore accents/diacritics in text (defaults to true when match_case is false)."},"scope":{"type":"string","enum":["all","active_space","blocks"],"default":"all","description":"Text search scope."},"system_spellcheck":{"type":"boolean","default":false,"description":"Use native OS spell-checker (Windows, macOS, Linux)."},"language":{"type":"string","description":"Language tag for spell-checker (e.g. 'fr-FR', 'en-US', 'de-DE', 'es-ES')."},"suggest":{"type":"boolean","default":true,"description":"Include suggested corrections for misspelled words."},"check_terms":{"type":"array","items":{"type":"string"},"description":"List of terms or suspect misspellings to flag in text_audit."},"dictionary":{"type":"array","items":{"type":"string"},"description":"Known valid words for text_audit dictionary check."},"pairs":{"type":"array","description":"Find/replace pairs for dry-run simulation in text_audit.","items":{"type":"object","properties":{"find":{"type":"string"},"replace":{"type":"string"}},"required":["find","replace"]}},"dry_run_pairs":{"type":"array","description":"Alias for pairs in text_audit.","items":{"type":"object","properties":{"find":{"type":"string"},"replace":{"type":"string"}},"required":["find","replace"]}},"document_id":{"type":"integer","minimum":0},"path":{"type":"string","description":"Optional intended output path for audit; extension determines target format."},"target_format":{"type":"string","enum":["dwg","dxf"],"description":"Intended output format for audit."},"target_version":{"type":"string","enum":["R14","2000","2004","2007","2010","2013","2018","AC1014","AC1015","AC1018","AC1021","AC1024","AC1027","AC1032"],"description":"Intended CAD output version for audit."},"collection":{"type":"string","description":"Record collection, all for records, or omit to discover collections and schema types."},"handle":{"type":"string"},"handles":{"type":"array","items":{"type":"string"},"description":"Exact entity or record handles."},"type":{"type":"string","description":"Entity or record type filter; for record_schema, returns its complete type graph and writable field paths."},"layer":{"type":"string","description":"Layer name filter for query."},"detail":{"type":"string","enum":["summary","geometry","full"],"default":"geometry","description":"Entity detail returned by query."},"fields":{"type":"array","items":{"type":"string"},"description":"Return only these entity fields plus handle."},"paths":{"type":"array","items":{"type":"string"},"description":"Project RFC 6901 JSON Pointer paths relative to record.properties."},"where":{"type":"array","description":"All property filters must match.","items":{"type":"object","properties":{"path":{"type":"string"},"op":{"type":"string","enum":["eq","ne","lt","lte","gt","gte","contains","starts_with","ends_with","in","exists","not_exists"],"default":"eq"},"value":{}},"required":["path"],"additionalProperties":false}},"near":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Rank planar curves by exact kernel distance to this world XY point."},"point":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"World point whose object snap the snap op reports."},"from":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Base point for perpendicular and tangent snaps (snap op)."},"contains_point":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Return closed planar curves containing this world XY point."},"bounds":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4,"description":"Filter entities whose world XY bounds overlap [min_x,min_y,max_x,max_y]."},"intersections":{"type":"array","items":{"type":"string"},"minItems":2,"maxItems":2,"description":"Return exact kernel intersections between two planar curve handles."},"after":{"type":"integer","minimum":0,"description":"Event cursor."},"request_id":{"type":"string","description":"Operation id to query."},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":10000}},"additionalProperties":false}},"required":["ocs_session_id"],"additionalProperties":false},
             "outputSchema":read_output_schema(),
             "title":"Read OCS state","annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true,"openWorldHint":false}
         },
         {
             "name":"ocs_execute",
-            "description":"Execute semantic OCS actions, batch drafting, and mutations. Supports batch creation (entities_create), reference image underlays (embed_image), block definitions (block_define), and block reference insertions (INSERT). MANDATORY: For architectural drafting, all doors and windows must be inserted as CAD blocks (type: INSERT), never loose lines.",
+            "description":"Execute semantic OCS actions, batch drafting, and mutations. Supports batch creation (entities_create), reference image underlays (embed_image), block definitions (block_define), and block reference insertions (INSERT). Read the architecture guide before floorplan vectorization.",
             "inputSchema":execute_input_schema(),
             "outputSchema":execute_output_schema(),
             "title":"Execute OCS action","annotations":{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":true,"openWorldHint":false}
         },
         {
             "name":"ocs_capture",
-            "description":"Capture the actual current OCS drawing viewport or window as a bounded PNG with optional camera framing, entity highlighting, spatial coordinates and Set-of-Marks annotations. Works quietly in background and overlapped window states without stealing focus. MANDATORY FOR CAD ACCURACY: Use annotate: true to render Set-of-Marks entity IDs directly on the drawing for precision alignment feedback, and diff: true to stream visual changes between steps.",
+            "description":"Capture the actual current OCS drawing viewport or window as a bounded PNG with optional camera framing, entity highlighting, spatial coordinates and Set-of-Marks annotations. Works quietly in background and overlapped window states without stealing focus. Read the capture guide for annotations, diff, resource delivery and tiling.",
             "inputSchema":{
                 "type":"object",
                 "properties":{
@@ -2861,7 +2911,8 @@ fn handle_message(
             // Deterministic order: HashMap iteration is random, and stable
             // ordering keeps client caches and prompt caches hitting.
             session_ids.sort();
-            let list = resources.list_resources(&session_ids);
+            let mut list = guide_resources();
+            list.extend(resources.list_resources(&session_ids));
             response(
                 id,
                 protocol_result(json!({ "resources": list }), modern, Some(RESOURCE_TTL_MS)),
@@ -4524,6 +4575,71 @@ mod tests {
         let after = standalone.to_string().len();
         eprintln!("Execute request schema: {before} -> {after} bytes");
         assert!(after * 100 < before * 70, "expected at least 30% reduction");
+    }
+
+    #[test]
+    fn guides_are_discoverable_without_a_gui_session() {
+        assert!(INSTRUCTIONS.len() < 1100);
+        assert!(INSTRUCTIONS.contains("state.command.accepts"));
+        assert!(INSTRUCTIONS.contains("never replay a mutation"));
+        let mut clients = HashMap::new();
+        let mut resources = ResourceStore::default();
+        let listed = handle_message(
+            json!({"jsonrpc":"2.0","id":1,"method":"resources/list"}),
+            &mut clients,
+            &mut TaskStore::default(),
+            &mut resources,
+            &mut detached_pump(),
+        )
+        .unwrap();
+        let tool_list = call_tool(
+            "ocs_read",
+            &json!({"ocs_session_id":"offline","op":"guide"}),
+            &mut clients,
+            &mut resources,
+            &mut detached_pump(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(tool_list["guides"].as_array().unwrap().len(), GUIDES.len());
+        for (name, _, text) in GUIDES {
+            let uri = format!("cad://guides/{name}");
+            assert!(listed["result"]["resources"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["uri"] == uri));
+            let resource = read_resource(
+                &uri,
+                &mut clients,
+                &mut resources,
+                &mut detached_pump(),
+                None,
+            )
+            .unwrap();
+            assert_eq!(resource["contents"][0]["text"], *text);
+            let tool = call_tool(
+                "ocs_read",
+                &json!({"ocs_session_id":"offline","op":"guide","parameters":{"name":name}}),
+                &mut clients,
+                &mut resources,
+                &mut detached_pump(),
+                None,
+            )
+            .unwrap();
+            assert_eq!(tool["contents"], resource["contents"]);
+            assert_eq!(tool["ok"], true);
+            assert_eq!(tool_list["ok"], true);
+        }
+        assert!(read_resource(
+            "cad://guides/missing",
+            &mut clients,
+            &mut resources,
+            &mut detached_pump(),
+            None
+        )
+        .is_err());
+        assert!(clients.is_empty());
     }
 
     #[test]
