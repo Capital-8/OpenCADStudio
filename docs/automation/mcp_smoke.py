@@ -51,6 +51,8 @@ def legacy(server: Path) -> None:
     definitions = {tool["name"]: tool for tool in tools["result"]["tools"]}
     names = set(definitions)
     assert names == TOOLS, names
+    assert "summary" in definitions["ocs_execute"]["inputSchema"]["properties"]["response_detail"]["enum"]
+    assert "batch_result" in definitions["ocs_read"]["inputSchema"]["properties"]["op"]["enum"]
     execute_request = definitions["ocs_execute"]["inputSchema"]["properties"]["request"]
     variants = execute_request.get("anyOf") or execute_request.get("oneOf")
     # Resolve local references from the complete tool input schema.
@@ -103,6 +105,15 @@ def legacy(server: Path) -> None:
         "params": {"name": "ocs_sessions", "arguments": {"launch_if_none": False}},
     })
     assert not sessions["result"].get("isError"), sessions
+    missing_batch = request(process, {
+        "jsonrpc": "2.0", "id": 4, "method": "tools/call",
+        "params": {"name": "ocs_read", "arguments": {
+            "ocs_session_id": "missing", "op": "batch_result",
+            "parameters": {"request_id": "expired-batch"},
+        }},
+    })
+    assert missing_batch["result"]["isError"] is True
+    assert "absent or expired" in missing_batch["result"]["content"][0]["text"]
     close(process)
 
 

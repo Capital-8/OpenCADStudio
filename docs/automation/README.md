@@ -191,6 +191,22 @@ Use `batch` when the steps are already known. OCS supplies each step with the st
 
 Execute responses use `response_detail: "compact"` by default and return only the state needed for the next edit. Use `changed_entities` to receive the current geometry of affected handles in the same response, or `full` when the complete editor state is needed.
 
+For large batches, use `response_detail: "summary"`. It omits the full step
+results and change list, returning step counts, `failed_steps`, `change_count`,
+compact final state and a `details` tool request. `change_count` counts change
+records, not unique entities. Warnings, failed or waiting-input steps in
+`attention`, and any `active_step` are retained so the next action remains clear.
+For non-batch operations, `summary` behaves like `compact`.
+
+To inspect the retained full result, call the tool and arguments in `details`:
+`ocs_read` with the same `ocs_session_id`, `op: "batch_result"`, and
+`parameters: {"request_id": "<original batch request_id>"}`. This reads a cached
+snapshot without executing or resuming any step. Results are retained in the
+originating MCP connection, for up to 64 batches per session; after eviction or
+reconnection the read fails explicitly. Do not replay a mutation merely to
+retrieve expired details. A `running` snapshot is not completion; resume work
+through the existing batch retry/task workflow.
+
 `ocs_read` query accepts exact handles, type/layer filters, field projection, world-XY bounds, nearest-curve ranking, closed-curve containment, and exact intersections between two planar curves. `detail: "full"` adds the complete serialized entity properties. Nearest points, containment, curve length, area, and intersections are calculated by the geometry kernel:
 
 ```json

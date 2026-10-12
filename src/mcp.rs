@@ -31,7 +31,7 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 ///
 /// `block_delete` gained its optional `force` parameter.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "d597165afb46e8f067a77a3b827851b49be99d4739b15cf939b3be5b6c780bb1";
+const TOOL_SCHEMA_DIGEST: &str = "634a75872d56ae4445dbd9f27479b3ff3d8c8e88c72db69a699fafa3d9f29b72";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
@@ -59,6 +59,7 @@ const READ_OPS: &[&str] = &[
     "commands",
     "events",
     "operation",
+    "batch_result",
     "xdata_get",
     "audit",
     "text_search",
@@ -384,6 +385,7 @@ struct BatchExecution {
     steps: Vec<Value>,
     next: usize,
     active: Option<String>,
+    pending: Option<Value>,
     results: Vec<Value>,
     changes: Vec<Value>,
     state: Option<Value>,
@@ -1230,6 +1232,7 @@ impl GuiClient {
                 steps,
                 next: 0,
                 active: None,
+                pending: None,
                 results: Vec::new(),
                 changes: Vec::new(),
                 state: None,
@@ -1330,8 +1333,19 @@ impl GuiClient {
                 }
             };
 
+            // Keep the latest command/prompt state even while a step is running.
+            if let Some(state) = response.get("state") {
+                batch.state = Some(state.clone());
+            }
             if matches!(response["status"].as_str(), Some("accepted" | "running")) {
                 batch.active = Some(step_id);
+                let mut pending = response.clone();
+                if let Some(object) = pending.as_object_mut() {
+                    object.remove("state");
+                    object.insert("step".into(), Value::from(batch.next));
+                    object.insert("op".into(), batch.steps[batch.next]["op"].clone());
+                }
+                batch.pending = Some(pending);
                 let result = batch_result(&batch, "running", true);
                 self.batches.push_back(batch);
                 trim_batches(&mut self.batches);
@@ -1339,9 +1353,7 @@ impl GuiClient {
             }
 
             batch.active = None;
-            if let Some(state) = response.get("state") {
-                batch.state = Some(state.clone());
-            }
+            batch.pending = None;
             if let Some(changes) = response["changes"].as_array() {
                 batch
                     .changes
@@ -1403,7 +1415,7 @@ fn batch_step_id(id: &str, step: usize) -> String {
 }
 
 fn batch_result(batch: &BatchExecution, status: &str, ok: bool) -> Value {
-    json!({
+    let mut result = json!({
         "ok":ok,
         "status":status,
         "request_id":batch.id,
@@ -1413,7 +1425,85 @@ fn batch_result(batch: &BatchExecution, status: &str, ok: bool) -> Value {
         "results":batch.results,
         "changes":batch.changes,
         "state":batch.state
-    })
+    });
+    if let Some(pending) = &batch.pending {
+        result["active_step"] = pending.clone();
+    }
+    result
+}
+
+/// Project only the outgoing response; retained batch results stay lossless.
+fn summarize_batch_response(mut response: Value, session_id: &str) -> Value {
+    let mut attention = Vec::new();
+    let mut failed_steps = 0;
+    if let Some(results) = response["results"].as_array() {
+        for (index, step) in results.iter().enumerate() {
+            let failed = step["ok"].as_bool() == Some(false)
+                || matches!(step["status"].as_str(), Some("failed" | "cancelled"));
+            if failed {
+                failed_steps += 1;
+            }
+            let awaiting_input = response["status"] == "waiting_input"
+                && index + 1 == results.len()
+                && step["status"] == "waiting_input";
+            if failed || awaiting_input {
+                // Error and interactive payloads may carry recovery guidance.
+                attention.push(step.clone());
+            } else if step
+                .get("warnings")
+                .is_some_and(|v| !v.is_null() && v != &json!([]))
+            {
+                attention.push(json!({
+                    "step":step["step"], "op":step["op"],
+                    "status":step["status"], "warnings":step["warnings"]
+                }));
+            }
+        }
+    }
+    let change_count = response["changes"].as_array().map_or(0, Vec::len);
+    let request_id = response["request_id"].clone();
+    if let Some(object) = response.as_object_mut() {
+        object.remove("results");
+        object.remove("changes");
+        object.insert("change_count".into(), json!(change_count));
+        object.insert("failed_steps".into(), json!(failed_steps));
+        object.insert("attention".into(), json!(attention));
+        object.insert(
+            "details".into(),
+            json!({
+                "tool":"ocs_read", "arguments":{
+                    "ocs_session_id":session_id, "op":"batch_result",
+                    "parameters":{"request_id":request_id}
+                }
+            }),
+        );
+        if let Some(state) = object.get_mut("state") {
+            *state = compact_state(state);
+        }
+    }
+    response
+}
+
+fn cached_batch_result(
+    clients: &HashMap<String, GuiClient>,
+    session_id: &str,
+    request_id: &str,
+) -> Result<Value, CallError> {
+    // Do not connect, poll, resume or recreate a batch on this read-only path.
+    let batch = clients.get(session_id)
+        .and_then(|gui| gui.batches.iter().find(|batch| batch.id == request_id))
+        .ok_or_else(|| CallError::Tool(
+            "Batch result absent or expired in this MCP connection; do not replay a mutation to retrieve it".into()
+        ))?;
+    let mut result = batch
+        .terminal
+        .clone()
+        .unwrap_or_else(|| batch_result(batch, "running", true));
+    let validation = validate_execute_request(&batch.request, "batch")?;
+    if !validation.warnings.is_empty() {
+        result["warnings"] = json!(validation.warnings);
+    }
+    Ok(result)
 }
 
 fn trim_batches(batches: &mut VecDeque<BatchExecution>) {
@@ -1853,6 +1943,10 @@ fn call_tool(
             if !READ_OPS.contains(&op) {
                 return Err("Use ocs_execute for mutations".to_string().into());
             }
+            if op == "batch_result" {
+                let request_id = required_string(&arguments["parameters"], "request_id")?;
+                return cached_batch_result(clients, session_id, request_id);
+            }
             if op == "capture" {
                 // The GUI capture op needs a file path and lives behind the
                 // ocs_capture tool; agents hitting the bare read op get
@@ -1901,10 +1995,11 @@ fn call_tool(
                 return Err("request_id must not exceed 128 bytes".to_string().into());
             }
             let val_res = validate_execute_request(&request, op)?;
+            let is_batch = op == "batch";
             let wait = arguments["wait_seconds"].as_f64().unwrap_or(30.0);
             let detail = arguments["response_detail"].as_str().unwrap_or("compact");
             let gui = client(clients, session_id)?;
-            let mut response = if op == "batch" {
+            let mut response = if is_batch {
                 gui.execute_batch(request, wait, pump, mcp_id)?
             } else {
                 gui.request(request, wait, pump, mcp_id)?
@@ -1917,7 +2012,11 @@ fn call_tool(
                     );
                 }
             }
-            shape_execute_response(response, detail, gui, pump).map_err(CallError::from)
+            if is_batch && detail == "summary" {
+                Ok(summarize_batch_response(response, session_id))
+            } else {
+                shape_execute_response(response, detail, gui, pump).map_err(CallError::from)
+            }
         }
         "ocs_capture" => {
             let session_id = required_string(arguments, "ocs_session_id")?;
@@ -2254,7 +2353,7 @@ fn execute_request_schema() -> Value {
 
 // Local references resolve from the tool input schema root, not from request.
 fn execute_input_schema() -> Value {
-    let mut schema = json!({"type":"object","properties":{"ocs_session_id":{"type":"string","minLength":1,"description":"Value of session_id returned by ocs_sessions."},"request":execute_request_schema(),"wait_seconds":{"type":"number","minimum":0,"maximum":60,"default":30,"description":"Total time to wait for completion before returning."},"response_detail":{"type":"string","enum":["compact","changed_entities","full"],"default":"compact","description":"compact returns only state needed for the next edit; changed_entities also returns current geometry for changed handles; full preserves the complete editor state."}},"required":["ocs_session_id","request"],"additionalProperties":false});
+    let mut schema = json!({"type":"object","properties":{"ocs_session_id":{"type":"string","minLength":1,"description":"Value of session_id returned by ocs_sessions."},"request":execute_request_schema(),"wait_seconds":{"type":"number","minimum":0,"maximum":60,"default":30,"description":"Total time to wait for completion before returning."},"response_detail":{"type":"string","enum":["compact","summary","changed_entities","full"],"default":"compact","description":"compact returns only state needed for the next edit; summary also replaces batch step results and changes with counts, attention items and a read-only details request (non-batch operations use compact); changed_entities also returns current geometry for changed handles; full preserves the complete editor state."}},"required":["ocs_session_id","request"],"additionalProperties":false});
     let request = schema["properties"]["request"].as_object_mut().unwrap();
     let defs = request.remove("$defs").unwrap();
     let dialect = request.remove("$schema").unwrap();
@@ -2300,7 +2399,7 @@ pub(crate) fn tool_definitions() -> Value {
         },
         {
             "name":"ocs_read",
-            "description":"Discover capabilities and record schemas, or read state, complete database records, command manifests, entities, properties, kernel measurements and spatial relationships, history, events or operation status from a live OCS session.",
+            "description":"Discover capabilities and record schemas, or read state, complete database records, command manifests, entities, properties, kernel measurements and spatial relationships, history, events or operation status from a live OCS session. Use batch_result with parameters.request_id to retrieve retained batch details without executing steps; available only in the originating MCP connection, for up to 64 retained batches per session.",
             "inputSchema":{"type":"object","properties":{"ocs_session_id":{"type":"string","minLength":1,"description":"Value of session_id returned by ocs_sessions."},"op":{"type":"string","enum":READ_OPS,"default":"state"},"parameters":{"type":"object","description":"Operation-specific filters.","properties":{"name":{"type":"string","description":"Command name or record name."},"search":{"type":"string","description":"Case-insensitive command or record-type search."},"find":{"type":"string","description":"Text query string for text_search."},"match_case":{"type":"boolean","default":false,"description":"Case-sensitive text search."},"whole_word":{"type":"boolean","default":false,"description":"Match only whole words."},"ignore_accents":{"type":"boolean","description":"Ignore accents/diacritics in text (defaults to true when match_case is false)."},"scope":{"type":"string","enum":["all","active_space","blocks"],"default":"all","description":"Text search scope."},"system_spellcheck":{"type":"boolean","default":false,"description":"Use native OS spell-checker (Windows, macOS, Linux)."},"language":{"type":"string","description":"Language tag for spell-checker (e.g. 'fr-FR', 'en-US', 'de-DE', 'es-ES')."},"suggest":{"type":"boolean","default":true,"description":"Include suggested corrections for misspelled words."},"check_terms":{"type":"array","items":{"type":"string"},"description":"List of terms or suspect misspellings to flag in text_audit."},"dictionary":{"type":"array","items":{"type":"string"},"description":"Known valid words for text_audit dictionary check."},"pairs":{"type":"array","description":"Find/replace pairs for dry-run simulation in text_audit.","items":{"type":"object","properties":{"find":{"type":"string"},"replace":{"type":"string"}},"required":["find","replace"]}},"dry_run_pairs":{"type":"array","description":"Alias for pairs in text_audit.","items":{"type":"object","properties":{"find":{"type":"string"},"replace":{"type":"string"}},"required":["find","replace"]}},"document_id":{"type":"integer","minimum":0},"path":{"type":"string","description":"Optional intended output path for audit; extension determines target format."},"target_format":{"type":"string","enum":["dwg","dxf"],"description":"Intended output format for audit."},"target_version":{"type":"string","enum":["R14","2000","2004","2007","2010","2013","2018","AC1014","AC1015","AC1018","AC1021","AC1024","AC1027","AC1032"],"description":"Intended CAD output version for audit."},"collection":{"type":"string","description":"Record collection, all for records, or omit to discover collections and schema types."},"handle":{"type":"string"},"handles":{"type":"array","items":{"type":"string"},"description":"Exact entity or record handles."},"type":{"type":"string","description":"Entity or record type filter; for record_schema, returns its complete type graph and writable field paths."},"layer":{"type":"string","description":"Layer name filter for query."},"detail":{"type":"string","enum":["summary","geometry","full"],"default":"geometry","description":"Entity detail returned by query."},"fields":{"type":"array","items":{"type":"string"},"description":"Return only these entity fields plus handle."},"paths":{"type":"array","items":{"type":"string"},"description":"Project RFC 6901 JSON Pointer paths relative to record.properties."},"where":{"type":"array","description":"All property filters must match.","items":{"type":"object","properties":{"path":{"type":"string"},"op":{"type":"string","enum":["eq","ne","lt","lte","gt","gte","contains","starts_with","ends_with","in","exists","not_exists"],"default":"eq"},"value":{}},"required":["path"],"additionalProperties":false}},"near":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Rank planar curves by exact kernel distance to this world XY point."},"point":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"World point whose object snap the snap op reports."},"from":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Base point for perpendicular and tangent snaps (snap op)."},"contains_point":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Return closed planar curves containing this world XY point."},"bounds":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4,"description":"Filter entities whose world XY bounds overlap [min_x,min_y,max_x,max_y]."},"intersections":{"type":"array","items":{"type":"string"},"minItems":2,"maxItems":2,"description":"Return exact kernel intersections between two planar curve handles."},"after":{"type":"integer","minimum":0,"description":"Event cursor."},"request_id":{"type":"string","description":"Operation id to query."},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":10000}},"additionalProperties":false}},"required":["ocs_session_id"],"additionalProperties":false},
             "outputSchema":read_output_schema(),
             "title":"Read OCS state","annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true,"openWorldHint":false}
@@ -4339,6 +4438,192 @@ mod tests {
         let after = standalone.to_string().len();
         eprintln!("Execute request schema: {before} -> {after} bytes");
         assert!(after * 100 < before * 70, "expected at least 30% reduction");
+    }
+
+    #[test]
+    fn batch_summary_is_small_and_keeps_actionable_information() {
+        let full = json!({
+            "ok":true,"status":"completed","request_id":"b1",
+            "completed_steps":64,"total_steps":64,"next_step":null,
+            "results":(0..64).map(|i| json!({
+                "step":i,"op":"run","ok":true,"status":"completed",
+                "result":{"payload":"x".repeat(1000)}
+            })).collect::<Vec<_>>(),
+            "changes":(0..64).map(|i| json!({"step":i,"handle":format!("{i:X}")})).collect::<Vec<_>>(),
+            "warnings":["top-level warning"],
+            "state":{"document_id":7,"revision":65,"selection":[],"command":null,"documents":[{"large":"payload"}]}
+        });
+        let summary = summarize_batch_response(full.clone(), "s1");
+        assert!(summary.get("results").is_none());
+        assert!(summary.get("changes").is_none());
+        assert_eq!(summary["change_count"], 64);
+        assert_eq!(summary["failed_steps"], 0);
+        assert_eq!(summary["completed_steps"], 64);
+        assert_eq!(summary["warnings"], full["warnings"]);
+        assert_eq!(summary["state"]["revision"], 65);
+        assert!(summary.to_string().len() * 10 < full.to_string().len());
+        assert_eq!(
+            summary["details"]["arguments"]["parameters"]["request_id"],
+            "b1"
+        );
+        let mut resolved = full.clone();
+        resolved["results"] = json!([
+            {"step":0,"status":"waiting_input"},
+            {"step":1,"status":"completed"}
+        ]);
+        assert_eq!(
+            summarize_batch_response(resolved, "s1")["attention"],
+            json!([])
+        );
+        let early = summarize_batch_response(
+            json!({
+                "ok":true,"status":"running","request_id":"early","state":null
+            }),
+            "s1",
+        );
+        assert!(tool_result(early)["structuredContent"]["state"].is_object());
+
+        for status in ["failed", "cancelled", "waiting_input"] {
+            let step = json!({"step":1,"op":"run","status":status,
+                "ok":status == "waiting_input", "code":"needs_attention",
+                "error":"reason", "result":{"input_example":"10,20"}});
+            let state = json!({"revision":3,"command":{"accepts":["point"],"input_example":"10,20"},"modal":{"title":"Input"}});
+            let mut detailed = full.clone();
+            detailed["status"] = json!(status);
+            detailed["ok"] = json!(status == "waiting_input");
+            detailed["state"] = state.clone();
+            detailed["results"] = json!([
+                {"step":0,"op":"run","ok":true,"status":"completed","warnings":["approximation"],"result":{"big":"x".repeat(1000)}},
+                step.clone()
+            ]);
+            let summary = summarize_batch_response(detailed.clone(), "s1");
+            assert_eq!(summary["ok"], detailed["ok"]);
+            assert_eq!(summary["status"], status);
+            assert_eq!(
+                summary["failed_steps"],
+                if status == "waiting_input" { 0 } else { 1 }
+            );
+            assert_eq!(
+                summary["attention"][0]["warnings"],
+                json!(["approximation"])
+            );
+            assert!(summary["attention"][0].get("result").is_none());
+            assert_eq!(summary["attention"][1], step);
+            assert_eq!(summary["state"], state);
+        }
+    }
+
+    #[test]
+    fn batch_details_are_read_only_session_scoped_and_expire() {
+        let batch = BatchExecution {
+            id: "b1".into(),
+            request: json!({"op":"batch","request_id":"b1","steps":[{"op":"run","cmd":"LINE 0,0 1,1"}]}),
+            steps: vec![json!({"op":"run","cmd":"LINE 0,0 1,1"})],
+            next: 0,
+            active: Some("step1".into()),
+            pending: Some(
+                json!({"step":0,"op":"run","status":"running","result":{"prompt":"Pick point"},"warnings":["notice"]}),
+            ),
+            results: vec![],
+            changes: vec![],
+            state: Some(json!({"revision":4,"command":{"accepts":["point"]}})),
+            terminal: None,
+        };
+        let running = batch_result(&batch, "running", true);
+        let summary = summarize_batch_response(running.clone(), "s1");
+        assert_eq!(summary["active_step"], running["active_step"]);
+        assert_eq!(summary["state"]["command"]["accepts"], json!(["point"]));
+        let mut clients = HashMap::new();
+        clients.insert(
+            "s1".into(),
+            GuiClient {
+                descriptor: Descriptor {
+                    session_id: "s1".into(),
+                    port: 0,
+                    token: String::new(),
+                    pid: None,
+                },
+                state: json!({}),
+                client_id: "test".into(),
+                batches: VecDeque::new(),
+                inflight: HashMap::new(),
+                dismissed: VecDeque::new(),
+            },
+        );
+        clients.get_mut("s1").unwrap().batches.push_back(batch);
+        assert_eq!(cached_batch_result(&clients, "s1", "b1").unwrap(), running);
+        assert_eq!(clients["s1"].batches[0].next, 0);
+        let mut batch = clients.get_mut("s1").unwrap().batches.pop_front().unwrap();
+        batch.next = 1;
+        batch.active = None;
+        batch.pending = None;
+        batch.results = vec![
+            json!({"step":0,"op":"run","ok":true,"status":"completed","result":{"handles":["A"]}}),
+        ];
+        let full = batch_result(&batch, "completed", true);
+        for detail in ["compact", "full"] {
+            let response = shape_execute_response(
+                full.clone(),
+                detail,
+                clients.get_mut("s1").unwrap(),
+                &mut detached_pump(),
+            )
+            .unwrap();
+            assert_eq!(response["results"], full["results"]);
+            assert_eq!(response["changes"], full["changes"]);
+        }
+        batch.terminal = Some(full.clone());
+        clients.get_mut("s1").unwrap().batches.push_back(batch);
+        let summary = summarize_batch_response(full.clone(), "s1");
+        let read = |clients: &mut HashMap<String, GuiClient>, args: &Value| {
+            call_tool(
+                "ocs_read",
+                args,
+                clients,
+                &mut ResourceStore::default(),
+                &mut detached_pump(),
+                None,
+            )
+        };
+        assert_eq!(
+            read(&mut clients, &summary["details"]["arguments"]).unwrap(),
+            full
+        );
+        assert_eq!(clients["s1"].batches[0].terminal, Some(full.clone()));
+        let mut wrong_session = summary["details"]["arguments"].clone();
+        wrong_session["ocs_session_id"] = json!("s2");
+        assert!(read(&mut clients, &wrong_session).is_err());
+        assert_eq!(clients.len(), 1);
+        // Idempotent replay still returns the complete cached result.
+        let request = clients["s1"].batches[0].request.clone();
+        assert_eq!(
+            clients
+                .get_mut("s1")
+                .unwrap()
+                .execute_batch(request, 0.0, &mut detached_pump(), None)
+                .unwrap(),
+            full
+        );
+        for i in 0..64 {
+            clients
+                .get_mut("s1")
+                .unwrap()
+                .batches
+                .push_back(BatchExecution {
+                    id: format!("other-{i}"),
+                    request: json!({}),
+                    steps: vec![],
+                    next: 0,
+                    active: None,
+                    pending: None,
+                    results: vec![],
+                    changes: vec![],
+                    state: None,
+                    terminal: None,
+                });
+        }
+        trim_batches(&mut clients.get_mut("s1").unwrap().batches);
+        assert!(read(&mut clients, &summary["details"]["arguments"]).is_err());
     }
 
     #[test]
