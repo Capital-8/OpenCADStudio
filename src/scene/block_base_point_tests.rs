@@ -538,14 +538,16 @@ fn locked_redefine_with_a_changed_base_moves_the_instance() {
     );
 
     // The redefine path: the same contents, but a new base point (0,20,0).
-    scene.redefine_block_raw(
-        NAME,
-        v(0.0, 20.0, 0.0),
-        vec![EntityType::Line(Line::from_points(
-            v(0.0, 0.0, 0.0),
-            v(20.0, 0.0, 0.0),
-        ))],
-    );
+    assert!(scene
+        .redefine_block_raw(
+            NAME,
+            v(0.0, 20.0, 0.0),
+            vec![EntityType::Line(Line::from_points(
+                v(0.0, 0.0, 0.0),
+                v(20.0, 0.0, 0.0),
+            ))],
+        )
+        .is_ok());
     assert_close(
         block_base_point(&scene.document, NAME),
         [0.0, 20.0, 0.0],
@@ -616,14 +618,16 @@ fn locked_noop_redefine_leaves_the_instance_where_it_is() {
     assert_close(end, [62.990381, 27.5, 0.0], 1e-6, "line end before");
 
     // No-op redefine: identical contents, same base.
-    scene.redefine_block_raw(
-        NAME,
-        base,
-        vec![EntityType::Line(Line::from_points(
-            v(6.0, 4.0, 0.0),
-            v(16.0, 4.0, 0.0),
-        ))],
-    );
+    assert!(scene
+        .redefine_block_raw(
+            NAME,
+            base,
+            vec![EntityType::Line(Line::from_points(
+                v(6.0, 4.0, 0.0),
+                v(16.0, 4.0, 0.0),
+            ))],
+        )
+        .is_ok());
     assert_close(
         block_base_point(&scene.document, NAME),
         [6.0, 4.0, 0.0],
@@ -1151,5 +1155,48 @@ fn locked_nested_insert_with_attributes_exploded_one_level() {
         EXPECTED_ATTR_POINT,
         1e-6,
         "outer attdef insertion point",
+    );
+}
+
+#[test]
+fn locked_redefine_block_raw_refuses_cycle() {
+    let mut scene = Scene::new();
+    let blk_a = "REDEF_A";
+    let blk_b = "REDEF_B";
+
+    scene.define_block_raw(
+        blk_a,
+        Vector3::ZERO,
+        vec![EntityType::Line(Line::from_points(
+            Vector3::ZERO,
+            Vector3::new(1.0, 0.0, 0.0),
+        ))],
+    );
+
+    // B contains A
+    scene.define_block_raw(
+        blk_b,
+        Vector3::ZERO,
+        vec![EntityType::Insert(Insert::new(
+            blk_a.to_string(),
+            Vector3::ZERO,
+        ))],
+    );
+
+    // Redefining A to contain B would create cycle A -> B -> A; must refuse
+    let res = scene.redefine_block_raw(
+        blk_a,
+        Vector3::ZERO,
+        vec![EntityType::Insert(Insert::new(
+            blk_b.to_string(),
+            Vector3::ZERO,
+        ))],
+    );
+
+    assert!(res.is_err());
+    let err = res.unwrap_err();
+    assert!(
+        err.contains("circular dependency detected"),
+        "expected cycle error, got: {err}"
     );
 }

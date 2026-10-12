@@ -1519,3 +1519,47 @@ fn locked_attedit_attribute_flags_cases() {
     ));
     assert_eq!(preset_entity.get_value(), "edited_preset");
 }
+
+#[test]
+fn locked_bedit_insert_refuses_cycle() {
+    let mut app = app();
+    let name_a = "BEDIT_CYC_A";
+    let name_b = "BEDIT_CYC_B";
+
+    define_block(&mut app, name_a);
+
+    // B contains an insert of A
+    let ins_a = Insert::new(name_a.to_string(), Vector3::ZERO);
+    let i = tab(&app);
+    app.tabs[i]
+        .scene
+        .define_block_raw(name_b, Vector3::ZERO, vec![EntityType::Insert(ins_a)]);
+
+    // Now open BEDIT for block A
+    let insert_a = add_insert(&mut app, name_a);
+    begin_bedit(&mut app, insert_a);
+    assert!(bedit_open(&app));
+
+    // Try committing an INSERT of B into A inside BEDIT space:
+    // Inserting B into A would create A -> B -> A cycle
+    let _ = app.dispatch_command("-INSERT");
+    let mut feed = |text: &str| {
+        let _ = app.update(crate::app::Message::CommandInput(text.to_string()));
+        let _ = app.update(crate::app::Message::CommandSubmit);
+    };
+    feed(name_b);
+    feed("0,0");
+    feed("1");
+    feed("1");
+    feed("0");
+
+    // Verify refusal error on command line
+    let errs = errors(&app);
+    assert!(
+        errs.iter()
+            .any(|e| e.contains("circular dependency detected")),
+        "expected cycle error in errors: {errs:?}"
+    );
+
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+}

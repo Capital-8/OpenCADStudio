@@ -178,6 +178,7 @@ pub struct BlockCache {
         HashMap<ExpansionPrototypeKey, Arc<std::sync::Mutex<Option<Arc<CachedExpansion>>>>>,
     >,
     clip_prototypes: std::sync::Mutex<HashMap<(u64, Vec<u64>), u64>>,
+    cycle_warnings: std::sync::Mutex<HashSet<String>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -217,6 +218,22 @@ impl BlockCache {
     }
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn record_cycle_warning(&self, block_name: &str) -> bool {
+        let mut warnings = self
+            .cycle_warnings
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        warnings.insert(block_name.to_ascii_uppercase())
+    }
+
+    pub fn drain_cycle_warnings(&self) -> Vec<String> {
+        let mut warnings = self
+            .cycle_warnings
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        warnings.drain().collect()
     }
 
     pub fn defn(&self, block_name: &str) -> Option<&Arc<BlockDefn>> {
@@ -1105,7 +1122,7 @@ pub fn expand_insert(
         );
     }
     let mut batches = Batches::default();
-    let mut visited: Vec<String> = Vec::with_capacity(8);
+    let mut visited: Vec<String> = vec![ins.block_name.clone()];
 
     let offsets = crate::scene::render_graph::array_offsets(ins);
     let cell_xform = |offset: &[f64; 3]| {
@@ -1952,7 +1969,16 @@ fn expand_defn(
                         emit_wire(attachment, &attachment_transform, &inner_ctx, out, d_range);
                     }
                 }
-                if visited.iter().any(|n| n == &nref.block_name) {
+                if visited
+                    .iter()
+                    .any(|n| n.eq_ignore_ascii_case(&nref.block_name))
+                {
+                    if ctx.cache.record_cycle_warning(&nref.block_name) {
+                        eprintln!(
+                            "Warning: circular block reference detected for block \"{}\"; cutting cycle",
+                            nref.block_name
+                        );
+                    }
                     continue;
                 }
                 let Some(nested_defn) = ctx.cache.defn(&nref.block_name) else {
@@ -3483,5 +3509,98 @@ mod metrics_depth_tests {
             .expect("tail block built");
         assert_ne!(root.metrics.aabb_local, [0.0; 4]);
         assert_eq!(root.metrics.aabb_local, tail.metrics.aabb_local);
+    }
+
+    #[test]
+    fn locked_cyclic_block_document_renders_without_hanging_and_warns_once() {
+        // Document built in code with pre-existing cycle:
+        // A contains B, B contains A
+        let mut document = CadDocument::new();
+        let blk_a = add_block(&mut document, "CYC_A");
+        let blk_b = add_block(&mut document, "CYC_B");
+
+        add_owned(
+            &mut document,
+            blk_a,
+            EntityType::Insert(Insert::new("CYC_B", Vector3::ZERO)),
+        );
+        add_owned(
+            &mut document,
+            blk_b,
+            EntityType::Insert(Insert::new("CYC_A", Vector3::ZERO)),
+        );
+        // Add a line in A so there is some actual geometry
+        add_owned(
+            &mut document,
+            blk_a,
+            EntityType::Line(Line::from_points(
+                Vector3::ZERO,
+                Vector3::new(10.0, 0.0, 0.0),
+            )),
+        );
+
+        // Model space references CYC_A
+        document
+            .add_entity(EntityType::Insert(Insert::new("CYC_A", Vector3::ZERO)))
+            .unwrap();
+
+        // Building the cache computes defns and metrics without hanging
+        let cache = BlockCache::build(
+            &document,
+            1.0,
+            None,
+            true,
+            [0.0, 0.0, 0.0, 1.0],
+            None,
+            &HashMap::default(),
+        );
+
+        // Verify defns exist
+        assert!(cache.defns.contains_key("CYC_A"));
+        assert!(cache.defns.contains_key("CYC_B"));
+
+        // Expanding / tessellating into wires does not hang and cuts the cycle
+        let ins = Insert::new("CYC_A", Vector3::ZERO);
+        let inherit_style = crate::scene::view::render::InheritStyle {
+            color: [1.0, 1.0, 1.0, 1.0],
+            pat_len: 1.0,
+            pat: [0.0; 8],
+            lw_px: 1.0,
+        };
+
+        let result = expand_insert(
+            &document,
+            &cache,
+            &ins,
+            Handle::new(1),
+            [1.0, 1.0, 1.0, 1.0],
+            7,
+            1.0,
+            [0.0; 8],
+            1.0,
+            inherit_style,
+            7,
+            true,
+            false,
+            1.0,
+            None,
+            None,
+            false,
+            [0.0, 0.0, 0.0, 1.0],
+            1.0,
+            crate::scene::BlockScalePolicy::FromInsert,
+            false,
+        );
+
+        assert!(result.is_some());
+
+        // Warning was recorded once
+        let warnings = cache.drain_cycle_warnings();
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0], "CYC_A");
+
+        // Subsequent expansion does not warn again because warned set retains it
+        let warnings_after = cache.drain_cycle_warnings();
+        assert!(warnings_after.is_empty());
     }
 }
