@@ -671,6 +671,10 @@ impl Scene {
             Self::reset_clone_subhandles(&mut self.document, &mut sub);
             sub.common_mut().handle = Handle::NULL;
             sub.common_mut().owner_handle = br_handle;
+            // An extension dictionary is exclusively owned; the clone must
+            // not claim the source's, or file validation reports
+            // "Extension dictionary <H> Cannot access".
+            sub.common_mut().xdictionary_handle = None;
             let _ = self.document.add_entity(sub);
         }
         Some(new_name)
@@ -2205,5 +2209,108 @@ pub(crate) fn remap_copied_reactors(
             .iter()
             .filter_map(|reactor| handle_map.get(reactor).copied())
             .collect();
+    }
+}
+
+#[cfg(test)]
+mod define_transformed_block_xdict_tests {
+    use super::*;
+
+    /// No extension dictionary may be referenced by more than one entity.
+    fn assert_no_shared_xdicts(doc: &codec::CadDocument) {
+        use std::collections::HashMap;
+        let mut owners: HashMap<codec::Handle, usize> = HashMap::new();
+        for entity in doc.entities() {
+            if let Some(xd) = entity.common().xdictionary_handle {
+                if !xd.is_null() {
+                    *owners.entry(xd).or_default() += 1;
+                }
+            }
+        }
+        let shared: Vec<_> = owners
+            .iter()
+            .filter(|(_, &n)| n > 1)
+            .map(|(h, n)| format!("{h:?} x{n}"))
+            .collect();
+        assert!(
+            shared.is_empty(),
+            "shared extension dictionaries: {}",
+            shared.join(", ")
+        );
+    }
+
+    /// Cloned sub-entities must not share the source's extension dictionary.
+    /// `define_transformed_block` clones each sub wholesale; without clearing
+    /// `xdictionary_handle` the clone claims the source's dictionary and
+    /// file validation reports "Extension dictionary <H> Cannot access".
+    #[test]
+    fn cloned_subs_do_not_share_source_xdict() {
+        let mut scene = Scene::new();
+
+        let dict_handle = scene.document.allocate_handle();
+        let mut dict = codec::objects::Dictionary::new();
+        dict.handle = dict_handle;
+        scene
+            .document
+            .objects
+            .insert(dict_handle, codec::objects::ObjectType::Dictionary(dict));
+
+        let mut br = codec::tables::BlockRecord::new("SRC");
+        br.handle = scene.document.allocate_handle();
+        scene.document.block_records.add(br).unwrap();
+        let mut line = codec::entities::Line::new();
+        line.common.xdictionary_handle = Some(dict_handle);
+        let src_handle = scene
+            .document
+            .add_entity(codec::EntityType::Line(line))
+            .unwrap();
+        scene
+            .document
+            .block_records
+            .get_mut("SRC")
+            .unwrap()
+            .entity_handles
+            .push(src_handle);
+
+        let subs = vec![scene.document.get_entity(src_handle).unwrap().clone()];
+        let name = scene
+            .define_transformed_block(
+                &subs,
+                &crate::command::EntityTransform::Translate(glam::DVec3::ZERO),
+            )
+            .expect("clone block must be created");
+        assert!(
+            name.starts_with("*D"),
+            "anonymous block expected, got {name}"
+        );
+
+        assert_no_shared_xdicts(&scene.document);
+        // Source keeps its dictionary.
+        match scene.document.get_entity(src_handle) {
+            Some(e) => assert_eq!(
+                e.common().xdictionary_handle,
+                Some(dict_handle),
+                "the source must keep its own dictionary"
+            ),
+            None => panic!("source entity missing"),
+        }
+        // Clones carry none.
+        let owned = scene
+            .document
+            .block_records
+            .get(&name)
+            .unwrap()
+            .entity_handles
+            .clone();
+        assert!(!owned.is_empty(), "clone block should own sub-entities");
+        for h in &owned {
+            match scene.document.get_entity(*h) {
+                Some(e) => assert!(
+                    e.common().xdictionary_handle.is_none(),
+                    "cloned child {h:?} must not carry an extension dictionary"
+                ),
+                None => panic!("cloned child {h:?} missing"),
+            }
+        }
     }
 }

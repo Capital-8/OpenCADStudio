@@ -869,6 +869,10 @@ fn dim_common(
 ) -> codec::entities::EntityCommon {
     let mut c = base.clone();
     c.handle = Handle::NULL;
+    // A baked child must not claim its dimension's extension dictionary:
+    // xdict ownership is exclusive, and a second claimant fails file
+    // validation with "Extension dictionary <H> Cannot access".
+    c.xdictionary_handle = None;
     if clr != 0 && clr != 256 {
         c.color = codec::types::Color::from_index(clr);
         c.color_name = None;
@@ -1415,6 +1419,9 @@ fn explode_dimension(dim: &Dimension, doc: &CadDocument) -> Vec<EntityType> {
         tent.common_mut().color_name = tc.color_name;
         tent.common_mut().color_book_handle = tc.color_book_handle;
         tent.common_mut().line_weight = tc.line_weight;
+        // The live-render text entity carries the dimension's dictionary;
+        // the baked copy must not share it (see above).
+        tent.common_mut().xdictionary_handle = None;
         result.push(tent);
     }
 
@@ -2123,5 +2130,95 @@ mod tests {
             "round-trip failures:\n{}",
             failures.join("\n")
         );
+    }
+
+    /// No extension dictionary may be referenced by more than one entity.
+    /// Shared xdict ownership fails file validation as
+    /// "Extension dictionary <H> Cannot access".
+    fn assert_no_shared_xdicts(doc: &CadDocument) {
+        use std::collections::HashMap;
+        let mut owners: HashMap<codec::Handle, usize> = HashMap::new();
+        for entity in doc.entities() {
+            if let Some(xd) = entity.common().xdictionary_handle {
+                if !xd.is_null() {
+                    *owners.entry(xd).or_default() += 1;
+                }
+            }
+        }
+        let shared: Vec<_> = owners
+            .iter()
+            .filter(|(_, &n)| n > 1)
+            .map(|(h, n)| format!("{h:?} x{n}"))
+            .collect();
+        assert!(
+            shared.is_empty(),
+            "shared extension dictionaries: {}",
+            shared.join(", ")
+        );
+    }
+
+    /// Baked dimension children must not share the dimension's extension
+    /// dictionary. `dim_common` used to clone the dimension's full common
+    /// block (including `xdictionary_handle`) onto every baked child, so an
+    /// R2000 save of a drawing with N such children failed audit
+    /// with exactly N "Cannot access" errors.
+    #[test]
+    fn baked_children_do_not_share_dimension_xdict() {
+        let mut doc = CadDocument::new();
+
+        // Made-up dictionary object for the dimension to own.
+        let dict_handle = doc.allocate_handle();
+        let mut dict = codec::objects::Dictionary::new();
+        dict.handle = dict_handle;
+        doc.objects
+            .insert(dict_handle, codec::objects::ObjectType::Dictionary(dict));
+
+        // Blockless dimension carrying that dictionary, as a file-read
+        // dimension with an extension dictionary would.
+        let mut d = DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0));
+        d.definition_point = Vector3::new(0.0, 5.0, 0.0);
+        d.base.text_middle_point = Vector3::new(5.0, 5.0, 0.0);
+        d.base.common.xdictionary_handle = Some(dict_handle);
+        let dim_handle = doc
+            .add_entity(EntityType::Dimension(Dimension::Linear(d)))
+            .unwrap();
+
+        bake_dimension_blocks(&mut doc);
+
+        let block_name = match doc.get_entity(dim_handle) {
+            Some(EntityType::Dimension(d)) => d.base().block_name.clone(),
+            _ => panic!("dimension missing"),
+        };
+        let owned: Vec<Handle> = doc
+            .block_records
+            .get(&block_name)
+            .unwrap()
+            .entity_handles
+            .clone();
+        assert!(
+            !owned.is_empty(),
+            "baked block should own sub-entities for the invariant to mean anything"
+        );
+        // (a) no shared dictionary anywhere in the document.
+        assert_no_shared_xdicts(&doc);
+        // (b) the dimension keeps its dictionary.
+        match doc.get_entity(dim_handle) {
+            Some(EntityType::Dimension(d)) => assert_eq!(
+                d.base().common.xdictionary_handle,
+                Some(dict_handle),
+                "the dimension must keep its own dictionary"
+            ),
+            _ => panic!("dimension missing"),
+        }
+        // (c) the baked children carry none.
+        for h in &owned {
+            match doc.get_entity(*h) {
+                Some(e) => assert!(
+                    e.common().xdictionary_handle.is_none(),
+                    "baked child {h:?} must not carry an extension dictionary"
+                ),
+                None => panic!("baked child {h:?} missing"),
+            }
+        }
     }
 }
