@@ -31,7 +31,7 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 ///
 /// `block_delete` gained its optional `force` parameter.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "634a75872d56ae4445dbd9f27479b3ff3d8c8e88c72db69a699fafa3d9f29b72";
+const TOOL_SCHEMA_DIGEST: &str = "7b0660f06aac861ac7892334e11694d18b17c71fbba9819f24091d90a71908ac";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
@@ -1296,8 +1296,17 @@ impl GuiClient {
                     pump,
                     mcp_id,
                 )
+            } else if let Err(error) =
+                resolve_batch_step(&batch.steps[batch.next], batch.next, &batch.results)
+            {
+                Ok(
+                    json!({"ok":false,"status":"failed","code":"invalid_batch_binding","error":error}),
+                )
             } else {
-                let mut step = batch.steps[batch.next]
+                let resolved =
+                    resolve_batch_step(&batch.steps[batch.next], batch.next, &batch.results)
+                        .expect("step resolution just succeeded");
+                let mut step = resolved
                     .as_object()
                     .cloned()
                     .ok_or_else(|| format!("batch step {} must be an object", batch.next))?;
@@ -1529,6 +1538,80 @@ fn required_string<'a>(arguments: &'a Value, key: &str) -> Result<&'a str, Strin
         .ok_or_else(|| format!("Missing {key}"))
 }
 
+/// Validate bindings without dispatching or substituting untyped placeholder values.
+fn batch_bindings(step: &Value, index: usize) -> Result<Vec<&str>, String> {
+    let Some(bindings) = step.get("bindings") else {
+        return Ok(Vec::new());
+    };
+    let bindings = bindings
+        .as_object()
+        .filter(|v| !v.is_empty())
+        .ok_or("bindings must be a nonempty object")?;
+    let op = crate::mcp_ops::find_op(step["op"].as_str().unwrap_or_default())
+        .ok_or("unknown bound operation")?;
+    for (target, source) in bindings {
+        if !op.params.iter().any(|p| p.name == target) {
+            return Err(format!("cannot bind parameter '{target}'"));
+        }
+        if step.get(target).is_some() {
+            return Err(format!("'{target}' has both a literal and a binding"));
+        }
+        let source = source
+            .as_object()
+            .ok_or("binding must contain step and path")?;
+        if source.len() != 2
+            || !source
+                .get("step")
+                .and_then(Value::as_u64)
+                .is_some_and(|s| s < index as u64)
+        {
+            return Err(
+                "binding must refer to an earlier step and contain only step and path".into(),
+            );
+        }
+        let path = source
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or("binding path must be a JSON Pointer")?;
+        if !path.is_empty() && !path.starts_with('/') {
+            return Err("binding path must be a JSON Pointer".into());
+        }
+        let mut chars = path.chars();
+        while let Some(c) = chars.next() {
+            if c == '~' && !matches!(chars.next(), Some('0' | '1')) {
+                return Err("invalid JSON Pointer escape".into());
+            }
+        }
+    }
+    Ok(bindings.keys().map(String::as_str).collect())
+}
+
+fn resolve_batch_step(step: &Value, index: usize, results: &[Value]) -> Result<Value, String> {
+    batch_bindings(step, index)?;
+    let mut resolved = step.clone();
+    if let Some(bindings) = resolved
+        .as_object_mut()
+        .ok_or("batch step must be an object")?
+        .remove("bindings")
+    {
+        for (target, source) in bindings.as_object().expect("validated bindings") {
+            let previous = results
+                .get(source["step"].as_u64().unwrap() as usize)
+                .ok_or("source step result unavailable")?;
+            if previous["status"] != "completed" || previous["ok"] == false {
+                return Err("binding source step has not completed successfully".into());
+            }
+            let path = source["path"].as_str().unwrap();
+            resolved[target] = previous
+                .pointer(path)
+                .ok_or_else(|| format!("binding '{target}' path '{path}' not found"))?
+                .clone();
+        }
+    }
+    crate::mcp_ops::validate_request(&resolved, true)?;
+    Ok(resolved)
+}
+
 fn validate_execute_request(
     request: &Value,
     op: &str,
@@ -1559,7 +1642,11 @@ fn validate_execute_request(
             if !BATCH_STEP_OPS.contains(&step_op) {
                 return Err(format!("Unknown operation {step_op} in batch step {index}"));
             }
-            let step_val = crate::mcp_ops::validate_request(step, true)
+            let deferred = batch_bindings(step, index)
+                .map_err(|error| format!("batch step {index}: {error}"))?;
+            let mut literal = step.clone();
+            literal.as_object_mut().unwrap().remove("bindings");
+            let step_val = crate::mcp_ops::validate_request_deferred(&literal, true, &deferred)
                 .map_err(|error| format!("batch step {index}: {error}"))?;
             for w in step_val.warnings {
                 warnings.push(format!("batch step {index}: {w}"));
@@ -3900,10 +3987,7 @@ mod tests {
         assert_eq!(content[1]["name"], "Captured viewport");
         assert_eq!(content[1]["mimeType"], "image/png");
         assert!(content[1].get("resource").is_none());
-        assert_eq!(
-            content[1]["uri"],
-            "cad://session/s1/snapshot/hash123.png"
-        );
+        assert_eq!(content[1]["uri"], "cad://session/s1/snapshot/hash123.png");
         // Ensure no image block was sent
         assert!(!content.iter().any(|c| c["type"] == "image"));
 
@@ -4440,6 +4524,90 @@ mod tests {
         let after = standalone.to_string().len();
         eprintln!("Execute request schema: {before} -> {after} bytes");
         assert!(after * 100 < before * 70, "expected at least 30% reduction");
+    }
+
+    #[test]
+    fn batch_bindings_validate_and_preserve_types() {
+        let step = json!({"op":"group_create","name":"walls","bindings":{"handles":{"step":0,"path":"/result/a~1b~0c"}}});
+        let request = json!({"op":"batch","steps":[{"op":"run","cmd":"LINE 0,0 1,1"},step]});
+        assert!(validate_execute_request(&request, "batch")
+            .unwrap()
+            .warnings
+            .is_empty());
+        let results = vec![json!({"ok":true,"status":"completed","result":{"a/b~c":["A","B"]}})];
+        let resolved = resolve_batch_step(&step, 1, &results).unwrap();
+        assert_eq!(resolved["handles"], json!(["A", "B"]));
+        assert!(resolved.get("bindings").is_none());
+        assert!(resolve_batch_step(
+            &step,
+            1,
+            &[json!({"status":"completed","result":{"a/b~c":42}})]
+        )
+        .is_err());
+        assert!(resolve_batch_step(&step, 1, &[json!({"status":"running"})]).is_err());
+        assert!(resolve_batch_step(&step, 1, &[json!({"status":"completed"})]).is_err());
+        for binding in [
+            json!({"step":1,"path":"/result"}),
+            json!({"step":2,"path":"/result"}),
+            json!({"step":0,"path":"/bad~2"}),
+            json!({"step":0,"path":"result"}),
+            json!({"step":0,"path":"","extra":true}),
+        ] {
+            let mut invalid = request.clone();
+            invalid["steps"][1]["bindings"]["handles"] = binding;
+            assert!(validate_execute_request(&invalid, "batch").is_err());
+        }
+        for key in ["op", "request_id", "revision", "unknown"] {
+            let invalid = json!({"op":"group_create","name":"walls","bindings":{key:{"step":0,"path":"/result"}}});
+            assert!(batch_bindings(&invalid, 1).is_err());
+        }
+        let mut conflict = step.clone();
+        conflict["handles"] = json!(["A"]);
+        assert!(batch_bindings(&conflict, 1).is_err());
+        let mut missing = request.clone();
+        missing["steps"][1].as_object_mut().unwrap().remove("name");
+        assert!(validate_execute_request(&missing, "batch").is_err());
+    }
+
+    #[test]
+    fn batch_binding_failure_is_cached_without_dispatch() {
+        let step = json!({"op":"group_create","name":"walls","bindings":{"handles":{"step":0,"path":"/missing"}}});
+        let request = json!({"op":"batch","request_id":"binding-test","steps":[{"op":"run","cmd":"LINE"},step]});
+        let mut client = GuiClient {
+            descriptor: Descriptor {
+                session_id: "test".into(),
+                port: 0,
+                token: String::new(),
+                pid: None,
+            },
+            state: json!({}),
+            client_id: "test".into(),
+            inflight: HashMap::new(),
+            dismissed: VecDeque::new(),
+            batches: VecDeque::from([BatchExecution {
+                id: "binding-test".into(),
+                request: request.clone(),
+                steps: request["steps"].as_array().unwrap().clone(),
+                next: 1,
+                active: None,
+                pending: None,
+                results: vec![json!({"ok":true,"status":"completed"})],
+                changes: vec![],
+                state: None,
+                terminal: None,
+            }]),
+        };
+        let failed = client
+            .execute_batch(request.clone(), 0.0, &mut detached_pump(), None)
+            .unwrap();
+        assert_eq!(failed["status"], "failed");
+        assert_eq!(failed["results"][1]["code"], "invalid_batch_binding");
+        assert_eq!(
+            client
+                .execute_batch(request, 0.0, &mut detached_pump(), None)
+                .unwrap(),
+            failed
+        );
     }
 
     #[test]

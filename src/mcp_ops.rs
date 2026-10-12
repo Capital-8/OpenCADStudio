@@ -1012,11 +1012,22 @@ pub fn execute_request_schema() -> Value {
 }
 
 pub fn batch_step_schema() -> Value {
-    let batch_variants: Vec<Value> = OPS
+    let mut batch_variants: Vec<Value> = OPS
         .iter()
         .filter(|op| op.batchable)
         .map(|op| op_ref(op))
         .collect();
+
+    batch_variants.push(json!({
+        "required":["bindings"],
+        "properties":{
+            "op":{"enum":OPS.iter().filter(|op| op.batchable).map(|op| op.name).collect::<Vec<_>>()},
+            "bindings":{"type":"object","minProperties":1,
+                "description":"Bind an operation parameter to an earlier completed step response using a zero-based step and RFC 6901 path. Validated again after resolution.",
+                "additionalProperties":{"type":"object","required":["step","path"],"additionalProperties":false,
+                    "properties":{"step":{"type":"integer","minimum":0},"path":{"type":"string","pattern":"^(|/.*)$"}}}}
+        }
+    }));
 
     json!({
         "type": "object",
@@ -1142,6 +1153,14 @@ fn validate_type(ty: &Ty, val: &Value) -> Result<(), String> {
 }
 
 pub fn validate_request(request: &Value, is_batch_step: bool) -> Result<ValidationResult, String> {
+    validate_request_deferred(request, is_batch_step, &[])
+}
+
+pub fn validate_request_deferred(
+    request: &Value,
+    is_batch_step: bool,
+    deferred: &[&str],
+) -> Result<ValidationResult, String> {
     let Some(obj) = request.as_object() else {
         return Err("request must be a JSON object".into());
     };
@@ -1162,7 +1181,7 @@ pub fn validate_request(request: &Value, is_batch_step: bool) -> Result<Validati
 
     // Check required params
     for p in op_def.params {
-        if p.required {
+        if p.required && !deferred.contains(&p.name) {
             let val = obj.get(p.name);
             if val.is_none() || val.unwrap().is_null() {
                 return Err(format!(
@@ -1179,7 +1198,7 @@ pub fn validate_request(request: &Value, is_batch_step: bool) -> Result<Validati
             Rule::AnyOf(keys) => {
                 let any_present = keys
                     .iter()
-                    .any(|k| obj.get(*k).is_some_and(|v| !v.is_null()));
+                    .any(|k| deferred.contains(k) || obj.get(*k).is_some_and(|v| !v.is_null()));
                 if !any_present {
                     return Err(format!(
                         "Missing {} for {}. Example request: {}",
@@ -1197,7 +1216,8 @@ pub fn validate_request(request: &Value, is_batch_step: bool) -> Result<Validati
                 if matches {
                     for req_key in *then {
                         let val = obj.get(*req_key);
-                        if val.is_none() || val.unwrap().is_null() {
+                        if !deferred.contains(req_key) && (val.is_none() || val.unwrap().is_null())
+                        {
                             return Err(format!(
                                 "Missing {} for {}. Example request: {}",
                                 req_key, op_name, op_def.example
