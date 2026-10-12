@@ -1757,6 +1757,18 @@ impl OpenCADStudio {
                             _ => unreachable!(),
                         };
                         if let Some(value) = &value {
+                            // Web CENTERLTYPEFILE: no path to read — pick the
+                            // .lin/.dnl file through the browser, read its
+                            // bytes at pick time and populate the document
+                            // from the text (native reads the typed path
+                            // inside `set_centerline_setting`).
+                            #[cfg(target_arch = "wasm32")]
+                            if name == "CENTERLTYPEFILE" && !value.trim().is_empty() {
+                                return Some(Task::perform(
+                                    crate::io::pick_linetype_file_web(),
+                                    Message::CenterlineLinetypeFilePicked,
+                                ));
+                            }
                             match self.tabs[i].scene.set_centerline_setting(&name, value) {
                                 Ok(message) => {
                                     self.tabs[i].dirty = true;

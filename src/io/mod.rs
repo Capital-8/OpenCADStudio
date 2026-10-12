@@ -232,6 +232,42 @@ pub async fn pick_layer_mapping_path(save: bool) -> Option<PathBuf> {
     Some(crate::sys::handle_path(&handle))
 }
 
+/// Web SCRIPT: pick the .scr file through the browser and read its text —
+/// the byte-level stand-in for the typed path the native command reads with
+/// `std::fs::read_to_string`. `None` means the user cancelled.
+#[cfg(target_arch = "wasm32")]
+pub async fn pick_script_web() -> Option<(String, String)> {
+    let Some(handle) = crate::sys::file_dialog()
+        .set_title(crate::t!("SCRIPT  path to the .scr file:").as_ref())
+        .add_filter(crate::t!("All Files").as_ref(), &["*"])
+        .pick_file()
+        .await
+    else {
+        return None;
+    };
+    let name = handle.file_name();
+    let bytes = handle.read().await;
+    Some((name, String::from_utf8_lossy(&bytes).into_owned()))
+}
+
+/// Web CENTERLTYPEFILE: pick the linetype (.lin/.dnl) file through the
+/// browser and read its text — the stand-in for the typed path the native
+/// command reads inside `set_centerline_setting`. `None` = cancelled.
+#[cfg(target_arch = "wasm32")]
+pub async fn pick_linetype_file_web() -> Option<(String, String)> {
+    let Some(handle) = crate::sys::file_dialog()
+        .set_title(crate::t!("Load linetype file").as_ref())
+        .add_filter(crate::t!("All Files").as_ref(), &["*"])
+        .pick_file()
+        .await
+    else {
+        return None;
+    };
+    let name = handle.file_name();
+    let bytes = handle.read().await;
+    Some((name, String::from_utf8_lossy(&bytes).into_owned()))
+}
+
 /// Load a CAD file from a known path. Parsing and cache building run on a
 /// dedicated OS thread so the async executor stays free for rendering during
 /// the load. Writes phase markers into `phase` so the UI can show
@@ -732,6 +768,50 @@ async fn load_web_bytes(
     progress.set(crate::app::OPEN_PHASE_FINALIZING, 9900, 1, 1);
     let path = PathBuf::from(name);
     Ok((name.to_string(), path, doc, caches))
+}
+
+/// Web: parse a *second* drawing (a block to insert, a layer-standards
+/// file) from bytes on the parse worker, with the same post-parse fixups
+/// `load_web_bytes` applies — the byte-level counterpart of `load_file`.
+#[cfg(target_arch = "wasm32")]
+async fn parse_web_document(name: &str, bytes: &[u8]) -> Result<CadDocument, String> {
+    let (outcome, _) = web_worker::parse_document(name, bytes, false, "")
+        .await
+        .map_err(|error| error.message)?;
+    let mut doc = outcome.document;
+    normalize_block_origins(&mut doc);
+    if name.to_ascii_lowercase().ends_with(".dxf") {
+        fix_dxf_dimension_rotations(&mut doc);
+        fix_dxf_layout_plot_settings(&mut doc);
+    }
+    fix_viewport_status_flags(&mut doc);
+    fix_current_style_names(&mut doc);
+    Ok(doc)
+}
+
+/// Web: show the browser picker, read the chosen file's bytes, and parse it
+/// as a drawing on the worker — `pick_and_load_web`'s pick-read-parse core
+/// for features that consume a second drawing instead of opening a tab.
+/// `Ok(None)` means the user cancelled.
+#[cfg(target_arch = "wasm32")]
+pub async fn pick_and_parse_web(
+    title: &str,
+    filter_label: &str,
+    extensions: &[&str],
+) -> Result<Option<(String, CadDocument)>, String> {
+    let Some(handle) = crate::sys::file_dialog()
+        .set_title(title)
+        .add_filter(filter_label, extensions)
+        .add_filter(crate::t!("All Files").as_ref(), &["*"])
+        .pick_file()
+        .await
+    else {
+        return Ok(None);
+    };
+    let name = handle.file_name();
+    let bytes = handle.read().await;
+    let document = parse_web_document(&name, &bytes).await?;
+    Ok(Some((name, document)))
 }
 
 /// Parse a drawing from bytes using its name or recovery-file signature.
@@ -1766,29 +1846,51 @@ pub async fn pick_plot_style() -> Result<Option<plot_style::PlotStyleTable>, Str
     let Some(handle) = dialog.pick_file().await else {
         return Ok(None);
     };
-    let path = crate::sys::handle_path(&handle);
-    let table = plot_style::PlotStyleTable::load(&path)?;
     #[cfg(not(target_arch = "wasm32"))]
-    if let (Ok(dir), Some(file_name)) = (plot_style::ensure_plot_styles_dir(), path.file_name()) {
-        let destination = dir.join(file_name);
-        let same_place = path.parent().is_some_and(|parent| {
-            parent
-                .canonicalize()
-                .ok()
-                .zip(dir.canonicalize().ok())
-                .is_some_and(|(a, b)| a == b)
-        });
-        if !same_place && !destination.exists() {
-            let _ = std::fs::copy(&path, &destination);
+    {
+        let path = crate::sys::handle_path(&handle);
+        let table = plot_style::PlotStyleTable::load(&path)?;
+        if let (Ok(dir), Some(file_name)) =
+            (plot_style::ensure_plot_styles_dir(), path.file_name())
+        {
+            let destination = dir.join(file_name);
+            let same_place = path.parent().is_some_and(|parent| {
+                parent
+                    .canonicalize()
+                    .ok()
+                    .zip(dir.canonicalize().ok())
+                    .is_some_and(|(a, b)| a == b)
+            });
+            if !same_place && !destination.exists() {
+                let _ = std::fs::copy(&path, &destination);
+            }
         }
+        Ok(Some(table))
     }
-    Ok(Some(table))
+    // Web: read the picked file's bytes now — the name-only path has nothing
+    // behind it — parse them, and remember them in the session registry so
+    // `load_named` resolves the name afterwards. There is no plot-styles
+    // folder on the web, so registration lasts for the session.
+    #[cfg(target_arch = "wasm32")]
+    {
+        let name = handle.file_name();
+        let bytes: std::sync::Arc<Vec<u8>> = std::sync::Arc::new(handle.read().await);
+        let table = plot_style::PlotStyleTable::from_bytes(&name, &bytes)?;
+        plot_style::register_session_table(&name, bytes);
+        Ok(Some(table))
+    }
 }
 
 // ── Image file picker ─────────────────────────────────────────────────────
 
 /// Show a file-open dialog for raster images and decode the selected file.
 /// Returns `(path, pixel_width, pixel_height)` or an error string.
+///
+/// The bytes are read through the dialog handle and registered against the
+/// returned path (name-only on the web — there is no filesystem behind it),
+/// mirroring the PDF-underlay pick. Decoding then comes from those bytes, and
+/// the entity the IMAGE command commits resolves through the same registry
+/// instead of a `image::open` on a path that only exists natively.
 pub async fn pick_image_file() -> Result<(PathBuf, u32, u32), String> {
     let handle = crate::sys::file_dialog()
         .set_title(crate::t!("Select Image File").as_ref())
@@ -1803,9 +1905,16 @@ pub async fn pick_image_file() -> Result<(PathBuf, u32, u32), String> {
         .await
         .ok_or_else(|| "Cancelled".to_string())?;
     let path = crate::sys::handle_path(&handle);
-    let img = image::open(&path).map_err(|e| e.to_string())?;
-    let (w, h) = image::GenericImageView::dimensions(&img);
-    Ok((path, w, h))
+    let bytes = std::sync::Arc::new(handle.read().await);
+    let reference = path.to_string_lossy().into_owned();
+    let short = std::path::Path::new(&reference)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| reference.clone());
+    crate::scene::model::image_model::register_source(&reference, bytes);
+    let decoded = crate::scene::model::image_model::resolve_image(&reference)
+        .ok_or_else(|| format!("Unsupported or corrupt image \"{short}\""))?;
+    Ok((path, decoded.width, decoded.height))
 }
 
 /// Pick an image file and prepare it for embedding (IMAGEEMBED). The bytes

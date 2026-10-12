@@ -13,6 +13,7 @@ use crate::scene::pick::grip::{find_hit_grip, find_hit_grip_paper, find_hit_grip
 use crate::scene::{
     self, hover_id, CubeRegion, Scene, VIEWCUBE_DRAW_PX, VIEWCUBE_PAD, VIEWCUBE_PX,
 };
+use crate::ui::window::block_palette::BlockPaletteMsg;
 use crate::ui::PropertiesPanel;
 use codec::types::Color as AcadColor;
 use codec::{EntityType as AcadEntityType, Handle};
@@ -395,7 +396,7 @@ impl OpenCADStudio {
         self.import_document_block(doc, stem, false)
     }
 
-    fn import_document_block(
+    pub(super) fn import_document_block(
         &mut self,
         doc: codec::CadDocument,
         stem: String,

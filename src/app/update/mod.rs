@@ -686,6 +686,23 @@ impl OpenCADStudio {
                 } else {
                     Task::none()
                 };
+                // Dropped raster images register their bytes (name-keyed) and
+                // re-resolve any RasterImage the open drawings reference but
+                // couldn't load — the web stand-in for the drawing folder the
+                // images live beside natively.
+                let mut registered: Vec<String> = Vec::new();
+                while let Some((name, bytes)) = crate::io::web_drop::take_dropped_image() {
+                    crate::scene::model::image_model::register_source(
+                        &name,
+                        std::sync::Arc::new(bytes),
+                    );
+                    registered.push(name);
+                }
+                if !registered.is_empty() {
+                    for tab in self.tabs.iter_mut() {
+                        tab.scene.resolve_registered_image_names(&registered);
+                    }
+                }
                 Task::batch([control, dropped])
             }
             #[cfg(not(target_arch = "wasm32"))]
@@ -1115,13 +1132,11 @@ impl OpenCADStudio {
                 // open's id so cancelling an unrelated open leaves a pending
                 // restore marker alone.
                 #[cfg(target_arch = "wasm32")]
-                if cancelled_id
-                    .is_some_and(|id| {
-                        self.web_autosave_consumed
-                            .as_ref()
-                            .is_some_and(|(_, recorded)| *recorded == id)
-                    })
-                    && self.web_autosave_consumed.take().is_some()
+                if cancelled_id.is_some_and(|id| {
+                    self.web_autosave_consumed
+                        .as_ref()
+                        .is_some_and(|(_, recorded)| *recorded == id)
+                }) && self.web_autosave_consumed.take().is_some()
                 {
                     self.queue_next_web_autosave_prompt();
                 }
@@ -1140,9 +1155,7 @@ impl OpenCADStudio {
                     // warning only (the drop path has no user-facing
                     // surface for rejections by design — see QUEUE_CAP).
                     let _ = match restore_key {
-                        Some(key) => {
-                            crate::io::web_drop::enqueue_restore(name, bytes, key)
-                        }
+                        Some(key) => crate::io::web_drop::enqueue_restore(name, bytes, key),
                         None => crate::io::web_drop::enqueue_open(name, bytes),
                     };
                     return Task::none();
@@ -1247,7 +1260,20 @@ impl OpenCADStudio {
                 if self.opening.as_ref().map(|opening| opening.id) != Some(open_id) {
                     return Task::none();
                 }
-                self.on_file_opened(name, path, doc, caches)
+                let task = self.on_file_opened(name, path, doc, caches);
+                // Web: raster files dropped while this open was in flight
+                // registered after its caches were built — re-resolve any
+                // image the (possibly new) drawing references by name.
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let names = crate::scene::model::image_model::registered_image_names();
+                    if !names.is_empty() {
+                        for tab in self.tabs.iter_mut() {
+                            tab.scene.resolve_registered_image_names(&names);
+                        }
+                    }
+                }
+                task
             }
 
             Message::FileOpened(open_id, Err(e)) => {
@@ -2810,6 +2836,39 @@ impl OpenCADStudio {
 
             Message::ScriptLine(line) => self.feed_script_line(&line),
 
+            // Web SCRIPT: the picked .scr file arrived — run it through the
+            // same runner the native path feeds.
+            #[cfg(target_arch = "wasm32")]
+            Message::ScriptFilePicked(Some((name, text))) => self.run_script(&name, &text),
+            #[cfg(target_arch = "wasm32")]
+            Message::ScriptFilePicked(None) => Task::none(),
+
+            // Web CENTERLTYPEFILE: the picked .lin/.dnl file's text arrived —
+            // load its linetypes, then record the setting under the file's
+            // name (the native command reads the typed path inside
+            // `set_centerline_setting` instead).
+            #[cfg(target_arch = "wasm32")]
+            Message::CenterlineLinetypeFilePicked(Some((name, source))) => {
+                let i = self.active_tab;
+                crate::io::linetypes::populate_document_from_source(
+                    &mut self.tabs[i].scene.document,
+                    &source,
+                );
+                match self.tabs[i]
+                    .scene
+                    .set_centerline_setting("CENTERLTYPEFILE", &name)
+                {
+                    Ok(message) => {
+                        self.tabs[i].dirty = true;
+                        self.command_line.push_output(&message);
+                    }
+                    Err(error) => self.command_line.push_error(&error),
+                }
+                Task::none()
+            }
+            #[cfg(target_arch = "wasm32")]
+            Message::CenterlineLinetypeFilePicked(None) => Task::none(),
+
             Message::ToggleLayers => {
                 if self.show_layers {
                     return self.on_dock(crate::ui::dock::DockMsg::Close(
@@ -3113,10 +3172,61 @@ impl OpenCADStudio {
             }
             // ── Layer Translator (#624) ──────────────────────────────────
             Message::LayerTranslatorLoad => {
-                Task::perform(crate::io::pick_layer_standard_path(), |path| match path {
-                    Some(path) => Message::LayerTranslatorLoaded(path),
-                    None => Message::Noop,
-                })
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    Task::perform(crate::io::pick_layer_standard_path(), |path| match path {
+                        Some(path) => Message::LayerTranslatorLoaded(path),
+                        None => Message::Noop,
+                    })
+                }
+                // Web: read the picked file's bytes and parse them on the
+                // worker right away — a name-only path has nothing behind it
+                // for `load_targets` to read later.
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Task::perform(
+                        async {
+                            crate::io::pick_and_parse_web(
+                                crate::t!("Load layer standard").as_ref(),
+                                crate::t!("Drawings and standards").as_ref(),
+                                &["dwg", "dws", "dwt", "dxf", "DWG", "DWS", "DWT", "DXF"],
+                            )
+                            .await
+                            .and_then(|picked| {
+                                picked.map_or(Ok(None), |(name, document)| {
+                                    crate::modules::draw::layers::laytrans::targets_from_document(
+                                        &document,
+                                    )
+                                    .map(|targets| Some((name, targets)))
+                                })
+                            })
+                        },
+                        |loaded| Message::LayerTranslatorLoadedWeb(loaded),
+                    )
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            Message::LayerTranslatorLoadedWeb(loaded) => {
+                match loaded {
+                    Ok(Some((source_file, targets))) => {
+                        let state = self.layer_translator.get_or_insert_with(Default::default);
+                        state.source_file = source_file;
+                        state.targets = targets;
+                        // A target set that no longer contains a mapped name
+                        // would translate onto nothing.
+                        let names: Vec<String> =
+                            state.targets.iter().map(|t| t.name.clone()).collect();
+                        state
+                            .mappings
+                            .retain(|m| names.iter().any(|n| n.eq_ignore_ascii_case(&m.to)));
+                        state.selected_to = None;
+                    }
+                    Err(why) => self
+                        .command_line
+                        .push_error(crate::tf!("LAYTRANS: {why}.").as_ref()),
+                    Ok(None) => {}
+                }
+                Task::none()
             }
             Message::LayerTranslatorLoaded(path) => {
                 use crate::modules::draw::layers::laytrans;
@@ -10162,6 +10272,7 @@ impl OpenCADStudio {
                     .unwrap_or_else(|| "drawing".into());
                 // The save dialog follows the dialog's file device, so the
                 // SVG choice proposes `stem.svg` up front.
+                #[cfg(not(target_arch = "wasm32"))]
                 let svg = self.plot_dialog.file_svg;
                 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "windows")))]
                 {
@@ -10199,6 +10310,7 @@ impl OpenCADStudio {
                     .and_then(|p: &std::path::Path| p.file_stem())
                     .map(|s: &std::ffi::OsStr| s.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "drawing".into());
+                #[cfg(not(target_arch = "wasm32"))]
                 let svg = self.plot_dialog.file_svg;
                 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "windows")))]
                 {

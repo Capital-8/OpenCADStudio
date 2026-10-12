@@ -2468,6 +2468,29 @@ impl Scene {
         self.bump_geometry();
     }
 
+    /// Web drop flow: `names` are raster files whose bytes were just
+    /// registered (name-keyed). When this drawing references one of them by
+    /// name but carries no model for it — the reference pointed at the
+    /// author's machine and was unresolvable at open time — rebuild the image
+    /// models so the entity finally renders. Returns whether a rebuild ran.
+    pub fn resolve_registered_image_names(&mut self, names: &[String]) -> bool {
+        let matches_name = |img: &codec::entities::RasterImage| {
+            names
+                .iter()
+                .any(|name| crate::scene::model::image_model::same_file_name(&img.file_path, name))
+        };
+        let unresolved = self.document.entities().any(|entity| match entity {
+            EntityType::RasterImage(img) => {
+                matches_name(img) && !self.images.contains_key(&img.common.handle)
+            }
+            _ => false,
+        });
+        if unresolved {
+            self.populate_images_from_document();
+        }
+        unresolved
+    }
+
     fn populate_images_from_document_unbumped(&mut self) {
         self.images.clear();
         let entries: Vec<(Handle, codec::entities::EntityType)> = self

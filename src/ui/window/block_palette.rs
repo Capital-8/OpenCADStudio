@@ -167,6 +167,10 @@ pub enum BlockPaletteMsg {
     View(ViewMode),
     PickFile,
     FilePicked(Result<PathBuf, String>),
+    /// Web: the picked drawing arrived already parsed from the picker's
+    /// bytes — a name-only path has nothing behind it to read later.
+    #[cfg(target_arch = "wasm32")]
+    FilePickedDoc(Result<(String, codec::CadDocument), String>),
     Refresh,
     Option(OptionMsg),
     ToggleOptions,

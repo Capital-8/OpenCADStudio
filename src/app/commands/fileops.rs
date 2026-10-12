@@ -80,9 +80,9 @@ impl OpenCADStudio {
                 }
                 #[cfg(target_arch = "wasm32")]
                 {
-                    self.command_line.push_info(
-                        crate::t!("SAVEALL: save each tab individually in the web build.").as_ref(),
-                    );
+                    // Web: every dirty saved tab is serialized and downloaded
+                    // in one pass — see `saveall_web` for the flow.
+                    self.saveall_web();
                 }
                 return Some(Task::none());
             }
@@ -420,29 +420,29 @@ impl OpenCADStudio {
                 let path = cmd.split_once(' ').map(|(_, r)| r.trim().to_string());
                 match path {
                     Some(p) if !p.is_empty() => {
-                        let clean_path = p.trim().trim_matches(|c| c == '"' || c == '\'');
-                        match std::fs::read_to_string(clean_path) {
-                            Ok(text) => {
-                                let cmds: Vec<Task<Message>> = text
-                                    .lines()
-                                    .map(str::trim)
-                                    .filter(|l| !l.starts_with('#') && !l.starts_with(';'))
-                                    .map(|l| Task::done(Message::ScriptLine(l.to_string())))
-                                    .collect();
-                                self.command_line.push_output(
-                                    crate::tf!(
-                                        "SCRIPT: running {} command(s) from {clean_path}.",
-                                        cmds.len()
-                                    )
-                                    .as_ref(),
-                                );
-                                return Some(Task::batch(cmds));
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let clean_path = p.trim().trim_matches(|c| c == '"' || c == '\'');
+                            match std::fs::read_to_string(clean_path) {
+                                Ok(text) => return Some(self.run_script(clean_path, &text)),
+                                Err(e) => {
+                                    self.command_line.push_error(
+                                        crate::tf!("SCRIPT: cannot read {clean_path}: {e}").as_ref(),
+                                    );
+                                }
                             }
-                            Err(e) => {
-                                self.command_line.push_error(
-                                    crate::tf!("SCRIPT: cannot read {clean_path}: {e}").as_ref(),
-                                );
-                            }
+                        }
+                        // Web: nothing is behind a typed path — pick the
+                        // script through the browser and read its bytes at
+                        // pick time (the `pick_and_load_web` pattern); the
+                        // picked text is fed to the same runner.
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            let _ = &p;
+                            return Some(Task::perform(
+                                crate::io::pick_script_web(),
+                                Message::ScriptFilePicked,
+                            ));
                         }
                     }
                     _ => {
@@ -455,6 +455,53 @@ impl OpenCADStudio {
             _ => return None,
         }
         Some(self.finish_dispatch(cmd))
+    }
+
+    /// Announce a script and feed its rows to the same runner the `--script`
+    /// startup flag uses — shared by the native `SCRIPT <path>` read and the
+    /// web picker's `ScriptFilePicked`.
+    pub(in crate::app) fn run_script(&mut self, path: &str, text: &str) -> Task<Message> {
+        let p = path;
+        let cmds: Vec<Task<Message>> = script_command_lines(text)
+            .into_iter()
+            .map(|line| Task::done(Message::ScriptLine(line)))
+            .collect();
+        self.command_line.push_output(
+            crate::tf!("SCRIPT: running {} command(s) from {p}.", cmds.len()).as_ref(),
+        );
+        Task::batch(cmds)
+    }
+}
+
+/// One runnable row of a `.scr` script: trimmed, comment rows (`#`, `;`)
+/// dropped, blank rows kept so they submit Enter to the active command.
+fn script_command_lines(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.starts_with('#') && !line.starts_with(';'))
+        .map(str::to_string)
+        .collect()
+}
+
+#[cfg(test)]
+mod script_tests {
+    use super::script_command_lines;
+
+    /// Comments drop, every other row survives trimmed, and blank or
+    /// whitespace-only rows stay as empty strings (Enter presses).
+    #[test]
+    fn comments_and_blanks_follow_the_scr_rules() {
+        let lines =
+            script_command_lines("# comment\n; also a comment\nLINE 0,0 10,0\n\n   \n  TRIM  \n");
+        assert_eq!(
+            lines,
+            vec![
+                "LINE 0,0 10,0".to_string(),
+                String::new(),
+                String::new(),
+                "TRIM".to_string(),
+            ]
+        );
     }
 }
 

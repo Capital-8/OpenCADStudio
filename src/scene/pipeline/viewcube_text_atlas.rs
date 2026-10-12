@@ -176,7 +176,9 @@ fn font_system(
     Some((
         FontSystem::new_with_locale_and_db("en-US".to_owned(), database),
         Some(script.family()),
-        Weight::NORMAL,
+        // Match the native request; fontdb picks the nearest available weight
+        // (the subsets ship Regular) and `embolden_alpha` adds the thickness.
+        Weight::SEMIBOLD,
     ))
 }
 

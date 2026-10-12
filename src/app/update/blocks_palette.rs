@@ -51,6 +51,44 @@ impl OpenCADStudio {
                 self.persist_settings_if_changed();
             }
             BlockPaletteMsg::Refresh => self.refresh_block_palette(),
+            // Web: read the picked file's bytes and parse them right away —
+            // the picker's name-only path has nothing behind it to read later.
+            #[cfg(target_arch = "wasm32")]
+            BlockPaletteMsg::PickFile => {
+                return Task::perform(
+                    async {
+                        crate::io::pick_and_parse_web(
+                            crate::t!("Select Drawing to Insert as Block").as_ref(),
+                            crate::t!("DWG/DXF Files").as_ref(),
+                            &["dwg", "dxf", "DWG", "DXF"],
+                        )
+                        .await
+                        .and_then(|picked| picked.ok_or_else(|| "Cancelled".to_string()))
+                    },
+                    |r| Message::BlockPalette(BlockPaletteMsg::FilePickedDoc(r)),
+                );
+            }
+            #[cfg(target_arch = "wasm32")]
+            BlockPaletteMsg::FilePickedDoc(Ok((name, document))) => {
+                let stem = std::path::Path::new(&name)
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "Block".to_string());
+                match self.import_document_block(document, stem, false) {
+                    Ok(name) => {
+                        self.refresh_block_palette();
+                        return self.start_palette_insert(&name, None);
+                    }
+                    Err(e) => self.command_line.push_error(&e),
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            BlockPaletteMsg::FilePickedDoc(Err(e)) => {
+                if e != "Cancelled" {
+                    self.command_line.push_error(&e);
+                }
+            }
+            #[cfg(not(target_arch = "wasm32"))]
             BlockPaletteMsg::PickFile => {
                 return Task::perform(
                     async {
