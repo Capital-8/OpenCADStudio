@@ -2187,7 +2187,7 @@ bg={bg_ms:.1}ms n={view_count}"
                     &redo_labels,
                     self.win_size,
                     self.tabs[self.active_tab].is_start,
-                    &self.recent_colors,
+                    &self.tabs[self.active_tab].recent_colors,
                 )
                 .unwrap_or_else(|| iced::widget::Space::new().width(0).height(0).into())
         };

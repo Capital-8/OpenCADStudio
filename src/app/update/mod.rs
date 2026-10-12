@@ -4180,38 +4180,7 @@ impl OpenCADStudio {
                 Task::none()
             }
 
-            Message::LayerColorSet(color) => {
-                let i = self.active_tab;
-                // Apply to every selected layer (multi-select), not just one.
-                let names = self.selected_layer_names(i);
-                if !names.is_empty() {
-                    let undo = self.begin_layer_undo(i, "LAYER COLOR", &names);
-                    for name in &names {
-                        if let Some(dl) = self.tabs[i].scene.document.layers.get_mut(name) {
-                            dl.color = color;
-                            dl.color_name = None;
-                            dl.book_name = None;
-                        }
-                    }
-                    for pl in self.tabs[i].layers.layers.iter_mut() {
-                        if names.contains(&pl.name) {
-                            pl.color = color;
-                            pl.color_name = None;
-                            pl.book_name = None;
-                        }
-                    }
-                    self.tabs[i].dirty = true;
-                    self.commit_layer_undo(i, undo);
-                    // ByLayer color is baked into the cached wires at
-                    // tessellation time, so bump the geometry epoch to
-                    // invalidate the wire cache and repaint with the new color.
-                    self.tabs[i].scene.invalidate_layer_dependencies(&names);
-                    self.tabs[i].layers.color_picker_row = None;
-                    self.tabs[i].layers.color_full_palette = false;
-                    self.sync_ribbon_layers();
-                }
-                Task::none()
-            }
+            Message::LayerColorSet(color) => self.set_layer_color(color, None),
 
             Message::LayerLinetypeSet(lt) => {
                 let i = self.active_tab;
@@ -7264,22 +7233,7 @@ impl OpenCADStudio {
                 Task::none()
             }
 
-            Message::PropColorChanged(color) => {
-                let i = self.active_tab;
-                let handles = self.property_target_handles(i);
-                if handles.is_empty() {
-                    let task = self.on_ribbon_color_changed(color);
-                    self.refresh_properties();
-                    return task;
-                }
-                self.apply_property_op(i, "CHPROP", &handles, |app, handle| {
-                    if let Some(entity) = app.tabs[i].scene.document.get_entity_mut(handle) {
-                        crate::scene::view::dispatch::apply_color(entity, color);
-                    }
-                });
-                self.tabs[i].properties.color_picker_open = false;
-                Task::none()
-            }
+            Message::PropColorChanged(color) => self.set_property_color(color, None),
 
             Message::PropLwChanged(lw) => {
                 let i = self.active_tab;
@@ -11605,10 +11559,19 @@ impl OpenCADStudio {
                 ) {
                     self.graphic_attributes.open_menu = None;
                 }
-                let (current, varies) = self.color_picker_current(&target, color);
-                self.color_picker = Some(crate::ui::color_select::ColorPicker::new(
-                    target, current, varies,
-                ));
+                let (current, varies, name) = self.color_picker_current(&target, color);
+                let mut picker = crate::ui::color_select::ColorPicker::new(target, current, varies);
+                if !matches!(picker.target, crate::app::ColorPickTarget::Interface(_)) {
+                    self.read_color_books();
+                    let tab = &self.tabs[self.active_tab];
+                    picker = picker.with_drawing(
+                        crate::ui::color_select::document::collect(&tab.scene.document),
+                        &tab.recent_colors,
+                        std::sync::Arc::clone(&self.color_books),
+                        name,
+                    );
+                }
+                self.color_picker = Some(picker);
                 self.modal_offset = iced::Vector::ZERO;
                 self.ds_color_open = None;
                 self.mls_color_open = None;
@@ -11628,9 +11591,28 @@ impl OpenCADStudio {
                     return Task::none();
                 };
                 match picker.update(msg) {
-                    Some(crate::ui::color_select::Outcome::Commit(color)) => {
-                        self.update(Message::ColorWindowPick(color))
+                    Some(crate::ui::color_select::Outcome::Commit(color, name)) => {
+                        self.update(Message::ColorWindowPick(color, name))
                     }
+                    Some(crate::ui::color_select::Outcome::LoadBook) => Task::perform(
+                        async {
+                            let file = crate::sys::file_dialog()
+                                .add_filter(crate::t!("Color book").as_ref(), &["acb", "ACB"])
+                                .pick_file()
+                                .await
+                                .ok_or_else(|| "Cancelled".to_string())?;
+                            let book = crate::ui::color_select::book::parse(
+                                &String::from_utf8_lossy(&file.read().await),
+                            )?;
+                            // The web build has no paths to read again later.
+                            #[cfg(not(target_arch = "wasm32"))]
+                            let path = Some(crate::sys::handle_path(&file).display().to_string());
+                            #[cfg(target_arch = "wasm32")]
+                            let path = None;
+                            Ok((book, path))
+                        },
+                        Message::ColorBookLoaded,
+                    ),
                     Some(crate::ui::color_select::Outcome::Cancel) => {
                         self.color_picker = None;
                         Task::none()
@@ -11656,7 +11638,7 @@ impl OpenCADStudio {
                 Task::none()
             }
 
-            Message::ColorWindowPick(color) => {
+            Message::ColorWindowPick(color, name) => {
                 // Interface colours are not drawing colours: keep them out of
                 // the recent list.
                 if !matches!(
@@ -11665,7 +11647,35 @@ impl OpenCADStudio {
                 ) {
                     self.note_recent_color(color);
                 }
-                self.on_color_window_pick(color)
+                self.on_color_window_pick(color, name)
+            }
+            Message::ColorBookLoaded(Ok((book, path))) => {
+                // A book loaded again replaces the earlier copy.
+                let books = std::sync::Arc::make_mut(&mut self.color_books);
+                let index = match books.iter().position(|b| b.name == book.name) {
+                    Some(index) => {
+                        books[index] = book;
+                        index
+                    }
+                    None => {
+                        books.push(book);
+                        books.len() - 1
+                    }
+                };
+                if let Some(path) = path.filter(|path| !self.color_book_paths.contains(path)) {
+                    self.color_book_paths.push(path);
+                    self.save_config();
+                }
+                if let Some(picker) = self.color_picker.as_mut() {
+                    picker.show_book(std::sync::Arc::clone(&self.color_books), index);
+                }
+                Task::none()
+            }
+            Message::ColorBookLoaded(Err(error)) => {
+                if let Some(picker) = self.color_picker.as_mut().filter(|_| error != "Cancelled") {
+                    picker.set_status(error);
+                }
+                Task::none()
             }
             Message::DsSetHandle { field, value } => self.on_ds_set_handle(field, value),
         }
@@ -11674,16 +11684,33 @@ impl OpenCADStudio {
     /// The colour the Select Color panel shows as "Current", and whether the
     /// selection it edits has mixed colours. A mixed selection starts from the
     /// colour of its most recently drawn object (the highest handle).
+    /// Also returns the colour-book identity (`BOOK$NAME`) of that colour.
     fn color_picker_current(
         &self,
         target: &crate::app::ColorPickTarget,
         color: codec::types::Color,
-    ) -> (codec::types::Color, bool) {
-        if !matches!(target, crate::app::ColorPickTarget::Properties) {
-            return (color, false);
-        }
+    ) -> (codec::types::Color, bool, Option<String>) {
         let i = self.active_tab;
         let document = &self.tabs[i].scene.document;
+        let name_of = |handle| {
+            document
+                .get_entity(handle)
+                .and_then(|entity| entity.common().color_name.clone())
+        };
+        match target {
+            crate::app::ColorPickTarget::Properties => {}
+            crate::app::ColorPickTarget::Layer(layer) => {
+                let name = document.layers.get(layer).and_then(|layer| {
+                    match (&layer.book_name, &layer.color_name) {
+                        (Some(book), Some(name)) => Some(format!("{book}${name}")),
+                        (None, Some(name)) => Some(name.clone()),
+                        _ => None,
+                    }
+                });
+                return (color, false, name);
+            }
+            _ => return (color, false, None),
+        }
         let mut colors = self
             .property_target_handles(i)
             .into_iter()
@@ -11693,15 +11720,99 @@ impl OpenCADStudio {
                     .map(|entity| (handle, entity.common().color))
             })
             .collect::<Vec<_>>();
-        let Some(&(_, first)) = colors.first() else {
-            return (color, false);
+        let Some(&(first_handle, first)) = colors.first() else {
+            return (color, false, None);
         };
         if colors.iter().all(|&(_, c)| c == first) {
-            return (first, false);
+            return (first, false, name_of(first_handle));
         }
         colors.sort_by_key(|&(handle, _)| handle);
-        let newest = colors.last().map_or(color, |&(_, c)| c);
-        (newest, true)
+        let (newest_handle, newest) = colors.last().copied().unwrap_or((first_handle, color));
+        (newest, true, name_of(newest_handle))
+    }
+
+    /// Read the colour books remembered in the settings, once per session.
+    fn read_color_books(&mut self) {
+        if std::mem::replace(&mut self.color_books_read, true) {
+            return;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let books: Vec<_> = self
+                .color_book_paths
+                .iter()
+                .filter_map(|path| std::fs::read_to_string(path).ok())
+                .filter_map(|text| crate::ui::color_select::book::parse(&text).ok())
+                .collect();
+            self.color_books = std::sync::Arc::new(books);
+        }
+    }
+
+    /// Colour the selected objects (or set the current colour when nothing
+    /// is selected). `name` is a colour-book identity, `BOOK$NAME`.
+    pub(super) fn set_property_color(
+        &mut self,
+        color: codec::types::Color,
+        name: Option<String>,
+    ) -> Task<Message> {
+        let i = self.active_tab;
+        let handles = self.property_target_handles(i);
+        if handles.is_empty() {
+            let task = self.on_ribbon_color_changed(color);
+            self.refresh_properties();
+            return task;
+        }
+        self.apply_property_op(i, "CHPROP", &handles, |app, handle| {
+            if let Some(entity) = app.tabs[i].scene.document.get_entity_mut(handle) {
+                crate::scene::view::dispatch::apply_named_color(entity, color, name.clone());
+            }
+        });
+        self.tabs[i].properties.color_picker_open = false;
+        Task::none()
+    }
+
+    /// Colour every selected layer (multi-select), not just one. `name` is a
+    /// colour-book identity, `BOOK$NAME`.
+    pub(super) fn set_layer_color(
+        &mut self,
+        color: codec::types::Color,
+        name: Option<&str>,
+    ) -> Task<Message> {
+        let i = self.active_tab;
+        // Layers keep the book and the colour name apart.
+        let (book_name, color_name) = match name.map(|name| name.split_once('$')) {
+            Some(Some((book, name))) => (Some(book), Some(name)),
+            Some(None) => (None, name),
+            None => (None, None),
+        };
+        let names = self.selected_layer_names(i);
+        if !names.is_empty() {
+            let undo = self.begin_layer_undo(i, "LAYER COLOR", &names);
+            for name in &names {
+                if let Some(dl) = self.tabs[i].scene.document.layers.get_mut(name) {
+                    dl.color = color;
+                    dl.color_name = color_name.map(str::to_string);
+                    dl.book_name = book_name.map(str::to_string);
+                }
+            }
+            for pl in self.tabs[i].layers.layers.iter_mut() {
+                if names.contains(&pl.name) {
+                    pl.color = color;
+                    pl.color_name = color_name.map(str::to_string);
+                    pl.book_name = book_name.map(str::to_string);
+                }
+            }
+            self.tabs[i].dirty = true;
+            self.commit_layer_undo(i, undo);
+            // ByLayer color is baked into the cached wires at
+            // tessellation time, so bump the geometry epoch to
+            // invalidate the wire cache and repaint with the new color.
+            self.tabs[i].scene.invalidate_layer_dependencies(&names);
+            self.tabs[i].layers.color_picker_row = None;
+            self.tabs[i].layers.color_full_palette = false;
+            self.sync_ribbon_layers();
+        }
+        Task::none()
     }
 
     pub(crate) fn note_recent_color(&mut self, color: codec::types::Color) {
@@ -11712,12 +11823,13 @@ impl OpenCADStudio {
             codec::types::Color::Index(_) | codec::types::Color::Rgb { .. }
         ) {
             // No duplicates: selecting an existing colour moves it to the front.
-            if let Some(pos) = self.recent_colors.iter().position(|c| c == &color) {
-                self.recent_colors.remove(pos);
+            let recent = &mut self.tabs[self.active_tab].recent_colors;
+            if let Some(pos) = recent.iter().position(|c| c == &color) {
+                recent.remove(pos);
             }
 
-            self.recent_colors.insert(0, color);
-            self.recent_colors.truncate(12);
+            recent.insert(0, color);
+            recent.truncate(12);
         }
     }
 

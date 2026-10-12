@@ -5,6 +5,8 @@
 //! Opened for an interface colour (any colour in Options) it shows only the
 //! colour editor: no tabs, no index colours.
 
+use super::book::ColorBook;
+use super::document::{self, DocColor, DocSort};
 use super::editor::{rgb_color, ColorEditor, EditorMsg};
 use super::eyedropper::{Eyedropper, EyedropperMsg};
 use super::math;
@@ -12,20 +14,29 @@ use crate::app::{ArrowKey, ColorPickTarget, Message};
 use crate::t;
 use crate::ui::properties::acad_color_display;
 use codec::types::Color as AcadColor;
-use iced::widget::{button, column, container, row, text, Space};
+use iced::widget::{
+    button, column, container, mouse_area, pick_list, row, scrollable, svg, text, text_input, Space,
+};
 use iced::{Background, Border, Color, Element, Length, Theme};
+use std::sync::Arc;
 
 const PANEL_WIDTH: f32 = 400.0;
 /// Scope for Tab / Shift+Tab, so focus cycles through the panel's own
 /// fields instead of the dialogs and command line underneath.
 const PANEL_ID: &str = "select-color-panel";
 const BODY_HEIGHT: f32 = 352.0;
+/// Swatches per row in the Document tab.
+const DOC_COLUMNS: usize = 8;
+/// Search matches shown at once in the Color books tab.
+const PAGE_BARS: usize = 7;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ColorPickerTab {
+    Document,
     #[default]
     Index,
     TrueColor,
+    Books,
 }
 
 #[derive(Debug, Clone)]
@@ -40,17 +51,32 @@ pub enum ColorPickerMsg {
     UseNearest,
     Arrow(ArrowKey),
     Eyedropper(EyedropperMsg),
+    /// A colour of the Document tab, by its place in the list.
+    PickDocument(usize),
+    DocSort(DocSort),
+    /// Show another loaded colour book.
+    Book(usize),
+    BookPage(usize),
+    /// Scrolling over the page: one page per notch.
+    BookScroll(f32),
+    BookQuery(String),
+    /// A colour of the shown book, by its index in the book.
+    PickBook(usize),
+    LoadBook,
     Ok,
     Cancel,
 }
 
 /// What the caller has to do after an update.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
-    Commit(AcadColor),
+    /// The colour, and its `BOOK$NAME` when it comes from a colour book.
+    Commit(AcadColor, Option<String>),
     Cancel,
     /// Capture the window for the eyedropper.
     Screenshot,
+    /// Ask for an `.acb` file.
+    LoadBook,
 }
 
 pub struct ColorPicker {
@@ -60,9 +86,22 @@ pub struct ColorPicker {
     current: AcadColor,
     varies: bool,
     pending: AcadColor,
+    /// `BOOK$NAME` of the current and the new colour, for colour-book colours.
+    current_name: Option<String>,
+    pending_name: Option<String>,
     tab: ColorPickerTab,
     editor: ColorEditor,
     eyedropper: Option<Eyedropper>,
+    doc: Vec<DocColor>,
+    doc_sort: DocSort,
+    /// This drawing's colours picked this session, newest first.
+    recent: Vec<AcadColor>,
+    books: Arc<Vec<ColorBook>>,
+    book: usize,
+    book_page: usize,
+    book_query: String,
+    /// Why the last colour book did not load.
+    status: Option<String>,
 }
 
 impl ColorPicker {
@@ -77,10 +116,83 @@ impl ColorPicker {
             current,
             varies,
             pending: current,
+            current_name: None,
+            pending_name: None,
             tab,
             editor: ColorEditor::new(math::color_rgb(current).unwrap_or((255, 255, 255))),
             eyedropper: None,
+            doc: Vec::new(),
+            doc_sort: DocSort::default(),
+            recent: Vec::new(),
+            books: Arc::default(),
+            book: 0,
+            book_page: 0,
+            book_query: String::new(),
+            status: None,
         }
+    }
+
+    /// Fill the Document and Color books tabs. `current_name` is the
+    /// `BOOK$NAME` of the current colour; a colour from a loaded book opens
+    /// on its page.
+    pub fn with_drawing(
+        mut self,
+        mut doc: Vec<DocColor>,
+        recent: &[AcadColor],
+        books: Arc<Vec<ColorBook>>,
+        current_name: Option<String>,
+    ) -> Self {
+        document::sort(&mut doc, self.doc_sort, recent);
+        self.doc = doc;
+        self.recent = recent.to_vec();
+        self.books = books;
+        if let Some(name) = current_name.filter(|name| !name.is_empty()) {
+            if self.show_identity(&name) {
+                self.tab = ColorPickerTab::Books;
+            }
+            self.current_name = Some(name.clone());
+            self.pending_name = Some(name);
+        }
+        self
+    }
+
+    /// The loaded books changed; show book `index`.
+    pub fn show_book(&mut self, books: Arc<Vec<ColorBook>>, index: usize) {
+        self.books = books;
+        self.book = index;
+        self.book_page = 0;
+        self.book_query.clear();
+        self.status = None;
+        self.tab = ColorPickerTab::Books;
+    }
+
+    pub fn set_status(&mut self, status: String) {
+        self.status = Some(status);
+    }
+
+    /// Turn to the page holding `BOOK$NAME`. False when no loaded book has it.
+    fn show_identity(&mut self, identity: &str) -> bool {
+        let Some((book_name, name)) = identity.split_once('$') else {
+            return false;
+        };
+        for (i, book) in self.books.iter().enumerate() {
+            if let Some(color) = book.find(name).filter(|_| book.name == book_name) {
+                self.book = i;
+                self.book_page = book.page_of(color);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// The colour of the shown book that is the new colour, if any.
+    fn book_selection(&self) -> Option<usize> {
+        let (book_name, name) = self.pending_name.as_deref()?.split_once('$')?;
+        let book = self
+            .books
+            .get(self.book)
+            .filter(|book| book.name == book_name)?;
+        book.find(name)
     }
 
     pub fn pending(&self) -> AcadColor {
@@ -98,6 +210,7 @@ impl ColorPicker {
 
     fn set_pending(&mut self, color: AcadColor) {
         self.pending = color;
+        self.pending_name = None;
         if let Some(rgb) = math::color_rgb(color) {
             self.editor.set_rgb(rgb);
         }
@@ -131,24 +244,82 @@ impl ColorPicker {
         match msg {
             ColorPickerMsg::Tab(tab) => self.tab = tab,
             ColorPickerMsg::Pick(color) => self.set_pending(color),
-            ColorPickerMsg::Revert => self.set_pending(self.current),
+            ColorPickerMsg::Revert => {
+                self.set_pending(self.current);
+                self.pending_name = self.current_name.clone();
+            }
             ColorPickerMsg::Editor(editor) => {
                 if self.editor.update(editor) {
                     let (r, g, b) = self.editor.rgb();
                     self.pending = AcadColor::Rgb { r, g, b };
+                    self.pending_name = None;
                 }
             }
             ColorPickerMsg::UseNearest => {
                 let (r, g, b) = self.rgb();
                 self.set_pending(AcadColor::Index(math::nearest_aci(r, g, b)));
             }
-            ColorPickerMsg::Arrow(direction) => {
-                if let (ColorPickerTab::Index, AcadColor::Index(index)) = (self.tab, self.pending) {
+            ColorPickerMsg::Arrow(direction) => match (self.tab, self.pending) {
+                (ColorPickerTab::Index, AcadColor::Index(index)) => {
                     if let Some(next) = step_index(index, direction) {
                         self.set_pending(AcadColor::Index(next));
                     }
                 }
+                (ColorPickerTab::Document, _) => {
+                    let at = self
+                        .doc
+                        .iter()
+                        .position(|c| c.color == self.pending && c.name == self.pending_name);
+                    if let Some(next) = step_list(at, self.doc.len(), DOC_COLUMNS, direction) {
+                        self.update(ColorPickerMsg::PickDocument(next));
+                    }
+                }
+                (ColorPickerTab::Books, _) => {
+                    let len = self
+                        .books
+                        .get(self.book)
+                        .map_or(0, |book| book.colors.len());
+                    if let Some(next) = step_list(self.book_selection(), len, 1, direction) {
+                        self.pick_book(next);
+                    }
+                }
+                _ => {}
+            },
+            ColorPickerMsg::PickDocument(i) => {
+                if let Some(entry) = self.doc.get(i) {
+                    let (color, name) = (entry.color, entry.name.clone());
+                    self.set_pending(color);
+                    self.pending_name = name;
+                }
             }
+            ColorPickerMsg::DocSort(by) => {
+                self.doc_sort = by;
+                document::sort(&mut self.doc, by, &self.recent);
+            }
+            ColorPickerMsg::Book(i) => {
+                if i < self.books.len() {
+                    self.book = i;
+                    self.book_page = 0;
+                    self.book_query.clear();
+                }
+            }
+            ColorPickerMsg::BookPage(page) => {
+                if let Some(book) = self.books.get(self.book) {
+                    self.book_page = page.min(book.page_count().saturating_sub(1));
+                    self.book_query.clear();
+                }
+            }
+            ColorPickerMsg::BookScroll(delta) => {
+                let page = if delta < 0.0 {
+                    self.book_page + 1
+                } else {
+                    self.book_page.saturating_sub(1)
+                };
+                self.update(ColorPickerMsg::BookPage(page));
+            }
+            ColorPickerMsg::BookQuery(query) => self.book_query = query,
+            ColorPickerMsg::PickBook(i) => self.pick_book(i),
+            ColorPickerMsg::LoadBook => return Some(Outcome::LoadBook),
             ColorPickerMsg::Eyedropper(EyedropperMsg::Start) => {
                 self.eyedropper = Some(Eyedropper::default());
             }
@@ -156,11 +327,24 @@ impl ColorPicker {
             ColorPickerMsg::Ok => {
                 // Apply a value still being typed, as if Enter had been pressed.
                 self.update(ColorPickerMsg::Editor(EditorMsg::HexSubmit));
-                return Some(Outcome::Commit(self.pending));
+                return Some(Outcome::Commit(self.pending, self.pending_name.clone()));
             }
             ColorPickerMsg::Cancel => return Some(Outcome::Cancel),
         }
         None
+    }
+
+    fn pick_book(&mut self, index: usize) {
+        let books = Arc::clone(&self.books);
+        let Some(book) = books.get(self.book) else {
+            return;
+        };
+        if let Some(color) = book.colors.get(index) {
+            let (r, g, b) = color.rgb;
+            self.set_pending(AcadColor::Rgb { r, g, b });
+            self.pending_name = Some(book.identity(index));
+            self.book_page = book.page_of(index);
+        }
     }
 
     /// The full-window eyedropper layer, while it is active.
@@ -170,19 +354,33 @@ impl ColorPicker {
 
     pub fn view(&self) -> Element<'_, Message> {
         let editor_only = self.editor_only();
-        let body = if editor_only || self.tab == ColorPickerTab::TrueColor {
-            self.true_color_tab()
-        } else {
-            self.index_tab()
+        let body = match self.tab {
+            _ if editor_only => self.true_color_tab(),
+            ColorPickerTab::Document => self.document_tab(),
+            ColorPickerTab::Index => self.index_tab(),
+            ColorPickerTab::TrueColor => self.true_color_tab(),
+            ColorPickerTab::Books => self.books_tab(),
         };
 
         // The interface picker shrinks to the editor; the CAD panel keeps one
         // height across its tabs, with the info line at the bottom.
         let mut body = column![body].spacing(8);
         if !editor_only {
-            body = body.push(Space::new().height(Length::Fill));
+            // Document and Color books fill the height themselves.
+            if matches!(self.tab, ColorPickerTab::Index | ColorPickerTab::TrueColor) {
+                body = body.push(Space::new().height(Length::Fill));
+            }
             let fill =
                 math::color_rgb(self.pending).map_or(Color::from_rgb8(128, 128, 128), rgb_color);
+            let info = match (&self.status, &self.pending_name) {
+                (Some(status), _) => status.clone(),
+                (None, Some(name)) => {
+                    let (r, g, b) = math::color_rgb(self.pending).unwrap_or_default();
+                    format!("{name} · RGB {r}, {g}, {b}")
+                }
+                (None, None) => math::describe(self.pending),
+            };
+            let error = self.status.is_some();
             body = body
                 .push(
                     container(Space::new())
@@ -196,9 +394,11 @@ impl ColorPicker {
                             .width(12)
                             .height(12)
                             .style(move |_theme: &Theme| swatch_style(fill)),
-                        text(math::describe(self.pending))
-                            .size(11)
-                            .font(iced::Font::MONOSPACE),
+                        text(info).size(11).font(iced::Font::MONOSPACE).style(
+                            move |theme: &Theme| text::Style {
+                                color: error.then(|| theme.palette().danger.base.color),
+                            }
+                        ),
                     ]
                     .spacing(8)
                     .align_y(iced::Center),
@@ -247,8 +447,10 @@ impl ColorPicker {
         };
         container(
             row![
+                tab(t!("Document").into_owned(), ColorPickerTab::Document),
                 tab(t!("Index Color").into_owned(), ColorPickerTab::Index),
                 tab(t!("True Color").into_owned(), ColorPickerTab::TrueColor),
+                tab(t!("Color Books").into_owned(), ColorPickerTab::Books),
             ]
             .spacing(2),
         )
@@ -261,11 +463,7 @@ impl ColorPicker {
     /// under the middle of the tab bar. Clicking Current reverts.
     fn preview_row(&self) -> Element<'_, Message> {
         let half = |label: String, value: String, fill: Color| {
-            let ink = if ink_is_dark(fill) {
-                Color::from_rgb8(0x11, 0x12, 0x14)
-            } else {
-                Color::WHITE
-            };
+            let ink = ink(fill);
             column![
                 text(label).size(11).color(ink.scale_alpha(0.85)),
                 Space::new().height(Length::Fill),
@@ -277,10 +475,18 @@ impl ColorPicker {
         };
         let (current_bg, _) = acad_color_display(self.current);
         let (new_bg, _) = acad_color_display(self.pending);
+        // A colour-book colour shows its own name, without the book.
+        let name = |color: AcadColor, identity: &Option<String>| match identity {
+            Some(identity) => identity
+                .split_once('$')
+                .map_or(identity.as_str(), |(_, name)| name)
+                .to_string(),
+            None => math::short_name(color),
+        };
         let current_value = if self.varies {
             "*VARIES*".to_string()
         } else {
-            math::short_name(self.current)
+            name(self.current, &self.current_name)
         };
         let current = button(half(t!("Current").into_owned(), current_value, current_bg))
             .on_press(picker_msg(ColorPickerMsg::Revert))
@@ -301,7 +507,7 @@ impl ColorPicker {
             .style(|_theme: &Theme| filled(Color::from_rgba(0.0, 0.0, 0.0, 0.35)));
         let new = container(half(
             t!("New").into_owned(),
-            math::short_name(self.pending),
+            name(self.pending, &self.pending_name),
             new_bg,
         ))
         .style(move |_theme: &Theme| container::Style {
@@ -364,29 +570,272 @@ impl ColorPicker {
         button(Space::new().width(width).height(height))
             .on_press(picker_msg(ColorPickerMsg::Pick(AcadColor::Index(index))))
             .padding(0)
-            .style(move |theme: &Theme, status| {
-                let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-                button::Style {
-                    background: Some(fill.into()),
+            .style(move |theme: &Theme, status| swatch_button_style(theme, status, fill, selected))
+            .into()
+    }
+
+    fn document_tab(&self) -> Element<'_, Message> {
+        let header = row![
+            text(t!("Colors in this drawing")).size(11),
+            text(format!("· {}", self.doc.len()))
+                .size(11)
+                .style(muted_text),
+            Space::new().width(Length::Fill),
+            text(t!("Sort")).size(11).style(muted_text),
+            pick_list(Some(self.doc_sort), &DocSort::ALL[..], DocSort::to_string)
+                .on_select(|by| picker_msg(ColorPickerMsg::DocSort(by)))
+                .text_size(12)
+                .padding([3, 6]),
+        ]
+        .spacing(6)
+        .align_y(iced::Center);
+        if self.doc.is_empty() {
+            return column![
+                header,
+                empty_note(t!("No colors in this drawing yet").into_owned())
+            ]
+            .spacing(10)
+            .into();
+        }
+        let grid = self.doc.chunks(DOC_COLUMNS).enumerate().fold(
+            column![].spacing(4),
+            |grid, (r, chunk)| {
+                let line = chunk
+                    .iter()
+                    .enumerate()
+                    .fold(row![].spacing(4), |line, (c, entry)| {
+                        line.push(self.doc_swatch(r * DOC_COLUMNS + c, entry))
+                    });
+                let line = (chunk.len()..DOC_COLUMNS)
+                    .fold(line, |line, _| line.push(Space::new().width(Length::Fill)));
+                grid.push(line)
+            },
+        );
+        column![
+            header,
+            scrollable(grid).height(Length::Fill).spacing(4).direction(
+                scrollable::Direction::Vertical(
+                    scrollable::Scrollbar::new().width(4).scroller_width(4)
+                )
+            ),
+        ]
+        .spacing(10)
+        .into()
+    }
+
+    fn doc_swatch<'a>(&self, i: usize, entry: &'a DocColor) -> Element<'a, Message> {
+        let fill = math::color_rgb(entry.color).map_or(Color::from_rgb8(128, 128, 128), rgb_color);
+        let selected = self.pending == entry.color && self.pending_name == entry.name;
+        button(
+            container(
+                text(entry.tag())
+                    .size(10)
+                    .font(iced::Font::MONOSPACE)
+                    .color(ink(fill)),
+            )
+            .align_y(iced::Bottom)
+            .padding([1, 4])
+            .height(Length::Fill),
+        )
+        .on_press(picker_msg(ColorPickerMsg::PickDocument(i)))
+        .padding(0)
+        .width(Length::Fill)
+        .height(30)
+        .style(move |theme: &Theme, status| swatch_button_style(theme, status, fill, selected))
+        .into()
+    }
+
+    fn books_tab(&self) -> Element<'_, Message> {
+        let load_button = |content: Element<'static, Message>| {
+            button(content)
+                .on_press(picker_msg(ColorPickerMsg::LoadBook))
+                .style(button::secondary)
+        };
+        let Some(book) = self.books.get(self.book) else {
+            return container(
+                column![
+                    text(t!("No color books loaded")).size(12).style(muted_text),
+                    load_button(text(t!("Load color book (.acb)")).size(12).into())
+                        .padding([6, 14]),
+                ]
+                .spacing(10)
+                .align_x(iced::Center),
+            )
+            .center(Length::Fill)
+            .into();
+        };
+        let label = |label: std::borrow::Cow<'static, str>| text(label).size(11).style(muted_text);
+        let books = Arc::clone(&self.books);
+        let top = row![
+            column![
+                label(t!("Color book")),
+                pick_list(
+                    Some(self.book),
+                    (0..self.books.len()).collect::<Vec<_>>(),
+                    move |&i| books[i].name.clone(),
+                )
+                .on_select(|i| picker_msg(ColorPickerMsg::Book(i)))
+                .text_size(12)
+                .padding([4, 6])
+                .width(Length::Fill),
+            ]
+            .spacing(4)
+            .width(Length::Fill),
+            column![
+                label(t!("Find")),
+                text_input("", &self.book_query)
+                    .on_input(|query| picker_msg(ColorPickerMsg::BookQuery(query)))
+                    .size(12)
+                    .padding([5, 8])
+                    .font(iced::Font::MONOSPACE)
+                    .width(116),
+            ]
+            .spacing(4),
+            load_button(
+                svg(crate::ui::icons::themed_handle(
+                    crate::ui::icons::FOLDER_OPEN
+                ))
+                .width(15)
+                .height(15)
+                .into()
+            )
+            .padding([6, 7]),
+        ]
+        .spacing(8)
+        .align_y(iced::Bottom);
+
+        // The page's colours, or the first matches while searching.
+        let selected = self.book_selection();
+        let query = self.book_query.trim().to_lowercase();
+        let mut bars = column![].spacing(2).height(Length::Fill);
+        let mut shown = 0;
+        if query.is_empty() {
+            let (start, colors) = book.page(self.book_page);
+            for (i, color) in colors.iter().enumerate() {
+                bars = bars.push(book_bar(start + i, color, selected));
+                shown += 1;
+            }
+        } else {
+            for (i, color) in book
+                .colors
+                .iter()
+                .enumerate()
+                .filter(|(_, color)| color.name.to_lowercase().contains(&query))
+                .take(PAGE_BARS)
+            {
+                bars = bars.push(book_bar(i, color, selected));
+                shown += 1;
+            }
+        }
+        let bars: Element<'_, Message> = if shown == 0 {
+            empty_note(t!("No colors match").into_owned())
+        } else {
+            mouse_area(bars)
+                .on_scroll(|delta| {
+                    let (iced::mouse::ScrollDelta::Lines { y, .. }
+                    | iced::mouse::ScrollDelta::Pixels { y, .. }) = delta;
+                    picker_msg(ColorPickerMsg::BookScroll(y))
+                })
+                .into()
+        };
+
+        // Every page as one band of its middle colour; the shown page framed.
+        let strip = (0..book.page_count()).fold(column![], |strip, page| {
+            let (_, colors) = book.page(page);
+            let fill = rgb_color(colors[colors.len() / 2].rgb);
+            let shown = query.is_empty() && page == self.book_page;
+            strip.push(
+                button(Space::new())
+                    .on_press(picker_msg(ColorPickerMsg::BookPage(page)))
+                    .padding(0)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .style(move |_theme: &Theme, _status| button::Style {
+                        background: Some(fill.into()),
+                        border: Border {
+                            color: Color::WHITE,
+                            width: if shown { 2.0 } else { 0.0 },
+                            radius: 2.0.into(),
+                        },
+                        ..Default::default()
+                    }),
+            )
+        });
+        let arrow = |path: &'static str, page: usize| {
+            button(
+                svg(svg::Handle::from_memory(
+                    format!(
+                        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 4'>\
+                     <path d='{path}' fill='black'/></svg>"
+                    )
+                    .into_bytes(),
+                ))
+                .width(9)
+                .height(5)
+                .style(|theme: &Theme, _status| svg::Style {
+                    color: Some(theme.palette().background.base.text),
+                }),
+            )
+            .on_press(picker_msg(ColorPickerMsg::BookPage(page)))
+            .width(Length::Fill)
+            .height(18)
+            .padding([6, 8])
+            .style(button::secondary)
+        };
+        let strip = column![
+            arrow("M0 4L3.5 0L7 4z", self.book_page.saturating_sub(1)),
+            container(strip)
+                .height(Length::Fill)
+                .padding(1)
+                .style(|theme: &Theme| container::Style {
                     border: Border {
-                        color: if selected || hovered {
-                            theme.palette().primary.base.color
-                        } else {
-                            Color::from_rgba(0.0, 0.0, 0.0, 0.35)
-                        },
-                        width: if selected {
-                            2.5
-                        } else if hovered {
-                            1.5
-                        } else {
-                            1.0
-                        },
-                        radius: 2.0.into(),
+                        color: theme.palette().background.strong.color,
+                        width: 1.0,
+                        radius: 3.0.into(),
                     },
                     ..Default::default()
-                }
-            })
-            .into()
+                }),
+            arrow("M0 0L7 0L3.5 4z", self.book_page + 1),
+        ]
+        .spacing(3)
+        .width(26);
+
+        // RGB equivalent of the selected colour.
+        let chosen = selected.map(|i| &book.colors[i]);
+        let channel = |name: std::borrow::Cow<'static, str>, value: Option<u8>| {
+            row![
+                text(name).size(12).style(muted_text),
+                Space::new().width(Length::Fill),
+                text(value.map_or("—".to_string(), |v| v.to_string()))
+                    .size(12)
+                    .font(iced::Font::MONOSPACE),
+            ]
+        };
+        let equivalent = column![
+            text(t!("RGB equivalent")).size(11),
+            channel(t!("Red"), chosen.map(|c| c.rgb.0)),
+            channel(t!("Green"), chosen.map(|c| c.rgb.1)),
+            channel(t!("Blue"), chosen.map(|c| c.rgb.2)),
+            container(Space::new())
+                .width(Length::Fill)
+                .height(1)
+                .style(|theme: &Theme| filled(theme.palette().background.weak.color)),
+            text(format!("{} / {}", self.book_page + 1, book.page_count()))
+                .size(11)
+                .style(muted_text),
+            text(chosen.map_or(String::new(), |c| c.name.clone())).size(12),
+        ]
+        .spacing(6)
+        .width(104);
+
+        column![
+            top,
+            row![bars, strip, equivalent]
+                .spacing(10)
+                .height(Length::Fill)
+        ]
+        .spacing(12)
+        .into()
     }
 
     fn true_color_tab(&self) -> Element<'_, Message> {
@@ -494,6 +943,21 @@ fn step_index(index: u8, direction: ArrowKey) -> Option<u8> {
     }
 }
 
+/// Arrow keys over a list laid out `columns` wide. Nothing selected yet
+/// starts at the first entry.
+fn step_list(at: Option<usize>, len: usize, columns: usize, direction: ArrowKey) -> Option<usize> {
+    let Some(at) = at else {
+        return (len > 0).then_some(0);
+    };
+    let next = match direction {
+        ArrowKey::Left => at.checked_sub(1),
+        ArrowKey::Right => Some(at + 1),
+        ArrowKey::Up => at.checked_sub(columns),
+        ArrowKey::Down => Some(at + columns),
+    };
+    next.filter(|&next| next < len)
+}
+
 /// Move keyboard focus to the next (or previous) field inside the panel.
 pub fn focus_step<T>(forward: bool) -> iced::Task<T> {
     use iced::advanced::widget::operation::{focusable, scope};
@@ -512,6 +976,77 @@ fn picker_msg(msg: ColorPickerMsg) -> Message {
 fn ink_is_dark(color: Color) -> bool {
     let [r, g, b, _] = color.into_rgba8();
     math::ink_is_dark(r, g, b)
+}
+
+/// Text that reads on top of `fill`.
+fn ink(fill: Color) -> Color {
+    if ink_is_dark(fill) {
+        Color::from_rgb8(0x11, 0x12, 0x14)
+    } else {
+        Color::WHITE
+    }
+}
+
+/// One colour of a colour book: a full-width bar with its name.
+fn book_bar(
+    i: usize,
+    color: &super::book::BookColor,
+    selected: Option<usize>,
+) -> Element<'_, Message> {
+    let fill = rgb_color(color.rgb);
+    button(
+        container(
+            text(&color.name)
+                .size(12)
+                .font(iced::Font::MONOSPACE)
+                .color(ink(fill)),
+        )
+        .center(Length::Fill),
+    )
+    .on_press(picker_msg(ColorPickerMsg::PickBook(i)))
+    .padding(0)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .style(move |theme: &Theme, status| {
+        swatch_button_style(theme, status, fill, selected == Some(i))
+    })
+    .into()
+}
+
+/// A short gray note in the middle of the free space.
+fn empty_note<'a>(note: String) -> Element<'a, Message> {
+    container(text(note).size(12).style(muted_text))
+        .center(Length::Fill)
+        .into()
+}
+
+/// A clickable colour: ringed in the accent colour when selected or hovered.
+fn swatch_button_style(
+    theme: &Theme,
+    status: button::Status,
+    fill: Color,
+    selected: bool,
+) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    button::Style {
+        background: Some(fill.into()),
+        border: Border {
+            color: if selected || hovered {
+                theme.palette().primary.base.color
+            } else {
+                Color::from_rgba(0.0, 0.0, 0.0, 0.35)
+            },
+            width: if selected {
+                2.5
+            } else if hovered {
+                1.5
+            } else {
+                1.0
+            },
+            radius: 2.0.into(),
+        },
+        ..Default::default()
+    }
 }
 
 fn filled(color: Color) -> container::Style {
@@ -641,7 +1176,7 @@ mod tests {
         p.update(ColorPickerMsg::Pick(AcadColor::Index(5)));
         assert_eq!(
             p.update(ColorPickerMsg::Ok),
-            Some(Outcome::Commit(AcadColor::Index(5)))
+            Some(Outcome::Commit(AcadColor::Index(5), None))
         );
         assert_eq!(p.update(ColorPickerMsg::Cancel), Some(Outcome::Cancel));
     }
@@ -652,11 +1187,14 @@ mod tests {
         edit(&mut p, EditorMsg::HexInput("#3bf".into()));
         assert_eq!(
             p.update(ColorPickerMsg::Ok),
-            Some(Outcome::Commit(AcadColor::Rgb {
-                r: 0x33,
-                g: 0xBB,
-                b: 0xFF
-            }))
+            Some(Outcome::Commit(
+                AcadColor::Rgb {
+                    r: 0x33,
+                    g: 0xBB,
+                    b: 0xFF
+                },
+                None
+            ))
         );
     }
 
@@ -722,6 +1260,89 @@ mod tests {
                 b: 30
             }
         );
+    }
+
+    fn ral() -> Arc<Vec<ColorBook>> {
+        let entry = |name: &str, (r, g, b): (u8, u8, u8)| {
+            format!(
+                "<colorEntry><colorName>{name}</colorName><RGB8><red>{r}</red>\
+                 <green>{g}</green><blue>{b}</blue></RGB8></colorEntry>"
+            )
+        };
+        let text = format!(
+            "<colorBook><bookName>RAL CLASSIC</bookName><colorPage>{}{}</colorPage>\
+             <colorPage>{}</colorPage></colorBook>",
+            entry("RAL 1000", (190, 189, 127)),
+            entry("RAL 3020", (204, 6, 5)),
+            entry("RAL 5015", (34, 113, 179)),
+        );
+        Arc::new(vec![super::super::book::parse(&text).unwrap()])
+    }
+
+    #[test]
+    fn book_colours_keep_their_name_until_edited() {
+        let mut p = picker(AcadColor::Index(30)).with_drawing(Vec::new(), &[], ral(), None);
+        p.update(ColorPickerMsg::PickBook(2));
+        assert_eq!(p.book_page, 1, "turns to the colour's page");
+        assert_eq!(
+            p.update(ColorPickerMsg::Ok),
+            Some(Outcome::Commit(
+                AcadColor::Rgb {
+                    r: 34,
+                    g: 113,
+                    b: 179
+                },
+                Some("RAL CLASSIC$RAL 5015".into())
+            ))
+        );
+        p.update(ColorPickerMsg::Arrow(ArrowKey::Up));
+        assert_eq!(p.pending_name.as_deref(), Some("RAL CLASSIC$RAL 3020"));
+        edit(&mut p, EditorMsg::Hue(120.0));
+        assert_eq!(
+            p.pending_name, None,
+            "an edited colour is no longer the book's"
+        );
+    }
+
+    #[test]
+    fn opens_a_book_colour_on_its_page() {
+        let p = picker(AcadColor::Rgb {
+            r: 34,
+            g: 113,
+            b: 179,
+        })
+        .with_drawing(Vec::new(), &[], ral(), Some("RAL CLASSIC$RAL 5015".into()));
+        assert_eq!(p.tab(), ColorPickerTab::Books);
+        assert_eq!(p.book_selection(), Some(2));
+        assert_eq!(p.book_page, 1);
+    }
+
+    #[test]
+    fn document_colours_pick_and_walk() {
+        // A new drawing's layer 0 is white.
+        let doc = document::collect(&codec::CadDocument::new());
+        assert!(doc.iter().any(|c| c.color == AcadColor::Index(7)));
+        let mut p = picker(AcadColor::Index(30)).with_drawing(doc, &[], Arc::default(), None);
+        p.update(ColorPickerMsg::Tab(ColorPickerTab::Document));
+        p.update(ColorPickerMsg::Arrow(ArrowKey::Right));
+        assert_eq!(
+            p.pending(),
+            p.doc[0].color,
+            "the first key press starts at the top"
+        );
+
+        assert_eq!(step_list(None, 3, 8, ArrowKey::Down), Some(0));
+        assert_eq!(step_list(Some(1), 20, 8, ArrowKey::Down), Some(9));
+        assert_eq!(step_list(Some(1), 5, 8, ArrowKey::Down), None);
+        assert_eq!(step_list(Some(0), 5, 8, ArrowKey::Left), None);
+    }
+
+    #[test]
+    fn loading_a_book_is_left_to_the_app() {
+        let mut p = picker(AcadColor::Index(30));
+        assert_eq!(p.update(ColorPickerMsg::LoadBook), Some(Outcome::LoadBook));
+        p.show_book(ral(), 0);
+        assert_eq!(p.tab(), ColorPickerTab::Books);
     }
 
     // ── Headless UI tests ───────────────────────────────────────────────
@@ -809,7 +1430,31 @@ mod tests {
             ColorPickerTab,
             EditorMode,
             bool,
-        ); 7] = [
+        ); 10] = [
+            (
+                "document",
+                ColorPickTarget::Properties,
+                AcadColor::Index(7),
+                ColorPickerTab::Document,
+                EditorMode::Hsb,
+                false,
+            ),
+            (
+                "books",
+                ColorPickTarget::Properties,
+                AcadColor::Index(30),
+                ColorPickerTab::Books,
+                EditorMode::Hsb,
+                false,
+            ),
+            (
+                "no-books",
+                ColorPickTarget::Properties,
+                AcadColor::Index(30),
+                ColorPickerTab::Books,
+                EditorMode::Hsb,
+                false,
+            ),
             (
                 "index",
                 ColorPickTarget::Properties,
@@ -876,8 +1521,21 @@ mod tests {
             crate::ui::style::fusion_theme::fusion_white(),
         ] {
             for (name, target, color, tab, mode, varies) in views.clone() {
-                let mut p = ColorPicker::new(target, color, varies);
+                let books = if name == "no-books" {
+                    Arc::default()
+                } else {
+                    ral()
+                };
+                let mut p = ColorPicker::new(target, color, varies).with_drawing(
+                    document::collect(&codec::CadDocument::new()),
+                    &[],
+                    books,
+                    None,
+                );
                 p.update(ColorPickerMsg::Tab(tab));
+                if name == "books" {
+                    p.update(ColorPickerMsg::PickBook(1));
+                }
                 edit(&mut p, EditorMsg::Mode(mode));
                 let mut ui = simulator(&p);
                 let snapshot = ui.snapshot(&theme).expect("snapshot");

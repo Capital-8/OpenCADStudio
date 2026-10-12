@@ -619,6 +619,9 @@ pub struct UserSettings {
     /// Blocks palette: library folders or drawings, last used first.
     #[serde(default)]
     pub block_libraries: Vec<String>,
+    /// Colour book (.acb) files loaded in the Select Color panel.
+    #[serde(default)]
+    pub color_books: Vec<String>,
     /// Blocks palette view: 0 extra large, 1 large, 2 medium, 3 small icons,
     /// 4 details, 5 list.
     #[serde(default = "default_block_view")]
@@ -901,6 +904,7 @@ impl Default for UserSettings {
             block_recent: Vec::new(),
             block_favorites: Vec::new(),
             block_libraries: Vec::new(),
+            color_books: Vec::new(),
             block_palette_view: 1,
             block_insert: BlockInsertOptions::default(),
             block_mru_list: 50,

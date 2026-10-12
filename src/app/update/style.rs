@@ -1136,7 +1136,11 @@ impl OpenCADStudio {
         Task::none()
     }
 
-    pub(super) fn on_color_window_pick(&mut self, color: codec::types::Color) -> Task<Message> {
+    pub(super) fn on_color_window_pick(
+        &mut self,
+        color: codec::types::Color,
+        name: Option<String>,
+    ) -> Task<Message> {
         if let Some(crate::app::ColorPickTarget::Interface(target)) = self
             .color_picker
             .as_ref()
@@ -1201,7 +1205,9 @@ impl OpenCADStudio {
                 field: f,
                 value: s,
             }),
-            Some(crate::app::ColorPickTarget::Properties) => Some(Message::PropColorChanged(color)),
+            Some(crate::app::ColorPickTarget::Properties) => {
+                return self.set_property_color(color, name);
+            }
             Some(crate::app::ColorPickTarget::PropertiesBg) => {
                 Some(Message::PropBgColorChanged(color))
             }
@@ -1210,12 +1216,12 @@ impl OpenCADStudio {
             }
             Some(crate::app::ColorPickTarget::MText) => Some(Message::MTextColorChanged(color)),
             Some(crate::app::ColorPickTarget::Ribbon) => Some(Message::RibbonColorChanged(color)),
-            Some(crate::app::ColorPickTarget::Layer(name)) => {
+            Some(crate::app::ColorPickTarget::Layer(layer)) => {
                 let i = self.active_tab;
-                match self.layer_panel_index(i, &name) {
+                match self.layer_panel_index(i, &layer) {
                     Some(idx) => {
                         self.tabs[i].layers.selected = Some(idx);
-                        Some(Message::LayerColorSet(color))
+                        return self.set_layer_color(color, name.as_deref());
                     }
                     None => None,
                 }

@@ -965,9 +965,12 @@ pub(super) struct OpenCADStudio {
     // ── Floating panel windows ────────────────────────────────────────────
     /// The open Select Color panel, if any.
     color_picker: Option<crate::ui::color_select::ColorPicker>,
+    /// Colour books loaded this session, read lazily from `color_book_paths`.
+    color_books: std::sync::Arc<Vec<crate::ui::color_select::book::ColorBook>>,
+    color_book_paths: Vec<String>,
+    color_books_read: bool,
     /// Recently committed real colours, newest first.
     /// ACI and True Color remain semantically distinct even when their RGB matches.
-    recent_colors: Vec<AcadColor>,
     /// The open in-canvas modal dialog, if any (Plan B: shared overlay instead
     /// of OS windows).
     active_modal: Option<ModalKind>,
@@ -4168,8 +4171,11 @@ pub enum Message {
     ColorPicker(crate::ui::color_select::ColorPickerMsg),
     /// Close the colour picker without choosing.
     CloseColorPicker,
-    /// Commit the colour chosen in the shared picker.
-    ColorWindowPick(codec::types::Color),
+    /// Commit the colour chosen in the shared picker, with its `BOOK$NAME`
+    /// when it comes from a colour book.
+    ColorWindowPick(codec::types::Color, Option<String>),
+    /// An `.acb` file was read: the book and, on desktop, where it lives.
+    ColorBookLoaded(Result<(crate::ui::color_select::book::ColorBook, Option<String>), String>),
     /// Set a block/linetype Handle field on the selected dim style from a
     /// dropdown of available block-records / linetypes (by name).
     DsSetHandle {
@@ -4601,7 +4607,9 @@ impl OpenCADStudio {
             #[cfg(target_arch = "wasm32")]
             web_autosave_clear_after: Vec::new(),
             color_picker: None,
-            recent_colors: Vec::new(),
+            color_books: Default::default(),
+            color_book_paths: Vec::new(),
+            color_books_read: false,
             active_modal: None,
             hyperlink_editor_handles: Vec::new(),
             hyperlink_editor_url: String::new(),

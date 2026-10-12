@@ -3,6 +3,8 @@
 //! properties panel and every style editor so colour selection looks and
 //! behaves the same everywhere.
 
+pub mod book;
+pub mod document;
 pub mod editor;
 pub mod eyedropper;
 pub mod math;
