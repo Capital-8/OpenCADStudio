@@ -431,7 +431,12 @@ impl shader::Primitive for Primitive {
                 vp.background_image.as_ref(),
                 vp.environment_image.as_ref(),
             );
-            inner.upload_uniforms(device, queue, &vp.uniforms);
+            // The scene works in logical pixels; an image background keeps
+            // its size in device pixels.
+            let mut uniforms = vp.uniforms;
+            uniforms.background_image_transform[2] /= scale.max(1e-3);
+            uniforms.background_image_transform[3] /= scale.max(1e-3);
+            inner.upload_uniforms(device, queue, &uniforms);
 
             // ── Scene-render cache ────────────────────────────────────────
             // A pure cursor move — or any frame where the view, geometry,
