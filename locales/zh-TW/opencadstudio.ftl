@@ -273,6 +273,9 @@ command-copy =
     .mode = COPY  輸入複製模式選項 [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = 出圖預覽
+    .link-a-csv-data-source = 連結 CSV 資料來源
+    .csv-files = CSV 檔案
     .browser-cannot-open-typed-path = 瀏覽器無法開啟輸入的路徑；請改為選擇檔案。
     .recover-drawing = 恢復圖面
     .restore-it-as-a-recovered-tab-or-discard-the-copy = 將其恢復為已恢復的分頁，或捨棄該副本。
@@ -2401,6 +2404,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  放置方式 [覆蓋/前綴/後綴] <覆蓋>：
 
 file =
+    .web-already-open-shared-copy = 「__ocs_fmt_0__」已在另一個索引標籤中開啟。在網頁版中兩個索引標籤共用同一份儲存複本——最後一次儲存會覆寫另一份。
+    .extraction-max-sources-web = 瀏覽器中最多可加入 __ocs_fmt_0__ 個圖面。
     .in-place-save-failed-downloaded = 就地儲存失敗(__ocs_fmt_0__);已下載副本
     .save-picker-failed-downloading = 選擇儲存目標失敗:__ocs_fmt_0__;正在下載副本
     .restore-all = 全部恢復

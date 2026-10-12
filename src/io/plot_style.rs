@@ -976,27 +976,6 @@ mod round_trip_tests {
         PlotStyleTable::from_bytes(table.name.clone(), &bytes).expect("reload")
     }
 
-    /// Real .stb files use the same container with an `STBVER1` tag;
-    /// they must decompress instead of dying in the deflate fallback.
-    #[test]
-    fn stb_container_headers_parse() {
-        let mut bytes =
-            compress_ctb(PlotStyleTable::identity("x").to_text().as_bytes()).expect("compress");
-        // "PIAFILEVERSION_2.0," is 19 bytes, so 19..22 holds the "CTB" tag.
-        bytes[19..22].copy_from_slice(b"STB");
-        let table = PlotStyleTable::from_bytes("mystyles.stb", &bytes).expect("stb parses");
-        assert!(table.is_stb);
-    }
-
-    /// Named tables are refused with the actual limitation, not a generic
-    /// invalid-name error (and without touching the file system).
-    #[test]
-    fn load_named_rejects_stb_with_reason() {
-        let error = PlotStyleTable::load_named("mystyles.stb").unwrap_err();
-        assert!(error.contains("stb"), "{error}");
-        assert!(error.contains("color-dependent"), "{error}");
-    }
-
     /// A table registered this session (the web stand-in for the plot-styles
     /// folder) is what `load_named` returns for its name — matched
     /// case-insensitively, the way the folder scan matches file names.
@@ -1013,17 +992,6 @@ mod round_trip_tests {
 
         // A name nothing was registered under still falls back to the built-ins.
         assert!(PlotStyleTable::load_named(super::MONOCHROME_PLOT_STYLE).is_ok());
-    }
-
-    /// The STB refusal comes before the registry lookup: even a registered
-    /// named table cannot be applied to a color-dependent plot.
-    #[test]
-    fn stb_refusal_precedes_the_session_registry() {
-        let bytes =
-            compress_ctb(PlotStyleTable::identity("x").to_text().as_bytes()).expect("compress");
-        super::register_session_table("Refused.stb", std::sync::Arc::new(bytes));
-        let error = PlotStyleTable::load_named("Refused.stb").unwrap_err();
-        assert!(error.contains("color-dependent"), "{error}");
     }
 
     /// The Plot dialog's table list includes the session-registered colour

@@ -259,6 +259,9 @@ command-copy =
     .mode = COPY  Kopyalama modu seçin [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = Çizim önizleme
+    .link-a-csv-data-source = CSV veri kaynağı bağla
+    .csv-files = CSV Dosyaları
     .browser-cannot-open-typed-path = Tarayıcı yazılan bir yolu açamaz; dosyayı seçin.
     .recover-drawing = Çizimi Kurtar
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Onu kurtarılan bir sekme olarak geri yükleyin veya kopyayı atın.
@@ -2386,6 +2389,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Yerleştirme [Üzerine yaz/Önek/Sonek] <Üzerine yaz>:
 
 file =
+    .web-already-open-shared-copy = "__ocs_fmt_0__" başka bir sekmede zaten açık. Web'de iki sekme tek bir kayıtlı kopyayı paylaşır — son kaydetme diğerinin üzerine yazar.
+    .extraction-max-sources-web = Tarayıcıda en fazla __ocs_fmt_0__ çizim eklenebilir.
     .in-place-save-failed-downloaded = Yerine kayıt başarısız (__ocs_fmt_0__); bir kopya indirildi
     .save-picker-failed-downloading = Kayıt hedefi seçimi başarısız: __ocs_fmt_0__; bir kopya indiriliyor
     .restore-all = Tümünü geri yükle

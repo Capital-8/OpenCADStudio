@@ -274,6 +274,9 @@ command-copy =
     .mode = COPY  Entrez le mode de copie [Single/Multiple] <Multiple> :
 
 common =
+    .plot-preview-task = Aperçu du tracé
+    .link-a-csv-data-source = Lier une source de données CSV
+    .csv-files = Fichiers CSV
     .browser-cannot-open-typed-path = Le navigateur ne peut pas ouvrir un chemin saisi ; choisissez le fichier.
     .recover-drawing = Récupérer le dessin
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Restaurez-le dans un onglet récupéré ou supprimez la copie.
@@ -2402,6 +2405,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Position [Remplacer/Préfixe/Suffixe] <Remplacer> :
 
 file =
+    .web-already-open-shared-copy = « __ocs_fmt_0__ » est déjà ouvert dans un autre onglet. Sur le web, les deux onglets partagent une seule copie enregistrée — le dernier enregistrement écrase l'autre.
+    .extraction-max-sources-web = Le navigateur accepte au plus __ocs_fmt_0__ dessins.
     .in-place-save-failed-downloaded = Échec de l’enregistrement local (__ocs_fmt_0__) ; une copie a été téléchargée
     .save-picker-failed-downloading = Échec du sélecteur de destination : __ocs_fmt_0__ ; téléchargement d’une copie
     .restore-all = Tout restaurer

@@ -264,6 +264,9 @@ command-copy =
     .mode = COPY  コピーモードを入力 [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = 印刷プレビュー
+    .link-a-csv-data-source = CSV データ ソースをリンク
+    .csv-files = CSV ファイル
     .browser-cannot-open-typed-path = ブラウザは入力されたパスを開けません。ファイルを選択してください。
     .recover-drawing = 図面の復元
     .restore-it-as-a-recovered-tab-or-discard-the-copy = 復元タブとして開くか、コピーを破棄してください。
@@ -2392,6 +2395,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  配置 [Overwrite/Prefix/Suffix] <Overwrite>:
 
 file =
+    .web-already-open-shared-copy = 「__ocs_fmt_0__」は別のタブで既に開かれています。Web では両方のタブが 1 つの保存コピーを共有するため、最後の保存がもう一方を上書きします。
+    .extraction-max-sources-web = ブラウザーで追加できる図面は最大 __ocs_fmt_0__ 件です。
     .in-place-save-failed-downloaded = その場での保存に失敗しました(__ocs_fmt_0__)。代わりにコピーをダウンロードしました
     .save-picker-failed-downloading = 保存先の選択に失敗しました: __ocs_fmt_0__。代わりにコピーをダウンロードしています
     .restore-all = すべて復元

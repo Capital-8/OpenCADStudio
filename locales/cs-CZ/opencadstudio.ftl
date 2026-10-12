@@ -273,6 +273,9 @@ command-copy =
     .mode = COPY  Zadejte režim kopírování [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = Náhled tisku
+    .link-a-csv-data-source = Propojit zdroj dat CSV
+    .csv-files = Soubory CSV
     .browser-cannot-open-typed-path = Prohlížeč nemůže otevřít zadanou cestu; vyberte soubor.
     .recover-drawing = Obnovit výkres
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Obnovte jej jako obnovenou kartu nebo kopii zahoďte.
@@ -2401,6 +2404,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = Umístění TCOUNT [přepsat/předpona/přípona] <Overwrite>:
 
 file =
+    .web-already-open-shared-copy = „__ocs_fmt_0__“ je již otevřen na jiné kartě. Na webu obě karty sdílejí jednu uloženou kopii — poslední uložení přepíše druhou.
+    .extraction-max-sources-web = V prohlížeči lze přidat nejvýše __ocs_fmt_0__ výkresů.
     .in-place-save-failed-downloaded = Uložení na místo selhalo (__ocs_fmt_0__); kopie byla stažena
     .save-picker-failed-downloading = Výběr cíle uložení selhal: __ocs_fmt_0__; stahuje se kopie
     .restore-all = Obnovit vše

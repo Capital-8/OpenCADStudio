@@ -274,6 +274,9 @@ command-copy =
     .mode = COPY  Indique modo de copia [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = Vista previa de trazado
+    .link-a-csv-data-source = Vincular un origen de datos CSV
+    .csv-files = Archivos CSV
     .browser-cannot-open-typed-path = El navegador no puede abrir una ruta escrita; elige el archivo.
     .recover-drawing = Recuperar dibujo
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Restáurelo como una pestaña recuperada o descarte la copia.
@@ -2402,6 +2405,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  colocación [Sobrescribir/Prefijo/Sufijo] <Sobrescribir>:
 
 file =
+    .web-already-open-shared-copy = "__ocs_fmt_0__" ya está abierto en otra pestaña. En la web ambas pestañas comparten una copia almacenada: el último guardado sobrescribe la otra.
+    .extraction-max-sources-web = En el navegador se pueden añadir como máximo __ocs_fmt_0__ dibujos.
     .in-place-save-failed-downloaded = Error al guardar en el sitio (__ocs_fmt_0__); se descargó una copia
     .save-picker-failed-downloading = Falló la selección del destino de guardado: __ocs_fmt_0__; descargando una copia
     .restore-all = Restaurar todo

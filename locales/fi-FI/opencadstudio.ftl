@@ -273,6 +273,9 @@ command-copy =
     .mode = COPY  Valitse kopiointitila [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = Tulostuksen esikatselu
+    .link-a-csv-data-source = Linkitä CSV-tietolähde
+    .csv-files = CSV-tiedostot
     .browser-cannot-open-typed-path = Selain ei voi avata kirjoitettua polkua; valitse tiedosto.
     .recover-drawing = Palauta piirustus
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Palauta se palautettuna välilehtenä tai hylkää kopio.
@@ -2401,6 +2404,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT-sijoittelu [Korvaa/etuliite/liite] <Overwrite>:
 
 file =
+    .web-already-open-shared-copy = "__ocs_fmt_0__" on jo auki toisessa välilehdessä. Verkossa molemmat välilehdet jakavat yhden tallennetun kopion — viimeisin tallennus korvaa toisen.
+    .extraction-max-sources-web = Selaimessa voi lisätä enintään __ocs_fmt_0__ piirustusta.
     .in-place-save-failed-downloaded = Tallennus paikallaan epäonnistui (__ocs_fmt_0__); kopio ladattiin
     .save-picker-failed-downloading = Tallennuskohteen valinta epäonnistui: __ocs_fmt_0__; ladataan kopio
     .restore-all = Palauta kaikki

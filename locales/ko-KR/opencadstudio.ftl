@@ -273,6 +273,9 @@ command-copy =
     .mode = COPY  복사 모드 옵션 입력 [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = 플롯 미리 보기
+    .link-a-csv-data-source = CSV 데이터 원본 연결
+    .csv-files = CSV 파일
     .browser-cannot-open-typed-path = 브라우저는 입력한 경로를 열 수 없습니다. 파일을 선택하세요.
     .recover-drawing = 도면 복구
     .restore-it-as-a-recovered-tab-or-discard-the-copy = 복구된 탭으로 열거나 사본을 삭제하세요.
@@ -2401,6 +2404,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT 배치 [덮어쓰기/접두사/접미사] <Overwrite>:
 
 file =
+    .web-already-open-shared-copy = "__ocs_fmt_0__"이(가) 이미 다른 탭에서 열려 있습니다. 웹에서는 두 탭이 하나의 저장된 사본을 공유하므로 마지막 저장이 다른 쪽을 덮어씁니다.
+    .extraction-max-sources-web = 브라우저에서는 도면을 최대 __ocs_fmt_0__개까지 추가할 수 있습니다.
     .in-place-save-failed-downloaded = 제자리 저장 실패(__ocs_fmt_0__); 대신 사본을 내려받았습니다
     .save-picker-failed-downloading = 저장 대상 선택 실패: __ocs_fmt_0__; 대신 사본을 내려받는 중
     .restore-all = 모두 복원

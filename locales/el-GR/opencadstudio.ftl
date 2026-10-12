@@ -273,6 +273,9 @@ command-copy =
     .mode = COPY  Επιλέξτε λειτουργία αντιγραφής [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = Προεπισκόπηση εκτύπωσης
+    .link-a-csv-data-source = Σύνδεση πηγής δεδομένων CSV
+    .csv-files = Αρχεία CSV
     .browser-cannot-open-typed-path = Ο browser δεν μπορεί να ανοίξει πληκτρολογημένη διαδρομή· διάλεξε το αρχείο.
     .recover-drawing = Ανάκτηση σχεδίου
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Επαναφέρετέ το ως ανακτημένη καρτέλα ή απορρίψτε το αντίγραφο.
@@ -2401,6 +2404,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  τοποθέτηση [Αντικατάσταση/Πρόθεμα/Κατάληξη] <Αντικατάσταση>:
 
 file =
+    .web-already-open-shared-copy = Το «__ocs_fmt_0__» είναι ήδη ανοιχτό σε άλλη καρτέλα. Στον ιστό οι δύο καρτέλες μοιράζονται ένα αποθηκευμένο αντίγραφο — η τελευταία αποθήκευση αντικαθιστά την άλλη.
+    .extraction-max-sources-web = Στον περιηγητή μπορούν να προστεθούν έως __ocs_fmt_0__ σχέδια.
     .in-place-save-failed-downloaded = Απέτυχε η αποθήκευση επί τόπου (__ocs_fmt_0__)· λήφθηκε αντίγραφο
     .save-picker-failed-downloading = Απέτυχε η επιλογή προορισμού αποθήκευσης: __ocs_fmt_0__· γίνεται λήψη αντιγράφου
     .restore-all = Επαναφορά όλων

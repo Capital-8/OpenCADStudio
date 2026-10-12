@@ -274,6 +274,9 @@ command-copy =
     .mode = COPY  Geef kopieermodus op [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = Plotvoorbeeld
+    .link-a-csv-data-source = CSV-gegevensbron koppelen
+    .csv-files = CSV-bestanden
     .browser-cannot-open-typed-path = De browser kan een getypt pad niet openen; kies het bestand.
     .recover-drawing = Tekening herstellen
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Herstel het als een hersteld tabblad of verwijder de kopie.
@@ -2402,6 +2405,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Plaatsing [Overschrijven/Voorvoegsel/Achtervoegsel] <Overschrijven>:
 
 file =
+    .web-already-open-shared-copy = "__ocs_fmt_0__" is al geopend in een ander tabblad. Op het web delen beide tabbladen één opgeslagen kopie — de laatste opslag overschrijft de andere.
+    .extraction-max-sources-web = In de browser kunnen maximaal __ocs_fmt_0__ tekeningen worden toegevoegd.
     .in-place-save-failed-downloaded = Ter plekke opslaan mislukt (__ocs_fmt_0__); een kopie is gedownload
     .save-picker-failed-downloading = Kiezen van opslagbestemming mislukt: __ocs_fmt_0__; een kopie wordt gedownload
     .restore-all = Alles herstellen

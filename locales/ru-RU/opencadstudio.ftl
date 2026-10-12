@@ -277,6 +277,9 @@ command-copy =
     .mode = COPY  Задайте режим копирования [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = Предварительный просмотр печати
+    .link-a-csv-data-source = Связать источник данных CSV
+    .csv-files = Файлы CSV
     .browser-cannot-open-typed-path = Браузер не может открыть введённый путь; выберите файл.
     .recover-drawing = Восстановление чертежа
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Восстановите его на отдельной вкладке или удалите копию.
@@ -2405,6 +2408,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Размещение [Заменить/Префикс/Суффикс] <Заменить>:
 
 file =
+    .web-already-open-shared-copy = «__ocs_fmt_0__» уже открыт в другой вкладке. В веб-версии обе вкладки используют одну сохранённую копию — последнее сохранение перезапишет другую.
+    .extraction-max-sources-web = В браузере можно добавить не более __ocs_fmt_0__ чертежей.
     .in-place-save-failed-downloaded = Не удалось сохранить в файл (__ocs_fmt_0__); копия загружена
     .save-picker-failed-downloading = Не удалось выбрать место сохранения: __ocs_fmt_0__; загружается копия
     .restore-all = Восстановить все

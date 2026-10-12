@@ -273,6 +273,9 @@ command-copy =
     .mode = COPY  Podaj tryb kopiowania [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = Podgląd wydruku
+    .link-a-csv-data-source = Połącz źródło danych CSV
+    .csv-files = Pliki CSV
     .browser-cannot-open-typed-path = Przeglądarka nie otworzy wpisanej ścieżki; wybierz plik.
     .recover-drawing = Odzyskaj rysunek
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Przywróć go jako odzyskaną kartę lub odrzuć kopię.
@@ -2401,6 +2404,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = Umieszczenie TCOUNT [Nadpisanie/Przedrostek/Sufiks] <Overwrite>:
 
 file =
+    .web-already-open-shared-copy = „__ocs_fmt_0__” jest już otwarty na innej karcie. W sieci obie karty dzielą jedną zapisaną kopię — ostatni zapis nadpisuje drugą.
+    .extraction-max-sources-web = W przeglądarce można dodać najwyżej __ocs_fmt_0__ rysunków.
     .in-place-save-failed-downloaded = Zapis w miejscu nie powiódł się (__ocs_fmt_0__); pobrano kopię
     .save-picker-failed-downloading = Wybór miejsca zapisu nie powiódł się: __ocs_fmt_0__; pobieranie kopii
     .restore-all = Przywróć wszystkie

@@ -261,6 +261,9 @@ command-copy =
     .mode = COPY  输入复制模式选项 [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = 打印预览
+    .link-a-csv-data-source = 链接 CSV 数据源
+    .csv-files = CSV 文件
     .browser-cannot-open-typed-path = 浏览器无法打开键入的路径；请改为选择文件。
     .recover-drawing = 恢复图形
     .restore-it-as-a-recovered-tab-or-discard-the-copy = 将其恢复为已恢复的标签页，或放弃该副本。
@@ -2389,6 +2392,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  放置方式 [覆盖/前缀/后缀] <覆盖>：
 
 file =
+    .web-already-open-shared-copy = “__ocs_fmt_0__”已在另一个选项卡中打开。在网页版中两个选项卡共享同一份存储副本——最后一次保存会覆盖另一份。
+    .extraction-max-sources-web = 浏览器中最多可添加 __ocs_fmt_0__ 个图形。
     .in-place-save-failed-downloaded = 就地保存失败(__ocs_fmt_0__);已下载副本
     .save-picker-failed-downloading = 选择保存目标失败:__ocs_fmt_0__;正在下载副本
     .restore-all = 全部恢复

@@ -262,6 +262,9 @@ command-copy =
     .mode = COPY  कॉपी मोड विकल्प दर्ज करें [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = प्लॉट पूर्वावलोकन
+    .link-a-csv-data-source = CSV डेटा स्रोत लिंक करें
+    .csv-files = CSV फ़ाइलें
     .browser-cannot-open-typed-path = ब्राउज़र टाइप किए गए पथ को नहीं खोल सकता; इसके बजाय फ़ाइल चुनें।
     .recover-drawing = चित्र पुनर्प्राप्त करें
     .restore-it-as-a-recovered-tab-or-discard-the-copy = इसे पुनर्प्राप्त टैब के रूप में पुनर्स्थापित करें, या प्रतिलिपि त्याग दें।
@@ -2390,6 +2393,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  स्थान [अधिलेखित/उपसर्ग/प्रत्यय] <अधिलेखित>:
 
 file =
+    .web-already-open-shared-copy = "__ocs_fmt_0__" पहले से किसी दूसरे टैब में खुली है। वेब पर दोनों टैब एक ही संग्रहीत प्रति साझा करते हैं — अंतिम सहेजना दूसरी को अधिलेखित कर देता है।
+    .extraction-max-sources-web = ब्राउज़र में अधिकतम __ocs_fmt_0__ ड्रॉइंग जोड़ी जा सकती हैं।
     .in-place-save-failed-downloaded = इन-प्लेस सेव विफल (__ocs_fmt_0__); प्रतिलिपि डाउनलोड की गई
     .save-picker-failed-downloading = सेव गंतव्य चुनना विफल: __ocs_fmt_0__; प्रतिलिपि डाउनलोड हो रही है
     .restore-all = सभी पुनर्स्थापित करें

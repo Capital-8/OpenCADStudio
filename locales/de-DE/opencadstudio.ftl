@@ -274,6 +274,9 @@ command-copy =
     .mode = COPY  Kopiermodus eingeben [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = Plotvorschau
+    .link-a-csv-data-source = CSV-Datenquelle verknüpfen
+    .csv-files = CSV-Dateien
     .browser-cannot-open-typed-path = Der Browser kann einen eingegebenen Pfad nicht öffnen; wähle die Datei.
     .recover-drawing = Zeichnung wiederherstellen
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Als wiederhergestellte Registerkarte öffnen oder die Kopie verwerfen.
@@ -2402,6 +2405,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Platzierung [Überschreiben/Präfix/Suffix] <Überschreiben>:
 
 file =
+    .web-already-open-shared-copy = „__ocs_fmt_0__“ ist bereits in einer anderen Registerkarte geöffnet. Im Web teilen sich beide Registerkarten eine gespeicherte Kopie — das letzte Speichern überschreibt die andere.
+    .extraction-max-sources-web = Im Browser können höchstens __ocs_fmt_0__ Zeichnungen hinzugefügt werden.
     .in-place-save-failed-downloaded = Direktes Speichern fehlgeschlagen (__ocs_fmt_0__); eine Kopie wurde heruntergeladen
     .save-picker-failed-downloading = Speicherziel-Auswahl fehlgeschlagen: __ocs_fmt_0__; eine Kopie wird heruntergeladen
     .restore-all = Alle wiederherstellen

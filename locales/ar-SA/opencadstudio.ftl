@@ -286,6 +286,9 @@ command-copy =
     .mode = COPY  أدخل خيار وضع النسخ [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = معاينة الطباعة
+    .link-a-csv-data-source = ربط مصدر بيانات CSV
+    .csv-files = ملفات CSV
     .browser-cannot-open-typed-path = لا يستطيع المتصفح فتح مسار مكتوب؛ اختر الملف بدلاً من ذلك.
     .recover-drawing = استرداد الرسم
     .restore-it-as-a-recovered-tab-or-discard-the-copy = استعده كعلامة تبويب مستردة أو تجاهل النسخة.
@@ -2414,6 +2417,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  الموضع [استبدال/بادئة/لاحقة] <استبدال>:
 
 file =
+    .web-already-open-shared-copy = "__ocs_fmt_0__" مفتوح بالفعل في علامة تبويب أخرى. على الويب تتشارك العلامتان نسخة مخزنة واحدة — آخر حفظ يستبدل الأخرى.
+    .extraction-max-sources-web = يمكن إضافة __ocs_fmt_0__ رسومات كحد أقصى في المتصفح.
     .in-place-save-failed-downloaded = فشل الحفظ في الموقع (__ocs_fmt_0__)؛ تم تنزيل نسخة
     .save-picker-failed-downloading = فشل اختيار وجهة الحفظ: __ocs_fmt_0__؛ يتم تنزيل نسخة
     .restore-all = استعادة الكل

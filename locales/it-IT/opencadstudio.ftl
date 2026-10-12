@@ -273,6 +273,9 @@ command-copy =
     .mode = COPY  Specificare modalità di copia [Single/Multiple] <Multiple>:
 
 common =
+    .plot-preview-task = Anteprima di stampa
+    .link-a-csv-data-source = Collega un'origine dati CSV
+    .csv-files = File CSV
     .browser-cannot-open-typed-path = Il browser non può aprire un percorso digitato; scegli il file.
     .recover-drawing = Recupera disegno
     .restore-it-as-a-recovered-tab-or-discard-the-copy = Ripristinalo in una scheda recuperata oppure elimina la copia.
@@ -2401,6 +2404,8 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = Posizionamento TCOUNT [Sovrascrivi/Prefisso/Suffisso] <Overwrite>:
 
 file =
+    .web-already-open-shared-copy = "__ocs_fmt_0__" è già aperto in un'altra scheda. Sul web le due schede condividono un'unica copia salvata: l'ultimo salvataggio sovrascrive l'altra.
+    .extraction-max-sources-web = Nel browser si possono aggiungere al massimo __ocs_fmt_0__ disegni.
     .in-place-save-failed-downloaded = Salvataggio sul posto non riuscito (__ocs_fmt_0__); è stata scaricata una copia
     .save-picker-failed-downloading = Selezione della destinazione non riuscita: __ocs_fmt_0__; scarico una copia
     .restore-all = Ripristina tutto
