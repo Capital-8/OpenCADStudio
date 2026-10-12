@@ -2461,11 +2461,10 @@ fn tool_result(value: Value) -> Value {
                 "text": format!("Captured viewport to MCP resource: {uri}")
             }));
             content.push(json!({
-                "type": "resource",
-                "resource": {
-                    "uri": uri,
-                    "mimeType": res["mimeType"].as_str().unwrap_or("image/png")
-                }
+                "type": "resource_link",
+                "name": "Captured viewport",
+                "uri": uri,
+                "mimeType": res["mimeType"].as_str().unwrap_or("image/png")
             }));
         }
         if let Some(meta) = value.get("metadata") {
@@ -3897,9 +3896,12 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("cad://session/s1/snapshot/hash123.png"));
-        assert_eq!(content[1]["type"], "resource");
+        assert_eq!(content[1]["type"], "resource_link");
+        assert_eq!(content[1]["name"], "Captured viewport");
+        assert_eq!(content[1]["mimeType"], "image/png");
+        assert!(content[1].get("resource").is_none());
         assert_eq!(
-            content[1]["resource"]["uri"],
+            content[1]["uri"],
             "cad://session/s1/snapshot/hash123.png"
         );
         // Ensure no image block was sent
@@ -3918,7 +3920,7 @@ mod tests {
         });
         let both_res = tool_result(both_value);
         let both_content = both_res["content"].as_array().unwrap();
-        assert!(both_content.iter().any(|c| c["type"] == "resource"));
+        assert!(both_content.iter().any(|c| c["type"] == "resource_link"));
         assert!(both_content.iter().any(|c| c["type"] == "image"));
     }
 
