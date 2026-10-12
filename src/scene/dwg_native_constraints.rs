@@ -1200,8 +1200,18 @@ impl Allocator<'_> {
                 },
                 class_version: 0,
                 enabled: true,
-                // Point and curve addressing lives on constraint-node data.
-                persistent_subent: AssocPersistentSubentId::default(),
+                // Point and curve addressing lives on constraint-node data;
+                // the dependency names the whole curve, as single-edge
+                // subentities do in authored constraint groups. An empty id
+                // (no class) crashes strict readers loading the drawing.
+                // ponytail: polyline segments get the single-edge id too;
+                // authored files address them with an index subentity (class
+                // code 3) whose fields are not decoded yet.
+                persistent_subent: AssocPersistentSubentId {
+                    class_name: "AcDbAssocSingleEdgePersSubentId".to_string(),
+                    class_code: 1,
+                    ..Default::default()
+                },
             }),
         )
     }
