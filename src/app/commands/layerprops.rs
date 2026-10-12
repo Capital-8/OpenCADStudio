@@ -891,7 +891,8 @@ impl OpenCADStudio {
                             self.command_line
                                 .push_error(crate::t!("Usage: VIEW DELETE <name>").as_ref());
                         } else {
-                            if self.tabs[i].scene.document.views.remove(&name).is_some() {
+                            if let Some(view) = self.tabs[i].scene.document.views.remove(&name) {
+                                crate::scene::erase_background(&mut self.tabs[i].scene.document, view.background_handle);
                                 self.command_line
                                     .push_output(crate::tf!("View '{}' deleted.", name).as_ref());
                             } else {

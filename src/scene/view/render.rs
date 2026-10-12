@@ -434,8 +434,10 @@ impl shader::Primitive for Primitive {
             // The scene works in logical pixels; an image background keeps
             // its size in device pixels.
             let mut uniforms = vp.uniforms;
-            uniforms.background_image_transform[2] /= scale.max(1e-3);
-            uniforms.background_image_transform[3] /= scale.max(1e-3);
+            // The image's size and offset are in device pixels.
+            for value in &mut uniforms.background_image_transform {
+                *value /= scale.max(1e-3);
+            }
             inner.upload_uniforms(device, queue, &uniforms);
 
             // ── Scene-render cache ────────────────────────────────────────
@@ -2557,20 +2559,18 @@ impl Scene {
         if viewport.paper_sheet {
             let handle = self.current_layout_sheet_viewport_handle();
             if let Some(EntityType::Viewport(value)) = self.document.get_entity(handle) {
-                return build(
-                    value.visual_style_handle,
-                    value.brightness,
-                    value.contrast,
-                    value.background_handle,
-                );
+                // The sheet keeps its page and desk: a paper-space view's
+                // background is kept with the layout but not drawn.
+                return build(value.visual_style_handle, value.brightness, value.contrast, Handle::NULL);
             }
         } else if viewport.handle.is_valid() {
             if let Some(EntityType::Viewport(value)) = self.document.get_entity(viewport.handle) {
+                let flat = value.render_mode == codec::entities::ViewportRenderMode::Wireframe2D;
                 return build(
                     value.visual_style_handle,
                     value.brightness,
                     value.contrast,
-                    value.background_handle,
+                    if flat { Handle::NULL } else { value.background_handle },
                 );
             }
         } else if self.current_layout == "Model" {
@@ -4907,7 +4907,11 @@ impl Scene {
             // (hatched) frame once it settles. Only applied to the on-screen
             // Model / paper content — the paper *sheet* keeps its fills.
             skip_hatch: self.hatch_lod_enabled() && navigating,
-            skip_background: !inst.paper_sheet && self.current_layout != "Model",
+            // A floating viewport shows the page behind it unless it has a
+            // background of its own.
+            skip_background: !inst.paper_sheet
+                && self.current_layout != "Model"
+                && display.background.params[0] < 0.5,
             geometry_epoch: self.geometry_epoch,
             camera_generation: self.camera_generation,
             wire_content_id,

@@ -53,12 +53,33 @@ impl OpenCADStudio {
                     .to_string(),
                 visual_style: name_of(&visual_styles, view.visual_style_handle),
                 live_section: name_of(&live_sections, view.live_section_handle),
+                paper_space: view.paper_space,
             })
             .collect();
+        let scene = &self.tabs[i].scene;
+        let sheet_viewports = (scene.current_layout != "Model" && scene.active_viewport.is_none()).then(|| {
+            scene
+                .layout_content_viewports()
+                .iter()
+                .filter_map(|handle| match document.get_entity(*handle) {
+                    Some(codec::EntityType::Viewport(value)) => Some((
+                        handle.value(),
+                        [
+                            value.center.x - value.width / 2.0,
+                            value.center.y - value.height / 2.0,
+                            value.center.x + value.width / 2.0,
+                            value.center.y + value.height / 2.0,
+                        ],
+                    )),
+                    _ => None,
+                })
+                .collect()
+        });
         ViewNames {
             views,
             visual_styles: visual_styles.into_iter().map(|(name, _)| name).collect(),
             live_sections: live_sections.into_iter().map(|(name, _)| name).collect(),
+            sheet_viewports,
         }
     }
 
@@ -132,16 +153,40 @@ impl OpenCADStudio {
                 if !doomed.is_empty() {
                     self.push_undo_snapshot(i, "-VIEW");
                     for name in &doomed {
-                        self.tabs[i].scene.document.views.remove(name);
+                        let removed = self.tabs[i].scene.document.views.remove(name);
+                        if let Some(view) = removed {
+                            crate::scene::erase_background(&mut self.tabs[i].scene.document, view.background_handle);
+                        }
                         self.tabs[i].scene.document.delete_layer_state(&snapshot_name(name));
                     }
                     self.tabs[i].dirty = true;
                 }
             }
+            "RESTOREVP" => {
+                let (name, handle) = arg.split_once('\u{1f}').unwrap_or((arg, ""));
+                let Some(view) = self.tabs[i].scene.document.views.get(name).cloned() else {
+                    return Task::none();
+                };
+                let Some(handle) = u64::from_str_radix(handle, 16).ok().map(Handle::new) else {
+                    return Task::none();
+                };
+                // The reference enters the selected viewport and restores the
+                // view in it.
+                let task = self.update(Message::EnterViewport(handle));
+                self.restore_view_in_active_viewport(i, &view);
+                return task;
+            }
             "RESTORE" => {
                 let Some(view) = self.tabs[i].scene.document.views.get(arg).cloned() else {
                     return Task::none();
                 };
+                if self.tabs[i].scene.current_layout != "Model"
+                    && self.tabs[i].scene.active_viewport.is_some()
+                    && !view.paper_space
+                {
+                    self.restore_view_in_active_viewport(i, &view);
+                    return Task::none();
+                }
                 let before = self.tabs[i].scene.active_gaze_dir();
                 self.tabs[i].scene.restore_named_view(&view);
                 self.apply_view_render_mode(i, &view);
@@ -250,6 +295,22 @@ impl OpenCADStudio {
         }
     }
 
+    /// A model-space view restored in the entered paper-space viewport, with
+    /// its background and visual style.
+    fn restore_view_in_active_viewport(&mut self, i: usize, view: &codec::tables::View) {
+        let Some(viewport) = self.tabs[i].scene.active_viewport else { return };
+        self.tabs[i].scene.restore_named_view_in_viewport(view, viewport);
+        if let Some(ObjectType::VisualStyle(style)) =
+            self.tabs[i].scene.document.objects.get(&view.visual_style_handle)
+        {
+            if let Some((mode, _)) = crate::modules::view::visual_style::mode_for_style_name(&style.description) {
+                self.tabs[i].scene.set_active_viewport_render_mode(mode);
+                self.tabs[i].scene.bump_geometry_no_blocks();
+            }
+        }
+        self.tabs[i].dirty = true;
+    }
+
     /// Add or replace a named view, keeping the record (and so its settings)
     /// of a view saved again under the same name.
     fn save_named_view(&mut self, i: usize, mut view: codec::tables::View) {
@@ -257,6 +318,7 @@ impl OpenCADStudio {
         let background = self.tabs[i].scene.active_background();
         let document = &mut self.tabs[i].scene.document;
         view.background_handle = crate::scene::copy_background(document, background);
+        let mut replaced = Handle::NULL;
         match document.views.get(&view.name).cloned() {
             Some(old) => {
                 view.name = old.name;
@@ -268,6 +330,7 @@ impl OpenCADStudio {
                 if view.background_handle.is_null() {
                     view.background_handle = old.background_handle;
                 }
+                replaced = old.background_handle;
             }
             None => {
                 view.handle = document.allocate_handle();
@@ -280,6 +343,7 @@ impl OpenCADStudio {
             }
         }
         document.views.add_or_replace(view);
+        crate::scene::erase_background(document, replaced);
         self.tabs[i].dirty = true;
     }
 
@@ -290,6 +354,7 @@ impl OpenCADStudio {
         };
         self.push_undo_snapshot(i, "-VIEW");
         let document = &mut self.tabs[i].scene.document;
+        let mut replaced = Handle::NULL;
         if view.handle.is_null() {
             view.handle = document.allocate_handle();
         }
@@ -297,7 +362,7 @@ impl OpenCADStudio {
             list.into_iter().find(|(entry, _)| entry.eq_ignore_ascii_case(value)).map_or(Handle::NULL, |(_, h)| h)
         };
         match setting {
-            "BACKGROUND" => view.background_handle = Handle::NULL,
+            "BACKGROUND" => replaced = std::mem::replace(&mut view.background_handle, Handle::NULL),
             "VISUALSTYLE" => view.visual_style_handle = find(crate::io::visual_styles::offered(document)),
             "SECTION" => {
                 let sections: Vec<(String, Handle)> = document
@@ -351,6 +416,7 @@ impl OpenCADStudio {
             _ => {}
         }
         document.views.add_or_replace(view);
+        crate::scene::erase_background(document, replaced);
         self.tabs[i].dirty = true;
     }
 }
@@ -381,6 +447,8 @@ impl OpenCADStudio {
             image: String::new(),
             position: BgPosition::Center,
             aspect: false,
+            offset: [0.0, 0.0],
+            scale: [1.0, 1.0],
             canvas: [0, 1, 2].map(|k| (canvas[k].clamp(0.0, 1.0) * 255.0).round() as u8),
         };
         let document = &self.tabs[i].scene.document;
@@ -407,6 +475,8 @@ impl OpenCADStudio {
                         BgPosition::Center
                     };
                     state.aspect = value.maintain_aspect_ratio;
+                    state.offset = [value.offset.x, value.offset.y];
+                    state.scale = [value.scale.x, value.scale.y];
                 }
                 _ => {}
             }
@@ -518,8 +588,8 @@ impl OpenCADStudio {
                             fit_to_screen: state.position == BgPosition::Stretch,
                             maintain_aspect_ratio: state.aspect,
                             use_tiling: state.position == BgPosition::Tile,
-                            offset: codec::types::Vector2::new(0.0, 0.0),
-                            scale: codec::types::Vector2::new(1.0, 1.0),
+                            offset: codec::types::Vector2::new(state.offset[0], state.offset[1]),
+                            scale: codec::types::Vector2::new(state.scale[0], state.scale[1]),
                         }))
                     }
                 };
@@ -533,7 +603,8 @@ impl OpenCADStudio {
                         crate::scene::add_background(document, data)
                     });
                     if let Some(view) = document.views.get_mut(&name) {
-                        view.background_handle = handle;
+                        let old = std::mem::replace(&mut view.background_handle, handle);
+                        crate::scene::erase_background(document, old);
                     }
                     self.tabs[i].dirty = true;
                 }
@@ -549,7 +620,6 @@ impl OpenCADStudio {
     /// A restored view's visual style becomes the model tab's render mode
     /// (the closest of OCS's modes); a view without one leaves it.
     pub(crate) fn apply_view_render_mode(&mut self, i: usize, view: &codec::tables::View) {
-        use codec::entities::ViewportRenderMode as M;
         if self.tabs[i].scene.current_layout != "Model" {
             return;
         }
@@ -558,19 +628,12 @@ impl OpenCADStudio {
         else {
             return;
         };
-        let (mode, label) = match style.description.as_str() {
-            "2dWireframe" => (M::Wireframe2D, "Wireframe 2D"),
-            "Wireframe" => (M::Wireframe3D, "Wireframe 3D"),
-            "Hidden" => (M::HiddenLine, "Hidden Line"),
-            "Flat" => (M::FlatShaded, "Flat Shaded"),
-            "FlatWithEdges" => (M::FlatShadedWithEdges, "Flat Shaded + Edges"),
-            "GouraudWithEdges" | "Shaded with edges" => {
-                (M::GouraudShadedWithEdges, "Gouraud Shaded + Edges")
-            }
-            "Gouraud" | "Realistic" | "Shaded" | "Conceptual" | "Shades of Gray" | "Sketchy"
-            | "X-Ray" => (M::GouraudShaded, "Gouraud Shaded"),
-            _ => return,
+        use crate::modules::view::visual_style;
+        let Some((mode, named)) = visual_style::mode_for_style_name(&style.description) else {
+            return;
         };
-        self.apply_render_mode(i, mode, label);
+        // A style of its own keeps its name; the render modes keep theirs.
+        let label = if named { style.description.clone() } else { visual_style::label_for(mode).to_string() };
+        self.apply_render_mode(i, mode, &label);
     }
 }

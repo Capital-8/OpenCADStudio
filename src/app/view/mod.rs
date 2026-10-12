@@ -1297,6 +1297,18 @@ bg={bg_ms:.1}ms n={view_count}"
                 let rect = tab.scene.active_model_tile_bounds(vw, vh);
                 // Unified control chip: split buttons + render-mode picker +
                 // grid / grid-snap toggles, for the active Model tile.
+                // A named style (Realistic, …) the tile draws as shows by name.
+                let style_name = match tab.scene.document.objects.get(&tab.scene.active_visual_style()) {
+                    Some(codec::objects::ObjectType::VisualStyle(style)) => {
+                        match crate::modules::view::visual_style::mode_for_style_name(&style.description) {
+                            Some((mode, true)) if mode == tab.render_mode => {
+                                Some(crate::t!(style.description.as_str()).into_owned())
+                            }
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
                 let bar = viewport_controls(
                     tab.render_mode,
                     self.show_grid,
@@ -1305,6 +1317,7 @@ bg={bg_ms:.1}ms n={view_count}"
                     tab.scene.model_tiles.borrow().len(),
                     self.render_mode_menu_open,
                     self.render_mode_preview,
+                    style_name,
                 );
                 // Adaptive: DensitySwap measures the bar's real width every frame
                 // (reported into `render_bar_w`, which the ViewCube reads to decide
@@ -1397,6 +1410,7 @@ bg={bg_ms:.1}ms n={view_count}"
                     0,
                     self.render_mode_menu_open,
                     self.render_mode_preview,
+                    None,
                 );
                 let adaptive: Element<'_, Message> = DensitySwap::new(vec![
                     iced::widget::opaque(bar),

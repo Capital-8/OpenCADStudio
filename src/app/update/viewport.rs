@@ -1091,6 +1091,10 @@ impl OpenCADStudio {
             return Task::none();
         }
         self.apply_render_mode(i, mode, label);
+        // The viewport record carries the style the mode is saved as.
+        self.tabs[i]
+            .scene
+            .set_active_visual_style_named(crate::modules::view::visual_style::style_name_for(mode));
         self.command_line
             .push_output(crate::tf!("Visual style: {label}").as_ref());
         // The point cloud move gizmo follows the visual style.

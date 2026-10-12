@@ -2206,6 +2206,9 @@ pub struct ViewBackgroundState {
     pub image: String,
     pub position: BgPosition,
     pub aspect: bool,
+    /// The image's offset (pixels) and scale, kept from the view's image.
+    pub offset: [f64; 2],
+    pub scale: [f64; 2],
     /// The drawing area colour, shown for no background.
     pub canvas: [u8; 3],
 }

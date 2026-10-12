@@ -28,7 +28,7 @@ pub enum BlockScalePolicy {
 // blocks and/or free functions). Pure text-move from the original mod.rs.
 mod boundary;
 mod camera_ops;
-pub use camera_ops::{add_background, copy_background};
+pub use camera_ops::{add_background, copy_background, erase_background};
 pub(crate) mod centerline;
 pub(crate) mod centermark;
 pub(crate) mod dimension_assoc;
