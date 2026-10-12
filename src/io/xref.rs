@@ -1405,10 +1405,23 @@ pub fn collect_entries_with_prev(
     /// The filesystem stat is desktop-only by `cfg` (not a runtime check): the
     /// wasm binary contains no `std::fs::metadata` call at all, so a web
     /// session can never block on — or fail from — a host-filesystem probe.
-    /// Path-based web references resolve through the file-handle loader and
-    /// simply stay `NotFound` when unresolvable.
+    /// Path-based web references resolve through the file-handle loader: a
+    /// source present in that registry reports Loaded here, and only truly
+    /// unregistered ones stay `NotFound`.
     fn stat_into(entry: &mut ReferenceEntry, raw: &str, base_dir: &Path) {
         if raw.is_empty() {
+            return;
+        }
+        // Web (and the native tests exercising it): `resolve_path` probes the
+        // filesystem, which the browser does not have — consult the source
+        // registry instead. A registered drawing IS loaded; its byte length
+        // comes free from the in-memory bytes (no read), and there is no
+        // mtime to report.
+        #[cfg(any(target_arch = "wasm32", test))]
+        if let Some(key) = find_registered_source(raw) {
+            entry.size_bytes = registered_bytes(&key).map(|b| b.len() as u64);
+            entry.found_at = Some(key);
+            entry.status = RefStatus::Loaded;
             return;
         }
         let Some(found) = resolve_path(raw, base_dir) else {
@@ -2005,6 +2018,8 @@ fn bind_dwg(
         .find(|b| b.handle == br_handle)
         .map(|b| b.xref_path.clone())
         .unwrap_or_default();
+    // Native-only path: `resolve_path` reads the real filesystem, so DWG
+    // bind stays desktop-only (the web has no fs to load a bind source from).
     let Some(found) = resolve_path(&saved, base_dir) else {
         return Err(bind_failed(name, "file not found"));
     };
@@ -2181,6 +2196,8 @@ fn collect_bind_images(
     let mut planned: HashMap<String, String> = HashMap::default();
     let mut ops: Vec<(Handle, PathBuf, String)> = Vec::new();
     for (handle, saved) in &defs {
+        // Native-only path: `resolve_path` stats the real filesystem (and
+        // the copy below reads it), so image COLLECT stays desktop-only.
         let Some(resolved) = resolve_path(saved, source_dir) else {
             return Err(bind_failed(ref_name, format!("image not found: {saved}")));
         };

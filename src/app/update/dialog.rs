@@ -198,6 +198,14 @@ impl OpenCADStudio {
                 let Some(idx) = self.tabs.iter().position(|t| t.id == tab_id) else {
                     return Task::batch([close_win, self.continue_tab_close_queue()]);
                 };
+                // …and, on the web, its retained in-place save handle — the
+                // same hook on_tab_close runs: the user declined the save,
+                // so the picked file must never receive a later write, and
+                // the next tab to reuse this id must start with a fresh
+                // pick instead of silently writing over the discarded
+                // drawing's file.
+                #[cfg(target_arch = "wasm32")]
+                crate::io::fs_access::drop_handle(tab_id);
                 // Discarded — drop this tab's autosave recovery copy.
                 #[cfg(not(target_arch = "wasm32"))]
                 let _ = std::fs::remove_file(self.autosave_target(idx));
@@ -319,6 +327,21 @@ impl OpenCADStudio {
 
         #[cfg(target_arch = "wasm32")]
         {
+            // Same guard the native half runs against active_save_jobs
+            // above: while a web save is between capture and completion,
+            // refuse a second one (the window is seconds — refuse, don't
+            // queue) instead of letting two serializer rounds race for the
+            // same tab's bookkeeping.
+            if let Some(busy_tab) = crate::io::fs_access::web_save_in_flight() {
+                if self.tabs.iter().any(|tab| tab.id == busy_tab) {
+                    self.command_line
+                        .push_info(crate::t!("Save already running for this drawing.").as_ref());
+                    return Task::none();
+                }
+                // Stale marker (its tab closed before settling): clear it
+                // rather than block this save forever.
+                crate::io::fs_access::end_web_save(busy_tab);
+            }
             match self.pending_close.take() {
                 Some(crate::app::PendingClose::Tab(tab_id)) => {
                     let Some(idx) = self.tabs.iter().position(|t| t.id == tab_id) else {

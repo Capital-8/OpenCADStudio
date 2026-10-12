@@ -297,6 +297,17 @@ pub fn capture_canvas() -> Option<iced::window::Screenshot> {
     ))
 }
 
+/// Web: is the page visible? `requestAnimationFrame` — and therefore the
+/// frames subscription and any canvas readback — never runs while
+/// `document.hidden`, so the control `capture` op refuses to wait for a frame
+/// that could never come.
+#[cfg(target_arch = "wasm32")]
+pub fn page_visible() -> bool {
+    !web_sys::window()
+        .and_then(|window| window.document())
+        .is_some_and(|document| document.hidden())
+}
+
 /// Web: read text from the system clipboard via the async Clipboard API.
 /// iced's own `clipboard::read` is a no-op on the web (the browser clipboard is
 /// async + permission-gated), so the editor paste paths use this instead. The
@@ -340,7 +351,8 @@ fn clipboard_image_extensions_cover_the_paste_flavors() {
 
 /// Web: read an image from the system clipboard via the async Clipboard API
 /// (`navigator.clipboard.read()`), used when a paste found no text. Returns
-/// the registry name (`pasted-YYYYMMDD-HHMMSS.<ext>`) plus the image bytes,
+/// the registry name (`pasted-YYYYMMDD-HHMMSS-mmm[-N].<ext>`, unique against
+/// the registry) plus the image bytes,
 /// or `None` when the clipboard holds no image item or the read is denied.
 /// Like `read_clipboard_text`, the Ctrl+V keypress that reaches it is a user
 /// gesture, which is what makes the permission-gated read allowed at all.
@@ -380,27 +392,101 @@ pub async fn read_clipboard_image() -> Option<(String, Vec<u8>)> {
         if bytes.is_empty() {
             return None;
         }
-        return Some((pasted_image_name(&mime_type), bytes));
+        let name = pasted_image_name(&mime_type);
+        // Register under the chosen name BEFORE returning: no other wasm
+        // code can run between the uniqueness check and this insert (one
+        // thread), so a second paste landing in the same millisecond sees
+        // this name as taken and takes a `-2` suffix instead of overwriting
+        // these bytes. The paste handler's own `register_source` call with
+        // the same name is then an idempotent overwrite of identical bytes.
+        crate::scene::model::image_model::register_source(
+            &name,
+            std::sync::Arc::new(bytes.clone()),
+        );
+        return Some((name, bytes));
     }
     None
 }
 
-/// Registry name for a pasted clipboard image: `pasted-YYYYMMDD-HHMMSS.ext`
-/// stamped from the wall clock (local time, the same clock a screenshot file
-/// name uses) with the extension derived from the MIME type.
+/// Registry name for a pasted clipboard image:
+/// `pasted-YYYYMMDD-HHMMSS-mmm.ext` stamped from the wall clock (local time,
+/// the same clock a screenshot file name uses) at millisecond precision, with
+/// the extension derived from the MIME type. Milliseconds alone don't
+/// guarantee uniqueness (two pastes inside one ms), so the name is pushed
+/// through [`unique_pasted_image_name`] against the live registry — a reused
+/// key would overwrite the earlier paste's bytes (the registry is last-wins)
+/// and make its entity display the newer pixels.
 #[cfg(target_arch = "wasm32")]
 fn pasted_image_name(mime_type: &str) -> String {
-    let now = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(0.0));
-    format!(
-        "pasted-{:04}{:02}{:02}-{:02}{:02}{:02}.{}",
-        now.get_full_year(),
-        now.get_month() + 1,
-        now.get_date(),
-        now.get_hours(),
-        now.get_minutes(),
-        now.get_seconds(),
-        clipboard_image_extension(mime_type)
+    let now = js_sys::Date::new_0();
+    unique_pasted_image_name(
+        &format!(
+            "pasted-{:04}{:02}{:02}-{:02}{:02}{:02}-{:03}",
+            now.get_full_year(),
+            now.get_month() + 1,
+            now.get_date(),
+            now.get_hours(),
+            now.get_minutes(),
+            now.get_seconds(),
+            (now.get_time() as u64) % 1000,
+        ),
+        clipboard_image_extension(mime_type),
+        crate::scene::model::image_model::has_source,
     )
+}
+
+/// Turn `base` + `ext` into a registry name not taken yet: the bare
+/// `base.ext` first, then `-2`, `-3`, … inserted before the extension while
+/// the candidate already names a registered source. The taken-check is
+/// injectable so this — the part worth locking with tests — runs natively;
+/// wasm passes [`crate::scene::model::image_model::has_source`].
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // tested everywhere, used on wasm
+pub(crate) fn unique_pasted_image_name(
+    base: &str,
+    ext: &str,
+    taken: impl Fn(&str) -> bool,
+) -> String {
+    let first = format!("{base}.{ext}");
+    if !taken(&first) {
+        return first;
+    }
+    for suffix in 2u64.. {
+        let candidate = format!("{base}-{suffix}.{ext}");
+        if !taken(&candidate) {
+            return candidate;
+        }
+    }
+    unreachable!("an unbounded suffix space always yields a free name")
+}
+
+#[test]
+fn pasted_image_names_never_reuse_a_taken_registry_key() {
+    let mut taken: Vec<String> = Vec::new();
+    let claim = |taken: &mut Vec<String>| {
+        let name = unique_pasted_image_name("pasted-20260915-101500-123", "png", |candidate| {
+            taken.iter().any(|used| used == candidate)
+        });
+        taken.push(name.clone());
+        name
+    };
+    // Fresh registry: the bare millisecond-stamped name is used as-is.
+    assert_eq!(claim(&mut taken), "pasted-20260915-101500-123.png");
+    // A second paste inside the same millisecond suffixes instead of
+    // overwriting — each name below must differ from every earlier one.
+    assert_eq!(claim(&mut taken), "pasted-20260915-101500-123-2.png");
+    assert_eq!(claim(&mut taken), "pasted-20260915-101500-123-3.png");
+    // The extension is part of the key: a jpg landing in the same
+    // millisecond does not collide with the pngs above.
+    assert_eq!(
+        unique_pasted_image_name("pasted-20260915-101500-123", "jpg", |candidate| {
+            taken.iter().any(|used| used == candidate)
+        }),
+        "pasted-20260915-101500-123.jpg"
+    );
+    // Freed suffixes are reused in order: with `-2` unregistered again, the
+    // next paste takes `-2` back before walking further.
+    taken.remove(1);
+    assert_eq!(claim(&mut taken), "pasted-20260915-101500-123-2.png");
 }
 
 #[cfg(target_arch = "wasm32")]

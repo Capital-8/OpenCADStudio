@@ -131,6 +131,12 @@ pub(super) struct State {
     /// Whether the parked capture actually waited for a redraw (vs. the
     /// anti-hang timer). Reported in the capture result as `waited_for_frame`.
     pub(super) capture_after_redraw: bool,
+    /// Web: when a parked capture gives up. Only a presented frame can be
+    /// read back on wasm, and a hidden or idle tab may never present one, so
+    /// the timer tick fails the capture past this instant instead of letting
+    /// it hold the control slot forever.
+    #[cfg(target_arch = "wasm32")]
+    pub(super) capture_deadline: Option<iced::time::Instant>,
 }
 
 /// The pending half of an interactive `user_select` operation (`interactive`
@@ -1212,6 +1218,11 @@ impl OpenCADStudio {
                 // rendered frame (or the timer fallback) so geometry changes are
                 // visible rather than returning a stale frame.
                 self.control.capture_frame_pending = true;
+                #[cfg(target_arch = "wasm32")]
+                {
+                    self.control.capture_deadline =
+                        Some(iced::time::Instant::now() + std::time::Duration::from_secs(5));
+                }
                 Task::none()
             }
             "stop" => {
@@ -1648,30 +1659,45 @@ impl OpenCADStudio {
         // browser clears the WebGL buffer — so wait for a real frame.
         #[cfg(target_arch = "wasm32")]
         {
-            if !redrew {
+            let expired = self
+                .control
+                .capture_deadline
+                .is_some_and(|deadline| iced::time::Instant::now() >= deadline);
+            if !redrew && !expired && crate::sys::page_visible() {
                 return Task::none();
             }
             self.control.capture_frame_pending = false;
-            self.control.capture_after_redraw = true;
-            return Task::done(Message::ControlScreenshot(path, crate::sys::capture_canvas()));
-        }
-        self.control.capture_frame_pending = false;
-        self.control.capture_after_redraw = redrew;
-        let Some(window) = self.main_window else {
-            return Task::done(Message::ControlScreenshot(path, None));
-        };
-        // A minimized window has a 0x0 surface and the renderer panics reading
-        // it back, so report instead of capturing.
-        iced::window::size(window).then(move |size| {
-            let path = path.clone();
-            if size.width <= 0.0 || size.height <= 0.0 {
-                Task::done(Message::ControlScreenshot(path, None))
+            self.control.capture_deadline = None;
+            self.control.capture_after_redraw = redrew;
+            // No frame to read (hidden tab or nothing redrawing): report the
+            // capture as failed rather than hand back a blank canvas.
+            let screenshot = if redrew {
+                crate::sys::capture_canvas()
             } else {
-                iced::window::screenshot(window).map(move |screenshot| {
-                    Message::ControlScreenshot(path.clone(), Some(screenshot))
-                })
-            }
-        })
+                None
+            };
+            Task::done(Message::ControlScreenshot(path, screenshot))
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.control.capture_frame_pending = false;
+            self.control.capture_after_redraw = redrew;
+            let Some(window) = self.main_window else {
+                return Task::done(Message::ControlScreenshot(path, None));
+            };
+            // A minimized window has a 0x0 surface and the renderer panics
+            // reading it back, so report instead of capturing.
+            iced::window::size(window).then(move |size| {
+                let path = path.clone();
+                if size.width <= 0.0 || size.height <= 0.0 {
+                    Task::done(Message::ControlScreenshot(path, None))
+                } else {
+                    iced::window::screenshot(window).map(move |screenshot| {
+                        Message::ControlScreenshot(path.clone(), Some(screenshot))
+                    })
+                }
+            })
+        }
     }
 }
 mod actions;
