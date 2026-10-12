@@ -1295,6 +1295,7 @@ mod tests {
                 Some("RAL CLASSIC$RAL 5015".into())
             ))
         );
+        p.update(ColorPickerMsg::Tab(ColorPickerTab::Books));
         p.update(ColorPickerMsg::Arrow(ArrowKey::Up));
         assert_eq!(p.pending_name.as_deref(), Some("RAL CLASSIC$RAL 3020"));
         edit(&mut p, EditorMsg::Hue(120.0));
