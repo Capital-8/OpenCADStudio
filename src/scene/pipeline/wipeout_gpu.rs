@@ -181,7 +181,7 @@ impl WipeoutGpu {
         // translation-safe instancing path.
         models
             .iter()
-            .map(|model| Self::new(device, queue, &[*model], bgl1))
+            .map(|model| Self::new(device, queue, &[model], bgl1))
             .collect()
     }
 
