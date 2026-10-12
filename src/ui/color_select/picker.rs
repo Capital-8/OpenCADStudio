@@ -95,7 +95,7 @@ impl ColorPicker {
 
     /// Interface colours (Options backgrounds) only get the colour editor.
     fn editor_only(&self) -> bool {
-        matches!(self.target, ColorPickTarget::Background(_))
+        matches!(self.target, ColorPickTarget::Interface(_))
     }
 
     fn set_pending(&mut self, color: AcadColor) {
@@ -763,7 +763,7 @@ mod tests {
     #[test]
     fn interface_colours_show_only_the_editor() {
         let p = ColorPicker::new(
-            ColorPickTarget::Background(crate::app::BgTarget::Model),
+            ColorPickTarget::Interface(crate::app::UiColor::ModelBackground),
             AcadColor::Rgb {
                 r: 30,
                 g: 30,
@@ -843,7 +843,7 @@ mod tests {
             ),
             (
                 "interface",
-                ColorPickTarget::Background(crate::app::BgTarget::Model),
+                ColorPickTarget::Interface(crate::app::UiColor::ModelBackground),
                 AcadColor::Rgb {
                     r: 33,
                     g: 40,

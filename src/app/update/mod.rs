@@ -11061,7 +11061,7 @@ impl OpenCADStudio {
                 // the recent list.
                 if !matches!(
                     self.color_picker.as_ref().map(|picker| &picker.target),
-                    Some(crate::app::ColorPickTarget::Background(_))
+                    Some(crate::app::ColorPickTarget::Interface(_))
                 ) {
                     self.note_recent_color(color);
                 }

@@ -1136,7 +1136,7 @@ impl OpenCADStudio {
     }
 
     pub(super) fn on_color_window_pick(&mut self, color: codec::types::Color) -> Task<Message> {
-        if let Some(crate::app::ColorPickTarget::Background(target)) = self
+        if let Some(crate::app::ColorPickTarget::Interface(target)) = self
             .color_picker
             .as_ref()
             .map(|picker| picker.target.clone())
@@ -1146,13 +1146,18 @@ impl OpenCADStudio {
                 return Task::none();
             };
             // Hand the result to the same handler the typed hex field uses, so
-            // the picker and the field cannot drift apart on validation,
-            // persistence or the MatchTheme fallback.
+            // the picker and the field cannot drift apart on validation or
+            // persistence.
             let hex = crate::app::config::rgb_to_hex([r, g, b]);
+            use crate::app::UiColor;
             return Task::done(match target {
-                crate::app::BgTarget::Model => Message::ModelSpaceBgChanged(hex),
-                crate::app::BgTarget::Paper => Message::PaperSpaceBgChanged(hex),
-                crate::app::BgTarget::Desk => Message::DeskSpaceBgChanged(hex),
+                UiColor::ModelBackground => Message::ModelSpaceBgChanged(hex),
+                UiColor::PaperBackground => Message::PaperSpaceBgChanged(hex),
+                UiColor::DeskBackground => Message::DeskSpaceBgChanged(hex),
+                UiColor::Theme(index) => Message::OptionsThemeColorChanged(index, hex),
+                UiColor::Crosshair => Message::CrosshairColorChanged(hex),
+                UiColor::SnapMarker => Message::SnapMarkerColorChanged(hex),
+                UiColor::CommandText => Message::CommandTextColorChanged(hex),
             });
         }
         if matches!(
@@ -1208,7 +1213,7 @@ impl OpenCADStudio {
             }
             // Handled before this match.
             Some(
-                crate::app::ColorPickTarget::PlotStyle | crate::app::ColorPickTarget::Background(_),
+                crate::app::ColorPickTarget::PlotStyle | crate::app::ColorPickTarget::Interface(_),
             ) => None,
             None => None,
         };

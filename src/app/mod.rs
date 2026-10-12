@@ -1577,12 +1577,17 @@ pub struct SaveOutcome {
     refreshed_preview: Option<Option<codec::Preview>>,
     result: Result<(), crate::io::SaveFailure>,
 }
-/// Which viewport background the interface colour picker is editing.
+/// Which Options colour the interface colour picker is editing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BgTarget {
-    Model,
-    Paper,
-    Desk,
+pub enum UiColor {
+    ModelBackground,
+    PaperBackground,
+    DeskBackground,
+    /// One of the six theme colours, by its row in Options.
+    Theme(usize),
+    Crosshair,
+    SnapMarker,
+    CommandText,
 }
 
 /// Where a colour chosen in the standalone palette window should be applied.
@@ -1607,8 +1612,8 @@ pub enum ColorPickTarget {
     LayerState(usize),
     /// The MText editor's selection (or global) colour.
     MText,
-    /// An Options viewport background (interface colour, true colour only).
-    Background(BgTarget),
+    /// An Options interface colour (true colour only).
+    Interface(UiColor),
 }
 
 /// Table records the clipboard entities depend on, snapshotted from the source

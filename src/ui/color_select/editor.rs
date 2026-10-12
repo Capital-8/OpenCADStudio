@@ -145,43 +145,72 @@ impl ColorEditor {
         let Hsb { h, s, b } = self.hsb;
         let (r, g, bl) = self.rgb;
 
-        let mode_button = |content: Element<'a, Message>, mode: EditorMode, padding: u16| {
+        let mode_button = |content: Element<'a, Message>, mode: EditorMode| {
             let active = self.mode == mode;
             button(container(content).center(Length::Fill))
                 .on_press(msg(EditorMsg::Mode(mode)))
                 .width(52)
                 .height(28)
-                .padding(padding)
+                .padding(0)
                 .style(move |theme: &Theme, status| {
                     super::picker::toggle_style(theme, active, status)
                 })
         };
-        // The field button is all gradient; it only takes colour when active.
+        // The field button is only its gradient, without a frame; it takes
+        // colour when its mode is active and stays gray otherwise.
         let field_active = self.mode == EditorMode::Field;
-        let field_icon = container(Space::new())
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(move |_theme: &Theme| {
+        let field_button = button(Space::new().width(52).height(28))
+            .on_press(msg(EditorMsg::Mode(EditorMode::Field)))
+            .padding(0)
+            .style(move |_theme: &Theme, _status| {
                 let middle = if field_active {
                     Color::from_rgb8(0x3A, 0xA0, 0xFF)
                 } else {
                     Color::from_rgb8(0x80, 0x80, 0x80)
                 };
-                gradient_box(
+                let icon = gradient_box(
                     3.0 * std::f32::consts::FRAC_PI_4,
                     &[(0.0, Color::WHITE), (0.5, middle), (1.0, Color::BLACK)],
-                )
+                );
+                button::Style {
+                    background: icon.background,
+                    border: Border {
+                        radius: 5.0.into(),
+                        ..Border::default()
+                    },
+                    ..Default::default()
+                }
             });
         let mut modes = row![
-            mode_button(text("HSB").size(12).into(), EditorMode::Hsb, 0),
-            mode_button(text("RGB").size(12).into(), EditorMode::Rgb, 0),
-            mode_button(field_icon.into(), EditorMode::Field, 3),
+            mode_button(text("HSB").size(12).into(), EditorMode::Hsb),
+            mode_button(text("RGB").size(12).into(), EditorMode::Rgb),
+            field_button,
             Space::new().width(Length::Fill),
         ]
         .spacing(6);
         if let Some(end) = mode_end {
             modes = modes.push(end);
         }
+
+        let hex = self
+            .hex_draft
+            .clone()
+            .unwrap_or_else(|| math::hex_string(r, g, bl));
+        let hex_field = move || {
+            row![
+                text(t!("Hex")).size(11).style(super::picker::muted_text),
+                text_input("", &hex)
+                    .on_input(|value| msg(EditorMsg::HexInput(value)))
+                    .on_submit(msg(EditorMsg::HexSubmit))
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
+                    .padding([5, 6])
+                    .width(Length::Fixed(74.0)),
+            ]
+            .spacing(8)
+            .align_y(iced::Center)
+        };
+        let field_mode = self.mode == EditorMode::Field;
 
         let editor: Element<'a, Message> = match self.mode {
             EditorMode::Hsb => column![
@@ -270,13 +299,15 @@ impl ColorEditor {
                 };
                 column![
                     row![area, strip].spacing(12),
+                    // H, S and B on the left, the hex value on the right.
                     row![
                         value("H", h, 360.0, '°', EditorMsg::Hue),
-                        Space::new().width(Length::Fill),
                         value("S", s * 100.0, 100.0, '%', EditorMsg::Saturation),
-                        Space::new().width(Length::Fill),
                         value("B", b * 100.0, 100.0, '%', EditorMsg::Brightness),
+                        Space::new().width(Length::Fill),
+                        hex_field(),
                     ]
+                    .spacing(10)
                     .align_y(iced::Center),
                 ]
                 .spacing(10)
@@ -284,23 +315,13 @@ impl ColorEditor {
             }
         };
 
-        let hex = self
-            .hex_draft
-            .clone()
-            .unwrap_or_else(|| math::hex_string(r, g, bl));
-        let mut hex_row = row![
-            text(t!("Hex")).size(11).style(super::picker::muted_text),
-            text_input("", &hex)
-                .on_input(|value| msg(EditorMsg::HexInput(value)))
-                .on_submit(msg(EditorMsg::HexSubmit))
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .padding([5, 6])
-                .width(Length::Fixed(74.0)),
-            Space::new().width(Length::Fill),
-        ]
-        .spacing(8)
-        .align_y(iced::Center);
+        // Below the editor: the hex value (unless the field view already
+        // shows it) and, on the right, the nearest index colour.
+        let mut hex_row = row![].spacing(8).align_y(iced::Center);
+        if !field_mode {
+            hex_row = hex_row.push(hex_field());
+        }
+        hex_row = hex_row.push(Space::new().width(Length::Fill));
         if let Some(end) = hex_end {
             hex_row = hex_row.push(end);
         }
