@@ -187,8 +187,9 @@ impl MeshTextureMap {
     }
 
     pub fn has_content(&self) -> bool {
-        (self.source == 1 && !self.file_name.trim().is_empty())
-            || (self.source == 2 && self.procedural)
+        // A procedural texture counts whatever the native source says: a
+        // checker asset attaches its texture without rewriting the source.
+        (self.source == 1 && !self.file_name.trim().is_empty()) || self.procedural
     }
 }
 
