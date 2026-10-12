@@ -2307,6 +2307,9 @@ impl OpenCADStudio {
                         self.tabs[i].scene.erase_entities(&sources);
                         self.refresh_properties();
                     }
+                    // The command consumes the selection, kept sources included.
+                    self.tabs[i].scene.deselect_all();
+                    self.refresh_properties();
                     self.tabs[i].dirty = true;
                     self.command_line
                         .push_output(crate::tf!("REGION: created {count} region(s).").as_ref());
