@@ -167,6 +167,14 @@ modal =
     .that-object = esse objeto
     .those-objects = esses objetos
 
+    .missing-fonts-downloading = Downloading...
+    .missing-fonts-download-available = Download available
+    .missing-fonts-skip = Skip
+    .missing-fonts-title = Missing fonts
+    .missing-fonts-description = This drawing uses fonts that are not installed on this machine. OpenCADStudio can download any redistributable fonts that exist in the selected repository; unavailable fonts will keep using a substitute.
+    .missing-fonts-source = Font source — leave empty for the community repository, or point at any folder (e.g. your company's font server):
+    .missing-fonts-source-placeholder = https://server/fonts or a GitHub raw folder
+
 clipboard =
     .pasted-image = Imagem "{ $name }" colada: { $width }×{ $height } px
     .image-unsupported = Não foi possível decodificar a imagem colada "{ $name }".
@@ -2365,6 +2373,13 @@ common =
     .threedrotate-specify-base-point-count-objects = 3DROTATE  Especifique o ponto base [__ocs_arg_count__ objetos]:
     .threedrotate-specify-rotation-axis = 3DROTATE  Especifique o eixo de rotação [X/Y/Z] ou um segundo ponto nele <Z>:
     .threedrotate-specify-rotation-angle-a = 3DROTATE  Especifique o ângulo de rotação <__ocs_arg_a__>:
+    .parametric-coincident = Coincident
+    .parametric-colinear = Colinear
+    .parametric-concentric = Concentric
+    .parametric-symmetric = Symmetric
+    .parametric-equal = Equal
+    .parametric-fix = Fix
+
 errors =
     .save-warning = Aviso de salvamento
     .unable-to-save-drawing = Não foi possível salvar o desenho
@@ -2987,6 +3002,7 @@ draw =
     .arc-specify-tangent-direction-for-the-start-point-of-arc = ARC  Especifique a direção tangente no ponto inicial do arco:
     .arc-specify-radius-of-arc = ARC  Especifique o raio do arco:
     .chord-length = Comprimento da corda
+
 
 modify =
     .add-vertex = Adicionar vértice
@@ -4397,6 +4413,7 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2 pontos
     .cube = Cubo
+
 
 layout =
     .active = Ativo
@@ -5978,6 +5995,46 @@ ui =
     .osnap-settings = Configurações de snap...
     .snap-override-none-next-pick-only = Substituição de snap: Nenhum (somente o próximo ponto).
 
+    .window-gpu-backend = GPU (backend)
+    .window-click-add-alias-type-the-alias-and-command-accep = Click + Add alias, type the alias and command, accept the row, then Apply. Esc cancels the pending row.
+    .window-number-of-aliases = Number of aliases
+    .window-are-you-sure-you-want-to-reset-you-will-lose-all = Are you sure you want to reset? You will lose all your current aliases!
+    .window-alias-already-used-for-command = Alias already used for command: __ocs_fmt_0__ → __ocs_fmt_1__
+    .window-browser = Browser
+    .window-origin-planes = Origin planes
+    .window-no-sketch-open = No sketch open
+    .window-bodies = Bodies (__ocs_fmt_0__)
+    .window-no-solids-yet = No solids yet
+    .window-saved-immediately-changes-take-effect-the-next-t = Saved immediately. Changes take effect the next time Open CAD Studio starts.
+    .window-this-session = This session
+    .window-driver = Driver
+    .window-backend = Backend
+    .window-selected-by = Selected by
+    .window-next-launch = Next launch
+    .window-graphics-backend = Graphics backend
+    .window-use-the-compatibility-renderer-for-gpus-without = Use the compatibility renderer (for GPUs without shader storage buffers)
+    .window-prefer-opengl-on-older-gpus-automatic-backend-on = Prefer OpenGL on older GPUs (automatic backend only)
+    .window-if-a-pinned-backend-fails-to-start-the-next-laun = If a pinned backend fails to start, the next launch falls back to automatic selection. The --backend option and the WGPU_BACKEND variable override this page.
+    .window-paused = Paused
+    .window-enable-spacemouse = Enable SpaceMouse
+    .window-navigation = Navigation
+    .window-reverse-pan-direction = Reverse pan direction
+    .window-pan-speed = Pan speed
+    .window-resume-spacemouse = Resume SpaceMouse
+    .window-configure-3d-navigation-buttons-and-radial-menus = Configure 3D navigation, buttons, and radial menus in 3Dconnexion settings. Pan only and Pan and zoom share the push/tilt mapping and pan settings shown here.
+    .window-connection-details = Connection details
+    .window-1-a-notch = __ocs_fmt_0__% a notch
+    .window-the-slider-covers-the-system-variable-s-to-the-f = The slider covers the system variable's __ocs_fmt_0__ to __ocs_fmt_1__; the field takes up to __ocs_fmt_2__ for a faster wheel.
+    .window-bundled-with-open-cad-studio = Bundled with Open CAD Studio
+    .window-how-the-reference-manager-works-on-web = How the Reference Manager works on web
+    .window-this-panel-lists-the-drawing-s-references-read-o = This panel lists the drawing's references read-only: status, type, size, date and saved path, plus the Details pane. Select rows to inspect them; List and Tree switch the presentation.
+    .window-attach-refresh-and-change-path-stay-disabled-her = Attach, Refresh and Change Path stay disabled here: the web build has no filesystem access and no native file pickers, so references can be neither added, reloaded nor repathed — and previews stay unavailable. Nested references are read-only on every platform, and relative paths need the drawing saved first.
+    .window-hit-something-broken-or-missing-report-it-on-the = Hit something broken or missing? Report it on the GitHub issues page so it can be fixed.
+    .window-report-an-issue = Report an issue
+    .window-reference-manager-web = Reference Manager — Web
+    .window-externalreferences-on-the-web-build = EXTERNALREFERENCES on the web build
+    .window-embed-image-in-drawing = Embed Image (in drawing)
+
 dimstyle =
     .keep-text-between-extension-lines = Sempre manter o texto entre as linhas de extensão
     .angular-dimensions = Cotas angulares
@@ -6245,3 +6302,12 @@ graphic-attributes =
     .reset-angle = Redefinir ângulo
     .one-color = Uma cor
     .two-colors = Duas cores
+
+property-patch =
+    .patch-01 = 3DxWare unavailable
+    .patch-02 = Follow context
+    .patch-03 = Pan and zoom on paper sheets; full navigation in model views.
+    .patch-04 = Open 3Dconnexion settings…
+    .patch-05 = Open 3Dconnexion settings...
+    .patch-06 = Decimal Separator
+    .patch-07 = Operational Symbols
