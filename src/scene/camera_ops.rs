@@ -219,6 +219,13 @@ impl Scene {
         if self.current_layout == "Model" {
             let background = copy_background(&mut self.document, view.background_handle);
             self.set_active_background(background);
+            if view.visual_style_handle.is_valid() {
+                if let Some(handle) = self.active_tile_vport_handle() {
+                    if let Some(value) = self.document.vports.iter_mut().find(|v| v.handle == handle) {
+                        value.visual_style_handle = view.visual_style_handle;
+                    }
+                }
+            }
         }
         let cam = &mut *self.camera.borrow_mut();
         // The stored direction points from the target toward the eye.

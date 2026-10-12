@@ -2571,11 +2571,15 @@ impl Scene {
         } else if self.current_layout == "Model" {
             let index = viewport.tile_idx.unwrap_or(0);
             if let Some(value) = self.model_tile_vport(index) {
+                // A 2D wireframe view shows no background, as in the reference.
+                let flat = self.model_tiles.borrow().get(index).is_some_and(|tile| {
+                    tile.render_mode == codec::entities::ViewportRenderMode::Wireframe2D
+                });
                 return build(
                     value.visual_style_handle,
                     value.brightness,
                     value.contrast,
-                    value.background_handle,
+                    if flat { Handle::NULL } else { value.background_handle },
                 );
             }
         }

@@ -144,6 +144,7 @@ impl OpenCADStudio {
                 };
                 let before = self.tabs[i].scene.active_gaze_dir();
                 self.tabs[i].scene.restore_named_view(&view);
+                self.apply_view_render_mode(i, &view);
                 if view.ucs_associated && self.tabs[i].active_block_edit.is_none() {
                     let world = view.ucs_x_axis == Vector3::new(1.0, 0.0, 0.0)
                         && view.ucs_y_axis == Vector3::new(0.0, 1.0, 0.0)
@@ -541,5 +542,35 @@ impl OpenCADStudio {
             _ => {}
         }
         Task::none()
+    }
+}
+
+impl OpenCADStudio {
+    /// A restored view's visual style becomes the model tab's render mode
+    /// (the closest of OCS's modes); a view without one leaves it.
+    pub(crate) fn apply_view_render_mode(&mut self, i: usize, view: &codec::tables::View) {
+        use codec::entities::ViewportRenderMode as M;
+        if self.tabs[i].scene.current_layout != "Model" {
+            return;
+        }
+        let Some(ObjectType::VisualStyle(style)) =
+            self.tabs[i].scene.document.objects.get(&view.visual_style_handle)
+        else {
+            return;
+        };
+        let (mode, label) = match style.description.as_str() {
+            "2dWireframe" => (M::Wireframe2D, "Wireframe 2D"),
+            "Wireframe" => (M::Wireframe3D, "Wireframe 3D"),
+            "Hidden" => (M::HiddenLine, "Hidden Line"),
+            "Flat" => (M::FlatShaded, "Flat Shaded"),
+            "FlatWithEdges" => (M::FlatShadedWithEdges, "Flat Shaded + Edges"),
+            "GouraudWithEdges" | "Shaded with edges" => {
+                (M::GouraudShadedWithEdges, "Gouraud Shaded + Edges")
+            }
+            "Gouraud" | "Realistic" | "Shaded" | "Conceptual" | "Shades of Gray" | "Sketchy"
+            | "X-Ray" => (M::GouraudShaded, "Gouraud Shaded"),
+            _ => return,
+        };
+        self.apply_render_mode(i, mode, label);
     }
 }

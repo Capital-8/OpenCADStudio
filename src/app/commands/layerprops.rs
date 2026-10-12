@@ -909,6 +909,7 @@ impl OpenCADStudio {
                             let found = self.tabs[i].scene.document.views.get(&name).cloned();
                             if let Some(v) = found {
                                 self.tabs[i].scene.restore_named_view(&v);
+                            self.apply_view_render_mode(i, &v);
                                 self.command_line.push_output(
                                     crate::tf!("View '{}' restored.", v.name).as_ref(),
                                 );
@@ -932,6 +933,7 @@ impl OpenCADStudio {
                         let found = self.tabs[i].scene.document.views.get(&name).cloned();
                         if let Some(v) = found {
                             self.tabs[i].scene.restore_named_view(&v);
+                            self.apply_view_render_mode(i, &v);
                             self.command_line
                                 .push_output(crate::tf!("View '{}' restored.", v.name).as_ref());
                         } else {

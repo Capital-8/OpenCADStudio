@@ -1090,6 +1090,24 @@ impl OpenCADStudio {
                 .push_output(crate::tf!("Viewport visual style: {label}").as_ref());
             return Task::none();
         }
+        self.apply_render_mode(i, mode, label);
+        self.command_line
+            .push_output(crate::tf!("Visual style: {label}").as_ref());
+        // The point cloud move gizmo follows the visual style.
+        if i == self.active_tab {
+            self.refresh_selected_grips();
+        }
+        Task::none()
+    }
+
+    /// The model tab's visual style, without a message.
+    pub(crate) fn apply_render_mode(
+        &mut self,
+        i: usize,
+        mode: codec::entities::ViewportRenderMode,
+        label: &str,
+    ) {
+        use codec::entities::ViewportRenderMode as M;
         self.tabs[i].render_mode = mode;
         // Write the style onto the active Model tile alone so it
         // sticks when that tile loses focus and the other tiles keep
@@ -1105,13 +1123,6 @@ impl OpenCADStudio {
         // pipeline keys its upload cache off `geometry_epoch`.
         self.tabs[i].scene.bump_geometry_no_blocks();
         self.tabs[i].dirty = true;
-        self.command_line
-            .push_output(crate::tf!("Visual style: {label}").as_ref());
-        // The point cloud move gizmo follows the visual style.
-        if i == self.active_tab {
-            self.refresh_selected_grips();
-        }
-        Task::none()
     }
 
     pub(super) fn on_cursor_moved(
