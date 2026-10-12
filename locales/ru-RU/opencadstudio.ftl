@@ -2403,6 +2403,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Размещение [Заменить/Префикс/Суффикс] <Заменить>:
 
 file =
+    .restore-all = Восстановить все
+    .restoring-drawing-s = Восстановление __ocs_fmt_0__ чертежа(ей)…
+    .session-had-open-drawing-s = В сессии было открыто __ocs_fmt_0__ чертежа(ей).
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" уже загружен с другим содержимым; существующий файл сохранён.
     .image-refusal-unknown-size = «__ocs_fmt_0__» не удалось измерить по заголовку, а его декодирование превысит лимит __ocs_fmt_1__ МБ этой сборки — вложить нельзя.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = parse __ocs_fmt_0__ms · чистка __ocs_fmt_1__ms · кэши __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · общая __ocs_fmt_4__ms

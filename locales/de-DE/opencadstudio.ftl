@@ -2400,6 +2400,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Platzierung [Überschreiben/Präfix/Suffix] <Überschreiben>:
 
 file =
+    .restore-all = Alle wiederherstellen
+    .restoring-drawing-s = __ocs_fmt_0__ Zeichnung(en) werden wiederhergestellt…
+    .session-had-open-drawing-s = Die Sitzung hatte __ocs_fmt_0__ geöffnete Zeichnung(en).
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" ist bereits mit anderem Inhalt geladen; die vorhandene Datei wurde behalten.
     .image-refusal-unknown-size = „__ocs_fmt_0__“ konnte anhand des Headers nicht vermessen werden, und das Dekodieren überschreitet das __ocs_fmt_1__-MB-Limit dieses Builds — kann nicht angehängt werden.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = analysiere __ocs_fmt_0__ms · Säubere __ocs_fmt_1__ms · Puffer __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · gesamt __ocs_fmt_4__ms

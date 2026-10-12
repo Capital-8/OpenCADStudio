@@ -2399,6 +2399,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  поставяне [Замяна/Префикс/Суфикс] <Замяна>:
 
 file =
+    .restore-all = Възстанови всички
+    .restoring-drawing-s = Възстановяване на __ocs_fmt_0__ чертеж(а)…
+    .session-had-open-drawing-s = Сесията е имала __ocs_fmt_0__ отворени чертежа.
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" вече е зареден с различно съдържание; съществуващият файл е запазен.
     .image-refusal-unknown-size = Размерът на „__ocs_fmt_0__“ не можа да се измери от заглавната му част, а декодирането му би надвишило __ocs_fmt_1__ MB лимита на тази сборка — не може да се прикачи.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   анализ __ocs_fmt_0__ms · изчистване __ocs_fmt_1__ms · кешове __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · общо __ocs_fmt_4__ms

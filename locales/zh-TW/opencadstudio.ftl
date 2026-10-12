@@ -2399,6 +2399,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  放置方式 [覆蓋/前綴/後綴] <覆蓋>：
 
 file =
+    .restore-all = 全部恢復
+    .restoring-drawing-s = 正在恢復 __ocs_fmt_0__ 繪圖…
+    .session-had-open-drawing-s = 工作階段中有 __ocs_fmt_0__ 個開啟的繪圖。
     .already-loaded-different-contents-kept = "__ocs_fmt_0__"已以不同內容載入；保留了現有檔案。
     .image-refusal-unknown-size = 無法從檔頭測得「__ocs_fmt_0__」的尺寸，解碼將超過本版本 __ocs_fmt_1__ MB 的影像上限——無法附加。
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = 解析 __ocs_fmt_0__ 毫秒 · 清除 __ocs_fmt_1__ 毫秒 · 快取 __ocs_fmt_2__ 毫秒 · xref __ocs_fmt_3__ 毫秒 · 總計 __ocs_fmt_4__ 毫秒

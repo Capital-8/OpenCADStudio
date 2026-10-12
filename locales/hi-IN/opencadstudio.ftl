@@ -2388,6 +2388,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  स्थान [अधिलेखित/उपसर्ग/प्रत्यय] <अधिलेखित>:
 
 file =
+    .restore-all = सभी पुनर्स्थापित करें
+    .restoring-drawing-s = __ocs_fmt_0__ ड्रॉइंग पुनर्स्थापित की जा रही हैं…
+    .session-had-open-drawing-s = सत्र में __ocs_fmt_0__ ड्रॉइंग खुली थीं।
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" अलग सामग्री के साथ पहले से लोड है; मौजूदा फ़ाइल रखी गई।
     .image-refusal-unknown-size = "__ocs_fmt_0__" को उसके हेडर से मापा नहीं जा सका और उसे डिकोड करना इस बिल्ड की __ocs_fmt_1__ MB छवि सीमा पार कर देगा — जोड़ा नहीं जा सकता।
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   पार्स __ocs_fmt_0__ms · purge __ocs_fmt_1__Ms · कैश __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · कुल __ocs_fmt_4__ms

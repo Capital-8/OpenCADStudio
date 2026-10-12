@@ -219,6 +219,10 @@ impl OpenCADStudio {
         if let Some(tab_id) = tab_id {
             v4_support::on_tab_closed(tab_id);
         }
+        // The tab list just shrank: refresh the remembered session list
+        // (web session memory).
+        #[cfg(target_arch = "wasm32")]
+        self.persist_web_session();
         Task::none()
     }
 

@@ -2399,6 +2399,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = Umieszczenie TCOUNT [Nadpisanie/Przedrostek/Sufiks] <Overwrite>:
 
 file =
+    .restore-all = Przywróć wszystkie
+    .restoring-drawing-s = Przywracanie __ocs_fmt_0__ rysunków…
+    .session-had-open-drawing-s = Sesja miała __ocs_fmt_0__ otwartych rysunków.
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" jest już wczytany z inną zawartością; zachowano istniejący plik.
     .image-refusal-unknown-size = „__ocs_fmt_0__” nie dał się zmierzyć z nagłówka, a jego dekodowanie przekroczy limit __ocs_fmt_1__ MB tej kompilacji — nie można go dołączyć.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   analizuj __ocs_fmt_0__ms · usuwaj __ocs_fmt_1__ms · pamięci podręczne __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · łącznie __ocs_fmt_4__ms

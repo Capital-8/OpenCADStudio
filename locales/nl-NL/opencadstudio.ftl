@@ -2400,6 +2400,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Plaatsing [Overschrijven/Voorvoegsel/Achtervoegsel] <Overschrijven>:
 
 file =
+    .restore-all = Alles herstellen
+    .restoring-drawing-s = __ocs_fmt_0__ tekening(en) worden hersteld…
+    .session-had-open-drawing-s = De sessie had __ocs_fmt_0__ tekening(en) open.
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" is al geladen met andere inhoud; het bestaande bestand is bewaard.
     .image-refusal-unknown-size = "__ocs_fmt_0__" kon niet via de header gemeten worden en decoderen overschrijdt de __ocs_fmt_1__ MB-limiet van deze build — kan niet worden toegevoegd.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = ontleed __ocs_fmt_0__ms · zuivering __ocs_fmt_1__ms · caches __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · totaal __ocs_fmt_4__ms

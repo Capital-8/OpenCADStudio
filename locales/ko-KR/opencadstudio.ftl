@@ -2399,6 +2399,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT 배치 [덮어쓰기/접두사/접미사] <Overwrite>:
 
 file =
+    .restore-all = 모두 복원
+    .restoring-drawing-s = __ocs_fmt_0__ 도면을 복원하는 중…
+    .session-had-open-drawing-s = 세션에서 __ocs_fmt_0__ 도면이 열려 있었습니다.
     .already-loaded-different-contents-kept = "__ocs_fmt_0__"이(가) 이미 다른 내용으로 로드되었습니다. 기존 파일을 유지했습니다.
     .image-refusal-unknown-size = "__ocs_fmt_0__"의 크기를 헤더에서 측정할 수 없고 디코딩 시 이 빌드의 __ocs_fmt_1__ MB 이미지 한도를 초과합니다 — 첨부할 수 없습니다.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   __ocs_fmt_0__ms 구문 분석 · __ocs_fmt_1__ms 제거 · 캐시 __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · 총 __ocs_fmt_4__ms

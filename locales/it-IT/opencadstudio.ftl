@@ -2399,6 +2399,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = Posizionamento TCOUNT [Sovrascrivi/Prefisso/Suffisso] <Overwrite>:
 
 file =
+    .restore-all = Ripristina tutto
+    .restoring-drawing-s = Ripristino di __ocs_fmt_0__ disegno/i…
+    .session-had-open-drawing-s = La sessione aveva __ocs_fmt_0__ disegni aperti.
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" è già caricato con contenuti diversi; il file esistente è stato mantenuto.
     .image-refusal-unknown-size = "__ocs_fmt_0__" non è stato misurabile dall’intestazione e decodificarlo supererebbe il limite di __ocs_fmt_1__ MB di questa build — impossibile allegarlo.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   analizza __ocs_fmt_0__ms · elimina __ocs_fmt_1__ms · memorizza nella cache __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · totale __ocs_fmt_4__ms

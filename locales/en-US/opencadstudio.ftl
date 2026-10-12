@@ -2403,6 +2403,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  placement [Overwrite/Prefix/Suffix] <Overwrite>:
 
 file =
+    .restore-all = Restore all
+    .restoring-drawing-s = Restoring __ocs_fmt_0__ drawing(s)…
+    .session-had-open-drawing-s = Session had __ocs_fmt_0__ open drawing(s).
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" is already loaded with different contents; the existing file was kept.
     .image-refusal-unknown-size = "__ocs_fmt_0__" could not be sized from its header and decoding it exceeded the __ocs_fmt_1__ MB image limit of this build — it cannot be attached.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   parse __ocs_fmt_0__ms · purge __ocs_fmt_1__ms · caches __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · total __ocs_fmt_4__ms

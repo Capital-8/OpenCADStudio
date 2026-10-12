@@ -2384,6 +2384,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT  Yerleştirme [Üzerine yaz/Önek/Sonek] <Üzerine yaz>:
 
 file =
+    .restore-all = Tümünü geri yükle
+    .restoring-drawing-s = __ocs_fmt_0__ çizim geri yükleniyor…
+    .session-had-open-drawing-s = Oturumda __ocs_fmt_0__ açık çizim vardı.
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" zaten farklı içerikle yüklü; mevcut dosya tutuldu.
     .image-refusal-unknown-size = "__ocs_fmt_0__" başlığından ölçülemedi ve kodu çözülürse bu sürümün __ocs_fmt_1__ MB görüntü limiti aşılır — eklenemez.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = ayrıştırma __ocs_fmt_0__ ms · temizleme __ocs_fmt_1__ ms · önbellekler __ocs_fmt_2__ ms · xref __ocs_fmt_3__ ms · toplam __ocs_fmt_4__ ms

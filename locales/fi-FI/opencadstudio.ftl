@@ -2399,6 +2399,9 @@ command =
     .tcount-placement-overwrite-prefix-suffix-overw = TCOUNT-sijoittelu [Korvaa/etuliite/liite] <Overwrite>:
 
 file =
+    .restore-all = Palauta kaikki
+    .restoring-drawing-s = Palautetaan __ocs_fmt_0__ piirustusta…
+    .session-had-open-drawing-s = Istunnossa oli __ocs_fmt_0__ avointa piirustusta.
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" on jo ladattu eri sisällöllä; olemassa oleva tiedosto säilytettiin.
     .image-refusal-unknown-size = Kohteen "__ocs_fmt_0__" kokoa ei voitu mitata otsakkeesta ja sen purkaminen ylittäisi tämän käännöksen __ocs_fmt_1__ MB kuvarajan — sitä ei voi liittää.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   jäsentää __ocs_fmt_0__ms · tyhjentää __ocs_fmt_1__ms · välimuistit __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · yhteensä __ocs_fmt_4__ms
