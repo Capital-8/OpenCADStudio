@@ -534,11 +534,18 @@ pub static BLOCK_DEFINE: OpDef = OpDef {
 
 pub static BLOCK_DELETE: OpDef = OpDef {
     name: "block_delete",
-    doc: "Delete a block definition and all its child entities and inserts.",
+    doc: "Delete a block definition and all its child entities. A referenced block is refused; force erases the referencing inserts.",
     batchable: true,
-    params: &[req("name", Ty::Str, "Block name to delete.")],
+    params: &[
+        req("name", Ty::Str, "Block name to delete."),
+        opt(
+            "force",
+            Ty::Bool,
+            "Erase the referencing inserts instead of refusing a referenced block. Result reports how many references were overridden.",
+        ),
+    ],
     rules: &[],
-    example: r#"{"op":"block_delete","name":"DOOR"}"#,
+    example: r#"{"op":"block_delete","name":"DOOR","force":true}"#,
 };
 
 pub static XDATA_SET: OpDef = OpDef {

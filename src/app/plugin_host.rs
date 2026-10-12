@@ -2337,78 +2337,75 @@ impl<'a> HostSession<'a> {
                 Ok(handle)
             }
             TableOperation::BlockRename { from, to } => {
-                let (from, handle) = editable_block(self.document(), from.trim())?;
-                let to = validated_symbol_name(&to, "a block name")?;
-                if to.starts_with('*') {
-                    return Err("a block name cannot start with '*'".to_owned());
+                let from = from.trim().to_owned();
+                let to = to.trim().to_owned();
+                let open_edits = self.open_block_edits();
+                let handle = self
+                    .document()
+                    .block_records
+                    .get(&from)
+                    .map(|record| record.handle)
+                    .unwrap_or(Handle::NULL);
+                self.push_undo(&format!("Rename block {from} to {to}"));
+                match crate::scene::block_service::rename(
+                    &mut self.app.tabs[self.tab].scene,
+                    &from,
+                    &to,
+                    &open_edits,
+                ) {
+                    Ok(_) => {
+                        self.finish_block_change();
+                        Ok(handle)
+                    }
+                    Err(error) => {
+                        self.app.discard_last_undo_entry(self.tab);
+                        Err(error.to_string())
+                    }
                 }
-                if from.eq_ignore_ascii_case(&to) {
-                    return Err("the new block name matches the current one (a case-only change is not supported)".to_owned());
-                }
-                if self.document().block_records.get(&to).is_some() {
-                    return Err(format!("block {to:?} already exists"));
-                }
-                self.push_undo("Rename block");
-                if !self.app.tabs[self.tab].scene.rename_block(&from, &to) {
-                    return Err("the block could not be renamed".to_owned());
-                }
-                self.finish_block_change();
-                Ok(handle)
             }
             TableOperation::BlockDelete { name } => {
-                let (name, handle) = editable_block(self.document(), name.trim())?;
-                let doc = self.document();
-                let referenced = doc.entities().any(|entity| match entity {
-                    E::Insert(insert) => insert.block_name.eq_ignore_ascii_case(&name),
-                    E::MultiLeader(leader) => {
-                        leader.block_content_handle == Some(handle)
-                            || leader.context.block_content_handle == Some(handle)
+                let name = name.trim().to_owned();
+                // The external API has no force flag, so a referenced block is
+                // always refused here — same rule as the palette.
+                let open_edits = self.open_block_edits();
+                let handle = self
+                    .document()
+                    .block_records
+                    .get(&name)
+                    .map(|record| record.handle)
+                    .unwrap_or(Handle::NULL);
+                self.push_undo(&format!("Delete block {name}"));
+                match crate::scene::block_service::delete(
+                    &mut self.app.tabs[self.tab].scene,
+                    &name,
+                    crate::scene::block_service::DeleteOptions {
+                        force: false,
+                        open_edits: &open_edits,
+                    },
+                ) {
+                    Ok(_) => {
+                        self.finish_block_change();
+                        Ok(handle)
                     }
-                    _ => false,
-                }) || doc.dim_styles.iter().any(|style| {
-                    [style.dimblk, style.dimblk1, style.dimblk2, style.dimldrblk].contains(&handle)
-                });
-                if referenced {
-                    return Err(format!(
-                        "block {name:?} is still inserted or used by a style or leader"
-                    ));
+                    Err(error) => {
+                        self.app.discard_last_undo_entry(self.tab);
+                        Err(error.to_string())
+                    }
                 }
-                let members: Vec<Handle> = {
-                    let record = doc.block_records.get(&name).expect("checked above");
-                    let mut members = record.entity_handles.clone();
-                    members.push(record.block_entity_handle);
-                    members.push(record.block_end_handle);
-                    members
-                };
-                self.push_undo("Delete block");
-                let doc = self.document_mut();
-                for member in members {
-                    doc.remove_entity(member);
-                }
-                doc.block_records.remove(&name);
-                let orphans: Vec<Handle> = {
-                    let live: std::collections::HashSet<Handle> =
-                        doc.block_records.iter().map(|r| r.handle).collect();
-                    doc.objects
-                        .iter()
-                        .filter_map(|(h, object)| match object {
-                            codec::objects::ObjectType::SortEntitiesTable(table)
-                                if !live.contains(&table.block_owner_handle) =>
-                            {
-                                Some(*h)
-                            }
-                            _ => None,
-                        })
-                        .collect()
-                };
-                for orphan in orphans {
-                    doc.objects.remove(&orphan);
-                }
-                self.finish_block_change();
-                Ok(handle)
             }
             _ => Err("unsupported table operation".to_owned()),
         }
+    }
+
+    /// Block records this document has open in a BEDIT session. Nested
+    /// sessions all count, so the whole stack is handed to the block service,
+    /// which refuses delete/rename and skips PURGE for every one of them.
+    fn open_block_edits(&self) -> Vec<Handle> {
+        self.app.tabs[self.tab]
+            .block_edits
+            .iter()
+            .map(|session| session.br_handle)
+            .collect()
     }
 
     fn finish_block_change(&mut self) {

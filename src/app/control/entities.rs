@@ -899,33 +899,37 @@ impl OpenCADStudio {
         Ok(Task::none())
     }
 
-    /// `block_delete` — remove a block definition together with its child
-    /// entities, the Block/BlockEnd markers and every Insert referencing it.
+    /// `block_delete` — remove a block definition. A definition something
+    /// still points at is refused unless the request carries `"force": true`,
+    /// which erases the referencing INSERTs in the same undo step.
     pub(super) fn control_block_delete(&mut self, req: &Value) -> Result<Task<Message>, Value> {
         let name = string(req, "name")?.to_owned();
-        if name.starts_with('*') {
-            return Err(failure(
-                "block_protected",
-                "Layout block records cannot be deleted",
-            ));
-        }
+        let force = req["force"].as_bool().unwrap_or(false);
         let i = self.active_tab;
-        if self.tabs[i]
-            .scene
-            .document
-            .block_records
-            .get(&name)
-            .is_none()
-        {
-            return Err(failure(
-                "block_missing",
-                format!("Block '{name}' does not exist"),
-            ));
-        }
-        self.push_undo_snapshot(i, "BLOCKDELETE");
-        let erased = erase_block_definition(&mut self.tabs[i].scene, &name);
+        let open_edits: Vec<codec::Handle> = self.tabs[i]
+            .block_edits
+            .iter()
+            .map(|session| session.br_handle)
+            .collect();
+        self.push_undo_snapshot(i, format!("Delete block {name}"));
+        let options = crate::scene::block_service::DeleteOptions {
+            force,
+            open_edits: &open_edits,
+        };
+        let outcome =
+            match crate::scene::block_service::delete(&mut self.tabs[i].scene, &name, options) {
+                Ok(outcome) => outcome,
+                Err(error) => {
+                    self.discard_last_undo_entry(i);
+                    return Err(failure(block_error_code(&error), error.to_string()));
+                }
+            };
         self.post_ref_op(i);
-        self.set_control_result(json!({ "block": name, "erased": erased }));
+        self.set_control_result(json!({
+            "block": outcome.name,
+            "erased": outcome.erased,
+            "references": outcome.references.len(),
+        }));
         Ok(Task::none())
     }
 
@@ -986,6 +990,21 @@ pub(crate) fn erase_block_definition(scene: &mut crate::scene::Scene, name: &str
     scene.erase_entities(&victims);
     scene.document.block_records.remove(name);
     victims.len()
+}
+
+/// The automation error code for each [`BlockServiceError`], so a headless
+/// client branches on a stable machine-readable code while the text stays the
+/// one the shared formatter produced.
+fn block_error_code(error: &crate::scene::block_service::BlockServiceError) -> &'static str {
+    use crate::scene::block_service::BlockServiceError as E;
+    match error {
+        E::NotFound(_) => "block_missing",
+        E::InvalidName(_) => "block_invalid_name",
+        E::NameExists(_) => "block_exists",
+        E::Referenced { .. } => "block_referenced",
+        E::InEditSession(_) => "block_in_edit",
+        E::Protected(_) => "block_protected",
+    }
 }
 
 /// `data:[{code,value},…]` → typed XData values; an absent or empty list

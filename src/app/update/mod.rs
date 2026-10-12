@@ -93,6 +93,8 @@ fn reorder_insertion_index(from: usize, to: usize, after: bool, len: usize) -> O
     (insertion != from).then_some(insertion)
 }
 
+#[cfg(test)]
+mod block_ops_tests;
 mod blocks_palette;
 mod command;
 mod context_menu;

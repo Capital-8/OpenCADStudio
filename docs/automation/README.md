@@ -701,9 +701,15 @@ definition — its children, markers and inserts — inside the same undo step
 before creating the new one: that is SPM's barcode re-import flow, so
 `block_define` never fails with "already exists" on a re-import.
 `block_delete` removes a definition completely (children, Block/BlockEnd
-markers, every Insert referencing it and the table record) and reports
-`result.erased`; unknown names are `block_missing`, `*`-prefixed layout
-records are `block_protected`. Definitions survive save/open round trips
+markers and the table record). A definition anything still points at — an
+INSERT, a dimension-style arrow block, a multi-leader's block content — is
+refused with `block_referenced` and the shared message text; add
+`"force":true` to erase the referencing INSERTs in the same undo step and get
+`result.references` with the number that were overridden. `result.erased`
+counts every entity the step removed. Unknown names are `block_missing`,
+`*`-prefixed layout records, anonymous and xref definitions are
+`block_protected`, and a block with an open BEDIT session is `block_in_edit`.
+Definitions survive save/open round trips
 and are consumable by `wblock` (by block name) and `INSERT` creation via
 `entities_create`.
 

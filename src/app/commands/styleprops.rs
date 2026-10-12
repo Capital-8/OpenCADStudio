@@ -358,62 +358,6 @@ impl OpenCADStudio {
                         .map(|s| s.to_uppercase())
                         .collect();
 
-                    // Live blocks are reachable from layouts and style roots
-                    // through the shared graph. Dangling layouts do not count.
-                    let live_blocks: rustc_hash::FxHashSet<String> = {
-                        let doc = &self.tabs[i].scene.document;
-                        let is_real_layout = |br: &codec::BlockRecord| -> bool {
-                            let up = br.name.to_ascii_uppercase();
-                            up.starts_with("*MODEL_SPACE")
-                                || up.starts_with("*PAPER_SPACE")
-                                || matches!(
-                                    doc.objects.get(&br.layout),
-                                    Some(codec::objects::ObjectType::Layout(_))
-                                )
-                        };
-                        let children = |name: &str| -> Vec<String> {
-                            let mut out = Vec::new();
-                            let Some(br) = doc.block_records.get(name) else {
-                                return out;
-                            };
-                            for &h in &br.entity_handles {
-                                let Some(entity) = doc.get_entity(h) else {
-                                    continue;
-                                };
-                                out.extend(
-                                    crate::scene::render_graph::entity_block_uses(doc, entity, 1.0)
-                                        .into_iter()
-                                        .filter(|block_use| !block_use.block.is_null())
-                                        .map(|block_use| block_use.insert.block_name),
-                                );
-                            }
-                            out
-                        };
-                        let mut live = rustc_hash::FxHashSet::default();
-                        let mut stack: Vec<String> = doc
-                            .block_records
-                            .iter()
-                            .filter(|&br| is_real_layout(br))
-                            .map(|br| br.name.clone())
-                            .collect();
-                        stack.extend(
-                            crate::scene::render_graph::document_block_uses(doc)
-                                .into_iter()
-                                .map(|block_use| block_use.insert.block_name),
-                        );
-                        while let Some(n) = stack.pop() {
-                            if !live.insert(n.clone()) {
-                                continue;
-                            }
-                            for c in children(&n) {
-                                if !live.contains(&c) {
-                                    stack.push(c);
-                                }
-                            }
-                        }
-                        live
-                    };
-
                     // Build removal lists (still immutable)
                     let layer_remove: Vec<String> = if do_layers {
                         self.tabs[i]
@@ -466,26 +410,21 @@ impl OpenCADStudio {
                         vec![]
                     };
 
-                    // Remove unreachable blocks but retain live xrefs and space containers.
+                    // Remove blocks nothing references any more. The shared
+                    // service decides what qualifies — layout/xref/dynamic
+                    // records and open BEDIT sessions are protected, and so is
+                    // every reference kind — so a purge and a delete give the
+                    // same answer.
                     let block_remove: Vec<String> = if do_blocks {
-                        self.tabs[i]
-                            .scene
-                            .document
-                            .block_records
+                        let open_edits: Vec<codec::Handle> = self.tabs[i]
+                            .block_edits
                             .iter()
-                            .filter(|br| {
-                                let up = br.name.to_ascii_uppercase();
-                                // Never PURGE an xref *definition* — that is a
-                                // detach, not a purge. Orphaned dependencies from
-                                // a past detach still use the reachability test.
-                                !br.flags.is_xref
-                                    && !br.flags.is_xref_overlay
-                                    && !up.starts_with("*MODEL_SPACE")
-                                    && !up.starts_with("*PAPER_SPACE")
-                                    && !live_blocks.contains(&br.name)
-                            })
-                            .map(|br| br.name.clone())
-                            .collect()
+                            .map(|session| session.br_handle)
+                            .collect();
+                        crate::scene::block_service::purge_candidates(
+                            &self.tabs[i].scene.document,
+                            &open_edits,
+                        )
                     } else {
                         vec![]
                     };
@@ -501,7 +440,7 @@ impl OpenCADStudio {
                     // Snapshot the pre-purge document once, before the first
                     // removal, so a single UNDO restores everything.
                     if !snapshot_pushed {
-                        self.push_undo_snapshot(i, "PURGE");
+                        self.push_undo_snapshot(i, "Purge");
                         snapshot_pushed = true;
                     }
 
@@ -523,26 +462,11 @@ impl OpenCADStudio {
                         .count();
                     let mut blocks_gone = 0usize;
                     for name in &block_remove {
-                        // Drop the block definition's member entities (and the
-                        // BLOCK/ENDBLK delimiters) before the record so no orphaned
-                        // geometry survives in the document entity list.
-                        let handles: Vec<_> =
-                            if let Some(br) = self.tabs[i].scene.document.block_records.get(name) {
-                                let mut h = br.entity_handles.clone();
-                                h.push(br.block_entity_handle);
-                                h.push(br.block_end_handle);
-                                h
-                            } else {
-                                Vec::new()
-                            };
-                        for h in handles {
-                            self.tabs[i].scene.document.remove_entity(h);
-                        }
-                        if self.tabs[i]
-                            .scene
-                            .document
-                            .block_records
-                            .remove(name)
+                        // The service erases the definition, its member
+                        // entities, both BLOCK/ENDBLK delimiters and any stale
+                        // draw-order table, so a purge and a delete leave the
+                        // same document behind.
+                        if crate::scene::block_service::erase(&mut self.tabs[i].scene, name)
                             .is_some()
                         {
                             blocks_gone += 1;
@@ -586,7 +510,7 @@ impl OpenCADStudio {
                         // re-assignment needed (a block purge already snapshotted;
                         // a snapshot here only matters when nothing else changed).
                         if !snapshot_pushed {
-                            self.push_undo_snapshot(i, "PURGE");
+                            self.push_undo_snapshot(i, "Purge");
                         }
                         for h in &orphans {
                             self.tabs[i].scene.document.objects.remove(h);
@@ -3392,7 +3316,13 @@ impl OpenCADStudio {
                 } else {
                     // Snapshot BEFORE mutating (undo must restore the old
                     // name); dropped again if nothing was renamed.
-                    self.push_undo_snapshot(i, "RENAME");
+                    let block = type_str == "BLOCK";
+                    let label = if block {
+                        format!("Rename block {old_name} to {new_name}")
+                    } else {
+                        "RENAME".to_string()
+                    };
+                    self.push_undo_snapshot(i, label);
                     let known = matches!(
                         type_str.as_str(),
                         "LAYER"
@@ -3405,11 +3335,31 @@ impl OpenCADStudio {
                             | "UCS"
                             | "VIEW"
                     );
-                    let ok = if type_str == "BLOCK" {
+                    // The block path's refusal text comes from the shared
+                    // service, so the command line, the palette, the plugin
+                    // API and the control op all word it the same way.
+                    let mut block_error: Option<String> = None;
+                    let ok = if block {
+                        let open_edits: Vec<codec::Handle> = self.tabs[i]
+                            .block_edits
+                            .iter()
+                            .map(|session| session.br_handle)
+                            .collect();
                         // Re-keys the record, syncs the Block marker and every
-                        // INSERT reference; refuses anonymous/xref sources and
-                        // invalid/taken names.
-                        self.tabs[i].scene.rename_block(&old_name, &new_name)
+                        // INSERT reference; refuses anonymous/xref sources,
+                        // protected records and invalid/taken names.
+                        match crate::scene::block_service::rename(
+                            &mut self.tabs[i].scene,
+                            &old_name,
+                            &new_name,
+                            &open_edits,
+                        ) {
+                            Ok(_) => true,
+                            Err(error) => {
+                                block_error = Some(error.to_string());
+                                false
+                            }
+                        }
                     } else if type_str == "LAYER" {
                         self.tabs[i].rename_layer(&old_name, &new_name)
                     } else if known {
@@ -3444,13 +3394,10 @@ impl OpenCADStudio {
                         );
                     } else {
                         self.discard_last_undo_entry(i);
-                        if !known {
+                        if let Some(message) = block_error {
+                            self.command_line.push_error(&message);
+                        } else if !known {
                             self.command_line.push_error(crate::tf!("RENAME: unknown type '{}'. Use LAYER BLOCK STYLE DIMSTYLE LINETYPE UCS VIEW", type_str).as_ref());
-                        } else if type_str == "BLOCK" {
-                            self.command_line.push_error(crate::tf!(
-                                "RENAME: could not rename block '{}' — missing/anonymous/xref, or '{}' is invalid or taken.",
-                                old_name, new_name
-                            ).as_ref());
                         } else {
                             self.command_line.push_error(crate::tf!(
                                 "RENAME: could not rename '{}' in {} — not found or protected, or '{}' is invalid or taken.",

@@ -1027,44 +1027,6 @@ pub fn entity_block_uses(
     uses
 }
 
-/// Blocks referenced by document-level styles rather than a concrete entity.
-pub fn document_block_uses(document: &CadDocument) -> Vec<BlockUse> {
-    let mut uses = Vec::new();
-    for style in document.dim_styles.iter() {
-        for handle in [style.dimblk, style.dimblk1, style.dimblk2, style.dimldrblk] {
-            push_dependency_use(&mut uses, document, handle, BlockRole::ArrowHead);
-        }
-        for name in [&style.dimblk_name, &style.dimblk1_name, &style.dimblk2_name] {
-            if let Some(record) = block_record_by_name(document, name) {
-                push_dependency_use(&mut uses, document, record.handle, BlockRole::ArrowHead);
-            }
-        }
-    }
-    for object in document.objects.values() {
-        let codec::objects::ObjectType::MultiLeaderStyle(style) = object else {
-            continue;
-        };
-        if let Some(handle) = style.arrowhead_handle {
-            push_dependency_use(&mut uses, document, handle, BlockRole::ArrowHead);
-        }
-        if let Some(handle) = style.block_content_handle {
-            push_dependency_use(&mut uses, document, handle, BlockRole::MultiLeaderContent);
-        }
-    }
-    for line_type in document.line_types.iter() {
-        for symbol in crate::scene::convert::dgn_linestyle::symbol_blocks(document, &line_type.name)
-        {
-            push_dependency_use(
-                &mut uses,
-                document,
-                symbol.block,
-                BlockRole::LineStyleSymbol,
-            );
-        }
-    }
-    uses
-}
-
 const MAX_MINSERT_INSTANCES: usize = 20_000;
 
 pub fn array_offsets(insert: &Insert) -> Vec<[f64; 3]> {

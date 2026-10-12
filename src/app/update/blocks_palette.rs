@@ -491,20 +491,31 @@ impl OpenCADStudio {
                 Tab::Current => {
                     let name = item.name();
                     let i = self.active_tab;
-                    let referenced = self.tabs[i].scene.document.entities().any(|e| {
-                        matches!(e, codec::EntityType::Insert(ins) if ins.block_name.eq_ignore_ascii_case(&name))
-                    });
-                    if referenced {
-                        self.command_line.push_error(&crate::tf!(
-                            "Block \"{name}\" is referenced in the drawing and cannot be removed."
-                        ));
-                    } else {
-                        self.push_undo_snapshot(i, "PURGE");
-                        crate::app::control::erase_block_definition(&mut self.tabs[i].scene, &name);
-                        self.tabs[i].dirty = true;
-                        self.command_line
-                            .push_output(&crate::tf!("Block \"{name}\" removed."));
-                        self.refresh_block_palette();
+                    let open_edits: Vec<codec::Handle> = self.tabs[i]
+                        .block_edits
+                        .iter()
+                        .map(|session| session.br_handle)
+                        .collect();
+                    self.push_undo_snapshot(i, format!("Delete block {name}"));
+                    let outcome = crate::scene::block_service::delete(
+                        &mut self.tabs[i].scene,
+                        &name,
+                        crate::scene::block_service::DeleteOptions {
+                            force: false,
+                            open_edits: &open_edits,
+                        },
+                    );
+                    match outcome {
+                        Ok(_) => {
+                            self.tabs[i].dirty = true;
+                            self.command_line
+                                .push_output(&crate::tf!("Block \"{name}\" removed."));
+                            self.refresh_block_palette();
+                        }
+                        Err(error) => {
+                            self.discard_last_undo_entry(i);
+                            self.command_line.push_error(&error.to_string());
+                        }
                     }
                 }
                 Tab::Recent | Tab::Favorites => {

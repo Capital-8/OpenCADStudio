@@ -28,8 +28,10 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 /// The `tool_schema_digest_is_pinned` test fails whenever the MCP tool surface
 /// changes, so schema drift (new params, renamed tools) is always a conscious,
 /// reviewed edit — and clients can detect a stale bridge by comparing digests.
+///
+/// `block_delete` gained its optional `force` parameter.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "e7bd01696f57143d7139aeb75d53389450b1102b603f2ba4ace8122cc692070e";
+const TOOL_SCHEMA_DIGEST: &str = "c16572f139198d90807ede156370879106672ed97566c16ab6ae001c996059e8";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;

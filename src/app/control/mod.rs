@@ -1631,7 +1631,6 @@ mod actions;
 pub(crate) mod vision;
 pub(crate) use actions::property_json;
 mod entities;
-pub(crate) use entities::erase_block_definition;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod http_bridge;
 mod interactive;

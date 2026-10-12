@@ -551,11 +551,29 @@ fn block_delete_and_define_replace_manage_definitions() {
     assert_eq!(count_type(&mut app, "Line"), 0, "old children erased");
     assert_eq!(count_type(&mut app, "Circle"), 0, "old children erased");
 
+    // A definition the insert still points at is refused; "force":true erases
+    // the referencing inserts in the same undo step.
+    let r = app.automation_op(&format!(
+        r#"{{"protocol":1,"op":"block_delete","request_id":"bl1b","document_id":{doc},"name":"MARK"}}"#
+    ));
+    assert_eq!(r["ok"], false);
+    assert_eq!(r["code"], "block_referenced");
+    assert_eq!(
+        count_type(&mut app, "Insert"),
+        1,
+        "the insert survived the refusal"
+    );
+
     // Delete removes the insert, the markers, the children and the record.
     let r = app.automation_op(&format!(
-        r#"{{"protocol":1,"op":"block_delete","request_id":"bl2","document_id":{doc},"name":"MARK"}}"#
+        r#"{{"protocol":1,"op":"block_delete","request_id":"bl2","document_id":{doc},"name":"MARK","force":true}}"#
     ));
     assert_eq!(r["ok"], true, "{}", r["error"]);
+    assert_eq!(
+        r["result"]["references"].as_u64().unwrap(),
+        1,
+        "the forced delete reports what it overrode"
+    );
     assert!(
         r["result"]["erased"].as_u64().unwrap() >= 3,
         "insert + markers + child"
