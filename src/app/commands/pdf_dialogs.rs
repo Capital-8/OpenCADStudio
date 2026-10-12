@@ -439,6 +439,7 @@ impl OpenCADStudio {
                     "attach" => crate::t!("Attaches a PDF file as an underlay."),
                     "pointcloud" => crate::t!("Attaches a point cloud scan or project."),
                     "pcsection" => crate::t!("Traces the points on the kept side of a live section as lines."),
+                    "background" => std::borrow::Cow::Owned(crate::tr!("view-background", "help")),
                     "pointcloudcolormap" => {
                         crate::t!("Sets the color schemes and ranges a point cloud is colored by intensity or elevation.")
                     }
@@ -572,6 +573,16 @@ impl OpenCADStudio {
             | PdfDialogMsg::MapCurrent(_)
             | PdfDialogMsg::MapApply
             | PdfDialogMsg::MapOk) => return self.update_point_cloud_color_map(message),
+            message @ (PdfDialogMsg::BgKind(_)
+            | PdfDialogMsg::BgPickColor(_)
+            | PdfDialogMsg::BgColor(..)
+            | PdfDialogMsg::BgThree(_)
+            | PdfDialogMsg::BgRotation(_)
+            | PdfDialogMsg::BgImage(_)
+            | PdfDialogMsg::BgBrowse
+            | PdfDialogMsg::BgPosition(_)
+            | PdfDialogMsg::BgAspect(_)
+            | PdfDialogMsg::BgApply) => return self.update_view_background(message),
             message @ (PdfDialogMsg::SecPerimeter(_)
             | PdfDialogMsg::SecMaxPoints(_)
             | PdfDialogMsg::SecLayer(_)

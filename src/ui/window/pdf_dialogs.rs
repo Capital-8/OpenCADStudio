@@ -111,6 +111,18 @@ pub enum PdfDialogMsg {
     ImportOk,
     Options,
     Help(&'static str),
+    // View background
+    BgKind(BgKind),
+    /// Open the colour window for a slot: 0 solid, 1 top, 2 middle, 3 bottom.
+    BgPickColor(u8),
+    BgColor(u8, [u8; 3]),
+    BgThree(bool),
+    BgRotation(String),
+    BgImage(String),
+    BgBrowse,
+    BgPosition(BgPosition),
+    BgAspect(bool),
+    BgApply,
 }
 
 fn msg(m: PdfDialogMsg) -> Message {
@@ -2130,4 +2142,286 @@ pub fn view_pc_section<'a>(
         .padding([10, 12])
         .width(sizing.width)
         .into()
+}
+
+// ── View background (-VIEW sEttings Background) ─────────────────────────
+
+/// What a named view shows behind the drawing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BgKind {
+    None,
+    Solid,
+    Gradient,
+    Image,
+}
+
+/// Where an image background sits: centred, stretched over the view, or
+/// repeated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BgPosition {
+    Center,
+    Stretch,
+    Tile,
+}
+
+impl BgPosition {
+    pub const ALL: [BgPosition; 3] = [BgPosition::Center, BgPosition::Stretch, BgPosition::Tile];
+}
+
+impl fmt::Display for BgPosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&match self {
+            BgPosition::Center => crate::tr!("view-background", "center"),
+            BgPosition::Stretch => crate::tr!("view-background", "stretch"),
+            BgPosition::Tile => crate::tr!("view-background", "tile"),
+        })
+    }
+}
+
+/// How an image background is scaled: to the screen, or keeping its
+/// aspect ratio.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BgAspect(pub bool);
+
+impl fmt::Display for BgAspect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&if self.0 {
+            crate::tr!("view-background", "aspect")
+        } else {
+            crate::tr!("view-background", "fit")
+        })
+    }
+}
+
+/// The Background dialog's fields for one named view.
+pub struct ViewBackgroundState {
+    pub view: String,
+    pub kind: BgKind,
+    pub solid: [u8; 3],
+    pub top: [u8; 3],
+    pub middle: [u8; 3],
+    pub bottom: [u8; 3],
+    pub three: bool,
+    pub rotation: String,
+    pub image: String,
+    pub position: BgPosition,
+    pub aspect: bool,
+    /// The drawing area colour, shown for no background.
+    pub canvas: [u8; 3],
+}
+
+pub fn view_background<'a>(
+    state: &'a ViewBackgroundState,
+    sizing: crate::ui::modal::ModalSizing,
+) -> Element<'a, Message> {
+    let kind = segmented(
+        vec![
+            (BgKind::None, crate::tr!("view-background", "none")),
+            (BgKind::Solid, crate::tr!("view-background", "solid")),
+            (BgKind::Gradient, crate::tr!("view-background", "gradient")),
+            (BgKind::Image, crate::tr!("view-background", "image")),
+        ],
+        state.kind,
+        PdfDialogMsg::BgKind,
+    );
+    let rgb = |c: [u8; 3]| iced::Color::from_rgb8(c[0], c[1], c[2]);
+    let fill = |background: Background| {
+        move |_: &Theme| container::Style {
+            background: Some(background),
+            border: Border {
+                width: 1.0,
+                radius: 4.0.into(),
+                color: iced::Color::from_rgb8(0x4a, 0x4a, 0x4a),
+            },
+            ..Default::default()
+        }
+    };
+    let note = |label: String| text(label).size(11).style(muted_style);
+    let preview: Element<'a, Message> = match state.kind {
+        BgKind::None => container(note(crate::tr!("view-background", "canvas")))
+            .center(Fill)
+            .style(fill(Background::Color(rgb(state.canvas))))
+            .into(),
+        BgKind::Solid => container(Space::new())
+            .width(Fill)
+            .height(Fill)
+            .style(fill(Background::Color(rgb(state.solid))))
+            .into(),
+        BgKind::Gradient => {
+            // Bottom colour at the start, top at the end, turned
+            // counter-clockwise by the rotation.
+            let angle = state.rotation.trim().parse::<f32>().unwrap_or(0.0);
+            let mut linear = iced::gradient::Linear::new(iced::Radians(-angle.to_radians()))
+                .add_stop(0.0, rgb(state.bottom));
+            if state.three {
+                linear = linear.add_stop(0.5, rgb(state.middle));
+            }
+            linear = linear.add_stop(1.0, rgb(state.top));
+            container(Space::new())
+                .width(Fill)
+                .height(Fill)
+                .style(fill(Background::Gradient(iced::Gradient::Linear(linear))))
+                .into()
+        }
+        BgKind::Image => {
+            if std::path::Path::new(state.image.trim()).is_file() {
+                let fit = match (state.position, state.aspect) {
+                    (BgPosition::Stretch, false) => iced::ContentFit::Fill,
+                    (BgPosition::Stretch, true) => iced::ContentFit::Contain,
+                    _ => iced::ContentFit::None,
+                };
+                container(
+                    image(image::Handle::from_path(state.image.trim()))
+                        .content_fit(fit)
+                        .width(Fill)
+                        .height(Fill),
+                )
+                .center(Fill)
+                .style(fill(Background::Color(rgb(state.canvas))))
+                .into()
+            } else {
+                container(note(crate::tr!("view-background", "no-image")))
+                    .center(Fill)
+                    .style(fill(Background::Color(iced::Color::from_rgb8(0x1a, 0x1a, 0x1a))))
+                    .into()
+            }
+        }
+    };
+    let preview = card(
+        crate::tr!("view-background", "preview"),
+        container(preview).width(Fill).height(Length::Fixed(150.0)),
+    );
+    let label = |value: String, enabled: bool| {
+        text(value)
+            .size(11)
+            .style(move |theme: &Theme| {
+                if enabled {
+                    muted_style(theme)
+                } else {
+                    text::Style {
+                        color: Some(theme.palette().background.strong.color),
+                    }
+                }
+            })
+            .width(Length::Fixed(92.0))
+    };
+    let color_row = |name: String, slot: u8, color: [u8; 3], enabled: bool| -> Element<'a, Message> {
+        let mut pick = button(text(crate::tr!("view-background", "select")).size(11))
+            .style(button_style(false))
+            .padding([4, 10]);
+        if enabled {
+            pick = pick.on_press(msg(PdfDialogMsg::BgPickColor(slot)));
+        }
+        row![
+            label(name, enabled),
+            swatch(color, 64.0, 22.0),
+            text(format!("{},{},{}", color[0], color[1], color[2]))
+                .size(11)
+                .style(muted_style),
+            Space::new().width(Fill),
+            pick,
+        ]
+        .spacing(8)
+        .align_y(iced::Center)
+        .into()
+    };
+    let options: Element<'a, Message> = match state.kind {
+        BgKind::None => card(
+            crate::tr!("view-background", "info"),
+            note(crate::tr!("view-background", "none-info")),
+        ),
+        BgKind::Solid => card(
+            crate::tr!("view-background", "solid-color"),
+            color_row(crate::tr!("view-background", "color"), 0, state.solid, true),
+        ),
+        BgKind::Gradient => card(
+            crate::tr!("view-background", "gradient"),
+            column![
+                row![
+                    chip(
+                        crate::tr!("view-background", "three-colors"),
+                        state.three,
+                        msg(PdfDialogMsg::BgThree(!state.three))
+                    ),
+                    Space::new().width(Fill),
+                    text(crate::tr!("view-background", "rotation"))
+                        .size(11)
+                        .style(muted_style),
+                    text_input("", &state.rotation)
+                        .on_input(|v| msg(PdfDialogMsg::BgRotation(v)))
+                        .size(11)
+                        .padding([4, 8])
+                        .width(Length::Fixed(64.0))
+                        .style(field_style),
+                ]
+                .spacing(8)
+                .align_y(iced::Center),
+                color_row(crate::tr!("view-background", "top"), 1, state.top, true),
+                color_row(crate::tr!("view-background", "middle"), 2, state.middle, state.three),
+                color_row(crate::tr!("view-background", "bottom"), 3, state.bottom, true),
+            ]
+            .spacing(8),
+        ),
+        BgKind::Image => card(
+            crate::tr!("view-background", "image"),
+            column![
+                row![
+                    text_input("", &state.image)
+                        .on_input(|v| msg(PdfDialogMsg::BgImage(v)))
+                        .size(11)
+                        .padding([4, 8])
+                        .width(Fill)
+                        .style(field_style),
+                    button(text(crate::tr!("view-background", "browse")).size(11))
+                        .on_press(msg(PdfDialogMsg::BgBrowse))
+                        .style(button_style(false))
+                        .padding([4, 10]),
+                ]
+                .spacing(8)
+                .align_y(iced::Center),
+                row![
+                    label(crate::tr!("view-background", "position"), true),
+                    pick_list(Some(state.position), BgPosition::ALL.to_vec(), |p: &BgPosition| {
+                        p.to_string()
+                    })
+                    .on_select(|p| msg(PdfDialogMsg::BgPosition(p)))
+                    .text_size(12)
+                    .padding([4, 8])
+                    .width(Fill),
+                ]
+                .spacing(8)
+                .align_y(iced::Center),
+                row![
+                    label(crate::tr!("view-background", "scale"), true),
+                    pick_list(
+                        Some(BgAspect(state.aspect)),
+                        vec![BgAspect(false), BgAspect(true)],
+                        |a: &BgAspect| a.to_string()
+                    )
+                    .on_select(|a: BgAspect| msg(PdfDialogMsg::BgAspect(a.0)))
+                    .text_size(12)
+                    .padding([4, 8])
+                    .width(Fill),
+                ]
+                .spacing(8)
+                .align_y(iced::Center),
+            ]
+            .spacing(8),
+        ),
+    };
+    column![
+        kind,
+        preview,
+        options,
+        footer(
+            "background",
+            None,
+            crate::tr!("view-background", "apply").into(),
+            PdfDialogMsg::BgApply
+        ),
+    ]
+    .spacing(10)
+    .padding([10, 12])
+    .width(sizing.width)
+    .into()
 }

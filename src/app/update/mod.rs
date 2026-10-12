@@ -8799,6 +8799,13 @@ impl OpenCADStudio {
                     self.close_sheet_set_dialog();
                     return Task::none();
                 }
+                // The Background dialog returns to -VIEW's settings prompt.
+                if self.active_modal == Some(super::ModalKind::ViewBackground) {
+                    self.view_background = None;
+                    self.close_active_modal();
+                    let i = self.active_tab;
+                    return self.run_dash_view("SETTINGS", i);
+                }
                 if self.active_modal == Some(super::ModalKind::Field) {
                     self.close_field_dialog();
                     return Task::none();

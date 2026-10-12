@@ -2034,6 +2034,11 @@ text_atlas={:.1} wire_arena={:.1} block_geometry={:.1}",
 }
 
 impl Scene {
+    /// The model-space viewport record of the active tile.
+    pub(crate) fn active_tile_vport_handle(&self) -> Option<Handle> {
+        self.model_tile_vport(self.active_model_tile.get()).map(|value| value.handle)
+    }
+
     fn model_tile_vport(&self, index: usize) -> Option<&codec::tables::VPort> {
         let rect = self.model_tiles.borrow().get(index)?.rect;
         let lower_left = [rect.x as f64, (1.0 - rect.y - rect.height) as f64];

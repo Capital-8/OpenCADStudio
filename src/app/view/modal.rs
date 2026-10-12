@@ -35,6 +35,11 @@ impl OpenCADStudio {
             Some(K::PointCloudAttach) => crate::t!("Attach Point Cloud").into_owned(),
             Some(K::PointCloudColorMap) => crate::t!("Point Cloud Color Map").into_owned(),
             Some(K::PcSection) => crate::t!("Extract Section Lines from Point Cloud").into_owned(),
+            Some(K::ViewBackground) => format!(
+                "{} — {}",
+                crate::tr!("view-background", "title"),
+                self.view_background.as_ref().map_or("", |s| s.view.as_str())
+            ),
             Some(K::UnderlayLayers) => crate::t!("Underlay Layers").into_owned(),
             Some(K::PdfImportSettings) => crate::t!("PDF Import Settings").into_owned(),
             Some(K::PdfImportFile) => crate::t!("Import PDF").into_owned(),
@@ -508,6 +513,12 @@ impl OpenCADStudio {
                 let state = self.pc_section.as_ref()?;
                 sized_flow(ex, 760, 470, |flow| {
                     crate::ui::window::pdf_dialogs::view_pc_section(state, flow)
+                })
+            }
+            super::super::ModalKind::ViewBackground => {
+                let state = self.view_background.as_ref()?;
+                sized_flow(ex, 420, 560, |flow| {
+                    crate::ui::window::pdf_dialogs::view_background(state, flow)
                 })
             }
             super::super::ModalKind::UnderlayLayers => {

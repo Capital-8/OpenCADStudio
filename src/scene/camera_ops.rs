@@ -215,6 +215,11 @@ impl Scene {
     /// Restore camera to a named view from the document view table.
     pub fn restore_named_view(&mut self, view: &codec::tables::View) {
         use glam::Vec3;
+        // The model viewport takes a copy of the view's background, or none.
+        if self.current_layout == "Model" {
+            let background = copy_background(&mut self.document, view.background_handle);
+            self.set_active_background(background);
+        }
         let cam = &mut *self.camera.borrow_mut();
         // The stored direction points from the target toward the eye.
         let eye_dir = Vec3::new(
@@ -243,6 +248,22 @@ impl Scene {
             cam.distance
         };
         self.camera_generation += 1;
+    }
+
+    /// The background the active model-space viewport shows (null for the
+    /// drawing area colour).
+    pub fn active_background(&self) -> Handle {
+        self.active_tile_vport_handle()
+            .and_then(|handle| self.document.vports.iter().find(|value| value.handle == handle))
+            .map_or(Handle::NULL, |value| value.background_handle)
+    }
+
+    fn set_active_background(&mut self, background: Handle) {
+        let Some(handle) = self.active_tile_vport_handle() else { return };
+        if let Some(value) = self.document.vports.iter_mut().find(|value| value.handle == handle) {
+            value.background_handle = background;
+            self.camera_generation += 1;
+        }
     }
 
     /// Save the current camera state into a new named view entry.
@@ -1636,5 +1657,70 @@ impl Scene {
             self.last_atlas_generation.set(atlas_gen);
             self.bump_geometry();
         }
+    }
+}
+
+/// The drawing's ACAD_BACKGROUND dictionary, made when it has none.
+fn background_dictionary(document: &mut codec::CadDocument) -> Option<Handle> {
+    use codec::objects::{Dictionary, ObjectType};
+    let root = document.header.named_objects_dict_handle;
+    let Some(ObjectType::Dictionary(root_dictionary)) = document.objects.get(&root) else {
+        return None;
+    };
+    if let Some(existing) = root_dictionary.get("ACAD_BACKGROUND") {
+        if matches!(document.objects.get(&existing), Some(ObjectType::Dictionary(_))) {
+            return Some(existing);
+        }
+    }
+    let handle = document.allocate_handle();
+    let mut dictionary = Dictionary::new();
+    dictionary.handle = handle;
+    dictionary.owner = root;
+    dictionary.reactors.push(root);
+    document.objects.insert(handle, ObjectType::Dictionary(dictionary));
+    if let Some(ObjectType::Dictionary(root_dictionary)) = document.objects.get_mut(&root) {
+        root_dictionary.add_entry("ACAD_BACKGROUND", handle);
+    }
+    Some(handle)
+}
+
+/// A new background object in ACAD_BACKGROUND, keyed by its own handle as
+/// the reference keys it. Null when the drawing has no named-objects root.
+pub fn add_background(
+    document: &mut codec::CadDocument,
+    data: codec::objects::ClassObjectData,
+) -> Handle {
+    use codec::objects::{ClassObject, ObjectType};
+    let Some(dictionary) = background_dictionary(document) else {
+        return Handle::NULL;
+    };
+    let handle = document.allocate_handle();
+    let mut object = ClassObject::new(data);
+    object.handle = handle;
+    object.owner = dictionary;
+    object.reactors = vec![dictionary];
+    document.objects.insert(handle, ObjectType::ClassObject(object));
+    if let Some(ObjectType::Dictionary(entries)) = document.objects.get_mut(&dictionary) {
+        entries.add_entry(format!("{:X}", handle.value()), handle);
+    }
+    handle
+}
+
+/// A copy of a background object (the reference gives each view and
+/// viewport its own); null for none.
+pub fn copy_background(document: &mut codec::CadDocument, handle: Handle) -> Handle {
+    use codec::objects::{ClassObjectData as D, ObjectType};
+    match document.objects.get(&handle) {
+        Some(ObjectType::ClassObject(object))
+            if matches!(
+                object.data,
+                D::SolidBackground(_) | D::GradientBackground(_) | D::ImageBackground(_)
+                    | D::GroundPlaneBackground(_) | D::SkyLightBackground(_) | D::IblBackground(_)
+            ) =>
+        {
+            let data = object.data.clone();
+            add_background(document, data)
+        }
+        _ => Handle::NULL,
     }
 }

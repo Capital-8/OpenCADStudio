@@ -226,9 +226,16 @@ impl DashViewCommand {
         let t = text.trim();
         match setting {
             Setting::Background => match keyword(t, &["Color", "Gradient", "Image", "None"]) {
-                // The other background types are chosen in their own dialogs.
                 Some("None") => Self::apply(setting, &view, "NONE"),
-                Some(_) => CmdResult::Dispatch("-VIEW >SETTINGS".into()),
+                // The other types are set in the Background dialog.
+                Some(kind) => CmdResult::Dispatch(format!(
+                    "-VIEW >BACKGROUND {view}\u{1f}{}",
+                    match kind {
+                        "Color" => "SOLID",
+                        "Gradient" => "GRADIENT",
+                        _ => "IMAGE",
+                    }
+                )),
                 None => {
                     self.step = Step::SettingValue(setting, view);
                     CmdResult::ReportError("Invalid option keyword.".into())
