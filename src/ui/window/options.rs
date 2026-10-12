@@ -157,22 +157,18 @@ impl<T> fmt::Display for Labelled<T> {
     }
 }
 
-/// A background swatch that opens the colour wheel when clicked.
+/// A background swatch that opens the colour picker when clicked.
 ///
-/// The wheel sits alongside the hex field rather than replacing it: typing
+/// The picker sits alongside the hex field rather than replacing it: typing
 /// `#1E1E1E` stays the fastest way to reproduce an exact colour, while the
-/// wheel is for choosing one by eye.
-fn bg_swatch_picker<'a>(
-    target: crate::app::BgTarget,
-    rgb: [u8; 3],
-    open: Option<crate::app::BgTarget>,
-) -> Element<'a, Message> {
-    let colour = iced::Color::from_rgb8(rgb[0], rgb[1], rgb[2]);
+/// picker is for choosing one by eye.
+fn bg_swatch_picker<'a>(target: crate::app::BgTarget, rgb: [u8; 3]) -> Element<'a, Message> {
+    let [r, g, b] = rgb;
     let swatch = container(Space::new())
         .width(28)
         .height(22)
         .style(move |theme: &Theme| container::Style {
-            background: Some(Background::Color(colour)),
+            background: Some(Background::Color(iced::Color::from_rgb8(r, g, b))),
             border: Border {
                 color: theme.palette().background.strong.color,
                 width: 1.0,
@@ -180,18 +176,14 @@ fn bg_swatch_picker<'a>(
             },
             ..Default::default()
         });
-    let underlay = button(swatch)
-        .on_press(Message::BgPickerOpen(target))
+    button(swatch)
+        .on_press(Message::OpenColorWindow(
+            crate::app::ColorPickTarget::Background(target),
+            codec::types::Color::Rgb { r, g, b },
+        ))
         .padding(0)
-        .style(button::text);
-    iced_aw::ColorPicker::new(
-        open == Some(target),
-        colour,
-        underlay,
-        Message::BgPickerCancel,
-        Message::BgPickerSubmit,
-    )
-    .into()
+        .style(button::text)
+        .into()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -227,7 +219,6 @@ pub fn view_window<'a>(
     model_bg_input: &'a str,
     paper_bg_input: &'a str,
     desk_bg_input: &'a str,
-    bg_picker: Option<crate::app::BgTarget>,
     dirty: bool,
     close_confirm: bool,
     sizing: crate::ui::modal::ModalSizing,
@@ -742,7 +733,7 @@ pub fn view_window<'a>(
         display = display.push(Space::new().height(10)).push(
             row![
                 text(crate::t!("Model background")).size(12).width(140),
-                bg_swatch_picker(crate::app::BgTarget::Model, model_bg_rgb, bg_picker),
+                bg_swatch_picker(crate::app::BgTarget::Model, model_bg_rgb),
                 text_input("#RRGGBB", model_bg_input)
                     .on_input(Message::ModelSpaceBgChanged)
                     .width(150),
@@ -755,7 +746,7 @@ pub fn view_window<'a>(
     display = display.push(Space::new().height(10)).push(
         row![
             text(crate::t!("Paper background")).size(12).width(140),
-            bg_swatch_picker(crate::app::BgTarget::Paper, paper_bg_rgb, bg_picker),
+            bg_swatch_picker(crate::app::BgTarget::Paper, paper_bg_rgb),
             text_input("#RRGGBB", paper_bg_input)
                 .on_input(Message::PaperSpaceBgChanged)
                 .width(150),
@@ -767,7 +758,7 @@ pub fn view_window<'a>(
     display = display.push(Space::new().height(10)).push(
         row![
             text(crate::t!("Desk surround")).size(12).width(140),
-            bg_swatch_picker(crate::app::BgTarget::Desk, desk_bg_rgb, bg_picker),
+            bg_swatch_picker(crate::app::BgTarget::Desk, desk_bg_rgb),
             text_input("#RRGGBB", desk_bg_input)
                 .on_input(Message::DeskSpaceBgChanged)
                 .width(150),

@@ -838,9 +838,6 @@ pub(super) struct OpenCADStudio {
     pub(crate) sheet_set_pending_layout: Option<(String, String)>,
     /// The subset / set Import Layout as Sheet adds to, while its file picker is open.
     pub(crate) sheet_set_import_parent: Option<String>,
-    /// Which viewport background the colour wheel is editing, or `None` when
-    /// it is closed. One slot, because only one wheel can be open at a time.
-    pub(crate) bg_picker: Option<BgTarget>,
     /// General edge-stack dock layout for the side panels.
     pub(crate) dock: crate::ui::dock::DockState,
     /// Which panel is currently floated at full height (hovered, or a pinned
@@ -1580,7 +1577,7 @@ pub struct SaveOutcome {
     refreshed_preview: Option<Option<codec::Preview>>,
     result: Result<(), crate::io::SaveFailure>,
 }
-/// Which viewport background a colour-wheel session is editing.
+/// Which viewport background the interface colour picker is editing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BgTarget {
     Model,
@@ -1610,6 +1607,8 @@ pub enum ColorPickTarget {
     LayerState(usize),
     /// The MText editor's selection (or global) colour.
     MText,
+    /// An Options viewport background (interface colour, true colour only).
+    Background(BgTarget),
 }
 
 /// Table records the clipboard entities depend on, snapshotted from the source
@@ -2311,12 +2310,6 @@ pub enum Message {
     ModelSpaceModeChanged(config::ModelSpaceMode),
     /// Change Model Space custom background color as hex or empty for default.
     ModelSpaceBgChanged(String),
-    /// Open the colour wheel on one of the viewport backgrounds.
-    BgPickerOpen(BgTarget),
-    /// Dismiss the wheel, changing nothing.
-    BgPickerCancel,
-    /// Accept the wheel's colour for whichever background it was opened on.
-    BgPickerSubmit(iced::Color),
     /// Change Paper Space custom sheet background color as hex or empty for default.
     PaperSpaceBgChanged(String),
     /// Change Paper Space desk surround background (#RRGGBB).
@@ -4283,7 +4276,6 @@ impl OpenCADStudio {
             sheet_set: Default::default(),
             sheet_set_pending_layout: None,
             sheet_set_import_parent: None,
-            bg_picker: None,
             block_palette: Default::default(),
             xref_manager: Default::default(),
             dock: Default::default(),

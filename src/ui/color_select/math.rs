@@ -73,24 +73,9 @@ pub fn color_rgb(color: AcadColor) -> Option<(u8, u8, u8)> {
     }
 }
 
-/// The closest index colour to an RGB value, and whether it is an exact match.
-pub fn nearest_aci_match(r: u8, g: u8, b: u8) -> (u8, bool) {
-    let mut best = 7;
-    let mut best_distance = u32::MAX;
-    for index in 1..=255 {
-        let Some((ar, ag, ab)) = aci_rgb(index) else {
-            continue;
-        };
-        let dr = i32::from(r) - i32::from(ar);
-        let dg = i32::from(g) - i32::from(ag);
-        let db = i32::from(b) - i32::from(ab);
-        let distance = (dr * dr + dg * dg + db * db) as u32;
-        if distance < best_distance {
-            best = index;
-            best_distance = distance;
-        }
-    }
-    (best, best_distance == 0)
+/// The closest index colour to an RGB value.
+pub fn nearest_aci(r: u8, g: u8, b: u8) -> u8 {
+    codec::types::aci_table::nearest_aci(r, g, b)
 }
 
 /// `#RRGGBB`, upper case.
@@ -222,11 +207,9 @@ mod tests {
     }
 
     #[test]
-    fn nearest_aci_reports_exact_matches() {
-        assert_eq!(nearest_aci_match(255, 0, 0), (1, true));
-        let (index, exact) = nearest_aci_match(250, 5, 5);
-        assert_eq!(index, 1);
-        assert!(!exact);
+    fn nearest_aci_comes_from_the_codec_table() {
+        assert_eq!(nearest_aci(255, 0, 0), 1);
+        assert_eq!(nearest_aci(250, 5, 5), 1);
     }
 
     #[test]

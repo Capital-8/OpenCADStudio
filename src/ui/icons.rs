@@ -62,6 +62,7 @@ static LAY_ULK: &[u8] = include_bytes!("../../assets/icons/layers/layulk.svg");
 // All are black-on-transparent; recolour them at the call site with [`tinted`].
 pub static CHECK: &[u8] = include_bytes!("../../assets/icons/ui/check.svg");
 pub static CLOSE: &[u8] = include_bytes!("../../assets/icons/ui/close.svg");
+pub static EYEDROPPER: &[u8] = include_bytes!("../../assets/icons/ui/eyedropper.svg");
 pub static PLUS: &[u8] = include_bytes!("../../assets/icons/ui/plus.svg");
 pub static REFRESH: &[u8] = include_bytes!("../../assets/icons/ui/refresh.svg");
 pub static SWAP: &[u8] = include_bytes!("../../assets/icons/ui/swap.svg");

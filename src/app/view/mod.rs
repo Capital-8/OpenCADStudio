@@ -2475,6 +2475,11 @@ bg={bg_ms:.1}ms n={view_count}"
         }
 
         if let Some(picker) = self.color_picker.as_ref() {
+            // While the eyedropper is picking, the panel steps aside so the
+            // whole window can be sampled.
+            if let Some(eyedropper) = picker.eyedropper_view() {
+                return iced::widget::stack![base, eyedropper].into();
+            }
             crate::ui::modal::modal(
                 base,
                 t!("Select Color"),

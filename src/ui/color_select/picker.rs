@@ -2,9 +2,12 @@
 //!
 //! The panel edits a pending colour and only reports it back on OK, so every
 //! caller keeps applying colours through the same `ColorWindowPick` path.
+//! Opened for an interface colour (an Options background) it shows only the
+//! colour editor: no tabs, no index colours.
 
-use super::math::{self, Hsb};
-use super::widgets::{ColorArea, GradientSlider};
+use super::editor::{rgb_color, ColorEditor, EditorMsg};
+use super::eyedropper::{Eyedropper, EyedropperMsg};
+use super::math;
 use crate::app::{ArrowKey, ColorPickTarget, Message};
 use crate::t;
 use crate::ui::properties::acad_color_display;
@@ -14,7 +17,8 @@ use iced::{Background, Border, Color, Element, Length, Theme};
 
 const PANEL_WIDTH: f32 = 400.0;
 const BODY_HEIGHT: f32 = 352.0;
-const CONTROL_HEIGHT: f32 = 28.0;
+/// The interface picker has no tabs or info line, only the editor.
+const EDITOR_ONLY_HEIGHT: f32 = 258.0;
 const SWATCH_WIDTH: f32 = 104.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -24,36 +28,20 @@ pub enum ColorPickerTab {
     TrueColor,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum TrueColorMode {
-    #[default]
-    Hsb,
-    Rgb,
-    Gradient,
-}
-
 #[derive(Debug, Clone)]
 pub enum ColorPickerMsg {
     Tab(ColorPickerTab),
-    Mode(TrueColorMode),
     /// A swatch was clicked.
     Pick(AcadColor),
     /// Set the new colour back to the current one.
     Revert,
-    Hue(f32),
-    Saturation(f32),
-    Brightness(f32),
-    SaturationBrightness(f32, f32),
-    Red(u8),
-    Green(u8),
-    Blue(u8),
+    Editor(EditorMsg),
     FieldInput(String),
     FieldSubmit,
-    HexInput(String),
-    HexSubmit,
     /// Replace the true colour with its nearest index colour.
     UseNearest,
     Arrow(ArrowKey),
+    Eyedropper(EyedropperMsg),
     Ok,
     Cancel,
 }
@@ -63,6 +51,8 @@ pub enum ColorPickerMsg {
 pub enum Outcome {
     Commit(AcadColor),
     Cancel,
+    /// Capture the window for the eyedropper.
+    Screenshot,
 }
 
 pub struct ColorPicker {
@@ -73,11 +63,9 @@ pub struct ColorPicker {
     varies: bool,
     pending: AcadColor,
     tab: ColorPickerTab,
-    mode: TrueColorMode,
-    /// Kept separately from `pending` so the hue survives grays and black.
-    hsb: Hsb,
+    editor: ColorEditor,
     field_draft: Option<String>,
-    hex_draft: Option<String>,
+    eyedropper: Option<Eyedropper>,
 }
 
 impl ColorPicker {
@@ -87,23 +75,16 @@ impl ColorPicker {
         } else {
             ColorPickerTab::Index
         };
-        let mut picker = Self {
+        Self {
             target,
             current,
             varies,
             pending: current,
             tab,
-            mode: TrueColorMode::default(),
-            hsb: Hsb {
-                h: 0.0,
-                s: 0.0,
-                b: 1.0,
-            },
+            editor: ColorEditor::new(math::color_rgb(current).unwrap_or((255, 255, 255))),
             field_draft: None,
-            hex_draft: None,
-        };
-        picker.set_pending(current);
-        picker
+            eyedropper: None,
+        }
     }
 
     pub fn pending(&self) -> AcadColor {
@@ -114,107 +95,85 @@ impl ColorPicker {
         self.tab
     }
 
-    pub fn mode(&self) -> TrueColorMode {
-        self.mode
+    /// Interface colours (Options backgrounds) only get the colour editor.
+    fn editor_only(&self) -> bool {
+        matches!(self.target, ColorPickTarget::Background(_))
     }
 
     fn set_pending(&mut self, color: AcadColor) {
         self.pending = color;
         self.field_draft = None;
-        self.hex_draft = None;
-        if let Some((r, g, b)) = math::color_rgb(color) {
-            let next = math::rgb_to_hsb(r, g, b);
-            self.hsb = Hsb {
-                // A gray or black has no hue of its own; keep the last one so
-                // the sliders and field don't jump back to red.
-                h: if next.s == 0.0 || next.b == 0.0 {
-                    self.hsb.h
-                } else {
-                    next.h
-                },
-                s: if next.b == 0.0 { self.hsb.s } else { next.s },
-                b: next.b,
-            };
+        if let Some(rgb) = math::color_rgb(color) {
+            self.editor.set_rgb(rgb);
         }
     }
 
-    fn set_hsb(&mut self, hsb: Hsb) {
-        self.hsb = Hsb {
-            h: hsb.h.clamp(0.0, 360.0),
-            s: hsb.s.clamp(0.0, 1.0),
-            b: hsb.b.clamp(0.0, 1.0),
-        };
-        let (r, g, b) = self.hsb.to_rgb();
-        self.pending = AcadColor::Rgb { r, g, b };
-        self.field_draft = None;
-        self.hex_draft = None;
-    }
-
-    fn set_rgb(&mut self, r: u8, g: u8, b: u8) {
-        self.set_pending(AcadColor::Rgb { r, g, b });
-    }
-
-    /// RGB of the pending colour; logical colours fall back to the sliders.
     fn rgb(&self) -> (u8, u8, u8) {
-        math::color_rgb(self.pending).unwrap_or_else(|| self.hsb.to_rgb())
+        self.editor.rgb()
     }
 
     pub fn update(&mut self, msg: ColorPickerMsg) -> Option<Outcome> {
+        // While picking from the screen only the eyedropper listens; Esc
+        // backs out of it rather than closing the panel.
+        if let Some(eye) = self.eyedropper.as_mut() {
+            match msg {
+                ColorPickerMsg::Eyedropper(EyedropperMsg::Move(p)) => {
+                    return eye.track(p).then_some(Outcome::Screenshot);
+                }
+                ColorPickerMsg::Eyedropper(EyedropperMsg::Shot(shot)) => eye.set_shot(shot),
+                ColorPickerMsg::Eyedropper(EyedropperMsg::Pick) => {
+                    if let Some((r, g, b)) = eye.picked() {
+                        self.eyedropper = None;
+                        self.set_pending(AcadColor::Rgb { r, g, b });
+                    }
+                }
+                ColorPickerMsg::Eyedropper(EyedropperMsg::Cancel) | ColorPickerMsg::Cancel => {
+                    self.eyedropper = None;
+                }
+                _ => {}
+            }
+            return None;
+        }
         match msg {
             ColorPickerMsg::Tab(tab) => self.tab = tab,
-            ColorPickerMsg::Mode(mode) => self.mode = mode,
             ColorPickerMsg::Pick(color) => self.set_pending(color),
             ColorPickerMsg::Revert => self.set_pending(self.current),
-            ColorPickerMsg::Hue(h) => self.set_hsb(Hsb { h, ..self.hsb }),
-            ColorPickerMsg::Saturation(s) => self.set_hsb(Hsb { s, ..self.hsb }),
-            ColorPickerMsg::Brightness(b) => self.set_hsb(Hsb { b, ..self.hsb }),
-            ColorPickerMsg::SaturationBrightness(s, b) => self.set_hsb(Hsb { s, b, ..self.hsb }),
-            ColorPickerMsg::Red(red) => {
-                let (_, g, b) = self.rgb();
-                self.set_rgb(red, g, b);
-            }
-            ColorPickerMsg::Green(green) => {
-                let (r, _, b) = self.rgb();
-                self.set_rgb(r, green, b);
-            }
-            ColorPickerMsg::Blue(blue) => {
-                let (r, g, _) = self.rgb();
-                self.set_rgb(r, g, blue);
+            ColorPickerMsg::Editor(editor) => {
+                if self.editor.update(editor) {
+                    let (r, g, b) = self.editor.rgb();
+                    self.pending = AcadColor::Rgb { r, g, b };
+                    self.field_draft = None;
+                }
             }
             ColorPickerMsg::FieldInput(value) => self.field_draft = Some(value),
             ColorPickerMsg::FieldSubmit => {
-                if let Some(draft) = self.field_draft.take() {
-                    if let Some(color) = math::parse_color_input(&draft) {
-                        self.set_pending(color);
-                    }
-                }
-            }
-            ColorPickerMsg::HexInput(value) => self.hex_draft = Some(value),
-            ColorPickerMsg::HexSubmit => {
-                if let Some(draft) = self.hex_draft.take() {
-                    if let Some((r, g, b)) = math::parse_hex(&draft) {
-                        self.set_rgb(r, g, b);
-                    }
+                if let Some(color) = self
+                    .field_draft
+                    .take()
+                    .and_then(|d| math::parse_color_input(&d))
+                {
+                    self.set_pending(color);
                 }
             }
             ColorPickerMsg::UseNearest => {
                 let (r, g, b) = self.rgb();
-                let (index, _) = math::nearest_aci_match(r, g, b);
-                self.set_pending(AcadColor::Index(index));
+                self.set_pending(AcadColor::Index(math::nearest_aci(r, g, b)));
             }
             ColorPickerMsg::Arrow(direction) => {
-                if self.tab == ColorPickerTab::Index {
-                    if let AcadColor::Index(index) = self.pending {
-                        if let Some(next) = step_index(index, direction) {
-                            self.set_pending(AcadColor::Index(next));
-                        }
+                if let (ColorPickerTab::Index, AcadColor::Index(index)) = (self.tab, self.pending) {
+                    if let Some(next) = step_index(index, direction) {
+                        self.set_pending(AcadColor::Index(next));
                     }
                 }
             }
+            ColorPickerMsg::Eyedropper(EyedropperMsg::Start) => {
+                self.eyedropper = Some(Eyedropper::default());
+            }
+            ColorPickerMsg::Eyedropper(_) => {}
             ColorPickerMsg::Ok => {
                 // Apply a value still being typed, as if Enter had been pressed.
                 self.update(ColorPickerMsg::FieldSubmit);
-                self.update(ColorPickerMsg::HexSubmit);
+                self.update(ColorPickerMsg::Editor(EditorMsg::HexSubmit));
                 return Some(Outcome::Commit(self.pending));
             }
             ColorPickerMsg::Cancel => return Some(Outcome::Cancel),
@@ -222,55 +181,53 @@ impl ColorPicker {
         None
     }
 
+    /// The full-window eyedropper layer, while it is active.
+    pub fn eyedropper_view(&self) -> Option<Element<'_, Message>> {
+        self.eyedropper.as_ref().map(Eyedropper::view)
+    }
+
     pub fn view(&self) -> Element<'_, Message> {
-        let body = match self.tab {
-            ColorPickerTab::Index => self.index_tab(),
-            ColorPickerTab::TrueColor => self.true_color_tab(),
+        let editor_only = self.editor_only();
+        let body = if editor_only || self.tab == ColorPickerTab::TrueColor {
+            self.true_color_tab()
+        } else {
+            self.index_tab()
         };
 
-        let (sr, sg, sb) = math::color_rgb(self.pending).unwrap_or((128, 128, 128));
-        let info = row![
-            container(Space::new())
-                .width(12)
-                .height(12)
-                .style(move |theme: &Theme| swatch_style(theme, rgb_color(sr, sg, sb))),
-            text(math::describe(self.pending))
-                .size(11)
-                .font(iced::Font::MONOSPACE),
-        ]
-        .spacing(8)
-        .align_y(iced::Center);
-
-        let body = container(
-            column![
-                body,
-                Space::new().height(Length::Fill),
-                container(Space::new())
-                    .width(Length::Fill)
-                    .height(1)
-                    .style(|theme: &Theme| container::Style {
-                        background: Some(Background::Color(theme.palette().background.weak.color)),
-                        ..Default::default()
-                    }),
-                info,
-            ]
-            .spacing(8),
-        )
-        .padding(12)
-        .width(Length::Fill)
-        .height(Length::Fixed(BODY_HEIGHT))
-        .style(|theme: &Theme| {
-            let palette = theme.palette();
-            container::Style {
-                background: Some(Background::Color(palette.background.weakest.color)),
-                border: Border {
-                    color: palette.background.weak.color,
-                    width: 1.0,
-                    radius: 8.0.into(),
-                },
-                ..Default::default()
-            }
-        });
+        let mut body = column![body, Space::new().height(Length::Fill)].spacing(8);
+        if !editor_only {
+            let fill =
+                math::color_rgb(self.pending).map_or(Color::from_rgb8(128, 128, 128), rgb_color);
+            body = body
+                .push(
+                    container(Space::new())
+                        .width(Length::Fill)
+                        .height(1)
+                        .style(|theme: &Theme| filled(theme.palette().background.weak.color)),
+                )
+                .push(
+                    row![
+                        container(Space::new())
+                            .width(12)
+                            .height(12)
+                            .style(move |_theme: &Theme| swatch_style(fill)),
+                        text(math::describe(self.pending))
+                            .size(11)
+                            .font(iced::Font::MONOSPACE),
+                    ]
+                    .spacing(8)
+                    .align_y(iced::Center),
+                );
+        }
+        let body = container(body)
+            .padding(12)
+            .width(Length::Fill)
+            .height(if editor_only {
+                EDITOR_ONLY_HEIGHT
+            } else {
+                BODY_HEIGHT
+            })
+            .style(panel_style);
 
         let actions = row![
             Space::new().width(Length::Fill),
@@ -285,24 +242,25 @@ impl ColorPicker {
         ]
         .spacing(8);
 
-        column![self.tabs(), self.preview_row(), body, actions]
-            .spacing(12)
-            .width(Length::Fixed(PANEL_WIDTH))
+        let mut panel = column![].spacing(12).width(PANEL_WIDTH);
+        if !editor_only {
+            panel = panel.push(self.tabs());
+        }
+        panel
+            .push(self.preview_row())
+            .push(body)
+            .push(actions)
             .into()
     }
 
     fn tabs(&self) -> Element<'_, Message> {
         let tab = |label: String, tab: ColorPickerTab| {
             let active = self.tab == tab;
-            button(
-                container(text(label).size(12))
-                    .width(Length::Fill)
-                    .align_x(iced::Center),
-            )
-            .on_press(picker_msg(ColorPickerMsg::Tab(tab)))
-            .width(Length::Fill)
-            .padding([5, 4])
-            .style(move |theme: &Theme, status| segment_style(theme, active, status))
+            button(container(text(label).size(12)).center_x(Length::Fill))
+                .on_press(picker_msg(ColorPickerMsg::Tab(tab)))
+                .width(Length::Fill)
+                .padding([5, 4])
+                .style(move |theme: &Theme, status| segment_style(theme, active, status))
         };
         container(
             row![
@@ -312,31 +270,12 @@ impl ColorPicker {
             .spacing(2),
         )
         .padding(2)
-        .style(|theme: &Theme| {
-            let palette = theme.palette();
-            container::Style {
-                background: Some(Background::Color(palette.background.weakest.color)),
-                border: Border {
-                    color: palette.background.weak.color,
-                    width: 1.0,
-                    radius: 7.0.into(),
-                },
-                ..Default::default()
-            }
-        })
+        .style(panel_style)
         .into()
     }
 
     fn preview_row(&self) -> Element<'_, Message> {
         let caption = |label: String| text(label).size(11).style(muted_text);
-
-        let (current_bg, _) = acad_color_display(self.current);
-        let (new_bg, _) = acad_color_display(self.pending);
-        let current_label = if self.varies {
-            "*VARIES*".to_string()
-        } else {
-            logical_badge(self.current)
-        };
         let swatch_text = |label: String, background: Color| {
             let ink = if ink_is_dark(background) {
                 Color::from_rgb8(0x11, 0x12, 0x14)
@@ -354,33 +293,33 @@ impl ColorPicker {
             )
             .center(Length::Fill)
         };
+        let (current_bg, _) = acad_color_display(self.current);
+        let (new_bg, _) = acad_color_display(self.pending);
+        let current_label = if self.varies {
+            "*VARIES*".to_string()
+        } else {
+            logical_badge(self.current)
+        };
         let current = button(swatch_text(current_label, current_bg))
             .on_press(picker_msg(ColorPickerMsg::Revert))
             .padding(0)
             .width(Length::Fill)
             .height(Length::Fill)
             .style(move |_theme: &Theme, _status| button::Style {
-                background: Some(Background::Color(current_bg)),
+                background: Some(current_bg.into()),
                 ..Default::default()
             });
         let new = container(swatch_text(logical_badge(self.pending), new_bg))
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(move |_theme: &Theme| container::Style {
-                background: Some(Background::Color(new_bg)),
-                ..Default::default()
-            });
-        let divider =
-            container(Space::new())
-                .width(1)
-                .height(Length::Fill)
-                .style(|_theme: &Theme| container::Style {
-                    background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.35))),
-                    ..Default::default()
-                });
+            .style(move |_theme: &Theme| filled(new_bg));
+        let divider = container(Space::new())
+            .width(1)
+            .height(Length::Fill)
+            .style(|_theme: &Theme| filled(Color::from_rgba(0.0, 0.0, 0.0, 0.35)));
         let swatch = container(row![current, divider, new])
             .width(SWATCH_WIDTH)
-            .height(CONTROL_HEIGHT)
+            .height(28)
             .padding(1)
             .style(|theme: &Theme| container::Style {
                 border: Border {
@@ -392,93 +331,84 @@ impl ColorPicker {
             })
             .clip(true);
 
-        let field_text = self
-            .field_draft
-            .clone()
-            .unwrap_or_else(|| math::color_field_text(self.pending));
-        let field = text_input("", &field_text)
-            .on_input(|value| picker_msg(ColorPickerMsg::FieldInput(value)))
-            .on_submit(picker_msg(ColorPickerMsg::FieldSubmit))
-            .size(12)
-            .font(iced::Font::MONOSPACE)
-            .padding([6, 10])
-            .width(Length::Fill);
-
-        row![
-            column![
-                row![
-                    caption(t!("Current").into_owned()),
-                    Space::new().width(Length::Fill),
-                    caption(t!("New").into_owned()),
-                ]
-                .width(SWATCH_WIDTH),
-                swatch,
+        let mut preview = row![column![
+            row![
+                caption(t!("Current").into_owned()),
+                Space::new().width(Length::Fill),
+                caption(t!("New").into_owned()),
             ]
-            .spacing(4),
-            column![caption(t!("Color").into_owned()), field]
+            .width(SWATCH_WIDTH),
+            swatch,
+        ]
+        .spacing(4)]
+        .spacing(10)
+        .align_y(iced::Bottom);
+        if !self.editor_only() {
+            let field_text = self
+                .field_draft
+                .clone()
+                .unwrap_or_else(|| math::color_field_text(self.pending));
+            preview = preview.push(
+                column![
+                    caption(t!("Color").into_owned()),
+                    text_input("", &field_text)
+                        .on_input(|value| picker_msg(ColorPickerMsg::FieldInput(value)))
+                        .on_submit(picker_msg(ColorPickerMsg::FieldSubmit))
+                        .size(12)
+                        .font(iced::Font::MONOSPACE)
+                        .padding([6, 10]),
+                ]
                 .spacing(4)
                 .width(Length::Fill),
-        ]
-        .spacing(10)
-        .align_y(iced::Bottom)
-        .into()
+            );
+        }
+        preview.into()
     }
 
     fn index_tab(&self) -> Element<'_, Message> {
         let section = |label: String| text(label).size(11);
-
-        let mut standard = row![].spacing(5);
-        for index in 1u8..=9 {
-            standard = standard.push(self.swatch_button(index, 30.0, 26.0));
-        }
-
+        let swatches = |range: std::ops::RangeInclusive<u8>| {
+            range.fold(row![].spacing(5), |line, index| {
+                line.push(self.swatch_button(index, 30.0, 26.0))
+            })
+        };
         // ACI 10–249 come in groups of ten: 24 hue families across, their ten
         // shades down.
-        let mut grid = column![].spacing(2);
-        for shade in 0u8..10 {
-            let mut line = row![].spacing(2);
-            for family in 1u8..=24 {
-                line = line.push(self.swatch_button(family * 10 + shade, 13.0, 13.0));
-            }
-            grid = grid.push(line);
-        }
-
-        let mut grays = row![].spacing(5);
-        for index in 250u8..=255 {
-            grays = grays.push(self.swatch_button(index, 30.0, 26.0));
-        }
-
+        let grid = (0u8..10).fold(column![].spacing(2), |grid, shade| {
+            grid.push((1u8..=24).fold(row![].spacing(2), |line, family| {
+                line.push(self.swatch_button(family * 10 + shade, 13.0, 13.0))
+            }))
+        });
         column![
-            column![section(t!("Standard colors").into_owned()), standard].spacing(6),
+            column![section(t!("Standard colors").into_owned()), swatches(1..=9)].spacing(6),
             column![
-                row![
-                    section(t!("CAD Color Index (ACI) 10–249").into_owned()),
-                    Space::new().width(Length::Fill),
-                ],
-                grid,
+                section(t!("CAD Color Index (ACI) 10–249").into_owned()),
+                grid
             ]
             .spacing(6),
-            column![section(t!("Grayscale 250–255").into_owned()), grays].spacing(6),
+            column![
+                section(t!("Grayscale 250–255").into_owned()),
+                swatches(250..=255)
+            ]
+            .spacing(6),
         ]
         .spacing(12)
         .into()
     }
 
     fn swatch_button(&self, index: u8, width: f32, height: f32) -> Element<'_, Message> {
-        let (r, g, b) = math::aci_rgb(index).unwrap_or((128, 128, 128));
-        let fill = rgb_color(r, g, b);
+        let fill = rgb_color(math::aci_rgb(index).unwrap_or((128, 128, 128)));
         let selected = self.pending == AcadColor::Index(index);
         button(Space::new().width(width).height(height))
             .on_press(picker_msg(ColorPickerMsg::Pick(AcadColor::Index(index))))
             .padding(0)
             .style(move |theme: &Theme, status| {
                 let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-                let accent = theme.palette().primary.base.color;
                 button::Style {
-                    background: Some(Background::Color(fill)),
+                    background: Some(fill.into()),
                     border: Border {
                         color: if selected || hovered {
-                            accent
+                            theme.palette().primary.base.color
                         } else {
                             Color::from_rgba(0.0, 0.0, 0.0, 0.35)
                         },
@@ -498,221 +428,50 @@ impl ColorPicker {
     }
 
     fn true_color_tab(&self) -> Element<'_, Message> {
-        let mode_button = |content: Element<'static, Message>, mode: TrueColorMode| {
-            let active = self.mode == mode;
-            button(container(content).center_y(Length::Fill))
-                .on_press(picker_msg(ColorPickerMsg::Mode(mode)))
-                .height(CONTROL_HEIGHT)
-                .padding([0, 10])
-                .style(move |theme: &Theme, status| toggle_style(theme, active, status))
-        };
-        let gradient_icon: Element<'static, Message> = container(Space::new())
-            .width(26)
-            .height(16)
-            .style(|_theme: &Theme| container::Style {
-                background: Some(Background::Gradient(iced::Gradient::Linear(
-                    iced::gradient::Linear::new(iced::Radians(std::f32::consts::FRAC_PI_4 * 3.0))
-                        .add_stop(0.0, Color::WHITE)
-                        .add_stop(0.5, Color::from_rgb8(0x3A, 0xA0, 0xFF))
-                        .add_stop(1.0, Color::BLACK),
-                ))),
-                border: Border {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.3),
-                    width: 1.0,
-                    radius: 2.0.into(),
-                },
-                ..Default::default()
-            })
-            .into();
-        let modes = row![
-            mode_button(text("HSB").size(12).into(), TrueColorMode::Hsb),
-            mode_button(text("RGB").size(12).into(), TrueColorMode::Rgb),
-            mode_button(gradient_icon, TrueColorMode::Gradient),
-        ]
-        .spacing(6);
-
-        let editor = match self.mode {
-            TrueColorMode::Hsb => self.hsb_sliders(),
-            TrueColorMode::Rgb => self.rgb_sliders(),
-            TrueColorMode::Gradient => self.gradient_editor(),
-        };
-
-        column![modes, editor, self.hex_row()].spacing(12).into()
-    }
-
-    fn hsb_sliders(&self) -> Element<'_, Message> {
-        let Hsb { h, s, b } = self.hsb;
-        let hue_stops = hue_stops();
-        let sat_stops = vec![(0.0, hsb_color(h, 0.0, b)), (1.0, hsb_color(h, 1.0, b))];
-        let bright_stops = vec![(0.0, Color::BLACK), (1.0, hsb_color(h, s, 1.0))];
-        column![
-            slider_row(
-                "H",
-                GradientSlider::new(h / 360.0, hue_stops, |v| picker_msg(ColorPickerMsg::Hue(
-                    v * 360.0
-                )))
-                .wheel_step(1.0 / 360.0),
-                number_box(h.round() as u16, 360, Some('°'), |v| {
-                    picker_msg(ColorPickerMsg::Hue(f32::from(v)))
-                }),
-            ),
-            slider_row(
-                "S",
-                GradientSlider::new(s, sat_stops, |v| picker_msg(ColorPickerMsg::Saturation(v))),
-                number_box((s * 100.0).round() as u16, 100, Some('%'), |v| {
-                    picker_msg(ColorPickerMsg::Saturation(f32::from(v) / 100.0))
-                }),
-            ),
-            slider_row(
-                "B",
-                GradientSlider::new(b, bright_stops, |v| picker_msg(ColorPickerMsg::Brightness(
-                    v
-                ))),
-                number_box((b * 100.0).round() as u16, 100, Some('%'), |v| {
-                    picker_msg(ColorPickerMsg::Brightness(f32::from(v) / 100.0))
-                }),
-            ),
-        ]
-        .spacing(10)
-        .into()
-    }
-
-    fn rgb_sliders(&self) -> Element<'_, Message> {
-        let (r, g, b) = self.rgb();
-        let ends = |lo: (u8, u8, u8), hi: (u8, u8, u8)| {
-            vec![
-                (0.0, rgb_color(lo.0, lo.1, lo.2)),
-                (1.0, rgb_color(hi.0, hi.1, hi.2)),
-            ]
-        };
-        let channel = |value: u8| f32::from(value) / 255.0;
-        let byte = |v: f32| (v * 255.0).round() as u8;
-        column![
-            slider_row(
-                "R",
-                GradientSlider::new(channel(r), ends((0, g, b), (255, g, b)), move |v| {
-                    picker_msg(ColorPickerMsg::Red(byte(v)))
-                })
-                .wheel_step(1.0 / 255.0),
-                number_box(u16::from(r), 255, None, |v| picker_msg(
-                    ColorPickerMsg::Red(v as u8)
-                )),
-            ),
-            slider_row(
-                "G",
-                GradientSlider::new(channel(g), ends((r, 0, b), (r, 255, b)), move |v| {
-                    picker_msg(ColorPickerMsg::Green(byte(v)))
-                })
-                .wheel_step(1.0 / 255.0),
-                number_box(u16::from(g), 255, None, |v| picker_msg(
-                    ColorPickerMsg::Green(v as u8)
-                )),
-            ),
-            slider_row(
-                "B",
-                GradientSlider::new(channel(b), ends((r, g, 0), (r, g, 255)), move |v| {
-                    picker_msg(ColorPickerMsg::Blue(byte(v)))
-                })
-                .wheel_step(1.0 / 255.0),
-                number_box(u16::from(b), 255, None, |v| picker_msg(
-                    ColorPickerMsg::Blue(v as u8)
-                )),
-            ),
-        ]
-        .spacing(10)
-        .into()
-    }
-
-    fn gradient_editor(&self) -> Element<'_, Message> {
-        let Hsb { h, s, b } = self.hsb;
-        let (r, g, bl) = self.rgb();
-        let area = ColorArea::new(hsb_color(h, 1.0, 1.0), rgb_color(r, g, bl), s, b, |s, b| {
-            picker_msg(ColorPickerMsg::SaturationBrightness(s, b))
-        })
-        .height(Length::Fixed(118.0));
-        let hue = GradientSlider::new(h / 360.0, hue_stops(), |v| {
-            picker_msg(ColorPickerMsg::Hue(v * 360.0))
-        })
-        .vertical()
-        .height(Length::Fixed(118.0))
-        .wheel_step(1.0 / 360.0);
-
-        let field = |letter: &'static str, input: Element<'static, Message>| {
-            row![text(letter).size(12).font(iced::Font::MONOSPACE), input]
-                .spacing(4)
-                .align_y(iced::Center)
-        };
-        let values = row![
-            field(
-                "H",
-                number_box(h.round() as u16, 360, Some('°'), |v| picker_msg(
-                    ColorPickerMsg::Hue(f32::from(v))
-                )),
-            ),
-            Space::new().width(Length::Fill),
-            field(
-                "S",
-                number_box((s * 100.0).round() as u16, 100, Some('%'), |v| {
-                    picker_msg(ColorPickerMsg::Saturation(f32::from(v) / 100.0))
-                }),
-            ),
-            Space::new().width(Length::Fill),
-            field(
-                "B",
-                number_box((b * 100.0).round() as u16, 100, Some('%'), |v| {
-                    picker_msg(ColorPickerMsg::Brightness(f32::from(v) / 100.0))
-                }),
-            ),
-        ]
-        .align_y(iced::Center);
-
-        column![row![area, hue].spacing(12), values]
-            .spacing(10)
-            .into()
-    }
-
-    fn hex_row(&self) -> Element<'_, Message> {
-        let (r, g, b) = self.rgb();
-        let hex = self
-            .hex_draft
-            .clone()
-            .unwrap_or_else(|| math::hex_string(r, g, b));
-        let (nearest, exact) = math::nearest_aci_match(r, g, b);
-        let is_index = matches!(self.pending, AcadColor::Index(_));
-        let match_label = if exact && !is_index {
-            t!("Exact index match")
+        // The eyedropper reads the window back from the GPU, which the web
+        // build cannot do.
+        let pipette: Option<Element<'_, Message>> = if cfg!(target_arch = "wasm32") {
+            None
         } else {
-            t!("Nearest index")
+            Some(
+                button(crate::ui::icons::themed(crate::ui::icons::EYEDROPPER, 16.0))
+                    .on_press(picker_msg(ColorPickerMsg::Eyedropper(EyedropperMsg::Start)))
+                    .height(28)
+                    .padding([0, 8])
+                    .style(|theme: &Theme, status| toggle_style(theme, false, status))
+                    .into(),
+            )
         };
-        let (nr, ng, nb) = math::aci_rgb(nearest).unwrap_or((128, 128, 128));
-        let nearest_fill = rgb_color(nr, ng, nb);
-        let highlight = exact && !is_index;
+        let nearest = (!self.editor_only()).then(|| self.nearest_button());
+        self.editor.view(pipette, nearest)
+    }
+
+    fn nearest_button(&self) -> Element<'_, Message> {
+        let (r, g, b) = self.rgb();
+        let nearest = math::nearest_aci(r, g, b);
+        let nearest_rgb = math::aci_rgb(nearest).unwrap_or((128, 128, 128));
+        let exact = nearest_rgb == (r, g, b) && !matches!(self.pending, AcadColor::Index(_));
+        let fill = rgb_color(nearest_rgb);
         row![
-            text(t!("Hex")).size(11).style(muted_text),
-            text_input("", &hex)
-                .on_input(|value| picker_msg(ColorPickerMsg::HexInput(value)))
-                .on_submit(picker_msg(ColorPickerMsg::HexSubmit))
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .padding([5, 8])
-                .width(Length::Fixed(92.0)),
-            Space::new().width(Length::Fill),
-            text(match_label).size(11).style(move |theme: &Theme| {
-                let palette = theme.palette();
-                text::Style {
-                    color: Some(if highlight {
-                        palette.success.base.color
-                    } else {
-                        palette.background.base.text.scale_alpha(0.65)
-                    }),
-                }
+            text(if exact {
+                t!("Exact index match")
+            } else {
+                t!("Nearest index")
+            })
+            .size(11)
+            .style(move |theme: &Theme| text::Style {
+                color: Some(if exact {
+                    theme.palette().success.base.color
+                } else {
+                    theme.palette().background.base.text.scale_alpha(0.65)
+                }),
             }),
             button(
                 row![
                     container(Space::new())
                         .width(16)
                         .height(16)
-                        .style(move |theme: &Theme| swatch_style(theme, nearest_fill)),
+                        .style(move |_theme: &Theme| swatch_style(fill)),
                     text(format!("ACI {nearest}"))
                         .size(12)
                         .font(iced::Font::MONOSPACE),
@@ -722,7 +481,7 @@ impl ColorPicker {
             )
             .on_press(picker_msg(ColorPickerMsg::UseNearest))
             .padding([4, 8])
-            .style(move |theme: &Theme, status| toggle_style(theme, highlight, status)),
+            .style(move |theme: &Theme, status| toggle_style(theme, exact, status)),
         ]
         .spacing(8)
         .align_y(iced::Center)
@@ -734,15 +493,16 @@ impl ColorPicker {
 /// by family (left/right) and shade (up/down); the standard and gray rows
 /// move along their row.
 fn step_index(index: u8, direction: ArrowKey) -> Option<u8> {
+    let along_row = |first: u8, last: u8| match direction {
+        ArrowKey::Left if index > first => Some(index - 1),
+        ArrowKey::Right if index < last => Some(index + 1),
+        _ => None,
+    };
     match index {
-        1..=9 => match direction {
-            ArrowKey::Left if index > 1 => Some(index - 1),
-            ArrowKey::Right if index < 9 => Some(index + 1),
-            _ => None,
-        },
+        1..=9 => along_row(1, 9),
+        250..=255 => along_row(250, 255),
         10..=249 => {
-            let family = index / 10;
-            let shade = index % 10;
+            let (family, shade) = (index / 10, index % 10);
             match direction {
                 ArrowKey::Left if family > 1 => Some(index - 10),
                 ArrowKey::Right if family < 24 => Some(index + 10),
@@ -751,11 +511,6 @@ fn step_index(index: u8, direction: ArrowKey) -> Option<u8> {
                 _ => None,
             }
         }
-        250..=255 => match direction {
-            ArrowKey::Left if index > 250 => Some(index - 1),
-            ArrowKey::Right if index < 255 => Some(index + 1),
-            _ => None,
-        },
         _ => None,
     }
 }
@@ -764,89 +519,9 @@ fn picker_msg(msg: ColorPickerMsg) -> Message {
     Message::ColorPicker(msg)
 }
 
-fn slider_row<'a>(
-    letter: &'static str,
-    slider: GradientSlider<'a, Message>,
-    number: Element<'a, Message>,
-) -> Element<'a, Message> {
-    row![
-        container(text(letter).size(12).font(iced::Font::MONOSPACE))
-            .width(12)
-            .align_x(iced::Center),
-        slider,
-        number,
-    ]
-    .spacing(8)
-    .align_y(iced::Center)
-    .into()
-}
-
-/// A compact spin box: iced_aw's NumberInput keeps its stacked arrows as long
-/// as its padding stays at the default.
-fn number_box(
-    value: u16,
-    max: u16,
-    unit: Option<char>,
-    on_change: impl Fn(u16) -> Message + Clone + 'static,
-) -> Element<'static, Message> {
-    let input = iced_aw::widget::NumberInput::new(&value, 0..=max, on_change)
-        .set_size(12.0)
-        .font(iced::Font::MONOSPACE)
-        .width(Length::Fixed(68.0))
-        // Extra right padding keeps the digits clear of the arrows; padding
-        // below 5 would make NumberInput swap its arrows for + / − buttons.
-        .padding(iced::Padding {
-            top: 5.0,
-            right: 18.0,
-            bottom: 5.0,
-            left: 6.0,
-        })
-        .align_x(iced::alignment::Horizontal::Right)
-        .style(
-            |theme: &Theme, _status| iced_aw::style::number_input::Style {
-                button_background: None,
-                icon_color: theme.palette().background.base.text.scale_alpha(0.75),
-            },
-        );
-    // The unit is drawn inside the box, after the digits, but is not part
-    // of the value: the user only ever types the number.
-    let input = match unit {
-        Some(code_point) => input.icon(text_input::Icon {
-            font: iced::Font::MONOSPACE,
-            code_point,
-            size: Some(iced::Pixels(12.0)),
-            spacing: 1.0,
-            side: text_input::Side::Right,
-        }),
-        None => input,
-    };
-    input.into()
-}
-
-fn hue_stops() -> Vec<(f32, Color)> {
-    (0..=6)
-        .map(|step| {
-            let offset = step as f32 / 6.0;
-            (offset, hsb_color(offset * 360.0, 1.0, 1.0))
-        })
-        .collect()
-}
-
-fn hsb_color(h: f32, s: f32, b: f32) -> Color {
-    let (r, g, b) = math::hsb_to_rgb(h, s, b);
-    rgb_color(r, g, b)
-}
-
-fn rgb_color(r: u8, g: u8, b: u8) -> Color {
-    Color::from_rgb8(r, g, b)
-}
-
 fn ink_is_dark(color: Color) -> bool {
-    math::ink_is_dark(
-        (color.r * 255.0) as u8,
-        (color.g * 255.0) as u8,
-        (color.b * 255.0) as u8,
-    )
+    let byte = |c: f32| (c * 255.0).round() as u8;
+    math::ink_is_dark(byte(color.r), byte(color.g), byte(color.b))
 }
 
 /// Upper-case label for a logical colour shown on a swatch, empty otherwise.
@@ -859,15 +534,22 @@ fn logical_badge(color: AcadColor) -> String {
     }
 }
 
-fn muted_text(theme: &Theme) -> text::Style {
+fn filled(color: Color) -> container::Style {
+    container::Style {
+        background: Some(color.into()),
+        ..Default::default()
+    }
+}
+
+pub(super) fn muted_text(theme: &Theme) -> text::Style {
     text::Style {
         color: Some(theme.palette().background.base.text.scale_alpha(0.65)),
     }
 }
 
-fn swatch_style(_theme: &Theme, fill: Color) -> container::Style {
+fn swatch_style(fill: Color) -> container::Style {
     container::Style {
-        background: Some(Background::Color(fill)),
+        background: Some(fill.into()),
         border: Border {
             color: Color::from_rgba(0.0, 0.0, 0.0, 0.4),
             width: 1.0,
@@ -877,14 +559,26 @@ fn swatch_style(_theme: &Theme, fill: Color) -> container::Style {
     }
 }
 
+fn panel_style(theme: &Theme) -> container::Style {
+    let palette = theme.palette();
+    container::Style {
+        background: Some(palette.background.weakest.color.into()),
+        border: Border {
+            color: palette.background.weak.color,
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
 fn segment_style(theme: &Theme, active: bool, status: button::Status) -> button::Style {
     let palette = theme.palette();
-    let hovered = matches!(status, button::Status::Hovered);
     button::Style {
         background: if active {
-            Some(Background::Color(palette.background.strong.color))
-        } else if hovered {
-            Some(Background::Color(palette.background.weak.color))
+            Some(palette.background.strong.color.into())
+        } else if matches!(status, button::Status::Hovered) {
+            Some(palette.background.weak.color.into())
         } else {
             None
         },
@@ -901,13 +595,12 @@ fn segment_style(theme: &Theme, active: bool, status: button::Status) -> button:
     }
 }
 
-fn toggle_style(theme: &Theme, active: bool, status: button::Status) -> button::Style {
+pub(super) fn toggle_style(theme: &Theme, active: bool, status: button::Status) -> button::Style {
     let palette = theme.palette();
-    let hovered = matches!(status, button::Status::Hovered);
     button::Style {
         background: Some(Background::Color(if active {
             palette.primary.weak.color
-        } else if hovered {
+        } else if matches!(status, button::Status::Hovered) {
             palette.background.weak.color
         } else {
             palette.background.base.color
@@ -932,10 +625,15 @@ fn toggle_style(theme: &Theme, active: bool, status: button::Status) -> button::
 
 #[cfg(test)]
 mod tests {
+    use super::super::editor::EditorMode;
     use super::*;
 
     fn picker(current: AcadColor) -> ColorPicker {
         ColorPicker::new(ColorPickTarget::Ribbon, current, false)
+    }
+
+    fn edit(p: &mut ColorPicker, msg: EditorMsg) {
+        p.update(ColorPickerMsg::Editor(msg));
     }
 
     #[test]
@@ -980,6 +678,16 @@ mod tests {
                 b: 252
             }))
         );
+        let mut p = picker(AcadColor::Index(30));
+        edit(&mut p, EditorMsg::HexInput("#3bf".into()));
+        assert_eq!(
+            p.update(ColorPickerMsg::Ok),
+            Some(Outcome::Commit(AcadColor::Rgb {
+                r: 0x33,
+                g: 0xBB,
+                b: 0xFF
+            }))
+        );
     }
 
     #[test]
@@ -991,42 +699,12 @@ mod tests {
     }
 
     #[test]
-    fn sliders_produce_true_colours() {
+    fn the_editor_produces_true_colours() {
         let mut p = picker(AcadColor::Index(1));
-        p.update(ColorPickerMsg::Hue(120.0));
+        edit(&mut p, EditorMsg::Hue(120.0));
         assert_eq!(p.pending(), AcadColor::Rgb { r: 0, g: 255, b: 0 });
-        p.update(ColorPickerMsg::Red(10));
-        assert_eq!(
-            p.pending(),
-            AcadColor::Rgb {
-                r: 10,
-                g: 255,
-                b: 0
-            }
-        );
-    }
-
-    #[test]
-    fn hue_survives_a_trip_through_gray() {
-        let mut p = picker(AcadColor::Rgb { r: 0, g: 0, b: 255 });
-        p.update(ColorPickerMsg::Saturation(0.0));
-        p.update(ColorPickerMsg::Saturation(1.0));
-        assert_eq!(p.pending(), AcadColor::Rgb { r: 0, g: 0, b: 255 });
-    }
-
-    #[test]
-    fn hex_field_sets_a_true_colour() {
-        let mut p = picker(AcadColor::Index(1));
-        p.update(ColorPickerMsg::HexInput("#3bf".into()));
-        p.update(ColorPickerMsg::HexSubmit);
-        assert_eq!(
-            p.pending(),
-            AcadColor::Rgb {
-                r: 0x33,
-                g: 0xBB,
-                b: 0xFF
-            }
-        );
+        edit(&mut p, EditorMsg::Mode(EditorMode::Rgb));
+        assert_eq!(p.pending(), AcadColor::Rgb { r: 0, g: 255, b: 0 });
     }
 
     #[test]
@@ -1049,6 +727,39 @@ mod tests {
         let mut p = picker(AcadColor::Index(140));
         p.update(ColorPickerMsg::Arrow(ArrowKey::Right));
         assert_eq!(p.pending(), AcadColor::Index(150));
+    }
+
+    #[test]
+    fn eyedropper_picks_a_pixel_and_esc_only_leaves_it() {
+        let mut p = picker(AcadColor::Index(30));
+        p.update(ColorPickerMsg::Eyedropper(EyedropperMsg::Start));
+        assert_eq!(
+            p.update(ColorPickerMsg::Eyedropper(EyedropperMsg::Move(
+                iced::Point::ORIGIN
+            ))),
+            Some(Outcome::Screenshot)
+        );
+        // Esc and Enter while picking never close the panel.
+        assert_eq!(p.update(ColorPickerMsg::Ok), None);
+        assert_eq!(p.update(ColorPickerMsg::Cancel), None);
+        assert!(p.eyedropper_view().is_none());
+
+        p.update(ColorPickerMsg::Eyedropper(EyedropperMsg::Start));
+        p.update(ColorPickerMsg::Eyedropper(EyedropperMsg::Move(
+            iced::Point::ORIGIN,
+        )));
+        let shot = iced::window::Screenshot::new(vec![10, 20, 30, 255], iced::Size::new(1, 1), 1.0);
+        p.update(ColorPickerMsg::Eyedropper(EyedropperMsg::Shot(shot)));
+        p.update(ColorPickerMsg::Eyedropper(EyedropperMsg::Pick));
+        assert!(p.eyedropper_view().is_none());
+        assert_eq!(
+            p.pending(),
+            AcadColor::Rgb {
+                r: 10,
+                g: 20,
+                b: 30
+            }
+        );
     }
 
     // ── Headless UI tests ───────────────────────────────────────────────
@@ -1093,75 +804,108 @@ mod tests {
             g: 191,
             b: 252,
         });
-        p.update(ColorPickerMsg::Mode(TrueColorMode::Rgb));
+        edit(&mut p, EditorMsg::Mode(EditorMode::Rgb));
         let mut ui = simulator(&p);
-        // The first slider row sits below the tabs, preview row and mode
-        // buttons; press near its left end.
-        let red_row = ui.find("R").expect("R label");
-        let bounds = red_row.visible_bounds().expect("R visible");
+        let label = ui.find("R").expect("R label");
+        let bounds = label.visible_bounds().expect("R visible");
         ui.point_at(iced::Point::new(bounds.x + 40.0, bounds.center_y()));
         ui.simulate(iced_test::simulator::click());
         assert!(published(ui)
             .iter()
-            .any(|msg| matches!(msg, ColorPickerMsg::Red(v) if *v < 57)));
+            .any(|msg| matches!(msg, ColorPickerMsg::Editor(EditorMsg::Red(v)) if *v < 57)));
+    }
+
+    #[test]
+    fn interface_colours_show_only_the_editor() {
+        let p = ColorPicker::new(
+            ColorPickTarget::Background(crate::app::BgTarget::Model),
+            AcadColor::Rgb {
+                r: 30,
+                g: 30,
+                b: 30,
+            },
+            false,
+        );
+        let mut ui = simulator(&p);
+        assert!(ui.find(t!("Index Color").as_ref()).is_err());
+        assert!(ui.find(t!("Nearest index").as_ref()).is_err());
+        assert!(ui.find("HSB").is_ok());
     }
 
     #[test]
     fn every_view_renders() {
         let folder = std::env::var_os("OCS_COLOR_PICKER_SNAPSHOTS").map(std::path::PathBuf::from);
-        let views: [(&str, AcadColor, ColorPickerTab, TrueColorMode, bool); 6] = [
+        let blue = AcadColor::Rgb {
+            r: 57,
+            g: 191,
+            b: 252,
+        };
+        let views: [(
+            &str,
+            ColorPickTarget,
+            AcadColor,
+            ColorPickerTab,
+            EditorMode,
+            bool,
+        ); 7] = [
             (
                 "index",
+                ColorPickTarget::Properties,
                 AcadColor::Index(140),
                 ColorPickerTab::Index,
-                TrueColorMode::Hsb,
+                EditorMode::Hsb,
                 false,
             ),
             (
                 "varies",
+                ColorPickTarget::Properties,
                 AcadColor::Index(30),
                 ColorPickerTab::Index,
-                TrueColorMode::Hsb,
+                EditorMode::Hsb,
                 true,
             ),
             (
                 "hsb",
-                AcadColor::Rgb {
-                    r: 57,
-                    g: 191,
-                    b: 252,
-                },
+                ColorPickTarget::Properties,
+                blue,
                 ColorPickerTab::TrueColor,
-                TrueColorMode::Hsb,
+                EditorMode::Hsb,
                 false,
             ),
             (
                 "rgb",
-                AcadColor::Rgb {
-                    r: 57,
-                    g: 191,
-                    b: 252,
-                },
+                ColorPickTarget::Properties,
+                blue,
                 ColorPickerTab::TrueColor,
-                TrueColorMode::Rgb,
+                EditorMode::Rgb,
                 false,
             ),
             (
-                "gradient",
-                AcadColor::Rgb {
-                    r: 57,
-                    g: 191,
-                    b: 252,
-                },
+                "field",
+                ColorPickTarget::Properties,
+                blue,
                 ColorPickerTab::TrueColor,
-                TrueColorMode::Gradient,
+                EditorMode::Field,
                 false,
             ),
             (
                 "exact",
+                ColorPickTarget::Properties,
                 AcadColor::Rgb { r: 255, g: 0, b: 0 },
                 ColorPickerTab::TrueColor,
-                TrueColorMode::Hsb,
+                EditorMode::Hsb,
+                false,
+            ),
+            (
+                "interface",
+                ColorPickTarget::Background(crate::app::BgTarget::Model),
+                AcadColor::Rgb {
+                    r: 33,
+                    g: 40,
+                    b: 48,
+                },
+                ColorPickerTab::TrueColor,
+                EditorMode::Hsb,
                 false,
             ),
         ];
@@ -1169,10 +913,10 @@ mod tests {
             crate::ui::style::fusion_theme::fusion_black(),
             crate::ui::style::fusion_theme::fusion_white(),
         ] {
-            for (name, color, tab, mode, varies) in views {
-                let mut p = ColorPicker::new(ColorPickTarget::Properties, color, varies);
+            for (name, target, color, tab, mode, varies) in views.clone() {
+                let mut p = ColorPicker::new(target, color, varies);
                 p.update(ColorPickerMsg::Tab(tab));
-                p.update(ColorPickerMsg::Mode(mode));
+                edit(&mut p, EditorMsg::Mode(mode));
                 let mut ui = simulator(&p);
                 let snapshot = ui.snapshot(&theme).expect("snapshot");
                 if let Some(folder) = &folder {

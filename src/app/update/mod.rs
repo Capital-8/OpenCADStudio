@@ -8256,39 +8256,6 @@ impl OpenCADStudio {
                 Task::none()
             }
 
-            Message::BgPickerOpen(target) => {
-                self.bg_picker = Some(target);
-                Task::none()
-            }
-
-            Message::BgPickerCancel => {
-                self.bg_picker = None;
-                Task::none()
-            }
-
-            Message::BgPickerSubmit(color) => {
-                // Hand the result to the same handler the typed hex field
-                // uses, so the wheel and the field cannot drift apart on
-                // validation, persistence or the MatchTheme fallback.
-                let hex = crate::app::config::rgb_to_hex([
-                    (color.r * 255.0).round() as u8,
-                    (color.g * 255.0).round() as u8,
-                    (color.b * 255.0).round() as u8,
-                ]);
-                match self.bg_picker.take() {
-                    Some(crate::app::BgTarget::Model) => {
-                        Task::done(Message::ModelSpaceBgChanged(hex))
-                    }
-                    Some(crate::app::BgTarget::Paper) => {
-                        Task::done(Message::PaperSpaceBgChanged(hex))
-                    }
-                    Some(crate::app::BgTarget::Desk) => {
-                        Task::done(Message::DeskSpaceBgChanged(hex))
-                    }
-                    None => Task::none(),
-                }
-            }
-
             Message::ModelSpaceBgChanged(hex) => {
                 self.model_bg_input = hex.clone();
                 if hex.trim().is_empty() {
@@ -11066,6 +11033,16 @@ impl OpenCADStudio {
                         self.color_picker = None;
                         Task::none()
                     }
+                    Some(crate::ui::color_select::Outcome::Screenshot) => {
+                        use crate::ui::color_select::{eyedropper::EyedropperMsg, ColorPickerMsg};
+                        self.main_window.map_or_else(Task::none, |id| {
+                            iced::window::screenshot(id).map(|shot| {
+                                Message::ColorPicker(ColorPickerMsg::Eyedropper(
+                                    EyedropperMsg::Shot(shot),
+                                ))
+                            })
+                        })
+                    }
                     None => Task::none(),
                 }
             }
@@ -11075,7 +11052,14 @@ impl OpenCADStudio {
             }
 
             Message::ColorWindowPick(color) => {
-                self.note_recent_color(color);
+                // Interface colours are not drawing colours: keep them out of
+                // the recent list.
+                if !matches!(
+                    self.color_picker.as_ref().map(|picker| &picker.target),
+                    Some(crate::app::ColorPickTarget::Background(_))
+                ) {
+                    self.note_recent_color(color);
+                }
                 self.on_color_window_pick(color)
             }
             Message::DsSetHandle { field, value } => self.on_ds_set_handle(field, value),

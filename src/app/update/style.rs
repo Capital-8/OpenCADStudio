@@ -1136,6 +1136,25 @@ impl OpenCADStudio {
     }
 
     pub(super) fn on_color_window_pick(&mut self, color: codec::types::Color) -> Task<Message> {
+        if let Some(crate::app::ColorPickTarget::Background(target)) = self
+            .color_picker
+            .as_ref()
+            .map(|picker| picker.target.clone())
+        {
+            self.color_picker = None;
+            let Some((r, g, b)) = crate::ui::color_select::math::color_rgb(color) else {
+                return Task::none();
+            };
+            // Hand the result to the same handler the typed hex field uses, so
+            // the picker and the field cannot drift apart on validation,
+            // persistence or the MatchTheme fallback.
+            let hex = crate::app::config::rgb_to_hex([r, g, b]);
+            return Task::done(match target {
+                crate::app::BgTarget::Model => Message::ModelSpaceBgChanged(hex),
+                crate::app::BgTarget::Paper => Message::PaperSpaceBgChanged(hex),
+                crate::app::BgTarget::Desk => Message::DeskSpaceBgChanged(hex),
+            });
+        }
         if matches!(
             self.color_picker.as_ref().map(|picker| &picker.target),
             Some(crate::app::ColorPickTarget::PlotStyle)
@@ -1187,7 +1206,10 @@ impl OpenCADStudio {
             Some(crate::app::ColorPickTarget::LayerState(idx)) => {
                 Some(Message::LayerStateEditorLayerColor(idx, color))
             }
-            Some(crate::app::ColorPickTarget::PlotStyle) => None,
+            // Handled before this match.
+            Some(
+                crate::app::ColorPickTarget::PlotStyle | crate::app::ColorPickTarget::Background(_),
+            ) => None,
             None => None,
         };
         if let Some(m) = edit {

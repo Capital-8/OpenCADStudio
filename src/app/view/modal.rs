@@ -380,7 +380,6 @@ impl OpenCADStudio {
                         &self.model_bg_input,
                         &self.paper_bg_input,
                         &self.desk_bg_input,
-                        self.bg_picker,
                         dirty,
                         close_confirm,
                         flow,

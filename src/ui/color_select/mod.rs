@@ -3,11 +3,13 @@
 //! properties panel and every style editor so colour selection looks and
 //! behaves the same everywhere.
 
+pub mod editor;
+pub mod eyedropper;
 pub mod math;
 pub mod picker;
 pub mod widgets;
 
-pub use picker::{ColorPicker, ColorPickerMsg, ColorPickerTab, Outcome, TrueColorMode};
+pub use picker::{ColorPicker, ColorPickerMsg, ColorPickerTab, Outcome};
 
 use crate::app::Message;
 use crate::t;
@@ -42,7 +44,7 @@ pub fn color_to_aci_string(c: AcadColor) -> String {
 
 /// Return the closest CAD Color Index for an RGB colour.
 pub fn nearest_aci(r: u8, g: u8, b: u8) -> u8 {
-    math::nearest_aci_match(r, g, b).0
+    math::nearest_aci(r, g, b)
 }
 
 /// Decode an ACI integer string back into an `AcadColor`.
