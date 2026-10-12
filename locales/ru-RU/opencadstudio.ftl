@@ -2403,6 +2403,7 @@ command =
 
 file =
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" уже загружен с другим содержимым; существующий файл сохранён.
+    .image-refusal-unknown-size = «__ocs_fmt_0__» не удалось измерить по заголовку, а его декодирование превысит лимит __ocs_fmt_1__ МБ этой сборки — вложить нельзя.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = parse __ocs_fmt_0__ms · чистка __ocs_fmt_1__ms · кэши __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · общая __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: сначала сохраните чертёж (путь к файлу ещё не задан).
     .autosaved-1-drawing = Автоматически сохранён 1 чертёж

@@ -2400,6 +2400,7 @@ command =
 
 file =
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" est déjà chargé avec un contenu différent ; le fichier existant a été conservé.
+    .image-refusal-unknown-size = "__ocs_fmt_0__" n’a pas pu être mesuré par son en-tête et son décodage dépasserait la limite de __ocs_fmt_1__ Mo de cette version — impossible de l’attacher.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = Analyse : __ocs_fmt_0__ ms, purge : __ocs_fmt_1__ ms, caches : __ocs_fmt_2__ ms, références externes : __ocs_fmt_3__ ms, total : __ocs_fmt_4__ ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE : enregistrer le dessin en premier (il n'a pas encore de chemin de fichier).
     .autosaved-1-drawing = 1 dessin enregistré automatiquement

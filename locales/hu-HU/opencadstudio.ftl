@@ -2412,6 +2412,7 @@ command =
 
 file =
     .already-loaded-different-contents-kept = A(z) "__ocs_fmt_0__" már betöltve eltérő tartalommal; a meglévő fájl megőrizve.
+    .image-refusal-unknown-size = A(z) "__ocs_fmt_0__" nem mérhető a fejlécéből, és dekódolása meghaladná ezen build __ocs_fmt_1__ MB-os képhatárát — nem csatolható.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = elemzése __ocs_fmt_0__ms · __ocs_fmt_1__ms törlése · gyorsítótárak __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · összesen __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: először mentse a rajzot (még nincs fájl elérési útja).
     .autosaved-1-drawing = Automatikusan mentett 1 rajzot

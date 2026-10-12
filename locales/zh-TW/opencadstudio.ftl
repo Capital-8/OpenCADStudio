@@ -2399,6 +2399,7 @@ command =
 
 file =
     .already-loaded-different-contents-kept = "__ocs_fmt_0__"已以不同內容載入；保留了現有檔案。
+    .image-refusal-unknown-size = 無法從檔頭測得「__ocs_fmt_0__」的尺寸，解碼將超過本版本 __ocs_fmt_1__ MB 的影像上限——無法附加。
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = 解析 __ocs_fmt_0__ 毫秒 · 清除 __ocs_fmt_1__ 毫秒 · 快取 __ocs_fmt_2__ 毫秒 · xref __ocs_fmt_3__ 毫秒 · 總計 __ocs_fmt_4__ 毫秒
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE：請先儲存圖形（尚未設定檔案路徑）。
     .autosaved-1-drawing = 自動儲存了 1 個繪圖

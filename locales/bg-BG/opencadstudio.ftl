@@ -2399,6 +2399,7 @@ command =
 
 file =
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" вече е зареден с различно съдържание; съществуващият файл е запазен.
+    .image-refusal-unknown-size = Размерът на „__ocs_fmt_0__“ не можа да се измери от заглавната му част, а декодирането му би надвишило __ocs_fmt_1__ MB лимита на тази сборка — не може да се прикачи.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   анализ __ocs_fmt_0__ms · изчистване __ocs_fmt_1__ms · кешове __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · общо __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: първо запази чертежа (все още няма път до файл).
     .autosaved-1-drawing = Автоматично запазен 1 чертеж

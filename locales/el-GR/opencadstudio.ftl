@@ -2399,6 +2399,7 @@ command =
 
 file =
     .already-loaded-different-contents-kept = Το "__ocs_fmt_0__" είναι ήδη φορτωμένο με διαφορετικό περιεχόμενο· διατηρήθηκε το υπάρχον αρχείο.
+    .image-refusal-unknown-size = Το "__ocs_fmt_0__" δεν μπόρεσε να μετρηθεί από την κεφαλίδα του και η αποκωδικοποίησή του θα ξεπερνούσε το όριο __ocs_fmt_1__ MB αυτής της build — δεν μπορεί να επισυναφθεί.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = ανάλυση __ocs_fmt_0__ms · εκκαθάριση __ocs_fmt_1__ms · κρυφές μνήμες __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · σύνολο __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: αποθηκεύστε πρώτα το σχέδιο (δεν έχει ακόμη διαδρομή αρχείου).
     .autosaved-1-drawing = Αυτόματη αποθήκευση 1 σχεδίου

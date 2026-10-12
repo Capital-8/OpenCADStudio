@@ -2412,6 +2412,7 @@ command =
 
 file =
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" محمّل بالفعل بمحتوى مختلف؛ تم الاحتفاظ بالملف الموجود.
+    .image-refusal-unknown-size = تعذّر قياس أبعاد "__ocs_fmt_0__" من ترويسته وسيتجاوز فك ترميزه حد الصور __ocs_fmt_1__ ميغابايت في هذا الإصدار — لا يمكن إرفاقه.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   التحليل __ocs_fmt_0__ ملث · التنظيف __ocs_fmt_1__ ملث · الذاكرة المؤقتة __ocs_fmt_2__ ملث · المرجع الخارجي __ocs_fmt_3__ ملث · الإجمالي __ocs_fmt_4__ ملث
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: احفظ الرسم أولًا (ليس له مسار ملف بعد).
     .autosaved-1-drawing = حُفظ رسم واحد تلقائيًا

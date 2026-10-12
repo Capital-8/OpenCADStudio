@@ -2400,6 +2400,7 @@ command =
 
 file =
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" is al geladen met andere inhoud; het bestaande bestand is bewaard.
+    .image-refusal-unknown-size = "__ocs_fmt_0__" kon niet via de header gemeten worden en decoderen overschrijdt de __ocs_fmt_1__ MB-limiet van deze build — kan niet worden toegevoegd.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms = ontleed __ocs_fmt_0__ms · zuivering __ocs_fmt_1__ms · caches __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · totaal __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: sla de tekening eerst op (er is nog geen bestandspad).
     .autosaved-1-drawing = Automatisch opslaan van 1 tekening

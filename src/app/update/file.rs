@@ -2484,8 +2484,8 @@ impl OpenCADStudio {
                         self.tabs[i].dirty = false;
                     }
                 }
-                Err(error) => self.command_line.push_error(
-                    crate::tf!("SAVEALL: {} failed: {error}", entry.path.display()).as_ref(),
+                Err(e) => self.command_line.push_error(
+                    crate::tf!("SAVEALL: {} failed: {e}", entry.path.display()).as_ref(),
                 ),
             }
         }

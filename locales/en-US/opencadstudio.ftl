@@ -1888,6 +1888,7 @@ common =
     .enter-a-github-url-or-repository-in-owner-repo-format = Enter a GitHub URL or repository in owner/repo format.
     .dwgunits-convert-drawing-to = DWGUNITS  Convert drawing to:
     .opened-plot-preview = Opened plot preview.
+    .plot-preview-task = Plot preview
 
     .auto-constrain = Auto Constrain
     .show-all = Show All
@@ -2400,6 +2401,7 @@ command =
 
 file =
     .already-loaded-different-contents-kept = "__ocs_fmt_0__" is already loaded with different contents; the existing file was kept.
+    .image-refusal-unknown-size = "__ocs_fmt_0__" could not be sized from its header and decoding it exceeded the __ocs_fmt_1__ MB image limit of this build — it cannot be attached.
     .parse-ms-purge-ms-caches-ms-xref-ms-total-ms =   parse __ocs_fmt_0__ms · purge __ocs_fmt_1__ms · caches __ocs_fmt_2__ms · xref __ocs_fmt_3__ms · total __ocs_fmt_4__ms
     .archive-save-the-drawing-first-it-has-no-file = ARCHIVE: save the drawing first (it has no file path yet).
     .autosaved-1-drawing = Autosaved 1 drawing
@@ -2441,6 +2443,8 @@ file =
     .saveall-saved-saved-drawing-s = SAVEALL: saved __ocs_fmt_0__ drawing(s)__ocs_fmt_1__.
     .saveall-already-has-a-save-running = SAVEALL: __ocs_fmt_0__ already has a save running
     .saveall-failed-e = SAVEALL: __ocs_fmt_0__ failed: __ocs_fmt_1__
+    .extraction-max-sources-web = At most __ocs_fmt_0__ drawings can be added in the browser.
+    .web-already-open-shared-copy = "__ocs_fmt_0__" is already open in another tab. On the web both tabs share one stored copy — the last save overwrites the other.
     .load-linetype-file = Load linetype file
     .script-path-to-the-scr-file = SCRIPT  path to the .scr file:
     .script-cannot-read-p-e = SCRIPT: cannot read __ocs_fmt_0__: __ocs_fmt_1__
