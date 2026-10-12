@@ -586,6 +586,10 @@ impl Scene {
         let common = entity.common_mut();
         common.handle = Handle::NULL;
         common.owner_handle = Handle::NULL;
+        // An extension dictionary is exclusively owned; the clone must not
+        // claim the source's, or the copy dangles into a document that does
+        // not own that object.
+        common.xdictionary_handle = None;
         common.entity_mode = Some(
             if self.current_layout != "Model" && self.active_viewport.is_none() {
                 1
@@ -2316,6 +2320,59 @@ mod define_transformed_block_xdict_tests {
                 ),
                 None => panic!("cloned child {h:?} missing"),
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod add_entity_clone_xdict_tests {
+    use super::*;
+
+    /// A cross-document copy must not carry the source's extension dictionary:
+    /// the target document does not own that object, so sharing it leaves a
+    /// dangling reference. An extension dictionary is exclusively owned, and a
+    /// second claimant fails file validation with
+    /// "Extension dictionary <H> Cannot access".
+    #[test]
+    fn exported_clone_does_not_share_source_xdict() {
+        let mut source = Scene::new();
+
+        let dict_handle = source.document.allocate_handle();
+        let mut dict = codec::objects::Dictionary::new();
+        dict.handle = dict_handle;
+        source
+            .document
+            .objects
+            .insert(dict_handle, codec::objects::ObjectType::Dictionary(dict));
+
+        let mut line = codec::entities::Line::new();
+        line.common.xdictionary_handle = Some(dict_handle);
+        let src_handle = source
+            .document
+            .add_entity(codec::EntityType::Line(line))
+            .unwrap();
+
+        let cloned = source.document.get_entity(src_handle).unwrap().clone();
+        let mut target = Scene::new();
+        let new_handle = target.add_entity_clone(cloned);
+        assert!(!new_handle.is_null(), "clone must be added");
+
+        // Source keeps its dictionary.
+        match source.document.get_entity(src_handle) {
+            Some(e) => assert_eq!(
+                e.common().xdictionary_handle,
+                Some(dict_handle),
+                "the source must keep its own dictionary"
+            ),
+            None => panic!("source entity missing"),
+        }
+        // The copy carries none.
+        match target.document.get_entity(new_handle) {
+            Some(e) => assert!(
+                e.common().xdictionary_handle.is_none(),
+                "exported clone must not carry an extension dictionary"
+            ),
+            None => panic!("exported clone missing"),
         }
     }
 }
