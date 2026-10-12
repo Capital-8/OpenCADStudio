@@ -237,18 +237,27 @@ impl QSelectCondition {
         if self.type_filter.is_none() && self.property.is_none() {
             return Some(crate::t!("Choose an object type or property.").into_owned());
         }
-        let Some(property) = &self.property else { return None; };
-        if matches!(self.operator, QSelectOp::Any) { return None; }
+        let Some(property) = &self.property else {
+            return None;
+        };
+        if matches!(self.operator, QSelectOp::Any) {
+            return None;
+        }
         if matches!(self.operator, QSelectOp::Gt | QSelectOp::Lt)
-            && !matches!(property.editor, QSelectValueEditor::Number) {
+            && !matches!(property.editor, QSelectValueEditor::Number)
+        {
             return Some(crate::t!("This operator requires a numeric property.").into_owned());
         }
         match &property.editor {
-            QSelectValueEditor::Number if crate::entities::common::parse_f64(&self.value)
-                .is_none_or(|value| !value.is_finite()) =>
-                Some(crate::t!("Enter a valid number.").into_owned()),
-            QSelectValueEditor::Choice(_) if self.value.is_empty() =>
-                Some(crate::t!("Choose a value.").into_owned()),
+            QSelectValueEditor::Number
+                if crate::entities::common::parse_f64(&self.value)
+                    .is_none_or(|value| !value.is_finite()) =>
+            {
+                Some(crate::t!("Enter a valid number.").into_owned())
+            }
+            QSelectValueEditor::Choice(_) if self.value.is_empty() => {
+                Some(crate::t!("Choose a value.").into_owned())
+            }
             _ => None,
         }
     }
@@ -277,9 +286,10 @@ pub struct QSelectState {
 impl QSelectState {
     pub fn normalize_operator(&mut self) {
         if matches!(self.operator, QSelectOp::Gt | QSelectOp::Lt)
-            && !self.property.as_ref().is_some_and(|property| {
-                matches!(property.editor, QSelectValueEditor::Number)
-            })
+            && !self
+                .property
+                .as_ref()
+                .is_some_and(|property| matches!(property.editor, QSelectValueEditor::Number))
         {
             self.operator = QSelectOp::Eq;
         }
@@ -2312,7 +2322,9 @@ pub enum Message {
     /// A frame has been drawn (or the anti-hang timer expired) for a parked
     /// `capture` request: take the screenshot now, so it shows the latest
     /// state instead of the previous frame (C11).
-    ControlCaptureFrame { redrew: bool },
+    ControlCaptureFrame {
+        redrew: bool,
+    },
     ControlToggle,
     /// Node graph overlay interaction.
     Graph(crate::ui::node_graph::GraphMsg),
@@ -5237,9 +5249,10 @@ impl OpenCADStudio {
         // control request by setting `opencadstudio.automation` to "1" in
         // localStorage (the same pre-load mechanism the settings use): the
         // startup donation prompt then never queues (#1349).
-        if web_sys::window().and_then(|window| window.local_storage().ok().flatten()).and_then(
-            |storage| storage.get_item("opencadstudio.automation").ok().flatten(),
-        ) == Some("1".to_string())
+        if web_sys::window()
+            .and_then(|window| window.local_storage().ok().flatten())
+            .and_then(|storage| storage.get_item("opencadstudio.automation").ok().flatten())
+            == Some("1".to_string())
         {
             s.control.automation_seen = true;
         }

@@ -1488,8 +1488,13 @@ pub(super) fn qselect_overlay<'a>(
         candidate_count,
         crate::ui::modal::ModalSizing::FILL,
     );
-    let content =
-        crate::ui::modal::intrinsic(measurement, content, iced::Size::INFINITE, modal_resize);
+    // Long imported values must not make the natural dialog span the viewport.
+    let content = crate::ui::modal::intrinsic(
+        measurement,
+        content,
+        iced::Size::new(720.0, f32::INFINITY),
+        modal_resize,
+    );
 
     crate::ui::modal::modal(
         Space::new().width(Fill).height(Fill),
@@ -1616,7 +1621,7 @@ fn qselect_content<'a>(
     } else {
         None
     };
-    let error = state.error.clone().or(derived_error);
+    let error = state.error.clone().or(derived_error.clone());
 
     let scope_options = vec![
         crate::app::QSelectScope::CurrentSpace,
@@ -1635,9 +1640,71 @@ fn qselect_content<'a>(
     let cancel = dialog_button(t!("Cancel"), Message::QSelectClose, false);
     let apply = dialog_button_styled_opt(
         t!("Apply"),
-        error.is_none().then_some(Message::QSelectApply),
+        (candidate_count > 0
+            && state.editing_condition.is_none()
+            && (state.conditions.is_empty() && error.is_none() || !state.conditions.is_empty()))
+        .then_some(Message::QSelectApply),
         button::primary,
     );
+
+    let mut condition_rows = column![].spacing(5);
+    if state.conditions.is_empty() {
+        condition_rows = condition_rows.push(text(t!("No conditions added.")).size(12));
+    }
+    for (index, condition) in state.conditions.iter().enumerate() {
+        let type_label = condition
+            .type_filter
+            .as_deref()
+            .map(|name| t!(name).into_owned())
+            .unwrap_or_else(|| t!(QSELECT_ANY_TYPE).into_owned());
+        let property_label = condition
+            .property
+            .as_ref()
+            .map(|property| property.to_string())
+            .unwrap_or_else(|| t!(QSELECT_ANY_PROP).into_owned());
+        let summary = format!(
+            "{}. {} | {} | {} | {}",
+            index + 1,
+            type_label,
+            property_label,
+            condition.operator,
+            condition.value
+        );
+        condition_rows = condition_rows.push(
+            row![
+                // The measuring copy must not fill the viewport's available width.
+                text(summary).size(12).width(flex_width),
+                dialog_button(t!("Edit"), Message::QSelectEditCondition(index), false),
+                dialog_button(t!("Delete"), Message::QSelectRemoveCondition(index), false),
+            ]
+            .spacing(6)
+            .align_y(iced::Alignment::Center),
+        );
+    }
+    let add_condition = dialog_button_styled_opt(
+        if state.editing_condition.is_some() {
+            t!("Update condition")
+        } else {
+            t!("Add condition")
+        },
+        (derived_error.is_none() && (state.type_filter.is_some() || state.property.is_some()))
+            .then_some(Message::QSelectAddCondition),
+        button::secondary,
+    );
+    let condition_actions = row![
+        add_condition,
+        dialog_button_styled_opt(
+            t!("Cancel edit"),
+            state.editing_condition.map(|_| Message::QSelectCancelEdit),
+            button::secondary
+        ),
+        dialog_button_styled_opt(
+            t!("Clear conditions"),
+            (!state.conditions.is_empty()).then_some(Message::QSelectClearConditions),
+            button::secondary
+        ),
+    ]
+    .spacing(6);
 
     let panel_body = column![
         section_label(t!("Scope")),
@@ -1705,6 +1772,28 @@ fn qselect_content<'a>(
             .width(sizing.width),
         Space::new().height(10),
         container(rule::horizontal(1)).width(flex_width),
+        Space::new().height(10),
+        condition_actions,
+        Space::new().height(8),
+        dialog_button_styled_opt(
+            t!("Select object"),
+            state
+                .editing_condition
+                .is_none()
+                .then_some(Message::QSelectPickObject),
+            button::secondary,
+        ),
+        Space::new().height(8),
+        section_label(t!("Conditions (all must match)")),
+        Space::new().height(5),
+        iced::widget::scrollable(condition_rows)
+            .height(120)
+            .width(sizing.width),
+        Space::new().height(5),
+        text(t!(
+            "When the list is nonempty, only listed conditions are applied."
+        ))
+        .size(11),
         Space::new().height(10),
         section_label(t!("Result")),
         Space::new().height(5),

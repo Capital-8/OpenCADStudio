@@ -169,6 +169,7 @@ impl OpenCADStudio {
             &result,
             CmdResult::Relaunch(..)
                 | CmdResult::Dispatch(..)
+                | CmdResult::QSelectSample { .. }
                 | CmdResult::SolidEdgeBlend { .. }
                 | CmdResult::SolidSubtract { .. }
                 | CmdResult::SliceEntities { .. }
@@ -436,6 +437,13 @@ impl OpenCADStudio {
         // runtime or messages such as a chosen render mode are dropped.
         let mut dispatched = Task::none();
         match result {
+            CmdResult::QSelectSample {
+                state,
+                tab_id,
+                handle,
+            } => {
+                self.finish_qselect_sample(*state, tab_id, handle);
+            }
             CmdResult::OpenAutoConstrainSettings => {
                 self.handle_open_auto_constrain_settings();
             }

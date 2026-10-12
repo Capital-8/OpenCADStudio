@@ -511,12 +511,15 @@ impl OpenCADStudio {
             .as_ref()
             .map(|c| c.options())
             .or_else(|| {
-                self.graphic_attributes.pending_fill_close.as_ref().map(|_| {
-                    vec![
-                        crate::command::CmdOption::new("Yes", "Y"),
-                        crate::command::CmdOption::new("No", "N"),
-                    ]
-                })
+                self.graphic_attributes
+                    .pending_fill_close
+                    .as_ref()
+                    .map(|_| {
+                        vec![
+                            crate::command::CmdOption::new("Yes", "Y"),
+                            crate::command::CmdOption::new("No", "N"),
+                        ]
+                    })
             })
             .unwrap_or_default();
         self.command_line.set_step_options(opts);
@@ -747,9 +750,7 @@ impl OpenCADStudio {
                     // A settled fetch's rebuild trigger was dropped at the
                     // outcome cap; do one unconditional catch-up pass over
                     // every registered name.
-                    registered.extend(
-                        crate::scene::model::image_model::registered_image_names(),
-                    );
+                    registered.extend(crate::scene::model::image_model::registered_image_names());
                 }
                 if !registered.is_empty() {
                     for tab in self.tabs.iter_mut() {
@@ -925,9 +926,8 @@ impl OpenCADStudio {
                     // (its WebFileOpened then fails the id check and the
                     // bytes are lost) — refuse like on_open_file does.
                     if self.opening.is_some() {
-                        self.command_line.push_info(
-                            crate::t!("An open is already in progress.").as_ref(),
-                        );
+                        self.command_line
+                            .push_info(crate::t!("An open is already in progress.").as_ref());
                         return Task::none();
                     }
                     let state = std::sync::Arc::new(crate::io::OpenProgressState::new(
@@ -1422,7 +1422,7 @@ impl OpenCADStudio {
                     LinkOutcome::Error(text) => self.command_line.push_error(&text),
                 }
                 Task::none()
-            },
+            }
 
             #[cfg(target_arch = "wasm32")]
             Message::WebAutosavesScanned(result) => self.on_web_autosaves_scanned(result),
@@ -1697,10 +1697,7 @@ impl OpenCADStudio {
                                 )
                                 .add_filter(crate::t!("DWG Files").as_ref(), &["dwg", "DWG"])
                                 .add_filter(crate::t!("DXF Files").as_ref(), &["dxf", "DXF"])
-                                .add_filter(
-                                    crate::t!("Backup Files").as_ref(),
-                                    &["bak", "BAK"],
-                                )
+                                .add_filter(crate::t!("Backup Files").as_ref(), &["bak", "BAK"])
                                 .pick_file()
                                 .await;
                             match handle {
@@ -7094,17 +7091,26 @@ impl OpenCADStudio {
                         return Task::none();
                     }
                     if let Some(index) = state.editing_condition.take() {
-                        if let Some(existing) = state.conditions.get_mut(index) { *existing = condition; }
-                    } else { state.conditions.push(condition); }
+                        if let Some(existing) = state.conditions.get_mut(index) {
+                            *existing = condition;
+                        }
+                    } else {
+                        state.conditions.push(condition);
+                    }
                     state.error = None;
                 }
                 Task::none()
             }
             Message::QSelectEditCondition(index) => {
-                let condition = self.qselect.as_ref().and_then(|state| state.conditions.get(index).cloned());
+                let condition = self
+                    .qselect
+                    .as_ref()
+                    .and_then(|state| state.conditions.get(index).cloned());
                 if let Some(condition) = condition {
                     let scope = self.qselect.as_ref().unwrap().scope;
-                    let properties = self.tabs[self.active_tab].scene.qselect_properties(condition.type_filter.as_deref(), scope);
+                    let properties = self.tabs[self.active_tab]
+                        .scene
+                        .qselect_properties(condition.type_filter.as_deref(), scope);
                     if let Some(state) = self.qselect.as_mut() {
                         state.available_properties = properties;
                         state.type_filter = condition.type_filter;
@@ -7148,14 +7154,24 @@ impl OpenCADStudio {
             }
             Message::QSelectApply => {
                 let validation_error = self.qselect.as_ref().and_then(|state| {
-                    if self.tabs[self.active_tab].scene.qselect_candidate_count(state.scope) == 0 {
+                    if self.tabs[self.active_tab]
+                        .scene
+                        .qselect_candidate_count(state.scope)
+                        == 0
+                    {
                         Some(crate::t!("No objects are available in this scope.").into_owned())
                     } else if state.editing_condition.is_some() {
-                        Some(crate::t!("Update or cancel the condition edit before applying.").into_owned())
+                        Some(
+                            crate::t!("Update or cancel the condition edit before applying.")
+                                .into_owned(),
+                        )
                     } else if state.conditions.is_empty() {
                         state.draft_condition().validation_error()
                     } else {
-                        state.conditions.iter().find_map(|condition| condition.validation_error())
+                        state
+                            .conditions
+                            .iter()
+                            .find_map(|condition| condition.validation_error())
                     }
                 });
                 if let Some(error) = validation_error {
@@ -7172,9 +7188,13 @@ impl OpenCADStudio {
                 let i = self.active_tab;
                 let conditions = if state.conditions.is_empty() {
                     vec![state.draft_condition()]
-                } else { state.conditions.clone() };
+                } else {
+                    state.conditions.clone()
+                };
                 let matched = self.tabs[i].scene.qselect_conditions(
-                    state.scope, &conditions, state.mode,
+                    state.scope,
+                    &conditions,
+                    state.mode,
                     state.append && matches!(state.scope, crate::app::QSelectScope::CurrentSpace),
                 );
                 self.command_line
@@ -7648,7 +7668,8 @@ impl OpenCADStudio {
                     crate::ui::window::graphic_attributes::LINETYPE_SCALE_FIELD,
                 );
                 if focused.as_ref() == Some(&scale_field) {
-                    if !std::mem::replace(&mut self.graphic_attributes.linetype_scale_focused, true) {
+                    if !std::mem::replace(&mut self.graphic_attributes.linetype_scale_focused, true)
+                    {
                         return iced::widget::operation::select_all(scale_field);
                     }
                     return Task::none();
