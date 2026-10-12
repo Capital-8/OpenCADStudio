@@ -11,6 +11,7 @@
 use rustc_hash::FxHashMap as HashMap;
 use std::io::Read;
 use std::path::{Component, Path};
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
@@ -87,6 +88,9 @@ pub fn available_ctb_names() -> Vec<String> {
             })
             .collect();
         names.extend(STANDARD_PLOT_STYLES.iter().map(|name| (*name).to_string()));
+        // Empty on native (nothing registers there); on the web this is
+        // where the tables picked this session surface.
+        names.extend(session_ctb_names());
         names.sort_by_key(|name| name.to_ascii_lowercase());
         names.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         names
@@ -95,8 +99,63 @@ pub fn available_ctb_names() -> Vec<String> {
     {
         let mut names = vec![DEFAULT_PLOT_STYLE.into(), MONOCHROME_PLOT_STYLE.into()];
         names.extend(STANDARD_PLOT_STYLES.iter().map(|name| (*name).to_string()));
+        // No folder to scan — the tables picked this session stand in.
+        names.extend(session_ctb_names());
+        names.sort_by_key(|name| name.to_ascii_lowercase());
+        names.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         names
     }
+}
+
+// ── Web session registry ────────────────────────────────────────────────────
+
+/// Plot tables picked this session, keyed by file name. The browser keeps
+/// no folder behind a picked name, so the web build remembers the bytes
+/// instead and `load_named` resolves through here before falling back to
+/// the built-ins — the plot-style counterpart of `pdf_raster::register_source`.
+/// Native never writes it, so the lookup is always empty there and the
+/// plot-styles folder stays authoritative.
+fn session_tables() -> &'static Mutex<HashMap<String, Arc<Vec<u8>>>> {
+    static TABLES: OnceLock<Mutex<HashMap<String, Arc<Vec<u8>>>>> = OnceLock::new();
+    TABLES.get_or_init(|| Mutex::new(HashMap::default()))
+}
+
+/// Remember a picked table's bytes so later `load_named` calls — the Plot
+/// dialog's table list and APPLY, plot settings, display plot style —
+/// resolve its name. Web only; on native, permanently registering a picked
+/// table copies it into the plot-styles folder instead.
+pub fn register_session_table(name: &str, bytes: Arc<Vec<u8>>) {
+    session_tables()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(name.to_string(), bytes);
+}
+
+/// The bytes registered under `name` this session, matched
+/// case-insensitively the way the folder scan matches file names. The web
+/// ARCHIVE/ETRANSMIT packages a drawing's registered plot table into the
+/// transmittal; `None` means the table was not picked this session (the
+/// built-ins ship with the app and need no transmittal copy).
+pub fn session_table(name: &str) -> Option<Arc<Vec<u8>>> {
+    session_tables()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .iter()
+        .find(|(registered, _)| registered.eq_ignore_ascii_case(name))
+        .map(|(_, bytes)| Arc::clone(bytes))
+}
+
+/// The colour-dependent (.ctb) names picked this session, for the Plot
+/// dialog's table list. Named (.stb) tables are left out: the plotter is
+/// color-dependent, so they cannot be applied anyway.
+fn session_ctb_names() -> Vec<String> {
+    session_tables()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .keys()
+        .filter(|name| name.to_ascii_lowercase().ends_with(".ctb"))
+        .cloned()
+        .collect()
 }
 
 // ── Standard lineweight table (index → mm) ───────────────────────────────────
@@ -287,6 +346,13 @@ impl PlotStyleTable {
             .is_some_and(|ext| ext.eq_ignore_ascii_case("ctb"))
         {
             return Err(format!("Invalid plot style name: {name}"));
+        }
+
+        // A table picked this session resolves through the registry first.
+        // Empty on native, so the folder search below stays authoritative
+        // there; on the web this is the only place a picked table lives.
+        if let Some(bytes) = session_table(name) {
+            return Self::from_bytes(name, &bytes);
         }
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -908,6 +974,48 @@ mod round_trip_tests {
     fn saved_and_reloaded(table: &PlotStyleTable) -> PlotStyleTable {
         let bytes = compress_ctb(table.to_text().as_bytes()).expect("compress");
         PlotStyleTable::from_bytes(table.name.clone(), &bytes).expect("reload")
+    }
+
+    /// A table registered this session (the web stand-in for the plot-styles
+    /// folder) is what `load_named` returns for its name — matched
+    /// case-insensitively, the way the folder scan matches file names.
+    #[test]
+    fn load_named_resolves_a_session_registered_table() {
+        let mut table = PlotStyleTable::identity("SessionPens.ctb");
+        table.aci_entries[1].lineweight = 13; // 0.50 mm
+        let bytes = compress_ctb(table.to_text().as_bytes()).expect("compress");
+        super::register_session_table("SessionPens.ctb", std::sync::Arc::new(bytes));
+
+        let loaded = PlotStyleTable::load_named("sessionpens.CTB").expect("registry hit");
+        assert_eq!(loaded.name, "sessionpens.CTB");
+        assert_eq!(loaded.resolve_lineweight(1), Some(0.50));
+
+        // A name nothing was registered under still falls back to the built-ins.
+        assert!(PlotStyleTable::load_named(super::MONOCHROME_PLOT_STYLE).is_ok());
+    }
+
+    /// The Plot dialog's table list includes the session-registered colour
+    /// tables, but never a named (.stb) one.
+    #[test]
+    fn available_names_include_session_registered_tables() {
+        let bytes =
+            compress_ctb(PlotStyleTable::identity("x").to_text().as_bytes()).expect("compress");
+        let bytes = std::sync::Arc::new(bytes);
+        super::register_session_table("DialogPens.ctb", std::sync::Arc::clone(&bytes));
+        super::register_session_table("Named.stb", bytes);
+        let names = super::available_ctb_names();
+        assert!(
+            names
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case("DialogPens.ctb")),
+            "{names:?}"
+        );
+        assert!(
+            !names
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case("Named.stb")),
+            "{names:?}"
+        );
     }
 
     /// Saving a table keeps its global scale factor, which scales every

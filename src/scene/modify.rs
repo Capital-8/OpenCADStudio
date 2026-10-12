@@ -263,25 +263,30 @@ impl Scene {
         // block, and the render draws those sub-entities directly (not the
         // definition points). Transform them with the dimension, or it would
         // stay drawn in place while only its def points move.
-        let dim_block_subs: Vec<Handle> = handles
+        let dim_block_subs: Vec<(Handle, Option<EntityTransform>)> = handles
             .iter()
             .filter_map(|&h| match self.document.get_entity(h) {
-                Some(EntityType::Dimension(d)) => {
+                Some(entity @ EntityType::Dimension(d)) => {
                     let bn = d.base().block_name.clone();
                     if bn.trim().is_empty() {
                         None
                     } else {
-                        Some(bn)
+                        Some((bn, render_graph::dim_picture_placement(entity)))
                     }
                 }
                 _ => None,
             })
-            .filter_map(|bn| {
+            .filter_map(|(bn, placement)| {
                 self.document
                     .block_records
                     .iter()
                     .find(|br| br.name.eq_ignore_ascii_case(&bn))
-                    .map(|br| br.entity_handles.clone())
+                    .map(|br| {
+                        br.entity_handles
+                            .iter()
+                            .map(|&sh| (sh, placement.clone()))
+                            .collect::<Vec<_>>()
+                    })
             })
             .flatten()
             .collect();
@@ -294,6 +299,7 @@ impl Scene {
             }
             if let Some(entity) = self.document.get_entity_mut(h) {
                 view::dispatch::apply_transform(entity, t);
+                render_graph::clear_dim_picture_placement(entity);
                 if mirror_true {
                     mirror_true_text_flags(entity);
                 }
@@ -359,12 +365,15 @@ impl Scene {
         // Move the baked dimension-block sub-entities too (collected above).
         // These are entities not named in the reported change set, so a delta
         // must capture their before-images here or a dimension move won't undo.
-        for h in &dim_block_subs {
+        for (h, placement) in &dim_block_subs {
             if self.is_recording_undo() {
                 let before = self.document.get_entity_arc(*h);
                 self.record_undo_before(*h, before);
             }
             if let Some(entity) = self.document.get_entity_mut(*h) {
+                if let Some(placement) = placement {
+                    view::dispatch::apply_transform(entity, placement);
+                }
                 transform_dimension_part(entity, t);
             }
         }
@@ -497,7 +506,11 @@ impl Scene {
 
         // ATTRIBs live inline on each INSERT in that reference's owner space.
         // Conjugate the block-local reframe through the INSERT transform:
-        // owner' = M · local_from_old · M⁻¹ · owner.
+        // owner' = M · local_from_old · M⁻¹ · owner. M is the block-local →
+        // world map the render path uses (`insert_transform`), because that is
+        // the map the attribute positions on the INSERT were placed through;
+        // the codec's base-ignoring transform would conjugate them through a
+        // displaced frame whenever the definition has a non-zero base point.
         let references: Vec<(Handle, codec::types::Transform)> = self
             .document
             .entities()
@@ -507,7 +520,8 @@ impl Scene {
                         && !reference.attributes.is_empty()
                         && !owned.contains(&reference.common.handle) =>
                 {
-                    let insertion = reference.get_transform();
+                    let insertion =
+                        crate::scene::render_graph::insert_transform(&self.document, reference);
                     let inverse = inverse_affine(&insertion)?;
                     Some((
                         reference.common.handle,
@@ -588,7 +602,12 @@ impl Scene {
     /// transformed block — otherwise it still references the source block and
     /// renders on top of the original instead of at the copy. Returns None when
     /// the source block is missing or empty. (#161)
-    fn clone_transformed_block(&mut self, src_name: &str, t: &EntityTransform) -> Option<String> {
+    fn clone_transformed_block(
+        &mut self,
+        src_name: &str,
+        placement: Option<&EntityTransform>,
+        t: &EntityTransform,
+    ) -> Option<String> {
         let sub_handles = self
             .document
             .block_records
@@ -598,6 +617,12 @@ impl Scene {
         let subs: Vec<EntityType> = sub_handles
             .iter()
             .filter_map(|&sh| self.document.get_entity(sh).cloned())
+            .map(|mut sub| {
+                if let Some(placement) = placement {
+                    view::dispatch::apply_transform(&mut sub, placement);
+                }
+                sub
+            })
             .collect();
         self.define_transformed_block(&subs, t)
     }
@@ -651,6 +676,10 @@ impl Scene {
             Self::reset_clone_subhandles(&mut self.document, &mut sub);
             sub.common_mut().handle = Handle::NULL;
             sub.common_mut().owner_handle = br_handle;
+            // An extension dictionary is exclusively owned; the clone must
+            // not claim the source's, or file validation reports
+            // "Extension dictionary <H> Cannot access".
+            sub.common_mut().xdictionary_handle = None;
             let _ = self.document.add_entity(sub);
         }
         Some(new_name)
@@ -694,7 +723,9 @@ impl Scene {
             } else {
                 None
             };
+            let picture_placement = render_graph::dim_picture_placement(&entity);
             view::dispatch::apply_transform(&mut entity, t);
+            render_graph::clear_dim_picture_placement(&mut entity);
             if let Some(o) = &text_orient {
                 restore_text_orient(&mut entity, o);
             }
@@ -707,7 +738,8 @@ impl Scene {
             if let EntityType::Dimension(d) = &entity {
                 let bn = d.base().block_name.clone();
                 if !bn.trim().is_empty() {
-                    if let Some(new_bn) = self.clone_transformed_block(&bn, t) {
+                    let placement = picture_placement.as_ref();
+                    if let Some(new_bn) = self.clone_transformed_block(&bn, placement, t) {
                         // Delta-undo: a copied dimension adds a fresh anonymous
                         // *D block record — non-entity state a pure-entity delta
                         // can't restore. Poison so the app keeps a full snapshot.
@@ -1245,6 +1277,98 @@ impl Scene {
         rebuilt
     }
 
+    /// Associative extruded, revolved and lofted surfaces follow edits of
+    /// their sources: made again from them with the values they were made
+    /// with. A surface edited along with its sources keeps its own edit.
+    /// Returns the surfaces rebuilt.
+    pub(crate) fn refresh_associative_surfaces(&mut self, changes: &[(Handle, crate::scene::ChangeKind)]) -> Vec<(Handle, crate::scene::ChangeKind)> {
+        use crate::scene::model::surface_sources::{axis_points, surface_sources, SurfaceSources, SURFACE_SOURCES_APP};
+        use crate::scene::model::sweep_model;
+        use codec::objects::SolidHistoryOperation;
+        let changed = changes.iter()
+            .filter(|(_, kind)| !matches!(kind, crate::scene::ChangeKind::Removed))
+            .map(|(handle, _)| *handle)
+            .collect::<rustc_hash::FxHashSet<_>>();
+        if changed.is_empty() || !self.document.app_ids.contains(SURFACE_SOURCES_APP) {
+            return Vec::new();
+        }
+        let linked = self.document.entities()
+            .filter(|entity| matches!(entity, EntityType::Surface(_)))
+            .filter_map(|entity| {
+                let handle = entity.common().handle;
+                let sources = surface_sources(entity)?;
+                (!changed.contains(&handle) && sources.handles().iter().any(|source| changed.contains(source)))
+                    .then_some((handle, sources))
+            })
+            .collect::<Vec<_>>();
+        let mut rebuilt = Vec::new();
+        for (handle, sources) in linked {
+            let source = |handle: Handle| self.document.get_entity(handle).cloned();
+            // The surface made again: a history step, or a body with its data.
+            let made: Option<Result<SolidHistoryOperation, (kernel::brep::Body, codec::entities::SurfaceData)>> = match &sources {
+                SurfaceSources::Extrude { profile, height, direction, taper } => (|| {
+                    let entity = source(*profile)?;
+                    let (shape, _) = sweep_model::extrusion_profile_of(&entity)?;
+                    let direction = match direction {
+                        Some(direction) => *direction,
+                        None => glam::DVec3::from_array(shape.plane.normal()?) * *height,
+                    };
+                    if self.document.solid_history_operations(handle).is_some() {
+                        return sweep_model::extrusion_history(&entity, None, direction.to_array(), *taper, shape.plane.origin).map(Ok);
+                    }
+                    let body = sweep_model::extruded_surface(&entity, direction.to_array(), *taper)?;
+                    let EntityType::Surface(fresh) = crate::modules::insert::solid3d_cmds::empty_extruded_surface(direction, *taper) else { return None };
+                    Some(Err((body, fresh.surface_data)))
+                })(),
+                SurfaceSources::Revolve { profile, axis, start, end, angle, start_angle } => (|| {
+                    let entity = source(*profile)?;
+                    let (start, end) = axis
+                        .and_then(|axis| self.document.get_entity(axis).and_then(axis_points))
+                        .unwrap_or((*start, *end));
+                    let body = sweep_model::revolved_surface(&entity, start.to_array(), end.to_array(), *angle, *start_angle)?;
+                    let EntityType::Surface(fresh) = crate::modules::insert::solid3d_cmds::empty_revolved_surface(&entity, start, end, *angle, *start_angle) else { return None };
+                    Some(Err((body, fresh.surface_data)))
+                })(),
+                SurfaceSources::Loft { sections } => (|| {
+                    let operations = self.document.solid_history_operations(handle)?;
+                    let mut record = operations.into_iter().find_map(|operation| match operation {
+                        SolidHistoryOperation::Loft(record) => Some(record),
+                        _ => None,
+                    })?;
+                    if record.cross_sections.len() != sections.len() {
+                        return None;
+                    }
+                    record.cross_sections = sections.iter()
+                        .map(|section| source(*section).as_ref().and_then(crate::scene::model::loft_command_model::embedded_section))
+                        .collect::<Option<Vec<_>>>()?;
+                    Some(Ok(SolidHistoryOperation::Loft(record)))
+                })(),
+            };
+            let before = self.document.get_entity(handle).cloned().map(std::sync::Arc::new);
+            match made {
+                Some(Ok(operation)) => {
+                    self.record_undo_before(handle, before);
+                    if self.rebuild_solid_history(handle, operation) {
+                        rebuilt.push((handle, crate::scene::ChangeKind::Modified));
+                    }
+                }
+                Some(Err((body, data))) => {
+                    let Some(document) = crate::scene::convert::acis_export::solid_to_sat(&body) else { continue };
+                    let Some(display) = self.prepare_solid_model_display(handle, &body) else { continue };
+                    self.record_undo_before(handle, before);
+                    if let Some(EntityType::Surface(surface)) = self.document.get_entity_mut(handle) {
+                        surface.acis_data = codec::entities::AcisData::from_sat(&document.to_sat_string());
+                        surface.surface_data = data;
+                    }
+                    self.register_prepared_solid_model(handle, body, display);
+                    rebuilt.push((handle, crate::scene::ChangeKind::Modified));
+                }
+                None => {}
+            }
+        }
+        rebuilt
+    }
+
     /// Swept surfaces the reference keeps associative to a scale or twist
     /// expression (an associative swept surface action whose value parameter
     /// depends on an expression variable) are linked the same way here.
@@ -1256,23 +1380,57 @@ impl Scene {
         };
         let mut links = Vec::new();
         let mut sources = Vec::new();
+        let mut others = Vec::new();
         for item in self.document.objects.values() {
-            let ObjectType::Associative(action) = item else {
-                continue;
+            let ObjectType::Associative(action) = item else { continue };
+            let AssociativeData::Action(action) = &action.data else { continue };
+            let Some(AssociativeData::SurfaceActionBody(body)) = object(action.action_body) else { continue };
+            let Some(AssociativeData::Dependency(written)) = object(body.surface_body.dependency) else { continue };
+            // The entities a named path parameter reads (an edge of a region
+            // reads through a geometry dependency).
+            let read = |name: &str| -> Vec<Handle> {
+                action.owned_parameters.iter().filter_map(|parameter| {
+                    let Some(AssociativeData::PathActionParam(path)) = object(*parameter) else { return None };
+                    if path.compound.action_param.name != name { return None; }
+                    let Some(AssociativeData::EdgeActionParam(edge)) = object(*path.compound.parameters.first()?) else { return None };
+                    match object(edge.single_dependency.dependency) {
+                        Some(AssociativeData::Dependency(dependency)) => Some(dependency.dependent_on),
+                        Some(AssociativeData::GeomDependency(dependency)) => Some(dependency.dependency.dependent_on),
+                        _ => None,
+                    }
+                }).collect()
             };
-            let AssociativeData::Action(action) = &action.data else {
-                continue;
-            };
-            let Some(AssociativeData::SurfaceActionBody(body)) = object(action.action_body) else {
-                continue;
-            };
-            if body.kind != AssocSurfaceActionKind::Swept {
-                continue;
+            let real = |name: &str| action.values.iter().find(|value| value.name == name)
+                .and_then(|value| value.variables.first())
+                .and_then(|variable| match variable.value.value {
+                    codec::objects::AssocEvalValue::Real(value) => Some(value),
+                    _ => None,
+                });
+            match body.kind {
+                AssocSurfaceActionKind::Extruded => {
+                    if let (Some(profile), Some(height), Some(taper)) =
+                        (read("ExtrudeProfile").first().copied(), real("ExtrusionHeight"), real("ExtrusionTaperAngle"))
+                    {
+                        others.push((written.dependent_on, (body.kind, vec![profile], None, height, taper)));
+                    }
+                    continue;
+                }
+                AssocSurfaceActionKind::Revolved => {
+                    if let (Some(profile), Some(angle)) = (read("RevolveProfile").first().copied(), real("RevolveAngle")) {
+                        others.push((written.dependent_on, (body.kind, vec![profile], read("RevolvePath").first().copied(), angle, 0.0)));
+                    }
+                    continue;
+                }
+                AssocSurfaceActionKind::Lofted => {
+                    let sections = read("CrossSection");
+                    if sections.len() >= 2 {
+                        others.push((written.dependent_on, (body.kind, sections, None, 0.0, 0.0)));
+                    }
+                    continue;
+                }
+                AssocSurfaceActionKind::Swept => {}
+                _ => continue,
             }
-            let Some(AssociativeData::Dependency(written)) = object(body.surface_body.dependency)
-            else {
-                continue;
-            };
             let mut expressions: [Option<String>; 2] = [None, None];
             for value in &action.values {
                 let slot = match value.name.as_str() {
@@ -1302,28 +1460,7 @@ impl Scene {
                 links.push((written.dependent_on, expressions));
             }
             // The profile and path the action reads.
-            let source = |name: &str| {
-                action.owned_parameters.iter().find_map(|parameter| {
-                    let Some(AssociativeData::PathActionParam(path)) = object(*parameter) else {
-                        return None;
-                    };
-                    if path.compound.action_param.name != name {
-                        return None;
-                    }
-                    let Some(AssociativeData::EdgeActionParam(edge)) =
-                        object(*path.compound.parameters.first()?)
-                    else {
-                        return None;
-                    };
-                    match object(edge.single_dependency.dependency) {
-                        Some(AssociativeData::Dependency(dependency)) => {
-                            Some(dependency.dependent_on)
-                        }
-                        _ => None,
-                    }
-                })
-            };
-            if let (Some(profile), Some(path)) = (source("SweepProfile"), source("SweepPath")) {
+            if let (Some(profile), Some(path)) = (read("SweepProfile").first().copied(), read("SweepPath").first().copied()) {
                 sources.push((written.dependent_on, profile, path));
             }
         }
@@ -1363,6 +1500,44 @@ impl Scene {
                 handle,
                 &expressions,
             );
+        }
+        // Associative extruded, revolved and lofted surfaces follow their
+        // sources here too.
+        use crate::scene::model::surface_sources::{link_surface_sources, surface_sources, SurfaceSources};
+        for (surface, (kind, handles, axis, amount, taper)) in others {
+            let Some(entity @ EntityType::Surface(value)) = self.document.get_entity(surface) else { continue };
+            if surface_sources(entity).is_some() { continue; }
+            let linked = match (kind, &value.surface_data) {
+                (AssocSurfaceActionKind::Extruded, codec::entities::SurfaceData::Extruded { sweep_vector, .. }) => {
+                    let profile = handles[0];
+                    let along = glam::DVec3::new(sweep_vector.x, sweep_vector.y, sweep_vector.z);
+                    // A direction other than the profile's normal is kept.
+                    let normal = self.document.get_entity(profile)
+                        .and_then(|entity| crate::scene::model::sweep_model::extrusion_profile_of(entity))
+                        .and_then(|(shape, _)| shape.plane.normal())
+                        .map(glam::DVec3::from_array);
+                    let direction = match normal {
+                        Some(normal) if (normal * amount - along).length() <= 1e-9 * amount.abs().max(1.0) => None,
+                        _ if along.length() > 1e-12 => Some(along),
+                        _ => None,
+                    };
+                    SurfaceSources::Extrude { profile, height: amount, direction, taper }
+                }
+                (AssocSurfaceActionKind::Revolved, codec::entities::SurfaceData::Revolved { axis_point, axis_vector, start_angle, .. }) => {
+                    let start = glam::DVec3::new(axis_point.x, axis_point.y, axis_point.z);
+                    SurfaceSources::Revolve {
+                        profile: handles[0],
+                        axis,
+                        start,
+                        end: start + glam::DVec3::new(axis_vector.x, axis_vector.y, axis_vector.z),
+                        angle: amount,
+                        start_angle: *start_angle,
+                    }
+                }
+                (AssocSurfaceActionKind::Lofted, _) => SurfaceSources::Loft { sections: handles },
+                _ => continue,
+            };
+            link_surface_sources(&mut self.document, surface, &linked);
         }
     }
 
@@ -2039,5 +2214,108 @@ pub(crate) fn remap_copied_reactors(
             .iter()
             .filter_map(|reactor| handle_map.get(reactor).copied())
             .collect();
+    }
+}
+
+#[cfg(test)]
+mod define_transformed_block_xdict_tests {
+    use super::*;
+
+    /// No extension dictionary may be referenced by more than one entity.
+    fn assert_no_shared_xdicts(doc: &codec::CadDocument) {
+        use std::collections::HashMap;
+        let mut owners: HashMap<codec::Handle, usize> = HashMap::new();
+        for entity in doc.entities() {
+            if let Some(xd) = entity.common().xdictionary_handle {
+                if !xd.is_null() {
+                    *owners.entry(xd).or_default() += 1;
+                }
+            }
+        }
+        let shared: Vec<_> = owners
+            .iter()
+            .filter(|(_, &n)| n > 1)
+            .map(|(h, n)| format!("{h:?} x{n}"))
+            .collect();
+        assert!(
+            shared.is_empty(),
+            "shared extension dictionaries: {}",
+            shared.join(", ")
+        );
+    }
+
+    /// Cloned sub-entities must not share the source's extension dictionary.
+    /// `define_transformed_block` clones each sub wholesale; without clearing
+    /// `xdictionary_handle` the clone claims the source's dictionary and
+    /// file validation reports "Extension dictionary <H> Cannot access".
+    #[test]
+    fn cloned_subs_do_not_share_source_xdict() {
+        let mut scene = Scene::new();
+
+        let dict_handle = scene.document.allocate_handle();
+        let mut dict = codec::objects::Dictionary::new();
+        dict.handle = dict_handle;
+        scene
+            .document
+            .objects
+            .insert(dict_handle, codec::objects::ObjectType::Dictionary(dict));
+
+        let mut br = codec::tables::BlockRecord::new("SRC");
+        br.handle = scene.document.allocate_handle();
+        scene.document.block_records.add(br).unwrap();
+        let mut line = codec::entities::Line::new();
+        line.common.xdictionary_handle = Some(dict_handle);
+        let src_handle = scene
+            .document
+            .add_entity(codec::EntityType::Line(line))
+            .unwrap();
+        scene
+            .document
+            .block_records
+            .get_mut("SRC")
+            .unwrap()
+            .entity_handles
+            .push(src_handle);
+
+        let subs = vec![scene.document.get_entity(src_handle).unwrap().clone()];
+        let name = scene
+            .define_transformed_block(
+                &subs,
+                &crate::command::EntityTransform::Translate(glam::DVec3::ZERO),
+            )
+            .expect("clone block must be created");
+        assert!(
+            name.starts_with("*D"),
+            "anonymous block expected, got {name}"
+        );
+
+        assert_no_shared_xdicts(&scene.document);
+        // Source keeps its dictionary.
+        match scene.document.get_entity(src_handle) {
+            Some(e) => assert_eq!(
+                e.common().xdictionary_handle,
+                Some(dict_handle),
+                "the source must keep its own dictionary"
+            ),
+            None => panic!("source entity missing"),
+        }
+        // Clones carry none.
+        let owned = scene
+            .document
+            .block_records
+            .get(&name)
+            .unwrap()
+            .entity_handles
+            .clone();
+        assert!(!owned.is_empty(), "clone block should own sub-entities");
+        for h in &owned {
+            match scene.document.get_entity(*h) {
+                Some(e) => assert!(
+                    e.common().xdictionary_handle.is_none(),
+                    "cloned child {h:?} must not carry an extension dictionary"
+                ),
+                None => panic!("cloned child {h:?} missing"),
+            }
+        }
     }
 }

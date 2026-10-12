@@ -195,6 +195,13 @@ impl OpenCADStudio {
         // This tab is closing for good — drop its autosave recovery copy.
         #[cfg(not(target_arch = "wasm32"))]
         let _ = std::fs::remove_file(self.autosave_target(idx));
+        // …and, on the web, its retained in-place save handle: the next tab
+        // to reuse that id must start with a fresh pick instead of silently
+        // writing over the closed drawing's file.
+        #[cfg(target_arch = "wasm32")]
+        if let Some(closing_id) = closing_tab_id {
+            crate::io::fs_access::drop_handle(closing_id);
+        }
         // Only-tab case: when the lone non-start tab closes, fall
         // back to the Start tab if it exists; otherwise spawn a
         // fresh blank drawing (legacy behaviour).
@@ -219,6 +226,10 @@ impl OpenCADStudio {
         if let Some(tab_id) = tab_id {
             v4_support::on_tab_closed(tab_id);
         }
+        // The tab list just shrank: refresh the remembered session list
+        // (web session memory).
+        #[cfg(target_arch = "wasm32")]
+        self.persist_web_session();
         Task::none()
     }
 
@@ -394,6 +405,10 @@ impl OpenCADStudio {
         // dropdown so the dispatched command's new prompt is
         // immediately visible on the overlay.
         self.command_line.close_history();
+        if self.awaiting_fill_close_answer() {
+            let input = std::mem::take(&mut self.command_line.input);
+            return self.on_graphic_fill_close_input(&input);
+        }
         // A leading `>` was only a "literal spaces" typing hint (see
         // CommandSpace) — drop it before the input is interpreted.
         // Free-form text prompts keep it: there it is content, not a
@@ -814,26 +829,16 @@ impl OpenCADStudio {
             let is_mtp = raw.trim_start_matches('_').eq_ignore_ascii_case("MTP")
                 || raw.trim_start_matches('_').eq_ignore_ascii_case("M2P");
             if is_mtp {
-                let is_point_step = !self.tabs[i]
-                    .active_cmd
-                    .as_ref()
-                    .map(|c| c.input_kind().wants_text())
-                    .unwrap_or(true)
-                    || self.tabs[i]
-                        .active_cmd
-                        .as_ref()
-                        .map(|c| c.point_step_accepts_keywords())
-                        .unwrap_or(false);
-                let not_entity_pick = !self.tabs[i]
-                    .active_cmd
-                    .as_ref()
-                    .map(|c| c.needs_entity_pick())
-                    .unwrap_or(false);
-                if is_point_step && not_entity_pick {
+                if self.point_modifier_step(i) {
                     self.command_line.input.clear();
                     self.start_mtp_modifier(i);
                     return self.focus_cmd_input();
                 }
+            }
+            if let Some(kind) = self.typed_snap_override(i, &raw) {
+                self.command_line.input.clear();
+                self.apply_snap_override(kind);
+                return self.focus_cmd_input();
             }
             let text = if free_text {
                 raw
@@ -933,6 +938,7 @@ impl OpenCADStudio {
                 self.dyn_coord_absolute = false;
                 self.sync_dyn_fields();
                 self.reset_tracking_after_point();
+                self.snapper.clear_override();
                 self.push_ucs_to_cmd(i);
                 let result = self.tabs[i].active_cmd.as_mut().map(|c| c.on_point(wcs_pt));
                 if let Some(r) = result {
@@ -1048,6 +1054,7 @@ impl OpenCADStudio {
         self.dyn_coord_absolute = false;
         self.sync_dyn_fields();
         self.reset_tracking_after_point();
+        self.snapper.clear_override();
         if let Some((_, dir)) = distance_ray {
             self.snapper.remember_distance_reference(dir);
         }
@@ -1108,6 +1115,9 @@ impl OpenCADStudio {
         if !self.command_line.input.trim().is_empty() {
             return self.update(Message::CommandSubmit);
         }
+        if self.awaiting_fill_close_answer() {
+            return self.on_graphic_fill_close_input("");
+        }
         // A grip edit is not an active CAD command, but its Dynamic Input
         // fields use the same keyboard path. Route Enter through CommandSubmit,
         // whose grip branch resolves Distance / Angle and finalizes the edit.
@@ -1160,6 +1170,11 @@ impl OpenCADStudio {
             return Task::none();
         }
         if self.ribbon.escape_extension() {
+            return Task::none();
+        }
+        if self.awaiting_fill_close_answer() {
+            self.graphic_attributes.pending_fill_close = None;
+            self.command_line.push_info(crate::t!("*Cancel*").as_ref());
             return Task::none();
         }
         // Esc drops an unconsumed one-shot snap override and closes
@@ -2087,6 +2102,68 @@ impl OpenCADStudio {
         }
     }
 
+    /// Attach a clipboard image read on the web (a pasted screenshot) the way
+    /// the IMAGE command's pick does: register the bytes name-keyed, decode
+    /// for the file's true pixel size, then commit the entity — but placed
+    /// directly at the cursor (0,0 before any pointer move) with the command's
+    /// default width, skipping the pick prompts a paste should not run.
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn paste_clipboard_image(&mut self, name: String, bytes: Vec<u8>) -> Task<Message> {
+        let i = self.active_tab;
+        if self.tabs[i].is_start {
+            self.command_line.push_error(
+                crate::tr!("common", "no-drawing-open-use-new-or-open-first").as_ref(),
+            );
+            return Task::none();
+        }
+        crate::scene::model::image_model::register_source(&name, std::sync::Arc::new(bytes));
+        let Some(decoded) = crate::scene::model::image_model::resolve_image(&name) else {
+            self.command_line.push_error(
+                crate::tr!("clipboard", "image-unsupported", name = name.clone()).as_ref(),
+            );
+            return Task::none();
+        };
+        let (pixels_w, pixels_h) = (decoded.source_width, decoded.source_height);
+        // Same default footprint as the IMAGE command's Enter placement: one
+        // world unit per 100 px (min 1), height from the true aspect ratio.
+        let width = (pixels_w as f64 / 100.0).max(1.0);
+        let aspect = if pixels_h == 0 {
+            1.0
+        } else {
+            pixels_w as f64 / pixels_h as f64
+        };
+        let height = width / aspect;
+        let origin = self.tabs[i].last_cursor_world;
+        let mut image = codec::entities::RasterImage::with_size(
+            &name,
+            codec::types::Vector3::new(origin.x, origin.y, origin.z),
+            pixels_w as f64,
+            pixels_h as f64,
+            width,
+            height,
+        );
+        image.flags = codec::entities::ImageDisplayFlags::SHOW_IMAGE
+            | codec::entities::ImageDisplayFlags::USE_CLIPPING_BOUNDARY;
+        let short = std::path::Path::new(&name)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&name)
+            .to_string();
+        self.command_line.push_output(
+            crate::tr!(
+                "clipboard",
+                "pasted-image",
+                name = short,
+                width = pixels_w,
+                height = pixels_h
+            )
+            .as_ref(),
+        );
+        self.apply_cmd_result(crate::command::CmdResult::CommitAndExit(
+            codec::EntityType::RasterImage(image),
+        ))
+    }
+
     pub(super) fn on_qselect_open(&mut self) -> Task<Message> {
         let i = self.active_tab;
         self.tabs[i].scene.selection.borrow_mut().menu.open_at = None;
@@ -2233,6 +2310,35 @@ impl OpenCADStudio {
         Task::none()
     }
 
+    pub(super) fn on_ribbon_lineweight_changed(
+        &mut self,
+        lw: codec::types::LineWeight,
+    ) -> Task<Message> {
+        let i = self.active_tab;
+        self.ribbon.close_dropdown();
+        let handles = self.property_target_handles(i);
+        if handles.is_empty() {
+            if self.has_property_selection(i) {
+                return Task::none();
+            }
+            // Persist into the tab's header (CELWEIGHT). #21.
+            self.tabs[i].scene.document.header.current_line_weight = lw.value();
+            self.tabs[i].dirty = true;
+            self.ribbon.active_lineweight = lw;
+        } else {
+            // Lineweight is baked into the cached wire geometry —
+            // re-tessellate so the change shows immediately (issue #231
+            // class).
+            self.apply_property_op(i, "CHPROP", &handles, |app, handle| {
+                if let Some(entity) = app.tabs[i].scene.document.get_entity_mut(handle) {
+                    crate::scene::view::dispatch::apply_line_weight(entity, lw);
+                }
+            });
+            self.ribbon.active_lineweight = lw;
+        }
+        Task::none()
+    }
+
     pub(super) fn on_ribbon_linetype_changed(&mut self, lt: String) -> Task<Message> {
         let i = self.active_tab;
         self.ribbon.close_dropdown();
@@ -2339,11 +2445,20 @@ impl OpenCADStudio {
     pub(super) fn on_prop_hatch_pattern_changed(&mut self, name: String) -> Task<Message> {
         let i = self.active_tab;
         let handles = self.property_target_handles(i);
+        self.apply_hatch_pattern(i, &handles, name)
+    }
+
+    pub(super) fn apply_hatch_pattern(
+        &mut self,
+        i: usize,
+        handles: &[codec::Handle],
+        name: String,
+    ) -> Task<Message> {
         if !handles.is_empty() {
             use crate::scene::model::hatch_patterns;
             if let Some(entry) = hatch_patterns::find(&name) {
                 self.push_undo_snapshot(i, "HATCHEDIT");
-                for &handle in &handles {
+                for &handle in handles {
                     if let Some(codec::EntityType::Hatch(dxf)) =
                         self.tabs[i].scene.document.get_entity_mut(handle)
                     {

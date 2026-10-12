@@ -191,6 +191,22 @@ Use `batch` when the steps are already known. OCS supplies each step with the st
 
 Execute responses use `response_detail: "compact"` by default and return only the state needed for the next edit. Use `changed_entities` to receive the current geometry of affected handles in the same response, or `full` when the complete editor state is needed.
 
+For large batches, use `response_detail: "summary"`. It omits the full step
+results and change list, returning step counts, `failed_steps`, `change_count`,
+compact final state and a `details` tool request. `change_count` counts change
+records, not unique entities. Warnings, failed or waiting-input steps in
+`attention`, and any `active_step` are retained so the next action remains clear.
+For non-batch operations, `summary` behaves like `compact`.
+
+To inspect the retained full result, call the tool and arguments in `details`:
+`ocs_read` with the same `ocs_session_id`, `op: "batch_result"`, and
+`parameters: {"request_id": "<original batch request_id>"}`. This reads a cached
+snapshot without executing or resuming any step. Results are retained in the
+originating MCP connection, for up to 64 batches per session; after eviction or
+reconnection the read fails explicitly. Do not replay a mutation merely to
+retrieve expired details. A `running` snapshot is not completion; resume work
+through the existing batch retry/task workflow.
+
 `ocs_read` query accepts exact handles, type/layer filters, field projection, world-XY bounds, nearest-curve ranking, closed-curve containment, and exact intersections between two planar curves. `detail: "full"` adds the complete serialized entity properties. Nearest points, containment, curve length, area, and intersections are calculated by the geometry kernel:
 
 ```json
@@ -634,10 +650,11 @@ undo step; missing `layer`s are created and reported in `layers_created`.
 | `Line` | `start`, `end`, optional `thickness` |
 | `Circle` | `center`, `radius` (≥ 0) |
 | `Arc` | `center`, `radius` (> 0), `start_angle_deg`, `end_angle_deg` |
+| `Spline` | `control_points` (more than `degree`) or `fit_points` (≥ 2), optional `degree` (1–10, default 3), `knots` (control points + degree + 1, non-decreasing), `weights` (one positive value per control point), `closed`, `periodic`, `rational`, `planar`, `linear` |
 | `LwPolyline` | `vertices` (≥ 2), `closed`, optional `constant_width` |
 | `Point` | `location` |
 | `Text` | `value`, `position`, optional `height` (default 2.5), `rotation_deg`, `style` |
-| `MText` | `value`, `position`, optional `height`, `width`, `rotation_deg` |
+| `MText` | `value`, `position`, optional `height`, `width`, `rotation_deg`, `style` |
 | `Insert` | `block` (must exist), `position`, optional `scale` (number or `[x,y,z]`, nonzero), `rotation_deg` |
 | `Solid` | `corners` (3 or 4 `[x,y,z]`) |
 | `Hatch` | `boundary` (≥ 3 points, closed), `solid`, or `pattern` (catalog name, default `ANSI31`), `pattern_scale`, `pattern_angle_deg` |
@@ -700,9 +717,15 @@ definition — its children, markers and inserts — inside the same undo step
 before creating the new one: that is SPM's barcode re-import flow, so
 `block_define` never fails with "already exists" on a re-import.
 `block_delete` removes a definition completely (children, Block/BlockEnd
-markers, every Insert referencing it and the table record) and reports
-`result.erased`; unknown names are `block_missing`, `*`-prefixed layout
-records are `block_protected`. Definitions survive save/open round trips
+markers and the table record). A definition anything still points at — an
+INSERT, a dimension-style arrow block, a multi-leader's block content — is
+refused with `block_referenced` and the shared message text; add
+`"force":true` to erase the referencing INSERTs in the same undo step and get
+`result.references` with the number that were overridden. `result.erased`
+counts every entity the step removed. Unknown names are `block_missing`,
+`*`-prefixed layout records, anonymous and xref definitions are
+`block_protected`, and a block with an open BEDIT session is `block_in_edit`.
+Definitions survive save/open round trips
 and are consumable by `wblock` (by block name) and `INSERT` creation via
 `entities_create`.
 

@@ -621,8 +621,81 @@ pub fn block_base_point(document: &CadDocument, block_name: &str) -> Vector3 {
         .unwrap_or(Vector3::ZERO)
 }
 
+/// The block reference that places a dimension's picture block: at the
+/// dimension's insertion point, with its insertion rotation and scale. The
+/// point is stored in the dimension's OCS; the picture's sub-entities are in
+/// world coordinates, so only the point goes through the OCS. A zero scale
+/// component (an unread field) counts as 1 rather than collapsing the picture.
+pub(crate) fn dimension_picture_insert(
+    base: &codec::entities::dimension::DimensionBase,
+    block_name: String,
+) -> Insert {
+    let scale = |s: f64| if s.abs() < 1e-12 { 1.0 } else { s };
+    let point = Matrix3::arbitrary_axis(base.normal) * base.insertion_point;
+    Insert::new(block_name, point)
+        .with_scale(
+            scale(base.insertion_scale.x),
+            scale(base.insertion_scale.y),
+            scale(base.insertion_scale.z),
+        )
+        .with_rotation(base.insertion_rotation)
+}
+
+/// World transform of a dimension's picture placement, or None when it is
+/// the identity (the usual case: OCS bakes its pictures in place).
+pub(crate) fn dimension_picture_placement(
+    base: &codec::entities::dimension::DimensionBase,
+) -> Option<Transform> {
+    let insert = dimension_picture_insert(base, String::new());
+    let p = insert.insert_point;
+    let identity = p.x.abs() < 1e-9
+        && p.y.abs() < 1e-9
+        && p.z.abs() < 1e-9
+        && insert.rotation.abs() < 1e-12
+        && (insert.x_scale() - 1.0).abs() < 1e-12
+        && (insert.y_scale() - 1.0).abs() < 1e-12
+        && (insert.z_scale() - 1.0).abs() < 1e-12;
+    (!identity).then(|| insert.get_transform())
+}
+
+/// A dimension's picture placement as a world-space edit, or None when it is
+/// the identity. Edits move the picture's sub-entities in world space, so a
+/// placed picture has its placement folded into the subs and the dimension's
+/// own placement cleared (`clear_dim_picture_placement`); a placement left on
+/// the dimension would be applied again on top of the moved subs.
+pub(crate) fn dim_picture_placement(entity: &EntityType) -> Option<crate::command::EntityTransform> {
+    let EntityType::Dimension(d) = entity else {
+        return None;
+    };
+    if d.base().block_name.trim().is_empty() {
+        return None;
+    }
+    dimension_picture_placement(d.base()).map(crate::command::EntityTransform::Affine)
+}
+
+/// Reset a dimension's picture placement to the identity once its subs carry
+/// it. Also undoes the transform moving the placement point along with the
+/// dimension, which would offset a picture baked in place.
+pub(crate) fn clear_dim_picture_placement(entity: &mut EntityType) {
+    if let EntityType::Dimension(d) = entity {
+        let base = d.base_mut();
+        if !base.block_name.trim().is_empty() {
+            base.insertion_point = Vector3::ZERO;
+            base.insertion_rotation = 0.0;
+            base.insertion_scale = Vector3::new(1.0, 1.0, 1.0);
+        }
+    }
+}
+
 pub fn insert_transform(document: &CadDocument, insert: &Insert) -> Transform {
-    let base = block_base_point(document, &insert.block_name);
+    insert_transform_with_base(insert, block_base_point(document, &insert.block_name))
+}
+
+/// [`insert_transform`] for a caller that already resolved the block's base
+/// point (the `-INSERT` command builds the INSERT before the drawing is in
+/// scope), so the base-point convention lives in exactly one place:
+/// world = insert_point + Rot(rotation) * Scale * (P - base).
+pub fn insert_transform_with_base(insert: &Insert, base: Vector3) -> Transform {
     Transform::from_translation(Vector3::new(-base.x, -base.y, -base.z))
         .then(&insert.get_transform())
 }
@@ -789,8 +862,9 @@ fn entity_owned_block_uses(
             if let Some(record) = block_record_by_name(document, name)
                 .filter(|record| !record.entity_handles.is_empty())
             {
-                let mut insert = Insert::new(record.name.clone(), Vector3::ZERO);
-                insert.common = dimension.base().common.clone();
+                let base = dimension.base();
+                let mut insert = dimension_picture_insert(base, record.name.clone());
+                insert.common = base.common.clone();
                 let picture = !crate::scene::annotative::is_annotative(document, entity);
                 vec![block_use(
                     document,
@@ -949,44 +1023,6 @@ pub fn entity_block_uses(
             }
         }
         _ => {}
-    }
-    uses
-}
-
-/// Blocks referenced by document-level styles rather than a concrete entity.
-pub fn document_block_uses(document: &CadDocument) -> Vec<BlockUse> {
-    let mut uses = Vec::new();
-    for style in document.dim_styles.iter() {
-        for handle in [style.dimblk, style.dimblk1, style.dimblk2, style.dimldrblk] {
-            push_dependency_use(&mut uses, document, handle, BlockRole::ArrowHead);
-        }
-        for name in [&style.dimblk_name, &style.dimblk1_name, &style.dimblk2_name] {
-            if let Some(record) = block_record_by_name(document, name) {
-                push_dependency_use(&mut uses, document, record.handle, BlockRole::ArrowHead);
-            }
-        }
-    }
-    for object in document.objects.values() {
-        let codec::objects::ObjectType::MultiLeaderStyle(style) = object else {
-            continue;
-        };
-        if let Some(handle) = style.arrowhead_handle {
-            push_dependency_use(&mut uses, document, handle, BlockRole::ArrowHead);
-        }
-        if let Some(handle) = style.block_content_handle {
-            push_dependency_use(&mut uses, document, handle, BlockRole::MultiLeaderContent);
-        }
-    }
-    for line_type in document.line_types.iter() {
-        for symbol in crate::scene::convert::dgn_linestyle::symbol_blocks(document, &line_type.name)
-        {
-            push_dependency_use(
-                &mut uses,
-                document,
-                symbol.block,
-                BlockRole::LineStyleSymbol,
-            );
-        }
     }
     uses
 }

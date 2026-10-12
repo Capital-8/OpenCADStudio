@@ -26,6 +26,7 @@ mod point_cloud;
 pub(crate) mod sheet_set;
 mod styleprops;
 mod view;
+mod view_presets;
 mod xclip;
 mod xref_attach;
 
@@ -74,6 +75,7 @@ impl OpenCADStudio {
         // A new command collects its own points, so the previous command's
         // accepted snaps must not leak into it.
         self.clear_accepted_snaps();
+        self.snapper.clear_override();
         // Starting a command restarts the right-click cycle, so its first
         // right-click acts as Enter rather than opening the context menu.
         self.tabs[i]
@@ -466,6 +468,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "DSETTINGS",
         "PARAMETERS",
         "GRID",
+        "GRAPHICATTRIBUTES",
         "ISODRAFT",
         "ISOPLANE",
         "OSNAP",
@@ -484,6 +487,7 @@ inventory::submit!(crate::command::CommandRegistration {
         // Standard aliases for existing commands.
         "BMAKE",
         "EXPORTPDF",
+        "EXPORTSVG",
         "PRINTALL",
         "DDIM",
         // Inquiry: list the whole drawing database.
@@ -924,6 +928,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "USERI",
         "USERR",
         "VIEW",
+        "-VIEW",
         "VPORTS",
         "VS",
         "VW",

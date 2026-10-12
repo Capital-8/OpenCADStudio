@@ -3,6 +3,7 @@
 mod cascade;
 mod count_palette;
 mod file_tabs;
+mod graphic_attributes_palette;
 mod layout_tabs;
 pub mod limits;
 mod orbit;
@@ -17,6 +18,7 @@ mod tile_horiz;
 mod tile_vert;
 mod tool_palettes;
 pub mod ucs_cmd;
+pub mod view_cmd;
 mod ucs_icon;
 mod view_front;
 mod view_iso;
@@ -122,6 +124,7 @@ impl CadModule for ViewModule {
                         RibbonItem::LargeTool(tool_palettes::tool()),
                         RibbonItem::LargeTool(properties_palette::tool()),
                         RibbonItem::LargeTool(count_palette::tool()),
+                        RibbonItem::LargeTool(graphic_attributes_palette::tool()),
                         RibbonItem::LargeTool(sheetset::tool()),
                     ],
                 },

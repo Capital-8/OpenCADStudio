@@ -92,6 +92,16 @@ pub(crate) fn property_json(p: &crate::scene::model::object::Property) -> Value 
 }
 pub(super) const NAMES: &[&str] = &[
     "close_modal",
+    // Native-only: the "changed outside" dialog does not exist in the web
+    // build, so neither does its action set.
+    #[cfg(not(target_arch = "wasm32"))]
+    "external_change_reload",
+    #[cfg(not(target_arch = "wasm32"))]
+    "external_change_overwrite",
+    #[cfg(not(target_arch = "wasm32"))]
+    "external_change_save_as",
+    #[cfg(not(target_arch = "wasm32"))]
+    "external_change_cancel",
     "pdf_dialog_ok",
     "pdf_layer_toggle",
     "pc_manager_toggle",
@@ -500,8 +510,11 @@ impl OpenCADStudio {
         use crate::io::pdf_export::PdfPageInput;
 
         let path = string(req, "path")?;
-        if !path.to_ascii_lowercase().ends_with(".pdf") {
-            return Err(failure("invalid_path", "plot writes .pdf files"));
+        let lower = path.to_ascii_lowercase();
+        // SVG shares the plot page with PDF: the writer follows the extension.
+        let is_svg = lower.ends_with(".svg");
+        if !is_svg && !lower.ends_with(".pdf") {
+            return Err(failure("invalid_path", "plot writes .pdf or .svg files"));
         }
         self.stamp_plot_fields();
         let i = self.active_tab;
@@ -730,9 +743,16 @@ impl OpenCADStudio {
         self.tabs[i].scene.camera_generation = original_camera_generation;
         let pages = built.map_err(|e| failure("plot_failed", e))?;
         if req["per_page"].as_bool().unwrap_or(false) {
-            // One PDF per layout: <stem>-<Layout>.pdf beside the requested
+            // One file per layout: <stem>-<Layout>.pdf/.svg beside the requested
             // path (sheet-by-sheet delivery).
-            let stem = path.strip_suffix(".pdf").unwrap_or(path).to_owned();
+            let stem = path
+                .strip_suffix(".pdf")
+                .or_else(|| path.strip_suffix(".PDF"))
+                .or_else(|| path.strip_suffix(".svg"))
+                .or_else(|| path.strip_suffix(".SVG"))
+                .unwrap_or(path)
+                .to_owned();
+            let ext = if is_svg { "svg" } else { "pdf" };
             let mut files = Vec::with_capacity(pages.len());
             for (name, page) in targets.iter().zip(&pages) {
                 let safe: String = name
@@ -745,13 +765,21 @@ impl OpenCADStudio {
                         }
                     })
                     .collect();
-                let file = format!("{stem}-{safe}.pdf");
-                crate::io::pdf_export::export_pdf_pages(
-                    std::slice::from_ref(page),
-                    std::path::Path::new(&file),
-                    loaded_style.as_ref(),
-                )
-                .map_err(|e| failure("plot_failed", e))?;
+                let file = format!("{stem}-{safe}.{ext}");
+                let result = if is_svg {
+                    crate::io::svg_export::export_svg_pages(
+                        std::slice::from_ref(page),
+                        std::path::Path::new(&file),
+                        loaded_style.as_ref(),
+                    )
+                } else {
+                    crate::io::pdf_export::export_pdf_pages(
+                        std::slice::from_ref(page),
+                        std::path::Path::new(&file),
+                        loaded_style.as_ref(),
+                    )
+                };
+                result.map_err(|e| failure("plot_failed", e))?;
                 files.push(json!({"layout": name, "path": file}));
             }
             self.set_control_result(json!({ "files": files, "pages": pages.len() }));
@@ -760,12 +788,20 @@ impl OpenCADStudio {
         // Pages may drop the style when a stored page setup overwrites the
         // dialog's style fields, so the explicit request style rides along as
         // the export-level fallback.
-        crate::io::pdf_export::export_pdf_pages(
-            &pages,
-            std::path::Path::new(path),
-            loaded_style.as_ref(),
-        )
-        .map_err(|e| failure("plot_failed", e))?;
+        let result = if is_svg {
+            crate::io::svg_export::export_svg_pages(
+                &pages,
+                std::path::Path::new(path),
+                loaded_style.as_ref(),
+            )
+        } else {
+            crate::io::pdf_export::export_pdf_pages(
+                &pages,
+                std::path::Path::new(path),
+                loaded_style.as_ref(),
+            )
+        };
+        result.map_err(|e| failure("plot_failed", e))?;
         self.set_control_result(json!({
             "path": path,
             "pages": pages.len(),
@@ -1023,6 +1059,17 @@ impl OpenCADStudio {
         let name = string(req, "name")?;
         let msg = match name {
             "close_modal" => Message::CloseModal,
+            // The "changed outside" modal's suggested actions (D6): reload
+            // the disk copy, keep the in-memory one and overwrite, save as,
+            // or dismiss. Native only — the web build has no such dialog.
+            #[cfg(not(target_arch = "wasm32"))]
+            "external_change_reload" => Message::ExternalChangeReload,
+            #[cfg(not(target_arch = "wasm32"))]
+            "external_change_overwrite" => Message::ExternalChangeOverwrite,
+            #[cfg(not(target_arch = "wasm32"))]
+            "external_change_save_as" => Message::ExternalChangeSaveAs,
+            #[cfg(not(target_arch = "wasm32"))]
+            "external_change_cancel" => Message::ExternalChangeCancel,
             // The open PDF dialog's OK button.
             // Underlay Layers: switch a layer of the shown underlay.
             "pdf_layer_toggle" => {

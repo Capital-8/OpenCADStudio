@@ -534,11 +534,18 @@ pub static BLOCK_DEFINE: OpDef = OpDef {
 
 pub static BLOCK_DELETE: OpDef = OpDef {
     name: "block_delete",
-    doc: "Delete a block definition and all its child entities and inserts.",
+    doc: "Delete a block definition and all its child entities. A referenced block is refused; force erases the referencing inserts.",
     batchable: true,
-    params: &[req("name", Ty::Str, "Block name to delete.")],
+    params: &[
+        req("name", Ty::Str, "Block name to delete."),
+        opt(
+            "force",
+            Ty::Bool,
+            "Erase the referencing inserts instead of refusing a referenced block. Result reports how many references were overridden.",
+        ),
+    ],
     rules: &[],
-    example: r#"{"op":"block_delete","name":"DOOR"}"#,
+    example: r#"{"op":"block_delete","name":"DOOR","force":true}"#,
 };
 
 pub static XDATA_SET: OpDef = OpDef {
@@ -928,26 +935,20 @@ fn ty_schema(ty: &Ty) -> Value {
 }
 
 pub fn shared_defs() -> Value {
-    let batch_variants: Vec<Value> = OPS
-        .iter()
-        .filter(|op| op.batchable)
-        .map(|op| op_schema(op))
-        .collect();
-
-    json!({
+    let mut defs = json!({
         "point":  {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 3},
         "window": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
         "handle": {"type": "string", "pattern": "^(0[xX])?[0-9A-Fa-f]+$"},
-        "batch_step": {
-            "type": "object",
-            "properties": {
-                "op": {"type": "string"},
-                "document_id": {"type": "integer", "minimum": 0}
-            },
-            "required": ["op"],
-            "anyOf": batch_variants
-        }
-    })
+        "batch_step": batch_step_schema()
+    });
+    for op in OPS {
+        defs[format!("op_{}", op.name)] = op_schema(op);
+    }
+    defs
+}
+
+fn op_ref(op: &OpDef) -> Value {
+    json!({"$ref": format!("#/$defs/op_{}", op.name)})
 }
 
 fn rules_text(op: &OpDef) -> String {
@@ -989,7 +990,7 @@ pub fn op_schema(op: &OpDef) -> Value {
 }
 
 pub fn execute_request_schema() -> Value {
-    let variants: Vec<Value> = OPS.iter().map(|op| op_schema(op)).collect();
+    let variants: Vec<Value> = OPS.iter().map(|op| op_ref(op)).collect();
     let op_names: Vec<&str> = OPS.iter().map(|op| op.name).collect();
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1011,11 +1012,22 @@ pub fn execute_request_schema() -> Value {
 }
 
 pub fn batch_step_schema() -> Value {
-    let batch_variants: Vec<Value> = OPS
+    let mut batch_variants: Vec<Value> = OPS
         .iter()
         .filter(|op| op.batchable)
-        .map(|op| op_schema(op))
+        .map(|op| op_ref(op))
         .collect();
+
+    batch_variants.push(json!({
+        "required":["bindings"],
+        "properties":{
+            "op":{"enum":OPS.iter().filter(|op| op.batchable).map(|op| op.name).collect::<Vec<_>>()},
+            "bindings":{"type":"object","minProperties":1,
+                "description":"Bind an operation parameter to an earlier completed step response using a zero-based step and RFC 6901 path. Validated again after resolution.",
+                "additionalProperties":{"type":"object","required":["step","path"],"additionalProperties":false,
+                    "properties":{"step":{"type":"integer","minimum":0},"path":{"type":"string","pattern":"^(|/.*)$"}}}}
+        }
+    }));
 
     json!({
         "type": "object",
@@ -1141,6 +1153,14 @@ fn validate_type(ty: &Ty, val: &Value) -> Result<(), String> {
 }
 
 pub fn validate_request(request: &Value, is_batch_step: bool) -> Result<ValidationResult, String> {
+    validate_request_deferred(request, is_batch_step, &[])
+}
+
+pub fn validate_request_deferred(
+    request: &Value,
+    is_batch_step: bool,
+    deferred: &[&str],
+) -> Result<ValidationResult, String> {
     let Some(obj) = request.as_object() else {
         return Err("request must be a JSON object".into());
     };
@@ -1161,7 +1181,7 @@ pub fn validate_request(request: &Value, is_batch_step: bool) -> Result<Validati
 
     // Check required params
     for p in op_def.params {
-        if p.required {
+        if p.required && !deferred.contains(&p.name) {
             let val = obj.get(p.name);
             if val.is_none() || val.unwrap().is_null() {
                 return Err(format!(
@@ -1178,7 +1198,7 @@ pub fn validate_request(request: &Value, is_batch_step: bool) -> Result<Validati
             Rule::AnyOf(keys) => {
                 let any_present = keys
                     .iter()
-                    .any(|k| obj.get(*k).is_some_and(|v| !v.is_null()));
+                    .any(|k| deferred.contains(k) || obj.get(*k).is_some_and(|v| !v.is_null()));
                 if !any_present {
                     return Err(format!(
                         "Missing {} for {}. Example request: {}",
@@ -1196,7 +1216,8 @@ pub fn validate_request(request: &Value, is_batch_step: bool) -> Result<Validati
                 if matches {
                     for req_key in *then {
                         let val = obj.get(*req_key);
-                        if val.is_none() || val.unwrap().is_null() {
+                        if !deferred.contains(req_key) && (val.is_none() || val.unwrap().is_null())
+                        {
                             return Err(format!(
                                 "Missing {} for {}. Example request: {}",
                                 req_key, op_name, op_def.example

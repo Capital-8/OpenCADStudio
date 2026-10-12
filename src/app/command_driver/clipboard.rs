@@ -512,9 +512,11 @@ pub(crate) fn paste_entities_kernel(
         .iter()
         .cloned()
         .map(|mut entity| {
+            let picture_placement = crate::scene::render_graph::dim_picture_placement(&entity);
             if let Some(t) = translate {
                 crate::scene::view::dispatch::apply_transform(&mut entity, t);
             }
+            crate::scene::render_graph::clear_dim_picture_placement(&mut entity);
             // Same `*D`-block re-point as `finalize_paste` (#290, #161): the
             // baked dimension geometry lives in WCS, so the paste gets its own
             // transformed copy of the snapshotted block.
@@ -527,6 +529,12 @@ pub(crate) fn paste_entities_kernel(
                         .find(|b| b.name.eq_ignore_ascii_case(&bn))
                         .map(|def| def.entities.clone())
                     {
+                        let mut subs = subs;
+                        if let Some(placement) = &picture_placement {
+                            for sub in &mut subs {
+                                crate::scene::view::dispatch::apply_transform(sub, placement);
+                            }
+                        }
                         let bt = translate.cloned().unwrap_or(
                             crate::command::EntityTransform::Translate(glam::DVec3::ZERO),
                         );
@@ -699,6 +707,11 @@ fn add_entity_clone_doc_inner(
     }
     entity.common_mut().handle = Handle::NULL;
     entity.common_mut().owner_handle = owner;
+    // An extension dictionary is exclusively owned; the clone must not claim
+    // the source's (cross-drawing it would dangle into the source document),
+    // or file validation reports "Extension dictionary <H> Cannot access".
+    // Paste reattaches a recreated subtree afterwards (finalize_paste).
+    entity.common_mut().xdictionary_handle = None;
 }
 
 /// Document-level fresh `*D<n>` block from `subs`: the `&mut CadDocument`
@@ -1459,5 +1472,88 @@ mod headless_reuse_proof_tests {
             record.entity_handles.contains(&pasted),
             "pasted entity must be registered as a member of the edited block"
         );
+    }
+}
+
+#[cfg(test)]
+mod define_transformed_block_doc_xdict_tests {
+    use super::define_transformed_block_doc;
+
+    /// No extension dictionary may be referenced by more than one entity.
+    fn assert_no_shared_xdicts(doc: &codec::CadDocument) {
+        use std::collections::HashMap;
+        let mut owners: HashMap<codec::Handle, usize> = HashMap::new();
+        for entity in doc.entities() {
+            if let Some(xd) = entity.common().xdictionary_handle {
+                if !xd.is_null() {
+                    *owners.entry(xd).or_default() += 1;
+                }
+            }
+        }
+        let shared: Vec<_> = owners
+            .iter()
+            .filter(|(_, &n)| n > 1)
+            .map(|(h, n)| format!("{h:?} x{n}"))
+            .collect();
+        assert!(
+            shared.is_empty(),
+            "shared extension dictionaries: {}",
+            shared.join(", ")
+        );
+    }
+
+    /// Pasted/derived sub-entities must not share the source's extension
+    /// dictionary. `define_transformed_block_doc` is the verbatim
+    /// document-level port of `Scene::define_transformed_block`, and its
+    /// clone helper likewise preserves `xdictionary_handle`; across drawings
+    /// that handle would dangle into the source document.
+    #[test]
+    fn cloned_subs_do_not_share_source_xdict() {
+        let mut doc = codec::CadDocument::new();
+
+        let dict_handle = doc.allocate_handle();
+        let mut dict = codec::objects::Dictionary::new();
+        dict.handle = dict_handle;
+        doc.objects
+            .insert(dict_handle, codec::objects::ObjectType::Dictionary(dict));
+
+        let mut line = codec::entities::Line::new();
+        line.common.xdictionary_handle = Some(dict_handle);
+        let src_handle = doc.add_entity(codec::EntityType::Line(line)).unwrap();
+
+        let subs = vec![doc.get_entity(src_handle).unwrap().clone()];
+        let name = define_transformed_block_doc(
+            &mut doc,
+            &subs,
+            &crate::command::EntityTransform::Translate(glam::DVec3::ZERO),
+        )
+        .expect("clone block must be created");
+        assert!(
+            name.starts_with("*D"),
+            "anonymous block expected, got {name}"
+        );
+
+        assert_no_shared_xdicts(&doc);
+        // Source keeps its dictionary.
+        match doc.get_entity(src_handle) {
+            Some(e) => assert_eq!(
+                e.common().xdictionary_handle,
+                Some(dict_handle),
+                "the source must keep its own dictionary"
+            ),
+            None => panic!("source entity missing"),
+        }
+        // Clones carry none.
+        let owned = doc.block_records.get(&name).unwrap().entity_handles.clone();
+        assert!(!owned.is_empty(), "clone block should own sub-entities");
+        for h in &owned {
+            match doc.get_entity(*h) {
+                Some(e) => assert!(
+                    e.common().xdictionary_handle.is_none(),
+                    "cloned child {h:?} must not carry an extension dictionary"
+                ),
+                None => panic!("cloned child {h:?} missing"),
+            }
+        }
     }
 }

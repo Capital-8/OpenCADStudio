@@ -126,6 +126,10 @@ pub struct InsertBlockCommand {
     rotation: f64,
     pending_insert: Option<Insert>,
     plane: WorkingPlane,
+    /// The referenced block's insertion base point. Attributes are placed
+    /// through the same base-point convention the render path uses, so the
+    /// host injects it when it resolves the block's ATTDEFs.
+    block_base: Vector3,
 }
 
 impl InsertBlockCommand {
@@ -152,6 +156,7 @@ impl InsertBlockCommand {
             rotation: 0.0,
             pending_insert: None,
             plane: WorkingPlane::default(),
+            block_base: Vector3::ZERO,
         }
     }
 
@@ -852,9 +857,18 @@ impl CadCommand for InsertBlockCommand {
     fn attreq_take_insert(&mut self) -> Option<codec::EntityType> {
         self.pending_insert.take().map(EntityType::Insert)
     }
+
+    fn attreq_set_block_base(&mut self, base: Vector3) {
+        self.set_block_base(base);
+    }
 }
 
 impl InsertBlockCommand {
+    /// The referenced block's insertion base point, for attribute placement.
+    pub fn set_block_base(&mut self, base: Vector3) {
+        self.block_base = base;
+    }
+
     fn answer(&mut self, ask: Ask, text: Option<&str>) -> CmdResult {
         let default = !matches!(ask, Ask::RepeatScale | Ask::RepeatRotate);
         let Some(yes) = Self::yes_no(text.unwrap_or(""), default) else {
@@ -955,7 +969,8 @@ impl InsertBlockCommand {
             _ => return None,
         };
         let mut insert = self.pending_insert.take()?;
-        let transform = insert.get_transform();
+        let transform =
+            crate::scene::render_graph::insert_transform_with_base(&insert, self.block_base);
         for (attdef_idx, value) in values {
             let Some(attdef) = attdefs.get(attdef_idx) else {
                 continue;

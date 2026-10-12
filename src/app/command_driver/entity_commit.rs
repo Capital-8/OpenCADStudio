@@ -1049,6 +1049,15 @@ impl OpenCADStudio {
                 }
             }
         } else {
+            // Attributes are placed through the same base-point convention as
+            // the render path, so hand the command the definition's base point.
+            let block_base = crate::scene::render_graph::block_base_point(
+                &self.tabs[i].scene.document,
+                &block_name,
+            );
+            if let Some(cmd) = self.tabs[i].active_cmd.as_mut() {
+                cmd.attreq_set_block_base(block_base);
+            }
             let completed = self.tabs[i]
                 .active_cmd
                 .as_mut()

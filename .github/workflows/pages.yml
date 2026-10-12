@@ -109,6 +109,16 @@ jobs:
       - name: Build web bundle
         run: trunk build --locked --release --public-url /app/ --dist dist/app --html-output index.html web-app.html
 
+      - name: Stamp the service worker cache version
+        # web/sw.js ships a placeholder cache name; each deploy gets one
+        # derived from the bundle contents, so the new worker drops the
+        # previous deploy's cached assets when it activates.
+        run: |
+          test -f dist/app/sw.js
+          hash=$(find dist/app -type f ! -name sw.js -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c 1-12)
+          sed -i "s/^const CACHE_VERSION = \"[^\"]*\";/const CACHE_VERSION = \"$hash\";/" dist/app/sw.js
+          grep -q "^const CACHE_VERSION = \"$hash\";" dist/app/sw.js
+
       - name: Check out current website
         uses: actions/checkout@v4
         with:

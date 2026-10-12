@@ -19,7 +19,6 @@ impl OpenCADStudio {
             Some(K::PluginManager) => crate::tr!("modal", "plugin-manager"),
             Some(K::UpdateNotice) => crate::tr!("modal", "update-available"),
             Some(K::DonationPrompt) => crate::tr!("donation", "title"),
-            Some(K::Layers) => crate::tr!("modal", "layer-manager"),
             Some(K::LayerStateManager) => crate::tr!("modal", "layer-state-manager"),
             Some(K::LayerTranslator) => crate::t!("Layer Translator").into_owned(),
             Some(K::DrawingUnits) => crate::t!("Drawing Units").into_owned(),
@@ -78,6 +77,8 @@ impl OpenCADStudio {
             Some(K::Recovery) => crate::tr!("modal", "recovery-report"),
             Some(K::MissingFonts) => crate::t!("Missing fonts").into_owned(),
             Some(K::RecoveryPrompt) => crate::tr!("modal", "recovery-prompt"),
+            #[cfg(target_arch = "wasm32")]
+            Some(K::AutosaveRestore) => crate::t!("Recover Drawing").into_owned(),
             Some(K::GpuWarning) => crate::tr!("gpu", "title"),
             Some(K::XrefHelp) => crate::t!("Reference Manager Help").into_owned(),
             Some(K::SheetSet) => self
@@ -462,12 +463,6 @@ impl OpenCADStudio {
                 let body = self.update_notice_body.as_deref().unwrap_or("");
                 sized_flow(ex, 560, 460, |flow| {
                     crate::ui::window::update_notice::view_window(latest, body, flow)
-                })
-            }
-            super::super::ModalKind::Layers => {
-                let tab = &self.tabs[self.active_tab];
-                sized_flow(ex, 900, 360, |flow| {
-                    tab.layers.view_window(self.layer_name_col_w, flow)
                 })
             }
             super::super::ModalKind::LayerTranslator => {
@@ -1814,6 +1809,24 @@ impl OpenCADStudio {
                     crate::ui::window::recovery::view_prompt(&opening.name, error, flow)
                 })
             }
+            #[cfg(target_arch = "wasm32")]
+            super::super::ModalKind::AutosaveRestore => {
+                let name = self
+                    .web_autosave_pending
+                    .first()
+                    .map(|entry| entry.name.clone())
+                    .unwrap_or_default();
+                let pending = self.web_autosave_pending.len();
+                // What the crashed session had open, when it remembered.
+                let session_drawings = self
+                    .web_session
+                    .as_ref()
+                    .map(|session| session.tabs.len())
+                    .filter(|count| *count > 0);
+                automatic_flow(ex, |flow| {
+                    autosave_restore_dialog_window(&name, pending, session_drawings, flow)
+                })
+            }
         })
     }
 }
@@ -2059,6 +2072,72 @@ fn unsaved_changes_dialog_window(
     .center_y(sizing.height)
     .padding([24, 28])
     .into()
+}
+
+/// Web crash-recovery prompt: an autosave snapshot of `name` is newer than
+/// the drawing's last save. Restore opens it as a recovered tab; Discard
+/// deletes the snapshot. With more than one snapshot still pending, "Restore
+/// all" puts the whole remaining list through the same guarded open queue.
+/// When the crashed session left a tab list behind, a muted line says how
+/// much it had open. Mirrors the unsaved-changes dialog's layout.
+#[cfg(target_arch = "wasm32")]
+fn autosave_restore_dialog_window(
+    name: &str,
+    pending: usize,
+    session_drawings: Option<usize>,
+    sizing: crate::ui::modal::ModalSizing,
+) -> Element<'static, Message> {
+    let mut body = column![text(crate::tf!(
+        "\"{name}\" has an autosave copy newer than the last save."
+    ))
+    .size(14)]
+    .spacing(0);
+    if let Some(count) = session_drawings {
+        body = body
+            .push(iced::widget::Space::new().height(4))
+            .push(
+                text(crate::tf!("Session had {count} open drawing(s).", count = count))
+                    .size(12)
+                    .style(dialog_muted_text_style),
+            );
+    }
+    body = body
+        .push(iced::widget::Space::new().height(4))
+        .push(
+            text(t!("Restore it as a recovered tab, or discard the copy."))
+                .size(12)
+                .style(dialog_muted_text_style),
+        )
+        .push(iced::widget::Space::new().height(20));
+    let mut buttons = row![dialog_button(
+        t!("Restore"),
+        Message::WebAutosaveRestore,
+        button::primary
+    )];
+    // Only worth its width once there is a batch to take in one click.
+    if pending > 1 {
+        buttons = buttons
+            .push(iced::widget::Space::new().width(8))
+            .push(dialog_button(
+                t!("Restore all"),
+                Message::WebAutosaveRestoreAll,
+                button::secondary,
+            ));
+    }
+    buttons = buttons
+        .push(iced::widget::Space::new().width(8))
+        .push(dialog_button(
+            t!("Discard"),
+            Message::WebAutosaveDiscard,
+            button::danger,
+        ));
+    body = body.push(buttons);
+    container(body)
+        .style(dialog_body_style)
+        .center_x(sizing.width)
+        .center_y(sizing.height)
+        .padding([24, 28])
+        .into()
 }
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -136,7 +136,10 @@ impl OpenCADStudio {
             return;
         };
 
-        let wp = ins.get_transform().apply(Vector3::new(
+        // `def_point` is a block-definition coordinate (see the codec's
+        // BlockVisibilityParameter), so the grip follows the same base-point
+        // convention as the rendered reference.
+        let wp = crate::scene::render_graph::insert_transform(doc, ins).apply(Vector3::new(
             param.def_point.x,
             param.def_point.y,
             param.def_point.z,

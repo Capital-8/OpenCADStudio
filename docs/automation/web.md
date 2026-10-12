@@ -16,7 +16,14 @@ control channel is ready once `window.wasmBindings?.ocs_control_submit` is defin
 | `ocs_control_submit(request: string) → string` | Queues one request (a JSON string) and returns a ticket immediately. |
 | `ocs_control_take(ticket: string) → string \| undefined` | Returns the reply (a JSON string) once it is ready, `undefined` before that. A reply is removed when taken. |
 
-Poll `ocs_control_take` until it returns a reply, as the smoke test does:
+The page also loads `ocs-control.js`, which wraps the two functions in promises:
+
+| API | Behaviour |
+|---|---|
+| `await window.ocsControl.ready` | Resolves once the control channel exists; the `ocs-ready` window event fires at the same moment. |
+| `await window.ocsControl.request(request, {timeoutMs, pollMs})` | Submits one request and resolves with the final reply, following `accepted`/`running` replies through `op: "operation"`. Rejects only on timeout or a missing channel. |
+
+Without the wrapper, poll `ocs_control_take` until it returns a reply, as the smoke test does:
 
 ```js
 async function control(request) {
@@ -55,7 +62,9 @@ rather than a disk, so use `data_base64` for a file the page has not seen.
 
 A dialog can be open when the page is ready. The donation prompt appears once per
 application version in each browser profile, so a fresh or disposable profile always
-sees it. While a modal is open `state.modal` is set, and `{"op":"new"}` returns `ok`
+sees it — unless the session is automated: the first control request drops a prompt
+that is still queued, and a host that sets `localStorage["opencadstudio.automation"]`
+to `"1"` before the page loads never gets one. A prompt already on screen stays. While a modal is open `state.modal` is set, and `{"op":"new"}` returns `ok`
 without creating a tab until the modal is closed. Close it first:
 
 ```js

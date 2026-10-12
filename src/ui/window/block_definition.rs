@@ -139,6 +139,15 @@ impl BlockDefinitionState {
         glam::DVec3::new(x, y, z)
     }
 
+    /// Prefill the base point fields from an existing definition, so
+    /// redefining a block starts from the base it already has (0.0000 for a
+    /// new block). Formatted the same way the pick point button writes them.
+    pub fn set_base_point(&mut self, base: glam::DVec3) {
+        self.base_point_x = format!("{:.4}", base.x);
+        self.base_point_y = format!("{:.4}", base.y);
+        self.base_point_z = format!("{:.4}", base.z);
+    }
+
     pub fn is_existing_name(&self) -> bool {
         let trimmed = self.name.trim();
         !trimmed.is_empty()

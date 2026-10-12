@@ -106,8 +106,15 @@ pub(super) struct State {
     completed: VecDeque<(String, Value, Value)>,
     owner: Option<(u64, String)>,
     pub enabled: bool,
+    /// Set by the first control request of the session (or by a web host's
+    /// boot-time opt-in): while control is enabled, startup prompts that
+    /// would block automation — the donation prompt — are suppressed (#1349).
+    pub automation_seen: bool,
     serial: u64,
     events: VecDeque<Value>,
+    /// Monotonic counter bumped on every real selection change, so clients
+    /// can detect highlight changes without polling the full selection.
+    selection_revision: u64,
     pub(super) routing: bool,
     /// Session-scoped named handle sets for selection_set_save/load.
     selection_sets: std::collections::BTreeMap<String, Vec<codec::Handle>>,
@@ -117,6 +124,19 @@ pub(super) struct State {
     /// Live `getpoint` request — the client asked for one picked point; Some
     /// until the person clicks (answer) or presses Escape (cancel).
     pub(super) get_point: Option<UserPointSession>,
+    /// `capture` request parked until the window has drawn another frame:
+    /// screenshotting in the same batch as the state change used to return the
+    /// previous frame (C11). Cleared by `on_control_capture_frame`.
+    pub(super) capture_frame_pending: bool,
+    /// Whether the parked capture actually waited for a redraw (vs. the
+    /// anti-hang timer). Reported in the capture result as `waited_for_frame`.
+    pub(super) capture_after_redraw: bool,
+    /// Web: when a parked capture gives up. Only a presented frame can be
+    /// read back on wasm, and a hidden or idle tab may never present one, so
+    /// the timer tick fails the capture past this instant instead of letting
+    /// it hold the control slot forever.
+    #[cfg(target_arch = "wasm32")]
+    pub(super) capture_deadline: Option<iced::time::Instant>,
 }
 
 /// The pending half of an interactive `user_select` operation (`interactive`
@@ -423,6 +443,35 @@ impl OpenCADStudio {
         self.control.pending.is_some()
     }
 
+    /// Mirror a real selection change into the automation event stream. The
+    /// plugin host already publishes the V4 selection event; automation clients
+    /// need the same signal instead of polling `state`.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) fn control_record_selection_event(&mut self, handles: &[codec::Handle]) {
+        let (document_id, revision) = {
+            let tab = &self.tabs[self.active_tab];
+            (tab.id, tab.edit_revision)
+        };
+        let selection: Vec<String> = handles
+            .iter()
+            .map(|handle| format!("{:X}", handle.value()))
+            .collect();
+        self.control.selection_revision = self.control.selection_revision.wrapping_add(1);
+        let selection_revision = self.control.selection_revision;
+        self.control.serial += 1;
+        self.control.events.push_back(json!({
+            "sequence": self.control.serial,
+            "kind": "selection",
+            "document_id": document_id,
+            "revision": revision,
+            "selection_revision": selection_revision,
+            "selection": selection,
+        }));
+        while self.control.events.len() > 128 {
+            self.control.events.pop_front();
+        }
+    }
+
     pub(super) fn control_state(&self) -> Value {
         let tab = &self.tabs[self.active_tab];
         let command = tab.active_cmd.as_deref().map(active_command_metadata);
@@ -435,6 +484,7 @@ impl OpenCADStudio {
             "plugins":plugin_ids(),
             "documents":self.tabs.iter().map(|t|json!({"id":t.id,"title":t.tab_title,"path":t.current_path,"dirty":t.dirty,"revision":t.edit_revision,"start":t.is_start})).collect::<Vec<_>>(),
             "selection":tab.scene.selected_handles_in_order().iter().map(|h|format!("{:X}",h.value())).collect::<Vec<_>>(),
+            "selection_revision":self.control.selection_revision,
             "command":command,"modal":self.active_modal.as_ref().map(|m|format!("{m:?}")),
             "layout":tab.scene.current_layout,
             "ucs":tab.active_ucs.as_ref().map(|u|json!({"name":u.name,"origin":[u.origin.x,u.origin.y,u.origin.z],"x_axis":[u.x_axis.x,u.x_axis.y,u.x_axis.z],"y_axis":[u.y_axis.x,u.y_axis.y,u.y_axis.z],"elevation":u.elevation})),
@@ -449,6 +499,18 @@ impl OpenCADStudio {
     }
 
     pub(super) fn control_request(&mut self, req: Value) -> (Value, Task<Message>) {
+        // First control contact marks the session automated (#1349): a
+        // DonationPrompt that is still queued (not yet shown) is dropped so
+        // automation never waits behind it, and `queue_startup_prompts`
+        // stops queueing one. A prompt already on screen stays — a human
+        // may be reading it; clients close it with `close_modal`.
+        if !self.control.automation_seen && self.control.enabled {
+            self.control.automation_seen = true;
+            if self.active_modal != Some(super::ModalKind::DonationPrompt) {
+                self.pending_startup_modals
+                    .retain(|kind| kind != &super::ModalKind::DonationPrompt);
+            }
+        }
         let op = req["op"].as_str().unwrap_or("");
         let query = matches!(
             op,
@@ -628,15 +690,32 @@ impl OpenCADStudio {
                     if old == &req {
                         result.clone()
                     } else {
-                        failure("request_id_reused", "Request payload changed")
+                        failure(
+                            "request_id_reused",
+                            format!(
+                                "Request payload changed for request_id '{id}'; generate a new unique request_id or resend the original payload",
+                            ),
+                        )
                     },
                     Task::none(),
                 );
             }
             if let Some(p) = &self.control.pending {
-                if p.id == id && p.request == req {
+                // `cancel` is a reference to the pending request, not a
+                // replay of its payload. It must reach the interactive cancel
+                // branch below even when it uses the same request_id.
+                if p.id == id && op != "cancel" {
                     return (
-                        json!({"ok":true,"status":"running","request_id":id}),
+                        if p.request == req {
+                            json!({"ok":true,"status":"running","request_id":id})
+                        } else {
+                            failure(
+                                "request_id_reused",
+                                format!(
+                                    "Request payload changed for request_id '{id}'; generate a new unique request_id or resend the original payload",
+                                ),
+                            )
+                        },
                         Task::none(),
                     );
                 }
@@ -838,7 +917,11 @@ impl OpenCADStudio {
             // Interactive requests hold their slot open on purpose: the
             // counter stays at one so settle keeps returning `running` until
             // the person at the screen answers and the resolver zeroes it.
-            if !matches!(p.request["op"].as_str(), Some("user_select" | "getpoint")) {
+            // `capture` is parked the same way until the next drawn frame.
+            if !matches!(
+                p.request["op"].as_str(),
+                Some("user_select" | "getpoint" | "capture")
+            ) {
                 p.pending -= 1;
             }
         }
@@ -1071,10 +1154,9 @@ impl OpenCADStudio {
                 Task::none()
             }
             "capture" => {
-                let window = self
-                    .main_window
+                self.main_window
                     .ok_or_else(|| failure("gui_required", "Capture requires a GUI window"))?;
-                let path = string(req, "path")?.to_owned();
+                string(req, "path")?;
                 let was_minimized = crate::sys::restore_window_if_minimized();
                 if was_minimized {
                     std::thread::sleep(std::time::Duration::from_millis(60));
@@ -1132,17 +1214,16 @@ impl OpenCADStudio {
                     }
                 }
 
-                // A minimized window has a 0x0 surface and the renderer
-                // panics reading it back, so report instead of capturing.
-                iced::window::size(window).then(move |size| {
-                    let path = path.clone();
-                    if size.width <= 0.0 || size.height <= 0.0 {
-                        Task::done(Message::ControlScreenshot(path, None))
-                    } else {
-                        iced::window::screenshot(window)
-                            .map(move |s| Message::ControlScreenshot(path.clone(), Some(s)))
-                    }
-                })
+                // C11: do not capture in the same batch. Park until the next
+                // rendered frame (or the timer fallback) so geometry changes are
+                // visible rather than returning a stale frame.
+                self.control.capture_frame_pending = true;
+                #[cfg(target_arch = "wasm32")]
+                {
+                    self.control.capture_deadline =
+                        Some(iced::time::Instant::now() + std::time::Duration::from_secs(5));
+                }
+                Task::none()
             }
             "stop" => {
                 self.control.enabled = false;
@@ -1159,7 +1240,22 @@ impl OpenCADStudio {
     }
 
     pub(super) fn control_track(&mut self, task: Task<Message>) -> Task<Message> {
-        if task.units() == 0 {
+        let track_zero_unit = self.control.pending.as_ref().is_some_and(|p| {
+            p.request["op"] == "run"
+                && p.request["cmd"]
+                    .as_str()
+                    .is_some_and(|cmd| {
+                        matches!(
+                            cmd.trim().to_ascii_uppercase().as_str(),
+                            "SAVE" | "QSAVE"
+                        )
+                    })
+        });
+        // Most zero-unit tasks are `Task::none()` and have already completed
+        // synchronously. SAVE/QSAVE are the deliberate exception: the command
+        // dispatcher returns a zero-unit Task::done(Message::SaveFile), and
+        // the operation must wait for that message before reporting its state.
+        if task.units() == 0 && !track_zero_unit {
             return task;
         }
         let Some(p) = self.control.pending.as_mut() else {
@@ -1337,6 +1433,7 @@ impl OpenCADStudio {
         path: String,
         screenshot: Option<iced::window::Screenshot>,
     ) {
+        let waited_for_frame = self.control.capture_after_redraw;
         let result = (|| -> Result<Value, String> {
             let s = screenshot
                 .ok_or("The window is minimized or has no size; restore it and capture again")?;
@@ -1455,9 +1552,27 @@ impl OpenCADStudio {
                 }
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
             image
                 .save_with_format(&path, image::ImageFormat::Png)
                 .map_err(|e| e.to_string())?;
+            // No filesystem behind a web "path": encode the PNG in memory and
+            // hand it to the browser as a download named after the request's
+            // file name — the delivery every other web output uses.
+            #[cfg(target_arch = "wasm32")]
+            {
+                let mut png = Vec::new();
+                image
+                    .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                    .map_err(|e| e.to_string())?;
+                let download = path
+                    .rsplit(['/', '\\'])
+                    .next()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or("capture.png")
+                    .to_string();
+                crate::sys::download_bytes(&download, &png);
+            }
 
             let doc_unit = crate::app::properties::insunits_name(
                 self.tabs[self.active_tab]
@@ -1485,6 +1600,7 @@ impl OpenCADStudio {
                 "width": image.width(),
                 "height": image.height(),
                 "scale_factor": s.scale_factor,
+                "waited_for_frame": waited_for_frame,
                 "document_id": self.tabs[self.active_tab].id,
                 "revision": self.tabs[self.active_tab].edit_revision,
                 "camera_revision": self.tabs[self.active_tab].scene.camera_generation,
@@ -1506,13 +1622,88 @@ impl OpenCADStudio {
             }
             Err(e) => self.command_line.push_error(&e),
         }
+        // `capture` is parked until this result (or error) arrives, rather
+        // than being settled by the task counter used for ordinary actions.
+        if let Some(p) = self
+            .control
+            .pending
+            .as_mut()
+            .filter(|p| p.request["op"] == "capture")
+        {
+            p.pending = 0;
+        }
+        self.control.capture_after_redraw = false;
+        self.control_settle();
+    }
+
+    /// A frame finished rendering (or the anti-hang timer expired): start the
+    /// screenshot only after the capture request has been parked.
+    pub(super) fn on_control_capture_frame(&mut self, redrew: bool) -> Task<Message> {
+        if !self.control.capture_frame_pending {
+            return Task::none();
+        }
+        let Some(path) = self
+            .control
+            .pending
+            .as_ref()
+            .filter(|p| p.request["op"] == "capture")
+            .and_then(|p| p.request["path"].as_str())
+            .map(str::to_owned)
+        else {
+            self.control.capture_frame_pending = false;
+            return Task::none();
+        };
+        // Web: iced's window screenshot needs a synchronous GPU map wasm
+        // cannot provide; the canvas readback (the save-thumbnail technique)
+        // only sees the drawing right after a presented frame, before the
+        // browser clears the WebGL buffer — so wait for a real frame.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let expired = self
+                .control
+                .capture_deadline
+                .is_some_and(|deadline| iced::time::Instant::now() >= deadline);
+            if !redrew && !expired && crate::sys::page_visible() {
+                return Task::none();
+            }
+            self.control.capture_frame_pending = false;
+            self.control.capture_deadline = None;
+            self.control.capture_after_redraw = redrew;
+            // No frame to read (hidden tab or nothing redrawing): report the
+            // capture as failed rather than hand back a blank canvas.
+            let screenshot = if redrew {
+                crate::sys::capture_canvas()
+            } else {
+                None
+            };
+            Task::done(Message::ControlScreenshot(path, screenshot))
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.control.capture_frame_pending = false;
+            self.control.capture_after_redraw = redrew;
+            let Some(window) = self.main_window else {
+                return Task::done(Message::ControlScreenshot(path, None));
+            };
+            // A minimized window has a 0x0 surface and the renderer panics
+            // reading it back, so report instead of capturing.
+            iced::window::size(window).then(move |size| {
+                let path = path.clone();
+                if size.width <= 0.0 || size.height <= 0.0 {
+                    Task::done(Message::ControlScreenshot(path, None))
+                } else {
+                    iced::window::screenshot(window).map(move |screenshot| {
+                        Message::ControlScreenshot(path.clone(), Some(screenshot))
+                    })
+                }
+            })
+        }
     }
 }
 mod actions;
 pub(crate) mod vision;
 pub(crate) use actions::property_json;
 mod entities;
-pub(crate) use entities::erase_block_definition;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod http_bridge;
 mod interactive;
@@ -1548,6 +1739,128 @@ mod tests {
             r
         }
     }
+    #[test]
+    fn qsave_completion_reports_clean_document_state() {
+        let mut app = OpenCADStudio::new_for_test();
+        assert_eq!(request(&mut app, json!({"op":"new"}))["ok"], true);
+        assert_eq!(
+            request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}))["status"],
+            "completed"
+        );
+        let path = std::env::temp_dir().join(format!(
+            "ocs_qsave_state_{}_{}.dwg",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        let _ = std::fs::remove_file(&path);
+        let saved = request(
+            &mut app,
+            json!({"op":"save","path":path,"overwrite":true}),
+        );
+        assert_eq!(saved["ok"], true, "{saved}");
+        assert_eq!(
+            request(&mut app, json!({"op":"run","cmd":"LINE 0,5 10,5"}))["status"],
+            "completed"
+        );
+        let qsave = request(&mut app, json!({"op":"run","cmd":"QSAVE"}));
+        assert_eq!(qsave["status"], "completed", "{qsave}");
+        let document_id = qsave["state"]["document_id"].as_u64().unwrap();
+        let dirty = qsave["state"]["documents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|document| document["id"].as_u64() == Some(document_id))
+            .and_then(|document| document["dirty"].as_bool());
+        assert_eq!(dirty, Some(false), "{qsave}");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn qsave_save_failure_settles_instead_of_hanging() {
+        let mut app = OpenCADStudio::new_for_test();
+        assert_eq!(request(&mut app, json!({"op":"new"}))["ok"], true);
+        assert_eq!(
+            request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}))["status"],
+            "completed"
+        );
+        let dir = std::env::temp_dir().join(format!(
+            "ocs_qsave_fail_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("blocked.dwg");
+        let saved = request(
+            &mut app,
+            json!({"op":"save","path":path,"overwrite":true}),
+        );
+        assert_eq!(saved["ok"], true, "{saved}");
+        // A directory at the target path makes the next write fail
+        // deterministically; the operation must settle as failed instead of
+        // waiting forever on its task counter.
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        assert_eq!(
+            request(&mut app, json!({"op":"run","cmd":"LINE 0,5 10,5"}))["status"],
+            "completed"
+        );
+        let qsave = request(&mut app, json!({"op":"run","cmd":"QSAVE"}));
+        assert_eq!(qsave["status"], "failed", "{qsave}");
+        assert!(
+            qsave["error"].as_str().is_some_and(|error| !error.is_empty()),
+            "{qsave}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn capture_parks_for_the_next_frame_then_finishes_with_its_result() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.main_window = Some(iced::window::Id::unique());
+        assert_eq!(request(&mut app, json!({"op":"new"}))["ok"], true);
+        let path = std::env::temp_dir().join(format!("ocs-capture-frame-{}.png", session_id()));
+        let state = app.control_state();
+        let parked = app
+            .control_request(json!({
+                "protocol":1,
+                "op":"capture",
+                "request_id":"cap-frame",
+                "document_id": state["document_id"],
+                "revision": state["revision"],
+                "path": path.to_string_lossy(),
+            }))
+            .0;
+        assert_eq!(parked["status"], "accepted", "{parked}");
+        assert!(app.control.capture_frame_pending, "capture should wait for a frame");
+        let running = app
+            .control_request(json!({"op":"operation","request_id":"cap-frame"}))
+            .0;
+        assert_eq!(running["status"], "running", "{running}");
+
+        let _frame_task = app.on_control_capture_frame(true);
+        assert!(!app.control.capture_frame_pending);
+        let screenshot = iced::window::Screenshot::new(
+            vec![0u8; 4 * 4 * 4],
+            iced::Size::new(4, 4),
+            1.0,
+        );
+        app.control_screenshot(path.to_string_lossy().into_owned(), Some(screenshot));
+        let done = app
+            .control_request(json!({"op":"operation","request_id":"cap-frame"}))
+            .0;
+        assert_eq!(done["status"], "completed", "{done}");
+        assert_eq!(done["result"]["waited_for_frame"], true, "{done}");
+        assert_eq!(done["result"]["width"], 4, "{done}");
+        assert!(path.exists(), "capture should be written");
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn control_stepwise_drawing_undo_and_properties() {
         let mut app = OpenCADStudio::new_for_test();
@@ -1608,6 +1921,40 @@ mod tests {
         request(&mut app, json!({"op":"undo"}));
         assert_eq!(app.automation_op(r#"{"op":"entities"}"#)["total"], 0);
     }
+    #[test]
+    fn selection_changes_are_published_to_the_event_stream() {
+        let mut app = OpenCADStudio::new_for_test();
+        request(&mut app, json!({"op":"new"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}));
+        let handle = request(&mut app, json!({"op":"query","type":"Line"}))["entities"][0]["handle"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let before = app.control_state()["selection_revision"].as_u64().unwrap();
+        let selected = app.automation_op(&format!(
+            r#"{{"op":"select","handles":["{handle}"]}}"#
+        ));
+        assert_eq!(selected["ok"], true, "{selected}");
+        let state = app.control_state();
+        assert_eq!(
+            state["selection_revision"].as_u64().unwrap(),
+            before + 1,
+            "selection revision should increment once: {state}"
+        );
+        assert!(
+            state["selection"].as_array().unwrap().contains(&json!(handle)),
+            "{state}"
+        );
+        let events = app.control_request(json!({"op":"events"})).0;
+        let last = events["events"].as_array().unwrap().last().unwrap();
+        assert_eq!(last["kind"], "selection", "{events}");
+        assert_eq!(last["document_id"], state["document_id"], "{events}");
+        assert!(
+            last["selection"].as_array().unwrap().contains(&json!(handle)),
+            "{events}"
+        );
+    }
+
     #[test]
     fn command_discovery_explains_batch_and_interactive_use() {
         let mut app = OpenCADStudio::new_for_test();
@@ -1779,6 +2126,70 @@ mod tests {
         stale["request_id"] = json!("stale");
         assert_eq!(app.control_request(stale).0["code"], "stale_state");
     }
+    #[test]
+    fn external_change_modal_actions_are_automatable() {
+        let mut app = OpenCADStudio::new_for_test();
+        let names = crate::app::automation_action_names();
+        for name in [
+            "external_change_reload",
+            "external_change_overwrite",
+            "external_change_save_as",
+            "external_change_cancel",
+        ] {
+            assert!(names.contains(&name), "{name} should be listed");
+        }
+        // No conflict pending: the action is a harmless no-op, not an error.
+        let reply = request(
+            &mut app,
+            json!({
+                "op":"action",
+                "request_id":"external-action-noop",
+                "name":"external_change_reload"
+            }),
+        );
+        assert_eq!(reply["status"], "completed", "{reply}");
+    }
+
+    #[test]
+    fn pending_request_id_reuse_rejects_changed_payload() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.main_window = Some(iced::window::Id::unique());
+        assert_eq!(request(&mut app, json!({"op":"new"}))["status"], "completed");
+
+        let pending = request(
+            &mut app,
+            json!({
+                "op":"user_select",
+                "request_id":"pending-reuse",
+                "prompt":"pick the first object"
+            }),
+        );
+        assert_eq!(pending["status"], "running", "{pending}");
+
+        let changed = request(
+            &mut app,
+            json!({
+                "op":"user_select",
+                "request_id":"pending-reuse",
+                "prompt":"pick a different object"
+            }),
+        );
+        assert_eq!(changed["code"], "request_id_reused", "{changed}");
+        assert!(
+            changed["error"]
+                .as_str()
+                .unwrap()
+                .contains("pending-reuse"),
+            "{changed}"
+        );
+
+        let cancelled = request(
+            &mut app,
+            json!({"op":"cancel","request_id":"cancel-pending-reuse"}),
+        );
+        assert_eq!(cancelled["status"], "cancelled", "{cancelled}");
+    }
+
     #[test]
     fn control_errors_and_missing_entities_do_not_report_success() {
         let mut app = OpenCADStudio::new_for_test();

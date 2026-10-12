@@ -676,11 +676,22 @@ pub(crate) fn plan(method: &str, rest: &[&str], request: &HttpRequest) -> Plan {
             fields: body,
             created: 201,
         },
-        ("DELETE", ["blocks", name]) => Plan::Mutate {
-            op: "block_delete".into(),
-            fields: json!({"name": name}),
-            created: 200,
-        },
+        ("DELETE", ["blocks", name]) => {
+            // `?force=true` mirrors the control op: it erases the referencing
+            // inserts instead of refusing a referenced definition.
+            let mut fields = json!({"name": name});
+            if request
+                .param("force")
+                .is_some_and(|value| value == "true" || value == "1")
+            {
+                fields["force"] = json!(true);
+            }
+            Plan::Mutate {
+                op: "block_delete".into(),
+                fields,
+                created: 200,
+            }
+        }
         ("POST", ["file-identity"]) => Plan::Mutate {
             op: "file_identity".into(),
             fields: body,
@@ -1440,13 +1451,21 @@ mod tests {
             &mut counter,
         );
         assert_eq!(status, 201, "{body}");
+        // A definition the insert still points at is refused without force.
         let (status, body) = route(
             &mut app,
             &request("DELETE", "/api/v1/blocks/MARK", ""),
             &mut document_id,
             &mut counter,
         );
+        assert_eq!(status, 400, "{body}");
+        assert_eq!(body["code"], "block_referenced", "{body}");
+        // `?force=true` erases the referencing insert in the same step.
+        let mut forced = request("DELETE", "/api/v1/blocks/MARK", "");
+        forced.query = vec![("force".into(), "true".into())];
+        let (status, body) = route(&mut app, &forced, &mut document_id, &mut counter);
         assert_eq!(status, 200, "{body}");
+        assert_eq!(body["result"]["references"], 1, "{body}");
         assert!(body["result"]["erased"].as_u64().unwrap() >= 1);
         let (status, body) = route(
             &mut app,

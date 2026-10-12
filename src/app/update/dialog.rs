@@ -13,6 +13,7 @@ use crate::scene::pick::grip::{find_hit_grip, find_hit_grip_paper, find_hit_grip
 use crate::scene::{
     self, hover_id, CubeRegion, Scene, VIEWCUBE_DRAW_PX, VIEWCUBE_PAD, VIEWCUBE_PX,
 };
+use crate::ui::window::block_palette::BlockPaletteMsg;
 use crate::ui::PropertiesPanel;
 use codec::types::Color as AcadColor;
 use codec::{EntityType as AcadEntityType, Handle};
@@ -21,6 +22,15 @@ use iced::{mouse, Point, Task};
 
 impl OpenCADStudio {
     pub(in crate::app) fn open_save_dialog_window(&mut self, tab_idx: usize) -> Task<Message> {
+        // Every entry here is Save-As semantics (the SAVEAS command, the
+        // recovery save-as, the native failure redirects): the user is
+        // choosing a destination, so on the web the FS Access picker must
+        // open even when the tab already holds a handle (plain Save sets
+        // the flag back in save_with_default_format).
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.save_plain_reuse_fs_handle = false;
+        }
         // Default the format dropdown to the loaded file's own format — its
         // DWG-vs-DXF kind (from the extension) and its version (from the parsed
         // document) — so Save-As round-trips the format instead of silently
@@ -188,9 +198,33 @@ impl OpenCADStudio {
                 let Some(idx) = self.tabs.iter().position(|t| t.id == tab_id) else {
                     return Task::batch([close_win, self.continue_tab_close_queue()]);
                 };
+                // …and, on the web, its retained in-place save handle — the
+                // same hook on_tab_close runs: the user declined the save,
+                // so the picked file must never receive a later write, and
+                // the next tab to reuse this id must start with a fresh
+                // pick instead of silently writing over the discarded
+                // drawing's file.
+                #[cfg(target_arch = "wasm32")]
+                crate::io::fs_access::drop_handle(tab_id);
                 // Discarded — drop this tab's autosave recovery copy.
                 #[cfg(not(target_arch = "wasm32"))]
                 let _ = std::fs::remove_file(self.autosave_target(idx));
+                // Web counterpart: the OPFS snapshot must go too, or the
+                // drawing the user just declined to save is offered back at
+                // the next boot. A snapshot round still writing this tab's key
+                // would resurrect it after the remove, so defer to the round's
+                // end (the same guard the save flow uses).
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let key = Self::web_autosave_key(&self.tabs[idx]);
+                    if self.web_autosave_in_flight {
+                        self.web_autosave_clear_after.push(key);
+                    } else {
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let _ = crate::io::web_autosave::remove(&key).await;
+                        });
+                    }
+                }
                 if self.tabs.len() == 1 {
                     self.tab_counter += 1;
                     self.tabs[0] = crate::app::document::DocumentTab::new_drawing(self.tab_counter);
@@ -208,6 +242,10 @@ impl OpenCADStudio {
                 // last selection. #21.
                 self.sync_ribbon_layers();
                 self.sync_ribbon_from_selection();
+                // The tab list just shrank: refresh the remembered
+                // session list (web session memory).
+                #[cfg(target_arch = "wasm32")]
+                self.persist_web_session();
                 return Task::batch([close_win, self.continue_tab_close_queue()]);
             }
             Some(crate::app::PendingClose::Quit) => {
@@ -289,6 +327,21 @@ impl OpenCADStudio {
 
         #[cfg(target_arch = "wasm32")]
         {
+            // Same guard the native half runs against active_save_jobs
+            // above: while a web save is between capture and completion,
+            // refuse a second one (the window is seconds — refuse, don't
+            // queue) instead of letting two serializer rounds race for the
+            // same tab's bookkeeping.
+            if let Some(busy_tab) = crate::io::fs_access::web_save_in_flight() {
+                if self.tabs.iter().any(|tab| tab.id == busy_tab) {
+                    self.command_line
+                        .push_info(crate::t!("Save already running for this drawing.").as_ref());
+                    return Task::none();
+                }
+                // Stale marker (its tab closed before settling): clear it
+                // rather than block this save forever.
+                crate::io::fs_access::end_web_save(busy_tab);
+            }
             match self.pending_close.take() {
                 Some(crate::app::PendingClose::Tab(tab_id)) => {
                     let Some(idx) = self.tabs.iter().position(|t| t.id == tab_id) else {
@@ -379,7 +432,7 @@ impl OpenCADStudio {
         self.import_document_block(doc, stem, false)
     }
 
-    fn import_document_block(
+    pub(super) fn import_document_block(
         &mut self,
         doc: codec::CadDocument,
         stem: String,
@@ -540,195 +593,6 @@ impl OpenCADStudio {
         self.tabs[i].scene.populate_meshes_from_document();
         self.tabs[i].dirty = true;
         Ok(name)
-    }
-
-    /// Dock chrome interaction (grab / pin / resize / hover / move) applied to
-    /// whichever panel the message names.
-    pub(super) fn on_dock(&mut self, m: crate::ui::dock::DockMsg) -> iced::Task<Message> {
-        use crate::app::config::DockSide;
-        use crate::ui::dock::{DockMsg, PanelId};
-        match m {
-            DockMsg::DockGrab(id) => {
-                self.dock_dragging = Some(id);
-                self.dock_resizing = None;
-                self.dock_drag_last = None;
-                self.dock_drag_target = self.dock.location(id);
-                self.dock_expanded = Some(id);
-                iced::Task::none()
-            }
-            DockMsg::ResizeGrab(id) => {
-                self.dock_resizing = Some(id);
-                self.dock_dragging = None;
-                self.dock_drag_last = None;
-                self.dock_drag_target = None;
-                self.dock_expanded = Some(id);
-                iced::Task::none()
-            }
-            DockMsg::WidthReset(id) => {
-                self.dock.reset_width(id);
-                self.save_config();
-                iced::Task::none()
-            }
-            DockMsg::AutoCollapseToggle(id) => {
-                let on = !self.dock.auto_collapse(id);
-                self.dock.set_auto_collapse(id, on);
-                self.dock_expanded = if on { None } else { Some(id) };
-                self.save_config();
-                iced::Task::none()
-            }
-            DockMsg::Close(id) => {
-                match id {
-                    PanelId::BlockPalette => {
-                        self.show_block_palette = false;
-                        self.block_palette.placing = None;
-                    }
-                    PanelId::ExternalReferences => {
-                        self.show_external_references = false;
-                    }
-                    PanelId::Browser => {
-                        self.show_browser = false;
-                    }
-                    PanelId::NodeGraph => {
-                        self.show_node_graph = false;
-                    }
-                    PanelId::PointCloudManager => {
-                        self.pc_manager.show = false;
-                    }
-                    PanelId::Count => {
-                        self.count_palette.show = false;
-                        self.ribbon.set_count_palette(false);
-                    }
-                    PanelId::SheetSetManager => {
-                        self.sheet_set.show = false;
-                        self.ribbon.set_sheet_set(false);
-                    }
-                    PanelId::Properties => {
-                        self.show_properties = false;
-                        self.ribbon.set_properties(false);
-                    }
-                }
-                if self.dock_expanded == Some(id) {
-                    self.dock_expanded = None;
-                }
-                if self.dock_dragging == Some(id) {
-                    self.dock_dragging = None;
-                }
-                if self.dock_resizing == Some(id) {
-                    self.dock_resizing = None;
-                }
-                iced::Task::none()
-            }
-            DockMsg::Hover(id) => {
-                // Ignored while dragging/resizing: the pointer is over the
-                // drag preview, not a rail, so a hover must not collapse the
-                // panel being dragged or repoint the resize target.
-                if self.dock_dragging.is_none() && self.dock_resizing.is_none() {
-                    self.dock_expanded = Some(id);
-                }
-                iced::Task::none()
-            }
-            DockMsg::HoverExit => {
-                if self.dock_dragging.is_none() && self.dock_resizing.is_none() {
-                    if let Some(id) = self.dock_expanded {
-                        if self.dock.auto_collapse(id) {
-                            self.dock_expanded = None;
-                        }
-                    }
-                }
-                iced::Task::none()
-            }
-            DockMsg::DragMove(point) => {
-                // NOTE: xref column drags intentionally do NOT ride this
-                // path: its points live in workspace space while the header
-                // tracker reports header-local points, and mixing the two
-                // produced a one-time jump plus a stuck drag. Column moves
-                // arrive via Message::XrefColMove only.
-                if self.dock_dragging.is_some() {
-                    let avail = self.tabs[self.active_tab]
-                        .scene
-                        .selection
-                        .borrow()
-                        .view
-                        .vp_size
-                        .1;
-                    let side = if point.x < self.win_size.0 * 0.5 {
-                        DockSide::Left
-                    } else {
-                        DockSide::Right
-                    };
-                    let index = crate::ui::dock::drop_index(
-                        point.y,
-                        std::cmp::max(self.dock_visible_len(side), 1),
-                        avail,
-                    );
-                    self.dock_drag_target = Some((side, index));
-                } else if let Some(id) = self.dock_resizing {
-                    if let Some(last) = self.dock_drag_last {
-                        let dx = point.x - last.x;
-                        let delta = match self.dock.location(id) {
-                            Some((DockSide::Left, _)) => dx,
-                            _ => -dx,
-                        };
-                        let cur = self.dock.settings(id).width + delta;
-                        self.dock.set_width(id, cur);
-                    }
-                }
-                if self.dock_dragging.is_some() || self.dock_resizing.is_some() {
-                    self.dock_drag_last = Some(point);
-                }
-                iced::Task::none()
-            }
-            DockMsg::DragRelease => {
-                if let Some(id) = self.dock_dragging {
-                    if let Some((side, index)) = self.dock_drag_target {
-                        if self.dock.dock(id, side, index) {
-                            self.save_config();
-                        }
-                    }
-                }
-                self.dock_dragging = None;
-                self.dock_resizing = None;
-                self.dock_drag_last = None;
-                self.dock_drag_target = None;
-                self.xref_col_drag = None;
-                self.xref_col_last = None;
-                self.xref_split_drag = false;
-                iced::Task::none()
-            }
-        }
-    }
-
-    /// Whether `id` is currently rendered (not closed, not on the start screen /
-    /// clean-screen viewport). Mirrors the visibility filter the edge column
-    /// renderer applies before building each side's stack.
-    pub(crate) fn dock_panel_visible(&self, id: crate::ui::dock::PanelId) -> bool {
-        use crate::ui::dock::PanelId;
-        if self.tabs[self.active_tab].is_start || self.clean_screen {
-            return false;
-        }
-        match id {
-            PanelId::Properties => self.show_properties,
-            PanelId::BlockPalette => self.show_block_palette,
-            PanelId::ExternalReferences => self.show_external_references,
-            PanelId::Browser => self.show_browser,
-            PanelId::NodeGraph => self.show_node_graph,
-            PanelId::PointCloudManager => self.pc_manager.show,
-            PanelId::Count => self.count_palette.show,
-            PanelId::SheetSetManager => self.sheet_set.show,
-        }
-    }
-
-    /// Number of panels currently rendered on `side`. Closed panels keep their
-    /// stack slot but take no vertical space, so drag preview geometry must
-    /// size slots against only the panels that are actually visible.
-    pub(crate) fn dock_visible_len(&self, side: crate::app::config::DockSide) -> usize {
-        let ids: &[crate::ui::dock::PanelId] = match side {
-            crate::app::config::DockSide::Left => &self.dock.left,
-            crate::app::config::DockSide::Right => &self.dock.right,
-        };
-        ids.iter()
-            .filter(|id| self.dock_panel_visible(**id))
-            .count()
     }
 
     /// Rebuild the Reference Manager's entry list from the active drawing.
@@ -1603,134 +1467,6 @@ mod tests {
             app.block_palette.blocks.iter().any(|b| b.name == "Second"),
             "Second must appear without reopening the panel"
         );
-    }
-
-    #[test]
-    fn blockpalette_pin_toggles_autocollapse_and_close_hides() {
-        let mut app = fresh();
-        app.show_block_palette = true;
-        let id = crate::ui::dock::PanelId::BlockPalette;
-        let _ = app.on_dock(crate::ui::dock::DockMsg::AutoCollapseToggle(id));
-        assert!(app.dock.auto_collapse(id), "pin enables auto-collapse");
-        let _ = app.on_dock(crate::ui::dock::DockMsg::AutoCollapseToggle(id));
-        assert!(
-            !app.dock.auto_collapse(id),
-            "second pin disables auto-collapse"
-        );
-        let _ = app.on_dock(crate::ui::dock::DockMsg::Close(id));
-        assert!(!app.show_block_palette, "close dismisses the sidebar");
-    }
-
-    #[test]
-    fn blockpalette_dock_moves_to_other_side_and_persists() {
-        let mut app = fresh();
-        // Tests load the user's persisted config; reset the dock to a known
-        // state so this stays hermetic.
-        app.dock = Default::default();
-        let id = crate::ui::dock::PanelId::BlockPalette;
-        assert_eq!(
-            app.dock.location(id),
-            Some((crate::app::config::DockSide::Right, 0))
-        );
-        let _ = app.on_dock(crate::ui::dock::DockMsg::DockGrab(id));
-        app.win_size = (1600.0, 900.0).into();
-        let _ = app.on_dock(crate::ui::dock::DockMsg::DragMove(iced::Point::new(
-            100.0, 100.0,
-        )));
-        assert_eq!(
-            app.dock_drag_target,
-            Some((crate::app::config::DockSide::Left, 0))
-        );
-        let _ = app.on_dock(crate::ui::dock::DockMsg::DragRelease);
-        assert_eq!(
-            app.dock.location(id),
-            Some((crate::app::config::DockSide::Left, 0))
-        );
-    }
-
-    #[test]
-    fn dock_visible_len_counts_only_rendered_panels() {
-        let mut app = fresh();
-        app.dock = Default::default();
-        app.dock.left = vec![
-            crate::ui::dock::PanelId::BlockPalette,
-            crate::ui::dock::PanelId::Properties,
-        ];
-        // Left: block palette hidden, properties shown -> 1 visible panel.
-        app.show_block_palette = false;
-        app.show_properties = true;
-        assert_eq!(app.dock_visible_len(crate::app::config::DockSide::Left), 1);
-        // Reveal the block palette -> both count.
-        app.show_block_palette = true;
-        assert_eq!(app.dock_visible_len(crate::app::config::DockSide::Left), 2);
-        // A hidden (closed) panel counts for nothing even when stacked.
-        app.show_block_palette = false;
-        assert_eq!(app.dock_visible_len(crate::app::config::DockSide::Left), 1);
-    }
-
-    #[test]
-    fn dock_drag_target_ignores_hidden_panels_on_the_side() {
-        // Reproduce the persisted layout that exposed a half-height ghost: two
-        // panels live in the left stack but the block palette is hidden
-        // (show_block_palette=false), so only Properties renders. Drag geometry
-        // must count only panels that are actually visible.
-        let mut app = fresh();
-        app.dock = Default::default();
-        app.dock.left = vec![
-            crate::ui::dock::PanelId::BlockPalette,
-            crate::ui::dock::PanelId::Properties,
-        ];
-        app.show_block_palette = false;
-        app.show_properties = true;
-        let i = app.active_tab;
-        app.tabs[i].scene.selection.borrow_mut().view.vp_size = (1600.0, 900.0);
-        app.win_size = (1600.0, 900.0).into();
-        let id = crate::ui::dock::PanelId::Properties;
-        let _ = app.on_dock(crate::ui::dock::DockMsg::DockGrab(id));
-        // Pointer near the bottom of the left edge: one visible panel means a
-        // single slot, so every y maps to index 0 (no top/bottom split).
-        let _ = app.on_dock(crate::ui::dock::DockMsg::DragMove(iced::Point::new(
-            100.0, 850.0,
-        )));
-        assert_eq!(
-            app.dock_drag_target,
-            Some((crate::app::config::DockSide::Left, 0))
-        );
-    }
-
-    #[test]
-    fn dock_drag_target_counts_all_visible_panels() {
-        let mut app = fresh();
-        app.dock = Default::default();
-        app.dock.left = vec![
-            crate::ui::dock::PanelId::BlockPalette,
-            crate::ui::dock::PanelId::Properties,
-        ];
-        // Both panels shown: two real slots on the left edge. A pointer near
-        // the bottom maps to the append slot (index == 2).
-        app.show_block_palette = true;
-        app.show_properties = true;
-        let i = app.active_tab;
-        app.tabs[i].scene.selection.borrow_mut().view.vp_size = (1600.0, 900.0);
-        app.win_size = (1600.0, 900.0).into();
-        let id = crate::ui::dock::PanelId::Properties;
-        let _ = app.on_dock(crate::ui::dock::DockMsg::DockGrab(id));
-        let _ = app.on_dock(crate::ui::dock::DockMsg::DragMove(iced::Point::new(
-            100.0, 850.0,
-        )));
-        assert_eq!(
-            app.dock_drag_target,
-            Some((crate::app::config::DockSide::Left, 2))
-        );
-    }
-
-    #[test]
-    fn blockpalette_width_reset() {
-        let mut app = fresh();
-        let id = crate::ui::dock::PanelId::BlockPalette;
-        app.dock.set_width(id, 500.0);
-        let _ = app.on_dock(crate::ui::dock::DockMsg::WidthReset(id));
-        assert_eq!(app.dock.settings(id).width, 260.0);
     }
 
     #[test]

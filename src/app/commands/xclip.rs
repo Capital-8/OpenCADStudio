@@ -6,13 +6,14 @@ use crate::scene::pick::xclip as clip;
 
 impl OpenCADStudio {
     /// A block reference's extents in WCS: its block's objects through the
-    /// insert transform.
+    /// insert transform — the base-point-aware one, because that is where the
+    /// renderer puts the contents the user drew the boundary around.
     fn insert_extents(&self, i: usize, insert: codec::Handle) -> ([f64; 2], [f64; 2]) {
         let document = &self.tabs[i].scene.document;
         let Some(codec::EntityType::Insert(ins)) = document.get_entity(insert) else {
             return ([0.0; 2], [0.0; 2]);
         };
-        let xform = ins.get_transform();
+        let xform = crate::scene::render_graph::insert_transform(document, ins);
         let (mut lo, mut hi) = ([f64::MAX; 2], [f64::MIN; 2]);
         for e in document.entities_in_block(&ins.block_name) {
             let (a, b) = crate::scene::convert::tess::entity_bounds_in(document, e);
@@ -77,7 +78,14 @@ impl OpenCADStudio {
                     else {
                         continue;
                     };
-                    let outline = clip::clip_outline_world(doc, filter, &ins.get_transform());
+                    // The same base-point-aware transform the spatial filter
+                    // was stored with, so the generated polyline lands on the
+                    // boundary the user drew (the two cancel exactly).
+                    let outline = clip::clip_outline_world(
+                        doc,
+                        filter,
+                        &crate::scene::render_graph::insert_transform(doc, ins),
+                    );
                     let mut pl = codec::entities::LwPolyline::from_points(
                         outline
                             .iter()

@@ -6,6 +6,7 @@
 //   view    — camera, transforms, viewport, render pipeline driver
 //   cache   — block-definition and property caches
 pub mod annotative;
+pub mod block_service;
 pub mod cache;
 pub mod convert;
 pub mod creation_style;
@@ -26,6 +27,8 @@ pub enum BlockScalePolicy {
 
 // Topic submodules split out of this root (each contributes `impl Scene`
 // blocks and/or free functions). Pure text-move from the original mod.rs.
+#[cfg(test)]
+mod block_base_point_tests;
 mod boundary;
 mod camera_ops;
 pub(crate) mod centerline;
@@ -37,6 +40,7 @@ pub use page_setup::{apply_default_page_setup, document_page_setups, rotated_mar
 mod dwg_native_constraints;
 mod entity;
 pub use camera_ops::named_view_center;
+pub(crate) use entity::gradient_tint_color;
 pub use entity::CreateBlockOptions;
 mod group_layer;
 #[cfg(test)]
@@ -3728,6 +3732,11 @@ impl Scene {
                 }
             }
             for change in self.refresh_associative_sweeps(&changes) {
+                if !changes.iter().any(|(handle, _)| *handle == change.0) {
+                    changes.push(change);
+                }
+            }
+            for change in self.refresh_associative_surfaces(&changes) {
                 if !changes.iter().any(|(handle, _)| *handle == change.0) {
                     changes.push(change);
                 }

@@ -8,27 +8,156 @@ use crate::command::EntityTransform;
 
 type Parsed<T> = Result<T, Value>;
 
-/// `[x,y]` or `[x,y,z]` (missing z = 0) from `req[key]`.
-fn point_field(req: &Value, key: &str) -> Parsed<codec::types::Vector3> {
-    let values = req[key]
-        .as_array()
+/// Parse `[x,y]` or `[x,y,z]` without silently turning a malformed
+/// coordinate into zero.
+fn point_value(value: Option<&Value>, label: &str, code: &str) -> Parsed<codec::types::Vector3> {
+    let values = value
+        .and_then(Value::as_array)
         .filter(|v| (2..=3).contains(&v.len()))
-        .ok_or_else(|| failure("invalid_point", format!("{key} must be [x,y] or [x,y,z]")))?;
+        .ok_or_else(|| failure(code, format!("{label} must be [x,y] or [x,y,z]")))?;
     let coord = |i: usize| {
         values[i]
             .as_f64()
             .filter(|v| v.is_finite())
-            .ok_or_else(|| failure("invalid_point", format!("{key} needs finite coordinates")))
+            .ok_or_else(|| failure(code, format!("{label} needs finite coordinates")))
     };
-    Ok(codec::types::Vector3::new(
-        coord(0)?,
-        coord(1)?,
-        values.get(2).and_then(Value::as_f64).unwrap_or(0.0),
-    ))
+    let z = values
+        .get(2)
+        .map(|value| {
+            value
+                .as_f64()
+                .filter(|v| v.is_finite())
+                .ok_or_else(|| failure(code, format!("{label} needs finite coordinates")))
+        })
+        .transpose()?
+        .unwrap_or(0.0);
+    Ok(codec::types::Vector3::new(coord(0)?, coord(1)?, z))
+}
+
+/// `[x,y]` or `[x,y,z]` (missing z = 0) from `req[key]`.
+fn point_field(req: &Value, key: &str) -> Parsed<codec::types::Vector3> {
+    point_value(req.get(key), key, "invalid_point")
+}
+
+fn point_list_field(
+    spec: &Value,
+    key: &str,
+    minimum: usize,
+) -> Parsed<Vec<codec::types::Vector3>> {
+    let points = spec[key]
+        .as_array()
+        .filter(|points| points.len() >= minimum)
+        .ok_or_else(|| {
+            failure(
+                "invalid_spline_points",
+                format!("{key} needs at least {minimum} points"),
+            )
+        })?;
+    points
+        .iter()
+        .enumerate()
+        .map(|(index, point)| {
+            point_value(
+                Some(point),
+                &format!("{key}[{index}]"),
+                "invalid_spline_points",
+            )
+        })
+        .collect()
+}
+
+fn finite_number_list_field(spec: &Value, key: &str) -> Parsed<Vec<f64>> {
+    let values = spec[key]
+        .as_array()
+        .filter(|values| !values.is_empty())
+        .ok_or_else(|| failure("invalid_spline_values", format!("{key} needs a non-empty array")))?;
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            value
+                .as_f64()
+                .filter(|value| value.is_finite())
+                .ok_or_else(|| {
+                    failure(
+                        "invalid_spline_values",
+                        format!("{key}[{index}] must be finite"),
+                    )
+                })
+        })
+        .collect()
 }
 
 fn deg_field(req: &Value, key: &str) -> f64 {
     req[key].as_f64().unwrap_or(0.0).to_radians()
+}
+
+/// Reject fields that the typed builder would otherwise silently ignore.
+fn validate_entity_fields(spec: &Value, kind: &str) -> Parsed<()> {
+    let Some(object) = spec.as_object() else {
+        return Ok(());
+    };
+    for field in object.keys() {
+        let allowed = match kind {
+            "LINE" => matches!(
+                field.as_str(),
+                "type" | "start" | "end" | "thickness" | "layer" | "color"
+            ),
+            "CIRCLE" => matches!(field.as_str(), "type" | "center" | "radius" | "layer" | "color"),
+            "ARC" => matches!(
+                field.as_str(),
+                "type" | "center" | "radius" | "start_angle_deg" | "end_angle_deg" | "layer" | "color"
+            ),
+            "SPLINE" => matches!(
+                field.as_str(),
+                "type" | "degree" | "knots" | "control_points" | "fit_points" | "weights"
+                    | "closed" | "periodic" | "rational" | "planar" | "linear" | "layer" | "color"
+            ),
+            "LWPOLYLINE" | "POLYLINE" => matches!(
+                field.as_str(),
+                "type" | "vertices" | "closed" | "constant_width" | "layer" | "color"
+            ),
+            "POINT" => matches!(field.as_str(), "type" | "location" | "layer" | "color"),
+            "TEXT" => matches!(
+                field.as_str(),
+                "type" | "value" | "position" | "height" | "rotation_deg" | "style" | "layer" | "color"
+            ),
+            "MTEXT" => matches!(
+                field.as_str(),
+                "type" | "value" | "position" | "height" | "width" | "rotation_deg" | "style" | "layer" | "color"
+            ),
+            "INSERT" => matches!(
+                field.as_str(),
+                "type" | "block" | "position" | "scale" | "rotation_deg" | "layer" | "color"
+            ),
+            "SOLID" => matches!(field.as_str(), "type" | "corners" | "layer" | "color"),
+            "HATCH" => matches!(
+                field.as_str(),
+                "type" | "boundary" | "solid" | "pattern" | "pattern_scale" | "pattern_angle_deg" | "layer" | "color"
+            ),
+            _ => true,
+        };
+        if !allowed {
+            return Err(failure(
+                "unknown_entity_field",
+                format!("Unknown field '{field}' for {kind} entity"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Required finite angle in degrees, converted to radians without a default.
+fn finite_angle_field(spec: &Value, key: &str) -> Parsed<f64> {
+    let degrees = spec[key]
+        .as_f64()
+        .filter(|value| value.is_finite())
+        .ok_or_else(|| failure("invalid_angle", format!("arc needs a finite {key}")))?;
+    let radians = degrees.to_radians();
+    radians
+        .is_finite()
+        .then_some(radians)
+        .ok_or_else(|| failure("invalid_angle", format!("arc needs a finite {key}")))
 }
 
 pub(super) fn hex_handles(req: &Value, key: &str) -> Parsed<Vec<codec::Handle>> {
@@ -99,12 +228,28 @@ fn apply_common_properties(spec: &Value, entity: &mut codec::EntityType) -> Pars
     Ok(())
 }
 
+/// An explicit text style must exist in the current document; otherwise a
+/// typo would silently fall back to the default style.
+fn text_style_field(spec: &Value, document: &codec::CadDocument) -> Parsed<Option<String>> {
+    let Some(style) = spec["style"].as_str().filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    if !document.text_styles.contains(style) {
+        return Err(failure(
+            "invalid_text_style",
+            format!("Text style '{style}' does not exist in the document"),
+        ));
+    }
+    Ok(Some(style.to_owned()))
+}
+
 /// One `entities` array entry → a real entity. Geometry validation happens
 /// here so a bad definition aborts the whole batch before anything commits.
-fn build_entity(spec: &Value) -> Parsed<codec::EntityType> {
+fn build_entity(spec: &Value, document: &codec::CadDocument) -> Parsed<codec::EntityType> {
     use codec::entities::*;
     use codec::types::Vector3;
     let kind = spec["type"].as_str().unwrap_or("").to_ascii_uppercase();
+    validate_entity_fields(spec, &kind)?;
     let entity = match kind.as_str() {
         "LINE" => {
             let mut line = Line::from_points(point_field(spec, "start")?, point_field(spec, "end")?);
@@ -125,12 +270,117 @@ fn build_entity(spec: &Value) -> Parsed<codec::EntityType> {
                 .as_f64()
                 .filter(|r| r.is_finite() && *r > 0.0)
                 .ok_or_else(|| failure("invalid_radius", "arc needs a finite radius > 0"))?;
-            EntityType::Arc(Arc::from_center_radius_angles(
+            let arc = Arc::from_center_radius_angles(
                 point_field(spec, "center")?,
                 radius,
-                deg_field(spec, "start_angle_deg"),
-                deg_field(spec, "end_angle_deg"),
-            ))
+                finite_angle_field(spec, "start_angle_deg")?,
+                finite_angle_field(spec, "end_angle_deg")?,
+            );
+            if !arc.sweep_angle().is_finite() || arc.sweep_angle() <= 0.0 {
+                return Err(failure(
+                    "invalid_sweep",
+                    "arc start_angle_deg and end_angle_deg must define a finite non-zero sweep",
+                ));
+            }
+            EntityType::Arc(arc)
+        }
+        "SPLINE" => {
+            let control_points = if spec.get("control_points").is_some() {
+                point_list_field(spec, "control_points", 2)?
+            } else {
+                Vec::new()
+            };
+            let fit_points = if spec.get("fit_points").is_some() {
+                point_list_field(spec, "fit_points", 2)?
+            } else {
+                Vec::new()
+            };
+            if control_points.is_empty() && fit_points.is_empty() {
+                return Err(failure(
+                    "invalid_spline_points",
+                    "spline needs control_points or fit_points (at least 2 points)",
+                ));
+            }
+            let degree = match spec.get("degree") {
+                None | Some(Value::Null) => 3,
+                Some(value) => value
+                    .as_i64()
+                    .filter(|degree| (1..=10).contains(degree))
+                    .ok_or_else(|| {
+                        failure("invalid_spline_values", "degree must be an integer 1..10")
+                    })? as i32,
+            };
+            let count = control_points.len();
+            if count > 0 && count <= degree as usize {
+                return Err(failure(
+                    "invalid_spline_values",
+                    format!("a degree {degree} spline needs more than {degree} control_points"),
+                ));
+            }
+            let mut spline = if control_points.is_empty() {
+                let mut spline = Spline::from_fit_points(fit_points.clone());
+                spline.degree = degree;
+                spline
+            } else {
+                Spline::from_control_points(degree, control_points)
+            };
+            if !fit_points.is_empty() {
+                spline.fit_points = fit_points;
+            }
+            if spec.get("knots").is_some() {
+                if spline.control_points.is_empty() {
+                    return Err(failure(
+                        "invalid_spline_values",
+                        "spline knots require control_points",
+                    ));
+                }
+                let knots = finite_number_list_field(spec, "knots")?;
+                if knots.len() != count + degree as usize + 1
+                    || knots.windows(2).any(|pair| pair[1] < pair[0])
+                {
+                    return Err(failure(
+                        "invalid_spline_values",
+                        format!(
+                            "knots must be {} non-decreasing values (control_points + degree + 1)",
+                            count + degree as usize + 1
+                        ),
+                    ));
+                }
+                spline.knots = knots;
+            }
+            if spec.get("weights").is_some() {
+                if spline.control_points.is_empty() {
+                    return Err(failure(
+                        "invalid_spline_values",
+                        "spline weights require control_points",
+                    ));
+                }
+                let weights = finite_number_list_field(spec, "weights")?;
+                if weights.len() != count || weights.iter().any(|weight| *weight <= 0.0) {
+                    return Err(failure(
+                        "invalid_spline_values",
+                        format!("weights must be {count} positive values, one per control point"),
+                    ));
+                }
+                spline.weights = weights;
+                spline.flags.rational = true;
+            }
+            if let Some(value) = spec["closed"].as_bool() {
+                spline.flags.closed = value;
+            }
+            if let Some(value) = spec["periodic"].as_bool() {
+                spline.flags.periodic = value;
+            }
+            if let Some(value) = spec["rational"].as_bool() {
+                spline.flags.rational = value;
+            }
+            if let Some(value) = spec["planar"].as_bool() {
+                spline.flags.planar = value;
+            }
+            if let Some(value) = spec["linear"].as_bool() {
+                spline.flags.linear = value;
+            }
+            EntityType::Spline(spline)
         }
         "LWPOLYLINE" | "POLYLINE" => {
             let vertices = spec["vertices"]
@@ -164,8 +414,8 @@ fn build_entity(spec: &Value) -> Parsed<codec::EntityType> {
             let mut text = Text::with_value(value, point_field(spec, "position")?)
                 .with_height(spec["height"].as_f64().unwrap_or(2.5).abs().max(1e-6))
                 .with_rotation(deg_field(spec, "rotation_deg"));
-            if let Some(style) = spec["style"].as_str().filter(|s| !s.is_empty()) {
-                text.style = style.to_owned();
+            if let Some(style) = text_style_field(spec, document)? {
+                text.style = style;
             }
             EntityType::Text(text)
         }
@@ -180,6 +430,9 @@ fn build_entity(spec: &Value) -> Parsed<codec::EntityType> {
                 mtext.rectangle_width = width;
             }
             mtext.rotation = deg_field(spec, "rotation_deg");
+            if let Some(style) = text_style_field(spec, document)? {
+                mtext.style = style;
+            }
             EntityType::MText(mtext)
         }
         "INSERT" => {
@@ -209,25 +462,33 @@ fn build_entity(spec: &Value) -> Parsed<codec::EntityType> {
             EntityType::Insert(insert)
         }
         "SOLID" => {
-            let corners = spec["corners"]
+            let raw_corners = spec["corners"]
                 .as_array()
                 .filter(|v| (3..=4).contains(&v.len()))
                 .ok_or_else(|| failure("invalid_corners", "solid needs 3 or 4 corners"))?;
-            let corner = |i: usize| -> Parsed<Vector3> {
-                let raw = &corners[i];
-                let coord = |k: usize| {
-                    raw.get(k)
-                        .and_then(Value::as_f64)
-                        .filter(|v| v.is_finite())
-                        .unwrap_or(0.0)
-                };
-                Ok(Vector3::new(coord(0), coord(1), coord(2)))
+            let corners: Vec<Vector3> = raw_corners
+                .iter()
+                .enumerate()
+                .map(|(index, value)| {
+                    if value.as_array().is_none_or(|values| values.len() != 3) {
+                        return Err(failure(
+                            "invalid_corners",
+                            format!("corners[{index}] must be [x,y,z]"),
+                        ));
+                    }
+                    point_value(
+                        Some(value),
+                        &format!("corners[{index}]"),
+                        "invalid_corners",
+                    )
+                })
+                .collect::<Parsed<_>>()?;
+            let solid = match corners.as_slice() {
+                [first, second, third] => Solid::triangle(*first, *second, *third),
+                [first, second, third, fourth] => Solid::new(*first, *second, *third, *fourth),
+                _ => unreachable!("corner count was validated above"),
             };
-            let fourth = corners
-                .get(3)
-                .map(|_| corner(3))
-                .unwrap_or_else(|| Ok(Vector3::ZERO));
-            EntityType::Solid(Solid::new(corner(0)?, corner(1)?, corner(2)?, fourth?))
+            EntityType::Solid(solid)
         }
         "HATCH" => {
             let boundary = spec["boundary"]
@@ -264,7 +525,7 @@ fn build_entity(spec: &Value) -> Parsed<codec::EntityType> {
             return Err(failure(
                 "unknown_entity_type",
                 format!(
-                    "Unknown entity type '{other}'. Supported: Line, Circle, Arc, LwPolyline, Point, Text, MText, Insert, Solid, Hatch"
+                    "Unknown entity type '{other}'. Supported: Line, Circle, Arc, Spline, LwPolyline, Point, Text, MText, Insert, Solid, Hatch"
                 ),
             ))
         }
@@ -283,7 +544,12 @@ impl OpenCADStudio {
             .as_array()
             .filter(|v| !v.is_empty())
             .ok_or_else(|| failure("entities_required", "Supply entities:[{type:…},…]"))?;
-        let built: Vec<codec::EntityType> = list.iter().map(build_entity).collect::<Parsed<_>>()?;
+        let built: Vec<codec::EntityType> = {
+            let document = &self.tabs[self.active_tab].scene.document;
+            list.iter()
+                .map(|spec| build_entity(spec, document))
+                .collect::<Parsed<_>>()?
+        };
 
         let i = self.active_tab;
         self.push_undo_snapshot(i, "ENTITIESCREATE");
@@ -633,33 +899,37 @@ impl OpenCADStudio {
         Ok(Task::none())
     }
 
-    /// `block_delete` — remove a block definition together with its child
-    /// entities, the Block/BlockEnd markers and every Insert referencing it.
+    /// `block_delete` — remove a block definition. A definition something
+    /// still points at is refused unless the request carries `"force": true`,
+    /// which erases the referencing INSERTs in the same undo step.
     pub(super) fn control_block_delete(&mut self, req: &Value) -> Result<Task<Message>, Value> {
         let name = string(req, "name")?.to_owned();
-        if name.starts_with('*') {
-            return Err(failure(
-                "block_protected",
-                "Layout block records cannot be deleted",
-            ));
-        }
+        let force = req["force"].as_bool().unwrap_or(false);
         let i = self.active_tab;
-        if self.tabs[i]
-            .scene
-            .document
-            .block_records
-            .get(&name)
-            .is_none()
-        {
-            return Err(failure(
-                "block_missing",
-                format!("Block '{name}' does not exist"),
-            ));
-        }
-        self.push_undo_snapshot(i, "BLOCKDELETE");
-        let erased = erase_block_definition(&mut self.tabs[i].scene, &name);
+        let open_edits: Vec<codec::Handle> = self.tabs[i]
+            .block_edits
+            .iter()
+            .map(|session| session.br_handle)
+            .collect();
+        self.push_undo_snapshot(i, format!("Delete block {name}"));
+        let options = crate::scene::block_service::DeleteOptions {
+            force,
+            open_edits: &open_edits,
+        };
+        let outcome =
+            match crate::scene::block_service::delete(&mut self.tabs[i].scene, &name, options) {
+                Ok(outcome) => outcome,
+                Err(error) => {
+                    self.discard_last_undo_entry(i);
+                    return Err(failure(block_error_code(&error), error.to_string()));
+                }
+            };
         self.post_ref_op(i);
-        self.set_control_result(json!({ "block": name, "erased": erased }));
+        self.set_control_result(json!({
+            "block": outcome.name,
+            "erased": outcome.erased,
+            "references": outcome.references.len(),
+        }));
         Ok(Task::none())
     }
 
@@ -720,6 +990,21 @@ pub(crate) fn erase_block_definition(scene: &mut crate::scene::Scene, name: &str
     scene.erase_entities(&victims);
     scene.document.block_records.remove(name);
     victims.len()
+}
+
+/// The automation error code for each [`BlockServiceError`], so a headless
+/// client branches on a stable machine-readable code while the text stays the
+/// one the shared formatter produced.
+fn block_error_code(error: &crate::scene::block_service::BlockServiceError) -> &'static str {
+    use crate::scene::block_service::BlockServiceError as E;
+    match error {
+        E::NotFound(_) => "block_missing",
+        E::InvalidName(_) => "block_invalid_name",
+        E::NameExists(_) => "block_exists",
+        E::Referenced { .. } => "block_referenced",
+        E::InEditSession(_) => "block_in_edit",
+        E::Protected(_) => "block_protected",
+    }
 }
 
 /// `data:[{code,value},…]` → typed XData values; an absent or empty list

@@ -692,6 +692,12 @@ pub fn fallback_glyph(ch: char) -> Option<Arc<Glyph>> {
 pub fn clear_fallback_cache() {
     fallback_cache().lock().unwrap().clear();
     shape_cache().lock().unwrap().clear();
+    // Web only: the per-family outline cache can also hold stale `None`s —
+    // the family only became resolvable when the font joined the sysfont
+    // database (`register_web_font`). On desktop the font set never changes,
+    // so the cache is kept.
+    #[cfg(target_arch = "wasm32")]
+    cache().lock().unwrap().clear();
     #[cfg(target_arch = "wasm32")]
     crate::scene::text::sdf_atlas::reset_font_entries();
 }

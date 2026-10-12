@@ -103,7 +103,7 @@ fn family_from_stored_line(
 
 /// Preserve the selected hue while moving its HSL lightness towards the
 /// persisted one-colour tint/shade target (0 = black, 1 = white).
-fn gradient_tint_color(base: [f32; 4], target: f32) -> [f32; 4] {
+pub(crate) fn gradient_tint_color(base: [f32; 4], target: f32) -> [f32; 4] {
     let max = base[0].max(base[1]).max(base[2]);
     let min = base[0].min(base[1]).min(base[2]);
     let lightness = (max + min) * 0.5;
@@ -947,6 +947,14 @@ impl Scene {
         &mut self,
         options: CreateBlockOptions,
     ) -> Result<Handle, String> {
+        // Base-point contract: the contents are stored *relative to the picked
+        // base* because `world_to_block` already subtracts it, so the
+        // definition's own `Block.base_point` stays ZERO and the picked base
+        // becomes the block origin (inserting at a point puts that point where
+        // the base was). Callers must not also store the picked base in the
+        // definition — that would subtract it twice. Imported definitions,
+        // whose geometry arrives relative to their own base point, keep that
+        // base point and are never rewritten here.
         let name = options.name.trim();
         if name.is_empty() {
             return Err("Block name cannot be empty.".into());
@@ -988,6 +996,11 @@ impl Scene {
             // Update existing Block entity fields
             if let Some(EntityType::Block(b)) = self.document.get_entity_mut(existing_blk_h) {
                 b.description = options.description.clone();
+                // The new contents are baked relative to the picked base (see
+                // the contract above), so the definition's base point has to
+                // go back to ZERO. Leaving an imported definition's non-zero
+                // base point here would subtract the picked base twice.
+                b.base_point = codec::types::Vector3::ZERO;
             }
             if options.annotative {
                 let annotative_vals = vec![codec::xdata::XDataValue::Integer16(1)];
@@ -1394,10 +1407,12 @@ impl Scene {
                     style.0 = crate::scene::view::render::adapt_to_bg(style.0, hatch_bg);
                     m.aci = style.4;
                     m.line_weight_px = style.3;
-                    // A gradient's colour is its first stop (already baked into
-                    // the cached model); only solid / pattern fills take the
-                    // entity's resolved colour.
-                    if !matches!(m.pattern, model::hatch_model::HatchPattern::Gradient { .. }) {
+                    // Gradient RGB comes from its own colour stops, while
+                    // transparency remains an entity property shared by both
+                    // stops. Solid/pattern fills take the complete style.
+                    if matches!(m.pattern, model::hatch_model::HatchPattern::Gradient { .. }) {
+                        m.set_alpha(style.0[3]);
+                    } else {
                         m.color = style.0;
                     }
                     if let EntityType::Hatch(dxf) = e {
@@ -2213,7 +2228,7 @@ impl Scene {
                     .colors
                     .get(i)
                     .and_then(|e| e.color.rgb())
-                    .map(|(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0])
+                    .map(|(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, color[3]])
             };
             gradient_color1 = stop(0);
             let color1 = gradient_color1.unwrap_or(color);
@@ -2451,6 +2466,29 @@ impl Scene {
     pub fn populate_images_from_document(&mut self) {
         self.populate_images_from_document_unbumped();
         self.bump_geometry();
+    }
+
+    /// Web drop flow: `names` are raster files whose bytes were just
+    /// registered (name-keyed). When this drawing references one of them by
+    /// name but carries no model for it — the reference pointed at the
+    /// author's machine and was unresolvable at open time — rebuild the image
+    /// models so the entity finally renders. Returns whether a rebuild ran.
+    pub fn resolve_registered_image_names(&mut self, names: &[String]) -> bool {
+        let matches_name = |img: &codec::entities::RasterImage| {
+            names
+                .iter()
+                .any(|name| crate::scene::model::image_model::same_file_name(&img.file_path, name))
+        };
+        let unresolved = self.document.entities().any(|entity| match entity {
+            EntityType::RasterImage(img) => {
+                matches_name(img) && !self.images.contains_key(&img.common.handle)
+            }
+            _ => false,
+        });
+        if unresolved {
+            self.populate_images_from_document();
+        }
+        unresolved
     }
 
     fn populate_images_from_document_unbumped(&mut self) {
@@ -3040,6 +3078,8 @@ impl Scene {
     /// standard linetypes and a compatible page setup on every paper layout.
     pub fn populate_new_drawing_defaults(&mut self) {
         crate::io::linetypes::populate_document(&mut self.document);
+        // The visual styles of the reference's new drawing.
+        crate::io::visual_styles::populate_document(&mut self.document);
         // A new drawing is metric, as the reference's new drawing: metre
         // insertion units, metric measurement, and the ISO-25 dimension style
         // current. Standard stays available for imperial work.

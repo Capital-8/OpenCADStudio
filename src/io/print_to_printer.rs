@@ -1,11 +1,16 @@
 // print_to_printer — send the current layout to the system printer.
 //
-// Strategy:
+// Desktop strategy:
 //   1. Render the drawing to a temporary PDF (reusing the PDF export pipeline).
 //   2. Send that PDF to the system printer with `lp` (Linux/macOS) or
 //      `ShellExecute PRINT` (Windows).
 //
 // The function is async so the UI remains responsive while the job is queued.
+//
+// The web build has no system printers: `preview_page_pdf` /
+// `preview_pages_pdf` render the same PDF bytes, rasterise them, and show
+// the pages in an in-page overlay — the plot preview stays on screen
+// rather than handing a file to an external viewer.
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::io::pdf_export;
@@ -1212,6 +1217,71 @@ fn shell_print_to(path: &std::path::Path, printer: &str, copies: u32) -> Result<
             return Err(format!("Windows print dispatch failed (code {code})"));
         }
     }
+    Ok(())
+}
+
+/// Render a page and show it the way each platform previews: the OS PDF
+/// viewer on desktop, an in-page rasterised overlay on the web. `stem` names
+/// the web download (`{stem}_preview.pdf`); the desktop temp file is unchanged.
+pub fn preview_page_pdf(
+    stem: &str,
+    page: &crate::io::pdf_export::PdfPageInput,
+) -> Result<(), String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = stem;
+        let tmp = temp_pdf_path("preview");
+        crate::io::pdf_export::export_pdf(page, &tmp)?;
+        open_in_viewer(&tmp)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let bytes = crate::io::pdf_export::render_pdf_bytes(std::slice::from_ref(page), None)?;
+        web_preview_overlay(stem, &bytes)
+    }
+}
+
+/// Web-only multi-page variant used by print-all: render every layout into
+/// one PDF and preview the first pages in the overlay.
+#[cfg(target_arch = "wasm32")]
+pub fn preview_pages_pdf(
+    stem: &str,
+    pages: &[crate::io::pdf_export::PdfPageInput],
+) -> Result<(), String> {
+    let bytes = crate::io::pdf_export::render_pdf_bytes(pages, None)?;
+    web_preview_overlay(stem, &bytes)
+}
+
+/// Web preview: rasterise the plotted PDF (the same hayro pipeline that draws
+/// PDF underlays) and show the pages in an in-page overlay. The browser gets
+/// plain PNGs, so neither popup permission nor a PDF viewer plugin is needed.
+/// Rasterisation is bounded by a total pixel budget so large sheets lower the
+/// preview DPI instead of the tab's memory ceiling.
+#[cfg(target_arch = "wasm32")]
+fn web_preview_overlay(stem: &str, bytes: &[u8]) -> Result<(), String> {
+    use crate::scene::model::pdf_raster;
+    const PREVIEW_DPI: f32 = 150.0;
+    const MAX_PREVIEW_PAGES: usize = 12;
+    let (pages, total_pages) = pdf_raster::rasterize_preview_pages(
+        std::sync::Arc::new(bytes.to_vec()),
+        PREVIEW_DPI,
+        MAX_PREVIEW_PAGES,
+    );
+    let mut pngs = Vec::with_capacity(pages.len());
+    for page in &pages {
+        let encoded =
+            image::RgbaImage::from_raw(page.width, page.height, page.pixels.as_ref().clone())
+                .and_then(|img| {
+                    let mut out = Vec::new();
+                    img.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+                        .ok()?;
+                    Some(out)
+                });
+        if let Some(png) = encoded {
+            pngs.push(png);
+        }
+    }
+    crate::sys::show_pdf_preview(&format!("{stem}_preview.pdf"), bytes, &pngs, total_pages);
     Ok(())
 }
 

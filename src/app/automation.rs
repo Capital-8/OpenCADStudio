@@ -284,6 +284,27 @@ pub(crate) fn entity_json(e: &codec::EntityType, detail: &str) -> Value {
             map.insert("start_angle".into(), json!(a.start_angle));
             map.insert("end_angle".into(), json!(a.end_angle));
         }
+        E::Spline(spline) => {
+            map.insert("degree".into(), json!(spline.degree));
+            map.insert("knots".into(), json!(spline.knots));
+            map.insert(
+                "control_points".into(),
+                json!(spline
+                    .control_points
+                    .iter()
+                    .map(|point| v3(*point))
+                    .collect::<Vec<_>>()),
+            );
+            map.insert(
+                "fit_points".into(),
+                json!(spline
+                    .fit_points
+                    .iter()
+                    .map(|point| v3(*point))
+                    .collect::<Vec<_>>()),
+            );
+            map.insert("weights".into(), json!(spline.weights));
+        }
         E::Point(p) => {
             map.insert("location".into(), v3(p.location));
         }
@@ -452,11 +473,34 @@ pub(super) fn requested_save_target(
     Ok((version, is_dxf))
 }
 
+fn is_generated_dimension_block_name(name: &str) -> bool {
+    let Some(suffix) = name
+        .strip_prefix("*D")
+        .or_else(|| name.strip_prefix("*d"))
+    else {
+        return false;
+    };
+    !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+/// Save-time baking materializes a Dimension's graphics in an anonymous
+/// `*D<n>` block. Those members are derived display geometry, not additional
+/// logical drawing entities; named block members remain part of the manifest.
+fn is_dimension_display_entity(document: &codec::CadDocument, entity: &codec::EntityType) -> bool {
+    let owner = entity.common().owner_handle;
+    document.block_records.iter().any(|block| {
+        block.handle == owner && is_generated_dimension_block_name(&block.name)
+    })
+}
+
 fn document_manifest(document: &codec::CadDocument) -> Value {
     let mut by_type: BTreeMap<String, u64> = BTreeMap::new();
     let mut by_layer: BTreeMap<String, u64> = BTreeMap::new();
     let mut total = 0u64;
     for entity in document.entities() {
+        if is_dimension_display_entity(document, entity) {
+            continue;
+        }
         *by_type
             .entry(crate::entities::names::ui_name(entity).to_string())
             .or_default() += 1;
@@ -1547,6 +1591,16 @@ impl OpenCADStudio {
                 "ok":false,"status":"failed","code":"save_failed","error":error,
             })
         })?;
+        // The bytes are now ours even if a later hash/audit/reopen check fails.
+        // Refresh the guard immediately so a diagnostic failure cannot make the
+        // next ordinary save look like an external edit of the same path.
+        if self.tabs[i]
+            .current_path
+            .as_deref()
+            .is_some_and(|current| super::update::native_paths_match(current, &path))
+        {
+            self.refresh_native_edit_guard_after_save(i, &path, false, None);
+        }
         let sha256 = sha256_file(&path).map_err(|error| {
             json!({
                 "ok":false,"status":"failed","code":"hash_failed","error":error,
@@ -1720,6 +1774,134 @@ mod tests {
         assert_eq!(result["manifest"]["total"], 1, "{result}");
         assert_eq!(result["sha256"].as_str().map(str::len), Some(64));
         assert!(path.is_file());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn manifest_ignores_dimension_display_members_but_keeps_named_block_members() {
+        use codec::entities::{Dimension, DimensionLinear, Line};
+        use codec::tables::BlockRecord;
+        use codec::types::Vector3;
+        use codec::{CadDocument, EntityType};
+
+        let mut document = CadDocument::new();
+        let mut detail = BlockRecord::new("DETAIL");
+        detail.handle = document.allocate_handle();
+        let detail_handle = detail.handle;
+        document.block_records.add(detail).unwrap();
+        let mut detail_line = Line::from_points(
+            Vector3::new(20.0, 0.0, 0.0),
+            Vector3::new(30.0, 0.0, 0.0),
+        );
+        detail_line.common.owner_handle = detail_handle;
+        document.add_entity(EntityType::Line(detail_line)).unwrap();
+
+        let mut dimension = DimensionLinear::new(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(10.0, 0.0, 0.0),
+        );
+        dimension.definition_point = Vector3::new(0.0, 5.0, 0.0);
+        dimension.base.text_middle_point = Vector3::new(5.0, 5.0, 0.0);
+        document
+            .add_entity(EntityType::Dimension(Dimension::Linear(dimension)))
+            .unwrap();
+        crate::modules::draw::modify::explode::bake_dimension_blocks(&mut document);
+
+        let manifest = super::document_manifest(&document);
+        assert_eq!(manifest["total"], 2, "{manifest}");
+        assert_eq!(manifest["by_type"]["Dimension"], 1, "{manifest}");
+        assert_eq!(manifest["by_type"]["Line"], 1, "{manifest}");
+    }
+
+    #[test]
+    fn save_verified_dimension_round_trip_ignores_generated_display_block() {
+        use codec::entities::{Dimension, DimensionLinear, EntityType};
+        use codec::types::Vector3;
+
+        let mut app = super::OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let mut dimension = DimensionLinear::new(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(10.0, 0.0, 0.0),
+        );
+        dimension.definition_point = Vector3::new(0.0, 5.0, 0.0);
+        dimension.base.text_middle_point = Vector3::new(5.0, 5.0, 0.0);
+        app.tabs[app.active_tab]
+            .scene
+            .add_entity(EntityType::Dimension(Dimension::Linear(dimension)));
+        let path = std::env::temp_dir().join(format!(
+            "ocs_verified_dimension_{}_{}.dwg",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        let _ = std::fs::remove_file(&path);
+        let result = app
+            .save_verified_request(&serde_json::json!({
+                "path":path,
+                "target_format":"dwg",
+                "target_version":"R14",
+                "overwrite":true,
+            }))
+            .expect("dimension save_verified");
+        assert_eq!(result["verified"], true, "{result}");
+        assert_eq!(result["manifest"]["total"], 1, "{result}");
+        assert_eq!(result["manifest"]["by_type"]["Dimension"], 1, "{result}");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn save_verified_refreshes_current_disk_fingerprint_for_follow_up_save() {
+        use codec::entities::{Dimension, DimensionLinear, EntityType};
+        use codec::types::Vector3;
+
+        let mut app = super::OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let mut dimension = DimensionLinear::new(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(10.0, 0.0, 0.0),
+        );
+        dimension.definition_point = Vector3::new(0.0, 5.0, 0.0);
+        dimension.base.text_middle_point = Vector3::new(5.0, 5.0, 0.0);
+        let i = app.active_tab;
+        app.tabs[i]
+            .scene
+            .add_entity(EntityType::Dimension(Dimension::Linear(dimension)));
+        let path = std::env::temp_dir().join(format!(
+            "ocs_verified_dimension_follow_up_{}_{}.dwg",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        let _ = std::fs::remove_file(&path);
+        let version = app.tabs[i].scene.document.version;
+        app.save_tab_synchronously_protected_as(i, path.clone(), version, true)
+            .expect("initial protected save");
+
+        let result = app
+            .save_verified_request(&serde_json::json!({
+                "path":path,
+                "target_format":"dwg",
+                "target_version":"R14",
+                "overwrite":true,
+            }))
+            .expect("dimension save_verified");
+        assert_eq!(result["verified"], true, "{result}");
+        let captured = crate::io::edit_lock::FileFingerprint::capture(&path).unwrap();
+        assert_eq!(app.tabs[i].disk_fingerprint.as_ref(), Some(&captured));
+
+        let ordinary = app.automation_op(
+            &serde_json::json!({"op":"save", "path":path}).to_string(),
+        );
+        assert_eq!(ordinary["ok"], true, "{ordinary}");
+        assert!(!ordinary["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("changed outside"));
         let _ = std::fs::remove_file(path);
     }
 
@@ -2390,6 +2572,90 @@ mod tests {
         );
         assert_eq!(r["ok"], false);
         assert_eq!(r["code"], "invalid_text");
+    }
+
+    #[test]
+    fn entities_create_rejects_unknown_fields_and_degenerate_arcs() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+
+        let old_field = mutate(
+            &mut app,
+            r#"{"protocol":1,"op":"entities_create","request_id":"d8-old","document_id":{doc},"entities":[{"type":"Arc","center":[0,0],"radius":5,"start_angle":0,"end_angle":90}]}"#,
+        );
+        assert_eq!(old_field["ok"], false, "{old_field}");
+        assert_eq!(old_field["code"], "unknown_entity_field", "{old_field}");
+
+        let missing_angle = mutate(
+            &mut app,
+            r#"{"protocol":1,"op":"entities_create","request_id":"d8-missing","document_id":{doc},"entities":[{"type":"Arc","center":[0,0],"radius":5,"end_angle_deg":90}]}"#,
+        );
+        assert_eq!(missing_angle["code"], "invalid_angle", "{missing_angle}");
+
+        let zero_sweep = mutate(
+            &mut app,
+            r#"{"protocol":1,"op":"entities_create","request_id":"d8-zero","document_id":{doc},"entities":[{"type":"Arc","center":[0,0],"radius":5,"start_angle_deg":45,"end_angle_deg":45}]}"#,
+        );
+        assert_eq!(zero_sweep["code"], "invalid_sweep", "{zero_sweep}");
+
+        let wrapped = mutate(
+            &mut app,
+            r#"{"protocol":1,"op":"entities_create","request_id":"d8-wrap","document_id":{doc},"entities":[{"type":"Arc","center":[0,0],"radius":5,"start_angle_deg":270,"end_angle_deg":90}]}"#,
+        );
+        assert_eq!(wrapped["ok"], true, "{wrapped}");
+    }
+
+    #[test]
+    fn entities_create_validates_solid_corners_and_mtext_styles() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+
+        let malformed = mutate(
+            &mut app,
+            r#"{"protocol":1,"op":"entities_create","request_id":"d8-solid-bad","document_id":{doc},"entities":[{"type":"Solid","corners":[[1,2,3],[11,2,3],[11,12,3],[1,12]]}]}"#,
+        );
+        assert_eq!(malformed["code"], "invalid_corners", "{malformed}");
+
+        let triangle = mutate(
+            &mut app,
+            r#"{"protocol":1,"op":"entities_create","request_id":"d8-solid-good","document_id":{doc},"entities":[{"type":"Solid","corners":[[1,2,3],[11,2,3],[11,12,3]]}]}"#,
+        );
+        assert_eq!(triangle["ok"], true, "{triangle}");
+        let solid = app.tabs[app.active_tab]
+            .scene
+            .document
+            .entities()
+            .find_map(|entity| match entity {
+                codec::EntityType::Solid(solid) => Some(solid),
+                _ => None,
+            })
+            .expect("triangle solid");
+        assert!(solid.is_triangle());
+        assert_eq!(solid.third_corner, solid.fourth_corner);
+        assert_eq!(solid.fourth_corner.z, 3.0);
+
+        let bad_style = mutate(
+            &mut app,
+            r#"{"protocol":1,"op":"entities_create","request_id":"d8-style-bad","document_id":{doc},"entities":[{"type":"MText","value":"x","position":[0,0],"style":"NO_SUCH_STYLE"}]}"#,
+        );
+        assert_eq!(bad_style["code"], "invalid_text_style", "{bad_style}");
+    }
+
+    #[test]
+    fn entities_create_mtext_accepts_existing_style() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        {
+            let doc = &mut app.tabs[app.active_tab].scene.document;
+            let mut style = codec::tables::TextStyle::new("OCSM_GB");
+            style.handle = doc.allocate_handle();
+            doc.text_styles.add(style).unwrap();
+        }
+        let created = mutate(
+            &mut app,
+            r#"{"protocol":1,"op":"entities_create","request_id":"d8-style-ok","document_id":{doc},"entities":[{"type":"MText","value":"x","position":[0,0],"style":"OCSM_GB"}]}"#,
+        );
+        assert_eq!(created["ok"], true, "{created}");
     }
 
     #[test]
@@ -3530,6 +3796,81 @@ mod tests {
             app.tabs[0].active_cmd.as_ref().map(|c| c.name()),
             Some("MTP")
         );
+    }
+
+    #[test]
+    fn test_snap_override_typed_in_line_command() {
+        use crate::app::Message;
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        {
+            app.tabs[0].scene.selection.borrow_mut().view.vp_size = (1920.0, 1080.0);
+            app.tabs[0].scene.sync_tiles_from_panes(1920.0, 1080.0);
+        }
+
+        // Start LINE
+        let _ = app.update(Message::CommandInput("LINE".to_string()));
+        let _ = app.update(Message::CommandSubmit);
+        assert_eq!(
+            app.tabs[0].active_cmd.as_ref().map(|c| c.name()),
+            Some("LINE")
+        );
+
+        // Turn running osnap off to prove override temporarily enables snapping
+        app.snapper.snap_enabled = false;
+        assert!(!app.snapper.snap_enabled);
+
+        // Type MID at first point prompt
+        let _ = app.update(Message::CommandInput("MID".to_string()));
+        let _ = app.update(Message::CommandSubmit);
+
+        // LINE remains the active command
+        assert_eq!(
+            app.tabs[0].active_cmd.as_ref().map(|c| c.name()),
+            Some("LINE")
+        );
+        // Snapper is now forced on with only Midpoint enabled
+        assert!(app.snapper.snap_enabled);
+        assert_eq!(app.snapper.enabled.len(), 1);
+        assert!(app.snapper.enabled.contains(&crate::snap::SnapType::Midpoint));
+
+        // Submit first point (0,0)
+        let _ = app.update(Message::CommandInput("0,0".to_string()));
+        let _ = app.update(Message::CommandSubmit);
+
+        // Override is consumed by the point commit, restoring snap_enabled == false
+        assert!(!app.snapper.snap_enabled);
+
+        // At next point prompt, type END
+        let _ = app.update(Message::CommandInput("END".to_string()));
+        let _ = app.update(Message::CommandSubmit);
+        assert!(app.snapper.snap_enabled);
+        assert!(app.snapper.enabled.contains(&crate::snap::SnapType::Endpoint));
+
+        // Escape cancels LINE and clears unconsumed snap override
+        let _ = app.update(Message::CommandEscape);
+        assert!(app.tabs[0].active_cmd.is_none());
+        assert!(!app.snapper.snap_enabled);
+    }
+
+    #[test]
+    fn test_snap_override_feed_token() {
+        use crate::app::Message;
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let _ = app.update(Message::CommandInput("LINE".to_string()));
+        let _ = app.update(Message::CommandSubmit);
+
+        app.snapper.snap_enabled = false;
+        let _ = app.feed_active_cmd("CEN");
+        assert!(app.snapper.snap_enabled);
+        assert_eq!(app.snapper.enabled.len(), 1);
+        assert!(app.snapper.enabled.contains(&crate::snap::SnapType::Center));
+
+        let _ = app.feed_active_cmd("5,5");
+        assert!(!app.snapper.snap_enabled);
+
+        let _ = app.update(Message::CommandEscape);
     }
 
     #[test]

@@ -329,7 +329,9 @@ pub fn view_window<'a>(
                 .iter()
                 .map(|value| (*value).to_string())
                 .collect();
-            let system = crate::scene::text::sysfont::families().to_vec();
+            // Web: the fetched Noto set plus the office/CAD family names it
+            // stands in for (Arial → Noto Sans, …); desktop: installed fonts.
+            let system = crate::scene::text::sysfont::picker_families();
             column![
                 row![
                     font_list(t!("Stroke fonts"), built_in, v.font_buf, false, v.read_only),

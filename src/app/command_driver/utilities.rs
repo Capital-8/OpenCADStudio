@@ -602,6 +602,7 @@ impl OpenCADStudio {
             if !self.record_accepted_snap(i, None, None, *point) {
                 return (Task::none(), true);
             }
+            self.snapper.clear_override();
         }
         if default_start {
             let StepInput::Point(point) = &input else {
@@ -1120,25 +1121,14 @@ impl OpenCADStudio {
         let is_mtp = token.trim_start_matches('_').eq_ignore_ascii_case("MTP")
             || token.trim_start_matches('_').eq_ignore_ascii_case("M2P");
         if is_mtp {
-            let is_point_step = !self.tabs[i]
-                .active_cmd
-                .as_ref()
-                .map(|c| c.input_kind().wants_text())
-                .unwrap_or(true)
-                || self.tabs[i]
-                    .active_cmd
-                    .as_ref()
-                    .map(|c| c.point_step_accepts_keywords())
-                    .unwrap_or(false);
-            let not_entity_pick = !self.tabs[i]
-                .active_cmd
-                .as_ref()
-                .map(|c| c.needs_entity_pick())
-                .unwrap_or(false);
-            if is_point_step && not_entity_pick {
+            if self.point_modifier_step(i) {
                 self.start_mtp_modifier(i);
                 return Task::none();
             }
+        }
+        if let Some(kind) = self.typed_snap_override(i, token) {
+            self.apply_snap_override(kind);
+            return Task::none();
         }
         if let Some((coord, kind)) = crate::app::helpers::parse_coord(token) {
             // Match the GUI command line: typed coordinates are in the active

@@ -297,6 +297,17 @@ pub fn capture_canvas() -> Option<iced::window::Screenshot> {
     ))
 }
 
+/// Web: is the page visible? `requestAnimationFrame` — and therefore the
+/// frames subscription and any canvas readback — never runs while
+/// `document.hidden`, so the control `capture` op refuses to wait for a frame
+/// that could never come.
+#[cfg(target_arch = "wasm32")]
+pub fn page_visible() -> bool {
+    !web_sys::window()
+        .and_then(|window| window.document())
+        .is_some_and(|document| document.hidden())
+}
+
 /// Web: read text from the system clipboard via the async Clipboard API.
 /// iced's own `clipboard::read` is a no-op on the web (the browser clipboard is
 /// async + permission-gated), so the editor paste paths use this instead. The
@@ -309,6 +320,173 @@ pub async fn read_clipboard_text() -> Option<String> {
         .await
         .ok()?;
     value.as_string()
+}
+
+/// Extension the pasted-image registry name carries for a clipboard MIME
+/// type. Unknown image types fall back to `png` — the flavor every OS
+/// screenshot paste uses — so the reference still names a decodable format.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // tested everywhere, used on wasm
+pub(crate) fn clipboard_image_extension(mime_type: &str) -> &'static str {
+    match mime_type.trim().to_ascii_lowercase().as_str() {
+        "image/jpeg" | "image/jpg" => "jpg",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        "image/bmp" | "image/x-ms-bmp" | "image/x-bmp" => "bmp",
+        _ => "png",
+    }
+}
+
+#[test]
+fn clipboard_image_extensions_cover_the_paste_flavors() {
+    assert_eq!(clipboard_image_extension("image/png"), "png");
+    assert_eq!(clipboard_image_extension("IMAGE/JPEG"), "jpg");
+    assert_eq!(clipboard_image_extension(" image/webp "), "webp");
+    assert_eq!(clipboard_image_extension("image/gif"), "gif");
+    assert_eq!(clipboard_image_extension("image/x-ms-bmp"), "bmp");
+    // Anything else (a vendor flavor, a bare "image/*") still gets a name
+    // the image registry can key and the `image` crate can decode.
+    assert_eq!(clipboard_image_extension("image/avif"), "png");
+    assert_eq!(clipboard_image_extension(""), "png");
+}
+
+/// Web: read an image from the system clipboard via the async Clipboard API
+/// (`navigator.clipboard.read()`), used when a paste found no text. Returns
+/// the registry name (`pasted-YYYYMMDD-HHMMSS-mmm[-N].<ext>`, unique against
+/// the registry) plus the image bytes,
+/// or `None` when the clipboard holds no image item or the read is denied.
+/// Like `read_clipboard_text`, the Ctrl+V keypress that reaches it is a user
+/// gesture, which is what makes the permission-gated read allowed at all.
+#[cfg(target_arch = "wasm32")]
+pub async fn read_clipboard_image() -> Option<(String, Vec<u8>)> {
+    use wasm_bindgen::JsCast;
+
+    let clipboard = web_sys::window()?.navigator().clipboard();
+    let items = wasm_bindgen_futures::JsFuture::from(clipboard.read())
+        .await
+        .ok()?;
+    let items = js_sys::Array::from(&items);
+    for index in 0..items.length() {
+        let Ok(item) = items.get(index).dyn_into::<web_sys::ClipboardItem>() else {
+            continue;
+        };
+        // A clipboard item can offer several flavors; take the first image
+        // one (browsers list at most one per item in practice). An item with
+        // no image flavor just moves the search to the next one.
+        let Some(mime_type) = item
+            .types()
+            .iter()
+            .filter_map(|kind| kind.as_string())
+            .find(|mime| mime.starts_with("image/"))
+        else {
+            continue;
+        };
+        let blob = wasm_bindgen_futures::JsFuture::from(item.get_type(&mime_type))
+            .await
+            .ok()?
+            .dyn_into::<web_sys::Blob>()
+            .ok()?;
+        let buffer = wasm_bindgen_futures::JsFuture::from(blob.array_buffer())
+            .await
+            .ok()?;
+        let bytes = js_sys::Uint8Array::new(&buffer).to_vec();
+        if bytes.is_empty() {
+            return None;
+        }
+        let name = pasted_image_name(&mime_type);
+        // Register under the chosen name BEFORE returning: no other wasm
+        // code can run between the uniqueness check and this insert (one
+        // thread), so a second paste landing in the same millisecond sees
+        // this name as taken and takes a `-2` suffix instead of overwriting
+        // these bytes. The paste handler's own `register_source` call with
+        // the same name is then an idempotent overwrite of identical bytes.
+        crate::scene::model::image_model::register_source(
+            &name,
+            std::sync::Arc::new(bytes.clone()),
+        );
+        return Some((name, bytes));
+    }
+    None
+}
+
+/// Registry name for a pasted clipboard image:
+/// `pasted-YYYYMMDD-HHMMSS-mmm.ext` stamped from the wall clock (local time,
+/// the same clock a screenshot file name uses) at millisecond precision, with
+/// the extension derived from the MIME type. Milliseconds alone don't
+/// guarantee uniqueness (two pastes inside one ms), so the name is pushed
+/// through [`unique_pasted_image_name`] against the live registry — a reused
+/// key would overwrite the earlier paste's bytes (the registry is last-wins)
+/// and make its entity display the newer pixels.
+#[cfg(target_arch = "wasm32")]
+fn pasted_image_name(mime_type: &str) -> String {
+    let now = js_sys::Date::new_0();
+    unique_pasted_image_name(
+        &format!(
+            "pasted-{:04}{:02}{:02}-{:02}{:02}{:02}-{:03}",
+            now.get_full_year(),
+            now.get_month() + 1,
+            now.get_date(),
+            now.get_hours(),
+            now.get_minutes(),
+            now.get_seconds(),
+            (now.get_time() as u64) % 1000,
+        ),
+        clipboard_image_extension(mime_type),
+        crate::scene::model::image_model::has_source,
+    )
+}
+
+/// Turn `base` + `ext` into a registry name not taken yet: the bare
+/// `base.ext` first, then `-2`, `-3`, … inserted before the extension while
+/// the candidate already names a registered source. The taken-check is
+/// injectable so this — the part worth locking with tests — runs natively;
+/// wasm passes [`crate::scene::model::image_model::has_source`].
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // tested everywhere, used on wasm
+pub(crate) fn unique_pasted_image_name(
+    base: &str,
+    ext: &str,
+    taken: impl Fn(&str) -> bool,
+) -> String {
+    let first = format!("{base}.{ext}");
+    if !taken(&first) {
+        return first;
+    }
+    for suffix in 2u64.. {
+        let candidate = format!("{base}-{suffix}.{ext}");
+        if !taken(&candidate) {
+            return candidate;
+        }
+    }
+    unreachable!("an unbounded suffix space always yields a free name")
+}
+
+#[test]
+fn pasted_image_names_never_reuse_a_taken_registry_key() {
+    let mut taken: Vec<String> = Vec::new();
+    let claim = |taken: &mut Vec<String>| {
+        let name = unique_pasted_image_name("pasted-20260915-101500-123", "png", |candidate| {
+            taken.iter().any(|used| used == candidate)
+        });
+        taken.push(name.clone());
+        name
+    };
+    // Fresh registry: the bare millisecond-stamped name is used as-is.
+    assert_eq!(claim(&mut taken), "pasted-20260915-101500-123.png");
+    // A second paste inside the same millisecond suffixes instead of
+    // overwriting — each name below must differ from every earlier one.
+    assert_eq!(claim(&mut taken), "pasted-20260915-101500-123-2.png");
+    assert_eq!(claim(&mut taken), "pasted-20260915-101500-123-3.png");
+    // The extension is part of the key: a jpg landing in the same
+    // millisecond does not collide with the pngs above.
+    assert_eq!(
+        unique_pasted_image_name("pasted-20260915-101500-123", "jpg", |candidate| {
+            taken.iter().any(|used| used == candidate)
+        }),
+        "pasted-20260915-101500-123.jpg"
+    );
+    // Freed suffixes are reused in order: with `-2` unregistered again, the
+    // next paste takes `-2` back before walking further.
+    taken.remove(1);
+    assert_eq!(claim(&mut taken), "pasted-20260915-101500-123-2.png");
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -438,6 +616,202 @@ pub fn download_bytes(name: &str, bytes: &[u8]) {
         a.click();
     }
     let _ = web_sys::Url::revoke_object_url(&url);
+}
+
+/// Show a plot preview as an in-page overlay. The plotted PDF arrives already
+/// rasterised to PNG pages: inline `<img>` elements render in every browser,
+/// with no popup permission and no PDF viewer plugin — both of which embedded
+/// browser hosts routinely withhold. A Download button still hands out the
+/// vector PDF, Close drops the overlay. Web only.
+#[cfg(target_arch = "wasm32")]
+pub fn show_pdf_preview(name: &str, pdf_bytes: &[u8], page_pngs: &[Vec<u8>], total_pages: usize) {
+    use wasm_bindgen::JsCast;
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    // One preview at a time: a replotted preview replaces its predecessor,
+    // revokes its blob URLs and DROPS its Download closure (freeing the full
+    // PDF copy the closure captured — a `forget()` would leak one per
+    // preview), so repeated previews cannot stack overlays or leak the
+    // images underneath.
+    const OVERLAY_ID: &str = "ocs-plot-preview";
+    if let Some(previous) = document.get_element_by_id(OVERLAY_ID) {
+        previous.remove();
+    }
+    for url in preview_urls()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .drain(..)
+    {
+        let _ = web_sys::Url::revoke_object_url(&url);
+    }
+    // Take the previous closure out so it destructs BEFORE the new preview
+    // stores its own: removing the overlay element already released the JS
+    // handler reference, so this drop is the last one and actually frees
+    // the captured bytes.
+    drop(PREVIEW_DOWNLOAD_CLOSURE.with(|slot| slot.borrow_mut().take()));
+    if page_pngs.is_empty() {
+        // Rasterisation produced nothing: deliver the PDF itself rather than
+        // show an empty frame.
+        download_bytes(name, pdf_bytes);
+        return;
+    }
+    let Ok(el) = document.create_element("div") else {
+        download_bytes(name, pdf_bytes);
+        return;
+    };
+    let backdrop: web_sys::HtmlElement = el.unchecked_into();
+    backdrop.set_id(OVERLAY_ID);
+    backdrop
+        .set_attribute(
+            "style",
+            "position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:30000;overflow:auto;\
+             display:flex;flex-direction:column;align-items:center;gap:14px;padding:24px;\
+             font-family:system-ui,sans-serif;color:#ddd",
+        )
+        .ok();
+
+    let mut urls = Vec::new();
+    for png in page_pngs {
+        let array = js_sys::Uint8Array::from(png.as_slice());
+        let parts = js_sys::Array::new();
+        parts.push(&array.buffer());
+        let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence(&parts) else {
+            continue;
+        };
+        let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) else {
+            continue;
+        };
+        if let Ok(el) = document.create_element("img") {
+            let img: web_sys::HtmlImageElement = el.unchecked_into();
+            img.set_src(&url);
+            img.set_attribute(
+                "style",
+                "max-width:min(92vw,1000px);height:auto;background:#fff;\
+                 box-shadow:0 2px 14px rgba(0,0,0,.6)",
+            )
+            .ok();
+            backdrop.append_child(&img).ok();
+            urls.push(url);
+        }
+    }
+    if urls.is_empty() {
+        download_bytes(name, pdf_bytes);
+        return;
+    }
+    preview_urls()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .extend(urls.iter().cloned());
+
+    // Sticky action bar so Download/Close stay reachable while pages scroll.
+    let bar: web_sys::HtmlElement = document
+        .create_element("div")
+        .ok()
+        .and_then(|el| {
+            let bar: web_sys::HtmlElement = el.unchecked_into();
+            bar.set_attribute(
+                "style",
+                "position:sticky;top:0;display:flex;gap:12px;align-items:center;\
+                 background:rgba(0,0,0,.88);padding:4px 8px",
+            )
+            .ok()?;
+            Some(bar)
+        })
+        .unwrap_or_else(|| backdrop.clone());
+    if let Ok(el) = document.create_element("span") {
+        let label: web_sys::HtmlElement = el.unchecked_into();
+        label.set_inner_text(&if total_pages > urls.len() {
+            format!(
+                "Plot preview — first {} of {} pages",
+                urls.len(),
+                total_pages
+            )
+        } else {
+            format!(
+                "Plot preview — {} page{}",
+                urls.len(),
+                if urls.len() == 1 { "" } else { "s" }
+            )
+        });
+        bar.append_child(&label).ok();
+    }
+    let button = |text: &str| -> Option<web_sys::HtmlElement> {
+        let el = document.create_element("button").ok()?;
+        let btn: web_sys::HtmlElement = el.unchecked_into();
+        btn.set_inner_text(text);
+        btn.set_attribute(
+            "style",
+            "padding:8px 18px;border:0;border-radius:4px;cursor:pointer;\
+             background:#3399e6;color:#fff;font-size:14px",
+        )
+        .ok()?;
+        Some(btn)
+    };
+    if let Some(dl) = button("Download PDF") {
+        let name = name.to_string();
+        let bytes = pdf_bytes.to_vec();
+        // A plain FnMut stays usable for every click; the one-shot variant
+        // throws on the second click, and users click Download twice. The
+        // closure is HELD in a registry (not `forget()`ed): replacing or
+        // closing the overlay drops it and frees the captured PDF copy,
+        // while the cloned JS function keeps the live handler working.
+        let closure: wasm_bindgen::closure::Closure<dyn FnMut()> =
+            wasm_bindgen::closure::Closure::new(move || {
+                download_bytes(&name, &bytes);
+            });
+        let click: js_sys::Function = closure.as_ref().unchecked_ref::<js_sys::Function>().clone();
+        PREVIEW_DOWNLOAD_CLOSURE.with(|slot| *slot.borrow_mut() = Some(closure));
+        dl.set_onclick(Some(&click));
+        bar.append_child(&dl).ok();
+    }
+    if let Some(close) = button("Close") {
+        let backdrop = backdrop.clone();
+        let click = wasm_bindgen::closure::Closure::once_into_js(move || {
+            for url in preview_urls()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .drain(..)
+            {
+                let _ = web_sys::Url::revoke_object_url(&url);
+            }
+            backdrop.remove();
+        });
+        let click: js_sys::Function = click.unchecked_into();
+        close.set_onclick(Some(&click));
+        bar.append_child(&close).ok();
+    }
+    if let Some(first) = backdrop.first_child() {
+        let _ = backdrop.insert_before(&bar, Some(&first));
+    }
+    if let Some(body) = document.body() {
+        body.append_child(&backdrop).ok();
+    }
+}
+
+/// Blob URLs owned by the live preview overlay, revoked when it is closed or
+/// replaced. They live outside the wasm heap and are not GC'd on their own.
+#[cfg(target_arch = "wasm32")]
+fn preview_urls() -> &'static std::sync::Mutex<Vec<String>> {
+    static URLS: std::sync::OnceLock<std::sync::Mutex<Vec<String>>> = std::sync::OnceLock::new();
+    URLS.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+// The live preview overlay's Download-button closure. The closure captures
+// a full copy of the PDF bytes, so `forget()`-ing it would leak one PDF per
+// preview; holding it here lets the next `show_pdf_preview` drop and free
+// the previous one (the overlay element's removal already released the JS
+// handler reference). A thread-local `RefCell` rather than a static
+// `Mutex` like `preview_urls`: `Closure` is not `Send`, and the overlay
+// only ever lives on the one UI thread.
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static PREVIEW_DOWNLOAD_CLOSURE:
+        std::cell::RefCell<Option<wasm_bindgen::closure::Closure<dyn FnMut()>>> =
+        std::cell::RefCell::new(None);
 }
 
 /// Short platform string for bug reports: OS + architecture on the desktop,

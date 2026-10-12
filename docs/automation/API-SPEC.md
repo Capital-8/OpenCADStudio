@@ -251,17 +251,18 @@ REST: `POST /documents` (`{}` → fresh document, `{"template":…}`, `{"path":�
 `{"entities":[{…},…]}` — a batch of typed definitions, validated in full
 before anything commits; one undo step; missing layers are auto-created and
 reported in `result.layers_created`. Every definition also accepts `layer`
-and `color` (index).
+and `color` (index); any other field is refused (`unknown_entity_field`).
 
 | Type | Fields |
 |---|---|
 | `Line` | `start`, `end`, optional `thickness` |
 | `Circle` | `center`, `radius` (≥ 0) |
 | `Arc` | `center`, `radius` (> 0), `start_angle_deg`, `end_angle_deg` |
+| `Spline` | `control_points` (more than `degree`) or `fit_points` (≥ 2), optional `degree` (1–10, default 3), `knots` (control points + degree + 1, non-decreasing), `weights` (one positive value per control point), `closed`, `periodic`, `rational`, `planar`, `linear` |
 | `LwPolyline` | `vertices` (≥ 2), `closed`, optional `constant_width` |
 | `Point` | `location` |
 | `Text` | `value`, `position`, optional `height` (default 2.5), `rotation_deg`, `style` |
-| `MText` | `value`, `position`, optional `height`, `width`, `rotation_deg` |
+| `MText` | `value`, `position`, optional `height`, `width`, `rotation_deg`, `style` |
 | `Insert` | `block` (must exist), `position`, optional `scale` (number or `[x,y,z]`, nonzero), `rotation_deg` |
 | `Solid` | `corners` (3 or 4 `[x,y,z]`) |
 | `Hatch` | `boundary` (≥ 3 points, closed), `solid`, or `pattern` (catalog name, default `ANSI31`), `pattern_scale`, `pattern_angle_deg` |
@@ -315,10 +316,10 @@ registry with write rules), `properties`, `measure` (length/area/bounds),
 | Op | Fields | Semantics |
 |---|---|---|
 | `block_define` | `name`, `base:[x,y,z]`, `handles`, optional `insert_at`, optional `"replace":true` | The sources move into the new definition (flattened at `base` = block origin) and one `Insert` is placed at `insert_at` (default `base`), so the drawing looks unchanged. `"replace":true` drops a same-named definition — children, markers and inserts — inside the same undo step before creating the new one (idempotent re-import). Result `{"block":name,"insert":"<handle>"}`. Names are unique, `*` is reserved. |
-| `block_delete` | `name` | Removes the definition completely: child entities, block markers, every `Insert` referencing it and the table record. One undo step. Result `erased`. Unknown → `block_missing`; `*`-records → `block_protected`. |
+| `block_delete` | `name`, optional `"force":true` | Removes the definition completely: child entities, block markers and the table record. One undo step (`Delete block <name>`). A referenced block is refused (`block_referenced`); `"force":true` erases the referencing INSERTs in the same step and reports `result.references`. Result `erased`. Unknown → `block_missing`; layout/anonymous/xref/dynamic records → `block_protected`; open BEDIT session → `block_in_edit`; invalid/taken names → `block_invalid_name` / `block_exists`. |
 | `wblock` | `path`, `handles` *or* `block`; optional `"template":"<file>"` (the export inherits that file's tables/styles), optional `"normalize":true` (the export is shifted so its overall bounds minimum lands on the origin) | Writes a standalone DWG/DXF (extension decides). The source document is untouched. Result `{path, entities, normalized}`. |
 
-REST: `POST /blocks`, `DELETE /blocks/{name}`, `POST /wblock`.
+REST: `POST /blocks`, `DELETE /blocks/{name}` (add `?force=true` to erase the referencing INSERTs instead of being refused), `POST /wblock`.
 
 ### 6.6 Layouts and plotting
 

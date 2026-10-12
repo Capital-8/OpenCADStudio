@@ -500,6 +500,11 @@ impl OpenCADStudio {
                 return Some(Task::done(Message::ToggleProperties));
             }
 
+            // ── GRAPHICATTRIBUTES — toggle Graphic Attributes palette ───────────
+            "GRAPHICATTRIBUTES" => {
+                return Some(Task::done(Message::ToggleGraphicAttributes));
+            }
+
             // ── FILETAB — toggle file/document tabs ──────────────────────────────
             "FILETAB" => {
                 return Some(Task::done(Message::ToggleFileTabs));
@@ -967,7 +972,18 @@ impl OpenCADStudio {
                     self.command_line.push_output(&line);
                 }
             }
-            "EXPORT" | "EXPORTPDF" => {
+            "EXPORT" => {
+                return Some(Task::done(Message::PlotExport));
+            }
+            "EXPORTPDF" => {
+                self.plot_dialog.file_svg = false;
+                return Some(Task::done(Message::PlotExport));
+            }
+            // EXPORTSVG — the same direct export, but the save dialog
+            // proposes the SVG device's defaults (`stem.svg`).
+            "EXPORTSVG" => {
+                self.plot_dialog.to_file = true;
+                self.plot_dialog.file_svg = true;
                 return Some(Task::done(Message::PlotExport));
             }
             // PLOTSTYLE — load or clear CTB/STB plot style table
@@ -1783,51 +1799,34 @@ impl OpenCADStudio {
                         .push_info(crate::t!("Usage: DATALINK <path-to-.csv>").as_ref());
                     return Some(Task::none());
                 }
+                // Web: nothing is behind a typed path — pick the .csv through
+                // the browser, read its bytes at pick time, and register them
+                // in the picked-source registry; the same table-insert path
+                // then runs from `DataLinkCsvPicked`.
+                #[cfg(target_arch = "wasm32")]
+                {
+                    // Say the typed argument is superseded — a silent
+                    // redirect looks like the input was lost.
+                    if !path.trim().is_empty() {
+                        self.command_line.push_info(
+                            crate::t!(
+                                "The browser cannot open a typed path; pick the file instead."
+                            )
+                            .as_ref(),
+                        );
+                    }
+                    return Some(Task::perform(
+                        crate::io::pick_datalink_csv_web(),
+                        Message::DataLinkCsvPicked,
+                    ));
+                }
+                #[cfg(not(target_arch = "wasm32"))]
                 match std::fs::read_to_string(path) {
                     Ok(text) => {
-                        let rows_data = parse_csv_table(&text);
-                        let nrows = rows_data.len();
-                        let ncols = rows_data.iter().map(|r| r.len()).max().unwrap_or(0);
-                        if nrows == 0 || ncols == 0 {
-                            self.command_line
-                                .push_error(crate::t!("DATALINK: the CSV file is empty.").as_ref());
-                            return Some(Task::none());
-                        }
-                        use codec::entities::TableBuilder;
-                        use codec::types::Vector3;
-                        let mut table = TableBuilder::new(nrows, ncols)
-                            .at(Vector3::new(0.0, 0.0, 0.0))
-                            .row_height(0.5)
-                            .column_width(2.0)
-                            .build();
-                        for (r, row) in rows_data.iter().enumerate() {
-                            for (c, cell) in row.iter().enumerate() {
-                                table.set_cell_text(r, c, cell);
-                            }
-                        }
-                        let doc = &self.tabs[i].scene.document;
-                        let current_style = doc.header.current_table_style_name.clone();
-                        table.table_style_handle =
-                            doc.objects
-                                .iter()
-                                .find_map(|(handle, object)| match object {
-                                    codec::objects::ObjectType::TableStyle(style)
-                                        if style.name.eq_ignore_ascii_case(&current_style) =>
-                                    {
-                                        Some(*handle)
-                                    }
-                                    _ => None,
-                                });
                         let link_path = std::fs::canonicalize(path)
                             .map(|value| value.to_string_lossy().into_owned())
                             .unwrap_or_else(|_| path.to_string());
-                        let command =
-                            crate::modules::annotate::data_link::DataLinkPlaceCommand::new(
-                                table, &link_path,
-                            );
-                        self.command_line
-                            .push_info(&crate::command::CadCommand::prompt(&command));
-                        self.tabs[i].active_cmd = Some(Box::new(command));
+                        self.place_data_link_table(&text, &link_path);
                     }
                     Err(e) => {
                         self.command_line.push_error(
@@ -2059,6 +2058,51 @@ impl OpenCADStudio {
             _ => return None,
         }
         Some(self.finish_dispatch(cmd))
+    }
+
+    /// Build the linked table from CSV text and start the placement command —
+    /// the shared tail of the native typed-path `DATALINK` read and the web
+    /// picker's `DataLinkCsvPicked` (which registers the picked bytes in the
+    /// picked-source registry first so the link re-reads in-session).
+    pub(in crate::app) fn place_data_link_table(&mut self, csv_text: &str, link_path: &str) {
+        let i = self.active_tab;
+        let rows_data = parse_csv_table(csv_text);
+        let nrows = rows_data.len();
+        let ncols = rows_data.iter().map(|r| r.len()).max().unwrap_or(0);
+        if nrows == 0 || ncols == 0 {
+            self.command_line
+                .push_error(crate::t!("DATALINK: the CSV file is empty.").as_ref());
+            return;
+        }
+        use codec::entities::TableBuilder;
+        use codec::types::Vector3;
+        let mut table = TableBuilder::new(nrows, ncols)
+            .at(Vector3::new(0.0, 0.0, 0.0))
+            .row_height(0.5)
+            .column_width(2.0)
+            .build();
+        for (r, row) in rows_data.iter().enumerate() {
+            for (c, cell) in row.iter().enumerate() {
+                table.set_cell_text(r, c, cell);
+            }
+        }
+        let doc = &self.tabs[i].scene.document;
+        let current_style = doc.header.current_table_style_name.clone();
+        table.table_style_handle = doc.objects.iter().find_map(|(handle, object)| {
+            match object {
+                codec::objects::ObjectType::TableStyle(style)
+                    if style.name.eq_ignore_ascii_case(&current_style) =>
+                {
+                    Some(*handle)
+                }
+                _ => None,
+            }
+        });
+        let command =
+            crate::modules::annotate::data_link::DataLinkPlaceCommand::new(table, link_path);
+        self.command_line
+            .push_info(&crate::command::CadCommand::prompt(&command));
+        self.tabs[i].active_cmd = Some(Box::new(command));
     }
 }
 

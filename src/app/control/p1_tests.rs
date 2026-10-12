@@ -132,6 +132,52 @@ fn sysvar_round_trips_and_refuses_unknowns() {
 }
 
 #[test]
+fn sysvar_batches_validate_atomically_and_undo_as_one_step() {
+    let mut app = OpenCADStudio::new_for_test();
+    app.automation_op(r#"{"op":"new"}"#);
+    let state = app.automation_op(r#"{"protocol":1,"op":"state"}"#);
+    let doc = state["document_id"].as_u64().unwrap();
+    mutate(
+        &mut app,
+        r#"{"protocol":1,"op":"entities_create","request_id":"sv-atomic-layer","document_id":{doc},"entities":[{"type":"Point","location":[0,0],"layer":"Walls"}]}"#,
+    );
+    let i = app.active_tab;
+    // Isolate this operation's dirty/history assertions from the layer setup.
+    app.tabs[i].dirty = false;
+    let history_before = app.tabs[i].history.undo_stack.len();
+
+    let r = app.automation_op(&format!(
+        r#"{{"protocol":1,"op":"sysvar","request_id":"sv-atomic-ok","document_id":{doc},"set":{{"ltscale":2.5,"clayer":"Walls"}}}}"#
+    ));
+    assert_eq!(r["ok"], true, "{}", r["error"]);
+    assert_eq!(app.tabs[i].scene.document.header.current_layer_name, "Walls");
+    assert_eq!(app.tabs[i].scene.document.header.linetype_scale, 2.5);
+    assert_eq!(app.tabs[i].active_layer, "Walls");
+    assert_eq!(app.tabs[i].layers.current_layer, "Walls");
+    assert_eq!(app.ribbon.active_layer, "Walls");
+    assert!(app.tabs[i].dirty);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), history_before + 1);
+
+    // A bad later value must not leak the valid earlier value or an undo entry.
+    let r = app.automation_op(&format!(
+        r#"{{"protocol":1,"op":"sysvar","request_id":"sv-atomic-bad","document_id":{doc},"set":{{"ltscale":9.0,"clayer":"NOPE"}}}}"#
+    ));
+    assert_eq!(r["ok"], false);
+    assert_eq!(r["code"], "invalid_sysvar_value");
+    assert_eq!(app.tabs[i].scene.document.header.linetype_scale, 2.5);
+    assert_eq!(app.tabs[i].scene.document.header.current_layer_name, "Walls");
+    assert_eq!(app.tabs[i].history.undo_stack.len(), history_before + 1);
+
+    // One undo restores both header variables and all current-layer mirrors.
+    app.automation_op(r#"{"op":"undo"}"#);
+    assert_eq!(app.tabs[i].scene.document.header.linetype_scale, 1.0);
+    assert_eq!(app.tabs[i].scene.document.header.current_layer_name, "0");
+    assert_eq!(app.tabs[i].active_layer, "0");
+    assert_eq!(app.tabs[i].layers.current_layer, "0");
+    assert_eq!(app.ribbon.active_layer, "0");
+}
+
+#[test]
 fn layout_create_and_page_setup_configure_sheets() {
     let mut app = OpenCADStudio::new_for_test();
     app.automation_op(r#"{"op":"new"}"#);
@@ -387,6 +433,37 @@ fn plot_per_page_writes_one_pdf_per_layout() {
 }
 
 #[test]
+fn entities_create_supports_control_and_fit_point_splines() {
+    let mut app = OpenCADStudio::new_for_test();
+    app.automation_op(r#"{"op":"new"}"#);
+    let control = mutate(
+        &mut app,
+        r#"{"protocol":1,"op":"entities_create","request_id":"spline-control","document_id":{doc},"entities":[
+            {"type":"Spline","degree":2,"knots":[0,0,0,1,1,1],"control_points":[[0,0,0],[5,5,0],[10,0,0]],"weights":[1,2,1],"layer":"CURVES"}
+        ]}"#,
+    );
+    assert_eq!(control["ok"], true, "{control}");
+    let fit = mutate(
+        &mut app,
+        r#"{"protocol":1,"op":"entities_create","request_id":"spline-fit","document_id":{doc},"entities":[
+            {"type":"Spline","degree":3,"fit_points":[[20,0],[25,5],[30,0]]}
+        ]}"#,
+    );
+    assert_eq!(fit["ok"], true, "{fit}");
+    let query = app.automation_op(r#"{"op":"query","type":"Spline","detail":"geometry"}"#);
+    assert_eq!(query["count"], 2, "{query}");
+    let control_entity = query["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entity| entity["layer"] == "CURVES")
+        .unwrap();
+    assert_eq!(control_entity["degree"], 2, "{control_entity}");
+    assert_eq!(control_entity["control_points"].as_array().unwrap().len(), 3);
+    assert_eq!(control_entity["weights"], json!([1.0, 2.0, 1.0]));
+}
+
+#[test]
 fn hatch_boundary_is_flattened_in_query() {
     let mut app = OpenCADStudio::new_for_test();
     app.automation_op(r#"{"op":"new"}"#);
@@ -474,11 +551,29 @@ fn block_delete_and_define_replace_manage_definitions() {
     assert_eq!(count_type(&mut app, "Line"), 0, "old children erased");
     assert_eq!(count_type(&mut app, "Circle"), 0, "old children erased");
 
+    // A definition the insert still points at is refused; "force":true erases
+    // the referencing inserts in the same undo step.
+    let r = app.automation_op(&format!(
+        r#"{{"protocol":1,"op":"block_delete","request_id":"bl1b","document_id":{doc},"name":"MARK"}}"#
+    ));
+    assert_eq!(r["ok"], false);
+    assert_eq!(r["code"], "block_referenced");
+    assert_eq!(
+        count_type(&mut app, "Insert"),
+        1,
+        "the insert survived the refusal"
+    );
+
     // Delete removes the insert, the markers, the children and the record.
     let r = app.automation_op(&format!(
-        r#"{{"protocol":1,"op":"block_delete","request_id":"bl2","document_id":{doc},"name":"MARK"}}"#
+        r#"{{"protocol":1,"op":"block_delete","request_id":"bl2","document_id":{doc},"name":"MARK","force":true}}"#
     ));
     assert_eq!(r["ok"], true, "{}", r["error"]);
+    assert_eq!(
+        r["result"]["references"].as_u64().unwrap(),
+        1,
+        "the forced delete reports what it overrode"
+    );
     assert!(
         r["result"]["erased"].as_u64().unwrap() >= 3,
         "insert + markers + child"
