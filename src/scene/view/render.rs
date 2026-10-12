@@ -3009,11 +3009,13 @@ impl Scene {
                         background.use_tiling as u8 as f32,
                         image.width as f32 / image.height.max(1) as f32,
                     ];
+                    // Offset, then the image's size in pixels at its scale:
+                    // an image not fitted to the screen keeps its pixel size.
                     result.image_transform = [
                         background.offset.x as f32,
                         background.offset.y as f32,
-                        background.scale.x as f32,
-                        background.scale.y as f32,
+                        background.scale.x as f32 * image.width as f32,
+                        background.scale.y as f32 * image.height as f32,
                     ];
                     result.params[0] = 4.0;
                     result.image = Some(image);

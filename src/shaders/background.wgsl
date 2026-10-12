@@ -81,8 +81,12 @@ fn equirect_uv(ndc: vec2<f32>, rotation: f32) -> vec2<f32> {
 fn image_uv(source_uv: vec2<f32>) -> vec2<f32> {
     var uv = source_uv;
     if u.background_image_params.x < 0.5 {
-        uv = (source_uv - u.background_image_transform.xy)
-            / max(abs(u.background_image_transform.zw), vec2<f32>(1e-6));
+        // Not fitted: the image at its own pixel size (times its scale),
+        // centred on the viewport and moved by its offset.
+        let pixel = (source_uv - vec2<f32>(0.5)) * max(u.viewport_size, vec2<f32>(1.0));
+        uv = pixel / max(abs(u.background_image_transform.zw), vec2<f32>(1e-6))
+            + vec2<f32>(0.5) - u.background_image_transform.xy;
+        return select(uv, fract(uv), u.background_image_params.z > 0.5);
     }
     if u.background_image_params.y > 0.5 {
         let image_aspect = max(u.background_image_params.w, 1e-6);
