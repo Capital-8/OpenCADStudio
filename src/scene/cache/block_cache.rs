@@ -2618,8 +2618,13 @@ fn emit_wire(
     // MTEXT background (a dimension's DIMTFILL box) left at the bare insert
     // level sat in front of its own text whenever that text's rank was
     // below zero.
-    let local_depth = (lw.world_width > 0.0 || lw.is_fill_only || !lw.text_verts.is_empty())
-        .then(|| d_range.0 + lw.local_rank * d_range.1);
+    // Every block member must retain its block-local draw rank, including
+    // ordinary thin LINE/LWPOLYLINE wires. Previously these wires had no
+    // depth_override, so they were drawn at the INSERT's bare depth while
+    // wipeout/hatch fills were positioned at the member rank. COPY and grip
+    // moves rebuild instance batches and exposed this mismatch in model,
+    // paper-space and PDF output.
+    let local_depth = Some(d_range.0 + lw.local_rank * d_range.1);
     let plot_visible = ctx.plot_visible && lw.plot_visible && (!lw.plot_l0 || ctx.l0_plottable);
 
     // Batched wires share one dash distance, which runs on across the NaN
