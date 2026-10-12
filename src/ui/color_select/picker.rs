@@ -398,11 +398,28 @@ impl ColorPicker {
         } else {
             Some(
                 // Just the icon, without a button frame.
-                button(crate::ui::icons::themed(crate::ui::icons::EYEDROPPER, 24.0))
-                    .on_press(picker_msg(ColorPickerMsg::Eyedropper(EyedropperMsg::Start)))
-                    .padding(0)
-                    .style(|_theme: &Theme, _status| button::Style::default())
-                    .into(),
+                button(
+                    // Gray at rest; the accent colour while the pointer is on it.
+                    iced::widget::svg(crate::ui::icons::themed_handle(
+                        crate::ui::icons::EYEDROPPER,
+                    ))
+                    .width(24)
+                    .height(24)
+                    .style(|theme: &Theme, status| iced::widget::svg::Style {
+                        color: Some(match status {
+                            iced::widget::svg::Status::Hovered => {
+                                theme.palette().primary.base.color
+                            }
+                            iced::widget::svg::Status::Idle => {
+                                theme.palette().background.base.text.scale_alpha(0.5)
+                            }
+                        }),
+                    }),
+                )
+                .on_press(picker_msg(ColorPickerMsg::Eyedropper(EyedropperMsg::Start)))
+                .padding(0)
+                .style(|_theme: &Theme, _status| button::Style::default())
+                .into(),
             )
         };
         let nearest = (!self.editor_only()).then(|| self.nearest_button());
