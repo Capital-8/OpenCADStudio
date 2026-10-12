@@ -289,15 +289,29 @@ impl ColorPicker {
             .height(Length::Fill)
             .style(move |_theme: &Theme, _status| button::Style {
                 background: Some(current_bg.into()),
+                border: Border {
+                    radius: iced::border::radius(7.0).right(0.0),
+                    ..Border::default()
+                },
                 ..Default::default()
             });
+        let divider = container(Space::new())
+            .width(1)
+            .height(Length::Fill)
+            .style(|_theme: &Theme| filled(Color::from_rgba(0.0, 0.0, 0.0, 0.35)));
         let new = container(half(
             t!("New").into_owned(),
             math::short_name(self.pending),
             new_bg,
         ))
-        .style(move |_theme: &Theme| filled(new_bg));
-        container(row![current, new])
+        .style(move |_theme: &Theme| container::Style {
+            border: Border {
+                radius: iced::border::radius(7.0).left(0.0),
+                ..Border::default()
+            },
+            ..filled(new_bg)
+        });
+        container(row![current, divider, new])
             .width(Length::Fill)
             .height(60)
             .padding(1)
