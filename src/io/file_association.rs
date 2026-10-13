@@ -230,8 +230,24 @@ mod windows_impl {
             if owns_com {
                 CoUninitialize();
             }
-            result
+            // Windows 10/11 retired the advanced-association dialog (it fails
+            // with 0x80070490, #725); its Settings page takes over.
+            result.or_else(|error| open_default_apps_settings().ok_or(error))
         }
+    }
+
+    /// Open Settings → Default apps on this app's page (Windows 11; Windows
+    /// 10 shows the general page).
+    fn open_default_apps_settings() -> Option<String> {
+        let uri = format!(
+            "ms-settings:defaultapps?registeredAppUser={}",
+            APP_REGISTRY_NAME.replace(' ', "%20")
+        );
+        std::process::Command::new("explorer.exe").arg(uri).spawn().ok()?;
+        Some(
+            "Opened Settings → Default apps — choose Open CAD Studio for .dwg / .dxf there."
+                .to_string(),
+        )
     }
 
     use windows_sys::Win32::System::Registry::{
