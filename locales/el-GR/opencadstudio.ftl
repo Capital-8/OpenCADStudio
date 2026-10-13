@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  Επιλέξτε λειτουργία αντιγραφής [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: δημιουργήθηκε συσχετιστικός πίνακας.
     .assoc-array-array-path = Πίνακας (διαδρομή)
     .assoc-array-array-polar = Πίνακας (πολικός)
     .assoc-array-array-rectangular = Πίνακας (ορθογώνιος)

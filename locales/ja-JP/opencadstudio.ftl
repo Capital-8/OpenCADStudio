@@ -273,6 +273,7 @@ command-copy =
     .mode = COPY  コピーモードを入力 [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: 自動調整配列複写を作成しました。
     .assoc-array-array-path = 配列複写 (パス)
     .assoc-array-array-polar = 配列複写 (円形状)
     .assoc-array-array-rectangular = 配列複写 (矩形状)

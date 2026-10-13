@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  Podaj tryb kopiowania [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: utworzono szyk skojarzony.
     .assoc-array-array-path = Szyk (ścieżka)
     .assoc-array-array-polar = Szyk (biegunowy)
     .assoc-array-array-rectangular = Szyk (prostokątny)

@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  복사 모드 옵션 입력 [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: 연관 배열을 만들었습니다.
     .assoc-array-array-path = 배열 (경로)
     .assoc-array-array-polar = 배열 (원형)
     .assoc-array-array-rectangular = 배열 (직사각형)

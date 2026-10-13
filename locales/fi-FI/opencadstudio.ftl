@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  Valitse kopiointitila [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: assosiatiivinen taulukko luotu.
     .assoc-array-array-path = Taulukko (polku)
     .assoc-array-array-polar = Taulukko (polaarinen)
     .assoc-array-array-rectangular = Taulukko (suorakulmainen)

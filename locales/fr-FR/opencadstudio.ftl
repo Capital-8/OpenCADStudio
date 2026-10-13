@@ -283,6 +283,7 @@ command-copy =
     .mode = COPY  Entrez le mode de copie [Single/Multiple] <Multiple> :
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__ : réseau associatif créé.
     .assoc-array-array-path = Réseau (trajectoire)
     .assoc-array-array-polar = Réseau (polaire)
     .assoc-array-array-rectangular = Réseau (rectangulaire)

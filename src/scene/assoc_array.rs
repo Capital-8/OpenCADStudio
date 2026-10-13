@@ -108,6 +108,24 @@ pub fn array_of_insert(document: &CadDocument, insert: Handle) -> Option<AssocAr
     })
 }
 
+/// An array action whose array INSERT is gone (erased or exploded): it has
+/// nothing left to drive and is dropped when the networks are written.
+pub fn orphaned_array_action(document: &CadDocument, handle: Handle) -> bool {
+    let Some(action) = action(document, handle) else {
+        return false;
+    };
+    if body(document, action.action_body).is_none() {
+        return false;
+    }
+    !action.dependencies.iter().any(|link| {
+        dependency(document, link.dependency).is_some_and(|dependency| {
+            dependency.is_read_dependency
+                && dependency.is_write_dependency
+                && document.get_entity(dependency.dependent_on).is_some()
+        })
+    })
+}
+
 /// The value parameters of an array action: inline in the action (R2013+)
 /// or in the body's parameter section (R2007).
 pub fn value_params<'a>(document: &'a CadDocument, array: &AssocArray) -> &'a [AssocValueParam] {
@@ -555,4 +573,543 @@ pub fn update(
     }
     scene.bump_geometry();
     Ok(())
+}
+
+/// Class records the array objects need, with the values the reference
+/// product writes: (DXF name, class name, DWG version, maintenance version).
+const ARRAY_CLASSES: &[(&str, &str, i32, i32)] = &[
+    ("ACDBASSOCNETWORK", "AcDbAssocNetwork", 27, 45),
+    ("ACDBASSOCACTION", "AcDbAssocAction", 27, 45),
+    ("ACDBASSOCDEPENDENCY", "AcDbAssocDependency", 27, 50),
+    ("ACDBASSOCVERTEXACTIONPARAM", "AcDbAssocVertexActionParam", 27, 50),
+    ("ACDBASSOCEDGEACTIONPARAM", "AcDbAssocEdgeActionParam", 27, 50),
+    ("ACDBASSOCARRAYACTIONBODY", "AcDbAssocArrayActionBody", 29, 55),
+    ("ACDBASSOCARRAYRECTANGULARPARAMETERS", "AcDbAssocArrayRectangularParameters", 29, 55),
+    ("ACDBASSOCARRAYPOLARPARAMETERS", "AcDbAssocArrayPolarParameters", 29, 55),
+];
+
+fn register_array_classes(document: &mut CadDocument) {
+    for &(dxf_name, cpp_class_name, dwg_version, maintenance_version) in ARRAY_CLASSES {
+        if document.classes.get_by_name(dxf_name).is_some() {
+            continue;
+        }
+        document.classes.add_or_update(codec::classes::DxfClass {
+            dxf_name: dxf_name.to_string(),
+            cpp_class_name: cpp_class_name.to_string(),
+            application_name: "ObjectDBX Classes".to_string(),
+            proxy_flags: codec::classes::ProxyFlags(1025),
+            instance_count: 0,
+            was_zombie: false,
+            is_an_entity: false,
+            class_number: 0,
+            item_class_id: 0x1F3,
+            dwg_version,
+            maintenance_version,
+            unknown1: 0,
+            unknown2: 0,
+        });
+    }
+}
+
+fn next_anonymous_name(document: &CadDocument) -> String {
+    let next = document
+        .block_records
+        .iter()
+        .filter_map(|record| record.name.strip_prefix("*U")?.parse::<u64>().ok())
+        .max()
+        .map_or(1, |n| n + 1);
+    format!("*U{next}")
+}
+
+fn associative(
+    handle: Handle,
+    owner: Handle,
+    dxf_name: &str,
+    cpp_class_name: &str,
+    data: AssociativeData,
+) -> ObjectType {
+    let mut object = codec::objects::AssociativeObject::new(dxf_name, cpp_class_name);
+    object.handle = handle;
+    object.owner = owner;
+    object.data = data;
+    ObjectType::Associative(object)
+}
+
+fn dictionary_entry(document: &CadDocument, dictionary: Handle, key: &str) -> Option<Handle> {
+    match document.objects.get(&dictionary)? {
+        ObjectType::Dictionary(dictionary) => dictionary.get(key),
+        _ => None,
+    }
+}
+
+/// A dictionary stored under `key` in `parent`, created when absent.
+fn child_dictionary(document: &mut CadDocument, parent: Handle, key: &str) -> Handle {
+    if let Some(handle) = dictionary_entry(document, parent, key)
+        .filter(|handle| matches!(document.objects.get(handle), Some(ObjectType::Dictionary(_))))
+    {
+        return handle;
+    }
+    let handle = document.allocate_handle();
+    let mut dictionary = codec::objects::Dictionary::new();
+    dictionary.handle = handle;
+    dictionary.owner = parent;
+    dictionary.reactors.push(parent);
+    document.objects.insert(handle, ObjectType::Dictionary(dictionary));
+    if let Some(ObjectType::Dictionary(parent)) = document.objects.get_mut(&parent) {
+        parent.add_entry(key, handle);
+    }
+    handle
+}
+
+/// The network holding the actions of model space, created with the root
+/// network above it when the drawing has none.
+fn model_space_network(document: &mut CadDocument) -> Handle {
+    const KEY: &str = "ACAD_ASSOCNETWORK";
+    let model = document.header.model_space_block_handle;
+    let scope = document.ensure_extension_dictionary(model);
+    let holder = child_dictionary(document, scope, KEY);
+    if let Some(network) = dictionary_entry(document, holder, KEY).filter(|handle| {
+        matches!(
+            document.objects.get(handle),
+            Some(ObjectType::Associative(object))
+                if matches!(object.data, AssociativeData::Network(_))
+        )
+    }) {
+        return network;
+    }
+    let root_holder = child_dictionary(document, document.header.named_objects_dict_handle, KEY);
+    let root = match dictionary_entry(document, root_holder, KEY) {
+        Some(root) if matches!(document.objects.get(&root), Some(ObjectType::Associative(_))) => {
+            root
+        }
+        _ => {
+            let root = document.allocate_handle();
+            let network = codec::objects::AssocNetwork {
+                action: AssocAction {
+                    class_version: 2,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut object = associative(
+                root,
+                root_holder,
+                "ACDBASSOCNETWORK",
+                "AcDbAssocNetwork",
+                AssociativeData::Network(network),
+            );
+            if let ObjectType::Associative(object) = &mut object {
+                object.reactors.push(root_holder);
+            }
+            document.objects.insert(root, object);
+            if let Some(ObjectType::Dictionary(holder)) = document.objects.get_mut(&root_holder) {
+                holder.add_entry(KEY, root);
+            }
+            root
+        }
+    };
+    let network = document.allocate_handle();
+    let mut object = associative(
+        network,
+        holder,
+        "ACDBASSOCNETWORK",
+        "AcDbAssocNetwork",
+        AssociativeData::Network(codec::objects::AssocNetwork {
+            action: AssocAction {
+                class_version: 2,
+                owning_network: root,
+                ..Default::default()
+            },
+            ..Default::default()
+        }),
+    );
+    if let ObjectType::Associative(object) = &mut object {
+        object.reactors.push(holder);
+    }
+    document.objects.insert(network, object);
+    if let Some(ObjectType::Dictionary(dictionary)) = document.objects.get_mut(&holder) {
+        dictionary.add_entry(KEY, network);
+    }
+    if let Some(ObjectType::Associative(object)) = document.objects.get_mut(&root) {
+        if let AssociativeData::Network(root) = &mut object.data {
+            root.network_action_index += 1;
+            root.actions.push(codec::objects::AssocActionDependency {
+                is_owned: false,
+                dependency: network,
+            });
+        }
+    }
+    network
+}
+
+fn value_param(name: &str, unit_type: i32, value: f64, whole: bool) -> AssocValueParam {
+    let variant = if whole {
+        codec::objects::AssocEvalVariant {
+            code: 90,
+            value: AssocEvalValue::Long(value.round() as i32),
+        }
+    } else {
+        codec::objects::AssocEvalVariant {
+            code: 40,
+            value: AssocEvalValue::Real(value),
+        }
+    };
+    AssocValueParam {
+        name: name.to_string(),
+        unit_type,
+        variables: vec![codec::objects::AssocValueParamVariable {
+            value: variant,
+            handle: Handle::NULL,
+        }],
+        ..Default::default()
+    }
+}
+
+/// The value parameters of a new rectangular array, in the order the
+/// reference product writes them.
+pub fn rectangular_params(
+    columns: u32,
+    rows: u32,
+    column_spacing: f64,
+    row_spacing: f64,
+) -> Vec<AssocValueParam> {
+    vec![
+        value_param("AlignItems", 0, 0.0, true),
+        value_param("AxesAngle", 2, std::f64::consts::FRAC_PI_2, false),
+        value_param("ItemSpacing", 1, column_spacing, false),
+        value_param("Items", 0, f64::from(columns), true),
+        value_param("LevelSpacing", 1, 1.0, false),
+        value_param("Levels", 0, 1.0, true),
+        value_param("RowElevation", 1, 0.0, false),
+        value_param("RowSpacing", 1, row_spacing, false),
+        value_param("Rows", 0, f64::from(rows), true),
+    ]
+}
+
+/// The value parameters of a new polar array.
+pub fn polar_params(
+    items: u32,
+    fill_angle: f64,
+    radius: f64,
+    start_angle: f64,
+) -> Vec<AssocValueParam> {
+    let count = f64::from(items.max(1));
+    let full = (fill_angle.abs() - std::f64::consts::TAU).abs() < 1e-9;
+    let spacing = if full {
+        fill_angle / count
+    } else if items > 1 {
+        fill_angle / (count - 1.0)
+    } else {
+        0.0
+    };
+    vec![
+        value_param("FillAngle", 2, fill_angle, false),
+        value_param("ItemSpacing", 2, spacing, false),
+        value_param("Items", 0, count, true),
+        value_param("LevelSpacing", 1, 1.0, false),
+        value_param("Levels", 0, 1.0, true),
+        value_param("RowElevation", 1, 0.0, false),
+        value_param("RowSpacing", 1, radius.abs().max(1.0), false),
+        value_param("Rows", 0, 1.0, true),
+        value_param("Radius", 1, radius, false),
+        value_param("StartAngle", 2, start_angle, false),
+    ]
+}
+
+/// What ARRAYRECT / ARRAYPOLAR ask for an associative array.
+#[derive(Clone, Debug, PartialEq)]
+pub enum AssocArraySpec {
+    Rectangular {
+        columns: u32,
+        rows: u32,
+        column_spacing: f64,
+        row_spacing: f64,
+    },
+    Polar {
+        center: DVec3,
+        items: u32,
+        fill_angle: f64,
+    },
+}
+
+/// Turn `sources` into an associative array: they move into an anonymous
+/// source block whose origin is `source_point`, an anonymous array block
+/// holds one reference to it per item, and an INSERT of the array block at
+/// `base` takes their place, tied together by an array action in the
+/// model-space network. A polar array turns about `base`. Returns the
+/// array INSERT.
+pub fn create(
+    scene: &mut crate::scene::Scene,
+    sources: &[Handle],
+    source_point: DVec3,
+    base: DVec3,
+    kind: ArrayKind,
+    params: Vec<AssocValueParam>,
+) -> Result<Handle, String> {
+    use codec::objects::{
+        AssocActionBody, AssocActionDependency, AssocActionParam, AssocArrayItem,
+        AssocSingleDependencyActionParam, AssocVertexActionParam,
+    };
+    use codec::EntityType;
+    let normal = DVec3::Z;
+    let placements: Vec<([i32; 3], DMat4)> = match kind {
+        ArrayKind::Rectangular => rectangular_items(&params, DVec3::X, normal)
+            .into_iter()
+            .map(|(location, offset)| (location, DMat4::from_translation(offset)))
+            .collect(),
+        ArrayKind::Polar => polar_items(&params, DVec3::ZERO, normal),
+        ArrayKind::Path => return Err("path arrays cannot be created yet".into()),
+    };
+    let mut entities: Vec<EntityType> = sources
+        .iter()
+        .filter_map(|handle| scene.document.get_entity(*handle).cloned())
+        .collect();
+    if entities.is_empty() {
+        return Err("nothing to array".into());
+    }
+    let layer = scene.document.header.current_layer_name.clone();
+    for entity in &mut entities {
+        crate::scene::view::dispatch::apply_transform(
+            entity,
+            &crate::command::EntityTransform::Translate(-source_point),
+        );
+    }
+    register_array_classes(&mut scene.document);
+
+    let source_name = next_anonymous_name(&scene.document);
+    scene.define_block_raw(&source_name, codec::types::Vector3::ZERO, entities);
+    let item = |offset: DMat4| {
+        let position = offset.w_axis.truncate();
+        let mut insert = codec::entities::Insert::new(
+            source_name.clone(),
+            codec::types::Vector3::new(position.x, position.y, position.z),
+        );
+        insert.rotation = offset.x_axis.y.atan2(offset.x_axis.x);
+        insert.common.layer = "0".to_string();
+        insert.common.color = codec::types::Color::ByBlock;
+        insert.common.linetype = "ByBlock".to_string();
+        insert.common.line_weight = codec::types::LineWeight::ByBlock;
+        insert.common.transparency = codec::types::Transparency::ByBlock;
+        EntityType::Insert(insert)
+    };
+    let array_name = next_anonymous_name(&scene.document);
+    scene.define_block_raw(
+        &array_name,
+        codec::types::Vector3::ZERO,
+        placements.iter().map(|(_, placement)| item(*placement)).collect(),
+    );
+    let record = |document: &CadDocument, name: &str| {
+        document
+            .block_records
+            .get(name)
+            .map(|record| (record.handle, record.entity_handles.clone()))
+    };
+    let (source_block, _) = record(&scene.document, &source_name).ok_or("source block")?;
+    let (array_block, item_handles) = record(&scene.document, &array_name).ok_or("array block")?;
+    for name in [&source_name, &array_name] {
+        if let Some(record) = scene.document.block_records.get_mut(name) {
+            record.flags.anonymous = true;
+            record.explodable = true;
+            record.scale_uniformly = *name == array_name;
+        }
+    }
+    if let Some(record) = scene.document.block_records.get_mut(&source_name) {
+        record.insert_handles = item_handles.clone();
+    }
+
+    let mut array_insert = codec::entities::Insert::new(
+        array_name.clone(),
+        codec::types::Vector3::new(base.x, base.y, base.z),
+    );
+    array_insert.common.layer = layer;
+    let insert = scene.add_entity(EntityType::Insert(array_insert));
+    scene.erase_entities(sources);
+
+    let document = &mut scene.document;
+    let network = model_space_network(document);
+    let [action, body, write_dep, read_dep, both_dep] =
+        std::array::from_fn(|_| document.allocate_handle());
+    let mut owned_parameters = Vec::new();
+    let vertex_params =
+        [("BaseNormal", normal), ("Origin", DVec3::ZERO), ("basePoint", DVec3::ZERO)];
+    for (name, point) in vertex_params {
+        let handle = document.allocate_handle();
+        document.objects.insert(
+            handle,
+            associative(
+                handle,
+                action,
+                "ACDBASSOCVERTEXACTIONPARAM",
+                "AcDbAssocVertexActionParam",
+                AssociativeData::VertexActionParam(AssocVertexActionParam {
+                    single_dependency: AssocSingleDependencyActionParam {
+                        action_param: AssocActionParam {
+                            is_r2013: 1,
+                            version: 0,
+                            name: name.to_string(),
+                        },
+                        ..Default::default()
+                    },
+                    point: codec::types::Vector3::new(point.x, point.y, point.z),
+                }),
+            ),
+        );
+        owned_parameters.push(handle);
+    }
+    for (handle, read, write, order, target, id) in [
+        (write_dep, false, true, 0, array_block, 1),
+        (read_dep, true, false, 0, source_block, 2),
+        (both_dep, true, true, i32::MIN, insert, 3),
+    ] {
+        document.objects.insert(
+            handle,
+            associative(
+                handle,
+                action,
+                "ACDBASSOCDEPENDENCY",
+                "AcDbAssocDependency",
+                AssociativeData::Dependency(AssocDependency {
+                    class_version: 2,
+                    is_read_dependency: read,
+                    is_write_dependency: write,
+                    is_attached_to_object: true,
+                    is_delegating_to_owning_action: true,
+                    order,
+                    dependent_on: target,
+                    dependency_body_id: id,
+                    ..Default::default()
+                }),
+            ),
+        );
+    }
+    if let Some(EntityType::Insert(array)) = document.get_entity_mut(insert) {
+        array.common.reactors.push(both_dep);
+    }
+    let items = placements
+        .iter()
+        .zip(&item_handles)
+        .map(|((location, placement), handle)| {
+            let position = placement.w_axis.truncate();
+            let turned = (placement.x_axis.truncate() - DVec3::X).length() > 1e-12;
+            AssocArrayItem {
+                location: *location,
+                flags: if turned { 12 } else { 8 },
+                uses_default_transform: !turned,
+                x_direction: if turned {
+                    codec::types::Vector3::ZERO
+                } else {
+                    codec::types::Vector3::new(position.x, position.y, position.z)
+                },
+                transform: if turned {
+                    placement.transpose().to_cols_array()
+                } else {
+                    [0.0; 16]
+                },
+                first_handle: Some(*handle),
+                ..Default::default()
+            }
+        })
+        .collect();
+    let parameter_block = match kind {
+        ArrayKind::Polar => "AcDbAssocArrayPolarParameters",
+        _ => "AcDbAssocArrayRectangularParameters",
+    };
+    document.objects.insert(
+        body,
+        associative(
+            body,
+            action,
+            "ACDBASSOCARRAYACTIONBODY",
+            "AcDbAssocArrayActionBody",
+            AssociativeData::ArrayActionBody(AssocArrayActionBody {
+                action_body: AssocActionBody { version: 2 },
+                version: 1,
+                parameter_block: parameter_block.to_string(),
+                item_class: "AcDbAssocArrayItem".to_string(),
+                items,
+                transform: DMat4::from_translation(base).transpose().to_cols_array(),
+                ..Default::default()
+            }),
+        ),
+    );
+    let action_index = match document.objects.get_mut(&network) {
+        Some(ObjectType::Associative(object)) => match &mut object.data {
+            AssociativeData::Network(network) => {
+                network.network_action_index += 1;
+                network.actions.push(AssocActionDependency {
+                    is_owned: true,
+                    dependency: action,
+                });
+                network.network_action_index
+            }
+            _ => 1,
+        },
+        _ => 1,
+    };
+    document.objects.insert(
+        action,
+        associative(
+            action,
+            network,
+            "ACDBASSOCACTION",
+            "AcDbAssocAction",
+            AssociativeData::Action(AssocAction {
+                class_version: 2,
+                owning_network: network,
+                action_body: body,
+                action_index,
+                max_dependency_index: 3,
+                dependencies: [write_dep, read_dep, both_dep]
+                    .map(|dependency| AssocActionDependency {
+                        is_owned: true,
+                        dependency,
+                    })
+                    .to_vec(),
+                owned_parameters,
+                values: params,
+                ..Default::default()
+            }),
+        ),
+    );
+    scene.bump_geometry();
+    Ok(insert)
+}
+
+/// Build an associative array from `sources` per `spec`, its source block
+/// based at their lower-left corner `source_point`.
+pub fn create_from_spec(
+    scene: &mut crate::scene::Scene,
+    sources: &[Handle],
+    source_point: DVec3,
+    spec: &AssocArraySpec,
+) -> Result<Handle, String> {
+    match *spec {
+        AssocArraySpec::Rectangular {
+            columns,
+            rows,
+            column_spacing,
+            row_spacing,
+        } => create(
+            scene,
+            sources,
+            source_point,
+            source_point,
+            ArrayKind::Rectangular,
+            rectangular_params(columns, rows, column_spacing, row_spacing),
+        ),
+        AssocArraySpec::Polar {
+            center,
+            items,
+            fill_angle,
+        } => {
+            let offset = source_point - center;
+            let params = polar_params(
+                items,
+                fill_angle,
+                offset.truncate().length(),
+                offset.y.atan2(offset.x),
+            );
+            create(scene, sources, source_point, center, ArrayKind::Polar, params)
+        }
+    }
 }

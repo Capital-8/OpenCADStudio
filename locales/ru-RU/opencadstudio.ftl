@@ -286,6 +286,7 @@ command-copy =
     .mode = COPY  Задайте режим копирования [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: создан ассоциативный массив.
     .assoc-array-array-path = Массив (по траектории)
     .assoc-array-array-polar = Массив (круговой)
     .assoc-array-array-rectangular = Массив (прямоугольный)

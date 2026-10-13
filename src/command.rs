@@ -1621,6 +1621,11 @@ pub enum CmdResult {
     },
     /// Copy selected entities with multiple transforms (e.g. rectangular array); end command.
     BatchCopy(Vec<Handle>, Vec<EntityTransform>),
+    /// Turn the objects into an associative array; end command.
+    AssocArray {
+        handles: Vec<Handle>,
+        spec: crate::scene::assoc_array::AssocArraySpec,
+    },
     /// Erase `handle` and replace with new entities; command stays active.
     ReplaceEntity(Handle, Vec<EntityType>),
     /// XCLIP on block references; ends the command.

@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  ປ້ອນຕົວເລືອກໂໝດການຄັດລອກ [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: ສ້າງອາເຣແບບເຊື່ອມໂຍງແລ້ວ.
     .assoc-array-array-path = ອາເຣ (ເສັ້ນທາງ)
     .assoc-array-array-polar = ອາເຣ (ວົງມົນ)
     .assoc-array-array-rectangular = ອາເຣ (ສີ່ຫຼ່ຽມ)

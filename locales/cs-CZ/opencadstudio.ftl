@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  Zadejte režim kopírování [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: vytvořeno asociativní pole.
     .assoc-array-array-path = Pole (podél cesty)
     .assoc-array-array-polar = Pole (kruhové)
     .assoc-array-array-rectangular = Pole (obdélníkové)

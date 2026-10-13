@@ -283,6 +283,7 @@ command-copy =
     .mode = COPY  Kopiermodus eingeben [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: assoziative Reihe erstellt.
     .assoc-array-array-path = Reihe (Pfad)
     .assoc-array-array-polar = Reihe (polar)
     .assoc-array-array-rectangular = Reihe (rechteckig)

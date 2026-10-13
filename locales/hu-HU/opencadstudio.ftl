@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  Adja meg a másolási módot [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: asszociatív tömb létrehozva.
     .assoc-array-array-path = Tömb (útvonal)
     .assoc-array-array-polar = Tömb (poláris)
     .assoc-array-array-rectangular = Tömb (téglalap)

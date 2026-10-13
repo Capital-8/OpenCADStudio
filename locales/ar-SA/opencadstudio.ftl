@@ -295,6 +295,7 @@ command-copy =
     .mode = COPY  أدخل خيار وضع النسخ [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: تم إنشاء مصفوفة ترابطية.
     .assoc-array-array-path = مصفوفة (مسار)
     .assoc-array-array-polar = مصفوفة (قطبية)
     .assoc-array-array-rectangular = مصفوفة (مستطيلة)

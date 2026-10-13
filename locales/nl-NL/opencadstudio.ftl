@@ -283,6 +283,7 @@ command-copy =
     .mode = COPY  Geef kopieermodus op [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: associatieve reeks gemaakt.
     .assoc-array-array-path = Reeks (pad)
     .assoc-array-array-polar = Reeks (polair)
     .assoc-array-array-rectangular = Reeks (rechthoekig)

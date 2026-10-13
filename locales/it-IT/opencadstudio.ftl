@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  Specificare modalità di copia [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: serie associativa creata.
     .assoc-array-array-path = Serie (percorso)
     .assoc-array-array-polar = Serie (polare)
     .assoc-array-array-rectangular = Serie (rettangolare)

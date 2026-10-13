@@ -282,6 +282,7 @@ command-copy =
     .displacement = COPY  Задайте преместване:
     .mode = COPY  Въведете режим на копиране [Single/Multiple] <Multiple>:
 common =
+    .label-associative-array-created = __ocs_fmt_0__: създаден е асоциативен масив.
     .assoc-array-array-path = Масив (по път)
     .assoc-array-array-polar = Масив (полярен)
     .assoc-array-array-rectangular = Масив (правоъгълен)

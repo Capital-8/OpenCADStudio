@@ -3960,6 +3960,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "{exploded} object(s) exploded." => Some(("annotate", "exploded-object-s-exploded")),
         "{label}:" => Some(("command", "label")),
         "{label}: {count} {noun} created." => Some(("common", "label-count-noun-created")),
+        "{label}: associative array created." => Some(("common", "label-associative-array-created")),
         "{n} object(s) erased." => Some(("draw", "n-object-s-erased")),
         "{prefix}: '{style_name}' font set to '{font}'." => Some(("layers", "prefix-style-name-font-set-to-font")),
         "{prefix}: '{style_name}' oblique angle set to {deg:.1}°." => Some(("layers", "prefix-style-name-oblique-angle-set-to-deg-1")),

@@ -283,6 +283,7 @@ command-copy =
     .mode = COPY  Indique modo de copia [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: se ha creado una matriz asociativa.
     .assoc-array-array-path = Matriz (trayectoria)
     .assoc-array-array-polar = Matriz (polar)
     .assoc-array-array-rectangular = Matriz (rectangular)

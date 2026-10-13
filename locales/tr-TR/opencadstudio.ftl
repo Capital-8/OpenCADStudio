@@ -268,6 +268,7 @@ command-copy =
     .mode = COPY  Kopyalama modu seçin [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: ilişkisel dizi oluşturuldu.
     .assoc-array-array-path = Dizi (Yol)
     .assoc-array-array-polar = Dizi (Kutupsal)
     .assoc-array-array-rectangular = Dizi (Dikdörtgen)

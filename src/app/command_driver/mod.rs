@@ -606,6 +606,9 @@ impl OpenCADStudio {
                     return task;
                 }
             }
+            CmdResult::AssocArray { handles, spec } => {
+                self.handle_assoc_array(handles, spec);
+            }
             CmdResult::ReplaceMany(replacements, additions) => {
                 if let Some(task) = self.handle_replace_many(replacements, additions) {
                     return task;

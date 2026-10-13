@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  Enter a copy mode option [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: associative array created.
     .assoc-array-array-path = Array (Path)
     .assoc-array-array-polar = Array (Polar)
     .assoc-array-array-rectangular = Array (Rectangular)

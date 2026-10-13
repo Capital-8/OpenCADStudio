@@ -271,6 +271,7 @@ command-copy =
     .mode = COPY  कॉपी मोड विकल्प दर्ज करें [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: सहयोगी ऐरे बनाया गया।
     .assoc-array-array-path = ऐरे (पथ)
     .assoc-array-array-polar = ऐरे (ध्रुवीय)
     .assoc-array-array-rectangular = ऐरे (आयताकार)

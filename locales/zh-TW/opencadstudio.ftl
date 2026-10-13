@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  輸入複製模式選項 [Single/Multiple] <Multiple>:
 
 common =
+    .label-associative-array-created = __ocs_fmt_0__: 已建立關聯陣列。
     .assoc-array-array-path = 陣列 (路徑)
     .assoc-array-array-polar = 陣列 (環形)
     .assoc-array-array-rectangular = 陣列 (矩形)
