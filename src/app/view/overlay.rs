@@ -1506,6 +1506,15 @@ pub(super) fn qselect_overlay<'a>(
     )
 }
 
+/// Object type label for the selection filter; INSERT reads as a block reference.
+fn qselect_type_label(name: &str) -> String {
+    if name == "Insert" {
+        t!("Block Reference").into_owned()
+    } else {
+        t!(name).into_owned()
+    }
+}
+
 fn qselect_content<'a>(
     state: &'a crate::app::QSelectState,
     types: &[String],
@@ -1655,7 +1664,7 @@ fn qselect_content<'a>(
         let type_label = condition
             .type_filter
             .as_deref()
-            .map(|name| t!(name).into_owned())
+            .map(qselect_type_label)
             .unwrap_or_else(|| t!(QSELECT_ANY_TYPE).into_owned());
         let property_label = condition
             .property
@@ -1727,11 +1736,7 @@ fn qselect_content<'a>(
         row![
             label(t!("Object type:")),
             iced::widget::pick_list(Some(type_sel), type_options, |value| {
-                if value == "Insert" {
-                    t!("Block Reference").into_owned()
-                } else {
-                    t!(value).into_owned()
-                }
+                qselect_type_label(value)
             })
                 .on_select(|s: String| {
                     if s == QSELECT_ANY_TYPE {

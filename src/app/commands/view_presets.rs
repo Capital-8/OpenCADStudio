@@ -155,7 +155,10 @@ impl OpenCADStudio {
                     for name in &doomed {
                         let removed = self.tabs[i].scene.document.views.remove(name);
                         if let Some(view) = removed {
-                            crate::scene::erase_background(&mut self.tabs[i].scene.document, view.background_handle);
+                            crate::scene::erase_background(
+                                &mut self.tabs[i].scene.document,
+                                view.background_handle,
+                            );
                         }
                         self.tabs[i].scene.document.delete_layer_state(&snapshot_name(name));
                     }
