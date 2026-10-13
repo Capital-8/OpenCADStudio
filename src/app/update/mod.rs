@@ -106,6 +106,7 @@ pub(in crate::app) use file::background_task;
 #[cfg(not(target_arch = "wasm32"))]
 pub(in crate::app) use file::native_paths_match;
 mod page_setup_import;
+mod qselect;
 mod style;
 pub(in crate::app) mod util;
 mod viewport;
@@ -510,12 +511,15 @@ impl OpenCADStudio {
             .as_ref()
             .map(|c| c.options())
             .or_else(|| {
-                self.graphic_attributes.pending_fill_close.as_ref().map(|_| {
-                    vec![
-                        crate::command::CmdOption::new("Yes", "Y"),
-                        crate::command::CmdOption::new("No", "N"),
-                    ]
-                })
+                self.graphic_attributes
+                    .pending_fill_close
+                    .as_ref()
+                    .map(|_| {
+                        vec![
+                            crate::command::CmdOption::new("Yes", "Y"),
+                            crate::command::CmdOption::new("No", "N"),
+                        ]
+                    })
             })
             .unwrap_or_default();
         self.command_line.set_step_options(opts);
@@ -746,9 +750,7 @@ impl OpenCADStudio {
                     // A settled fetch's rebuild trigger was dropped at the
                     // outcome cap; do one unconditional catch-up pass over
                     // every registered name.
-                    registered.extend(
-                        crate::scene::model::image_model::registered_image_names(),
-                    );
+                    registered.extend(crate::scene::model::image_model::registered_image_names());
                 }
                 if !registered.is_empty() {
                     for tab in self.tabs.iter_mut() {
@@ -924,9 +926,8 @@ impl OpenCADStudio {
                     // (its WebFileOpened then fails the id check and the
                     // bytes are lost) — refuse like on_open_file does.
                     if self.opening.is_some() {
-                        self.command_line.push_info(
-                            crate::t!("An open is already in progress.").as_ref(),
-                        );
+                        self.command_line
+                            .push_info(crate::t!("An open is already in progress.").as_ref());
                         return Task::none();
                     }
                     let state = std::sync::Arc::new(crate::io::OpenProgressState::new(
@@ -1421,7 +1422,7 @@ impl OpenCADStudio {
                     LinkOutcome::Error(text) => self.command_line.push_error(&text),
                 }
                 Task::none()
-            },
+            }
 
             #[cfg(target_arch = "wasm32")]
             Message::WebAutosavesScanned(result) => self.on_web_autosaves_scanned(result),
@@ -1696,10 +1697,7 @@ impl OpenCADStudio {
                                 )
                                 .add_filter(crate::t!("DWG Files").as_ref(), &["dwg", "DWG"])
                                 .add_filter(crate::t!("DXF Files").as_ref(), &["dxf", "DXF"])
-                                .add_filter(
-                                    crate::t!("Backup Files").as_ref(),
-                                    &["bak", "BAK"],
-                                )
+                                .add_filter(crate::t!("Backup Files").as_ref(), &["bak", "BAK"])
                                 .pick_file()
                                 .await;
                             match handle {
@@ -7011,14 +7009,7 @@ impl OpenCADStudio {
                     if matches!(scope, crate::app::QSelectScope::CurrentSelection) {
                         state.append = false;
                     }
-                    if matches!(
-                        state.operator,
-                        crate::app::QSelectOp::Gt | crate::app::QSelectOp::Lt
-                    ) && !state.property.as_ref().is_some_and(|property| {
-                        matches!(property.editor, crate::app::QSelectValueEditor::Number)
-                    }) {
-                        state.operator = crate::app::QSelectOp::Eq;
-                    }
+                    state.normalize_operator();
                 }
                 Task::none()
             }
@@ -7042,14 +7033,7 @@ impl OpenCADStudio {
                     state.property = kept_property;
                     state.value.clear();
                     state.error = None;
-                    if matches!(
-                        state.operator,
-                        crate::app::QSelectOp::Gt | crate::app::QSelectOp::Lt
-                    ) && !state.property.as_ref().is_some_and(|property| {
-                        matches!(property.editor, crate::app::QSelectValueEditor::Number)
-                    }) {
-                        state.operator = crate::app::QSelectOp::Eq;
-                    }
+                    state.normalize_operator();
                 }
                 Task::none()
             }
@@ -7059,14 +7043,7 @@ impl OpenCADStudio {
                     state.property = p;
                     state.value.clear();
                     state.error = None;
-                    if matches!(
-                        state.operator,
-                        crate::app::QSelectOp::Gt | crate::app::QSelectOp::Lt
-                    ) && !state.property.as_ref().is_some_and(|property| {
-                        matches!(property.editor, crate::app::QSelectValueEditor::Number)
-                    }) {
-                        state.operator = crate::app::QSelectOp::Eq;
-                    }
+                    state.normalize_operator();
                 }
                 Task::none()
             }
@@ -7105,47 +7082,96 @@ impl OpenCADStudio {
                 Task::none()
             }
 
-            Message::QSelectApply => {
-                let validation_error = self.qselect.as_ref().and_then(|state| {
-                    let candidate_count = self.tabs[self.active_tab]
-                        .scene
-                        .qselect_candidate_count(state.scope);
-                    if candidate_count == 0 {
-                        Some(crate::t!("No objects are available in this scope.").into_owned())
-                    } else if let Some(property) = state.property.as_ref() {
-                        if matches!(state.operator, crate::app::QSelectOp::Any) {
-                            None
-                        } else if matches!(
-                            state.operator,
-                            crate::app::QSelectOp::Gt | crate::app::QSelectOp::Lt
-                        ) && !matches!(
-                            property.editor,
-                            crate::app::QSelectValueEditor::Number
-                        ) {
-                            Some(
-                                crate::t!("This operator requires a numeric property.")
-                                    .into_owned(),
-                            )
-                        } else {
-                            match &property.editor {
-                                crate::app::QSelectValueEditor::Number
-                                    if crate::entities::common::parse_f64(&state.value)
-                                        .is_none() =>
-                                {
-                                    Some(crate::t!("Enter a valid number.").into_owned())
-                                }
-                                crate::app::QSelectValueEditor::Choice(_)
-                                    if state.value.is_empty() =>
-                                {
-                                    Some(crate::t!("Choose a value.").into_owned())
-                                }
-                                crate::app::QSelectValueEditor::Text
-                                | crate::app::QSelectValueEditor::Number
-                                | crate::app::QSelectValueEditor::Choice(_) => None,
-                            }
+            Message::QSelectPickObject => self.on_qselect_pick_object(),
+            Message::QSelectAddCondition => {
+                if let Some(state) = self.qselect.as_mut() {
+                    let condition = state.draft_condition();
+                    if let Some(error) = condition.validation_error() {
+                        state.error = Some(error);
+                        return Task::none();
+                    }
+                    if let Some(index) = state.editing_condition.take() {
+                        if let Some(existing) = state.conditions.get_mut(index) {
+                            *existing = condition;
                         }
                     } else {
-                        None
+                        state.conditions.push(condition);
+                    }
+                    state.error = None;
+                }
+                Task::none()
+            }
+            Message::QSelectEditCondition(index) => {
+                let condition = self
+                    .qselect
+                    .as_ref()
+                    .and_then(|state| state.conditions.get(index).cloned());
+                if let Some(condition) = condition {
+                    let scope = self.qselect.as_ref().unwrap().scope;
+                    let properties = self.tabs[self.active_tab]
+                        .scene
+                        .qselect_properties(condition.type_filter.as_deref(), scope);
+                    if let Some(state) = self.qselect.as_mut() {
+                        state.available_properties = properties;
+                        state.type_filter = condition.type_filter;
+                        state.property = condition.property;
+                        state.operator = condition.operator;
+                        state.value = condition.value;
+                        state.editing_condition = Some(index);
+                        state.error = None;
+                    }
+                }
+                Task::none()
+            }
+            Message::QSelectRemoveCondition(index) => {
+                if let Some(state) = self.qselect.as_mut() {
+                    if index < state.conditions.len() {
+                        state.conditions.remove(index);
+                        state.editing_condition = match state.editing_condition {
+                            Some(editing) if editing == index => None,
+                            Some(editing) if editing > index => Some(editing - 1),
+                            other => other,
+                        };
+                    }
+                    state.error = None;
+                }
+                Task::none()
+            }
+            Message::QSelectClearConditions => {
+                if let Some(state) = self.qselect.as_mut() {
+                    state.conditions.clear();
+                    state.editing_condition = None;
+                    state.error = None;
+                }
+                Task::none()
+            }
+            Message::QSelectCancelEdit => {
+                if let Some(state) = self.qselect.as_mut() {
+                    state.editing_condition = None;
+                    state.error = None;
+                }
+                Task::none()
+            }
+            Message::QSelectApply => {
+                let validation_error = self.qselect.as_ref().and_then(|state| {
+                    if self.tabs[self.active_tab]
+                        .scene
+                        .qselect_candidate_count(state.scope)
+                        == 0
+                    {
+                        Some(crate::t!("No objects are available in this scope.").into_owned())
+                    } else if state.editing_condition.is_some() {
+                        Some(
+                            crate::t!("Update or cancel the condition edit before applying.")
+                                .into_owned(),
+                        )
+                    } else if state.conditions.is_empty() {
+                        state.draft_condition().validation_error()
+                    } else {
+                        state
+                            .conditions
+                            .iter()
+                            .find_map(|condition| condition.validation_error())
                     }
                 });
                 if let Some(error) = validation_error {
@@ -7160,12 +7186,14 @@ impl OpenCADStudio {
                 self.qselect_settings = Some((&state).into());
                 self.reset_modal_geometry();
                 let i = self.active_tab;
-                let matched = self.tabs[i].scene.qselect(
+                let conditions = if state.conditions.is_empty() {
+                    vec![state.draft_condition()]
+                } else {
+                    state.conditions.clone()
+                };
+                let matched = self.tabs[i].scene.qselect_conditions(
                     state.scope,
-                    state.type_filter.as_deref(),
-                    state.property.as_ref().map(|p| p.field.as_str()),
-                    state.operator,
-                    &state.value,
+                    &conditions,
                     state.mode,
                     state.append && matches!(state.scope, crate::app::QSelectScope::CurrentSpace),
                 );
@@ -7190,6 +7218,11 @@ impl OpenCADStudio {
                         .collect();
                     wblock.error_message = None;
                     self.active_modal = Some(super::ModalKind::WriteBlock);
+                } else {
+                    // FILTER may be opened from a still-focused command input.
+                    // Release text focus so Delete and clipboard shortcuts act
+                    // on the resulting pick-first selection, not on that input.
+                    return self.unfocus_widgets();
                 }
                 Task::none()
             }
@@ -7635,7 +7668,8 @@ impl OpenCADStudio {
                     crate::ui::window::graphic_attributes::LINETYPE_SCALE_FIELD,
                 );
                 if focused.as_ref() == Some(&scale_field) {
-                    if !std::mem::replace(&mut self.graphic_attributes.linetype_scale_focused, true) {
+                    if !std::mem::replace(&mut self.graphic_attributes.linetype_scale_focused, true)
+                    {
                         return iced::widget::operation::select_all(scale_field);
                     }
                     return Task::none();

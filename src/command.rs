@@ -382,7 +382,11 @@ impl CadCommand for FreeTextValuePromptCommand {
     }
 
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
-        Some(CmdResult::Dispatch(format!("{} {}", self.name, text.trim())))
+        Some(CmdResult::Dispatch(format!(
+            "{} {}",
+            self.name,
+            text.trim()
+        )))
     }
 
     fn on_point(&mut self, _pt: DVec3) -> CmdResult {
@@ -1510,6 +1514,12 @@ impl DimensionPreview {
 /// Returned by every `CadCommand` method to tell main.rs what to do.
 #[allow(dead_code)]
 pub enum CmdResult {
+    /// Return the suspended filter after a read-only sample pick or cancellation.
+    QSelectSample {
+        state: Box<crate::app::QSelectState>,
+        tab_id: u64,
+        handle: Option<Handle>,
+    },
     /// Command is still waiting for the next point; show updated prompt.
     NeedPoint,
     /// Update the committed-segment wire (normal colour) and keep collecting points.

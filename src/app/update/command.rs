@@ -2111,9 +2111,8 @@ impl OpenCADStudio {
     pub(super) fn paste_clipboard_image(&mut self, name: String, bytes: Vec<u8>) -> Task<Message> {
         let i = self.active_tab;
         if self.tabs[i].is_start {
-            self.command_line.push_error(
-                crate::tr!("common", "no-drawing-open-use-new-or-open-first").as_ref(),
-            );
+            self.command_line
+                .push_error(crate::tr!("common", "no-drawing-open-use-new-or-open-first").as_ref());
             return Task::none();
         }
         crate::scene::model::image_model::register_source(&name, std::sync::Arc::new(bytes));
@@ -2227,6 +2226,10 @@ impl OpenCADStudio {
         let append = matches!(scope, crate::app::QSelectScope::CurrentSpace)
             && remembered.as_ref().is_some_and(|settings| settings.append);
         self.qselect = Some(crate::app::QSelectState {
+            conditions: remembered
+                .as_ref()
+                .map_or_else(Vec::new, |settings| settings.conditions.clone()),
+            editing_condition: None,
             scope,
             available_types,
             available_properties,
