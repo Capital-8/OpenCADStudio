@@ -281,6 +281,11 @@ command-copy =
     .mode = COPY  Adja meg a másolási módot [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: exportálva a következőbe: "__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: a rajz nem tartalmaz 3D hálóadatot.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = Az új sraffozások követik határaikat (HPASSOC)
     .options-show-ribbon = Szalag megjelenítése (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Menüsor megjelenítése (MENUBAR)

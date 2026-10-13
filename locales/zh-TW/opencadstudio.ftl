@@ -282,6 +282,11 @@ command-copy =
     .mode = COPY  輸入複製模式選項 [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT:匯出為"__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT:此繪圖中沒有3D網格資料。
+    .fbxexport-error = FBXEXPORT:__ocs_fmt_0__ 時間軸:
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = 新填充線跟隨其邊界 (HPASSOC)
     .options-show-ribbon = 顯示功能區 (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = 顯示功能表列 (MENUBAR)

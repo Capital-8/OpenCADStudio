@@ -282,6 +282,11 @@ command-copy =
     .mode = COPY  Zadejte režim kopírování [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: exportováno do "__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: v tomto výkresu nejsou žádná data 3D sítě.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = Nové šrafy sledují své hranice (HPASSOC)
     .options-show-ribbon = Zobrazit pás karet (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Zobrazit panel nabídek (MENUBAR)

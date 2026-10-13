@@ -282,6 +282,11 @@ command-copy =
     .mode = COPY  Podaj tryb kopiowania [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: wyeksportowano do „__ocs_fmt_0__”
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: brak danych siatki 3D na tym rysunku.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = Nowe kreskowania podążają za obwiedniami (HPASSOC)
     .options-show-ribbon = Pokaż wstążkę (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Pokaż pasek menu (MENUBAR)

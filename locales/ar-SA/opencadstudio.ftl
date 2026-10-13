@@ -295,6 +295,11 @@ command-copy =
     .mode = COPY  أدخل خيار وضع النسخ [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: تم التصدير إلى "__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: لا توجد بيانات شبكة ثلاثية الأبعاد في هذا الرسم.
+    .fbxexport-error = FBXEXPORT: ‏__ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = التظليلات الجديدة تتبع حدودها (HPASSOC)
     .options-show-ribbon = إظهار الشريط (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = إظهار شريط القوائم (MENUBAR)

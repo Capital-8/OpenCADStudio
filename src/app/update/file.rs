@@ -2573,6 +2573,41 @@ impl OpenCADStudio {
         )
     }
 
+    pub(super) fn on_fbx_export_path_some(&mut self, path: std::path::PathBuf) -> Task<Message> {
+        let i = self.active_tab;
+        // Export uses LOD 0 (full resolution); see StlExportPath above.
+        let meshes: Vec<crate::scene::model::mesh_model::MeshModel> = self.tabs[i]
+            .scene
+            .meshes
+            .values()
+            .filter_map(|s| s.lods.first().cloned())
+            .collect();
+        let header = &self.tabs[i].scene.document.header;
+        // Centimetres per drawing unit (INSUNITS); unitless metric drawings
+        // are taken as millimetres, imperial ones as inches.
+        let unit_cm = match header.insertion_units {
+            1 => 2.54,
+            2 => 30.48,
+            4 => 0.1,
+            5 => 1.0,
+            6 => 100.0,
+            14 => 10.0,
+            _ if header.measurement == 1 => 0.1,
+            _ => 2.54,
+        };
+        let worker_path = path.clone();
+        background_task(
+            crate::t!("FBX export"),
+            move || {
+                let mesh_refs: Vec<_> = meshes.iter().collect();
+                let bytes = crate::io::fbx::build_fbx(&mesh_refs, unit_cm)
+                    .ok_or_else(|| "no mesh data to export".to_string())?;
+                write_export(&worker_path, &bytes)
+            },
+            move |result| Message::FbxExportFinished(path, result),
+        )
+    }
+
     pub(super) fn on_obj_import_path_some(&mut self, path: std::path::PathBuf) -> Task<Message> {
         let tab_id = self.tabs[self.active_tab].id;
         let worker_path = path.clone();

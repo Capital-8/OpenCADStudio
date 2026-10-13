@@ -271,6 +271,11 @@ command-copy =
     .mode = COPY  कॉपी मोड विकल्प दर्ज करें [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: "__ocs_fmt_0__" में निर्यात किया गया
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: इस ड्रॉइंग में कोई 3D मेश डेटा नहीं है।
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = नए हैच अपनी सीमाओं का अनुसरण करते हैं (HPASSOC)
     .options-show-ribbon = रिबन दिखाएँ (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = मेनू बार दिखाएँ (MENUBAR)

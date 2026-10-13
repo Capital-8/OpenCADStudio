@@ -282,6 +282,11 @@ command-copy =
     .mode = COPY  복사 모드 옵션 입력 [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: "__ocs_fmt_0__"로 내보냈습니다.
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: 이 도면에는 3D 메쉬 데이터가 없습니다.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = 새 해치가 경계를 따름 (HPASSOC)
     .options-show-ribbon = 리본 표시 (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = 메뉴 막대 표시 (MENUBAR)

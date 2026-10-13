@@ -282,6 +282,11 @@ command-copy =
     .mode = COPY  Valitse kopiointitila [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: viety tiedostoon "__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: tässä piirustuksessa ei ole 3D-verkkotietoja.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = Uudet viivoitukset seuraavat rajojaan (HPASSOC)
     .options-show-ribbon = Näytä valintanauha (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Näytä valikkorivi (MENUBAR)

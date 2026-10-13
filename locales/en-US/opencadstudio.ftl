@@ -282,6 +282,11 @@ command-copy =
     .mode = COPY  Enter a copy mode option [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: exported to "__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: no 3D mesh data in this drawing.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = Export FBX
+    .fbx-files = STEP Files
     .options-hpassoc = New hatches follow their boundaries (HPASSOC)
     .options-show-ribbon = Show the ribbon (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Show the menu bar (MENUBAR)

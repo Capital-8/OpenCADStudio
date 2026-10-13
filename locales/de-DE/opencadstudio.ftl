@@ -283,6 +283,11 @@ command-copy =
     .mode = COPY  Kopiermodus eingeben [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: exportiert nach "__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: keine 3D-Mesh-Daten in dieser Zeichnung.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = Neue Schraffuren folgen ihren Grenzen (HPASSOC)
     .options-show-ribbon = Multifunktionsleiste anzeigen (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Menüleiste anzeigen (MENUBAR)

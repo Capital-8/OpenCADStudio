@@ -282,6 +282,11 @@ command-copy =
     .mode = COPY  Επιλέξτε λειτουργία αντιγραφής [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: εξήχθη στο "__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: δεν υπάρχουν δεδομένα πλέγματος 3D σε αυτό το σχέδιο.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = Οι νέες διαγραμμίσεις ακολουθούν τα όριά τους (HPASSOC)
     .options-show-ribbon = Εμφάνιση κορδέλας (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Εμφάνιση γραμμής μενού (MENUBAR)

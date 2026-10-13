@@ -940,6 +940,11 @@ impl OpenCADStudio {
                 return Some(Task::done(Message::StlExport));
             }
 
+            // FBXEXPORT — export 3D meshes to FBX for visualisation tools
+            "FBXEXPORT" | "EXPORTFBX" => {
+                return Some(Task::done(Message::FbxExport));
+            }
+
             // STEPOUT — export 3D meshes to STEP AP203 format
             "STEPOUT" | "EXPORTSTEP" | "STPOUT" => {
                 return Some(Task::done(Message::StepExport));

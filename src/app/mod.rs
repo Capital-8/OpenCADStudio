@@ -4411,6 +4411,12 @@ pub enum Message {
     /// Callback after the user picks (or cancels) the STEP save path.
     StepExportPath(Option<std::path::PathBuf>),
     StepExportFinished(std::path::PathBuf, Result<(), String>),
+    // ── FBX export ────────────────────────────────────────────────────────
+    /// Trigger FBX export: show save dialog.
+    FbxExport,
+    /// Callback after the user picks (or cancels) the FBX save path.
+    FbxExportPath(Option<std::path::PathBuf>),
+    FbxExportFinished(std::path::PathBuf, Result<(), String>),
     // ── OBJ import ────────────────────────────────────────────────────────
     /// Trigger OBJ import: show open-file dialog.
     ObjImport,

@@ -268,6 +268,11 @@ command-copy =
     .mode = COPY  Kopyalama modu seçin [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: "__ocs_fmt_0__" konumuna dışa aktarıldı
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: Bu çizimde 3B örgü verisi yok.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = Yeni taramalar sınırlarını izler (HPASSOC)
     .options-show-ribbon = Şeridi göster (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Menü çubuğunu göster (MENUBAR)

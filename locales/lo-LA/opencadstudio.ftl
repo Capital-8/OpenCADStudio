@@ -282,6 +282,11 @@ command-copy =
     .mode = COPY  ປ້ອນຕົວເລືອກໂໝດການຄັດລອກ [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: ສົ່ງອອກໄປທີ່ "__ocs_fmt_0__" ແລ້ວ
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: ບໍ່ມີຂໍ້ມູນເມຊ 3D ໃນຮູບແຕ້ມນີ້.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = ສົ່ງອອກ FBX
+    .fbx-files = ໄຟລ໌ STEP
     .options-hpassoc = ການຂີດລາຍໃໝ່ຕິດຕາມຂອບເຂດ (HPASSOC)
     .options-show-ribbon = ສະແດງແຖບໂບ (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = ສະແດງແຖບເມນູ (MENUBAR)

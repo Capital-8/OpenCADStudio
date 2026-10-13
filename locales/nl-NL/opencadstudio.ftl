@@ -283,6 +283,11 @@ command-copy =
     .mode = COPY  Geef kopieermodus op [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: geëxporteerd naar "__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: geen 3D-maasgegevens in deze tekening.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = Nieuwe arceringen volgen hun grenzen (HPASSOC)
     .options-show-ribbon = Lint tonen (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Menubalk tonen (MENUBAR)

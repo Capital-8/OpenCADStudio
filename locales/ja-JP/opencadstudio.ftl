@@ -273,6 +273,11 @@ command-copy =
     .mode = COPY  コピーモードを入力 [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: "__ocs_fmt_0__" に書き出しました
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: この図面に 3D メッシュデータがありません。
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = 新しいハッチングは境界に従う (HPASSOC)
     .options-show-ribbon = リボンを表示 (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = メニュー バーを表示 (MENUBAR)

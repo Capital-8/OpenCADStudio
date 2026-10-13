@@ -283,6 +283,11 @@ command-copy =
     .mode = COPY  Entrez le mode de copie [Single/Multiple] <Multiple> :
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: exporté vers "__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: aucune donnée de maillage 3D dans ce dessin.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = Les nouvelles hachures suivent leurs contours (HPASSOC)
     .options-show-ribbon = Afficher le ruban (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Afficher la barre de menus (MENUBAR)

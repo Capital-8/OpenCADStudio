@@ -286,6 +286,11 @@ command-copy =
     .mode = COPY  Задайте режим копирования [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: экспортируется в "__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: в этом чертеже нет данных 3D-сети.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = Новые штриховки следуют за контурами (HPASSOC)
     .options-show-ribbon = Показывать ленту (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Показывать строку меню (MENUBAR)

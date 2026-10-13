@@ -918,6 +918,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "SHORTCUTS",
         "SSM",
         "STEPOUT",
+        "FBXEXPORT",
         "STLOUT",
         "STPOUT",
         "STYLE",

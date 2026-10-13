@@ -283,6 +283,11 @@ command-copy =
     .mode = COPY  Indique modo de copia [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT: exportado a «__ocs_fmt_0__»
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: no hay datos de malla 3D en este dibujo.
+    .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = Los sombreados nuevos siguen sus contornos (HPASSOC)
     .options-show-ribbon = Mostrar la cinta de opciones (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = Mostrar la barra de menús (MENUBAR)

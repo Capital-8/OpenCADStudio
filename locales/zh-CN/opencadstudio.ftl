@@ -270,6 +270,11 @@ command-copy =
     .mode = COPY  输入复制模式选项 [Single/Multiple] <Multiple>:
 
 common =
+    .fbxexport-exported-to = FBXEXPORT:导出为"__ocs_fmt_0__"
+    .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT:此绘图中没有3D网格数据。
+    .fbxexport-error = FBXEXPORT:__ocs_fmt_0__ 时间轴:
+    .export-fbx = { manage.export } FBX
+    .fbx-files = { common.files } (FBX)
     .options-hpassoc = 新图案填充跟随其边界 (HPASSOC)
     .options-show-ribbon = 显示功能区 (RIBBON / RIBBONCLOSE)
     .options-show-menu-bar = 显示菜单栏 (MENUBAR)
