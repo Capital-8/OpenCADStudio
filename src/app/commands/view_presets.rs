@@ -453,7 +453,7 @@ impl OpenCADStudio {
             offset: ["0".into(), "0".into()],
             scale: ["1".into(), "1".into()],
             scale_base: [1.0, 1.0],
-            image_size: None,
+            preview: None,
             viewport: {
                 let (width, height) = self.tabs[i].scene.selection.borrow().view.vp_size;
                 [width as f32, height as f32]
@@ -487,7 +487,7 @@ impl OpenCADStudio {
                     state.offset = [value.offset.x, value.offset.y].map(crate::ui::window::pdf_dialogs::short);
                     state.scale = [value.scale.x, value.scale.y].map(crate::ui::window::pdf_dialogs::short);
                     state.scale_base = [value.scale.x, value.scale.y];
-                    state.image_size = image::image_dimensions(&value.filename).ok().map(|(w, h)| [w, h]);
+                    state.preview = crate::ui::window::pdf_dialogs::bg_preview(&value.filename);
                 }
                 _ => {}
             }
@@ -513,7 +513,7 @@ impl OpenCADStudio {
             M::BgThree(on) => state.three = on,
             M::BgRotation(value) => state.rotation = value,
             M::BgImage(value) => {
-                state.image_size = image::image_dimensions(value.trim()).ok().map(|(w, h)| [w, h]);
+                state.preview = crate::ui::window::pdf_dialogs::bg_preview(&value);
                 state.image = value;
             }
             M::BgPosition(value) => state.position = value,

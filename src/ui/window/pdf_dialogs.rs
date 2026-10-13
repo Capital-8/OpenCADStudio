@@ -2185,6 +2185,25 @@ impl fmt::Display for BgPosition {
     }
 }
 
+/// A background image as the preview draws it.
+pub struct BgPreview {
+    pub size: [u32; 2],
+    /// Unmirrored, mirrored in x, in y, in both.
+    pub handles: [image::Handle; 4],
+}
+
+/// Loads a background image for the preview, at most 512 pixels a side.
+pub fn bg_preview(path: &str) -> Option<BgPreview> {
+    let decoded = ::image::open(path.trim()).ok()?;
+    let size = [decoded.width(), decoded.height()];
+    let small = if size[0].max(size[1]) > 512 { decoded.thumbnail(512, 512) } else { decoded }.to_rgba8();
+    let handle = |pixels: ::image::RgbaImage| image::Handle::from_rgba(pixels.width(), pixels.height(), pixels.into_raw());
+    let flip_x = ::image::imageops::flip_horizontal(&small);
+    let flip_y = ::image::imageops::flip_vertical(&small);
+    let flip_xy = ::image::imageops::flip_vertical(&flip_x);
+    Some(BgPreview { size, handles: [handle(small), handle(flip_x), handle(flip_y), handle(flip_xy)] })
+}
+
 /// Image offsets the reference's Adjust Image sliders reach, in pixels.
 pub const BG_OFFSET_LIMIT: f64 = 2000.0;
 /// Image scales the reference's sliders reach (slider value / 10).
@@ -2222,8 +2241,9 @@ pub struct ViewBackgroundState {
     pub offset: [String; 2],
     pub scale: [String; 2],
     pub scale_base: [f64; 2],
-    /// The chosen image's size in pixels, for the preview.
-    pub image_size: Option<[u32; 2]>,
+    /// The chosen image for the preview: its size in pixels and a small copy
+    /// as it is and mirrored (x, y, both), for negative scales.
+    pub preview: Option<BgPreview>,
     /// The drawing viewport's size, which the preview stands for.
     pub viewport: [f32; 2],
     /// The drawing area colour, shown for no background.
@@ -2285,12 +2305,15 @@ pub fn view_background<'a>(
         }
         BgKind::Image => {
             if std::path::Path::new(state.image.trim()).is_file() {
-                let handle = image::Handle::from_path(state.image.trim());
                 let canvas = Background::Color(rgb(state.canvas));
                 if state.position == BgPosition::Stretch {
                     // Filling the view; keeping the aspect ratio it covers
                     // the view and the overflow is cut off.
                     let fit = if state.aspect { iced::ContentFit::Cover } else { iced::ContentFit::Fill };
+                    let handle = state.preview.as_ref().map_or_else(
+                        || image::Handle::from_path(state.image.trim()),
+                        |preview| preview.handles[0].clone(),
+                    );
                     container(image(handle).content_fit(fit).width(Fill).height(Fill))
                         .center(Fill)
                         .clip(true)
@@ -2305,11 +2328,20 @@ pub fn view_background<'a>(
                         let v = parse(&state.scale[k], state.scale_base[k]);
                         if v.abs() < 1e-9 { state.scale_base[k] } else { v }
                     });
-                    let [iw, ih] = state.image_size.unwrap_or([1, 1]);
+                    let [iw, ih] = state.preview.as_ref().map_or([1, 1], |preview| preview.size);
+                    // A negative scale mirrors the image.
+                    let mirrored = usize::from(scale[0] < 0.0) | usize::from(scale[1] < 0.0) << 1;
+                    let handle = state.preview.as_ref().map_or_else(
+                        || image::Handle::from_path(state.image.trim()),
+                        |preview| preview.handles[mirrored].clone(),
+                    );
                     let viewport = state.viewport;
+                    // The image's pixels and offsets are device pixels; the
+                    // viewport is measured in logical ones.
+                    let device = crate::scene::view::device_scale().max(0.1);
                     let tile = state.position == BgPosition::Tile;
                     container(iced::widget::responsive(move |size| {
-                        let factor = size.height / viewport[1].max(1.0);
+                        let factor = size.height / viewport[1].max(1.0) / device;
                         let w = (iw as f32 * scale[0].abs() as f32 * factor).max(1.0);
                         let h = (ih as f32 * scale[1].abs() as f32 * factor).max(1.0);
                         let x = size.width / 2.0 + offset[0] as f32 * factor - w / 2.0;
@@ -2502,7 +2534,17 @@ fn adjust_card<'a>(state: &'a ViewBackgroundState) -> Element<'a, Message> {
     };
     let spin = |field: u8| -> Element<'a, Message> {
         let value = if field < 2 { &state.offset[field as usize] } else { &state.scale[field as usize - 2] };
-        let mut input = text_input("", value).size(11).padding([4, 8]).width(Length::Fixed(64.0)).style(field_style);
+        let mut input = text_input("", value)
+            .size(11)
+            .padding([4, 8])
+            .width(Length::Fixed(64.0))
+            .style(move |theme: &Theme, status| {
+                let mut style = field_style(theme, status);
+                if !enabled {
+                    style.value = theme.palette().background.strong.color;
+                }
+                style
+            });
         if enabled {
             input = input.on_input(move |v| {
                 if field < 2 {
