@@ -31,7 +31,7 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 ///
 /// `block_delete` gained its optional `force` parameter.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "cf3b464a7664d78dfaa5d68a3c059b78de638884b95d189f955f6a0928909544";
+const TOOL_SCHEMA_DIGEST: &str = "8b63b7c6860820cfb05b69d634c7897dec202ad3c7d94af5518f448ff5c8c1b3";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
@@ -39,7 +39,7 @@ const CACHE_TTL_MS: u64 = 3_600_000;
 /// land. Tools and discovery are static by comparison, so they keep the hour.
 const RESOURCE_TTL_MS: u64 = 60_000;
 const TASK_TTL_MS: u64 = 3_600_000;
-pub(crate) const INSTRUCTIONS: &str = "Call ocs_sessions and pass session_id as ocs_session_id. Read capabilities and record_schema before unfamiliar operations. Preserve document_id, revision and request_id. After a timeout query the existing operation; never replay a mutation with a new request_id. running and waiting_input are not completion: follow state.command.accepts, options and input_example. Let the geometry kernel calculate geometry. Before delivery audit the target format/version and use save_verified with an absolute path. Announce the bridge build on first connection and when it changes. Use batch with response_detail: summary for known steps; bindings can reuse earlier results. Read guides on demand via cad://guides/{name} or ocs_read op: guide with parameters.name: workflow, architecture, capture, batch-bindings. Read architecture before floorplan vectorization and capture before advanced visual verification. Omit parameters.name to list guides.";
+pub(crate) const INSTRUCTIONS: &str = "Call ocs_sessions and pass session_id as ocs_session_id. Read capabilities and record_schema before unfamiliar operations. Use entity_schema for creation fields. Preserve document_id, revision and request_id. After a timeout query the existing operation; never replay a mutation with a new request_id. running and waiting_input are not completion: follow state.command.accepts, options and input_example. Let the geometry kernel calculate geometry. Before delivery audit the target format/version and use save_verified with an absolute path. Announce the bridge build on first connection and when it changes. Use batch with response_detail: summary for known steps; bindings can reuse earlier results. Read guides on demand via cad://guides/{name} or ocs_read op: guide with parameters.name: workflow, architecture, capture, batch-bindings. Read architecture before floorplan vectorization and capture before advanced visual verification. Omit parameters.name to list guides.";
 const READ_OPS: &[&str] = &[
     "state",
     "hello",
@@ -61,6 +61,7 @@ const READ_OPS: &[&str] = &[
     "operation",
     "batch_result",
     "guide",
+    "entity_schema",
     "xdata_get",
     "audit",
     "text_search",
@@ -2066,6 +2067,16 @@ fn call_tool(
             Ok(Value::Array(sessions(launch).map_err(CallError::Infra)?))
         }
         "ocs_read" => {
+            if arguments["op"] == "entity_schema" {
+                return match arguments["parameters"]["type"].as_str() {
+                    Some(kind) => Ok(
+                        json!({"ok":true,"schema":crate::entity_creation::schema(kind)?,"validation":"Creation inputs are checked by the shared entity constructor; live document checks run on execution."}),
+                    ),
+                    None => Ok(
+                        json!({"ok":true,"types":crate::entity_creation::TYPES,"aliases":{"Polyline":"LwPolyline"},"next":"Set parameters.type for one creation schema and example."}),
+                    ),
+                };
+            }
             let session_id = required_string(arguments, "ocs_session_id")?;
             let op = arguments["op"].as_str().unwrap_or("state");
             if !READ_OPS.contains(&op) {
@@ -2536,8 +2547,8 @@ pub(crate) fn tool_definitions() -> Value {
         },
         {
             "name":"ocs_read",
-            "description":"Use guide with parameters.name to read workflow, architecture, capture or batch-bindings guidance (omit name to list). Discover capabilities and record schemas, or read state, complete database records, command manifests, entities, properties, kernel measurements and spatial relationships, history, events or operation status from a live OCS session. Use batch_result with parameters.request_id to retrieve retained batch details without executing steps; available only in the originating MCP connection, for up to 64 retained batches per session.",
-            "inputSchema":{"type":"object","properties":{"ocs_session_id":{"type":"string","minLength":1,"description":"Value of session_id returned by ocs_sessions."},"op":{"type":"string","enum":READ_OPS,"default":"state"},"parameters":{"type":"object","description":"Operation-specific filters.","properties":{"name":{"type":"string","description":"Command name or record name."},"search":{"type":"string","description":"Case-insensitive command or record-type search."},"find":{"type":"string","description":"Text query string for text_search."},"match_case":{"type":"boolean","default":false,"description":"Case-sensitive text search."},"whole_word":{"type":"boolean","default":false,"description":"Match only whole words."},"ignore_accents":{"type":"boolean","description":"Ignore accents/diacritics in text (defaults to true when match_case is false)."},"scope":{"type":"string","enum":["all","active_space","blocks"],"default":"all","description":"Text search scope."},"system_spellcheck":{"type":"boolean","default":false,"description":"Use native OS spell-checker (Windows, macOS, Linux)."},"language":{"type":"string","description":"Language tag for spell-checker (e.g. 'fr-FR', 'en-US', 'de-DE', 'es-ES')."},"suggest":{"type":"boolean","default":true,"description":"Include suggested corrections for misspelled words."},"check_terms":{"type":"array","items":{"type":"string"},"description":"List of terms or suspect misspellings to flag in text_audit."},"dictionary":{"type":"array","items":{"type":"string"},"description":"Known valid words for text_audit dictionary check."},"pairs":{"type":"array","description":"Find/replace pairs for dry-run simulation in text_audit.","items":{"type":"object","properties":{"find":{"type":"string"},"replace":{"type":"string"}},"required":["find","replace"]}},"dry_run_pairs":{"type":"array","description":"Alias for pairs in text_audit.","items":{"type":"object","properties":{"find":{"type":"string"},"replace":{"type":"string"}},"required":["find","replace"]}},"document_id":{"type":"integer","minimum":0},"path":{"type":"string","description":"Optional intended output path for audit; extension determines target format."},"target_format":{"type":"string","enum":["dwg","dxf"],"description":"Intended output format for audit."},"target_version":{"type":"string","enum":["R14","2000","2004","2007","2010","2013","2018","AC1014","AC1015","AC1018","AC1021","AC1024","AC1027","AC1032"],"description":"Intended CAD output version for audit."},"collection":{"type":"string","description":"Record collection, all for records, or omit to discover collections and schema types."},"handle":{"type":"string"},"handles":{"type":"array","items":{"type":"string"},"description":"Exact entity or record handles."},"type":{"type":"string","description":"Entity or record type filter; for record_schema, returns its complete type graph and writable field paths."},"layer":{"type":"string","description":"Layer name filter for query."},"detail":{"type":"string","enum":["summary","geometry","full"],"default":"geometry","description":"Entity detail returned by query."},"fields":{"type":"array","items":{"type":"string"},"description":"Return only these entity fields plus handle."},"paths":{"type":"array","items":{"type":"string"},"description":"Project RFC 6901 JSON Pointer paths relative to record.properties."},"where":{"type":"array","description":"All property filters must match.","items":{"type":"object","properties":{"path":{"type":"string"},"op":{"type":"string","enum":["eq","ne","lt","lte","gt","gte","contains","starts_with","ends_with","in","exists","not_exists"],"default":"eq"},"value":{}},"required":["path"],"additionalProperties":false}},"near":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Rank planar curves by exact kernel distance to this world XY point."},"point":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"World point whose object snap the snap op reports."},"from":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Base point for perpendicular and tangent snaps (snap op)."},"contains_point":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Return closed planar curves containing this world XY point."},"bounds":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4,"description":"Filter entities whose world XY bounds overlap [min_x,min_y,max_x,max_y]."},"intersections":{"type":"array","items":{"type":"string"},"minItems":2,"maxItems":2,"description":"Return exact kernel intersections between two planar curve handles."},"after":{"type":"integer","minimum":0,"description":"Event cursor."},"request_id":{"type":"string","description":"Operation id to query."},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":10000}},"additionalProperties":false}},"required":["ocs_session_id"],"additionalProperties":false},
+            "description":"Use entity_schema with parameters.type for creation fields/examples; omit type to list. Use guide with parameters.name to read workflow, architecture, capture or batch-bindings guidance (omit name to list). Discover capabilities and record schemas, or read state, complete database records, command manifests, entities, properties, kernel measurements and spatial relationships, history, events or operation status from a live OCS session. Use batch_result with parameters.request_id to retrieve retained batch details without executing steps; available only in the originating MCP connection, for up to 64 retained batches per session.",
+            "inputSchema":{"type":"object","properties":{"ocs_session_id":{"type":"string","minLength":1,"description":"Value of session_id returned by ocs_sessions."},"op":{"type":"string","enum":READ_OPS,"default":"state"},"parameters":{"type":"object","description":"Operation-specific filters.","properties":{"name":{"type":"string","description":"Command name or record name."},"search":{"type":"string","description":"Case-insensitive command or record-type search."},"find":{"type":"string","description":"Text query string for text_search."},"match_case":{"type":"boolean","default":false,"description":"Case-sensitive text search."},"whole_word":{"type":"boolean","default":false,"description":"Match only whole words."},"ignore_accents":{"type":"boolean","description":"Ignore accents/diacritics in text (defaults to true when match_case is false)."},"scope":{"type":"string","enum":["all","active_space","blocks"],"default":"all","description":"Text search scope."},"system_spellcheck":{"type":"boolean","default":false,"description":"Use native OS spell-checker (Windows, macOS, Linux)."},"language":{"type":"string","description":"Language tag for spell-checker (e.g. 'fr-FR', 'en-US', 'de-DE', 'es-ES')."},"suggest":{"type":"boolean","default":true,"description":"Include suggested corrections for misspelled words."},"check_terms":{"type":"array","items":{"type":"string"},"description":"List of terms or suspect misspellings to flag in text_audit."},"dictionary":{"type":"array","items":{"type":"string"},"description":"Known valid words for text_audit dictionary check."},"pairs":{"type":"array","description":"Find/replace pairs for dry-run simulation in text_audit.","items":{"type":"object","properties":{"find":{"type":"string"},"replace":{"type":"string"}},"required":["find","replace"]}},"dry_run_pairs":{"type":"array","description":"Alias for pairs in text_audit.","items":{"type":"object","properties":{"find":{"type":"string"},"replace":{"type":"string"}},"required":["find","replace"]}},"document_id":{"type":"integer","minimum":0},"path":{"type":"string","description":"Optional intended output path for audit; extension determines target format."},"target_format":{"type":"string","enum":["dwg","dxf"],"description":"Intended output format for audit."},"target_version":{"type":"string","enum":["R14","2000","2004","2007","2010","2013","2018","AC1014","AC1015","AC1018","AC1021","AC1024","AC1027","AC1032"],"description":"Intended CAD output version for audit."},"collection":{"type":"string","description":"Record collection, all for records, or omit to discover collections and schema types."},"handle":{"type":"string"},"handles":{"type":"array","items":{"type":"string"},"description":"Exact entity or record handles."},"type":{"type":"string","description":"Entity or record type filter; for record_schema, returns its complete type graph and writable field paths."},"layer":{"type":"string","description":"Layer name filter for query."},"detail":{"type":"string","enum":["summary","geometry","full"],"default":"geometry","description":"Entity detail returned by query."},"fields":{"type":"array","items":{"type":"string"},"description":"Return only these entity fields plus handle."},"paths":{"type":"array","items":{"type":"string"},"description":"Project RFC 6901 JSON Pointer paths relative to record.properties."},"where":{"type":"array","description":"All property filters must match.","items":{"type":"object","properties":{"path":{"type":"string"},"op":{"type":"string","enum":["eq","ne","lt","lte","gt","gte","contains","starts_with","ends_with","in","exists","not_exists"],"default":"eq"},"value":{}},"required":["path"],"additionalProperties":false}},"near":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Rank planar curves by exact kernel distance to this world XY point."},"point":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"World point whose object snap the snap op reports."},"from":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Base point for perpendicular and tangent snaps (snap op)."},"contains_point":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3,"description":"Return closed planar curves containing this world XY point."},"bounds":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4,"description":"Filter entities whose world XY bounds overlap [min_x,min_y,max_x,max_y]."},"intersections":{"type":"array","items":{"type":"string"},"minItems":2,"maxItems":2,"description":"Return exact kernel intersections between two planar curve handles."},"after":{"type":"integer","minimum":0,"description":"Event cursor."},"request_id":{"type":"string","description":"Operation id to query."},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":10000}},"additionalProperties":false}},"anyOf":[{"required":["ocs_session_id"]},{"required":["op"],"properties":{"op":{"enum":["entity_schema"]}}}],"additionalProperties":false},
             "outputSchema":read_output_schema(),
             "title":"Read OCS state","annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true,"openWorldHint":false}
         },
@@ -3245,11 +3256,21 @@ mod tests {
             assert!(tool["inputSchema"]["properties"]
                 .get("session_id")
                 .is_none());
+        }
+        for tool in [&tools[2], &tools[3]] {
             assert!(tool["inputSchema"]["required"]
                 .as_array()
                 .unwrap()
                 .contains(&json!("ocs_session_id")));
         }
+        let read_schema = &tools[1]["inputSchema"];
+        for op in ["entity_schema"] {
+            crate::schema_validation::validate_shape(read_schema, &json!({"op":op}), "").unwrap();
+        }
+        assert!(
+            crate::schema_validation::validate_shape(read_schema, &json!({"op":"state"}), "")
+                .is_err()
+        );
         assert_eq!(
             tools[2]["inputSchema"]["properties"]["request"]["required"],
             json!(["op", "request_id"])
@@ -3297,7 +3318,7 @@ mod tests {
         assert!(EXECUTE_OPS.contains(&"set_properties"));
         assert!(EXECUTE_OPS.contains(&"save_verified"));
         assert!(EXECUTE_OPS.contains(&"text_replace"));
-        assert!(BATCH_STEP_OPS.contains(&"text_replace"));
+        assert!(crate::mcp_ops::find_op("text_replace").unwrap().batchable);
         let save_var = find_variant("save_verified");
         assert_eq!(save_var["properties"]["target_version"]["enum"][0], "R14");
         assert_eq!(
@@ -4575,6 +4596,48 @@ mod tests {
         let after = standalone.to_string().len();
         eprintln!("Execute request schema: {before} -> {after} bytes");
         assert!(after * 100 < before * 70, "expected at least 30% reduction");
+    }
+
+    #[test]
+    fn entity_creation_schemas_are_local_and_specific() {
+        let mut clients = HashMap::new();
+        let mut resources = ResourceStore::default();
+        let catalog = call_tool(
+            "ocs_read",
+            &json!({"op":"entity_schema"}),
+            &mut clients,
+            &mut resources,
+            &mut detached_pump(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(catalog["types"].as_array().unwrap().len(), 11);
+        assert!(catalog.get("schema").is_none());
+        let circle = call_tool(
+            "ocs_read",
+            &json!({"op":"entity_schema","parameters":{"type":"Circle"}}),
+            &mut clients,
+            &mut resources,
+            &mut detached_pump(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            circle["schema"]["required"],
+            json!(["type", "center", "radius"])
+        );
+        crate::schema_validation::validate_shape(&read_output_schema(), &circle, "").unwrap();
+        assert!(clients.is_empty());
+        let rejected = call_tool(
+            "ocs_execute",
+            &json!({"ocs_session_id":"offline","request":{"op":"entities_create","request_id":"invalid","entities":[{"type":"Circle","center":[0,0],"radius":-1}]}}),
+            &mut clients,
+            &mut resources,
+            &mut detached_pump(),
+            None,
+        );
+        assert!(rejected.is_err());
+        assert!(clients.is_empty());
     }
 
     #[test]

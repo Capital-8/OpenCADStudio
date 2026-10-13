@@ -4,6 +4,12 @@ Call ocs_sessions, then pass its session_id as ocs_session_id to ocs_read, ocs_e
 
 Use commands with parameters.name for a command manifest. Use batch when several steps are known, and request changed_entities when resulting geometry is needed.
 
+Before creating an unfamiliar entity, use `ocs_read` with `op: entity_schema` and
+`parameters.type` (for example, `Circle`) to get its creation fields, required
+values, units, defaults and example. Omit type for the catalog. Creation schemas
+describe the inputs to `entities_create`; `record_schema` describes stored records.
+Schema discovery runs locally and can omit `ocs_session_id`.
+
 For interactive work, call start and follow state.command.accepts, options and input_example. To have the person at the screen pick entities for you, call user_select and keep polling until it completes; running means they are still picking. A run.cmd contains the command name followed by prompt answers separated by spaces; points use x,y or x,y,z.
 
 After a timeout, query the existing operation and never replay a mutation with a new request_id. waiting_input and running are not completion. Let OCS and its geometry kernel calculate geometry; use query near, contains_point and intersections for exact relationships. 

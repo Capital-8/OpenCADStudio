@@ -39,6 +39,8 @@ pub enum Ty {
     EnumCi(&'static [&'static str]),
     ActionName,
     ArrayOf(&'static Ty),
+    /// Entity definitions with on-demand creation schemas.
+    Entities,
     /// Escape hatch: a JSON Schema fragment as text.
     Raw(&'static str),
 }
@@ -409,10 +411,8 @@ pub static ENTITIES_CREATE: OpDef = OpDef {
     batchable: true,
     params: &[req(
         "entities",
-        Ty::ArrayOf(&Ty::Raw(
-            r#"{"type":"object","properties":{"type":{"type":"string"}},"required":["type"]}"#,
-        )),
-        "List of entity definitions to create.",
+        Ty::Entities,
+        "Entity definitions. Read ocs_read op entity_schema with parameters.type for fields and examples before creating an unfamiliar type.",
     )],
     rules: &[],
     example: r#"{"op":"entities_create","entities":[{"type":"Line","start":[0,0],"end":[10,10]}]}"#,
@@ -930,6 +930,9 @@ fn ty_schema(ty: &Ty) -> Value {
             json!({"type": "string", "enum": names})
         }
         Ty::ArrayOf(inner) => json!({"type": "array", "items": ty_schema(inner)}),
+        Ty::Entities => {
+            json!({"type":"array","minItems":1,"items":{"type":"object","required":["type"],"properties":{"type":{"type":"string"}}}})
+        }
         Ty::Raw(s) => serde_json::from_str(s).expect("Raw fragment must be valid JSON"),
     }
 }
@@ -1145,6 +1148,15 @@ fn validate_type(ty: &Ty, val: &Value) -> Result<(), String> {
             };
             for (idx, item) in arr.iter().enumerate() {
                 validate_type(inner, item).map_err(|e| format!("item {idx}: {e}"))?;
+            }
+        }
+        Ty::Entities => {
+            let entities = val
+                .as_array()
+                .filter(|a| !a.is_empty())
+                .ok_or("expected nonempty entities array")?;
+            for (index, entity) in entities.iter().enumerate() {
+                crate::entity_creation::validate_entity(entity, &format!("/entities/{index}"))?;
             }
         }
         Ty::Raw(_) => {}
