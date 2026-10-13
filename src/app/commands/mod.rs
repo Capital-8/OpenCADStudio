@@ -428,6 +428,7 @@ pub fn start_allowed(cmd: &str) -> bool {
         || matches!(
             cmd,
             "NEW"
+            | "QNEW"
             | "OPEN"
             | "EXIT"
             | "QUIT"
