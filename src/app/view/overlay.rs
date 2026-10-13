@@ -1726,7 +1726,13 @@ fn qselect_content<'a>(
         Space::new().height(5),
         row![
             label(t!("Object type:")),
-            iced::widget::pick_list(Some(type_sel), type_options, |value| t!(value).into_owned(),)
+            iced::widget::pick_list(Some(type_sel), type_options, |value| {
+                if value == "Insert" {
+                    t!("Block Reference").into_owned()
+                } else {
+                    t!(value).into_owned()
+                }
+            })
                 .on_select(|s: String| {
                     if s == QSELECT_ANY_TYPE {
                         Message::QSelectSetType(None)
