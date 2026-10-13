@@ -1598,6 +1598,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Display and plot frames" => Some(("insert", "display-and-plot-frames")),
         "Display but don't plot frames" => Some(("insert", "display-not-plot-frames")),
         "*Frames vary*" => Some(("insert", "frames-vary")),
+        "*Underlay OSnap's vary*" => Some(("insert", "underlay-osnaps-vary")),
         "Regenerating model." => Some(("insert", "regenerating-model")),
         "Requires an integer between 0 and 2." => Some(("insert", "requires-int-0-2")),
         "Frames On, Not Plotted" => Some(("draw", "frames-on-not-plotted")),

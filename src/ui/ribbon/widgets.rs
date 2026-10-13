@@ -99,7 +99,7 @@ thread_local! {
 
 /// Dropdown items that report a state and cannot be picked.
 pub(super) fn is_disabled_item(cmd: &str) -> bool {
-    cmd == "FRAMES3"
+    matches!(cmd, "FRAMES3" | "UOSNAP2")
 }
 
 fn ribbon_label_bounds(

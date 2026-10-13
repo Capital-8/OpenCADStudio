@@ -3748,6 +3748,7 @@ insert =
     .display-and-plot-frames = Çerçeveleri göster ve çizdir
     .display-not-plot-frames = Çerçeveleri göster, çizdirme
     .frames-vary = *Çerçeveler farklı*
+    .underlay-osnaps-vary = *Altlık nesne yakalamaları farklı*
     .regenerating-model = Model yeniden oluşturuluyor.
     .requires-int-0-2 = 0 ile 2 arasında bir tamsayı gerekli.
     .insert-prompt-hint = INSERT  __ocs_arg_prompt____ocs_arg_hint__:
