@@ -567,6 +567,8 @@ pub(super) struct OpenCADStudio {
     field_dialog: Option<crate::ui::window::field_dialog::FieldDialogState>,
     point_cloud_color_map: Option<crate::ui::window::pdf_dialogs::PointCloudColorMapState>,
     pc_section: Option<crate::ui::window::pdf_dialogs::PcSectionState>,
+    /// -VIEW sEttings Background dialog.
+    view_background: Option<crate::ui::window::pdf_dialogs::ViewBackgroundState>,
     underlay_layers: Option<crate::ui::window::pdf_dialogs::UnderlayLayersState>,
     pdf_import_settings: Option<crate::modules::insert::pdf_import::PdfImportSettings>,
     pdf_import_file: Option<crate::ui::window::pdf_dialogs::PdfImportFileState>,
@@ -1775,6 +1777,8 @@ pub enum ColorPickTarget {
     LayerState(usize),
     /// The MText editor's selection (or global) colour.
     MText,
+    /// A colour of the view Background dialog: 0 solid, 1 top, 2 middle, 3 bottom.
+    ViewBackground(u8),
 }
 
 /// Table records the clipboard entities depend on, snapshotted from the source
@@ -2115,6 +2119,7 @@ pub enum ModalKind {
     PointCloudAttach,
     PointCloudColorMap,
     PcSection,
+    ViewBackground,
     UnderlayLayers,
     PdfImportSettings,
     PdfImportFile,
@@ -4494,6 +4499,7 @@ impl OpenCADStudio {
             field_dialog: None,
             point_cloud_color_map: None,
             pc_section: None,
+            view_background: None,
             underlay_layers: None,
             pdf_import_settings: None,
             pdf_import_file: None,

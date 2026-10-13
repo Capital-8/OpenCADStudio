@@ -103,6 +103,7 @@ pub(super) const NAMES: &[&str] = &[
     #[cfg(not(target_arch = "wasm32"))]
     "external_change_cancel",
     "pdf_dialog_ok",
+    "view_background",
     "pdf_layer_toggle",
     "pc_manager_toggle",
     "pc_manager",
@@ -1786,6 +1787,53 @@ impl OpenCADStudio {
                 })
             }
             "ribbon_dropdown" => Message::ToggleRibbonDropdown(string(req, "value")?.into()),
+            // The -VIEW Background dialog, one field per call: "type=gradient",
+            // "color|top|middle|bottom=r,g,b", "three=1", "rotation=30",
+            // "image=<path>", "position=center|stretch|tile", "aspect=1",
+            // "apply" or "cancel".
+            "view_background" => {
+                use crate::ui::window::pdf_dialogs::{BgKind, BgPosition, PdfDialogMsg as P};
+                if self.active_modal != Some(crate::app::ModalKind::ViewBackground) {
+                    return Err(failure("no_dialog", "The Background dialog is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                let rgb = || -> Result<[u8; 3], Value> {
+                    let parts: Vec<u8> = value
+                        .split(',')
+                        .map(|part| part.trim().parse::<u8>())
+                        .collect::<Result<_, _>>()
+                        .map_err(|_| bad())?;
+                    <[u8; 3]>::try_from(parts).map_err(|_| bad())
+                };
+                match key {
+                    "cancel" => Message::CloseModal,
+                    "apply" => Message::PdfDialog(P::BgApply),
+                    "type" => Message::PdfDialog(P::BgKind(match value {
+                        "none" => BgKind::None,
+                        "solid" => BgKind::Solid,
+                        "gradient" => BgKind::Gradient,
+                        "image" => BgKind::Image,
+                        _ => return Err(bad()),
+                    })),
+                    "color" => Message::PdfDialog(P::BgColor(0, rgb()?)),
+                    "top" => Message::PdfDialog(P::BgColor(1, rgb()?)),
+                    "middle" => Message::PdfDialog(P::BgColor(2, rgb()?)),
+                    "bottom" => Message::PdfDialog(P::BgColor(3, rgb()?)),
+                    "three" => Message::PdfDialog(P::BgThree(value == "1")),
+                    "rotation" => Message::PdfDialog(P::BgRotation(value.to_string())),
+                    "image" => Message::PdfDialog(P::BgImage(value.to_string())),
+                    "position" => Message::PdfDialog(P::BgPosition(match value {
+                        "center" => BgPosition::Center,
+                        "stretch" => BgPosition::Stretch,
+                        "tile" => BgPosition::Tile,
+                        _ => return Err(bad()),
+                    })),
+                    "aspect" => Message::PdfDialog(P::BgAspect(value == "1")),
+                    _ => return Err(bad()),
+                }
+            }
             "pdf_dialog_ok" => {
                 use crate::ui::window::pdf_dialogs::PdfDialogMsg;
                 Message::PdfDialog(match self.active_modal {

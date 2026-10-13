@@ -1162,6 +1162,18 @@ impl OpenCADStudio {
                     crate::ui::window::gradient_editor::GradientMsg::Color(index, color),
                 )))
             }
+            Some(crate::app::ColorPickTarget::ViewBackground(slot)) => {
+                let rgb = match color {
+                    codec::types::Color::Rgb { r, g, b } => Some([r, g, b]),
+                    codec::types::Color::Index(index) => {
+                        codec::types::aci_table::aci_to_rgb(index).map(|(r, g, b)| [r, g, b])
+                    }
+                    _ => None,
+                };
+                rgb.map(|rgb| {
+                    Message::PdfDialog(crate::ui::window::pdf_dialogs::PdfDialogMsg::BgColor(slot, rgb))
+                })
+            }
             Some(crate::app::ColorPickTarget::GraphicAttributesLine) => Some(
                 Message::GraphicAttributes(GraphicAttributesMsg::LineColor(color)),
             ),

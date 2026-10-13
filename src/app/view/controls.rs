@@ -30,6 +30,7 @@ pub(super) fn viewport_controls<'a>(
     tile_count: usize,
     render_mode_menu_open: bool,
     render_mode_preview: Option<codec::entities::ViewportRenderMode>,
+    style_name: Option<String>,
 ) -> Element<'a, Message> {
     let render_modes: Vec<RenderModeChoice> = crate::modules::view::visual_style::VISUAL_STYLES
         .iter()
@@ -98,7 +99,7 @@ pub(super) fn viewport_controls<'a>(
     // flyout keeps the current style unchanged while hovering; a click commits.
     let picker_head = button(
         row![
-            text(RenderModeChoice(render_mode).to_string()).size(11),
+            text(style_name.unwrap_or_else(|| RenderModeChoice(render_mode).to_string())).size(11),
             crate::ui::icons::themed_arrow_toggle(render_mode_menu_open, 9.0),
         ]
         .spacing(6)
@@ -379,7 +380,7 @@ mod tests {
     #[test]
     fn test_viewport_controls_construction() {
         for style in crate::modules::view::visual_style::VISUAL_STYLES {
-            let _el = viewport_controls(style.mode, true, true, true, 1, false, None);
+            let _el = viewport_controls(style.mode, true, true, true, 1, false, None, None);
             let _el_open = viewport_controls(
                 style.mode,
                 false,
@@ -388,6 +389,7 @@ mod tests {
                 2,
                 true,
                 Some(M::Wireframe3D),
+                None,
             );
         }
     }

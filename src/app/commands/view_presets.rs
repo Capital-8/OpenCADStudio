@@ -53,12 +53,33 @@ impl OpenCADStudio {
                     .to_string(),
                 visual_style: name_of(&visual_styles, view.visual_style_handle),
                 live_section: name_of(&live_sections, view.live_section_handle),
+                paper_space: view.paper_space,
             })
             .collect();
+        let scene = &self.tabs[i].scene;
+        let sheet_viewports = (scene.current_layout != "Model" && scene.active_viewport.is_none()).then(|| {
+            scene
+                .layout_content_viewports()
+                .iter()
+                .filter_map(|handle| match document.get_entity(*handle) {
+                    Some(codec::EntityType::Viewport(value)) => Some((
+                        handle.value(),
+                        [
+                            value.center.x - value.width / 2.0,
+                            value.center.y - value.height / 2.0,
+                            value.center.x + value.width / 2.0,
+                            value.center.y + value.height / 2.0,
+                        ],
+                    )),
+                    _ => None,
+                })
+                .collect()
+        });
         ViewNames {
             views,
             visual_styles: visual_styles.into_iter().map(|(name, _)| name).collect(),
             live_sections: live_sections.into_iter().map(|(name, _)| name).collect(),
+            sheet_viewports,
         }
     }
 
@@ -111,7 +132,7 @@ impl OpenCADStudio {
     }
 
     /// Carry out what -VIEW gathered (`-VIEW >VERB args`).
-    pub(super) fn run_dash_view(&mut self, rest: &str, i: usize) -> Task<Message> {
+    pub(crate) fn run_dash_view(&mut self, rest: &str, i: usize) -> Task<Message> {
         let (verb, arg) = rest.split_once(' ').unwrap_or((rest, ""));
         let mut settings_again = false;
         match verb {
@@ -132,18 +153,43 @@ impl OpenCADStudio {
                 if !doomed.is_empty() {
                     self.push_undo_snapshot(i, "-VIEW");
                     for name in &doomed {
-                        self.tabs[i].scene.document.views.remove(name);
+                        let removed = self.tabs[i].scene.document.views.remove(name);
+                        if let Some(view) = removed {
+                            crate::scene::erase_background(&mut self.tabs[i].scene.document, view.background_handle);
+                        }
                         self.tabs[i].scene.document.delete_layer_state(&snapshot_name(name));
                     }
                     self.tabs[i].dirty = true;
                 }
             }
+            "RESTOREVP" => {
+                let (name, handle) = arg.split_once('\u{1f}').unwrap_or((arg, ""));
+                let Some(view) = self.tabs[i].scene.document.views.get(name).cloned() else {
+                    return Task::none();
+                };
+                let Some(handle) = u64::from_str_radix(handle, 16).ok().map(Handle::new) else {
+                    return Task::none();
+                };
+                // The reference enters the selected viewport and restores the
+                // view in it.
+                let task = self.update(Message::EnterViewport(handle));
+                self.restore_view_in_active_viewport(i, &view);
+                return task;
+            }
             "RESTORE" => {
                 let Some(view) = self.tabs[i].scene.document.views.get(arg).cloned() else {
                     return Task::none();
                 };
+                if self.tabs[i].scene.current_layout != "Model"
+                    && self.tabs[i].scene.active_viewport.is_some()
+                    && !view.paper_space
+                {
+                    self.restore_view_in_active_viewport(i, &view);
+                    return Task::none();
+                }
                 let before = self.tabs[i].scene.active_gaze_dir();
                 self.tabs[i].scene.restore_named_view(&view);
+                self.apply_view_render_mode(i, &view);
                 if view.ucs_associated && self.tabs[i].active_block_edit.is_none() {
                     let world = view.ucs_x_axis == Vector3::new(1.0, 0.0, 0.0)
                         && view.ucs_y_axis == Vector3::new(0.0, 1.0, 0.0)
@@ -197,6 +243,14 @@ impl OpenCADStudio {
                 }
             }
             "SETTINGS" => settings_again = true,
+            // Background type chosen: its dialog takes over until Apply or Cancel.
+            "BACKGROUND" => {
+                if let Some((view, kind)) = arg.split_once('\u{1f}') {
+                    self.open_view_background(i, view, kind);
+                    return self.finish_dispatch("-VIEW");
+                }
+                settings_again = true;
+            }
             "UCSVIEW" => {
                 view_cmd::set_ucs_view(arg == "1");
                 self.save_config();
@@ -241,18 +295,42 @@ impl OpenCADStudio {
         }
     }
 
+    /// A model-space view restored in the entered paper-space viewport, with
+    /// its background and visual style.
+    fn restore_view_in_active_viewport(&mut self, i: usize, view: &codec::tables::View) {
+        let Some(viewport) = self.tabs[i].scene.active_viewport else { return };
+        self.tabs[i].scene.restore_named_view_in_viewport(view, viewport);
+        if let Some(ObjectType::VisualStyle(style)) =
+            self.tabs[i].scene.document.objects.get(&view.visual_style_handle)
+        {
+            if let Some((mode, _)) = crate::modules::view::visual_style::mode_for_style_name(&style.description) {
+                self.tabs[i].scene.set_active_viewport_render_mode(mode);
+                self.tabs[i].scene.bump_geometry_no_blocks();
+            }
+        }
+        self.tabs[i].dirty = true;
+    }
+
     /// Add or replace a named view, keeping the record (and so its settings)
     /// of a view saved again under the same name.
     fn save_named_view(&mut self, i: usize, mut view: codec::tables::View) {
         self.push_undo_snapshot(i, "-VIEW");
+        let background = self.tabs[i].scene.active_background();
         let document = &mut self.tabs[i].scene.document;
+        view.background_handle = crate::scene::copy_background(document, background);
+        let mut replaced = Handle::NULL;
         match document.views.get(&view.name).cloned() {
             Some(old) => {
                 view.name = old.name;
                 view.handle = old.handle;
                 view.visual_style_handle = old.visual_style_handle;
                 view.live_section_handle = old.live_section_handle;
-                view.background_handle = old.background_handle;
+                // The view keeps its background unless the viewport has
+                // one, which the view then takes a copy of.
+                if view.background_handle.is_null() {
+                    view.background_handle = old.background_handle;
+                }
+                replaced = old.background_handle;
             }
             None => {
                 view.handle = document.allocate_handle();
@@ -265,6 +343,7 @@ impl OpenCADStudio {
             }
         }
         document.views.add_or_replace(view);
+        crate::scene::erase_background(document, replaced);
         self.tabs[i].dirty = true;
     }
 
@@ -275,6 +354,7 @@ impl OpenCADStudio {
         };
         self.push_undo_snapshot(i, "-VIEW");
         let document = &mut self.tabs[i].scene.document;
+        let mut replaced = Handle::NULL;
         if view.handle.is_null() {
             view.handle = document.allocate_handle();
         }
@@ -282,7 +362,7 @@ impl OpenCADStudio {
             list.into_iter().find(|(entry, _)| entry.eq_ignore_ascii_case(value)).map_or(Handle::NULL, |(_, h)| h)
         };
         match setting {
-            "BACKGROUND" => view.background_handle = Handle::NULL,
+            "BACKGROUND" => replaced = std::mem::replace(&mut view.background_handle, Handle::NULL),
             "VISUALSTYLE" => view.visual_style_handle = find(crate::io::visual_styles::offered(document)),
             "SECTION" => {
                 let sections: Vec<(String, Handle)> = document
@@ -336,6 +416,224 @@ impl OpenCADStudio {
             _ => {}
         }
         document.views.add_or_replace(view);
+        crate::scene::erase_background(document, replaced);
         self.tabs[i].dirty = true;
+    }
+}
+
+impl OpenCADStudio {
+    /// The Background dialog for a named view, on the type typed at the
+    /// prompt and filled from the view's background where it has one.
+    fn open_view_background(&mut self, i: usize, view: &str, kind: &str) {
+        use crate::ui::window::pdf_dialogs::{BgKind, BgPosition, ViewBackgroundState};
+        use codec::objects::ClassObjectData as D;
+        let unpack = |c: u32| [(c >> 16) as u8, (c >> 8) as u8, c as u8];
+        let canvas = self.tabs[i].scene.bg_color;
+        let mut state = ViewBackgroundState {
+            view: view.to_string(),
+            kind: match kind {
+                "SOLID" => BgKind::Solid,
+                "GRADIENT" => BgKind::Gradient,
+                "IMAGE" => BgKind::Image,
+                _ => BgKind::None,
+            },
+            // The reference's defaults.
+            solid: [128, 128, 255],
+            top: [204, 204, 204],
+            middle: [128, 128, 128],
+            bottom: [51, 51, 51],
+            three: false,
+            rotation: "0".into(),
+            image: String::new(),
+            position: BgPosition::Center,
+            aspect: false,
+            offset: [0.0, 0.0],
+            scale: [1.0, 1.0],
+            canvas: [0, 1, 2].map(|k| (canvas[k].clamp(0.0, 1.0) * 255.0).round() as u8),
+        };
+        let document = &self.tabs[i].scene.document;
+        let current = document.views.get(view).map_or(Handle::NULL, |v| v.background_handle);
+        if let Some(ObjectType::ClassObject(object)) = document.objects.get(&current) {
+            match &object.data {
+                D::SolidBackground(value) => state.solid = unpack(value.color),
+                D::GradientBackground(value) => {
+                    (state.top, state.middle, state.bottom) = (
+                        unpack(value.color_top),
+                        unpack(value.color_middle),
+                        unpack(value.color_bottom),
+                    );
+                    state.three = value.height > 0.0;
+                    state.rotation = crate::ui::window::pdf_dialogs::short(value.rotation);
+                }
+                D::ImageBackground(value) => {
+                    state.image = value.filename.clone();
+                    state.position = if value.use_tiling {
+                        BgPosition::Tile
+                    } else if value.fit_to_screen {
+                        BgPosition::Stretch
+                    } else {
+                        BgPosition::Center
+                    };
+                    state.aspect = value.maintain_aspect_ratio;
+                    state.offset = [value.offset.x, value.offset.y];
+                    state.scale = [value.scale.x, value.scale.y];
+                }
+                _ => {}
+            }
+        }
+        self.view_background = Some(state);
+        self.active_modal = Some(crate::app::ModalKind::ViewBackground);
+    }
+
+    pub(in crate::app) fn update_view_background(
+        &mut self,
+        message: crate::ui::window::pdf_dialogs::PdfDialogMsg,
+    ) -> Task<Message> {
+        use crate::ui::window::pdf_dialogs::{BgKind, BgPosition, PdfDialogMsg as M};
+        use codec::objects::{
+            ClassObjectData as D, GradientBackground, ImageBackground, SolidBackground,
+        };
+        let i = self.active_tab;
+        let Some(state) = self.view_background.as_mut() else {
+            return Task::none();
+        };
+        match message {
+            M::BgKind(kind) => state.kind = kind,
+            M::BgThree(on) => state.three = on,
+            M::BgRotation(value) => state.rotation = value,
+            M::BgImage(value) => state.image = value,
+            M::BgPosition(value) => state.position = value,
+            M::BgAspect(on) => state.aspect = on,
+            M::BgColor(slot, rgb) => match slot {
+                0 => state.solid = rgb,
+                1 => state.top = rgb,
+                2 => state.middle = rgb,
+                _ => state.bottom = rgb,
+            },
+            M::BgPickColor(slot) => {
+                let [r, g, b] = match slot {
+                    0 => state.solid,
+                    1 => state.top,
+                    2 => state.middle,
+                    _ => state.bottom,
+                };
+                return Task::done(Message::OpenColorWindow(
+                    crate::app::ColorPickTarget::ViewBackground(slot),
+                    codec::types::Color::Rgb { r, g, b },
+                ));
+            }
+            M::BgBrowse => {
+                return Task::perform(
+                    async {
+                        crate::sys::file_dialog()
+                            .set_title(crate::tr!("view-background", "select-image"))
+                            .add_filter(
+                                crate::tr!("view-background", "image-files"),
+                                &["png", "jpg", "jpeg", "bmp", "tif", "tiff", "gif", "tga"],
+                            )
+                            .pick_file()
+                            .await
+                            .map(|handle| crate::sys::handle_path(&handle))
+                    },
+                    |path| match path {
+                        Some(path) => Message::PdfDialog(M::BgImage(path.display().to_string())),
+                        None => Message::Noop,
+                    },
+                );
+            }
+            M::BgApply => {
+                // Colours are stored as true colours (flag byte 0xC2), as the
+                // reference stores them.
+                let pack = |c: [u8; 3]| {
+                    0xC200_0000 | (c[0] as u32) << 16 | (c[1] as u32) << 8 | c[2] as u32
+                };
+                let data = match state.kind {
+                    BgKind::None => None,
+                    BgKind::Solid => Some(D::SolidBackground(SolidBackground {
+                        class_version: 1,
+                        color: pack(state.solid),
+                    })),
+                    BgKind::Gradient => {
+                        let Some(rotation) = state
+                            .rotation
+                            .trim()
+                            .parse::<f64>()
+                            .ok()
+                            .filter(|v| v.is_finite())
+                        else {
+                            self.command_line
+                                .push_error(crate::t!("Requires a number.").as_ref());
+                            return Task::none();
+                        };
+                        Some(D::GradientBackground(GradientBackground {
+                            class_version: 1,
+                            color_top: pack(state.top),
+                            color_middle: pack(state.middle),
+                            color_bottom: pack(state.bottom),
+                            horizon: 0.5,
+                            // The reference marks a three-colour gradient by its
+                            // middle band's height.
+                            height: if state.three { 0.33 } else { 0.0 },
+                            rotation,
+                        }))
+                    }
+                    BgKind::Image => {
+                        if !std::path::Path::new(state.image.trim()).is_file() {
+                            self.command_line.push_error("Invalid Background Image File!");
+                            return Task::none();
+                        }
+                        Some(D::ImageBackground(ImageBackground {
+                            class_version: 1,
+                            filename: state.image.trim().to_string(),
+                            fit_to_screen: state.position == BgPosition::Stretch,
+                            maintain_aspect_ratio: state.aspect,
+                            use_tiling: state.position == BgPosition::Tile,
+                            offset: codec::types::Vector2::new(state.offset[0], state.offset[1]),
+                            scale: codec::types::Vector2::new(state.scale[0], state.scale[1]),
+                        }))
+                    }
+                };
+                let name = state.view.clone();
+                self.view_background = None;
+                self.close_active_modal();
+                if self.tabs[i].scene.document.views.get(&name).is_some() {
+                    self.push_undo_snapshot(i, "-VIEW");
+                    let document = &mut self.tabs[i].scene.document;
+                    let handle = data.map_or(Handle::NULL, |data| {
+                        crate::scene::add_background(document, data)
+                    });
+                    if let Some(view) = document.views.get_mut(&name) {
+                        let old = std::mem::replace(&mut view.background_handle, handle);
+                        crate::scene::erase_background(document, old);
+                    }
+                    self.tabs[i].dirty = true;
+                }
+                return self.run_dash_view("SETTINGS", i);
+            }
+            _ => {}
+        }
+        Task::none()
+    }
+}
+
+impl OpenCADStudio {
+    /// A restored view's visual style becomes the model tab's render mode
+    /// (the closest of OCS's modes); a view without one leaves it.
+    pub(crate) fn apply_view_render_mode(&mut self, i: usize, view: &codec::tables::View) {
+        if self.tabs[i].scene.current_layout != "Model" {
+            return;
+        }
+        let Some(ObjectType::VisualStyle(style)) =
+            self.tabs[i].scene.document.objects.get(&view.visual_style_handle)
+        else {
+            return;
+        };
+        use crate::modules::view::visual_style;
+        let Some((mode, named)) = visual_style::mode_for_style_name(&style.description) else {
+            return;
+        };
+        // A style of its own keeps its name; the render modes keep theirs.
+        let label = if named { style.description.clone() } else { visual_style::label_for(mode).to_string() };
+        self.apply_render_mode(i, mode, &label);
     }
 }
