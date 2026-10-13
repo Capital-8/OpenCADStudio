@@ -3088,6 +3088,10 @@ impl OpenCADStudio {
                                 self.delete_objects = value;
                             }
                             if changed {
+                                if name == "INSUNITS" {
+                                    self.tabs[i].scene.sync_annotation_scale_from_header();
+                                    self.tabs[i].scene.invalidate_annotation_dependencies();
+                                }
                                 if matches!(
                                     name.as_str(),
                                     "ZOOMWHEEL"

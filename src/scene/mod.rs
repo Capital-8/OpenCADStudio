@@ -1448,14 +1448,7 @@ pub fn prepare_open_geometry(
     scene.local_extent_max = caches.local_extent_max;
     scene.local_center = caches.local_center;
     scene.bg_color = model_bg;
-    let cannoscale_value = scene.document.header.annotation_scale_value;
-    let unit_factor = scene.annotation_scale_unit_factor();
-
-    scene.annotation_scale = if cannoscale_value > 1e-9 {
-        ((1.0 / cannoscale_value) / unit_factor) as f32
-    } else {
-        (1.0 / unit_factor) as f32
-    };
+    scene.sync_annotation_scale_from_header();
     scene.current_layout = "Model".to_string();
     let camera = scene.camera.borrow().clone();
     let perf = crate::perf::enabled();
@@ -5373,6 +5366,21 @@ impl Scene {
     /// The built-in scale factors are defined assuming model and paper use
     /// the same base unit. A drawing in metres therefore needs an extra
     /// factor of 1000 when its paper side is measured in millimetres.
+    /// Model-space annotation multiplier from the header's CANNOSCALEVALUE
+    /// (paper/drawing factor), converted from paper units into the drawing's
+    /// INSUNITS, so a metre drawing uses 0.001 model units per paper
+    /// millimetre at 1:1. Every path that starts or loads a drawing, or
+    /// changes its units, goes through here so it agrees with CANNOSCALE.
+    pub(crate) fn sync_annotation_scale_from_header(&mut self) {
+        let cannoscale_value = self.document.header.annotation_scale_value;
+        let unit_factor = self.annotation_scale_unit_factor();
+        self.annotation_scale = if cannoscale_value > 1e-9 {
+            ((1.0 / cannoscale_value) / unit_factor) as f32
+        } else {
+            (1.0 / unit_factor) as f32
+        };
+    }
+
     pub(crate) fn annotation_scale_unit_factor(&self) -> f64 {
         let paper_unit = if self.prefers_imperial_scales() == Some(true) {
             1 // Inches
@@ -13384,13 +13392,7 @@ mod journal_tests {
         scene.local_center = caches.local_center;
         scene.bg_color = model_bg;
         scene.current_layout = "Model".to_string();
-        let scale = scene.document.header.annotation_scale_value;
-        let unit_factor = scene.annotation_scale_unit_factor();
-        scene.annotation_scale = if scale > 1e-9 {
-            ((1.0 / scale) / unit_factor) as f32
-        } else {
-            (1.0 / unit_factor) as f32
-        };
+        scene.sync_annotation_scale_from_header();
         scene.install_prepared_open_geometry(prepared);
 
         let hits = scene.resident_patch_hits.get();

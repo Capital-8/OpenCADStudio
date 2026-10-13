@@ -3090,6 +3090,10 @@ impl Scene {
         // The name alone leaves the header pointing at the previous style, and
         // a DWG writes the current style by handle only.
         self.document.header.current_dimstyle_handle = iso;
+        // The annotation multiplier depends on those units; Scene::new()
+        // left it at the unitless 1, which drew annotative objects 1000x too
+        // large until the first CANNOSCALE change shrank them. (#1674)
+        self.sync_annotation_scale_from_header();
         for obj in self.document.objects.values_mut() {
             if let codec::objects::ObjectType::Layout(l) = obj {
                 if l.name != "Model" {
