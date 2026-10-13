@@ -1935,6 +1935,9 @@ pub enum CmdResult {
     PasteClipboard {
         base_pt: DVec3,
     },
+    /// Set the view's twist about its line of sight (radians,
+    /// counter-clockwise); the command stays active.
+    TwistView(f64),
     /// Zoom the model-space camera to fit the given corner points; end command.
     ZoomToWindow {
         p1: DVec3,

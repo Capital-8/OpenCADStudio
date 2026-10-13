@@ -4446,6 +4446,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER F <layer> = 동결 | T <layer> = 해동 | Enter = 종료
 
 view =
+    .twist-option = 비틀기
+    .dview-specify-view-twist-angle = DVIEW  뷰 비틀기 각도 지정 <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  옵션 입력 [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = 색 구성표가 '시스템'으로 설정되었습니다(현재 __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = __ocs_fmt_0__에서 __ocs_fmt_1__ 사이의 정수가 필요합니다.

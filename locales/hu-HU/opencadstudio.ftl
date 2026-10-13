@@ -4444,6 +4444,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER F <layer> = Fagyasztás | T <layer> = Felengedés | Enter = Kilépés
 
 view =
+    .twist-option = Elforgatás
+    .dview-specify-view-twist-angle = DVIEW  Adja meg a nézet elforgatási szögét <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  Adja meg a lehetőséget [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = Színséma beállítva: „Rendszer” (jelenleg __ocs_fmt_0__).
     .ss-create-sheet-set = Tervlapkészlet létrehozása
     .ss-requires-integer-between = __ocs_fmt_0__ és __ocs_fmt_1__ közötti egész szám szükséges.

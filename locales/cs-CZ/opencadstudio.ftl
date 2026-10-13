@@ -4444,6 +4444,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER F <layer> = Zmrazit | T <layer> = Rozmrazit | Enter = Konec
 
 view =
+    .twist-option = Natočení
+    .dview-specify-view-twist-angle = DVIEW  Zadejte úhel natočení pohledu <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  Zadejte možnost [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = Barevné schéma nastaveno na „Systém“ (aktuálně __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Vyžaduje celé číslo mezi __ocs_fmt_0__ a __ocs_fmt_1__.

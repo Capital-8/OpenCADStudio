@@ -4445,6 +4445,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER F <Ebene> = Einfrieren | T <Ebene> = Auftauen | Eingabe = Beenden
 
 view =
+    .twist-option = Verdrehen
+    .dview-specify-view-twist-angle = DVIEW  Ansichtsverdrehwinkel angeben <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  Option eingeben [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = Farbschema auf „System“ eingestellt (derzeit __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Erfordert eine ganze Zahl zwischen __ocs_fmt_0__ und __ocs_fmt_1__.

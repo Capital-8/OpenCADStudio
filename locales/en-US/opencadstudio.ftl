@@ -4446,6 +4446,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <layer> = Freeze  |  T <layer> = Thaw  |  Enter = Exit
 
 view =
+    .twist-option = TWist
+    .dview-specify-view-twist-angle = DVIEW  Specify view twist angle <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  Enter option [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = Color scheme set to 'System' (currently __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Requires an integer between __ocs_fmt_0__ and __ocs_fmt_1__.

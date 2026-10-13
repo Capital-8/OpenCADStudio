@@ -4447,6 +4447,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <capa> = Inutilizar | T <capa> = Reutilizar | Intro = Salir
 
 view =
+    .twist-option = Girar
+    .dview-specify-view-twist-angle = DVIEW  Precise el ángulo de giro de la vista <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  Indique una opción [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = Esquema de color establecido en «Sistema» (actualmente __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Requiere un número entero entre __ocs_fmt_0__ y __ocs_fmt_1__.

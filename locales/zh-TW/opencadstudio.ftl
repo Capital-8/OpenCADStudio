@@ -4442,6 +4442,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <圖層> = 凍結  |  T <圖層> = 解凍  |  Enter = 退出
 
 view =
+    .twist-option = 扭轉
+    .dview-specify-view-twist-angle = DVIEW  指定視圖扭轉角度 <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  輸入選項 [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = 配色方案已設為「系統」（目前：__ocs_fmt_0__）。
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = 需要介於 __ocs_fmt_0__ 和 __ocs_fmt_1__ 之間的整數。

@@ -4445,6 +4445,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER F <laag> = Bevriezen | T <laag> = Ontdooien | Enter = Afsluiten
 
 view =
+    .twist-option = Draaien
+    .dview-specify-view-twist-angle = DVIEW  Geef weergavedraaihoek op <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  Geef optie op [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = Kleurenschema ingesteld op 'Systeem' (momenteel __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Vereist een geheel getal tussen __ocs_fmt_0__ en __ocs_fmt_1__.

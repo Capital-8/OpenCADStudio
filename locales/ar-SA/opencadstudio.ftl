@@ -4459,6 +4459,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <layer> = تجميد | T <layer> = إلغاء التجميد | Enter = خروج
 
 view =
+    .twist-option = لف
+    .dview-specify-view-twist-angle = DVIEW  حدد زاوية لف العرض <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  أدخل خيارًا [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = تم تعيين نظام الألوان على "النظام" (حاليًا __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = يتطلب عددًا صحيحًا بين __ocs_fmt_0__ و __ocs_fmt_1__.

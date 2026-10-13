@@ -935,6 +935,21 @@ impl OpenCADStudio {
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
             }
 
+            "DVIEW" => {
+                use crate::modules::view::dview::DviewCommand;
+                let twist = {
+                    let scene = &self.tabs[i].scene;
+                    let roll = match scene.active_viewport {
+                        Some(_) => scene.navigation_camera().roll(),
+                        None => scene.camera.borrow().roll(),
+                    };
+                    -(roll as f64)
+                };
+                let cmd = DviewCommand::new(twist.rem_euclid(std::f64::consts::TAU));
+                self.command_line.push_info(&cmd.prompt());
+                self.tabs[i].active_cmd = Some(Box::new(cmd));
+            }
+
             "ZOOM" | "ZOOM WINDOW" | "ZOOM W" | "ZW" => {
                 use crate::modules::view::zoom_window::ZoomWindowCommand;
                 let new_cmd = ZoomWindowCommand::new();

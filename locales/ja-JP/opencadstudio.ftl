@@ -4435,6 +4435,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <layer> = フリーズ  |  T <layer> = フリーズ解除  |  Enter = 終了
 
 view =
+    .twist-option = ねじれ
+    .dview-specify-view-twist-angle = DVIEW  ビューのねじれ角度を指定 <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  オプションを入力 [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = カラースキームを「システム」に設定しました（現在: __ocs_fmt_0__）。
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = __ocs_fmt_0__ から __ocs_fmt_1__ までの整数が必要です。

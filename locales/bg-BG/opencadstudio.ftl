@@ -4446,6 +4446,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <слой> = Замрази  |  T <слой> = Размрази  |  Enter = Изход
 
 view =
+    .twist-option = Завъртане
+    .dview-specify-view-twist-angle = DVIEW  Задайте ъгъл на завъртане на изгледа <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  Въведете опция [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = Цветовата схема е зададена на „Системна“ (в момента __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Изисква се цяло число между __ocs_fmt_0__ и __ocs_fmt_1__.

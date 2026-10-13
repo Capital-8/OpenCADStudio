@@ -4446,6 +4446,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER F <layer> = Jäädytys | T <layer> = Sulatus | Enter = Poistu
 
 view =
+    .twist-option = Kierto
+    .dview-specify-view-twist-angle = DVIEW  Määritä näkymän kiertokulma <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  Anna valinta [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = Väriteema asetettu arvoon "Järjestelmä" (tällä hetkellä __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Vaatii kokonaisluvun väliltä __ocs_fmt_0__–__ocs_fmt_1__.

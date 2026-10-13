@@ -4448,6 +4448,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER F <layer> = Freeze , T <layer> = Thaw , Entrée = Sortie
 
 view =
+    .twist-option = Rotation
+    .dview-specify-view-twist-angle = DVIEW  Spécifiez l’angle de rotation de la vue <__ocs_fmt_0__> :
+    .dview-enter-option-twist-undo = DVIEW  Entrez une option [TWist/Undo] :
     .color-scheme-set-to-system-currently-name = Jeu de couleurs défini sur « Système » (actuellement __ocs_fmt_0__).
     .ss-create-sheet-set = Create Sheet Set
     .ss-requires-integer-between = Nécessite un nombre entier compris entre __ocs_fmt_0__ et __ocs_fmt_1__.

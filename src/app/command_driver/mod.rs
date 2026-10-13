@@ -882,6 +882,9 @@ impl OpenCADStudio {
             CmdResult::ZoomToWindow { p1, p2 } => {
                 self.handle_zoom_to_window(p1, p2);
             }
+            CmdResult::TwistView(twist) => {
+                self.handle_twist_view(twist);
+            }
             CmdResult::Measurement(msg) => {
                 self.handle_measurement(msg);
             }

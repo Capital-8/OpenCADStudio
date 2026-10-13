@@ -4447,6 +4447,9 @@ layout =
     .vplayer-f-layer-freeze-t-layer-thaw-enter-exit = VPLAYER  F <ເລເຢີ> = ແຊ່ແຂງ  |  T <ເລເຢີ> = ລະລາຍ  |  Enter = ອອກ
 
 view =
+    .twist-option = ບິດ
+    .dview-specify-view-twist-angle = DVIEW  ກຳນົດມຸມບິດມຸມມອງ <__ocs_fmt_0__>:
+    .dview-enter-option-twist-undo = DVIEW  ໃສ່ຕົວເລືອກ [TWist/Undo]:
     .color-scheme-set-to-system-currently-name = ຕັ້ງຮູບແບບສີເປັນ 'ລະບົບ' ແລ້ວ (ປັດຈຸບັນ __ocs_fmt_0__).
     .ss-create-sheet-set = ສ້າງຊຸດແຜ່ນງານ
     .ss-requires-integer-between = ຕ້ອງການຈໍານວນຖ້ວນລະຫວ່າງ __ocs_fmt_0__ ຫາ __ocs_fmt_1__.
