@@ -547,6 +547,16 @@ pub(crate) fn tessellate_entity(
         }
     }
 
+    // Reference-only entities (API v9) render and snap normally but must not
+    // be picked by the built-in edit paths; the pick-side wire filters in
+    // `scene::pick::hit_test` and the selection-gather retains consume the
+    // flag.
+    if crate::scene::reference_only::entity_is_reference_only(e) {
+        for wire in &mut wires {
+            wire.reference_only = true;
+        }
+    }
+
     wires
 }
 fn tessellate_entity_inner(

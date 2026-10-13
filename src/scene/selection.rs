@@ -203,6 +203,7 @@ impl Scene {
         let selected = handles
             .into_iter()
             .filter(|handle| self.passes_selection_filter(*handle))
+            .filter(|handle| !self.is_reference_only(*handle))
             .filter(|handle| {
                 self.document.get_entity(*handle).is_some_and(|entity| {
                     self.resident_entity_visible(
@@ -1059,7 +1060,15 @@ impl Scene {
     // ── Erase ─────────────────────────────────────────────────────────────
 
     pub fn erase_entities(&mut self, handles: &[Handle]) {
-        self.remove_entities(handles, true);
+        self.remove_entities(handles, true, true);
+    }
+
+    /// Like [`erase_entities`](Self::erase_entities) but without the
+    /// reference-only skip. The plugin owns reference-only entities and
+    /// removes them through the plugin host API; locked-layer policy stays
+    /// enforced either way.
+    pub fn erase_entities_plugin(&mut self, handles: &[Handle]) {
+        self.remove_entities(handles, true, false);
     }
 
     /// Roll back entities created by the current command after a downstream
@@ -1068,10 +1077,15 @@ impl Scene {
     /// The shared removal path keeps first-touch undo state, history objects,
     /// groups, selection, and derived caches coherent.
     pub(crate) fn rollback_new_entities(&mut self, handles: &[Handle]) {
-        self.remove_entities(handles, false);
+        self.remove_entities(handles, false, false);
     }
 
-    fn remove_entities(&mut self, handles: &[Handle], respect_layer_locks: bool) {
+    fn remove_entities(
+        &mut self,
+        handles: &[Handle],
+        respect_layer_locks: bool,
+        respect_reference_only: bool,
+    ) {
         let erase_handles = self.handles_expanded_for_leader_annotations(handles);
 
         // One pass over document.objects instead of a scan per erased handle.
@@ -1095,8 +1109,13 @@ impl Scene {
         let mut hover_changed = false;
 
         for &h in &erase_handles {
-            // Objects on a locked layer can't be erased.
+            // Objects on a locked layer can't be erased. Reference-only
+            // entities are plugin-owned: only the plugin-owned erase path
+            // may remove them.
             if respect_layer_locks && self.is_layer_locked(h) {
+                continue;
+            }
+            if respect_reference_only && self.is_reference_only(h) {
                 continue;
             }
             let settings_handle = self.document.get_entity(h).and_then(|entity| match entity {

@@ -1758,6 +1758,7 @@ impl Batches {
                     depth_override: b.local_depth,
                     display_visible: !b.hide_unselected || selected,
                     snap_only: false,
+                    reference_only: false,
                     plot_visible: b.plot_visible,
                     fill_is_3d: b.fill_is_3d,
                     fill_is_2d_solid: b.fill_is_2d_solid,

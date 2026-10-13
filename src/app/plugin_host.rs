@@ -107,7 +107,7 @@ impl<'a> HostSession<'a> {
         *slot = attribute;
         self.app.tabs[self.tab]
             .scene
-            .update_entity(EntityType::Insert(insert))
+            .update_entity_plugin(EntityType::Insert(insert))
     }
 
     pub fn document_view(&mut self) -> Option<ocs_plugin_api::shm::DocumentViewInfo> {
@@ -373,7 +373,7 @@ impl<'a> HostSession<'a> {
             insert.attributes.push(attribute);
             if !self.app.tabs[self.tab]
                 .scene
-                .update_entity(EntityType::Insert(insert))
+                .update_entity_plugin(EntityType::Insert(insert))
             {
                 return Handle::NULL;
             }
@@ -415,7 +415,7 @@ impl<'a> HostSession<'a> {
         }
         let ok = match entity {
             EntityType::AttributeEntity(attribute) => self.replace_nested_attribute(attribute),
-            entity => self.app.tabs[self.tab].scene.update_entity(entity),
+            entity => self.app.tabs[self.tab].scene.update_entity_plugin(entity),
         };
         self.app.sync_registered_layers(self.tab);
         if ok {
@@ -473,7 +473,7 @@ impl<'a> HostSession<'a> {
             // the document exclusively.
             let updated = match entity {
                 EntityType::AttributeEntity(attribute) => self.replace_nested_attribute(attribute),
-                entity => self.app.tabs[self.tab].scene.update_entity(entity),
+                entity => self.app.tabs[self.tab].scene.update_entity_plugin(entity),
             };
             assert!(updated);
         }
@@ -548,7 +548,9 @@ impl<'a> HostSession<'a> {
             .document()
             .get_entity(handle)
             .map(|entity| entity.common().owner_handle);
-        self.app.tabs[self.tab].scene.erase_entities(&[handle]);
+        self.app.tabs[self.tab]
+            .scene
+            .erase_entities_plugin(&[handle]);
         let removed = self.document().get_entity(handle).is_none();
         if removed {
             // The document keeps a block record's member list separately from the
@@ -1138,7 +1140,9 @@ impl<'a> HostSession<'a> {
             return Err("the result could not be added".into());
         }
         if delete_source {
-            self.app.tabs[self.tab].scene.erase_entities(&[source]);
+            self.app.tabs[self.tab]
+                .scene
+                .erase_entities_plugin(&[source]);
             self.publish_document_view();
         }
         Ok(handle)
@@ -1401,7 +1405,9 @@ impl<'a> HostSession<'a> {
                 self.push_undo("Delete layer");
                 self.document_mut().layers.remove(&name);
                 if !on_layer.is_empty() {
-                    self.app.tabs[self.tab].scene.erase_entities(&on_layer);
+                    self.app.tabs[self.tab]
+                        .scene
+                        .erase_entities_plugin(&on_layer);
                 }
                 self.finish_layer_change(&[name]);
                 Ok(handle)
@@ -2256,7 +2262,9 @@ impl<'a> HostSession<'a> {
                     }
                 }
                 if erase_originals {
-                    self.app.tabs[self.tab].scene.erase_entities(&entities);
+                    self.app.tabs[self.tab]
+                        .scene
+                        .erase_entities_plugin(&entities);
                 }
                 self.finish_block_change();
                 Ok(handle)
@@ -3123,6 +3131,74 @@ impl<'a> HostSession<'a> {
             .collect())
     }
 
+    /// Mark (or unmark) an entity as reference-only (API v9, additive):
+    /// plugin-owned display geometry the built-in edit paths treat like a
+    /// locked-layer entity, while the owning plugin keeps full write access
+    /// through this session. The designation survives DWG/DXF save and reload.
+    ///
+    /// Every refusal — absent entity, locked layer — is decided before the
+    /// undo scope is touched, so a failure changes nothing. A call that would
+    /// not change the current designation succeeds without recording an undo
+    /// step. Undo composition: a change inside a plugin-opened `push_undo`
+    /// scope joins it (see [`HostSession::ensure_xrecord_undo_scope`]); a
+    /// scope-less call is one undo step of its own.
+    pub fn set_reference_only(
+        &mut self,
+        handle: Handle,
+        reference_only: bool,
+    ) -> Result<(), String> {
+        // Refusals precede any change (and any undo step).
+        let Some(entity) = self.document().get_entity(handle) else {
+            return Err(format!("entity {handle:?} does not exist"));
+        };
+        if self.app.tabs[self.tab].scene.is_layer_locked(handle) {
+            return Err(format!("entity {handle:?} is on a locked layer"));
+        }
+        if crate::scene::reference_only::entity_is_reference_only(entity) == reference_only {
+            return Ok(());
+        }
+        let own_scope = self.ensure_xrecord_undo_scope("Set Reference-Only");
+        // Register the host APPID before the marker is written so the record's
+        // application is resolvable on save.
+        if reference_only {
+            self.ensure_app_id(crate::scene::reference_only::REFERENCE_ONLY_APP_ID);
+        }
+        let app_handle = self
+            .document()
+            .app_ids
+            .get(crate::scene::reference_only::REFERENCE_ONLY_APP_ID)
+            .map(|app| app.handle.value());
+        let changed = self
+            .document_mut()
+            .get_entity_mut(handle)
+            .map(|entity| {
+                let changed =
+                    crate::scene::reference_only::set_entity_reference_only(entity, reference_only);
+                // Drop stale verbatim EED for the host app so the fresh
+                // marker — not pre-edit bytes captured on a prior read —
+                // wins on the next save.
+                if changed {
+                    if let Some(app_handle) = app_handle {
+                        entity
+                            .common_mut()
+                            .extended_data
+                            .raw_dwg_eed
+                            .retain(|(a, _)| *a != app_handle);
+                    }
+                }
+                changed
+            })
+            .unwrap_or(false);
+        debug_assert!(changed, "designation state was checked before the mutation");
+        self.bump_geometry();
+        self.set_dirty();
+        self.publish_document_view();
+        if own_scope {
+            self.app.finish_pending_history(self.tab);
+        }
+        Ok(())
+    }
+
     /// Resolve an existing XRecord to its containing dictionary, its validated
     /// name and its handle, after validating the path, the name and the target
     /// kind.
@@ -3525,6 +3601,9 @@ impl HostApi for HostSession<'_> {
     }
     fn list_xrecords(&self, dictionary_path: &[&str]) -> Result<Vec<String>, String> {
         self.list_xrecords(dictionary_path)
+    }
+    fn set_reference_only(&mut self, handle: Handle, reference_only: bool) -> Result<(), String> {
+        self.set_reference_only(handle, reference_only)
     }
 }
 
@@ -13377,6 +13456,237 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         let mut ghost = Point::new();
         ghost.common.handle = Handle::new(999_999);
         assert!(!host.update_entity(EntityType::Point(ghost)));
+    }
+
+    fn reference_test_line(end_x: f64, y: f64, handle: Handle) -> EntityType {
+        let mut line = codec::entities::Line::from_points(
+            codec::types::Vector3::new(0.0, y, 0.0),
+            codec::types::Vector3::new(end_x, y, 0.0),
+        );
+        line.common.handle = handle;
+        EntityType::Line(line)
+    }
+
+    #[test]
+    fn reference_only_refusals_record_no_undo_step() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let mut host = HostSession::new(&mut app, 0);
+        // Marking an absent entity refuses.
+        assert!(host.set_reference_only(Handle::new(999_999), true).is_err());
+        let handle = host.add_entity(reference_test_line(10.0, 0.0, Handle::NULL));
+        // A locked layer is as unwritable for the designation as for every
+        // other plugin write.
+        host.app.tabs[0]
+            .scene
+            .document
+            .layers
+            .get_mut("0")
+            .map(|layer| layer.lock());
+        assert!(host.set_reference_only(handle, true).is_err());
+        host.app.tabs[0]
+            .scene
+            .document
+            .layers
+            .get_mut("0")
+            .map(|layer| layer.unlock());
+        assert!(
+            !crate::scene::reference_only::entity_is_reference_only(
+                host.document().get_entity(handle).unwrap()
+            ),
+            "refusals must not partially apply the designation"
+        );
+        assert_eq!(
+            host.app.tabs[0].history.undo_stack.len(),
+            0,
+            "refusals record no undo step"
+        );
+        // An idempotent re-mark succeeds without recording another step.
+        host.set_reference_only(handle, true).unwrap();
+        assert_eq!(host.app.tabs[0].history.undo_stack.len(), 1);
+        host.set_reference_only(handle, true).unwrap();
+        assert_eq!(
+            host.app.tabs[0].history.undo_stack.len(),
+            1,
+            "an idempotent re-mark records no undo step"
+        );
+    }
+
+    #[test]
+    fn reference_only_designation_composes_undo_like_entity_writes() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let mut host = HostSession::new(&mut app, 0);
+        let handle = host.add_entity(reference_test_line(10.0, 0.0, Handle::NULL));
+        // A scope-less designation is one undo step of its own.
+        host.set_reference_only(handle, true).unwrap();
+        host.set_reference_only(handle, false).unwrap();
+        assert_eq!(host.app.tabs[0].history.undo_stack.len(), 2);
+
+        // Undo reverts the unmark, redo re-applies it.
+        drop(host);
+        app.undo_steps(1);
+        let mut host = HostSession::new(&mut app, 0);
+        assert!(host.app.tabs[0].scene.is_reference_only(handle));
+        drop(host);
+        app.redo_steps(1);
+        let mut host = HostSession::new(&mut app, 0);
+        assert!(!host.app.tabs[0].scene.is_reference_only(handle));
+
+        // Inside a plugin-opened push_undo scope the designation joins the
+        // scope: an entity write plus two markings is ONE step under the
+        // plugin's label.
+        host.push_undo("CVI: refresh");
+        let preview = host.add_entity(EntityType::Point(Point::at(codec::types::Vector3::new(
+            3.0, 0.0, 0.0,
+        ))));
+        host.set_reference_only(preview, true).unwrap();
+        host.set_reference_only(handle, true).unwrap();
+        drop(host);
+        app.finish_pending_history(0);
+        assert_eq!(app.tabs[0].history.undo_stack.len(), 3);
+        assert_eq!(app.tabs[0].history.undo_stack[2].label(), "CVI: refresh");
+
+        // Undoing the plugin operation reverts it whole.
+        app.undo_steps(1);
+        let mut host = HostSession::new(&mut app, 0);
+        assert!(
+            host.app.tabs[0]
+                .scene
+                .document
+                .get_entity(preview)
+                .is_none(),
+            "undoing the scope removed the entity created inside it"
+        );
+        assert!(
+            !host.app.tabs[0].scene.is_reference_only(handle),
+            "undoing the scope restored the designation's prior state"
+        );
+    }
+
+    #[test]
+    fn reference_only_survives_dxf_and_dwg_round_trips() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let mut host = HostSession::new(&mut app, 0);
+        let handle = host.add_entity(reference_test_line(10.0, 0.0, Handle::NULL));
+        host.set_reference_only(handle, true).unwrap();
+
+        let flagged = |document: &codec::CadDocument| {
+            document
+                .get_entity(handle)
+                .is_some_and(crate::scene::reference_only::entity_is_reference_only)
+        };
+        // The host APPID the marker lives under travels with the record.
+        assert!(host.document().app_ids.get("OCS").is_some());
+
+        let dwg = codec::DwgWriter::write_to_vec(host.document()).unwrap();
+        let reloaded = crate::io::load_bytes("reference-only.dwg", dwg).unwrap();
+        assert!(flagged(&reloaded), "DWG save/reopen keeps the designation");
+        assert!(reloaded.app_ids.get("OCS").is_some());
+
+        let dxf = codec::DxfWriter::new(host.document())
+            .write_to_vec()
+            .unwrap();
+        let reloaded = crate::io::load_bytes("reference-only.dxf", dxf).unwrap();
+        assert!(flagged(&reloaded), "DXF save/reopen keeps the designation");
+        assert!(reloaded.app_ids.get("OCS").is_some());
+    }
+
+    #[test]
+    fn user_paths_refuse_and_plugin_paths_write_reference_only_entities() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let mut host = HostSession::new(&mut app, 0);
+        let handle = host.add_entity(reference_test_line(10.0, 0.0, Handle::NULL));
+        host.set_reference_only(handle, true).unwrap();
+        let plain = host.add_entity(reference_test_line(10.0, 5.0, Handle::NULL));
+
+        // Grips: the reference-only entity contributes none; the editable one
+        // keeps its own.
+        host.set_selection(&[handle]).unwrap();
+        host.app.refresh_selected_grips();
+        assert!(
+            host.app.tabs[0].selected_grips.is_empty(),
+            "reference-only entities contribute no grips"
+        );
+        host.set_selection(&[plain]).unwrap();
+        host.app.refresh_selected_grips();
+        assert!(!host.app.tabs[0].selected_grips.is_empty());
+
+        // The user in-place update refuses; the user batch skips only the
+        // reference-only member; the plugin-owned variants write through.
+        assert!(!host.app.tabs[0]
+            .scene
+            .update_entity(reference_test_line(20.0, 0.0, handle)));
+        let applied = host.app.tabs[0].scene.update_entities(vec![
+            reference_test_line(20.0, 0.0, handle),
+            reference_test_line(20.0, 5.0, plain),
+        ]);
+        assert_eq!(
+            applied, 1,
+            "the user batch applies only the editable entity"
+        );
+        let end_x = |scene: &crate::scene::Scene, h: Handle| match scene.document.get_entity(h) {
+            Some(EntityType::Line(line)) => line.end.x,
+            _ => panic!("entity {h:?} must be a line"),
+        };
+        let scene = &host.app.tabs[0].scene;
+        assert_eq!(
+            end_x(scene, handle),
+            10.0,
+            "the user paths refused the write"
+        );
+        assert_eq!(end_x(scene, plain), 20.0);
+        // The plugin-owned variant writes through. A real plugin refresh
+        // clones the live entity (designation included), edits it, and
+        // replaces it — so model that flow instead of a bare synthetic.
+        let mut moved = match host.app.tabs[0].scene.document.get_entity(handle) {
+            Some(entity) => entity.clone(),
+            _ => unreachable!("the entity exists"),
+        };
+        if let EntityType::Line(line) = &mut moved {
+            line.end.x = 30.0;
+        }
+        assert!(host.app.tabs[0].scene.update_entity_plugin(moved));
+        let scene = &host.app.tabs[0].scene;
+        assert_eq!(
+            end_x(scene, handle),
+            30.0,
+            "the plugin-owned update writes through"
+        );
+        assert!(
+            scene.is_reference_only(handle),
+            "a refresh-style plugin write preserves the designation"
+        );
+
+        // User erase skips reference-only entities; the plugin erase path
+        // removes them.
+        host.app.tabs[0].scene.erase_entities(&[handle]);
+        assert!(
+            host.app.tabs[0].scene.document.get_entity(handle).is_some(),
+            "user erase skips reference-only entities"
+        );
+        host.app.tabs[0].scene.erase_entities_plugin(&[handle]);
+        assert!(
+            host.app.tabs[0].scene.document.get_entity(handle).is_none(),
+            "the plugin erase path removes reference-only entities"
+        );
+        assert!(host.app.tabs[0].scene.document.get_entity(plain).is_some());
+    }
+
+    #[test]
+    fn select_all_visible_skips_reference_only_entities() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let mut host = HostSession::new(&mut app, 0);
+        let handle = host.add_entity(reference_test_line(10.0, 0.0, Handle::NULL));
+        host.set_reference_only(handle, true).unwrap();
+        let plain = host.add_entity(reference_test_line(10.0, 5.0, Handle::NULL));
+
+        assert_eq!(host.app.tabs[0].scene.select_all_visible(), 1);
+        let selected = host.app.tabs[0].scene.selected_handles_in_order();
+        assert_eq!(selected, vec![plain]);
     }
 
     #[test]

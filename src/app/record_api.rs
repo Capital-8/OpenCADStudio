@@ -245,6 +245,8 @@ fn entity_record(entity: &codec::EntityType) -> Result<Value, String> {
         "record_type".into(),
         json!(crate::entities::names::dxf_name(entity)),
     );
+    let reference_only = crate::scene::reference_only::entity_is_reference_only(entity);
+    object.insert("reference_only".into(), json!(reference_only));
     Ok(value)
 }
 
@@ -1506,6 +1508,12 @@ impl OpenCADStudio {
                 if self.tabs[i].scene.is_layer_locked(handle) {
                     return Err(failure("layer_locked", "entity is on a locked layer"));
                 }
+                if self.tabs[i].scene.is_reference_only(handle) {
+                    return Err(failure(
+                        "reference_only",
+                        "entity is reference-only (plugin-owned display data)",
+                    ));
+                }
                 let source = self.tabs[i]
                     .scene
                     .document
@@ -1690,6 +1698,55 @@ mod tests {
         object.insert("document_id".into(), state["document_id"].clone());
         object.insert("revision".into(), state["revision"].clone());
         app.automation_op(&request.to_string())
+    }
+
+    #[test]
+    fn entities_records_expose_the_reference_only_designation() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+
+        let handle = app.tabs[i].scene.add_entity(EntityType::Line(
+            codec::entities::Line::from_points(
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(10.0, 0.0, 0.0),
+            ),
+        ));
+        fn mark(app: &mut OpenCADStudio, i: usize, handle: Handle, on: bool) {
+            if let Some(entity) = app.tabs[i].scene.document.get_entity_mut(handle) {
+                crate::scene::reference_only::set_entity_reference_only(entity, on);
+            }
+        }
+
+        // The read surface reports the designation alongside the record.
+        mark(&mut app, i, handle, true);
+        let records = app.record_query(&json!({"collection":"entities"}));
+        assert_eq!(records["count"], 1);
+        assert_eq!(
+            records["records"][0]["handle"],
+            json!(format!("{:X}", handle.value()))
+        );
+        assert_eq!(records["records"][0]["reference_only"], json!(true));
+
+        // The MCP write path treats a reference-only entity like a locked
+        // layer: the edit is refused, honestly.
+        let refused = execute(
+            &mut app,
+            json!({
+                "op":"set_properties",
+                "collection":"entities",
+                "handle": format!("{:X}", handle.value()),
+                "updates":[{"path":"/end/x","value":20.0}],
+            }),
+            "reference-only",
+        );
+        assert_eq!(refused["ok"], json!(false));
+        assert_eq!(refused["code"], json!("reference_only"));
+
+        // Clearing the designation is reported too.
+        mark(&mut app, i, handle, false);
+        let records = app.record_query(&json!({"collection":"entities"}));
+        assert_eq!(records["records"][0]["reference_only"], json!(false));
     }
 
     #[test]

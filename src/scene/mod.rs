@@ -31,6 +31,8 @@ pub enum BlockScalePolicy {
 mod block_base_point_tests;
 mod boundary;
 mod camera_ops;
+#[cfg(test)]
+mod reference_only_tests;
 pub use camera_ops::{add_background, copy_background, erase_background};
 pub(crate) mod centerline;
 pub(crate) mod centermark;
@@ -56,6 +58,7 @@ mod page_setup;
 mod paper;
 mod preview;
 mod project;
+pub mod reference_only;
 mod scene_markers;
 mod selection;
 pub mod viewport_dimension_pick;
@@ -9145,6 +9148,16 @@ impl Scene {
                 .is_some_and(|l| l.is_locked())
     }
 
+    /// True when `handle` addresses a reference-only entity (API v9):
+    /// plugin-owned display geometry the built-in edit paths treat like a
+    /// locked-layer entity while its owning plugin keeps write access through
+    /// the plugin host API. Absent entities are never reference-only.
+    pub fn is_reference_only(&self, handle: Handle) -> bool {
+        self.document
+            .get_entity(handle)
+            .is_some_and(reference_only::entity_is_reference_only)
+    }
+
     /// The name of the locked layer `handle` sits on, if any (for messages).
     pub fn locked_layer_name(&self, handle: Handle) -> Option<String> {
         let name = self
@@ -10399,6 +10412,21 @@ impl Scene {
         &self,
         candidates: &crate::scene::pick::interaction_index::InteractionCandidates,
     ) -> Option<HashSet<Handle>> {
+        let handles = self.interaction_candidate_handles_all(candidates);
+        // Reference-only entities (API v9) are plugin-owned display geometry:
+        // their fills, solids and instanced meshes are not pickable, so the
+        // click/hover fallback paths that consume this set skip them and a
+        // click passes through to the editable entity underneath.
+        handles.map(|mut handles| {
+            handles.retain(|h| !self.is_reference_only(*h));
+            handles
+        })
+    }
+
+    fn interaction_candidate_handles_all(
+        &self,
+        candidates: &crate::scene::pick::interaction_index::InteractionCandidates,
+    ) -> Option<HashSet<Handle>> {
         let mut handles: HashSet<Handle> = candidates
             .iter()
             .filter_map(|wire| Self::handle_from_wire_name(&wire.name))
@@ -10643,7 +10671,7 @@ impl Scene {
                 candidate_handles.as_ref(),
             ));
         }
-        handles.retain(|&h| self.passes_selection_filter(h));
+        handles.retain(|&h| self.passes_selection_filter(h) && !self.is_reference_only(h));
         handles
     }
 
@@ -12733,7 +12761,8 @@ vis_index={:.1} visible_probe={:.1}",
 }
 
 /// LAYOUTCREATEVIEWPORT: a layout opened for the first time gets a viewport.
-static LAYOUT_CREATE_VIEWPORT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+static LAYOUT_CREATE_VIEWPORT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(true);
 
 pub fn layout_create_viewport() -> bool {
     LAYOUT_CREATE_VIEWPORT.load(std::sync::atomic::Ordering::Relaxed)
