@@ -313,6 +313,9 @@ impl Scene {
                             | EntityType::Region(_)
                             | EntityType::Body(_)
                             | EntityType::Surface(_)
+                            | EntityType::Mesh(_)
+                            | EntityType::PolygonMesh(_)
+                            | EntityType::PolyfaceMesh(_)
                     )
                 })
             {
