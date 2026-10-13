@@ -6538,6 +6538,7 @@ properties={:.1}ms picked={}",
                     .as_ref()
                     .map(|style| style.name.clone())
                     .unwrap_or_default();
+                self.tabs[i].scene.new_layout_plot_style = plot_style.clone();
                 for obj in self.tabs[i].scene.document.objects.values_mut() {
                     if let codec::objects::ObjectType::Layout(l) = obj {
                         if l.name == new_name {
