@@ -62,7 +62,7 @@ options =
     .right-click-customization = Personnalisation du clic droit
     .right-click-in-drawing-area = Clic droit dans la zone de dessin
     .hold-duration = Durée de maintien
-    .right-click-mode-help = Menu contextuel : le clic droit ouvre toujours le menu. Sensible au temps : un clic bref vaut Entrée, un appui prolongé ouvre le menu (SHORTCUTMENUDURATION).
+    .right-click-mode-help = Menu contextuel : le clic droit ouvre toujours le menu. Un clic bref vaut Entrée, un appui prolongé ouvre le menu (SHORTCUTMENUDURATION).
     .right-click-mode-shortcut-menu = Menu contextuel
     .right-click-mode-time-sensitive = Sensible au temps (clic bref = Entrée)
     .right-click-mode-enter-first = Entrée d'abord, second clic = menu
@@ -135,7 +135,7 @@ modal =
     .unsaved-save-prompt = Voulez-vous enregistrer les modifications ?
     .point-style = Style de point
     .attribute-editor = Éditeur d'attributs
-    .save-drawing-as = Enregistrer le dessin sous
+    .save-drawing-as = Enregistrer sous
     .recovery-report = Rapport de récupération du dessin
     .recovery-prompt = Récupération du dessin
     .file-name-could-not-be-saved = Impossible d’enregistrer « __ocs_arg_file_name__ ».
@@ -154,7 +154,7 @@ modal =
     .open-dwg-and-dxf-drawings-in-open-cad-studio-b = Ouvrez par défaut les dessins .dwg et .dxf dans Open CAD Studio. Vous pouvez modifier cela plus tard dans les paramètres de votre système.
     .path-path = Voie : __ocs_arg_path__
     .reload-from-disk = Recharger à partir du disque
-    .save-as = Enregistrer comme...
+    .save-as = Enregistrer sous...
     .saving-now-could-destroy-those-external-change = L'enregistrement pourrait détruire ces modifications externes. Recharger la copie du disque, enregistrer votre travail local ailleurs, ou l'écraser explicitement.
     .the-file-is-open-or-being-used-by-another-appl = Le fichier est ouvert ou utilisé par une autre application. Fermez-le dans cette application et réessayez, ou enregistrez ce dessin sous un autre nom.
     .the-selected-layer-state-is-no-longer-availabl = L'état de calque sélectionné n'est plus disponible.
@@ -170,9 +170,9 @@ modal =
 
     .missing-fonts-downloading = Downloading...
     .missing-fonts-download-available = Download available
-    .missing-fonts-skip = Skip
-    .missing-fonts-title = Missing fonts
-    .missing-fonts-description = This drawing uses fonts that are not installed on this machine. OpenCADStudio can download any redistributable fonts that exist in the selected repository; unavailable fonts will keep using a substitute.
+    .missing-fonts-skip = Ignorer
+    .missing-fonts-title = Polices manquantes
+    .missing-fonts-description = Ce dessin contient des polices de caractères absentes de cette machine. OpenCADStudio peut télécharger les polices du référentiel choisi; les polices absentes seront remplacées.
     .missing-fonts-source = Font source — leave empty for the community repository, or point at any folder (e.g. your company's font server):
     .missing-fonts-source-placeholder = https://server/fonts or a GitHub raw folder
 
@@ -189,7 +189,7 @@ clipboard =
     .cut-to-clipboard = Couper sur le presse-papiers
     .pasteclip-pick-insertion-point = PASTECLIP Point d'insertion de la sélection:
     .paste-as-block = Coller comme bloc
-    .paste-from-clipboard = Coller du presse-papiers
+    .paste-from-clipboard = Coller depuis le presse-papiers
     .paste-to-original-coordinates = Coller aux coordonnées originales
 
 viewport =
@@ -242,10 +242,10 @@ area =
     .option-back = Retour
     .option-add = Ajouter une aire
     .option-subtract = Soustraire une aire
-    .prompt-first = AREA  Indiquez le premier sommet ou [Objets/Ajouter une aire/Soustraire une aire] <Objets> :
-    .prompt-add = AREA AJOUTER  Indiquez le premier sommet ou [Objets/Soustraire une aire] <Objets> :
-    .prompt-subtract = AREA SOUSTRAIRE  Indiquez le premier sommet ou [Objets/Ajouter une aire] <Objets> :
-    .prompt-next = AREA  Indiquez le point suivant ({ $count } sélectionné(s), Entrée pour calculer) :
+    .prompt-first = AREA  Premier sommet ou [Objets/Ajouter une aire/Soustraire une aire] <Objets> :
+    .prompt-add = AREA AJOUTER  Premier sommet ou [Objets/Soustraire une aire] <Objets> :
+    .prompt-subtract = AREA SOUSTRAIRE  Premier sommet ou [Objets/Ajouter une aire] <Objets> :
+    .prompt-next = AREA  Point suivant ({ $count } sélectionné(s), Entrée pour calculer) :
     .prompt-objects = AREA  Sélectionnez les objets ({ $count } sélectionné(s), Entrée pour calculer) :
     .objects-not-measurable = AREA : aucun des objets sélectionnés ne possède d'aire mesurable.
     .result = Aire = { $area },  Périmètre = { $perimeter }
@@ -259,23 +259,23 @@ area =
 
 command-move =
     .base =
-        MOVE  Spécifiez le point de base  [{ $count ->
+        MOVE  Point d'origine  [{ $count ->
             [one] { $count } objet
            *[other] { $count } objets
         }] :
-    .target = MOVE  Spécifiez la destination  [base { $x },{ $y }] :
+    .target = MOVE  Point de destination  [base { $x },{ $y }] :
     .displacement = MOVE  Spécifiez le déplacement :
 
 command-copy =
-    .array-count = COPY  Saisissez le nombre d'éléments du réseau :
+    .array-count = COPY  Saisissez le nombre d'éléments :
     .base =
-        COPY  Spécifiez le point de base  [{ $count ->
+        COPY  Point d'origine  [{ $count ->
             [one] { $count } objet
            *[other] { $count } objets
         }] :
-    .array-target = COPY  Spécifiez le second point du réseau de { $count } éléments  [base { $x },{ $y }] :
+    .array-target = COPY  Second point du réseau de { $count } éléments  [base { $x },{ $y }] :
     .target =
-        COPY  Spécifiez la destination  [{ $count ->
+        COPY  Destination  [{ $count ->
             [one] { $count } copie jusqu'ici
            *[other] { $count } copies jusqu'ici
         } | Réseau | Entrée=terminer | base { $x },{ $y }] :
@@ -470,7 +470,7 @@ common =
     .center-mark-dimcen = Marque centrale (DIMCEN)
     .centered = Centré
     .centimeters = Centimètres
-    .chamfer = Châtain
+    .chamfer = Chamfrein
     .changelog = Changer de journal
     .changing-a-base-colour-switches-to-custom-iced = Changer une couleur de base change en Custom. Iced génère chaque teinte de composant de ces six couleurs.
     .circle = Cercle
@@ -535,7 +535,7 @@ common =
     .dim-style = Style de cote
     .dimension = Cotation
     .dimensions = Cotations
-    .discard = Jetez
+    .discard = Annuler
     .discussions = Débat
     .discussions-load-from-github = Charge de discussions de GitHub.
     .display = Affichage
@@ -606,7 +606,7 @@ common =
     .gouraud-shaded = Ombrage Gouraud
     .gouraud-shaded-edges = Gouraud Shaded + Bords
     .green = Vert
-    .group = Groupe
+    .group = Grouper
     .group-created = Groupe créé «__ocs_fmt_0__».
     .groups = Groupes
     .h-margin = H Marge :
@@ -623,7 +623,7 @@ common =
     .hidden = Caché
     .hidden-line = Ligne cachée
     .high = Élevé
-    .horizontal = Horizontale
+    .horizontal = Horizontal
     .horizontal-inside-dimtih = Intérieur horizontal (DIMTIH)
     .horizontal-just-dimjust = Horizontal juste (DIMJUST)
     .horizontal-outside-dimtoh = Extérieur horizontal (DIMTOH)
@@ -1045,7 +1045,7 @@ common =
     .vplayer-thawed-count-layer-s-thawed-in-viewpor = VPLAYER : __ocs_fmt_0__ calque(s) libéré(s) dans la fenêtre.
     .value = Valeur
     .version = Version
-    .vertical = Verticale
+    .vertical = Vertical
     .vertical-pos-dimtad = Position verticale (DIMTAD)
     .vertical-pos-dimtvp = Position verticale (DIMTVP)
     .videos = Vidéos
@@ -2096,8 +2096,8 @@ common =
     .distance-and-angle-tolerances-must-be-non-negative-numbers = Distance and angle tolerances must be non-negative numbers.
     .distance1-distance2 = Distance1 = __ocs_fmt_0__, Distance2 = __ocs_fmt_1__
     .draw-section = Draw section
-    .drawing-table = Drawing table
-    .drawings-folders = Drawings / folders
+    .drawing-table = Table à dessin
+    .drawings-folders = Dossiers à dessins
     .dynamic-prompts = Dynamic Prompts
     .edit-an-existing-data-extraction = Edit an existing data extraction
     .editing-weighted-or-tolerance-fitted-interpolation-data-is-not-supported = Editing weighted or tolerance-fitted interpolation data is not supported.
@@ -2437,10 +2437,10 @@ common =
     .threedrotate-specify-rotation-axis = 3DROTATE  Spécifiez l'axe de rotation [X/Y/Z] ou un second point sur celui-ci <Z>:
     .threedrotate-specify-rotation-angle-a = 3DROTATE Spécifier l'angle de rotation <__ocs_arg_a__:
     .parametric-coincident = Coincident
-    .parametric-colinear = Colinear
-    .parametric-concentric = Concentric
-    .parametric-symmetric = Symmetric
-    .parametric-equal = Equal
+    .parametric-colinear = Colineaire
+    .parametric-concentric = Concentrique
+    .parametric-symmetric = Symmétrique
+    .parametric-equal = Egal
     .parametric-fix = Fix
 
 errors =
@@ -2588,7 +2588,7 @@ inquiry =
     .area-area-perimeter-perimeter = Superficie = __ocs_arg_area__, périmètre = __ocs_arg_perimeter__
     .bedit-block-edit-discarded = BEDIT: bloc "__ocs_fmt_0__" édition supprimée.
     .bedit-block-saved-all-references-updated = BEDIT: Bloc "__ocs_fmt_0__" sauvegardé. Toutes les références sont mises à jour.
-    .bedit-editing-block-use-save-block-or-discard = BEDIT: Modifier le bloc "__ocs_fmt_0__". Utilisez Enregistrer le bloc ou Jetez pour terminer.
+    .bedit-editing-block-use-save-block-or-discard = BEDIT: Modifier le bloc "__ocs_fmt_0__". Utilisez Enregistrer le bloc ou Annuler pour terminer.
     .bedit-block-not-found = BEDIT: bloc "__ocs_fmt_0__" non trouvé.
     .bedit-cannot-edit-an-external-reference-xref = BEDIT: ne peut pas modifier une référence externe (xref).
     .bedit-finish-the-active-refedit-refclose-first = BEDIT: terminer d'abord le REFEDIT actif (REFCLOSE).
@@ -2733,7 +2733,7 @@ draw =
     .attedit-updated-changed-attribute-s-tag-up-new = ATTEDIT: mise à jour de l'attribut __ocs_fmt_0__ [__ocs_fmt_1__] = __ocs_fmt_2__.
     .arc-length-symbol-dimarcsym = Symbole de la longueur de l'arc (DIMARCSYM)
     .axis = Axe
-    .axis-end = Axis, fin
+    .axis-end = Axe, fin
     .boundary-pick-internal-point-miss = BOUNDARY Choisir le point interne:__ocs_arg_miss__
     .boundary = Limite
     .centerline-select-first-line = CENTERLINE Sélectionner la première ligne :
@@ -2762,7 +2762,7 @@ draw =
     .center-start-angle = Centre, départ, angle
     .center-start-end = Centre, Début, Fin
     .center-start-length = Centre, Début, Longueur
-    .circumscribed = Circonscription
+    .circumscribed = Circonscrit
     .current-settings-edit-mode = Paramètres actuels : mode d’édition = __ocs_fmt_0__
     .ddedit-selected-entity-is-not-text = DDEDIT : l'entité sélectionnée n'est pas un texte.
     .dimcenter-select-arc-or-circle = DIMCENTER Sélectionner l'arc ou le cercle:
@@ -2830,7 +2830,7 @@ draw =
     .polysolid-wall-width = POLYSOLID  largeur de paroi:
     .pyramid-base-radius = PYRAMID  rayon de base:
     .pyramid-height-add-sides-by-typing-a-3rd-numbe = PYRAMID  hauteur (ajouter les côtés en tapant un 3ème nombre):
-    .polygon-circumscribed = Polygone - Circonscription
+    .polygon-circumscribed = Polygone - Circonscrit
     .polygon-edge = Polygone - Bord
     .polygon-inscribed = Polygone - Inscrit
     .ray-specify-start-point = RAY Spécifier le point de départ :
@@ -3146,10 +3146,10 @@ modify =
     .extend-edge-fence-pick-points-placed-enter-ext = EXTEND__ocs_fmt_0__ Fence: points de sélection [__ocs_fmt_1__ placé, Entrée = extension croisée]:
     .extrim-click-the-side-to-trim-away = EXTRIM Cliquez sur le côté pour couper :
     .extrim-select-cutting-boundary = EXTRIM Sélectionnez la limite de coupe :
-    .edge-extend-title-case = Edge: Élargir
+    .edge-extend-title-case = Edge: Étendre
     .erase = Effacer
     .explode = Décomposer
-    .extend = Élargir
+    .extend = Étendre
     .fillet-enter-fillet-radius-4 = FILLET  Entrez le rayon du filet <__ocs_fmt_0__>:
     .fillet-select-first-object-line-arc-lwpolyline = FILLET Sélectionnez le premier objet (Ligne/Arc/Polyligne légère) [R=__ocs_fmt_0__] :
     .fillet-select-second-object-line-arc-lwpolylin = FILLET Sélectionnez le second objet (Ligne/Arc/Polyligne légère) [R=__ocs_fmt_0__] :
@@ -3179,8 +3179,8 @@ modify =
     .pedit-select-polyline-or-a-line-arc-to-convert = PEDIT Sélectionnez polyligne (ou une ligne/arc à convertir):
     .pedit-specify-new-width = PEDIT Spécifier une nouvelle largeur:
     .pedit-join-select-objects-to-join-count-picked = PEDIT Joignez les objets à joindre (__ocs_arg_count__ sélectionné), Entrez pour fusionner :
-    .path-array = Voie
-    .polar-array = Tableau polaire
+    .path-array = Copies le long d'un chemin
+    .polar-array = Copies le long d'un cercle
     .refclose-save-discard-save = REFCLOSE [Enregistrer/Désister] <Enregistrer>:
     .refedit-select-block-reference-to-edit = REFEDIT Sélectionnez la référence de bloc à modifier :
     .reverse-select-line-polyline-or-spline-to-reve = REVERSE Sélectionnez la ligne, la polyligne ou l'épingle pour inverser :
@@ -3189,7 +3189,7 @@ modify =
     .rotate-specify-rotation-angle-a = ROTATE Spécifier l'angle de rotation <__ocs_arg_a__:
     .rotate-specify-rotation-center-count-objects = ROTATE Spécifier le centre de rotation [__ocs_arg_count__ objets]:
     .rotate-specify-second-reference-point = ROTATE Préciser le deuxième point de référence:
-    .rectangular-array = Array rectangulaire
+    .rectangular-array = Copies dans un tableau
     .scale-specify-base-point-count-objects = SCALE Spécifier le point de base [__ocs_arg_count__ objets]:
     .scale-specify-first-reference-point-or-type-re = SCALE Préciser le premier point de référence ou la longueur de référence du type:
     .scale-specify-new-length-from-base-or-type-a-l = SCALE Spécifiez une nouvelle longueur à partir de la base ou tapez une longueur [ref=__ocs_arg_d__]:
@@ -4194,12 +4194,12 @@ insert =
     .bp-icon = Icon
     .bp-insertion-point = Insertion Point
     .bp-view-large = Large Icons
-    .bp-tab-libraries = Libraries
+    .bp-tab-libraries = Bibliothèques
     .bp-heading-libraries = Library Blocks
     .bp-view-medium = Medium Icons
-    .bp-tab-recent = Recent
-    .bp-heading-recent = Recent Blocks
-    .bp-gallery-recent = Recent Blocks...
+    .bp-tab-recent = Récent
+    .bp-heading-recent = Blocs récents
+    .bp-gallery-recent = Blocs récents...
     .bp-redefine = Redefine
     .bp-remove-block = Remove Block
     .bp-remove-favorite = Remove from Favorites
@@ -4222,13 +4222,13 @@ insert =
     .attdef-edit-title = Edit Attribute Definition
     .attdef-edit-help = Changes the tag, prompt and default value of an attribute definition.
     .attdef-help = Defines an attribute: a tag, prompt and default value placed as text in a block definition.
-    .attdef-define-attributes = Define Attributes
+    .attdef-define-attributes = Définir attributs
     .attdef-manage-attributes = Manage Attributes
     .attdef-set-base-point = Set Base Point
     .attdef-attmode-retain = Retain Attribute Display
-    .attdef-attmode-all = Display All Attributes
-    .attdef-attmode-none = Hide All Attributes
-    .attdef-edit-attribute = Edit Attribute
+    .attdef-attmode-all = Afficher tous les attributs
+    .attdef-attmode-none = Cacher tous les attributs
+    .attdef-edit-attribute = Editer attribut
     .attdef-multiline-editor = Multiline editor
     .attdef-tag-empty = The tag cannot be empty.
     .attdef-tag-spaces = The tag may not contain spaces.
@@ -4286,8 +4286,8 @@ model =
     .polysolid = Polysolide
     .extrude = Extruder
     .revolve = Révolution
-    .loft = Lissage
-    .sweep = Balayage
+    .loft = Loft
+    .sweep = Balayer
     .presspull = Tirer-pousser
     .n-specify-center-point = __ocs_arg_n__ Spécifier le point central:
     .n-specify-first-corner = __ocs_arg_n__ Spécifiez le premier coin :
@@ -4315,7 +4315,7 @@ model =
     .extra-modeler-data = Données supplémentaires du modélisateur
     .hemispherical = Hémisphérique
     .history = Historique
-    .intersect = Intersecte
+    .intersect = Intersection
     .isoline-list = Liste isoline
     .isolines = Isolines
     .kind = Genre
@@ -4333,7 +4333,7 @@ model =
     .revolve-entity = Objet de révolution
     .revolve-flags = Drapeaux renouvelables
     .spherical = Sphérique
-    .subtract = Sous-traitance
+    .subtract = Soustraire
     .surface-construction = Construction de surface
     .sweep-path = Balayage / Chemin
     .sweep-entity = Entité
@@ -4345,7 +4345,7 @@ model =
     .u-vector-1 = U Vecteur 1
     .u-vector-2 = U Vecteur 2
     .uid = UID
-    .union = Union européenne
+    .union = Union
     .v-isolines = V. Isolines
     .v-vector-1 = V Vecteur 1
     .v-vector-2 = V Vecteur 2
@@ -5863,34 +5863,34 @@ plot =
 manage =
     .about = À propos
     .application = Demande
-    .audit = Vérification des comptes
+    .audit = Auditer
     .cleanup = Nettoyage
     .customization = Personnalisation
     .edit-aliases = Modifier les alias
-    .export = Exportation
+    .export = Exporter
     .find-non-purgeable-items =
-        Trouver des non-
-        Éléments pugables
+        Trouver des éléments 
+        non purgeables
     .load-partial-cui = Charge partielle CUI
-    .overkill = Surcapacité
+    .overkill = Nettoyer doublons
     .purge = Purger
     .user-interface =
-        Utilisateur
         Interface
+        Utilisateur
 
 plugins =
     .api-incompatible = API incompatible
     .add-from-github = Ajouter à partir de GitHub
     .add-repository = Ajouter un dépôt
     .added-from-github = Ajouté de GitHub
-    .available-plugins = Greffons disponibles
-    .browse-install-and-manage-add-ons-select-one-t = Parcourir, installer et gérer les modules complémentaires. Sélectionnez un pour afficher son README.
+    .available-plugins = Plugins disponibles
+    .browse-install-and-manage-add-ons-select-one-t = Gérer les modules complémentaires. Sélectionnez un pour afficher son README.
     .check-your-internet-or-proxy-connection-then-r = Vérifiez votre connexion Internet ou proxy, puis réessayez. Les dépôts ajoutés manuellement restent disponibles.
     .commands-cmds = Commandes : __ocs_arg_cmds__
-    .connecting-securely-using-your-system-certific = Connexion sécurisée en utilisant les paramètres de votre certificat système.
+    .connecting-securely-using-your-system-certific = Connexion sécurisée en utilisant votre certificat système.
     .copy-details = Copier les détails
     .disable = Désactiver
-    .disabled = Handicapés
+    .disabled = Désactivé
     .download-desktop-app = Télécharger l'application de bureau
     .enable = Activer
     .fetching-the-default-branch-from-github = Récupération de la branche par défaut de GitHub.
@@ -5898,8 +5898,8 @@ plugins =
     .hide-details = Masquer les détails
     .incompatible = Incompatible
     .install = Installer
-    .load-failed = La charge a échoué
-    .load-failed-error = La charge a échoué : __ocs_arg_error__
+    .load-failed = Le chargement a échoué
+    .load-failed-error = Le chargement a échoué : __ocs_arg_error__
     .loading-readme = Chargement README...
     .loading-plugin-catalog = Chargement du catalogue plugin...
     .no-additional-plugins-are-available = Aucun plugin supplémentaire n'est disponible.
@@ -5907,8 +5907,8 @@ plugins =
     .no-installed-plugins-match-your-search = Aucun plugin installé ne correspond à votre recherche.
     .no-library = Pas de bibliothèque
     .no-plugins-installed-yet = Aucun plugin n'a encore été installé.
-    .open-cad-studio-could-not-trust-the-certificat = Open CAD Studio n’a pas pu approuver le certificat présenté pour l’enregistrement du plug-in. Vérifiez les certificats système et les paramètres du proxy, puis réessayez.
-    .open-cad-studio-plugins-are-native-packages-an = Les plug-ins Open CAD Studio sont des paquets natifs et ne peuvent pas s’exécuter dans un navigateur. Téléchargez l’application de bureau pour les parcourir, les installer et les utiliser.
+    .open-cad-studio-could-not-trust-the-certificat = OpenCAD Studio n’a pas pu approuver le certificat présenté pour l’enregistrement du plug-in. Vérifiez les certificats système et les paramètres du proxy, puis réessayez.
+    .open-cad-studio-plugins-are-native-packages-an = Les plug-ins OpenCAD Studio sont des paquets natifs et ne peuvent pas s’exécuter dans un navigateur. Téléchargez l’application de bureau pour les parcourir, les installer et les utiliser.
     .paste-a-public-repository-url-compatible-relea = Coller un dépôt public URL. Les versions compatibles et le README sont détectés automatiquement.
     .plugin-api-plugin-is-incompatible-with-this-bu = L’API __ocs_arg_plugin__ du plug-in est incompatible avec l’ABI du ruban de cette version (__ocs_arg_build__). Mettez à jour ou recompilez le plug-in.
     .plugin-details = Détails du plugin
