@@ -638,6 +638,10 @@ pub(super) struct OpenCADStudio {
     zoom_wheel_reversed: bool,
     /// Scroll pans and Ctrl+scroll zooms (touchpads); see `scroll_intent`.
     touchpad_pan: bool,
+    /// Multi-finger gestures on a touch screen.
+    touch: crate::input::touch::TouchGestures,
+    /// Where the drawing area sits in the window, learned from a lone finger.
+    touch_offset: Option<iced::Vector>,
     /// Interface scale in percent, applied through the window scale factor.
     ui_scale_percent: u16,
     /// Mouse-wheel zoom sensitivity (ZOOMFACTOR), held inside
@@ -2347,6 +2351,8 @@ pub enum Message {
     SpaceMousePreferences,
     SpaceMouseDriverSettings,
     SpaceMouseDetails,
+    /// A touch screen finger event, for multi-finger gestures.
+    Touch(iced::touch::Event),
     /// One magnification delta from a trackpad pinch, positive zooming in.
     TrackpadPinch(f32),
     ControlRequest(control::Envelope),
@@ -4571,6 +4577,8 @@ impl OpenCADStudio {
             polar_increment_deg: 45.0,
             zoom_wheel_reversed: false,
             touchpad_pan: false,
+            touch: Default::default(),
+            touch_offset: None,
             ui_scale_percent: 100,
             zoom_factor: 60,
             zoom_factor_input: 60.to_string(),

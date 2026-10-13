@@ -5943,6 +5943,80 @@ properties={:.1}ms picked={}",
     /// Pinch the active view to zoom, as reported by the trackpad monitor
     /// (`src/input/trackpad.rs`). The pivot is the cursor, like the wheel, and
     /// the direction is the fingers' own, so ZOOMWHEEL does not apply to it.
+    /// A touch screen finger event: multi-finger gestures pan, zoom and
+    /// orbit the view (see `input::touch`).
+    pub(super) fn on_touch(&mut self, event: iced::touch::Event) -> Task<Message> {
+        use crate::input::touch::TouchAction;
+        let i = self.active_tab;
+        if self.tabs[i].is_start {
+            return Task::none();
+        }
+        // A lone finger drives the cursor, so where it is in the window and
+        // in the drawing area tells the drawing area's offset.
+        if let iced::touch::Event::FingerMoved { position, .. } = event {
+            let cursor = self.tabs[i].scene.selection.borrow().input.last_move_pos;
+            if let Some(cursor) = cursor.filter(|_| self.touch.fingers() == 1) {
+                self.touch_offset = Some(position - cursor);
+            }
+        }
+        let mut tasks = Vec::new();
+        for action in self.touch.event(event) {
+            match action {
+                TouchAction::Cancel => {
+                    self.tabs[i]
+                        .scene
+                        .selection
+                        .borrow_mut()
+                        .clear_left_selection_gesture();
+                    self.drag_move = None;
+                    self.tabs[i].scene.remember_current_view();
+                    self.clear_navigation_hover(i);
+                }
+                TouchAction::Pan(delta) => {
+                    self.pan_active_view(i, delta.x, delta.y, Instant::now());
+                }
+                TouchAction::Zoom { factor, centre } => {
+                    // Zoom about the fingers once the drawing area's place in
+                    // the window is known; until then about the first finger.
+                    if let Some(offset) = self.touch_offset {
+                        self.tabs[i].scene.selection.borrow_mut().input.last_move_pos =
+                            Some(centre - offset);
+                    }
+                    tasks.push(self.zoom_view_at_cursor(pinch_zoom_steps(factor - 1.0)));
+                }
+                TouchAction::Orbit(delta) => {
+                    if self.tabs[i].scene.active_viewport.is_some() {
+                        self.tabs[i].scene.orbit_active_viewport(delta.x, delta.y);
+                    } else if self.tabs[i].scene.current_layout == "Model" {
+                        let scene = &self.tabs[i].scene;
+                        let (vw, vh) = scene.selection.borrow().view.vp_size;
+                        let bounds = scene.active_model_tile_bounds(vw, vh);
+                        let pivot = scene
+                            .orbit_pivot()
+                            .or_else(|| scene.view_center_surface_pivot(bounds))
+                            .unwrap_or_else(|| scene.camera.borrow().target);
+                        self.tabs[i].scene.refresh_projection_bounds();
+                        self.tabs[i]
+                            .scene
+                            .camera
+                            .borrow_mut()
+                            .orbit(delta.x, delta.y, Some(pivot));
+                    }
+                    self.tabs[i].scene.camera_generation += 1;
+                }
+                TouchAction::Tap(2) => {
+                    tasks.push(self.update(Message::ViewportRightPress));
+                    tasks.push(self.update(Message::ViewportRightRelease));
+                }
+                TouchAction::Tap(_) => {
+                    tasks.push(Task::done(Message::Command("ZOOM E".to_string())));
+                }
+                TouchAction::SwipeUp => tasks.push(self.apply_view_preset("SEISO")),
+            }
+        }
+        Task::batch(tasks)
+    }
+
     pub(super) fn on_pinch_zoom(&mut self, magnification: f32) -> Task<Message> {
         if magnification == 0.0 {
             return Task::none();
