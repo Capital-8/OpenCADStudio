@@ -122,6 +122,13 @@ pub enum PdfDialogMsg {
     BgBrowse,
     BgPosition(BgPosition),
     BgAspect(bool),
+    /// An image background's offset (pixels, x and y) and scale, as typed.
+    BgOffset([String; 2]),
+    BgScale([String; 2]),
+    /// A spinner step on offset x / y (0, 1) or scale x / y (2, 3).
+    BgStep(u8, i8),
+    /// Offset 0, scale 1.
+    BgReset,
     BgApply,
 }
 
@@ -2178,19 +2185,42 @@ impl fmt::Display for BgPosition {
     }
 }
 
-/// How an image background is scaled: to the screen, or keeping its
-/// aspect ratio.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BgAspect(pub bool);
+/// A background image as the preview draws it.
+pub struct BgPreview {
+    pub size: [u32; 2],
+    /// Unmirrored, mirrored in x, in y, in both.
+    pub handles: [image::Handle; 4],
+}
 
-impl fmt::Display for BgAspect {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&if self.0 {
-            crate::tr!("view-background", "aspect")
-        } else {
-            crate::tr!("view-background", "fit")
-        })
+/// Loads a background image for the preview, at most 512 pixels a side.
+pub fn bg_preview(path: &str) -> Option<BgPreview> {
+    let decoded = ::image::open(path.trim()).ok()?;
+    let size = [decoded.width(), decoded.height()];
+    let small = if size[0].max(size[1]) > 512 { decoded.thumbnail(512, 512) } else { decoded }.to_rgba8();
+    let handle = |pixels: ::image::RgbaImage| image::Handle::from_rgba(pixels.width(), pixels.height(), pixels.into_raw());
+    let flip_x = ::image::imageops::flip_horizontal(&small);
+    let flip_y = ::image::imageops::flip_vertical(&small);
+    let flip_xy = ::image::imageops::flip_vertical(&flip_x);
+    Some(BgPreview { size, handles: [handle(small), handle(flip_x), handle(flip_y), handle(flip_xy)] })
+}
+
+/// Image offsets the reference's Adjust Image sliders reach, in pixels.
+pub const BG_OFFSET_LIMIT: f64 = 2000.0;
+/// Image scales the reference's sliders reach (slider value / 10).
+pub const BG_SCALE_LIMIT: f64 = 10.0;
+
+/// One spinner step on an image background field: a pixel for an offset, a
+/// tenth for a scale, which skips 0 (the reference ignores a zero scale).
+pub fn bg_step(field: u8, value: f64, dir: i8) -> f64 {
+    let dir = f64::from(dir.signum());
+    if field < 2 {
+        return (value.round() + dir).clamp(-BG_OFFSET_LIMIT, BG_OFFSET_LIMIT);
     }
+    let mut next = ((value * 10.0).round() + dir) / 10.0;
+    if next.abs() < 0.05 {
+        next += dir / 10.0;
+    }
+    next.clamp(-BG_SCALE_LIMIT, BG_SCALE_LIMIT)
 }
 
 /// The Background dialog's fields for one named view.
@@ -2206,9 +2236,16 @@ pub struct ViewBackgroundState {
     pub image: String,
     pub position: BgPosition,
     pub aspect: bool,
-    /// The image's offset (pixels) and scale, kept from the view's image.
-    pub offset: [f64; 2],
-    pub scale: [f64; 2],
+    /// The image's offset (pixels) and scale as typed, and the scale the
+    /// view's image had (kept for a zero scale).
+    pub offset: [String; 2],
+    pub scale: [String; 2],
+    pub scale_base: [f64; 2],
+    /// The chosen image for the preview: its size in pixels and a small copy
+    /// as it is and mirrored (x, y, both), for negative scales.
+    pub preview: Option<BgPreview>,
+    /// The drawing viewport's size, which the preview stands for.
+    pub viewport: [f32; 2],
     /// The drawing area colour, shown for no background.
     pub canvas: [u8; 3],
 }
@@ -2268,20 +2305,80 @@ pub fn view_background<'a>(
         }
         BgKind::Image => {
             if std::path::Path::new(state.image.trim()).is_file() {
-                let fit = match (state.position, state.aspect) {
-                    (BgPosition::Stretch, false) => iced::ContentFit::Fill,
-                    (BgPosition::Stretch, true) => iced::ContentFit::Contain,
-                    _ => iced::ContentFit::None,
-                };
-                container(
-                    image(image::Handle::from_path(state.image.trim()))
-                        .content_fit(fit)
-                        .width(Fill)
-                        .height(Fill),
-                )
-                .center(Fill)
-                .style(fill(Background::Color(rgb(state.canvas))))
-                .into()
+                let canvas = Background::Color(rgb(state.canvas));
+                if state.position == BgPosition::Stretch {
+                    // Filling the view; keeping the aspect ratio it covers
+                    // the view and the overflow is cut off.
+                    let fit = if state.aspect { iced::ContentFit::Cover } else { iced::ContentFit::Fill };
+                    let handle = state.preview.as_ref().map_or_else(
+                        || image::Handle::from_path(state.image.trim()),
+                        |preview| preview.handles[0].clone(),
+                    );
+                    container(image(handle).content_fit(fit).width(Fill).height(Fill))
+                        .center(Fill)
+                        .clip(true)
+                        .style(fill(canvas))
+                        .into()
+                } else {
+                    // The image at its size times its scale, moved by its
+                    // offset, in a view of the drawing viewport's shape.
+                    let parse = |v: &String, d: f64| v.trim().parse::<f64>().ok().filter(|v| v.is_finite()).unwrap_or(d);
+                    let offset = [parse(&state.offset[0], 0.0), parse(&state.offset[1], 0.0)];
+                    let scale = [0, 1].map(|k| {
+                        let v = parse(&state.scale[k], state.scale_base[k]);
+                        if v.abs() < 1e-9 { state.scale_base[k] } else { v }
+                    });
+                    let [iw, ih] = state.preview.as_ref().map_or([1, 1], |preview| preview.size);
+                    // A negative scale mirrors the image.
+                    let mirrored = usize::from(scale[0] < 0.0) | usize::from(scale[1] < 0.0) << 1;
+                    let handle = state.preview.as_ref().map_or_else(
+                        || image::Handle::from_path(state.image.trim()),
+                        |preview| preview.handles[mirrored].clone(),
+                    );
+                    let viewport = state.viewport;
+                    // The image's pixels and offsets are device pixels; the
+                    // viewport is measured in logical ones.
+                    let device = crate::scene::view::device_scale().max(0.1);
+                    let tile = state.position == BgPosition::Tile;
+                    container(iced::widget::responsive(move |size| {
+                        let factor = size.height / viewport[1].max(1.0) / device;
+                        let w = (iw as f32 * scale[0].abs() as f32 * factor).max(1.0);
+                        let h = (ih as f32 * scale[1].abs() as f32 * factor).max(1.0);
+                        let x = size.width / 2.0 + offset[0] as f32 * factor - w / 2.0;
+                        let y = size.height / 2.0 + offset[1] as f32 * factor - h / 2.0;
+                        let (cols, rows) = if tile {
+                            ((size.width / w).ceil() as i32 + 1, (size.height / h).ceil() as i32 + 1)
+                        } else {
+                            (0, 0)
+                        };
+                        let mut layers = iced::widget::Stack::new()
+                            .width(Fill)
+                            .height(Fill)
+                            .push(container(Space::new()).width(Fill).height(Fill));
+                        let x0 = if tile { x - (x / w).ceil() * w } else { x };
+                        let y0 = if tile { y - (y / h).ceil() * h } else { y };
+                        for row_index in 0..=rows.min(60) {
+                            for col_index in 0..=cols.min(60) {
+                                let at = iced::Point::new(x0 + col_index as f32 * w, y0 + row_index as f32 * h);
+                                layers = layers.push(
+                                    iced::widget::pin(
+                                        image(handle.clone())
+                                            .content_fit(iced::ContentFit::Fill)
+                                            .width(Length::Fixed(w))
+                                            .height(Length::Fixed(h)),
+                                    )
+                                    .position(at),
+                                );
+                            }
+                        }
+                        Element::<Message>::from(layers)
+                    }))
+                    .width(Fill)
+                    .height(Fill)
+                    .clip(true)
+                    .style(fill(canvas))
+                    .into()
+                }
             } else {
                 container(note(crate::tr!("view-background", "no-image")))
                     .center(Fill)
@@ -2394,28 +2491,22 @@ pub fn view_background<'a>(
                 ]
                 .spacing(8)
                 .align_y(iced::Center),
-                row![
-                    label(crate::tr!("view-background", "scale"), true),
-                    pick_list(
-                        Some(BgAspect(state.aspect)),
-                        vec![BgAspect(false), BgAspect(true)],
-                        |a: &BgAspect| a.to_string()
-                    )
-                    .on_select(|a: BgAspect| msg(PdfDialogMsg::BgAspect(a.0)))
-                    .text_size(12)
-                    .padding([4, 8])
-                    .width(Fill),
-                ]
-                .spacing(8)
-                .align_y(iced::Center),
+                chip(
+                    crate::tr!("view-background", "aspect"),
+                    state.aspect,
+                    msg(PdfDialogMsg::BgAspect(!state.aspect))
+                ),
             ]
             .spacing(8),
         ),
     };
+    let adjust = (state.kind == BgKind::Image).then(|| adjust_card(state));
+    let mut body = column![kind, preview, options].spacing(10);
+    if let Some(adjust) = adjust {
+        body = body.push(adjust);
+    }
     column![
-        kind,
-        preview,
-        options,
+        body,
         footer(
             "background",
             None,
@@ -2426,5 +2517,97 @@ pub fn view_background<'a>(
     .spacing(10)
     .padding([10, 12])
     .width(sizing.width)
+    .into()
+}
+
+/// The image's offset and scale (the reference's Adjust Image): pixel offsets
+/// and scales with spinners and a reset; inactive while the image is
+/// stretched over the view, where the reference ignores them.
+fn adjust_card<'a>(state: &'a ViewBackgroundState) -> Element<'a, Message> {
+    let enabled = state.position != BgPosition::Stretch;
+    let dim = move |theme: &Theme| {
+        if enabled {
+            muted_style(theme)
+        } else {
+            text::Style { color: Some(theme.palette().background.strong.color) }
+        }
+    };
+    let spin = |field: u8| -> Element<'a, Message> {
+        let value = if field < 2 { &state.offset[field as usize] } else { &state.scale[field as usize - 2] };
+        let mut input = text_input("", value)
+            .size(11)
+            .padding([4, 8])
+            .width(Length::Fixed(64.0))
+            .style(move |theme: &Theme, status| {
+                let mut style = field_style(theme, status);
+                if !enabled {
+                    style.value = theme.palette().background.strong.color;
+                }
+                style
+            });
+        if enabled {
+            input = input.on_input(move |v| {
+                if field < 2 {
+                    let mut pair = state.offset.clone();
+                    pair[field as usize] = v;
+                    msg(PdfDialogMsg::BgOffset(pair))
+                } else {
+                    let mut pair = state.scale.clone();
+                    pair[field as usize - 2] = v;
+                    msg(PdfDialogMsg::BgScale(pair))
+                }
+            });
+        }
+        let arrow = |up: bool| {
+            let mut b = button(crate::ui::icons::themed_arrow_toggle(up, 7.0))
+                .style(button_style(false))
+                .padding([1, 4]);
+            if enabled {
+                b = b.on_press(msg(PdfDialogMsg::BgStep(field, if up { 1 } else { -1 })));
+            }
+            b
+        };
+        row![input, column![arrow(true), arrow(false)].spacing(1)].spacing(2).align_y(iced::Center).into()
+    };
+    let axis = |name: &'static str| text(name).size(11).style(dim);
+    let line = |label: String, a: u8, b: u8, unit: bool| -> Element<'a, Message> {
+        let mut r = row![
+            text(label).size(11).style(dim).width(Length::Fixed(72.0)),
+            axis("X"),
+            spin(a),
+            axis("Y"),
+            spin(b),
+        ]
+        .spacing(6)
+        .align_y(iced::Center);
+        if unit {
+            r = r.push(text(crate::tr!("view-background", "pixels")).size(11).style(dim));
+        }
+        r.into()
+    };
+    let mut reset = button(text(crate::tr!("view-background", "reset")).size(11))
+        .style(button_style(false))
+        .padding([3, 10]);
+    if enabled {
+        reset = reset.on_press(msg(PdfDialogMsg::BgReset));
+    }
+    container(
+        column![
+            row![
+                text(crate::tr!("view-background", "adjust").to_uppercase()).size(10).style(move |theme: &Theme| {
+                    if enabled { accent_text(theme) } else { dim(theme) }
+                }),
+                Space::new().width(Fill),
+                reset,
+            ]
+            .align_y(iced::Center),
+            line(crate::tr!("view-background", "offset"), 0, 1, true),
+            line(crate::tr!("view-background", "scale"), 2, 3, false),
+        ]
+        .spacing(8),
+    )
+    .padding([10, 12])
+    .width(Fill)
+    .style(card_style)
     .into()
 }

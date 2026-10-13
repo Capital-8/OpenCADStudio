@@ -1798,7 +1798,8 @@ impl OpenCADStudio {
             "ribbon_dropdown" => Message::ToggleRibbonDropdown(string(req, "value")?.into()),
             // The -VIEW Background dialog, one field per call: "type=gradient",
             // "color|top|middle|bottom=r,g,b", "three=1", "rotation=30",
-            // "image=<path>", "position=center|stretch|tile", "aspect=1",
+            // "image=<path>", "position=center|stretch|tile", "aspect=1", "offset=x,y" (pixels), "scale=x,y",
+            // "step=offset_x|offset_y|scale_x|scale_y,+1|-1", "reset",
             // "apply" or "cancel".
             "view_background" => {
                 use crate::ui::window::pdf_dialogs::{BgKind, BgPosition, PdfDialogMsg as P};
@@ -1840,6 +1841,32 @@ impl OpenCADStudio {
                         _ => return Err(bad()),
                     })),
                     "aspect" => Message::PdfDialog(P::BgAspect(value == "1")),
+                    "offset" | "scale" => {
+                        let pair: Vec<String> = value.split(',').map(|part| part.trim().to_string()).collect();
+                        let pair = <[String; 2]>::try_from(pair).map_err(|_| bad())?;
+                        if pair.iter().any(|v| v.parse::<f64>().map_or(true, |v| !v.is_finite())) {
+                            return Err(bad());
+                        }
+                        if key == "offset" {
+                            Message::PdfDialog(P::BgOffset(pair))
+                        } else {
+                            Message::PdfDialog(P::BgScale(pair))
+                        }
+                    }
+                    "step" => {
+                        // step=offset_x|offset_y|scale_x|scale_y,+1|-1
+                        let (field, dir) = value.split_once(',').ok_or_else(bad)?;
+                        let field = match field {
+                            "offset_x" => 0,
+                            "offset_y" => 1,
+                            "scale_x" => 2,
+                            "scale_y" => 3,
+                            _ => return Err(bad()),
+                        };
+                        let dir: i8 = dir.trim().parse().map_err(|_| bad())?;
+                        Message::PdfDialog(P::BgStep(field, dir))
+                    }
+                    "reset" => Message::PdfDialog(P::BgReset),
                     _ => return Err(bad()),
                 }
             }

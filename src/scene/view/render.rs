@@ -385,6 +385,7 @@ impl shader::Primitive for Primitive {
             pipeline.gpu_error_epoch = errors_at_entry;
         }
         let scale = viewport.scale_factor() as f32;
+        DEVICE_SCALE.store(scale.to_bits(), std::sync::atomic::Ordering::Relaxed);
         let instance_ids: Vec<u64> = self.viewports.iter().map(|vp| vp.instance_id).collect();
         let slots = pipeline.resolve_slots(device, queue, &instance_ids);
         for (i, vp) in self.viewports.iter().enumerate() {
@@ -5439,4 +5440,12 @@ mod layer0_inherit_tests {
         // Cache must be populated
         assert!(scene.document_render_env_cache.borrow().is_some());
     }
+}
+
+/// The display's device pixels per logical pixel, as the viewport last drew.
+static DEVICE_SCALE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
+
+/// Device pixels per logical pixel of the drawing viewport.
+pub fn device_scale() -> f32 {
+    f32::from_bits(DEVICE_SCALE.load(std::sync::atomic::Ordering::Relaxed))
 }

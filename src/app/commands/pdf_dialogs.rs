@@ -582,6 +582,10 @@ impl OpenCADStudio {
             | PdfDialogMsg::BgBrowse
             | PdfDialogMsg::BgPosition(_)
             | PdfDialogMsg::BgAspect(_)
+            | PdfDialogMsg::BgOffset(_)
+            | PdfDialogMsg::BgScale(_)
+            | PdfDialogMsg::BgStep(..)
+            | PdfDialogMsg::BgReset
             | PdfDialogMsg::BgApply) => return self.update_view_background(message),
             message @ (PdfDialogMsg::SecPerimeter(_)
             | PdfDialogMsg::SecMaxPoints(_)

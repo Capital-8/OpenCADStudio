@@ -450,8 +450,14 @@ impl OpenCADStudio {
             image: String::new(),
             position: BgPosition::Center,
             aspect: false,
-            offset: [0.0, 0.0],
-            scale: [1.0, 1.0],
+            offset: ["0".into(), "0".into()],
+            scale: ["1".into(), "1".into()],
+            scale_base: [1.0, 1.0],
+            preview: None,
+            viewport: {
+                let (width, height) = self.tabs[i].scene.selection.borrow().view.vp_size;
+                [width as f32, height as f32]
+            },
             canvas: [0, 1, 2].map(|k| (canvas[k].clamp(0.0, 1.0) * 255.0).round() as u8),
         };
         let document = &self.tabs[i].scene.document;
@@ -478,8 +484,10 @@ impl OpenCADStudio {
                         BgPosition::Center
                     };
                     state.aspect = value.maintain_aspect_ratio;
-                    state.offset = [value.offset.x, value.offset.y];
-                    state.scale = [value.scale.x, value.scale.y];
+                    state.offset = [value.offset.x, value.offset.y].map(crate::ui::window::pdf_dialogs::short);
+                    state.scale = [value.scale.x, value.scale.y].map(crate::ui::window::pdf_dialogs::short);
+                    state.scale_base = [value.scale.x, value.scale.y];
+                    state.preview = crate::ui::window::pdf_dialogs::bg_preview(&value.filename);
                 }
                 _ => {}
             }
@@ -504,9 +512,42 @@ impl OpenCADStudio {
             M::BgKind(kind) => state.kind = kind,
             M::BgThree(on) => state.three = on,
             M::BgRotation(value) => state.rotation = value,
-            M::BgImage(value) => state.image = value,
+            M::BgImage(value) => {
+                state.preview = crate::ui::window::pdf_dialogs::bg_preview(&value);
+                state.image = value;
+            }
             M::BgPosition(value) => state.position = value,
             M::BgAspect(on) => state.aspect = on,
+            M::BgOffset(value) => state.offset = value,
+            M::BgScale(value) => {
+                // Keeping the aspect ratio, both scales follow the one changed.
+                state.scale = if state.aspect {
+                    let changed = if value[0] != state.scale[0] { 0 } else { 1 };
+                    [value[changed].clone(), value[changed].clone()]
+                } else {
+                    value
+                };
+            }
+            M::BgStep(field, dir) => {
+                use crate::ui::window::pdf_dialogs::{bg_step, short};
+                let current = |text: &String, default: f64| text.trim().parse::<f64>().ok().filter(|v| v.is_finite()).unwrap_or(default);
+                if field < 2 {
+                    let k = field as usize;
+                    state.offset[k] = short(bg_step(field, current(&state.offset[k], 0.0), dir));
+                } else {
+                    let k = field as usize - 2;
+                    let next = short(bg_step(field, current(&state.scale[k], state.scale_base[k]), dir));
+                    if state.aspect {
+                        state.scale = [next.clone(), next];
+                    } else {
+                        state.scale[k] = next;
+                    }
+                }
+            }
+            M::BgReset => {
+                state.offset = ["0".into(), "0".into()];
+                state.scale = ["1".into(), "1".into()];
+            }
             M::BgColor(slot, rgb) => match slot {
                 0 => state.solid = rgb,
                 1 => state.top = rgb,
@@ -585,14 +626,36 @@ impl OpenCADStudio {
                             self.command_line.push_error("Invalid Background Image File!");
                             return Task::none();
                         }
+                        use crate::ui::window::pdf_dialogs::{BG_OFFSET_LIMIT, BG_SCALE_LIMIT};
+                        let number = |text: &String| text.trim().parse::<f64>().ok().filter(|v| v.is_finite());
+                        let (Some(ox), Some(oy), Some(sx), Some(sy)) = (
+                            number(&state.offset[0]),
+                            number(&state.offset[1]),
+                            number(&state.scale[0]),
+                            number(&state.scale[1]),
+                        ) else {
+                            self.command_line.push_error(crate::t!("Requires a number.").as_ref());
+                            return Task::none();
+                        };
+                        // Within the reference's slider ranges; a zero scale
+                        // is ignored there, so the image keeps its scale.
+                        let scale = |value: f64, base: f64| {
+                            if value.abs() < 1e-9 { base } else { value.clamp(-BG_SCALE_LIMIT, BG_SCALE_LIMIT) }
+                        };
                         Some(D::ImageBackground(ImageBackground {
                             class_version: 1,
                             filename: state.image.trim().to_string(),
                             fit_to_screen: state.position == BgPosition::Stretch,
                             maintain_aspect_ratio: state.aspect,
                             use_tiling: state.position == BgPosition::Tile,
-                            offset: codec::types::Vector2::new(state.offset[0], state.offset[1]),
-                            scale: codec::types::Vector2::new(state.scale[0], state.scale[1]),
+                            offset: codec::types::Vector2::new(
+                                ox.clamp(-BG_OFFSET_LIMIT, BG_OFFSET_LIMIT),
+                                oy.clamp(-BG_OFFSET_LIMIT, BG_OFFSET_LIMIT),
+                            ),
+                            scale: codec::types::Vector2::new(
+                                scale(sx, state.scale_base[0]),
+                                scale(sy, state.scale_base[1]),
+                            ),
                         }))
                     }
                 };
