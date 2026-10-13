@@ -3607,6 +3607,8 @@ annotate =
     .tolerance-specify-insertion-point = TOLERANCE  Ορίστε σημείο εισαγωγής:
 
 insert =
+    .pastespec-specify-insertion-point = PASTESPEC  Καθορίστε σημείο εισαγωγής:
+    .pastespec-paste-as = PASTESPEC  Επικόλληση ως [Objects/Block/Text]:
     .pdfui-pdf-scale = PDF scale: __ocs_fmt_0__:1
     .pdfui-specify-insertion-point = Specify insertion point:
     .pdfui-no-pdf-underlays = No PDF underlays found.

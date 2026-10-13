@@ -3605,6 +3605,8 @@ annotate =
     .dimradius-select-arc-circle-or-polyline-arc = DIMRADIUS  Selecteer een boog, cirkel of polylijnboog:
 
 insert =
+    .pastespec-specify-insertion-point = PASTESPEC  Geef invoegpunt op:
+    .pastespec-paste-as = PASTESPEC  Plakken als [Objects/Block/Text]:
     .pdfui-pdf-scale = PDF scale: __ocs_fmt_0__:1
     .pdfui-specify-insertion-point = Specify insertion point:
     .pdfui-no-pdf-underlays = No PDF underlays found.

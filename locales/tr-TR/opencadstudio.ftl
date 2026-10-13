@@ -3580,6 +3580,8 @@ annotate =
     .tolerance-specify-insertion-point = TOLERANCE  Ekleme noktasını belirtin:
 
 insert =
+    .pastespec-specify-insertion-point = PASTESPEC  Ekleme noktasını belirtin:
+    .pastespec-paste-as = PASTESPEC  Şu biçimde yapıştır [Objects/Block/Text]:
     .pdfui-pdf-scale = PDF ölçeği: __ocs_fmt_0__:1
     .pdfui-specify-insertion-point = Ekleme noktasını belirtin:
     .pdfui-no-pdf-underlays = PDF altlığı bulunamadı.

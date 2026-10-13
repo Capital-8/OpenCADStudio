@@ -3608,6 +3608,8 @@ annotate =
     .tolerance-specify-insertion-point = TOLERANCE Укажите точку вставки:
 
 insert =
+    .pastespec-specify-insertion-point = PASTESPEC  Укажите точку вставки:
+    .pastespec-paste-as = PASTESPEC  Вставить как [Objects/Block/Text]:
     .pdfui-pdf-scale = PDF scale: __ocs_fmt_0__:1
     .pdfui-specify-insertion-point = Specify insertion point:
     .pdfui-no-pdf-underlays = No PDF underlays found.

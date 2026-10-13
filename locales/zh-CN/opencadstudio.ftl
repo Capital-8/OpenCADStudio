@@ -3594,6 +3594,8 @@ annotate =
     .tolerance-specify-insertion-point = TOLERANCE  指定插入点：
 
 insert =
+    .pastespec-specify-insertion-point = PASTESPEC  指定插入点:
+    .pastespec-paste-as = PASTESPEC  粘贴为 [Objects/Block/Text]:
     .pdfui-pdf-scale = PDF scale: __ocs_fmt_0__:1
     .pdfui-specify-insertion-point = Specify insertion point:
     .pdfui-no-pdf-underlays = No PDF underlays found.

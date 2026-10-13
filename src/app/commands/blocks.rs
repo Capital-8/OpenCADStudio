@@ -95,6 +95,23 @@ impl OpenCADStudio {
         }
     }
 
+    /// PASTESPEC with the formats on hand: the copied objects, and `text`
+    /// from the system clipboard once it has been read.
+    pub(in crate::app) fn paste_special_command(
+        &self,
+        i: usize,
+        text: Option<&str>,
+    ) -> Box<dyn CadCommand> {
+        let document = &self.tabs[i].scene.document;
+        let defaults = crate::scene::creation_style::current_text_defaults(document);
+        Box::new(crate::modules::draw::clipboard::pastespec::PasteSpecCommand::new(
+            !self.clipboard.is_empty(),
+            text,
+            defaults.style_name,
+            defaults.height,
+        ))
+    }
+
     pub(super) fn dispatch_blocks(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {
         match cmd {
             // ── BASE — drawing insertion base point ───────────────────────
@@ -282,6 +299,19 @@ impl OpenCADStudio {
                     self.command_line.push_info(&cmd.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(cmd));
                 }
+            }
+
+            // PASTESPEC — offer the copied objects now; the system clipboard's
+            // text joins the formats once read (Message::PasteSpecial).
+            "PASTESPEC" => {
+                let command = self.paste_special_command(i, None);
+                let started = self.start_count_command(i, command);
+                #[cfg(target_arch = "wasm32")]
+                let read = Task::perform(crate::sys::read_clipboard_text(), Message::PasteSpecial);
+                #[cfg(not(target_arch = "wasm32"))]
+                let read = iced::clipboard::read_text()
+                    .map(|result| Message::PasteSpecial(result.ok().map(|text| (*text).clone())));
+                return Some(Task::batch([started, read]));
             }
 
             // PASTEORIG — paste at the entities' original coordinates (no pick).

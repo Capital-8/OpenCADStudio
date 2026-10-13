@@ -6815,6 +6815,32 @@ impl OpenCADStudio {
                 }
             }
 
+            Message::PasteSpecial(text) => {
+                let i = self.active_tab;
+                let waiting = self.tabs[i]
+                    .active_cmd
+                    .as_ref()
+                    .is_some_and(|command| command.name() == "PASTESPEC");
+                if !waiting {
+                    return Task::none();
+                }
+                match text.filter(|text| !text.trim().is_empty()) {
+                    Some(text) => {
+                        // Same prompt, one more option: swap without echoing it.
+                        self.tabs[i].active_cmd = Some(self.paste_special_command(i, Some(&text)));
+                        self.push_ucs_to_cmd(i);
+                        Task::none()
+                    }
+                    None if self.clipboard.is_empty() => {
+                        self.tabs[i].active_cmd = None;
+                        self.command_line
+                            .push_error(crate::tr!("clipboard", "no-supported-content").as_ref());
+                        Task::none()
+                    }
+                    None => Task::none(),
+                }
+            }
+
             Message::SystemClipboardPaste(result) => {
                 use super::SystemClipboardText as Text;
 

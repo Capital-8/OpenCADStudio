@@ -3607,6 +3607,8 @@ annotate =
     .tolerance-specify-insertion-point = TOLERANCE Spécifier le point d'insertion:
 
 insert =
+    .pastespec-specify-insertion-point = PASTESPEC  Spécifiez le point d’insertion :
+    .pastespec-paste-as = PASTESPEC  Coller comme [Objects/Block/Text] :
     .pdfui-pdf-scale = PDF scale: __ocs_fmt_0__:1
     .pdfui-specify-insertion-point = Specify insertion point:
     .pdfui-no-pdf-underlays = No PDF underlays found.

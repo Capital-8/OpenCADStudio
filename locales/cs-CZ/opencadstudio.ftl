@@ -3604,6 +3604,8 @@ annotate =
     .tolerance-specify-insertion-point = TOLERANCE Zadejte bod vložení:
 
 insert =
+    .pastespec-specify-insertion-point = PASTESPEC  Zadejte bod vložení:
+    .pastespec-paste-as = PASTESPEC  Vložit jako [Objects/Block/Text]:
     .pdfui-pdf-scale = PDF scale: __ocs_fmt_0__:1
     .pdfui-specify-insertion-point = Specify insertion point:
     .pdfui-no-pdf-underlays = No PDF underlays found.
