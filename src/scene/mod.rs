@@ -5359,13 +5359,7 @@ impl Scene {
             Self::DEFAULT_METRIC_SCALES
         }
     }
-    /// Conversion from one drawing unit to the paper unit used by the
-    /// standard annotation-scale family: millimetres for metric drawings
-    /// and inches for imperial drawings.
-    ///
-    /// The built-in scale factors are defined assuming model and paper use
-    /// the same base unit. A drawing in metres therefore needs an extra
-    /// factor of 1000 when its paper side is measured in millimetres.
+
     /// Model-space annotation multiplier from the header's CANNOSCALEVALUE
     /// (paper/drawing factor), converted from paper units into the drawing's
     /// INSUNITS, so a metre drawing uses 0.001 model units per paper
@@ -5381,6 +5375,13 @@ impl Scene {
         };
     }
 
+    /// Conversion from one drawing unit to the paper unit used by the
+    /// standard annotation-scale family: millimetres for metric drawings
+    /// and inches for imperial drawings.
+    ///
+    /// The built-in scale factors are defined assuming model and paper use
+    /// the same base unit. A drawing in metres therefore needs an extra
+    /// factor of 1000 when its paper side is measured in millimetres.
     pub(crate) fn annotation_scale_unit_factor(&self) -> f64 {
         let paper_unit = if self.prefers_imperial_scales() == Some(true) {
             1 // Inches
