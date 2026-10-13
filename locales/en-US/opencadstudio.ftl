@@ -99,6 +99,9 @@ start =
     .no-recent-files = Files you open will show up here.
     .browser-storage = Browser storage
     .keep-recent-files = Keep recent files
+    .view-list = List
+    .view-icons = Icons
+    .view-preview = Large previews
 
 donation =
     .title = Request for Donation

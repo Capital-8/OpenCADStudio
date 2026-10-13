@@ -99,6 +99,9 @@ start =
     .no-recent-files = Otevřené soubory se zobrazí zde.
     .browser-storage = Úložiště prohlížeče
     .keep-recent-files = Uchovávat nedávné soubory
+    .view-list = Seznam
+    .view-icons = Ikony
+    .view-preview = Velké náhledy
 
 donation =
     .title = Žádost o dar

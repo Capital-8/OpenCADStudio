@@ -1326,6 +1326,7 @@ impl OpenCADStudio {
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect(),
                 limit: self.recent_limit,
+                view: self.recent_view,
             },
             start: crate::app::config::StartConfig {
                 section: self.start_section,
@@ -1397,6 +1398,7 @@ impl OpenCADStudio {
         );
         self.recent_files.truncate(self.recent_limit);
         self.recent_limit_input = self.recent_limit.to_string();
+        self.recent_view = cfg.recent.view;
         // Thumbnails are decoded by a background task queued at boot
         // (`refresh_recent_thumbs`) — never here on the boot path.
         self.start_section = cfg.start.section;

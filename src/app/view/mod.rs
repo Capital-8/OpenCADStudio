@@ -339,6 +339,7 @@ impl OpenCADStudio {
                 &self.recent_thumbs,
                 self.recent_limit,
                 &self.recent_limit_input,
+                self.recent_view,
                 self.start_action_w.clone(),
                 self.start_section,
             )
@@ -3098,6 +3099,7 @@ pub(super) fn start_page_view<'a>(
     thumbs: &'a std::collections::HashMap<std::path::PathBuf, Option<iced::widget::image::Handle>>,
     recent_limit: usize,
     recent_limit_input: &'a str,
+    recent_view: super::RecentView,
     action_width_out: std::sync::Arc<std::sync::atomic::AtomicU32>,
     active: super::StartSection,
 ) -> Element<'a, Message> {
@@ -3113,6 +3115,7 @@ pub(super) fn start_page_view<'a>(
             thumbs,
             recent_limit,
             recent_limit_input,
+            recent_view,
             size.width,
             action_width_out.clone(),
             active,
@@ -3132,6 +3135,7 @@ fn start_page_content<'a>(
     thumbs: &'a std::collections::HashMap<std::path::PathBuf, Option<iced::widget::image::Handle>>,
     recent_limit: usize,
     recent_limit_input: &'a str,
+    recent_view: super::RecentView,
     avail_w: f32,
     action_width_out: std::sync::Arc<std::sync::atomic::AtomicU32>,
     active: super::StartSection,
@@ -3355,6 +3359,7 @@ fn start_page_content<'a>(
         thumbs,
         recent_limit,
         recent_limit_input,
+        recent_view,
         match start_layout {
             StartLayout::AllPanels
             | StartLayout::WithoutVideos
@@ -3792,16 +3797,149 @@ fn start_page_content<'a>(
 // Properties panel normally occupies, but only when the active tab is the
 // Start tab. The list is restored from disk at boot and re-saved on every
 // open — entries persist across sessions.
+/// Recent files as tiles: small thumbnails wrapping across the panel, or one
+/// large preview per row. A tile opens its file; the list view keeps the
+/// remove buttons.
+fn recent_tiles<'a>(
+    recents: &'a [std::path::PathBuf],
+    thumbs: &'a std::collections::HashMap<std::path::PathBuf, Option<iced::widget::image::Handle>>,
+    large: bool,
+) -> iced::widget::Column<'a, Message> {
+    let (thumb_w, thumb_h, name_chars) = if large {
+        (Fill, iced::Length::Fixed(180.0), 40)
+    } else {
+        (iced::Length::Fixed(72.0), iced::Length::Fixed(54.0), 11)
+    };
+    let tile = |path: &'a std::path::PathBuf| -> Element<'a, Message> {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string_lossy().into_owned());
+        let picture: Element<'a, Message> = match thumbs.get(path).and_then(|o| o.as_ref()) {
+            Some(h) => iced::widget::image(h.clone())
+                .content_fit(iced::ContentFit::Contain)
+                .width(Fill)
+                .height(Fill)
+                .into(),
+            None => crate::ui::icons::themed_secondary(crate::ui::icons::DOC, 28.0),
+        };
+        let picture = container(picture)
+            .width(thumb_w)
+            .height(thumb_h)
+            .center_x(thumb_w)
+            .center_y(thumb_h)
+            .style(|theme: &Theme| container::Style {
+                background: Some(Background::Color(theme.palette().background.base.color)),
+                border: Border {
+                    color: theme.palette().background.neutral.color,
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            });
+        let mut label = column![text(crate::ui::text_util::elide(&name, name_chars)).size(12)];
+        if large {
+            let dir = path
+                .parent()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            label = label.push(
+                text(crate::ui::text_util::elide(&dir, 52))
+                    .size(10)
+                    .style(start_muted_style),
+            );
+        }
+        button(column![picture, label.spacing(2)].spacing(4))
+            .on_press(Message::OpenRecent(path.clone()))
+            .padding(6)
+            .width(if large { Fill } else { iced::Length::Shrink })
+            .style(|theme: &Theme, status| {
+                let palette = theme.palette();
+                button::Style {
+                    background: matches!(status, button::Status::Hovered)
+                        .then_some(Background::Color(palette.background.strong.color)),
+                    text_color: palette.background.base.text,
+                    border: Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            })
+            .into()
+    };
+    if large {
+        column(recents.iter().map(tile)).spacing(6)
+    } else {
+        column![iced::widget::Row::with_children(recents.iter().map(tile))
+            .spacing(4)
+            .wrap()]
+        .width(Fill)
+    }
+}
+
 pub(super) fn recent_files_panel<'a>(
     recents: &'a [std::path::PathBuf],
     thumbs: &'a std::collections::HashMap<std::path::PathBuf, Option<iced::widget::image::Handle>>,
     limit: usize,
     limit_input: &'a str,
+    view: super::RecentView,
     width: iced::Length,
 ) -> Element<'a, Message> {
+    use super::RecentView;
     // Title mirrors the Supporters rail: size 15 in the bright text colour,
-    // followed by a 12px gap before the content.
-    let title = text(crate::tr!("start", "recent-documents")).size(15);
+    // followed by a 12px gap before the content. The view-mode toggles sit
+    // on the title's right.
+    let mode_button = |icon: &'static [u8], mode: RecentView, tip: String| {
+        let active = view == mode;
+        iced::widget::tooltip(
+            button(crate::ui::icons::themed(icon, 13.0))
+                .on_press(Message::SetRecentView(mode))
+                .padding([3, 5])
+                .style(move |theme: &Theme, status| {
+                    let palette = theme.palette();
+                    let background = if active {
+                        Some(palette.primary.weak.color)
+                    } else {
+                        matches!(status, button::Status::Hovered)
+                            .then_some(palette.background.strong.color)
+                    };
+                    button::Style {
+                        background: background.map(Background::Color),
+                        text_color: palette.background.base.text,
+                        border: Border {
+                            radius: 3.0.into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                }),
+            container(text(tip).size(11)).padding([2, 6]).style(container::rounded_box),
+            iced::widget::tooltip::Position::Bottom,
+        )
+    };
+    let title = row![
+        text(crate::tr!("start", "recent-documents"))
+            .size(15)
+            .width(Fill),
+        mode_button(
+            crate::ui::icons::MENU,
+            RecentView::List,
+            crate::tr!("start", "view-list"),
+        ),
+        mode_button(
+            crate::ui::icons::GRID,
+            RecentView::Icons,
+            crate::tr!("start", "view-icons"),
+        ),
+        mode_button(
+            crate::ui::icons::PREVIEW,
+            RecentView::Preview,
+            crate::tr!("start", "view-preview"),
+        ),
+    ]
+    .spacing(2)
+    .align_y(iced::Center);
 
     let body: Element<'a, Message> = if recents.is_empty() {
         container(
@@ -3809,6 +3947,18 @@ pub(super) fn recent_files_panel<'a>(
                 .size(12)
                 .style(start_muted_style),
         )
+        .height(Fill)
+        .into()
+    } else if view != RecentView::List {
+        iced::widget::scrollable(
+            recent_tiles(recents, thumbs, view == RecentView::Preview).padding(
+                iced::Padding {
+                    right: 12.0,
+                    ..iced::Padding::ZERO
+                },
+            ),
+        )
+        .width(Fill)
         .height(Fill)
         .into()
     } else {
@@ -4020,6 +4170,7 @@ mod tests {
             &std::collections::HashMap::new(),
             50,
             "18446744073709551615",
+            super::super::RecentView::default(),
             800.0,
             std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
             super::super::StartSection::default(),

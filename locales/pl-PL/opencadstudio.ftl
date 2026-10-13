@@ -99,6 +99,9 @@ start =
     .no-recent-files = Otwarte pliki pojawią się tutaj.
     .browser-storage = Pamięć przeglądarki
     .keep-recent-files = Zachowuj ostatnie pliki
+    .view-list = Lista
+    .view-icons = Ikony
+    .view-preview = Duże podglądy
 
 donation =
     .title = Prośba o darowiznę

@@ -518,6 +518,8 @@ pub struct RecentConfig {
     pub files: Vec<String>,
     /// How many recent files to keep.
     pub limit: usize,
+    /// List, icons or large previews.
+    pub view: super::RecentView,
 }
 
 impl Default for RecentConfig {
@@ -525,6 +527,7 @@ impl Default for RecentConfig {
         Self {
             files: Vec::new(),
             limit: super::recent::RECENT_DEFAULT,
+            view: super::RecentView::default(),
         }
     }
 }

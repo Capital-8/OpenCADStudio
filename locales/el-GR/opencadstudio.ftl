@@ -99,6 +99,9 @@ start =
     .no-recent-files = Τα αρχεία που ανοίγετε θα εμφανίζονται εδώ.
     .browser-storage = Αποθηκευτικός χώρος προγράμματος περιήγησης
     .keep-recent-files = Διατήρηση πρόσφατων αρχείων
+    .view-list = Λίστα
+    .view-icons = Εικονίδια
+    .view-preview = Μεγάλες προεπισκοπήσεις
 
 donation =
     .title = Έκκληση για δωρεά

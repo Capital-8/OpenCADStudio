@@ -99,6 +99,9 @@ start =
     .no-recent-files = A megnyitott fájlok itt jelennek meg.
     .browser-storage = Böngésző tárhelye
     .keep-recent-files = Legutóbbi fájlok megőrzése
+    .view-list = Lista
+    .view-icons = Ikonok
+    .view-preview = Nagy előnézetek
 
 donation =
     .title = Adománykérés

@@ -433,6 +433,15 @@ pub enum StartSection {
     Supporters,
 }
 
+/// How the Start page lists recent files.
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug, serde::Serialize, serde::Deserialize)]
+pub enum RecentView {
+    #[default]
+    List,
+    Icons,
+    Preview,
+}
+
 /// What the Space / Enter keys currently mean at the command line. One
 /// decision point (`OpenCADStudio::text_entry_mode`) for every keyboard
 /// route that used to re-derive the answer from editor state.
@@ -472,6 +481,7 @@ pub(super) struct OpenCADStudio {
     /// Live text of the recent-limit input box (may differ from `recent_limit`
     /// mid-edit; applied on Enter). Kept in sync when the +/- buttons change it.
     recent_limit_input: String,
+    recent_view: RecentView,
     command_line: CommandLine,
     /// Recent Patreon supporters shown on the Start page (name, USD cents),
     /// fetched once at boot, highest payment first.
@@ -2449,6 +2459,7 @@ pub enum Message {
     RecentRemove(PathBuf),
     /// Set how many recent documents to keep (persisted).
     SetRecentLimit(usize),
+    SetRecentView(RecentView),
     /// Live edit of the recent-limit input box (not applied until Enter).
     RecentLimitInput(String),
     /// User clicked Cancel on the loading overlay. The parser thread keeps
@@ -4488,6 +4499,7 @@ impl OpenCADStudio {
             recent_thumbs: std::collections::HashMap::new(),
             recent_limit: recent::RECENT_DEFAULT,
             recent_limit_input: recent::RECENT_DEFAULT.to_string(),
+            recent_view: RecentView::default(),
             command_line: CommandLine::new(),
             patrons: Vec::new(),
             videos: Vec::new(),

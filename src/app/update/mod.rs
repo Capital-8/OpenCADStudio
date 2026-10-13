@@ -1153,6 +1153,12 @@ impl OpenCADStudio {
                 Task::none()
             }
 
+            Message::SetRecentView(view) => {
+                self.recent_view = view;
+                self.save_config();
+                Task::none()
+            }
+
             Message::RecentLimitInput(s) => {
                 // Keep only digits while typing; applied on Enter (SetRecentLimit).
                 self.recent_limit_input = s.chars().filter(|c| c.is_ascii_digit()).collect();

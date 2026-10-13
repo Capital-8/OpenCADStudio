@@ -99,6 +99,9 @@ start =
     .no-recent-files = Los archivos que abra aparecerán aquí.
     .browser-storage = Almacenamiento del navegador
     .keep-recent-files = Conservar archivos recientes
+    .view-list = Lista
+    .view-icons = Iconos
+    .view-preview = Vistas previas grandes
 
 donation =
     .title = Solicitud de donación

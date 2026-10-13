@@ -99,6 +99,9 @@ start =
     .no-recent-files = 您開啟的檔案將顯示在此處。
     .browser-storage = 瀏覽器儲存空間
     .keep-recent-files = 保留最近檔案
+    .view-list = 清單
+    .view-icons = 圖示
+    .view-preview = 大型預覽
 
 donation =
     .title = 捐款請求

@@ -99,6 +99,9 @@ start =
     .no-recent-files = Файловете, които отвориш, ще се появят тук.
     .browser-storage = Хранилище на браузъра
     .keep-recent-files = Пази скорошните файлове
+    .view-list = Списък
+    .view-icons = Икони
+    .view-preview = Големи прегледи
 
 donation =
     .title = Призив за дарение

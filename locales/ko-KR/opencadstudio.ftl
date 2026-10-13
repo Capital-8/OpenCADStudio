@@ -99,6 +99,9 @@ start =
     .no-recent-files = 연 파일이 여기에 표시됩니다.
     .browser-storage = 브라우저 저장소
     .keep-recent-files = 최근 파일 유지
+    .view-list = 목록
+    .view-icons = 아이콘
+    .view-preview = 큰 미리 보기
 
 donation =
     .title = 기부 요청

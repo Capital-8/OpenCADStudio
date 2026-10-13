@@ -99,6 +99,9 @@ start =
     .no-recent-files = Bestanden die u opent, verschijnen hier.
     .browser-storage = Browseropslag
     .keep-recent-files = Recente bestanden bewaren
+    .view-list = Lijst
+    .view-icons = Pictogrammen
+    .view-preview = Grote voorbeelden
 
 donation =
     .title = Verzoek om een donatie

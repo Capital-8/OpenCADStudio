@@ -99,6 +99,9 @@ start =
     .no-recent-files = ໄຟລ໌ທີ່ທ່ານເປີດຈະສະແດງຢູ່ນີ້.
     .browser-storage = ບ່ອນເກັບຂໍ້ມູນບຣາວເຊີ
     .keep-recent-files = ຮັກສາໄຟລ໌ຫຼ້າສຸດໄວ້
+    .view-list = ລາຍການ
+    .view-icons = ໄອຄອນ
+    .view-preview = ຕົວຢ່າງຂະໜາດໃຫຍ່
 
 donation =
     .title = ຄຳຮ້ອງຂໍການບໍລິຈາກ

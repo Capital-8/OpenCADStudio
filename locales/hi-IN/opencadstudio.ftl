@@ -99,6 +99,9 @@ start =
     .no-recent-files = आपके द्वारा खोली गई फ़ाइलें यहाँ दिखाई देंगी।
     .browser-storage = ब्राउज़र संग्रहण
     .keep-recent-files = हाल की फ़ाइलें रखें
+    .view-list = सूची
+    .view-icons = आइकन
+    .view-preview = बड़े पूर्वावलोकन
 
 donation =
     .title = दान का अनुरोध

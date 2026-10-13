@@ -99,6 +99,9 @@ start =
     .no-recent-files = Открытые вами файлы появятся здесь.
     .browser-storage = Хранилище браузера
     .keep-recent-files = Хранить недавние файлы
+    .view-list = Список
+    .view-icons = Значки
+    .view-preview = Крупные эскизы
 
 donation =
     .title = Просьба о пожертвовании

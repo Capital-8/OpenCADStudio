@@ -99,6 +99,9 @@ start =
     .no-recent-files = 開いたファイルがここに表示されます。
     .browser-storage = ブラウザーストレージ
     .keep-recent-files = 最近使ったファイルを保持
+    .view-list = 一覧
+    .view-icons = アイコン
+    .view-preview = 大きいプレビュー
 
 donation =
     .title = 寄付のお願い

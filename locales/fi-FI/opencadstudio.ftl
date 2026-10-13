@@ -99,6 +99,9 @@ start =
     .no-recent-files = Avaamasi tiedostot näkyvät tässä.
     .browser-storage = Selaimen tallennustila
     .keep-recent-files = Säilytä viimeisimmät tiedostot
+    .view-list = Luettelo
+    .view-icons = Kuvakkeet
+    .view-preview = Suuret esikatselut
 
 donation =
     .title = Lahjoituspyyntö

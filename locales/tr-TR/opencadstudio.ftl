@@ -99,6 +99,9 @@ start =
     .no-recent-files = Açtığınız dosyalar burada görünür.
     .browser-storage = Tarayıcı depolama alanı
     .keep-recent-files = Son dosyaları sakla
+    .view-list = Liste
+    .view-icons = Simgeler
+    .view-preview = Büyük önizlemeler
 
 donation =
     .title = Bağış Talebi
