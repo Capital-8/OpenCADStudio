@@ -1175,6 +1175,35 @@ pub trait HostApi {
     fn list_xrecords(&self, _dictionary_path: &[&str]) -> Result<Vec<String>, String> {
         Err("XRecord listing is not supported by this host".to_owned())
     }
+
+    // ── Reference-only designation (added in API v9; appended at the end to
+    // keep vtable indices stable for older plugins) ──────────────────────────
+
+    /// Mark (or unmark) an entity as reference-only (API v9, additive).
+    ///
+    /// A reference-only entity is plugin-owned display geometry: it renders
+    /// normally, but the built-in edit paths treat it like an entity on a
+    /// locked layer — it is neither grip-editable nor click-pickable (a click
+    /// passes through to the editable entity underneath), window and box
+    /// selections skip it, and user-driven writes refuse it. The owning
+    /// plugin keeps full write access through this API: `update_entity`,
+    /// [`update_entities_transaction`](HostApi::update_entities_transaction),
+    /// `remove_entity` and the XDATA record methods keep working, so derived
+    /// display geometry can be refreshed in place. The designation survives
+    /// DWG/DXF save and reload.
+    ///
+    /// Fails when the entity does not exist or is on a locked layer (the same
+    /// policy as the XDATA record methods). A call that would not change the
+    /// current designation succeeds without recording an undo step.
+    ///
+    /// Undo composition — the entity-write contract: a change performed
+    /// inside a plugin-opened [`HostApi::push_undo`] scope joins that scope,
+    /// so an operation composed of several writes is a single undo step under
+    /// the plugin's own label. With no scope open the change is one undo step
+    /// of its own. Refusals record no undo step.
+    fn set_reference_only(&mut self, _handle: Handle, _reference_only: bool) -> Result<(), String> {
+        Err("The reference-only designation is not supported by this host".to_owned())
+    }
 }
 
 /// Configuration properties for creating or modifying a layer.
