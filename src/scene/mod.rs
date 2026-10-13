@@ -9,6 +9,7 @@ pub mod annotative;
 pub mod assoc_array;
 pub mod compare;
 pub mod section_cull;
+pub mod sub_select;
 pub mod block_service;
 pub mod cache;
 pub mod convert;
@@ -2124,6 +2125,9 @@ pub struct Scene {
     lighting_cache: RefCell<HashMap<(Handle, u64), Vec<SceneLight>>>,
     /// Currently selected entity handles.
     pub selected: HashSet<Handle>,
+    /// Polylines only part of which is selected (Ctrl+click): the picked
+    /// segment indices.
+    pub sub_segments: HashMap<Handle, std::collections::BTreeSet<usize>>,
     selected_order: Vec<Handle>,
     /// The parametric-constraint glyph currently selected in the viewport.
     /// Entity selection changes clear it so the two selections stay exclusive.
@@ -2764,6 +2768,7 @@ impl Scene {
             object_data_cache: crate::entities::object_data::ObjectDataCache::default(),
             lighting_cache: RefCell::new(HashMap::default()),
             selected: HashSet::default(),
+            sub_segments: HashMap::default(),
             selected_order: Vec::new(),
             selected_constraint: None,
             object_isolation: ObjectIsolationState::default(),

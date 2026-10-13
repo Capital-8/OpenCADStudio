@@ -4014,6 +4014,39 @@ impl OpenCADStudio {
             }
         }
 
+        // Ctrl+click on a polyline picks the segment under the cursor; the
+        // edit commands then move just that part.
+        if self.ctrl_down && self.tabs[i].active_cmd.is_none() {
+            let (view_rot, eye) = {
+                let cam = self.tabs[i].scene.camera.borrow();
+                (cam.view_proj_rte(bounds), cam.eye())
+            };
+            let wires = self.tabs[i].scene.hit_test_wires();
+            let hit = scene::pick::hit_test::click_hit(
+                p,
+                &*wires,
+                view_rot,
+                eye,
+                bounds,
+                self.tabs[i].scene.document.header.lineweight_display,
+                crate::ui::overlay::pick_box_aperture_px(self.pick_box),
+                &self.tabs[i].scene.draw_depth_map(),
+            )
+            .and_then(Scene::handle_from_wire_name)
+            .filter(|handle| !self.tabs[i].scene.is_layer_locked(*handle));
+            drop(wires);
+            let point = self.tabs[i].last_cursor_world;
+            if hit.is_some_and(|handle| self.tabs[i].scene.toggle_sub_segment(handle, point)) {
+                self.tabs[i]
+                    .scene
+                    .selection
+                    .borrow_mut()
+                    .clear_left_selection_gesture();
+                self.refresh_properties();
+                return Task::none();
+            }
+        }
+
         // Ctrl+click on a composite solid picks the solid of it under the
         // cursor — the one the Properties palette and grips then edit.
         if self.ctrl_down

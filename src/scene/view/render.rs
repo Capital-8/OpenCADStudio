@@ -4056,6 +4056,18 @@ impl Scene {
             } else {
                 WireModel::HOVER
             };
+            if let Some(points) = selected
+                .then(|| self.picked_segment_points(handle))
+                .flatten()
+            {
+                wires.push(WireModel::solid_f64(
+                    handle.value().to_string(),
+                    points,
+                    tint,
+                    true,
+                ));
+                continue;
+            }
             for set in interaction_meshes
                 .iter()
                 .filter(|set| set.entity_handle() == Some(handle))
@@ -4918,7 +4930,13 @@ impl Scene {
             wire_content_id,
             wire_patch,
             selected_handles: Arc::new(if show_interaction {
-                self.selected.iter().copied().collect()
+                // A partly picked polyline lights only its picked segments,
+                // drawn with the highlight wires.
+                self.selected
+                    .iter()
+                    .copied()
+                    .filter(|handle| self.picked_segments(*handle).is_none())
+                    .collect()
             } else {
                 rustc_hash::FxHashSet::default()
             }),
