@@ -3121,6 +3121,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT 속성이 있는 블록 선택:
     .annotation-object-scale = 주석 객체 축척
     .bedit-select-block-reference-to-edit = BEDIT 편집할 블록 참조 선택:
+    .arrayedit-select-array = ARRAYEDIT  배열 선택:
+    .arrayedit-options = ARRAYEDIT  옵션 입력 [원본/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: 선택한 객체는 연관 배열이 아닙니다.
     .blend-enter-continuity-tangent-curvature-c = BLEND Enter 연속성 [접선/곡률] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND 첫 번째 열린 곡선 선택 [연속성=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND 두 번째 열린 곡선 선택 [연속성=__ocs_arg_c__]:

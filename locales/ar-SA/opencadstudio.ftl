@@ -3134,6 +3134,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT  حدد كتلة ذات سمات:
     .annotation-object-scale = مقياس كائن التعليق التوضيحي
     .bedit-select-block-reference-to-edit = BEDIT  حدد مرجع الكتلة لتحريره:
+    .arrayedit-select-array = ARRAYEDIT  حدد المصفوفة:
+    .arrayedit-options = ARRAYEDIT  أدخل خيارًا [المصدر/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: الكائن المحدد ليس مصفوفة ترابطية.
     .blend-enter-continuity-tangent-curvature-c = BLEND  أدخل الاستمرارية [مماس/انحناء] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND  حدد المنحنى المفتوح الأول [الاستمرارية=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND  حدد المنحنى المفتوح الثاني [الاستمرارية=__ocs_arg_c__]:

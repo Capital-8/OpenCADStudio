@@ -3122,6 +3122,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT  Seleccione un bloque con atributos:
     .annotation-object-scale = Escala del objeto anotativo
     .bedit-select-block-reference-to-edit = BEDIT  Seleccione la referencia de bloque que desea editar:
+    .arrayedit-select-array = ARRAYEDIT  Seleccione la matriz:
+    .arrayedit-options = ARRAYEDIT  Indique una opción [Origen/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: el objeto seleccionado no es una matriz asociativa.
     .blend-enter-continuity-tangent-curvature-c = BLEND  Indique la continuidad [Tangente/Curvatura] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND  Seleccione la primera curva abierta [Continuidad=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND  Seleccione la segunda curva abierta [Continuidad=__ocs_arg_c__]:

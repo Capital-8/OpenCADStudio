@@ -3121,6 +3121,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT Vyberte blok s atributy:
     .annotation-object-scale = Měřítko objektu anotace
     .bedit-select-block-reference-to-edit = BEDIT Vyberte referenci bloku, kterou chcete upravit:
+    .arrayedit-select-array = ARRAYEDIT  Vyberte pole:
+    .arrayedit-options = ARRAYEDIT  Zadejte možnost [Zdroj/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: vybraný objekt není asociativní pole.
     .blend-enter-continuity-tangent-curvature-c = BLEND Enter spojitost [Tečna/Zakřivení] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND Vyberte první otevřenou křivku [Continuity=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND Vyberte druhou otevřenou křivku [Continuity=__ocs_arg_c__]:

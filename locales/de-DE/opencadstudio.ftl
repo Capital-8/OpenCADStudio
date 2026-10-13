@@ -3122,6 +3122,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT Block mit Attributen auswählen:
     .annotation-object-scale = Beschriftungsobjektmaßstab
     .bedit-select-block-reference-to-edit = BEDIT Blockreferenz zum Bearbeiten auswählen:
+    .arrayedit-select-array = ARRAYEDIT  Reihe wählen:
+    .arrayedit-options = ARRAYEDIT  Option eingeben [Quelle/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: das gewählte Objekt ist keine assoziative Reihe.
     .blend-enter-continuity-tangent-curvature-c = BLEND Geben Sie Kontinuität ein [Tangente/Krümmung] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND Erste offene Kurve auswählen [Continuity=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND zweite offene Kurve auswählen [Continuity=__ocs_arg_c__]:

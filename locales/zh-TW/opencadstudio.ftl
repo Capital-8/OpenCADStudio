@@ -3121,6 +3121,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT  選擇帶屬性的圖塊：
     .annotation-object-scale = 註解物件比例
     .bedit-select-block-reference-to-edit = BEDIT 選擇要編輯的圖塊引用 :
+    .arrayedit-select-array = ARRAYEDIT  選取陣列:
+    .arrayedit-options = ARRAYEDIT  輸入選項 [來源/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: 選取的物件不是關聯式陣列。
     .blend-enter-continuity-tangent-curvature-c = BLEND  輸入連續性 [相切/曲率] <__ocs_arg_c__>：
     .blend-select-first-open-curve-continuity-c = BLEND  選擇第一條開放曲線  [Continuity=__ocs_arg_c__]：
     .blend-select-second-open-curve-continuity-c = BLEND  選擇第二條開放曲線  [Continuity=__ocs_arg_c__]：

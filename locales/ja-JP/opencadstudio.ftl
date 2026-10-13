@@ -3112,6 +3112,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT  属性付きブロックを選択:
     .annotation-object-scale = 注釈オブジェクト尺度
     .bedit-select-block-reference-to-edit = BEDIT  編集するブロック参照を選択:
+    .arrayedit-select-array = ARRAYEDIT  配列複写を選択:
+    .arrayedit-options = ARRAYEDIT  オプションを入力 [元/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: 選択したオブジェクトは自動調整配列複写ではありません。
     .blend-enter-continuity-tangent-curvature-c = BLEND  連続性を入力 [接線/曲率] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND  1 本目の開いた曲線を選択 [連続性=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND  2 本目の開いた曲線を選択 [連続性=__ocs_arg_c__]:

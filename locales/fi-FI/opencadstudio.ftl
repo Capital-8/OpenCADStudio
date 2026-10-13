@@ -3121,6 +3121,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT Valitse lohko määritteillä:
     .annotation-object-scale = Merkintäobjektin mittakaava
     .bedit-select-block-reference-to-edit = BEDIT Valitse muokattava lohkoviite:
+    .arrayedit-select-array = ARRAYEDIT  Valitse sarja:
+    .arrayedit-options = ARRAYEDIT  Anna vaihtoehto [Lähde/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: valittu objekti ei ole assosiatiivinen sarja.
     .blend-enter-continuity-tangent-curvature-c = BLEND Enter jatkuvuus [tangentti/kaarevuus] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND Valitse ensimmäinen avoin käyrä [Continuity=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND Valitse toinen avoin käyrä [Continuity=__ocs_arg_c__]:

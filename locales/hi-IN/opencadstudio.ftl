@@ -3110,6 +3110,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT विशेषताओं के साथ ब्लॉक का चयन करें:
     .annotation-object-scale = Annotation ऑब्जेक्ट स्केल
     .bedit-select-block-reference-to-edit = BEDIT संपादित करने के लिए ब्लॉक संदर्भ का चयन करें:
+    .arrayedit-select-array = ARRAYEDIT  ऐरे चुनें:
+    .arrayedit-options = ARRAYEDIT  विकल्प दर्ज करें [स्रोत/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: चुना गया ऑब्जेक्ट सहयोगी ऐरे नहीं है।
     .blend-enter-continuity-tangent-curvature-c = BLEND  निरंतरता चुनें [स्पर्शरेखा/वक्रता] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND प्रथम खुले वक्र का चयन करें [Continuity=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND दूसरा खुला वक्र चुनें [Continuity=__ocs_arg_c__]:

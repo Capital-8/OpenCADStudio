@@ -3122,6 +3122,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT Selecteer symbool met attributen:
     .annotation-object-scale = Annotatie objectschaal
     .bedit-select-block-reference-to-edit = BEDIT Selecteer symboolverwijzing naar bewerken:
+    .arrayedit-select-array = ARRAYEDIT  Selecteer de reeks:
+    .arrayedit-options = ARRAYEDIT  Geef een optie [Bron/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: het geselecteerde object is geen associatieve reeks.
     .blend-enter-continuity-tangent-curvature-c = BLEND Vul continuïteit [tangent/curvature] <__ocs_arg_c__> in:
     .blend-select-first-open-curve-continuity-c = BLEND Selecteer eerste open curve [Continuïteit=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND Selecteer tweede open curve [Continuïteit=__ocs_arg_c__]:

@@ -3121,6 +3121,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT Wybierz blok z atrybutami:
     .annotation-object-scale = Skala obiektu adnotacji
     .bedit-select-block-reference-to-edit = BEDIT Wybierz odniesienie do bloku do edycji:
+    .arrayedit-select-array = ARRAYEDIT  Wybierz szyk:
+    .arrayedit-options = ARRAYEDIT  Podaj opcję [Źródło/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: wybrany obiekt nie jest szykiem skojarzonym.
     .blend-enter-continuity-tangent-curvature-c = BLEND Enter ciągłość [styczna/krzywizna] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND Wybierz pierwszą otwartą krzywą [Continuity=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND Wybierz drugą otwartą krzywą [Continuity=__ocs_arg_c__]:

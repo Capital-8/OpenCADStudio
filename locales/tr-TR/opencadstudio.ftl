@@ -3103,6 +3103,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT  Öznitelikleri olan bir blok seçin:
     .annotation-object-scale = Açıklama Nesnesi Ölçeği
     .bedit-select-block-reference-to-edit = BEDIT  Düzenlenecek blok referansını seçin:
+    .arrayedit-select-array = ARRAYEDIT  Diziyi seçin:
+    .arrayedit-options = ARRAYEDIT  Bir seçenek girin [Kaynak/çıKış] <çıKış>:
+    .arrayedit-not-an-array = ARRAYEDIT: seçilen nesne ilişkili bir dizi değil.
     .blend-enter-continuity-tangent-curvature-c = BLEND  Sürekliliği girin [Teğet/Eğrilik] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND  İlk açık eğriyi seçin [Süreklilik=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND  İkinci açık eğriyi seçin [Süreklilik=__ocs_arg_c__]:

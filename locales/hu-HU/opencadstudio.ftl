@@ -3124,6 +3124,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT Blokk kiválasztása attribútumokkal:
     .annotation-object-scale = Feliratozási objektum léptéke
     .bedit-select-block-reference-to-edit = BEDIT Válassza ki a szerkeszteni kívánt blokkreferenciát:
+    .arrayedit-select-array = ARRAYEDIT  Válassza ki a tömböt:
+    .arrayedit-options = ARRAYEDIT  Adjon meg egy lehetőséget [Forrás/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: a kijelölt objektum nem asszociatív tömb.
     .blend-enter-continuity-tangent-curvature-c = BLEND  Adja meg a folytonosságot [Tangent/Curvature] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND Válassza ki az első nyitott görbét [Continuity=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND Válassza ki a második nyitott görbét [Continuity=__ocs_arg_c__]:

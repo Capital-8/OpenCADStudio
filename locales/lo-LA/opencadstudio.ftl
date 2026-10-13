@@ -3122,6 +3122,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT  ເລືອກບລັອກທີ່ມີຄຸນລັກສະນະ:
     .annotation-object-scale = ມາດຕາສ່ວນວັດຖຸຄຳອະທິບາຍ
     .bedit-select-block-reference-to-edit = BEDIT  ເລືອກການອ້າງອີງບລັອກທີ່ຈະແກ້ໄຂ:
+    .arrayedit-select-array = ARRAYEDIT  ເລືອກອາເຣ:
+    .arrayedit-options = ARRAYEDIT  ປ້ອນທາງເລືອກ [ແຫຼ່ງ/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: ວັດຖຸທີ່ເລືອກບໍ່ແມ່ນອາເຣທີ່ເຊື່ອມໂຍງ.
     .blend-enter-continuity-tangent-curvature-c = BLEND  ປ້ອນຄວາມຕໍ່ເນື່ອງ [Tangent/Curvature] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND  ເລືອກເສັ້ນໂຄ້ງປາຍເປີດທຳອິດ  [Continuity=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND  ເລືອກເສັ້ນໂຄ້ງປາຍເປີດທີສອງ  [Continuity=__ocs_arg_c__]:

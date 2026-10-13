@@ -3122,6 +3122,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT  Επιλέξτε μπλοκ με χαρακτηριστικά:
     .annotation-object-scale = Κλίμακα αντικειμένου επισημείωσης
     .bedit-select-block-reference-to-edit = BEDIT  Επιλέξτε αναφορά μπλοκ προς επεξεργασία:
+    .arrayedit-select-array = ARRAYEDIT  Επιλέξτε διάταξη:
+    .arrayedit-options = ARRAYEDIT  Δώστε επιλογή [Πηγή/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: το επιλεγμένο αντικείμενο δεν είναι συσχετιστική διάταξη.
     .blend-enter-continuity-tangent-curvature-c = BLEND  Δώστε συνέχεια [Εφαπτομενική/Καμπυλότητα] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND  Επιλέξτε πρώτη ανοικτή καμπύλη  [Συνέχεια=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND  Επιλέξτε δεύτερη ανοικτή καμπύλη  [Συνέχεια=__ocs_arg_c__]:

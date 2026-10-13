@@ -3125,6 +3125,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT Выберите блок с атрибутами:
     .annotation-object-scale = Масштаб аннотативного объекта
     .bedit-select-block-reference-to-edit = BEDIT Выберите ссылку на блок для редактирования:
+    .arrayedit-select-array = ARRAYEDIT  Выберите массив:
+    .arrayedit-options = ARRAYEDIT  Введите параметр [Исходные/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: выбранный объект не является ассоциативным массивом.
     .blend-enter-continuity-tangent-curvature-c = BLEND Введите непрерывность [Тангент/Курватура] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND Выберите первую открытую кривую [Продолжение=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND Выберите вторую открытую кривую [Продолжение=__ocs_arg_c__]:

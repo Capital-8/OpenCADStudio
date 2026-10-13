@@ -3109,6 +3109,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT  选择带属性的块：
     .annotation-object-scale = 注释对象比例
     .bedit-select-block-reference-to-edit = BEDIT 选择要编辑的块引用 :
+    .arrayedit-select-array = ARRAYEDIT  选择阵列:
+    .arrayedit-options = ARRAYEDIT  输入选项 [源/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: 所选对象不是关联阵列。
     .blend-enter-continuity-tangent-curvature-c = BLEND  输入连续性 [相切/曲率] <__ocs_arg_c__>：
     .blend-select-first-open-curve-continuity-c = BLEND  选择第一条开放曲线  [Continuity=__ocs_arg_c__]：
     .blend-select-second-open-curve-continuity-c = BLEND  选择第二条开放曲线  [Continuity=__ocs_arg_c__]：

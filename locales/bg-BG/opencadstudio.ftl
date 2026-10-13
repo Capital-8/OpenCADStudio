@@ -3121,6 +3121,9 @@ modify =
     .attedit-select-block-with-attributes = ATTEDIT  Избери блок с атрибути:
     .annotation-object-scale = Мащаб на анотационен обект
     .bedit-select-block-reference-to-edit = BEDIT  Избери препратка към блок за редактиране:
+    .arrayedit-select-array = ARRAYEDIT  Изберете масив:
+    .arrayedit-options = ARRAYEDIT  Въведете опция [Източник/eXit] <eXit>:
+    .arrayedit-not-an-array = ARRAYEDIT: избраният обект не е асоциативен масив.
     .blend-enter-continuity-tangent-curvature-c = BLEND  Въведи непрекъснатост [Допирателност/Кривина] <__ocs_arg_c__>:
     .blend-select-first-open-curve-continuity-c = BLEND  Избери първа отворена крива  [Непрекъснатост=__ocs_arg_c__]:
     .blend-select-second-open-curve-continuity-c = BLEND  Избери втора отворена крива  [Непрекъснатост=__ocs_arg_c__]:
