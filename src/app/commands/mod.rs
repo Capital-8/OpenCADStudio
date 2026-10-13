@@ -819,6 +819,8 @@ inventory::submit!(crate::command::CommandRegistration {
         "EXPORTSTEP",
         "EXPORTSTL",
         "EXTERNALREFERENCES",
+        "EXTERNALREFERENCESCLOSE",
+        "ERSTATE",
         "POINTCLOUDMANAGER",
         "POINTCLOUDMANAGERCLOSE",
         "EXTRIM",

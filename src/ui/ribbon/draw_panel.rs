@@ -311,7 +311,8 @@ pub(super) fn group_title<'a>(
     if panel.id != REFERENCE_PANEL_ID {
         return title_button;
     }
-    // The corner arrow opens the External References palette.
+    // The corner arrow opens the External References palette, or closes it
+    // when it is open.
     let launcher = tooltip(
         // A right arrow turned to point into the corner.
         button(
@@ -323,10 +324,7 @@ pub(super) fn group_title<'a>(
                     color: Some(theme.palette().background.base.text),
                 }),
         )
-        .on_press(Message::RibbonToolClick {
-            tool_id: "EXTERNALREFERENCES".to_string(),
-            event: crate::modules::ModuleEvent::Command("EXTERNALREFERENCES".to_string()),
-        })
+        .on_press(Message::ToggleXrefManager)
         .style(move |theme: &Theme, status| tool_btn_style(theme, false, status))
         .padding([0, 3]),
         make_tip(format!(
