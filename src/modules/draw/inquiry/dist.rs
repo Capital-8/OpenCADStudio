@@ -49,8 +49,12 @@ impl CadCommand for DistCommand {
             let dy = delta.y;
             let dz = delta.z;
 
-            // Angle in XY plane — degrees from +X
-            let angle_xy = dy.atan2(dx).to_degrees();
+            // Angle in XY plane — a direction, so counted from ANGBASE the
+            // way ANGDIR runs, like every other direction the drawing shows.
+            let ctx = unit_context();
+            let sign = if ctx.angdir_cw { -1.0 } else { 1.0 };
+            let turn = std::f64::consts::TAU;
+            let angle_xy = (sign * (dy.atan2(dx) - ctx.angbase)).rem_euclid(turn).to_degrees();
             // Angle from XY plane toward Z (elevation angle)
             let dist_xy = dx.hypot(dy);
             let angle_z = dz.atan2(dist_xy).to_degrees();
