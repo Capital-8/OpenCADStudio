@@ -1038,7 +1038,20 @@ pub fn expand_insert(
         scale_policy,
     );
     let name = ins_handle.value().to_string();
-    let prototype_key = if !ins.is_array() && cache.prototype_blocks.contains(&ins.block_name) {
+    // Mask-bearing blocks must not reuse translated GPU prototypes: ordinary
+    // strokes and wipeout fills have different upload paths. Their shared
+    // source_id plus per-copy translated geometry can make a moved INSERT
+    // display stale wipeout geometry or disappear as the view changes.
+    // Expand these from their definition until both GPU paths share a
+    // verified identical instancing convention.
+    let has_masks = defn.subs.iter().any(|sub| match sub {
+        LocalSub::Wire(wire) => wire.canvas_color,
+        LocalSub::Nested(_) => false,
+    });
+    let prototype_key = if !ins.is_array()
+        && !has_masks
+        && cache.prototype_blocks.contains(&ins.block_name)
+    {
         Some(expansion_prototype_key(
             ins,
             &xform,
@@ -2618,8 +2631,13 @@ fn emit_wire(
     // MTEXT background (a dimension's DIMTFILL box) left at the bare insert
     // level sat in front of its own text whenever that text's rank was
     // below zero.
-    let local_depth = (lw.world_width > 0.0 || lw.is_fill_only || !lw.text_verts.is_empty())
-        .then(|| d_range.0 + lw.local_rank * d_range.1);
+    // Every block member must retain its block-local draw rank, including
+    // ordinary thin LINE/LWPOLYLINE wires. Previously these wires had no
+    // depth_override, so they were drawn at the INSERT's bare depth while
+    // wipeout/hatch fills were positioned at the member rank. COPY and grip
+    // moves rebuild instance batches and exposed this mismatch in model,
+    // paper-space and PDF output.
+    let local_depth = Some(d_range.0 + lw.local_rank * d_range.1);
     let plot_visible = ctx.plot_visible && lw.plot_visible && (!lw.plot_l0 || ctx.l0_plottable);
 
     // Batched wires share one dash distance, which runs on across the NaN

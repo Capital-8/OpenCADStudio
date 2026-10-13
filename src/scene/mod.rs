@@ -7932,15 +7932,19 @@ impl Scene {
                 let cache = self.wipeout_cache.borrow();
                 match cache.get(&key) {
                     Some((cached_epoch, arc))
-                        // wipeout_models scans the whole document for Wipeout
-                        // entities; relevance = the changed handle is a Wipeout.
+                        // The displayed wipeout set also contains masks
+                        // expanded from INSERTs. COPY and grip edits modify or
+                        // add INSERT handles without changing the child WIPEOUT
+                        // entity, so the old predicate reused stale positions
+                        // until REGEN. Track both categories, including
+                        // removed INSERTs via the recorded removal bits.
                         if self.category_cache_valid(
                             *cached_epoch,
-                            CACHE_CATEGORY_WIPEOUT,
+                            CACHE_CATEGORY_WIPEOUT | CACHE_CATEGORY_INSERT_HATCH,
                             |h| {
                                 matches!(
                                     self.document.get_entity(h),
-                                    Some(EntityType::Wipeout(_))
+                                    Some(EntityType::Wipeout(_) | EntityType::Insert(_))
                                 )
                             },
                         ) =>
