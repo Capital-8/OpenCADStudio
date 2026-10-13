@@ -440,7 +440,6 @@ fn pasted_image_name(mime_type: &str) -> String {
 /// the candidate already names a registered source. The taken-check is
 /// injectable so this — the part worth locking with tests — runs natively;
 /// wasm passes [`crate::scene::model::image_model::has_source`].
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // tested everywhere, used on wasm
 pub(crate) fn unique_pasted_image_name(
     base: &str,
     ext: &str,

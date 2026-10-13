@@ -2162,12 +2162,59 @@ impl OpenCADStudio {
         }
     }
 
-    /// Attach a clipboard image read on the web (a pasted screenshot) the way
-    /// the IMAGE command's pick does: register the bytes name-keyed, decode
-    /// for the file's true pixel size, then commit the entity — but placed
-    /// directly at the cursor (0,0 before any pointer move) with the command's
+    /// Read an image off the system clipboard for a paste that found no
+    /// text. The web gets the encoded file from the Clipboard API; native
+    /// gets pixels, which are written as a PNG beside the drawing (or, for a
+    /// drawing never saved, in the config folder) so the image entity keeps
+    /// a file to point at.
+    pub(in crate::app) fn read_system_clipboard_image(&self) -> Task<Message> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            Task::perform(
+                crate::sys::read_clipboard_image(),
+                Message::SystemClipboardPasteImage,
+            )
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let folder = self.tabs[self.active_tab]
+                .current_path
+                .as_ref()
+                .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+                .filter(|folder| !folder.as_os_str().is_empty())
+                .or_else(|| crate::config::config_dir().map(|dir| dir.join("pasted")));
+            iced::clipboard::read_image().map(move |image| {
+                let saved = image.ok().zip(folder.clone()).and_then(|(image, folder)| {
+                    let pixels = image::RgbaImage::from_raw(
+                        image.size.width,
+                        image.size.height,
+                        image.rgba.to_vec(),
+                    )?;
+                    let mut png = std::io::Cursor::new(Vec::new());
+                    pixels.write_to(&mut png, image::ImageFormat::Png).ok()?;
+                    let stamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |elapsed| elapsed.as_millis());
+                    let name = crate::sys::unique_pasted_image_name(
+                        &format!("pasted-{stamp}"),
+                        "png",
+                        |name| folder.join(name).exists(),
+                    );
+                    let path = folder.join(name);
+                    std::fs::create_dir_all(&folder).ok()?;
+                    std::fs::write(&path, png.get_ref()).ok()?;
+                    Some((path.to_string_lossy().into_owned(), png.into_inner()))
+                });
+                Message::SystemClipboardPasteImage(saved)
+            })
+        }
+    }
+
+    /// Attach a clipboard image (a pasted screenshot) the way the IMAGE
+    /// command's pick does: register the bytes name-keyed, decode for the
+    /// file's true pixel size, then commit the entity — but placed directly
+    /// at the cursor (0,0 before any pointer move) with the command's
     /// default width, skipping the pick prompts a paste should not run.
-    #[cfg(target_arch = "wasm32")]
     pub(super) fn paste_clipboard_image(&mut self, name: String, bytes: Vec<u8>) -> Task<Message> {
         let i = self.active_tab;
         if self.tabs[i].is_start {

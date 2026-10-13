@@ -2389,11 +2389,9 @@ pub enum Message {
     PasteSpecial(Option<String>),
     /// Completion of a system text clipboard read requested by PASTECLIP.
     SystemClipboardPaste(SystemClipboardText),
-    /// Web: completion of the clipboard-image read the paste fallback starts
-    /// when no text was found — `Some((name, bytes))` attaches the image,
-    /// `None` reports the usual unsupported-content error. Native never
-    /// constructs it.
-    #[cfg(target_arch = "wasm32")]
+    /// Completion of the clipboard-image read the paste fallback starts when
+    /// no text was found — `Some((name, bytes))` attaches the image, `None`
+    /// reports the usual unsupported-content error.
     SystemClipboardPasteImage(Option<(String, Vec<u8>)>),
     /// Ctrl/Cmd+A — select all layer rows when the Layer Manager is open, or all
     /// drawing objects otherwise (#236).

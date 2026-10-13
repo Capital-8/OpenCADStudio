@@ -6895,11 +6895,10 @@ impl OpenCADStudio {
                         self.push_ucs_to_cmd(i);
                         Task::none()
                     }
+                    // Nothing but maybe an image: paste it as one.
                     None if self.clipboard.is_empty() => {
                         self.tabs[i].active_cmd = None;
-                        self.command_line
-                            .push_error(crate::tr!("clipboard", "no-supported-content").as_ref());
-                        Task::none()
+                        self.read_system_clipboard_image()
                     }
                     None => Task::none(),
                 }
@@ -6917,24 +6916,11 @@ impl OpenCADStudio {
                         self.focus_cmd_input()
                     }
                     Text::EmptyOrUnsupported => {
-                        // Web: no text — the clipboard may still hold an IMAGE
-                        // (a pasted screenshot). Read it through the async
-                        // Clipboard API and attach it the way the IMAGE
-                        // command's pick does; only when that also finds
+                        // No text — the clipboard may still hold an IMAGE (a
+                        // pasted screenshot). Read it and attach it the way the
+                        // IMAGE command's pick does; only when that also finds
                         // nothing does the unsupported-content error surface.
-                        // Native has no image route off the sync clipboard.
-                        #[cfg(target_arch = "wasm32")]
-                        return Task::perform(
-                            crate::sys::read_clipboard_image(),
-                            Message::SystemClipboardPasteImage,
-                        );
-                        #[cfg(not(target_arch = "wasm32"))]
-                        {
-                            self.command_line.push_error(
-                                crate::tr!("clipboard", "no-supported-content").as_ref(),
-                            );
-                            Task::none()
-                        }
+                        self.read_system_clipboard_image()
                     }
                     Text::Unavailable => {
                         self.command_line
@@ -6954,10 +6940,9 @@ impl OpenCADStudio {
                 }
             }
 
-            // Web: the clipboard-image fallback of a text-less paste either
+            // The clipboard-image fallback of a text-less paste either
             // attaches the image or falls back to the same error the text
             // path reports when nothing readable was on the clipboard.
-            #[cfg(target_arch = "wasm32")]
             Message::SystemClipboardPasteImage(image) => match image {
                 Some((name, bytes)) => self.paste_clipboard_image(name, bytes),
                 None => {
