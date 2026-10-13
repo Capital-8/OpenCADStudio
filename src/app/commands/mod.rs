@@ -490,6 +490,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "EXPORTPDF",
         "EXPORTSVG",
         "PRINTALL",
+        "PUBLISH",
         "DDIM",
         // Inquiry: list the whole drawing database.
         "DBLIST",

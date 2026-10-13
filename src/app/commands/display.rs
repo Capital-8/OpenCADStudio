@@ -951,7 +951,9 @@ impl OpenCADStudio {
             "PLOT" | "PRINT" => {
                 return Some(Task::done(Message::PlotDialogOpen));
             }
-            "PRINTALL" => {
+            // PUBLISH: the layouts of the drawing, each with its own page
+            // setup, into one multi-page PDF or to the printer.
+            "PRINTALL" | "PUBLISH" => {
                 return Some(Task::done(Message::PrintAllOpen));
             }
             // PRINTERS — what the system reports about printing, on the
