@@ -124,6 +124,7 @@ pub(super) const NAMES: &[&str] = &[
     "toggle_grid",
     "toggle_snap",
     "toggle_ortho",
+    "grip_menu_pick",
     "mtext_insert",
     "mtext_commit",
     "mtext_cancel",
@@ -1996,6 +1997,20 @@ impl OpenCADStudio {
             "toggle_grid" => Message::ToggleGrid,
             "toggle_snap" => Message::ToggleSnapEnabled,
             "toggle_ortho" => Message::ToggleOrtho,
+            // Choose an entry of the open multi-functional grip menu by its
+            // position (0 = first), as a click on it does.
+            "grip_menu_pick" => {
+                let entries = self.grip_popup.as_ref().map_or(0, |popup| popup.items.len());
+                if entries == 0 {
+                    return Err(failure("menu_closed", "No grip menu is open"));
+                }
+                let index = string(req, "value")?
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|index| *index < entries)
+                    .ok_or_else(|| failure("invalid_value", "value is a menu entry index"))?;
+                Message::GripMenuPick(index)
+            }
             "mtext_insert" => {
                 if self.mtext_editor.is_none() {
                     return Err(failure("editor_closed", "MText editor is closed"));

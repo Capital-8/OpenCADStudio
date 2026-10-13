@@ -55,6 +55,16 @@ fn polyline_add_vertex_target(entity: &AcadEntityType, grip_id: usize) -> Option
         AcadEntityType::Polyline3D(polyline) if grip_id < polyline.vertices.len() => {
             Some((grip_id + 1, polyline.vertices.len()))
         }
+        // A hatch boundary vertex: the new vertex is the next grip.
+        AcadEntityType::Hatch(hatch) => {
+            use crate::entities::traits::Grippable;
+            use crate::scene::model::object::GripMenuAction;
+            hatch
+                .grip_menu(grip_id)
+                .iter()
+                .any(|item| matches!(item.action, GripMenuAction::AddVertex))
+                .then(|| (grip_id + 1, hatch.grips().len()))
+        }
         _ => None,
     }
 }
@@ -65,6 +75,9 @@ fn polyline_vertex_count(entity: &AcadEntityType) -> Option<usize> {
         AcadEntityType::Polyline(polyline) => Some(polyline.vertices.len()),
         AcadEntityType::Polyline2D(polyline) => Some(polyline.vertices.len()),
         AcadEntityType::Polyline3D(polyline) => Some(polyline.vertices.len()),
+        AcadEntityType::Hatch(hatch) => {
+            Some(crate::entities::traits::Grippable::grips(hatch).len())
+        }
         _ => None,
     }
 }
