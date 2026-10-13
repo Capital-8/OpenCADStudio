@@ -55,6 +55,46 @@ fn main_depth(app: &OpenCADStudio) -> usize {
 }
 
 #[test]
+fn local_undo_preserves_imported_native_networks_when_constraints_are_unchanged() {
+    use codec::objects::{AssocNetwork, AssociativeData, AssociativeObject, Dictionary, ObjectType};
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    let doc = &mut app.tabs[i].scene.document;
+    let owner = doc.block_records.get("EDIT_ME").unwrap().handle;
+    let dictionary_handle = doc.allocate_handle();
+    let network_handle = doc.allocate_handle();
+    let mut dictionary = Dictionary::new();
+    dictionary.handle = dictionary_handle;
+    dictionary.owner = owner;
+    dictionary.hard_owner = true;
+    dictionary.add_entry("ACAD_ASSOCNETWORK", network_handle);
+    doc.objects
+        .insert(dictionary_handle, ObjectType::Dictionary(dictionary));
+    let network = AssociativeObject {
+        handle: network_handle,
+        owner: dictionary_handle,
+        reactors: vec![dictionary_handle],
+        dxf_name: "ASSOCNETWORK".into(),
+        cpp_class_name: "AcDbAssocNetwork".into(),
+        data: AssociativeData::Network(AssocNetwork::default()),
+        ..Default::default()
+    };
+    doc.objects
+        .insert(network_handle, ObjectType::Associative(network));
+    begin(&mut app, reference);
+    let original_objects = app.tabs[i].scene.document.objects.clone();
+    circle(&mut app, 1.0);
+    assert!(!app.save_block_edit_as(i, "COPY"));
+    assert_eq!(app.tabs[i].scene.document.objects, original_objects);
+    app.undo_steps(1);
+    assert_eq!(members(&app).len(), 1);
+    assert_eq!(app.tabs[i].scene.document.objects, original_objects);
+    app.redo_steps(1);
+    assert_eq!(members(&app).len(), 2);
+    assert_eq!(app.tabs[i].scene.document.objects, original_objects);
+}
+
+#[test]
 fn save_as_forks_unsaved_edits_and_undoes_as_one_drawing_step() {
     let (mut app, reference) = fixture();
     begin(&mut app, reference);

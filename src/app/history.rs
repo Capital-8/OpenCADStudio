@@ -1126,6 +1126,7 @@ impl OpenCADStudio {
         i: usize,
         had_full: bool,
         layer_panel_changed: bool,
+        native_graph_changed: bool,
         changes: &[(Handle, crate::scene::ChangeKind)],
     ) {
         self.tabs[i].edit_revision = self.tabs[i].edit_revision.wrapping_add(1);
@@ -1173,7 +1174,11 @@ impl OpenCADStudio {
                     }
                 }
             }
-            scene.sync_native_parametric_graph();
+            // Geometry or visibility replay does not change the constraint
+            // model. Rebuilding its graph would replace imported networks.
+            if native_graph_changed {
+                scene.sync_native_parametric_graph();
+            }
             scene.clear_preview_wire();
         }
         // UCS state is cached separately from its persisted header/viewport
@@ -1216,6 +1221,7 @@ impl OpenCADStudio {
         let mut last_label = String::new();
         let mut had_full = false;
         let mut layer_panel_changed = false;
+        let mut native_graph_changed = false;
         let mut changes = Vec::new();
         for _ in 0..steps {
             let Some(snapshot) = self.tabs[i].history.undo_stack.pop() else {
@@ -1225,6 +1231,8 @@ impl OpenCADStudio {
             let step_label = last_label.clone();
             match snapshot {
                 HistorySnapshot::Delta(mut d) => {
+                    native_graph_changed |=
+                        !d.parametric_constraints.is_empty() || d.named_parameters.is_some();
                     // Symmetric: undo applies the before side, then the same
                     // delta rides to the redo stack (it still holds the after
                     // side) — no current-state capture needed.
@@ -1259,7 +1267,13 @@ impl OpenCADStudio {
             }
             self.refedit_after_history_step(i, &step_label, true);
         }
-        self.finish_history_apply(i, had_full, layer_panel_changed, &changes);
+        self.finish_history_apply(
+            i,
+            had_full,
+            layer_panel_changed,
+            native_graph_changed,
+            &changes,
+        );
         self.command_line
             .push_output(crate::tf!("Undo: {last_label}").as_ref());
     }
@@ -1278,6 +1292,7 @@ impl OpenCADStudio {
         let mut last_label = String::new();
         let mut had_full = false;
         let mut layer_panel_changed = false;
+        let mut native_graph_changed = false;
         let mut changes = Vec::new();
         for _ in 0..steps {
             let Some(snapshot) = self.tabs[i].history.redo_stack.pop() else {
@@ -1287,6 +1302,8 @@ impl OpenCADStudio {
             let step_label = last_label.clone();
             match snapshot {
                 HistorySnapshot::Delta(mut d) => {
+                    native_graph_changed |=
+                        !d.parametric_constraints.is_empty() || d.named_parameters.is_some();
                     layer_panel_changed |= d.structure.as_ref().is_some_and(|structure| {
                         matches!(
                             structure,
@@ -1318,7 +1335,13 @@ impl OpenCADStudio {
             }
             self.refedit_after_history_step(i, &step_label, false);
         }
-        self.finish_history_apply(i, had_full, layer_panel_changed, &changes);
+        self.finish_history_apply(
+            i,
+            had_full,
+            layer_panel_changed,
+            native_graph_changed,
+            &changes,
+        );
         self.command_line
             .push_output(crate::tf!("Redo: {last_label}").as_ref());
     }
