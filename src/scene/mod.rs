@@ -8847,6 +8847,14 @@ impl Scene {
                 body.wires = wires;
                 body.silhouettes.clear();
             }
+            // The cut mesh is drawn as the solid it bounds.
+            EntityType::Mesh(_) | EntityType::PolygonMesh(_) | EntityType::PolyfaceMesh(_) => {
+                let mut solid = codec::entities::Solid3D::new();
+                solid.common = entity.common().clone();
+                solid.point_of_reference = reference;
+                solid.wires = wires;
+                entity = EntityType::Solid3D(solid);
+            }
             _ => return Err(()),
         }
         Ok(Some(entity))
@@ -8872,6 +8880,12 @@ impl Scene {
             Some(EntityType::Surface(surface)) => {
                 crate::scene::convert::solid3d_tess::kernel_surface_body(surface)
             }
+            // A mesh that closes a volume is cut as the solid it bounds.
+            Some(
+                mesh @ (EntityType::Mesh(_)
+                | EntityType::PolygonMesh(_)
+                | EntityType::PolyfaceMesh(_)),
+            ) => crate::entities::mesh::closed_mesh_body(mesh),
             _ => None,
         }?;
         Some(std::borrow::Cow::Owned(body))
