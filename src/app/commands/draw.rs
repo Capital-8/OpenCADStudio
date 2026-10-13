@@ -764,7 +764,8 @@ impl OpenCADStudio {
                 });
                 let new_cmd =
                     HatchCommand::new(outlines, boundary_sources, selected, inherited, plane)
-                        .with_origin(self.tabs[i].scene.document.hatch_origin());
+                        .with_origin(self.tabs[i].scene.document.hatch_origin())
+                        .with_associative(self.hatch_associative);
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
                 self.refresh_area_preview(i);

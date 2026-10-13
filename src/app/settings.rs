@@ -398,6 +398,8 @@ pub struct UserSettings {
     pub cursor_size: i32,
     /// PICKBOX: normalized visible-box and click-aperture size.
     pub pick_box: i32,
+    /// HPASSOC: new hatches follow their boundary objects.
+    pub hatch_associative: bool,
     /// When true, double-clicking a block reference starts REFEDIT instead of BEDIT.
     pub double_click_block_refedit: bool,
     /// When true, double-clicking a block with attributes opens ATTEDIT.
@@ -829,6 +831,7 @@ impl Default for UserSettings {
             zoom_factor: 60,
             cursor_size: 5,
             pick_box: 3,
+            hatch_associative: true,
             options_tab: crate::ui::window::options::OptionsTab::General,
             show_viewcube: true,
             show_ucs_icon: true,

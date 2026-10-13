@@ -640,6 +640,8 @@ pub(super) struct OpenCADStudio {
     cursor_size: i32,
     /// Selection-box size setting (PICKBOX, 0..=50).
     pick_box: i32,
+    /// HPASSOC: new hatches follow their boundary objects.
+    hatch_associative: bool,
     /// Use REFEDIT rather than BEDIT when double-clicking an attribute-free block.
     double_click_block_refedit: bool,
     /// Open ATTEDIT when double-clicking a block with attributes.
@@ -4534,6 +4536,7 @@ impl OpenCADStudio {
             zoom_factor_input: 60.to_string(),
             cursor_size: 5,
             pick_box: 3,
+            hatch_associative: true,
             double_click_block_refedit: false,
             double_click_block_attedit: true,
             right_click_mode: settings::RightClickMode::ShortcutMenu,

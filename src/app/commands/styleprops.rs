@@ -1148,6 +1148,7 @@ impl OpenCADStudio {
                     | "SHORTCUTMENUDURATION"
                     | "CURSORSIZE"
                     | "PICKBOX"
+                    | "HPASSOC"
                     | "CURSORTYPE"
                     | "SNAPANG"
                     | "TEXTFILL"
@@ -2188,6 +2189,17 @@ impl OpenCADStudio {
                                 },
                                 None => Ok((format!("PICKBOX = {}", self.pick_box), false)),
                             },
+                            "HPASSOC" => match value.as_deref() {
+                                Some(v @ ("0" | "1")) => {
+                                    self.hatch_associative = v == "1";
+                                    Ok((format!("HPASSOC = {v}"), true))
+                                }
+                                Some(_) => Err("SETVAR: 0 or 1 required.".into()),
+                                None => Ok((
+                                    format!("HPASSOC = {}", u8::from(self.hatch_associative)),
+                                    false,
+                                )),
+                            },
                             "CURSORTYPE" => match &value {
                                 Some(v) => match v.as_str() {
                                     "0" => {
@@ -3134,6 +3146,7 @@ impl OpenCADStudio {
                                         | "SHORTCUTMENUDURATION"
                                         | "CURSORSIZE"
                                         | "PICKBOX"
+                                        | "HPASSOC"
                                         | "CURSORTYPE"
                                         | "SNAPANG"
                                         | "CLIPROMPTLINES"

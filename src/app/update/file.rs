@@ -780,6 +780,7 @@ impl OpenCADStudio {
             zoom_factor: self.zoom_factor,
             cursor_size: self.cursor_size,
             pick_box: self.pick_box,
+            hatch_associative: self.hatch_associative,
             options_tab: self.options_tab,
             show_viewcube: self.show_viewcube,
             show_ucs_icon: self.show_ucs_icon,
@@ -891,6 +892,7 @@ impl OpenCADStudio {
         self.zoom_factor_input = self.zoom_factor.to_string();
         self.cursor_size = s.cursor_size.clamp(1, 100);
         self.pick_box = s.pick_box.clamp(0, 50);
+        self.hatch_associative = s.hatch_associative;
         self.options_tab = s.options_tab;
         self.spacemouse_preferences = s.spacemouse;
         // These four drive real features with commands and status-bar pills,
