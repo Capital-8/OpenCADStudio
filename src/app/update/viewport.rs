@@ -1233,6 +1233,9 @@ impl OpenCADStudio {
             return Task::none();
         }
         let i = self.active_tab;
+        if let Some(task) = self.start_drag_move(i, p) {
+            return Task::batch([task, self.on_viewport_move(p)]);
+        }
         self.constraint_glyph_tooltip = None;
         let constraint_hover = self
             .constraint_glyph_under(i, p)
@@ -3580,6 +3583,68 @@ impl OpenCADStudio {
         Some((constraint.kind, constraint.refs.clone()))
     }
 
+    /// Whether a selected object lies under `p` (tile-local).
+    fn selected_object_under(
+        &self,
+        i: usize,
+        p: Point,
+        bounds: iced::Rectangle,
+        edit_cam: &Option<crate::scene::view::camera::Camera>,
+    ) -> bool {
+        let (view_rot, eye, wires) = self.pick_view(i, edit_cam, bounds);
+        let aperture = crate::ui::overlay::pick_box_aperture_px(self.pick_box);
+        let world = self.cursor_model_point(i, edit_cam, p, bounds);
+        let scene = &self.tabs[i].scene;
+        let candidates = scene
+            .interaction_hover_candidates_near(wires, world, view_rot, eye, bounds, aperture * 2.0);
+        scene::pick::hit_test::click_hit(
+            p,
+            &candidates,
+            view_rot,
+            eye,
+            bounds,
+            scene.document.header.lineweight_display,
+            aperture,
+            &scene.draw_depth_map(),
+        )
+        .and_then(Scene::handle_from_wire_name)
+        .is_some_and(|handle| scene.selected.contains(&handle))
+    }
+
+    /// Once a press on a selected object has moved far enough, MOVE (COPY
+    /// with Ctrl) runs on the selection from the grabbed point, so the drop
+    /// gets the command's preview, snaps and ortho.
+    fn start_drag_move(&mut self, i: usize, p: Point) -> Option<Task<Message>> {
+        let (base, false) = self.drag_move? else {
+            return None;
+        };
+        {
+            let mut sel = self.tabs[i].scene.selection.borrow_mut();
+            let press = sel.input.left_press_pos?;
+            let held_ms = sel
+                .input
+                .left_press_time
+                .map_or(u128::MAX, |time| time.elapsed().as_millis());
+            let (dx, dy) = (p.x - press.x, p.y - press.y);
+            if !sel.input.left_down || held_ms < POLY_START_DELAY_MS || dx * dx + dy * dy <= 9.0 {
+                return None;
+            }
+            sel.input.left_dragging = true;
+            sel.gesture.clear_left();
+        }
+        self.drag_move = Some((base, true));
+        let command = if self.ctrl_down { "COPY" } else { "MOVE" };
+        let started = self.update(Message::Command(command.to_string()));
+        if self.tabs[i].active_cmd.is_none() {
+            self.drag_move = None;
+            return Some(started);
+        }
+        Some(Task::batch([
+            started,
+            self.feed_command(crate::command::StepInput::Point(base)),
+        ]))
+    }
+
     pub(super) fn on_viewport_left_press(&mut self) -> Task<Message> {
         let i = self.active_tab;
         self.block_palette.pressed = None;
@@ -3993,6 +4058,12 @@ impl OpenCADStudio {
             .gesture
             .box_anchor
             .is_none();
+        // A press on a selected object may become a drag of the selection.
+        self.drag_move = (self.tabs[i].active_cmd.is_none()
+            && !self.shift_down
+            && !self.tabs[i].scene.selected.is_empty()
+            && self.selected_object_under(i, p, bounds, &edit_cam))
+        .then_some((self.tabs[i].last_cursor_world, false));
         let mut sel = self.tabs[i].scene.selection.borrow_mut();
         sel.input.left_down = true;
         // Stored in full-canvas space (like ViewportMove's cursor and
@@ -4015,6 +4086,26 @@ impl OpenCADStudio {
         // A block dragged from the Blocks palette lands here.
         if let Some(item) = self.take_block_drop() {
             return self.drop_block(item);
+        }
+        // A dragged selection drops where the button comes up: the release
+        // is the MOVE / COPY destination click, and a COPY places one copy.
+        if let Some((_, true)) = self.drag_move.take() {
+            {
+                // Starting the command reset the press; the drop reads as a
+                // click at the cursor.
+                let mut sel = self.tabs[i].scene.selection.borrow_mut();
+                sel.input.left_down = true;
+                sel.input.left_dragging = false;
+            }
+            let placed = self.on_viewport_left_release();
+            let copying = self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .is_some_and(|command| command.name() == "COPY");
+            if !copying {
+                return placed;
+            }
+            return Task::batch([placed, self.feed_command(crate::command::StepInput::Enter)]);
         }
         if let Some(command) = self.tabs[i].active_cmd.as_mut() {
             command.set_ctrl(self.ctrl_down);

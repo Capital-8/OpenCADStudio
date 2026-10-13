@@ -1223,6 +1223,10 @@ pub(super) struct OpenCADStudio {
     /// A direction typed as `<angle` at a point prompt: the next point stays
     /// on it until a point is placed.
     angle_override: Option<glam::DVec3>,
+    /// A left press on a selected object: the point it grabbed, and whether
+    /// the drag has turned into a MOVE (or, with Ctrl, a COPY) of the
+    /// selection.
+    drag_move: Option<(glam::DVec3, bool)>,
     /// Inline rename state: (original_name, current_edit_value).
     layout_rename_state: Option<(String, String)>,
     /// Timestamp of the previous viewport left-click release (for double-click detection).
@@ -4784,6 +4788,7 @@ impl OpenCADStudio {
             snap_override_popup: None,
             axis_lock_dir: None,
             angle_override: None,
+            drag_move: None,
             layout_rename_state: None,
             last_vp_click_time: None,
             last_vp_click_pos: None,
