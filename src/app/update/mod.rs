@@ -229,6 +229,7 @@ impl OpenCADStudio {
             }
             Some(GeometricTolerance) => self.geometric_tolerance = None,
             Some(BlockDefinition) => self.block_definition = None,
+            Some(BlockSaveAs) => self.block_save_as = None,
             Some(PdfAttach) => self.pdf_attach = None,
             Some(UnderlayLayers) => self.underlay_layers = None,
             Some(PdfImportSettings) => self.pdf_import_settings = None,
@@ -442,6 +443,12 @@ impl OpenCADStudio {
                         }
                     }
                 }
+            }
+            if self.active_modal == Some(super::ModalKind::BlockSaveAs)
+                && (matches!(msg, Message::CommandFinalize)
+                    || matches!(&msg, Message::ShortcutPressed(key) if key.rsplit('+').next() == Some("ENTER") || key.rsplit('+').next() == Some("RETURN")))
+            {
+                return self.apply_block_save_as_dialog();
             }
             if self.active_modal == Some(super::ModalKind::WriteBlock) {
                 if matches!(msg, Message::CommandFinalize)
@@ -6539,7 +6546,13 @@ impl OpenCADStudio {
                     self.ribbon.close_dropdown();
                     return Task::none();
                 }
-                self.ribbon.select_dropdown_item(dropdown_id, cmd);
+                // Save As is a secondary operation; the save face keeps BSAVE.
+                let face = if dropdown_id == "BLOCK_SAVE" {
+                    "BSAVE"
+                } else {
+                    cmd
+                };
+                self.ribbon.select_dropdown_item(dropdown_id, face);
                 self.ribbon.activate_tool(cmd);
                 self.dispatch_command(cmd)
             }
@@ -10442,6 +10455,16 @@ impl OpenCADStudio {
 
             Message::UnsavedDialogSave => self.on_unsaved_dialog_save(),
             Message::BlockEditChangesSave => self.resolve_block_edit_close(true),
+            Message::BlockSaveAsName(name) => {
+                let i = self.active_tab;
+                let error = self.validate_block_save_as_name(i, &name).err();
+                if let Some(state) = self.block_save_as.as_mut() {
+                    state.name = name;
+                    state.error = error;
+                }
+                Task::none()
+            }
+            Message::BlockSaveAsApply => self.apply_block_save_as_dialog(),
             Message::BlockEditChangesDiscard => self.resolve_block_edit_close(false),
             Message::BlockEditChangesCancel => {
                 self.cancel_block_edit_close();

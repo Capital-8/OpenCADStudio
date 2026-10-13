@@ -9,6 +9,7 @@ pub(crate) mod config;
 pub use automation::{export_headless, serve};
 mod annotation_data;
 mod block_editor;
+mod block_save_as;
 #[cfg(test)]
 mod block_editor_tests;
 mod command_driver;
@@ -570,6 +571,7 @@ pub(super) struct OpenCADStudio {
     drawing_units: Option<crate::ui::window::drawing_units::State>,
     /// Working copy of the Block Definition dialog; `None` while it is closed.
     block_definition: Option<crate::ui::window::block_definition::BlockDefinitionState>,
+    block_save_as: Option<crate::ui::window::block_save_as::State>,
     /// PDF dialogs' working copies; `None` while closed.
     pdf_attach: Option<crate::ui::window::pdf_dialogs::PdfAttachState>,
     point_cloud_attach: Option<crate::ui::window::pdf_dialogs::PointCloudAttachState>,
@@ -2177,6 +2179,7 @@ pub enum ModalKind {
     DimStyle,
     Unsaved,
     BlockEditChanges,
+    BlockSaveAs,
     SaveDialog,
     Recovery,
     /// Fonts referenced by the drawing are missing on this machine.
@@ -2807,6 +2810,8 @@ pub enum Message {
     BlockEditChangesSave,
     BlockEditChangesDiscard,
     BlockEditChangesCancel,
+    BlockSaveAsName(String),
+    BlockSaveAsApply,
     // ── AEC / unsupported-object drop warning (lossy Save-As) ──────────────
     /// Save as the source DWG version so the unsupported objects survive.
     AecDropSameVersion,
@@ -4551,6 +4556,7 @@ impl OpenCADStudio {
             layer_translator: None,
             drawing_units: None,
             block_definition: None,
+            block_save_as: None,
             pdf_attach: None,
             point_cloud_attach: None,
             attdef_dialog: None,

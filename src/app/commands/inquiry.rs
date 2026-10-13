@@ -614,6 +614,12 @@ impl OpenCADStudio {
             "BSAVE" => {
                 self.save_block_edit(i);
             }
+            "BSAVEAS" => {
+                self.open_block_save_as_dialog(i);
+            }
+            cmd if cmd.starts_with("BSAVEAS:") => {
+                self.save_block_edit_as(i, &cmd["BSAVEAS:".len()..]);
+            }
             "BCLOSE" => {
                 if self.tabs[i].active_block_edit.is_none() {
                     self.command_line

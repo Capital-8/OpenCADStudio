@@ -32,6 +32,12 @@ pub fn block_edit_tools() -> Vec<ToolDef> {
             event: ModuleEvent::Command("BSAVE".to_string()),
         },
         ToolDef {
+            id: "BSAVEAS",
+            label: "Save Block As",
+            icon: IconKind::Svg(include_bytes!("../../../../assets/icons/ui/save.svg")),
+            event: ModuleEvent::Command("BSAVEAS".to_string()),
+        },
+        ToolDef {
             id: "BCLOSE",
             label: "Close Block Editor",
             icon: IconKind::Svg(include_bytes!("../../../../assets/icons/mt_cancel.svg")),
@@ -111,5 +117,5 @@ inventory::submit!(crate::command::CommandRegistration {
     names: &["BEDIT_DISCARD"]
 });
 inventory::submit!(crate::command::CommandRegistration {
-    names: &["BSAVE", "BCLOSE"]
+    names: &["BSAVE", "BSAVEAS", "BCLOSE"]
 });

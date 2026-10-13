@@ -36,11 +36,28 @@ impl CadModule for BlockEditorModule {
                             "Edit Block",
                             include_bytes!("../../../assets/icons/edit_block.svg"),
                         ),
-                        command(
-                            "BSAVE",
-                            "Save Block",
-                            include_bytes!("../../../assets/icons/mt_ok.svg"),
-                        ),
+                        RibbonItem::LargeDropdown {
+                            id: "BLOCK_SAVE",
+                            label: "Save Block",
+                            icon: IconKind::Svg(include_bytes!("../../../assets/icons/mt_ok.svg")),
+                            items: vec![
+                                (
+                                    "BSAVE",
+                                    "Save Block",
+                                    IconKind::Svg(include_bytes!(
+                                        "../../../assets/icons/mt_ok.svg"
+                                    )),
+                                ),
+                                (
+                                    "BSAVEAS",
+                                    "Save Block As",
+                                    IconKind::Svg(include_bytes!(
+                                        "../../../assets/icons/ui/save.svg"
+                                    )),
+                                ),
+                            ],
+                            default: "BSAVE",
+                        },
                         command(
                             "BCLOSE",
                             "Close Block Editor",

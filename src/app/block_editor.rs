@@ -224,6 +224,198 @@ impl OpenCADStudio {
         self.block_edit_delta(i).is_some()
     }
 
+    pub(super) fn validate_block_save_as_name(
+        &self,
+        i: usize,
+        raw: &str,
+    ) -> Result<String, String> {
+        let name =
+            crate::scene::block_service::validate_block_name(raw).map_err(|e| e.to_string())?;
+        if self.tabs[i]
+            .scene
+            .document
+            .block_records
+            .get(&name)
+            .is_some()
+        {
+            return Err(
+                crate::scene::block_service::BlockServiceError::NameExists(name).to_string(),
+            );
+        }
+        Ok(name)
+    }
+
+    pub(super) fn open_block_save_as_dialog(&mut self, i: usize) {
+        let Some(session) = self.tabs[i].active_block_edit_session() else {
+            self.command_line
+                .push_error(crate::t!("No block editor is open.").as_ref());
+            return;
+        };
+        let source = session.br_handle;
+        let name = session.block_name.clone();
+        let mut existing_names = self.tabs[i].scene.custom_block_names();
+        existing_names.sort_by_key(|name| name.to_ascii_lowercase());
+        self.block_save_as = Some(crate::ui::window::block_save_as::State {
+            document_id: self.tabs[i].id,
+            source,
+            name: String::new(),
+            existing_names,
+            preview: self.tabs[i].scene.block_preview_wires(&name),
+            error: self.validate_block_save_as_name(i, "").err(),
+        });
+        self.active_modal = Some(ModalKind::BlockSaveAs);
+        self.reset_modal_geometry();
+    }
+
+    pub(super) fn apply_block_save_as_dialog(&mut self) -> Task<Message> {
+        let Some(state) = self.block_save_as.as_ref() else {
+            return Task::none();
+        };
+        let id = state.document_id;
+        let source = state.source;
+        let name = state.name.clone();
+        let Some(i) = self.tabs.iter().position(|tab| tab.id == id) else {
+            return Task::none();
+        };
+        if self.tabs[i]
+            .active_block_edit_session()
+            .is_none_or(|session| session.br_handle != source)
+        {
+            if let Some(state) = self.block_save_as.as_mut() {
+                state.error = Some(
+                    crate::t!("The block editor has changed; reopen Save Block As.").into_owned(),
+                );
+            }
+            return Task::none();
+        }
+        self.active_tab = i;
+        if self.save_block_edit_as(i, &name) {
+            self.block_save_as = None;
+            self.active_modal = None;
+            self.reset_modal_geometry();
+        } else if let Some(state) = self.block_save_as.as_mut() {
+            state.error = self.command_line.last_error.clone();
+        }
+        Task::none()
+    }
+
+    pub(super) fn save_block_edit_as(&mut self, i: usize, raw: &str) -> bool {
+        let Some(session) = self.tabs[i].active_block_edit_session() else {
+            self.command_line
+                .push_error(crate::t!("No block editor is open.").as_ref());
+            return false;
+        };
+        let source_name = session.block_name.clone();
+        let source_handle = session.br_handle;
+        let name = match self.validate_block_save_as_name(i, raw) {
+            Ok(name) => name,
+            Err(error) => {
+                self.command_line.push_error(&error);
+                return false;
+            }
+        };
+        self.finish_pending_history(i);
+        self.reconcile_block_edit_membership(i);
+        let Some(history) = self.tabs[i].block_edit_history.as_ref() else {
+            return false;
+        };
+        let copied = match super::block_save_as::copy_definition(
+            &self.tabs[i].scene.document,
+            history.checkpoint.document.clone(),
+            &source_name,
+            &name,
+        ) {
+            Ok(copied) => copied,
+            Err(error) => {
+                self.command_line.push_error(&error);
+                return false;
+            }
+        };
+        let mut constraints = history.checkpoint.constraints.clone();
+        for mut set in self.tabs[i].scene.parametric_constraints.iter().filter(|set| {
+            matches!(set.scope, crate::scene::parametric_constraints::ParametricScope::Block(handle) if copied.handles.contains_key(&handle))
+        }).cloned() {
+            if !set.retained_standard_groups.is_empty() || set.constraints.iter().any(|c| c.native_origin.is_some()) {
+                self.command_line.push_error(crate::t!("Save Block As cannot copy retained native constraints yet.").as_ref());
+                return false;
+            }
+            let crate::scene::parametric_constraints::ParametricScope::Block(old) = set.scope else { unreachable!() };
+            set.scope = crate::scene::parametric_constraints::ParametricScope::Block(copied.handles[&old]);
+            for constraint in &mut set.constraints {
+                for reference in constraint.refs.iter_mut().chain(constraint.rigid_points.iter_mut().map(|(r, _)| r)) {
+                    let Some(new) = copied.handles.get(&reference.entity) else {
+                        self.command_line.push_error(crate::t!("A block constraint refers to geometry outside the definition.").as_ref());
+                        return false;
+                    };
+                    reference.entity = *new;
+                }
+            }
+            for handle in set.dimensions.values_mut() {
+                let Some(new) = copied.handles.get(handle) else {
+                    self.command_line.push_error(crate::t!("A block constraint dimension is missing.").as_ref());
+                    return false;
+                };
+                *handle = *new;
+            }
+            set.dof = None;
+            set.conflicts.clear();
+            constraints.push(set);
+        }
+        for entity in copied.document.entities_in_block(&name) {
+            if let EntityType::Insert(insert) = entity {
+                if crate::scene::block_service::would_create_cycle(
+                    &copied.document,
+                    &name,
+                    &insert.block_name,
+                ) {
+                    self.command_line.push_error(
+                        &crate::scene::block_service::circular_dependency_error(
+                            &name,
+                            &insert.block_name,
+                        ),
+                    );
+                    return false;
+                }
+            }
+        }
+        let parameters = self.tabs[i].scene.named_parameters.clone();
+        let active_layer = self.tabs[i].active_layer.clone();
+        self.tabs[i].scene.document = copied.document;
+        self.tabs[i].scene.parametric_constraints = constraints;
+        self.tabs[i].scene.named_parameters = parameters;
+        self.tabs[i].active_layer = active_layer;
+        let mut delta = self
+            .block_edit_delta(i)
+            .expect("a new definition changes the document");
+        delta.label = format!("Save block as {name}");
+        let mut history = self.tabs[i].block_edit_history.take().unwrap();
+        std::mem::swap(&mut self.tabs[i].history, &mut history.main);
+        self.push_undo_entry(i, HistorySnapshot::Delta(Box::new(delta)));
+        std::mem::swap(&mut self.tabs[i].history, &mut history.main);
+        self.tabs[i].history = HistoryState::default();
+        self.tabs[i].dirty = true;
+        let session = self.tabs[i].active_block_edit_session_mut().unwrap();
+        debug_assert_eq!(session.br_handle, source_handle);
+        session.br_handle = copied.record;
+        session.block_name = name.clone();
+        self.tabs[i].scene.block_edit_block = Some(copied.record);
+        self.tabs[i].scene.deselect_all();
+        self.tabs[i].active_grip = None;
+        self.grip_hover = None;
+        self.grip_popup = None;
+        self.visibility_popup = None;
+        history.checkpoint = self.block_edit_checkpoint(i);
+        self.tabs[i].block_edit_history = Some(history);
+        self.tabs[i].scene.rebuild_derived_caches();
+        self.tabs[i].refresh_active_ucs();
+        self.refresh_block_palette();
+        self.refresh_properties();
+        self.sync_ribbon_layers();
+        self.command_line
+            .push_output(crate::tf!("Block {} saved.", name).as_ref());
+        true
+    }
+
     pub(super) fn save_block_edit(&mut self, i: usize) -> bool {
         let Some(session) = self.tabs[i].active_block_edit_session() else {
             self.command_line

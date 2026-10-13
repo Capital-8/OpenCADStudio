@@ -77,6 +77,7 @@ impl OpenCADStudio {
             Some(K::LayerDeleteWarning) => crate::tr!("modal", "delete-layer"),
             Some(K::Unsaved) => crate::tr!("modal", "unsaved-changes"),
             Some(K::BlockEditChanges) => crate::t!("Block Editor").into_owned(),
+            Some(K::BlockSaveAs) => crate::t!("Save Block As").into_owned(),
             Some(K::PointStyle) => crate::tr!("modal", "point-style"),
             Some(K::AttributeEditor) => crate::tr!("modal", "attribute-editor"),
             Some(K::SaveDialog) => crate::tr!("modal", "save-drawing-as"),
@@ -496,6 +497,12 @@ impl OpenCADStudio {
                 let state = self.block_definition.as_ref()?;
                 sized_flow(ex, 580, 390, |flow| {
                     crate::ui::window::block_definition::view_window(state, flow)
+                })
+            }
+            super::super::ModalKind::BlockSaveAs => {
+                let state = self.block_save_as.as_ref()?;
+                sized_flow(ex, 430, 370, |flow| {
+                    crate::ui::window::block_save_as::view(state, flow)
                 })
             }
             super::super::ModalKind::PdfAttach => {

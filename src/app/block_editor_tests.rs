@@ -55,6 +55,520 @@ fn main_depth(app: &OpenCADStudio) -> usize {
 }
 
 #[test]
+fn save_as_forks_unsaved_edits_and_undoes_as_one_drawing_step() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    circle(&mut app, 1.0);
+    app.save_block_edit(app.active_tab);
+    let saved = members(&app);
+    circle(&mut app, 2.0);
+    let edited = members(&app).len();
+    assert!(app.save_block_edit_as(app.active_tab, "  COPY  "));
+    let i = app.active_tab;
+    assert_eq!(members(&app), saved);
+    assert_eq!(
+        app.tabs[i].active_block_edit_session().unwrap().block_name,
+        "COPY"
+    );
+    assert_eq!(
+        app.tabs[i]
+            .scene
+            .document
+            .block_records
+            .get("COPY")
+            .unwrap()
+            .entity_handles
+            .len(),
+        edited
+    );
+    assert_eq!(main_depth(&app), 2);
+    assert!(app.tabs[i].history.undo_stack.is_empty());
+    assert!(!app.block_edit_dirty(i));
+    app.undo_steps(1);
+    assert!(app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("COPY")
+        .is_some());
+    circle(&mut app, 3.0);
+    app.close_block_edit(i, true);
+    assert_eq!(
+        app.tabs[i]
+            .scene
+            .document
+            .block_records
+            .get("COPY")
+            .unwrap()
+            .entity_handles
+            .len(),
+        edited
+    );
+    app.undo_steps(1);
+    assert!(app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("COPY")
+        .is_none());
+    assert_eq!(members(&app), saved);
+    app.redo_steps(1);
+    assert_eq!(
+        app.tabs[i]
+            .scene
+            .document
+            .block_records
+            .get("COPY")
+            .unwrap()
+            .entity_handles
+            .len(),
+        edited
+    );
+}
+
+#[test]
+fn save_as_name_refusals_do_not_change_the_session() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    circle(&mut app, 1.0);
+    let i = app.active_tab;
+    let document = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    for name in ["", "bad/name", "edit_me", "EDIT_ME"] {
+        assert!(!app.save_block_edit_as(i, name));
+        assert_eq!(app.tabs[i].scene.document, document);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+        assert_eq!(main_depth(&app), 0);
+        assert_eq!(
+            app.tabs[i].active_block_edit_session().unwrap().block_name,
+            "EDIT_ME"
+        );
+    }
+    assert_eq!(
+        app.command_line.last_error.as_deref(),
+        Some("block \"EDIT_ME\" already exists")
+    );
+}
+
+#[test]
+fn save_as_dialog_cancel_and_enter_follow_the_current_session() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    circle(&mut app, 1.0);
+    let i = app.active_tab;
+    let document = app.tabs[i].scene.document.clone();
+    let _ = app.update(Message::DropdownSelectItem {
+        dropdown_id: "BLOCK_SAVE",
+        cmd: "BSAVEAS",
+    });
+    assert_eq!(app.active_modal, Some(ModalKind::BlockSaveAs));
+    let _ = app.update(Message::BlockSaveAsName("edit_me".into()));
+    assert!(app.block_save_as.as_ref().unwrap().error.is_some());
+    let _ = app.update(Message::CommandEscape);
+    assert!(app.block_save_as.is_none());
+    assert_eq!(app.tabs[i].scene.document, document);
+    let _ = app.dispatch_command("BSAVEAS");
+    let _ = app.update(Message::BlockSaveAsName("COPY".into()));
+    assert!(app.block_save_as.as_ref().unwrap().error.is_none());
+    let _ = app.update(Message::CommandFinalize);
+    assert!(app.active_modal.is_none());
+    assert_eq!(
+        app.tabs[i].active_block_edit_session().unwrap().block_name,
+        "COPY"
+    );
+}
+
+#[test]
+fn save_as_preserves_base_point_description_units_and_nested_attributes() {
+    use codec::entities::AttributeEntity;
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    app.tabs[i]
+        .scene
+        .define_block_raw("CHILD", Vector3::ZERO, vec![]);
+    let owner = app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("EDIT_ME")
+        .unwrap()
+        .handle;
+    let mut nested = Insert::new("CHILD", Vector3::new(4.0, 5.0, 0.0));
+    let mut attribute = AttributeEntity::new("TAG".into(), "value".into());
+    attribute.common.handle = app.tabs[i].scene.document.allocate_handle();
+    nested.attributes.push(attribute);
+    nested.common.owner_handle = owner;
+    nested.seqend_handle = Some(app.tabs[i].scene.document.allocate_handle());
+    let nested = app.tabs[i]
+        .scene
+        .document
+        .add_entity(EntityType::Insert(nested))
+        .unwrap();
+    let base = Vector3::new(12.0, 34.0, 0.0);
+    let record = app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get_mut("EDIT_ME")
+        .unwrap();
+    record.base_point = base;
+    record.description = "A reusable definition".into();
+    record.units = 4;
+    let source_marker = record.block_entity_handle;
+    if let Some(EntityType::Block(marker)) =
+        app.tabs[i].scene.document.get_entity_mut(source_marker)
+    {
+        marker.base_point = base;
+    }
+    let source_insert = app.tabs[i]
+        .scene
+        .document
+        .get_entity(nested)
+        .unwrap()
+        .clone();
+    begin(&mut app, reference);
+    assert!(app.save_block_edit_as(i, "COPY"));
+    let doc = &app.tabs[i].scene.document;
+    let record = doc.block_records.get("COPY").unwrap();
+    assert_eq!(record.base_point, base);
+    assert_eq!(record.units, 4);
+    assert_eq!(record.description, "A reusable definition");
+    assert_eq!(doc.get_entity(nested).unwrap(), &source_insert);
+    let copied = doc
+        .entities_in_block("COPY")
+        .find_map(|e| match e {
+            EntityType::Insert(insert) => Some(insert),
+            _ => None,
+        })
+        .unwrap();
+    let EntityType::Insert(original) = &source_insert else {
+        unreachable!()
+    };
+    assert_eq!(copied.block_name, "CHILD");
+    assert_eq!(copied.insert_point, original.insert_point);
+    assert_ne!(
+        copied.attributes[0].common.handle,
+        original.attributes[0].common.handle
+    );
+    assert_eq!(
+        copied.attributes[0].common.owner_handle,
+        copied.common.handle
+    );
+    assert_ne!(copied.seqend_handle, original.seqend_handle);
+    assert_eq!(copied.attributes[0].value, original.attributes[0].value);
+}
+
+#[test]
+fn save_as_clones_extension_dictionaries_and_draw_order_independently() {
+    use codec::objects::{
+        Dictionary, ObjectType, SortEntitiesTable, XRecord, XRecordEntry, XRecordValue,
+    };
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    let owner = app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("EDIT_ME")
+        .unwrap()
+        .handle;
+    let first = members(&app)[0];
+    let mut second = Line::from_points(Vector3::ZERO, Vector3::UNIT_Y);
+    second.common.owner_handle = owner;
+    let second = app.tabs[i]
+        .scene
+        .document
+        .add_entity(EntityType::Line(second))
+        .unwrap();
+    let root = app.tabs[i]
+        .scene
+        .document
+        .ensure_extension_dictionary(owner);
+    let mut record = XRecord::new();
+    record.handle = app.tabs[i].scene.document.allocate_handle();
+    record.owner = root;
+    record
+        .entries
+        .push(XRecordEntry::new(340, XRecordValue::Handle(first)));
+    let leaf = record.handle;
+    app.tabs[i]
+        .scene
+        .document
+        .objects
+        .insert(leaf, ObjectType::XRecord(record));
+    let mut order = SortEntitiesTable::for_block(owner);
+    order.handle = app.tabs[i].scene.document.allocate_handle();
+    order.owner_handle = root;
+    order.add_entry(first, Handle::new(0x200));
+    order.send_to_back(second);
+    let order_handle = order.handle;
+    app.tabs[i]
+        .scene
+        .document
+        .objects
+        .insert(order_handle, ObjectType::SortEntitiesTable(order));
+    let Some(ObjectType::Dictionary(dictionary)) =
+        app.tabs[i].scene.document.objects.get_mut(&root)
+    else {
+        unreachable!()
+    };
+    dictionary.add_entry("DATA", leaf);
+    dictionary.add_entry("ACAD_SORTENTS", order_handle);
+    let original: Dictionary = dictionary.clone();
+    begin(&mut app, reference);
+    assert!(app.save_block_edit_as(i, "COPY"));
+    let doc = &app.tabs[i].scene.document;
+    let owner = doc.block_records.get("COPY").unwrap().handle;
+    let copy_members = doc
+        .block_records
+        .get("COPY")
+        .unwrap()
+        .entity_handles
+        .clone();
+    let copied_root = doc.extension_dictionary_handle(owner).unwrap();
+    assert_ne!(root, copied_root);
+    assert_eq!(
+        doc.objects.get(&root),
+        Some(&ObjectType::Dictionary(original))
+    );
+    let Some(ObjectType::Dictionary(dictionary)) = doc.objects.get(&copied_root) else {
+        unreachable!()
+    };
+    let Some(ObjectType::XRecord(record)) = doc.objects.get(&dictionary.get("DATA").unwrap())
+    else {
+        unreachable!()
+    };
+    assert_eq!(record.owner, copied_root);
+    assert_eq!(
+        record.entries[0].value,
+        XRecordValue::Handle(copy_members[0])
+    );
+    let Some(ObjectType::SortEntitiesTable(order)) =
+        doc.objects.get(&dictionary.get("ACAD_SORTENTS").unwrap())
+    else {
+        unreachable!()
+    };
+    assert_eq!(order.block_owner_handle, owner);
+    assert!(
+        order.effective_sort_handle(copy_members[1]) < order.effective_sort_handle(copy_members[0])
+    );
+    app.close_block_edit(i, true);
+    app.undo_steps(1);
+    assert!(!app.tabs[i]
+        .scene
+        .document
+        .objects
+        .contains_key(&copied_root));
+    app.redo_steps(1);
+    assert!(app.tabs[i]
+        .scene
+        .document
+        .objects
+        .contains_key(&copied_root));
+}
+
+#[test]
+fn save_as_preserves_block_parameters_and_remaps_constraint_geometry() {
+    use crate::scene::parametric_constraints::{ConstraintKind, ParametricRef, ParametricScope};
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    let owner = app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("EDIT_ME")
+        .unwrap()
+        .handle;
+    let member = members(&app)[0];
+    let set = app.tabs[i]
+        .scene
+        .parametric_constraint_set_mut(ParametricScope::Block(owner));
+    set.local_parameters.set("width", "7").unwrap();
+    set.add(
+        ConstraintKind::Horizontal,
+        vec![ParametricRef::whole(member)],
+        None,
+    );
+    begin(&mut app, reference);
+    app.tabs[i]
+        .scene
+        .parametric_constraint_set_mut(ParametricScope::Block(owner))
+        .local_parameters
+        .set("width", "9")
+        .unwrap();
+    assert!(app.save_block_edit_as(i, "COPY"));
+    let new_owner = app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("COPY")
+        .unwrap()
+        .handle;
+    let copied = app.tabs[i]
+        .scene
+        .parametric_constraint_set(ParametricScope::Block(new_owner))
+        .unwrap();
+    assert_eq!(copied.local_parameters.resolve("width").unwrap(), 9.0);
+    assert_ne!(copied.constraints[0].refs[0].entity, member);
+    assert_eq!(
+        app.tabs[i]
+            .scene
+            .parametric_constraint_set(ParametricScope::Block(owner))
+            .unwrap()
+            .local_parameters
+            .resolve("width")
+            .unwrap(),
+        7.0
+    );
+    app.close_block_edit(i, true);
+    app.undo_steps(1);
+    assert!(app.tabs[i]
+        .scene
+        .parametric_constraint_set(ParametricScope::Block(new_owner))
+        .is_none());
+    app.redo_steps(1);
+    assert_eq!(
+        app.tabs[i]
+            .scene
+            .parametric_constraint_set(ParametricScope::Block(new_owner))
+            .unwrap()
+            .local_parameters
+            .resolve("width")
+            .unwrap(),
+        9.0
+    );
+}
+
+#[test]
+fn save_as_refuses_unsupported_owned_graphs_without_losing_edits() {
+    use codec::objects::{DynamicBlockObject, ObjectType};
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    let mut object = DynamicBlockObject::new("BLOCKLINEARPARAMETER", "LinearParameter");
+    object.handle = app.tabs[i].scene.document.allocate_handle();
+    object.owner = app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("EDIT_ME")
+        .unwrap()
+        .handle;
+    app.tabs[i]
+        .scene
+        .document
+        .objects
+        .insert(object.handle, ObjectType::DynamicBlock(object));
+    begin(&mut app, reference);
+    circle(&mut app, 1.0);
+    let document = app.tabs[i].scene.document.clone();
+    assert!(!app.save_block_edit_as(i, "COPY"));
+    assert_eq!(app.tabs[i].scene.document, document);
+    assert_eq!(members(&app).len(), 2);
+    assert_eq!(main_depth(&app), 0);
+    assert!(app
+        .command_line
+        .last_error
+        .as_ref()
+        .unwrap()
+        .contains("native object relationships"));
+}
+
+#[test]
+fn save_as_retains_new_shared_layers_and_nested_definitions() {
+    use codec::entities::{AttributeDefinition, AttributeEntity, MText};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.dispatch_command("LAYER NEW COPY_LAYER");
+    let _ = app.dispatch_command("CLAYER COPY_LAYER");
+    let mut definition = AttributeDefinition::new("TAG".into(), "Prompt".into(), "first".into());
+    definition.is_multiline = true;
+    definition.mtext_flag = codec::entities::attribute_definition::MTextFlag::MultiLine;
+    let mut text = MText::new();
+    text.value = "first\\Psecond".into();
+    definition.embedded_mtext = Some(Box::new(text));
+    app.tabs[i].scene.define_block_raw(
+        "NEW_CHILD",
+        Vector3::ZERO,
+        vec![EntityType::AttributeDefinition(definition)],
+    );
+    let source_definition = app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("NEW_CHILD")
+        .unwrap()
+        .entity_handles[0];
+    let mut child = Insert::new("NEW_CHILD", Vector3::ZERO);
+    let mut attribute = AttributeEntity::new("TAG".into(), "first".into());
+    attribute.attdef_handle = source_definition;
+    child.attributes.push(attribute);
+    child.common.layer = "COPY_LAYER".into();
+    child.common.owner_handle = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    app.tabs[i]
+        .scene
+        .document
+        .add_entity(EntityType::Insert(child))
+        .unwrap();
+    assert!(app.save_block_edit_as(i, "COPY"));
+    assert_eq!(app.tabs[i].active_layer, "COPY_LAYER");
+    assert!(app.tabs[i]
+        .scene
+        .document
+        .layers
+        .get("COPY_LAYER")
+        .is_some());
+    assert!(app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("NEW_CHILD")
+        .is_some());
+    assert_eq!(members(&app).len(), 1);
+    let doc = &app.tabs[i].scene.document;
+    let copied_definition = doc.block_records.get("NEW_CHILD").unwrap().entity_handles[0];
+    assert_ne!(copied_definition, source_definition);
+    let EntityType::AttributeDefinition(definition) = doc.get_entity(copied_definition).unwrap()
+    else {
+        unreachable!()
+    };
+    let text = definition.embedded_mtext.as_ref().unwrap();
+    assert_eq!(text.value, "first\\Psecond");
+    assert!(!text.common.handle.is_null());
+    let copied_attribute = doc
+        .entities_in_block("COPY")
+        .find_map(|entity| match entity {
+            EntityType::Insert(insert) => Some(&insert.attributes[0]),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(copied_attribute.attdef_handle, copied_definition);
+    assert!(app.tabs[i].scene.document.entities_in_block("COPY").any(|entity| matches!(entity, EntityType::Insert(insert) if insert.block_name=="NEW_CHILD" && insert.common.layer=="COPY_LAYER")));
+}
+
+#[test]
+fn save_as_can_create_an_empty_definition() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let original = members(&app);
+    app.push_undo_snapshot(i, "Erase");
+    app.tabs[i].scene.erase_entities(&original);
+    app.finish_pending_history(i);
+    assert!(app.save_block_edit_as(i, "EMPTY"));
+    assert_eq!(members(&app), original);
+    assert!(app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("EMPTY")
+        .unwrap()
+        .entity_handles
+        .is_empty());
+    assert!(!app.block_edit_dirty(i));
+}
+
+#[test]
 fn session_undo_preserves_membership_and_cannot_reach_drawing_history() {
     let (mut app, reference) = fixture();
     circle(&mut app, 50.0);

@@ -1035,6 +1035,20 @@ impl OpenCADStudio {
             scene.bump_constraints_epoch();
         }
         for entry in &d.parametric_constraints {
+            if let crate::scene::parametric_constraints::ParametricScope::Block(owner) = entry.scope
+            {
+                if !scene
+                    .document
+                    .block_records
+                    .iter()
+                    .any(|record| record.handle == owner)
+                {
+                    scene
+                        .parametric_constraints
+                        .retain(|set| set.scope != entry.scope);
+                    continue;
+                }
+            }
             let value = if undo { &entry.before } else { &entry.after };
             *scene.parametric_constraint_set_mut(entry.scope) = value.clone();
         }
