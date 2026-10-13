@@ -26,6 +26,9 @@ pub struct ExtrudeCommand {
     direction_start: Option<DVec3>,
     mode: ExtrudeMode,
     taper_angle: f64,
+    /// The taper prompt's default: the last angle given, which a new
+    /// extrusion does not apply until the Taper angle option is chosen.
+    taper_default: f64,
     last_height: Option<f64>,
     taper_return: ExtrudeStep,
     color: [f32; 4],
@@ -80,7 +83,8 @@ impl ExtrudeCommand {
             profile_direction: None,
             direction_start: None,
             mode: defaults.mode,
-            taper_angle: defaults.taper_angle,
+            taper_angle: 0.0,
+            taper_default: defaults.taper_angle,
             last_height: defaults.height,
             taper_return: ExtrudeStep::Height,
             color,
@@ -242,7 +246,7 @@ impl CadCommand for ExtrudeCommand {
             ExtrudeStep::Taper => format!(
                 "{} <{}>:",
                 t!("EXTRUDE  Specify taper angle or [Expression]"),
-                crate::entities::common::format_angle(self.taper_angle)
+                crate::entities::common::format_angle(self.taper_default)
             ),
             ExtrudeStep::Expression => t!("EXTRUDE  Enter height expression:").into_owned(),
             ExtrudeStep::TaperExpression => {
@@ -415,7 +419,7 @@ impl CadCommand for ExtrudeCommand {
                 if !angle.is_finite() || angle.abs() >= std::f64::consts::FRAC_PI_2 {
                     return Some(CmdResult::NeedPoint);
                 }
-                self.taper_angle = angle;
+                (self.taper_angle, self.taper_default) = (angle, angle);
                 extrude_defaults()
                     .lock()
                     .unwrap_or_else(|error| error.into_inner())
@@ -432,7 +436,7 @@ impl CadCommand for ExtrudeCommand {
                 if !angle.is_finite() || angle.abs() >= std::f64::consts::FRAC_PI_2 {
                     return Some(CmdResult::NeedPoint);
                 }
-                self.taper_angle = angle;
+                (self.taper_angle, self.taper_default) = (angle, angle);
                 extrude_defaults()
                     .lock()
                     .unwrap_or_else(|error| error.into_inner())
@@ -459,6 +463,7 @@ impl CadCommand for ExtrudeCommand {
                 .map(|height| self.finish(ExtrudeExtent::Height(height)))
                 .unwrap_or(CmdResult::Cancel),
             ExtrudeStep::Taper => {
+                self.taper_angle = self.taper_default;
                 self.step = self.taper_return;
                 CmdResult::NeedPoint
             }
