@@ -1295,7 +1295,9 @@ impl OpenCADStudio {
         self.tabs[i].snap_result = None;
         self.tabs[i].scene.clear_preview_wire();
         self.restore_pre_cmd_tangent();
-        self.command_line.push_output(&msg);
+        if !msg.is_empty() {
+            self.command_line.push_output(&msg);
+        }
     }
 
     fn handle_report_measurement(&mut self, msg: String) {
