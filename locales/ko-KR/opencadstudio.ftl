@@ -282,6 +282,16 @@ command-copy =
     .mode = COPY  복사 모드 옵션 입력 [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = 배열 (경로)
+    .assoc-array-array-polar = 배열 (원형)
+    .assoc-array-array-rectangular = 배열 (직사각형)
+    .assoc-array-item-spacing = 항목 간격
+    .assoc-array-fill-angle = 채우기 각도
+    .assoc-array-items = 항목
+    .assoc-array-level-spacing = 레벨 간격
+    .assoc-array-levels = 레벨
+    .assoc-array-row-spacing = 행 간격
+    .assoc-array-column-spacing = 열 간격
     .fbxexport-exported-to = FBXEXPORT: "__ocs_fmt_0__"로 내보냈습니다.
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: 이 도면에는 3D 메쉬 데이터가 없습니다.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

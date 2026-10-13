@@ -282,6 +282,16 @@ command-copy =
     .mode = COPY  Podaj tryb kopiowania [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = Szyk (ścieżka)
+    .assoc-array-array-polar = Szyk (biegunowy)
+    .assoc-array-array-rectangular = Szyk (prostokątny)
+    .assoc-array-item-spacing = Odstęp elementów
+    .assoc-array-fill-angle = Kąt wypełnienia
+    .assoc-array-items = Elementy
+    .assoc-array-level-spacing = Odstęp poziomów
+    .assoc-array-levels = Poziomy
+    .assoc-array-row-spacing = Odstęp wierszy
+    .assoc-array-column-spacing = Odstęp kolumn
     .fbxexport-exported-to = FBXEXPORT: wyeksportowano do „__ocs_fmt_0__”
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: brak danych siatki 3D na tym rysunku.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

@@ -295,6 +295,16 @@ command-copy =
     .mode = COPY  أدخل خيار وضع النسخ [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = مصفوفة (مسار)
+    .assoc-array-array-polar = مصفوفة (قطبية)
+    .assoc-array-array-rectangular = مصفوفة (مستطيلة)
+    .assoc-array-item-spacing = تباعد العناصر
+    .assoc-array-fill-angle = زاوية التعبئة
+    .assoc-array-items = العناصر
+    .assoc-array-level-spacing = تباعد المستويات
+    .assoc-array-levels = المستويات
+    .assoc-array-row-spacing = تباعد الصفوف
+    .assoc-array-column-spacing = تباعد الأعمدة
     .fbxexport-exported-to = FBXEXPORT: تم التصدير إلى "__ocs_fmt_0__"
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: لا توجد بيانات شبكة ثلاثية الأبعاد في هذا الرسم.
     .fbxexport-error = FBXEXPORT: ‏__ocs_fmt_0__

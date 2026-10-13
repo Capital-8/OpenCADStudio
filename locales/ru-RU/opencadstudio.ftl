@@ -286,6 +286,16 @@ command-copy =
     .mode = COPY  Задайте режим копирования [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = Массив (по траектории)
+    .assoc-array-array-polar = Массив (круговой)
+    .assoc-array-array-rectangular = Массив (прямоугольный)
+    .assoc-array-item-spacing = Расстояние между элементами
+    .assoc-array-fill-angle = Угол заполнения
+    .assoc-array-items = Элементы
+    .assoc-array-level-spacing = Расстояние между уровнями
+    .assoc-array-levels = Уровни
+    .assoc-array-row-spacing = Расстояние между рядами
+    .assoc-array-column-spacing = Расстояние между столбцами
     .fbxexport-exported-to = FBXEXPORT: экспортируется в "__ocs_fmt_0__"
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: в этом чертеже нет данных 3D-сети.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

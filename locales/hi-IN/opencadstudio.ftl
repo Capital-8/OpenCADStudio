@@ -271,6 +271,16 @@ command-copy =
     .mode = COPY  कॉपी मोड विकल्प दर्ज करें [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = ऐरे (पथ)
+    .assoc-array-array-polar = ऐरे (ध्रुवीय)
+    .assoc-array-array-rectangular = ऐरे (आयताकार)
+    .assoc-array-item-spacing = आइटम अंतराल
+    .assoc-array-fill-angle = भरण कोण
+    .assoc-array-items = आइटम
+    .assoc-array-level-spacing = स्तर अंतराल
+    .assoc-array-levels = स्तर
+    .assoc-array-row-spacing = पंक्ति अंतराल
+    .assoc-array-column-spacing = कॉलम अंतराल
     .fbxexport-exported-to = FBXEXPORT: "__ocs_fmt_0__" में निर्यात किया गया
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: इस ड्रॉइंग में कोई 3D मेश डेटा नहीं है।
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

@@ -282,6 +282,16 @@ command-copy =
     .mode = COPY  Zadejte režim kopírování [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = Pole (podél cesty)
+    .assoc-array-array-polar = Pole (kruhové)
+    .assoc-array-array-rectangular = Pole (obdélníkové)
+    .assoc-array-item-spacing = Rozteč položek
+    .assoc-array-fill-angle = Úhel vyplnění
+    .assoc-array-items = Položky
+    .assoc-array-level-spacing = Rozteč úrovní
+    .assoc-array-levels = Úrovně
+    .assoc-array-row-spacing = Rozteč řádků
+    .assoc-array-column-spacing = Rozteč sloupců
     .fbxexport-exported-to = FBXEXPORT: exportováno do "__ocs_fmt_0__"
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: v tomto výkresu nejsou žádná data 3D sítě.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

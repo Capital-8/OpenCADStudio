@@ -282,6 +282,16 @@ command-copy =
     .mode = COPY  Valitse kopiointitila [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = Taulukko (polku)
+    .assoc-array-array-polar = Taulukko (polaarinen)
+    .assoc-array-array-rectangular = Taulukko (suorakulmainen)
+    .assoc-array-item-spacing = Kohdeväli
+    .assoc-array-fill-angle = Täyttökulma
+    .assoc-array-items = Kohteet
+    .assoc-array-level-spacing = Tasoväli
+    .assoc-array-levels = Tasot
+    .assoc-array-row-spacing = Riviväli
+    .assoc-array-column-spacing = Sarakeväli
     .fbxexport-exported-to = FBXEXPORT: viety tiedostoon "__ocs_fmt_0__"
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: tässä piirustuksessa ei ole 3D-verkkotietoja.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

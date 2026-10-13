@@ -283,6 +283,16 @@ command-copy =
     .mode = COPY  Entrez le mode de copie [Single/Multiple] <Multiple> :
 
 common =
+    .assoc-array-array-path = Réseau (trajectoire)
+    .assoc-array-array-polar = Réseau (polaire)
+    .assoc-array-array-rectangular = Réseau (rectangulaire)
+    .assoc-array-item-spacing = Espacement des éléments
+    .assoc-array-fill-angle = Angle de remplissage
+    .assoc-array-items = Éléments
+    .assoc-array-level-spacing = Espacement des niveaux
+    .assoc-array-levels = Niveaux
+    .assoc-array-row-spacing = Espacement des rangées
+    .assoc-array-column-spacing = Espacement des colonnes
     .fbxexport-exported-to = FBXEXPORT: exporté vers "__ocs_fmt_0__"
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: aucune donnée de maillage 3D dans ce dessin.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

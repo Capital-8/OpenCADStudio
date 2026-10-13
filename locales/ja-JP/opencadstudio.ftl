@@ -273,6 +273,16 @@ command-copy =
     .mode = COPY  コピーモードを入力 [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = 配列複写 (パス)
+    .assoc-array-array-polar = 配列複写 (円形状)
+    .assoc-array-array-rectangular = 配列複写 (矩形状)
+    .assoc-array-item-spacing = 項目の間隔
+    .assoc-array-fill-angle = 充填角度
+    .assoc-array-items = 項目
+    .assoc-array-level-spacing = レベルの間隔
+    .assoc-array-levels = レベル
+    .assoc-array-row-spacing = 行の間隔
+    .assoc-array-column-spacing = 列の間隔
     .fbxexport-exported-to = FBXEXPORT: "__ocs_fmt_0__" に書き出しました
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: この図面に 3D メッシュデータがありません。
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

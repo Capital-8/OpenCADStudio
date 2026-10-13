@@ -3748,6 +3748,40 @@ impl OpenCADStudio {
         Task::none()
     }
 
+    /// An associative array row: the typed value changes the array's
+    /// parameter and its items are placed again, in one undo step.
+    fn on_assoc_array_field_commit(&mut self, i: usize, field: &'static str, handles: &[Handle]) {
+        let Some(text) = self.tabs[i]
+            .properties
+            .edit_buf
+            .remove(&crate::ui::properties::FieldKey::Geom(field))
+        else {
+            return;
+        };
+        let arrays: Vec<_> = handles
+            .iter()
+            .filter_map(|handle| {
+                crate::scene::assoc_array::array_of_insert(&self.tabs[i].scene.document, *handle)
+            })
+            .collect();
+        if arrays.is_empty() {
+            return;
+        }
+        self.push_undo_snapshot(i, "ARRAYEDIT");
+        for array in &arrays {
+            if let Err(error) = crate::scene::assoc_array::apply_field(
+                &mut self.tabs[i].scene,
+                array,
+                field,
+                &crate::app::expr_eval::eval_to_string(&text),
+            ) {
+                self.command_line.push_error(&format!("ARRAYEDIT: {error}"));
+            }
+        }
+        self.tabs[i].dirty = true;
+        self.refresh_properties();
+    }
+
     pub(super) fn on_prop_geom_commit(&mut self, field: &'static str) -> Task<Message> {
         use crate::ui::window::named_parameters::ParamField;
         // A dynamic dimension's Name/Expression rows edit its parameter.
@@ -3765,6 +3799,10 @@ impl OpenCADStudio {
         let i = self.active_tab;
         self.tabs[i].properties.active_field = None;
         let handles = self.property_target_handles(i);
+        if field.starts_with("assoc_array_") {
+            self.on_assoc_array_field_commit(i, field, &handles);
+            return Task::none();
+        }
         if !handles.is_empty() {
             let driven_reference = match field {
                 "start_x" | "start_y" | "start_z" => Some(Some(0)),

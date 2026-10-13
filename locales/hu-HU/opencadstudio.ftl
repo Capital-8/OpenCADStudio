@@ -281,6 +281,16 @@ command-copy =
     .mode = COPY  Adja meg a másolási módot [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = Tömb (útvonal)
+    .assoc-array-array-polar = Tömb (poláris)
+    .assoc-array-array-rectangular = Tömb (téglalap)
+    .assoc-array-item-spacing = Elemtávolság
+    .assoc-array-fill-angle = Kitöltési szög
+    .assoc-array-items = Elemek
+    .assoc-array-level-spacing = Szinttávolság
+    .assoc-array-levels = Szintek
+    .assoc-array-row-spacing = Sortávolság
+    .assoc-array-column-spacing = Oszloptávolság
     .fbxexport-exported-to = FBXEXPORT: exportálva a következőbe: "__ocs_fmt_0__"
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: a rajz nem tartalmaz 3D hálóadatot.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

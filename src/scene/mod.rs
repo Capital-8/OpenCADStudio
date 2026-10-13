@@ -6,6 +6,7 @@
 //   view    — camera, transforms, viewport, render pipeline driver
 //   cache   — block-definition and property caches
 pub mod annotative;
+pub mod assoc_array;
 pub mod block_service;
 pub mod cache;
 pub mod convert;

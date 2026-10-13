@@ -270,6 +270,16 @@ command-copy =
     .mode = COPY  输入复制模式选项 [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = 阵列 (路径)
+    .assoc-array-array-polar = 阵列 (环形)
+    .assoc-array-array-rectangular = 阵列 (矩形)
+    .assoc-array-item-spacing = 项目间距
+    .assoc-array-fill-angle = 填充角度
+    .assoc-array-items = 项目
+    .assoc-array-level-spacing = 层间距
+    .assoc-array-levels = 层数
+    .assoc-array-row-spacing = 行间距
+    .assoc-array-column-spacing = 列间距
     .fbxexport-exported-to = FBXEXPORT:导出为"__ocs_fmt_0__"
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT:此绘图中没有3D网格数据。
     .fbxexport-error = FBXEXPORT:__ocs_fmt_0__ 时间轴:

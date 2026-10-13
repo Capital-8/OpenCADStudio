@@ -282,6 +282,16 @@ command-copy =
     .mode = COPY  Επιλέξτε λειτουργία αντιγραφής [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = Πίνακας (διαδρομή)
+    .assoc-array-array-polar = Πίνακας (πολικός)
+    .assoc-array-array-rectangular = Πίνακας (ορθογώνιος)
+    .assoc-array-item-spacing = Απόσταση στοιχείων
+    .assoc-array-fill-angle = Γωνία πλήρωσης
+    .assoc-array-items = Στοιχεία
+    .assoc-array-level-spacing = Απόσταση επιπέδων
+    .assoc-array-levels = Επίπεδα
+    .assoc-array-row-spacing = Απόσταση γραμμών
+    .assoc-array-column-spacing = Απόσταση στηλών
     .fbxexport-exported-to = FBXEXPORT: εξήχθη στο "__ocs_fmt_0__"
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: δεν υπάρχουν δεδομένα πλέγματος 3D σε αυτό το σχέδιο.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

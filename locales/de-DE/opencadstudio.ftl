@@ -283,6 +283,16 @@ command-copy =
     .mode = COPY  Kopiermodus eingeben [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = Reihe (Pfad)
+    .assoc-array-array-polar = Reihe (polar)
+    .assoc-array-array-rectangular = Reihe (rechteckig)
+    .assoc-array-item-spacing = Elementabstand
+    .assoc-array-fill-angle = Füllwinkel
+    .assoc-array-items = Elemente
+    .assoc-array-level-spacing = Ebenenabstand
+    .assoc-array-levels = Ebenen
+    .assoc-array-row-spacing = Zeilenabstand
+    .assoc-array-column-spacing = Spaltenabstand
     .fbxexport-exported-to = FBXEXPORT: exportiert nach "__ocs_fmt_0__"
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: keine 3D-Mesh-Daten in dieser Zeichnung.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

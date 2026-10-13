@@ -282,6 +282,16 @@ command-copy =
     .mode = COPY  ປ້ອນຕົວເລືອກໂໝດການຄັດລອກ [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = ອາເຣ (ເສັ້ນທາງ)
+    .assoc-array-array-polar = ອາເຣ (ວົງມົນ)
+    .assoc-array-array-rectangular = ອາເຣ (ສີ່ຫຼ່ຽມ)
+    .assoc-array-item-spacing = ໄລຍະຫ່າງລາຍການ
+    .assoc-array-fill-angle = ມຸມເຕີມ
+    .assoc-array-items = ລາຍການ
+    .assoc-array-level-spacing = ໄລຍະຫ່າງລະດັບ
+    .assoc-array-levels = ລະດັບ
+    .assoc-array-row-spacing = ໄລຍະຫ່າງແຖວ
+    .assoc-array-column-spacing = ໄລຍະຫ່າງຖັນ
     .fbxexport-exported-to = FBXEXPORT: ສົ່ງອອກໄປທີ່ "__ocs_fmt_0__" ແລ້ວ
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: ບໍ່ມີຂໍ້ມູນເມຊ 3D ໃນຮູບແຕ້ມນີ້.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

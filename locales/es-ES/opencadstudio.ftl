@@ -283,6 +283,16 @@ command-copy =
     .mode = COPY  Indique modo de copia [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = Matriz (trayectoria)
+    .assoc-array-array-polar = Matriz (polar)
+    .assoc-array-array-rectangular = Matriz (rectangular)
+    .assoc-array-item-spacing = Espaciado de elementos
+    .assoc-array-fill-angle = Ángulo de relleno
+    .assoc-array-items = Elementos
+    .assoc-array-level-spacing = Espaciado de niveles
+    .assoc-array-levels = Niveles
+    .assoc-array-row-spacing = Espaciado de filas
+    .assoc-array-column-spacing = Espaciado de columnas
     .fbxexport-exported-to = FBXEXPORT: exportado a «__ocs_fmt_0__»
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: no hay datos de malla 3D en este dibujo.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

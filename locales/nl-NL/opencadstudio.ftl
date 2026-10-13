@@ -283,6 +283,16 @@ command-copy =
     .mode = COPY  Geef kopieermodus op [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = Reeks (pad)
+    .assoc-array-array-polar = Reeks (polair)
+    .assoc-array-array-rectangular = Reeks (rechthoekig)
+    .assoc-array-item-spacing = Itemafstand
+    .assoc-array-fill-angle = Vulhoek
+    .assoc-array-items = Items
+    .assoc-array-level-spacing = Niveau-afstand
+    .assoc-array-levels = Niveaus
+    .assoc-array-row-spacing = Rijafstand
+    .assoc-array-column-spacing = Kolomafstand
     .fbxexport-exported-to = FBXEXPORT: geëxporteerd naar "__ocs_fmt_0__"
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: geen 3D-maasgegevens in deze tekening.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__

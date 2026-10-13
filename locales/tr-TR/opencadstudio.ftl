@@ -268,6 +268,16 @@ command-copy =
     .mode = COPY  Kopyalama modu seçin [Single/Multiple] <Multiple>:
 
 common =
+    .assoc-array-array-path = Dizi (Yol)
+    .assoc-array-array-polar = Dizi (Kutupsal)
+    .assoc-array-array-rectangular = Dizi (Dikdörtgen)
+    .assoc-array-item-spacing = Öğe aralığı
+    .assoc-array-fill-angle = Doldurma açısı
+    .assoc-array-items = Öğeler
+    .assoc-array-level-spacing = Seviye aralığı
+    .assoc-array-levels = Seviyeler
+    .assoc-array-row-spacing = Satır aralığı
+    .assoc-array-column-spacing = Sütun aralığı
     .fbxexport-exported-to = FBXEXPORT: "__ocs_fmt_0__" konumuna dışa aktarıldı
     .fbxexport-no-3d-mesh-data-in-this-drawing = FBXEXPORT: Bu çizimde 3B örgü verisi yok.
     .fbxexport-error = FBXEXPORT: __ocs_fmt_0__
