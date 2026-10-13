@@ -29,6 +29,7 @@ action =
     .plugins = 플러그인
 
 ribbon-tab =
+    .block-editor = 블록 편집기
     .draw = 그리기
     .parametric = 파라메트릭
     .annotate = 주석

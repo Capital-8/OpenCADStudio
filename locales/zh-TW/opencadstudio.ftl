@@ -29,6 +29,7 @@ action =
     .plugins = 外掛程式
 
 ribbon-tab =
+    .block-editor = 圖塊編輯器
     .draw = 繪製
     .parametric = 參數化
     .annotate = 註解

@@ -29,6 +29,7 @@ action =
     .plugins = Zásuvné moduly
 
 ribbon-tab =
+    .block-editor = Editor bloků
     .draw = Kreslení
     .parametric = Parametrické
     .annotate = Poznámky

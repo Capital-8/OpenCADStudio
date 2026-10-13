@@ -29,6 +29,7 @@ action =
     .plugins = الإضافات
 
 ribbon-tab =
+    .block-editor = محرر الكتل
     .draw = رسم
     .parametric = بارامتري
     .annotate = تعليقات توضيحية

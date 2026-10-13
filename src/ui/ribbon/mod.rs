@@ -117,6 +117,9 @@ pub struct Ribbon {
     xref_ctx: bool,
     /// Only point clouds are selected: whether the first shows its crops.
     point_cloud_ctx: Option<bool>,
+    /// A block editor session is open: the tab that was active before the
+    /// Block Editor tab took over.
+    block_editing: Option<usize>,
     /// XDWGFADECTL as the Reference slide-out shows it (negative = off).
     pub xref_fade: i32,
 }
@@ -219,6 +222,7 @@ impl Ribbon {
             underlay_ctx: None,
             xref_ctx: false,
             point_cloud_ctx: None,
+            block_editing: None,
             xref_fade: 50,
         }
     }
@@ -291,6 +295,28 @@ impl Ribbon {
 
     pub fn set_available_linetypes(&mut self, items: Vec<LinetypeItem>) {
         self.available_linetypes = items;
+    }
+
+    /// Show the Block Editor tab while a block is being edited, and return to
+    /// the previous tab when the editing ends.
+    pub fn set_block_editing(&mut self, editing: bool) {
+        let Some(index) = self.modules.iter().position(|module| module.id() == "block_editor")
+        else {
+            return;
+        };
+        match (editing, self.block_editing) {
+            (true, None) => {
+                self.block_editing = Some(self.active);
+                self.active = index;
+            }
+            (false, Some(previous)) => {
+                self.block_editing = None;
+                if self.active == index {
+                    self.active = previous.min(self.modules.len().saturating_sub(1));
+                }
+            }
+            _ => {}
+        }
     }
 
     pub fn select(&mut self, index: usize) {
@@ -550,12 +576,14 @@ impl Ribbon {
             |mut acc, (i, module)| {
                 // The Layout module no longer has a ribbon tab — its paper-space
                 // tools live in the right-edge side toolbar (see ui::side_toolbar).
-                if module.id() == "layout" {
+                if module.id() == "layout"
+                    || (module.id() == "block_editor" && self.block_editing.is_none())
+                {
                     return acc;
                 }
 
                 let is_active = i == self.active;
-                let is_contextual = module.id() == "layout";
+                let is_contextual = matches!(module.id(), "layout" | "block_editor");
                 let holds_tool = holding_tab == Some(i);
                 let btn = container(
                     button(

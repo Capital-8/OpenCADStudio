@@ -29,6 +29,7 @@ action =
     .plugins = 插件
 
 ribbon-tab =
+    .block-editor = 块编辑器
     .draw = 绘制
     .parametric = 参数化
     .annotate = 注释

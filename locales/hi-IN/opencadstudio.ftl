@@ -29,6 +29,7 @@ action =
     .plugins = प्लग-इन
 
 ribbon-tab =
+    .block-editor = ब्लॉक संपादक
     .draw = ड्रॉ
     .parametric = पैरामीट्रिक
     .annotate = एनोटेट

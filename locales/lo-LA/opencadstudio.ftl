@@ -29,6 +29,7 @@ action =
     .plugins = ປລັກອິນ
 
 ribbon-tab =
+    .block-editor = ຕົວແກ້ໄຂບລັອກ
     .draw = ແຕ້ມ
     .parametric = ພາຣາມີຕຣິກ
     .annotate = ຄຳອະທິບາຍ

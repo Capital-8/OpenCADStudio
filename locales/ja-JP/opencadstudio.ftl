@@ -29,6 +29,7 @@ action =
     .plugins = プラグイン
 
 ribbon-tab =
+    .block-editor = ブロック エディタ
     .draw = 作図
     .parametric = パラメトリック
     .annotate = 注釈

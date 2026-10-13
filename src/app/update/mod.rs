@@ -339,6 +339,11 @@ impl OpenCADStudio {
             self.sync_underlay_tab();
         }
         self.sync_frame_dropdown();
+        let block_editing = self
+            .tabs
+            .get(self.active_tab)
+            .is_some_and(|tab| tab.active_block_edit.is_some());
+        self.ribbon.set_block_editing(block_editing);
         task
     }
 

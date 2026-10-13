@@ -29,6 +29,7 @@ action =
     .plugins = Πρόσθετα
 
 ribbon-tab =
+    .block-editor = Επεξεργαστής μπλοκ
     .draw = Σχεδίαση
     .parametric = Παραμετρικό
     .annotate = Επισημείωση

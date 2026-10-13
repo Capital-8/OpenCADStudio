@@ -29,6 +29,7 @@ action =
     .plugins = Модули
 
 ribbon-tab =
+    .block-editor = Редактор блоков
     .draw = Начертить
     .parametric = Параметрический
     .annotate = Аннотации

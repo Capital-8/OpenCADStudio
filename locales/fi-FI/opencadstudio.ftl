@@ -29,6 +29,7 @@ action =
     .plugins = Liitännäiset
 
 ribbon-tab =
+    .block-editor = Lohkoeditori
     .draw = Piirrä
     .parametric = Parametrinen
     .annotate = Merkinnät

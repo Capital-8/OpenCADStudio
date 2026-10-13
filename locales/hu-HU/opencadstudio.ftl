@@ -29,6 +29,7 @@ action =
     .plugins = Bővítmények
 
 ribbon-tab =
+    .block-editor = Blokkszerkesztő
     .draw = Rajz
     .parametric = Parametrikus
     .annotate = Feliratozás

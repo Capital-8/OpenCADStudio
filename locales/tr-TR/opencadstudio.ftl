@@ -29,6 +29,7 @@ action =
     .plugins = Eklentiler
 
 ribbon-tab =
+    .block-editor = Blok Düzenleyici
     .draw = Çizim
     .parametric = Parametrik
     .annotate = Açıklama

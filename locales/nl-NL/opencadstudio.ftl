@@ -29,6 +29,7 @@ action =
     .plugins = Plug-ins
 
 ribbon-tab =
+    .block-editor = Blokeditor
     .draw = Tekenen
     .parametric = Parametrisch
     .annotate = Annoteren
