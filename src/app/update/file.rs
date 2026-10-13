@@ -796,6 +796,7 @@ impl OpenCADStudio {
             surface_associativity: crate::scene::model::sweep_model::surface_associativity(),
             ucs_ortho: crate::modules::view::view_cmd::ucs_ortho(),
             ucs_view: crate::modules::view::view_cmd::ucs_view(),
+            layout_create_viewport: crate::scene::layout_create_viewport(),
             ncopy_bind: self.ncopy_bind,
             cursor_type: self.cursor_type,
             crosshair_color: self.crosshair_color,
@@ -911,6 +912,7 @@ impl OpenCADStudio {
         crate::scene::model::sweep_model::set_surface_associativity(s.surface_associativity);
         crate::modules::view::view_cmd::set_ucs_ortho(s.ucs_ortho);
         crate::modules::view::view_cmd::set_ucs_view(s.ucs_view);
+        crate::scene::set_layout_create_viewport(s.layout_create_viewport);
         self.ncopy_bind = s.ncopy_bind;
         self.cursor_type = s.cursor_type;
         self.crosshair_color = s.crosshair_color;

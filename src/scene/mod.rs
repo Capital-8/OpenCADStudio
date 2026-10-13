@@ -2357,6 +2357,9 @@ pub struct Scene {
     >,
     /// Bump on any Layout object insert/remove/rename/reorder.
     layout_epoch: u64,
+    /// Layouts created in this session and not opened yet: the first time
+    /// one opens it gets the LAYOUTCREATEVIEWPORT viewport.
+    pub(crate) unopened_layouts: std::collections::HashSet<String>,
     layout_names_cache: RefCell<Option<(u64, std::sync::Arc<Vec<String>>)>>,
     /// Bump on any annotation-scale list mutation.
     scale_epoch: u64,
@@ -2769,6 +2772,7 @@ impl Scene {
             unindexable_cache: RefCell::new(None),
             layout_type_names_cache: RefCell::new(None),
             layout_epoch: 0,
+            unopened_layouts: Default::default(),
             layout_names_cache: RefCell::new(None),
             scale_epoch: 0,
             scale_picker_cache: RefCell::new(None),
@@ -4662,10 +4666,11 @@ impl Scene {
             .unwrap_or(Handle::NULL)
     }
 
-    /// Ensure a paper layout has its overall (`id == 1`) viewport.
-    pub fn ensure_sheet_viewport(&mut self, layout_name: &str) {
+    /// Ensure a paper layout has its overall (`id == 1`) viewport; true when
+    /// it had none (the layout opens for the first time).
+    pub fn ensure_sheet_viewport(&mut self, layout_name: &str) -> bool {
         if layout_name == "Model" {
-            return;
+            return false;
         }
         // Locate the layout and its paper limits.
         let info = self.document.objects.iter().find_map(|(h, obj)| {
@@ -4683,10 +4688,10 @@ impl Scene {
             None
         });
         let Some((layout_handle, block_record, sheet, min_lim, max_lim)) = info else {
-            return;
+            return false;
         };
         if block_record.is_null() {
-            return;
+            return false;
         }
 
         if sheet.is_valid()
@@ -4695,7 +4700,7 @@ impl Scene {
                 Some(EntityType::Viewport(vp)) if vp.common.owner_handle == block_record
             )
         {
-            return;
+            return false;
         }
 
         // Create the full-screen overall viewport covering the paper limits.
@@ -4728,6 +4733,32 @@ impl Scene {
                 l.viewports.retain(|candidate| *candidate != handle);
                 l.viewports.insert(0, handle);
             }
+        }
+        true
+    }
+
+    /// The viewport a layout gets when it first opens (LAYOUTCREATEVIEWPORT),
+    /// as the reference makes it: centred on the printable area, 0.8 of its
+    /// width and height, showing the model's extents.
+    pub fn add_layout_default_viewport(&mut self, layout_name: &str) {
+        if !layout_create_viewport() || !self.layout_content_viewports().is_empty() {
+            return;
+        }
+        let Some(((x0, y0), (x1, y1))) = self.printable_area_limits() else {
+            return;
+        };
+        let mut viewport = codec::entities::Viewport::new();
+        viewport.center = codec::types::Vector3::new((x0 + x1) / 2.0, (y0 + y1) / 2.0, 0.0);
+        viewport.width = (x1 - x0).abs() * 0.8;
+        viewport.height = (y1 - y0).abs() * 0.8;
+        viewport.id = 2;
+        if let Ok(handle) = self
+            .document
+            .add_entity_to_layout(EntityType::Viewport(viewport), layout_name)
+        {
+            // The reference zooms the new viewport to the model's extents
+            // with a margin of under one percent.
+            self.fit_viewport_to_model(handle, 1.0075);
         }
     }
 
@@ -12663,6 +12694,12 @@ vis_index={:.1} visible_probe={:.1}",
     /// Set a newly created viewport's `view_target` and `view_height` so that
     /// all model-space content is visible at a reasonable scale.
     pub fn auto_fit_viewport(&mut self, vp_handle: Handle) {
+        self.fit_viewport_to_model(vp_handle, 1.1);
+    }
+
+    /// Fit a viewport's view to the model-space content, with `margin` (1 is
+    /// tight) around it.
+    pub fn fit_viewport_to_model(&mut self, vp_handle: Handle, margin: f64) {
         let extents = self.model_space_extents();
         let (min, max) = match extents {
             Some(e) => e,
@@ -12681,8 +12718,7 @@ vis_index={:.1} visible_probe={:.1}",
         vp.view_target.y = center.y as f64;
         vp.view_target.z = 0.0;
 
-        // Choose the scale that fits both dimensions with a small margin.
-        let margin = 1.1_f64;
+        // Choose the scale that fits both dimensions with the margin.
         let scale_w = vp.width / (content_w as f64 * margin);
         let scale_h = vp.height / (content_h as f64 * margin);
         let fit_scale = scale_w.min(scale_h).min(1000.0).max(1e-6);
@@ -12690,6 +12726,17 @@ vis_index={:.1} visible_probe={:.1}",
         vp.custom_scale = fit_scale;
         vp.view_height = vp.height / fit_scale;
     }
+}
+
+/// LAYOUTCREATEVIEWPORT: a layout opened for the first time gets a viewport.
+static LAYOUT_CREATE_VIEWPORT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn layout_create_viewport() -> bool {
+    LAYOUT_CREATE_VIEWPORT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn set_layout_create_viewport(on: bool) {
+    LAYOUT_CREATE_VIEWPORT.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
 impl Default for Scene {

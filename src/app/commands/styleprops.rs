@@ -1213,6 +1213,7 @@ impl OpenCADStudio {
                     | "SURFACEASSOCIATIVITY"
                     | "UCSORTHO"
                     | "UCSVIEW"
+                    | "LAYOUTCREATEVIEWPORT"
                     | "PDFIMPORTMODE"
                     | "PDFIMPORTFILTER"
                     | "PDFIMPORTLAYERS"
@@ -1446,6 +1447,39 @@ impl OpenCADStudio {
                                     "Enter new value for PDFIMPORTIMAGEPATH, or . for none <\"{}\">:",
                                     image_path()
                                 ));
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    if name == "LAYOUTCREATEVIEWPORT" {
+                        // A profile switch shown and taken as ON / OFF or 1 / 0.
+                        let current = if crate::scene::layout_create_viewport() { "ON" } else { "OFF" };
+                        let parsed = value.as_deref().map(|v| {
+                            match v.trim().trim_start_matches('_').to_ascii_uppercase().as_str() {
+                                "1" | "ON" => Some(true),
+                                "0" | "OFF" => Some(false),
+                                _ => None,
+                            }
+                        });
+                        match parsed {
+                            Some(Some(on)) => {
+                                if crate::scene::layout_create_viewport() != on {
+                                    crate::scene::set_layout_create_viewport(on);
+                                    self.save_config();
+                                }
+                            }
+                            Some(None) => {
+                                self.command_line.push_error(
+                                    crate::t!("Requires 0 or 1 only, or option keyword.").as_ref(),
+                                );
+                                self.command_line
+                                    .push_output(&format!("Enter new value for {name} <{current}>:"));
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line
+                                    .push_output(&format!("Enter new value for {name} <{current}>:"));
                                 self.pending_setvar = Some(name.clone());
                             }
                         }

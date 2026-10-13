@@ -712,6 +712,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "UOSNAP",
         "FIELDDISPLAY",
         "SURFACEASSOCIATIVITY",
+        "LAYOUTCREATEVIEWPORT",
         "FIELDEVAL",
         "PDFIMPORTMODE",
         "PDFIMPORTFILTER",

@@ -24,6 +24,7 @@ impl Scene {
     /// cached layout-name list is invalidated on insert.
     pub fn add_layout(&mut self, name: &str) -> codec::Result<Handle> {
         let handle = self.document.add_layout(name)?;
+        self.unopened_layouts.insert(name.to_string());
         self.bump_layout_epoch();
         Ok(handle)
     }
@@ -34,6 +35,9 @@ impl Scene {
             if let ObjectType::Layout(l) = obj {
                 if l.name == old_name {
                     l.name = new_name.to_string();
+                    if self.unopened_layouts.remove(old_name) {
+                        self.unopened_layouts.insert(new_name.to_string());
+                    }
                     self.bump_layout_epoch();
                     return;
                 }
