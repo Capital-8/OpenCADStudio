@@ -5215,8 +5215,23 @@ impl Scene {
                         // corner.
                         let f = Self::layout_unit_factor(l);
                         let (pw, ph) = (pw * f, ph * f);
-                        let ox = l.min_limits.0.min(0.0);
-                        let oy = l.min_limits.1.min(0.0);
+                        let (wx0, wy0, wx1, wy1) = (
+                            l.plot_window_min_x,
+                            l.plot_window_min_y,
+                            l.plot_window_max_x,
+                            l.plot_window_max_y,
+                        );
+                        // A window plot maps that window onto the sheet, so the
+                        // sheet sits around it rather than at the origin.
+                        let (ox, oy) = if l.plot_type == 4 && wx1 > wx0 && wy1 > wy0 {
+                            if l.plot_flags.plot_centered {
+                                ((wx0 + wx1 - pw) / 2.0, (wy0 + wy1 - ph) / 2.0)
+                            } else {
+                                (wx0 - l.plot_origin_x * f, wy0 - l.plot_origin_y * f)
+                            }
+                        } else {
+                            (l.min_limits.0.min(0.0), l.min_limits.1.min(0.0))
+                        };
                         return Some(((ox, oy), (ox + pw, oy + ph)));
                     }
 
