@@ -3996,7 +3996,8 @@ analytic={:.1} regular={:.1} blocks={:.1}",
         }
         let upload = |label: &'static str,
                       image: Option<&crate::scene::model::image_model::DecodedImage>,
-                      fallback: [u8; 4]| {
+                      fallback: [u8; 4],
+                      format: wgpu::TextureFormat| {
             let (width, height, pixels) = image
                 .map(|image| (image.width, image.height, image.pixels.as_slice()))
                 .unwrap_or((1, 1, fallback.as_slice()));
@@ -4010,7 +4011,7 @@ analytic={:.1} regular={:.1} blocks={:.1}",
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                format,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
@@ -4030,8 +4031,21 @@ analytic={:.1} regular={:.1} blocks={:.1}",
             );
             texture
         };
-        self.background_texture = upload("background.texture", background, [0, 0, 0, 255]);
-        self.environment_texture = upload("environment.texture", environment, [128, 128, 128, 255]);
+        // The background image is drawn as it is, like the solid and gradient
+        // colours (an sRGB view would darken it a second time); the
+        // environment map stays sRGB for lighting.
+        self.background_texture = upload(
+            "background.texture",
+            background,
+            [0, 0, 0, 255],
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
+        self.environment_texture = upload(
+            "environment.texture",
+            environment,
+            [128, 128, 128, 255],
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        );
         self.rebuild_frame_bind_group(device);
         self.background_source_id = background_id;
         self.environment_source_id = environment_id;

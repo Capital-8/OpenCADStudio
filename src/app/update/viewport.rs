@@ -1084,6 +1084,9 @@ impl OpenCADStudio {
         // viewport, the picker drives that viewport entity's own
         // render mode; the model-layout tab style is untouched.
         if self.tabs[i].scene.set_active_viewport_render_mode(mode) {
+            self.tabs[i]
+                .scene
+                .set_active_visual_style_named(crate::modules::view::visual_style::style_name_for(mode));
             self.tabs[i].scene.bump_geometry_no_blocks();
             self.tabs[i].dirty = true;
             self.command_line

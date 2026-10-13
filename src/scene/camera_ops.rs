@@ -336,6 +336,12 @@ impl Scene {
 
     /// The visual style of the active Model tile's viewport record.
     pub fn active_visual_style(&self) -> Handle {
+        if self.current_layout != "Model" {
+            return match self.active_viewport.and_then(|handle| self.document.get_entity(handle)) {
+                Some(EntityType::Viewport(value)) => value.visual_style_handle,
+                _ => Handle::NULL,
+            };
+        }
         self.active_tile_vport_handle()
             .and_then(|handle| self.document.vports.iter().find(|value| value.handle == handle))
             .map_or(Handle::NULL, |value| value.visual_style_handle)
@@ -348,7 +354,16 @@ impl Scene {
             codec::objects::ObjectType::VisualStyle(style) if style.description == name => Some(*handle),
             _ => None,
         });
-        let (Some(style), Some(handle)) = (style, self.active_tile_vport_handle()) else { return };
+        let Some(style) = style else { return };
+        if self.current_layout != "Model" {
+            if let Some(handle) = self.active_viewport {
+                if let Some(EntityType::Viewport(value)) = self.document.get_entity_mut(handle) {
+                    value.visual_style_handle = style;
+                }
+            }
+            return;
+        }
+        let Some(handle) = self.active_tile_vport_handle() else { return };
         if let Some(value) = self.document.vports.iter_mut().find(|value| value.handle == handle) {
             value.visual_style_handle = style;
         }

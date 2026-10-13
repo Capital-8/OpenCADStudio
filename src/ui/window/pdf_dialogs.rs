@@ -122,6 +122,9 @@ pub enum PdfDialogMsg {
     BgBrowse,
     BgPosition(BgPosition),
     BgAspect(bool),
+    /// An image background's offset (pixels) and scale.
+    BgOffset([f64; 2]),
+    BgScale([f64; 2]),
     BgApply,
 }
 

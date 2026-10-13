@@ -507,6 +507,8 @@ impl OpenCADStudio {
             M::BgImage(value) => state.image = value,
             M::BgPosition(value) => state.position = value,
             M::BgAspect(on) => state.aspect = on,
+            M::BgOffset(value) => state.offset = value,
+            M::BgScale(value) => state.scale = value,
             M::BgColor(slot, rgb) => match slot {
                 0 => state.solid = rgb,
                 1 => state.top = rgb,

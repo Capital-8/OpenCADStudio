@@ -1798,7 +1798,7 @@ impl OpenCADStudio {
             "ribbon_dropdown" => Message::ToggleRibbonDropdown(string(req, "value")?.into()),
             // The -VIEW Background dialog, one field per call: "type=gradient",
             // "color|top|middle|bottom=r,g,b", "three=1", "rotation=30",
-            // "image=<path>", "position=center|stretch|tile", "aspect=1",
+            // "image=<path>", "position=center|stretch|tile", "aspect=1", "offset=x,y" (pixels), "scale=x,y" (non-zero),
             // "apply" or "cancel".
             "view_background" => {
                 use crate::ui::window::pdf_dialogs::{BgKind, BgPosition, PdfDialogMsg as P};
@@ -1840,6 +1840,21 @@ impl OpenCADStudio {
                         _ => return Err(bad()),
                     })),
                     "aspect" => Message::PdfDialog(P::BgAspect(value == "1")),
+                    "offset" | "scale" => {
+                        let pair: Vec<f64> = value
+                            .split(',')
+                            .map(|part| part.trim().parse::<f64>())
+                            .collect::<Result<_, _>>()
+                            .map_err(|_| bad())?;
+                        let pair = <[f64; 2]>::try_from(pair).map_err(|_| bad())?;
+                        if key == "offset" {
+                            Message::PdfDialog(P::BgOffset(pair))
+                        } else if pair.iter().all(|v| v.is_finite() && *v != 0.0) {
+                            Message::PdfDialog(P::BgScale(pair))
+                        } else {
+                            return Err(bad());
+                        }
+                    }
                     _ => return Err(bad()),
                 }
             }
