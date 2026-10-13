@@ -360,6 +360,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "MOVE",
         "ROTATE",
         "SCALE",
-        "STRETCH"
+        "STRETCH",
+        "TXTEXP"
     ]
 }); // SelectObjectsCommand

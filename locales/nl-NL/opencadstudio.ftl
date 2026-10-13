@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  Geef kopieermodus op [Single/Multiple] <Multiple>:
 
 common =
+    .txtexp-no-text-selected = TXTEXP: geen tekst geselecteerd.
     .angle-override-shown = Hoekoverschrijving: __ocs_fmt_0__
     .plot-preview-task = Plotvoorbeeld
     .link-a-csv-data-source = CSV-gegevensbron koppelen

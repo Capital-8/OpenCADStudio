@@ -281,6 +281,7 @@ command-copy =
     .displacement = COPY  Задайте преместване:
     .mode = COPY  Въведете режим на копиране [Single/Multiple] <Multiple>:
 common =
+    .txtexp-no-text-selected = TXTEXP: няма избран текст.
     .angle-override-shown = Замяна на ъгъла: __ocs_fmt_0__
     .plot-preview-task = Преглед на печата
     .link-a-csv-data-source = Свързване на CSV източник на данни

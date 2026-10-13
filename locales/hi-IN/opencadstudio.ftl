@@ -270,6 +270,7 @@ command-copy =
     .mode = COPY  कॉपी मोड विकल्प दर्ज करें [Single/Multiple] <Multiple>:
 
 common =
+    .txtexp-no-text-selected = TXTEXP: कोई टेक्स्ट चयनित नहीं।
     .angle-override-shown = कोण ओवरराइड: __ocs_fmt_0__
     .plot-preview-task = प्लॉट पूर्वावलोकन
     .link-a-csv-data-source = CSV डेटा स्रोत लिंक करें

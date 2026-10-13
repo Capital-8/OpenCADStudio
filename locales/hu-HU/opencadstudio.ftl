@@ -280,6 +280,7 @@ command-copy =
     .mode = COPY  Adja meg a másolási módot [Single/Multiple] <Multiple>:
 
 common =
+    .txtexp-no-text-selected = TXTEXP: nincs kijelölt szöveg.
     .angle-override-shown = Szög felülbírálása: __ocs_fmt_0__
     .parametric-coincident = Egybeeső
     .parametric-colinear = Egy egyenesbe eső

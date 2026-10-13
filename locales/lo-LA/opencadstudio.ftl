@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  ປ້ອນຕົວເລືອກໂໝດການຄັດລອກ [Single/Multiple] <Multiple>:
 
 common =
+    .txtexp-no-text-selected = TXTEXP: ບໍ່ໄດ້ເລືອກຂໍ້ຄວາມ.
     .angle-override-shown = ກຳນົດມຸມແທນ: __ocs_fmt_0__
     .remote-image-url-could-not-be-fetched-the-request-timed-out = ບໍ່ສາມາດດຶງຮູບພາບທາງໄກ "__ocs_fmt_0__" ໄດ້: ການຮ້ອງຂໍໝົດເວລາ.
     .remote-image-url-was-not-loaded-it-exceeds-the-64-mb-remote-image-limit = ບໍ່ໄດ້ໂຫຼດຮູບພາບທາງໄກ "__ocs_fmt_0__": ມັນເກີນຂີດຈຳກັດ 64 MB ຂອງຮູບພາບທາງໄກ.

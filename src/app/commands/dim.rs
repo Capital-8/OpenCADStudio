@@ -1303,6 +1303,38 @@ impl OpenCADStudio {
                 }
             }
 
+            // TXTEXP — text becomes the polylines of its character outlines.
+            "TXTEXP" => {
+                let selected: Vec<_> = self.tabs[i]
+                    .scene
+                    .selected_entities()
+                    .into_iter()
+                    .filter(|(handle, _)| !self.tabs[i].scene.is_layer_locked(*handle))
+                    .collect();
+                if selected.is_empty() {
+                    use crate::modules::draw::select::SelectObjectsCommand;
+                    let cmd = SelectObjectsCommand::new("TXTEXP");
+                    self.command_line.push_info(&cmd.prompt());
+                    self.tabs[i].active_cmd = Some(Box::new(cmd));
+                } else {
+                    use crate::modules::draw::modify::explode::apply_explode_replacements;
+                    use crate::modules::draw::modify::txtexp::plan_text_explode;
+                    let replacements = plan_text_explode(&selected, &self.tabs[i].scene.document);
+                    let exploded = replacements.len();
+                    if exploded > 0 {
+                        self.push_undo_snapshot(i, "TXTEXP");
+                        apply_explode_replacements(&mut self.tabs[i].scene, replacements);
+                        self.tabs[i].dirty = true;
+                        self.refresh_properties();
+                        self.command_line
+                            .push_output(crate::tf!("{exploded} object(s) exploded.").as_ref());
+                    } else {
+                        self.command_line
+                            .push_info(crate::t!("TXTEXP: no text selected.").as_ref());
+                    }
+                }
+            }
+
             "OFFSET" => {
                 use crate::modules::draw::modify::offset::{is_offsettable, OffsetCommand};
                 let all_entities: Vec<_> = self.tabs[i]

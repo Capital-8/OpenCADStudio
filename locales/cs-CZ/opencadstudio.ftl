@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  Zadejte režim kopírování [Single/Multiple] <Multiple>:
 
 common =
+    .txtexp-no-text-selected = TXTEXP: není vybrán žádný text.
     .angle-override-shown = Přepsání úhlu: __ocs_fmt_0__
     .plot-preview-task = Náhled tisku
     .link-a-csv-data-source = Propojit zdroj dat CSV
