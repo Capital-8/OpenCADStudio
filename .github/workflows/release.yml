@@ -517,15 +517,21 @@ jobs:
         timeout-minutes: 2
         run: python3 docs/automation/mcp_handshake.py OpenCADStudio.app/Contents/MacOS/OpenCADStudio
 
+      # Stage the app beside an /Applications symlink so the mounted image
+      # offers drag-to-install (#769), matching packaging/build_macos_signed.sh.
       - name: Create .dmg
         run: |
+          rm -rf dmg-staging
+          mkdir dmg-staging
+          cp -R OpenCADStudio.app dmg-staging/
+          ln -s /Applications dmg-staging/Applications
           set +e
           for attempt in 1 2 3 4 5; do
             hdiutil detach "/Volumes/Open CAD Studio" >/dev/null 2>&1 || true
             rm -f OpenCADStudio.dmg
             hdiutil create \
               -volname "Open CAD Studio" \
-              -srcfolder OpenCADStudio.app \
+              -srcfolder dmg-staging \
               -ov -format UDZO \
               OpenCADStudio.dmg && break
             echo "hdiutil create failed (attempt $attempt) — retrying in 5s"
@@ -533,6 +539,25 @@ jobs:
           done
           set -e
           test -f OpenCADStudio.dmg
+          rm -rf dmg-staging
+
+      - name: Verify .dmg layout
+        run: |
+          MNT=$(mktemp -d)
+          hdiutil attach -readonly -nobrowse -mountpoint "$MNT" OpenCADStudio.dmg
+          ls -la "$MNT"
+          test -d "$MNT/OpenCADStudio.app"
+          test "$(readlink "$MNT/Applications")" = /Applications
+          codesign --verify --deep --strict "$MNT/OpenCADStudio.app"
+          hdiutil detach "$MNT"
+
+      - name: Upload .dmg as workflow artifact
+        if: env.RELEASE_TAG == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCADStudio-macos-arm64-dmg
+          path: OpenCADStudio.dmg
+          if-no-files-found: error
 
       - name: Upload .dmg to release
         if: env.RELEASE_TAG != ''
