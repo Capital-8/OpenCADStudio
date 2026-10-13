@@ -371,7 +371,7 @@ impl OpenCADStudio {
                             let wires = self.tabs[i].scene.wires_for_entities(&self.clipboard);
                             use crate::modules::insert::insert_block::InsertBlockCommand;
                             let cmd =
-                                InsertBlockCommand::new_for_block(name, wires, base.as_vec3());
+                                InsertBlockCommand::new_for_block(name, wires, base);
                             self.command_line.push_info(&cmd.prompt());
                             self.tabs[i].active_cmd = Some(Box::new(cmd));
                         }
