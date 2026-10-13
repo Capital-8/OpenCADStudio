@@ -904,7 +904,7 @@ impl Default for UserSettings {
             language: crate::i18n::Language::default(),
             cliprompt_lines: 3,
             commandline_fade_ms: 3000,
-            command_line_opacity: 100,
+            command_line_opacity: 80,
             snap_spacing_x: 10.0,
             snap_spacing_y: 10.0,
             grid_spacing_x: 10.0,

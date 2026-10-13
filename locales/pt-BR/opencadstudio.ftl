@@ -283,6 +283,10 @@ command-copy =
     .mode = COPY  Informe o modo de cópia [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = Novas hachuras acompanham seus contornos (HPASSOC)
+    .options-show-ribbon = Mostrar a faixa de opções (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Mostrar a barra de menus (MENUBAR)
+    .options-window-elements = Elementos da janela
     .menu-viewports = Janelas de visualização
     .menu-view-twist = Girar vista
     .menu-tools = Ferramentas

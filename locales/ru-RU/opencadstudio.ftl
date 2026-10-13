@@ -286,6 +286,10 @@ command-copy =
     .mode = COPY  Задайте режим копирования [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = Новые штриховки следуют за контурами (HPASSOC)
+    .options-show-ribbon = Показывать ленту (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Показывать строку меню (MENUBAR)
+    .options-window-elements = Элементы окна
     .menu-viewports = Видовые экраны
     .menu-view-twist = Поворот вида
     .menu-tools = Сервис

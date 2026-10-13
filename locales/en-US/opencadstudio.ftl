@@ -282,6 +282,10 @@ command-copy =
     .mode = COPY  Enter a copy mode option [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = New hatches follow their boundaries (HPASSOC)
+    .options-show-ribbon = Show the ribbon (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Show the menu bar (MENUBAR)
+    .options-window-elements = Window Elements
     .menu-viewports = Viewports
     .menu-view-twist = View Twist
     .menu-tools = Tools

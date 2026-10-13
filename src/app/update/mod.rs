@@ -9082,6 +9082,24 @@ impl OpenCADStudio {
                 Task::none()
             }
 
+            Message::MenuBarChanged(shown) => {
+                self.show_menu_bar = shown;
+                self.persist_settings_if_changed();
+                Task::none()
+            }
+
+            Message::RibbonVisibleChanged(shown) => {
+                self.ribbon_closed = !shown;
+                self.persist_settings_if_changed();
+                Task::none()
+            }
+
+            Message::HatchAssociativeChanged(associative) => {
+                self.hatch_associative = associative;
+                self.persist_settings_if_changed();
+                Task::none()
+            }
+
             Message::TouchpadPanChanged(enabled) => {
                 self.touchpad_pan = enabled;
                 self.persist_settings_if_changed();

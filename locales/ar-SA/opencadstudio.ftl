@@ -295,6 +295,10 @@ command-copy =
     .mode = COPY  أدخل خيار وضع النسخ [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = التظليلات الجديدة تتبع حدودها (HPASSOC)
+    .options-show-ribbon = إظهار الشريط (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = إظهار شريط القوائم (MENUBAR)
+    .options-window-elements = عناصر النافذة
     .menu-viewports = منافذ العرض
     .menu-view-twist = تدوير العرض
     .menu-tools = أدوات

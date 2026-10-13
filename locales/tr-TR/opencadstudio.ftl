@@ -268,6 +268,10 @@ command-copy =
     .mode = COPY  Kopyalama modu seçin [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = Yeni taramalar sınırlarını izler (HPASSOC)
+    .options-show-ribbon = Şeridi göster (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Menü çubuğunu göster (MENUBAR)
+    .options-window-elements = Pencere Öğeleri
     .menu-viewports = Görünüm Pencereleri
     .menu-view-twist = Görünümü Döndür
     .menu-tools = Araçlar

@@ -283,6 +283,10 @@ command-copy =
     .mode = COPY  Indique modo de copia [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = Los sombreados nuevos siguen sus contornos (HPASSOC)
+    .options-show-ribbon = Mostrar la cinta de opciones (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Mostrar la barra de menús (MENUBAR)
+    .options-window-elements = Elementos de ventana
     .menu-viewports = Ventanas gráficas
     .menu-view-twist = Girar vista
     .menu-tools = Herramientas

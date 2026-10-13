@@ -283,6 +283,10 @@ command-copy =
     .mode = COPY  Geef kopieermodus op [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = Nieuwe arceringen volgen hun grenzen (HPASSOC)
+    .options-show-ribbon = Lint tonen (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Menubalk tonen (MENUBAR)
+    .options-window-elements = Vensterelementen
     .menu-viewports = Viewports
     .menu-view-twist = Weergave draaien
     .menu-tools = Extra

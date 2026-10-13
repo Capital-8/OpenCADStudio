@@ -271,6 +271,10 @@ command-copy =
     .mode = COPY  कॉपी मोड विकल्प दर्ज करें [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = नए हैच अपनी सीमाओं का अनुसरण करते हैं (HPASSOC)
+    .options-show-ribbon = रिबन दिखाएँ (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = मेनू बार दिखाएँ (MENUBAR)
+    .options-window-elements = विंडो तत्व
     .menu-viewports = व्यूपोर्ट
     .menu-view-twist = दृश्य घुमाव
     .menu-tools = उपकरण

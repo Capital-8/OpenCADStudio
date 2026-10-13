@@ -192,7 +192,7 @@ pub struct CommandLine {
     /// the pinned step prompt still shows.
     fade_ms: u32,
     /// COMMANDLINEOPACITY: how opaque the command line's panels are, in
-    /// percent (20–100, default 100), so the drawing shows through.
+    /// percent (20–100, default 80), so the drawing shows through.
     opacity_percent: u8,
 }
 
@@ -220,7 +220,7 @@ impl Default for CommandLine {
             step_options: Vec::new(),
             cliprompt_lines: 3,
             fade_ms: DEFAULT_COMMANDLINE_FADE_MS,
-            opacity_percent: 100,
+            opacity_percent: 80,
         }
     }
 }

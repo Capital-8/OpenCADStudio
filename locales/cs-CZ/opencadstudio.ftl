@@ -282,6 +282,10 @@ command-copy =
     .mode = COPY  Zadejte režim kopírování [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = Nové šrafy sledují své hranice (HPASSOC)
+    .options-show-ribbon = Zobrazit pás karet (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Zobrazit panel nabídek (MENUBAR)
+    .options-window-elements = Prvky okna
     .menu-viewports = Výřezy
     .menu-view-twist = Natočení pohledu
     .menu-tools = Nástroje

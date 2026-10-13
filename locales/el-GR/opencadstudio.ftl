@@ -282,6 +282,10 @@ command-copy =
     .mode = COPY  Επιλέξτε λειτουργία αντιγραφής [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = Οι νέες διαγραμμίσεις ακολουθούν τα όριά τους (HPASSOC)
+    .options-show-ribbon = Εμφάνιση κορδέλας (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Εμφάνιση γραμμής μενού (MENUBAR)
+    .options-window-elements = Στοιχεία παραθύρου
     .menu-viewports = Παράθυρα προβολής
     .menu-view-twist = Στρέψη όψης
     .menu-tools = Εργαλεία

@@ -282,6 +282,10 @@ command-copy =
     .mode = COPY  ປ້ອນຕົວເລືອກໂໝດການຄັດລອກ [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = ການຂີດລາຍໃໝ່ຕິດຕາມຂອບເຂດ (HPASSOC)
+    .options-show-ribbon = ສະແດງແຖບໂບ (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = ສະແດງແຖບເມນູ (MENUBAR)
+    .options-window-elements = ອົງປະກອບໜ້າຕ່າງ
     .menu-viewports = ຊ່ອງມອງ
     .menu-view-twist = ບິດມຸມມອງ
     .menu-tools = ເຄື່ອງມື

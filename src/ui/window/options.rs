@@ -55,6 +55,12 @@ pub struct AppPrefs {
     pub commandline_fade_ms: i32,
     /// COMMANDLINEOPACITY: command-line panel opacity in percent.
     pub command_line_opacity: u8,
+    /// MENUBAR: the pull-down menus show above the ribbon.
+    pub show_menu_bar: bool,
+    /// The ribbon shows (RIBBON / RIBBONCLOSE).
+    pub show_ribbon: bool,
+    /// HPASSOC: new hatches follow their boundary objects.
+    pub hatch_associative: bool,
     /// ZOOMWHEEL: reverse the mouse-wheel zoom direction.
     pub zoom_wheel_reversed: bool,
     /// Scroll pans and Ctrl+scroll zooms (touchpads).
@@ -920,6 +926,30 @@ pub fn view_window<'a>(
             .align_y(iced::Center),
         )
         .push(Space::new().height(24))
+        .push(text(crate::t!("Window Elements")).size(15))
+        .push(Space::new().height(10))
+        .push(
+            row![
+                iced::widget::checkbox(prefs.show_menu_bar)
+                    .on_toggle(Message::MenuBarChanged)
+                    .size(15),
+                text(crate::t!("Show the menu bar (MENUBAR)")).size(12),
+            ]
+            .spacing(8)
+            .align_y(iced::Center),
+        )
+        .push(Space::new().height(8))
+        .push(
+            row![
+                iced::widget::checkbox(prefs.show_ribbon)
+                    .on_toggle(Message::RibbonVisibleChanged)
+                    .size(15),
+                text(crate::t!("Show the ribbon (RIBBON / RIBBONCLOSE)")).size(12),
+            ]
+            .spacing(8)
+            .align_y(iced::Center),
+        )
+        .push(Space::new().height(24))
         .push(text(crate::t!("Command Line")).size(15))
         .push(Space::new().height(10))
         .push(
@@ -1478,6 +1508,17 @@ pub fn view_window<'a>(
                 .style(button::secondary),
         ]
         .spacing(10)
+        .align_y(iced::Center),
+        Space::new().height(24),
+        text(crate::t!("Hatch")).size(15),
+        Space::new().height(10),
+        row![
+            iced::widget::checkbox(prefs.hatch_associative)
+                .on_toggle(Message::HatchAssociativeChanged)
+                .size(15),
+            text(crate::t!("New hatches follow their boundaries (HPASSOC)")).size(12),
+        ]
+        .spacing(8)
         .align_y(iced::Center),
     ]
     .spacing(0)

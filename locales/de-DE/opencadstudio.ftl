@@ -283,6 +283,10 @@ command-copy =
     .mode = COPY  Kopiermodus eingeben [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = Neue Schraffuren folgen ihren Grenzen (HPASSOC)
+    .options-show-ribbon = Multifunktionsleiste anzeigen (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Menüleiste anzeigen (MENUBAR)
+    .options-window-elements = Fensterelemente
     .menu-viewports = Ansichtsfenster
     .menu-view-twist = Ansicht verdrehen
     .menu-tools = Werkzeuge

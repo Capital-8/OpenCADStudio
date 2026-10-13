@@ -282,6 +282,10 @@ command-copy =
     .mode = COPY  Podaj tryb kopiowania [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = Nowe kreskowania podążają za obwiedniami (HPASSOC)
+    .options-show-ribbon = Pokaż wstążkę (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Pokaż pasek menu (MENUBAR)
+    .options-window-elements = Elementy okna
     .menu-viewports = Rzutnie
     .menu-view-twist = Skręcenie widoku
     .menu-tools = Narzędzia

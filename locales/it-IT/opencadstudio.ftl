@@ -282,6 +282,10 @@ command-copy =
     .mode = COPY  Specificare modalità di copia [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = I nuovi tratteggi seguono i contorni (HPASSOC)
+    .options-show-ribbon = Mostra la barra multifunzione (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Mostra la barra dei menu (MENUBAR)
+    .options-window-elements = Elementi della finestra
     .menu-viewports = Finestre
     .menu-view-twist = Rotazione vista
     .menu-tools = Strumenti

@@ -273,6 +273,10 @@ command-copy =
     .mode = COPY  コピーモードを入力 [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = 新しいハッチングは境界に従う (HPASSOC)
+    .options-show-ribbon = リボンを表示 (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = メニュー バーを表示 (MENUBAR)
+    .options-window-elements = ウィンドウの要素
     .menu-viewports = ビューポート
     .menu-view-twist = ビューのねじれ
     .menu-tools = ツール

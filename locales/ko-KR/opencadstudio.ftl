@@ -282,6 +282,10 @@ command-copy =
     .mode = COPY  복사 모드 옵션 입력 [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = 새 해치가 경계를 따름 (HPASSOC)
+    .options-show-ribbon = 리본 표시 (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = 메뉴 막대 표시 (MENUBAR)
+    .options-window-elements = 창 요소
     .menu-viewports = 뷰포트
     .menu-view-twist = 뷰 비틀기
     .menu-tools = 도구

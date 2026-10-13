@@ -2616,6 +2616,12 @@ pub enum Message {
     /// Toggle reversing the mouse-wheel zoom direction (ZOOMWHEEL).
     ZoomWheelReversedChanged(bool),
     TouchpadPanChanged(bool),
+    /// Options: show the pull-down menus (MENUBAR).
+    MenuBarChanged(bool),
+    /// Options: show the ribbon (RIBBON / RIBBONCLOSE).
+    RibbonVisibleChanged(bool),
+    /// Options: new hatches are associative (HPASSOC).
+    HatchAssociativeChanged(bool),
     /// Interface scale in percent (Options > Display).
     UiScaleChanged(u16),
     /// Change how far one wheel notch zooms, from the Options slider

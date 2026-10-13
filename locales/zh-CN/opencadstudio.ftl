@@ -270,6 +270,10 @@ command-copy =
     .mode = COPY  输入复制模式选项 [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = 新图案填充跟随其边界 (HPASSOC)
+    .options-show-ribbon = 显示功能区 (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = 显示菜单栏 (MENUBAR)
+    .options-window-elements = 窗口元素
     .menu-viewports = 视口
     .menu-view-twist = 视图扭曲
     .menu-tools = 工具

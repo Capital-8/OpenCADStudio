@@ -281,6 +281,10 @@ command-copy =
     .mode = COPY  Adja meg a másolási módot [Single/Multiple] <Multiple>:
 
 common =
+    .options-hpassoc = Az új sraffozások követik határaikat (HPASSOC)
+    .options-show-ribbon = Szalag megjelenítése (RIBBON / RIBBONCLOSE)
+    .options-show-menu-bar = Menüsor megjelenítése (MENUBAR)
+    .options-window-elements = Ablakelemek
     .menu-viewports = Nézetablakok
     .menu-view-twist = Nézet elforgatása
     .menu-tools = Eszközök
