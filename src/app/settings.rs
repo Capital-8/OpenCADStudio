@@ -417,6 +417,10 @@ pub struct UserSettings {
     pub attdef_on_screen: bool,
     /// FIELDDISPLAY: fields show on a gray background.
     pub field_display: bool,
+    /// FILEDIA: file dialogs of commands that have a command-line form.
+    pub file_dia: bool,
+    /// The file type ATTACH's picker was last left on (1-based).
+    pub attach_filter: u32,
     /// SURFACEASSOCIATIVITY: new surfaces stay associative to their sources.
     pub surface_associativity: bool,
     /// UCSORTHO: an orthographic view preset also sets its orthographic UCS.
@@ -842,6 +846,8 @@ impl Default for UserSettings {
             image_frame: 1,
             attdef_on_screen: true,
             field_display: true,
+            file_dia: true,
+            attach_filter: 7,
             surface_associativity: true,
             ucs_ortho: true,
             ucs_view: true,
