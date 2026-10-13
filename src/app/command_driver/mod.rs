@@ -882,6 +882,13 @@ impl OpenCADStudio {
             CmdResult::ZoomToWindow { p1, p2 } => {
                 self.handle_zoom_to_window(p1, p2);
             }
+            CmdResult::CommitAndZoom { entity, p1, p2 } => {
+                self.handle_commit_entities_and_exit(vec![entity], false, false);
+                self.handle_zoom_to_window(p1, p2);
+            }
+            CmdResult::ScaleViewports { handles, factor } => {
+                self.handle_scale_viewports(handles, factor);
+            }
             CmdResult::TwistView(twist) => {
                 self.handle_twist_view(twist);
             }

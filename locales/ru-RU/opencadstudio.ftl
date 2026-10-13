@@ -4425,6 +4425,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Выберите объекты для удаления:
+    .delete-objects-option = Удалить объекты
+    .mvsetup-enable-paper-space = MVSETUP  Включить пространство листа? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  Введите масштабный коэффициент <1>:
+    .mvsetup-enter-paper-width = MVSETUP  Введите ширину листа:
+    .mvsetup-enter-paper-height = MVSETUP  Введите высоту листа:
+    .mvsetup-enter-option = MVSETUP  Задайте параметр [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  Задайте компоновку видовых экранов [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  Укажите первый угол области видовых экранов <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  Укажите противоположный угол:
+    .mvsetup-viewports-in-x = MVSETUP  Введите число видовых экранов по X <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Введите число видовых экранов по Y <2>:
+    .mvsetup-distance-in-x = MVSETUP  Укажите расстояние между видовыми экранами по X <0>:
+    .mvsetup-distance-in-y = MVSETUP  Укажите расстояние между видовыми экранами по Y <0>:
+    .mvsetup-select-viewports = MVSETUP  Выберите видовые экраны для масштабирования:
+    .mvsetup-paper-space-units = MVSETUP  Введите число единиц пространства листа <1>:
+    .mvsetup-model-space-units = MVSETUP  Введите число единиц пространства модели <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  Видовые экраны не помещаются в области.
+    .scale-viewports-option = Масштаб видовых экранов
     .active = Включён
     .inactive = неактивный
     .insert-view = Включить вид

@@ -4421,6 +4421,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Válassza ki a törlendő objektumokat:
+    .delete-objects-option = Objektumok törlése
+    .mvsetup-enable-paper-space = MVSETUP  Papírtér engedélyezése? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  Adja meg a léptéktényezőt <1>:
+    .mvsetup-enter-paper-width = MVSETUP  Adja meg a papír szélességét:
+    .mvsetup-enter-paper-height = MVSETUP  Adja meg a papír magasságát:
+    .mvsetup-enter-option = MVSETUP  Adja meg a lehetőséget [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  Adja meg a nézetablak-elrendezést [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  Adja meg a nézetablakok területének első sarkát <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  Adja meg a szemközti sarkot:
+    .mvsetup-viewports-in-x = MVSETUP  Adja meg a nézetablakok számát X irányban <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Adja meg a nézetablakok számát Y irányban <2>:
+    .mvsetup-distance-in-x = MVSETUP  Adja meg a nézetablakok távolságát X irányban <0>:
+    .mvsetup-distance-in-y = MVSETUP  Adja meg a nézetablakok távolságát Y irányban <0>:
+    .mvsetup-select-viewports = MVSETUP  Válassza ki a méretezendő nézetablakokat:
+    .mvsetup-paper-space-units = MVSETUP  Adja meg a papírtér egységeinek számát <1>:
+    .mvsetup-model-space-units = MVSETUP  Adja meg a modelltér egységeinek számát <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  A nézetablakok nem férnek el a területen.
+    .scale-viewports-option = Nézetablakok méretezése
     .active = Aktív
     .inactive = Inaktív
     .insert-view = Nézet beszúrása

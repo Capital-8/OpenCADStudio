@@ -4424,6 +4424,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Selecione os objetos a excluir:
+    .delete-objects-option = Excluir objetos
+    .mvsetup-enable-paper-space = MVSETUP  Ativar espaço do papel? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  Informe o fator de escala <1>:
+    .mvsetup-enter-paper-width = MVSETUP  Informe a largura do papel:
+    .mvsetup-enter-paper-height = MVSETUP  Informe a altura do papel:
+    .mvsetup-enter-option = MVSETUP  Informe uma opção [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  Informe o arranjo das janelas [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  Especifique o primeiro canto da área das janelas <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  Especifique o canto oposto:
+    .mvsetup-viewports-in-x = MVSETUP  Informe o número de janelas na direção X <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Informe o número de janelas na direção Y <2>:
+    .mvsetup-distance-in-x = MVSETUP  Especifique a distância entre janelas na direção X <0>:
+    .mvsetup-distance-in-y = MVSETUP  Especifique a distância entre janelas na direção Y <0>:
+    .mvsetup-select-viewports = MVSETUP  Selecione as janelas a escalar:
+    .mvsetup-paper-space-units = MVSETUP  Informe o número de unidades do espaço do papel <1>:
+    .mvsetup-model-space-units = MVSETUP  Informe o número de unidades do espaço do modelo <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  As janelas não cabem na área.
+    .scale-viewports-option = Escalar janelas
     .active = Ativo
     .inactive = Inativo
     .insert-view = Inserir vista

@@ -4423,6 +4423,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Изберете обектите за изтриване:
+    .delete-objects-option = Изтриване на обекти
+    .mvsetup-enable-paper-space = MVSETUP  Активиране на хартиеното пространство? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  Въведете мащабен коефициент <1>:
+    .mvsetup-enter-paper-width = MVSETUP  Въведете ширина на листа:
+    .mvsetup-enter-paper-height = MVSETUP  Въведете височина на листа:
+    .mvsetup-enter-option = MVSETUP  Въведете опция [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  Въведете подредба на прозорците [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  Задайте първи ъгъл на областта за прозорците <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  Задайте противоположен ъгъл:
+    .mvsetup-viewports-in-x = MVSETUP  Въведете брой прозорци по X <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Въведете брой прозорци по Y <2>:
+    .mvsetup-distance-in-x = MVSETUP  Задайте разстояние между прозорците по X <0>:
+    .mvsetup-distance-in-y = MVSETUP  Задайте разстояние между прозорците по Y <0>:
+    .mvsetup-select-viewports = MVSETUP  Изберете прозорците за мащабиране:
+    .mvsetup-paper-space-units = MVSETUP  Въведете броя единици в хартиеното пространство <1>:
+    .mvsetup-model-space-units = MVSETUP  Въведете броя единици в пространството на модела <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  Прозорците не се побират в областта.
+    .scale-viewports-option = Мащабиране на прозорците
     .active = Активно
     .inactive = Неактивно
     .insert-view = Вмъкни изглед

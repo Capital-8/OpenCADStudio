@@ -4422,6 +4422,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Selecteer de te verwijderen objecten:
+    .delete-objects-option = Objecten verwijderen
+    .mvsetup-enable-paper-space = MVSETUP  Papierruimte inschakelen? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  Geef schaalfactor op <1>:
+    .mvsetup-enter-paper-width = MVSETUP  Geef papierbreedte op:
+    .mvsetup-enter-paper-height = MVSETUP  Geef papierhoogte op:
+    .mvsetup-enter-option = MVSETUP  Geef optie op [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  Geef viewportindeling op [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  Geef eerste hoek van het viewportgebied op <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  Geef tegenoverliggende hoek op:
+    .mvsetup-viewports-in-x = MVSETUP  Geef aantal viewports in X-richting op <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Geef aantal viewports in Y-richting op <2>:
+    .mvsetup-distance-in-x = MVSETUP  Geef afstand tussen viewports in X-richting op <0>:
+    .mvsetup-distance-in-y = MVSETUP  Geef afstand tussen viewports in Y-richting op <0>:
+    .mvsetup-select-viewports = MVSETUP  Selecteer de te schalen viewports:
+    .mvsetup-paper-space-units = MVSETUP  Geef aantal papierruimte-eenheden op <1>:
+    .mvsetup-model-space-units = MVSETUP  Geef aantal modelruimte-eenheden op <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  De viewports passen niet in het gebied.
+    .scale-viewports-option = Viewports schalen
     .active = Actief
     .inactive = Inactief
     .insert-view = Beeld invoegen

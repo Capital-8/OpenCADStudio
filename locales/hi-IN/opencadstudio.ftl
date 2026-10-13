@@ -4412,6 +4412,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  हटाने के लिए ऑब्जेक्ट चुनें:
+    .delete-objects-option = ऑब्जेक्ट हटाएँ
+    .mvsetup-enable-paper-space = MVSETUP  पेपर स्पेस सक्षम करें? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  स्केल फ़ैक्टर दर्ज करें <1>:
+    .mvsetup-enter-paper-width = MVSETUP  पेपर की चौड़ाई दर्ज करें:
+    .mvsetup-enter-paper-height = MVSETUP  पेपर की ऊँचाई दर्ज करें:
+    .mvsetup-enter-option = MVSETUP  विकल्प दर्ज करें [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  व्यूपोर्ट लेआउट दर्ज करें [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  व्यूपोर्ट क्षेत्र का पहला कोना निर्दिष्ट करें <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  विपरीत कोना निर्दिष्ट करें:
+    .mvsetup-viewports-in-x = MVSETUP  X दिशा में व्यूपोर्ट की संख्या दर्ज करें <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Y दिशा में व्यूपोर्ट की संख्या दर्ज करें <2>:
+    .mvsetup-distance-in-x = MVSETUP  X दिशा में व्यूपोर्ट के बीच दूरी निर्दिष्ट करें <0>:
+    .mvsetup-distance-in-y = MVSETUP  Y दिशा में व्यूपोर्ट के बीच दूरी निर्दिष्ट करें <0>:
+    .mvsetup-select-viewports = MVSETUP  स्केल करने के लिए व्यूपोर्ट चुनें:
+    .mvsetup-paper-space-units = MVSETUP  पेपर स्पेस इकाइयों की संख्या दर्ज करें <1>:
+    .mvsetup-model-space-units = MVSETUP  मॉडल स्पेस इकाइयों की संख्या दर्ज करें <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  व्यूपोर्ट क्षेत्र में फिट नहीं होते।
+    .scale-viewports-option = व्यूपोर्ट स्केल करें
     .active = सक्रिय
     .inactive = निष्क्रिय
     .insert-view = दृश्य डालें

@@ -4425,6 +4425,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Sélectionnez les objets à supprimer :
+    .delete-objects-option = Supprimer des objets
+    .mvsetup-enable-paper-space = MVSETUP  Activer l’espace papier ? [No/Yes] <Y> :
+    .mvsetup-enter-scale-factor = MVSETUP  Entrez le facteur d’échelle <1> :
+    .mvsetup-enter-paper-width = MVSETUP  Entrez la largeur du papier :
+    .mvsetup-enter-paper-height = MVSETUP  Entrez la hauteur du papier :
+    .mvsetup-enter-option = MVSETUP  Entrez une option [Create/Delete objects/Scale viewports] :
+    .mvsetup-enter-viewport-layout = MVSETUP  Entrez la disposition des fenêtres [Single/Engineering/Array] <Single> :
+    .mvsetup-specify-first-corner = MVSETUP  Spécifiez le premier coin de la zone des fenêtres <Sheet> :
+    .mvsetup-specify-opposite-corner = MVSETUP  Spécifiez le coin opposé :
+    .mvsetup-viewports-in-x = MVSETUP  Entrez le nombre de fenêtres en X <2> :
+    .mvsetup-viewports-in-y = MVSETUP  Entrez le nombre de fenêtres en Y <2> :
+    .mvsetup-distance-in-x = MVSETUP  Spécifiez la distance entre les fenêtres en X <0> :
+    .mvsetup-distance-in-y = MVSETUP  Spécifiez la distance entre les fenêtres en Y <0> :
+    .mvsetup-select-viewports = MVSETUP  Sélectionnez les fenêtres à mettre à l’échelle :
+    .mvsetup-paper-space-units = MVSETUP  Entrez le nombre d’unités de l’espace papier <1> :
+    .mvsetup-model-space-units = MVSETUP  Entrez le nombre d’unités de l’espace objet <1> :
+    .mvsetup-viewports-do-not-fit = MVSETUP  Les fenêtres ne tiennent pas dans la zone.
+    .scale-viewports-option = Échelle des fenêtres
     .active = Actif
     .inactive = Inactif
     .insert-view = Insérer une vue

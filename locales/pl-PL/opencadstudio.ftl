@@ -4423,6 +4423,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Wybierz obiekty do usunięcia:
+    .delete-objects-option = Usuń obiekty
+    .mvsetup-enable-paper-space = MVSETUP  Włączyć obszar papieru? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  Podaj współczynnik skali <1>:
+    .mvsetup-enter-paper-width = MVSETUP  Podaj szerokość papieru:
+    .mvsetup-enter-paper-height = MVSETUP  Podaj wysokość papieru:
+    .mvsetup-enter-option = MVSETUP  Podaj opcję [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  Podaj układ rzutni [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  Określ pierwszy narożnik obszaru rzutni <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  Określ przeciwległy narożnik:
+    .mvsetup-viewports-in-x = MVSETUP  Podaj liczbę rzutni w kierunku X <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Podaj liczbę rzutni w kierunku Y <2>:
+    .mvsetup-distance-in-x = MVSETUP  Określ odstęp między rzutniami w kierunku X <0>:
+    .mvsetup-distance-in-y = MVSETUP  Określ odstęp między rzutniami w kierunku Y <0>:
+    .mvsetup-select-viewports = MVSETUP  Wybierz rzutnie do skalowania:
+    .mvsetup-paper-space-units = MVSETUP  Podaj liczbę jednostek obszaru papieru <1>:
+    .mvsetup-model-space-units = MVSETUP  Podaj liczbę jednostek obszaru modelu <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  Rzutnie nie mieszczą się w obszarze.
+    .scale-viewports-option = Skaluj rzutnie
     .active = Aktywny
     .inactive = Nieaktywny
     .insert-view = Wstaw widok

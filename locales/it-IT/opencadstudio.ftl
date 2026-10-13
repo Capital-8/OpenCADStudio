@@ -4423,6 +4423,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Selezionare gli oggetti da eliminare:
+    .delete-objects-option = Elimina oggetti
+    .mvsetup-enable-paper-space = MVSETUP  Attivare lo spazio carta? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  Immettere il fattore di scala <1>:
+    .mvsetup-enter-paper-width = MVSETUP  Immettere la larghezza del foglio:
+    .mvsetup-enter-paper-height = MVSETUP  Immettere l'altezza del foglio:
+    .mvsetup-enter-option = MVSETUP  Immettere un'opzione [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  Immettere la disposizione delle finestre [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  Specificare il primo angolo dell'area delle finestre <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  Specificare l'angolo opposto:
+    .mvsetup-viewports-in-x = MVSETUP  Immettere il numero di finestre in direzione X <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Immettere il numero di finestre in direzione Y <2>:
+    .mvsetup-distance-in-x = MVSETUP  Specificare la distanza tra le finestre in direzione X <0>:
+    .mvsetup-distance-in-y = MVSETUP  Specificare la distanza tra le finestre in direzione Y <0>:
+    .mvsetup-select-viewports = MVSETUP  Selezionare le finestre da scalare:
+    .mvsetup-paper-space-units = MVSETUP  Immettere il numero di unità dello spazio carta <1>:
+    .mvsetup-model-space-units = MVSETUP  Immettere il numero di unità dello spazio modello <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  Le finestre non entrano nell'area.
+    .scale-viewports-option = Scala finestre
     .active = Attivo
     .inactive = Inattivo
     .insert-view = Inserisci vista

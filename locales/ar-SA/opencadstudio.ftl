@@ -4436,6 +4436,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  حدد الكائنات المراد حذفها:
+    .delete-objects-option = حذف الكائنات
+    .mvsetup-enable-paper-space = MVSETUP  تمكين فضاء الورق؟ [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  أدخل معامل المقياس <1>:
+    .mvsetup-enter-paper-width = MVSETUP  أدخل عرض الورقة:
+    .mvsetup-enter-paper-height = MVSETUP  أدخل ارتفاع الورقة:
+    .mvsetup-enter-option = MVSETUP  أدخل خيارًا [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  أدخل تخطيط منافذ العرض [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  حدد الزاوية الأولى لمنطقة منافذ العرض <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  حدد الزاوية المقابلة:
+    .mvsetup-viewports-in-x = MVSETUP  أدخل عدد منافذ العرض في اتجاه X <2>:
+    .mvsetup-viewports-in-y = MVSETUP  أدخل عدد منافذ العرض في اتجاه Y <2>:
+    .mvsetup-distance-in-x = MVSETUP  حدد المسافة بين منافذ العرض في اتجاه X <0>:
+    .mvsetup-distance-in-y = MVSETUP  حدد المسافة بين منافذ العرض في اتجاه Y <0>:
+    .mvsetup-select-viewports = MVSETUP  حدد منافذ العرض المراد تغيير مقياسها:
+    .mvsetup-paper-space-units = MVSETUP  أدخل عدد وحدات فضاء الورق <1>:
+    .mvsetup-model-space-units = MVSETUP  أدخل عدد وحدات فضاء النموذج <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  منافذ العرض لا تتسع في المنطقة المحددة.
+    .scale-viewports-option = تغيير مقياس منافذ العرض
     .active = نشط
     .inactive = غير نشط
     .insert-view = إدراج عرض

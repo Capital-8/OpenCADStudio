@@ -4424,6 +4424,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Επιλέξτε τα αντικείμενα για διαγραφή:
+    .delete-objects-option = Διαγραφή αντικειμένων
+    .mvsetup-enable-paper-space = MVSETUP  Ενεργοποίηση χώρου χαρτιού; [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  Εισαγάγετε συντελεστή κλίμακας <1>:
+    .mvsetup-enter-paper-width = MVSETUP  Εισαγάγετε πλάτος χαρτιού:
+    .mvsetup-enter-paper-height = MVSETUP  Εισαγάγετε ύψος χαρτιού:
+    .mvsetup-enter-option = MVSETUP  Εισαγάγετε επιλογή [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  Εισαγάγετε διάταξη παραθύρων [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  Καθορίστε πρώτη γωνία της περιοχής παραθύρων <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  Καθορίστε την απέναντι γωνία:
+    .mvsetup-viewports-in-x = MVSETUP  Εισαγάγετε αριθμό παραθύρων στην κατεύθυνση X <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Εισαγάγετε αριθμό παραθύρων στην κατεύθυνση Y <2>:
+    .mvsetup-distance-in-x = MVSETUP  Καθορίστε απόσταση μεταξύ παραθύρων στην κατεύθυνση X <0>:
+    .mvsetup-distance-in-y = MVSETUP  Καθορίστε απόσταση μεταξύ παραθύρων στην κατεύθυνση Y <0>:
+    .mvsetup-select-viewports = MVSETUP  Επιλέξτε τα παράθυρα για κλιμάκωση:
+    .mvsetup-paper-space-units = MVSETUP  Εισαγάγετε αριθμό μονάδων χώρου χαρτιού <1>:
+    .mvsetup-model-space-units = MVSETUP  Εισαγάγετε αριθμό μονάδων χώρου μοντέλου <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  Τα παράθυρα δεν χωρούν στην περιοχή.
+    .scale-viewports-option = Κλιμάκωση παραθύρων
     .active = Ενεργή
     .inactive = Ανενεργή
     .insert-view = Εισαγωγή προβολής

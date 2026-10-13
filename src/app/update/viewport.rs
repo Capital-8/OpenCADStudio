@@ -6445,10 +6445,10 @@ properties={:.1}ms picked={}",
             && self.tabs[i]
                 .active_cmd
                 .as_ref()
-                .is_some_and(|command| command.name() == "MVIEW");
+                .is_some_and(|command| matches!(command.name(), "MVIEW" | "MVSETUP"));
         if context_changed {
             if preserve_active_command {
-                // MVIEW keeps its command-owned step data, but all host-owned
+                // MVIEW and MVSETUP keep their step data, but all host-owned
                 // cursor/snap/dynamic-input state belongs to the old space.
                 self.reset_space_interaction_state();
             }

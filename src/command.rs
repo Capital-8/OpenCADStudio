@@ -1943,6 +1943,18 @@ pub enum CmdResult {
         p1: DVec3,
         p2: DVec3,
     },
+    /// Commit `entity`, then zoom to the given corner points; end command.
+    CommitAndZoom {
+        entity: EntityType,
+        p1: DVec3,
+        p2: DVec3,
+    },
+    /// Scale the given layout viewports to `factor` paper units per model
+    /// unit; end command.
+    ScaleViewports {
+        handles: Vec<Handle>,
+        factor: f64,
+    },
     /// Print a measurement result to the command line and end the command.
     Measurement(String),
     /// Print a measurement result and keep the command active.

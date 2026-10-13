@@ -4422,6 +4422,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Zu löschende Objekte wählen:
+    .delete-objects-option = Objekte löschen
+    .mvsetup-enable-paper-space = MVSETUP  Papierbereich aktivieren? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  Skalierfaktor eingeben <1>:
+    .mvsetup-enter-paper-width = MVSETUP  Papierbreite eingeben:
+    .mvsetup-enter-paper-height = MVSETUP  Papierhöhe eingeben:
+    .mvsetup-enter-option = MVSETUP  Option eingeben [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  Ansichtsfensteranordnung eingeben [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  Erste Ecke des Bereichs für Ansichtsfenster angeben <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  Gegenüberliegende Ecke angeben:
+    .mvsetup-viewports-in-x = MVSETUP  Anzahl der Ansichtsfenster in X-Richtung eingeben <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Anzahl der Ansichtsfenster in Y-Richtung eingeben <2>:
+    .mvsetup-distance-in-x = MVSETUP  Abstand zwischen Ansichtsfenstern in X-Richtung angeben <0>:
+    .mvsetup-distance-in-y = MVSETUP  Abstand zwischen Ansichtsfenstern in Y-Richtung angeben <0>:
+    .mvsetup-select-viewports = MVSETUP  Zu skalierende Ansichtsfenster wählen:
+    .mvsetup-paper-space-units = MVSETUP  Anzahl der Papierbereichseinheiten eingeben <1>:
+    .mvsetup-model-space-units = MVSETUP  Anzahl der Modellbereichseinheiten eingeben <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  Die Ansichtsfenster passen nicht in den Bereich.
+    .scale-viewports-option = Ansichtsfenster skalieren
     .active = Aktiv
     .inactive = Inaktiv
     .insert-view = Ansicht einfügen

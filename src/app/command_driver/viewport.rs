@@ -447,6 +447,33 @@ impl OpenCADStudio {
             .push_output(crate::t!("Zoom Window").as_ref());
     }
 
+    /// MVSETUP Scale viewports: each picked layout viewport shows the model
+    /// at `factor` paper units per model unit. One undo step.
+    pub(in crate::app) fn handle_scale_viewports(&mut self, handles: Vec<Handle>, factor: f64) {
+        let i = self.active_tab;
+        self.tabs[i].active_cmd = None;
+        self.tabs[i].snap_result = None;
+        let handles: Vec<Handle> = handles
+            .into_iter()
+            .filter(|handle| {
+                matches!(
+                    self.tabs[i].scene.document.get_entity(*handle),
+                    Some(codec::EntityType::Viewport(viewport)) if viewport.id > 1
+                )
+            })
+            .collect();
+        if handles.is_empty() {
+            return;
+        }
+        self.push_undo_snapshot(i, "MVSETUP");
+        for handle in handles {
+            self.tabs[i]
+                .scene
+                .set_viewport_scale_factor_for(handle, factor);
+        }
+        self.tabs[i].dirty = true;
+    }
+
     /// Turn the active view about its line of sight so the drawing shows
     /// `twist` radians counter-clockwise from its untwisted orientation.
     pub(in crate::app) fn handle_twist_view(&mut self, twist: f64) {

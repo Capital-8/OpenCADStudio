@@ -4423,6 +4423,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Valitse poistettavat objektit:
+    .delete-objects-option = Poista objektit
+    .mvsetup-enable-paper-space = MVSETUP  Otetaanko paperitila käyttöön? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  Anna mittakaavakerroin <1>:
+    .mvsetup-enter-paper-width = MVSETUP  Anna paperin leveys:
+    .mvsetup-enter-paper-height = MVSETUP  Anna paperin korkeus:
+    .mvsetup-enter-option = MVSETUP  Anna valinta [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  Anna näkymäikkunoiden asettelu [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  Määritä näkymäikkunoiden alueen ensimmäinen kulma <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  Määritä vastakkainen kulma:
+    .mvsetup-viewports-in-x = MVSETUP  Anna näkymäikkunoiden määrä X-suunnassa <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Anna näkymäikkunoiden määrä Y-suunnassa <2>:
+    .mvsetup-distance-in-x = MVSETUP  Määritä näkymäikkunoiden väli X-suunnassa <0>:
+    .mvsetup-distance-in-y = MVSETUP  Määritä näkymäikkunoiden väli Y-suunnassa <0>:
+    .mvsetup-select-viewports = MVSETUP  Valitse skaalattavat näkymäikkunat:
+    .mvsetup-paper-space-units = MVSETUP  Anna paperitilan yksiköiden määrä <1>:
+    .mvsetup-model-space-units = MVSETUP  Anna mallitilan yksiköiden määrä <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  Näkymäikkunat eivät mahdu alueelle.
+    .scale-viewports-option = Skaalaa näkymäikkunat
     .active = Aktiivinen
     .inactive = Ei-aktiivinen
     .insert-view = Lisää näkymä

@@ -4423,6 +4423,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  삭제할 객체 선택:
+    .delete-objects-option = 객체 삭제
+    .mvsetup-enable-paper-space = MVSETUP  도면 공간을 사용하시겠습니까? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  축척 비율 입력 <1>:
+    .mvsetup-enter-paper-width = MVSETUP  용지 폭 입력:
+    .mvsetup-enter-paper-height = MVSETUP  용지 높이 입력:
+    .mvsetup-enter-option = MVSETUP  옵션 입력 [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  뷰포트 배치 입력 [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  뷰포트 영역의 첫 번째 구석 지정 <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  반대 구석 지정:
+    .mvsetup-viewports-in-x = MVSETUP  X 방향 뷰포트 수 입력 <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Y 방향 뷰포트 수 입력 <2>:
+    .mvsetup-distance-in-x = MVSETUP  X 방향 뷰포트 간 거리 지정 <0>:
+    .mvsetup-distance-in-y = MVSETUP  Y 방향 뷰포트 간 거리 지정 <0>:
+    .mvsetup-select-viewports = MVSETUP  축척할 뷰포트 선택:
+    .mvsetup-paper-space-units = MVSETUP  도면 공간 단위 수 입력 <1>:
+    .mvsetup-model-space-units = MVSETUP  모형 공간 단위 수 입력 <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  뷰포트가 영역에 맞지 않습니다.
+    .scale-viewports-option = 뷰포트 축척
     .active = 활성
     .inactive = 비활성
     .insert-view = 삽입 뷰

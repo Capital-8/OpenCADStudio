@@ -4407,6 +4407,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  选择要删除的对象:
+    .delete-objects-option = 删除对象
+    .mvsetup-enable-paper-space = MVSETUP  启用图纸空间? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  输入比例因子 <1>:
+    .mvsetup-enter-paper-width = MVSETUP  输入图纸宽度:
+    .mvsetup-enter-paper-height = MVSETUP  输入图纸高度:
+    .mvsetup-enter-option = MVSETUP  输入选项 [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  输入视口布局 [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  指定视口区域的第一个角点 <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  指定对角点:
+    .mvsetup-viewports-in-x = MVSETUP  输入 X 方向的视口数 <2>:
+    .mvsetup-viewports-in-y = MVSETUP  输入 Y 方向的视口数 <2>:
+    .mvsetup-distance-in-x = MVSETUP  指定 X 方向的视口间距 <0>:
+    .mvsetup-distance-in-y = MVSETUP  指定 Y 方向的视口间距 <0>:
+    .mvsetup-select-viewports = MVSETUP  选择要缩放的视口:
+    .mvsetup-paper-space-units = MVSETUP  输入图纸空间单位数 <1>:
+    .mvsetup-model-space-units = MVSETUP  输入模型空间单位数 <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  视口无法放入该区域。
+    .scale-viewports-option = 缩放视口
     .active = 激活
     .inactive = 不活动
     .insert-view = 插入视图

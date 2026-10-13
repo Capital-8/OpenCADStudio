@@ -4421,6 +4421,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  Vyberte objekty k odstranění:
+    .delete-objects-option = Odstranit objekty
+    .mvsetup-enable-paper-space = MVSETUP  Povolit výkresový prostor? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  Zadejte měřítko <1>:
+    .mvsetup-enter-paper-width = MVSETUP  Zadejte šířku papíru:
+    .mvsetup-enter-paper-height = MVSETUP  Zadejte výšku papíru:
+    .mvsetup-enter-option = MVSETUP  Zadejte možnost [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  Zadejte rozvržení výřezů [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  Zadejte první roh oblasti pro výřezy <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  Zadejte protější roh:
+    .mvsetup-viewports-in-x = MVSETUP  Zadejte počet výřezů ve směru X <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Zadejte počet výřezů ve směru Y <2>:
+    .mvsetup-distance-in-x = MVSETUP  Zadejte vzdálenost mezi výřezy ve směru X <0>:
+    .mvsetup-distance-in-y = MVSETUP  Zadejte vzdálenost mezi výřezy ve směru Y <0>:
+    .mvsetup-select-viewports = MVSETUP  Vyberte výřezy ke změně měřítka:
+    .mvsetup-paper-space-units = MVSETUP  Zadejte počet jednotek výkresového prostoru <1>:
+    .mvsetup-model-space-units = MVSETUP  Zadejte počet jednotek modelového prostoru <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  Výřezy se do oblasti nevejdou.
+    .scale-viewports-option = Měřítko výřezů
     .active = Aktivní
     .inactive = Neaktivní
     .insert-view = Vložit pohled

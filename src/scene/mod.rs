@@ -6656,6 +6656,12 @@ impl Scene {
         let Some(viewport) = self.explicit_viewport_handle() else {
             return false;
         };
+        self.set_viewport_scale_factor_for(viewport, factor)
+    }
+
+    /// Scale `viewport` to `factor` paper units per model unit, as
+    /// [`Self::set_viewport_scale_factor`] does for the active one.
+    pub fn set_viewport_scale_factor_for(&mut self, viewport: Handle, factor: f64) -> bool {
         let unit_factor = self.annotation_scale_unit_factor();
         let named = self
             .document
@@ -12990,22 +12996,49 @@ vis_index={:.1} visible_probe={:.1}",
             Some(e) => e,
             None => return,
         };
+        let (min, max) = (min.as_dvec3(), max.as_dvec3());
         let center = (min + max) * 0.5;
-        let content_w = (max.x - min.x).max(1e-3);
-        let content_h = (max.y - min.y).max(1e-3);
 
         let vp = match self.document.get_entity_mut(vp_handle) {
             Some(codec::EntityType::Viewport(vp)) => vp,
             _ => return,
         };
-        // Set the view target to the model-space centroid (XY plane, z=0).
-        vp.view_target.x = center.x as f64;
-        vp.view_target.y = center.y as f64;
-        vp.view_target.z = 0.0;
+        let direction = glam::DVec3::new(
+            vp.view_direction.x,
+            vp.view_direction.y,
+            vp.view_direction.z,
+        )
+        .normalize_or(glam::DVec3::Z);
+        // The extents box as seen along the view direction: its span across
+        // the view's right and up axes. Looking down Z that is its X/Y size.
+        let right = glam::DVec3::Z.cross(direction).normalize_or(glam::DVec3::X);
+        let up = direction.cross(right);
+        let (mut span_right, mut span_up) = ((f64::MAX, f64::MIN), (f64::MAX, f64::MIN));
+        for corner in 0..8 {
+            let point = glam::DVec3::new(
+                if corner & 1 == 0 { min.x } else { max.x },
+                if corner & 2 == 0 { min.y } else { max.y },
+                if corner & 4 == 0 { min.z } else { max.z },
+            );
+            let (along_right, along_up) = (point.dot(right), point.dot(up));
+            span_right = (span_right.0.min(along_right), span_right.1.max(along_right));
+            span_up = (span_up.0.min(along_up), span_up.1.max(along_up));
+        }
+        let content_w = (span_right.1 - span_right.0).max(1e-3);
+        let content_h = (span_up.1 - span_up.0).max(1e-3);
+
+        // Aim at the model's centre; a plan view keeps it on the XY plane.
+        vp.view_target.x = center.x;
+        vp.view_target.y = center.y;
+        vp.view_target.z = if direction == glam::DVec3::Z {
+            0.0
+        } else {
+            center.z
+        };
 
         // Choose the scale that fits both dimensions with the margin.
-        let scale_w = vp.width / (content_w as f64 * margin);
-        let scale_h = vp.height / (content_h as f64 * margin);
+        let scale_w = vp.width / (content_w * margin);
+        let scale_h = vp.height / (content_h * margin);
         let fit_scale = scale_w.min(scale_h).min(1000.0).max(1e-6);
 
         vp.custom_scale = fit_scale;

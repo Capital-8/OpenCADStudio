@@ -4412,6 +4412,25 @@ model =
 
 
 layout =
+    .mvsetup-select-objects-to-delete = MVSETUP  削除するオブジェクトを選択:
+    .delete-objects-option = オブジェクトを削除
+    .mvsetup-enable-paper-space = MVSETUP  ペーパー空間を有効にしますか? [No/Yes] <Y>:
+    .mvsetup-enter-scale-factor = MVSETUP  尺度を入力 <1>:
+    .mvsetup-enter-paper-width = MVSETUP  用紙の幅を入力:
+    .mvsetup-enter-paper-height = MVSETUP  用紙の高さを入力:
+    .mvsetup-enter-option = MVSETUP  オプションを入力 [Create/Delete objects/Scale viewports]:
+    .mvsetup-enter-viewport-layout = MVSETUP  ビューポートの配置を入力 [Single/Engineering/Array] <Single>:
+    .mvsetup-specify-first-corner = MVSETUP  ビューポート領域の最初のコーナーを指定 <Sheet>:
+    .mvsetup-specify-opposite-corner = MVSETUP  もう一方のコーナーを指定:
+    .mvsetup-viewports-in-x = MVSETUP  X 方向のビューポート数を入力 <2>:
+    .mvsetup-viewports-in-y = MVSETUP  Y 方向のビューポート数を入力 <2>:
+    .mvsetup-distance-in-x = MVSETUP  X 方向のビューポート間隔を指定 <0>:
+    .mvsetup-distance-in-y = MVSETUP  Y 方向のビューポート間隔を指定 <0>:
+    .mvsetup-select-viewports = MVSETUP  尺度を設定するビューポートを選択:
+    .mvsetup-paper-space-units = MVSETUP  ペーパー空間の単位数を入力 <1>:
+    .mvsetup-model-space-units = MVSETUP  モデル空間の単位数を入力 <1>:
+    .mvsetup-viewports-do-not-fit = MVSETUP  ビューポートが領域に収まりません。
+    .scale-viewports-option = ビューポートの尺度
     .active = アクティブ
     .inactive = 非アクティブ
     .insert-view = ビューを挿入
