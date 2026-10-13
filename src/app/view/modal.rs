@@ -76,6 +76,7 @@ impl OpenCADStudio {
             Some(K::ExternalChange) => crate::tr!("modal", "drawing-changed"),
             Some(K::LayerDeleteWarning) => crate::tr!("modal", "delete-layer"),
             Some(K::Unsaved) => crate::tr!("modal", "unsaved-changes"),
+            Some(K::BlockEditChanges) => crate::t!("Block Editor").into_owned(),
             Some(K::PointStyle) => crate::tr!("modal", "point-style"),
             Some(K::AttributeEditor) => crate::tr!("modal", "attribute-editor"),
             Some(K::SaveDialog) => crate::tr!("modal", "save-drawing-as"),
@@ -1742,7 +1743,19 @@ impl OpenCADStudio {
                         .unwrap_or_default(),
                     None => String::new(),
                 };
-                automatic_flow(ex, |flow| unsaved_changes_dialog_window(&tab_name, flow))
+                automatic_flow(ex, |flow| {
+                    unsaved_changes_dialog_window(&tab_name, flow, false)
+                })
+            }
+            super::super::ModalKind::BlockEditChanges => {
+                let name = self
+                    .pending_block_close
+                    .as_ref()
+                    .and_then(|(id, _)| self.tabs.iter().find(|tab| tab.id == *id))
+                    .and_then(|tab| tab.active_block_edit_session())
+                    .map(|session| session.block_name.clone())
+                    .unwrap_or_default();
+                automatic_flow(ex, |flow| unsaved_changes_dialog_window(&name, flow, true))
             }
             super::super::ModalKind::PointStyle => sized_flow(ex, 360, 470, |flow| {
                 crate::ui::style::point_style::view_window(
@@ -2060,23 +2073,53 @@ fn save_as_dialog_window<'a>(
 fn unsaved_changes_dialog_window(
     name: &str,
     sizing: crate::ui::modal::ModalSizing,
+    block_edit: bool,
 ) -> Element<'static, Message> {
     container(
         column![
-            text(name.to_owned()).size(14),
+            text(if block_edit {
+                crate::tf!("Save changes to {}?", name).into_owned()
+            } else {
+                name.to_owned()
+            })
+            .size(14),
             iced::widget::Space::new().height(4),
-            text(crate::tr!("modal", "unsaved-save-prompt"))
-                .size(12)
-                .style(dialog_muted_text_style),
+            text(if block_edit {
+                String::new()
+            } else {
+                crate::tr!("modal", "unsaved-save-prompt")
+            })
+            .size(12)
+            .style(dialog_muted_text_style),
             iced::widget::Space::new().height(20),
             row![
-                dialog_button(t!("Save"), Message::UnsavedDialogSave, button::primary),
+                dialog_button(
+                    t!("Save"),
+                    if block_edit {
+                        Message::BlockEditChangesSave
+                    } else {
+                        Message::UnsavedDialogSave
+                    },
+                    button::primary
+                ),
                 iced::widget::Space::new().width(8),
-                dialog_button(t!("Discard"), Message::UnsavedDialogDiscard, button::danger),
+                dialog_button(
+                    t!("Discard"),
+                    if block_edit {
+                        Message::BlockEditChangesDiscard
+                    } else {
+                        Message::UnsavedDialogDiscard
+                    },
+                    button::danger
+                ),
                 iced::widget::Space::new().width(8),
                 dialog_button(
                     t!("Cancel"),
-                    Message::UnsavedDialogCancel,
+                    if block_edit {
+                        Message::BlockEditChangesCancel
+                    } else {
+                        Message::UnsavedDialogCancel
+                    },
                     button::secondary
                 ),
             ],

@@ -887,11 +887,9 @@ fn locked_palette_remove_refuses_a_block_with_an_open_bedit_session() {
     );
 }
 
-/// Nested BEDIT sessions all count: the outer and the inner record are both
-/// open, so both are refused — the whole session stack is handed to the
-/// service, not just the active tab.
+/// Switching replaces the open session; the active definition stays protected.
 #[test]
-fn locked_palette_remove_refuses_every_block_of_a_nested_bedit_session() {
+fn locked_palette_remove_refuses_the_open_block_after_switching() {
     let mut app = app();
     let inner = "BO_NEST_INNER";
     define_block(&mut app, inner);
@@ -915,10 +913,10 @@ fn locked_palette_remove_refuses_every_block_of_a_nested_bedit_session() {
     begin_bedit(&mut app, inner_reference);
     assert_eq!(
         app.tabs[tab(&app)].block_edits.len(),
-        2,
-        "the nested session did not open"
+        1,
+        "switching must keep one session"
     );
-    for name in [outer, inner] {
+    for name in [inner] {
         palette_remove(&mut app, name);
         assert!(record_exists(&app, name), "{name} went while open");
         let expected = command_line_error(&format!(

@@ -511,30 +511,40 @@ impl OpenCADStudio {
                 }
             }
 
-            cmd if cmd.starts_with("BEDIT_BEGIN:") => {
+            cmd if cmd.starts_with("BEDIT_BEGIN:") || cmd.starts_with("BEDIT_OPEN:") => {
+                if self.tabs[i].refedit_session.is_some() {
+                    self.command_line.push_error(
+                        crate::t!("BEDIT: finish the active REFEDIT (REFCLOSE) first.").as_ref(),
+                    );
+                    return Some(Task::none());
+                }
                 use crate::modules::draw::modify::block_edit::BlockEditSession;
                 use codec::Handle;
 
-                let handle_u64: u64 = cmd["BEDIT_BEGIN:".len()..].parse().unwrap_or(0);
-                let insert_handle = Handle::new(handle_u64);
-                if self.reject_locked_edit(i, insert_handle) {
-                    return Some(Task::none());
-                }
-
-                let block_name = match self.tabs[i].scene.document.get_entity(insert_handle) {
-                    Some(codec::EntityType::Insert(ins)) => ins.block_name.clone(),
-                    _ => {
-                        self.command_line.push_error(
-                            crate::t!("BEDIT: selected object is not a block reference.").as_ref(),
-                        );
+                let block_name = if let Some(name) = cmd.strip_prefix("BEDIT_OPEN:") {
+                    name.to_string()
+                } else {
+                    let handle_u64: u64 = cmd["BEDIT_BEGIN:".len()..].parse().unwrap_or(0);
+                    let insert_handle = Handle::new(handle_u64);
+                    if self.reject_locked_edit(i, insert_handle) {
                         return Some(Task::none());
+                    }
+                    match self.tabs[i].scene.document.get_entity(insert_handle) {
+                        Some(codec::EntityType::Insert(ins)) => ins.block_name.clone(),
+                        _ => {
+                            self.command_line.push_error(
+                                crate::t!("BEDIT: selected object is not a block reference.")
+                                    .as_ref(),
+                            );
+                            return Some(Task::none());
+                        }
                     }
                 };
 
                 // Resolve the block record; reject external references (xrefs).
                 let (br_handle, is_xref) =
                     match self.tabs[i].scene.document.block_records.get(&block_name) {
-                        Some(br) => (br.handle, br.flags.is_xref),
+                        Some(br) => (br.handle, br.flags.is_xref || br.flags.is_xref_overlay),
                         None => {
                             self.command_line.push_error(
                                 crate::tf!("BEDIT: block \"{}\" not found.", block_name).as_ref(),
@@ -548,51 +558,15 @@ impl OpenCADStudio {
                     );
                     return Some(Task::none());
                 }
-                if self.tabs[i]
-                    .block_edits
-                    .iter()
-                    .any(|session| session.br_handle == br_handle)
-                {
-                    self.tabs[i].active_cmd = None;
-                    return Some(Task::done(Message::BlockEditSwitch(block_name.clone())));
+                if let Some(session) = self.tabs[i].active_block_edit_session() {
+                    if session.br_handle == br_handle {
+                        return Some(Task::none());
+                    }
+                    return Some(self.request_block_edit_close(
+                        i,
+                        crate::app::block_editor::BlockEditContinuation::Switch(block_name),
+                    ));
                 }
-
-                // Snapshot the complete block definition so Discard can restore
-                // structural markers, ATTDEFs and geometry with exact handles.
-                let snapshot: Vec<_> = {
-                    let br = self.tabs[i]
-                        .scene
-                        .document
-                        .block_records
-                        .get(&block_name)
-                        .unwrap();
-                    br.entity_handles
-                        .iter()
-                        .filter_map(|h| self.tabs[i].scene.document.get_entity(*h).cloned())
-                        .collect()
-                };
-                let dependent_snapshot: Vec<_> = self.tabs[i]
-                    .scene
-                    .block_definition_dependent_handles(br_handle)
-                    .into_iter()
-                    .filter_map(|handle| self.tabs[i].scene.document.get_entity_arc(handle))
-                    .collect();
-                let reference_attributes: Vec<_> = self.tabs[i]
-                    .scene
-                    .document
-                    .entities()
-                    .filter_map(|entity| match entity {
-                        codec::EntityType::Insert(reference)
-                            if reference.block_name.eq_ignore_ascii_case(&block_name)
-                                && !reference.attributes.is_empty() =>
-                        {
-                            Some((reference.common.handle, reference.attributes.clone()))
-                        }
-                        _ => None,
-                    })
-                    .collect();
-
-                self.push_undo_snapshot(i, "BEDIT");
 
                 // Capture the camera before the editor reframes it, so leaving
                 // the block editor returns the view exactly where it was (#425).
@@ -627,9 +601,6 @@ impl OpenCADStudio {
                     br_handle,
                     return_layout,
                     return_block,
-                    snapshot,
-                    dependent_snapshot,
-                    reference_attributes,
                     return_camera,
                     editor_camera: current_camera,
                     editor_ucs: None,
@@ -664,125 +635,37 @@ impl OpenCADStudio {
                 self.tabs[i].last_synced_camera_gen = self.tabs[i].scene.camera_generation;
                 self.refresh_properties();
                 self.tabs[i].active_cmd = None;
-                self.tabs[i].dirty = true;
-                self.command_line.push_info(
-                    crate::tf!(
-                        "BEDIT: Editing block \"{}\". Use Save Block or Discard to finish.",
-                        block_name
-                    )
-                    .as_ref(),
-                );
+                self.begin_block_edit_history(i);
+                self.command_line
+                    .push_info(crate::tf!("Block Editor: editing {}", block_name).as_ref());
             }
 
+            "BSAVE" => {
+                self.save_block_edit(i);
+            }
+            "BCLOSE" => {
+                if self.tabs[i].active_block_edit.is_none() {
+                    self.command_line
+                        .push_error(crate::t!("No block editor is open.").as_ref());
+                } else {
+                    return Some(self.request_block_edit_close(
+                        i,
+                        crate::app::block_editor::BlockEditContinuation::Close,
+                    ));
+                }
+            }
             "BEDIT_SAVE" => {
-                let session = match self.tabs[i].active_block_edit.take() {
-                    Some(index) if index < self.tabs[i].block_edits.len() => {
-                        self.tabs[i].block_edits.remove(index)
-                    }
-                    None => {
-                        self.command_line
-                            .push_error(crate::t!("BEDIT_SAVE: no block editor is open.").as_ref());
-                        return Some(Task::none());
-                    }
-                    Some(_) => {
-                        self.command_line.push_error(
-                            crate::t!("BEDIT_SAVE: invalid block editor state.").as_ref(),
-                        );
-                        return Some(Task::none());
-                    }
-                };
-                // Edits are live on the block record — just leave the block space.
-                self.restore_after_block_edit_close(
-                    i,
-                    session.return_block.as_deref(),
-                    &session.return_layout,
-                    &session.return_camera,
-                );
-                self.tabs[i].dirty = true;
-                self.command_line.push_output(
-                    crate::tf!(
-                        "BEDIT: Block \"{}\" saved. All references updated.",
-                        session.block_name
-                    )
-                    .as_ref(),
-                );
+                if self.save_block_edit(i) {
+                    self.close_block_edit(i, false);
+                }
             }
-
             "BEDIT_DISCARD" => {
-                let session = match self.tabs[i].active_block_edit.take() {
-                    Some(index) if index < self.tabs[i].block_edits.len() => {
-                        self.tabs[i].block_edits.remove(index)
-                    }
-                    None => {
-                        self.command_line.push_error(
-                            crate::t!("BEDIT_DISCARD: no block editor is open.").as_ref(),
-                        );
-                        return Some(Task::none());
-                    }
-                    Some(_) => {
-                        self.command_line.push_error(
-                            crate::t!("BEDIT_DISCARD: invalid block editor state.").as_ref(),
-                        );
-                        return Some(Task::none());
-                    }
-                };
-                // Restore the block definition to its on-entry snapshot: remove the
-                // block's current entities, then re-add the snapshot ones (mirrors
-                // the REFCLOSE_SAVE write-back).
-                let old_handles: Vec<_> = match self.tabs[i]
-                    .scene
-                    .document
-                    .block_records
-                    .get(&session.block_name)
-                {
-                    Some(br) => br.entity_handles.clone(),
-                    None => vec![],
-                };
-                for h in &old_handles {
-                    self.tabs[i].scene.document.remove_entity(*h);
+                if self.tabs[i].active_block_edit.is_none() {
+                    self.command_line
+                        .push_error(crate::t!("No block editor is open.").as_ref());
+                } else {
+                    self.close_block_edit(i, true);
                 }
-                if let Some(br) = self.tabs[i]
-                    .scene
-                    .document
-                    .block_records
-                    .get_mut(&session.block_name)
-                {
-                    br.entity_handles.clear();
-                }
-                let block_name = session.block_name.clone();
-                let return_block = session.return_block.clone();
-                let return_layout = session.return_layout.clone();
-                let return_camera = session.return_camera.clone();
-                for mut entity in session.snapshot {
-                    // Preserve the original handle so ATTDEF references and
-                    // other handle-based relationships survive Discard.
-                    entity.common_mut().owner_handle = session.br_handle;
-                    let _ = self.tabs[i].scene.document.add_entity(entity);
-                }
-                for (handle, attributes) in session.reference_attributes {
-                    if let Some(codec::EntityType::Insert(reference)) =
-                        self.tabs[i].scene.document.get_entity_mut(handle)
-                    {
-                        reference.attributes = attributes;
-                    }
-                }
-                for entity in session.dependent_snapshot {
-                    let handle = entity.common().handle;
-                    let _ = self.tabs[i]
-                        .scene
-                        .document
-                        .replace_entity_arc(handle, entity);
-                }
-                self.restore_after_block_edit_close(
-                    i,
-                    return_block.as_deref(),
-                    &return_layout,
-                    &return_camera,
-                );
-                self.tabs[i].dirty = true;
-                self.command_line.push_output(
-                    crate::tf!("BEDIT: Block \"{}\" edit discarded.", block_name).as_ref(),
-                );
             }
 
             cmd if cmd.starts_with("REFEDIT_BEGIN:") => {
@@ -1462,7 +1345,7 @@ impl OpenCADStudio {
         Some(self.finish_dispatch(cmd))
     }
 
-    fn restore_after_block_edit_close(
+    pub(in crate::app) fn restore_after_block_edit_close(
         &mut self,
         i: usize,
         return_block: Option<&str>,
@@ -1510,6 +1393,10 @@ impl OpenCADStudio {
         self.tabs[i].scene.camera_generation += 1;
         self.tabs[i].last_synced_camera_gen = self.tabs[i].scene.camera_generation;
         self.tabs[i].scene.rebuild_derived_caches();
+        let layers = self.tabs[i].scene.document.layers.clone();
+        let viewports = self.tabs[i].scene.viewport_list();
+        self.tabs[i].layers.sync_with_viewports(&layers, viewports);
+        self.sync_ribbon_layers();
         self.tabs[i].refresh_active_ucs();
         self.refresh_properties();
         self.adopt_view_display(i);

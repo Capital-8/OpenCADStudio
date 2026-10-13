@@ -205,6 +205,8 @@ pub(super) struct DocumentTab {
     /// Index of the field that TAB has focused (the one keystrokes edit).
     pub(super) dyn_active: usize,
     pub(super) history: HistoryState,
+    /// Drawing history is suspended while `history` belongs to BEDIT.
+    pub(super) block_edit_history: Option<super::block_editor::BlockEditHistory>,
     pub(super) active_layer: String,
     /// Block references whose properties panel shows per-axis Scale X/Y/Z even
     /// though the three factors are currently equal — the user unchecked the
@@ -653,6 +655,7 @@ impl DocumentTab {
             dyn_ref_screen: None,
             dyn_active: 0,
             history: HistoryState::default(),
+            block_edit_history: None,
             active_layer: "0".to_string(),
             props_asym_scale: std::collections::HashSet::new(),
             graph: Default::default(),

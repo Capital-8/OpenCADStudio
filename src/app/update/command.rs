@@ -151,13 +151,20 @@ impl OpenCADStudio {
     /// Close queued drawings until a dirty tab requires confirmation. Queue
     /// entries use stable document ids because removing an earlier tab changes
     /// every later vector index.
-    pub(super) fn continue_tab_close_queue(&mut self) -> Task<Message> {
+    pub(in crate::app) fn continue_tab_close_queue(&mut self) -> Task<Message> {
         let mut tasks = Vec::new();
         while let Some(tab_id) = self.pending_tab_closes.pop_front() {
             let Some(idx) = self.tabs.iter().position(|tab| tab.id == tab_id) else {
                 continue;
             };
             if self.tabs[idx].is_start {
+                continue;
+            }
+            if self.tabs[idx].active_block_edit.is_some() {
+                tasks.push(self.on_tab_close(idx));
+                if self.pending_block_close.is_some() || self.pending_close.is_some() {
+                    break;
+                }
                 continue;
             }
             if self.tabs[idx].dirty {
@@ -170,10 +177,20 @@ impl OpenCADStudio {
         Task::batch(tasks)
     }
 
-    pub(super) fn on_tab_close(&mut self, idx: usize) -> Task<Message> {
+    pub(in crate::app) fn on_tab_close(&mut self, idx: usize) -> Task<Message> {
         // Start tab is fixed — close requests on it are no-ops.
         if self.tabs.get(idx).map_or(false, |t| t.is_start) {
             return Task::none();
+        }
+        if self
+            .tabs
+            .get(idx)
+            .is_some_and(|tab| tab.active_block_edit.is_some())
+        {
+            return self.request_block_edit_close(
+                idx,
+                crate::app::block_editor::BlockEditContinuation::Tab(self.tabs[idx].id),
+            );
         }
         // Closing a tab shifts indices / the active tab. The attribute
         // editor holds a document-local handle into one tab, so drop it
@@ -4344,7 +4361,7 @@ impl OpenCADStudio {
     /// Close the attribute editor without applying, if it is open. Used when
     /// the tab it belongs to closes or the active tab switches — its handle is
     /// document-local and must not outlive its tab.
-    pub(super) fn cancel_attr_editor(&mut self) {
+    pub(in crate::app) fn cancel_attr_editor(&mut self) {
         if self.active_modal == Some(crate::app::ModalKind::AttributeEditor) {
             self.active_modal = None;
             self.reset_modal_geometry();

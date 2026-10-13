@@ -37,13 +37,13 @@ impl CadModule for BlockEditorModule {
                             include_bytes!("../../../assets/icons/edit_block.svg"),
                         ),
                         command(
-                            "BEDIT_SAVE",
+                            "BSAVE",
                             "Save Block",
                             include_bytes!("../../../assets/icons/mt_ok.svg"),
                         ),
                         command(
-                            "BEDIT_DISCARD",
-                            "Discard Block Edit",
+                            "BCLOSE",
+                            "Close Block Editor",
                             include_bytes!("../../../assets/icons/mt_cancel.svg"),
                         ),
                     ],

@@ -8,6 +8,9 @@ pub(crate) mod config;
 #[cfg(not(target_arch = "wasm32"))]
 pub use automation::{export_headless, serve};
 mod annotation_data;
+mod block_editor;
+#[cfg(test)]
+mod block_editor_tests;
 mod command_driver;
 pub(crate) use command_driver::{copy_to_clipboard_kernel, paste_entities_kernel, PasteSpace};
 pub(crate) mod commands;
@@ -1520,6 +1523,7 @@ pub(super) struct OpenCADStudio {
     // ── Unsaved-changes dialog ────────────────────────────────────────────
     /// Set when the user tries to close a tab or quit while there are unsaved changes.
     pending_close: Option<PendingClose>,
+    pending_block_close: Option<(u64, block_editor::BlockEditContinuation)>,
     /// Stable document ids waiting to be closed by "Close All" or
     /// "Close All Other Drawings". Dirty drawings pause this queue at the
     /// existing unsaved-changes dialog and resume after Save or Discard.
@@ -2158,6 +2162,7 @@ pub enum ModalKind {
     MLeaderStyle,
     DimStyle,
     Unsaved,
+    BlockEditChanges,
     SaveDialog,
     Recovery,
     /// Fonts referenced by the drawing are missing on this machine.
@@ -2784,6 +2789,9 @@ pub enum Message {
     UnsavedDialogDiscard,
     /// User clicked "Cancel" in the unsaved-changes dialog.
     UnsavedDialogCancel,
+    BlockEditChangesSave,
+    BlockEditChangesDiscard,
+    BlockEditChangesCancel,
     // ── AEC / unsupported-object drop warning (lossy Save-As) ──────────────
     /// Save as the source DWG version so the unsupported objects survive.
     AecDropSameVersion,
@@ -4844,6 +4852,7 @@ impl OpenCADStudio {
             queued_interaction_indices: std::collections::VecDeque::new(),
             pending_close: None,
             pending_tab_closes: std::collections::VecDeque::new(),
+            pending_block_close: None,
             #[cfg(not(target_arch = "wasm32"))]
             active_save_jobs: std::collections::HashMap::new(),
             #[cfg(not(target_arch = "wasm32"))]

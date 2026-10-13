@@ -6446,6 +6446,12 @@ properties={:.1}ms picked={}",
     }
 
     pub(crate) fn on_layout_switch(&mut self, name: String) -> Task<Message> {
+        if self.tabs[self.active_tab].active_block_edit.is_some() {
+            return self.request_block_edit_close(
+                self.active_tab,
+                crate::app::block_editor::BlockEditContinuation::Layout(name),
+            );
+        }
         self.on_layout_switch_inner(name, false)
     }
 
@@ -6508,6 +6514,12 @@ properties={:.1}ms picked={}",
     /// define a view and then returns to its paper layout. This is the only
     /// layout transition allowed to preserve an active command.
     pub(crate) fn on_layout_switch_preserving_command(&mut self, name: String) -> Task<Message> {
+        if self.tabs[self.active_tab].active_block_edit.is_some() {
+            return self.request_block_edit_close(
+                self.active_tab,
+                crate::app::block_editor::BlockEditContinuation::Layout(name),
+            );
+        }
         self.on_layout_switch_inner(name, true)
     }
 

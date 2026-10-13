@@ -215,6 +215,7 @@ impl OpenCADStudio {
         match self.active_modal {
             // Dismissing these via ✕ is the cancel/decline path.
             Some(Unsaved) => self.pending_close = None,
+            Some(BlockEditChanges) => self.cancel_block_edit_close(),
             Some(AssocPrompt) => self.mark_assoc_prompted(),
             // Cancel: leave the layer (and its objects) untouched.
             Some(LayerDeleteWarning) => self.layer_delete_pending = None,
@@ -3895,11 +3896,7 @@ impl OpenCADStudio {
 
             Message::WindowCloseRequested(id) => {
                 if self.main_window == Some(id) {
-                    if self.tabs.iter().any(|t| t.dirty) {
-                        self.pending_close = Some(super::PendingClose::Quit);
-                        return self.open_unsaved_dialog_window();
-                    }
-                    return self.exit_app();
+                    return self.request_quit_with_block_edits();
                 }
                 Task::none()
             }
@@ -10434,6 +10431,12 @@ impl OpenCADStudio {
             Message::UnsavedDialogDiscard => self.on_unsaved_dialog_discard(),
 
             Message::UnsavedDialogSave => self.on_unsaved_dialog_save(),
+            Message::BlockEditChangesSave => self.resolve_block_edit_close(true),
+            Message::BlockEditChangesDiscard => self.resolve_block_edit_close(false),
+            Message::BlockEditChangesCancel => {
+                self.cancel_block_edit_close();
+                Task::none()
+            }
 
             Message::AecDropSameVersion => self.on_aec_drop_same_version(),
             Message::AecDropProceed => self.on_aec_drop_proceed(),
