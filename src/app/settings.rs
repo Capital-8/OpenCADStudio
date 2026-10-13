@@ -638,6 +638,9 @@ pub struct UserSettings {
     /// BLOCKNAVIGATE (default ".").
     #[serde(default = "default_block_navigate")]
     pub block_navigate: String,
+    /// XFADECTL: how far objects outside the REFEDIT working set fade (0–90, default 70).
+    #[serde(default = "default_xfadectl")]
+    pub xfadectl: u8,
     /// COUNTCOLOR (default 3).
     #[serde(default = "default_count_color")]
     pub count_color: i16,
@@ -706,6 +709,10 @@ impl Default for BlockInsertOptions {
 
 fn default_block_view() -> u8 {
     1
+}
+
+fn default_xfadectl() -> u8 {
+    70
 }
 
 fn default_block_mru_list() -> u8 {
@@ -910,6 +917,7 @@ impl Default for UserSettings {
             block_mru_list: 50,
             block_redefine_mode: 1,
             block_navigate: ".".to_string(),
+            xfadectl: 70,
             count_color: 3,
             count_error_color: 1,
             count_service: true,

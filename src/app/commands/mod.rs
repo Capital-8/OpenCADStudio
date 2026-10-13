@@ -21,6 +21,7 @@ mod pc_extract;
 mod pdf_dialogs;
 pub(crate) mod pdf_import;
 mod pdf_underlay;
+mod refedit;
 mod plotvars;
 mod point_cloud;
 pub(crate) mod sheet_set;
@@ -329,6 +330,9 @@ impl OpenCADStudio {
             return Some(t);
         }
         if let Some(t) = self.dispatch_dim(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_refedit(cmd, i) {
             return Some(t);
         }
         if let Some(t) = self.dispatch_inquiry(cmd, i) {

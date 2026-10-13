@@ -2140,6 +2140,8 @@ pub struct Scene {
     /// edited geometry stands out while the surrounding drawing stays visible
     /// for context. `None` = not editing. (#136)
     pub refedit_keep: Option<HashSet<Handle>>,
+    /// REFEDIT locks the objects outside the working set (`refedit_keep`).
+    pub refedit_lock: bool,
     /// COUNT mode colours: counted references in COUNTCOLOR, overlapping
     /// duplicates in COUNTERRORCOLOR, everything else faded. `None` outside
     /// count mode.
@@ -2767,6 +2769,7 @@ impl Scene {
             preview_hidden: HashSet::default(),
             command_preview_hidden: HashSet::default(),
             refedit_keep: None,
+            refedit_lock: false,
             count_display: None,
             hover_highlight: None,
             constraint_hover_highlights: HashSet::default(),
@@ -4329,7 +4332,7 @@ impl Scene {
                         );
                     if let Some(keep) = &self.refedit_keep {
                         if !keep.contains(&h) {
-                            material.diffuse = crate::scene::cache::block_cache::fade_toward_bg(
+                            material.diffuse = crate::scene::cache::block_cache::refedit_fade(
                                 material.diffuse,
                                 bg,
                             );
@@ -4385,7 +4388,7 @@ impl Scene {
                         .is_some_and(|keep| !keep.contains(&handle))
                     {
                         material.diffuse =
-                            crate::scene::cache::block_cache::fade_toward_bg(material.diffuse, bg);
+                            crate::scene::cache::block_cache::refedit_fade(material.diffuse, bg);
                     }
                     if self.meshes.contains_key(&handle) {
                         material.diffuse = self.count_color(handle, material.diffuse, bg);
@@ -4530,7 +4533,7 @@ impl Scene {
             let keep_bright =
                 Self::handle_from_wire_name(&w.name).is_some_and(|h| keep.contains(&h));
             if !keep_bright {
-                w.color = crate::scene::cache::block_cache::fade_toward_bg(w.color, bg);
+                w.color = crate::scene::cache::block_cache::refedit_fade(w.color, bg);
             }
         }
     }
@@ -9386,6 +9389,13 @@ impl Scene {
                 .layers
                 .get(&entity.common().layer)
                 .is_some_and(|l| l.is_locked())
+            // REFEDIT with "Lock objects not in working set": only the
+            // working set can be edited.
+            || (self.refedit_lock
+                && self
+                    .refedit_keep
+                    .as_ref()
+                    .is_some_and(|keep| !keep.contains(&handle)))
     }
 
     /// The name of the locked layer `handle` sits on, if any (for messages).
@@ -9679,7 +9689,7 @@ impl Scene {
         };
         if let Some(keep) = &self.refedit_keep {
             if !keep.contains(&h) {
-                c = crate::scene::cache::block_cache::fade_toward_bg(c, self.current_bg());
+                c = crate::scene::cache::block_cache::refedit_fade(c, self.current_bg());
             }
         }
         Some(c)

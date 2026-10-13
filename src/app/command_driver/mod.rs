@@ -80,7 +80,7 @@ use crate::command::{CmdResult, SelectionEntity, StepInput};
 use codec::Handle;
 use iced::Task;
 
-mod clipboard;
+pub(super) mod clipboard;
 mod constraint;
 mod dim_edit;
 mod entity_commit;
