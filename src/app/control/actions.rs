@@ -699,6 +699,15 @@ impl OpenCADStudio {
                     if req.get("upside_down").is_some() {
                         page_dialog.upside_down = request.upside_down;
                     }
+                    // The requested table wins over the layout's own, which
+                    // the stored page setup just loaded (or failed to find).
+                    if let Some(table) = &loaded_style {
+                        app.active_plot_style = Some(table.clone());
+                        page_dialog.style_name = table.name.clone();
+                        page_dialog.apply_plot_styles = true;
+                        page_dialog.style_missing = false;
+                        page_dialog.style_error = None;
+                    }
                 }
                 app.plot_dialog = page_dialog;
                 if app.plot_dialog.area == "Display" {
