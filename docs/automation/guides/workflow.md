@@ -8,7 +8,20 @@ Before creating an unfamiliar entity, use `ocs_read` with `op: entity_schema` an
 `parameters.type` (for example, `Circle`) to get its creation fields, required
 values, units, defaults and example. Omit type for the catalog. Creation schemas
 describe the inputs to `entities_create`; `record_schema` describes stored records.
-Schema discovery runs locally and can omit `ocs_session_id`.
+
+Use `ocs_read` with `op: validate` and `parameters.request` containing the proposed
+execute request to preflight it without running it. These local operations can
+omit `ocs_session_id`; no GUI is launched or contacted. `request_id` may be omitted
+for preflight, but is required for actual execution. Static validation checks
+operation parameters, nested entity and inline data definitions, and batch
+bindings. It uses the real entity constructor for geometry checks. Results
+include `valid`, `executed: false`, warnings, unresolved bindings and checks that
+still require execution. Live revisions, handles, styles, file access and command
+behavior are not certified by static preflight. Batches are not simulated: later
+bindings are fully validated when their values become available during execution.
+Invalid requests return a tool error with a JSON Pointer identifying the bad
+field where available. Unknown top-level operation parameters remain warnings;
+unknown entity fields and invalid nested data are rejected before dispatch.
 
 For interactive work, call start and follow state.command.accepts, options and input_example. To have the person at the screen pick entities for you, call user_select and keep polling until it completes; running means they are still picking. A run.cmd contains the command name followed by prompt answers separated by spaces; points use x,y or x,y,z.
 

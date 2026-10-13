@@ -41,7 +41,8 @@ pub enum Ty {
     ArrayOf(&'static Ty),
     /// Entity definitions with on-demand creation schemas.
     Entities,
-    /// Escape hatch: a JSON Schema fragment as text.
+    BatchSteps,
+    /// Inline JSON Schema fragment, validated before dispatch.
     Raw(&'static str),
 }
 
@@ -855,7 +856,7 @@ pub static BATCH: OpDef = OpDef {
     doc: "Execute sequential operations with fresh state and step idempotency keys. Stops on first error.",
     batchable: false,
     params: &[
-        req("steps", Ty::Raw(r##"{"type":"array","minItems":1,"maxItems":64,"description":"Sequential operations list","items":{"$ref":"#/$defs/batch_step"}}"##), "List of batch steps to execute."),
+        req("steps", Ty::BatchSteps, "List of batch steps to execute."),
     ],
     rules: &[],
     example: r#"{"op":"batch","steps":[{"op":"run","cmd":"LINE 0,0 10,0"}]}"#,
@@ -930,6 +931,9 @@ fn ty_schema(ty: &Ty) -> Value {
             json!({"type": "string", "enum": names})
         }
         Ty::ArrayOf(inner) => json!({"type": "array", "items": ty_schema(inner)}),
+        Ty::BatchSteps => {
+            json!({"type":"array","minItems":1,"maxItems":64,"items":{"$ref":"#/$defs/batch_step"}})
+        }
         Ty::Entities => {
             json!({"type":"array","minItems":1,"items":{"type":"object","required":["type"],"properties":{"type":{"type":"string"}}}})
         }
@@ -937,13 +941,17 @@ fn ty_schema(ty: &Ty) -> Value {
     }
 }
 
+fn primitive_defs() -> Value {
+    json!({
+        "point": {"type":"array","items":{"type":"number"},"minItems":2,"maxItems":3},
+        "window": {"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4},
+        "handle": {"type":"string","pattern":"^(0[xX])?[0-9A-Fa-f]+$"}
+    })
+}
+
 pub fn shared_defs() -> Value {
-    let mut defs = json!({
-        "point":  {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 3},
-        "window": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
-        "handle": {"type": "string", "pattern": "^(0[xX])?[0-9A-Fa-f]+$"},
-        "batch_step": batch_step_schema()
-    });
+    let mut defs = primitive_defs();
+    defs["batch_step"] = batch_step_schema();
     for op in OPS {
         defs[format!("op_{}", op.name)] = op_schema(op);
     }
@@ -992,26 +1000,32 @@ pub fn op_schema(op: &OpDef) -> Value {
     })
 }
 
-pub fn execute_request_schema() -> Value {
-    let variants: Vec<Value> = OPS.iter().map(|op| op_ref(op)).collect();
-    let op_names: Vec<&str> = OPS.iter().map(|op| op.name).collect();
+/// The common envelope is optional in static preflight; dispatch requires an id.
+/// Shared with the advertised execute schema so constraints cannot drift.
+fn request_envelope_schema() -> Value {
     json!({
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
+        "type":"object",
         "properties": {
-            "op": {"type": "string", "enum": op_names, "description": "Semantic editor operation."},
-            "request_id": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Caller-generated idempotency key."},
-            "document_id": {"type": "integer", "minimum": 0, "description": "Target document from current state."},
-            "revision": {"type": "integer", "minimum": 0, "description": "Expected edit revision from current state."},
-            "geometry_revision": {"type": "integer", "minimum": 0, "description": "Expected geometry revision."},
-            "camera_revision": {"type": "integer", "minimum": 0, "description": "Expected camera revision."},
-            "selection": {"type": "array", "items": {"$ref": "#/$defs/handle"}, "description": "Expected selected handles."},
-            "steps": {"type": "array", "minItems": 1, "maxItems": 64, "description": "Sequential batch operations.", "items": {"$ref": "#/$defs/batch_step"}}
+            "op": {"type":"string","enum": OPS.iter().map(|op| op.name).collect::<Vec<_>>(),"description":"Semantic editor operation."},
+            "request_id": {"type":"string","minLength":1,"maxLength":128,"description":"Caller-generated idempotency key (at most 128 UTF-8 bytes)."},
+            "document_id": {"type":"integer","minimum":0,"description":"Target document from current state."},
+            "revision": {"type":"integer","minimum":0,"description":"Expected edit revision from current state."},
+            "geometry_revision": {"type":"integer","minimum":0,"description":"Expected geometry revision."},
+            "camera_revision": {"type":"integer","minimum":0,"description":"Expected camera revision."},
+            "selection": {"type":"array","items":{"$ref":"#/$defs/handle"},"description":"Expected selected handles."}
         },
-        "required": ["op", "request_id"],
-        "anyOf": variants,
-        "$defs": shared_defs()
+        "$defs":primitive_defs()
     })
+}
+
+pub fn execute_request_schema() -> Value {
+    let mut schema = request_envelope_schema();
+    schema["$schema"] = json!("https://json-schema.org/draft/2020-12/schema");
+    schema["properties"]["steps"] = json!({"type":"array","minItems":1,"maxItems":64,"description":"Sequential batch operations.","items":{"$ref":"#/$defs/batch_step"}});
+    schema["required"] = json!(["op", "request_id"]);
+    schema["anyOf"] = Value::Array(OPS.iter().map(|op| op_ref(op)).collect());
+    schema["$defs"] = shared_defs();
+    schema
 }
 
 pub fn batch_step_schema() -> Value {
@@ -1159,9 +1173,35 @@ fn validate_type(ty: &Ty, val: &Value) -> Result<(), String> {
                 crate::entity_creation::validate_entity(entity, &format!("/entities/{index}"))?;
             }
         }
-        Ty::Raw(_) => {}
+        Ty::BatchSteps => {
+            validate_execute_request(&json!({"op":"batch","steps":val}), "batch")?;
+        }
+        Ty::Raw(fragment) => {
+            let schema: Value = serde_json::from_str(fragment).expect("valid inline schema");
+            crate::schema_validation::validate_shape(&schema, val, "")?;
+        }
     }
     Ok(())
+}
+
+fn validate_parameter(ty: &Ty, val: &Value, path: &str) -> Result<(), String> {
+    match ty {
+        Ty::ArrayOf(inner) => {
+            let items = val
+                .as_array()
+                .ok_or_else(|| format!("{path}: expected array"))?;
+            for (i, item) in items.iter().enumerate() {
+                validate_parameter(inner, item, &format!("{path}/{i}"))?;
+            }
+            Ok(())
+        }
+        Ty::Raw(fragment) => {
+            let schema: Value = serde_json::from_str(fragment).expect("valid inline schema");
+            crate::schema_validation::validate_shape(&schema, val, path)
+        }
+        Ty::Entities => validate_type(ty, val),
+        _ => validate_type(ty, val).map_err(|error| format!("{path}: {error}")),
+    }
 }
 
 pub fn validate_request(request: &Value, is_batch_step: bool) -> Result<ValidationResult, String> {
@@ -1245,7 +1285,7 @@ pub fn validate_request_deferred(
     for p in op_def.params {
         if let Some(val) = obj.get(p.name) {
             if !val.is_null() {
-                validate_type(&p.ty, val)
+                validate_parameter(&p.ty, val, &format!("/{}", p.name))
                     .map_err(|e| format!("parameter '{}' for op '{}': {e}", p.name, op_name))?;
             }
         }
@@ -1276,4 +1316,107 @@ pub fn validate_request_deferred(
     }
 
     Ok(ValidationResult { warnings })
+}
+
+const MAX_BATCH_STEPS: usize = 64;
+
+/// Validate bindings without dispatching or substituting untyped placeholder values.
+pub fn batch_bindings(step: &Value, index: usize) -> Result<Vec<&str>, String> {
+    let Some(bindings) = step.get("bindings") else {
+        return Ok(Vec::new());
+    };
+    let bindings = bindings
+        .as_object()
+        .filter(|v| !v.is_empty())
+        .ok_or("bindings must be a nonempty object")?;
+    let op = find_op(step["op"].as_str().unwrap_or_default()).ok_or("unknown bound operation")?;
+    for (target, source) in bindings {
+        if !op.params.iter().any(|p| p.name == target) {
+            return Err(format!("cannot bind parameter '{target}'"));
+        }
+        if step.get(target).is_some() {
+            return Err(format!("'{target}' has both a literal and a binding"));
+        }
+        let source = source
+            .as_object()
+            .ok_or("binding must contain step and path")?;
+        if source.len() != 2
+            || !source
+                .get("step")
+                .and_then(Value::as_u64)
+                .is_some_and(|s| s < index as u64)
+        {
+            return Err(
+                "binding must refer to an earlier step and contain only step and path".into(),
+            );
+        }
+        let path = source
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or("binding path must be a JSON Pointer")?;
+        if !path.is_empty() && !path.starts_with('/') {
+            return Err("binding path must be a JSON Pointer".into());
+        }
+        let mut chars = path.chars();
+        while let Some(c) = chars.next() {
+            if c == '~' && !matches!(chars.next(), Some('0' | '1')) {
+                return Err("invalid JSON Pointer escape".into());
+            }
+        }
+    }
+    Ok(bindings.keys().map(String::as_str).collect())
+}
+
+pub fn validate_execute_request(request: &Value, op: &str) -> Result<ValidationResult, String> {
+    crate::schema_validation::validate_shape(&request_envelope_schema(), request, "")?;
+    if request["request_id"]
+        .as_str()
+        .is_some_and(|id| id.len() > 128)
+    {
+        return Err("/request_id: must not exceed 128 UTF-8 bytes".into());
+    }
+    if op == "batch" {
+        let steps = request["steps"].as_array().ok_or_else(|| {
+            r#"Missing steps for batch. Example request: {"op":"batch","request_id":"draw-1","steps":[{"op":"run","cmd":"LINE 0,0 10,0"}]}"#.to_string()
+        })?;
+        if steps.is_empty() || steps.len() > MAX_BATCH_STEPS {
+            return Err(format!(
+                "batch steps must contain 1 to {MAX_BATCH_STEPS} operations"
+            ));
+        }
+        let mut warnings = Vec::new();
+        for (index, step) in steps.iter().enumerate() {
+            let step_obj = step
+                .as_object()
+                .ok_or_else(|| format!("batch step {index} must be an object"))?;
+            if step_obj.contains_key("request_id") {
+                return Err(format!(
+                    "batch step {index} must omit request_id; the batch assigns idempotency keys"
+                ));
+            }
+            let step_op = step_obj
+                .get("op")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("batch step {index} is missing op"))?;
+            if !find_op(step_op).is_some_and(|op| op.batchable) {
+                return Err(format!("Unknown operation {step_op} in batch step {index}"));
+            }
+            let deferred = batch_bindings(step, index)
+                .map_err(|error| format!("batch step {index}: {error}"))?;
+            let mut literal = step.clone();
+            literal.as_object_mut().unwrap().remove("bindings");
+            crate::schema_validation::validate_shape(
+                &request_envelope_schema(),
+                &literal,
+                &format!("/steps/{index}"),
+            )?;
+            let step_val = validate_request_deferred(&literal, true, &deferred)
+                .map_err(|error| format!("batch step {index}: {error}"))?;
+            for w in step_val.warnings {
+                warnings.push(format!("batch step {index}: {w}"));
+            }
+        }
+        return Ok(ValidationResult { warnings });
+    }
+    validate_request(request, false)
 }
