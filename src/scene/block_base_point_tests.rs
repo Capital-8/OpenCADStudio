@@ -671,9 +671,8 @@ fn locked_block_definition_dialog_prefills_the_existing_definition_base_point() 
 
 #[test]
 fn locked_explode_places_geometry_at_convention_positions() {
-    // base-point: `explode_entity` shifts the definition's contents by -base before
-    // handing them to the codec's explode, so the pieces land where the render
-    // path puts them (see the module header for the derivation).
+    // The document-aware codec explosion uses the definition's base point,
+    // so the pieces land where the render path puts them.
     let mut scene = scene_with_bp_test();
     let insert = placed_instance(&mut scene);
     let pieces = crate::modules::draw::modify::explode::explode_entity(
@@ -736,6 +735,62 @@ fn locked_explode_places_geometry_at_convention_positions() {
         EXPECTED_LINE_START,
         1e-6,
         "render path: line start",
+    );
+}
+
+#[test]
+fn locked_minsert_explode_restores_attdefs_in_each_rotated_cell() {
+    let scene = scene_with_bp_test();
+    let mut insert = Insert::new(BP_TEST, v(100.0, 100.0, 0.0))
+        .with_uniform_scale(2.0)
+        .with_rotation(std::f64::consts::FRAC_PI_2)
+        .with_array(2, 2, 10.0, 20.0);
+    insert
+        .attributes
+        .push(AttributeEntity::new("TAG1".into(), "Instance value".into()));
+    let pieces = crate::modules::draw::modify::explode::explode_entity(
+        &EntityType::Insert(insert),
+        &scene.document,
+    );
+    let definitions: Vec<_> = pieces
+        .iter()
+        .filter_map(|entity| match entity {
+            EntityType::AttributeDefinition(definition) => Some(definition),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(definitions.len(), 4);
+    for (definition, expected) in definitions.iter().zip([
+        [94.0, 104.0, 0.0],
+        [94.0, 114.0, 0.0],
+        [74.0, 104.0, 0.0],
+        [74.0, 114.0, 0.0],
+    ]) {
+        assert_close(definition.insertion_point, expected, 1e-6, "array ATTDEF");
+        assert_eq!(definition.tag, "TAG1");
+        assert_eq!(definition.default_value, "");
+    }
+    let lines: Vec<_> = pieces
+        .iter()
+        .filter_map(|entity| match entity {
+            EntityType::Line(line) => Some(line),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lines.len(), 4);
+    for (line, expected) in lines.iter().zip([
+        [100.0, 100.0, 0.0],
+        [100.0, 110.0, 0.0],
+        [80.0, 100.0, 0.0],
+        [80.0, 110.0, 0.0],
+    ]) {
+        assert_close(line.start, expected, 1e-6, "array LINE");
+    }
+    assert_close(
+        block_attdefs(&scene.document, BP_TEST)[0].insertion_point,
+        [12.0, 8.0, 0.0],
+        1e-6,
+        "source ATTDEF stays in definition coordinates",
     );
 }
 
