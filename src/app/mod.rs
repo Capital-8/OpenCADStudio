@@ -1337,6 +1337,8 @@ pub(super) struct OpenCADStudio {
     style_rename: Option<String>,
     /// Edit buffer for the inline rename text input.
     style_rename_buf: String,
+    /// The style manager the open rename belongs to.
+    style_rename_kind: Option<style_ops::StyleKind>,
     /// Active style-manager transaction. Edits mutate the document live for an
     /// in-dialog preview but only persist on Apply; closing without Apply
     /// restores this snapshot. `None` when no style manager is staging.
@@ -3078,6 +3080,10 @@ pub enum Message {
     LayerLineweightSet(LineWeight),
     LayerTransparencyEdit(String, String),
     LayerRenameCommit,
+    /// The widget focused after a click while a layer rename is open.
+    LayerRenameFocus(Option<iced::advanced::widget::Id>),
+    /// The widget focused after a click while a style rename is open.
+    StyleRenameFocus(Option<iced::advanced::widget::Id>),
     // ── Layer State Manager ─────────────────────────────────────────────
     LayerStateManagerOpen,
     LayerStateManagerSelect(String),
@@ -4880,6 +4886,7 @@ impl OpenCADStudio {
             // TextStyle font browser
             style_rename: None,
             style_rename_buf: String::new(),
+            style_rename_kind: None,
             style_stage: None,
             textstyle_selected: "Standard".to_string(),
             textstyle_tab: 0,

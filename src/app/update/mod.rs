@@ -4114,6 +4114,21 @@ impl OpenCADStudio {
 
             Message::LayerRenameCommit => self.on_layer_rename_commit(),
 
+            // A click moved focus off the name field: keep what was typed, as
+            // Enter would. An untouched name stays open (the field may not have
+            // taken focus yet on the click that opened it).
+            Message::LayerRenameFocus(focused) => {
+                let layers = &self.tabs[self.active_tab].layers;
+                let typed = layers
+                    .editing
+                    .as_ref()
+                    .is_some_and(|name| *name != layers.edit_buf);
+                if typed && focused != Some(crate::ui::window::layers::rename_input_id()) {
+                    return self.on_layer_rename_commit();
+                }
+                Task::none()
+            }
+
             Message::LayerColorPickerToggle(name) => {
                 let i = self.active_tab;
                 let Some(idx) = self.layer_panel_index(i, &name) else {
@@ -7657,12 +7672,23 @@ impl OpenCADStudio {
             Message::PropAttrCommit(tag) => self.on_prop_attr_commit(tag),
 
             Message::PropPointerPressed => {
+                let mut rename_blur = if self.tabs[self.active_tab].layers.editing.is_some() {
+                    crate::ui::properties::focused_widget_task(Message::LayerRenameFocus)
+                } else {
+                    Task::none()
+                };
+                if self.style_rename.is_some() {
+                    rename_blur = Task::batch([
+                        rename_blur,
+                        crate::ui::properties::focused_widget_task(Message::StyleRenameFocus),
+                    ]);
+                }
                 if !self.dock_panel_visible(crate::ui::dock::PanelId::Properties)
                     && !self.dock_panel_visible(crate::ui::dock::PanelId::GraphicAttributes)
                 {
-                    return Task::none();
+                    return rename_blur;
                 }
-                crate::ui::properties::sync_active_field_task()
+                Task::batch([crate::ui::properties::sync_active_field_task(), rename_blur])
             }
 
             Message::PropSyncActive(focused) => {
@@ -10972,14 +10998,8 @@ impl OpenCADStudio {
                 }
                 Task::none()
             }
-            Message::TextStyleDialogNew => {
-                self.style_new(crate::app::StyleKind::Text);
-                Task::none()
-            }
-            Message::TextStyleDialogCopy => {
-                self.style_copy(crate::app::StyleKind::Text);
-                Task::none()
-            }
+            Message::TextStyleDialogNew => self.style_new(crate::app::StyleKind::Text),
+            Message::TextStyleDialogCopy => self.style_copy(crate::app::StyleKind::Text),
             Message::TextStyleDialogDelete => {
                 self.style_delete(crate::app::StyleKind::Text);
                 Task::none()
@@ -10997,6 +11017,18 @@ impl OpenCADStudio {
             }
             Message::StyleRenameCommit(kind) => {
                 self.style_rename_commit(kind);
+                Task::none()
+            }
+            Message::StyleRenameFocus(focused) => {
+                let typed = self
+                    .style_rename
+                    .as_ref()
+                    .is_some_and(|name| *name != self.style_rename_buf);
+                if typed && focused != Some(crate::ui::style::style_list::rename_input_id()) {
+                    if let Some(kind) = self.style_rename_kind {
+                        self.style_rename_commit(kind);
+                    }
+                }
                 Task::none()
             }
             Message::StyleRenameCancel => {
@@ -11271,14 +11303,8 @@ impl OpenCADStudio {
                 Task::none()
             }
 
-            Message::TableStyleDialogNew => {
-                self.style_new(crate::app::StyleKind::Table);
-                Task::none()
-            }
-            Message::TableStyleDialogCopy => {
-                self.style_copy(crate::app::StyleKind::Table);
-                Task::none()
-            }
+            Message::TableStyleDialogNew => self.style_new(crate::app::StyleKind::Table),
+            Message::TableStyleDialogCopy => self.style_copy(crate::app::StyleKind::Table),
             Message::TableStyleDialogDelete => {
                 self.style_delete(crate::app::StyleKind::Table);
                 Task::none()
@@ -11344,14 +11370,8 @@ impl OpenCADStudio {
                 self.style_stage_commit();
                 Task::none()
             }
-            Message::MlStyleDialogNew => {
-                self.style_new(crate::app::StyleKind::MLine);
-                Task::none()
-            }
-            Message::MlStyleDialogCopy => {
-                self.style_copy(crate::app::StyleKind::MLine);
-                Task::none()
-            }
+            Message::MlStyleDialogNew => self.style_new(crate::app::StyleKind::MLine),
+            Message::MlStyleDialogCopy => self.style_copy(crate::app::StyleKind::MLine),
             Message::MlStyleDialogDelete => {
                 self.style_delete(crate::app::StyleKind::MLine);
                 Task::none()
@@ -11449,14 +11469,8 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::MLeaderStyleDialogSetCurrent => self.on_mleader_style_dialog_set_current(),
-            Message::MLeaderStyleDialogNew => {
-                self.style_new(crate::app::StyleKind::MLeader);
-                Task::none()
-            }
-            Message::MLeaderStyleDialogCopy => {
-                self.style_copy(crate::app::StyleKind::MLeader);
-                Task::none()
-            }
+            Message::MLeaderStyleDialogNew => self.style_new(crate::app::StyleKind::MLeader),
+            Message::MLeaderStyleDialogCopy => self.style_copy(crate::app::StyleKind::MLeader),
             Message::MLeaderStyleDialogDelete => {
                 self.style_delete(crate::app::StyleKind::MLeader);
                 Task::none()
@@ -11531,14 +11545,8 @@ impl OpenCADStudio {
                 self.dimstyle_compare = name;
                 Task::none()
             }
-            Message::DimStyleDialogNew => {
-                self.style_new(crate::app::StyleKind::Dim);
-                Task::none()
-            }
-            Message::DimStyleDialogCopy => {
-                self.style_copy(crate::app::StyleKind::Dim);
-                Task::none()
-            }
+            Message::DimStyleDialogNew => self.style_new(crate::app::StyleKind::Dim),
+            Message::DimStyleDialogCopy => self.style_copy(crate::app::StyleKind::Dim),
             Message::DimStyleDialogSetCurrent => {
                 // Staged: persists on Apply.
                 let i = self.active_tab;

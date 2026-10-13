@@ -510,6 +510,13 @@ pub fn build_field_key_map(sections: &[PropSection]) -> HashMap<iced::widget::Id
 /// the `WebFieldCopy` operation idiom: `focusable` fires for every focusable
 /// widget, and we record the one that `is_focused()`.
 pub fn sync_active_field_task() -> iced::Task<Message> {
+    focused_widget_task(Message::PropSyncActive)
+}
+
+/// Ask the widget tree which field holds keyboard focus.
+pub fn focused_widget_task(
+    on_result: fn(Option<iced::advanced::widget::Id>) -> Message,
+) -> iced::Task<Message> {
     use iced::advanced::widget::operation::{Focusable, Outcome};
     use iced::advanced::widget::{Id, Operation};
     #[derive(Default)]
@@ -534,7 +541,7 @@ pub fn sync_active_field_task() -> iced::Task<Message> {
             Outcome::Some(self.focused.clone())
         }
     }
-    iced::advanced::widget::operate(FocusedId::default()).map(Message::PropSyncActive)
+    iced::advanced::widget::operate(FocusedId::default()).map(on_result)
 }
 
 /// A translated choice label paired with the unchanged value stored in the
