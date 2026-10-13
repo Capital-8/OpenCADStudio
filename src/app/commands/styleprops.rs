@@ -1347,9 +1347,15 @@ impl OpenCADStudio {
                         if let Some(value) = &value {
                             match value.parse::<i32>().ok().filter(|v| (-90..=90).contains(v)) {
                                 Some(fade) => self.set_xref_fade(fade),
-                                None => self
-                                    .command_line
-                                    .push_error("Requires an integer between -90 and 90."),
+                                // Refused: say why and ask again.
+                                None => {
+                                    self.command_line
+                                        .push_error("Requires an integer between -90 and 90.");
+                                    self.command_line.push_output(&format!(
+                                        "Enter new value for XDWGFADECTL <{current}>:"
+                                    ));
+                                    self.pending_setvar = Some(name.clone());
+                                }
                             }
                         } else {
                             self.command_line.push_output(&format!(
@@ -4441,11 +4447,12 @@ mod scale_validation_tests {
 }
 
 impl OpenCADStudio {
-    /// XDWGFADECTL: store it, show it on the ribbon and redraw every tab's
-    /// referenced drawings.
+    /// XDWGFADECTL: store it in the profile, show it on the ribbon and redraw
+    /// every tab's referenced drawings.
     pub(in crate::app) fn set_xref_fade(&mut self, fade: i32) {
         crate::scene::cache::block_cache::set_xref_fade_ctl(fade);
         self.ribbon.xref_fade = crate::scene::cache::block_cache::xref_fade_ctl();
+        self.save_config();
         for tab in &mut self.tabs {
             if !tab.is_start {
                 tab.scene.recolor_meshes();

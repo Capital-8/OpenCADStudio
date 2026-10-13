@@ -793,6 +793,7 @@ impl OpenCADStudio {
             image_frame: crate::scene::frame::profile_image_mode(),
             attdef_on_screen: crate::modules::draw::draw::attdef::session().on_screen,
             field_display: crate::entities::field::display(),
+            xref_fade: crate::scene::cache::block_cache::xref_fade_ctl(),
             surface_associativity: crate::scene::model::sweep_model::surface_associativity(),
             ucs_ortho: crate::modules::view::view_cmd::ucs_ortho(),
             ucs_view: crate::modules::view::view_cmd::ucs_view(),
@@ -909,6 +910,8 @@ impl OpenCADStudio {
         crate::scene::frame::set_profile_image_mode(s.image_frame);
         crate::modules::draw::draw::attdef::session().on_screen = s.attdef_on_screen;
         crate::entities::field::set_display(s.field_display);
+        crate::scene::cache::block_cache::set_xref_fade_ctl(s.xref_fade);
+        self.ribbon.xref_fade = crate::scene::cache::block_cache::xref_fade_ctl();
         crate::scene::model::sweep_model::set_surface_associativity(s.surface_associativity);
         crate::modules::view::view_cmd::set_ucs_ortho(s.ucs_ortho);
         crate::modules::view::view_cmd::set_ucs_view(s.ucs_view);
