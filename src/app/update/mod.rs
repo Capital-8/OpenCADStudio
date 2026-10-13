@@ -11731,21 +11731,29 @@ impl OpenCADStudio {
         (newest, true, name_of(newest_handle))
     }
 
-    /// Read the colour books remembered in the settings, once per session.
+    /// Read the built-in colour books and the ones remembered in the
+    /// settings, once per session. A loaded book replaces a built-in one of
+    /// the same name.
     fn read_color_books(&mut self) {
         if std::mem::replace(&mut self.color_books_read, true) {
             return;
         }
+        use crate::ui::color_select::book;
+        #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
+        let mut books: Vec<_> = book::builtin().collect();
         #[cfg(not(target_arch = "wasm32"))]
+        for loaded in self
+            .color_book_paths
+            .iter()
+            .filter_map(|path| std::fs::read_to_string(path).ok())
+            .filter_map(|text| book::parse(&text).ok())
         {
-            let books: Vec<_> = self
-                .color_book_paths
-                .iter()
-                .filter_map(|path| std::fs::read_to_string(path).ok())
-                .filter_map(|text| crate::ui::color_select::book::parse(&text).ok())
-                .collect();
-            self.color_books = std::sync::Arc::new(books);
+            match books.iter_mut().find(|b| b.name == loaded.name) {
+                Some(same) => *same = loaded,
+                None => books.push(loaded),
+            }
         }
+        self.color_books = std::sync::Arc::new(books);
     }
 
     /// Colour the selected objects (or set the current colour when nothing

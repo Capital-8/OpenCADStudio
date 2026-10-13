@@ -57,6 +57,17 @@ impl ColorBook {
     }
 }
 
+/// The colour books that ship with the program; their licences are in the
+/// files' header comments.
+pub fn builtin() -> impl Iterator<Item = ColorBook> {
+    [
+        include_str!("../../../assets/color_books/ral-classic.acb"),
+        include_str!("../../../assets/color_books/css-colors.acb"),
+    ]
+    .into_iter()
+    .filter_map(|text| parse(text).ok())
+}
+
 /// Read an `.acb` file's text.
 pub fn parse(text: &str) -> Result<ColorBook, String> {
     let doc = roxmltree::Document::parse(text.trim_start_matches('\u{feff}'))
