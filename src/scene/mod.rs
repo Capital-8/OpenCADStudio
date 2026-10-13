@@ -4753,6 +4753,10 @@ impl Scene {
                         return false;
                     }
                     crate::scene::apply_default_page_setup(layout, &plot_style);
+                    let block = layout.block_record;
+                    // A sheet written for a layout never set up is not the
+                    // page's; it is made again for the page.
+                    drop_layout_viewports(&mut self.document, block);
                     self.bump_layout_epoch();
                     return true;
                 }
@@ -12767,10 +12771,11 @@ pub fn page_setup_uninitialized(layout: &codec::objects::Layout) -> bool {
 /// it has not opened yet.
 pub(crate) fn write_layout_unopened(document: &mut codec::CadDocument, layout_name: &str) {
     let fresh = codec::objects::Layout::new(layout_name);
-    let mut viewports = Vec::new();
+    let mut block = Handle::NULL;
     for object in document.objects.values_mut() {
         if let ObjectType::Layout(layout) = object {
             if layout.name == layout_name {
+                block = layout.block_record;
                 layout.paper_size = fresh.paper_size.clone();
                 layout.paper_width = fresh.paper_width;
                 layout.paper_height = fresh.paper_height;
@@ -12780,13 +12785,43 @@ pub(crate) fn write_layout_unopened(document: &mut codec::CadDocument, layout_na
                 layout.max_limits = fresh.max_limits;
                 layout.min_extents = fresh.min_extents;
                 layout.max_extents = fresh.max_extents;
-                viewports = std::mem::take(&mut layout.viewports);
+                layout.viewports.clear();
                 layout.viewport = Handle::NULL;
             }
         }
     }
-    for handle in viewports {
-        document.remove_entity(handle);
+    drop_layout_viewports(document, block);
+}
+
+/// Takes every viewport out of a layout's block (entity and membership).
+pub(crate) fn drop_layout_viewports(document: &mut codec::CadDocument, block: Handle) {
+    if block.is_null() {
+        return;
+    }
+    let viewports: Vec<Handle> = document
+        .entities()
+        .filter_map(|entity| match entity {
+            EntityType::Viewport(viewport) if viewport.common.owner_handle == block => {
+                Some(viewport.common.handle)
+            }
+            _ => None,
+        })
+        .collect();
+    for handle in &viewports {
+        document.remove_entity(*handle);
+    }
+    if let Some(record) = document.block_records.iter_mut().find(|record| record.handle == block) {
+        record.entity_handles.retain(|handle| !viewports.contains(handle));
+    }
+    for object in document.objects.values_mut() {
+        if let ObjectType::Layout(layout) = object {
+            if layout.block_record == block {
+                layout.viewports.retain(|handle| !viewports.contains(handle));
+                if viewports.contains(&layout.viewport) {
+                    layout.viewport = Handle::NULL;
+                }
+            }
+        }
     }
 }
 
