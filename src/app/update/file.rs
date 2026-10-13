@@ -3882,8 +3882,10 @@ impl OpenCADStudio {
             // handle is secured at this gesture moment (or reused from a
             // previous pick — retained handles need no activation to write)
             // and only the write happens later.
+            // A registered host save hook takes the bytes through the
+            // download path, so no file picker opens.
             let route = crate::io::fs_access::save_route(
-                crate::io::fs_access::supported(),
+                crate::io::fs_access::supported() && crate::sys::save_hook().is_none(),
                 self.save_plain_reuse_fs_handle,
                 crate::io::fs_access::handle_ext(tab_id).as_deref(),
                 ext,

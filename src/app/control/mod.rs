@@ -1147,6 +1147,49 @@ impl OpenCADStudio {
                     )
                 }
             }
+            // Web: no filesystem path; the drawing comes back in the reply.
+            #[cfg(target_arch = "wasm32")]
+            "save" => {
+                use base64::Engine as _;
+                let default_is_dxf = crate::io::source_is_dxf(None, &self.tabs[i].scene.document);
+                let (version, is_dxf) = super::automation::requested_save_target(
+                    req,
+                    self.tabs[i].scene.document.version,
+                    default_is_dxf,
+                    None,
+                )
+                .map_err(|error| failure("invalid_target", error))?;
+                let dropped =
+                    crate::io::dropped_on_save_count(&self.tabs[i].scene.document, version, is_dxf);
+                if dropped > 0 && req["allow_lossy"].as_bool() != Some(true) {
+                    return Err(failure(
+                        "lossy_conversion_not_acknowledged",
+                        format!(
+                            "Conversion would drop {dropped} unsupported record(s); set allow_lossy=true to acknowledge"
+                        ),
+                    ));
+                }
+                let ext = if is_dxf { "dxf" } else { "dwg" };
+                self.sync_view_state_for_save(i);
+                super::update::util::sync_annotation_scale_header(&mut self.tabs[i].scene);
+                self.stamp_header_sysvars(i);
+                self.sync_solid_models_for_save(i);
+                self.tabs[i].scene.sync_native_parametric_graph();
+                let bytes = crate::io::save_to_bytes(&self.tabs[i].scene.document, ext, version)
+                    .map_err(|error| failure("save_failed", error))?;
+                self.tabs[i].dirty = false;
+                let name = req["name"].as_str().filter(|name| !name.is_empty());
+                let name = name.map_or_else(|| format!("drawing.{ext}"), str::to_string);
+                self.set_control_result(json!({
+                    "name": name,
+                    "target_format": ext,
+                    "target_version": format!("{version:?}"),
+                    "dropped_on_save": dropped,
+                    "bytes": bytes.len(),
+                    "data_base64": base64::engine::general_purpose::STANDARD.encode(&bytes),
+                }));
+                Task::none()
+            }
             #[cfg(not(target_arch = "wasm32"))]
             "save_verified" => {
                 let result = self.save_verified_request(req)?;

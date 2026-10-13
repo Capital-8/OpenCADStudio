@@ -58,6 +58,33 @@ earlier drawing is still opening the request is answered with `busy`; retry it o
 rather than a disk, so use `data_base64` for a file the page has not seen.
 `data_base64` is rejected on native builds; use `path` there.
 
+## Getting the drawing back
+
+`save` serializes the active drawing and returns it in the reply, without a download:
+
+```json
+{"op":"save","name":"plan.dwg","target_format":"dwg","target_version":"AC1032"}
+```
+
+The reply carries `name`, `target_format`, `target_version`, `dropped_on_save`, `bytes`
+and `data_base64`, and the tab is marked clean. `target_format` and `target_version`
+default to the drawing's own; a conversion that would drop unsupported records needs
+`allow_lossy: true`, as on native.
+
+## Receiving saved files in the host page
+
+A page that embeds the app can take every saved or exported file itself instead of a
+browser download by defining a function on the app's window before saving:
+
+```js
+window.openCadStudioSaveFile = (name, bytes) => {
+  // name: file name, bytes: Uint8Array
+};
+```
+
+While it is defined, Save, Save As, the save-before-close prompt and the exports call it
+with the file name and the bytes, and no file picker opens. Without it nothing changes.
+
 ## Startup dialogs
 
 A dialog can be open when the page is ready. The donation prompt appears once per

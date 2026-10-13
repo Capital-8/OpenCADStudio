@@ -597,10 +597,15 @@ pub fn download_bytes(name: &str, bytes: &[u8]) {
     let Some(window) = web_sys::window() else {
         return;
     };
+    let array = js_sys::Uint8Array::from(bytes);
+    // A host page that embeds the app takes the file instead of a download.
+    if let Some(hook) = save_hook() {
+        let _ = hook.call2(&window, &wasm_bindgen::JsValue::from_str(name), &array);
+        return;
+    }
     let Some(document) = window.document() else {
         return;
     };
-    let array = js_sys::Uint8Array::from(bytes);
     let parts = js_sys::Array::new();
     parts.push(&array.buffer());
     let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence(&parts) else {
@@ -616,6 +621,18 @@ pub fn download_bytes(name: &str, bytes: &[u8]) {
         a.click();
     }
     let _ = web_sys::Url::revoke_object_url(&url);
+}
+
+/// The `window.openCadStudioSaveFile(name, bytes)` function an embedding page
+/// registers to receive saved and exported files, if any.
+#[cfg(target_arch = "wasm32")]
+pub fn save_hook() -> Option<js_sys::Function> {
+    use wasm_bindgen::JsCast;
+    let window = web_sys::window()?;
+    js_sys::Reflect::get(window.as_ref(), &wasm_bindgen::JsValue::from_str("openCadStudioSaveFile"))
+        .ok()?
+        .dyn_into::<js_sys::Function>()
+        .ok()
 }
 
 /// Show a plot preview as an in-page overlay. The plotted PDF arrives already
