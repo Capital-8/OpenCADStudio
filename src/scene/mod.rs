@@ -4752,6 +4752,7 @@ impl Scene {
         viewport.width = (x1 - x0).abs() * 0.8;
         viewport.height = (y1 - y0).abs() * 0.8;
         viewport.id = 2;
+        viewport.status = codec::entities::ViewportStatusFlags::default_on();
         if let Ok(handle) = self
             .document
             .add_entity_to_layout(EntityType::Viewport(viewport), layout_name)
@@ -4759,6 +4760,8 @@ impl Scene {
             // The reference zooms the new viewport to the model's extents
             // with a margin of under one percent.
             self.fit_viewport_to_model(handle, 1.0075);
+            self.notify_viewport_changed(handle);
+            self.bump_entities(&[(handle, ChangeKind::Added)]);
         }
     }
 
