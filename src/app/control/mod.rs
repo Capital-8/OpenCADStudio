@@ -1070,6 +1070,7 @@ impl OpenCADStudio {
             "property" => self.control_set_property(req)?,
             "grip_drag" => self.control_grip_drag(req)?,
             "click" => self.control_click(req)?,
+            "pointer" => self.control_pointer(req)?,
             "set_properties" => self.control_set_record_properties(req)?,
             "action" => self.control_ui_action(req)?,
             #[cfg(not(target_arch = "wasm32"))]
