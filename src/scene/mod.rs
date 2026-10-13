@@ -8,6 +8,7 @@
 pub mod annotative;
 pub mod assoc_array;
 pub mod compare;
+pub mod section_cull;
 pub mod block_service;
 pub mod cache;
 pub mod convert;
@@ -8899,16 +8900,29 @@ impl Scene {
         slice_depth: Option<f64>,
         body_to_world: Option<&codec::types::Transform>,
     ) -> Result<Option<kernel::brep::Body>, ()> {
-        let Some((origin, tangent, vertical, viewing)) = section_frame(data) else {
-            return Err(());
-        };
-        let front = section_plane(origin, tangent, viewing, body_to_world).ok_or(())?;
-        let mut clipped = keep_section_positive(body, front)?;
-        let Some(mut current) = clipped.take() else {
-            return Ok(None);
-        };
+        let planes = Self::section_planes(data, slice_depth, body_to_world).ok_or(())?;
+        let mut current = body.clone();
+        for plane in planes {
+            match keep_section_positive(&current, plane)? {
+                Some(next) => current = next,
+                None => return Ok(None),
+            }
+        }
+        Ok(Some(current))
+    }
+
+    /// The planes bounding what section `data` keeps, each facing inward:
+    /// the section plane, then the back of a slice, the ends of a boundary
+    /// and the top and bottom of a volume.
+    fn section_planes(
+        data: &codec::entities::SectionObjectData,
+        slice_depth: Option<f64>,
+        body_to_world: Option<&codec::types::Transform>,
+    ) -> Option<Vec<kernel::space::Plane>> {
+        let (origin, tangent, vertical, viewing) = section_frame(data)?;
+        let mut planes = vec![section_plane(origin, tangent, viewing, body_to_world)?];
         if data.state == 1 && slice_depth.is_none() {
-            return Ok(Some(current));
+            return Some(planes);
         }
 
         let depth = slice_depth.unwrap_or_else(|| {
@@ -8923,82 +8937,44 @@ impl Scene {
                 })
         });
         if depth <= 1e-12 {
-            return Ok(Some(current));
+            return Some(planes);
         }
-        let back =
-            section_plane(origin + viewing * depth, tangent, -viewing, body_to_world).ok_or(())?;
-        let Some(next) = keep_section_positive(&current, back)? else {
-            return Ok(None);
-        };
-        current = next;
-
+        planes.push(section_plane(
+            origin + viewing * depth,
+            tangent,
+            -viewing,
+            body_to_world,
+        )?);
         if data.state == 1 {
-            return Ok(Some(current));
+            return Some(planes);
         }
 
-        let span = data
-            .vertices
-            .first()
-            .zip(data.vertices.last())
-            .map_or(0.0, |(first, last)| {
-                (glam::DVec3::new(last.x, last.y, last.z)
-                    - glam::DVec3::new(first.x, first.y, first.z))
-                .length()
-            });
-        if span <= 1e-12 {
-            return Ok(Some(current));
+        let first = data.vertices.first()?;
+        let last = data.vertices.last()?;
+        let first = glam::DVec3::new(first.x, first.y, first.z);
+        let last = glam::DVec3::new(last.x, last.y, last.z);
+        if (last - first).length() <= 1e-12 {
+            return Some(planes);
         }
-
-        let first = data
-            .vertices
-            .first()
-            .map(|point| glam::DVec3::new(point.x, point.y, point.z))
-            .ok_or(())?;
-        let last = data
-            .vertices
-            .last()
-            .map(|point| glam::DVec3::new(point.x, point.y, point.z))
-            .ok_or(())?;
-        for plane in [
-            section_plane(first, vertical, tangent, body_to_world),
-            section_plane(last, vertical, -tangent, body_to_world),
-        ] {
-            let Some(plane) = plane else {
-                return Err(());
-            };
-            let Some(next) = keep_section_positive(&current, plane)? else {
-                return Ok(None);
-            };
-            current = next;
-        }
-
+        planes.push(section_plane(first, vertical, tangent, body_to_world)?);
+        planes.push(section_plane(last, vertical, -tangent, body_to_world)?);
         if data.state != 4 {
-            return Ok(Some(current));
+            return Some(planes);
         }
 
-        for plane in [
-            section_plane(
-                origin - vertical * data.bottom_height,
-                tangent,
-                vertical,
-                body_to_world,
-            ),
-            section_plane(
-                origin + vertical * data.top_height,
-                tangent,
-                -vertical,
-                body_to_world,
-            ),
-        ] {
-            let Some(plane) = plane else {
-                return Err(());
-            };
-            let Some(next) = keep_section_positive(&current, plane)? else {
-                return Ok(None);
-            };
-            current = next;
-        }
-        Ok(Some(current))
+        planes.push(section_plane(
+            origin - vertical * data.bottom_height,
+            tangent,
+            vertical,
+            body_to_world,
+        )?);
+        planes.push(section_plane(
+            origin + vertical * data.top_height,
+            tangent,
+            -vertical,
+            body_to_world,
+        )?);
+        Some(planes)
     }
 
     /// True when `layer` is turned off or frozen — entities on it never render.

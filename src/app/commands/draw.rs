@@ -2148,6 +2148,11 @@ impl OpenCADStudio {
                 self.tabs[i].active_cmd = Some(Box::new(subtract));
             }
 
+            // SECTIONCULL — erase what lies outside a section object.
+            "SECTIONCULL" => {
+                return Some(self.section_cull());
+            }
+
             // INTERFERE — non-destructive intersect: solid from the overlap.
             "INTERFERE" => {
                 return Some(self.solid_interfere());

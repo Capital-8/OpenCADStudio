@@ -621,6 +621,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "SL",
         "INTERFERE",
         "INF",
+        "SECTIONCULL",
         "PRESSPULL",
         "THICKEN",
         "3DROTATE",

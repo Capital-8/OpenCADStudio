@@ -225,6 +225,8 @@ fn subtract_bodies(
     Ok(result)
 }
 
+inventory::submit!(crate::command::CommandRegistration { names: &["SECTIONCULL"] });
+
 fn entity_with_boolean_body(mut source: EntityType, body: &Body) -> Option<EntityType> {
     let document = crate::scene::convert::acis_export::solid_to_sat(body)?;
     let wires = solid_model::edge_wires(body);
@@ -2071,6 +2073,74 @@ impl super::OpenCADStudio {
     ) -> Task<Message> {
         let handles = self.tabs[self.active_tab].scene.selected_handles_in_order();
         self.solid_slice(&handles, plane, keep_point)
+    }
+
+    /// SECTIONCULL — keep only what lies inside the selected section object
+    /// (or the live section): bodies are cut to it, open meshes clipped, and
+    /// everything wholly outside it erased. One undo step.
+    pub(super) fn section_cull(&mut self) -> Task<Message> {
+        let i = self.active_tab;
+        let Some(section) = self.tabs[i].scene.cull_section() else {
+            self.command_line.push_error(
+                crate::t!("SECTIONCULL: select a section object or turn on a live section.")
+                    .as_ref(),
+            );
+            return Task::none();
+        };
+        let Some(cull) = self.tabs[i].scene.section_cull(section) else {
+            return Task::none();
+        };
+        let mut cut = Vec::with_capacity(cull.cut.len());
+        for (handle, body) in cull.cut {
+            let scene = &self.tabs[i].scene;
+            let entity = scene
+                .document
+                .get_entity(handle)
+                .cloned()
+                .and_then(|source| entity_with_boolean_body(source, &body));
+            let display = scene
+                .prepare_solid_model_display(handle, &body)
+                .filter(|display| display.0.complete);
+            let (Some(entity), Some(display)) = (entity, display) else {
+                self.command_line.push_error(
+                    crate::t!(
+                        "SECTIONCULL: a cut object could not be prepared; nothing was changed."
+                    )
+                    .as_ref(),
+                );
+                return Task::none();
+            };
+            cut.push((handle, entity, body, display));
+        }
+        let changed = cut.len() + cull.clipped.len() + cull.outside.len();
+        if changed == 0 {
+            self.command_line
+                .push_output(crate::t!("SECTIONCULL: nothing lies outside the section.").as_ref());
+            return Task::none();
+        }
+        self.push_undo_snapshot(i, "SECTIONCULL");
+        let scene = &mut self.tabs[i].scene;
+        for (handle, entity, body, display) in cut {
+            scene.delete_solid_history(handle);
+            scene.update_entity(entity);
+            scene.register_prepared_solid_model(handle, body, display);
+        }
+        for mesh in cull.clipped {
+            scene.update_entity(mesh);
+        }
+        scene.erase_entities(&cull.outside);
+        scene.deselect_all();
+        self.tabs[i].dirty = true;
+        self.refresh_properties();
+        self.command_line.push_output(
+            crate::t!(
+                "SECTIONCULL: erased %{erased} object(s) and cut %{cut} across the section.",
+                erased = cull.outside.len(),
+                cut = changed - cull.outside.len()
+            )
+            .as_ref(),
+        );
+        Task::none()
     }
 
     /// INTERFERE — create a solid from the overlap of the two selected solids,
