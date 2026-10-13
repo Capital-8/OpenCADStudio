@@ -1741,6 +1741,80 @@ impl super::OpenCADStudio {
         self.solid_slice_with_tool(requested, ModelSliceTool::Surface(cutter), keep_point)
     }
 
+    /// SLICE on meshes that do not close a volume: the kept side of each face
+    /// stays (or, with no side chosen, both sides become separate meshes),
+    /// open along the cut. One undo step; `None` when nothing was changed.
+    fn slice_open_meshes(
+        &mut self,
+        handles: &[Handle],
+        tool: &ModelSliceTool,
+        keep_point: Option<glam::DVec3>,
+    ) -> Option<Vec<Handle>> {
+        let i = self.active_tab;
+        let keep_positive = match keep_point {
+            Some(point) => match tool.side(point.to_array()) {
+                Some(distance) if distance.abs() > 1.0e-9 => Some(distance > 0.0),
+                _ => {
+                    self.command_line.push_error(
+                        crate::t!("SLICE: choose a point away from the cutting plane.").as_ref(),
+                    );
+                    return None;
+                }
+            },
+            None => None,
+        };
+        let side = |point: [f64; 3]| tool.side(point).unwrap_or(0.0);
+        let mut pieces = Vec::with_capacity(handles.len());
+        for handle in handles {
+            let Some(entity) = self.tabs[i].scene.document.get_entity(*handle) else {
+                continue;
+            };
+            let Some((vertices, faces)) = crate::entities::mesh::mesh_polygons(entity) else {
+                continue;
+            };
+            let common = entity.common();
+            let clip = |positive| {
+                crate::entities::mesh::clipped_mesh(&vertices, &faces, side, positive, common)
+            };
+            let (kept, other) = match keep_positive {
+                Some(positive) => (clip(positive), None),
+                None => (clip(false), Some(clip(true))),
+            };
+            // Both sides must have faces, or the plane missed this mesh.
+            let crosses = vertices.iter().any(|&point| side(point) > 0.0)
+                && vertices.iter().any(|&point| side(point) < 0.0);
+            let (Some(kept), true) = (kept, crosses) else {
+                self.command_line.push_error(
+                    crate::t!("SLICE: the cutting plane does not cross every selected object; no object was changed.")
+                        .as_ref(),
+                );
+                return None;
+            };
+            pieces.push((*handle, kept, other.flatten()));
+        }
+        self.push_undo_snapshot(i, "SLICE");
+        let mut results = Vec::with_capacity(pieces.len() * 2);
+        for (handle, mut kept, other) in pieces {
+            kept.common.handle = handle;
+            self.tabs[i].scene.update_entity(EntityType::Mesh(kept));
+            results.push(handle);
+            if let Some(mut other) = other {
+                other.common.handle = Handle::NULL;
+                results.push(self.tabs[i].scene.add_entity(EntityType::Mesh(other)));
+            }
+        }
+        self.tabs[i].scene.deselect_all();
+        for handle in &results {
+            self.tabs[i].scene.select_entity(*handle, false);
+        }
+        self.tabs[i].dirty = true;
+        self.refresh_properties();
+        self.command_line.push_output(
+            crate::t!("SLICE: created %{count} result object(s).", count = results.len()).as_ref(),
+        );
+        Some(results)
+    }
+
     fn solid_slice_with_tool(
         &mut self,
         requested: &[Handle],
@@ -1755,14 +1829,50 @@ impl super::OpenCADStudio {
             .filter(|handle| {
                 matches!(
                     self.tabs[i].scene.document.get_entity(*handle),
-                    Some(EntityType::Solid3D(_) | EntityType::Surface(_))
+                    Some(
+                        EntityType::Solid3D(_)
+                            | EntityType::Surface(_)
+                            | EntityType::Mesh(_)
+                            | EntityType::PolygonMesh(_)
+                            | EntityType::PolyfaceMesh(_)
+                    )
                 )
             })
             .collect::<Vec<_>>();
         handles.sort_unstable_by_key(|handle| handle.value());
         handles.dedup();
+        // A mesh that closes a volume is sliced as a solid and capped; an open
+        // one is clipped face by face and stays a mesh.
+        let mut bodies = rustc_hash::FxHashMap::default();
+        let mut open_meshes = Vec::new();
+        for handle in &handles {
+            let Some(entity) = self.tabs[i].scene.document.get_entity(*handle) else {
+                continue;
+            };
+            if crate::entities::mesh::mesh_polygons(entity).is_none() {
+                continue;
+            }
+            match crate::entities::mesh::closed_mesh_body(entity) {
+                Some(body) => {
+                    bodies.insert(*handle, body);
+                }
+                None => open_meshes.push(*handle),
+            }
+        }
+        handles.retain(|handle| !open_meshes.contains(handle));
         self.tabs[i].scene.restore_solid_models(&handles);
-        handles.retain(|handle| self.tabs[i].scene.solid_models.contains_key(handle));
+        for handle in &handles {
+            if let Some(body) = self.tabs[i].scene.solid_models.get(handle) {
+                bodies.entry(*handle).or_insert_with(|| body.clone());
+            }
+        }
+        handles.retain(|handle| bodies.contains_key(handle));
+        if !open_meshes.is_empty() {
+            let sliced = self.slice_open_meshes(&open_meshes, &tool, keep_point);
+            if handles.is_empty() || sliced.is_none() {
+                return Task::none();
+            }
+        }
         if handles.is_empty() {
             self.command_line
                 .push_error(crate::t!("SLICE: select at least one solid or surface.").as_ref());
@@ -1771,10 +1881,7 @@ impl super::OpenCADStudio {
 
         let keep_positive = if let Some(point) = keep_point {
             let tolerance = kernel::brep::operation_tolerance(
-                &handles
-                    .iter()
-                    .map(|handle| &self.tabs[i].scene.solid_models[handle])
-                    .collect::<Vec<_>>(),
+                &handles.iter().map(|handle| &bodies[handle]).collect::<Vec<_>>(),
             );
             let Some(distance) = tool.side(point.to_array()) else {
                 self.command_line
@@ -1794,8 +1901,7 @@ impl super::OpenCADStudio {
 
         let mut prepared = Vec::with_capacity(handles.len());
         for handle in &handles {
-            let body = &self.tabs[i].scene.solid_models[handle];
-            let result = match tool.split(body) {
+            let result = match tool.split(&bodies[handle]) {
                 Ok(Some(result)) => result,
                 Ok(None) => {
                     self.command_line.push_error(
