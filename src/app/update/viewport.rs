@@ -1525,14 +1525,36 @@ impl OpenCADStudio {
             // In a viewport, pick the cursor's model point with the
             // viewport camera directly; otherwise project on the paper
             // sheet and map to model. Either way `raw` is model space.
+            //
+            // A model-space grip moves in the drawing plane through where it
+            // started (the UCS XY plane at the grip's own elevation). The
+            // plane facing the screen through the orbit target put the point
+            // somewhere else in depth in any tilted view, so a circle jumped
+            // to another radius and a vertex left its plane (#1033). Seen
+            // edge-on that plane cannot be hit; the screen plane takes over.
+            let grip_plane = self.tabs[i].editing_model_space().then(|| {
+                let normal = self.tabs[i]
+                    .active_ucs
+                    .as_ref()
+                    .map_or(glam::DVec3::Z, ucs_z_axis);
+                (normal, grip.origin_world)
+            });
+            let pick = |cam: &crate::scene::view::camera::Camera| match grip_plane {
+                Some((normal, origin))
+                    if (cam.rotation * glam::Vec3::NEG_Z)
+                        .as_dvec3()
+                        .dot(normal)
+                        .abs()
+                        > 0.05 =>
+                {
+                    cam.pick_on_plane(p, bounds, normal.as_vec3(), origin)
+                }
+                _ => cam.pick_on_target_plane(p, bounds),
+            };
             let raw = match &edit_cam {
-                Some(cam) => cam.pick_on_target_plane(p, bounds),
+                Some(cam) => pick(cam),
                 None => {
-                    let paper = self.tabs[i]
-                        .scene
-                        .camera
-                        .borrow()
-                        .pick_on_target_plane(p, bounds);
+                    let paper = pick(&self.tabs[i].scene.camera.borrow());
                     self.tabs[i].scene.paper_to_model(paper)
                 }
             };
@@ -1647,7 +1669,7 @@ impl OpenCADStudio {
                 } else {
                     self.tabs[i].scene.hit_test_wires()
                 };
-            let snap_candidates = self.tabs[i].scene.interaction_candidates_near(
+            let mut snap_candidates = self.tabs[i].scene.interaction_candidates_near(
                 all_wires,
                 raw,
                 view_rot,
@@ -1655,6 +1677,16 @@ impl OpenCADStudio {
                 bounds,
                 self.snapper.osnap_radius_px,
             );
+            // A solid stays drawn while its grip moves, so its own edges are
+            // still in the set: the grip would snap back onto the shape it is
+            // reshaping (a cone's base radius landed on its own side, #1033).
+            let edited = &self.grip_preview_handles;
+            if !edited.is_empty() {
+                snap_candidates.exclude_wires(|wire| {
+                    crate::scene::Scene::handle_from_wire_name(&wire.name)
+                        .is_some_and(|handle| edited.contains(&handle))
+                });
+            }
             // The engaged grip is the rubber-band origin. Perpendicular
             // snapping must drop its foot from this point, including when a
             // hot-grip set is moved by the same drag vector.

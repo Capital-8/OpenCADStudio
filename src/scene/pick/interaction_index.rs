@@ -1646,6 +1646,39 @@ impl InteractionCandidates {
             .map(|(rect, (view, eye, bounds))| (rect, view, eye, bounds))
     }
 
+    /// Leave out every wire `drop` matches, with the segments, points and
+    /// triangles that belong to it.
+    pub(crate) fn exclude_wires(&mut self, drop: impl Fn(&WireModel) -> bool) {
+        let wires = Arc::clone(&self.wires);
+        let dropped = |wire: u32| wires.get(wire as usize).is_some_and(&drop);
+        match self.wire_indices.as_mut() {
+            Some(indices) => indices.retain(|&wire| !dropped(wire)),
+            None => {
+                self.wire_indices = Some(
+                    (0..wires.len() as u32)
+                        .filter(|&wire| !dropped(wire))
+                        .collect(),
+                );
+            }
+        }
+        fn keep<T>(
+            refs: &mut Option<Vec<T>>,
+            wire: impl Fn(&T) -> u32,
+            dropped: impl Fn(u32) -> bool,
+        ) {
+            if let Some(refs) = refs.as_mut() {
+                refs.retain(|item| !dropped(wire(item)));
+            }
+        }
+        keep(&mut self.segments, |r| r.wire, dropped);
+        keep(&mut self.snap_points, |r| r.wire, dropped);
+        keep(&mut self.key_vertices, |r| r.wire, dropped);
+        keep(&mut self.key_segments, |r| r.wire, dropped);
+        keep(&mut self.fill_triangles, |r| r.wire, dropped);
+        keep(&mut self.pick_triangles, |r| r.wire, dropped);
+        keep(&mut self.glyphs, |r| r.wire, dropped);
+    }
+
     pub(crate) fn extend_indexed_area(&mut self, other: Self) {
         debug_assert!(Arc::ptr_eq(&self.wires, &other.wires));
 
