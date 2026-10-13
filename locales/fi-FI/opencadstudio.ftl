@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  Valitse kopiointitila [Single/Multiple] <Multiple>:
 
 common =
+    .command-line-opacity = Komentorivin peittävyys
     .txtexp-no-text-selected = TXTEXP: tekstiä ei ole valittu.
     .angle-override-shown = Kulman ohitus: __ocs_fmt_0__
     .plot-preview-task = Tulostuksen esikatselu

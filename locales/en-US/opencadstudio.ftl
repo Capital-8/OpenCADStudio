@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  Enter a copy mode option [Single/Multiple] <Multiple>:
 
 common =
+    .command-line-opacity = Command line opacity
     .txtexp-no-text-selected = TXTEXP: no text selected.
     .angle-override-shown = Angle Override: __ocs_fmt_0__
     .browser-cannot-open-typed-path = The browser cannot open a typed path; pick the file instead.

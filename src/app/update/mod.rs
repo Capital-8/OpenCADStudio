@@ -9057,6 +9057,12 @@ impl OpenCADStudio {
                 Task::none()
             }
 
+            Message::CommandLineOpacityChanged(percent) => {
+                self.command_line.set_opacity_percent(percent);
+                self.persist_settings_if_changed();
+                Task::none()
+            }
+
             Message::CommandLineFadeChanged(ms) => {
                 let ms = crate::app::settings::clamp_commandline_fade_ms(ms);
                 self.commandline_fade_ms = ms;

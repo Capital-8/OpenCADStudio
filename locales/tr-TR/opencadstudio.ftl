@@ -267,6 +267,7 @@ command-copy =
     .mode = COPY  Kopyalama modu seçin [Single/Multiple] <Multiple>:
 
 common =
+    .command-line-opacity = Komut satırı opaklığı
     .txtexp-no-text-selected = TXTEXP: metin seçilmedi.
     .angle-override-shown = Açı geçersiz kılma: __ocs_fmt_0__
     .plot-preview-task = Çizim önizleme

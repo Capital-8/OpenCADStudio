@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  Informe o modo de cópia [Single/Multiple] <Multiple>:
 
 common =
+    .command-line-opacity = Opacidade da linha de comando
     .txtexp-no-text-selected = TXTEXP: nenhum texto selecionado.
     .angle-override-shown = Substituição de ângulo: __ocs_fmt_0__
     .plot-preview-task = Visualização da plotagem

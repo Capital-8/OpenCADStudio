@@ -2607,6 +2607,8 @@ pub enum Message {
     ClipromptLinesChanged(i32),
     /// Change how long command-line history lines stay visible (COMMANDLINEFADETIME).
     CommandLineFadeChanged(i32),
+    /// Change the command line's panel opacity (COMMANDLINEOPACITY).
+    CommandLineOpacityChanged(u8),
     /// Toggle reversing the mouse-wheel zoom direction (ZOOMWHEEL).
     ZoomWheelReversedChanged(bool),
     TouchpadPanChanged(bool),

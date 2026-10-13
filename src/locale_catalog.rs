@@ -3697,6 +3697,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Width factor" => Some(("common", "width-factor-sentence-case")),
         "Width: %{value}" => Some(("ui", "width-value")),
         "Window" => Some(("common", "window")),
+        "Command line opacity" => Some(("common", "command-line-opacity")),
         "TXTEXP: no text selected." => Some(("common", "txtexp-no-text-selected")),
         "Windows desktop" => Some(("styles", "windows-desktop")),
         "Wipeout" => Some(("common", "wipeout")),

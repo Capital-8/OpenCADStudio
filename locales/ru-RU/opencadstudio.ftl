@@ -285,6 +285,7 @@ command-copy =
     .mode = COPY  Задайте режим копирования [Single/Multiple] <Multiple>:
 
 common =
+    .command-line-opacity = Непрозрачность командной строки
     .txtexp-no-text-selected = TXTEXP: текст не выбран.
     .angle-override-shown = Переопределение угла: __ocs_fmt_0__
     .plot-preview-task = Предварительный просмотр печати

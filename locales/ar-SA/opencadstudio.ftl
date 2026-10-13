@@ -294,6 +294,7 @@ command-copy =
     .mode = COPY  أدخل خيار وضع النسخ [Single/Multiple] <Multiple>:
 
 common =
+    .command-line-opacity = شفافية سطر الأوامر
     .txtexp-no-text-selected = TXTEXP: لم يتم تحديد نص.
     .angle-override-shown = تجاوز الزاوية: __ocs_fmt_0__
     .plot-preview-task = معاينة الطباعة

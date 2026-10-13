@@ -754,6 +754,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "SKTOLERANCE",
         "CLIPROMPTLINES",
         "COMMANDLINEFADETIME",
+        "COMMANDLINEOPACITY",
         "COLORTHEME",
         "SELECTIONAREA",
         "SELECTIONAREAOPACITY",

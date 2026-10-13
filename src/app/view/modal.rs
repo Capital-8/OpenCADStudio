@@ -299,6 +299,7 @@ impl OpenCADStudio {
                             textfill: crate::scene::text::sdf_atlas::textfill(),
                             cliprompt_lines: self.cliprompt_lines,
                             commandline_fade_ms: self.commandline_fade_ms,
+                            command_line_opacity: self.command_line.opacity_percent(),
                             zoom_wheel_reversed: self.zoom_wheel_reversed,
                             touchpad_pan: self.touchpad_pan,
                             ui_scale_percent: self.ui_scale_percent,

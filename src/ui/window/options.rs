@@ -53,6 +53,8 @@ pub struct AppPrefs {
     pub cliprompt_lines: i32,
     /// COMMANDLINEFADETIME: how long overlay history lines stay visible, in ms.
     pub commandline_fade_ms: i32,
+    /// COMMANDLINEOPACITY: command-line panel opacity in percent.
+    pub command_line_opacity: u8,
     /// ZOOMWHEEL: reverse the mouse-wheel zoom direction.
     pub zoom_wheel_reversed: bool,
     /// Scroll pans and Ctrl+scroll zooms (touchpads).
@@ -974,6 +976,22 @@ pub fn view_window<'a>(
             ))
             .size(11)
             .width(sizing.width),
+        )
+        .push(Space::new().height(12))
+        .push(
+            row![
+                text(crate::t!("Command line opacity")).size(12).width(140),
+                slider(
+                    20..=100,
+                    prefs.command_line_opacity.clamp(20, 100),
+                    Message::CommandLineOpacityChanged,
+                )
+                .step(5u8)
+                .width(Fill),
+                text(format!("{}%", prefs.command_line_opacity)).size(11).width(44),
+            ]
+            .spacing(10)
+            .align_y(iced::Center),
         );
 
     let display_element = display.spacing(0).width(sizing.width);

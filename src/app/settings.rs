@@ -587,6 +587,8 @@ pub struct UserSettings {
         deserialize_with = "deserialize_commandline_fade_ms"
     )]
     pub commandline_fade_ms: i32,
+    /// COMMANDLINEOPACITY: command-line panel opacity in percent (20–100).
+    pub command_line_opacity: u8,
     /// SNAPUNIT X/Y spacing used by grid snap. 10 matches the Drafting
     /// Settings dialog defaults; older configs without these keys fall
     /// back via `default_snap_spacing`.
@@ -896,6 +898,7 @@ impl Default for UserSettings {
             language: crate::i18n::Language::default(),
             cliprompt_lines: 3,
             commandline_fade_ms: 3000,
+            command_line_opacity: 100,
             snap_spacing_x: 10.0,
             snap_spacing_y: 10.0,
             grid_spacing_x: 10.0,

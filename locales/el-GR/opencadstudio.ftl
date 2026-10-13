@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  Επιλέξτε λειτουργία αντιγραφής [Single/Multiple] <Multiple>:
 
 common =
+    .command-line-opacity = Αδιαφάνεια γραμμής εντολών
     .txtexp-no-text-selected = TXTEXP: δεν επιλέχθηκε κείμενο.
     .angle-override-shown = Παράκαμψη γωνίας: __ocs_fmt_0__
     .plot-preview-task = Προεπισκόπηση εκτύπωσης

@@ -191,6 +191,9 @@ pub struct CommandLine {
     /// in milliseconds (0–60000, default 3000). 0 means history never fades;
     /// the pinned step prompt still shows.
     fade_ms: u32,
+    /// COMMANDLINEOPACITY: how opaque the command line's panels are, in
+    /// percent (20–100, default 100), so the drawing shows through.
+    opacity_percent: u8,
 }
 
 impl Default for CommandLine {
@@ -217,6 +220,7 @@ impl Default for CommandLine {
             step_options: Vec::new(),
             cliprompt_lines: 3,
             fade_ms: DEFAULT_COMMANDLINE_FADE_MS,
+            opacity_percent: 100,
         }
     }
 }
@@ -507,6 +511,15 @@ impl CommandLine {
 
     pub fn commandline_fade_ms(&self) -> u32 {
         self.fade_ms
+    }
+
+    /// COMMANDLINEOPACITY mirror (percent, 20–100).
+    pub fn set_opacity_percent(&mut self, percent: u8) {
+        self.opacity_percent = percent.clamp(20, 100);
+    }
+
+    pub fn opacity_percent(&self) -> u8 {
+        self.opacity_percent
     }
 
     fn fade_secs(&self) -> f32 {
@@ -1127,12 +1140,15 @@ impl CommandLine {
         // The transient recent lines and the full archive are two views of the
         // same history. Showing both while the archive is open creates a fake
         // second history region and visually disconnects the input row (#555).
+        let opacity = f32::from(self.opacity_percent) / 100.0;
         let recent_history: Element<'a, Message> = if self.history_open || !has_recent_history {
             container(column![]).height(0).into()
         } else {
             container(history_rows)
-                .style(|theme: &Theme| container::Style {
-                    background: Some(Background::Color(theme.palette().background.base.color)),
+                .style(move |theme: &Theme| container::Style {
+                    background: Some(Background::Color(
+                        theme.palette().background.base.color.scale_alpha(opacity),
+                    )),
                     ..Default::default()
                 })
                 .width(Length::Fill)
@@ -1153,10 +1169,11 @@ impl CommandLine {
                 recent_history,
                 history_divider,
                 container(input_row)
-                    .style(|theme: &Theme| {
+                    .style(move |theme: &Theme| {
                         let palette = theme.palette();
+                        let color = palette.background.weakest.color.scale_alpha(opacity);
                         container::Style {
-                            background: Some(Background::Color(palette.background.weakest.color)),
+                            background: Some(Background::Color(color)),
                             ..Default::default()
                         }
                     })
@@ -1170,7 +1187,9 @@ impl CommandLine {
         .style(move |theme: &Theme| {
             let palette = theme.palette();
             container::Style {
-                background: Some(Background::Color(palette.background.base.color)),
+                background: Some(Background::Color(
+                    palette.background.base.color.scale_alpha(opacity),
+                )),
                 border: Border {
                     color: palette.background.neutral.color,
                     width: if history_open { 1.0 } else { 0.0 },

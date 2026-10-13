@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  복사 모드 옵션 입력 [Single/Multiple] <Multiple>:
 
 common =
+    .command-line-opacity = 명령행 불투명도
     .txtexp-no-text-selected = TXTEXP: 선택된 문자가 없습니다.
     .angle-override-shown = 각도 재지정: __ocs_fmt_0__
     .plot-preview-task = 플롯 미리 보기

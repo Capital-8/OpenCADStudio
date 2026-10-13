@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  Zadejte režim kopírování [Single/Multiple] <Multiple>:
 
 common =
+    .command-line-opacity = Neprůhlednost příkazového řádku
     .txtexp-no-text-selected = TXTEXP: není vybrán žádný text.
     .angle-override-shown = Přepsání úhlu: __ocs_fmt_0__
     .plot-preview-task = Náhled tisku

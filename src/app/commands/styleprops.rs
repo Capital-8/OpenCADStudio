@@ -1149,6 +1149,7 @@ impl OpenCADStudio {
                     | "CURSORSIZE"
                     | "PICKBOX"
                     | "HPASSOC"
+                    | "COMMANDLINEOPACITY"
                     | "CURSORTYPE"
                     | "SNAPANG"
                     | "TEXTFILL"
@@ -2537,6 +2538,22 @@ impl OpenCADStudio {
                                     false,
                                 )),
                             },
+                            "COMMANDLINEOPACITY" => match &value {
+                                Some(v) => match v.parse::<u8>() {
+                                    Ok(n) if (20..=100).contains(&n) => {
+                                        self.command_line.set_opacity_percent(n);
+                                        Ok((format!("COMMANDLINEOPACITY = {n}"), true))
+                                    }
+                                    _ => Err("SETVAR: integer from 20 to 100 required.".into()),
+                                },
+                                None => Ok((
+                                    format!(
+                                        "COMMANDLINEOPACITY = {}",
+                                        self.command_line.opacity_percent()
+                                    ),
+                                    false,
+                                )),
+                            },
                             "COMMANDLINEFADETIME" => match &value {
                                 Some(v) => match v.parse::<i32>() {
                                     Ok(n) if (0..=60000).contains(&n) => {
@@ -3147,6 +3164,7 @@ impl OpenCADStudio {
                                         | "CURSORSIZE"
                                         | "PICKBOX"
                                         | "HPASSOC"
+                                        | "COMMANDLINEOPACITY"
                                         | "CURSORTYPE"
                                         | "SNAPANG"
                                         | "CLIPROMPTLINES"

@@ -269,6 +269,7 @@ command-copy =
     .mode = COPY  输入复制模式选项 [Single/Multiple] <Multiple>:
 
 common =
+    .command-line-opacity = 命令行不透明度
     .txtexp-no-text-selected = TXTEXP: 未选择文字。
     .angle-override-shown = 角度替代：__ocs_fmt_0__
     .plot-preview-task = 打印预览
