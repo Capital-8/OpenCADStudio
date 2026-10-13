@@ -3809,7 +3809,9 @@ impl OpenCADStudio {
                         return Task::none();
                     }
                 }
-                if field.starts_with("ul_") {
+                if field.starts_with("ul_")
+                    || matches!(field, "ri_bright" | "ri_contrast" | "ri_fade")
+                {
                     if let Err(message) = crate::entities::underlay::validate_property(field, &val)
                     {
                         self.command_line.push_error(message);

@@ -26,7 +26,7 @@ mod snap_underlays;
 pub(crate) mod solid3d_cmds;
 mod underlay_layers;
 pub(crate) mod wblock;
-mod xadjust;
+pub(crate) mod xadjust;
 pub(crate) mod xattach;
 pub(crate) mod xclip;
 pub(crate) mod xref_cmd;
