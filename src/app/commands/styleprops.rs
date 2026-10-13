@@ -1150,6 +1150,7 @@ impl OpenCADStudio {
                     | "PICKBOX"
                     | "HPASSOC"
                     | "COMMANDLINEOPACITY"
+                    | "MENUBAR"
                     | "CURSORTYPE"
                     | "SNAPANG"
                     | "TEXTFILL"
@@ -2190,6 +2191,17 @@ impl OpenCADStudio {
                                 },
                                 None => Ok((format!("PICKBOX = {}", self.pick_box), false)),
                             },
+                            "MENUBAR" => match value.as_deref() {
+                                Some(v @ ("0" | "1")) => {
+                                    self.show_menu_bar = v == "1";
+                                    Ok((format!("MENUBAR = {v}"), true))
+                                }
+                                Some(_) => Err("SETVAR: 0 or 1 required.".into()),
+                                None => Ok((
+                                    format!("MENUBAR = {}", u8::from(self.show_menu_bar)),
+                                    false,
+                                )),
+                            },
                             "HPASSOC" => match value.as_deref() {
                                 Some(v @ ("0" | "1")) => {
                                     self.hatch_associative = v == "1";
@@ -3165,6 +3177,7 @@ impl OpenCADStudio {
                                         | "PICKBOX"
                                         | "HPASSOC"
                                         | "COMMANDLINEOPACITY"
+                                        | "MENUBAR"
                                         | "CURSORTYPE"
                                         | "SNAPANG"
                                         | "CLIPROMPTLINES"

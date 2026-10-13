@@ -2020,7 +2020,10 @@ bg={bg_ms:.1}ms n={view_count}"
             // Clean-screen mode drops the ribbon for a full-canvas view; the
             // status bar stays so the mode can be toggled back off.
             let mut col = column![];
-            if !self.clean_screen {
+            if !self.clean_screen && self.show_menu_bar {
+                col = col.push(crate::ui::menu_bar::view());
+            }
+            if !self.clean_screen && !self.ribbon_closed {
                 col = col.push(self.ribbon.view(
                     is_paper,
                     self.tabs[self.active_tab].is_start,

@@ -618,6 +618,11 @@ impl OpenCADStudio {
             "CLEANSCREEN" => {
                 return Some(Task::done(Message::ToggleCleanScreen));
             }
+            // ── RIBBON / RIBBONCLOSE — show or hide the ribbon ───────────────────
+            "RIBBON" | "RIBBONCLOSE" => {
+                self.ribbon_closed = cmd == "RIBBONCLOSE";
+                self.persist_settings_if_changed();
+            }
             // ── QUICKPROPERTIES — toggle the floating quick-properties readout ───
             "QUICKPROPERTIES" => {
                 return Some(Task::done(Message::ToggleQuickProperties));

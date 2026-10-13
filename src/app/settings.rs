@@ -400,6 +400,10 @@ pub struct UserSettings {
     pub pick_box: i32,
     /// HPASSOC: new hatches follow their boundary objects.
     pub hatch_associative: bool,
+    /// MENUBAR: the classic pull-down menus show above the ribbon.
+    pub show_menu_bar: bool,
+    /// RIBBONCLOSE hid the ribbon; RIBBON brings it back.
+    pub ribbon_closed: bool,
     /// When true, double-clicking a block reference starts REFEDIT instead of BEDIT.
     pub double_click_block_refedit: bool,
     /// When true, double-clicking a block with attributes opens ATTEDIT.
@@ -834,6 +838,8 @@ impl Default for UserSettings {
             cursor_size: 5,
             pick_box: 3,
             hatch_associative: true,
+            show_menu_bar: false,
+            ribbon_closed: false,
             options_tab: crate::ui::window::options::OptionsTab::General,
             show_viewcube: true,
             show_ucs_icon: true,

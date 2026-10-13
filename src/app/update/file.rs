@@ -781,6 +781,8 @@ impl OpenCADStudio {
             cursor_size: self.cursor_size,
             pick_box: self.pick_box,
             hatch_associative: self.hatch_associative,
+            show_menu_bar: self.show_menu_bar,
+            ribbon_closed: self.ribbon_closed,
             options_tab: self.options_tab,
             show_viewcube: self.show_viewcube,
             show_ucs_icon: self.show_ucs_icon,
@@ -894,6 +896,8 @@ impl OpenCADStudio {
         self.cursor_size = s.cursor_size.clamp(1, 100);
         self.pick_box = s.pick_box.clamp(0, 50);
         self.hatch_associative = s.hatch_associative;
+        self.show_menu_bar = s.show_menu_bar;
+        self.ribbon_closed = s.ribbon_closed;
         self.options_tab = s.options_tab;
         self.spacemouse_preferences = s.spacemouse;
         // These four drive real features with commands and status-bar pills,
