@@ -423,6 +423,9 @@ pub struct UserSettings {
     pub ucs_ortho: bool,
     /// UCSVIEW: a saved named view keeps the current UCS.
     pub ucs_view: bool,
+    /// LAYOUTCREATEVIEWPORT: a layout opened for the first time gets a
+    /// viewport.
+    pub layout_create_viewport: bool,
     /// Nested-copy symbol handling: false inserts, true binds.
     pub ncopy_bind: bool,
     /// Last Options page; unknown saved names fall back without rejecting the config.
@@ -842,6 +845,7 @@ impl Default for UserSettings {
             surface_associativity: true,
             ucs_ortho: true,
             ucs_view: true,
+            layout_create_viewport: true,
             ncopy_bind: false,
             cursor_type: CursorType::Crosshair,
             crosshair_color: None,

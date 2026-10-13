@@ -6549,10 +6549,17 @@ properties={:.1}ms picked={}",
                 self.tabs[i].scene.ensure_sheet_viewport(&new_name);
                 let switch_task = self.on_layout_switch(new_name.clone());
                 self.tabs[i].scene.fit_all();
-                self.command_line.push_output(
-                    crate::tf!("Layout \"{new_name}\" created — use MVIEW to add a viewport")
-                        .as_ref(),
-                );
+                // Opened, it already has its first viewport unless
+                // LAYOUTCREATEVIEWPORT is off.
+                if crate::scene::layout_create_viewport() {
+                    let name = new_name.clone();
+                    self.command_line.push_output(crate::tf!("Layout '{name}' created.").as_ref());
+                } else {
+                    self.command_line.push_output(
+                        crate::tf!("Layout \"{new_name}\" created — use MVIEW to add a viewport")
+                            .as_ref(),
+                    );
+                }
                 // The option that greets every new layout with its page setup.
                 let switch_task = if self.plot_dialog.page_setup_on_new_layout {
                     Task::batch([switch_task, self.on_plot_dialog_open()])

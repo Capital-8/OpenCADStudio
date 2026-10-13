@@ -136,7 +136,6 @@ impl OpenCADStudio {
         self.push_undo_snapshot(i, "LAYOUTCREATE");
         self.tabs[i]
             .scene
-            .document
             .add_layout(&name)
             .map_err(|e| failure("layout_failed", e))?;
         let plot_style = self
