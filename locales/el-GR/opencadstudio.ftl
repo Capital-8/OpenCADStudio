@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  Επιλέξτε λειτουργία αντιγραφής [Single/Multiple] <Multiple>:
 
 common =
+    .angle-override-shown = Παράκαμψη γωνίας: __ocs_fmt_0__
     .plot-preview-task = Προεπισκόπηση εκτύπωσης
     .link-a-csv-data-source = Σύνδεση πηγής δεδομένων CSV
     .csv-files = Αρχεία CSV

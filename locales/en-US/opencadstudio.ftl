@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  Enter a copy mode option [Single/Multiple] <Multiple>:
 
 common =
+    .angle-override-shown = Angle Override: __ocs_fmt_0__
     .browser-cannot-open-typed-path = The browser cannot open a typed path; pick the file instead.
     .recover-drawing = Recover Drawing
     .requires-0-or-1-or-keyword = Requires 0 or 1 only, or option keyword.

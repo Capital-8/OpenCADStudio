@@ -868,6 +868,13 @@ impl OpenCADStudio {
             if let Some(task) = self.try_selection_keyword(&text) {
                 return task;
             }
+            // Under a typed `<angle` a bare number is the distance along it,
+            // before the step reads it as a value of its own.
+            if self.angle_override.is_some() {
+                if let Some(task) = self.try_direct_distance_entry(&text) {
+                    return task;
+                }
+            }
             if self.tabs[i]
                 .active_cmd
                 .as_ref()
@@ -893,6 +900,10 @@ impl OpenCADStudio {
 
             if text.is_empty() {
                 return self.feed_command(crate::command::StepInput::Enter);
+            }
+
+            if self.try_angle_override(&text) {
+                return Task::none();
             }
 
             // OTRACK and Extension both allow a bare scalar to act as a
@@ -1001,6 +1012,25 @@ impl OpenCADStudio {
     /// has an established anchor, and `text` parses as a scalar distance,
     /// project along the active reference ray (if any) or the current cursor
     /// direction in the active UCS plane.
+    /// `<angle` at a point prompt locks the next point's direction from the
+    /// last point; a bare distance then runs along it. True when consumed.
+    pub(in crate::app) fn try_angle_override(&mut self, text: &str) -> bool {
+        let (Some(angle), Some(_)) = (text.trim().strip_prefix('<'), self.last_point) else {
+            return false;
+        };
+        let Some(angle) = crate::entities::common::parse_typed_direction(angle) else {
+            return false;
+        };
+        let local = glam::DVec3::new(angle.cos(), angle.sin(), 0.0);
+        self.angle_override = Some(match &self.tabs[self.active_tab].active_ucs {
+            Some(ucs) => ucs_rotate_vec(local, ucs),
+            None => local,
+        });
+        let shown = crate::entities::common::format_direction(angle);
+        self.command_line.push_output(crate::tf!("Angle Override: {shown}").as_ref());
+        true
+    }
+
     pub(in crate::app) fn try_direct_distance_entry(
         &mut self,
         text: &str,

@@ -267,6 +267,7 @@ command-copy =
     .mode = COPY  Kopyalama modu seçin [Single/Multiple] <Multiple>:
 
 common =
+    .angle-override-shown = Açı geçersiz kılma: __ocs_fmt_0__
     .plot-preview-task = Çizim önizleme
     .link-a-csv-data-source = CSV veri kaynağı bağla
     .csv-files = CSV Dosyaları

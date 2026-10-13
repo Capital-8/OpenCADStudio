@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  복사 모드 옵션 입력 [Single/Multiple] <Multiple>:
 
 common =
+    .angle-override-shown = 각도 재지정: __ocs_fmt_0__
     .plot-preview-task = 플롯 미리 보기
     .link-a-csv-data-source = CSV 데이터 원본 연결
     .csv-files = CSV 파일

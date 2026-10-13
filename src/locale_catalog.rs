@@ -5844,6 +5844,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Requires 0 or 1 only." => Some(("count-feature", "requires-0-or-1")),
         "Requires 0 or 1 only, or option keyword." => Some(("common", "requires-0-or-1-or-keyword")),
         "Requires a number." => Some(("common", "requires-a-number")),
+        "Angle Override: {shown}" => Some(("common", "angle-override-shown")),
         "{name} ...... {n}" => Some(("count-feature", "target-count")),
         "MTEXT Current text style:  \"{}\"  Text height:  {:.4}" => Some(("count-feature", "mtext-current-style")),
         "{found} field(s) found." => Some(("count-feature", "fields-found")),

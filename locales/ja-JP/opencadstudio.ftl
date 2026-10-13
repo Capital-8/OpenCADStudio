@@ -272,6 +272,7 @@ command-copy =
     .mode = COPY  コピーモードを入力 [Single/Multiple] <Multiple>:
 
 common =
+    .angle-override-shown = 角度の優先: __ocs_fmt_0__
     .plot-preview-task = 印刷プレビュー
     .link-a-csv-data-source = CSV データ ソースをリンク
     .csv-files = CSV ファイル

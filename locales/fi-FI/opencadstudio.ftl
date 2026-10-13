@@ -281,6 +281,7 @@ command-copy =
     .mode = COPY  Valitse kopiointitila [Single/Multiple] <Multiple>:
 
 common =
+    .angle-override-shown = Kulman ohitus: __ocs_fmt_0__
     .plot-preview-task = Tulostuksen esikatselu
     .link-a-csv-data-source = Linkitä CSV-tietolähde
     .csv-files = CSV-tiedostot

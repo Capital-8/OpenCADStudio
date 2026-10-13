@@ -340,6 +340,10 @@ impl OpenCADStudio {
         base: glam::DVec3,
         allowed: bool,
     ) -> Option<glam::DVec3> {
+        if let Some(direction) = self.angle_override.filter(|_| allowed) {
+            self.axis_lock_dir = Some(direction);
+            return self.axis_lock_dir;
+        }
         if self.shift_down && allowed {
             if self.axis_lock_dir.is_none() {
                 let ucs = self.tabs[tab].ucs_xform();

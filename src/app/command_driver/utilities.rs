@@ -98,6 +98,7 @@ impl OpenCADStudio {
         self.otrack_cross = None;
         self.otrack_kind = None;
         self.axis_lock_dir = None;
+        self.angle_override = None;
         self.dyn_user_reshaped = false;
         self.dyn_coord_absolute = false;
         self.grip_hover = None;
@@ -595,6 +596,7 @@ impl OpenCADStudio {
             if !self.command_point_allowed(i, *point) {
                 return (Task::none(), true);
             }
+            self.angle_override = None;
             // Typed / dynamic-input / headless points carry no snap, but the
             // accepted-snap list must stay index-parallel with the points the
             // command collects. Interactive picks record themselves in
@@ -1130,6 +1132,9 @@ impl OpenCADStudio {
             self.apply_snap_override(kind);
             return Task::none();
         }
+        if self.try_angle_override(token) {
+            return Task::none();
+        }
         if let Some((coord, kind)) = crate::app::helpers::parse_coord(token) {
             // Match the GUI command line: typed coordinates are in the active
             // UCS (relative offsets are rotated by the UCS axes), so a multi-
@@ -1161,7 +1166,13 @@ impl OpenCADStudio {
             // bare number is the step's own value, not a distance — ROTATE's
             // angle, SCALE's factor, CIRCLE's radius. Only a token no step
             // claims becomes direct distance entry, measured along the cursor
-            // direction from the command's anchor.
+            // direction from the command's anchor. Under a typed `<angle`
+            // the number is the distance along it first.
+            if self.angle_override.is_some() {
+                if let Some(distance) = self.try_direct_distance_entry(token) {
+                    return distance;
+                }
+            }
             let (task, consumed) = self.feed_command_consumed(StepInput::Text(token.to_string()));
             if consumed {
                 return task;

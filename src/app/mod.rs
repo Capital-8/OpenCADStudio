@@ -1218,6 +1218,9 @@ pub(super) struct OpenCADStudio {
     /// osnap hits included — projects onto this ray from `last_point` (or the
     /// grip origin). Cleared when Shift releases.
     axis_lock_dir: Option<glam::DVec3>,
+    /// A direction typed as `<angle` at a point prompt: the next point stays
+    /// on it until a point is placed.
+    angle_override: Option<glam::DVec3>,
     /// Inline rename state: (original_name, current_edit_value).
     layout_rename_state: Option<(String, String)>,
     /// Timestamp of the previous viewport left-click release (for double-click detection).
@@ -4775,6 +4778,7 @@ impl OpenCADStudio {
             text_inline: None,
             snap_override_popup: None,
             axis_lock_dir: None,
+            angle_override: None,
             layout_rename_state: None,
             last_vp_click_time: None,
             last_vp_click_pos: None,

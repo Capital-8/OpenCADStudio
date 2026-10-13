@@ -280,6 +280,7 @@ command-copy =
     .mode = COPY  Adja meg a másolási módot [Single/Multiple] <Multiple>:
 
 common =
+    .angle-override-shown = Szög felülbírálása: __ocs_fmt_0__
     .parametric-coincident = Egybeeső
     .parametric-colinear = Egy egyenesbe eső
     .parametric-concentric = Koncentrikus

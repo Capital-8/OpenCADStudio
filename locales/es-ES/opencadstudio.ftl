@@ -282,6 +282,7 @@ command-copy =
     .mode = COPY  Indique modo de copia [Single/Multiple] <Multiple>:
 
 common =
+    .angle-override-shown = Modificación de ángulo: __ocs_fmt_0__
     .plot-preview-task = Vista previa de trazado
     .link-a-csv-data-source = Vincular un origen de datos CSV
     .csv-files = Archivos CSV
