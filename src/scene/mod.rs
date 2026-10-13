@@ -4495,7 +4495,14 @@ impl Scene {
     /// keep set (no-op when not editing). The geometry is untouched, so
     /// hit-testing still works on faded entities. In count mode the counted
     /// references and the duplicates take the count colours instead.
-    fn apply_refedit_fade(&self, wires: &mut [WireModel], bg: [f32; 4]) {
+    fn apply_refedit_fade(&self, wires: &mut Vec<WireModel>, bg: [f32; 4]) {
+        // Block copies kept as stubs draw in their prototype's colour; while
+        // copies are recoloured one by one they are expanded instead.
+        if (self.count_display.is_some() || self.refedit_keep.is_some())
+            && wires.iter().any(|wire| wire.stub.is_some())
+        {
+            *wires = crate::scene::model::instance_model::expand_stubs(wires).into_owned();
+        }
         if let Some(count) = &self.count_display {
             for w in wires.iter_mut() {
                 let (color, class) = match Self::handle_from_wire_name(&w.name) {
@@ -7819,7 +7826,11 @@ impl Scene {
     /// the previous per-call deep clone was a full copy of every wire buffer
     /// (hundreds of MB on large mesh imports, #358).
     pub fn entity_wires(&self) -> Arc<Vec<WireModel>> {
-        self.entity_wires_arc()
+        let wires = self.entity_wires_arc();
+        match crate::scene::model::instance_model::expand_stubs(&wires) {
+            std::borrow::Cow::Borrowed(_) => wires,
+            std::borrow::Cow::Owned(expanded) => Arc::new(expanded),
+        }
     }
 
     /// Return paper entities and projected model-viewport entities separately.
@@ -7843,7 +7854,9 @@ impl Scene {
             }
         };
         if self.current_layout == "Model" {
-            let mut wires = self.entity_wires_arc().as_ref().clone();
+            let mut wires =
+                crate::scene::model::instance_model::expand_stubs(&self.entity_wires_arc())
+                    .into_owned();
             apply_mode(
                 &mut wires,
                 render_mode_override.unwrap_or_else(|| self.active_model_tile_render_mode()),
@@ -7865,7 +7878,9 @@ impl Scene {
             apply_mode(&mut wires, mode);
             model_wires.extend(wires);
         }
-        (self.paper_sheet_wires_arc().as_ref().clone(), model_wires)
+        let paper = crate::scene::model::instance_model::expand_stubs(&self.paper_sheet_wires_arc())
+            .into_owned();
+        (paper, model_wires)
     }
 
     pub(crate) fn plot_wire_depths(&self, wires: &[WireModel]) -> Vec<f32> {
@@ -10183,6 +10198,17 @@ impl Scene {
         allow_pending_empty: bool,
         area_only: bool,
     ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        self.indexed_interaction_candidates_xy_stubbed(wires, aabb, allow_pending_empty, area_only)
+            .materialize_stubs()
+    }
+
+    fn indexed_interaction_candidates_xy_stubbed(
+        &self,
+        wires: Arc<Vec<WireModel>>,
+        aabb: [f64; 4],
+        allow_pending_empty: bool,
+        area_only: bool,
+    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
         if let Some((base_epoch, base, changes)) = self.interaction_overlay_base() {
             let perf = crate::perf::enabled();
             let t0 = iced::time::Instant::now();
@@ -10244,6 +10270,26 @@ impl Scene {
     }
 
     fn indexed_interaction_candidates_screen(
+        &self,
+        wires: Arc<Vec<WireModel>>,
+        screen_rect: [f32; 4],
+        view_rot: glam::Mat4,
+        eye: glam::DVec3,
+        bounds: iced::Rectangle,
+        allow_pending_empty: bool,
+    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        self.indexed_interaction_candidates_screen_stubbed(
+            wires,
+            screen_rect,
+            view_rot,
+            eye,
+            bounds,
+            allow_pending_empty,
+        )
+        .materialize_stubs()
+    }
+
+    fn indexed_interaction_candidates_screen_stubbed(
         &self,
         wires: Arc<Vec<WireModel>>,
         screen_rect: [f32; 4],
@@ -10507,7 +10553,8 @@ impl Scene {
         if !self.interaction_source_is_resident(&wires, bounds.height)
             || !self.interaction_index_worthwhile(&wires)
         {
-            return crate::scene::pick::interaction_index::InteractionCandidates::all(wires);
+            return crate::scene::pick::interaction_index::InteractionCandidates::all(wires)
+                .materialize_stubs();
         }
         let radius_px = self.indexed_interaction_pick_radius(
             &wires,
@@ -10521,7 +10568,8 @@ impl Scene {
         if !flat_ortho {
             let clip = view_rot * (cursor - eye).as_vec3().extend(1.0);
             if !clip.is_finite() || clip.w <= 1e-6 {
-                return crate::scene::pick::interaction_index::InteractionCandidates::all(wires);
+                return crate::scene::pick::interaction_index::InteractionCandidates::all(wires)
+                .materialize_stubs();
             }
             let ndc = clip.truncate() / clip.w;
             let screen = iced::Point::new(
@@ -10551,7 +10599,8 @@ impl Scene {
         .sqrt();
         let s = world_x_px.min(world_y_px);
         if s <= 1e-6 {
-            return crate::scene::pick::interaction_index::InteractionCandidates::all(wires);
+            return crate::scene::pick::interaction_index::InteractionCandidates::all(wires)
+                .materialize_stubs();
         }
         let radius = radius_px.max(0.0) as f64 / s as f64;
         let query = [
@@ -10587,7 +10636,8 @@ impl Scene {
         if !self.interaction_source_is_resident(&wires, bounds.height)
             || !self.interaction_index_worthwhile(&wires)
         {
-            return crate::scene::pick::interaction_index::InteractionCandidates::all(wires);
+            return crate::scene::pick::interaction_index::InteractionCandidates::all(wires)
+                .materialize_stubs();
         }
         let pad_px = self.indexed_interaction_pick_radius(&wires, 0.0, bounds.height, true);
         if flat_ortho {

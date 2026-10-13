@@ -194,7 +194,10 @@ struct ExpansionPrototypeKey {
 #[derive(Debug)]
 struct CachedExpansion {
     translation: [f64; 3],
+    /// The wires every further reference repeats one by one.
     wires: Arc<Vec<WireModel>>,
+    /// The part a further reference carries as one stub wire, and its XY box.
+    stubbed: Option<(Arc<Vec<WireModel>>, [f32; 4])>,
 }
 
 impl BlockCache {
@@ -1113,13 +1116,23 @@ pub fn expand_insert(
             translation[1] - cached.translation[1],
             translation[2] - cached.translation[2],
         ];
-        return Some(
-            cached
-                .wires
-                .iter()
-                .map(|wire| translated_prototype_wire(wire, &name, delta))
-                .collect(),
-        );
+        let mut wires: Vec<WireModel> = cached
+            .wires
+            .iter()
+            .map(|wire| translated_prototype_wire(wire, &name, delta))
+            .collect();
+        if let Some((prototype, aabb)) = &cached.stubbed {
+            let mut stub = crate::scene::model::instance_model::stub_wire(
+                Arc::clone(prototype),
+                *aabb,
+                delta,
+                0.0,
+            );
+            stub.name = name.to_string();
+            stub.selected = selected;
+            wires.push(stub);
+        }
+        return Some(wires);
     }
     let mut batches = Batches::default();
     let mut visited: Vec<String> = vec![ins.block_name.clone()];
@@ -1243,9 +1256,20 @@ pub fn expand_insert(
                 });
             }
         }
+        // Further references carry the block-drawn part as one stub instead
+        // of a wire per primitive (#1698).
+        let (stubbed, repeated): (Vec<_>, Vec<_>) = wires
+            .iter()
+            .cloned()
+            .partition(crate::scene::model::instance_model::stubbable);
+        let stubbed = (!stubbed.is_empty()).then(|| {
+            let aabb = crate::scene::model::instance_model::prototype_aabb(&stubbed);
+            (Arc::new(stubbed), aabb)
+        });
         let cached = Arc::new(CachedExpansion {
             translation,
-            wires: Arc::new(wires.clone()),
+            wires: Arc::new(repeated),
+            stubbed,
         });
         **guard = Some(cached);
     }
@@ -1312,9 +1336,24 @@ fn expansion_prototype_key(
     }
 }
 
-fn translated_prototype_wire(source: &WireModel, name: &str, delta: [f64; 3]) -> WireModel {
+pub(crate) fn translated_prototype_wire(
+    source: &WireModel,
+    name: &str,
+    delta: [f64; 3],
+) -> WireModel {
     let mut wire = source.clone();
     wire.name = name.to_string();
+    if let Some(stub) = &source.stub {
+        wire.stub = Some(Arc::new(crate::scene::model::instance_model::InstanceStub {
+            prototype: Arc::clone(&stub.prototype),
+            delta: [
+                stub.delta[0] + delta[0],
+                stub.delta[1] + delta[1],
+                stub.delta[2] + delta[2],
+            ],
+            depth_delta: stub.depth_delta,
+        }));
+    }
     if let Some(instance) = wire.render_instance.as_mut() {
         for axis in 0..3 {
             instance.translation[axis] += delta[axis];
@@ -1623,7 +1662,10 @@ struct NestedPrototypeKey {
 struct NestedPrototype {
     translation: [f64; 3],
     depth_base: f32,
+    /// The wires every further copy repeats one by one.
     wires: Arc<Vec<WireModel>>,
+    /// The part a further copy carries as one stub wire, and its XY box.
+    stubbed: Option<(Arc<Vec<WireModel>>, [f32; 4])>,
 }
 
 /// Hard cap on point count for a single batched WireModel. Above this the
@@ -1779,6 +1821,7 @@ impl Batches {
                     fill_is_3d: b.fill_is_3d,
                     fill_is_2d_solid: b.fill_is_2d_solid,
                     render_instance: None,
+                    stub: None,
                     pick_tris: b.pick_tris,
                     pick_tris_low: b.pick_tris_low,
                     dash_from_start: false,
@@ -2113,11 +2156,22 @@ fn expand_defn(
                             let depth_delta = nested_range.0 - cached.depth_base;
                             out.extra_wires.extend(cached.wires.iter().map(|wire| {
                                 let mut wire = translated_prototype_wire(wire, "", delta);
-                                if let Some(depth) = wire.depth_override.as_mut() {
-                                    *depth += depth_delta;
-                                }
+                                crate::scene::model::instance_model::shift_depth(
+                                    &mut wire,
+                                    depth_delta,
+                                );
                                 wire
                             }));
+                            if let Some((prototype, aabb)) = &cached.stubbed {
+                                out.extra_wires.push(
+                                    crate::scene::model::instance_model::stub_wire(
+                                        Arc::clone(prototype),
+                                        *aabb,
+                                        delta,
+                                        depth_delta,
+                                    ),
+                                );
+                            }
                         } else {
                             let mut sub = Batches::default();
                             expand_defn(
@@ -2145,12 +2199,23 @@ fn expand_defn(
                                 }
                             }
                             out.extra_wires.extend(wires.iter().cloned());
+                            // Further copies carry the block-drawn part as one
+                            // stub instead of a wire per primitive (#1698).
+                            let (stubbed, repeated): (Vec<_>, Vec<_>) = wires
+                                .into_iter()
+                                .partition(crate::scene::model::instance_model::stubbable);
+                            let stubbed = (!stubbed.is_empty()).then(|| {
+                                let aabb =
+                                    crate::scene::model::instance_model::prototype_aabb(&stubbed);
+                                (Arc::new(stubbed), aabb)
+                            });
                             out.nested_prototypes.insert(
                                 key,
                                 NestedPrototype {
                                     translation,
                                     depth_base: nested_range.0,
-                                    wires: Arc::new(wires),
+                                    wires: Arc::new(repeated),
+                                    stubbed,
                                 },
                             );
                         }
