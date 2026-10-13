@@ -282,6 +282,9 @@ command-copy =
     .mode = COPY  Επιλέξτε λειτουργία αντιγραφής [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ μόνο εδώ (πράσινο), __ocs_fmt_1__ μόνο στο άλλο σχέδιο (κόκκινο)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Σύγκριση με σχέδιο
     .label-associative-array-created = __ocs_fmt_0__: δημιουργήθηκε συσχετιστικός πίνακας.
     .assoc-array-array-path = Πίνακας (διαδρομή)
     .assoc-array-array-polar = Πίνακας (πολικός)

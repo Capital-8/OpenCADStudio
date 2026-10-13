@@ -885,6 +885,11 @@ impl OpenCADStudio {
             CmdResult::ZoomToWindow { p1, p2 } => {
                 self.handle_zoom_to_window(p1, p2);
             }
+            CmdResult::Show { p1, p2 } => {
+                let i = self.active_tab;
+                self.tabs[i].scene.remember_current_view();
+                self.tabs[i].scene.zoom_to_window(p1.as_vec3(), p2.as_vec3());
+            }
             CmdResult::CommitAndZoom { entity, p1, p2 } => {
                 self.handle_commit_entities_and_exit(vec![entity], false, false);
                 self.handle_zoom_to_window(p1, p2);

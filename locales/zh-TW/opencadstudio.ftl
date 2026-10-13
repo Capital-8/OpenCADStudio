@@ -282,6 +282,9 @@ command-copy =
     .mode = COPY  輸入複製模式選項 [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  僅此處 __ocs_fmt_0__ (綠色)，僅另一圖面 __ocs_fmt_1__ (紅色)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = 與圖面比較
     .label-associative-array-created = __ocs_fmt_0__: 已建立關聯陣列。
     .assoc-array-array-path = 陣列 (路徑)
     .assoc-array-array-polar = 陣列 (環形)

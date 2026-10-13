@@ -1948,6 +1948,11 @@ pub enum CmdResult {
         p1: DVec3,
         p2: DVec3,
     },
+    /// Zoom to the given corner points; the command stays active.
+    Show {
+        p1: DVec3,
+        p2: DVec3,
+    },
     /// Commit `entity`, then zoom to the given corner points; end command.
     CommitAndZoom {
         entity: EntityType,

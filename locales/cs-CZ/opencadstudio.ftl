@@ -282,6 +282,9 @@ command-copy =
     .mode = COPY  Zadejte režim kopírování [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ jen zde (zeleně), __ocs_fmt_1__ jen v druhém výkresu (červeně)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Porovnat s výkresem
     .label-associative-array-created = __ocs_fmt_0__: vytvořeno asociativní pole.
     .assoc-array-array-path = Pole (podél cesty)
     .assoc-array-array-polar = Pole (kruhové)

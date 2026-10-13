@@ -286,6 +286,9 @@ command-copy =
     .mode = COPY  Задайте режим копирования [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ только здесь (зелёные), __ocs_fmt_1__ только в другом чертеже (красные)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Сравнить с чертежом
     .label-associative-array-created = __ocs_fmt_0__: создан ассоциативный массив.
     .assoc-array-array-path = Массив (по траектории)
     .assoc-array-array-polar = Массив (круговой)

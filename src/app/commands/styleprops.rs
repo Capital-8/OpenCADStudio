@@ -3335,6 +3335,42 @@ impl OpenCADStudio {
             // Read-only scan: flags entities on undefined layers and block
             // references to undefined block definitions. Reports only; it does
             // not auto-repair (so it can never make the drawing worse).
+            // COMPARE — overlay what differs from another drawing. Bare picks
+            // the drawing; with a path it compares at once.
+            "COMPARE" => {
+                return Some(Task::perform(
+                    async {
+                        crate::sys::file_dialog()
+                            .set_title(crate::t!("Compare with drawing").as_ref())
+                            .add_filter(crate::t!("Drawing").as_ref(), &["dwg", "dxf"])
+                            .pick_file()
+                            .await
+                            .map(|handle| crate::sys::handle_path(&handle))
+                    },
+                    |path| match path {
+                        Some(path) => Message::Command(format!("COMPARE {}", path.display())),
+                        None => Message::Noop,
+                    },
+                ));
+            }
+            cmd if cmd.starts_with("COMPARE ") => {
+                let path = std::path::PathBuf::from(cmd.trim_start_matches("COMPARE").trim());
+                match crate::io::load_file(&path) {
+                    Ok(other) => {
+                        let comparison =
+                            crate::scene::compare::compare(&self.tabs[i].scene, other);
+                        // The overlay shows at once, before the cursor moves.
+                        self.tabs[i].scene.set_preview_wires(comparison.overlay.clone());
+                        let command =
+                            crate::modules::manage::compare::CompareCommand::new(comparison);
+                        self.command_line.push_info(&command.prompt());
+                        self.tabs[i].active_cmd = Some(Box::new(command));
+                    }
+                    Err(error) => self
+                        .command_line
+                        .push_error(crate::tf!("COMPARE: {error}").as_ref()),
+                }
+            }
             "AUDIT" => {
                 use std::collections::BTreeSet;
                 let mut undefined_layers: BTreeSet<String> = BTreeSet::new();

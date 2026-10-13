@@ -281,6 +281,9 @@ command-copy =
     .mode = COPY  Adja meg a másolási módot [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ csak itt (zöld), __ocs_fmt_1__ csak a másik rajzban (piros)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Összehasonlítás rajzzal
     .label-associative-array-created = __ocs_fmt_0__: asszociatív tömb létrehozva.
     .assoc-array-array-path = Tömb (útvonal)
     .assoc-array-array-polar = Tömb (poláris)

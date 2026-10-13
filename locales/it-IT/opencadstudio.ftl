@@ -282,6 +282,9 @@ command-copy =
     .mode = COPY  Specificare modalità di copia [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ solo qui (verde), __ocs_fmt_1__ solo nell'altro disegno (rosso)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Confronta con disegno
     .label-associative-array-created = __ocs_fmt_0__: serie associativa creata.
     .assoc-array-array-path = Serie (percorso)
     .assoc-array-array-polar = Serie (polare)

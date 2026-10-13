@@ -283,6 +283,9 @@ command-copy =
     .mode = COPY  Indique modo de copia [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ solo aquí (verde), __ocs_fmt_1__ solo en el otro dibujo (rojo)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Comparar con dibujo
     .label-associative-array-created = __ocs_fmt_0__: se ha creado una matriz asociativa.
     .assoc-array-array-path = Matriz (trayectoria)
     .assoc-array-array-polar = Matriz (polar)

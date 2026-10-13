@@ -282,6 +282,9 @@ command-copy =
     .mode = COPY  Podaj tryb kopiowania [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ tylko tutaj (zielone), __ocs_fmt_1__ tylko w drugim rysunku (czerwone)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Porównaj z rysunkiem
     .label-associative-array-created = __ocs_fmt_0__: utworzono szyk skojarzony.
     .assoc-array-array-path = Szyk (ścieżka)
     .assoc-array-array-polar = Szyk (biegunowy)

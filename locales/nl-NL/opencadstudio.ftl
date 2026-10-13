@@ -283,6 +283,9 @@ command-copy =
     .mode = COPY  Geef kopieermodus op [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ alleen hier (groen), __ocs_fmt_1__ alleen in de andere tekening (rood)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Vergelijken met tekening
     .label-associative-array-created = __ocs_fmt_0__: associatieve reeks gemaakt.
     .assoc-array-array-path = Reeks (pad)
     .assoc-array-array-polar = Reeks (polair)

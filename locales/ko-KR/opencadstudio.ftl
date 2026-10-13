@@ -282,6 +282,9 @@ command-copy =
     .mode = COPY  복사 모드 옵션 입력 [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  여기에만 __ocs_fmt_0__ (녹색), 다른 도면에만 __ocs_fmt_1__ (빨간색)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = 도면과 비교
     .label-associative-array-created = __ocs_fmt_0__: 연관 배열을 만들었습니다.
     .assoc-array-array-path = 배열 (경로)
     .assoc-array-array-polar = 배열 (원형)

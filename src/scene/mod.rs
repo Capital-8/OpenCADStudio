@@ -7,6 +7,7 @@
 //   cache   — block-definition and property caches
 pub mod annotative;
 pub mod assoc_array;
+pub mod compare;
 pub mod block_service;
 pub mod cache;
 pub mod convert;

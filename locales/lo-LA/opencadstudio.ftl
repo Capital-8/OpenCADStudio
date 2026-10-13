@@ -282,6 +282,9 @@ command-copy =
     .mode = COPY  ປ້ອນຕົວເລືອກໂໝດການຄັດລອກ [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ ຢູ່ນີ້ເທົ່ານັ້ນ (ຂຽວ), __ocs_fmt_1__ ຢູ່ໃນແບບອື່ນເທົ່ານັ້ນ (ແດງ)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = ປຽບທຽບກັບແບບ
     .label-associative-array-created = __ocs_fmt_0__: ສ້າງອາເຣແບບເຊື່ອມໂຍງແລ້ວ.
     .assoc-array-array-path = ອາເຣ (ເສັ້ນທາງ)
     .assoc-array-array-polar = ອາເຣ (ວົງມົນ)

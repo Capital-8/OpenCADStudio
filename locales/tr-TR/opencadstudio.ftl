@@ -268,6 +268,9 @@ command-copy =
     .mode = COPY  Kopyalama modu seçin [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ yalnızca burada (yeşil), __ocs_fmt_1__ yalnızca diğer çizimde (kırmızı)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Çizimle karşılaştır
     .label-associative-array-created = __ocs_fmt_0__: ilişkisel dizi oluşturuldu.
     .assoc-array-array-path = Dizi (Yol)
     .assoc-array-array-polar = Dizi (Kutupsal)

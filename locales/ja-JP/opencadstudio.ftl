@@ -273,6 +273,9 @@ command-copy =
     .mode = COPY  コピーモードを入力 [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  ここのみ __ocs_fmt_0__ (緑)、もう一方の図面のみ __ocs_fmt_1__ (赤)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = 図面と比較
     .label-associative-array-created = __ocs_fmt_0__: 自動調整配列複写を作成しました。
     .assoc-array-array-path = 配列複写 (パス)
     .assoc-array-array-polar = 配列複写 (円形状)

@@ -270,6 +270,9 @@ command-copy =
     .mode = COPY  输入复制模式选项 [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  仅此处 __ocs_fmt_0__ (绿色)，仅另一图形 __ocs_fmt_1__ (红色)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = 与图形比较
     .label-associative-array-created = __ocs_fmt_0__: 已创建关联阵列。
     .assoc-array-array-path = 阵列 (路径)
     .assoc-array-array-polar = 阵列 (环形)

@@ -271,6 +271,9 @@ command-copy =
     .mode = COPY  कॉपी मोड विकल्प दर्ज करें [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ केवल यहाँ (हरा), __ocs_fmt_1__ केवल दूसरी ड्रॉइंग में (लाल)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = ड्रॉइंग से तुलना करें
     .label-associative-array-created = __ocs_fmt_0__: सहयोगी ऐरे बनाया गया।
     .assoc-array-array-path = ऐरे (पथ)
     .assoc-array-array-polar = ऐरे (ध्रुवीय)

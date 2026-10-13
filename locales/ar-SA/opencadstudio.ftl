@@ -295,6 +295,9 @@ command-copy =
     .mode = COPY  أدخل خيار وضع النسخ [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ هنا فقط (أخضر)، __ocs_fmt_1__ في الرسم الآخر فقط (أحمر)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = مقارنة مع رسم
     .label-associative-array-created = __ocs_fmt_0__: تم إنشاء مصفوفة ترابطية.
     .assoc-array-array-path = مصفوفة (مسار)
     .assoc-array-array-polar = مصفوفة (قطبية)

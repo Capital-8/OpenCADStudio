@@ -283,6 +283,9 @@ command-copy =
     .mode = COPY  Kopiermodus eingeben [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ nur hier (grün), __ocs_fmt_1__ nur in der anderen Zeichnung (rot)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Mit Zeichnung vergleichen
     .label-associative-array-created = __ocs_fmt_0__: assoziative Reihe erstellt.
     .assoc-array-array-path = Reihe (Pfad)
     .assoc-array-array-polar = Reihe (polar)

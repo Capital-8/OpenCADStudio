@@ -283,6 +283,9 @@ command-copy =
     .mode = COPY  Entrez le mode de copie [Single/Multiple] <Multiple> :
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ seulement ici (vert), __ocs_fmt_1__ seulement dans l’autre dessin (rouge)__ocs_fmt_2__ [Next/Previous/eXit] :
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Comparer avec un dessin
     .label-associative-array-created = __ocs_fmt_0__ : réseau associatif créé.
     .assoc-array-array-path = Réseau (trajectoire)
     .assoc-array-array-polar = Réseau (polaire)

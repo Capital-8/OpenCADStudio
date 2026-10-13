@@ -282,6 +282,9 @@ command-copy =
     .mode = COPY  Valitse kopiointitila [Single/Multiple] <Multiple>:
 
 common =
+    .compare-prompt = COMPARE  __ocs_fmt_0__ vain täällä (vihreä), __ocs_fmt_1__ vain toisessa piirustuksessa (punainen)__ocs_fmt_2__ [Next/Previous/eXit]:
+    .compare-error = COMPARE: __ocs_fmt_0__
+    .compare-with-drawing = Vertaa piirustukseen
     .label-associative-array-created = __ocs_fmt_0__: assosiatiivinen taulukko luotu.
     .assoc-array-array-path = Taulukko (polku)
     .assoc-array-array-polar = Taulukko (polaarinen)
