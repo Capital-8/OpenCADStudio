@@ -22,7 +22,7 @@ without it keeps working, and the default `HostApi` methods refuse.
 | Area | `HostApi` entry | What it does |
 |---|---|---|
 | Read | `document()`, `entity_snapshot` | The full `CadDocument` snapshot; a detached JSON view of any typed entity. |
-| Entities | `add_entity`, `remove_entity`, `update_entities_transaction` | Create, delete and replace entities. A transaction validates every replacement first and either commits all of them as one undo step or none. |
+| Entities | `add_entity`, `remove_entity`, `update_entities_transaction`, `set_reference_only` | Create, delete and replace entities. A transaction validates every replacement first and either commits all of them as one undo step or none. `set_reference_only` designates plugin-owned display geometry (API v9, see below). |
 | Selection | `selection`, `set_selection` | Ordered, tab-scoped, exact (missing or duplicate handles reject the request). |
 | Solids | `solid_operation` | Kernel-backed create, transform, booleans, extrude, region and surface from a profile, picture embedding. Every result is verified to lift back from its ACIS payload without loss; a refusal leaves the operands untouched. |
 | Tables | `table_operation` | Layers, text and dimension styles, blocks and their contents, linetypes, layouts (see below). |
@@ -104,6 +104,32 @@ objects map byte-exactly, the auto-created dictionaries included.
 `list_xrecords` reports only the keys that address XRecords, in the
 dictionary's own order, so audits need no prior knowledge. Not yet mapped to
 Python.
+
+## Reference-only entities (API v9)
+
+`set_reference_only` designates plugin-owned display geometry: a
+reference-only entity renders and snaps normally, but the built-in edit paths
+treat it like an entity on a locked layer — it is not grip-editable, not
+click-pickable (a click passes through to the editable entity underneath),
+and window, box, lasso and fence selections skip it. User-driven writes
+(grip drags, modify commands, the properties panel, user erase, MCP
+`set_properties`) refuse it; the owning plugin keeps full write access:
+`add_entity`, `update_entity`, `update_entities_transaction`, `remove_entity`
+and the XDATA record methods are unaffected, so a plugin can refresh derived
+display geometry in place. The record-method policy applies first: absent
+entities and locked layers refuse, and like them every refusal is decided
+before the undo scope is touched, so a failure changes nothing. A
+re-designation that would not change the state succeeds without recording an
+undo step. Undo composition is the entity-write contract: a change inside a
+plugin-opened `push_undo` scope joins it, so an operation composed of several
+writes is a single undo step under the plugin's label; with no scope open a
+change is one undo step of its own. The designation survives DWG and DXF
+save/reload, stored as a marker value in an XDATA record under the host-owned
+`OCS` application namespace — plugins register their own APPIDs through their
+manifest, so the two cannot collide. Out of scope today: entities nested
+inside block instances (the block cache rebuilds instance wires without the
+flag) and a Python mapping. The MCP `entities` read exposes the flag as a
+`reference_only` boolean on every entity record.
 
 ## Commands
 

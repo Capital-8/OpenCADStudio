@@ -362,3 +362,41 @@ in one scope = one step, undone and redone whole),
 `xrecords_survive_dxf_and_dwg_round_trips` (typed entries reload from both writers), the IPC round-trips
 `xrecord_request_and_response_roundtrip` and `xrecord_requests_await_their_typed_responses`. The API is
 host-level and stands on its own; a Python mapping (`doc.xrecords`-style) is future work.
+
+**Reference-only entities (2026-10-13, API v9).** The host gained a per-entity "reference-only"
+designation for plugin-owned display geometry: `HostApi::set_reference_only` marks (or unmarks) an
+entity as display data the person at the screen must not edit, while the owning plugin keeps full
+write access. Behaviour split: a reference-only entity renders and snaps normally but is not
+grip-editable (`refresh_selected_grips` yields nothing for it and an active grip edit on a newly
+designated target is cancelled like a locked-layer one), not click-pickable (the pick-side wire
+flag skips it, so a click passes through to the editable entity underneath), and skipped by box,
+window, lasso, fence and select-all selection gathers. Built-in user write paths treat it like a
+locked-layer entity — `Scene::update_entity` / `update_entities`, `erase_entities`, MCP
+`set_properties` and modify machinery all refuse or skip it — while the plugin-owned variants
+(`Scene::update_entity_plugin` / `erase_entities_plugin`, mirroring the
+`remove_entities(handles, respect_layer_locks)` editor split) and the whole `HostSession` surface
+(`add_entity`, `update_entity`, `update_entities_transaction`, `remove_entity`, XDATA records,
+layer/block table operations) write through, so a preview refresh never needs unlock/relock cycles.
+Locks still apply to the plugin: marking and clearing refuse absent entities and locked layers,
+and every refusal is decided before the undo scope is touched. Undo is the entity-write contract:
+a change inside a plugin-opened `push_undo` scope joins it (entity writes plus designations are one
+step under the plugin's label); a scope-less change is one undo step of its own; an idempotent
+re-designation records nothing. Storage: a human-readable marker value in an XDATA record under the
+host-owned `OCS` APPID (registered on first use, one record per application per entity, foreign
+values preserved verbatim; stale verbatim DWG EED is dropped on rewrite), so the flag round-trips
+DWG and DXF save/reload with the entity and cannot collide with plugin APPID namespaces — chosen
+over a codec common-data bit because the codec is a pinned external dependency. The MCP `entities`
+read exposes the flag as a top-level `reference_only` boolean on every entity record. Known limit:
+entities nested inside block instances (the block cache rebuilds instance wires without the flag) —
+reference-only targets top-level geometry. Evidence: the storage unit tests
+`marking_flags_and_unmarking_clears`, `foreign_values_under_the_host_app_id_survive`,
+`other_apps_are_untouched`; the host behaviour tests `reference_only_refusals_record_no_undo_step`,
+`reference_only_designation_composes_undo_like_entity_writes` (own step, scope join, whole-scope
+undo), `reference_only_survives_dxf_and_dwg_round_trips` (both writers, APPID table included),
+`user_paths_refuse_and_plugin_paths_write_reference_only_entities` (grips suppressed, user
+update/erase refused, plugin update/erase through, designation survives a refresh-style replace),
+`select_all_visible_skips_reference_only_entities`; the pick tests `clicks_pass_through_reference_only_wires`
+and `box_selections_skip_reference_only_wires`; the record surface test
+`entities_records_expose_the_reference_only_designation`; and the IPC round-trip
+`reference_only_request_and_response_roundtrip`. Like the XRecord API, a Python mapping is future
+work.
