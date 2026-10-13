@@ -131,6 +131,52 @@ inside block instances (the block cache rebuilds instance wires without the
 flag) and a Python mapping. The MCP `entities` read exposes the flag as a
 `reference_only` boolean on every entity record.
 
+### Usage from a plugin
+
+Build the derived geometry and designate it inside one `push_undo` scope, so
+creating a preview plus marking it is a single undo step under the plugin's
+label:
+
+```rust
+host.push_undo("CVI: refresh path preview");
+let preview = host.add_entity(EntityType::LwPolyline(computed_path));
+if let Err(error) = host.set_reference_only(preview, true) {
+    host.push_error(&format!("set_reference_only failed: {error}"));
+}
+```
+
+Refresh the display data in place through the same API — reads before the
+scope, mutations inside it (the entity-write contract's ordering rule):
+
+```rust
+let found = host
+    .document()
+    .entities()
+    .find(|entity| entity.common().handle == preview)
+    .cloned();
+if let Some(mut entity) = found {
+    // edit the clone; the designation travels with the entity
+    host.push_undo("CVI: recompute preview");
+    host.update_entity(entity);
+}
+```
+
+Notes for plugin authors:
+
+- `add_entity` ignores layer locks; `set_reference_only` does not — it
+  refuses absent entities and locked layers exactly like the XDATA record
+  methods, every refusal changes nothing, and an idempotent re-mark records
+  no undo step.
+- The designation travels with the entity: a clone → edit → replace refresh
+  keeps it, so a plugin marks its display data once and refreshes freely.
+- Rendering and object snap are unaffected; grips, picking and the built-in
+  write paths are the only observers.
+- Plugins that read the document through the IPC client (the
+  out-of-process runner) resolve entities by iterating
+  `document().entities()`: a received `DocumentSnapshot` does not serve
+  `get_entity(handle)` lookups. This is a property of the snapshot path,
+  not of this API — host-side lookups are unaffected.
+
 ## Commands
 
 `run_command` takes a `CommandRequest` (`Run`, `Start`, `Point`, `Text`, `Token`,
