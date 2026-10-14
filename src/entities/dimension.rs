@@ -1331,6 +1331,19 @@ impl Grippable for Dimension {
                 }
             }
 
+            // A radius turns about its centre the same way: the point on the
+            // arc follows the text instead of the line kinking to reach it.
+            if let Dimension::Radius(d) = self {
+                let center = d.angle_vertex;
+                let radius = d.measurement();
+                let offset = d.base.text_middle_point - center;
+                if offset.length_squared() > 1e-24 && radius > 1e-12 {
+                    d.definition_point = center + offset.normalize() * radius;
+                    d.base.definition_point = d.definition_point;
+                    d.base.actual_measurement = d.measurement();
+                }
+            }
+
             // Dragging the text grip pins it to a user-defined location, so it
             // no longer follows the style (DIMTAD). See #94.
             self.base_mut().text_user_positioned = true;
