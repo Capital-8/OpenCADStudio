@@ -699,11 +699,9 @@ impl ColorPicker {
         shown
             .chunks(DOC_COLUMNS)
             .fold(column![].spacing(4), |grid, chunk| {
-                let line = chunk
-                    .iter()
-                    .fold(row![].spacing(4), |line, &(i, entry)| {
-                        line.push(self.doc_swatch(i, entry))
-                    });
+                let line = chunk.iter().fold(row![].spacing(4), |line, &(i, entry)| {
+                    line.push(self.doc_swatch(i, entry))
+                });
                 let line = (chunk.len()..DOC_COLUMNS)
                     .fold(line, |line, _| line.push(Space::new().width(Length::Fill)));
                 grid.push(line)
@@ -716,11 +714,11 @@ impl ColorPicker {
         let selected = self.pending == entry.color && self.pending_name == entry.name;
         button(Space::new())
             .on_press(picker_msg(ColorPickerMsg::PickDocument(i)))
-        .padding(0)
-        .width(Length::Fill)
-        .height(30)
-        .style(move |theme: &Theme, status| swatch_button_style(theme, status, fill, selected))
-        .into()
+            .padding(0)
+            .width(Length::Fill)
+            .height(30)
+            .style(move |theme: &Theme, status| swatch_button_style(theme, status, fill, selected))
+            .into()
     }
 
     fn books_tab(&self) -> Element<'_, Message> {
@@ -758,11 +756,13 @@ impl ColorPicker {
             row![
                 search_box(&self.book_query, |query| ColorPickerMsg::BookQuery(query)),
                 load_button(
-                    container(secondary_icon(crate::ui::icons::themed_handle(
-                        crate::ui::icons::FOLDER_OPEN
-                    ))
-                    .width(16)
-                    .height(16))
+                    container(
+                        secondary_icon(crate::ui::icons::themed_handle(
+                            crate::ui::icons::FOLDER_OPEN
+                        ))
+                        .width(16)
+                        .height(16)
+                    )
                     .center(Length::Fill)
                     .into()
                 )
