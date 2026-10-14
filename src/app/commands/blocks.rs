@@ -55,6 +55,14 @@ impl OpenCADStudio {
             return Task::none();
         };
         self.active_modal = None;
+        {
+            let mut remembered = crate::modules::insert::block_cmdline::defaults();
+            remembered.base_on_screen = state.base_point_specify_onscreen;
+            remembered.objects_on_screen = state.objects_specify_onscreen;
+            remembered.mode = state.object_mode;
+            remembered.allow_exploding = state.allow_exploding;
+        }
+        self.persist_settings_if_changed();
         let i = self.active_tab;
         let base_point = state.parse_base_point();
         let ucs = self.tabs[i].ucs_xform();
@@ -121,7 +129,7 @@ impl OpenCADStudio {
                 let rest = cmd.strip_prefix("BASE").unwrap_or("").trim();
                 if rest.is_empty() {
                     use crate::modules::insert::base_point::BaseCommand;
-                    let c = BaseCommand::new();
+                    let c = BaseCommand::new(self.current_insertion_base(i));
                     self.command_line.push_info(&c.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(c));
                 } else {
@@ -150,20 +158,10 @@ impl OpenCADStudio {
                                 .model_space_insertion_base = pt;
                         }
                         self.tabs[i].dirty = true;
-                        let space = if is_paper {
-                            "paper space"
-                        } else {
-                            "model space"
-                        };
-                        self.command_line.push_output(
-                            crate::tf!(
-                                "Base point ({}, {}, {}) set for {space}.",
-                                nums[0],
-                                nums[1],
-                                z
-                            )
-                            .as_ref(),
-                        );
+                        if z != 0.0 {
+                            self.command_line
+                                .push_output("Beware, Z insertion base is not zero.");
+                        }
                     } else {
                         self.command_line
                             .push_error(crate::t!("Usage: BASE <x> <y> [z]").as_ref());
@@ -470,26 +468,6 @@ impl OpenCADStudio {
                 self.active_modal = Some(crate::app::ModalKind::BlockDefinition);
             }
 
-            "-BLOCK" | "-BMAKE" => {
-                let handles: Vec<_> = self.tabs[i]
-                    .scene
-                    .selected_entities()
-                    .into_iter()
-                    .map(|(h, _)| h)
-                    .collect();
-                if handles.is_empty() {
-                    use crate::modules::draw::select::SelectObjectsCommand;
-                    let cmd = SelectObjectsCommand::new("-BLOCK");
-                    self.command_line.push_info(&cmd.prompt());
-                    self.tabs[i].active_cmd = Some(Box::new(cmd));
-                } else {
-                    use crate::modules::insert::create_block::CreateBlockCommand;
-                    let cmd = CreateBlockCommand::new(handles);
-                    self.command_line.push_info(&cmd.prompt());
-                    self.tabs[i].active_cmd = Some(Box::new(cmd));
-                }
-            }
-
             cmd if cmd.starts_with("BLOCK_POINT_PICKED ") => {
                 let parts: Vec<f64> = cmd["BLOCK_POINT_PICKED ".len()..]
                     .split_whitespace()
@@ -631,108 +609,21 @@ impl OpenCADStudio {
                 }
             }
 
-            // ATTSYNC <block> — reconcile every insert of <block> against the
-            // block's current attribute definitions: drop attributes whose tag
-            // no longer exists and add any newly-defined ones (keeping the values
-            // of attributes that remain).
-            "ATTSYNC" => {
-                use crate::command::ValuePromptCommand;
-                let c = ValuePromptCommand::new("ATTSYNC", "ATTSYNC  block name to sync:");
-                self.command_line.push_info(&c.prompt());
-                self.tabs[i].active_cmd = Some(Box::new(c));
-            }
+            // ATTSYNC <block>: the named block, without prompts.
             cmd if cmd.starts_with("ATTSYNC ") => {
-                let arg = cmd.trim_start_matches("ATTSYNC").trim();
-                let blocks = self.tabs[i].scene.custom_block_names();
-                if arg.is_empty() {
-                    self.command_line.push_info(
-                        crate::tf!(
-                            "Usage: ATTSYNC <block name>.  Blocks: {}",
-                            if blocks.is_empty() {
-                                "(none)".to_string()
-                            } else {
-                                blocks.join(", ")
-                            }
-                        )
-                        .as_ref(),
-                    );
-                    return Some(Task::none());
-                }
-                let Some(block) = blocks.iter().find(|b| b.eq_ignore_ascii_case(arg)).cloned()
-                else {
-                    self.command_line
-                        .push_error(crate::tf!("ATTSYNC: no block named \"{arg}\".").as_ref());
-                    return Some(Task::none());
-                };
-                // Gather the block's attribute definitions (tag, default value).
-                let doc = &self.tabs[i].scene.document;
-                let attdefs: Vec<(String, String)> = doc
-                    .block_records
-                    .get(&block)
-                    .map(|br| {
-                        br.entity_handles
-                            .iter()
-                            .filter_map(|h| doc.get_entity(*h))
-                            .filter_map(|e| match e {
-                                codec::EntityType::AttributeDefinition(a) => {
-                                    Some((a.tag.clone(), a.default_value.clone()))
-                                }
-                                _ => None,
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let inserts: Vec<_> = self.tabs[i]
-                    .scene
-                    .document
-                    .entities()
-                    .filter_map(|entity| match entity {
-                        codec::EntityType::Insert(insert)
-                            if insert.block_name.eq_ignore_ascii_case(&block)
-                                && !self.tabs[i].scene.is_layer_locked(insert.common.handle) =>
-                        {
-                            Some(insert.common.handle)
-                        }
-                        _ => None,
-                    })
-                    .collect();
-                if inserts.is_empty() {
-                    self.command_line
-                        .push_error(crate::t!("ATTSYNC: no editable block references.").as_ref());
-                    return Some(Task::none());
-                }
-                self.push_undo_snapshot(i, "ATTSYNC");
-                let mut synced = 0usize;
-                let mut changes = Vec::new();
-                for handle in inserts {
-                    let Some(codec::EntityType::Insert(ins)) =
-                        self.tabs[i].scene.document.get_entity_mut(handle)
-                    else {
-                        continue;
-                    };
-                    ins.attributes
-                        .retain(|a| attdefs.iter().any(|(t, _)| t.eq_ignore_ascii_case(&a.tag)));
-                    for (tag, default) in &attdefs {
-                        if !ins
-                            .attributes
-                            .iter()
-                            .any(|a| a.tag.eq_ignore_ascii_case(tag))
-                        {
-                            ins.attributes.push(codec::entities::AttributeEntity::new(
-                                tag.clone(),
-                                default.clone(),
-                            ));
-                        }
+                let arg = cmd.trim_start_matches("ATTSYNC").trim().to_string();
+                let table =
+                    crate::modules::insert::block_cmdline::BlockTable::of(&self.tabs[i].scene.document);
+                match table.attributed.iter().find(|b| b.eq_ignore_ascii_case(&arg)) {
+                    Some(block) => {
+                        let block = block.clone();
+                        self.attsync_block(i, &block);
+                        self.command_line.push_output("ATTSYNC complete.");
                     }
-                    synced += 1;
-                    changes.push((ins.common.handle, crate::scene::ChangeKind::Modified));
+                    None => self.command_line.push_output(&format!(
+                        "Block table contains no attributed block named {arg}."
+                    )),
                 }
-                self.tabs[i].scene.bump_entities(&changes);
-                self.tabs[i].dirty = true;
-                self.command_line.push_output(crate::tf!(
-                    "ATTSYNC: synchronised {synced} insert(s) of \"{block}\" against {} attribute definition(s).",
-                    attdefs.len()
-                ).as_ref());
             }
 
             // ADCENTER / CONTENTBROWSER — report the drawing's named content
@@ -790,17 +681,6 @@ impl OpenCADStudio {
                     _ => Tab::Current,
                 };
                 self.open_blocks_palette(Some(tab));
-            }
-
-            // ATTMAN / BATTMAN — the Block Attribute Manager. Rather than a
-            // command-line listing, both route to the attribute editor
-            // (ATTEDIT): edit the selected block's attributes, or pick a block.
-            cmd if cmd == "ATTMAN"
-                || cmd == "BATTMAN"
-                || cmd.starts_with("ATTMAN ")
-                || cmd.starts_with("BATTMAN ") =>
-            {
-                self.open_attedit_dialog();
             }
 
             "PDFIMPORT" => {
@@ -937,16 +817,16 @@ impl OpenCADStudio {
                     .collect();
                 let existing_blocks = self.tabs[i].scene.custom_block_names();
                 let default_unit = self.tabs[i].scene.document.header.insertion_units;
-                let default_folder = self.tabs[i]
+                // "new block" in the drawing's folder, or in Documents for an
+                // unsaved drawing; the file type is added when it is written.
+                let folder = self.tabs[i]
                     .current_path
                     .as_ref()
-                    .and_then(|p| p.parent())
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                let default_path = if default_folder.is_empty() {
-                    "new_block.dwg".to_string()
-                } else {
-                    format!("{}/new_block.dwg", default_folder.replace('\\', "/"))
+                    .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+                    .or_else(crate::sys::documents_dir);
+                let default_path = match folder {
+                    Some(folder) => folder.join("new block").to_string_lossy().to_string(),
+                    None => "new block".to_string(),
                 };
                 self.wblock = Some(crate::ui::window::wblock::WblockState::new(
                     existing_blocks,

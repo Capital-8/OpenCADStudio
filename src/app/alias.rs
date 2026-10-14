@@ -79,8 +79,9 @@ const WEB_ALIAS_KEY: &str = "opencadstudio.aliases";
 /// defaults add aliases or change a default target, so existing profiles can be
 /// migrated forward (see `introduced_at` / `migrate_aliases`). Version 1 shipped
 /// the pre-REDRAW table; version 2 introduced the REDRAW-family aliases; version 3
-/// introduced HB (HATCHTOBACK); version 4 introduced ER (EXTERNALREFERENCES).
-const DEFAULT_ALIASES_VERSION: u32 = 9;
+/// introduced HB (HATCHTOBACK); version 4 introduced ER (EXTERNALREFERENCES);
+/// version 10 the block command-line forms and block editor shortcuts.
+const DEFAULT_ALIASES_VERSION: u32 = 10;
 
 #[cfg(target_arch = "wasm32")]
 const WEB_ALIAS_VERSION_KEY: &str = "opencadstudio.aliases.version";
@@ -104,6 +105,15 @@ fn introduced_at(version: u32) -> &'static [(&'static str, &'static str)] {
         7 => &[("DV", "DVIEW")],
         8 => &[("-XR", "-XREF"), ("XC", "XCLIP"), ("ICL", "IMAGECLIP")],
         9 => &[("IAD", "IMAGEADJUST")],
+        10 => &[
+            ("-B", "-BLOCK"),
+            ("-W", "-WBLOCK"),
+            ("BC", "BCLOSE"),
+            ("BS", "BSAVE"),
+            ("BVS", "BVSTATE"),
+            ("-ATE", "-ATTEDIT"),
+            ("ATTE", "-ATTEDIT"),
+        ],
         _ => &[],
     }
 }

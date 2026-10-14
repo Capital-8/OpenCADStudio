@@ -2397,7 +2397,7 @@ common =
     .hectometers = Hectometers
     .hyperlink-ellipsis = Hyperlink...
     .hyperlink-star = Hyperlink*
-    .invalid-character-in-block-name = Invalid character '__ocs_fmt_0__' in block name (\ / : * ? " < > | = ` are not allowed)
+    .invalid-character-in-block-name = Invalid character '__ocs_fmt_0__' in block name (\ < > / ? " : ; * | , = ` are not allowed)
     .light-years = Light Years
     .match-block-orientation = Match block orientation
     .microinches = Microinches
@@ -6540,3 +6540,9 @@ keytips =
     .hint-tabs = Type a tab letter · Esc closes
     .hint-tab = { $tab } tab · Esc goes back one level
     .hint-items = Type an item letter · Esc goes back one level
+
+block-def =
+    .name-too-short = The name must be at least one character long.
+    .name-unsupported-chars = The name contains unsupported characters. The following characters are not supported: \ < > / ? " : ; * | , = `
+    .definition-changed-redefine = The block definition has changed. Do you want to redefine it ?
+    .create-drawing-file = Create Drawing File

@@ -491,6 +491,9 @@ impl OpenCADStudio {
             self.tabs[i].history = history.main;
             self.tabs[i].scene.object_isolation = history.return_isolation;
         }
+        if discard && session.created_for_edit {
+            crate::scene::block_service::erase(&mut self.tabs[i].scene, &session.block_name);
+        }
         self.tabs[i].active_block_edit = None;
         self.restore_after_block_edit_close(
             i,

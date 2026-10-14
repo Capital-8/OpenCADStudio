@@ -2381,7 +2381,7 @@ common =
     .hectometers = Hektometre
     .hyperlink-ellipsis = Köprü...
     .hyperlink-star = Köprü*
-    .invalid-character-in-block-name = Blok adında geçersiz karakter '__ocs_fmt_0__' (\ / : * ? " < > | = ` kullanılamaz)
+    .invalid-character-in-block-name = Blok adında geçersiz karakter '__ocs_fmt_0__' (\ < > / ? " : ; * | , = ` kullanılamaz)
     .light-years = Işık Yılı
     .match-block-orientation = Blok yönünü eşle
     .microinches = Mikroinç
@@ -6462,3 +6462,9 @@ keytips =
     .hint-tabs = Sekme harfini yazın · Esc kapatır
     .hint-tab = { $tab } sekmesi · Esc bir düzey geri
     .hint-items = Öğe harfini yazın · Esc bir düzey geri
+
+block-def =
+    .name-too-short = Ad en az bir karakter uzunluğunda olmalıdır.
+    .name-unsupported-chars = Ad desteklenmeyen karakterler içeriyor. Şu karakterler desteklenmez: \ < > / ? " : ; * | , = `
+    .definition-changed-redefine = Blok tanımı değişti. Yeniden tanımlamak istiyor musunuz?
+    .create-drawing-file = Çizim Dosyası Oluştur

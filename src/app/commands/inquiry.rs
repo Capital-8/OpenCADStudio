@@ -512,6 +512,36 @@ impl OpenCADStudio {
                     }
                 };
 
+                // A name that is not a block yet opens an empty definition,
+                // dropped again when the editor closes without saving.
+                let mut created_for_edit = false;
+                if self.tabs[i].scene.document.block_records.get(&block_name).is_none()
+                    && cmd.starts_with("BEDIT_OPEN:")
+                    && crate::ui::window::block_definition::invalid_block_name_char(&block_name)
+                        .is_none()
+                    && !block_name.trim().is_empty()
+                    && !block_name.starts_with('*')
+                {
+                    let options = crate::scene::CreateBlockOptions {
+                        name: block_name.clone(),
+                        handles: Vec::new(),
+                        base_point: glam::DVec3::ZERO,
+                        world_to_block: codec::types::Transform::identity(),
+                        block_to_world: codec::types::Transform::identity(),
+                        mode: crate::ui::window::block_definition::BlockObjectMode::Retain,
+                        annotative: false,
+                        match_orientation: false,
+                        scale_uniformly: false,
+                        allow_exploding: true,
+                        unit: self.tabs[i].scene.document.header.insertion_units,
+                        description: String::new(),
+                        hyperlink_url: String::new(),
+                        hyperlink_desc: String::new(),
+                        redefine: false,
+                    };
+                    created_for_edit =
+                        self.tabs[i].scene.create_block_with_options(options).is_ok();
+                }
                 // Resolve the block record; reject external references (xrefs).
                 let (br_handle, is_xref) =
                     match self.tabs[i].scene.document.block_records.get(&block_name) {
@@ -575,6 +605,7 @@ impl OpenCADStudio {
                     return_camera,
                     editor_camera: current_camera,
                     editor_ucs: None,
+                    created_for_edit,
                 });
                 self.tabs[i].active_block_edit = Some(self.tabs[i].block_edits.len() - 1);
                 // Every BEDIT tab owns an isolated local UCS. Never inherit or

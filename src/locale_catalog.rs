@@ -3,6 +3,10 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
+        "The name must be at least one character long." => Some(("block-def", "name-too-short")),
+        "The name contains unsupported characters. The following characters are not supported: \\ < > / ? \" : ; * | , = `" => Some(("block-def", "name-unsupported-chars")),
+        "The block definition has changed. Do you want to redefine it ?" => Some(("block-def", "definition-changed-redefine")),
+        "Create Drawing File" => Some(("block-def", "create-drawing-file")),
         "Add to Working Set" => Some(("ref-edit", "add-to-working-set")),
         "Remove from Working Set" => Some(("ref-edit", "remove-from-working-set")),
         "Select reference:" => Some(("ref-edit", "select-reference")),
@@ -5943,7 +5947,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Hectometers" => Some(("common", "hectometers")),
         "Hyperlink*" => Some(("common", "hyperlink-star")),
         "Hyperlink..." => Some(("common", "hyperlink-ellipsis")),
-        "Invalid character '{invalid_char}' in block name (\\ / : * ? \" < > | = ` are not allowed)" => Some(("common", "invalid-character-in-block-name")),
+        "Invalid character '{invalid_char}' in block name (\\ < > / ? \" : ; * | , = ` are not allowed)" => Some(("common", "invalid-character-in-block-name")),
         "Light Years" => Some(("common", "light-years")),
         "Match block orientation" => Some(("common", "match-block-orientation")),
         "Microinches" => Some(("common", "microinches")),

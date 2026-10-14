@@ -106,21 +106,24 @@ impl Clone for BlockDefinitionState {
 
 impl BlockDefinitionState {
     pub fn new(existing_names: Vec<String>, pre_selected: Vec<Handle>, default_unit: i16) -> Self {
+        // The on-screen switches, the conversion and Allow exploding start
+        // where the dialog was last confirmed.
+        let remembered = *crate::modules::insert::block_cmdline::defaults();
         Self {
             name: String::new(),
             name_combo: combo_box::State::new(existing_names.clone()),
             existing_names,
-            base_point_specify_onscreen: false,
-            base_point_x: "0.0000".to_string(),
-            base_point_y: "0.0000".to_string(),
-            base_point_z: "0.0000".to_string(),
-            objects_specify_onscreen: false,
+            base_point_specify_onscreen: remembered.base_on_screen,
+            base_point_x: "0".to_string(),
+            base_point_y: "0".to_string(),
+            base_point_z: "0".to_string(),
+            objects_specify_onscreen: remembered.objects_on_screen,
             selected_handles: pre_selected,
-            object_mode: BlockObjectMode::Convert,
+            object_mode: remembered.mode,
             annotative: false,
             match_orientation: false,
             scale_uniformly: false,
-            allow_exploding: true,
+            allow_exploding: remembered.allow_exploding,
             unit: default_unit,
             description: String::new(),
             description_content: text_editor::Content::new(),
@@ -158,13 +161,18 @@ impl BlockDefinitionState {
     }
 
     pub fn invalid_name_char(&self) -> Option<char> {
-        self.name.chars().find(|&c| {
-            matches!(
-                c,
-                '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '=' | '`'
-            )
-        })
+        invalid_block_name_char(&self.name)
     }
+}
+
+/// The first character a block name may not hold: \ < > / ? " : ; * | , = `
+pub fn invalid_block_name_char(name: &str) -> Option<char> {
+    name.chars().find(|&c| {
+        matches!(
+            c,
+            '\\' | '<' | '>' | '/' | '?' | '"' | ':' | ';' | '*' | '|' | ',' | '=' | '`'
+        )
+    })
 }
 
 pub(crate) fn group<'a>(
@@ -235,7 +243,7 @@ pub fn view_window<'a>(
         state.invalid_name_char()
     {
         Some(
-            text(crate::tf!("Invalid character '{invalid_char}' in block name (\\ / : * ? \" < > | = ` are not allowed)"))
+            text(crate::tf!("Invalid character '{invalid_char}' in block name (\\ < > / ? \" : ; * | , = ` are not allowed)"))
                 .size(10)
                 .style(|theme: &Theme| text::Style {
                     color: Some(theme.palette().danger.base.color),
@@ -634,7 +642,8 @@ pub fn view_window<'a>(
 
     // ── Confirm Redefinition Guard ────────────────────────────────────────────
     if let Some(name) = &state.confirm_redefine {
-        let question = crate::tf!("Block \"{name}\" already exists.\nDo you want to redefine it?");
+        let _ = name;
+        let question = t!("The block definition has changed. Do you want to redefine it ?");
         let shield = mouse_area(
             container(Space::new())
                 .width(Length::Fill)
@@ -655,7 +664,7 @@ pub fn view_window<'a>(
                     .align_x(iced::alignment::Horizontal::Center),
                 Space::new().height(16),
                 row![
-                    dialog_button(t!("Yes"), Message::BlockDefConfirmRedefine(true), false),
+                    dialog_button(t!("Redefine"), Message::BlockDefConfirmRedefine(true), false),
                     // Default / safe focus on "No"
                     dialog_button(t!("No"), Message::BlockDefConfirmRedefine(false), true),
                 ]

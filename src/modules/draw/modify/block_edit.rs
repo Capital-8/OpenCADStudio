@@ -70,6 +70,9 @@ pub struct BlockEditSession {
     /// Transient UCS being manipulated in this block tab. On commit its full
     /// frame is baked into the definition and this returns to `None`.
     pub editor_ucs: Option<codec::tables::Ucs>,
+    /// The definition was created empty to be edited (a new name at BEDIT /
+    /// -BEDIT); closing without saving removes it again.
+    pub created_for_edit: bool,
 }
 
 // ── BEDIT pick command ─────────────────────────────────────────────────────

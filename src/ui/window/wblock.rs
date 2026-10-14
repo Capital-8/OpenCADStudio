@@ -104,16 +104,27 @@ impl WblockState {
         default_path: String,
     ) -> Self {
         let default_block = existing_blocks.first().cloned().unwrap_or_default();
+        let remembered_mode = crate::modules::insert::block_cmdline::defaults().wblock_mode;
         Self {
             source_mode: WblockSourceMode::Objects,
             block_name: default_block,
             block_combo: combo_box::State::new(existing_blocks.clone()),
             existing_blocks,
-            base_point_x: "0.00".to_string(),
-            base_point_y: "0.00".to_string(),
-            base_point_z: "0.00".to_string(),
+            base_point_x: "0".to_string(),
+            base_point_y: "0".to_string(),
+            base_point_z: "0".to_string(),
             selected_handles: pre_selected,
-            object_mode: WblockObjectMode::Retain,
+            object_mode: match remembered_mode {
+                crate::ui::window::block_definition::BlockObjectMode::Retain => {
+                    WblockObjectMode::Retain
+                }
+                crate::ui::window::block_definition::BlockObjectMode::Convert => {
+                    WblockObjectMode::Convert
+                }
+                crate::ui::window::block_definition::BlockObjectMode::Delete => {
+                    WblockObjectMode::Delete
+                }
+            },
             file_path: default_path,
             unit: default_unit,
             error_message: None,

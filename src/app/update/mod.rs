@@ -1774,10 +1774,15 @@ impl OpenCADStudio {
 
             Message::WblockSave(block_name) => {
                 let name = block_name.clone();
+                let title = if block_name == "-" {
+                    crate::t!("Create Drawing File").into_owned()
+                } else {
+                    crate::t!("Save Block As").into_owned()
+                };
                 Task::perform(
                     async move {
                         let path = crate::sys::file_dialog()
-                            .set_title(crate::t!("Save Block As").as_ref())
+                            .set_title(&title)
                             .set_file_name("block.dwg")
                             .add_filter(crate::t!("DWG Files").as_ref(), &["dwg"])
                             .save_file()
@@ -1789,6 +1794,10 @@ impl OpenCADStudio {
                 )
             }
 
+            // -WBLOCK with FILEDIA 1: the file came from the dialog, the
+            // command line asks for the rest.
+            Message::WblockSaveResult(block_name, Some(path)) if block_name == "-" => self
+                .dispatch_command(&format!("_-WBLOCKFILE {}", path.display())),
             Message::WblockSaveResult(block_name, Some(path)) => {
                 self.on_wblock_save_result_some(block_name, path)
             }
@@ -1796,14 +1805,12 @@ impl OpenCADStudio {
             Message::WblockSaveResult(_, None) => Task::none(),
 
             Message::WblockWriteFinished(block_name, path, result) => {
-                match result {
-                    Ok(()) => self.command_line.push_output(
-                        crate::tf!("WBLOCK  Saved \"{block_name}\" → \"{}\"", path.display())
-                            .as_ref(),
-                    ),
-                    Err(error) => self
-                        .command_line
-                        .push_error(crate::tf!("WBLOCK save failed: {error}").as_ref()),
+                // A written file is not reported (as in the reference); a
+                // failed write is.
+                let _ = (&block_name, &path);
+                if let Err(error) = result {
+                    self.command_line
+                        .push_error(crate::tf!("WBLOCK save failed: {error}").as_ref());
                 }
                 Task::none()
             }
@@ -5745,13 +5752,14 @@ impl OpenCADStudio {
                 };
                 let name = state.name.trim().to_string();
                 if name.is_empty() {
-                    state.error_message =
-                        Some(crate::t!("Block name cannot be empty.").into_owned());
+                    state.error_message = Some(
+                        crate::t!("The name must be at least one character long.").into_owned(),
+                    );
                     return Task::none();
                 }
                 if let Some(_ch) = state.invalid_name_char() {
                     state.error_message = Some(
-                        crate::t!("Block name cannot contain: \\ / : * ? \" < > | = `")
+                        crate::t!("The name contains unsupported characters. The following characters are not supported: \\ < > / ? \" : ; * | , = `")
                             .into_owned(),
                     );
                     return Task::none();
@@ -5989,96 +5997,25 @@ impl OpenCADStudio {
 
                 let state = self.wblock.take().unwrap();
                 self.active_modal = None;
-                let document = self.tabs[i].scene.document_for_save();
-                let source_mode = state.source_mode;
-                let block_name = state.block_name.trim().to_string();
-                let handles = state.selected_handles.clone();
-                let base_point = state.parse_base_point();
-                let unit = state.unit;
-                let object_mode = state.object_mode;
-
-                if source_mode == WblockSourceMode::Objects {
-                    match object_mode {
-                        WblockObjectMode::Retain => {}
-                        WblockObjectMode::Delete => {
-                            self.push_undo_snapshot(i, "WBLOCK");
-                            self.tabs[i].scene.erase_entities(&handles);
-                            self.tabs[i].dirty = true;
-                            self.tabs[i].scene.bump_geometry();
-                            self.refresh_properties();
-                        }
-                        WblockObjectMode::Convert => {
-                            let block_name_for_conv = path
-                                .file_stem()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or("WBLOCK")
-                                .to_string();
-                            self.push_undo_snapshot(i, "WBLOCK");
-                            let ucs = self.tabs[i].ucs_xform();
-                            let world_to_block = ucs.to_ucs_transform_at(base_point);
-                            let block_to_world = ucs.to_wcs_transform_at(base_point);
-                            let options = crate::scene::CreateBlockOptions {
-                                name: block_name_for_conv,
-                                handles: handles.clone(),
-                                base_point,
-                                world_to_block,
-                                block_to_world,
-                                mode: crate::ui::window::block_definition::BlockObjectMode::Convert,
-                                annotative: false,
-                                match_orientation: false,
-                                scale_uniformly: false,
-                                allow_exploding: true,
-                                unit,
-                                description: String::new(),
-                                hyperlink_url: String::new(),
-                                hyperlink_desc: String::new(),
-                                redefine: true,
-                            };
-                            let _ = self.tabs[i].scene.create_block_with_options(options);
-                            self.tabs[i].dirty = true;
-                            self.tabs[i].scene.bump_geometry();
-                            self.refresh_properties();
-                        }
-                    }
-                }
-
-                let worker_path = path.clone();
-                let display_name = match source_mode {
-                    WblockSourceMode::Block => block_name.clone(),
-                    WblockSourceMode::EntireDrawing => "*".to_string(),
-                    WblockSourceMode::Objects => "*".to_string(),
+                use crate::modules::insert::block_cmdline::WblockSource;
+                use crate::ui::window::block_definition::BlockObjectMode;
+                let mode = match state.object_mode {
+                    WblockObjectMode::Retain => BlockObjectMode::Retain,
+                    WblockObjectMode::Convert => BlockObjectMode::Convert,
+                    WblockObjectMode::Delete => BlockObjectMode::Delete,
                 };
-                let worker_display = display_name.clone();
-
-                file::background_task(
-                    crate::t!("WBLOCK save"),
-                    move || {
-                        let out_doc = match source_mode {
-                            WblockSourceMode::Block => {
-                                let mut d = crate::modules::insert::wblock::extract_block_to_doc(
-                                    &document,
-                                    &block_name,
-                                )
-                                .map_err(|e| e.to_string())?;
-                                d.header.insertion_units = unit;
-                                d
-                            }
-                            WblockSourceMode::EntireDrawing => {
-                                let mut d = document.clone();
-                                d.header.insertion_units = unit;
-                                d
-                            }
-                            WblockSourceMode::Objects => {
-                                crate::modules::insert::wblock::extract_entities_to_doc_with_base(
-                                    &document, &handles, base_point, unit,
-                                )
-                                .map_err(|e| e.to_string())?
-                            }
-                        };
-                        crate::io::save(&out_doc, &worker_path).map_err(|e| e.to_string())
+                crate::modules::insert::block_cmdline::defaults().wblock_mode = mode;
+                self.persist_settings_if_changed();
+                let source = match state.source_mode {
+                    WblockSourceMode::Block => WblockSource::Block(state.block_name.trim().to_string()),
+                    WblockSourceMode::EntireDrawing => WblockSource::Drawing,
+                    WblockSourceMode::Objects => WblockSource::Objects {
+                        handles: state.selected_handles.clone(),
+                        base: state.parse_base_point(),
+                        mode,
                     },
-                    move |result| Message::WblockWriteFinished(worker_display, path, result),
-                )
+                };
+                self.wblock_write(i, source, path, state.unit)
             }
             Message::ToleranceDialogField(field) => {
                 if let Some(state) = self.geometric_tolerance.as_mut() {
