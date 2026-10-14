@@ -204,6 +204,7 @@ pub fn view_window<'a>(
     drawing_prefs: DrawingPrefs,
     folders: Folders,
     qnew_template: &'a str,
+    color_book_dirs: &'a [String],
     double_click_block_refedit: bool,
     double_click_block_attedit: bool,
     cursor_type: CursorType,
@@ -1697,6 +1698,49 @@ pub fn view_window<'a>(
         .align_y(iced::Center)
     };
 
+    // Searched for `.acb` colour books; editable, unlike the folders above.
+    // Browsers have no folders, so the web build leaves it out.
+    let color_book_locations = |dirs: &'a [String]| -> Element<'a, Message> {
+        if cfg!(target_arch = "wasm32") {
+            return Space::new().into();
+        }
+        let list = dirs
+            .iter()
+            .enumerate()
+            .fold(column![].spacing(6), |list, (i, dir)| {
+                list.push(
+                    row![
+                        text(dir.as_str()).size(11).width(Fill),
+                        button(text(crate::t!("Open folder")).size(11))
+                            .padding([4, 10])
+                            .style(button::secondary)
+                            .on_press(Message::OpenFolder(dir.clone())),
+                        button(text(crate::t!("Remove")).size(11))
+                            .padding([4, 10])
+                            .style(button::secondary)
+                            .on_press(Message::ColorBookDirRemove(i)),
+                    ]
+                    .spacing(10)
+                    .align_y(iced::Center),
+                )
+            });
+        column![
+            text(crate::t!("Color book locations")).size(12),
+            text(crate::t!(
+                "Folders searched for .acb color books. A book loaded in Select Color is copied into the first folder."
+            ))
+            .size(11),
+            list,
+            button(text(crate::t!("Add folder…")).size(11))
+                .padding([4, 10])
+                .style(button::secondary)
+                .on_press(Message::ColorBookDirBrowse),
+            Space::new().height(16),
+        ]
+        .spacing(6)
+        .into()
+    };
+
     let files = column![
         text(crate::t!("Files")).size(15),
         Space::new().height(6),
@@ -1716,6 +1760,7 @@ pub fn view_window<'a>(
         Space::new().height(12),
         folder_row(crate::t!("Fonts"), folders.fonts.clone()),
         Space::new().height(16),
+        color_book_locations(color_book_dirs),
         text(crate::t!("Default template for new drawings")).size(12),
         Space::new().height(4),
         row![

@@ -367,6 +367,7 @@ impl OpenCADStudio {
                             }
                         },
                         &self.qnew_template,
+                        &self.color_book_dirs,
                         self.double_click_block_refedit,
                         self.double_click_block_attedit,
                         self.cursor_type,

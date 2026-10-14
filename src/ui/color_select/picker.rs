@@ -672,8 +672,9 @@ impl ColorPicker {
         .into()
     }
 
-    /// Grid or list toggle for the Document tab: dark on the accent colour
-    /// when active, like the OK button.
+    /// Grid or list toggle for the Document tab, styled like the app's other
+    /// toggles: light accent when active, its icon in that accent's text
+    /// colour.
     fn view_button(&self, icon: &'static [u8], view: DocView) -> Element<'_, Message> {
         let active = self.doc_view == view;
         button(
@@ -683,7 +684,7 @@ impl ColorPicker {
                     .height(18)
                     .style(move |theme: &Theme, _status| svg::Style {
                         color: Some(if active {
-                            theme.palette().primary.base.text
+                            theme.palette().primary.weak.text
                         } else {
                             theme.palette().background.base.text
                         }),
@@ -695,13 +696,7 @@ impl ColorPicker {
         .width(CONTROL_HEIGHT)
         .height(CONTROL_HEIGHT)
         .padding(0)
-        .style(move |theme: &Theme, status| {
-            if active {
-                button::primary(theme, status)
-            } else {
-                toggle_style(theme, false, status)
-            }
-        })
+        .style(move |theme: &Theme, status| toggle_style(theme, active, status))
         .into()
     }
 
@@ -750,21 +745,20 @@ impl ColorPicker {
             .center(Length::Fill)
             .into();
         };
-        // The book list as wide as the colour bars; the search box and the
-        // load button over the page strip and the RGB values.
+        // The book list and its load button over the colour bars; the
+        // search box over the page strip and the RGB values, to the end.
         let books = Arc::clone(&self.books);
         let top = row![
-            pick_list(
-                Some(self.book),
-                (0..self.books.len()).collect::<Vec<_>>(),
-                move |&i| books[i].name.clone(),
-            )
-            .on_select(|i| picker_msg(ColorPickerMsg::Book(i)))
-            .text_size(12)
-            .padding([6, 8])
-            .width(Length::Fill),
             row![
-                search_box(&self.book_query, |query| ColorPickerMsg::BookQuery(query)),
+                pick_list(
+                    Some(self.book),
+                    (0..self.books.len()).collect::<Vec<_>>(),
+                    move |&i| books[i].name.clone(),
+                )
+                .on_select(|i| picker_msg(ColorPickerMsg::Book(i)))
+                .text_size(12)
+                .padding([6, 8])
+                .width(Length::Fill),
                 load_button(
                     container(
                         secondary_icon(crate::ui::icons::themed_handle(
@@ -781,6 +775,11 @@ impl ColorPicker {
                 .padding(0),
             ]
             .spacing(6)
+            .align_y(iced::Center)
+            .width(Length::Fill),
+            container(search_box(&self.book_query, |query| {
+                ColorPickerMsg::BookQuery(query)
+            }))
             .width(SIDE_WIDTH),
         ]
         .spacing(10)

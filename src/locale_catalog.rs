@@ -4736,6 +4736,8 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Not a color book" => Some(("common", "color-not-a-book")),
         "This color book is encrypted and cannot be read" => Some(("common", "color-book-encrypted")),
         "The color book has no colors" => Some(("common", "color-book-empty")),
+        "Color book locations" => Some(("common", "color-book-locations")),
+        "Folders searched for .acb color books. A book loaded in Select Color is copied into the first folder." => Some(("common", "color-book-locations-hint")),
         "CAD Color Index (ACI) 10–249" => Some(("common", "cad-color-index-aci-10-249")),
         "Grayscale 250–255" => Some(("common", "grayscale-250-255")),
         "Isometric drafting" => Some(("common", "isometric-drafting")),
