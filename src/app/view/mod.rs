@@ -15,6 +15,46 @@ use iced::widget::{
 use iced::window;
 use iced::{keyboard, Background, Border, Color, Element, Fill, Subscription, Task, Theme};
 use iced_aw::ContextMenu;
+ 
+/// Invisible event surface for accurate point picking. MouseArea emits a
+/// positionless press message; capturing the cursor in the actual button
+/// event avoids using the previous hover location when clicking quickly.
+#[derive(Debug, Clone, Copy)]
+struct ViewportPickSurface;
+
+impl iced::widget::canvas::Program<Message> for ViewportPickSurface {
+    type State = ();
+
+    fn update(
+        &self,
+        _state: &mut Self::State,
+        event: &iced::Event,
+        bounds: iced::Rectangle,
+        cursor: iced::mouse::Cursor,
+    ) -> Option<iced::widget::canvas::Action<Message>> {
+        if let iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)) =
+            event
+        {
+            return cursor.position_in(bounds).map(|position| {
+                iced::widget::canvas::Action::publish(Message::ViewportLeftPressAt(position))
+                    .and_capture()
+            });
+        }
+        None
+    }
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        _renderer: &iced::Renderer,
+        _theme: &iced::Theme,
+        _bounds: iced::Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<iced::widget::canvas::Geometry> {
+        Vec::new()
+    }
+}
+
 use std::sync::Arc;
 
 mod controls;
@@ -986,9 +1026,15 @@ bg={bg_ms:.1}ms n={view_count}"
 
         mark("viewport_mouse");
         let viewport_mouse = mouse_area(container(
-            iced::widget::Space::new().width(Fill).height(Fill),
+            iced::widget::canvas(ViewportPickSurface)
+                .width(Fill)
+                .height(Fill),
         ))
         .on_move(Message::ViewportMove)
+        // Left mouse presses are captured by the canvas with their exact
+        // event-time position. MouseArea::on_press has no coordinate, so
+        // queued cursor moves could otherwise make quick clicks use a stale
+        // snap position. Touch presses still use this fallback.
         .on_press(Message::ViewportLeftPress)
         .on_release(Message::ViewportLeftRelease)
         .on_right_press(Message::ViewportRightPress)
