@@ -745,6 +745,43 @@ impl OpenCADStudio {
                 }
             }
 
+            // LAYCUR: the selected objects move to the current layer.
+            "LAYCUR" => {
+                let handles: Vec<_> = self.tabs[i]
+                    .scene
+                    .selected_entities()
+                    .into_iter()
+                    .map(|(h, _)| h)
+                    .collect();
+                if handles.is_empty() {
+                    use crate::modules::draw::select::SelectObjectsCommand;
+                    let cmd = SelectObjectsCommand::new("LAYCUR");
+                    self.command_line.push_info(&cmd.prompt());
+                    self.tabs[i].active_cmd = Some(Box::new(cmd));
+                } else {
+                    let layer = self.tabs[i].scene.document.header.current_layer_name.clone();
+                    let editable: Vec<_> = handles
+                        .into_iter()
+                        .filter(|handle| !self.tabs[i].scene.is_layer_locked(*handle))
+                        .collect();
+                    self.push_undo_snapshot(i, "LAYCUR");
+                    for handle in &editable {
+                        if let Some(entity) = self.tabs[i].scene.document.get_entity_mut(*handle) {
+                            entity.common_mut().layer = layer.clone();
+                        }
+                    }
+                    // The new layer's ByLayer colour, linetype and lineweight
+                    // show at once.
+                    self.invalidate_property_targets(i, &editable);
+                    self.tabs[i].dirty = true;
+                    self.tabs[i].scene.deselect_all();
+                    self.command_line.push_info(
+                        crate::tf!("{} object(s) changed to layer \"{layer}\".", editable.len())
+                            .as_ref(),
+                    );
+                }
+            }
+
             "LAYMATCH" | "LAYMCH" => {
                 use crate::modules::draw::layers::match_layer::LayMatchCommand;
                 let dest: Vec<_> = self.tabs[i]

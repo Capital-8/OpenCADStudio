@@ -379,6 +379,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "GROUP",
         "LAYFRZ",
         "LAYLCK",
+        "LAYCUR",
         "LAYMCUR",
         "LAYOFF",
         "LAYULK",

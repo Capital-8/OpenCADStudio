@@ -384,6 +384,7 @@ fn command_selection_policy(name: &str) -> &'static str {
         "GROUP",
         "LAYFRZ",
         "LAYLCK",
+        "LAYCUR",
         "LAYMCUR",
         "LAYOFF",
         "LAYULK",
