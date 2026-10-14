@@ -2907,8 +2907,8 @@ mod tests {
         assert_eq!(response["status"], "completed", "{response}");
 
         // The plotted PDF carries two distinct pen widths — the per-layer
-        // 0.13 mm / 0.50 mm hierarchy survives the plot style (thin clamps to
-        // the 1 px floor, so the ratio is the clamped-pixel ratio 1.889).
+        // 0.13 mm / 0.50 mm hierarchy survives the plot style at its true
+        // ratio; the screen's 1 px floor does not reach the plot (#1749).
         let text =
             crate::io::pdf_export::pdf_stream_text(&std::fs::read(&pdf).expect("pdf written"));
         let tokens: Vec<&str> = text.split_whitespace().collect();
@@ -2931,7 +2931,7 @@ mod tests {
             "two layer weights in the plotted PDF: {widths:?}"
         );
         assert!(
-            (widths[1] / widths[0] - 1.889).abs() < 0.15,
+            (widths[1] / widths[0] - 50.0 / 13.0).abs() < 0.15,
             "0.50 mm vs 0.13 mm hierarchy: {widths:?}"
         );
         let _ = std::fs::remove_file(&pdf);

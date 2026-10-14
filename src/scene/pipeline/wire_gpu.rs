@@ -863,7 +863,7 @@ pub(crate) fn emit_wire_packed(
         wire.pattern[6],
         wire.pattern[7],
     ];
-    let half_width = wire.line_weight_px * 0.5;
+    let half_width = wire.line_weight_px.max(1.0) * 0.5;
     let n = wire.points.len();
     let seg_count = n.saturating_sub(1);
     if seg_count == 0 {
@@ -965,7 +965,7 @@ pub(crate) fn emit_wire_native(
             wire.pattern[6],
             wire.pattern[7],
         ],
-        half_width: wire.line_weight_px * 0.5,
+        half_width: wire.line_weight_px.max(1.0) * 0.5,
         pattern_length: wire.pattern_length,
         draw_depth,
         align_end,

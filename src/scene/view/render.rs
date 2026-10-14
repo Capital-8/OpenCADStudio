@@ -3589,9 +3589,11 @@ pub struct InheritStyle {
 }
 
 /// Convert a concrete (already layer-resolved) lineweight to display pixels.
+/// Kept below 1 px for thin weights so plots and SVG get the true width;
+/// the GPU paths draw at least 1 px (#1749).
 pub(crate) fn lineweight_to_px(lw: &LineWeight) -> f32 {
     lw.millimeters()
-        .map(|mm| (mm as f32 * MM_TO_PX).max(1.0))
+        .map(|mm| mm as f32 * MM_TO_PX)
         .unwrap_or(1.0)
 }
 
