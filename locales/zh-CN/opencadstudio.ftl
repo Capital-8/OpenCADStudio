@@ -6519,7 +6519,7 @@ image-adjust =
 
 keytips =
     .title = KeyTip
-    .typed = Typed: { $path }
-    .hint-tabs = Type a tab letter · Esc closes
-    .hint-tab = { $tab } tab · Esc goes back one level
-    .hint-items = Type an item letter · Esc goes back one level
+    .typed = 已键入: { $path }
+    .hint-tabs = 键入选项卡字母 · Esc 关闭
+    .hint-tab = { $tab } 选项卡 · Esc 返回上一级
+    .hint-items = 键入项目字母 · Esc 返回上一级

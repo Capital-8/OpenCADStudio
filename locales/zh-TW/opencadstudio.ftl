@@ -6531,7 +6531,7 @@ image-adjust =
 
 keytips =
     .title = KeyTip
-    .typed = Typed: { $path }
-    .hint-tabs = Type a tab letter · Esc closes
-    .hint-tab = { $tab } tab · Esc goes back one level
-    .hint-items = Type an item letter · Esc goes back one level
+    .typed = 已輸入: { $path }
+    .hint-tabs = 輸入索引標籤字母 · Esc 關閉
+    .hint-tab = { $tab } 索引標籤 · Esc 返回上一層
+    .hint-items = 輸入項目字母 · Esc 返回上一層

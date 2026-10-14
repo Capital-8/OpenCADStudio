@@ -6533,7 +6533,7 @@ image-adjust =
 
 keytips =
     .title = KeyTip
-    .typed = Typed: { $path }
-    .hint-tabs = Type a tab letter · Esc closes
-    .hint-tab = { $tab } tab · Esc goes back one level
-    .hint-items = Type an item letter · Esc goes back one level
+    .typed = Kirjoitettu: { $path }
+    .hint-tabs = Kirjoita välilehden kirjain · Esc sulkee
+    .hint-tab = Välilehti { $tab } · Esc palaa tason taaksepäin
+    .hint-items = Kirjoita kohteen kirjain · Esc palaa tason taaksepäin

@@ -6524,7 +6524,7 @@ image-adjust =
 
 keytips =
     .title = KeyTip
-    .typed = Typed: { $path }
-    .hint-tabs = Type a tab letter · Esc closes
-    .hint-tab = { $tab } tab · Esc goes back one level
-    .hint-items = Type an item letter · Esc goes back one level
+    .typed = टाइप किया: { $path }
+    .hint-tabs = टैब का अक्षर टाइप करें · Esc बंद करता है
+    .hint-tab = { $tab } टैब · Esc एक स्तर पीछे जाता है
+    .hint-items = आइटम का अक्षर टाइप करें · Esc एक स्तर पीछे जाता है

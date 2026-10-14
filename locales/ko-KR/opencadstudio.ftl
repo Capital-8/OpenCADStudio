@@ -6535,7 +6535,7 @@ image-adjust =
 
 keytips =
     .title = KeyTip
-    .typed = Typed: { $path }
-    .hint-tabs = Type a tab letter · Esc closes
-    .hint-tab = { $tab } tab · Esc goes back one level
-    .hint-items = Type an item letter · Esc goes back one level
+    .typed = 입력: { $path }
+    .hint-tabs = 탭 문자를 입력하십시오 · Esc로 닫기
+    .hint-tab = { $tab } 탭 · Esc로 한 단계 뒤로
+    .hint-items = 항목 문자를 입력하십시오 · Esc로 한 단계 뒤로

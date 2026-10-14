@@ -6533,7 +6533,7 @@ image-adjust =
 
 keytips =
     .title = KeyTip
-    .typed = Typed: { $path }
-    .hint-tabs = Type a tab letter · Esc closes
-    .hint-tab = { $tab } tab · Esc goes back one level
-    .hint-items = Type an item letter · Esc goes back one level
+    .typed = Zadáno: { $path }
+    .hint-tabs = Zadejte písmeno karty · Esc zavře
+    .hint-tab = Karta { $tab } · Esc o úroveň zpět
+    .hint-items = Zadejte písmeno položky · Esc o úroveň zpět

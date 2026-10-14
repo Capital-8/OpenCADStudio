@@ -6536,7 +6536,7 @@ image-adjust =
 
 keytips =
     .title = KeyTip
-    .typed = Typed: { $path }
-    .hint-tabs = Type a tab letter · Esc closes
-    .hint-tab = { $tab } tab · Esc goes back one level
-    .hint-items = Type an item letter · Esc goes back one level
+    .typed = Saisi : { $path }
+    .hint-tabs = Tapez la lettre d'un onglet · Échap ferme
+    .hint-tab = Onglet { $tab } · Échap remonte d'un niveau
+    .hint-items = Tapez la lettre d'un élément · Échap remonte d'un niveau

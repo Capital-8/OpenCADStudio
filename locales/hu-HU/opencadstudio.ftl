@@ -6520,7 +6520,7 @@ image-adjust =
 
 keytips =
     .title = KeyTip
-    .typed = Typed: { $path }
-    .hint-tabs = Type a tab letter · Esc closes
-    .hint-tab = { $tab } tab · Esc goes back one level
-    .hint-items = Type an item letter · Esc goes back one level
+    .typed = Begépelve: { $path }
+    .hint-tabs = Írja be a lap betűjét · Az Esc bezár
+    .hint-tab = { $tab } lap · Az Esc egy szinttel visszalép
+    .hint-items = Írja be az elem betűjét · Az Esc egy szinttel visszalép
