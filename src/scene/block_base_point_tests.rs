@@ -643,7 +643,7 @@ fn locked_noop_redefine_leaves_the_instance_where_it_is() {
 fn locked_block_definition_dialog_prefills_the_existing_definition_base_point() {
     // base-point fix (D): choosing an existing block in the Block Definition dialog
     // prefills the base point from that definition, so a redefine starts from
-    // the base it already has. A new block still starts at 0.0000.
+    // the base it already has. A new block starts at 0.
     let scene = scene_with_bp_test();
     assert_close(
         block_base_point(&scene.document, BP_TEST),
@@ -652,11 +652,11 @@ fn locked_block_definition_dialog_prefills_the_existing_definition_base_point() 
         "the drawing's block base point",
     );
 
-    // A new block: the fields stay at 0.0000.
+    // A new block: the fields start at 0.
     let fresh = BlockDefinitionState::new(vec![BP_TEST.to_string()], Vec::new(), 0);
-    assert_eq!(fresh.base_point_x, "0.0000");
-    assert_eq!(fresh.base_point_y, "0.0000");
-    assert_eq!(fresh.base_point_z, "0.0000");
+    assert_eq!(fresh.base_point_x, "0");
+    assert_eq!(fresh.base_point_y, "0");
+    assert_eq!(fresh.base_point_z, "0");
     assert_eq!(fresh.parse_base_point(), DVec3::ZERO);
 
     // Picking the existing block (what `Message::BlockDefNameSelect` does).

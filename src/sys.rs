@@ -1380,7 +1380,8 @@ pub fn documents_dir() -> Option<std::path::PathBuf> {
     let mut raw: windows_sys::core::PWSTR = std::ptr::null_mut();
     // SAFETY: SHGetKnownFolderPath writes a CoTaskMemAlloc'd, NUL-terminated
     // wide string to `raw`, freed below.
-    let hr = unsafe { SHGetKnownFolderPath(&FOLDERID_Documents, 0, std::ptr::null_mut(), &mut raw) };
+    let hr =
+        unsafe { SHGetKnownFolderPath(&FOLDERID_Documents, 0, std::ptr::null_mut(), &mut raw) };
     let path = if hr == 0 && !raw.is_null() {
         // SAFETY: `raw` is a valid NUL-terminated wide string from the call above.
         let len = unsafe { (0..).take_while(|&k| *raw.add(k) != 0).count() };

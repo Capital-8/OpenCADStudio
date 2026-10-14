@@ -799,7 +799,9 @@ impl OpenCADStudio {
             attdef_on_screen: crate::modules::draw::draw::attdef::session().on_screen,
             block_base_on_screen: block_defaults.base_on_screen,
             block_objects_on_screen: block_defaults.objects_on_screen,
-            block_object_mode: crate::modules::insert::block_cmdline::mode_code(block_defaults.mode),
+            block_object_mode: crate::modules::insert::block_cmdline::mode_code(
+                block_defaults.mode,
+            ),
             block_allow_exploding: block_defaults.allow_exploding,
             block_open_in_editor: block_defaults.open_in_editor,
             wblock_object_mode: crate::modules::insert::block_cmdline::mode_code(
@@ -2439,7 +2441,11 @@ impl OpenCADStudio {
                         d.header.insertion_units = unit;
                         d
                     }
-                    crate::modules::insert::block_cmdline::WblockSource::Objects { handles, base, .. } => {
+                    crate::modules::insert::block_cmdline::WblockSource::Objects {
+                        handles,
+                        base,
+                        ..
+                    } => {
                         crate::modules::insert::wblock::extract_entities_to_doc_with_base(
                             &document, &handles, base, unit,
                         )

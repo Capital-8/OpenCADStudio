@@ -6082,7 +6082,9 @@ impl OpenCADStudio {
                 crate::modules::insert::block_cmdline::defaults().wblock_mode = mode;
                 self.persist_settings_if_changed();
                 let source = match state.source_mode {
-                    WblockSourceMode::Block => WblockSource::Block(state.block_name.trim().to_string()),
+                    WblockSourceMode::Block => {
+                        WblockSource::Block(state.block_name.trim().to_string())
+                    }
                     WblockSourceMode::EntireDrawing => WblockSource::Drawing,
                     WblockSourceMode::Objects => WblockSource::Objects {
                         handles: state.selected_handles.clone(),

@@ -1582,8 +1582,8 @@ mod block_base_point_tests {
             app.block_definition
                 .as_ref()
                 .map(|s| s.base_point_y.as_str()),
-            Some("0.0000"),
-            "a new block still starts at 0.0000"
+            Some("0"),
+            "a new block starts at 0"
         );
 
         let _ = app.update(Message::BlockDefNameSelect("DEF_BASE".to_string()));

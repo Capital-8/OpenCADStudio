@@ -511,7 +511,8 @@ pub enum WblockSource {
 }
 
 /// -WBLOCK: `Enter name of output file:` → (replace?) →
-/// `Enter name of existing block or [= (block=output file)/* (whole drawing)] <define new drawing>:`
+/// `Enter name of existing block or [= (block=output file)/* (whole drawing)]
+/// <define new drawing>:`
 /// → `Specify insertion base point or [mOde]:` → `Select objects:`.
 pub struct DashWblockCommand {
     step: WblockStep,

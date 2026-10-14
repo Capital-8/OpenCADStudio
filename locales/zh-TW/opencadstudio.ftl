@@ -6543,3 +6543,9 @@ keytips =
 selection-report =
     .found-duplicate-total = __ocs_fmt_0__ found (__ocs_fmt_1__ duplicate), __ocs_fmt_2__ total
     .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total
+
+block-def =
+    .name-too-short = The name must be at least one character long.
+    .name-unsupported-chars = The name contains unsupported characters. The following characters are not supported: \ < > / ? " : ; * | , = `
+    .definition-changed-redefine = The block definition has changed. Do you want to redefine it ?
+    .create-drawing-file = Create Drawing File

@@ -612,8 +612,8 @@ impl OpenCADStudio {
             // ATTSYNC <block>: the named block, without prompts.
             cmd if cmd.starts_with("ATTSYNC ") => {
                 let arg = cmd.trim_start_matches("ATTSYNC").trim().to_string();
-                let table =
-                    crate::modules::insert::block_cmdline::BlockTable::of(&self.tabs[i].scene.document);
+                let document = &self.tabs[i].scene.document;
+                let table = crate::modules::insert::block_cmdline::BlockTable::of(document);
                 match table.attributed.iter().find(|b| b.eq_ignore_ascii_case(&arg)) {
                     Some(block) => {
                         let block = block.clone();
@@ -1725,27 +1725,14 @@ mod tests {
     }
 
     // ATTMAN and BATTMAN are the Block Attribute Manager; this build routes both
-    // to the attribute editor (ATTEDIT) instead of the old command-line listing.
-    // With nothing selected they start the same interactive pick as ATTEDIT,
-    // byte for byte, and never emit the old "no matching block" listing text.
+    // to the attribute editor (ATTEDIT). A drawing without attributed blocks
+    // has nothing to manage, which both report instead of opening it.
     #[test]
-    fn attman_and_battman_route_to_attedit() {
-        let attedit = run_capture(&mut fresh_app(), "ATTEDIT");
-        let attman = run_capture(&mut fresh_app(), "ATTMAN");
-        let battman = run_capture(&mut fresh_app(), "BATTMAN");
-
-        assert_eq!(
-            attman, attedit,
-            "ATTMAN must behave like ATTEDIT, got: {attman:?} vs {attedit:?}"
-        );
-        assert_eq!(
-            battman, attedit,
-            "BATTMAN must behave like ATTEDIT, got: {battman:?} vs {attedit:?}"
-        );
-        assert!(
-            !attman.contains("no matching block"),
-            "ATTMAN must not run the old command-line listing, got: {attman:?}"
-        );
+    fn attman_and_battman_report_a_drawing_without_attributed_blocks() {
+        for command in ["ATTMAN", "BATTMAN"] {
+            let output = run_capture(&mut fresh_app(), command);
+            assert_eq!(output, "This drawing contains no attributed blocks.", "{command}");
+        }
     }
 
     #[test]

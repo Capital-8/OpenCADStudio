@@ -204,8 +204,8 @@ impl OpenCADStudio {
         self.push_undo_snapshot(i, "ATTSYNC");
         let mut changes = Vec::new();
         for handle in inserts {
-            let Some(codec::EntityType::Insert(ins)) = self.tabs[i].scene.document.get_entity(handle)
-            else {
+            let document = &self.tabs[i].scene.document;
+            let Some(codec::EntityType::Insert(ins)) = document.get_entity(handle) else {
                 continue;
             };
             let transform = crate::scene::render_graph::insert_transform_with_base(ins, base);
