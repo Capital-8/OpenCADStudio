@@ -391,7 +391,7 @@ impl OpenCADStudio {
             let extracted: HashSet<Handle> = session.extracted.iter().copied().collect();
             br.entity_handles.retain(|h| !extracted.contains(h));
         }
-        for entity in edited.iter().cloned() {
+        for entity in edited {
             let _ = self.tabs[i].scene.document.add_entity(entity);
         }
         let instances = self.tabs[i]
@@ -423,7 +423,9 @@ impl OpenCADStudio {
                 .push_output(crate::tf!("{} objects removed from {}", n, name).as_ref()),
         }
         let reloaded = match &session.xref_path {
-            Some(raw) => match self.write_back_xref(i, &session, raw, edited) {
+            // The file gets the whole new definition: the objects that were
+            // not checked out stay in it as well as the edited ones.
+            Some(raw) => match self.write_back_xref(i, &session, raw) {
                 Ok(()) => true,
                 Err(error) => {
                     self.command_line.push_error(&error);
@@ -463,8 +465,18 @@ impl OpenCADStudio {
         i: usize,
         session: &RefEditSession,
         raw: &str,
-        edited: Vec<EntityType>,
     ) -> Result<(), String> {
+        let edited: Vec<EntityType> = self.tabs[i]
+            .scene
+            .document
+            .entities()
+            .filter(|entity| entity.common().owner_handle == session.br_handle)
+            .cloned()
+            .map(|mut entity| {
+                entity.common_mut().handle = Handle::NULL;
+                entity
+            })
+            .collect();
         let base_dir = self.tabs[i]
             .current_path
             .as_ref()
@@ -537,6 +549,9 @@ impl OpenCADStudio {
             None,
             crate::app::command_driver::clipboard::PasteSpace::Model,
         );
+        if self.backup_on_save {
+            crate::io::write_backup(&path);
+        }
         crate::io::save(&source, &path)?;
         let keys: rustc_hash::FxHashSet<Handle> = [session.br_handle].into_iter().collect();
         self.tabs[i].xref_stat_cache.0.remove(&session.br_handle.value());
