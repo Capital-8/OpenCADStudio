@@ -507,6 +507,32 @@ impl OpenCADStudio {
         StepInput::SelectionComplete(kept)
     }
 
+    /// Keeps only the kinds of object the active command takes, dropping
+    /// the rest of a completed selection silently.
+    fn filter_command_entity_selection(&mut self, input: StepInput) -> StepInput {
+        let StepInput::SelectionComplete(handles) = input else {
+            return input;
+        };
+        let i = self.active_tab;
+        let Some(keep) = self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .and_then(|command| command.selection_entity_filter())
+        else {
+            return StepInput::SelectionComplete(handles);
+        };
+        let (kept, dropped): (Vec<Handle>, Vec<Handle>) = handles
+            .into_iter()
+            .partition(|h| self.tabs[i].scene.document.get_entity(*h).is_some_and(keep));
+        for handle in &dropped {
+            self.tabs[i].scene.deselect_entity(*handle);
+        }
+        if !dropped.is_empty() {
+            self.refresh_properties();
+        }
+        StepInput::SelectionComplete(kept)
+    }
+
     /// Drops locked point clouds from a completed selection when the active
     /// command would move them, saying which were locked and how many went.
     fn filter_locked_point_cloud_selection(&mut self, input: StepInput) -> StepInput {
@@ -562,6 +588,7 @@ impl OpenCADStudio {
         let input = self.filter_associative_dimension_selection(input);
         let input = self.filter_block_reference_selection(input);
         let input = self.filter_locked_point_cloud_selection(input);
+        let input = self.filter_command_entity_selection(input);
         // XCLIP / CLIP learn which chosen references carry a clip already.
         {
             let i = self.active_tab;

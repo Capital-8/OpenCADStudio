@@ -1391,101 +1391,120 @@ impl OpenCADStudio {
                 return Some(Task::none());
             }
 
-            // ADJUST — set brightness / contrast / fade on selected raster images
-            //   ADJUST BRIGHTNESS|CONTRAST|FADE <0-100>
-            "ADJUST" => {
-                use crate::command::SelectThenKeywordCommand;
-                let has_sel = !self.tabs[i].scene.selected_entities().is_empty();
-                let c = SelectThenKeywordCommand::new(
-                    "ADJUST",
-                    "ADJUST  [Brightness / Contrast / Fade]:",
-                    vec![
-                        (
-                            "Brightness",
-                            "BRIGHTNESS",
-                            Some("ADJUST  brightness 0-100:"),
-                        ),
-                        ("Contrast", "CONTRAST", Some("ADJUST  contrast 0-100:")),
-                        ("Fade", "FADE", Some("ADJUST  fade 0-100:")),
-                    ],
-                    has_sel,
-                );
-                self.command_line.push_info(&c.prompt());
-                self.tabs[i].active_cmd = Some(Box::new(c));
-            }
-            cmd if cmd.starts_with("ADJUST ") => {
-                let rest = cmd.trim_start_matches("ADJUST").trim();
-                let parts: Vec<&str> = rest.splitn(2, char::is_whitespace).collect();
-                let action = parts.first().map(|s| s.to_uppercase()).unwrap_or_default();
-                let arg = parts.get(1).copied().unwrap_or("").trim();
-                let handles: Vec<codec::Handle> = self.tabs[i]
+            // ADJUST / -IMAGEADJUST / PDFADJUST / DWFADJUST / DGNADJUST:
+            // chosen images or underlays (pickfirst first), then the option
+            // and the value.
+            "ADJUST" | "-IMAGEADJUST" | "PDFADJUST" | "DWFADJUST" | "DGNADJUST" => {
+                let mode = match cmd {
+                    "-IMAGEADJUST" => "I",
+                    "PDFADJUST" => "P",
+                    "DWFADJUST" => "W",
+                    "DGNADJUST" => "G",
+                    _ => "A",
+                };
+                let keep = crate::modules::insert::xadjust::keeps(mode);
+                let chosen: Vec<codec::Handle> = self.tabs[i]
                     .scene
                     .selected_entities()
-                    .iter()
-                    .map(|(h, _)| *h)
-                    .filter(|handle| !self.tabs[i].scene.is_layer_locked(*handle))
+                    .into_iter()
+                    .filter(|(_, e)| keep(e))
+                    .map(|(h, _)| h)
                     .collect();
-                if handles.is_empty() {
-                    self.command_line
-                        .push_error(crate::t!("ADJUST: select raster image(s) first.").as_ref());
-                } else if action.is_empty() {
-                    self.command_line.push_info(
-                        crate::t!("Usage: ADJUST BRIGHTNESS|CONTRAST|FADE <0-100>").as_ref(),
-                    );
-                } else if let Ok(v) = arg.parse::<u8>() {
-                    let v = v.min(100);
-                    self.push_undo_snapshot(i, "ADJUST");
-                    let mut changed = 0usize;
-                    let mut changed_handles = Vec::new();
-                    for h in &handles {
-                        if let Some(codec::EntityType::RasterImage(img)) = self.tabs[i]
-                            .scene
-                            .document
-                            .entities_mut()
-                            .find(|e| e.common().handle == *h)
-                        {
-                            match action.as_str() {
-                                "BRIGHTNESS" => {
-                                    img.brightness = v;
-                                    changed += 1;
-                                    changed_handles.push(*h);
-                                }
-                                "CONTRAST" => {
-                                    img.contrast = v;
-                                    changed += 1;
-                                    changed_handles.push(*h);
-                                }
-                                "FADE" => {
-                                    img.fade = v;
-                                    changed += 1;
-                                    changed_handles.push(*h);
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    if changed > 0 {
-                        self.tabs[i].dirty = true;
-                        for &handle in &changed_handles {
-                            self.tabs[i].scene.reseed_derived_caches(handle);
-                        }
-                        let changes: Vec<_> = changed_handles
-                            .into_iter()
-                            .map(|handle| (handle, crate::scene::ChangeKind::Modified))
-                            .collect();
-                        self.tabs[i].scene.bump_entities(&changes);
-                        self.command_line.push_output(
-                            crate::tf!("ADJUST: {action} = {v} on {changed} image(s).").as_ref(),
-                        );
-                    } else {
-                        self.command_line.push_error(
-                            crate::t!("ADJUST: no raster images selected, or unknown property (use BRIGHTNESS|CONTRAST|FADE).").as_ref(),
-                        );
-                    }
-                } else {
-                    self.command_line
-                        .push_error(crate::t!("ADJUST: value must be 0-100.").as_ref());
+                if !chosen.is_empty() {
+                    self.tabs[i]
+                        .scene
+                        .replace_selection(chosen.into_iter().collect());
+                    return Some(self.dispatch_command(&format!("_ADJUSTSEL {mode}")));
                 }
+                self.start_adjust_selection(i, cmd, mode);
+            }
+            // The gathered objects: one kind at a time, then the option.
+            c if c.starts_with("_ADJUSTSEL ") => {
+                use crate::command::CadCommand;
+                use crate::modules::insert::xadjust::{self, AdjustCommand};
+                let mode = c["_ADJUSTSEL ".len()..].trim().to_string();
+                let keep = xadjust::keeps(&mode);
+                let name = xadjust::command_name(&mode);
+                let objects: Vec<(codec::Handle, codec::EntityType)> = self.tabs[i]
+                    .scene
+                    .selected_entities()
+                    .into_iter()
+                    .filter(|(h, e)| keep(e) && !self.tabs[i].scene.is_layer_locked(*h))
+                    .map(|(h, e)| (h, e.clone()))
+                    .collect();
+                match AdjustCommand::for_objects(&objects) {
+                    None => {}
+                    Some(Err(message)) => {
+                        self.command_line.push_error(crate::t!(message).as_ref());
+                        self.start_adjust_selection(i, name, &mode);
+                    }
+                    Some(Ok(command)) => {
+                        self.command_line.push_info(&command.prompt());
+                        self.command_line.set_step_options(command.options());
+                        self.tabs[i].active_cmd = Some(Box::new(command));
+                    }
+                }
+                // Repeating runs the command, not this step.
+                return Some(self.finish_dispatch(name));
+            }
+            // `_ADJUSTAPPLY <BRIGHTNESS|CONTRAST|FADE|MONOCHROME> <value> <handles…>`
+            // writes the value to every listed image or underlay, one undo step.
+            c if c.starts_with("_ADJUSTAPPLY ") => {
+                let mut parts = c.split_whitespace().skip(1);
+                let prop = parts.next().unwrap_or("").to_string();
+                let value: u8 = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+                let handles: Vec<codec::Handle> = parts
+                    .filter_map(|h| u64::from_str_radix(h, 16).ok())
+                    .map(codec::Handle::new)
+                    .collect();
+                self.push_undo_snapshot(i, "ADJUST");
+                let mut changed = Vec::new();
+                for h in &handles {
+                    let done = match self.tabs[i].scene.document.get_entity_mut(*h) {
+                        Some(codec::EntityType::RasterImage(img)) => match prop.as_str() {
+                            "BRIGHTNESS" => {
+                                img.brightness = value;
+                                true
+                            }
+                            "CONTRAST" => {
+                                img.contrast = value;
+                                true
+                            }
+                            "FADE" => {
+                                img.fade = value;
+                                true
+                            }
+                            _ => false,
+                        },
+                        Some(codec::EntityType::Underlay(u)) => match prop.as_str() {
+                            "CONTRAST" => {
+                                u.set_contrast(value);
+                                true
+                            }
+                            "FADE" => {
+                                u.set_fade(value);
+                                true
+                            }
+                            "MONOCHROME" => {
+                                u.set_monochrome(value != 0);
+                                true
+                            }
+                            _ => false,
+                        },
+                        _ => false,
+                    };
+                    if done {
+                        self.tabs[i].scene.reseed_derived_caches(*h);
+                        changed.push((*h, crate::scene::ChangeKind::Modified));
+                    }
+                }
+                if !changed.is_empty() {
+                    self.tabs[i].scene.bump_entities(&changed);
+                    self.tabs[i].dirty = true;
+                }
+                // The command used the set up; nothing stays chosen.
+                self.tabs[i].scene.deselect_all();
+                self.refresh_properties();
             }
 
             // ANNOSCALE / CANNOSCALE <ratio> — set the current annotation scale
@@ -2214,6 +2233,26 @@ pub(crate) fn table_to_csv(table: &codec::entities::Table) -> String {
         })
         .collect::<Vec<_>>()
         .join("\r\n")
+}
+
+impl OpenCADStudio {
+    /// The ADJUST family's object prompt, keeping only the kinds `mode`
+    /// takes (see `xadjust::keeps`).
+    fn start_adjust_selection(&mut self, i: usize, name: &str, mode: &str) {
+        use crate::command::CadCommand;
+        use crate::modules::insert::xadjust;
+        self.tabs[i].scene.deselect_all();
+        self.refresh_properties();
+        let command = crate::modules::draw::select::SelectObjectsCommand::filtered(
+            name,
+            &format!("_ADJUSTSEL {mode}"),
+            xadjust::select_prompt(mode),
+            xadjust::keeps(mode),
+        );
+        self.command_line.push_info(&command.prompt());
+        self.command_line.set_step_options(command.options());
+        self.tabs[i].active_cmd = Some(Box::new(command));
+    }
 }
 
 #[cfg(test)]

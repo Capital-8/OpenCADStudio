@@ -2983,6 +2983,12 @@ pub trait CadCommand: Send {
         false
     }
 
+    /// The kinds of object the command takes (ADJUST): the host drops the
+    /// rest of each completed selection without a word.
+    fn selection_entity_filter(&self) -> Option<fn(&EntityType) -> bool> {
+        None
+    }
+
     /// The command takes block references only (XCLIP): the host drops the
     /// rest and says how many were ineligible.
     fn selection_keeps_block_references(&self) -> bool {
