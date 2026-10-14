@@ -4177,6 +4177,7 @@ impl Scene {
                     None,
                     None,
                     content_viewport,
+                    self.reference_only.handles(),
                 );
                 for wire in &mut context_wires {
                     wire.color = tint;

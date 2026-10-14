@@ -792,6 +792,9 @@ fn tessellate_sub_local(
     // top-level entities, applied per-defn.
     let wires_out = if let EntityType::Dimension(dimension) = sub {
         use crate::entities::dimension::DimensionTess;
+        // Block-definition members never carry the reference-only
+        // designation (it targets top-level geometry — see the API v9
+        // known-limit note), so the block cache tessellates with an empty set.
         dimension.tessellate(
             doc,
             h,
@@ -804,6 +807,7 @@ fn tessellate_sub_local(
             bg_color,
             None,
             None,
+            &HashSet::default(),
         )
     } else {
         tessellate::tessellate(
@@ -1840,6 +1844,7 @@ impl Batches {
                     depth_override: b.local_depth,
                     display_visible: !b.hide_unselected || selected,
                     snap_only: false,
+                    reference_only: false,
                     plot_visible: b.plot_visible,
                     fill_is_3d: b.fill_is_3d,
                     fill_is_2d_solid: b.fill_is_2d_solid,

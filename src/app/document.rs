@@ -18,6 +18,17 @@ use std::sync::Arc;
 
 static NEXT_DOCUMENT_TAB_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Monotonic source for `DocumentTab::document_generation` (API v9): every
+/// minted value is process-unique, so any freshly installed document — file
+/// open, template new, system open — differs from every generation a plugin
+/// has been told about, and the opened-notification guard fires exactly once
+/// per load.
+static NEXT_DOCUMENT_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+fn next_document_generation() -> u64 {
+    NEXT_DOCUMENT_GENERATION.fetch_add(1, Ordering::Relaxed)
+}
+
 // ── Dynamic input ──────────────────────────────────────────────────────────
 
 /// One quantity shown in the dynamic-input overlay near the cursor.
@@ -147,6 +158,13 @@ pub(super) struct DocumentTab {
     /// Monotonic committed-edit/undo/redo revision. Background save completion
     /// uses it with scene epochs so an older snapshot never clears newer work.
     pub(super) edit_revision: u64,
+    /// Monotonic identity of the document currently resident in this tab: a
+    /// fresh value is minted whenever a whole document replaces the tab's
+    /// content (file open, template new, system open), and edits leave it
+    /// alone. The plugin-opened notification guard
+    /// (`OpenCADStudio::notify_plugins_document_opened`, API v9) keys on it
+    /// so `DocumentOpened` dispatches exactly once per load.
+    pub(super) document_generation: u64,
     pub(super) tab_title: String,
     pub(super) properties: PropertiesPanel,
     pub(super) layers: LayerPanel,
@@ -630,6 +648,7 @@ impl DocumentTab {
             dirty: false,
             recovery_save_as_required: false,
             edit_revision: 0,
+            document_generation: next_document_generation(),
             prev_selection: Vec::new(),
             tab_title: format!("Drawing{}", n),
             properties: PropertiesPanel::empty(),
@@ -701,6 +720,14 @@ impl DocumentTab {
         t.tab_title = "Start".to_string();
         t.is_start = true;
         t
+    }
+
+    /// A whole document just replaced this tab's content (file open, template
+    /// new, system open): mint a fresh generation so the message-boundary
+    /// dispatch announces `DocumentOpened` exactly once for this load (API
+    /// v9). Call after the document and its derived caches have settled.
+    pub(super) fn note_document_loaded(&mut self) {
+        self.document_generation = next_document_generation();
     }
 
     pub(super) fn tab_display_name(&self) -> String {
@@ -777,6 +804,7 @@ impl HistorySnapshot {
                 .saturating_add(d.named_parameters.as_ref().map_or(0, |(before, after)| {
                     before.len().saturating_add(after.len()).saturating_mul(128)
                 }))
+                .saturating_add(d.reference_designations.len().saturating_mul(16))
                 .saturating_add(d.label.len()),
             HistorySnapshot::ObjectVisibility(v) => v
                 .before
@@ -829,6 +857,12 @@ pub(super) struct DeltaSnapshot {
     /// `document.objects`, so it needs its own channel here rather than
     /// riding along with `entities`/`structure`. Almost always empty.
     pub(super) parametric_constraints: Vec<ParametricConstraintsEntryDelta>,
+    /// Reference-only designations (API v9) this same command changed — set
+    /// state on `Scene` (see `scene::reference_only`), recorded as explicit
+    /// first-touch before/afters so undo/redo restores the designation with
+    /// the entity it belongs to (e.g. a plugin scope that both erases and
+    /// re-designates). Almost always empty.
+    pub(super) reference_designations: Vec<ReferenceDesignationDelta>,
     /// Drawing-wide parameter table changed by this transaction.
     pub(super) named_parameters: Option<(
         crate::scene::named_parameters::ParameterTable,
@@ -903,6 +937,17 @@ pub(super) struct ParametricConstraintsEntryDelta {
     pub(super) after: crate::scene::parametric_constraints::ParametricConstraintSet,
 }
 
+/// One reference-only designation's before/after value within an entity delta
+/// (API v9). The designation set lives on `Scene`, not in the document, so
+/// the value rides its own channel — symmetric like every other delta field,
+/// undo applies the before value, redo the after value.
+#[derive(Clone)]
+pub(super) struct ReferenceDesignationDelta {
+    pub(super) handle: Handle,
+    pub(super) before: bool,
+    pub(super) after: bool,
+}
+
 #[derive(Default)]
 pub(super) struct HistoryState {
     pub(super) undo_stack: Vec<HistorySnapshot>,
@@ -918,6 +963,12 @@ pub(super) struct PendingHistorySnapshot {
     pub(super) dirty_before: bool,
     pub(super) structure_before: CadDocument,
     pub(super) recorder: Arc<codec::document::EntityChangeRecorder>,
+    /// First-touch before-values of reference-only designations (API v9)
+    /// mutated inside this plugin scope (see `scene::reference_only`). Set
+    /// mutations are not document writes, so the scope closes by reading the
+    /// set's current state as the after-image and keeping entries whose value
+    /// actually flipped.
+    pub(super) reference_designations_before: Vec<(Handle, bool)>,
     /// Kept as an undo step even when nothing changed.
     pub(super) keep_empty: bool,
 }

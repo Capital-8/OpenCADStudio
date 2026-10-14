@@ -223,6 +223,7 @@ impl OpenCADStudio {
             active_layer,
             structure,
             parametric_constraints,
+            reference_designations: Vec::new(),
             named_parameters,
             label: format!("Edit block {}", session.block_name),
         })
