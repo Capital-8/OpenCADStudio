@@ -414,6 +414,8 @@ pub struct RefEditOptionsCommand {
     /// Set when the Edit Reference dialog already chose the attribute
     /// option: the nested pick then opens the session directly.
     attributes: Option<bool>,
+    /// First corner of a window started by a pick on empty space.
+    corner: Option<DVec3>,
 }
 
 impl RefEditOptionsCommand {
@@ -435,6 +437,7 @@ impl RefEditOptionsCommand {
             lock,
             unique,
             attributes: None,
+            corner: None,
         }
     }
 
@@ -464,33 +467,80 @@ impl RefEditOptionsCommand {
         let nested: Vec<String> = self.nested.iter().map(|h| h.value().to_string()).collect();
         CmdResult::Relaunch(
             format!(
-                "REFEDIT_BEGIN:{}:{}:{}:{}:{}:{}",
+                "REFEDIT_BEGIN:{}:{}:{}:{}:{}:{}:{}",
                 self.top.value(),
                 path.join(","),
                 attributes as u8,
                 nested.join(","),
                 self.lock as u8,
-                self.unique as u8
+                self.unique as u8,
+                self.attributes.is_some() as u8
             ),
             vec![],
         )
     }
 
-    fn pick_nested(&mut self, point: DVec3) -> CmdResult {
+    /// A pick at `point`: the nearest object of the level within `tolerance`
+    /// (any distance when None), else the first corner of a window.
+    fn pick_nested(&mut self, point: DVec3, tolerance: Option<f64>) -> CmdResult {
+        if let Some(first) = self.corner.take() {
+            return self.window_nested(first, point);
+        }
         let nearest = self
             .hits
             .get(self.level)
             .into_iter()
             .flatten()
             .filter_map(|(h, paths)| paths_distance(paths, point).map(|d| (*h, d)))
+            .filter(|(_, d)| tolerance.is_none_or(|t| *d <= t))
             .min_by(|a, b| a.1.total_cmp(&b.1));
         match nearest {
-            Some((h, _)) if !self.nested.contains(&h) => {
-                self.nested.push(h);
-                CmdResult::ReportMeasurement(t!("1 entity added").into_owned())
+            Some((h, _)) => {
+                let added = !self.nested.contains(&h);
+                if added {
+                    self.nested.push(h);
+                }
+                CmdResult::ReportMeasurement(entities_added(added as usize))
             }
-            _ => CmdResult::NeedPoint,
+            None => {
+                self.corner = Some(point);
+                CmdResult::NeedPoint
+            }
         }
+    }
+
+    /// The level's objects in the window from `first` to `second`: wholly
+    /// inside when it was dragged to the right, touching it when to the left.
+    fn window_nested(&mut self, first: DVec3, second: DVec3) -> CmdResult {
+        let (lo, hi) = (first.min(second), first.max(second));
+        let crossing = second.x < first.x;
+        let inside = |p: &[f64; 3]| p[0] >= lo.x && p[0] <= hi.x && p[1] >= lo.y && p[1] <= hi.y;
+        let picked: Vec<Handle> = self
+            .hits
+            .get(self.level)
+            .into_iter()
+            .flatten()
+            .filter(|(_, paths)| {
+                let points = || paths.iter().flatten();
+                if crossing {
+                    points().any(inside)
+                        || paths.iter().any(|path| {
+                            path.windows(2).any(|s| segment_meets_box(s[0], s[1], lo, hi))
+                        })
+                } else {
+                    points().next().is_some() && points().all(inside)
+                }
+            })
+            .map(|(h, _)| *h)
+            .collect();
+        let mut added = 0;
+        for h in picked {
+            if !self.nested.contains(&h) {
+                self.nested.push(h);
+                added += 1;
+            }
+        }
+        CmdResult::ReportMeasurement(entities_added(added))
     }
 }
 
@@ -503,6 +553,9 @@ impl CadCommand for RefEditOptionsCommand {
             OptionStep::Nesting => t!("Select nesting level [Ok/Next] <Next>:").into_owned(),
             OptionStep::Method => {
                 t!("Enter object selection method [All/Nested] <All>:").into_owned()
+            }
+            OptionStep::Nested if self.corner.is_some() => {
+                t!("Specify opposite corner:").into_owned()
             }
             OptionStep::Nested => t!("Select nested objects:").into_owned(),
             OptionStep::Attributes => {
@@ -526,8 +579,13 @@ impl CadCommand for RefEditOptionsCommand {
     fn needs_entity_pick(&self) -> bool {
         matches!(self.step, OptionStep::Nested)
     }
-    fn on_entity_pick(&mut self, _handle: Handle, pt: DVec3) -> CmdResult {
-        self.pick_nested(pt)
+    fn on_entity_pick(&mut self, handle: Handle, pt: DVec3) -> CmdResult {
+        // A click on empty space starts a window, as does one beside the
+        // reference's objects.
+        if handle.is_null() {
+            return self.pick_nested(pt, Some(0.0));
+        }
+        self.pick_nested(pt, None)
     }
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
         let word = text.trim().to_ascii_uppercase();
@@ -554,7 +612,8 @@ impl CadCommand for RefEditOptionsCommand {
     }
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
         match self.step {
-            OptionStep::Nested => self.pick_nested(pt),
+            // A typed point picks the object it lies on.
+            OptionStep::Nested => self.pick_nested(pt, Some(1e-6 * pt.length().max(1.0))),
             _ => CmdResult::NeedPoint,
         }
     }
@@ -573,12 +632,14 @@ impl CadCommand for RefEditOptionsCommand {
                 self.step = OptionStep::Attributes;
                 CmdResult::NeedPoint
             }
+            OptionStep::Nested if self.corner.take().is_some() => CmdResult::NeedPoint,
             OptionStep::Nested => {
                 let n = self.nested.len();
                 if n == 0 {
                     return CmdResult::CancelWithMessage(t!("0 items selected").into_owned());
                 }
                 if let Some(attributes) = self.attributes {
+                    // The count and the session's note follow as it opens.
                     return self.begin(attributes);
                 }
                 self.step = OptionStep::Attributes;
@@ -591,6 +652,45 @@ impl CadCommand for RefEditOptionsCommand {
             OptionStep::Attributes => self.begin(false),
         }
     }
+}
+
+/// `N entity added` / `N entities added`.
+fn entities_added(n: usize) -> String {
+    if n == 1 {
+        t!("1 entity added").into_owned()
+    } else {
+        crate::tf!("{} entities added", n).into_owned()
+    }
+}
+
+/// Whether the segment from `a` to `b` crosses the box `lo`..`hi` (XY).
+fn segment_meets_box(a: [f64; 3], b: [f64; 3], lo: DVec3, hi: DVec3) -> bool {
+    // Liang–Barsky clip of the segment against the box.
+    let (mut t0, mut t1) = (0.0f64, 1.0f64);
+    let d = [b[0] - a[0], b[1] - a[1]];
+    for (p, q) in [
+        (-d[0], a[0] - lo.x),
+        (d[0], hi.x - a[0]),
+        (-d[1], a[1] - lo.y),
+        (d[1], hi.y - a[1]),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return false;
+            }
+        } else {
+            let r = q / p;
+            if p < 0.0 {
+                t0 = t0.max(r);
+            } else {
+                t1 = t1.min(r);
+            }
+            if t0 > t1 {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 // ── REFSET ────────────────────────────────────────────────────────────────
