@@ -3059,6 +3059,8 @@ pub enum Message {
     /// User clicked a command-line option button — feed its keyword to the
     /// active command as if typed (empty keyword = Enter). (#304)
     CommandOptionPick(String),
+    /// The pointer entered (true) or left the command line's overlay history.
+    CommandHistoryHover(bool),
     ToggleLayers,
     /// Open/focus (or close) the Reference Manager palette.
     ToggleXrefManager,

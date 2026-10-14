@@ -2857,6 +2857,11 @@ impl OpenCADStudio {
                 self.focus_cmd_input()
             }
 
+            Message::CommandHistoryHover(hovered) => {
+                self.command_line.set_history_hover(hovered);
+                Task::none()
+            }
+
             Message::CommandHistoryToggle => {
                 self.command_line.toggle_history();
                 if !self.command_line.history_open {
