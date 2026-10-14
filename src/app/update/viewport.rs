@@ -2663,7 +2663,15 @@ impl OpenCADStudio {
                             .map(|snap| snap.world)
                             .unwrap_or(cursor_world);
                         axis_lock_apply(point, base, dir)
-                    } else if let Some(h) = otrack_hit {
+                    } else if let Some(h) = otrack_hit.filter(|_| {
+                        // A real object snap must win over tracking alignment.
+                        // Otherwise the endpoint glyph can appear at the
+                        // corner while the preview/accepted point follows the
+                        // tracking line instead.
+                        !self.tabs[i].snap_result.is_some_and(|s| {
+                            s.snap_type != crate::snap::SnapType::Grid
+                        })
+                    }) {
                         h.aligned
                     } else {
                         // Snap runs in model space (viewport camera or the
@@ -4498,7 +4506,11 @@ impl OpenCADStudio {
                 } else {
                     None
                 };
-                if let Some(h) = otrack {
+                if let Some(h) = otrack.filter(|_| {
+                    // Match the hover path: never override a genuine OSNAP
+                    // endpoint/intersection with a tracking projection.
+                    !snap_hit.is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid)
+                }) {
                     pt = h.aligned;
                     if clamp_world_xy {
                         pt.z = 0.0;

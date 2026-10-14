@@ -15,6 +15,46 @@ use iced::widget::{
 use iced::window;
 use iced::{keyboard, Background, Border, Color, Element, Fill, Subscription, Task, Theme};
 use iced_aw::ContextMenu;
+ 
+/// Invisible event surface for accurate point picking. MouseArea emits a
+/// positionless press message; capturing the cursor in the actual button
+/// event avoids using the previous hover location when clicking quickly.
+#[derive(Debug, Clone, Copy)]
+struct ViewportPickSurface;
+
+impl iced::widget::canvas::Program<Message> for ViewportPickSurface {
+    type State = ();
+
+    fn update(
+        &self,
+        _state: &mut Self::State,
+        event: &iced::Event,
+        bounds: iced::Rectangle,
+        cursor: iced::mouse::Cursor,
+    ) -> Option<iced::widget::canvas::Action<Message>> {
+        if let iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)) =
+            event
+        {
+            return cursor.position_in(bounds).map(|position| {
+                iced::widget::canvas::Action::publish(Message::ViewportLeftPressAt(position))
+                    .and_capture()
+            });
+        }
+        None
+    }
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        _renderer: &iced::Renderer,
+        _theme: &iced::Theme,
+        _bounds: iced::Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<iced::widget::canvas::Geometry> {
+        Vec::new()
+    }
+}
+
 use std::sync::Arc;
 
 mod controls;
@@ -876,10 +916,16 @@ bg={bg_ms:.1}ms n={view_count}"
                 .hover_highlight
                 .map(|h| tab.scene.is_layer_locked(h))
                 .unwrap_or(false);
-            let point_cursor = tab
-                .active_cmd
-                .as_ref()
-                .is_some_and(|cmd| !cmd.needs_entity_pick() && !cmd.is_selection_gathering());
+            // Keep the hollow pickbox at rest. Use the standard LINE/RECTANG
+            // dot crosshair only after the first window/crossing corner.
+            // No OSNAP or selection behavior changes.
+            let selecting_window = tab.active_cmd.is_none()
+                && tab.scene.selection.borrow().gesture.box_anchor.is_some();
+            let point_cursor = selecting_window
+                || tab
+                    .active_cmd
+                    .as_ref()
+                    .is_some_and(|cmd| !cmd.needs_entity_pick() && !cmd.is_selection_gathering());
             let constraint_cursor_badge = if is_paper {
                 None
             } else {
@@ -986,9 +1032,15 @@ bg={bg_ms:.1}ms n={view_count}"
 
         mark("viewport_mouse");
         let viewport_mouse = mouse_area(container(
-            iced::widget::Space::new().width(Fill).height(Fill),
+            iced::widget::canvas(ViewportPickSurface)
+                .width(Fill)
+                .height(Fill),
         ))
         .on_move(Message::ViewportMove)
+        // Left mouse presses are captured by the canvas with their exact
+        // event-time position. MouseArea::on_press has no coordinate, so
+        // queued cursor moves could otherwise make quick clicks use a stale
+        // snap position. Touch presses still use this fallback.
         .on_press(Message::ViewportLeftPress)
         .on_release(Message::ViewportLeftRelease)
         .on_right_press(Message::ViewportRightPress)
@@ -1036,6 +1088,20 @@ bg={bg_ms:.1}ms n={view_count}"
         {
             let w = tab.last_cursor_world;
             let base = tab.dyn_anchor.or(self.last_point);
+            // A single distance field on an acquired tracking ray is measured
+            // from the acquired OSNAP/OTRACK point, not from the command's
+            // previous point (or from WCS zero before the first pick).
+            // Keep typed fields and ordinary polar distance inputs unchanged.
+            let tracking_distance = if tab.dyn_fields.len() == 1
+                && tab.dyn_fields[0].component == DynComponent::Distance
+            {
+                self.active_distance_ray(self.active_tab).and_then(|(origin, direction)| {
+                    let axis = direction.try_normalize()?;
+                    Some((w - origin).dot(axis).abs())
+                })
+            } else {
+                None
+            };
             let label_screen = tab
                 .active_cmd
                 .as_ref()
@@ -1184,6 +1250,16 @@ bg={bg_ms:.1}ms n={view_count}"
                             } else {
                                 format!("{lv:.4}")
                             }
+                        }
+                        // The displayed live distance must use the same
+                        // acquired tracking origin as the guide and typed
+                        // distance placement, not the last picked point.
+                        (None, _) if f.component == DynComponent::Distance
+                            && tracking_distance.is_some() =>
+                        {
+                            crate::entities::common::format_length(
+                                tracking_distance.unwrap() * f.role.value_scale() as f64,
+                            )
                         }
                         _ => dyn_component_value(
                             f,
