@@ -125,6 +125,12 @@ The Flatpak opens and saves drawings through the file chooser. External referenc
 flatpak override --user --filesystem=home io.github.HakanSeven12.OpenCadStudio
 ```
 
+Each release also carries a snap. It is not in the Snap Store yet, so snapd installs it only with `--dangerous`, and it does not update itself:
+
+```bash
+sudo snap install --dangerous OpenCADStudio-*-linux-x86_64.snap
+```
+
 ### macOS
 
 The published macOS package supports Apple Silicon:
