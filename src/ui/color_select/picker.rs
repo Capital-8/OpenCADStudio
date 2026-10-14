@@ -594,19 +594,26 @@ impl ColorPicker {
     }
 
     fn document_tab(&self) -> Element<'_, Message> {
+        // Search on the left half; sorting and the view buttons on the right.
         let header = row![
-            search_box(&self.doc_query, |query| ColorPickerMsg::DocQuery(query)),
-            pick_list(Some(self.doc_sort), &DocSort::ALL[..], DocSort::to_string)
-                .on_select(|by| picker_msg(ColorPickerMsg::DocSort(by)))
-                .text_size(12)
-                .padding([6, 8]),
+            container(search_box(&self.doc_query, |query| {
+                ColorPickerMsg::DocQuery(query)
+            }))
+            .width(Length::FillPortion(1)),
             row![
+                pick_list(Some(self.doc_sort), &DocSort::ALL[..], DocSort::to_string)
+                    .on_select(|by| picker_msg(ColorPickerMsg::DocSort(by)))
+                    .text_size(12)
+                    .padding([6, 8])
+                    .width(Length::Fill),
                 self.view_button(crate::ui::icons::GRID, DocView::Grid),
                 self.view_button(crate::ui::icons::LIST, DocView::List),
             ]
-            .spacing(2),
+            .spacing(2)
+            .align_y(iced::Center)
+            .width(Length::FillPortion(1)),
         ]
-        .spacing(6)
+        .spacing(8)
         .align_y(iced::Center);
         if self.doc.is_empty() {
             return column![
