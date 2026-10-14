@@ -3122,6 +3122,7 @@ impl Scene {
             if let codec::objects::ObjectType::Layout(l) = obj {
                 if l.name != "Model" {
                     crate::scene::apply_default_page_setup(l, "");
+                    self.unopened_layouts.insert(l.name.clone());
                 }
             }
         }

@@ -24,6 +24,15 @@ impl Scene {
     /// cached layout-name list is invalidated on insert.
     pub fn add_layout(&mut self, name: &str) -> codec::Result<Handle> {
         let handle = self.document.add_layout(name)?;
+        // The layout has no viewports until it first opens (the sheet the
+        // document makes for it is placed at the origin, not on its page);
+        // opening it makes the sheet and, with LAYOUTCREATEVIEWPORT, its
+        // first viewport.
+        let block = match self.document.objects.get(&handle) {
+            Some(ObjectType::Layout(layout)) => layout.block_record,
+            _ => codec::Handle::NULL,
+        };
+        crate::scene::drop_layout_viewports(&mut self.document, block);
         self.unopened_layouts.insert(name.to_string());
         self.bump_layout_epoch();
         Ok(handle)
