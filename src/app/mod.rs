@@ -3625,6 +3625,8 @@ pub enum Message {
     PropPointerPressed,
     /// Toggle the inline color picker dropdown open/closed.
     PropColorPickerToggle,
+    /// A Properties dropdown toggle and whether Quick Properties sent it.
+    PropPickerSurface(bool, Box<Message>),
     /// Toggle the MTEXT background-colour picker dropdown open/closed.
     PropBgColorPickerToggle,
     /// User picked an MTEXT background fill colour — sets `background_color`

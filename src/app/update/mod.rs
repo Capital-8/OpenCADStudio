@@ -7856,6 +7856,13 @@ impl OpenCADStudio {
                 Task::none()
             }
 
+            Message::PropPickerSurface(quick, message) => {
+                let task = self.update(*message);
+                let i = self.active_tab;
+                self.tabs[i].properties.picker_in_quick = quick;
+                task
+            }
+
             Message::PropColorPickerToggle => {
                 let i = self.active_tab;
                 self.tabs[i].properties.color_picker_open =
