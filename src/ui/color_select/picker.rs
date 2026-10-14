@@ -606,10 +606,13 @@ impl ColorPicker {
                     .text_size(12)
                     .padding([6, 8])
                     .width(Length::Fill),
-                self.view_button(crate::ui::icons::GRID, DocView::Grid),
-                self.view_button(crate::ui::icons::LIST, DocView::List),
+                row![
+                    self.view_button(crate::ui::icons::GRID, DocView::Grid),
+                    self.view_button(crate::ui::icons::LIST, DocView::List),
+                ]
+                .spacing(2),
             ]
-            .spacing(2)
+            .spacing(8)
             .align_y(iced::Center)
             .width(Length::FillPortion(1)),
         ]
