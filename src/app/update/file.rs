@@ -2196,6 +2196,12 @@ impl OpenCADStudio {
             self.tabs[i].scene.load_current_layout_state();
             self.tabs[i].refresh_active_ucs();
         }
+        // A layout saved with a model viewport entered reopens inside it,
+        // with that viewport's UCS (#1670).
+        let enter_viewport_task = self.tabs[i]
+            .scene
+            .saved_entered_viewport()
+            .map_or_else(Task::none, |handle| Task::done(Message::EnterViewport(handle)));
 
         // The tab may have been reused for the newly opened file. Any Plot
         // dialog cache belongs to the previous/startup drawing and must not
@@ -2317,6 +2323,7 @@ impl OpenCADStudio {
             interaction_task,
             startup_script_task,
             sheet_set_task,
+            enter_viewport_task,
         ])
     }
 
@@ -2640,6 +2647,7 @@ impl OpenCADStudio {
         if self.tabs[i].active_block_edit.is_none() {
             self.tabs[i].scene.sync_camera_to_document();
             self.tabs[i].last_synced_camera_gen = self.tabs[i].scene.camera_generation;
+            self.tabs[i].scene.sync_active_viewport_to_document();
         }
     }
 

@@ -4661,6 +4661,46 @@ impl Scene {
         crate::io::set_saved_active_layout(&mut self.document, &self.current_layout);
     }
 
+    /// Record the entered viewport (or the sheet, in paper space) as the
+    /// current layout's last active viewport, which reopens it (#1670).
+    pub fn sync_active_viewport_to_document(&mut self) {
+        let Some(handle) = self.current_layout_object_handle() else {
+            return;
+        };
+        let sheet = match self.document.objects.get(&handle) {
+            Some(ObjectType::Layout(layout)) => {
+                Self::layout_sheet_viewport_handle(&self.document, layout)
+            }
+            _ => return,
+        };
+        let active = self.active_viewport.unwrap_or(sheet);
+        if let Some(ObjectType::Layout(layout)) = self.document.objects.get_mut(&handle) {
+            layout.viewport = active;
+        }
+    }
+
+    /// The model viewport the current layout was saved with entered: its
+    /// last active viewport when that is an on viewport other than the sheet.
+    pub fn saved_entered_viewport(&self) -> Option<Handle> {
+        let handle = self.current_layout_object_handle()?;
+        let Some(ObjectType::Layout(layout)) = self.document.objects.get(&handle) else {
+            return None;
+        };
+        let viewport = layout.viewport;
+        let sheet = Self::layout_sheet_viewport_handle(&self.document, layout);
+        if viewport.is_null() || viewport == sheet {
+            return None;
+        }
+        match self.document.get_entity(viewport) {
+            Some(EntityType::Viewport(vp))
+                if vp.common.owner_handle == layout.block_record && !vp.status.is_off =>
+            {
+                Some(viewport)
+            }
+            _ => None,
+        }
+    }
+
     pub(crate) fn layout_sheet_viewport_handle(
         document: &codec::CadDocument,
         layout: &codec::objects::Layout,
