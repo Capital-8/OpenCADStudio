@@ -6443,6 +6443,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
+    .add-to-working-set = Add to Working Set
+    .remove-from-working-set = Remove from Working Set
+    .toolbar-objects = objects
     .select-reference = Válassza ki a hivatkozást:
     .reference-not-found = A hivatkozás nem található.
     .not-valid-reference = Az objektum nem érvényes hivatkozás

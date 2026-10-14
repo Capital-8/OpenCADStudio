@@ -6447,6 +6447,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
+    .add-to-working-set = Add to Working Set
+    .remove-from-working-set = Remove from Working Set
+    .toolbar-objects = objects
     .select-reference = संदर्भ चुनें:
     .reference-not-found = संदर्भ नहीं मिला।
     .not-valid-reference = ऑब्जेक्ट मान्य संदर्भ नहीं है

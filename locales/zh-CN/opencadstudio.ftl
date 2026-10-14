@@ -6442,6 +6442,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
+    .add-to-working-set = Add to Working Set
+    .remove-from-working-set = Remove from Working Set
+    .toolbar-objects = objects
     .select-reference = 选择参照:
     .reference-not-found = 找不到参照。
     .not-valid-reference = 对象不是有效的参照

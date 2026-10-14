@@ -21,7 +21,7 @@ impl OpenCADStudio {
     pub(super) fn dispatch_refedit(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {
         match cmd {
             "REFEDIT" | "-REFEDIT" => Some(self.start_refedit(i, cmd == "-REFEDIT")),
-            "REFSET" => {
+            "REFSET" | "REFSET_ADD" | "REFSET_REMOVE" => {
                 if self.tabs[i].refedit_session.is_none() {
                     self.command_line.push_error(crate::t!(NOT_CHECKED_OUT).as_ref());
                     return Some(Task::none());
@@ -30,7 +30,12 @@ impl OpenCADStudio {
                     crate::t!("Transfer objects between the RefEdit working set and host drawing...")
                         .as_ref(),
                 );
-                let command = RefSetCommand::new();
+                // The side toolbar's Add / Remove go straight to the selection.
+                let command = match cmd {
+                    "REFSET_ADD" => RefSetCommand::selecting(true),
+                    "REFSET_REMOVE" => RefSetCommand::selecting(false),
+                    _ => RefSetCommand::new(),
+                };
                 use crate::command::CadCommand;
                 self.command_line.push_info(&command.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(command));

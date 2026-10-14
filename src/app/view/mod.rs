@@ -1687,9 +1687,18 @@ bg={bg_ms:.1}ms n={view_count}"
 
             // In-place block edit (REFEDIT): right-edge toolbar with Save / Discard
             // so the edit can be finished by clicking. (#136)
-            if tab.refedit_session.is_some() && !tab.is_start {
-                if let Some(tb) = crate::ui::side_toolbar::view(
-                    &crate::modules::draw::modify::refedit::refedit_tools(),
+            if let (Some(session), false) = (tab.refedit_session.as_ref(), tab.is_start) {
+                use crate::modules::draw::modify::refedit::{refedit_set_tools, refedit_tools};
+                let set_tools = refedit_set_tools();
+                let close_tools = refedit_tools();
+                let header = crate::ui::side_toolbar::refedit_header(
+                    &session.block_name,
+                    refedit_working_set_count(session, &tab.scene),
+                );
+                if let Some(tb) = crate::ui::side_toolbar::view_sections(
+                    Some(header),
+                    &[&set_tools, &close_tools],
+                    &|_| false,
                 ) {
                     viewport_stack = viewport_stack.push(tb);
                 }
@@ -4182,4 +4191,23 @@ mod tests {
             super::super::StartSection::default(),
         );
     }
+}
+
+/// The objects in a REFEDIT session's working set: the checked-out copies and
+/// objects added with REFSET still in it, and everything created in the
+/// space since.
+// ponytail: walks the document per frame while a session is open; keep a
+// running count on the session if large drawings feel it.
+fn refedit_working_set_count(
+    session: &crate::modules::draw::modify::refedit::RefEditSession,
+    scene: &crate::scene::Scene,
+) -> usize {
+    let space = scene.current_layout_block_handle_pub();
+    scene
+        .document
+        .entities()
+        .filter(|entity| {
+            entity.common().owner_handle == space && session.in_working_set(entity.common().handle)
+        })
+        .count()
 }

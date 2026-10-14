@@ -20,6 +20,25 @@ use std::collections::HashSet;
 use crate::command::{CadCommand, CmdOption, CmdResult};
 use crate::modules::{IconKind, ModuleEvent, ToolDef};
 
+/// Right-edge side-toolbar buttons that move objects into or out of the
+/// working set while a REFEDIT session is active (REFSET Add / Remove).
+pub fn refedit_set_tools() -> Vec<ToolDef> {
+    vec![
+        ToolDef {
+            id: "REFSET_ADD",
+            label: "Add to Working Set",
+            icon: IconKind::Svg(include_bytes!("../../../../assets/icons/refset_add.svg")),
+            event: ModuleEvent::Command("REFSET_ADD".to_string()),
+        },
+        ToolDef {
+            id: "REFSET_REMOVE",
+            label: "Remove from Working Set",
+            icon: IconKind::Svg(include_bytes!("../../../../assets/icons/refset_remove.svg")),
+            event: ModuleEvent::Command("REFSET_REMOVE".to_string()),
+        },
+    ]
+}
+
 /// Right-edge side-toolbar buttons shown while a REFEDIT session is active:
 /// save the in-place block edit, or discard it. (#136)
 pub fn refedit_tools() -> Vec<ToolDef> {
@@ -476,6 +495,15 @@ impl RefSetCommand {
         Self {
             add: true,
             gathering: false,
+            selected: Vec::new(),
+        }
+    }
+
+    /// Straight to `Select objects:` for Add (`add`) or Remove.
+    pub fn selecting(add: bool) -> Self {
+        Self {
+            add,
+            gathering: true,
             selected: Vec::new(),
         }
     }
