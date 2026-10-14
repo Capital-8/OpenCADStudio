@@ -582,6 +582,8 @@ pub(super) struct OpenCADStudio {
     pc_section: Option<crate::ui::window::pdf_dialogs::PcSectionState>,
     /// -VIEW sEttings Background dialog.
     view_background: Option<crate::ui::window::pdf_dialogs::ViewBackgroundState>,
+    /// The Edit Reference dialog (REFEDIT).
+    refedit_dialog: Option<crate::ui::window::refedit_dialog::RefEditDialogState>,
     underlay_layers: Option<crate::ui::window::pdf_dialogs::UnderlayLayersState>,
     pdf_import_settings: Option<crate::modules::insert::pdf_import::PdfImportSettings>,
     pdf_import_file: Option<crate::ui::window::pdf_dialogs::PdfImportFileState>,
@@ -790,6 +792,8 @@ pub(super) struct OpenCADStudio {
     block_freq: std::collections::HashMap<String, u32>,
     /// BLOCKMRULIST: how many recent blocks the palette keeps (0–100).
     pub(crate) block_mru_list: u8,
+    /// The Edit Reference dialog's remembered settings.
+    pub(crate) refedit_options: crate::app::settings::RefEditOptions,
     /// BLOCKREDEFINEMODE (0–2).
     pub(crate) block_redefine_mode: u8,
     /// BLOCKNAVIGATE: the Libraries tab's start folder ("." for none).
@@ -2153,6 +2157,7 @@ pub enum ModalKind {
     PointCloudColorMap,
     PcSection,
     ViewBackground,
+    RefEdit,
     UnderlayLayers,
     PdfImportSettings,
     PdfImportFile,
@@ -4348,6 +4353,8 @@ pub enum Message {
     PdfDialog(crate::ui::window::pdf_dialogs::PdfDialogMsg),
     AttdefDialog(crate::ui::window::attdef_dialog::AttdefDialogMsg),
     FieldDialog(crate::ui::window::field_dialog::FieldDialogMsg),
+    /// An edit in the Edit Reference dialog.
+    RefEditDialog(crate::ui::window::refedit_dialog::RefEditDialogMsg),
     /// A click or search in the Point Cloud Manager.
     PcManager(crate::ui::window::pc_manager::PcManagerMsg),
     Count(crate::ui::window::count_palette::CountMsg),
@@ -4559,6 +4566,7 @@ impl OpenCADStudio {
             point_cloud_color_map: None,
             pc_section: None,
             view_background: None,
+            refedit_dialog: None,
             underlay_layers: None,
             pdf_import_settings: None,
             pdf_import_file: None,
@@ -4658,6 +4666,7 @@ impl OpenCADStudio {
             block_mru: Vec::new(),
             block_freq: std::collections::HashMap::new(),
             block_mru_list: 50,
+            refedit_options: Default::default(),
             block_redefine_mode: 1,
             block_navigate: ".".to_string(),
             insname: String::new(),

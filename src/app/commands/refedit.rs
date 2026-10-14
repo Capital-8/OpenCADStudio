@@ -4,10 +4,11 @@
 
 use crate::app::{Message, OpenCADStudio};
 use crate::modules::draw::modify::refedit::{
-    apply_insert_inverse_transform, apply_insert_transform, level_hits,
-    nesting_chain, RefCloseCommand, RefEditOptionsCommand, RefEditPickCommand, RefEditSession,
-    RefSetCommand, NOT_CHECKED_OUT,
+    apply_insert_inverse_transform, apply_insert_transform, level_hits, nesting_chain,
+    rename_symbols, ChainLevel, RefCloseCommand, RefEditNames, RefEditOptionsCommand,
+    RefEditPickCommand, RefEditSession, RefSetCommand, SymbolKind, NOT_CHECKED_OUT,
 };
+use crate::ui::window::refedit_dialog::{RefEditDialogMsg, RefEditDialogState, RefEditLevel};
 use codec::{EntityType, Handle};
 use iced::Task;
 use std::collections::HashSet;
@@ -142,23 +143,125 @@ impl OpenCADStudio {
                 .iter()
                 .map(|level| level_hits(&self.tabs[i].scene.document, level))
                 .collect();
-            let command = RefEditOptionsCommand::new(top, chain, hits);
+            let command = RefEditOptionsCommand::new(
+                top,
+                chain,
+                hits,
+                self.refedit_options.lock,
+                self.refedit_options.unique_names,
+            );
             use crate::command::CadCommand;
             self.command_line.push_info(&command.prompt());
             self.tabs[i].active_cmd = Some(Box::new(command));
         } else {
-            // The dialog's defaults: the innermost reference, all objects,
-            // attribute definitions not displayed.
-            let path: Vec<String> = chain[1..]
-                .iter()
-                .map(|l| l.insert.value().to_string())
-                .collect();
-            let _ = self.dispatch_command(&format!(
-                "REFEDIT_BEGIN:{}:{}:0:",
-                top.value(),
-                path.join(",")
-            ));
+            self.open_refedit_dialog(i, top, chain);
         }
+    }
+
+    /// The Edit Reference dialog over the picked chain: the innermost level
+    /// chosen, the remembered settings.
+    fn open_refedit_dialog(&mut self, i: usize, top: Handle, chain: Vec<ChainLevel>) {
+        let scene = &self.tabs[i].scene;
+        let document = &scene.document;
+        let levels = chain
+            .iter()
+            .map(|level| {
+                let record = document.block_records.get(&level.block_name);
+                RefEditLevel {
+                    insert: level.insert,
+                    name: level.block_name.clone(),
+                    wires: scene.block_preview_wires(&level.block_name),
+                    has_attdefs: record.is_some_and(|br| {
+                        br.entity_handles.iter().any(|h| {
+                            matches!(document.get_entity(*h), Some(EntityType::AttributeDefinition(_)))
+                        })
+                    }),
+                    xref_path: record
+                        .filter(|br| br.flags.is_xref || br.flags.is_xref_overlay)
+                        .map(|br| br.xref_path.clone())
+                        .filter(|p| !p.is_empty()),
+                }
+            })
+            .collect::<Vec<_>>();
+        let options = &self.refedit_options;
+        self.refedit_dialog = Some(RefEditDialogState {
+            top,
+            level: levels.len().saturating_sub(1),
+            levels,
+            chain,
+            nested: options.nested,
+            attributes: options.attributes,
+            lock: options.lock,
+            unique: options.unique_names,
+        });
+        self.active_modal = Some(crate::app::ModalKind::RefEdit);
+    }
+
+    pub(in crate::app) fn update_refedit_dialog(&mut self, message: RefEditDialogMsg) -> Task<Message> {
+        let Some(state) = self.refedit_dialog.as_mut() else {
+            return Task::none();
+        };
+        match message {
+            RefEditDialogMsg::Level(level) => {
+                state.level = level.min(state.levels.len().saturating_sub(1))
+            }
+            RefEditDialogMsg::Nested(on) => state.nested = on,
+            RefEditDialogMsg::Attributes(on) => state.attributes = on,
+            RefEditDialogMsg::Lock(on) => state.lock = on,
+            RefEditDialogMsg::Unique(on) => state.unique = on,
+            RefEditDialogMsg::Help => {
+                self.command_line
+                    .push_info(&crate::tr!("ref-edit", "dialog-help"));
+            }
+            RefEditDialogMsg::Ok => {
+                let Some(state) = self.refedit_dialog.take() else {
+                    return Task::none();
+                };
+                self.close_active_modal();
+                let attributes = state.attributes && state.attributes_enabled();
+                self.refedit_options = crate::app::settings::RefEditOptions {
+                    unique_names: state.unique,
+                    attributes: state.attributes,
+                    lock: state.lock,
+                    nested: state.nested,
+                };
+                let i = self.active_tab;
+                if state.nested {
+                    let hits = state
+                        .chain
+                        .iter()
+                        .map(|level| level_hits(&self.tabs[i].scene.document, level))
+                        .collect();
+                    let command = RefEditOptionsCommand::nested_pick(
+                        state.top,
+                        state.chain,
+                        hits,
+                        state.level,
+                        attributes,
+                        state.lock,
+                        state.unique,
+                    );
+                    use crate::command::CadCommand;
+                    self.command_line.push_info(&command.prompt());
+                    self.tabs[i].active_cmd = Some(Box::new(command));
+                } else {
+                    let last = state.level.min(state.chain.len().saturating_sub(1));
+                    let path: Vec<String> = state.chain[1..=last]
+                        .iter()
+                        .map(|l| l.insert.value().to_string())
+                        .collect();
+                    return self.dispatch_command(&format!(
+                        "REFEDIT_BEGIN:{}:{}:{}::{}:{}",
+                        state.top.value(),
+                        path.join(","),
+                        attributes as u8,
+                        state.lock as u8,
+                        state.unique as u8
+                    ));
+                }
+            }
+        }
+        Task::none()
     }
 
     /// `top[:path[:attributes[:nested]]]` — open the session.
@@ -181,6 +284,10 @@ impl OpenCADStudio {
         let path = handles(parts.next());
         let attributes = parts.next() == Some("1");
         let nested = handles(parts.next());
+        let lock = parts.next().map_or(self.refedit_options.lock, |v| v == "1");
+        let unique = parts
+            .next()
+            .map_or(self.refedit_options.unique_names, |v| v == "1");
         if self.tabs[i].refedit_session.is_some() || self.reject_locked_edit(i, top) {
             return;
         }
@@ -206,6 +313,15 @@ impl OpenCADStudio {
             });
         }
         let level = chain.last().expect("non-empty chain").clone();
+        // An external reference's dependent names (`XREF|NAME`) of the
+        // outermost xref in the chain.
+        let xref_prefix = chain.iter().find_map(|l| {
+            document
+                .block_records
+                .get(&l.block_name)
+                .filter(|br| br.flags.is_xref || br.flags.is_xref_overlay)
+                .map(|br| format!("{}|", br.name))
+        });
         let Some(br) = document.block_records.get(&level.block_name) else {
             return;
         };
@@ -240,6 +356,8 @@ impl OpenCADStudio {
             // Everything allocated from here on is part of the session.
             handle_watermark: document.next_handle().max(document.header.handle_seed),
             xref_path,
+            lock,
+            names: RefEditNames::default(),
         };
         let copies: Vec<EntityType> = extracted
             .iter()
@@ -247,6 +365,15 @@ impl OpenCADStudio {
             .collect();
 
         self.push_undo_snapshot(i, "REFEDIT");
+        let mut session = session;
+        let copies = match xref_prefix {
+            Some(prefix) => {
+                let (copies, names) = self.refedit_host_names(i, copies, &prefix, unique);
+                session.names = names;
+                copies
+            }
+            None => copies,
+        };
         let mut temp_handles = Vec::new();
         for mut entity in copies {
             apply_insert_transform(&mut entity, &session);
@@ -254,7 +381,6 @@ impl OpenCADStudio {
             entity.common_mut().owner_handle = Handle::NULL;
             temp_handles.push(self.tabs[i].scene.add_entity(entity));
         }
-        let mut session = session;
         session.temp_handles = temp_handles.clone();
         self.tabs[i].refedit_session = Some(session);
         self.tabs[i].refedit_closed.clear();
@@ -262,7 +388,7 @@ impl OpenCADStudio {
         self.tabs[i]
             .scene
             .set_refedit_keep(Some(temp_handles.iter().copied().collect::<rustc_hash::FxHashSet<_>>()));
-        self.tabs[i].scene.refedit_lock = true;
+        self.tabs[i].scene.refedit_lock = lock;
         self.tabs[i].scene.deselect_all();
         self.tabs[i].dirty = true;
         // No active command — the definition's objects are edited freely
@@ -370,6 +496,10 @@ impl OpenCADStudio {
             .iter()
             .filter_map(|h| self.tabs[i].scene.document.get_entity(*h).cloned())
             .map(|mut entity| {
+                // Back to the reference's own dependent names.
+                rename_symbols(&mut entity, &|kind, name| {
+                    session.names.original(kind, name).map(str::to_string)
+                });
                 apply_insert_inverse_transform(&mut entity, &session);
                 let mut entity = normalize_entity_for_block(entity);
                 entity.common_mut().handle = Handle::NULL;
@@ -452,6 +582,7 @@ impl OpenCADStudio {
     }
 
     fn finish_refedit_close(&mut self, i: usize, session: RefEditSession) {
+        self.drop_refedit_names(i, &session.names);
         self.tabs[i].refedit_closed.push(session);
         self.tabs[i].scene.refedit_lock = false;
         self.tabs[i].scene.set_refedit_keep(None);
@@ -581,8 +712,8 @@ impl OpenCADStudio {
                         .map(|e| e.common().handle)
                         .filter(|h| session.in_working_set(*h))
                         .collect();
+                    self.tabs[i].scene.refedit_lock = session.lock;
                     self.tabs[i].refedit_session = Some(session);
-                    self.tabs[i].scene.refedit_lock = true;
                     self.tabs[i].scene.set_refedit_keep(Some(keep));
                 }
             }
@@ -598,6 +729,187 @@ impl OpenCADStudio {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// The working set's objects of an external reference under host names:
+    /// `XREF|NAME` becomes `$N$NAME` (the first free N) with records of its
+    /// own when `unique`, else `NAME`, sharing a host record of that name when
+    /// one exists. Missing records are copied from the reference's.
+    fn refedit_host_names(
+        &mut self,
+        i: usize,
+        mut copies: Vec<EntityType>,
+        prefix: &str,
+        unique: bool,
+    ) -> (Vec<EntityType>, RefEditNames) {
+        let document = &mut self.tabs[i].scene.document;
+        let deps = crate::app::ClipboardDeps::capture(document, &copies);
+        let strip = |name: &str| -> Option<String> {
+            (name.len() > prefix.len()
+                && name.is_char_boundary(prefix.len())
+                && name[..prefix.len()].eq_ignore_ascii_case(prefix))
+            .then(|| name[prefix.len()..].to_string())
+        };
+        let exists = |document: &codec::CadDocument, kind: SymbolKind, name: &str| match kind {
+            SymbolKind::Layer => document.layers.contains(name),
+            SymbolKind::Linetype => document.line_types.contains(name),
+            SymbolKind::TextStyle => document.text_styles.contains(name),
+            SymbolKind::Block => document.block_records.get(name).is_some(),
+        };
+        let wanted: Vec<(SymbolKind, String)> = deps
+            .layers
+            .iter()
+            .map(|r| (SymbolKind::Layer, r.name.clone()))
+            .chain(deps.linetypes.iter().map(|r| (SymbolKind::Linetype, r.name.clone())))
+            .chain(deps.text_styles.iter().map(|r| (SymbolKind::TextStyle, r.name.clone())))
+            .chain(deps.blocks.iter().map(|b| (SymbolKind::Block, b.name.clone())))
+            .collect();
+        let mut names = RefEditNames::default();
+        for (kind, original) in wanted {
+            let Some(base) = strip(&original) else {
+                continue;
+            };
+            let taken = |names: &RefEditNames, candidate: &str| {
+                exists(document, kind, candidate)
+                    || names
+                        .renamed
+                        .iter()
+                        .any(|(k, used, _)| *k == kind && used.eq_ignore_ascii_case(candidate))
+            };
+            // Layer 0 is the host's own in every drawing.
+            let used = if kind == SymbolKind::Layer && base == "0" {
+                base
+            } else if unique {
+                (0u32..)
+                    .map(|n| format!("${n}${base}"))
+                    .find(|candidate| !taken(&names, candidate))
+                    .expect("a free name")
+            } else {
+                base
+            };
+            if !exists(document, kind, &used)
+                && !names
+                    .created
+                    .iter()
+                    .any(|(k, n)| *k == kind && n.eq_ignore_ascii_case(&used))
+            {
+                names.created.push((kind, used.clone()));
+            }
+            names.renamed.push((kind, used, original));
+        }
+        let used_for = |kind: SymbolKind, name: &str| {
+            names
+                .renamed
+                .iter()
+                .find(|(k, _, original)| *k == kind && original.eq_ignore_ascii_case(name))
+                .map(|(_, used, _)| used.clone())
+        };
+        let created = |kind: SymbolKind, name: &str| -> Option<String> {
+            used_for(kind, name).filter(|used| {
+                names
+                    .created
+                    .iter()
+                    .any(|(k, n)| *k == kind && n.eq_ignore_ascii_case(used))
+            })
+        };
+        for record in &deps.layers {
+            if let Some(used) = created(SymbolKind::Layer, &record.name) {
+                let mut copy = record.clone();
+                copy.name = used;
+                copy.flags.xref_dependent = false;
+                copy.xref_block_record_handle = Handle::NULL;
+                if let Some(linetype) = used_for(SymbolKind::Linetype, &copy.line_type) {
+                    copy.line_type = linetype;
+                }
+                copy.handle = document.allocate_handle();
+                let _ = document.layers.add(copy);
+            }
+        }
+        for record in &deps.linetypes {
+            if let Some(used) = created(SymbolKind::Linetype, &record.name) {
+                let mut copy = record.clone();
+                copy.name = used;
+                copy.xref_dependent = false;
+                copy.xref_block_record_handle = Handle::NULL;
+                copy.handle = document.allocate_handle();
+                let _ = document.line_types.add(copy);
+            }
+        }
+        for record in &deps.text_styles {
+            if let Some(used) = created(SymbolKind::TextStyle, &record.name) {
+                let mut copy = record.clone();
+                copy.name = used;
+                copy.xref_dependent = false;
+                copy.xref_block_record_handle = Handle::NULL;
+                copy.handle = document.allocate_handle();
+                let _ = document.text_styles.add(copy);
+            }
+        }
+        let rename = |kind: SymbolKind, name: &str| used_for(kind, name);
+        let blocks: Vec<crate::app::BlockDef> = deps
+            .blocks
+            .iter()
+            .filter_map(|def| {
+                let used = created(SymbolKind::Block, &def.name)?;
+                let mut entities = def.entities.clone();
+                for entity in &mut entities {
+                    rename_symbols(entity, &rename);
+                }
+                Some(crate::app::BlockDef {
+                    name: used,
+                    base_point: def.base_point,
+                    entities,
+                })
+            })
+            .collect();
+        crate::app::command_driver::clipboard::merge_block_defs(document, &blocks);
+        for entity in &mut copies {
+            rename_symbols(entity, &rename);
+        }
+        (copies, names)
+    }
+
+    /// Removes the host records made for a session that nothing uses any more.
+    fn drop_refedit_names(&mut self, i: usize, names: &RefEditNames) {
+        for (kind, name) in names.created.iter().rev() {
+            let scene = &mut self.tabs[i].scene;
+            let in_use = scene.document.entities().any(|entity| {
+                let common = entity.common();
+                match kind {
+                    SymbolKind::Layer => common.layer.eq_ignore_ascii_case(name),
+                    SymbolKind::Linetype => common.linetype.eq_ignore_ascii_case(name),
+                    SymbolKind::TextStyle => match entity {
+                        EntityType::Text(t) => t.style.eq_ignore_ascii_case(name),
+                        EntityType::MText(t) => t.style.eq_ignore_ascii_case(name),
+                        EntityType::AttributeDefinition(a) => {
+                            a.text_style.eq_ignore_ascii_case(name)
+                        }
+                        _ => false,
+                    },
+                    SymbolKind::Block => matches!(
+                        entity,
+                        EntityType::Insert(insert) if insert.block_name.eq_ignore_ascii_case(name)
+                    ),
+                }
+            });
+            if in_use {
+                continue;
+            }
+            match kind {
+                SymbolKind::Layer => {
+                    scene.document.layers.remove(name);
+                }
+                SymbolKind::Linetype => {
+                    scene.document.line_types.remove(name);
+                }
+                SymbolKind::TextStyle => {
+                    scene.document.text_styles.remove(name);
+                }
+                SymbolKind::Block => {
+                    let _ = crate::scene::block_service::erase(scene, name);
+                }
+            }
         }
     }
 }

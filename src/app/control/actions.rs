@@ -104,6 +104,7 @@ pub(super) const NAMES: &[&str] = &[
     "external_change_cancel",
     "pdf_dialog_ok",
     "view_background",
+    "refedit_dialog",
     "pdf_layer_toggle",
     "pc_manager_toggle",
     "pc_manager",
@@ -1884,6 +1885,36 @@ impl OpenCADStudio {
                 })
             }
             "ribbon_dropdown" => Message::ToggleRibbonDropdown(string(req, "value")?.into()),
+            // The Edit Reference dialog, one field per call: "level=<n>" (0 =
+            // the picked reference), "nested=0|1" (pick the working set in the
+            // drawing), "attributes=0|1", "lock=0|1", "unique=0|1", "ok" or
+            // "cancel".
+            "refedit_dialog" => {
+                use crate::ui::window::refedit_dialog::RefEditDialogMsg as R;
+                if self.active_modal != Some(crate::app::ModalKind::RefEdit) {
+                    return Err(failure("no_dialog", "The Reference Edit dialog is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let flag = || match value {
+                    "1" => Ok(true),
+                    "0" => Ok(false),
+                    _ => Err(failure("invalid_value", spec)),
+                };
+                if key == "cancel" {
+                    Message::CloseModal
+                } else {
+                Message::RefEditDialog(match key {
+                    "ok" => R::Ok,
+                    "level" => R::Level(value.parse().map_err(|_| failure("invalid_value", spec))?),
+                    "nested" => R::Nested(flag()?),
+                    "attributes" => R::Attributes(flag()?),
+                    "lock" => R::Lock(flag()?),
+                    "unique" => R::Unique(flag()?),
+                    _ => return Err(failure("invalid_value", "Unknown Reference Edit field")),
+                })
+                }
+            }
             // The -VIEW Background dialog, one field per call: "type=gradient",
             // "color|top|middle|bottom=r,g,b", "three=1", "rotation=30",
             // "image=<path>", "position=center|stretch|tile", "aspect=1", "offset=x,y" (pixels), "scale=x,y",

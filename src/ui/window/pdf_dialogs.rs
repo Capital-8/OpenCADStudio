@@ -302,7 +302,7 @@ pub(crate) fn well_style(theme: &Theme) -> container::Style {
 }
 
 /// A titled card.
-fn card<'a>(title: String, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+pub(crate) fn card<'a>(title: String, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     container(
         column![
             text(title.to_uppercase()).size(10).style(accent_text),

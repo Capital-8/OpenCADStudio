@@ -652,6 +652,9 @@ pub struct UserSettings {
     /// BLOCKNAVIGATE (default ".").
     #[serde(default = "default_block_navigate")]
     pub block_navigate: String,
+    /// The Edit Reference dialog's settings.
+    #[serde(default)]
+    pub refedit: RefEditOptions,
     /// XFADECTL: how far objects outside the REFEDIT working set fade (0–90, default 70).
     #[serde(default = "default_xfadectl")]
     pub xfadectl: u8,
@@ -685,6 +688,30 @@ pub struct PaletteBlockRef {
     pub time: u64,
     #[serde(default)]
     pub drawing: bool,
+}
+
+/// The Edit Reference dialog's settings, remembered between sessions: give
+/// an external reference's clashing named objects unique names, check out
+/// attribute definitions, lock what is outside the working set, pick the
+/// working set's objects in the drawing.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RefEditOptions {
+    pub unique_names: bool,
+    pub attributes: bool,
+    pub lock: bool,
+    pub nested: bool,
+}
+
+impl Default for RefEditOptions {
+    fn default() -> Self {
+        Self {
+            unique_names: true,
+            attributes: false,
+            lock: true,
+            nested: false,
+        }
+    }
 }
 
 /// The Blocks palette's insertion options.
@@ -938,6 +965,7 @@ impl Default for UserSettings {
             block_mru_list: 50,
             block_redefine_mode: 1,
             block_navigate: ".".to_string(),
+            refedit: RefEditOptions::default(),
             xfadectl: 70,
             count_color: 3,
             count_error_color: 1,
