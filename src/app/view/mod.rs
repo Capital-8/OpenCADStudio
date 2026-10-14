@@ -916,13 +916,16 @@ bg={bg_ms:.1}ms n={view_count}"
                 .hover_highlight
                 .map(|h| tab.scene.is_layer_locked(h))
                 .unwrap_or(false);
-            // Reuse the exact point-picking crosshair (cross + center dot)
-            // already used by LINE and RECTANG for ordinary selection and
-            // selection-gathering commands. This changes only cursor drawing,
-            // not object snapping or the selected world position.
-            let point_cursor = tab.active_cmd.as_ref().is_none_or(|cmd| {
-                !cmd.needs_entity_pick() || cmd.is_selection_gathering()
-            });
+            // Keep the hollow pickbox at rest. Use the standard LINE/RECTANG
+            // dot crosshair only after the first window/crossing corner.
+            // No OSNAP or selection behavior changes.
+            let selecting_window = tab.active_cmd.is_none()
+                && tab.scene.selection.borrow().gesture.box_anchor.is_some();
+            let point_cursor = selecting_window
+                || tab
+                    .active_cmd
+                    .as_ref()
+                    .is_some_and(|cmd| !cmd.needs_entity_pick() && !cmd.is_selection_gathering());
             let constraint_cursor_badge = if is_paper {
                 None
             } else {
@@ -997,7 +1000,8 @@ bg={bg_ms:.1}ms n={view_count}"
                     // apart from both idle and point input (#1661).
                     hide_arms: tab.active_cmd.as_ref().is_some_and(|c| {
                         matches!(c.name(), "XLINE" | "RAY")
-                            || (c.needs_entity_pick() && !c.is_selection_gathering())
+                            || c.needs_entity_pick()
+                            || c.is_selection_gathering()
                     }),
                     snap_color: self.snap_marker_color,
                     snap_size: self.model_space.snap_marker_size as f32,
