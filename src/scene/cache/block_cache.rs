@@ -1531,6 +1531,29 @@ pub(crate) fn fade_toward_bg(color: [f32; 4], bg: [f32; 4]) -> [f32; 4] {
     ]
 }
 
+/// XFADECTL: how far objects outside the REFEDIT working set fade toward the
+/// background, in percent (0–90, default 70).
+static REFEDIT_FADE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(70);
+
+pub fn refedit_fade_ctl() -> i32 {
+    REFEDIT_FADE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn set_refedit_fade_ctl(value: i32) {
+    REFEDIT_FADE.store(value.clamp(0, 90), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// A colour outside the REFEDIT working set, faded by XFADECTL.
+pub(crate) fn refedit_fade(color: [f32; 4], bg: [f32; 4]) -> [f32; 4] {
+    let t = refedit_fade_ctl().clamp(0, 90) as f32 / 100.0;
+    [
+        color[0] * (1.0 - t) + bg[0] * t,
+        color[1] * (1.0 - t) + bg[1] * t,
+        color[2] * (1.0 - t) + bg[2] * t,
+        color[3],
+    ]
+}
+
 /// XDWGFADECTL: how far referenced drawings fade toward the background, in
 /// percent (0–90); zero or negative shows them unfaded.
 static XREF_FADE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(50);

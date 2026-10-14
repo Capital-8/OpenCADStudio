@@ -1208,6 +1208,7 @@ impl OpenCADStudio {
                 break;
             };
             last_label = snapshot.label().to_string();
+            let step_label = last_label.clone();
             match snapshot {
                 HistorySnapshot::Delta(mut d) => {
                     // Symmetric: undo applies the before side, then the same
@@ -1242,6 +1243,7 @@ impl OpenCADStudio {
                         .push(HistorySnapshot::ObjectVisibility(v));
                 }
             }
+            self.refedit_after_history_step(i, &step_label, true);
         }
         self.finish_history_apply(i, had_full, layer_panel_changed, &changes);
         self.command_line
@@ -1268,6 +1270,7 @@ impl OpenCADStudio {
                 break;
             };
             last_label = snapshot.label().to_string();
+            let step_label = last_label.clone();
             match snapshot {
                 HistorySnapshot::Delta(mut d) => {
                     layer_panel_changed |= d.structure.as_ref().is_some_and(|structure| {
@@ -1299,6 +1302,7 @@ impl OpenCADStudio {
                         .push(HistorySnapshot::ObjectVisibility(v));
                 }
             }
+            self.refedit_after_history_step(i, &step_label, false);
         }
         self.finish_history_apply(i, had_full, layer_panel_changed, &changes);
         self.command_line
