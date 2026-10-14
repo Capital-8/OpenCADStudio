@@ -512,7 +512,7 @@ pub fn view_window<'a>(
             row![osnap_on_toggle, Space::new().width(24), otrack_on_toggle].align_y(iced::Center),
             row![
                 text("OSNAP capture radius (pixels)").size(11),
-                text_input("15", &state.osnap_aperture_input)
+                text_input("25", &state.osnap_aperture_input)
                     .on_input(Message::DraftingSettingsOsnapApertureChanged)
                     .width(70),
             ]
