@@ -2694,6 +2694,11 @@ pub enum Message {
     SelectionCyclingChanged(bool),
     /// Reveal one of the application's own folders in the system file manager.
     OpenFolder(String),
+    /// Choose another folder for fonts or plot styles (`None` result:
+    /// cancelled).
+    ChooseFolder(crate::ui::window::options::MovableFolder),
+    /// Use this folder, or the default one for `None`.
+    FolderChosen(crate::ui::window::options::MovableFolder, Option<std::path::PathBuf>),
     /// Change isolines per surface in the current drawing (ISOLINES).
     IsolinesChanged(i16),
     /// The isolines slider was released; rebuild the meshes if it moved.

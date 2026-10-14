@@ -811,6 +811,15 @@ impl OpenCADStudio {
             xref_fade: crate::scene::cache::block_cache::xref_fade_ctl(),
             file_dia: crate::sys::file_dia(),
             trim_extend_quick: crate::modules::draw::modify::trim::quick_mode(),
+            #[cfg(not(target_arch = "wasm32"))]
+            fonts_folder: crate::io::font_repo::fonts_folder().map(|p| p.display().to_string()),
+            #[cfg(not(target_arch = "wasm32"))]
+            plot_styles_folder: crate::io::plot_style::plot_styles_folder()
+                .map(|p| p.display().to_string()),
+            #[cfg(target_arch = "wasm32")]
+            fonts_folder: None,
+            #[cfg(target_arch = "wasm32")]
+            plot_styles_folder: None,
             attach_filter: crate::sys::attach_filter(),
             surface_associativity: crate::scene::model::sweep_model::surface_associativity(),
             ucs_ortho: crate::modules::view::view_cmd::ucs_ortho(),
@@ -948,6 +957,13 @@ impl OpenCADStudio {
         self.ribbon.xref_fade = crate::scene::cache::block_cache::xref_fade_ctl();
         crate::sys::set_file_dia(s.file_dia);
         crate::modules::draw::modify::trim::set_quick_mode(s.trim_extend_quick);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            crate::io::font_repo::set_fonts_folder(s.fonts_folder.as_ref().map(Into::into));
+            crate::io::plot_style::set_plot_styles_folder(
+                s.plot_styles_folder.as_ref().map(Into::into),
+            );
+        }
         crate::sys::set_attach_filter(s.attach_filter);
         crate::scene::model::sweep_model::set_surface_associativity(s.surface_associativity);
         crate::modules::view::view_cmd::set_ucs_ortho(s.ucs_ortho);

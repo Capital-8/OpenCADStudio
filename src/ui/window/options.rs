@@ -95,7 +95,14 @@ pub struct AppPrefs {
     pub page_setup_on_new_layout: bool,
 }
 
-/// The fixed locations the Files page lists.
+/// A Files-page location the user may move elsewhere.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MovableFolder {
+    Fonts,
+    PlotStyles,
+}
+
+/// The locations the Files page lists.
 ///
 /// `None` where the platform could not give one — the row then says so and
 /// its button is disabled rather than opening nothing.
@@ -110,6 +117,9 @@ pub struct Folders {
     pub fonts: Option<String>,
     /// Where `.acb` colour books are kept and loaded ones copied to.
     pub color_books: Option<String>,
+    /// The fonts / plot styles folder was chosen in Options.
+    pub fonts_moved: bool,
+    pub plot_styles_moved: bool,
 }
 
 /// Values read from the current drawing's header rather than from preferences.
@@ -1750,11 +1760,13 @@ pub fn view_window<'a>(
 
     let modeling = modeling.spacing(0).width(sizing.width);
 
-    // The application has no support-file search path, so this page does not
-    // pretend to offer one. It shows where things actually live and opens the
-    // folder — which is the question people are really asking when they go
-    // looking for a Files page.
-    let folder_row = |label: std::borrow::Cow<'a, str>, path: Option<String>| {
+    // The page shows where things live and opens the folder — which is the
+    // question people are really asking when they go looking for a Files
+    // page. Fonts and plot styles can move elsewhere, such as a share on the
+    // office network that a whole team uses.
+    let folder_row = |label: std::borrow::Cow<'a, str>,
+                      path: Option<String>,
+                      movable: Option<(MovableFolder, bool)>| {
         let shown = path
             .clone()
             .unwrap_or_else(|| crate::t!("Not available").into_owned());
@@ -1764,38 +1776,68 @@ pub fn view_window<'a>(
         if let Some(path) = path {
             open = open.on_press(Message::OpenFolder(path));
         }
+        let mut buttons = row![open].spacing(6);
+        if let Some((folder, moved)) = movable {
+            buttons = buttons.push(
+                button(text(crate::t!("Change...")).size(11))
+                    .padding([4, 10])
+                    .style(button::secondary)
+                    .on_press(Message::ChooseFolder(folder)),
+            );
+            if moved {
+                buttons = buttons.push(
+                    button(text(crate::t!("Default")).size(11))
+                        .padding([4, 10])
+                        .style(button::secondary)
+                        .on_press(Message::FolderChosen(folder, None)),
+                );
+            }
+        }
         row![
             column![text(label).size(12), text(shown).size(11),]
                 .spacing(2)
                 .width(Fill),
-            open,
+            buttons,
         ]
         .spacing(10)
         .align_y(iced::Center)
+    };
+    // Browsers have no folder picker.
+    let movable = |folder: MovableFolder, moved: bool| {
+        (!cfg!(target_arch = "wasm32")).then_some((folder, moved))
     };
 
     let files = column![
         text(crate::t!("Files")).size(15),
         Space::new().height(6),
         text(crate::t!(
-            "Where the application keeps its own files. These locations are fixed."
+            "Where the application keeps its own files."
         ))
         .size(11)
         .width(sizing.width),
         Space::new().height(16),
-        folder_row(crate::t!("Configuration"), folders.config.clone()),
+        folder_row(crate::t!("Configuration"), folders.config.clone(), None),
         Space::new().height(12),
-        folder_row(crate::t!("Plot styles"), folders.plot_styles.clone()),
+        folder_row(
+            crate::t!("Plot styles"),
+            folders.plot_styles.clone(),
+            movable(MovableFolder::PlotStyles, folders.plot_styles_moved),
+        ),
         Space::new().height(12),
-        folder_row(crate::t!("Plugins"), folders.plugins.clone()),
+        folder_row(crate::t!("Plugins"), folders.plugins.clone(), None),
         Space::new().height(12),
-        folder_row(crate::t!("Autosave files"), folders.autosave.clone()),
+        folder_row(crate::t!("Autosave files"), folders.autosave.clone(), None),
         Space::new().height(12),
-        folder_row(crate::t!("Fonts"), folders.fonts.clone()),
+        folder_row(
+            crate::t!("Fonts"),
+            folders.fonts.clone(),
+            movable(MovableFolder::Fonts, folders.fonts_moved),
+        ),
         Space::new().height(12),
         folder_row(
             crate::t!("Color book locations"),
-            folders.color_books.clone()
+            folders.color_books.clone(),
+            None,
         ),
         Space::new().height(16),
         text(crate::t!("Default template for new drawings")).size(12),

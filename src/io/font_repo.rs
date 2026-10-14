@@ -18,11 +18,26 @@ const REPO_API_URL: &str = "https://api.github.com/repos/HakanSeven12/OpenCADStu
 #[cfg(not(target_arch = "wasm32"))]
 const MAX_FONT_BYTES: u64 = 16 * 1024 * 1024;
 
+#[cfg(not(target_arch = "wasm32"))]
+static FONTS_FOLDER: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLock::new(None);
+
+/// A folder chosen in Options to hold the fonts instead of the default one,
+/// such as a share on the office network.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn fonts_folder() -> Option<PathBuf> {
+    FONTS_FOLDER.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn set_fonts_folder(folder: Option<PathBuf>) {
+    *FONTS_FOLDER.write().unwrap_or_else(|e| e.into_inner()) = folder;
+}
+
 /// Local store for fonts downloaded from the community repository. Text
 /// resolution searches here after the drawing folder.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn fonts_dir() -> Option<PathBuf> {
-    crate::config::config_dir().map(|dir| dir.join("fonts"))
+    fonts_folder().or_else(|| crate::config::config_dir().map(|dir| dir.join("fonts")))
 }
 
 /// Web builds have no filesystem to cache fonts into.

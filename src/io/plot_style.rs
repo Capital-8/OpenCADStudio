@@ -35,7 +35,25 @@ const STANDARD_PLOT_STYLES: &[&str] = &[
 ];
 
 #[cfg(not(target_arch = "wasm32"))]
+static PLOT_STYLES_FOLDER: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLock::new(None);
+
+/// A folder chosen in Options to hold the plot style tables instead of the
+/// default one, such as a share on the office network.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn plot_styles_folder() -> Option<PathBuf> {
+    PLOT_STYLES_FOLDER.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn set_plot_styles_folder(folder: Option<PathBuf>) {
+    *PLOT_STYLES_FOLDER.write().unwrap_or_else(|e| e.into_inner()) = folder;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn plot_styles_dir() -> Result<PathBuf, String> {
+    if let Some(folder) = plot_styles_folder() {
+        return Ok(folder);
+    }
     crate::config::config_dir()
         .map(|path| path.join("plotstyles"))
         .ok_or_else(|| "Plot styles folder could not be resolved".to_string())

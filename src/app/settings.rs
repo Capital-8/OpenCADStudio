@@ -443,6 +443,9 @@ pub struct UserSettings {
     pub file_dia: bool,
     /// TRIMEXTENDMODE: TRIM and EXTEND start in Quick mode (else Standard).
     pub trim_extend_quick: bool,
+    /// Fonts and plot styles kept in a chosen folder (`None`: the default).
+    pub fonts_folder: Option<String>,
+    pub plot_styles_folder: Option<String>,
     /// The file type ATTACH's picker was last left on (1-based).
     pub attach_filter: u32,
     /// SURFACEASSOCIATIVITY: new surfaces stay associative to their sources.
@@ -918,6 +921,8 @@ impl Default for UserSettings {
             xref_fade: 50,
             file_dia: true,
             trim_extend_quick: true,
+            fonts_folder: None,
+            plot_styles_folder: None,
             attach_filter: 7,
             surface_associativity: true,
             ucs_ortho: true,

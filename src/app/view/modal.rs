@@ -375,6 +375,9 @@ impl OpenCADStudio {
                                         .map(|p| p.display().to_string()),
                                     color_books: crate::ui::color_select::book::folder()
                                         .map(|p| p.display().to_string()),
+                                    fonts_moved: crate::io::font_repo::fonts_folder().is_some(),
+                                    plot_styles_moved: crate::io::plot_style::plot_styles_folder()
+                                        .is_some(),
                                 }
                             }
                             #[cfg(target_arch = "wasm32")]

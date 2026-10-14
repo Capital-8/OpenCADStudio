@@ -9369,6 +9369,34 @@ impl OpenCADStudio {
                 crate::sys::open_url(&path, None)
             }
 
+            #[cfg(target_arch = "wasm32")]
+            Message::ChooseFolder(_) | Message::FolderChosen(..) => Task::none(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Message::ChooseFolder(folder) => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .pick_folder()
+                        .await
+                        .map(|handle| crate::sys::handle_path(&handle))
+                },
+                move |picked| match picked {
+                    Some(path) => Message::FolderChosen(folder, Some(path)),
+                    None => Message::Noop,
+                },
+            ),
+            #[cfg(not(target_arch = "wasm32"))]
+            Message::FolderChosen(folder, path) => {
+                use crate::ui::window::options::MovableFolder;
+                match folder {
+                    MovableFolder::Fonts => crate::io::font_repo::set_fonts_folder(path),
+                    MovableFolder::PlotStyles => {
+                        crate::io::plot_style::set_plot_styles_folder(path)
+                    }
+                }
+                self.save_config();
+                Task::none()
+            }
+
             Message::PickDragRectToggled(rectangle) => {
                 self.pick_drag_rect = rectangle;
                 self.persist_settings_if_changed();
