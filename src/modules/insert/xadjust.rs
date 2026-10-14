@@ -359,5 +359,5 @@ impl CadCommand for AdjustCommand {
 }
 
 inventory::submit!(crate::command::CommandRegistration {
-    names: &["-IMAGEADJUST", "PDFADJUST", "DWFADJUST", "DGNADJUST"]
+    names: &["IMAGEADJUST", "-IMAGEADJUST", "PDFADJUST", "DWFADJUST", "DGNADJUST"]
 });

@@ -9483,6 +9483,9 @@ impl OpenCADStudio {
                     let i = self.active_tab;
                     return self.run_dash_view("SETTINGS", i);
                 }
+                if self.active_modal == Some(super::ModalKind::ImageAdjust) {
+                    self.image_adjust = None;
+                }
                 if self.active_modal == Some(super::ModalKind::Field) {
                     self.close_field_dialog();
                     return Task::none();

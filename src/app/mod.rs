@@ -584,6 +584,8 @@ pub(super) struct OpenCADStudio {
     pc_section: Option<crate::ui::window::pdf_dialogs::PcSectionState>,
     /// -VIEW sEttings Background dialog.
     view_background: Option<crate::ui::window::pdf_dialogs::ViewBackgroundState>,
+    /// IMAGEADJUST dialog.
+    image_adjust: Option<crate::ui::window::pdf_dialogs::ImageAdjustState>,
     underlay_layers: Option<crate::ui::window::pdf_dialogs::UnderlayLayersState>,
     pdf_import_settings: Option<crate::modules::insert::pdf_import::PdfImportSettings>,
     pdf_import_file: Option<crate::ui::window::pdf_dialogs::PdfImportFileState>,
@@ -2155,6 +2157,7 @@ pub enum ModalKind {
     PointCloudColorMap,
     PcSection,
     ViewBackground,
+    ImageAdjust,
     UnderlayLayers,
     PdfImportSettings,
     PdfImportFile,
@@ -4565,6 +4568,7 @@ impl OpenCADStudio {
             point_cloud_color_map: None,
             pc_section: None,
             view_background: None,
+            image_adjust: None,
             underlay_layers: None,
             pdf_import_settings: None,
             pdf_import_file: None,
