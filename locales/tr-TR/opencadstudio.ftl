@@ -6394,6 +6394,9 @@ view-background =
     .select-image = Arka Plan Görüntüsü Seç
 
 ref-edit =
+    .entities-added = __ocs_fmt_0__ nesne eklendi
+    .use-refclose = Referans düzenleme oturumunu bitirmek için REFCLOSE komutunu veya referans düzenleme araç çubuğunu kullanın.
+    .opposite-corner = Karşı köşeyi belirtin:
     .add-to-working-set = Çalışma Kümesine Ekle
     .remove-from-working-set = Çalışma Kümesinden Çıkar
     .toolbar-objects = nesne

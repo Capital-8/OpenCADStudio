@@ -256,7 +256,7 @@ impl OpenCADStudio {
                         .map(|l| l.insert.value().to_string())
                         .collect();
                     return self.dispatch_command(&format!(
-                        "REFEDIT_BEGIN:{}:{}:{}::{}:{}",
+                        "REFEDIT_BEGIN:{}:{}:{}::{}:{}:1",
                         state.top.value(),
                         path.join(","),
                         attributes as u8,
@@ -293,6 +293,8 @@ impl OpenCADStudio {
         let unique = parts
             .next()
             .map_or(self.refedit_options.unique_names, |v| v == "1");
+        // Opened from the Reference Edit dialog (REFEDIT, not -REFEDIT).
+        let from_dialog = parts.next() == Some("1");
         if self.tabs[i].refedit_session.is_some() || self.reject_locked_edit(i, top) {
             return;
         }
@@ -396,6 +398,19 @@ impl OpenCADStudio {
         self.tabs[i].scene.refedit_lock = lock;
         self.tabs[i].scene.deselect_all();
         self.tabs[i].dirty = true;
+        if from_dialog {
+            match nested.len() {
+                0 => {}
+                1 => self.command_line.push_output(crate::t!("1 item selected").as_ref()),
+                n => self
+                    .command_line
+                    .push_output(crate::tf!("{} items selected", n).as_ref()),
+            }
+            self.command_line.push_output(
+                crate::t!("Use REFCLOSE or the Refedit toolbar to end reference editing session.")
+                    .as_ref(),
+            );
+        }
         // No active command — the definition's objects are edited freely
         // (move, grips, draw, erase…) until REFCLOSE.
         self.tabs[i].active_cmd = None;

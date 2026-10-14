@@ -6471,6 +6471,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
+    .entities-added = __ocs_fmt_0__ entities added
+    .use-refclose = Use REFCLOSE or the Refedit toolbar to end reference editing session.
+    .opposite-corner = Specify opposite corner:
     .add-to-working-set = Toevoegen aan werkset
     .remove-from-working-set = Verwijderen uit werkset
     .toolbar-objects = objecten

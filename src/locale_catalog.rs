@@ -3,6 +3,9 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
+        "{} entities added" => Some(("ref-edit", "entities-added")),
+        "Use REFCLOSE or the Refedit toolbar to end reference editing session." => Some(("ref-edit", "use-refclose")),
+        "Specify opposite corner:" => Some(("ref-edit", "opposite-corner")),
         "Add to Working Set" => Some(("ref-edit", "add-to-working-set")),
         "Remove from Working Set" => Some(("ref-edit", "remove-from-working-set")),
         "Select reference:" => Some(("ref-edit", "select-reference")),
