@@ -7223,12 +7223,20 @@ impl Scene {
         if block == self.model_space_block_handle() {
             *self.model_wire_gpu_patch.borrow_mut() = None;
         }
+        // Every content viewport of the shown layout holds a set of its own;
+        // a cap below their count cleared them all each frame and rebuilt
+        // every viewport's wires on every redraw (#1769).
+        let shown = if self.current_layout == "Model" {
+            0
+        } else {
+            self.paper_viewport_handles().2.len()
+        };
         let mut sets = self.resident_wire_sets.borrow_mut();
         // Evict stale entries (older epochs / abandoned keys) so switching
         // spaces or re-scaling a viewport can't accumulate dead full sets.
         let cur_epoch = self.geometry_epoch;
         sets.retain(|_, set| set.epoch == cur_epoch);
-        if sets.len() > 16 {
+        if sets.len() > 16.max(shown + 2) {
             sets.clear();
         }
         sets.insert(

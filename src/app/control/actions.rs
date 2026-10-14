@@ -1166,6 +1166,8 @@ impl OpenCADStudio {
         let name = string(req, "name")?;
         let msg = match name {
             "close_modal" => Message::CloseModal,
+            // Show a layout (or "Model"), as clicking its tab does.
+            "layout_switch" => Message::LayoutSwitch(string(req, "value")?.into()),
             // The "changed outside" modal's suggested actions (D6): reload
             // the disk copy, keep the in-memory one and overwrite, save as,
             // or dismiss. Native only — the web build has no such dialog.
