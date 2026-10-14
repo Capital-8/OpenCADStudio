@@ -3237,6 +3237,14 @@ pub fn all_registered_command_names() -> Vec<&'static str> {
 mod constraint_registry_tests {
     use super::*;
 
+    #[test]
+    fn default_block_alias_targets_are_registered() {
+        let names = all_registered_command_names();
+        for target in ["-BLOCK", "-WBLOCK", "-ATTEDIT"] {
+            assert!(names.contains(&target), "{target} must validate in ALIASEDIT");
+        }
+    }
+
     /// Ensures every constraint command remains discoverable by autocomplete
     /// and command listings.
     #[test]

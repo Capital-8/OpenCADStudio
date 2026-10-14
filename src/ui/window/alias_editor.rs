@@ -57,6 +57,7 @@ fn danger_input_style(
 /// Build the alias editor content. `rows` is the live working buffer.
 pub fn view_window<'a>(
     rows: &'a [(String, String)],
+    import_report: &'a str,
     pending_add: bool,
     reset_confirm: bool,
     duplicate_aliases: &rustc_hash::FxHashSet<String>,
@@ -220,7 +221,10 @@ pub fn view_window<'a>(
                 .style(button::secondary)]
             .spacing(8)
             .align_y(iced::Center),
-            row![add],
+            row![add, button(text(t!("Import PGP…")).size(12))
+                .on_press_maybe((!pending_add).then_some(Message::AliasEditorImport))
+                .padding([4, 10])
+                .style(button::secondary)].spacing(8),
         )
     };
     // Apply — primary action; commits the rows to ocad.pgp and stays open.
@@ -265,21 +269,22 @@ pub fn view_window<'a>(
         column![
             title,
             hint,
+            text(import_report).size(11).style(muted_style),
             Space::new().height(6),
             head,
             scrollable(container(list).padding(gutter)).height(sizing.height),
             Space::new().height(6),
-            conflict_banner,
+            scrollable(conflict_banner).height(Length::Fit.max(72)),
             Space::new().height(4),
             row![
-                stats,
                 add_area,
                 reset_area,
-                Space::new().width(sizing.width),
-                apply_area
             ]
             .spacing(8)
             .align_y(iced::Center),
+            row![stats, Space::new().width(Length::Fill), apply_area]
+                .spacing(8)
+                .align_y(iced::Center),
         ]
         .spacing(6)
         .width(sizing.width)

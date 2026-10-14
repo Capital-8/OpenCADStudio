@@ -20,6 +20,7 @@
 
 use super::OpenCADStudio;
 use rustc_hash::FxHashMap;
+mod pgp;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
@@ -144,23 +145,7 @@ fn migrate_aliases(stored: &mut FxHashMap<String, String>, from_version: u32) ->
 /// lines and `;` comments; tolerates a leading `*` on the command and arbitrary
 /// whitespace padding.
 fn parse_pgp(body: &str) -> FxHashMap<String, String> {
-    let mut map = FxHashMap::default();
-    for line in body.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with(';') {
-            continue;
-        }
-        let Some((alias, cmd)) = line.split_once(',') else {
-            continue;
-        };
-        let alias = alias.trim().to_uppercase();
-        let cmd = cmd.trim().trim_start_matches('*').trim().to_uppercase();
-        if alias.is_empty() || cmd.is_empty() {
-            continue;
-        }
-        map.insert(alias, cmd);
-    }
-    map
+    pgp::parse(body).into_iter().collect()
 }
 
 /// Serialize an `alias → command` map to `.pgp` text with a header and aligned
@@ -300,6 +285,41 @@ pub(super) fn save_map(map: &FxHashMap<String, String>) -> std::io::Result<()> {
 }
 
 impl OpenCADStudio {
+    /// Merge into the working buffer only. Apply persists; closing can discard.
+    pub(super) fn import_alias_pgp(&mut self, bytes: &[u8]) {
+        let parsed = pgp::parse(&pgp::decode(bytes));
+        let known = crate::command::all_registered_command_names();
+        let mut rows: FxHashMap<String, String> = self.alias_editor_rows.iter()
+            .filter(|(a, c)| !a.is_empty() && !c.is_empty()).cloned().collect();
+        let mut imported = 0;
+        let mut unsupported = std::collections::BTreeSet::new();
+        for (alias, target) in parsed {
+            let command = pgp::canonical(&target);
+            if known.iter().any(|name| name.eq_ignore_ascii_case(&command)) {
+                rows.insert(alias, command);
+                imported += 1;
+            } else {
+                unsupported.insert(target);
+            }
+        }
+        if imported > 0 {
+            self.alias_editor_rows = rows.into_iter().collect();
+            self.alias_editor_rows.sort_by(|a, b| a.0.cmp(&b.0));
+            self.alias_pending_add = false;
+            self.alias_reset_confirm = false;
+            self.alias_close_confirm = false;
+        }
+        self.alias_import_report = if imported == 0 && unsupported.is_empty() {
+            crate::t!("PGP: no valid aliases found. The working rows were not changed.").into_owned()
+        } else {
+            crate::tf!("PGP: {} alias(es) loaded for review; {} unsupported command(s) skipped. No changes activated. Apply to save.", imported, unsupported.len()).into_owned()
+        };
+        self.command_line.push_info(&self.alias_import_report);
+        // Unsupported AutoCAD/Civil 3D commands are an expected compatibility
+        // limitation, not import errors. Keep full diagnostics out of the UI.
+        log::info!("PGP import: {imported} aliases; unsupported targets: {unsupported:?}");
+    }
+
     /// Rewrite the leading command token through the alias table, leaving any
     /// arguments after the first whitespace untouched. Returns `None` when the
     /// verb is not an alias, so the caller passes the original string through
@@ -417,6 +437,22 @@ impl OpenCADStudio {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn import_merges_supported_aliases_without_activating_them() {
+        let mut app = OpenCADStudio::new_for_test();
+        let original = app.command_aliases.clone();
+        app.alias_editor_rows = vec![("KEEP".into(), "LINE".into()), ("E".into(), "ERASE".into())];
+        app.import_alias_pgp(b"E,*BORRA\nE,*EMPALME\nSQ,*SCP\nCIVIL,*AECCUNSUPPORTED\nNOTEPAD,START NOTEPAD,1,,\n");
+        assert!(app.alias_editor_rows.contains(&("E".into(), "FILLET".into())));
+        assert!(app.alias_editor_rows.contains(&("SQ".into(), "UCS".into())));
+        assert!(app.alias_editor_rows.contains(&("KEEP".into(), "LINE".into())));
+        assert!(!app.alias_editor_rows.iter().any(|(a, _)| a == "CIVIL" || a == "NOTEPAD"));
+        assert_eq!(app.command_aliases, original, "import must not activate or persist aliases");
+        let staged = app.alias_editor_rows.clone();
+        app.import_alias_pgp(b"; no aliases\n");
+        assert_eq!(app.alias_editor_rows, staged);
+    }
 
     fn map(pairs: &[(&str, &str)]) -> FxHashMap<String, String> {
         pairs

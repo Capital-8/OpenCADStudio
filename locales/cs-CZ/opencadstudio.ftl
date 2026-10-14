@@ -6584,3 +6584,13 @@ measurement =
     .area-preview =
         { $current }
         Preview total area = { $total }
+pgp-import =
+    .button = Import PGP…
+    .filter = Command aliases (*.pgp)
+    .empty = PGP: no valid aliases found. The working rows were not changed.
+    .summary = PGP: __ocs_fmt_0__ alias(es) loaded for review; __ocs_fmt_1__ unsupported command(s) skipped. No changes activated. Apply to save.
+
+ucs-follow =
+    .prompt = UCSFOLLOW: enter 0 (keep view) or 1 (follow UCS) <__ocs_fmt_0__>:
+    .paper-space = UCSFOLLOW: activate a model viewport; paper space cannot follow the UCS.
+    .invalid = UCSFOLLOW: only 0 or 1 is allowed.

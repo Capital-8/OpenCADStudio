@@ -1457,6 +1457,8 @@ pub(super) struct OpenCADStudio {
     /// True while the "unsaved changes will be discarded" confirmation
     /// overlays the editor: the user tried to close with un-applied rows.
     alias_close_confirm: bool,
+    /// Summary of the most recent PGP import; never activates the working rows.
+    alias_import_report: String,
 
     // ── Named Parameters ──────────────────────────────────────────────────
     /// Working buffer for the PARAMETERS modal. Unlike `alias_editor_rows`,
@@ -3745,6 +3747,9 @@ pub enum Message {
     // ── Command Alias Editor (ALIASEDIT) ────────────────────────────────
     /// Open the command-alias editor modal, seeding rows from the alias table.
     AliasEditorOpen,
+    /// Pick an AutoCAD/OpenCAD PGP file, then merge supported aliases for review.
+    AliasEditorImport,
+    AliasEditorImported(Option<Result<Vec<u8>, String>>),
     /// Live edit of the alias or command in row `idx`.
     AliasEditorInput {
         idx: usize,
@@ -4964,6 +4969,7 @@ impl OpenCADStudio {
             alias_pending_add: false,
             alias_reset_confirm: false,
             alias_close_confirm: false,
+            alias_import_report: String::new(),
             named_parameter_editor_rows: Vec::new(),
             // Layout Manager
             layout_manager_selected: "Model".to_string(),

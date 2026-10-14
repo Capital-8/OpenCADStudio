@@ -8557,6 +8557,7 @@ impl OpenCADStudio {
                     .collect();
                 rows.sort_by(|a, b| a.0.cmp(&b.0));
                 self.alias_editor_rows = rows;
+                self.alias_import_report.clear();
                 self.alias_pending_add = false;
                 self.alias_reset_confirm = false;
                 self.alias_close_confirm = false;
@@ -8576,6 +8577,29 @@ impl OpenCADStudio {
                 }
                 // Typing never finishes the addition — only the draft row's
                 // check button does, so no half-visible "ghost" row appears.
+                Task::none()
+            }
+            Message::AliasEditorImport => Task::perform(
+                async {
+                    let handle = rfd::AsyncFileDialog::new()
+                        .add_filter(crate::t!("Command aliases (*.pgp)").as_ref(), &["pgp"])
+                        .pick_file().await?;
+                    #[cfg(not(target_arch = "wasm32"))]
+                    { Some(std::fs::read(handle.path()).map_err(|e| e.to_string())) }
+                    #[cfg(target_arch = "wasm32")]
+                    { Some(Ok(handle.read().await)) }
+                },
+                Message::AliasEditorImported,
+            ),
+            Message::AliasEditorImported(result) => {
+                // A picker can finish after the modal was dismissed.
+                if self.active_modal == Some(super::ModalKind::Aliases) {
+                    match result {
+                        Some(Ok(bytes)) => self.import_alias_pgp(&bytes),
+                        Some(Err(error)) => self.command_line.push_error(&format!("PGP: {error}")),
+                        None => {}
+                    }
+                }
                 Task::none()
             }
             Message::AliasEditorAdd => {
