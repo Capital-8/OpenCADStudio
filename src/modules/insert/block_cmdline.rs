@@ -763,7 +763,7 @@ enum BeditStep {
 }
 
 /// -BEDIT: `Enter block name or [?]:` opens the block editor on that
-/// definition, creating an empty one for a new name.
+/// definition, or on a new empty one for a new name.
 pub struct DashBeditCommand {
     step: BeditStep,
     table: BlockTable,
@@ -845,7 +845,7 @@ impl CadCommand for DashBeditCommand {
                     return Some(CmdResult::ReportError("Invalid block name.".to_string()));
                 }
                 let name = self.table.find_user(t).unwrap_or_else(|| t.to_string());
-                CmdResult::Dispatch(format!("BEDIT_OPEN:{name}"))
+                CmdResult::Dispatch(format!("BEDIT_NEW:{name}"))
             }
             BeditStep::ListPattern => {
                 self.step = BeditStep::Name;

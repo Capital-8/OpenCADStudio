@@ -32,6 +32,7 @@ impl DraftingSettingsState {
             ortho_on: app.ortho_mode,
             polar_increment_deg: app.polar_increment_deg,
             osnap_on: app.snapper.snap_enabled,
+            osnap_aperture_input: format!("{}", app.snapper.osnap_radius_px),
             otrack_on: app.snapper.otrack_enabled,
             snap_modes: app.snapper.enabled.clone(),
             osnap3d_on: app.snapper.snap3d_enabled,
@@ -107,6 +108,13 @@ impl OpenCADStudio {
         self.polar_mode = state.polar_on;
         self.ortho_mode = state.ortho_on;
         self.polar_increment_deg = state.polar_increment_deg;
+        let aperture = state.osnap_aperture_input.trim().parse::<f32>().ok()
+            .filter(|v| v.is_finite() && (4.0..=40.0).contains(v));
+        let Some(aperture) = aperture else {
+            self.command_line.push_error("OSNAP capture radius must be between 4 and 40 pixels.");
+            return false;
+        };
+        self.snapper.osnap_radius_px = aperture;
         self.snapper.snap_enabled = state.osnap_on;
         self.snapper.otrack_enabled = state.otrack_on;
         self.snapper.enabled = state.snap_modes.clone();
@@ -145,6 +153,7 @@ mod tests {
             ortho_on: false,
             polar_increment_deg: 15.0,
             osnap_on: true,
+            osnap_aperture_input: "15".to_string(),
             otrack_on: false,
             snap_modes: rustc_hash::FxHashSet::default(),
             osnap3d_on: false,
@@ -186,6 +195,7 @@ mod tests {
             ortho_on: false,
             polar_increment_deg: 15.0,
             osnap_on: true,
+            osnap_aperture_input: "15".to_string(),
             otrack_on: false,
             snap_modes: rustc_hash::FxHashSet::default(),
             osnap3d_on: false,

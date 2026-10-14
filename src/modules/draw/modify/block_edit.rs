@@ -70,9 +70,10 @@ pub struct BlockEditSession {
     /// Transient UCS being manipulated in this block tab. On commit its full
     /// frame is baked into the definition and this returns to `None`.
     pub editor_ucs: Option<codec::tables::Ucs>,
-    /// The definition was created empty to be edited (a new name at BEDIT /
-    /// -BEDIT); closing without saving removes it again.
-    pub created_for_edit: bool,
+    /// Snapshot of the document prior to creating an empty new block for editing.
+    /// If the session is closed without saving, this snapshot is restored so
+    /// no block record remains in the block table.
+    pub unpersisted_pre_document: Option<codec::CadDocument>,
 }
 
 // ── BEDIT pick command ─────────────────────────────────────────────────────
@@ -121,4 +122,7 @@ inventory::submit!(crate::command::CommandRegistration {
 });
 inventory::submit!(crate::command::CommandRegistration {
     names: &["BSAVE", "BSAVEAS", "BCLOSE"]
+});
+inventory::submit!(crate::command::CommandRegistration {
+    names: &["BTESTBLOCK", "BCLOSETESTBLOCK"]
 });
