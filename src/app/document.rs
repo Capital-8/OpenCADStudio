@@ -290,6 +290,8 @@ pub(super) struct DocumentTab {
     /// Model-space corners of the last crossing window drawn with no command
     /// running: STRETCH on that selection stretches through it (#1068).
     pub(super) last_crossing_window: Option<([f64; 2], [f64; 2])>,
+    /// Colours picked in this drawing this session, newest first. Not saved.
+    pub(super) recent_colors: Vec<codec::types::Color>,
 }
 
 impl DocumentTab {
@@ -697,6 +699,7 @@ impl DocumentTab {
             suspended_cmd: None,
             transparent_resume: false,
             last_crossing_window: None,
+            recent_colors: Vec::new(),
         }
     }
 

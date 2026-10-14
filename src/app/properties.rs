@@ -3160,7 +3160,11 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
         }
 
         if !preserve_entity_style {
-            crate::scene::view::dispatch::apply_color(&mut entity, self.ribbon.active_color);
+            crate::scene::view::dispatch::apply_named_color(
+                &mut entity,
+                self.ribbon.active_color,
+                self.ribbon.active_color_name(),
+            );
             crate::scene::view::dispatch::apply_common_prop(
                 &mut entity,
                 "linetype",

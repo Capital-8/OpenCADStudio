@@ -1193,7 +1193,10 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                 .width(Length::Fixed(PROP_W))
             };
 
-            let (color_swatch, _) = acad_color_display(active_color);
+            // ByLayer shows the current layer's colour.
+            let color_swatch = super::layer_color(layer_infos, active_layer)
+                .filter(|_| active_color == AcadColor::ByLayer)
+                .unwrap_or_else(|| acad_color_display(active_color).0);
             let color_row = prop_row(
                 crate::ui::color_select::color_display_name(active_color),
                 PROP_COLOR_ID,

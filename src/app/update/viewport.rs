@@ -1144,7 +1144,7 @@ impl OpenCADStudio {
         p: Point,
         expected_viewport: Option<codec::Handle>,
     ) -> Task<Message> {
-        if self.color_pick_target.is_some() {
+        if self.color_picker.is_some() {
             return Task::none();
         }
 
@@ -1232,7 +1232,7 @@ impl OpenCADStudio {
         // leaks through the stack to the pane mouse_area beneath and
         // would track the crosshair over the dropdown's empty areas.
         // Drop the move here instead. (#227)
-        if self.ribbon.open_dropdown.is_some() || self.color_pick_target.is_some() {
+        if self.ribbon.open_dropdown.is_some() || self.color_picker.is_some() {
             return Task::none();
         }
         let i = self.active_tab;

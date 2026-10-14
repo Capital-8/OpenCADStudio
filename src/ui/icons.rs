@@ -62,6 +62,7 @@ static LAY_ULK: &[u8] = include_bytes!("../../assets/icons/layers/layulk.svg");
 // All are black-on-transparent; recolour them at the call site with [`tinted`].
 pub static CHECK: &[u8] = include_bytes!("../../assets/icons/ui/check.svg");
 pub static CLOSE: &[u8] = include_bytes!("../../assets/icons/ui/close.svg");
+pub static EYEDROPPER: &[u8] = include_bytes!("../../assets/icons/ui/eyedropper.svg");
 pub static PLUS: &[u8] = include_bytes!("../../assets/icons/ui/plus.svg");
 pub static REFRESH: &[u8] = include_bytes!("../../assets/icons/ui/refresh.svg");
 pub static SWAP: &[u8] = include_bytes!("../../assets/icons/ui/swap.svg");
@@ -80,6 +81,8 @@ pub static PIN_ACTIVE: &[u8] = include_bytes!("../../assets/icons/ui/pin_active.
 pub static SPLIT_V: &[u8] = include_bytes!("../../assets/icons/ui/split_v.svg");
 pub static SPLIT_H: &[u8] = include_bytes!("../../assets/icons/ui/split_h.svg");
 pub static GRID: &[u8] = include_bytes!("../../assets/icons/ui/grid.svg");
+pub static LIST: &[u8] = include_bytes!("../../assets/icons/ui/list.svg");
+pub static SEARCH: &[u8] = include_bytes!("../../assets/icons/ui/search.svg");
 pub static PREVIEW: &[u8] = include_bytes!("../../assets/icons/ui/preview.svg");
 pub static SNAP: &[u8] = include_bytes!("../../assets/icons/ui/snap.svg");
 pub static DOC_NEW: &[u8] = include_bytes!("../../assets/icons/ui/doc_new.svg");

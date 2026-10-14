@@ -108,6 +108,8 @@ pub struct Folders {
     /// Where `.shx` / `.ttf` fonts dropped in by the user (or downloaded for
     /// a drawing) are found.
     pub fonts: Option<String>,
+    /// Where `.acb` colour books are kept and loaded ones copied to.
+    pub color_books: Option<String>,
 }
 
 /// Values read from the current drawing's header rather than from preferences.
@@ -165,22 +167,17 @@ impl<T> fmt::Display for Labelled<T> {
     }
 }
 
-/// A background swatch that opens the colour wheel when clicked.
+/// A colour swatch that opens the Select Color panel when clicked.
 ///
-/// The wheel sits alongside the hex field rather than replacing it: typing
+/// The swatch sits beside the hex field rather than replacing it: typing
 /// `#1E1E1E` stays the fastest way to reproduce an exact colour, while the
-/// wheel is for choosing one by eye.
-fn bg_swatch_picker<'a>(
-    target: crate::app::BgTarget,
-    rgb: [u8; 3],
-    open: Option<crate::app::BgTarget>,
-) -> Element<'a, Message> {
-    let colour = iced::Color::from_rgb8(rgb[0], rgb[1], rgb[2]);
+/// panel is for choosing one by eye.
+fn color_swatch<'a>(target: crate::app::UiColor, [r, g, b]: [u8; 3]) -> Element<'a, Message> {
     let swatch = container(Space::new())
         .width(28)
         .height(22)
         .style(move |theme: &Theme| container::Style {
-            background: Some(Background::Color(colour)),
+            background: Some(Background::Color(iced::Color::from_rgb8(r, g, b))),
             border: Border {
                 color: theme.palette().background.strong.color,
                 width: 1.0,
@@ -188,18 +185,14 @@ fn bg_swatch_picker<'a>(
             },
             ..Default::default()
         });
-    let underlay = button(swatch)
-        .on_press(Message::BgPickerOpen(target))
+    button(swatch)
+        .on_press(Message::OpenColorWindow(
+            crate::app::ColorPickTarget::Interface(target),
+            codec::types::Color::Rgb { r, g, b },
+        ))
         .padding(0)
-        .style(button::text);
-    iced_aw::ColorPicker::new(
-        open == Some(target),
-        colour,
-        underlay,
-        Message::BgPickerCancel,
-        Message::BgPickerSubmit,
-    )
-    .into()
+        .style(button::text)
+        .into()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -235,7 +228,6 @@ pub fn view_window<'a>(
     model_bg_input: &'a str,
     paper_bg_input: &'a str,
     desk_bg_input: &'a str,
-    bg_picker: Option<crate::app::BgTarget>,
     dirty: bool,
     close_confirm: bool,
     sizing: crate::ui::modal::ModalSizing,
@@ -315,18 +307,8 @@ pub fn view_window<'a>(
 
     let mut color_controls = column![].spacing(8);
     for (index, (label, color)) in colors.into_iter().enumerate() {
-        let swatch = container(Space::new())
-            .width(28)
-            .height(22)
-            .style(move |theme: &Theme| container::Style {
-                background: Some(Background::Color(color)),
-                border: Border {
-                    color: theme.palette().background.strong.color,
-                    width: 1.0,
-                    radius: 3.0.into(),
-                },
-                ..Default::default()
-            });
+        let [r, g, bl, _] = color.into_rgba8();
+        let swatch = color_swatch(crate::app::UiColor::Theme(index), [r, g, bl]);
         color_controls = color_controls.push(
             row![
                 text(label).size(12).width(110),
@@ -536,61 +518,18 @@ pub fn view_window<'a>(
     .spacing(0)
     .width(sizing.width);
 
-    let crosshair_rgb = crosshair_color.unwrap_or([255, 255, 255]);
-    let crosshair_swatch =
-        container(Space::new())
-            .width(28)
-            .height(22)
-            .style(move |theme: &Theme| container::Style {
-                background: Some(Background::Color(iced::Color::from_rgb8(
-                    crosshair_rgb[0],
-                    crosshair_rgb[1],
-                    crosshair_rgb[2],
-                ))),
-                border: Border {
-                    color: theme.palette().background.strong.color,
-                    width: 1.0,
-                    radius: 3.0.into(),
-                },
-                ..Default::default()
-            });
-
-    let command_rgb = command_text_color.unwrap_or([220, 220, 220]);
-    let command_swatch =
-        container(Space::new())
-            .width(28)
-            .height(22)
-            .style(move |theme: &Theme| container::Style {
-                background: Some(Background::Color(iced::Color::from_rgb8(
-                    command_rgb[0],
-                    command_rgb[1],
-                    command_rgb[2],
-                ))),
-                border: Border {
-                    color: theme.palette().background.strong.color,
-                    width: 1.0,
-                    radius: 3.0.into(),
-                },
-                ..Default::default()
-            });
-
-    let snap_rgb = snap_marker_color.unwrap_or([255, 230, 26]);
-    let snap_swatch = container(Space::new())
-        .width(28)
-        .height(22)
-        .style(move |theme: &Theme| container::Style {
-            background: Some(Background::Color(iced::Color::from_rgb8(
-                snap_rgb[0],
-                snap_rgb[1],
-                snap_rgb[2],
-            ))),
-            border: Border {
-                color: theme.palette().background.strong.color,
-                width: 1.0,
-                radius: 3.0.into(),
-            },
-            ..Default::default()
-        });
+    let crosshair_swatch = color_swatch(
+        crate::app::UiColor::Crosshair,
+        crosshair_color.unwrap_or([255, 255, 255]),
+    );
+    let command_swatch = color_swatch(
+        crate::app::UiColor::CommandText,
+        command_text_color.unwrap_or([220, 220, 220]),
+    );
+    let snap_swatch = color_swatch(
+        crate::app::UiColor::SnapMarker,
+        snap_marker_color.unwrap_or([255, 230, 26]),
+    );
 
     let model_bg_rgb = model_space
         .custom_bg
@@ -750,7 +689,7 @@ pub fn view_window<'a>(
         display = display.push(Space::new().height(10)).push(
             row![
                 text(crate::t!("Model background")).size(12).width(140),
-                bg_swatch_picker(crate::app::BgTarget::Model, model_bg_rgb, bg_picker),
+                color_swatch(crate::app::UiColor::ModelBackground, model_bg_rgb),
                 text_input("#RRGGBB", model_bg_input)
                     .on_input(Message::ModelSpaceBgChanged)
                     .width(150),
@@ -763,7 +702,7 @@ pub fn view_window<'a>(
     display = display.push(Space::new().height(10)).push(
         row![
             text(crate::t!("Paper background")).size(12).width(140),
-            bg_swatch_picker(crate::app::BgTarget::Paper, paper_bg_rgb, bg_picker),
+            color_swatch(crate::app::UiColor::PaperBackground, paper_bg_rgb),
             text_input("#RRGGBB", paper_bg_input)
                 .on_input(Message::PaperSpaceBgChanged)
                 .width(150),
@@ -775,7 +714,7 @@ pub fn view_window<'a>(
     display = display.push(Space::new().height(10)).push(
         row![
             text(crate::t!("Desk surround")).size(12).width(140),
-            bg_swatch_picker(crate::app::BgTarget::Desk, desk_bg_rgb, bg_picker),
+            color_swatch(crate::app::UiColor::DeskBackground, desk_bg_rgb),
             text_input("#RRGGBB", desk_bg_input)
                 .on_input(Message::DeskSpaceBgChanged)
                 .width(150),
@@ -1853,6 +1792,11 @@ pub fn view_window<'a>(
         folder_row(crate::t!("Autosave files"), folders.autosave.clone()),
         Space::new().height(12),
         folder_row(crate::t!("Fonts"), folders.fonts.clone()),
+        Space::new().height(12),
+        folder_row(
+            crate::t!("Color book locations"),
+            folders.color_books.clone()
+        ),
         Space::new().height(16),
         text(crate::t!("Default template for new drawings")).size(12),
         Space::new().height(4),

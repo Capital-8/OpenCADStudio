@@ -1136,42 +1136,60 @@ impl OpenCADStudio {
         Task::none()
     }
 
-    pub(super) fn on_color_window_pick(&mut self, color: codec::types::Color) -> Task<Message> {
+    pub(super) fn on_color_window_pick(
+        &mut self,
+        color: codec::types::Color,
+        name: Option<String>,
+    ) -> Task<Message> {
+        if let Some(crate::app::ColorPickTarget::Interface(target)) = self
+            .color_picker
+            .as_ref()
+            .map(|picker| picker.target.clone())
+        {
+            self.color_picker = None;
+            let Some((r, g, b)) = crate::ui::color_select::math::color_rgb(color) else {
+                return Task::none();
+            };
+            // Hand the result to the same handler the typed hex field uses, so
+            // the picker and the field cannot drift apart on validation or
+            // persistence.
+            let hex = crate::app::config::rgb_to_hex([r, g, b]);
+            use crate::app::UiColor;
+            return Task::done(match target {
+                UiColor::ModelBackground => Message::ModelSpaceBgChanged(hex),
+                UiColor::PaperBackground => Message::PaperSpaceBgChanged(hex),
+                UiColor::DeskBackground => Message::DeskSpaceBgChanged(hex),
+                UiColor::Theme(index) => Message::OptionsThemeColorChanged(index, hex),
+                UiColor::Crosshair => Message::CrosshairColorChanged(hex),
+                UiColor::SnapMarker => Message::SnapMarkerColorChanged(hex),
+                UiColor::CommandText => Message::CommandTextColorChanged(hex),
+            });
+        }
         if matches!(
-            self.color_pick_target.as_ref().map(|(target, _)| target),
+            self.color_picker.as_ref().map(|picker| &picker.target),
             Some(crate::app::ColorPickTarget::PlotStyle)
         ) {
-            self.color_pick_target = None;
+            self.color_picker = None;
 
-            let rgb = match color {
-                codec::types::Color::Rgb { r, g, b } => Some((r, g, b)),
-                codec::types::Color::Index(index) => codec::types::aci_table::aci_to_rgb(index),
-                _ => None,
-            };
-
-            if let Some((r, g, b)) = rgb {
-                self.ps_color_buf = format!("#{r:02X}{g:02X}{b:02X}");
+            if let Some((r, g, b)) = crate::ui::color_select::math::color_rgb(color) {
+                self.ps_color_buf = crate::ui::color_select::math::hex_string(r, g, b);
             }
 
             return self.on_plot_style_panel_apply();
         }
         let s = crate::ui::color_select::color_to_aci_string(color);
-        let edit = match self.color_pick_target.take().map(|(target, _)| target) {
+        let edit = match self.color_picker.take().map(|picker| picker.target) {
             Some(crate::app::ColorPickTarget::Gradient(index)) => {
                 Some(Message::GraphicAttributes(GraphicAttributesMsg::Gradient(
                     crate::ui::window::gradient_editor::GradientMsg::Color(index, color),
                 )))
             }
             Some(crate::app::ColorPickTarget::ViewBackground(slot)) => {
-                let rgb = match color {
-                    codec::types::Color::Rgb { r, g, b } => Some([r, g, b]),
-                    codec::types::Color::Index(index) => {
-                        codec::types::aci_table::aci_to_rgb(index).map(|(r, g, b)| [r, g, b])
-                    }
-                    _ => None,
-                };
-                rgb.map(|rgb| {
-                    Message::PdfDialog(crate::ui::window::pdf_dialogs::PdfDialogMsg::BgColor(slot, rgb))
+                crate::ui::color_select::math::color_rgb(color).map(|(r, g, b)| {
+                    Message::PdfDialog(crate::ui::window::pdf_dialogs::PdfDialogMsg::BgColor(
+                        slot,
+                        [r, g, b],
+                    ))
                 })
             }
             Some(crate::app::ColorPickTarget::GraphicAttributesLine) => Some(
@@ -1189,7 +1207,9 @@ impl OpenCADStudio {
                 field: f,
                 value: s,
             }),
-            Some(crate::app::ColorPickTarget::Properties) => Some(Message::PropColorChanged(color)),
+            Some(crate::app::ColorPickTarget::Properties) => {
+                return self.set_property_color(color, name);
+            }
             Some(crate::app::ColorPickTarget::PropertiesBg) => {
                 Some(Message::PropBgColorChanged(color))
             }
@@ -1197,13 +1217,17 @@ impl OpenCADStudio {
                 Some(Message::PropColorFieldChanged { field, color })
             }
             Some(crate::app::ColorPickTarget::MText) => Some(Message::MTextColorChanged(color)),
-            Some(crate::app::ColorPickTarget::Ribbon) => Some(Message::RibbonColorChanged(color)),
-            Some(crate::app::ColorPickTarget::Layer(name)) => {
+            Some(crate::app::ColorPickTarget::Ribbon) => {
+                let task = self.update(Message::RibbonColorChanged(color));
+                self.ribbon.active_color_book = name.map(|name| (color, name));
+                return task;
+            }
+            Some(crate::app::ColorPickTarget::Layer(layer)) => {
                 let i = self.active_tab;
-                match self.layer_panel_index(i, &name) {
+                match self.layer_panel_index(i, &layer) {
                     Some(idx) => {
                         self.tabs[i].layers.selected = Some(idx);
-                        Some(Message::LayerColorSet(color))
+                        return self.set_layer_color(color, name.as_deref());
                     }
                     None => None,
                 }
@@ -1211,7 +1235,10 @@ impl OpenCADStudio {
             Some(crate::app::ColorPickTarget::LayerState(idx)) => {
                 Some(Message::LayerStateEditorLayerColor(idx, color))
             }
-            Some(crate::app::ColorPickTarget::PlotStyle) => None,
+            // Handled before this match.
+            Some(
+                crate::app::ColorPickTarget::PlotStyle | crate::app::ColorPickTarget::Interface(_),
+            ) => None,
             None => None,
         };
         if let Some(m) = edit {

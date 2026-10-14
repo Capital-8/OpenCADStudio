@@ -358,7 +358,11 @@ impl OpenCADStudio {
                 if layer != "0" || entity.as_entity().layer().is_empty() {
                     entity.as_entity_mut().set_layer(layer);
                 }
-                crate::scene::view::dispatch::apply_color(&mut entity, self.ribbon.active_color);
+                crate::scene::view::dispatch::apply_named_color(
+                    &mut entity,
+                    self.ribbon.active_color,
+                    self.ribbon.active_color_name(),
+                );
                 crate::scene::view::dispatch::apply_common_prop(
                     &mut entity,
                     "linetype",
@@ -476,7 +480,11 @@ impl OpenCADStudio {
                 if layer != "0" || entity.as_entity().layer().is_empty() {
                     entity.as_entity_mut().set_layer(layer);
                 }
-                crate::scene::view::dispatch::apply_color(&mut entity, self.ribbon.active_color);
+                crate::scene::view::dispatch::apply_named_color(
+                    &mut entity,
+                    self.ribbon.active_color,
+                    self.ribbon.active_color_name(),
+                );
                 crate::scene::view::dispatch::apply_common_prop(
                     &mut entity,
                     "linetype",

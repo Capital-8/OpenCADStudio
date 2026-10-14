@@ -391,8 +391,8 @@ impl OpenCADStudio {
                     .location(id)
                     .map_or(crate::app::config::DockSide::Right, |(side, _)| side),
                 matches!(
-                    self.color_pick_target,
-                    Some((crate::app::ColorPickTarget::Gradient(_), _))
+                    self.color_picker.as_ref().map(|picker| &picker.target),
+                    Some(crate::app::ColorPickTarget::Gradient(_))
                 ),
             ),
             crate::ui::dock::PanelId::BlockPalette => {

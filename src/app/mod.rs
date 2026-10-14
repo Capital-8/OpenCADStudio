@@ -952,9 +952,6 @@ pub(super) struct OpenCADStudio {
     pub(crate) sheet_set_pending_layout: Option<(String, String)>,
     /// The subset / set Import Layout as Sheet adds to, while its file picker is open.
     pub(crate) sheet_set_import_parent: Option<String>,
-    /// Which viewport background the colour wheel is editing, or `None` when
-    /// it is closed. One slot, because only one wheel can be open at a time.
-    pub(crate) bg_picker: Option<BgTarget>,
     /// General edge-stack dock layout for the side panels.
     pub(crate) dock: crate::ui::dock::DockState,
     /// Pallet revealed although it auto-hides (its edge's group, or its
@@ -1074,13 +1071,14 @@ pub(super) struct OpenCADStudio {
     #[cfg(target_arch = "wasm32")]
     web_autosave_clear_after: Vec<String>,
     // ── Floating panel windows ────────────────────────────────────────────
-    /// Active `iced_aw` colour picker: destination plus its initial colour.
-    color_pick_target: Option<(ColorPickTarget, AcadColor)>,
-    /// Visible page in the shared CAD colour picker.
-    color_picker_tab: ColorPickerTab,
+    /// The open Select Color panel, if any.
+    color_picker: Option<crate::ui::color_select::ColorPicker>,
+    /// The built-in colour book and those in the colour book folder, read
+    /// lazily when the Select Color panel first opens.
+    color_books: std::sync::Arc<Vec<crate::ui::color_select::book::ColorBook>>,
+    color_books_read: bool,
     /// Recently committed real colours, newest first.
     /// ACI and True Color remain semantically distinct even when their RGB matches.
-    recent_colors: Vec<AcadColor>,
     /// The open in-canvas modal dialog, if any (Plan B: shared overlay instead
     /// of OS windows).
     active_modal: Option<ModalKind>,
@@ -1788,21 +1786,19 @@ pub struct SaveOutcome {
     refreshed_preview: Option<Option<codec::Preview>>,
     result: Result<(), crate::io::SaveFailure>,
 }
-/// Which viewport background a colour-wheel session is editing.
+/// Which Options colour the interface colour picker is editing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BgTarget {
-    Model,
-    Paper,
-    Desk,
+pub enum UiColor {
+    ModelBackground,
+    PaperBackground,
+    DeskBackground,
+    /// One of the six theme colours, by its row in Options.
+    Theme(usize),
+    Crosshair,
+    SnapMarker,
+    CommandText,
 }
 
-/// Active page in the shared CAD colour picker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ColorPickerTab {
-    #[default]
-    Index,
-    TrueColor,
-}
 /// Where a colour chosen in the standalone palette window should be applied.
 #[derive(Debug, Clone)]
 pub enum ColorPickTarget {
@@ -1828,6 +1824,8 @@ pub enum ColorPickTarget {
     LayerState(usize),
     /// The MText editor's selection (or global) colour.
     MText,
+    /// An Options interface colour (true colour only).
+    Interface(UiColor),
     /// A colour of the view Background dialog: 0 solid, 1 top, 2 middle, 3 bottom.
     ViewBackground(u8),
 }
@@ -2596,12 +2594,6 @@ pub enum Message {
     ModelSpaceModeChanged(config::ModelSpaceMode),
     /// Change Model Space custom background color as hex or empty for default.
     ModelSpaceBgChanged(String),
-    /// Open the colour wheel on one of the viewport backgrounds.
-    BgPickerOpen(BgTarget),
-    /// Dismiss the wheel, changing nothing.
-    BgPickerCancel,
-    /// Accept the wheel's colour for whichever background it was opened on.
-    BgPickerSubmit(iced::Color),
     /// Change Paper Space custom sheet background color as hex or empty for default.
     PaperSpaceBgChanged(String),
     /// Change Paper Space desk surround background (#RRGGBB).
@@ -4344,14 +4336,16 @@ pub enum Message {
     DsColorMore(DsField),
     /// Open the shared CAD colour picker for a field and its current colour.
     OpenColorWindow(ColorPickTarget, AcadColor),
-    /// Switch between Index Color and True Color.
-    ColorPickerTabChanged(ColorPickerTab),
-    /// Change the pending colour without committing it yet.
-    ColorPickerColorChanged(AcadColor),
+    /// Interaction inside the Select Color panel.
+    ColorPicker(crate::ui::color_select::ColorPickerMsg),
     /// Close the colour picker without choosing.
     CloseColorPicker,
-    /// Commit the colour chosen in the shared picker.
-    ColorWindowPick(codec::types::Color),
+    /// Commit the colour chosen in the shared picker, with its `BOOK$NAME`
+    /// when it comes from a colour book.
+    ColorWindowPick(codec::types::Color, Option<String>),
+    /// An `.acb` file was read (and, on desktop, copied into the first
+    /// colour book folder).
+    ColorBookLoaded(Result<crate::ui::color_select::book::ColorBook, String>),
     /// Set a block/linetype Handle field on the selected dim style from a
     /// dropdown of available block-records / linetypes (by name).
     DsSetHandle {
@@ -4756,7 +4750,6 @@ impl OpenCADStudio {
             sheet_set: Default::default(),
             sheet_set_pending_layout: None,
             sheet_set_import_parent: None,
-            bg_picker: None,
             block_palette: Default::default(),
             xref_manager: Default::default(),
             dock: Default::default(),
@@ -4805,9 +4798,9 @@ impl OpenCADStudio {
             web_autosave_consumed: None,
             #[cfg(target_arch = "wasm32")]
             web_autosave_clear_after: Vec::new(),
-            color_pick_target: None,
-            color_picker_tab: ColorPickerTab::Index,
-            recent_colors: Vec::new(),
+            color_picker: None,
+            color_books: Default::default(),
+            color_books_read: false,
             active_modal: None,
             hyperlink_editor_handles: Vec::new(),
             hyperlink_editor_url: String::new(),

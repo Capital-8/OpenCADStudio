@@ -322,6 +322,12 @@ pub fn apply_color(entity: &mut EntityType, color: AcadColor) {
     common.color_book_handle = None;
 }
 
+/// Like [`apply_color`], but keeps a colour-book identity (`BOOK$NAME`).
+pub fn apply_named_color(entity: &mut EntityType, color: AcadColor, name: Option<String>) {
+    apply_color(entity, color);
+    entity.common_mut().color_name = name;
+}
+
 pub fn apply_line_weight(entity: &mut EntityType, lw: LineWeight) {
     entity.as_entity_mut().set_line_weight(lw);
 }

@@ -373,6 +373,8 @@ impl OpenCADStudio {
                                         .map(|_| std::env::temp_dir().display().to_string()),
                                     fonts: crate::io::font_repo::fonts_dir()
                                         .map(|p| p.display().to_string()),
+                                    color_books: crate::ui::color_select::book::folder()
+                                        .map(|p| p.display().to_string()),
                                 }
                             }
                             #[cfg(target_arch = "wasm32")]
@@ -395,7 +397,6 @@ impl OpenCADStudio {
                         &self.model_bg_input,
                         &self.paper_bg_input,
                         &self.desk_bg_input,
-                        self.bg_picker,
                         dirty,
                         close_confirm,
                         flow,

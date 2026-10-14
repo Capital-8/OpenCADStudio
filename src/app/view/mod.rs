@@ -2303,7 +2303,7 @@ bg={bg_ms:.1}ms n={view_count}"
                     &redo_labels,
                     self.win_size,
                     self.tabs[self.active_tab].is_start,
-                    &self.recent_colors,
+                    &self.tabs[self.active_tab].recent_colors,
                 )
                 .unwrap_or_else(|| iced::widget::Space::new().width(0).height(0).into())
         };
@@ -2431,42 +2431,20 @@ bg={bg_ms:.1}ms n={view_count}"
             }
         }
 
-        if let Some((_, current)) = self.color_pick_target.as_ref() {
-            match self.color_picker_tab {
-                super::ColorPickerTab::Index => {
-                    let content =
-                        crate::ui::color_select::index_color_page(*current, &self.recent_colors);
-
-                    crate::ui::modal::modal(
-                        base,
-                        t!("Select Color"),
-                        content,
-                        Message::CloseColorPicker,
-                        self.modal_offset,
-                        crate::ui::modal::ModalOptions::NOTICE,
-                    )
-                }
-
-                super::ColorPickerTab::TrueColor => {
-                    let initial = crate::ui::properties::acad_color_display(*current).0;
-                    let modal_base = crate::ui::modal::backdrop(base, Message::CloseColorPicker);
-
-                    iced_aw::ColorPicker::new(
-                        true,
-                        initial,
-                        modal_base,
-                        // Cancel inside True Color returns to the indexed page instead
-                        // of closing the whole CAD colour picker.
-                        Message::ColorPickerTabChanged(super::ColorPickerTab::Index),
-                        |color| {
-                            Message::ColorWindowPick(crate::ui::color_select::iced_to_acad_color(
-                                color,
-                            ))
-                        },
-                    )
-                    .into()
-                }
+        if let Some(picker) = self.color_picker.as_ref() {
+            // While the eyedropper is picking, the panel steps aside so the
+            // whole window can be sampled.
+            if let Some(eyedropper) = picker.eyedropper_view() {
+                return iced::widget::stack![base, eyedropper].into();
             }
+            crate::ui::modal::modal(
+                base,
+                t!("Select Color"),
+                picker.view(),
+                Message::CloseColorPicker,
+                self.modal_offset,
+                crate::ui::modal::ModalOptions::NOTICE,
+            )
         } else {
             base
         }

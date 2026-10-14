@@ -3,6 +3,17 @@
 //! properties panel and every style editor so colour selection looks and
 //! behaves the same everywhere.
 
+pub mod book;
+pub mod document;
+pub mod editor;
+pub mod eyedropper;
+pub mod math;
+pub mod picker;
+pub mod widgets;
+
+pub use math::nearest_aci;
+pub use picker::{ColorPicker, ColorPickerMsg, Outcome};
+
 use crate::app::Message;
 use crate::t;
 use crate::ui::properties::acad_color_display;
@@ -32,42 +43,6 @@ pub fn color_to_aci_string(c: AcadColor) -> String {
         AcadColor::Index(i) => i.to_string(),
         AcadColor::Rgb { r, g, b } => nearest_aci(r, g, b).to_string(),
     }
-}
-
-/// Convert an Iced colour chosen by `iced_aw::ColorPicker` into a DWG true
-/// colour. ACI-only destinations map it to their closest indexed colour later.
-pub fn iced_to_acad_color(color: Color) -> AcadColor {
-    // Truncate the way the picker labels its channels, so the stored colour
-    // is the one the dialog showed; rounding drifted dragged values by one
-    // (#1621).
-    let byte = |c: f32| (c * 255.0) as u8;
-    AcadColor::Rgb {
-        r: byte(color.r),
-        g: byte(color.g),
-        b: byte(color.b),
-    }
-}
-
-/// Return the closest CAD Color Index for an RGB colour.
-pub fn nearest_aci(r: u8, g: u8, b: u8) -> u8 {
-    let mut best = 7;
-    let mut best_distance = u32::MAX;
-
-    for index in 1..=255 {
-        let Some((ar, ag, ab)) = codec::types::aci_table::aci_to_rgb(index) else {
-            continue;
-        };
-        let dr = i32::from(r) - i32::from(ar);
-        let dg = i32::from(g) - i32::from(ag);
-        let db = i32::from(b) - i32::from(ab);
-        let distance = (dr * dr + dg * dg + db * db) as u32;
-        if distance < best_distance {
-            best = index;
-            best_distance = distance;
-        }
-    }
-
-    best
 }
 
 /// Decode an ACI integer string back into an `AcadColor`.
@@ -348,175 +323,4 @@ pub fn drop_down_below<'a>(
         dd = dd.width(w);
     }
     dd.into()
-}
-
-/// Full CAD indexed-colour page used by the standalone Select Color dialog.
-///
-/// This only edits the pending colour. The caller commits it with
-/// `Message::ColorWindowPick`, so choosing a swatch does not immediately close
-/// the dialog.
-pub fn index_color_page<'a>(
-    current: AcadColor,
-    recent_colors: &'a [AcadColor],
-) -> Element<'a, Message> {
-    let swatch_button = |color: AcadColor, size: f32| -> Element<'a, Message> {
-        let (bg, _) = acad_color_display(color);
-        let selected = current == color;
-
-        button(
-            text("")
-                .width(Length::Fixed(size))
-                .height(Length::Fixed(size)),
-        )
-        .on_press(Message::ColorPickerColorChanged(color))
-        .style(move |theme: &Theme, status| {
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-
-            button::Style {
-                background: Some(Background::Color(bg)),
-                border: Border {
-                    color: if selected || hovered {
-                        theme.palette().primary.base.color
-                    } else {
-                        theme.palette().background.neutral.color
-                    },
-                    width: if selected {
-                        2.5
-                    } else if hovered {
-                        1.5
-                    } else {
-                        1.0
-                    },
-                    radius: 1.0.into(),
-                },
-                ..Default::default()
-            }
-        })
-        .padding(0)
-        .into()
-    };
-
-    // The first standard indexed CAD colours.
-    let mut standard = row![].spacing(4);
-    for idx in 1u8..=9 {
-        standard = standard.push(swatch_button(AcadColor::Index(idx), 22.0));
-    }
-
-    // ACI 10-249.
-    //
-    // Each group of ten indices belongs together. Arrange the 24 colour
-    // families horizontally and their ten shade/intensity variants vertically.
-    // This makes the palette read as a colour spectrum instead of a raw numeric
-    // sequence.
-    let mut palette_rows = column![].spacing(2);
-
-    for variant in 0u8..10 {
-        let mut palette_row = row![].spacing(2);
-
-        for family in 1u8..=24 {
-            let idx = family * 10 + variant;
-            palette_row = palette_row.push(swatch_button(AcadColor::Index(idx), 16.0));
-        }
-
-        palette_rows = palette_rows.push(palette_row);
-    }
-
-    // ACI 250-255 are the grayscale entries and are shown separately.
-    let mut grayscale = row![].spacing(4);
-
-    for idx in 250u8..=255 {
-        grayscale = grayscale.push(swatch_button(AcadColor::Index(idx), 22.0));
-    }
-
-    let recent: Element<'a, Message> = if recent_colors.is_empty() {
-        text(crate::t!("No recent colors yet"))
-            .size(10)
-            .style(|theme: &Theme| iced::widget::text::Style {
-                color: Some(theme.palette().background.base.text.scale_alpha(0.55)),
-            })
-            .into()
-    } else {
-        let mut recent_row = row![].spacing(4);
-
-        for &color in recent_colors.iter().take(12) {
-            recent_row = recent_row.push(swatch_button(color, 22.0));
-        }
-
-        recent_row.into()
-    };
-
-    let selected_text = match current {
-        AcadColor::Index(i) => {
-            let (r, g, b) = codec::types::aci_table::aci_to_rgb(i).unwrap_or((128, 128, 128));
-            format!("ACI {i}    RGB {r}, {g}, {b}")
-        }
-        AcadColor::Rgb { r, g, b } => crate::tf!("True Color    RGB {r}, {g}, {b}").into_owned(),
-        AcadColor::ByLayer => t!("ByLayer").into_owned(),
-        AcadColor::ByBlock => t!("ByBlock").into_owned(),
-        AcadColor::None => t!("None").into_owned(),
-    };
-
-    let tabs = row![
-        button(text(crate::t!("Index Color")).size(12))
-            .style(button::primary)
-            .padding([5, 14]),
-        button(text(crate::t!("True Color")).size(12))
-            .on_press(Message::ColorPickerTabChanged(
-                crate::app::ColorPickerTab::TrueColor
-            ))
-            .style(button::secondary)
-            .padding([5, 14]),
-    ]
-    .spacing(4);
-
-    let actions = container(
-        row![
-            button(text(crate::t!("Cancel")).size(11))
-                .on_press(Message::CloseColorPicker)
-                .style(button::secondary)
-                .padding([5, 14]),
-            button(text(crate::t!("OK")).size(11))
-                .on_press(Message::ColorWindowPick(current))
-                .style(button::primary)
-                .padding([5, 18]),
-        ]
-        .spacing(8),
-    )
-    .width(Length::Fill)
-    .align_x(iced::alignment::Horizontal::Right);
-
-    container(
-        column![
-            tabs,
-            text(crate::t!("Standard colors")).size(11),
-            standard,
-            text(crate::t!("CAD Color Index (ACI) 10–249")).size(11),
-            text(crate::t!("Color family  →    ·    Shade / intensity  ↓"))
-                .size(9)
-                .style(|theme: &Theme| iced::widget::text::Style {
-                    color: Some(theme.palette().background.base.text.scale_alpha(0.65)),
-                }),
-            container(palette_rows)
-                .padding(6)
-                .style(|theme: &Theme| container::Style {
-                    background: Some(Background::Color(theme.palette().background.weakest.color)),
-                    border: Border {
-                        color: theme.palette().background.neutral.color,
-                        width: 1.0,
-                        radius: 3.0.into(),
-                    },
-                    ..Default::default()
-                }),
-            text(crate::t!("Grayscale 250–255")).size(11),
-            grayscale,
-            text(crate::t!("Recently used")).size(11),
-            recent,
-            text(selected_text).size(11),
-            actions,
-        ]
-        .spacing(9),
-    )
-    .padding(10)
-    .width(Length::Fixed(470.0))
-    .into()
 }

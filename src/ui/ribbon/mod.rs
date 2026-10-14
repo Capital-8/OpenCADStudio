@@ -88,6 +88,9 @@ pub struct Ribbon {
     pub layer_filter: String,
     /// Active object color — ACI / ByLayer / ByBlock.
     pub active_color: AcadColor,
+    /// Colour-book identity (`BOOK$NAME`) of a colour picked from a colour
+    /// book, with the colour it was picked as; see `active_color_name`.
+    pub active_color_book: Option<(AcadColor, String)>,
     /// Active linetype override ("ByLayer", "Continuous", …).
     pub active_linetype: String,
     /// Active lineweight.
@@ -145,6 +148,14 @@ pub struct LayerInfo {
     pub vp_frozen: Option<(usize, bool)>,
 }
 
+/// The colour of layer `name` in the ribbon's layer list.
+pub(super) fn layer_color(layers: &[LayerInfo], name: &str) -> Option<Color> {
+    layers
+        .iter()
+        .find(|layer| layer.name == name)
+        .map(|layer| layer.color)
+}
+
 /// Full-screen backdrop for an open ribbon dropdown: closes the dropdown when
 /// the user clicks outside the panel. (Cursor motion leaking to the viewport
 /// beneath is blocked in `on_viewport_move`, not here — iced 0.14's mouse_area
@@ -183,6 +194,20 @@ fn position_ribbon_dropdown<'a>(
 }
 
 impl Ribbon {
+    /// The current layer's colour: what ByLayer looks like for new objects.
+    pub fn active_layer_color(&self) -> Option<Color> {
+        layer_color(&self.layer_infos, &self.active_layer)
+    }
+
+    /// The colour-book identity of the active colour, while the active colour
+    /// is still the one picked from the book.
+    pub fn active_color_name(&self) -> Option<String> {
+        self.active_color_book
+            .as_ref()
+            .filter(|(color, _)| *color == self.active_color)
+            .map(|(_, name)| name.clone())
+    }
+
     pub fn new() -> Self {
         Self {
             modules: all_ribbon_modules(),
@@ -207,6 +232,7 @@ impl Ribbon {
             layer_infos: vec![],
             layer_filter: String::new(),
             active_color: AcadColor::ByLayer,
+            active_color_book: None,
             active_linetype: "ByLayer".to_string(),
             active_lineweight: LineWeight::ByLayer,
             available_linetypes: vec![LinetypeItem {
@@ -1293,7 +1319,11 @@ impl Ribbon {
         win: (f32, f32),
         recent_colors: &[AcadColor],
     ) -> Option<Element<'_, Message>> {
-        let panel = color_dropdown::color_dropdown_panel(self.active_color, recent_colors);
+        let panel = color_dropdown::color_dropdown_panel(
+            self.active_color,
+            recent_colors,
+            self.active_layer_color(),
+        );
 
         let (align_right, h_pad, top) =
             self.dd_anchor(PROP_COLOR_ID, color_dropdown::PANEL_W, win.0);
