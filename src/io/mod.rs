@@ -25,6 +25,7 @@ pub mod print_to_printer;
 pub mod recovery;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod single_instance;
+pub mod fbx;
 pub mod step;
 pub mod stl;
 pub mod svg_export;
@@ -2254,7 +2255,17 @@ fn replace_save_file(temp_path: &Path, path: &Path) -> std::io::Result<()> {
     // drawing that was hidden before the save stays hidden. (#1414)
     let was_hidden = std::fs::metadata(path)
         .is_ok_and(|meta| meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0);
-    replace_save_file_inner(temp_path, path)?;
+    // Sync clients (Dropbox, OneDrive), indexers and virus scanners open a
+    // freshly written drawing for a moment without delete sharing, which
+    // refuses the replace. Retry briefly before reporting the file in use.
+    let mut attempt = 0;
+    while let Err(error) = replace_save_file_inner(temp_path, path) {
+        attempt += 1;
+        if attempt >= 10 || !replace_error_is_file_in_use(&error) {
+            return Err(error);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
     if !was_hidden {
         if let Ok(meta) = std::fs::metadata(path) {
             let attributes = meta.file_attributes();

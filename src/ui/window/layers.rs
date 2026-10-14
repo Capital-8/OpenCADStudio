@@ -737,6 +737,13 @@ fn name_tip<'a>(name: &'a str) -> Element<'a, Message> {
         .into()
 }
 
+
+/// The layer-name field while a rename is open; a click that moves focus
+/// elsewhere commits the typed name.
+pub fn rename_input_id() -> iced::widget::Id {
+    iced::widget::Id::new("layer-rename-input")
+}
+
 fn layer_row<'a>(
     index: usize,
     layer: &'a Layer,
@@ -803,6 +810,7 @@ fn layer_row<'a>(
     // Name cell
     let name_cell: Element<'_, Message> = if is_editing {
         text_input("", edit_buf)
+            .id(rename_input_id())
             .on_input(Message::LayerRenameEdit)
             .on_submit(Message::LayerRenameCommit)
             .size(FONT_SZ)

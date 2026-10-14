@@ -57,6 +57,8 @@ pub struct ViewInfo {
     pub category: String,
     pub visual_style: Option<String>,
     pub live_section: Option<String>,
+    /// Saved in paper space.
+    pub paper_space: bool,
 }
 
 /// What -VIEW checks typed names against.
@@ -65,6 +67,13 @@ pub struct ViewNames {
     pub views: Vec<ViewInfo>,
     pub visual_styles: Vec<String>,
     pub live_sections: Vec<String>,
+    /// On a layout's sheet (no viewport entered): the layout's viewports as
+    /// (handle, [min x, min y, max x, max y]), one of which takes a
+    /// model-space view being restored.
+    pub sheet_viewports: Option<Vec<(u64, [f64; 4])>>,
+    /// The pick box (PICKBOX pixels) in sheet units: a viewport is selected
+    /// by its frame, within this distance of it.
+    pub sheet_pick_tolerance: f64,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -106,6 +115,7 @@ enum Step {
     List,
     Delete,
     Restore,
+    RestoreViewport(String),
     Save,
     WindowName,
     WindowFirst(String),
@@ -226,9 +236,16 @@ impl DashViewCommand {
         let t = text.trim();
         match setting {
             Setting::Background => match keyword(t, &["Color", "Gradient", "Image", "None"]) {
-                // The other background types are chosen in their own dialogs.
                 Some("None") => Self::apply(setting, &view, "NONE"),
-                Some(_) => CmdResult::Dispatch("-VIEW >SETTINGS".into()),
+                // The other types are set in the Background dialog.
+                Some(kind) => CmdResult::Dispatch(format!(
+                    "-VIEW >BACKGROUND {view}\u{1f}{}",
+                    match kind {
+                        "Color" => "SOLID",
+                        "Gradient" => "GRADIENT",
+                        _ => "IMAGE",
+                    }
+                )),
                 None => {
                     self.step = Step::SettingValue(setting, view);
                     CmdResult::ReportError("Invalid option keyword.".into())
@@ -343,6 +360,7 @@ impl CadCommand for DashViewCommand {
             Step::List | Step::SettingViewList(_) => "Enter view name(s) to list <*>:".into(),
             Step::Delete => "Enter view name(s) to delete:".into(),
             Step::Restore => "Enter view name to restore:".into(),
+            Step::RestoreViewport(_) => "Select Viewport for view:".into(),
             Step::Save | Step::WindowName => "Enter view name to save:".into(),
             Step::WindowFirst(_) => "Specify first corner:".into(),
             Step::WindowSecond(..) => "Specify opposite corner:".into(),
@@ -414,9 +432,19 @@ impl CadCommand for DashViewCommand {
                 }
             }
             Step::Restore => match self.view(t) {
+                // On a sheet a model-space view goes into a viewport the
+                // user selects.
+                Some(view) if !view.paper_space && self.names.sheet_viewports.is_some() => {
+                    self.step = Step::RestoreViewport(view.name.clone());
+                    CmdResult::ReportMeasurement("Restoring Model space view.".into())
+                }
                 Some(view) => CmdResult::Dispatch(format!("-VIEW >RESTORE {}", view.name)),
                 None => Self::end(&format!("Cannot find view \"{t}\".")),
             },
+            Step::RestoreViewport(name) => {
+                self.step = Step::RestoreViewport(name);
+                CmdResult::ReportError("*Invalid selection*".into())
+            }
             Step::Save => CmdResult::Dispatch(format!("-VIEW >SAVE {t}")),
             Step::WindowName => {
                 self.step = Step::WindowFirst(t.to_string());
@@ -487,6 +515,24 @@ impl CadCommand for DashViewCommand {
                 "-VIEW >WINDOW {}\u{1f}{},{}\u{1f}{},{}",
                 name, first.x, first.y, pt.x, pt.y
             )),
+            Step::RestoreViewport(name) => {
+                // The topmost viewport whose frame the pick box touches; a
+                // pick well inside a viewport selects nothing, as in the
+                // reference.
+                let tol = self.names.sheet_pick_tolerance.max(0.0);
+                let hit = self.names.sheet_viewports.iter().flatten().rev().find(|(_, [x0, y0, x1, y1])| {
+                    let outside = pt.x < x0 - tol || pt.x > x1 + tol || pt.y < y0 - tol || pt.y > y1 + tol;
+                    let inside = pt.x > x0 + tol && pt.x < x1 - tol && pt.y > y0 + tol && pt.y < y1 - tol;
+                    !outside && !inside
+                });
+                match hit {
+                    Some((handle, _)) => CmdResult::Dispatch(format!("-VIEW >RESTOREVP {name}\u{1f}{handle:X}")),
+                    None => {
+                        self.step = Step::RestoreViewport(name);
+                        CmdResult::NeedPoint
+                    }
+                }
+            }
             step => {
                 self.step = step;
                 CmdResult::NeedPoint
@@ -496,7 +542,7 @@ impl CadCommand for DashViewCommand {
 
     fn on_enter(&mut self) -> CmdResult {
         match std::mem::replace(&mut self.step, Step::Main) {
-            Step::Main | Step::Delete | Step::Restore | Step::Save | Step::WindowName => {
+            Step::Main | Step::Delete | Step::Restore | Step::RestoreViewport(_) | Step::Save | Step::WindowName => {
                 CmdResult::Dispatch("-VIEW >END".into())
             }
             Step::Orthographic => CmdResult::Dispatch("-VIEW >PRESET TOP".into()),

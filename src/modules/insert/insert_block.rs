@@ -15,7 +15,7 @@ use crate::t;
 use codec::entities::{AttributeDefinition, AttributeEntity, Entity, Insert};
 use codec::types::Vector3;
 use codec::EntityType;
-use glam::{DVec3, Vec3};
+use glam::DVec3;
 
 use crate::app::settings::BlockInsertOptions;
 use crate::command::{CadCommand, CmdResult, DynField, InputKind, WorkingPlane};
@@ -130,6 +130,10 @@ pub struct InsertBlockCommand {
     /// through the same base-point convention the render path uses, so the
     /// host injects it when it resolves the block's ATTDEFs.
     block_base: Vector3,
+    /// Where the preview wires' block origin sits: zero for wires taken from
+    /// the definition, the clipboard base for paste-as-block, whose preview
+    /// is the clipboard in world coordinates.
+    preview_origin: DVec3,
 }
 
 impl InsertBlockCommand {
@@ -157,6 +161,7 @@ impl InsertBlockCommand {
             pending_insert: None,
             plane: WorkingPlane::default(),
             block_base: Vector3::ZERO,
+            preview_origin: DVec3::ZERO,
         }
     }
 
@@ -219,12 +224,13 @@ impl InsertBlockCommand {
         command
     }
 
-    /// Paste-as-block: the block is placed at the picked point.
-    pub fn new_for_block(name: String, preview_wires: Vec<WireModel>, base: Vec3) -> Self {
+    /// Paste-as-block: the block is placed at the picked point. The block
+    /// was defined around `base`, so its origin is the clipboard base.
+    pub fn new_for_block(name: String, preview_wires: Vec<WireModel>, base: DVec3) -> Self {
         let mut command = Self::base_state(Mode::Paste, Self::single_picker(&name));
         command.name = name;
         command.preview = preview_wires;
-        command.base = base.as_dvec3();
+        command.preview_origin = base;
         command.preset_scale = [Some(1.0); 3];
         command.preset_rotation = Some(0.0);
         command.step = Step::Point;
@@ -822,7 +828,7 @@ impl CadCommand for InsertBlockCommand {
             self.preset_scale[2].unwrap_or(1.0),
         ];
         let (sin, cos) = self.preset_rotation.unwrap_or(0.0).sin_cos();
-        let base = self.base;
+        let base = self.preview_origin + self.base;
         let origin = self.plane.to_local(pt);
         let plane = self.plane;
         self.preview

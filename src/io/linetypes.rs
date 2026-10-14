@@ -69,7 +69,7 @@ static COMPLEX_CATALOG: OnceLock<HashMap<String, ComplexLt>> = OnceLock::new();
 /// Returns `None` for simple (dash-only) linetypes or unknown names.
 pub fn complex_lt(name: &str) -> Option<&'static ComplexLt> {
     COMPLEX_CATALOG
-        .get_or_init(|| parse_complex(LIN_SOURCE))
+        .get_or_init(|| parse_complex(lin_source()))
         .get(&name.to_ascii_uppercase())
 }
 
@@ -232,6 +232,14 @@ pub fn resolve_complex_lt(document: &CadDocument, name: &str) -> Option<ComplexL
 
 const LIN_SOURCE: &str = include_str!("../../assets/linetypes/OpenCADStudio.lin");
 
+/// The bundled linetypes followed by the user's own `.lin` files.
+fn lin_source() -> &'static str {
+    static SOURCE: OnceLock<String> = OnceLock::new();
+    SOURCE.get_or_init(|| {
+        format!("{LIN_SOURCE}\n{}", crate::io::patterns::user_definitions("linetypes", "lin"))
+    })
+}
+
 // ── Pattern art extraction ────────────────────────────────────────────────
 
 /// Extract the ASCII-art portion of a LIN description.
@@ -257,7 +265,7 @@ pub fn extract_pattern(desc: &str) -> String {
 
 /// Add all standard OpenCADStudio linetypes to `doc`, skipping existing ones.
 pub fn populate_document(doc: &mut CadDocument) {
-    populate_document_from_source(doc, LIN_SOURCE);
+    populate_document_from_source(doc, lin_source());
 }
 
 /// Add the linetypes of a caller-supplied `.lin` source, embedded shapes and

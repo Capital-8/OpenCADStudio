@@ -1027,6 +1027,117 @@ fn rebuild_poly_from_trimmed_line(
     lwpoly_shorten_seg(poly, seg_idx, new_start, new_end)
 }
 
+/// Open (if needed) and cut a polyline at a fillet with a line or arc, then
+/// join the fillet arc and the trimmed object onto the cut end, as the
+/// reference does: the polyline keeps the part on the picked side of the
+/// segment, everything past the fillet point is dropped, and the other object
+/// becomes part of the polyline. `moved` is the polyline as the plain fillet
+/// rebuilt it, with the segment's moved end at the tangent point. `None` when
+/// the pieces cannot be joined (curved segment, out-of-plane arc).
+fn join_poly_fillet(
+    poly: &LwPolyline,
+    seg_idx: usize,
+    moved: &LwPolyline,
+    other: &EntityType,
+    fillet: Option<&EntityType>,
+) -> Option<LwPolyline> {
+    let n = poly.vertices.len();
+    if n < 2 || moved.vertices.len() != n || poly.vertices[seg_idx].bulge.abs() > 1e-12 {
+        return None;
+    }
+    let xy = |v: &LwVertex| [v.location.x, v.location.y];
+    let near = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).hypot(a[1] - b[1]) < 1e-9;
+    let end_idx = (seg_idx + 1) % n;
+    let start_moved = !near(xy(&poly.vertices[seg_idx]), xy(&moved.vertices[seg_idx]));
+    let end_moved = !near(xy(&poly.vertices[end_idx]), xy(&moved.vertices[end_idx]));
+    if start_moved == end_moved {
+        return None;
+    }
+    let t = if start_moved {
+        xy(&moved.vertices[seg_idx])
+    } else {
+        xy(&moved.vertices[end_idx])
+    };
+
+    // The fillet arc runs from T to T2 on the other object.
+    let (t2, fillet_center) = match fillet {
+        Some(EntityType::Arc(a)) if a.normal.z > 0.0 => {
+            let (c, r, sa, ea, _) = arc_geom(a);
+            let p0 = [c[0] + r * sa.cos(), c[1] + r * sa.sin()];
+            let p1 = [c[0] + r * ea.cos(), c[1] + r * ea.sin()];
+            let dist = |p: [f64; 2]| (p[0] - t[0]).hypot(p[1] - t[1]);
+            (if dist(p0) > dist(p1) { p0 } else { p1 }, Some(c))
+        }
+        Some(_) => return None,
+        None => (t, None),
+    };
+
+    // The other object from T2 to its far end, with the bulge that runs it
+    // in that direction.
+    let (far, far_bulge) = match other {
+        EntityType::Line(l) => {
+            let a = [l.start.x, l.start.y];
+            let b = [l.end.x, l.end.y];
+            let dist = |p: [f64; 2]| (p[0] - t2[0]).hypot(p[1] - t2[1]);
+            (if dist(a) > dist(b) { a } else { b }, 0.0)
+        }
+        EntityType::Arc(a) if a.normal.z > 0.0 => {
+            let (c, r, sa, ea, _) = arc_geom(a);
+            let p0 = [c[0] + r * sa.cos(), c[1] + r * sa.sin()];
+            let p1 = [c[0] + r * ea.cos(), c[1] + r * ea.sin()];
+            let quarter = (arc_span(sa, ea) / 4.0).tan();
+            let dist = |p: [f64; 2]| (p[0] - t2[0]).hypot(p[1] - t2[1]);
+            if dist(p0) <= dist(p1) {
+                (p1, quarter)
+            } else {
+                (p0, -quarter)
+            }
+        }
+        _ => return None,
+    };
+
+    let vertex = |p: [f64; 2], bulge: f64| {
+        let mut v = poly.vertices[seg_idx].clone();
+        v.location.x = p[0];
+        v.location.y = p[1];
+        v.bulge = bulge;
+        v
+    };
+    // A closed polyline is opened at its closing segment first.
+    let mut open = poly.vertices.clone();
+    if poly.is_closed {
+        open.push(vertex(xy(&poly.vertices[0]), 0.0));
+    }
+    let mut vertices = Vec::with_capacity(open.len() + 3);
+    if end_moved {
+        // Keep the start side: vertices up to the segment, then T, the
+        // fillet, and the other object.
+        vertices.extend_from_slice(&open[..=seg_idx]);
+        let bulge = fillet_center.map_or(0.0, |c| compute_bulge(t, t2, c));
+        vertices.push(vertex(t, bulge));
+        if fillet_center.is_some() {
+            vertices.push(vertex(t2, far_bulge));
+        } else if let Some(last) = vertices.last_mut() {
+            last.bulge = far_bulge;
+        }
+        vertices.push(vertex(far, 0.0));
+    } else {
+        // Keep the end side: the other object, the fillet, then T and the
+        // vertices after the segment.
+        let other_back = -far_bulge;
+        vertices.push(vertex(far, other_back));
+        if let Some(c) = fillet_center {
+            vertices.push(vertex(t2, compute_bulge(t2, t, c)));
+        }
+        vertices.push(vertex(t, 0.0));
+        vertices.extend_from_slice(&open[seg_idx + 1..]);
+    }
+    let mut joined = moved.clone();
+    joined.vertices = vertices;
+    joined.is_closed = false;
+    Some(joined)
+}
+
 /// Fillet a Line and an Arc.
 /// Fillets of `radius` tangent to both curves, nearest pick first.
 ///
@@ -1860,6 +1971,54 @@ impl CadCommand for FilletCommand {
                                 return maybe_arc
                                     .map(|arc| self.continue_after_addition(arc))
                                     .unwrap_or(CmdResult::NeedPoint);
+                            }
+                            // A polyline filleted with a line or arc takes
+                            // the fillet and the other object in.
+                            let joined = match (&e1, &e2, &new_e1, &new_e2) {
+                                (
+                                    FilletEntity::LwPoly { poly, seg_idx, .. },
+                                    FilletEntity::Line(_) | FilletEntity::Arc(_),
+                                    EntityType::LwPolyline(moved),
+                                    other,
+                                ) if !same_entity => {
+                                    join_poly_fillet(
+                                        poly,
+                                        *seg_idx,
+                                        moved,
+                                        other,
+                                        maybe_arc.as_ref(),
+                                    )
+                                    .map(|poly| {
+                                        vec![
+                                            (h1, vec![EntityType::LwPolyline(poly)]),
+                                            (handle, Vec::new()),
+                                        ]
+                                    })
+                                }
+                                (
+                                    FilletEntity::Line(_) | FilletEntity::Arc(_),
+                                    FilletEntity::LwPoly { poly, seg_idx, .. },
+                                    other,
+                                    EntityType::LwPolyline(moved),
+                                ) if !same_entity => {
+                                    join_poly_fillet(
+                                        poly,
+                                        *seg_idx,
+                                        moved,
+                                        other,
+                                        maybe_arc.as_ref(),
+                                    )
+                                    .map(|poly| {
+                                        vec![
+                                            (handle, vec![EntityType::LwPolyline(poly)]),
+                                            (h1, Vec::new()),
+                                        ]
+                                    })
+                                }
+                                _ => None,
+                            };
+                            if let Some(replacements) = joined {
+                                return self.continue_after_fillet(replacements);
                             }
                             let mut first_replacements = vec![new_e1];
                             if let Some(arc) = maybe_arc {

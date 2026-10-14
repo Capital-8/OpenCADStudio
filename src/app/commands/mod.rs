@@ -7,6 +7,7 @@ use std::path::PathBuf;
 mod attdef;
 mod blocks;
 mod blockvars;
+mod bvisibility;
 mod count;
 mod dim;
 pub(crate) mod display;
@@ -21,6 +22,7 @@ mod pc_extract;
 mod pdf_dialogs;
 pub(crate) mod pdf_import;
 mod pdf_underlay;
+mod refedit;
 mod plotvars;
 mod point_cloud;
 pub(crate) mod sheet_set;
@@ -147,6 +149,33 @@ impl OpenCADStudio {
         };
         let resolved = self.resolve_alias(cmd);
         let cmd = resolved.as_deref().unwrap_or(cmd);
+        if self.tabs[i].block_test.is_some() {
+            let name = cmd.split([' ', ':']).next().unwrap_or(cmd);
+            if matches!(
+                name,
+                "BEDIT"
+                    | "BEDIT_BEGIN"
+                    | "BEDIT_OPEN"
+                    | "REFEDIT"
+                    | "REFEDIT_BEGIN"
+                    | "BSAVE"
+                    | "BSAVEAS"
+                    | "SAVE"
+                    | "QSAVE"
+                    | "SAVEAS"
+                    | "SAVEALL"
+                    | "WBLOCK"
+                    | "EXPORT"
+                    | "ETRANSMIT"
+                    | "ARCHIVE"
+            ) {
+                self.command_line.push_error(
+                    crate::t!("Close Test Block before saving or opening another block editor.")
+                        .as_ref(),
+                );
+                return Task::none();
+            }
+        }
         if is_spacemouse_command(cmd) {
             return self.run_action(cmd);
         }
@@ -301,6 +330,9 @@ impl OpenCADStudio {
         if let Some(t) = self.dispatch_xref_attach(cmd, i) {
             return Some(t);
         }
+        if let Some(t) = self.dispatch_bvisibility(cmd, i) {
+            return Some(t);
+        }
         if let Some(t) = self.dispatch_blocks(cmd, i) {
             return Some(t);
         }
@@ -329,6 +361,9 @@ impl OpenCADStudio {
             return Some(t);
         }
         if let Some(t) = self.dispatch_dim(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_refedit(cmd, i) {
             return Some(t);
         }
         if let Some(t) = self.dispatch_inquiry(cmd, i) {
@@ -428,6 +463,7 @@ pub fn start_allowed(cmd: &str) -> bool {
         || matches!(
             cmd,
             "NEW"
+            | "QNEW"
             | "OPEN"
             | "EXIT"
             | "QUIT"
@@ -489,6 +525,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "EXPORTPDF",
         "EXPORTSVG",
         "PRINTALL",
+        "PUBLISH",
         "DDIM",
         // Inquiry: list the whole drawing database.
         "DBLIST",
@@ -619,6 +656,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "SL",
         "INTERFERE",
         "INF",
+        "SECTIONCULL",
         "PRESSPULL",
         "THICKEN",
         "3DROTATE",
@@ -710,7 +748,9 @@ inventory::submit!(crate::command::CommandRegistration {
         "PDFOSNAP",
         "UOSNAP",
         "FIELDDISPLAY",
+        "FILEDIA",
         "SURFACEASSOCIATIVITY",
+        "LAYOUTCREATEVIEWPORT",
         "FIELDEVAL",
         "PDFIMPORTMODE",
         "PDFIMPORTFILTER",
@@ -751,6 +791,10 @@ inventory::submit!(crate::command::CommandRegistration {
         "SKTOLERANCE",
         "CLIPROMPTLINES",
         "COMMANDLINEFADETIME",
+        "COMMANDLINEOPACITY",
+        "MENUBAR",
+        "RIBBON",
+        "RIBBONCLOSE",
         "COLORTHEME",
         "SELECTIONAREA",
         "SELECTIONAREAOPACITY",
@@ -816,6 +860,8 @@ inventory::submit!(crate::command::CommandRegistration {
         "EXPORTSTEP",
         "EXPORTSTL",
         "EXTERNALREFERENCES",
+        "EXTERNALREFERENCESCLOSE",
+        "ERSTATE",
         "POINTCLOUDMANAGER",
         "POINTCLOUDMANAGERCLOSE",
         "EXTRIM",
@@ -911,6 +957,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "SHORTCUTS",
         "SSM",
         "STEPOUT",
+        "FBXEXPORT",
         "STLOUT",
         "STPOUT",
         "STYLE",
@@ -941,6 +988,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "XR",
         "XREF",
         "-XREF",
+        "-ATTACH",
         "XRELOAD",
         "ZOOM",
         "ZS",

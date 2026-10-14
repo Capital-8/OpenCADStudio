@@ -8,6 +8,7 @@ pub mod command;
 pub mod config;
 pub mod discussions;
 pub mod entities;
+pub(crate) mod entity_creation;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod gpu_backend;
 pub mod i18n;
@@ -27,6 +28,7 @@ pub mod plugin;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod rest;
 pub mod scene;
+pub(crate) mod schema_validation;
 pub mod snap;
 pub mod sys;
 pub mod sysinfo;

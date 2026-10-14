@@ -891,7 +891,11 @@ impl OpenCADStudio {
                             self.command_line
                                 .push_error(crate::t!("Usage: VIEW DELETE <name>").as_ref());
                         } else {
-                            if self.tabs[i].scene.document.views.remove(&name).is_some() {
+                            if let Some(view) = self.tabs[i].scene.document.views.remove(&name) {
+                                crate::scene::erase_background(
+                                    &mut self.tabs[i].scene.document,
+                                    view.background_handle,
+                                );
                                 self.command_line
                                     .push_output(crate::tf!("View '{}' deleted.", name).as_ref());
                             } else {
@@ -909,6 +913,7 @@ impl OpenCADStudio {
                             let found = self.tabs[i].scene.document.views.get(&name).cloned();
                             if let Some(v) = found {
                                 self.tabs[i].scene.restore_named_view(&v);
+                                self.apply_view_render_mode(i, &v);
                                 self.command_line.push_output(
                                     crate::tf!("View '{}' restored.", v.name).as_ref(),
                                 );
@@ -932,6 +937,7 @@ impl OpenCADStudio {
                         let found = self.tabs[i].scene.document.views.get(&name).cloned();
                         if let Some(v) = found {
                             self.tabs[i].scene.restore_named_view(&v);
+                            self.apply_view_render_mode(i, &v);
                             self.command_line
                                 .push_output(crate::tf!("View '{}' restored.", v.name).as_ref());
                         } else {

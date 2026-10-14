@@ -827,6 +827,13 @@ fn append_pdf_page(
             }
             [r, g, b] = plotted_color([r, g, b], a, screening, options);
 
+            // A wide polyline's band is geometry: square ends at its vertices
+            // and mitred corners, whatever pen the plot style gives lines.
+            let (cap, join) = if wire.world_width > 0.0 {
+                (Some(LineCapStyle::Butt), Some(LineJoinStyle::Miter))
+            } else {
+                (cap, join)
+            };
             let cap = cap.unwrap_or(LineCapStyle::Round);
             if last_cap != Some(cap) {
                 ops.push(Op::SetLineCapStyle { cap });
@@ -890,7 +897,20 @@ fn append_pdf_page(
             // Linetype dash pattern. Without this every wire exported as a solid
             // line regardless of its linetype (dashed / centre / dash-dot). (#155)
             let dash_arr = dash_array_from_pattern(wire.pattern_length, &wire.pattern, MM_TO_PT);
-            let stationed = !dash_arr.is_empty() && wire.pattern_stations.len() > wire.points.len();
+            // Dash entries are whole points in the plot's user space, so a
+            // pattern only a fraction of a drawing unit long (an inch sheet)
+            // rounds away; such a wire is cut into its dashes here (#1739).
+            let page_h = paper_h as f64 / scale.max(1e-6) as f64;
+            let synthesized;
+            let stations: &[f32] = if wire.pattern_stations.len() > wire.points.len() {
+                &wire.pattern_stations
+            } else if !dash_arr.is_empty() && dash_rounds_off(&wire.pattern) {
+                synthesized = length_stations(wire, page_h);
+                &synthesized
+            } else {
+                &[]
+            };
+            let stationed = !dash_arr.is_empty() && !stations.is_empty();
             if stationed {
                 if last_dash.as_ref().is_none_or(|dash| !dash.is_empty()) {
                     ops.push(Op::SetLineDashPattern {
@@ -903,11 +923,11 @@ fn append_pdf_page(
                     {
                         continue;
                     }
-                    let start = wire.point_world(index, paper_h as f64 / scale.max(1e-6) as f64);
-                    let end = wire.point_world(index + 1, paper_h as f64 / scale.max(1e-6) as f64);
+                    let start = wire.point_world(index, page_h);
+                    let end = wire.point_world(index + 1, page_h);
                     for [from, to] in visible_station_ranges(
-                        wire.pattern_stations[index],
-                        wire.pattern_stations[index + 1],
+                        stations[index],
+                        stations[index + 1],
                         wire.pattern_length,
                         &wire.pattern,
                     ) {
@@ -943,18 +963,95 @@ fn append_pdf_page(
             let mut segment: Vec<LinePoint> = Vec::new();
             let dot_radius = (wire.name == "viewport_hatch_pattern")
                 .then_some(Pt(SCREEN_DOT_MM * MM_TO_PT / (2.0 * scale.max(1e-6))));
+            // A tapered band varies along each segment, which one stroke width
+            // cannot draw: each segment fills its own quad, and a segment
+            // without width is a plain line at the pen weight.
+            if wire.world_width > 0.0 && !wire.taper_widths.is_empty() {
+                let page_h = paper_h as f64 / scale.max(1e-6) as f64;
+                let at = |i: usize| {
+                    let p = wire.point_world(i, page_h);
+                    [p.x + ox, p.y + oy]
+                };
+                let mm = |[x, y]: [f64; 2]| LinePoint {
+                    p: Point::new(Mm(x as f32), Mm(y as f32)),
+                    bezier: false,
+                };
+                let thin = if options.object_lineweights {
+                    lw_override.unwrap_or_else(|| (wire.line_weight_px * LW_PX_TO_PT).max(0.1))
+                } else {
+                    0.1
+                } / pen_divisor;
+                for i in 0..wire.points.len().saturating_sub(1) {
+                    if !wire.points[i][0].is_finite() || !wire.points[i + 1][0].is_finite() {
+                        continue;
+                    }
+                    let (a, b) = (at(i), at(i + 1));
+                    let half = |k: usize| {
+                        f64::from(wire.taper_widths.get(k).copied().unwrap_or(0.0)) * 0.5
+                    };
+                    let (wa, wb) = (half(i), half(i + 1));
+                    let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+                    let len = dx.hypot(dy);
+                    if len <= 1e-12 {
+                        continue;
+                    }
+                    if wa <= 0.0 && wb <= 0.0 {
+                        if last_lw.is_none_or(|l| (l - thin).abs() > 0.01) {
+                            ops.push(Op::SetOutlineThickness { pt: Pt(thin) });
+                            last_lw = Some(thin);
+                        }
+                        flush_line(&mut ops, &[mm(a), mm(b)], None);
+                        continue;
+                    }
+                    let n = [-dy / len, dx / len];
+                    let side =
+                        |p: [f64; 2], w: f64, s: f64| [p[0] + n[0] * w * s, p[1] + n[1] * w * s];
+                    ops.push(Op::DrawPolygon {
+                        polygon: Polygon {
+                            rings: vec![PolygonRing {
+                                points: vec![
+                                    mm(side(a, wa, 1.0)),
+                                    mm(side(b, wb, 1.0)),
+                                    mm(side(b, wb, -1.0)),
+                                    mm(side(a, wa, -1.0)),
+                                ],
+                            }],
+                            mode: PaintMode::Fill,
+                            winding_order: WindingOrder::NonZero,
+                        },
+                    });
+                }
+                continue;
+            }
+
+            // A band's segments arrive pen-up separated; where the next one
+            // starts on the last one's end it stays in the same path, so the
+            // corner gets the mitre join instead of two overlapping ends.
+            let band = wire.world_width > 0.0;
+            let mut pen_up = false;
             for (pi, &[x, y, _z]) in wire.points.iter().enumerate() {
                 if x.is_nan() || y.is_nan() {
-                    flush_line(&mut ops, &segment, dot_radius);
-                    segment.clear();
+                    if band {
+                        pen_up = true;
+                    } else {
+                        flush_line(&mut ops, &segment, dot_radius);
+                        segment.clear();
+                    }
                 } else {
                     let point = wire.point_world(pi, paper_h as f64 / scale.max(1e-6) as f64);
-                    let wx = (point.x + ox) as f32;
-                    let wy = (point.y + oy) as f32;
-                    segment.push(LinePoint {
-                        p: Point::new(Mm(wx), Mm(wy)),
-                        bezier: false,
-                    });
+                    let p = Point::new(Mm((point.x + ox) as f32), Mm((point.y + oy) as f32));
+                    if pen_up {
+                        pen_up = false;
+                        let joined = segment.last().is_some_and(|last| {
+                            (last.p.x.0 - p.x.0).abs() <= 1e-4 && (last.p.y.0 - p.y.0).abs() <= 1e-4
+                        });
+                        if joined {
+                            continue;
+                        }
+                        flush_line(&mut ops, &segment, dot_radius);
+                        segment.clear();
+                    }
+                    segment.push(LinePoint { p, bezier: false });
                 }
             }
             flush_line(&mut ops, &segment, dot_radius);
@@ -1057,6 +1154,38 @@ fn dash_array_from_pattern(pattern_length: f32, pattern: &[f32; 8], mm_to_pt: f3
         // 1 pt floor so a zero-length dot still prints as a short mark.
         .map(|&v| (((v.abs() * mm_to_pt).round()) as i64).max(1))
         .collect()
+}
+
+/// Whether a pattern element is too short for a whole-point dash entry to
+/// carry it within 5 %.
+fn dash_rounds_off(pattern: &[f32; 8]) -> bool {
+    pattern
+        .iter()
+        .any(|value| *value != 0.0 && value.abs() * MM_TO_PT < 10.0)
+}
+
+/// Distance along the wire at each point (restarting after a pen-up), plus
+/// the total, in the layout `visible_station_ranges` reads.
+fn length_stations(wire: &crate::scene::WireModel, page_h: f64) -> Vec<f32> {
+    let mut stations = Vec::with_capacity(wire.points.len() + 1);
+    let mut along = 0.0_f64;
+    let mut previous: Option<glam::DVec3> = None;
+    for index in 0..wire.points.len() {
+        if !wire.points[index][0].is_finite() {
+            previous = None;
+            along = 0.0;
+            stations.push(0.0);
+            continue;
+        }
+        let point = wire.point_world(index, page_h);
+        if let Some(previous) = previous {
+            along += point.distance(previous);
+        }
+        previous = Some(point);
+        stations.push(along as f32);
+    }
+    stations.push(along as f32);
+    stations
 }
 
 fn visible_station_ranges(

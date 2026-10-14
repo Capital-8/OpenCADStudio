@@ -136,6 +136,9 @@ pub struct Pipeline {
     /// Capability-selected hatch renderer. Storage and texture transports are
     /// private backends behind one upload/LOD/draw lifecycle.
     hatch_gpu: hatch_gpu::HatchGpu,
+    /// Hatches with transparency, drawn after the wires so the lines behind
+    /// them show through the blend instead of failing the depth test.
+    hatch_translucent_gpu: hatch_gpu::HatchGpu,
     image_pipeline: wgpu::RenderPipeline,
     point_cloud_pipeline: wgpu::RenderPipeline,
     /// SDF text-quad pipeline (Phase 2b): draws per-glyph quads sampling the
@@ -1093,6 +1096,14 @@ impl Pipeline {
         // ── Hatch renderer ─────────────────────────────────────────────────
         // The façade owns capability selection plus both backend lifecycles.
         let hatch_gpu = hatch_gpu::HatchGpu::new(
+            device,
+            format,
+            &frame_bgl,
+            &content_stencil,
+            device_caps,
+            force_compat_renderer,
+        );
+        let hatch_translucent_gpu = hatch_gpu::HatchGpu::new(
             device,
             format,
             &frame_bgl,
@@ -2339,6 +2350,7 @@ impl Pipeline {
             gpu_error_epoch: gpu_errors_seen(),
             wipeout_pipeline,
             hatch_gpu,
+            hatch_translucent_gpu,
             image_pipeline,
             point_cloud_pipeline,
             text_pipeline,
@@ -2474,7 +2486,7 @@ impl Pipeline {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        wires: &[&WireModel],
+        wires: &[wire_gpu::BlockRef<'_>],
         depth_map: &rustc_hash::FxHashMap<u64, [f32; 2]>,
         block_geometry: &mut wire_gpu::BlockGeometryCache,
     ) -> Vec<BlockWireGpu> {
@@ -2608,7 +2620,7 @@ impl Pipeline {
         // and alpha blending both depend on it. Scissor and mesh-edge stay
         // grouping keys because the draw loop sets one scissor per batch and
         let mut batches: Vec<WireGpu> = Vec::new();
-        let mut block_wires: Vec<&WireModel> = Vec::new();
+        let mut block_wires: Vec<wire_gpu::BlockRef<'_>> = Vec::new();
         let mut i = 0;
         while i < wires.len() {
             let kind = wire_arena::classify_wire(&wires[i]);
@@ -2621,7 +2633,7 @@ impl Pipeline {
                     continue;
                 }
                 wire_arena::WireKind::Block => {
-                    block_wires.push(&wires[i]);
+                    wire_gpu::push_block_refs(&wires[i], &mut block_wires);
                     i += 1;
                     continue;
                 }
@@ -2709,7 +2721,7 @@ impl Pipeline {
         Vec<CircleInstance>,
         Vec<EllipseInstance>,
         Vec<&'a WireModel>,
-        Vec<&'a WireModel>,
+        Vec<wire_gpu::BlockRef<'a>>,
     ) {
         use crate::par::prelude::*;
         // Pure per-wire work, so it fans out; `collect` on an indexed
@@ -2722,7 +2734,7 @@ impl Pipeline {
         )> = wires
             .par_iter()
             .map(|&wire| {
-                if wire.render_instance.is_some() {
+                if wire.render_instance.is_some() || wire.stub.is_some() {
                     return (None, None, true);
                 }
                 let depth = wire_gpu::wire_draw_depth(wire, depth_map);
@@ -2751,10 +2763,10 @@ impl Pipeline {
         let mut circles: Vec<CircleInstance> = Vec::new();
         let mut ellipses: Vec<EllipseInstance> = Vec::new();
         let mut regular: Vec<&'a WireModel> = Vec::new();
-        let mut blocks: Vec<&'a WireModel> = Vec::new();
+        let mut blocks: Vec<wire_gpu::BlockRef<'a>> = Vec::new();
         for (&wire, (wire_circles, wire_ellipses, is_block)) in wires.iter().zip(per) {
             if is_block {
-                blocks.push(wire);
+                wire_gpu::push_block_refs(wire, &mut blocks);
                 continue;
             }
             let shaped = wire_circles.is_some() || wire_ellipses.is_some();
@@ -3429,10 +3441,12 @@ analytic={:.1} regular={:.1} blocks={:.1}",
         clip_h: u32,
     ) {
         let perf_started = crate::perf::enabled().then(iced::time::Instant::now);
-        let instance_count = self.hatch_gpu.update_visibility(queue, |aabb| {
+        let visible = |aabb: [f32; 4]| {
             !aabb_below_pixel(aabb, view_rot, eye, clip_w, clip_h, 2.0)
                 && !aabb_offscreen(aabb, view_rot, eye, clip_w, clip_h)
-        });
+        };
+        let instance_count = self.hatch_gpu.update_visibility(queue, visible)
+            + self.hatch_translucent_gpu.update_visibility(queue, visible);
         if instance_count == 0 {
             return;
         }
@@ -3786,7 +3800,10 @@ analytic={:.1} regular={:.1} blocks={:.1}",
             .iter()
             .filter(|hatch| hatch.boundary.len() >= 3)
             .count();
-        self.hatch_gpu.upload(device, queue, hatches);
+        let (translucent, opaque): (Vec<HatchModel>, Vec<HatchModel>) =
+            hatches.iter().cloned().partition(|hatch| hatch.color[3] < 0.999);
+        self.hatch_gpu.upload(device, queue, &opaque);
+        self.hatch_translucent_gpu.upload(device, queue, &translucent);
         if let Some(started) = perf_started {
             let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
             if elapsed_ms >= 1.0 {
@@ -3996,7 +4013,8 @@ analytic={:.1} regular={:.1} blocks={:.1}",
         }
         let upload = |label: &'static str,
                       image: Option<&crate::scene::model::image_model::DecodedImage>,
-                      fallback: [u8; 4]| {
+                      fallback: [u8; 4],
+                      format: wgpu::TextureFormat| {
             let (width, height, pixels) = image
                 .map(|image| (image.width, image.height, image.pixels.as_slice()))
                 .unwrap_or((1, 1, fallback.as_slice()));
@@ -4010,7 +4028,7 @@ analytic={:.1} regular={:.1} blocks={:.1}",
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                format,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
@@ -4030,8 +4048,21 @@ analytic={:.1} regular={:.1} blocks={:.1}",
             );
             texture
         };
-        self.background_texture = upload("background.texture", background, [0, 0, 0, 255]);
-        self.environment_texture = upload("environment.texture", environment, [128, 128, 128, 255]);
+        // The background image is drawn as it is, like the solid and gradient
+        // colours (an sRGB view would darken it a second time); the
+        // environment map stays sRGB for lighting.
+        self.background_texture = upload(
+            "background.texture",
+            background,
+            [0, 0, 0, 255],
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
+        self.environment_texture = upload(
+            "environment.texture",
+            environment,
+            [128, 128, 128, 255],
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        );
         self.rebuild_frame_bind_group(device);
         self.background_source_id = background_id;
         self.environment_source_id = environment_id;
@@ -4819,6 +4850,12 @@ analytic={:.1} regular={:.1} blocks={:.1}",
                         }
                     }
                 }
+                // Transparent hatches blend over the lines already drawn; the
+                // lines in front of them still win the depth test.
+                if !self.skip_hatch_frame {
+                    self.hatch_translucent_gpu
+                        .draw(&mut pass, &self.uniform_bind_group, stencil_ref);
+                }
             }
 
             // ── Pass 5c: SDF text quads (drawn over wires) ────────────────────
@@ -5311,6 +5348,7 @@ analytic={:.1} regular={:.1} blocks={:.1}",
         self.gpu_preview_circles.clear();
         self.gpu_preview_ellipses.clear();
         self.hatch_gpu.clear();
+        self.hatch_translucent_gpu.clear();
         self.gpu_wipeouts.clear();
         self.wipeout_skip_flags.clear();
         self.gpu_images.clear();

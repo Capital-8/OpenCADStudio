@@ -747,7 +747,7 @@ impl OpenCADStudio {
                     label: t!("Associative").into_owned(),
                     field: "associative",
                     value: crate::scene::model::object::PropValue::ReadOnly(
-                        if associative { "Yes" } else { "No" }.to_string(),
+                        if associative { t!("Yes") } else { t!("No") }.into_owned(),
                     ),
                 });
             }
@@ -793,7 +793,7 @@ impl OpenCADStudio {
                     label: t!("Associative").into_owned(),
                     field: "associative",
                     value: crate::scene::model::object::PropValue::ReadOnly(
-                        if associative { "Yes" } else { "No" }.to_string(),
+                        if associative { t!("Yes") } else { t!("No") }.into_owned(),
                     ),
                 });
             }
@@ -923,6 +923,10 @@ impl OpenCADStudio {
                     let overrides =
                         crate::io::xref::layer_overrides(doc, &br.name, &br.xref_path, &base_dir);
                     xref_rows(&mut sections, ins, &br.xref_path, factor, overrides);
+                }
+                // An associative array's counts and spacings.
+                if let Some(array) = crate::scene::assoc_array::array_of_insert(doc, handle) {
+                    sections.push(crate::scene::assoc_array::property_section(doc, &array));
                 }
             }
             // Underlay: name, page, path and size from the definition.
@@ -1250,7 +1254,7 @@ impl OpenCADStudio {
                 update_row_text(
                     &mut sections,
                     "tbl_flow_direction",
-                    if flow_up { "Up" } else { "Down" }.to_string(),
+                    if flow_up { t!("Up") } else { t!("Down") }.into_owned(),
                 );
                 update_row_text(
                     &mut sections,
@@ -1540,7 +1544,7 @@ impl OpenCADStudio {
                             set_row(
                                 &mut sections,
                                 "annotative",
-                                if is_anno { "Yes" } else { "No" }.to_string(),
+                                if is_anno { t!("Yes") } else { t!("No") }.into_owned(),
                             )
                         }
                         codec::EntityType::Leader(_)
@@ -1548,7 +1552,7 @@ impl OpenCADStudio {
                                 doc, entity,
                             ) =>
                         {
-                            set_row(&mut sections, "annotative", "Yes".to_string())
+                            set_row(&mut sections, "annotative", t!("Yes").into_owned())
                         }
                         codec::EntityType::Text(_)
                         | codec::EntityType::Insert(_)
@@ -1560,7 +1564,7 @@ impl OpenCADStudio {
                         _ => set_row(
                             &mut sections,
                             "annotative",
-                            if is_anno { "Yes" } else { "No" }.to_string(),
+                            if is_anno { t!("Yes") } else { t!("No") }.into_owned(),
                         ),
                     }
                 }
@@ -3404,7 +3408,15 @@ pub(super) fn build_selection_groups(
 
     for (kind, handles) in by_type {
         groups.push(ui::properties::SelectionGroup {
-            label: format!("{}({})", t!(title_case_word(&kind)), handles.len()),
+            label: format!(
+                "{}({})",
+                if kind == "insert" {
+                    t!("Block Reference").into_owned()
+                } else {
+                    t!(title_case_word(&kind)).into_owned()
+                },
+                handles.len()
+            ),
             handles,
         });
     }

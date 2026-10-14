@@ -780,6 +780,9 @@ impl OpenCADStudio {
             zoom_factor: self.zoom_factor,
             cursor_size: self.cursor_size,
             pick_box: self.pick_box,
+            hatch_associative: self.hatch_associative,
+            show_menu_bar: self.show_menu_bar,
+            ribbon_closed: self.ribbon_closed,
             options_tab: self.options_tab,
             show_viewcube: self.show_viewcube,
             show_ucs_icon: self.show_ucs_icon,
@@ -793,9 +796,13 @@ impl OpenCADStudio {
             image_frame: crate::scene::frame::profile_image_mode(),
             attdef_on_screen: crate::modules::draw::draw::attdef::session().on_screen,
             field_display: crate::entities::field::display(),
+            xref_fade: crate::scene::cache::block_cache::xref_fade_ctl(),
+            file_dia: crate::sys::file_dia(),
+            attach_filter: crate::sys::attach_filter(),
             surface_associativity: crate::scene::model::sweep_model::surface_associativity(),
             ucs_ortho: crate::modules::view::view_cmd::ucs_ortho(),
             ucs_view: crate::modules::view::view_cmd::ucs_view(),
+            layout_create_viewport: crate::scene::layout_create_viewport(),
             ncopy_bind: self.ncopy_bind,
             cursor_type: self.cursor_type,
             crosshair_color: self.crosshair_color,
@@ -845,6 +852,7 @@ impl OpenCADStudio {
             quick_properties: self.quick_properties,
             language: self.language,
             cliprompt_lines: crate::app::settings::clamp_clipromptlines(self.cliprompt_lines),
+            command_line_opacity: self.command_line.opacity_percent(),
             commandline_fade_ms: crate::app::settings::clamp_commandline_fade_ms(
                 self.commandline_fade_ms,
             ),
@@ -866,6 +874,8 @@ impl OpenCADStudio {
             block_mru_list: self.block_mru_list,
             block_redefine_mode: self.block_redefine_mode,
             block_navigate: self.block_navigate.clone(),
+            refedit: self.refedit_options.clone(),
+            xfadectl: crate::scene::cache::block_cache::refedit_fade_ctl() as u8,
             count_color: self.count_palette.color,
             count_error_color: self.count_palette.error_color,
             count_service: self.count_palette.service,
@@ -891,6 +901,9 @@ impl OpenCADStudio {
         self.zoom_factor_input = self.zoom_factor.to_string();
         self.cursor_size = s.cursor_size.clamp(1, 100);
         self.pick_box = s.pick_box.clamp(0, 50);
+        self.hatch_associative = s.hatch_associative;
+        self.show_menu_bar = s.show_menu_bar;
+        self.ribbon_closed = s.ribbon_closed;
         self.options_tab = s.options_tab;
         self.spacemouse_preferences = s.spacemouse;
         // These four drive real features with commands and status-bar pills,
@@ -909,9 +922,14 @@ impl OpenCADStudio {
         crate::scene::frame::set_profile_image_mode(s.image_frame);
         crate::modules::draw::draw::attdef::session().on_screen = s.attdef_on_screen;
         crate::entities::field::set_display(s.field_display);
+        crate::scene::cache::block_cache::set_xref_fade_ctl(s.xref_fade);
+        self.ribbon.xref_fade = crate::scene::cache::block_cache::xref_fade_ctl();
+        crate::sys::set_file_dia(s.file_dia);
+        crate::sys::set_attach_filter(s.attach_filter);
         crate::scene::model::sweep_model::set_surface_associativity(s.surface_associativity);
         crate::modules::view::view_cmd::set_ucs_ortho(s.ucs_ortho);
         crate::modules::view::view_cmd::set_ucs_view(s.ucs_view);
+        crate::scene::set_layout_create_viewport(s.layout_create_viewport);
         self.ncopy_bind = s.ncopy_bind;
         self.cursor_type = s.cursor_type;
         self.crosshair_color = s.crosshair_color;
@@ -996,6 +1014,7 @@ impl OpenCADStudio {
         self.cliprompt_lines = crate::app::settings::clamp_clipromptlines(s.cliprompt_lines);
         self.command_line
             .set_cliprompt_lines(self.cliprompt_lines.clamp(0, 50) as u8);
+        self.command_line.set_opacity_percent(s.command_line_opacity);
         self.commandline_fade_ms =
             crate::app::settings::clamp_commandline_fade_ms(s.commandline_fade_ms);
         self.command_line
@@ -1018,6 +1037,8 @@ impl OpenCADStudio {
         self.block_mru_list = s.block_mru_list.min(100);
         self.block_redefine_mode = s.block_redefine_mode.min(2);
         self.block_navigate = s.block_navigate.clone();
+        crate::scene::cache::block_cache::set_refedit_fade_ctl(i32::from(s.xfadectl.min(90)));
+        self.refedit_options = s.refedit.clone();
         self.count_palette.color = s.count_color;
         self.count_palette.error_color = s.count_error_color;
         self.count_palette.service = s.count_service;
@@ -1321,6 +1342,7 @@ impl OpenCADStudio {
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect(),
                 limit: self.recent_limit,
+                view: self.recent_view,
             },
             start: crate::app::config::StartConfig {
                 section: self.start_section,
@@ -1392,6 +1414,7 @@ impl OpenCADStudio {
         );
         self.recent_files.truncate(self.recent_limit);
         self.recent_limit_input = self.recent_limit.to_string();
+        self.recent_view = cfg.recent.view;
         // Thumbnails are decoded by a background task queued at boot
         // (`refresh_recent_thumbs`) — never here on the boot path.
         self.start_section = cfg.start.section;
@@ -1741,6 +1764,11 @@ impl OpenCADStudio {
         version: codec::DxfVersion,
         set_current_path: bool,
     ) -> Result<(), crate::io::SaveFailure> {
+        if self.tabs[i].block_test.is_some() {
+            return Err(crate::io::SaveFailure::other(
+                "Test Block is temporary and cannot be saved",
+            ));
+        }
         let previous_autosave = self.autosave_target(i);
         if self.tabs[i].recovery_save_as_required
             && self.tabs[i]
@@ -2120,22 +2148,7 @@ impl OpenCADStudio {
         ) {
             crate::scene::text::ttf_glyph::clear_fallback_cache();
         }
-        // Current model-space annotation scale comes from the drawing's
-        // CANNOSCALEVALUE (paper/drawing factor). Convert its inverse into
-        // drawing units as well: metric annotation sizes are paper millimetres
-        // and imperial annotation sizes are paper inches.
-        // Current model-space annotation scale comes from the drawing's
-        // CANNOSCALEVALUE (paper/drawing factor). Convert its paper unit into
-        // the drawing's INSUNITS as well, so e.g. a metre drawing uses
-        // 0.001 model units for 1 mm of paper at 1:1.
-        let cannoscale_value = self.tabs[i].scene.document.header.annotation_scale_value;
-        let unit_factor = self.tabs[i].scene.annotation_scale_unit_factor();
-
-        self.tabs[i].scene.annotation_scale = if cannoscale_value > 1e-9 {
-            ((1.0 / cannoscale_value) / unit_factor) as f32
-        } else {
-            (1.0 / unit_factor) as f32
-        };
+        self.tabs[i].scene.sync_annotation_scale_from_header();
 
         // Open-time breakdown so regressions are visible immediately.
         // `total` is wall time from the Open click to here (post-xref,
@@ -2193,6 +2206,12 @@ impl OpenCADStudio {
             self.tabs[i].scene.load_current_layout_state();
             self.tabs[i].refresh_active_ucs();
         }
+        // A layout saved with a model viewport entered reopens inside it,
+        // with that viewport's UCS (#1670).
+        let enter_viewport_task = self.tabs[i]
+            .scene
+            .saved_entered_viewport()
+            .map_or_else(Task::none, |handle| Task::done(Message::EnterViewport(handle)));
 
         // The tab may have been reused for the newly opened file. Any Plot
         // dialog cache belongs to the previous/startup drawing and must not
@@ -2314,6 +2333,7 @@ impl OpenCADStudio {
             interaction_task,
             startup_script_task,
             sheet_set_task,
+            enter_viewport_task,
         ])
     }
 
@@ -2413,7 +2433,7 @@ impl OpenCADStudio {
         let mut skipped = 0usize;
         let mut pending: Vec<(crate::app::WebSaveallEntry, codec::CadDocument)> = Vec::new();
         for t in 0..self.tabs.len() {
-            if self.tabs[t].is_start {
+            if self.tabs[t].is_start || self.tabs[t].block_test.is_some() {
                 continue;
             }
             let Some(path) = self.tabs[t].current_path.clone() else {
@@ -2583,6 +2603,41 @@ impl OpenCADStudio {
         )
     }
 
+    pub(super) fn on_fbx_export_path_some(&mut self, path: std::path::PathBuf) -> Task<Message> {
+        let i = self.active_tab;
+        // Export uses LOD 0 (full resolution); see StlExportPath above.
+        let meshes: Vec<crate::scene::model::mesh_model::MeshModel> = self.tabs[i]
+            .scene
+            .meshes
+            .values()
+            .filter_map(|s| s.lods.first().cloned())
+            .collect();
+        let header = &self.tabs[i].scene.document.header;
+        // Centimetres per drawing unit (INSUNITS); unitless metric drawings
+        // are taken as millimetres, imperial ones as inches.
+        let unit_cm = match header.insertion_units {
+            1 => 2.54,
+            2 => 30.48,
+            4 => 0.1,
+            5 => 1.0,
+            6 => 100.0,
+            14 => 10.0,
+            _ if header.measurement == 1 => 0.1,
+            _ => 2.54,
+        };
+        let worker_path = path.clone();
+        background_task(
+            crate::t!("FBX export"),
+            move || {
+                let mesh_refs: Vec<_> = meshes.iter().collect();
+                let bytes = crate::io::fbx::build_fbx(&mesh_refs, unit_cm)
+                    .ok_or_else(|| "no mesh data to export".to_string())?;
+                write_export(&worker_path, &bytes)
+            },
+            move |result| Message::FbxExportFinished(path, result),
+        )
+    }
+
     pub(super) fn on_obj_import_path_some(&mut self, path: std::path::PathBuf) -> Task<Message> {
         let tab_id = self.tabs[self.active_tab].id;
         let worker_path = path.clone();
@@ -2602,6 +2657,7 @@ impl OpenCADStudio {
         if self.tabs[i].active_block_edit.is_none() {
             self.tabs[i].scene.sync_camera_to_document();
             self.tabs[i].last_synced_camera_gen = self.tabs[i].scene.camera_generation;
+            self.tabs[i].scene.sync_active_viewport_to_document();
         }
     }
 
@@ -3037,6 +3093,9 @@ impl OpenCADStudio {
         set_current_path: bool,
         check_external_change: bool,
     ) -> Task<Message> {
+        if self.refuse_block_test_save(i) {
+            return Task::none();
+        }
         let tab_id = self.tabs[i].id;
         if self
             .pending_native_thumbnail_save
@@ -3705,6 +3764,9 @@ impl OpenCADStudio {
     }
 
     pub(super) fn on_save_file(&mut self) -> Task<Message> {
+        if self.refuse_block_test_save(self.active_tab) {
+            return Task::none();
+        }
         if self.read_only {
             self.command_line.push_error(
                 crate::t!("Read-only session (--read-only): saving is disabled.").as_ref(),
@@ -3761,6 +3823,9 @@ impl OpenCADStudio {
     /// Used by plain Save (QSAVE) on an as-yet-unsaved drawing and by the
     /// save-before-close flow — the version picker is reserved for Save As.
     pub(in crate::app) fn save_with_default_format(&mut self, tab_idx: usize) -> Task<Message> {
+        if self.refuse_block_test_save(tab_idx) {
+            return Task::none();
+        }
         self.active_tab = tab_idx;
         // Every caller of this entry (Save/QSAVE, the save-before-close
         // flow) is plain-save semantics: on the web, the tab's retained
@@ -3887,8 +3952,10 @@ impl OpenCADStudio {
             // handle is secured at this gesture moment (or reused from a
             // previous pick — retained handles need no activation to write)
             // and only the write happens later.
+            // A registered host save hook takes the bytes through the
+            // download path, so no file picker opens.
             let route = crate::io::fs_access::save_route(
-                crate::io::fs_access::supported(),
+                crate::io::fs_access::supported() && crate::sys::save_hook().is_none(),
                 self.save_plain_reuse_fs_handle,
                 crate::io::fs_access::handle_ext(tab_id).as_deref(),
                 ext,
@@ -4151,7 +4218,10 @@ impl OpenCADStudio {
     pub(super) fn on_autosave(&mut self) -> Task<Message> {
         let mut tasks = Vec::new();
         for i in 0..self.tabs.len() {
-            if !self.tabs[i].dirty || self.active_save_jobs.contains_key(&self.tabs[i].id) {
+            if self.tabs[i].block_test.is_some()
+                || !self.tabs[i].dirty
+                || self.active_save_jobs.contains_key(&self.tabs[i].id)
+            {
                 continue;
             }
             self.prepare_snapshot_save(i);
@@ -4186,7 +4256,7 @@ impl OpenCADStudio {
         }
         let mut pending = Vec::new();
         for i in 0..self.tabs.len() {
-            if !self.tabs[i].dirty {
+            if self.tabs[i].block_test.is_some() || !self.tabs[i].dirty {
                 continue;
             }
             // Same pre-serialize state sync the web Save flow performs
@@ -4513,7 +4583,7 @@ impl OpenCADStudio {
         let mut names: Vec<String> = Vec::new();
         let mut active = 0;
         for (index, tab) in self.tabs.iter().enumerate() {
-            if tab.is_start {
+            if tab.is_start || tab.block_test.is_some() {
                 continue;
             }
             if index == self.active_tab {

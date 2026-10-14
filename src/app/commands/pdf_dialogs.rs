@@ -289,7 +289,8 @@ impl OpenCADStudio {
         }
     }
 
-    /// ULAYERS: every underlay of the drawing, the selected one first shown.
+    /// ULAYERS: every underlay of the drawing, the selected one first shown
+    /// (none: an empty dialog).
     pub(in crate::app) fn open_underlay_layers_dialog(&mut self, i: usize) {
         let document = &self.tabs[i].scene.document;
         let selected: Vec<codec::Handle> = self.tabs[i]
@@ -328,10 +329,6 @@ impl OpenCADStudio {
                 layers,
                 hidden: crate::scene::model::pdf_layers::hidden_layers(u),
             });
-        }
-        if targets.is_empty() {
-            self.command_line.push_error("No underlays found.");
-            return;
         }
         let current = targets
             .iter()
@@ -439,6 +436,8 @@ impl OpenCADStudio {
                     "attach" => crate::t!("Attaches a PDF file as an underlay."),
                     "pointcloud" => crate::t!("Attaches a point cloud scan or project."),
                     "pcsection" => crate::t!("Traces the points on the kept side of a live section as lines."),
+                    "background" => std::borrow::Cow::Owned(crate::tr!("view-background", "help")),
+                    "imageadjust" => std::borrow::Cow::Owned(crate::tr!("image-adjust", "help")),
                     "pointcloudcolormap" => {
                         crate::t!("Sets the color schemes and ranges a point cloud is colored by intensity or elevation.")
                     }
@@ -572,6 +571,25 @@ impl OpenCADStudio {
             | PdfDialogMsg::MapCurrent(_)
             | PdfDialogMsg::MapApply
             | PdfDialogMsg::MapOk) => return self.update_point_cloud_color_map(message),
+            message @ (PdfDialogMsg::BgKind(_)
+            | PdfDialogMsg::BgPickColor(_)
+            | PdfDialogMsg::BgColor(..)
+            | PdfDialogMsg::BgThree(_)
+            | PdfDialogMsg::BgRotation(_)
+            | PdfDialogMsg::BgImage(_)
+            | PdfDialogMsg::BgBrowse
+            | PdfDialogMsg::BgPosition(_)
+            | PdfDialogMsg::BgAspect(_)
+            | PdfDialogMsg::BgOffset(_)
+            | PdfDialogMsg::BgScale(_)
+            | PdfDialogMsg::BgStep(..)
+            | PdfDialogMsg::BgReset
+            | PdfDialogMsg::BgApply) => return self.update_view_background(message),
+            message @ (PdfDialogMsg::IaValue(..)
+            | PdfDialogMsg::IaText(..)
+            | PdfDialogMsg::IaStep(..)
+            | PdfDialogMsg::IaReset
+            | PdfDialogMsg::IaApply) => return self.update_image_adjust(message),
             message @ (PdfDialogMsg::SecPerimeter(_)
             | PdfDialogMsg::SecMaxPoints(_)
             | PdfDialogMsg::SecLayer(_)

@@ -22,6 +22,9 @@ use iced::{mouse, Point, Task};
 
 impl OpenCADStudio {
     pub(in crate::app) fn open_save_dialog_window(&mut self, tab_idx: usize) -> Task<Message> {
+        if self.refuse_block_test_save(tab_idx) {
+            return Task::none();
+        }
         // Every entry here is Save-As semantics (the SAVEAS command, the
         // recovery save-as, the native failure redirects): the user is
         // choosing a destination, so on the web the FS Access picker must
@@ -580,11 +583,14 @@ impl OpenCADStudio {
                 .define_block_raw(&def.name, def.base_point, def.entities);
         }
         if redefine {
-            self.tabs[i].scene.redefine_block_raw(
+            if let Err(err) = self.tabs[i].scene.redefine_block_raw(
                 &name,
                 codec::types::Vector3::new(base.x, base.y, base.z),
                 entities,
-            );
+            ) {
+                self.command_line.push_error(&err);
+                return Err(err);
+            }
         } else {
             self.tabs[i]
                 .scene
