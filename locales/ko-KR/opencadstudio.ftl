@@ -6471,6 +6471,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
+    .add-to-working-set = Add to Working Set
+    .remove-from-working-set = Remove from Working Set
+    .toolbar-objects = objects
     .select-reference = 참조 선택:
     .reference-not-found = 참조를 찾을 수 없습니다.
     .not-valid-reference = 객체가 유효한 참조가 아닙니다

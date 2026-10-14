@@ -6472,6 +6472,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
+    .add-to-working-set = Add to Working Set
+    .remove-from-working-set = Remove from Working Set
+    .toolbar-objects = objects
     .select-reference = Επιλέξτε αναφορά:
     .reference-not-found = Η αναφορά δεν βρέθηκε.
     .not-valid-reference = Το αντικείμενο δεν είναι έγκυρη αναφορά

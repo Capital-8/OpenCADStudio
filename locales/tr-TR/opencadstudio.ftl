@@ -6393,6 +6393,9 @@ view-background =
     .select-image = Arka Plan Görüntüsü Seç
 
 ref-edit =
+    .add-to-working-set = Çalışma Kümesine Ekle
+    .remove-from-working-set = Çalışma Kümesinden Çıkar
+    .toolbar-objects = nesne
     .select-reference = Referans seçin:
     .reference-not-found = Referans bulunamadı.
     .not-valid-reference = Nesne geçerli bir referans değil

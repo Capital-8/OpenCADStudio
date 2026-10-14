@@ -6472,6 +6472,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
+    .add-to-working-set = Add to Working Set
+    .remove-from-working-set = Remove from Working Set
+    .toolbar-objects = objects
     .select-reference = ເລືອກການອ້າງອີງ:
     .reference-not-found = ບໍ່ພົບການອ້າງອີງ.
     .not-valid-reference = ວັດຖຸບໍ່ແມ່ນການອ້າງອີງທີ່ຖືກຕ້ອງ

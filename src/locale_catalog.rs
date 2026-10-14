@@ -3,6 +3,8 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
+        "Add to Working Set" => Some(("ref-edit", "add-to-working-set")),
+        "Remove from Working Set" => Some(("ref-edit", "remove-from-working-set")),
         "Select reference:" => Some(("ref-edit", "select-reference")),
         "Reference not found." => Some(("ref-edit", "reference-not-found")),
         "Object is not a valid reference" => Some(("ref-edit", "not-valid-reference")),
