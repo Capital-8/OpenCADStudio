@@ -50,7 +50,7 @@ fn is_modal_blocked_key_msg(msg: &Message) -> bool {
 
 fn perf_message_label(msg: &Message) -> &'static str {
     match msg {
-        Message::ViewportLeftPress | Message::PanePress(_) => "pointer-down",
+        Message::ViewportLeftPressAt(_) | Message::ViewportLeftPress | Message::PanePress(_) => "pointer-down",
         Message::ViewportLeftRelease | Message::PaneRelease(_) => "pointer-up",
         Message::ViewportMove(_) | Message::PaneMove(_, _) => "pointer-move",
         Message::CommandFinalize => "command-finalize",
@@ -4383,6 +4383,7 @@ impl OpenCADStudio {
 
             // A multi-finger gesture owns the pointer while it runs.
             Message::ViewportMove(_)
+            | Message::ViewportLeftPressAt(_)
             | Message::ViewportLeftPress
             | Message::ViewportLeftRelease
             | Message::PaneMove(..)
@@ -4465,6 +4466,17 @@ impl OpenCADStudio {
             Message::PaneScroll(idx, d) => {
                 self.focus_model_pane(idx);
                 self.update(Message::ViewportScroll(d))
+            }
+
+            Message::ViewportLeftPressAt(position) => {
+                // Use the pointer location captured by the actual button
+                // event. The last hover can lag behind fast cursor motion,
+                // particularly while expensive OSNAP/OTRACK previews run.
+                // Refresh the snap and world point before accepting the pick.
+                let moved = self.on_viewport_move(position);
+                self.graphic_attributes.open_menu = None;
+                let sweep = self.sync_active_field_if_any();
+                Task::batch(vec![moved, sweep, self.on_viewport_left_press()])
             }
 
             Message::ViewportLeftPress => {
