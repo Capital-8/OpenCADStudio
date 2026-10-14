@@ -5,6 +5,7 @@ use iced::Task;
 use std::path::PathBuf;
 
 mod attdef;
+mod block_cmdline;
 mod blocks;
 mod blockvars;
 mod bvisibility;
@@ -333,6 +334,9 @@ impl OpenCADStudio {
         if let Some(t) = self.dispatch_bvisibility(cmd, i) {
             return Some(t);
         }
+        if let Some(t) = self.dispatch_block_cmdline(cmd, i) {
+            return Some(t);
+        }
         if let Some(t) = self.dispatch_blocks(cmd, i) {
             return Some(t);
         }
@@ -579,6 +583,8 @@ inventory::submit!(crate::command::CommandRegistration {
         "INSNAME",
         "ATTMAN",
         "BATTMAN",
+        "-BEDIT",
+        "INSBASE",
         // Drawing-content overview.
         "ADCENTER",
         "CONTENTBROWSER",

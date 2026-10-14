@@ -629,14 +629,7 @@ impl OpenCADStudio {
         self.block_palette.source_tab_id = Some(self.tabs[i].id);
         self.block_palette.source_block_epoch = self.tabs[i].scene.block_epoch;
         let doc = &self.tabs[i].scene.document;
-        let annotative = |name: &str| {
-            doc.block_records.get(name).is_some_and(|br| {
-                matches!(
-                    doc.get_entity(br.block_entity_handle),
-                    Some(codec::EntityType::Block(b)) if b.common.extended_data.records().iter().any(|r| r.application_name == "AcadAnnotative")
-                )
-            })
-        };
+        let annotative = |name: &str| crate::scene::annotative::block_is_annotative(doc, name);
         let entries: Vec<BlockEntry> = names
             .into_iter()
             .map(|name| BlockEntry {

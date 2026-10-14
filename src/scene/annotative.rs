@@ -1975,6 +1975,39 @@ pub fn update_entity_from_annotation_style(
     true
 }
 
+/// Whether the block definition `name` is annotative: its block record
+/// carries `AcadAnnotative` (`AnnotativeData { 1 1 }`), or, in drawings an
+/// earlier build wrote, its BLOCK entity does.
+pub fn block_is_annotative(doc: &CadDocument, name: &str) -> bool {
+    let Some(br) = doc.block_records.get(name) else {
+        return false;
+    };
+    let flag = |record: &codec::xdata::ExtendedDataRecord| {
+        record
+            .values
+            .iter()
+            .filter_map(|value| match value {
+                codec::xdata::XDataValue::Integer16(value) => Some(*value),
+                _ => None,
+            })
+            .last()
+            .is_some_and(|value| value != 0)
+    };
+    if let Some(record) = doc
+        .object_xdata(br.handle)
+        .and_then(|xdata| xdata.get_record("AcadAnnotative"))
+    {
+        return flag(record);
+    }
+    doc.get_entity(br.block_entity_handle).is_some_and(|block| {
+        block
+            .common()
+            .extended_data
+            .get_record("AcadAnnotative")
+            .is_some_and(flag)
+    })
+}
+
 /// Whether an entity participates in annotation scaling.
 pub fn is_annotative(doc: &CadDocument, entity: &EntityType) -> bool {
     // Per-object annotation context (works regardless of style).

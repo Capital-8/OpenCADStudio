@@ -186,8 +186,11 @@ pub fn extract_entities_to_doc_with_base(
     if handles.is_empty() {
         return Err(t!("No entities selected for WBLOCK.").into_owned());
     }
-    let shift = crate::command::EntityTransform::Translate(-base_point);
-    copy_with_dependencies(src, handles, &mut out, Some(&shift));
+    // The objects keep their coordinates; the base point becomes the new
+    // drawing's insertion base (INSBASE).
+    copy_with_dependencies(src, handles, &mut out, None);
+    out.header.model_space_insertion_base =
+        codec::types::Vector3::new(base_point.x, base_point.y, base_point.z);
     if out.entities().count() == 0 {
         return Err(t!("None of the selected entities could be exported.").into_owned());
     }
@@ -218,12 +221,16 @@ mod tests {
 
         assert_eq!(out.header.insertion_units, 4);
         assert_eq!(out.entities().count(), 1);
+        assert_eq!(
+            out.header.model_space_insertion_base,
+            Vector3::new(10.0, 20.0, 0.0)
+        );
         let e = out.entities().next().unwrap();
         if let EntityType::Line(l) = e {
-            assert!((l.start.x - 0.0).abs() < 1e-6);
-            assert!((l.start.y - 0.0).abs() < 1e-6);
-            assert!((l.end.x - 20.0).abs() < 1e-6);
-            assert!((l.end.y - 20.0).abs() < 1e-6);
+            assert!((l.start.x - 10.0).abs() < 1e-6);
+            assert!((l.start.y - 20.0).abs() < 1e-6);
+            assert!((l.end.x - 30.0).abs() < 1e-6);
+            assert!((l.end.y - 40.0).abs() < 1e-6);
         } else {
             panic!("Expected Line entity");
         }

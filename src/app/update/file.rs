@@ -768,6 +768,8 @@ impl OpenCADStudio {
 
     /// Snapshot the persisted UI preferences from live state.
     pub(in crate::app) fn current_settings(&self) -> crate::app::settings::UserSettings {
+        // One copy: the guard must not be held across the literal below.
+        let block_defaults = *crate::modules::insert::block_cmdline::defaults();
         crate::app::settings::UserSettings {
             spacemouse: self.spacemouse_preferences,
             dyn_input: self.dyn_input,
@@ -795,6 +797,14 @@ impl OpenCADStudio {
             grip_object_limit: self.grip_object_limit,
             image_frame: crate::scene::frame::profile_image_mode(),
             attdef_on_screen: crate::modules::draw::draw::attdef::session().on_screen,
+            block_base_on_screen: block_defaults.base_on_screen,
+            block_objects_on_screen: block_defaults.objects_on_screen,
+            block_object_mode: crate::modules::insert::block_cmdline::mode_code(block_defaults.mode),
+            block_allow_exploding: block_defaults.allow_exploding,
+            block_open_in_editor: block_defaults.open_in_editor,
+            wblock_object_mode: crate::modules::insert::block_cmdline::mode_code(
+                block_defaults.wblock_mode,
+            ),
             field_display: crate::entities::field::display(),
             xref_fade: crate::scene::cache::block_cache::xref_fade_ctl(),
             file_dia: crate::sys::file_dia(),
@@ -920,6 +930,16 @@ impl OpenCADStudio {
         self.grip_object_limit = s.grip_object_limit.clamp(0, 32767);
         crate::scene::frame::set_profile_image_mode(s.image_frame);
         crate::modules::draw::draw::attdef::session().on_screen = s.attdef_on_screen;
+        {
+            use crate::modules::insert::block_cmdline as bc;
+            let mut remembered = bc::defaults();
+            remembered.base_on_screen = s.block_base_on_screen;
+            remembered.objects_on_screen = s.block_objects_on_screen;
+            remembered.mode = bc::mode_from_code(s.block_object_mode);
+            remembered.allow_exploding = s.block_allow_exploding;
+            remembered.open_in_editor = s.block_open_in_editor;
+            remembered.wblock_mode = bc::mode_from_code(s.wblock_object_mode);
+        }
         crate::entities::field::set_display(s.field_display);
         crate::scene::cache::block_cache::set_xref_fade_ctl(s.xref_fade);
         self.ribbon.xref_fade = crate::scene::cache::block_cache::xref_fade_ctl();
@@ -2334,6 +2354,102 @@ impl OpenCADStudio {
             sheet_set_task,
             enter_viewport_task,
         ])
+    }
+
+    /// Write `source` to `path` (WBLOCK and -WBLOCK): an existing block, the
+    /// whole drawing, or objects, which then are kept, converted to a block
+    /// named after the file, or deleted.
+    pub(in crate::app) fn wblock_write(
+        &mut self,
+        i: usize,
+        source: crate::modules::insert::block_cmdline::WblockSource,
+        path: std::path::PathBuf,
+        unit: i16,
+    ) -> Task<Message> {
+        let mut path = path;
+        if path.extension().is_none() {
+            path.set_extension("dwg");
+        }
+        let document = self.tabs[i].scene.document_for_save();
+        if let crate::modules::insert::block_cmdline::WblockSource::Objects {
+            handles,
+            base,
+            mode,
+        } = &source
+        {
+            match mode {
+                crate::ui::window::block_definition::BlockObjectMode::Retain => {}
+                crate::ui::window::block_definition::BlockObjectMode::Delete => {
+                    self.push_undo_snapshot(i, "WBLOCK");
+                    self.tabs[i].scene.erase_entities(handles);
+                    self.tabs[i].dirty = true;
+                    self.tabs[i].scene.bump_geometry();
+                    self.refresh_properties();
+                }
+                crate::ui::window::block_definition::BlockObjectMode::Convert => {
+                    let name = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("WBLOCK")
+                        .to_string();
+                    self.push_undo_snapshot(i, "WBLOCK");
+                    let ucs = self.tabs[i].ucs_xform();
+                    let options = crate::scene::CreateBlockOptions {
+                        name,
+                        handles: handles.clone(),
+                        base_point: *base,
+                        world_to_block: ucs.to_ucs_transform_at(*base),
+                        block_to_world: ucs.to_wcs_transform_at(*base),
+                        mode: crate::ui::window::block_definition::BlockObjectMode::Convert,
+                        annotative: false,
+                        match_orientation: false,
+                        scale_uniformly: false,
+                        allow_exploding: true,
+                        unit,
+                        description: String::new(),
+                        hyperlink_url: String::new(),
+                        hyperlink_desc: String::new(),
+                        redefine: true,
+                    };
+                    let _ = self.tabs[i].scene.create_block_with_options(options);
+                    self.tabs[i].dirty = true;
+                    self.tabs[i].scene.bump_geometry();
+                    self.refresh_properties();
+                }
+            }
+        }
+        let display = match &source {
+            crate::modules::insert::block_cmdline::WblockSource::Block(name) => name.clone(),
+            _ => "*".to_string(),
+        };
+        let worker_path = path.clone();
+        background_task(
+            crate::t!("WBLOCK save"),
+            move || {
+                let out_doc = match source {
+                    crate::modules::insert::block_cmdline::WblockSource::Block(name) => {
+                        let mut d =
+                            crate::modules::insert::wblock::extract_block_to_doc(&document, &name)
+                                .map_err(|e| e.to_string())?;
+                        d.header.insertion_units = unit;
+                        d
+                    }
+                    crate::modules::insert::block_cmdline::WblockSource::Drawing => {
+                        let mut d = document.clone();
+                        d.header.insertion_units = unit;
+                        d
+                    }
+                    crate::modules::insert::block_cmdline::WblockSource::Objects { handles, base, .. } => {
+                        crate::modules::insert::wblock::extract_entities_to_doc_with_base(
+                            &document, &handles, base, unit,
+                        )
+                        .map_err(|e| e.to_string())?
+                    }
+                };
+                crate::io::save(&out_doc, &worker_path).map_err(|e| e.to_string())
+            },
+            move |result| Message::WblockWriteFinished(display, path, result),
+        )
     }
 
     pub(super) fn on_wblock_save_result_some(

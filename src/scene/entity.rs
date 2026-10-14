@@ -993,7 +993,7 @@ impl Scene {
             .get(name)
             .map(|br| (br.handle, br.block_entity_handle));
 
-        let (br_handle, _block_handle) = if let Some((existing_br_h, existing_blk_h)) = existing {
+        let (br_handle, block_handle) = if let Some((existing_br_h, existing_blk_h)) = existing {
             if !options.redefine {
                 return Err(format!("Block \"{name}\" already exists."));
             }
@@ -1015,7 +1015,7 @@ impl Scene {
                 br.units = options.unit;
                 br.description = options.description.clone();
                 br.explodable = options.allow_exploding;
-                br.scale_uniformly = options.scale_uniformly;
+                br.scale_uniformly = options.scale_uniformly || options.annotative;
             }
             // Update existing Block entity fields
             if let Some(EntityType::Block(b)) = self.document.get_entity_mut(existing_blk_h) {
@@ -1025,26 +1025,6 @@ impl Scene {
                 // go back to ZERO. Leaving an imported definition's non-zero
                 // base point here would subtract the picked base twice.
                 b.base_point = codec::types::Vector3::ZERO;
-            }
-            if options.annotative {
-                let annotative_vals = vec![codec::xdata::XDataValue::Integer16(1)];
-                view::dispatch::set_entity_xdata(
-                    &mut self.document,
-                    existing_blk_h,
-                    "AcadAnnotative",
-                    Some(annotative_vals),
-                );
-            }
-            if !options.hyperlink_url.is_empty() {
-                let link_vals = vec![codec::xdata::XDataValue::String(
-                    options.hyperlink_url.clone(),
-                )];
-                view::dispatch::set_entity_xdata(
-                    &mut self.document,
-                    existing_blk_h,
-                    "PE_URL",
-                    Some(link_vals),
-                );
             }
             (existing_br_h, existing_blk_h)
         } else {
@@ -1060,7 +1040,7 @@ impl Scene {
             block_record.units = options.unit;
             block_record.description = options.description.clone();
             block_record.explodable = options.allow_exploding;
-            block_record.scale_uniformly = options.scale_uniformly;
+            block_record.scale_uniformly = options.scale_uniformly || options.annotative;
             self.document
                 .block_records
                 .add(block_record)
@@ -1080,36 +1060,19 @@ impl Scene {
             self.document
                 .add_entity(EntityType::BlockEnd(block_end))
                 .map_err(|e| e.to_string())?;
-
-            if options.annotative {
-                let annotative_vals = vec![codec::xdata::XDataValue::Integer16(1)];
-                view::dispatch::set_entity_xdata(
-                    &mut self.document,
-                    block_handle,
-                    "AcadAnnotative",
-                    Some(annotative_vals),
-                );
-            }
-            if !options.hyperlink_url.is_empty() {
-                let link_vals = vec![codec::xdata::XDataValue::String(
-                    options.hyperlink_url.clone(),
-                )];
-                view::dispatch::set_entity_xdata(
-                    &mut self.document,
-                    block_handle,
-                    "PE_URL",
-                    Some(link_vals),
-                );
-            }
             (br_handle, block_handle)
         };
+        self.write_block_definition_xdata(br_handle, block_handle, &options);
 
         let source_entities: Vec<_> = options
             .handles
             .iter()
             .filter_map(|&h| self.document.get_entity(h).cloned().map(|e| (h, e)))
             .collect();
-        if source_entities.is_empty() {
+        // No objects at all defines an empty block (the reference's
+        // "Continue" / an empty selection at -BLOCK); objects that all vanished
+        // are an error.
+        if source_entities.is_empty() && !options.handles.is_empty() {
             return Err("No valid entities selected for block creation.".into());
         }
 
@@ -1128,15 +1091,167 @@ impl Scene {
         }
 
         let mut insert_handle = Handle::NULL;
-        if options.mode == crate::ui::window::block_definition::BlockObjectMode::Convert {
+        // An empty definition has nothing to convert into a reference.
+        if options.mode == crate::ui::window::block_definition::BlockObjectMode::Convert
+            && !options.handles.is_empty()
+        {
             let mut insert = DxfInsert::new(name, codec::types::Vector3::ZERO);
             codec::Entity::apply_transform(&mut insert, &options.block_to_world);
             insert_handle = self.add_entity(EntityType::Insert(insert));
         }
 
+        // The definition's thumbnail (BLOCK_RECORD 310), as the format keeps it.
+        let thumbnail = self.block_thumbnail(name);
+        if let Some(br) = self.document.block_records.get_mut(name) {
+            br.preview_data = thumbnail;
+        }
+
         // Advance the block epoch so all consumers and viewport renderers re-tessellate
         self.bump_geometry();
         Ok(insert_handle)
+    }
+
+    /// A 40 × 40, 32-bit bottom-up DIB of the block's geometry: white strokes
+    /// on the dark preview background, fitted with a one-pixel margin. Empty
+    /// for a block without drawable geometry.
+    pub fn block_thumbnail(&self, name: &str) -> Vec<u8> {
+        const SIZE: usize = 40;
+        let wires = self.block_preview_wires(name);
+        let mut lo = [f64::INFINITY; 2];
+        let mut hi = [f64::NEG_INFINITY; 2];
+        for wire in &wires {
+            for p in &wire.points {
+                if p[0].is_finite() && p[1].is_finite() {
+                    lo = [lo[0].min(p[0] as f64), lo[1].min(p[1] as f64)];
+                    hi = [hi[0].max(p[0] as f64), hi[1].max(p[1] as f64)];
+                }
+            }
+        }
+        if !lo[0].is_finite() {
+            return Vec::new();
+        }
+        let span = (hi[0] - lo[0]).max(hi[1] - lo[1]).max(1e-9);
+        let scale = (SIZE as f64 - 3.0) / span;
+        let offset = [
+            (SIZE as f64 - (hi[0] - lo[0]) * scale) / 2.0,
+            (SIZE as f64 - (hi[1] - lo[1]) * scale) / 2.0,
+        ];
+        let to_px = |p: &[f32; 3]| {
+            (
+                ((p[0] as f64 - lo[0]) * scale + offset[0]).floor() as i64,
+                ((p[1] as f64 - lo[1]) * scale + offset[1]).floor() as i64,
+            )
+        };
+        // Bottom-up rows of BGRA pixels.
+        let mut pixels = vec![[0x30u8, 0x28, 0x21, 0xFF]; SIZE * SIZE];
+        let mut plot = |x: i64, y: i64| {
+            if (0..SIZE as i64).contains(&x) && (0..SIZE as i64).contains(&y) {
+                pixels[y as usize * SIZE + x as usize] = [0xFF; 4];
+            }
+        };
+        for wire in &wires {
+            let mut prev: Option<(i64, i64)> = None;
+            for p in &wire.points {
+                if !(p[0].is_finite() && p[1].is_finite()) {
+                    prev = None;
+                    continue;
+                }
+                let (x1, y1) = to_px(p);
+                let (mut x0, mut y0) = prev.unwrap_or((x1, y1));
+                let (dx, dy) = ((x1 - x0).abs(), -(y1 - y0).abs());
+                let (sx, sy) = (if x0 < x1 { 1 } else { -1 }, if y0 < y1 { 1 } else { -1 });
+                let mut err = dx + dy;
+                loop {
+                    plot(x0, y0);
+                    if x0 == x1 && y0 == y1 {
+                        break;
+                    }
+                    let e2 = 2 * err;
+                    if e2 >= dy {
+                        err += dy;
+                        x0 += sx;
+                    }
+                    if e2 <= dx {
+                        err += dx;
+                        y0 += sy;
+                    }
+                }
+                prev = Some((x1, y1));
+            }
+        }
+        let mut dib = Vec::with_capacity(40 + SIZE * SIZE * 4);
+        for value in [40u32, SIZE as u32, SIZE as u32] {
+            dib.extend_from_slice(&value.to_le_bytes());
+        }
+        dib.extend_from_slice(&1u16.to_le_bytes());
+        dib.extend_from_slice(&32u16.to_le_bytes());
+        for value in [0u32, (SIZE * SIZE * 4) as u32, 1, 1, 0, 0] {
+            dib.extend_from_slice(&value.to_le_bytes());
+        }
+        for pixel in pixels {
+            dib.extend_from_slice(&pixel);
+        }
+        dib
+    }
+
+    /// The definition-level xdata of a block, kept on its block record the
+    /// way the format stores it: `AcadAnnotative` (`AnnotativeData { 1 1 }`)
+    /// for an annotative block, `AcadAnnoPO` when its orientation matches the
+    /// layout, and the `PE_URL` hyperlink. Markers an older definition kept
+    /// on its BLOCK entity are dropped.
+    pub fn write_block_definition_xdata(
+        &mut self,
+        br_handle: Handle,
+        block_handle: Handle,
+        options: &CreateBlockOptions,
+    ) {
+        use codec::xdata::{ExtendedDataRecord, XDataValue as V};
+        for app in ["AcadAnnotative", "AcadAnnoPO", "PE_URL"] {
+            view::dispatch::set_entity_xdata(&mut self.document, block_handle, app, None);
+            self.document.remove_object_xdata_record(br_handle, app);
+        }
+        let mut records = Vec::new();
+        if options.annotative {
+            let mut anno = ExtendedDataRecord::new("AcadAnnotative");
+            for value in [
+                V::String("AnnotativeData".into()),
+                V::ControlString("{".into()),
+                V::Integer16(1),
+                V::Integer16(1),
+                V::ControlString("}".into()),
+            ] {
+                anno.add_value(value);
+            }
+            records.push(anno);
+            if options.match_orientation {
+                let mut po = ExtendedDataRecord::new("AcadAnnoPO");
+                po.add_value(V::Integer16(1));
+                records.push(po);
+            }
+        }
+        let url = options.hyperlink_url.trim();
+        if !url.is_empty() {
+            let mut link = ExtendedDataRecord::new("PE_URL");
+            link.add_value(V::String(url.to_string()));
+            link.add_value(V::ControlString("{".into()));
+            let description = options.hyperlink_desc.trim();
+            if !description.is_empty() {
+                link.add_value(V::String(description.to_string()));
+            }
+            link.add_value(V::ControlString("{".into()));
+            link.add_value(V::Integer32(0));
+            link.add_value(V::ControlString("}".into()));
+            link.add_value(V::ControlString("}".into()));
+            records.push(link);
+        }
+        for record in records {
+            if !self.document.app_ids.contains(&record.application_name) {
+                let mut app = codec::tables::AppId::new(&record.application_name);
+                app.handle = self.document.allocate_handle();
+                let _ = self.document.app_ids.add(app);
+            }
+            self.document.set_object_xdata_record(br_handle, record);
+        }
     }
 
     /// Define a new block named `name` from `entities` (owned, not yet in the

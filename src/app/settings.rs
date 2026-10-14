@@ -421,6 +421,20 @@ pub struct UserSettings {
     pub image_frame: i16,
     /// The Attribute Definition dialog's "Specify on-screen" choice.
     pub attdef_on_screen: bool,
+    /// Block Definition dialog: base point "Specify On-screen".
+    pub block_base_on_screen: bool,
+    /// Block Definition dialog: objects "Specify On-screen".
+    pub block_objects_on_screen: bool,
+    /// Block Definition dialog / -BLOCK object conversion (0 Retain,
+    /// 1 Convert, 2 Delete).
+    pub block_object_mode: u8,
+    /// Block Definition dialog: "Allow exploding".
+    pub block_allow_exploding: bool,
+    /// Block Definition dialog: open the new block in the block editor.
+    pub block_open_in_editor: bool,
+    /// Write Block dialog / -WBLOCK object conversion (0 Retain, 1 Convert,
+    /// 2 Delete).
+    pub wblock_object_mode: u8,
     /// FIELDDISPLAY: fields show on a gray background.
     pub field_display: bool,
     /// XDWGFADECTL: how much referenced drawings fade (-90..=90; negative is off).
@@ -892,6 +906,12 @@ impl Default for UserSettings {
             grip_object_limit: DEFAULT_GRIP_OBJECT_LIMIT,
             image_frame: 1,
             attdef_on_screen: true,
+            block_base_on_screen: false,
+            block_objects_on_screen: false,
+            block_object_mode: 1,
+            block_allow_exploding: true,
+            block_open_in_editor: false,
+            wblock_object_mode: 0,
             field_display: true,
             xref_fade: 50,
             file_dia: true,

@@ -1370,3 +1370,33 @@ pub mod web_diag {
         }
     }
 }
+
+/// The user's Documents folder (the known folder, wherever it is
+/// redirected), else the home folder.
+#[cfg(target_os = "windows")]
+pub fn documents_dir() -> Option<std::path::PathBuf> {
+    use windows_sys::Win32::System::Com::CoTaskMemFree;
+    use windows_sys::Win32::UI::Shell::{FOLDERID_Documents, SHGetKnownFolderPath};
+    let mut raw: windows_sys::core::PWSTR = std::ptr::null_mut();
+    // SAFETY: SHGetKnownFolderPath writes a CoTaskMemAlloc'd, NUL-terminated
+    // wide string to `raw`, freed below.
+    let hr = unsafe { SHGetKnownFolderPath(&FOLDERID_Documents, 0, std::ptr::null_mut(), &mut raw) };
+    let path = if hr == 0 && !raw.is_null() {
+        // SAFETY: `raw` is a valid NUL-terminated wide string from the call above.
+        let len = unsafe { (0..).take_while(|&k| *raw.add(k) != 0).count() };
+        let wide = unsafe { std::slice::from_raw_parts(raw, len) };
+        Some(std::path::PathBuf::from(String::from_utf16_lossy(wide)))
+    } else {
+        None
+    };
+    // SAFETY: freeing the buffer SHGetKnownFolderPath allocated (null is a no-op).
+    unsafe { CoTaskMemFree(raw as *const core::ffi::c_void) };
+    path.or_else(|| std::env::var_os("USERPROFILE").map(std::path::PathBuf::from))
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn documents_dir() -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from)?;
+    let documents = home.join("Documents");
+    Some(if documents.is_dir() { documents } else { home })
+}
