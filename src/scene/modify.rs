@@ -875,19 +875,33 @@ impl Scene {
         // Precompute the union of every copied entity's tree so a ref crossing
         // between two copied trees lands on the sibling's authoritative clone
         // instead of a private duplicate; objects outside the union are
-        // deep-cloned inline (matching AutoCAD, which deep-clones an
-        // out-of-set dictionary target rather than keeping it verbatim).
+        // deep-cloned inline (matching the reference product, which
+        // deep-clones an out-of-set dictionary target rather than keeping
+        // it verbatim). Each root belongs to its own entity even when a
+        // sibling's tree refs it, and every other object is claimed by the
+        // first traversal that reaches it, so ownership stays consistent
+        // with the walker below regardless of selection order.
         let mut owner_of = rustc_hash::FxHashMap::default();
         let mut cross = rustc_hash::FxHashMap::default();
+        for (src_handle, _, _, src_xdict) in &clones {
+            if let Some(root) = *src_xdict {
+                owner_of.insert(root, *src_handle);
+            }
+        }
+        let mut claimed = rustc_hash::FxHashSet::default();
         for (src_handle, _, _, src_xdict) in &clones {
             let Some(root) = *src_xdict else {
                 continue;
             };
             let mut stack = vec![root];
             while let Some(h) = stack.pop() {
-                if owner_of.insert(h, *src_handle).is_some() {
+                if owner_of.get(&h).is_some_and(|&o| o != *src_handle) {
                     continue;
                 }
+                if !claimed.insert(h) {
+                    continue;
+                }
+                owner_of.entry(h).or_insert(*src_handle);
                 let Some(obj) = self.document.objects.get(&h) else {
                     continue;
                 };
@@ -3116,7 +3130,8 @@ mod copy_entities_xdict_tests {
         assert_ne!(a_copy_root, a_root);
         assert_ne!(b_copy_root, b_root);
 
-        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root) else {
+        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root)
+        else {
             panic!("copied root must be a dictionary");
         };
         let xref = a_copy_d
@@ -3147,10 +3162,12 @@ mod copy_entities_xdict_tests {
         let copies = scene.copy_entities(&[a, b], &EntityTransform::Translate(DVec3::ZERO));
         let a_copy_root = xdict_root_of(&scene, copies[0]);
         let b_copy_root = xdict_root_of(&scene, copies[1]);
-        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root) else {
+        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root)
+        else {
             panic!("A copy root must be a dictionary");
         };
-        let Some(ObjectType::Dictionary(b_copy_d)) = scene.document.objects.get(&b_copy_root) else {
+        let Some(ObjectType::Dictionary(b_copy_d)) = scene.document.objects.get(&b_copy_root)
+        else {
             panic!("B copy root must be a dictionary");
         };
         assert_eq!(
@@ -3188,11 +3205,13 @@ mod copy_entities_xdict_tests {
         let copies = scene.copy_entities(&[a, b], &EntityTransform::Translate(DVec3::ZERO));
         let a_copy_root = xdict_root_of(&scene, copies[0]);
         let b_copy_root = xdict_root_of(&scene, copies[1]);
-        let Some(ObjectType::Dictionary(b_copy_d)) = scene.document.objects.get(&b_copy_root) else {
+        let Some(ObjectType::Dictionary(b_copy_d)) = scene.document.objects.get(&b_copy_root)
+        else {
             panic!("B copy root must be a dictionary");
         };
         let b_copy_sub = b_copy_d.get("SUB").expect("SUB entry on B's clone");
-        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root) else {
+        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root)
+        else {
             panic!("A copy root must be a dictionary");
         };
         let xref_sub = a_copy_d
@@ -3229,7 +3248,8 @@ mod copy_entities_xdict_tests {
         let copies = scene.copy_entities(&[a, b], &EntityTransform::Translate(DVec3::ZERO));
         let b_copy = copies[1];
         let a_copy_root = xdict_root_of(&scene, copies[0]);
-        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root) else {
+        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root)
+        else {
             panic!("A copy root must be a dictionary");
         };
         let copy_rec_h = a_copy_d.get("LINK").expect("LINK entry on the copy");
@@ -3245,9 +3265,81 @@ mod copy_entities_xdict_tests {
         );
     }
 
+    /// Same cross-tree structure as the both-copied test, but the sibling
+    /// holding the cross-ref is copied second: ownership of a shared root
+    /// must stay with its own entity regardless of selection order.
+    #[test]
+    fn copy_entities_remaps_cross_tree_refs_regardless_of_selection_order() {
+        let mut scene = Scene::new();
+        let (a, a_root) = add_line_with_root(&mut scene);
+        let (b, b_root) = add_line_with_root(&mut scene);
+        if let Some(ObjectType::Dictionary(d)) = scene.document.objects.get_mut(&a_root) {
+            d.add_entry("XREF", b_root);
+        }
+
+        // Copies come back in ascending source-handle order regardless of
+        // the order picked.
+        let copies = scene.copy_entities(&[b, a], &EntityTransform::Translate(DVec3::ZERO));
+        assert_eq!(copies.len(), 2);
+        let (a_copy, b_copy) = (copies[0], copies[1]);
+        let a_copy_root = xdict_root_of(&scene, a_copy);
+        let b_copy_root = xdict_root_of(&scene, b_copy);
+        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root)
+        else {
+            panic!("copied root must be a dictionary");
+        };
+        assert_eq!(
+            a_copy_d.get("XREF"),
+            Some(b_copy_root),
+            "a cross-owner ref must land on the sibling's clone in any copy order"
+        );
+    }
+
+    /// A sibling root ref'd by TWO other copied trees must stay owned by its
+    /// own entity: ownership clobbered to the last entity whose tree reaches
+    /// it would make the true owner's pass skip its own root and panic.
+    #[test]
+    fn copy_entities_shared_root_owner_survives_multiple_cross_refs() {
+        let mut scene = Scene::new();
+        let (a, a_root) = add_line_with_root(&mut scene);
+        let (b, b_root) = add_line_with_root(&mut scene);
+        let (c, c_root) = add_line_with_root(&mut scene);
+        if let Some(ObjectType::Dictionary(d)) = scene.document.objects.get_mut(&a_root) {
+            d.add_entry("XREF", b_root);
+        }
+        if let Some(ObjectType::Dictionary(d)) = scene.document.objects.get_mut(&c_root) {
+            d.add_entry("XREF", b_root);
+        }
+
+        let copies = scene.copy_entities(&[a, b, c], &EntityTransform::Translate(DVec3::ZERO));
+        assert_eq!(copies.len(), 3);
+        let a_copy_root = xdict_root_of(&scene, copies[0]);
+        let b_copy_root = xdict_root_of(&scene, copies[1]);
+        let c_copy_root = xdict_root_of(&scene, copies[2]);
+        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root)
+        else {
+            panic!("A copy root must be a dictionary");
+        };
+        let Some(ObjectType::Dictionary(c_copy_d)) = scene.document.objects.get(&c_copy_root)
+        else {
+            panic!("C copy root must be a dictionary");
+        };
+        assert_eq!(
+            a_copy_d.get("XREF"),
+            Some(b_copy_root),
+            "A's cross-ref must land on B's clone"
+        );
+        assert_eq!(
+            c_copy_d.get("XREF"),
+            Some(b_copy_root),
+            "C's cross-ref must land on B's clone"
+        );
+    }
+
     /// A ref to a tree outside the copy set must not dangle at the source:
-    /// AutoCAD deep-clones the out-of-set dictionary target (measured in
-    /// AutoCAD 2026, probe E), so the copy owns an isomorphic private clone.
+    /// the reference product deep-clones the out-of-set dictionary target
+    /// (measured via console probe on the drawing under test), so the copy
+    /// owns an isomorphic private clone.
     #[test]
     fn copy_entities_deep_clones_uncopied_owner_trees() {
         let mut scene = Scene::new();
@@ -3270,7 +3362,8 @@ mod copy_entities_xdict_tests {
 
         let copies = scene.copy_entities(&[a], &EntityTransform::Translate(DVec3::ZERO));
         let a_copy_root = xdict_root_of(&scene, copies[0]);
-        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root) else {
+        let Some(ObjectType::Dictionary(a_copy_d)) = scene.document.objects.get(&a_copy_root)
+        else {
             panic!("A copy root must be a dictionary");
         };
         let xref = a_copy_d
