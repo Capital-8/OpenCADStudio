@@ -260,6 +260,14 @@ impl OpenCADStudio {
                 return false;
             }
         }
+        // A dynamic block leaves the editor showing its first visibility
+        // state, with erased objects dropped from its states.
+        let definition = session.br_handle;
+        crate::scene::block_visibility::finish_editing(
+            &mut self.tabs[i].scene.document,
+            definition,
+        );
+        self.tabs[i].scene.visibility_states.remove(&definition);
         if let Some(delta) = self.block_edit_delta(i) {
             let mut history = self.tabs[i].block_edit_history.take().unwrap();
             std::mem::swap(&mut self.tabs[i].history, &mut history.main);

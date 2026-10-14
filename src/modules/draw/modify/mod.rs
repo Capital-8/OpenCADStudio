@@ -5,6 +5,7 @@ pub mod attedit;
 pub mod blend;
 pub mod block_edit;
 pub mod break_cmd;
+pub mod bvstate;
 pub mod copy;
 pub mod delete;
 mod entity_index;

@@ -7,6 +7,7 @@
 //   cache   — block-definition and property caches
 pub mod annotative;
 pub mod assoc_array;
+pub mod block_visibility;
 pub mod compare;
 pub mod section_cull;
 pub mod sub_select;
@@ -2123,6 +2124,9 @@ pub struct Scene {
     /// frozen-layer signature. Invalidated only when a light entity changes;
     /// ordinary geometry edits never rescan the drawing's lights.
     lighting_cache: RefCell<HashMap<(Handle, u64), Vec<SceneLight>>>,
+    /// The visibility state each dynamic block shows in the Block Editor,
+    /// by block record.
+    pub visibility_states: HashMap<Handle, usize>,
     /// Currently selected entity handles.
     pub selected: HashSet<Handle>,
     /// Polylines only part of which is selected (Ctrl+click): the picked
@@ -2772,6 +2776,7 @@ impl Scene {
             last_created_dimension: None,
             object_data_cache: crate::entities::object_data::ObjectDataCache::default(),
             lighting_cache: RefCell::new(HashMap::default()),
+            visibility_states: HashMap::default(),
             selected: HashSet::default(),
             sub_segments: HashMap::default(),
             selected_order: Vec::new(),
