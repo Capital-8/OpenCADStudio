@@ -6540,3 +6540,6 @@ keytips =
     .hint-tabs = Type a tab letter · Esc closes
     .hint-tab = { $tab } tab · Esc goes back one level
     .hint-items = Type an item letter · Esc goes back one level
+
+selection-report =
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

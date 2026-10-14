@@ -6541,3 +6541,6 @@ keytips =
     .hint-tabs = Digite a letra de uma guia · Esc fecha
     .hint-tab = Guia { $tab } · Esc volta um nível
     .hint-items = Digite a letra de um item · Esc volta um nível
+
+selection-report =
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

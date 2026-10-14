@@ -1261,9 +1261,6 @@ impl OpenCADStudio {
             .into_iter()
             .map(|(h, _)| h)
             .collect();
-        let count = handles.len();
-        self.command_line
-            .push_info(crate::tf!("{count} object(s) found.").as_ref());
         self.feed_command(StepInput::SelectionComplete(selected))
     }
 

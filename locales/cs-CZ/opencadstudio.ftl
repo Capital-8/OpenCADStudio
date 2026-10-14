@@ -6538,3 +6538,6 @@ keytips =
     .hint-tabs = Zadejte písmeno karty · Esc zavře
     .hint-tab = Karta { $tab } · Esc o úroveň zpět
     .hint-items = Zadejte písmeno položky · Esc o úroveň zpět
+
+selection-report =
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

@@ -6462,3 +6462,6 @@ keytips =
     .hint-tabs = Sekme harfini yazın · Esc kapatır
     .hint-tab = { $tab } sekmesi · Esc bir düzey geri
     .hint-items = Öğe harfini yazın · Esc bir düzey geri
+
+selection-report =
+    .found-removed-total = __ocs_fmt_0__ bulundu, __ocs_fmt_1__ çıkarıldı, toplam __ocs_fmt_2__

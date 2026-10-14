@@ -574,6 +574,40 @@ impl OpenCADStudio {
         StepInput::SelectionComplete(kept)
     }
 
+/// What one pick added to (or removed from) a gathering selection, as the
+    /// reference words it: `N found`, `N found, M total`, `N found, N removed,
+    /// M total`. Returns the command's key while it gathers.
+    // ponytail: compares the whole selection before and after, so a pick of an
+    // already chosen object reads `0 found` (the reference says `1 found (1
+    // duplicate)`); pass the pick's own objects through StepInput if needed.
+    fn report_selection_found(&mut self, input: &StepInput) -> Option<usize> {
+        let StepInput::SelectionComplete(handles) = input else {
+            return None;
+        };
+        let command = self.tabs[self.active_tab].active_cmd.as_ref()?;
+        if !command.is_selection_gathering() {
+            return None;
+        }
+        let key = &**command as *const dyn crate::command::CadCommand as *const () as usize;
+        let previous: rustc_hash::FxHashSet<Handle> = match &self.selection_report {
+            Some((k, previous)) if *k == key => previous.iter().copied().collect(),
+            _ => Default::default(),
+        };
+        let now: rustc_hash::FxHashSet<Handle> = handles.iter().copied().collect();
+        let found = now.difference(&previous).count();
+        let removed = previous.difference(&now).count();
+        let total = now.len();
+        let line = if removed > 0 {
+            crate::tf!("{removed} found, {removed} removed, {total} total")
+        } else if found == 0 || previous.is_empty() {
+            crate::tf!("{found} found")
+        } else {
+            crate::tf!("{found} found, {total} total")
+        };
+        self.command_line.push_info(line.as_ref());
+        Some(key)
+    }
+
     /// `feed_command`, also reporting whether the step actually took the input.
     /// Only a `Text` token can come back unclaimed (`on_text_input` returning
     /// `None`), which is what lets the caller read it as something else — a
@@ -582,6 +616,7 @@ impl OpenCADStudio {
         &mut self,
         input: StepInput,
     ) -> (Task<Message>, bool) {
+        let gathering = self.report_selection_found(&input);
         // A command that takes associative dimensions only keeps just those:
         // the rest leave the selection and the count of what went is reported,
         // as the reference does while gathering.
@@ -589,6 +624,9 @@ impl OpenCADStudio {
         let input = self.filter_block_reference_selection(input);
         let input = self.filter_locked_point_cloud_selection(input);
         let input = self.filter_command_entity_selection(input);
+        if let (Some(key), StepInput::SelectionComplete(kept)) = (gathering, &input) {
+            self.selection_report = Some((key, kept.clone()));
+        }
         // XCLIP / CLIP learn which chosen references carry a clip already.
         {
             let i = self.active_tab;
@@ -1045,12 +1083,9 @@ impl OpenCADStudio {
             );
             return Some(Task::none());
         }
-        let count = add.len();
         for h in add {
             self.tabs[i].scene.select_entity(h, false);
         }
-        self.command_line
-            .push_info(crate::tf!("{count} object(s) added to selection.").as_ref());
         self.refresh_properties();
         let handles: Vec<Handle> = self.tabs[i]
             .scene

@@ -6553,3 +6553,6 @@ keytips =
     .hint-tabs = اكتب حرف علامة التبويب · Esc للإغلاق
     .hint-tab = علامة التبويب { $tab } · Esc للرجوع مستوى واحدًا
     .hint-items = اكتب حرف العنصر · Esc للرجوع مستوى واحدًا
+
+selection-report =
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

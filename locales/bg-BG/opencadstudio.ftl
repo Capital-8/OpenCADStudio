@@ -6541,3 +6541,6 @@ keytips =
     .hint-tabs = Въведете буква на раздел · Esc затваря
     .hint-tab = Раздел { $tab } · Esc връща едно ниво назад
     .hint-items = Въведете буква на елемент · Esc връща едно ниво назад
+
+selection-report =
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

@@ -6524,3 +6524,6 @@ keytips =
     .hint-tabs = 键入选项卡字母 · Esc 关闭
     .hint-tab = { $tab } 选项卡 · Esc 返回上一级
     .hint-items = 键入项目字母 · Esc 返回上一级
+
+selection-report =
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

@@ -6539,3 +6539,6 @@ keytips =
     .hint-tabs = Buchstaben einer Registerkarte eingeben · Esc schließt
     .hint-tab = Registerkarte { $tab } · Esc geht eine Ebene zurück
     .hint-items = Buchstaben eines Elements eingeben · Esc geht eine Ebene zurück
+
+selection-report =
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

@@ -6539,3 +6539,6 @@ keytips =
     .hint-tabs = Typ de letter van een tabblad · Esc sluit
     .hint-tab = Tabblad { $tab } · Esc gaat één niveau terug
     .hint-items = Typ de letter van een item · Esc gaat één niveau terug
+
+selection-report =
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

@@ -6540,3 +6540,6 @@ keytips =
     .hint-tabs = 탭 문자를 입력하십시오 · Esc로 닫기
     .hint-tab = { $tab } 탭 · Esc로 한 단계 뒤로
     .hint-items = 항목 문자를 입력하십시오 · Esc로 한 단계 뒤로
+
+selection-report =
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total
