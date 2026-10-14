@@ -68,6 +68,7 @@ const READ_OPS: &[&str] = &[
     "audit",
     "text_search",
     "text_audit",
+    "keytips",
     "capture",
 ];
 const EXECUTE_OPS: &[&str] = &[

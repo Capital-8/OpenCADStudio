@@ -6489,3 +6489,10 @@ ref-edit =
     .redefined = ນິຍາມ __ocs_fmt_0__ ໃໝ່ແລ້ວ.
     .ok = ຕົກລົງ
     .nested = ຊ້ອນ
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level

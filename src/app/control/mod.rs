@@ -559,6 +559,7 @@ impl OpenCADStudio {
                 | "audit"
                 | "text_search"
                 | "text_audit"
+                | "keytips"
         );
         if !query && !self.control.enabled {
             return (
@@ -850,6 +851,7 @@ impl OpenCADStudio {
                     }
                 }
                 "grips" => self.control_grips(),
+                "keytips" => self.ribbon.keytips_json(req["detail"].as_str() == Some("full")),
                 "xdata_get" => self.xdata_read(&req),
                 "get_selection" => self.control_get_selection(),
                 "text_search" => self.control_text_search(&req).unwrap_or_else(|e| e),

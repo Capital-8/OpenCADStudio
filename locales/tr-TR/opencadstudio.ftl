@@ -6410,3 +6410,10 @@ ref-edit =
     .redefined = __ocs_fmt_0__ yeniden tanımlandı.
     .ok = Tamam
     .nested = İç içe
+
+keytips =
+    .title = KeyTip
+    .typed = Yazılan: { $path }
+    .hint-tabs = Sekme harfini yazın · Esc kapatır
+    .hint-tab = { $tab } sekmesi · Esc bir düzey geri
+    .hint-items = Öğe harfini yazın · Esc bir düzey geri

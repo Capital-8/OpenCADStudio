@@ -6472,3 +6472,10 @@ ref-edit =
     .redefined = 已重定义 __ocs_fmt_0__。
     .ok = 确定
     .nested = 嵌套
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level
