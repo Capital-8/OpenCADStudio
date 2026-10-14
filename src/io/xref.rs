@@ -1244,7 +1244,11 @@ fn merge_xref_into_block(
     // Dependent layers and linetypes carry the xref flag and their owning
     // reference, the way the file stores them; without it the host writes
     // plain records with a "|" in the name, which other readers reject.
-    for name in maps.layers.values() {
+    // Layer 0 and Defpoints map to the host's own layers, which stay plain.
+    for (source, name) in &maps.layers {
+        if name.eq_ignore_ascii_case(source) {
+            continue;
+        }
         if let Some(layer) = doc.layers.get_mut(name) {
             layer.flags.xref_dependent = true;
             layer.xref_block_record_handle = br_handle;
