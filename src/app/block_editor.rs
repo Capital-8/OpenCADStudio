@@ -499,6 +499,7 @@ impl OpenCADStudio {
             &session.return_camera,
         );
         self.cancel_attr_editor();
+        self.discard_block_tests(self.tabs[i].id);
     }
 
     pub(super) fn request_block_edit_close(
@@ -506,6 +507,7 @@ impl OpenCADStudio {
         i: usize,
         continuation: BlockEditContinuation,
     ) -> Task<Message> {
+        let id = self.tabs[i].id;
         if self.tabs[i].active_block_edit_session().is_some() {
             if self.block_edit_dirty(i) {
                 self.active_tab = i;
@@ -515,6 +517,7 @@ impl OpenCADStudio {
             }
             self.close_block_edit(i, true);
         }
+        let i = self.tabs.iter().position(|tab| tab.id == id).unwrap();
         self.continue_after_block_edit(continuation, i)
     }
 
@@ -564,6 +567,7 @@ impl OpenCADStudio {
         self.pending_block_close = None;
         self.active_modal = None;
         self.close_block_edit(i, !save);
+        let i = self.tabs.iter().position(|tab| tab.id == id).unwrap();
         self.continue_after_block_edit(continuation, i)
     }
 
@@ -583,7 +587,11 @@ impl OpenCADStudio {
         {
             return self.request_block_edit_close(i, BlockEditContinuation::Quit);
         }
-        if self.tabs.iter().any(|tab| tab.dirty) {
+        if self
+            .tabs
+            .iter()
+            .any(|tab| tab.dirty && tab.block_test.is_none())
+        {
             self.pending_close = Some(super::PendingClose::Quit);
             self.open_unsaved_dialog_window()
         } else {

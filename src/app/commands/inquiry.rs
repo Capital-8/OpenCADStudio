@@ -614,6 +614,8 @@ impl OpenCADStudio {
             "BSAVE" => {
                 self.save_block_edit(i);
             }
+            "BTESTBLOCK" => return Some(self.open_block_test(i)),
+            "BCLOSETESTBLOCK" => return Some(self.close_block_test(i)),
             "BSAVEAS" => {
                 self.open_block_save_as_dialog(i);
             }

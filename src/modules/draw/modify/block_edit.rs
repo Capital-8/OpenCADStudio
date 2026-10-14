@@ -119,3 +119,6 @@ inventory::submit!(crate::command::CommandRegistration {
 inventory::submit!(crate::command::CommandRegistration {
     names: &["BSAVE", "BSAVEAS", "BCLOSE"]
 });
+inventory::submit!(crate::command::CommandRegistration {
+    names: &["BTESTBLOCK", "BCLOSETESTBLOCK"]
+});
