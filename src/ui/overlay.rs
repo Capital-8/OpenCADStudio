@@ -71,6 +71,70 @@ fn draw_concentric_constraint_glyph(frame: &mut canvas::Frame, center: Point, co
     frame.stroke(&canvas::Path::circle(center, 2.15), stroke);
 }
 
+/// Strokes a closed four-corner polygon — the outline half of the brush glyph.
+fn stroke_quad(frame: &mut canvas::Frame, corners: [Point; 4], stroke: &canvas::Stroke<'_>) {
+    let path = canvas::Path::new(|p| {
+        p.move_to(corners[0]);
+        p.line_to(corners[1]);
+        p.line_to(corners[2]);
+        p.line_to(corners[3]);
+        p.close();
+    });
+    frame.stroke(&path, stroke.clone());
+}
+
+/// MATCHPROP's paintbrush cursor.
+///
+/// While the user is transferring properties the CAD crosshair is replaced by a
+/// paintbrush whose tip sits exactly on the pick point — the AutoCAD feel. The
+/// body leans up-and-right so it never covers the object being picked.
+///
+/// Deliberately monochrome and geometric: the crosshair's own colour, a single
+/// stroke weight and one filled wedge, so the glyph reads as part of the CAD
+/// cursor family rather than clip-art.
+fn draw_match_brush(frame: &mut canvas::Frame, tip: Point, color: Color) {
+    let inv = std::f32::consts::FRAC_1_SQRT_2;
+    // `along` runs up-and-right (handle direction); `across` is perpendicular.
+    let along = (inv, -inv);
+    let across = (inv, inv);
+    let at = |a: f32, w: f32| {
+        Point::new(
+            tip.x + along.0 * a + across.0 * w,
+            tip.y + along.1 * a + across.1 * w,
+        )
+    };
+    let stroke = canvas::Stroke {
+        width: 1.25,
+        style: canvas::Style::Solid(color),
+        line_join: canvas::LineJoin::Miter,
+        ..Default::default()
+    };
+
+    // Bristles: the only solid mass, so the working end carries the weight and
+    // the silhouette still reads at cursor size.
+    let bristles = canvas::Path::new(|p| {
+        p.move_to(at(0.0, 0.0));
+        p.line_to(at(9.0, -3.2));
+        p.line_to(at(12.0, -3.2));
+        p.line_to(at(12.0, 3.2));
+        p.line_to(at(9.0, 3.2));
+        p.close();
+    });
+    frame.fill(&bristles, color);
+
+    // Ferrule and handle stay outline-only: line work, not clip-art.
+    stroke_quad(
+        frame,
+        [at(12.0, -3.2), at(15.5, -3.2), at(15.5, 3.2), at(12.0, 3.2)],
+        &stroke,
+    );
+    stroke_quad(
+        frame,
+        [at(15.5, -2.3), at(30.0, -1.9), at(30.0, 1.9), at(15.5, 2.3)],
+        &stroke,
+    );
+}
+
 /// The reference bar's padlock: white with a small orange point marker
 /// when one point is held, red when a whole curve or segment is.
 fn draw_fixed_constraint_glyph(
@@ -901,6 +965,8 @@ pub fn selection_overlay<'a>(
     hover_locked: bool,
     crosshair_bg: [f32; 4],
     crosshair: CrosshairOptions,
+    // MATCHPROP is armed: paintbrush cursor replaces the crosshair.
+    show_match_brush: bool,
     selection_visual: SelectionVisualOptions,
     constraint_glyphs: Arc<[GlyphEntry]>,
     // Per-glyph selection flags, parallel to `constraint_glyphs`, applied
@@ -931,6 +997,7 @@ pub fn selection_overlay<'a>(
         hover_locked,
         crosshair_bg,
         crosshair,
+        show_match_brush,
         selection_visual,
         constraint_glyphs,
         constraint_glyph_selected,
@@ -995,6 +1062,9 @@ struct SelectionCanvas {
     /// rather than the UI theme, which may be light over a dark model viewport.
     crosshair_bg: [f32; 4],
     crosshair: CrosshairOptions,
+    /// MATCHPROP is armed: the crosshair gives way to a paintbrush cursor
+    /// whose tip marks the pick point.
+    show_match_brush: bool,
     selection_visual: SelectionVisualOptions,
     /// Memoised constraint-glyph entries (precomputed anchor/outward/label +
     /// layout) shared with the hit-test and tooltip paths — draw reads
@@ -1961,11 +2031,54 @@ impl canvas::Program<Message> for SelectionCanvas {
         // arrow (see `mouse_interaction`); drawing the CAD crosshair on
         // top of it would double up the visual feedback.
         let over_divider = self.divider_under(cursor, bounds);
+        // ── MATCHPROP paintbrush cursor ───────────────────────────────
+        // While MATCHPROP is armed the user is transferring properties from a
+        // source object onto others, so the crosshair gives way to a paintbrush
+        // whose tip rides the pick point — the AutoCAD feel. Drawn *instead of*
+        // the crosshair below, never on top of it.
+        if !over_viewcube
+            && !over_divider
+            && self.nav == NavCursor::None
+            && !self.suppressed
+            && self.show_match_brush
+        {
+            if let Some(cp) = self
+                .grips
+                .iter()
+                .find(|grip| grip.is_hovered)
+                .map(|grip| grip.pos)
+                .or(self.selection.borrow().input.last_move_pos)
+            {
+                // Inherit the crosshair's own colour (including a custom
+                // crosshair colour) so only the shape changes, never the ink.
+                let [cr, cg, cb, ca] = self.crosshair.color.map_or_else(
+                    || {
+                        crate::scene::view::render::adapt_to_bg(
+                            [1.0, 1.0, 1.0, 0.90],
+                            self.crosshair_bg,
+                        )
+                    },
+                    |[r, g, b]| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 0.90],
+                );
+                draw_match_brush(
+                    &mut frame,
+                    cp,
+                    Color {
+                        r: cr,
+                        g: cg,
+                        b: cb,
+                        a: ca,
+                    },
+                );
+            }
+        }
+
         // An armed navigation tool replaces the crosshair with its own cursor.
         if !over_viewcube
             && !over_divider
             && self.nav == NavCursor::None
             && !self.suppressed
+            && !self.show_match_brush
             && self.crosshair.cursor_type == CursorType::Crosshair
         {
             // Over a grip the crosshair locks onto it, so the click lands on

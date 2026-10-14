@@ -959,6 +959,11 @@ bg={bg_ms:.1}ms n={view_count}"
                     }),
                     snap_color: self.snap_marker_color,
                 },
+                // MATCHPROP paints properties onto destinations; it gets the
+                // paintbrush cursor instead of the crosshair.
+                tab.active_cmd
+                    .as_ref()
+                    .is_some_and(|c| c.name() == "MATCHPROP"),
                 crate::ui::overlay::SelectionVisualOptions {
                     area: self.model_space.selection_area,
                     opacity: self.model_space.selection_opacity,

@@ -20,6 +20,7 @@
 * **Draggable Tabs & Groups:** Palette tabs can now be reordered by dragging; floating windows support grouped tabs. *(Contributed by [@posnofa](https://github.com/posnofa))*
 * **Layer Manager Palette:** Integrated `LAYERS` into the docking system as a native pallet. *(Contributed by [@posnofa](https://github.com/posnofa))*
 * **Graphic Attributes Palette:** Added toggles, controls for open boundaries, color swatches with `*VARIES*` indicator, and persistent docking layout. *(Contributed by [@MarcelP102](https://github.com/MarcelP102))*
+* **MATCHPROP Paintbrush Cursor:** While `MATCHPROP` is armed the CAD crosshair gives way to a monochrome paintbrush whose tip rides the pick point, echoing the AutoCAD "match properties" cursor. The glyph borrows the crosshair's own colour — including a user-customised one — so only the shape changes, never the ink. *(Contributed by [@Ch4rlos](https://github.com/Ch4rlos))*
 
 #### Selection & Drafting
 * **Advanced Selection Filter (`FILTER`):** Added comprehensive selection filtering with normalized logical operators and attribute filters (v2.2). *(Contributed by [@turbuczn](https://github.com/turbuczn))*
@@ -110,3 +111,4 @@ Huge thanks to everyone who contributed to this cycle:
 * **Kevin Griffin** ([@KevinGriffin-new](https://github.com/KevinGriffin-new)) — macOS DMG bundle Applications shortcut link (`#769`).
 * **francesco fantoni** ([@hvfrancesco](https://github.com/hvfrancesco)) — Translations and UI improvements.
 * **theluckystrike** ([@theluckystrike](https://github.com/theluckystrike)) — Command line rebound spacebar execution (`#1710`).
+* **Carlos Quiroga** ([@Ch4rlos](https://github.com/Ch4rlos)) — `MATCHPROP` paintbrush cursor.
