@@ -1244,6 +1244,7 @@ impl OpenCADStudio {
             bounds,
             |point| self.cursor_model_point(i, &edit_cam, point, bounds),
         );
+        self.last_pick = Some((handles.clone(), self.select_remove_mode));
         if self.select_remove_mode {
             for h in &handles {
                 self.tabs[i].scene.deselect_entity(*h);
@@ -1261,9 +1262,6 @@ impl OpenCADStudio {
             .into_iter()
             .map(|(h, _)| h)
             .collect();
-        let count = handles.len();
-        self.command_line
-            .push_info(crate::tf!("{count} object(s) found.").as_ref());
         self.feed_command(StepInput::SelectionComplete(selected))
     }
 

@@ -6539,3 +6539,7 @@ keytips =
     .hint-tabs = 輸入索引標籤字母 · Esc 關閉
     .hint-tab = { $tab } 索引標籤 · Esc 返回上一層
     .hint-items = 輸入項目字母 · Esc 返回上一層
+
+selection-report =
+    .found-duplicate-total = __ocs_fmt_0__ found (__ocs_fmt_1__ duplicate), __ocs_fmt_2__ total
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

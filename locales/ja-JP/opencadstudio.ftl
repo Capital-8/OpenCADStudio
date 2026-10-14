@@ -6532,3 +6532,7 @@ keytips =
     .hint-tabs = タブの文字を入力 · Esc で閉じる
     .hint-tab = { $tab } タブ · Esc で 1 つ上に戻る
     .hint-items = 項目の文字を入力 · Esc で 1 つ上に戻る
+
+selection-report =
+    .found-duplicate-total = __ocs_fmt_0__ found (__ocs_fmt_1__ duplicate), __ocs_fmt_2__ total
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

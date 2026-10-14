@@ -5230,6 +5230,10 @@ properties={:.1}ms picked={}",
                     // lasso adds, Shift+lasso removes. An empty lasso
                     // leaves the current selection untouched so a stray
                     // drag never discards hard-won picks.
+                    if is_gathering {
+                        self.last_pick =
+                            Some((handles.clone(), self.shift_down || self.select_remove_mode));
+                    }
                     if self.shift_down || self.select_remove_mode {
                         self.tabs[i].scene.deselect_entities(&handles);
                     } else {
@@ -5372,6 +5376,12 @@ properties={:.1}ms picked={}",
                             let hit =
                                 hit.filter(|&h| self.tabs[i].scene.passes_selection_filter(h));
                             if let Some(handle) = hit {
+                                if is_gathering {
+                                    self.last_pick = Some((
+                                        vec![handle],
+                                        self.shift_down || self.select_remove_mode,
+                                    ));
+                                }
                                 // Individual picks accumulate (issue #47):
                                 // each plain click adds to the selection,
                                 // Shift+click removes the picked entity.
@@ -5504,6 +5514,10 @@ was_selected={}",
                     // entities. An empty box leaves the selection alone
                     // so an accidental empty drag never discards it.
                     // PICKADD 0 (#226): a plain box REPLACES instead.
+                    if is_gathering {
+                        self.last_pick =
+                            Some((handles.clone(), self.shift_down || self.select_remove_mode));
+                    }
                     if self.shift_down || self.select_remove_mode {
                         self.tabs[i].scene.deselect_entities(&handles);
                     } else {

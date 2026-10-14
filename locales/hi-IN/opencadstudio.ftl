@@ -6532,3 +6532,7 @@ keytips =
     .hint-tabs = टैब का अक्षर टाइप करें · Esc बंद करता है
     .hint-tab = { $tab } टैब · Esc एक स्तर पीछे जाता है
     .hint-items = आइटम का अक्षर टाइप करें · Esc एक स्तर पीछे जाता है
+
+selection-report =
+    .found-duplicate-total = __ocs_fmt_0__ found (__ocs_fmt_1__ duplicate), __ocs_fmt_2__ total
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

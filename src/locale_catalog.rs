@@ -6,6 +6,8 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "{} entities added" => Some(("ref-edit", "entities-added")),
         "Use REFCLOSE or the Refedit toolbar to end reference editing session." => Some(("ref-edit", "use-refclose")),
         "Specify opposite corner:" => Some(("ref-edit", "opposite-corner")),
+        "{found} found, {known} removed, {total} total" => Some(("selection-report", "found-removed-total")),
+        "{found} found ({known} duplicate), {total} total" => Some(("selection-report", "found-duplicate-total")),
         "Add to Working Set" => Some(("ref-edit", "add-to-working-set")),
         "Remove from Working Set" => Some(("ref-edit", "remove-from-working-set")),
         "Select reference:" => Some(("ref-edit", "select-reference")),

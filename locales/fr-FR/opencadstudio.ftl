@@ -6544,3 +6544,7 @@ keytips =
     .hint-tabs = Tapez la lettre d'un onglet · Échap ferme
     .hint-tab = Onglet { $tab } · Échap remonte d'un niveau
     .hint-items = Tapez la lettre d'un élément · Échap remonte d'un niveau
+
+selection-report =
+    .found-duplicate-total = __ocs_fmt_0__ found (__ocs_fmt_1__ duplicate), __ocs_fmt_2__ total
+    .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total
