@@ -1080,6 +1080,7 @@ impl OpenCADStudio {
         return_block: Option<&str>,
         return_layout: &str,
         return_camera: &crate::scene::view::camera::Camera,
+        saved: bool,
     ) {
         self.tabs[i].scene.block_edit_block = None;
         self.tabs[i].scene.deselect_all();
@@ -1121,7 +1122,9 @@ impl OpenCADStudio {
 
         self.tabs[i].scene.camera_generation += 1;
         self.tabs[i].last_synced_camera_gen = self.tabs[i].scene.camera_generation;
-        self.tabs[i].scene.rebuild_derived_caches();
+        if !saved {
+            self.tabs[i].scene.bump_geometry_no_blocks();
+        }
         let layers = self.tabs[i].scene.document.layers.clone();
         let viewports = self.tabs[i].scene.viewport_list();
         self.tabs[i].layers.sync_with_viewports(&layers, viewports);

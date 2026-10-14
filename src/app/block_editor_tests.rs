@@ -1333,3 +1333,25 @@ fn locked_bedit_with_preselected_insert_opens_directly() {
         "EDIT_ME"
     );
 }
+
+#[test]
+fn locked_bedit_clean_close_preserves_block_epoch_and_render_caches() {
+    let (mut app, reference) = fixture();
+    let tab = app.active_tab;
+    let epoch_before = app.tabs[tab].scene.block_epoch;
+    begin(&mut app, reference);
+    let _ = app.dispatch_command("BCLOSE");
+    assert_eq!(app.tabs[tab].scene.block_epoch, epoch_before);
+}
+
+#[test]
+fn locked_bedit_discard_preserves_block_epoch_and_render_caches() {
+    let (mut app, reference) = fixture();
+    let tab = app.active_tab;
+    let epoch_before = app.tabs[tab].scene.block_epoch;
+    begin(&mut app, reference);
+    circle(&mut app, 1.0);
+    let _ = app.dispatch_command("BCLOSE");
+    let _ = app.update(Message::BlockEditChangesDiscard);
+    assert_eq!(app.tabs[tab].scene.block_epoch, epoch_before);
+}
