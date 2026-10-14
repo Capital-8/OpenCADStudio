@@ -434,28 +434,22 @@ impl ColorPicker {
                 (None, None) => math::describe(self.pending),
             };
             let error = self.status.is_some();
-            body = body
-                .push(
+            body = body.push(divider()).push(
+                row![
                     container(Space::new())
-                        .width(Length::Fill)
-                        .height(1)
-                        .style(|theme: &Theme| filled(theme.palette().background.weak.color)),
-                )
-                .push(
-                    row![
-                        container(Space::new())
-                            .width(12)
-                            .height(12)
-                            .style(move |_theme: &Theme| swatch_style(fill)),
-                        text(info).size(11).font(iced::Font::MONOSPACE).style(
-                            move |theme: &Theme| text::Style {
-                                color: error.then(|| theme.palette().danger.base.color),
-                            }
-                        ),
-                    ]
-                    .spacing(8)
-                    .align_y(iced::Center),
-                );
+                        .width(12)
+                        .height(12)
+                        .style(move |_theme: &Theme| swatch_style(fill)),
+                    text(info)
+                        .size(11)
+                        .font(iced::Font::MONOSPACE)
+                        .style(move |theme: &Theme| text::Style {
+                            color: error.then(|| theme.palette().danger.base.color),
+                        }),
+                ]
+                .spacing(8)
+                .align_y(iced::Center),
+            );
         }
         let body = container(body)
             .padding(12)
@@ -590,14 +584,14 @@ impl ColorPicker {
         let section = |label: String| text(label).size(11);
         let swatches = |range: std::ops::RangeInclusive<u8>| {
             range.fold(row![].spacing(5), |line, index| {
-                line.push(self.swatch_button(index, 30.0, 26.0))
+                line.push(self.index_swatch(index, 30.0, 26.0))
             })
         };
         // ACI 10–249 come in groups of ten: 24 hue families across, their ten
         // shades down.
         let grid = (0u8..10).fold(column![].spacing(2), |grid, shade| {
             grid.push((1u8..=24).fold(row![].spacing(2), |line, family| {
-                line.push(self.swatch_button(family * 10 + shade, 13.0, 13.0))
+                line.push(self.index_swatch(family * 10 + shade, 13.0, 13.0))
             }))
         });
         column![
@@ -617,14 +611,16 @@ impl ColorPicker {
         .into()
     }
 
-    fn swatch_button(&self, index: u8, width: f32, height: f32) -> Element<'_, Message> {
-        let fill = rgb_color(math::aci_rgb(index).unwrap_or((128, 128, 128)));
-        let selected = self.pending == AcadColor::Index(index);
-        button(Space::new().width(width).height(height))
-            .on_press(picker_msg(ColorPickerMsg::Pick(AcadColor::Index(index))))
-            .padding(0)
-            .style(move |theme: &Theme, status| swatch_button_style(theme, status, fill, selected))
-            .into()
+    /// One index colour of the Index tab.
+    fn index_swatch(&self, index: u8, width: f32, height: f32) -> Element<'_, Message> {
+        let color = AcadColor::Index(index);
+        swatch(
+            fill_of(color),
+            self.pending == color,
+            ColorPickerMsg::Pick(color),
+            Length::Fixed(width),
+            Length::Fixed(height),
+        )
     }
 
     fn document_tab(&self) -> Element<'_, Message> {
@@ -675,8 +671,7 @@ impl ColorPicker {
             shown
                 .iter()
                 .fold(column![].spacing(2), |list, &(i, entry)| {
-                    let fill = math::color_rgb(entry.color)
-                        .map_or(Color::from_rgb8(128, 128, 128), rgb_color);
+                    let fill = fill_of(entry.color);
                     let selected = self.pending == entry.color && self.pending_name == entry.name;
                     list.push(
                         color_bar(
@@ -747,15 +742,13 @@ impl ColorPicker {
     }
 
     fn doc_swatch<'a>(&self, i: usize, entry: &'a DocColor) -> Element<'a, Message> {
-        let fill = math::color_rgb(entry.color).map_or(Color::from_rgb8(128, 128, 128), rgb_color);
-        let selected = self.pending == entry.color && self.pending_name == entry.name;
-        button(Space::new())
-            .on_press(picker_msg(ColorPickerMsg::PickDocument(i)))
-            .padding(0)
-            .width(Length::Fill)
-            .height(30)
-            .style(move |theme: &Theme, status| swatch_button_style(theme, status, fill, selected))
-            .into()
+        swatch(
+            fill_of(entry.color),
+            self.pending == entry.color && self.pending_name == entry.name,
+            ColorPickerMsg::PickDocument(i),
+            Length::Fill,
+            Length::Fixed(30.0),
+        )
     }
 
     fn books_tab(&self) -> Element<'_, Message> {
@@ -915,10 +908,7 @@ impl ColorPicker {
             channel(t!("Red"), chosen.map(|c| c.rgb.0)),
             channel(t!("Green"), chosen.map(|c| c.rgb.1)),
             channel(t!("Blue"), chosen.map(|c| c.rgb.2)),
-            container(Space::new())
-                .width(Length::Fill)
-                .height(1)
-                .style(|theme: &Theme| filled(theme.palette().background.weak.color)),
+            divider(),
             text(format!("{} / {}", self.book_page + 1, book.page_count()))
                 .size(11)
                 .style(muted_text),
@@ -1183,6 +1173,37 @@ fn tab_icon<'a>(handle: svg::Handle) -> svg::Svg<'a> {
     svg(handle).style(|theme: &Theme, _status| svg::Style {
         color: Some(theme.palette().background.strong.text),
     })
+}
+
+/// A clickable colour swatch, ringed when selected or hovered.
+fn swatch<'a>(
+    fill: Color,
+    selected: bool,
+    on_press: ColorPickerMsg,
+    width: Length,
+    height: Length,
+) -> Element<'a, Message> {
+    button(Space::new())
+        .on_press(picker_msg(on_press))
+        .padding(0)
+        .width(width)
+        .height(height)
+        .style(move |theme: &Theme, status| swatch_button_style(theme, status, fill, selected))
+        .into()
+}
+
+/// How a concrete colour looks; gray for one without RGB.
+fn fill_of(color: AcadColor) -> Color {
+    math::color_rgb(color).map_or(Color::from_rgb8(128, 128, 128), rgb_color)
+}
+
+/// A 1 px separator line across the panel.
+fn divider<'a>() -> Element<'a, Message> {
+    container(Space::new())
+        .width(Length::Fill)
+        .height(1)
+        .style(|theme: &Theme| filled(theme.palette().background.weak.color))
+        .into()
 }
 
 /// A short gray note in the middle of the free space.

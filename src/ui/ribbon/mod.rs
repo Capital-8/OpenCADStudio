@@ -148,6 +148,14 @@ pub struct LayerInfo {
     pub vp_frozen: Option<(usize, bool)>,
 }
 
+/// The colour of layer `name` in the ribbon's layer list.
+pub(super) fn layer_color(layers: &[LayerInfo], name: &str) -> Option<Color> {
+    layers
+        .iter()
+        .find(|layer| layer.name == name)
+        .map(|layer| layer.color)
+}
+
 /// Full-screen backdrop for an open ribbon dropdown: closes the dropdown when
 /// the user clicks outside the panel. (Cursor motion leaking to the viewport
 /// beneath is blocked in `on_viewport_move`, not here — iced 0.14's mouse_area
@@ -188,10 +196,7 @@ fn position_ribbon_dropdown<'a>(
 impl Ribbon {
     /// The current layer's colour: what ByLayer looks like for new objects.
     pub fn active_layer_color(&self) -> Option<Color> {
-        self.layer_infos
-            .iter()
-            .find(|layer| layer.name == self.active_layer)
-            .map(|layer| layer.color)
+        layer_color(&self.layer_infos, &self.active_layer)
     }
 
     /// The colour-book identity of the active colour, while the active colour

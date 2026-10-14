@@ -12004,17 +12004,10 @@ impl OpenCADStudio {
             }
             Message::ColorBookLoaded(Ok(book)) => {
                 // A book loaded again replaces the earlier copy.
-                let books = std::sync::Arc::make_mut(&mut self.color_books);
-                let index = match books.iter().position(|b| b.name == book.name) {
-                    Some(index) => {
-                        books[index] = book;
-                        index
-                    }
-                    None => {
-                        books.push(book);
-                        books.len() - 1
-                    }
-                };
+                let index = crate::ui::color_select::book::add_or_replace(
+                    std::sync::Arc::make_mut(&mut self.color_books),
+                    book,
+                );
                 if let Some(picker) = self.color_picker.as_mut() {
                     picker.show_book(std::sync::Arc::clone(&self.color_books), index);
                 }
@@ -12162,10 +12155,7 @@ impl OpenCADStudio {
             .filter_map(|path| std::fs::read_to_string(path).ok())
             .filter_map(|text| book::parse(&text).ok())
         {
-            match books.iter_mut().find(|b| b.name == loaded.name) {
-                Some(same) => *same = loaded,
-                None => books.push(loaded),
-            }
+            book::add_or_replace(&mut books, loaded);
         }
         self.color_books = std::sync::Arc::new(books);
     }

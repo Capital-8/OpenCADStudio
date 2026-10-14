@@ -1171,14 +1171,8 @@ impl OpenCADStudio {
         ) {
             self.color_picker = None;
 
-            let rgb = match color {
-                codec::types::Color::Rgb { r, g, b } => Some((r, g, b)),
-                codec::types::Color::Index(index) => codec::types::aci_table::aci_to_rgb(index),
-                _ => None,
-            };
-
-            if let Some((r, g, b)) = rgb {
-                self.ps_color_buf = format!("#{r:02X}{g:02X}{b:02X}");
+            if let Some((r, g, b)) = crate::ui::color_select::math::color_rgb(color) {
+                self.ps_color_buf = crate::ui::color_select::math::hex_string(r, g, b);
             }
 
             return self.on_plot_style_panel_apply();
@@ -1191,15 +1185,11 @@ impl OpenCADStudio {
                 )))
             }
             Some(crate::app::ColorPickTarget::ViewBackground(slot)) => {
-                let rgb = match color {
-                    codec::types::Color::Rgb { r, g, b } => Some([r, g, b]),
-                    codec::types::Color::Index(index) => {
-                        codec::types::aci_table::aci_to_rgb(index).map(|(r, g, b)| [r, g, b])
-                    }
-                    _ => None,
-                };
-                rgb.map(|rgb| {
-                    Message::PdfDialog(crate::ui::window::pdf_dialogs::PdfDialogMsg::BgColor(slot, rgb))
+                crate::ui::color_select::math::color_rgb(color).map(|(r, g, b)| {
+                    Message::PdfDialog(crate::ui::window::pdf_dialogs::PdfDialogMsg::BgColor(
+                        slot,
+                        [r, g, b],
+                    ))
                 })
             }
             Some(crate::app::ColorPickTarget::GraphicAttributesLine) => Some(

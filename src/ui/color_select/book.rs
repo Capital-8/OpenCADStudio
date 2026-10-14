@@ -57,6 +57,20 @@ impl ColorBook {
     }
 }
 
+/// Add `book`, replacing one of the same name; returns where it now is.
+pub fn add_or_replace(books: &mut Vec<ColorBook>, book: ColorBook) -> usize {
+    match books.iter().position(|b| b.name == book.name) {
+        Some(index) => {
+            books[index] = book;
+            index
+        }
+        None => {
+            books.push(book);
+            books.len() - 1
+        }
+    }
+}
+
 /// The colour book that ships with the program; its licence is in the
 /// file's header comment.
 pub fn builtin() -> impl Iterator<Item = ColorBook> {
