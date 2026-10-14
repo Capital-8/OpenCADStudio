@@ -11993,35 +11993,6 @@ impl OpenCADStudio {
                 }
                 Task::none()
             }
-            #[cfg(not(target_arch = "wasm32"))]
-            Message::ColorBookDirBrowse => Task::perform(
-                async {
-                    crate::sys::file_dialog()
-                        .pick_folder()
-                        .await
-                        .map(|handle| crate::sys::handle_path(&handle).display().to_string())
-                },
-                |dir| dir.map_or(Message::Noop, Message::ColorBookDirAdd),
-            ),
-            // Browsers expose no folder picker.
-            #[cfg(target_arch = "wasm32")]
-            Message::ColorBookDirBrowse => Task::none(),
-            Message::ColorBookDirAdd(dir) => {
-                if !self.color_book_dirs.contains(&dir) {
-                    self.color_book_dirs.push(dir);
-                    self.color_books_read = false;
-                    self.persist_settings_if_changed();
-                }
-                Task::none()
-            }
-            Message::ColorBookDirRemove(i) => {
-                if i < self.color_book_dirs.len() {
-                    self.color_book_dirs.remove(i);
-                    self.color_books_read = false;
-                    self.persist_settings_if_changed();
-                }
-                Task::none()
-            }
             Message::DsSetHandle { field, value } => self.on_ds_set_handle(field, value),
         }
     }

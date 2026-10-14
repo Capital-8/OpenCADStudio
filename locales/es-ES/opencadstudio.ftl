@@ -1441,7 +1441,6 @@ common =
     .color-book-encrypted = Este libro de colores está cifrado y no se puede leer
     .color-book-empty = El libro de colores no tiene colores
     .color-book-locations = Ubicaciones de libros de colores
-    .color-book-locations-hint = Carpetas en las que se buscan libros de colores .acb. Un libro cargado en Seleccionar color se copia en la primera carpeta.
     .cad-color-index-aci-10-249 = Índice de color ACI 10–249
     .grayscale-250-255 = { common.grayscale } 250–255
     .isometric-drafting = Dibujo isométrico

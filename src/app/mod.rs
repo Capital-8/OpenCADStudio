@@ -4341,10 +4341,6 @@ pub enum Message {
     /// An `.acb` file was read (and, on desktop, copied into the first
     /// colour book folder).
     ColorBookLoaded(Result<crate::ui::color_select::book::ColorBook, String>),
-    /// Options › Files: pick a folder to search for colour books.
-    ColorBookDirBrowse,
-    ColorBookDirAdd(String),
-    ColorBookDirRemove(usize),
     /// Set a block/linetype Handle field on the selected dim style from a
     /// dropdown of available block-records / linetypes (by name).
     DsSetHandle {

@@ -1440,7 +1440,6 @@ common =
     .color-book-encrypted = Tento barevný vzorník je zašifrovaný a nelze jej přečíst
     .color-book-empty = Barevný vzorník neobsahuje žádné barvy
     .color-book-locations = Umístění barevných vzorníků
-    .color-book-locations-hint = Složky, ve kterých se hledají barevné vzorníky .acb. Vzorník načtený ve Výběru barvy se zkopíruje do první složky.
     .cad-color-index-aci-10-249 = Barevný index ACI 10–249
     .grayscale-250-255 = { common.grayscale } 250–255
     .isometric-drafting = Izometrické kreslení

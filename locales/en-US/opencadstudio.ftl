@@ -1441,7 +1441,6 @@ common =
     .color-book-encrypted = This color book is encrypted and cannot be read
     .color-book-empty = The color book has no colors
     .color-book-locations = Color book locations
-    .color-book-locations-hint = Folders searched for .acb color books. A book loaded in Select Color is copied into the first folder.
     .cad-color-index-aci-10-249 = CAD Color Index (ACI) 10–249
     .grayscale-250-255 = Grayscale 250–255
     .isometric-drafting = Isometric drafting

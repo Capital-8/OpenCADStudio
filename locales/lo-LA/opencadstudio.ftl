@@ -1446,7 +1446,6 @@ common =
     .color-book-encrypted = ປຶ້ມສີນີ້ຖືກເຂົ້າລະຫັດ ແລະອ່ານບໍ່ໄດ້
     .color-book-empty = ປຶ້ມສີບໍ່ມີສີ
     .color-book-locations = ທີ່ຕັ້ງປຶ້ມສີ
-    .color-book-locations-hint = ໂຟນເດີທີ່ໃຊ້ຊອກຫາປຶ້ມສີ .acb. ປຶ້ມທີ່ໂຫຼດໃນເລືອກສີຈະຖືກສຳເນົາໄປໃສ່ໂຟນເດີທຳອິດ.
     .cad-color-index-aci-10-249 = CAD Color Index (ACI) 10–249
     .grayscale-250-255 = ລະດັບສີເທົາ 250–255
     .isometric-drafting = ການຂຽນແບບໄອໂຊເມຕຣິກ

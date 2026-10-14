@@ -1439,7 +1439,6 @@ common =
     .color-book-encrypted = Dit kleurboek is versleuteld en kan niet worden gelezen
     .color-book-empty = Het kleurboek bevat geen kleuren
     .color-book-locations = Locaties van kleurboeken
-    .color-book-locations-hint = Mappen waarin naar .acb-kleurboeken wordt gezocht. Een kleurboek dat in Kleur selecteren wordt geladen, wordt naar de eerste map gekopieerd.
     .cad-color-index-aci-10-249 = ACI Kleurindex 10–249
     .grayscale-250-255 = { common.grayscale } 250–255
     .isometric-drafting = Isometrisch tekenen

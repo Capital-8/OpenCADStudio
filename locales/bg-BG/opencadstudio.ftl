@@ -1440,7 +1440,6 @@ common =
     .color-book-encrypted = Този цветови каталог е шифрован и не може да бъде прочетен
     .color-book-empty = Цветовият каталог няма цветове
     .color-book-locations = Местоположения на цветови каталози
-    .color-book-locations-hint = Папки, в които се търсят цветови каталози .acb. Каталог, зареден в „Избор на цвят“, се копира в първата папка.
     .cad-color-index-aci-10-249 = ACI Цветови индекс 10–249
     .grayscale-250-255 = { common.grayscale } 250–255
     .isometric-drafting = Изометрично чертане

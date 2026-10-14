@@ -1445,7 +1445,6 @@ common =
     .color-book-encrypted = Ez a színkönyv titkosított, és nem olvasható
     .color-book-empty = A színkönyv nem tartalmaz színeket
     .color-book-locations = Színkönyvek helye
-    .color-book-locations-hint = Mappák, amelyekben a program .acb színkönyveket keres. A Szín kiválasztása ablakban betöltött színkönyv az első mappába másolódik.
     .cad-color-index-aci-10-249 = ACI színindex 10–249
     .grayscale-250-255 = { common.grayscale } 250–255
     .isometric-drafting = Izometrikus rajzolás

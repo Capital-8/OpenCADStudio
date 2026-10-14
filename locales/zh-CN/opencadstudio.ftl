@@ -1428,7 +1428,6 @@ common =
     .color-book-encrypted = 此配色系统已加密，无法读取
     .color-book-empty = 配色系统中没有颜色
     .color-book-locations = 配色系统位置
-    .color-book-locations-hint = 搜索 .acb 配色系统的文件夹。在“选择颜色”中加载的配色系统会复制到第一个文件夹。
     .cad-color-index-aci-10-249 = ACI 颜色索引 10–249
     .grayscale-250-255 = { common.grayscale } 250–255
     .isometric-drafting = 等轴测绘图

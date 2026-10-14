@@ -1427,7 +1427,6 @@ common =
     .color-book-encrypted = Bu renk kitabı şifreli ve okunamıyor
     .color-book-empty = Renk kitabında renk yok
     .color-book-locations = Renk kitabı konumları
-    .color-book-locations-hint = Bu klasörlerde .acb renk kitapları aranır. Renk Seç'te yüklenen bir kitap ilk klasöre kopyalanır.
     .cad-color-index-aci-10-249 = ACI renk dizini 10–249
     .grayscale-250-255 = { common.grayscale } 250–255
     .isometric-drafting = İzometrik çizim

@@ -1440,7 +1440,6 @@ common =
     .color-book-encrypted = 이 색상표는 암호화되어 있어 읽을 수 없습니다
     .color-book-empty = 색상표에 색상이 없습니다
     .color-book-locations = 색상표 위치
-    .color-book-locations-hint = .acb 색상표를 찾는 폴더입니다. 색상 선택에서 로드한 색상표는 첫 번째 폴더에 복사됩니다.
     .cad-color-index-aci-10-249 = ACI 컬러 인덱스 10–249
     .grayscale-250-255 = { common.grayscale } 250–255
     .isometric-drafting = 등각 제도

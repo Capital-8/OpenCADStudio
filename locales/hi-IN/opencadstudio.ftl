@@ -1429,7 +1429,6 @@ common =
     .color-book-encrypted = यह रंग पुस्तक एन्क्रिप्टेड है और पढ़ी नहीं जा सकती
     .color-book-empty = रंग पुस्तक में कोई रंग नहीं है
     .color-book-locations = रंग पुस्तकों के स्थान
-    .color-book-locations-hint = वे फ़ोल्डर जिनमें .acb रंग पुस्तकें खोजी जाती हैं। रंग चुनें में लोड की गई पुस्तक पहले फ़ोल्डर में कॉपी की जाती है।
     .cad-color-index-aci-10-249 = ACI रंग सूचकांक 10–249
     .grayscale-250-255 = { common.grayscale } 250–255
     .isometric-drafting = सममितीय आरेखन

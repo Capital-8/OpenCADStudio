@@ -1453,7 +1453,6 @@ common =
     .color-book-encrypted = كتاب الألوان هذا مشفر ولا يمكن قراءته
     .color-book-empty = لا يحتوي كتاب الألوان على ألوان
     .color-book-locations = مواقع كتب الألوان
-    .color-book-locations-hint = المجلدات التي يُبحث فيها عن كتب الألوان ‎.acb. يُنسخ الكتاب الذي يُحمَّل في اختيار اللون إلى المجلد الأول.
     .cad-color-index-aci-10-249 = فهرس ألوان ACI 10–249
     .grayscale-250-255 = { common.grayscale } 250–255
     .isometric-drafting = الرسم متساوي القياس

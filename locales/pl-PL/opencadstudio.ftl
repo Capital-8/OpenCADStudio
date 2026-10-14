@@ -1440,7 +1440,6 @@ common =
     .color-book-encrypted = Ten wzornik kolorów jest zaszyfrowany i nie można go odczytać
     .color-book-empty = Wzornik kolorów nie zawiera kolorów
     .color-book-locations = Lokalizacje wzorników kolorów
-    .color-book-locations-hint = Foldery przeszukiwane w poszukiwaniu wzorników kolorów .acb. Wzornik wczytany w oknie Wybierz kolor jest kopiowany do pierwszego folderu.
     .cad-color-index-aci-10-249 = Indeks kolorów ACI 10–249
     .grayscale-250-255 = { common.grayscale } 250–255
     .isometric-drafting = Rysowanie izometryczne
