@@ -423,6 +423,8 @@ pub struct UserSettings {
     pub attdef_on_screen: bool,
     /// FIELDDISPLAY: fields show on a gray background.
     pub field_display: bool,
+    /// XDWGFADECTL: how much referenced drawings fade (-90..=90; negative is off).
+    pub xref_fade: i32,
     /// SURFACEASSOCIATIVITY: new surfaces stay associative to their sources.
     pub surface_associativity: bool,
     /// UCSORTHO: an orthographic view preset also sets its orthographic UCS.
@@ -853,6 +855,7 @@ impl Default for UserSettings {
             image_frame: 1,
             attdef_on_screen: true,
             field_display: true,
+            xref_fade: 50,
             surface_associativity: true,
             ucs_ortho: true,
             ucs_view: true,
