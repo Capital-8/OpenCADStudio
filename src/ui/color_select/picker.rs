@@ -24,7 +24,7 @@ const PANEL_WIDTH: f32 = 400.0;
 /// Scope for Tab / Shift+Tab, so focus cycles through the panel's own
 /// fields instead of the dialogs and command line underneath.
 const PANEL_ID: &str = "select-color-panel";
-const BODY_HEIGHT: f32 = 352.0;
+const BODY_HEIGHT: f32 = 368.0;
 /// Swatches per row in the Document tab.
 const DOC_COLUMNS: usize = 8;
 /// Search matches shown at once in the Color books tab.
@@ -32,8 +32,8 @@ const PAGE_BARS: usize = 7;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ColorPickerTab {
-    Document,
     #[default]
+    Document,
     Index,
     TrueColor,
     Books,
@@ -106,11 +106,6 @@ pub struct ColorPicker {
 
 impl ColorPicker {
     pub fn new(target: ColorPickTarget, current: AcadColor, varies: bool) -> Self {
-        let tab = if matches!(current, AcadColor::Rgb { .. }) {
-            ColorPickerTab::TrueColor
-        } else {
-            ColorPickerTab::Index
-        };
         Self {
             target,
             current,
@@ -118,7 +113,7 @@ impl ColorPicker {
             pending: current,
             current_name: None,
             pending_name: None,
-            tab,
+            tab: ColorPickerTab::Document,
             editor: ColorEditor::new(math::color_rgb(current).unwrap_or((255, 255, 255))),
             eyedropper: None,
             doc: Vec::new(),
@@ -133,8 +128,7 @@ impl ColorPicker {
     }
 
     /// Fill the Document and Color books tabs. `current_name` is the
-    /// `BOOK$NAME` of the current colour; a colour from a loaded book opens
-    /// on its page.
+    /// `BOOK$NAME` of the current colour; the Color books tab shows its page.
     pub fn with_drawing(
         mut self,
         mut doc: Vec<DocColor>,
@@ -147,9 +141,7 @@ impl ColorPicker {
         self.recent = recent.to_vec();
         self.books = books;
         if let Some(name) = current_name.filter(|name| !name.is_empty()) {
-            if self.show_identity(&name) {
-                self.tab = ColorPickerTab::Books;
-            }
+            self.show_identity(&name);
             self.current_name = Some(name.clone());
             self.pending_name = Some(name);
         }
@@ -1152,13 +1144,12 @@ mod tests {
     }
 
     #[test]
-    fn opens_on_the_tab_that_fits_the_current_colour() {
-        assert_eq!(picker(AcadColor::Index(30)).tab(), ColorPickerTab::Index);
+    fn opens_on_the_document_tab() {
+        assert_eq!(picker(AcadColor::Index(30)).tab(), ColorPickerTab::Document);
         assert_eq!(
             picker(AcadColor::Rgb { r: 1, g: 2, b: 3 }).tab(),
-            ColorPickerTab::TrueColor
+            ColorPickerTab::Document
         );
-        assert_eq!(picker(AcadColor::ByLayer).tab(), ColorPickerTab::Index);
     }
 
     #[test]
@@ -1225,6 +1216,7 @@ mod tests {
         assert_eq!(step_index(255, ArrowKey::Right), None);
 
         let mut p = picker(AcadColor::Index(140));
+        p.update(ColorPickerMsg::Tab(ColorPickerTab::Index));
         p.update(ColorPickerMsg::Arrow(ArrowKey::Right));
         assert_eq!(p.pending(), AcadColor::Index(150));
     }
@@ -1313,7 +1305,6 @@ mod tests {
             b: 179,
         })
         .with_drawing(Vec::new(), &[], ral(), Some("RAL CLASSIC$RAL 5015".into()));
-        assert_eq!(p.tab(), ColorPickerTab::Books);
         assert_eq!(p.book_selection(), Some(2));
         assert_eq!(p.book_page, 1);
     }
@@ -1388,6 +1379,7 @@ mod tests {
             g: 191,
             b: 252,
         });
+        p.update(ColorPickerMsg::Tab(ColorPickerTab::TrueColor));
         edit(&mut p, EditorMsg::Mode(EditorMode::Rgb));
         let mut ui = simulator(&p);
         let label = ui.find("R").expect("R label");
@@ -1489,11 +1481,11 @@ mod tests {
                 false,
             ),
             (
-                "field",
+                "cmyk",
                 ColorPickTarget::Properties,
                 blue,
                 ColorPickerTab::TrueColor,
-                EditorMode::Field,
+                EditorMode::Cmyk,
                 false,
             ),
             (

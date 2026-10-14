@@ -59,6 +59,24 @@ pub fn rgb_to_hsb(r: u8, g: u8, b: u8) -> Hsb {
     Hsb { h, s, b: max }
 }
 
+/// Cyan, magenta, yellow and black in percent, by the plain device-free
+/// formula (no ICC profile): screen values, not press values.
+pub fn rgb_to_cmyk(r: u8, g: u8, b: u8) -> [f32; 4] {
+    let max = r.max(g).max(b);
+    if max == 0 {
+        return [0.0, 0.0, 0.0, 100.0];
+    }
+    let max = f32::from(max);
+    let ink = |v: u8| (1.0 - f32::from(v) / max) * 100.0;
+    [ink(r), ink(g), ink(b), (1.0 - max / 255.0) * 100.0]
+}
+
+pub fn cmyk_to_rgb([c, m, y, k]: [f32; 4]) -> (u8, u8, u8) {
+    let white = 255.0 * (1.0 - k.clamp(0.0, 100.0) / 100.0);
+    let channel = |ink: f32| (white * (1.0 - ink.clamp(0.0, 100.0) / 100.0)).round() as u8;
+    (channel(c), channel(m), channel(y))
+}
+
 /// RGB of an ACI entry, or `None` outside 1–255.
 pub fn aci_rgb(index: u8) -> Option<(u8, u8, u8)> {
     codec::types::aci_table::aci_to_rgb(index)

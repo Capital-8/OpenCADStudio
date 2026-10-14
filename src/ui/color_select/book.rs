@@ -62,7 +62,7 @@ impl ColorBook {
 pub fn builtin() -> impl Iterator<Item = ColorBook> {
     [
         include_str!("../../../assets/color_books/ral-classic.acb"),
-        include_str!("../../../assets/color_books/css-colors.acb"),
+        include_str!("../../../assets/color_books/sikkens-4041.acb"),
     ]
     .into_iter()
     .filter_map(|text| parse(text).ok())

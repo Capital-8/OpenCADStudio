@@ -1,6 +1,6 @@
-//! The colour editor: HSB or RGB sliders, or a saturation/brightness field
-//! with a hue strip, plus a hex box. Shared by the CAD Select Color panel and
-//! the interface colour picker.
+//! The colour editor: RGB, HSB or CMYK sliders above a saturation/brightness
+//! field with a hue strip, plus a hex box. Shared by the CAD Select Color
+//! panel and the interface colour picker.
 
 use super::math::{self, Hsb};
 use super::widgets::ColorArea;
@@ -15,19 +15,17 @@ use iced::{Background, Border, Color, Element, Gradient, Length, Radians, Theme}
 const ROW_HEIGHT: f32 = 26.0;
 const TRACK: f32 = 18.0;
 const STRIP_WIDTH: f32 = 22.0;
-/// Gap between slider rows. Together with `FIELD_HEIGHT` it puts the hex row
-/// at the same height in every mode: 3 × 26 + 2 × 14 + 12 = 108 + 10.
-const ROW_GAP: f32 = 14.0;
-const FIELD_HEIGHT: f32 = 108.0;
-const MODE_WIDTH: f32 = 40.0;
+const ROW_GAP: f32 = 8.0;
+const FIELD_HEIGHT: f32 = 96.0;
+const MODE_WIDTH: f32 = 48.0;
 const MODE_HEIGHT: f32 = 24.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EditorMode {
+    Rgb,
     #[default]
     Hsb,
-    Rgb,
-    Field,
+    Cmyk,
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +41,8 @@ pub enum EditorMsg {
     Red(u8),
     Green(u8),
     Blue(u8),
+    /// One CMYK channel (0 cyan … 3 black), in percent.
+    Cmyk(usize, f32),
     HexInput(String),
     HexSubmit,
 }
@@ -51,6 +51,8 @@ pub struct ColorEditor {
     mode: EditorMode,
     /// Kept beside `rgb` so hue and saturation survive grays and black.
     hsb: Hsb,
+    /// Kept too, so black keeps its inks and rounding doesn't move them.
+    cmyk: [f32; 4],
     rgb: (u8, u8, u8),
     hex_draft: Option<String>,
 }
@@ -64,6 +66,7 @@ impl ColorEditor {
                 s: 0.0,
                 b: 1.0,
             },
+            cmyk: [0.0; 4],
             rgb,
             hex_draft: None,
         };
@@ -85,6 +88,7 @@ impl ColorEditor {
             s: if next.b == 0.0 { self.hsb.s } else { next.s },
             b: next.b,
         };
+        self.cmyk = math::rgb_to_cmyk(r, g, b);
         self.rgb = (r, g, b);
         self.hex_draft = None;
     }
@@ -96,7 +100,15 @@ impl ColorEditor {
             b: hsb.b.clamp(0.0, 1.0),
         };
         self.rgb = self.hsb.to_rgb();
+        self.cmyk = math::rgb_to_cmyk(self.rgb.0, self.rgb.1, self.rgb.2);
         self.hex_draft = None;
+    }
+
+    fn set_cmyk(&mut self, channel: usize, value: f32) {
+        let mut cmyk = self.cmyk;
+        cmyk[channel.min(3)] = value.clamp(0.0, 100.0);
+        self.set_rgb(math::cmyk_to_rgb(cmyk));
+        self.cmyk = cmyk;
     }
 
     /// Apply a message; returns whether the colour changed.
@@ -118,6 +130,7 @@ impl ColorEditor {
             EditorMsg::Red(v) => self.set_rgb((v, g, b)),
             EditorMsg::Green(v) => self.set_rgb((r, v, b)),
             EditorMsg::Blue(v) => self.set_rgb((r, g, v)),
+            EditorMsg::Cmyk(channel, v) => self.set_cmyk(channel, v),
             EditorMsg::HexInput(value) => {
                 // Six digits are unambiguous, so apply them while typing; the
                 // short #RGB form waits for Enter.
@@ -138,28 +151,26 @@ impl ColorEditor {
 
     /// `mode_end` sits at the far right of the mode buttons (the pipette);
     /// `hex_end` at the far right of the hex row (the nearest index colour).
-    /// The field view shows the hex value beside H, S and B and leaves out
-    /// `hex_end`; the slider views end on a hex row.
     pub fn view<'a>(
         &'a self,
         mode_end: Option<Element<'a, Message>>,
         hex_end: Option<Element<'a, Message>>,
     ) -> Element<'a, Message> {
-        let view = column![self.mode_row(mode_end)].spacing(12);
-        match self.mode {
-            EditorMode::Hsb | EditorMode::Rgb => view
-                .push(self.slider_rows())
-                .push(self.hex_row(hex_end))
-                .into(),
-            EditorMode::Field => view.push(self.field_view()).into(),
-        }
+        column![
+            self.mode_row(mode_end),
+            self.slider_rows(),
+            self.field(),
+            self.hex_row(hex_end),
+        ]
+        .spacing(12)
+        .into()
     }
 
-    /// HSB, RGB and the gradient-field button, with `end` at the far right.
+    /// RGB, HSB and CMYK, with `end` at the far right.
     fn mode_row<'a>(&self, end: Option<Element<'a, Message>>) -> Element<'a, Message> {
-        let mode_button = |content: Element<'a, Message>, mode: EditorMode| {
+        let mode_button = |label: &'static str, mode: EditorMode| {
             let active = self.mode == mode;
-            button(container(content).center(Length::Fill))
+            button(container(text(label).size(13)).center(Length::Fill))
                 .on_press(msg(EditorMsg::Mode(mode)))
                 .width(MODE_WIDTH)
                 .height(MODE_HEIGHT)
@@ -168,35 +179,10 @@ impl ColorEditor {
                     super::picker::toggle_style(theme, active, status)
                 })
         };
-        // The field button is only its gradient, without a frame; it takes
-        // colour when its mode is active and stays gray otherwise.
-        let field_active = self.mode == EditorMode::Field;
-        let field_button = button(Space::new().width(MODE_WIDTH).height(MODE_HEIGHT))
-            .on_press(msg(EditorMsg::Mode(EditorMode::Field)))
-            .padding(0)
-            .style(move |_theme: &Theme, _status| {
-                let middle = if field_active {
-                    Color::from_rgb8(0x3A, 0xA0, 0xFF)
-                } else {
-                    Color::from_rgb8(0x80, 0x80, 0x80)
-                };
-                let icon = gradient_box(
-                    3.0 * std::f32::consts::FRAC_PI_4,
-                    &[(0.0, Color::WHITE), (0.5, middle), (1.0, Color::BLACK)],
-                );
-                button::Style {
-                    background: icon.background,
-                    border: Border {
-                        radius: 5.0.into(),
-                        ..Border::default()
-                    },
-                    ..Default::default()
-                }
-            });
         let mut modes = row![
-            mode_button(text("HSB").size(13).into(), EditorMode::Hsb),
-            mode_button(text("RGB").size(13).into(), EditorMode::Rgb),
-            field_button,
+            mode_button("RGB", EditorMode::Rgb),
+            mode_button("HSB", EditorMode::Hsb),
+            mode_button("CMYK", EditorMode::Cmyk),
             Space::new().width(Length::Fill),
         ]
         .spacing(6);
@@ -206,12 +192,29 @@ impl ColorEditor {
         modes.into()
     }
 
-    /// Three gradient sliders: hue, saturation and brightness, or red, green
-    /// and blue.
+    /// Gradient sliders: red, green and blue; hue, saturation and
+    /// brightness; or cyan, magenta, yellow and black.
     fn slider_rows<'a>(&self) -> Element<'a, Message> {
         let Hsb { h, s, b } = self.hsb;
         let (r, g, bl) = self.rgb;
-        let rows = if self.mode == EditorMode::Rgb {
+        let rows = if self.mode == EditorMode::Cmyk {
+            let ink = |i: usize, letter| {
+                let at = |v| {
+                    let mut cmyk = self.cmyk;
+                    cmyk[i] = v;
+                    rgb_color(math::cmyk_to_rgb(cmyk))
+                };
+                channel(
+                    letter,
+                    self.cmyk[i],
+                    100.0,
+                    Some('%'),
+                    vec![(0.0, at(0.0)), (1.0, at(100.0))],
+                    move |v| EditorMsg::Cmyk(i, v),
+                )
+            };
+            column![ink(0, "C"), ink(1, "M"), ink(2, "Y"), ink(3, "K")]
+        } else if self.mode == EditorMode::Rgb {
             let ends = |lo: (u8, u8, u8), hi: (u8, u8, u8)| {
                 vec![(0.0, rgb_color(lo)), (1.0, rgb_color(hi))]
             };
@@ -266,9 +269,8 @@ impl ColorEditor {
         rows.spacing(ROW_GAP).into()
     }
 
-    /// The saturation/brightness field with its hue strip, and below it H, S
-    /// and B on the left and the hex value on the right.
-    fn field_view<'a>(&self) -> Element<'a, Message> {
+    /// The saturation/brightness field with its hue strip.
+    fn field<'a>(&self) -> Element<'a, Message> {
         let Hsb { h, s, b } = self.hsb;
         let area = ColorArea::new(hsb_color(h, 1.0, 1.0), rgb_color(self.rgb), s, b, |s, b| {
             msg(EditorMsg::Field(s, b))
@@ -285,50 +287,17 @@ impl ColorEditor {
                 .height(FIELD_HEIGHT)
                 .style(handle_style),
         ];
-        let value =
-            |letter: &'static str, v: f32, max: f32, unit: char, f: fn(f32) -> EditorMsg| {
-                row![
-                    text(letter).size(12).font(iced::Font::MONOSPACE),
-                    number_box(v, max, Some(unit), f),
-                ]
-                .spacing(4)
-                .align_y(iced::Center)
-            };
-        column![
-            row![area, strip].spacing(12),
-            row![
-                value("H", h, 360.0, '°', EditorMsg::Hue),
-                value("S", s * 100.0, 100.0, '%', EditorMsg::Saturation),
-                value("B", b * 100.0, 100.0, '%', EditorMsg::Brightness),
-                Space::new().width(Length::Fill),
-                self.hex_field(),
-            ]
-            .spacing(10)
-            .align_y(iced::Center),
-        ]
-        // 108 + 10 matches the slider views' 3 × 26 + 2 × 14 + 12.
-        .spacing(10)
-        .into()
+        row![area, strip].spacing(12).into()
     }
 
     /// The hex value with `end` (the nearest index colour) at the far right.
     fn hex_row<'a>(&self, end: Option<Element<'a, Message>>) -> Element<'a, Message> {
-        let mut hex_row = row![self.hex_field(), Space::new().width(Length::Fill)]
-            .spacing(8)
-            .align_y(iced::Center);
-        if let Some(end) = end {
-            hex_row = hex_row.push(end);
-        }
-        hex_row.into()
-    }
-
-    fn hex_field<'a>(&self) -> Element<'a, Message> {
         let (r, g, b) = self.rgb;
         let hex = self
             .hex_draft
             .clone()
             .unwrap_or_else(|| math::hex_string(r, g, b));
-        row![
+        let mut hex_row = row![
             text(t!("Hex")).size(11).style(super::picker::muted_text),
             text_input("", &hex)
                 .on_input(|value| msg(EditorMsg::HexInput(value)))
@@ -337,10 +306,14 @@ impl ColorEditor {
                 .font(iced::Font::MONOSPACE)
                 .padding([5, 6])
                 .width(Length::Fixed(74.0)),
+            Space::new().width(Length::Fill),
         ]
         .spacing(8)
-        .align_y(iced::Center)
-        .into()
+        .align_y(iced::Center);
+        if let Some(end) = end {
+            hex_row = hex_row.push(end);
+        }
+        hex_row.into()
     }
 }
 
