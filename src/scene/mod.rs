@@ -4601,8 +4601,19 @@ impl Scene {
             return;
         };
         for w in wires.iter_mut() {
-            let keep_bright =
-                Self::handle_from_wire_name(&w.name).is_some_and(|h| keep.contains(&h));
+            let handle = Self::handle_from_wire_name(&w.name);
+            // A DWF underlay's page stays as it is outside the working set,
+            // like an image or a PDF page; only its frame fades. A DGN
+            // underlay's content fades with everything else.
+            let dwf_page = w.is_display_only()
+                && handle.is_some_and(|h| {
+                    matches!(
+                        self.document.get_entity(h),
+                        Some(EntityType::Underlay(u))
+                            if u.underlay_type == codec::entities::UnderlayType::Dwf
+                    )
+                });
+            let keep_bright = dwf_page || handle.is_some_and(|h| keep.contains(&h));
             if !keep_bright {
                 w.color = crate::scene::cache::block_cache::refedit_fade(w.color, bg);
             }
