@@ -2431,6 +2431,7 @@ common =
     .load-linetypes = Wczytaj rodzaje linii
     .requires-two-positive-values = Wymaga dwóch wartości dodatnich (x,y) lub jednej dla obu.
     .snap-marker-color = Kolor znacznika przyciągania
+    .snap-marker-size = Rozmiar znacznika przyciągania
     .command-line-text-color = Kolor tekstu wiersza poleceń
     .operand = Operand
     .linetypes-loaded = Wczytano rodzaje linii: __ocs_fmt_0__.

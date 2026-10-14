@@ -2432,6 +2432,7 @@ common =
     .load-linetypes = Cargar tipos de línea
     .requires-two-positive-values = Requiere dos valores positivos (x,y) o uno para ambos.
     .snap-marker-color = Color del marcador de referencia
+    .snap-marker-size = Tamaño del marcador de referencia
     .command-line-text-color = Color del texto de la línea de comandos
     .operand = Operando
     .linetypes-loaded = __ocs_fmt_0__ tipo(s) de línea cargado(s).

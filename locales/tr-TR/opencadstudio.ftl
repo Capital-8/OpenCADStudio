@@ -2416,6 +2416,7 @@ common =
     .load-linetypes = Çizgi tiplerini yükle
     .requires-two-positive-values = İki pozitif değer (x,y) ya da ikisi için tek değer gerekir.
     .snap-marker-color = Yakalama işaretçisi rengi
+    .snap-marker-size = Yakalama işaretçisi boyutu
     .command-line-text-color = Komut satırı metin rengi
     .operand = İşlenen
     .linetypes-loaded = __ocs_fmt_0__ çizgi tipi yüklendi.

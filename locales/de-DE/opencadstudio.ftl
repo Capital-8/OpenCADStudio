@@ -2432,6 +2432,7 @@ common =
     .load-linetypes = Linientypen laden
     .requires-two-positive-values = Erfordert zwei positive Werte (x,y) oder einen für beide.
     .snap-marker-color = Farbe der Fangmarkierung
+    .snap-marker-size = Größe der Fangmarkierung
     .command-line-text-color = Textfarbe der Befehlszeile
     .operand = Operand
     .linetypes-loaded = __ocs_fmt_0__ Linientyp(en) geladen.

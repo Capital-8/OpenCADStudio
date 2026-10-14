@@ -2432,6 +2432,7 @@ common =
     .load-linetypes = ໂຫຼດຮູບແບບເສັ້ນ
     .requires-two-positive-values = ຕ້ອງການຄ່າບວກສອງຄ່າ (x,y) ຫຼື ຄ່າດຽວສຳລັບທັງສອງ.
     .snap-marker-color = ສີເຄື່ອງໝາຍຈຸດດູດ
+    .snap-marker-size = ຂະໜາດເຄື່ອງໝາຍຈຸດດູດ
     .command-line-text-color = ສີຂໍ້ຄວາມແຖວຄຳສັ່ງ
     .operand = ຕົວດຳເນີນການ
     .linetypes-loaded = ໂຫຼດຮູບແບບເສັ້ນແລ້ວ __ocs_fmt_0__ ຮູບແບບ.

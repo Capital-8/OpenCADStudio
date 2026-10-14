@@ -2431,6 +2431,7 @@ common =
     .load-linetypes = Načíst typy čar
     .requires-two-positive-values = Vyžaduje dvě kladné hodnoty (x,y) nebo jednu pro obě.
     .snap-marker-color = Barva značky uchopení
+    .snap-marker-size = Velikost značky uchopení
     .command-line-text-color = Barva textu příkazového řádku
     .operand = Operand
     .linetypes-loaded = Načteno typů čar: __ocs_fmt_0__.

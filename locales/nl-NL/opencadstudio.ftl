@@ -2432,6 +2432,7 @@ common =
     .load-linetypes = Lijntypen laden
     .requires-two-positive-values = Vereist twee positieve waarden (x,y) of één voor beide.
     .snap-marker-color = Kleur van snapmarkering
+    .snap-marker-size = Grootte van snapmarkering
     .command-line-text-color = Tekstkleur opdrachtregel
     .operand = Operand
     .linetypes-loaded = __ocs_fmt_0__ lijntype(n) geladen.

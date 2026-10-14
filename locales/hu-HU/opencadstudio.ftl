@@ -2437,6 +2437,7 @@ common =
     .load-linetypes = Vonaltípusok betöltése
     .requires-two-positive-values = Két pozitív érték (x,y) vagy egy közös érték szükséges.
     .snap-marker-color = Tárgyraszterjel színe
+    .snap-marker-size = Tárgyraszterjel mérete
     .command-line-text-color = Parancssor szövegszíne
     .operand = Operandus
     .linetypes-loaded = __ocs_fmt_0__ vonaltípus betöltve.

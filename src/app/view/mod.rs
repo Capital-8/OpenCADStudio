@@ -958,6 +958,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             || c.is_selection_gathering()
                     }),
                     snap_color: self.snap_marker_color,
+                    snap_size: self.model_space.snap_marker_size as f32,
                 },
                 // MATCHPROP paints properties onto destinations; it gets the
                 // paintbrush cursor instead of the crosshair.

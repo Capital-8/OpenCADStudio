@@ -9052,6 +9052,12 @@ impl OpenCADStudio {
                 Task::none()
             }
 
+            Message::SnapMarkerSizeChanged(size) => {
+                self.model_space.snap_marker_size = size.clamp(1, 20);
+                self.persist_settings_if_changed();
+                Task::none()
+            }
+
             Message::GripColorChanged(color) => {
                 self.model_space.grip_color = color;
                 self.sync_model_space_theme(false);

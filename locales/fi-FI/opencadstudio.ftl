@@ -2431,6 +2431,7 @@ common =
     .load-linetypes = Lataa viivatyypit
     .requires-two-positive-values = Vaatii kaksi positiivista arvoa (x,y) tai yhden molemmille.
     .snap-marker-color = Kohdistusmerkin väri
+    .snap-marker-size = Kohdistusmerkin koko
     .command-line-text-color = Komentorivin tekstin väri
     .operand = Operandi
     .linetypes-loaded = Ladattu __ocs_fmt_0__ viivatyyppiä.

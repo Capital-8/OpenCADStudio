@@ -1578,6 +1578,22 @@ pub fn view_window<'a>(
         ]
         .spacing(10)
         .align_y(iced::Center),
+        Space::new().height(14),
+        row![
+            text(crate::t!("Snap marker size")).size(12).width(150),
+            slider(
+                1..=20,
+                model_space.snap_marker_size.clamp(1, 20),
+                Message::SnapMarkerSizeChanged,
+            )
+            .step(1)
+            .width(Fill),
+            text(format!("{} px", model_space.snap_marker_size.clamp(1, 20)))
+                .size(11)
+                .width(44),
+        ]
+        .spacing(10)
+        .align_y(iced::Center),
         Space::new().height(24),
         text(crate::t!("Snap and Grid")).size(15),
         Space::new().height(10),

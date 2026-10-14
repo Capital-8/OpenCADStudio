@@ -2431,6 +2431,7 @@ common =
     .load-linetypes = 載入線型
     .requires-two-positive-values = 需要兩個正值 (x,y)，或一個同時用於兩者的值。
     .snap-marker-color = 鎖點標記顏色
+    .snap-marker-size = 鎖點標記大小
     .command-line-text-color = 命令列文字顏色
     .operand = 運算元
     .linetypes-loaded = 已載入 __ocs_fmt_0__ 個線型。

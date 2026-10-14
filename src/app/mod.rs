@@ -2609,6 +2609,8 @@ pub enum Message {
     SelectionHighlightColorChanged(u8),
     /// Change Grip size in pixels (1–25, GRIPSIZE).
     GripSizeChanged(u8),
+    /// Change the object-snap marker size in pixels (1–20, SNAPMARKERSIZE).
+    SnapMarkerSizeChanged(u8),
     /// Change Unselected Grip color ACI index (0 = Theme Primary, 1..=255 = ACI, GRIPCOLOR).
     GripColorChanged(u8),
     /// Change Selected/Hot Grip color ACI index (0 = Theme Danger, 1..=255 = ACI, GRIPHOT).
