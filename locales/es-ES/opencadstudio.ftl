@@ -6533,3 +6533,10 @@ image-adjust =
     .reset = Restablecer valores por defecto
     .apply = Aplicar
     .help = Define el brillo, el contraste y la atenuación de las imágenes ráster seleccionadas.
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level

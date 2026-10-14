@@ -6532,3 +6532,10 @@ image-adjust =
     .reset = Ripristina valori predefiniti
     .apply = Applica
     .help = Imposta luminosità, contrasto e dissolvenza delle immagini raster selezionate.
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level

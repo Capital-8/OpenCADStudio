@@ -6533,3 +6533,10 @@ image-adjust =
     .reset = ກູ້ຄືນຄ່າເລີ່ມຕົ້ນ
     .apply = ນຳໃຊ້
     .help = ຕັ້ງຄວາມສະຫວ່າງ, ຄວາມຄົມຊັດ ແລະ ຄວາມຈາງຂອງຮູບພາບ raster ທີ່ເລືອກ.
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level

@@ -6530,3 +6530,10 @@ image-adjust =
     .reset = Palauta oletukset
     .apply = Käytä
     .help = Asettaa valittujen rasterikuvien kirkkauden, kontrastin ja häivytyksen.
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level

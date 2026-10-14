@@ -6532,3 +6532,10 @@ image-adjust =
     .reset = 기본값 복원
     .apply = 적용
     .help = 선택한 래스터 이미지의 밝기, 대비 및 페이드를 설정합니다.
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level

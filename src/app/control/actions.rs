@@ -116,6 +116,7 @@ pub(super) const NAMES: &[&str] = &[
     "pc_section",
     "ribbon_tab",
     "ribbon_dropdown",
+    "keytips",
     "dialog_ok",
     "attdef_dialog",
     "field_dialog",
@@ -1915,6 +1916,28 @@ impl OpenCADStudio {
                     _ => return Err(failure("invalid_value", "Unknown Reference Edit field")),
                 })
                 }
+            }
+            // Ribbon key tips: `show`, `alt` (a lone Alt), `type:<codes>`, `enter`,
+            // `esc` or `hide`. Read them back with the `keytips` read operation.
+            "keytips" => {
+                use crate::ui::ribbon::KeyTipInput as K;
+                let value = string(req, "value")?;
+                let inputs: Vec<K> = match value {
+                    "show" => vec![K::Open { refocus: false }],
+                    "alt" => vec![K::AltTap],
+                    "esc" => vec![K::Escape],
+                    "hide" => vec![K::Hide],
+                    "enter" => vec![K::Enter],
+                    _ => match value.strip_prefix("type:") {
+                        Some(codes) if !codes.is_empty() => codes
+                            .chars()
+                            .map(|ch| K::Char(ch.to_uppercase().collect()))
+                            .collect(),
+                        _ => return Err(failure("invalid_value", "Use show, alt, type:<codes>, enter, esc or hide")),
+                    },
+                };
+                let tasks: Vec<_> = inputs.into_iter().map(|input| self.on_keytip(input)).collect();
+                return Ok(Task::batch(tasks));
             }
             // The -VIEW Background dialog, one field per call: "type=gradient",
             // "color|top|middle|bottom=r,g,b", "three=1", "rotation=30",

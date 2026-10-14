@@ -6521,3 +6521,10 @@ image-adjust =
     .reset = डिफ़ॉल्ट पुनर्स्थापित करें
     .apply = लागू करें
     .help = चयनित रास्टर छवियों की चमक, कंट्रास्ट और फ़ेड सेट करता है।
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level

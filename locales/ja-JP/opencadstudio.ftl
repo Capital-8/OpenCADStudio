@@ -6521,3 +6521,10 @@ image-adjust =
     .reset = 既定値に戻す
     .apply = 適用
     .help = 選択したラスター イメージの明るさ、コントラスト、フェードを設定します。
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level

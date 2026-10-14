@@ -6530,3 +6530,10 @@ image-adjust =
     .reset = Obnovit výchozí
     .apply = Použít
     .help = Nastaví jas, kontrast a vyblednutí vybraných rastrových obrázků.
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level

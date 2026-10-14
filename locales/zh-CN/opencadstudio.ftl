@@ -6516,3 +6516,10 @@ image-adjust =
     .reset = 恢复默认值
     .apply = 应用
     .help = 设置所选光栅图像的亮度、对比度和淡入度。
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level

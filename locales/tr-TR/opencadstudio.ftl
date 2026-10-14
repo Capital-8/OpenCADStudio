@@ -6454,3 +6454,10 @@ image-adjust =
     .reset = Varsayılana dön
     .apply = Uygula
     .help = Seçilen raster görüntülerin parlaklığını, karşıtlığını ve soluklığını ayarlar.
+
+keytips =
+    .title = KeyTip
+    .typed = Yazılan: { $path }
+    .hint-tabs = Sekme harfini yazın · Esc kapatır
+    .hint-tab = { $tab } sekmesi · Esc bir düzey geri
+    .hint-items = Öğe harfini yazın · Esc bir düzey geri

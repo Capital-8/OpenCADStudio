@@ -6531,3 +6531,10 @@ image-adjust =
     .reset = Standardwerte wiederherstellen
     .apply = Anwenden
     .help = Legt Helligkeit, Kontrast und Ausblendung der gewählten Rasterbilder fest.
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level

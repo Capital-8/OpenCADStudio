@@ -6532,3 +6532,10 @@ image-adjust =
     .reset = Przywróć domyślne
     .apply = Zastosuj
     .help = Ustawia jasność, kontrast i zanikanie wybranych obrazów rastrowych.
+
+keytips =
+    .title = KeyTip
+    .typed = Typed: { $path }
+    .hint-tabs = Type a tab letter · Esc closes
+    .hint-tab = { $tab } tab · Esc goes back one level
+    .hint-items = Type an item letter · Esc goes back one level
