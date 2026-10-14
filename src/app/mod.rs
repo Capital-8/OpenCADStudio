@@ -1067,10 +1067,9 @@ pub(super) struct OpenCADStudio {
     // ── Floating panel windows ────────────────────────────────────────────
     /// The open Select Color panel, if any.
     color_picker: Option<crate::ui::color_select::ColorPicker>,
-    /// The built-in colour books and those in `color_book_dirs`, read
-    /// lazily when the Select Color panel opens.
+    /// The built-in colour book and those in the colour book folder, read
+    /// lazily when the Select Color panel first opens.
     color_books: std::sync::Arc<Vec<crate::ui::color_select::book::ColorBook>>,
-    color_book_dirs: Vec<String>,
     color_books_read: bool,
     /// Recently committed real colours, newest first.
     /// ACI and True Color remain semantically distinct even when their RGB matches.
@@ -4793,7 +4792,6 @@ impl OpenCADStudio {
             web_autosave_clear_after: Vec::new(),
             color_picker: None,
             color_books: Default::default(),
-            color_book_dirs: Vec::new(),
             color_books_read: false,
             active_modal: None,
             hyperlink_editor_handles: Vec::new(),

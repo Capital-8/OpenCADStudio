@@ -77,42 +77,45 @@ pub fn builtin() -> impl Iterator<Item = ColorBook> {
     parse(include_str!("../../../assets/color_books/ral-classic.acb")).into_iter()
 }
 
-/// The built-in book plus every `.acb` file in `dirs`, folder by folder in
+/// Where colour books are kept: `color_books` in the config folder. The
+/// web has no folders.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn folder() -> Option<std::path::PathBuf> {
+    crate::config::config_dir().map(|dir| dir.join("color_books"))
+}
+
+/// The built-in book plus every `.acb` file in the colour book folder, in
 /// file-name order. A book replaces an earlier one of the same name.
-pub fn read_all(dirs: &[String]) -> Vec<ColorBook> {
+pub fn read_all() -> Vec<ColorBook> {
     #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
     let mut books: Vec<_> = builtin().collect();
-    // Browsers have no folders.
-    #[cfg(target_arch = "wasm32")]
-    let _ = dirs;
     #[cfg(not(target_arch = "wasm32"))]
-    for book in dirs
-        .iter()
-        .flat_map(|dir| {
-            let mut files: Vec<_> = std::fs::read_dir(dir)
-                .into_iter()
-                .flatten()
-                .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-                .filter(|path| {
-                    path.extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("acb"))
-                })
-                .collect();
-            files.sort();
-            files
-        })
-        .filter_map(|path| std::fs::read_to_string(path).ok())
-        .filter_map(|text| parse(&text).ok())
-    {
-        add_or_replace(&mut books, book);
+    if let Some(dir) = folder() {
+        let mut files: Vec<_> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("acb"))
+            })
+            .collect();
+        files.sort();
+        for book in files
+            .into_iter()
+            .filter_map(|path| std::fs::read_to_string(path).ok())
+            .filter_map(|text| parse(&text).ok())
+        {
+            add_or_replace(&mut books, book);
+        }
     }
     books
 }
 
 /// Ask for an `.acb` file and read it. On desktop the file is copied into
-/// `folder`, the first colour book folder, so it stays when the original
-/// moves; the web keeps the book for the session only.
-pub async fn load_from_dialog(folder: Option<String>) -> Result<ColorBook, String> {
+/// the colour book folder, so it stays when the original moves; the web
+/// keeps the book for the session only.
+pub async fn load_from_dialog() -> Result<ColorBook, String> {
     let file = crate::sys::file_dialog()
         .add_filter(crate::t!("Color book").as_ref(), &["acb", "ACB"])
         .pick_file()
@@ -121,14 +124,11 @@ pub async fn load_from_dialog(folder: Option<String>) -> Result<ColorBook, Strin
     let bytes = file.read().await;
     let book = parse(&String::from_utf8_lossy(&bytes))?;
     #[cfg(not(target_arch = "wasm32"))]
-    if let Some(folder) = folder {
-        let folder = std::path::PathBuf::from(folder);
+    if let Some(folder) = folder() {
         std::fs::create_dir_all(&folder)
             .and_then(|()| std::fs::write(folder.join(file.file_name()), &bytes))
             .map_err(|e| e.to_string())?;
     }
-    #[cfg(target_arch = "wasm32")]
-    let _ = folder;
     Ok(book)
 }
 

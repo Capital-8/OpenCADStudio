@@ -868,7 +868,6 @@ impl OpenCADStudio {
             block_recent: self.block_palette.recent.clone(),
             block_favorites: self.block_palette.favorites.clone(),
             block_libraries: self.block_palette.libraries.clone(),
-            color_book_dirs: self.color_book_dirs.clone(),
             block_palette_view: self.block_palette.view as u8,
             block_insert: self.block_palette.options.clone(),
             block_mru_list: self.block_mru_list,
@@ -1047,10 +1046,6 @@ impl OpenCADStudio {
         self.block_palette.recent = s.block_recent.clone();
         self.block_palette.favorites = s.block_favorites.clone();
         self.block_palette.libraries = s.block_libraries.clone();
-        if self.color_book_dirs != s.color_book_dirs {
-            self.color_book_dirs = s.color_book_dirs.clone();
-            self.color_books_read = false;
-        }
         self.block_palette.view =
             crate::ui::window::block_palette::ViewMode::from_u8(s.block_palette_view);
         self.block_palette.set_options(s.block_insert.clone());

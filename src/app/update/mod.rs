@@ -11935,9 +11935,7 @@ impl OpenCADStudio {
                         self.update(Message::ColorWindowPick(color, name))
                     }
                     Some(crate::ui::color_select::Outcome::LoadBook) => Task::perform(
-                        crate::ui::color_select::book::load_from_dialog(
-                            self.color_book_dirs.first().cloned(),
-                        ),
+                        crate::ui::color_select::book::load_from_dialog(),
                         Message::ColorBookLoaded,
                     ),
                     Some(crate::ui::color_select::Outcome::Cancel) => {
@@ -12070,16 +12068,14 @@ impl OpenCADStudio {
         document.layers.get(layer).map(|layer| layer.color)
     }
 
-    /// Read the built-in colour books and every `.acb` in the colour book
-    /// folders, once until the folders change. A book in a folder replaces a
-    /// built-in one of the same name.
+    /// Read the built-in colour book and every `.acb` in the colour book
+    /// folder, once per session. A book in the folder replaces a built-in
+    /// one of the same name.
     fn read_color_books(&mut self) {
         if std::mem::replace(&mut self.color_books_read, true) {
             return;
         }
-        self.color_books = std::sync::Arc::new(crate::ui::color_select::book::read_all(
-            &self.color_book_dirs,
-        ));
+        self.color_books = std::sync::Arc::new(crate::ui::color_select::book::read_all());
     }
 
     /// Colour the selected objects (or set the current colour when nothing

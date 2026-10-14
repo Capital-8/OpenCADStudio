@@ -636,10 +636,6 @@ pub struct UserSettings {
     /// Blocks palette: library folders or drawings, last used first.
     #[serde(default)]
     pub block_libraries: Vec<String>,
-    /// Folders searched for `.acb` colour books. Books loaded in the Select
-    /// Color panel are copied into the first one.
-    #[serde(default = "default_color_book_dirs")]
-    pub color_book_dirs: Vec<String>,
     /// Blocks palette view: 0 extra large, 1 large, 2 medium, 3 small icons,
     /// 4 details, 5 list.
     #[serde(default = "default_block_view")]
@@ -799,15 +795,6 @@ fn default_snap_spacing() -> f32 {
 
 fn default_grid_major() -> u32 {
     5
-}
-
-/// One folder in the config directory; none on the web, which has no folders.
-fn default_color_book_dirs() -> Vec<String> {
-    #[cfg(not(target_arch = "wasm32"))]
-    if let Some(dir) = crate::config::config_dir() {
-        return vec![dir.join("color_books").display().to_string()];
-    }
-    Vec::new()
 }
 
 fn default_true() -> bool {
@@ -973,7 +960,6 @@ impl Default for UserSettings {
             block_recent: Vec::new(),
             block_favorites: Vec::new(),
             block_libraries: Vec::new(),
-            color_book_dirs: default_color_book_dirs(),
             block_palette_view: 1,
             block_insert: BlockInsertOptions::default(),
             block_mru_list: 50,

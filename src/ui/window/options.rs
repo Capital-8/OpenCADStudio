@@ -108,6 +108,8 @@ pub struct Folders {
     /// Where `.shx` / `.ttf` fonts dropped in by the user (or downloaded for
     /// a drawing) are found.
     pub fonts: Option<String>,
+    /// Where `.acb` colour books are kept and loaded ones copied to.
+    pub color_books: Option<String>,
 }
 
 /// Values read from the current drawing's header rather than from preferences.
@@ -212,7 +214,6 @@ pub fn view_window<'a>(
     drawing_prefs: DrawingPrefs,
     folders: Folders,
     qnew_template: &'a str,
-    color_book_dirs: &'a [String],
     double_click_block_refedit: bool,
     double_click_block_attedit: bool,
     cursor_type: CursorType,
@@ -1791,13 +1792,11 @@ pub fn view_window<'a>(
         folder_row(crate::t!("Autosave files"), folders.autosave.clone()),
         Space::new().height(12),
         folder_row(crate::t!("Fonts"), folders.fonts.clone()),
-        // Where `.acb` colour books are found (none on the web).
-        color_book_dirs.iter().fold(column![], |rows, dir| rows
-            .push(Space::new().height(12))
-            .push(folder_row(
-                crate::t!("Color book locations"),
-                Some(dir.clone())
-            ))),
+        Space::new().height(12),
+        folder_row(
+            crate::t!("Color book locations"),
+            folders.color_books.clone()
+        ),
         Space::new().height(16),
         text(crate::t!("Default template for new drawings")).size(12),
         Space::new().height(4),

@@ -373,6 +373,8 @@ impl OpenCADStudio {
                                         .map(|_| std::env::temp_dir().display().to_string()),
                                     fonts: crate::io::font_repo::fonts_dir()
                                         .map(|p| p.display().to_string()),
+                                    color_books: crate::ui::color_select::book::folder()
+                                        .map(|p| p.display().to_string()),
                                 }
                             }
                             #[cfg(target_arch = "wasm32")]
@@ -381,7 +383,6 @@ impl OpenCADStudio {
                             }
                         },
                         &self.qnew_template,
-                        &self.color_book_dirs,
                         self.double_click_block_refedit,
                         self.double_click_block_attedit,
                         self.cursor_type,
