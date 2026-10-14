@@ -86,7 +86,7 @@ fn stroke_quad(frame: &mut canvas::Frame, corners: [Point; 4], stroke: &canvas::
 /// MATCHPROP's paintbrush cursor.
 ///
 /// While the user is transferring properties the CAD crosshair is replaced by a
-/// paintbrush whose tip sits exactly on the pick point — the AutoCAD feel. The
+/// paintbrush whose tip sits exactly on the pick point, as the reference does. The
 /// body leans up-and-right so it never covers the object being picked.
 ///
 /// Deliberately monochrome and geometric: the crosshair's own colour, a single
@@ -2034,7 +2034,7 @@ impl canvas::Program<Message> for SelectionCanvas {
         // ── MATCHPROP paintbrush cursor ───────────────────────────────
         // While MATCHPROP is armed the user is transferring properties from a
         // source object onto others, so the crosshair gives way to a paintbrush
-        // whose tip rides the pick point — the AutoCAD feel. Drawn *instead of*
+        // whose tip rides the pick point, as the reference does. Drawn *instead of*
         // the crosshair below, never on top of it.
         if !over_viewcube
             && !over_divider
