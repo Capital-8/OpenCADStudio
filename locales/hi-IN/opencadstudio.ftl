@@ -1337,7 +1337,6 @@ common =
     .color-number = रंग संख्या
     .color-name-az = नाम A–Z
     .color-name-za = नाम Z–A
-    .color-in-drawing = इस ड्रॉइंग के रंग
     .color-sort = क्रमबद्ध करें
     .color-no-drawing-colors = इस ड्रॉइंग में अभी तक कोई रंग नहीं है
     .color-books = रंग पुस्तकें

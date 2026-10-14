@@ -1348,7 +1348,6 @@ common =
     .color-number = 顏色編號
     .color-name-az = 名稱 A–Z
     .color-name-za = 名稱 Z–A
-    .color-in-drawing = 此圖面中的顏色
     .color-sort = 排序
     .color-no-drawing-colors = 此圖面中還沒有顏色
     .color-books = 配色系統

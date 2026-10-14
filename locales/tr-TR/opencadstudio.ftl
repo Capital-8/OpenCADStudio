@@ -1335,7 +1335,6 @@ common =
     .color-number = Renk numarası
     .color-name-az = Ad A–Z
     .color-name-za = Ad Z–A
-    .color-in-drawing = Bu çizimdeki renkler
     .color-sort = Sırala
     .color-no-drawing-colors = Bu çizimde henüz renk yok
     .color-books = Renk kitapları

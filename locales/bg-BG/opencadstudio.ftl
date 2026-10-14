@@ -1348,7 +1348,6 @@ common =
     .color-number = Номер на цвят
     .color-name-az = Име А–Я
     .color-name-za = Име Я–А
-    .color-in-drawing = Цветове в този чертеж
     .color-sort = Сортиране
     .color-no-drawing-colors = Все още няма цветове в този чертеж
     .color-books = Цветови каталози

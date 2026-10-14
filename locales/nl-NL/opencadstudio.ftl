@@ -1347,7 +1347,6 @@ common =
     .color-number = Kleurnummer
     .color-name-az = Naam A–Z
     .color-name-za = Naam Z–A
-    .color-in-drawing = Kleuren in deze tekening
     .color-sort = Sorteren
     .color-no-drawing-colors = Nog geen kleuren in deze tekening
     .color-books = Kleurboeken

@@ -1348,7 +1348,6 @@ common =
     .color-number = Színszám
     .color-name-az = Név A–Z
     .color-name-za = Név Z–A
-    .color-in-drawing = Színek ebben a rajzban
     .color-sort = Rendezés
     .color-no-drawing-colors = Ebben a rajzban még nincsenek színek
     .color-books = Színkönyvek

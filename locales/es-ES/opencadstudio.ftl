@@ -1349,7 +1349,6 @@ common =
     .color-number = Número de color
     .color-name-az = Nombre A–Z
     .color-name-za = Nombre Z–A
-    .color-in-drawing = Colores de este dibujo
     .color-sort = Ordenar
     .color-no-drawing-colors = Aún no hay colores en este dibujo
     .color-books = Libros de colores

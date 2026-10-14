@@ -1350,7 +1350,6 @@ common =
     .color-number = Αριθμός χρώματος
     .color-name-az = Όνομα Α–Ω
     .color-name-za = Όνομα Ω–Α
-    .color-in-drawing = Χρώματα σε αυτό το σχέδιο
     .color-sort = Ταξινόμηση
     .color-no-drawing-colors = Δεν υπάρχουν ακόμη χρώματα σε αυτό το σχέδιο
     .color-books = Βιβλία χρωμάτων

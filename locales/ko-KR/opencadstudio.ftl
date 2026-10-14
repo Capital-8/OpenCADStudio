@@ -1348,7 +1348,6 @@ common =
     .color-number = 색상 번호
     .color-name-az = 이름 오름차순
     .color-name-za = 이름 내림차순
-    .color-in-drawing = 이 도면의 색상
     .color-sort = 정렬
     .color-no-drawing-colors = 이 도면에는 아직 색상이 없습니다
     .color-books = 색상표

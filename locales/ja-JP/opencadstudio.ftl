@@ -1339,7 +1339,6 @@ common =
     .color-number = 色番号
     .color-name-az = 名前 (昇順)
     .color-name-za = 名前 (降順)
-    .color-in-drawing = この図面の色
     .color-sort = 並べ替え
     .color-no-drawing-colors = この図面にはまだ色がありません
     .color-books = カラー ブック

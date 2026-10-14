@@ -29,6 +29,10 @@ const BODY_HEIGHT: f32 = 368.0;
 const DOC_COLUMNS: usize = 8;
 /// Search matches shown at once in the Color books tab.
 const PAGE_BARS: usize = 7;
+/// Height of the search boxes, dropdowns and icon buttons.
+const CONTROL_HEIGHT: f32 = 28.0;
+/// Width of the page strip, the RGB values and the gap between them.
+const SIDE_WIDTH: f32 = 26.0 + 10.0 + 104.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ColorPickerTab {
@@ -55,6 +59,8 @@ pub enum ColorPickerMsg {
     PickDocument(usize),
     DocSort(DocSort),
     DocView(DocView),
+    /// Filter the Document tab by name.
+    DocQuery(String),
     /// Show another loaded colour book.
     Book(usize),
     BookPage(usize),
@@ -96,6 +102,7 @@ pub struct ColorPicker {
     doc: Vec<DocColor>,
     doc_sort: DocSort,
     doc_view: DocView,
+    doc_query: String,
     /// This drawing's colours picked this session, newest first.
     recent: Vec<AcadColor>,
     books: Arc<Vec<ColorBook>>,
@@ -123,6 +130,7 @@ impl ColorPicker {
             doc: Vec::new(),
             doc_sort: DocSort::default(),
             doc_view: DocView::default(),
+            doc_query: String::new(),
             recent: Vec::new(),
             books: Arc::default(),
             book: 0,
@@ -295,6 +303,7 @@ impl ColorPicker {
                 }
             }
             ColorPickerMsg::DocView(view) => self.doc_view = view,
+            ColorPickerMsg::DocQuery(query) => self.doc_query = query,
             ColorPickerMsg::DocSort(by) => {
                 self.doc_sort = by;
                 document::sort(&mut self.doc, by, &self.recent);
@@ -386,7 +395,7 @@ impl ColorPicker {
                 (Some(status), _) => status.clone(),
                 (None, Some(name)) => {
                     let (r, g, b) = math::color_rgb(self.pending).unwrap_or_default();
-                    format!("{name} · RGB {r}, {g}, {b}")
+                    format!("{} · RGB {r}, {g}, {b}", name.replacen('$', " - ", 1))
                 }
                 (None, None) => math::describe(self.pending),
             };
@@ -586,16 +595,11 @@ impl ColorPicker {
 
     fn document_tab(&self) -> Element<'_, Message> {
         let header = row![
-            text(t!("Colors in this drawing")).size(11),
-            text(format!("· {}", self.doc.len()))
-                .size(11)
-                .style(muted_text),
-            Space::new().width(Length::Fill),
-            text(t!("Sort")).size(11).style(muted_text),
+            search_box(&self.doc_query, |query| ColorPickerMsg::DocQuery(query)),
             pick_list(Some(self.doc_sort), &DocSort::ALL[..], DocSort::to_string)
                 .on_select(|by| picker_msg(ColorPickerMsg::DocSort(by)))
                 .text_size(12)
-                .padding([3, 6]),
+                .padding([6, 8]),
             row![
                 self.view_button(crate::ui::icons::GRID, DocView::Grid),
                 self.view_button(crate::ui::icons::LIST, DocView::List),
@@ -612,11 +616,23 @@ impl ColorPicker {
             .spacing(10)
             .into();
         }
+        // Indices stay those of `doc`, which the pick messages refer to.
+        let query = self.doc_query.trim().to_lowercase();
+        let shown: Vec<(usize, &DocColor)> = self
+            .doc
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| query.is_empty() || entry.label().to_lowercase().contains(&query))
+            .collect();
+        if shown.is_empty() {
+            return column![header, empty_note(t!("No colors match").into_owned())]
+                .spacing(10)
+                .into();
+        }
         let list: Element<'_, Message> = if self.doc_view == DocView::List {
-            self.doc
+            shown
                 .iter()
-                .enumerate()
-                .fold(column![].spacing(2), |list, (i, entry)| {
+                .fold(column![].spacing(2), |list, &(i, entry)| {
                     let fill = math::color_rgb(entry.color)
                         .map_or(Color::from_rgb8(128, 128, 128), rgb_color);
                     let selected = self.pending == entry.color && self.pending_name == entry.name;
@@ -632,7 +648,7 @@ impl ColorPicker {
                 })
                 .into()
         } else {
-            self.doc_grid()
+            self.doc_grid(&shown)
         };
         column![
             header,
@@ -646,30 +662,47 @@ impl ColorPicker {
         .into()
     }
 
-    /// Grid or list toggle for the Document tab.
+    /// Grid or list toggle for the Document tab: dark on the accent colour
+    /// when active, like the OK button.
     fn view_button(&self, icon: &'static [u8], view: DocView) -> Element<'_, Message> {
         let active = self.doc_view == view;
         button(
-            svg(crate::ui::icons::themed_handle(icon))
-                .width(14)
-                .height(14),
+            container(
+                svg(crate::ui::icons::themed_handle(icon))
+                    .width(18)
+                    .height(18)
+                    .style(move |theme: &Theme, _status| svg::Style {
+                        color: Some(if active {
+                            theme.palette().primary.base.text
+                        } else {
+                            theme.palette().background.base.text
+                        }),
+                    }),
+            )
+            .center(Length::Fill),
         )
         .on_press(picker_msg(ColorPickerMsg::DocView(view)))
-        .padding(5)
-        .style(move |theme: &Theme, status| toggle_style(theme, active, status))
+        .width(CONTROL_HEIGHT)
+        .height(CONTROL_HEIGHT)
+        .padding(0)
+        .style(move |theme: &Theme, status| {
+            if active {
+                button::primary(theme, status)
+            } else {
+                toggle_style(theme, false, status)
+            }
+        })
         .into()
     }
 
-    fn doc_grid(&self) -> Element<'_, Message> {
-        self.doc
+    fn doc_grid<'a>(&self, shown: &[(usize, &'a DocColor)]) -> Element<'a, Message> {
+        shown
             .chunks(DOC_COLUMNS)
-            .enumerate()
-            .fold(column![].spacing(4), |grid, (r, chunk)| {
+            .fold(column![].spacing(4), |grid, chunk| {
                 let line = chunk
                     .iter()
-                    .enumerate()
-                    .fold(row![].spacing(4), |line, (c, entry)| {
-                        line.push(self.doc_swatch(r * DOC_COLUMNS + c, entry))
+                    .fold(row![].spacing(4), |line, &(i, entry)| {
+                        line.push(self.doc_swatch(i, entry))
                     });
                 let line = (chunk.len()..DOC_COLUMNS)
                     .fold(line, |line, _| line.push(Space::new().width(Length::Fill)));
@@ -681,19 +714,8 @@ impl ColorPicker {
     fn doc_swatch<'a>(&self, i: usize, entry: &'a DocColor) -> Element<'a, Message> {
         let fill = math::color_rgb(entry.color).map_or(Color::from_rgb8(128, 128, 128), rgb_color);
         let selected = self.pending == entry.color && self.pending_name == entry.name;
-        button(
-            container(
-                text(entry.tag())
-                    .size(10)
-                    .font(iced::Font::MONOSPACE)
-                    .color(ink(fill)),
-            )
-            .align_y(iced::Bottom)
-            .padding([1, 4])
-            .height(Length::Fill)
-            .clip(true),
-        )
-        .on_press(picker_msg(ColorPickerMsg::PickDocument(i)))
+        button(Space::new())
+            .on_press(picker_msg(ColorPickerMsg::PickDocument(i)))
         .padding(0)
         .width(Length::Fill)
         .height(30)
@@ -720,45 +742,39 @@ impl ColorPicker {
             .center(Length::Fill)
             .into();
         };
-        let label = |label: std::borrow::Cow<'static, str>| text(label).size(11).style(muted_text);
+        // The book list as wide as the colour bars; the search box and the
+        // load button over the page strip and the RGB values.
         let books = Arc::clone(&self.books);
         let top = row![
-            column![
-                label(t!("Color book")),
-                pick_list(
-                    Some(self.book),
-                    (0..self.books.len()).collect::<Vec<_>>(),
-                    move |&i| books[i].name.clone(),
-                )
-                .on_select(|i| picker_msg(ColorPickerMsg::Book(i)))
-                .text_size(12)
-                .padding([4, 6])
-                .width(Length::Fill),
-            ]
-            .spacing(4)
-            .width(Length::Fill),
-            column![
-                label(t!("Find")),
-                text_input("", &self.book_query)
-                    .on_input(|query| picker_msg(ColorPickerMsg::BookQuery(query)))
-                    .size(12)
-                    .padding([5, 8])
-                    .font(iced::Font::MONOSPACE)
-                    .width(116),
-            ]
-            .spacing(4),
-            load_button(
-                svg(crate::ui::icons::themed_handle(
-                    crate::ui::icons::FOLDER_OPEN
-                ))
-                .width(15)
-                .height(15)
-                .into()
+            pick_list(
+                Some(self.book),
+                (0..self.books.len()).collect::<Vec<_>>(),
+                move |&i| books[i].name.clone(),
             )
-            .padding([6, 7]),
+            .on_select(|i| picker_msg(ColorPickerMsg::Book(i)))
+            .text_size(12)
+            .padding([6, 8])
+            .width(Length::Fill),
+            row![
+                search_box(&self.book_query, |query| ColorPickerMsg::BookQuery(query)),
+                load_button(
+                    container(secondary_icon(crate::ui::icons::themed_handle(
+                        crate::ui::icons::FOLDER_OPEN
+                    ))
+                    .width(16)
+                    .height(16))
+                    .center(Length::Fill)
+                    .into()
+                )
+                .width(CONTROL_HEIGHT)
+                .height(CONTROL_HEIGHT)
+                .padding(0),
+            ]
+            .spacing(6)
+            .width(SIDE_WIDTH),
         ]
-        .spacing(8)
-        .align_y(iced::Bottom);
+        .spacing(10)
+        .align_y(iced::Center);
 
         // The page's colours, or the first matches while searching.
         let selected = self.book_selection();
@@ -829,7 +845,7 @@ impl ColorPicker {
                 .width(9)
                 .height(5)
                 .style(|theme: &Theme, _status| svg::Style {
-                    color: Some(theme.palette().background.base.text),
+                    color: Some(theme.palette().secondary.base.text),
                 }),
             )
             .on_press(picker_msg(ColorPickerMsg::BookPage(page)))
@@ -1080,6 +1096,45 @@ fn color_bar<'a>(
     .padding(0)
     .width(Length::Fill)
     .style(move |theme: &Theme, status| swatch_button_style(theme, status, fill, selected))
+}
+
+/// A search field with a magnifier and a gray "Search" placeholder.
+fn search_box<'a>(
+    value: &str,
+    on_input: impl Fn(String) -> ColorPickerMsg + 'a,
+) -> Element<'a, Message> {
+    iced::widget::stack![
+        text_input(&t!("Search"), value)
+            .on_input(move |query| picker_msg(on_input(query)))
+            .size(12)
+            .padding(iced::Padding {
+                top: 6.0,
+                right: 8.0,
+                bottom: 6.0,
+                left: 28.0,
+            })
+            .width(Length::Fill),
+        container(
+            svg(crate::ui::icons::themed_handle(crate::ui::icons::SEARCH))
+                .width(14)
+                .height(14)
+                .style(|theme: &Theme, _status| svg::Style {
+                    color: Some(theme.palette().background.base.text.scale_alpha(0.5)),
+                }),
+        )
+        .padding([0, 8])
+        .height(Length::Fill)
+        .center_y(Length::Fill),
+    ]
+    .width(Length::Fill)
+    .into()
+}
+
+/// An icon in the text colour of a secondary button, so it reads on it.
+fn secondary_icon<'a>(handle: svg::Handle) -> svg::Svg<'a> {
+    svg(handle).style(|theme: &Theme, _status| svg::Style {
+        color: Some(theme.palette().secondary.base.text),
+    })
 }
 
 /// A short gray note in the middle of the free space.

@@ -21,16 +21,6 @@ pub struct DocColor {
 }
 
 impl DocColor {
-    /// The text drawn on the swatch: the index number, `RGB`, or the
-    /// colour-book colour's own name.
-    pub fn tag(&self) -> String {
-        match (&self.name, self.color) {
-            (Some(_), _) => self.label(),
-            (None, AcadColor::Index(i)) => i.to_string(),
-            _ => "RGB".to_string(),
-        }
-    }
-
     /// The name in the list view: the colour-book colour's own name (without
     /// the book), `ACI n` or `#RRGGBB`.
     pub fn label(&self) -> String {
@@ -225,9 +215,9 @@ mod tests {
         assert_eq!(colors[0].uses, 3);
         assert_eq!(colors[0].newest, Handle::new(3));
         assert_eq!(colors[3].name, None, "an empty name is no name");
-        assert_eq!(colors[2].tag(), "RAL 5015");
-        assert_eq!(colors[0].tag(), "1");
-        assert_eq!(colors[1].tag(), "RGB");
+        assert_eq!(colors[2].label(), "RAL 5015");
+        assert_eq!(colors[0].label(), "ACI 1");
+        assert_eq!(colors[1].label(), "#39BFFC");
     }
 
     #[test]

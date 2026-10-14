@@ -1348,7 +1348,6 @@ common =
     .color-number = Číslo barvy
     .color-name-az = Název A–Z
     .color-name-za = Název Z–A
-    .color-in-drawing = Barvy v tomto výkresu
     .color-sort = Řadit
     .color-no-drawing-colors = V tomto výkresu zatím nejsou žádné barvy
     .color-books = Barevné vzorníky

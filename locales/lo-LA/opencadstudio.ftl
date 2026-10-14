@@ -1354,7 +1354,6 @@ common =
     .color-number = ເລກສີ
     .color-name-az = ຊື່ A–Z
     .color-name-za = ຊື່ Z–A
-    .color-in-drawing = ສີໃນແບບແຕ້ມນີ້
     .color-sort = ຈັດລຽງ
     .color-no-drawing-colors = ຍັງບໍ່ມີສີໃນແບບແຕ້ມນີ້
     .color-books = ປຶ້ມສີ

@@ -1348,7 +1348,6 @@ common =
     .color-number = Värin numero
     .color-name-az = Nimi A–Ö
     .color-name-za = Nimi Ö–A
-    .color-in-drawing = Tämän piirustuksen värit
     .color-sort = Lajittele
     .color-no-drawing-colors = Tässä piirustuksessa ei ole vielä värejä
     .color-books = Värikirjat

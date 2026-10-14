@@ -1361,7 +1361,6 @@ common =
     .color-number = رقم اللون
     .color-name-az = الاسم أ–ي
     .color-name-za = الاسم ي–أ
-    .color-in-drawing = الألوان في هذا الرسم
     .color-sort = فرز
     .color-no-drawing-colors = لا توجد ألوان في هذا الرسم بعد
     .color-books = كتب الألوان

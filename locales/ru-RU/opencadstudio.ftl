@@ -1352,7 +1352,6 @@ common =
     .color-number = Номер цвета
     .color-name-az = Имя А–Я
     .color-name-za = Имя Я–А
-    .color-in-drawing = Цвета в этом чертеже
     .color-sort = Сортировка
     .color-no-drawing-colors = В этом чертеже пока нет цветов
     .color-books = Альбомы цветов

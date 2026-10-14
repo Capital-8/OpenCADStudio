@@ -4725,7 +4725,6 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Color number" => Some(("common", "color-number")),
         "Name A–Z" => Some(("common", "color-name-az")),
         "Name Z–A" => Some(("common", "color-name-za")),
-        "Colors in this drawing" => Some(("common", "color-in-drawing")),
         "Sort" => Some(("common", "color-sort")),
         "No colors in this drawing yet" => Some(("common", "color-no-drawing-colors")),
         "Color Books" => Some(("common", "color-books")),
