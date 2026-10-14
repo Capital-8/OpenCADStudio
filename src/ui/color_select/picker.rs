@@ -180,19 +180,43 @@ impl ColorPicker {
         self.status = Some(status);
     }
 
-    /// Turn to the page holding `BOOK$NAME`. False when no loaded book has it.
-    fn show_identity(&mut self, identity: &str) -> bool {
+    /// Turn to the page holding `BOOK$NAME`, if a loaded book has it.
+    fn show_identity(&mut self, identity: &str) {
         let Some((book_name, name)) = identity.split_once('$') else {
-            return false;
+            return;
         };
         for (i, book) in self.books.iter().enumerate() {
             if let Some(color) = book.find(name).filter(|_| book.name == book_name) {
                 self.book = i;
                 self.book_page = book.page_of(color);
-                return true;
+                return;
             }
         }
-        false
+    }
+
+    /// The Document tab's colours that match the search, by index in `doc`.
+    fn doc_visible(&self) -> Vec<usize> {
+        let query = self.doc_query.trim().to_lowercase();
+        (0..self.doc.len())
+            .filter(|&i| query.is_empty() || contains_ignore_case(&self.doc[i].label(), &query))
+            .collect()
+    }
+
+    /// The shown book's colours on screen, by index in the book: the page,
+    /// or the first matches while searching.
+    fn book_visible(&self) -> Vec<usize> {
+        let Some(book) = self.books.get(self.book) else {
+            return Vec::new();
+        };
+        let query = self.book_query.trim().to_lowercase();
+        if query.is_empty() {
+            let (start, colors) = book.page(self.book_page);
+            return (start..start + colors.len()).collect();
+        }
+        (0..book.colors.len())
+            .filter(|&i| contains_ignore_case(&book.colors[i].name, &query))
+            .take(PAGE_BARS)
+            .collect()
     }
 
     /// The colour of the shown book that is the new colour, if any.
@@ -275,22 +299,32 @@ impl ColorPicker {
                         self.set_pending(AcadColor::Index(next));
                     }
                 }
+                // Only over the colours on screen, so a search is respected.
                 (ColorPickerTab::Document, _) => {
-                    let at = self
-                        .doc
-                        .iter()
-                        .position(|c| c.color == self.pending && c.name == self.pending_name);
-                    if let Some(next) = step_list(at, self.doc.len(), DOC_COLUMNS, direction) {
-                        self.update(ColorPickerMsg::PickDocument(next));
+                    let visible = self.doc_visible();
+                    let at = visible.iter().position(|&i| {
+                        self.doc[i].color == self.pending && self.doc[i].name == self.pending_name
+                    });
+                    if let Some(next) = step_list(at, visible.len(), DOC_COLUMNS, direction) {
+                        self.update(ColorPickerMsg::PickDocument(visible[next]));
                     }
                 }
                 (ColorPickerTab::Books, _) => {
-                    let len = self
-                        .books
-                        .get(self.book)
-                        .map_or(0, |book| book.colors.len());
-                    if let Some(next) = step_list(self.book_selection(), len, 1, direction) {
-                        self.pick_book(next);
+                    // Without a search the arrows walk the whole book, page
+                    // after page.
+                    let visible: Vec<usize> = if self.book_query.trim().is_empty() {
+                        (0..self
+                            .books
+                            .get(self.book)
+                            .map_or(0, |book| book.colors.len()))
+                            .collect()
+                    } else {
+                        self.book_visible()
+                    };
+                    let selected = self.book_selection();
+                    let at = visible.iter().position(|&i| Some(i) == selected);
+                    if let Some(next) = step_list(at, visible.len(), 1, direction) {
+                        self.pick_book(visible[next]);
                     }
                 }
                 _ => {}
@@ -627,12 +661,10 @@ impl ColorPicker {
             .into();
         }
         // Indices stay those of `doc`, which the pick messages refer to.
-        let query = self.doc_query.trim().to_lowercase();
         let shown: Vec<(usize, &DocColor)> = self
-            .doc
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| query.is_empty() || entry.label().to_lowercase().contains(&query))
+            .doc_visible()
+            .into_iter()
+            .map(|i| (i, &self.doc[i]))
             .collect();
         if shown.is_empty() {
             return column![header, empty_note(t!("No colors match").into_owned())]
@@ -787,30 +819,16 @@ impl ColorPicker {
 
         // The page's colours, or the first matches while searching.
         let selected = self.book_selection();
-        let query = self.book_query.trim().to_lowercase();
-        let mut bars = column![].spacing(2).height(Length::Fill);
-        let mut shown = 0;
-        if query.is_empty() {
-            let (start, colors) = book.page(self.book_page);
-            for (i, color) in colors.iter().enumerate() {
-                bars = bars.push(book_bar(start + i, color, selected));
-                shown += 1;
-            }
-        } else {
-            for (i, color) in book
-                .colors
-                .iter()
-                .enumerate()
-                .filter(|(_, color)| color.name.to_lowercase().contains(&query))
-                .take(PAGE_BARS)
-            {
-                bars = bars.push(book_bar(i, color, selected));
-                shown += 1;
-            }
-        }
-        let bars: Element<'_, Message> = if shown == 0 {
+        let searching = !self.book_query.trim().is_empty();
+        let visible = self.book_visible();
+        let bars: Element<'_, Message> = if visible.is_empty() {
             empty_note(t!("No colors match").into_owned())
         } else {
+            let bars = visible
+                .iter()
+                .fold(column![].spacing(2).height(Length::Fill), |bars, &i| {
+                    bars.push(book_bar(i, &book.colors[i], selected))
+                });
             mouse_area(bars)
                 .on_scroll(|delta| {
                     let (iced::mouse::ScrollDelta::Lines { y, .. }
@@ -824,7 +842,7 @@ impl ColorPicker {
         let strip = (0..book.page_count()).fold(column![], |strip, page| {
             let (_, colors) = book.page(page);
             let fill = rgb_color(colors[colors.len() / 2].rgb);
-            let shown = query.is_empty() && page == self.book_page;
+            let shown = !searching && page == self.book_page;
             strip.push(
                 button(Space::new())
                     .on_press(picker_msg(ColorPickerMsg::BookPage(page)))
@@ -1054,14 +1072,25 @@ fn picker_msg(msg: ColorPickerMsg) -> Message {
     Message::ColorPicker(msg)
 }
 
-fn ink_is_dark(color: Color) -> bool {
-    let [r, g, b, _] = color.into_rgba8();
-    math::ink_is_dark(r, g, b)
+/// Whether `haystack` contains `needle`, ignoring case; `needle` is already
+/// lower case. ASCII needles, the usual case, compare without allocating.
+fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        true
+    } else if needle.is_ascii() {
+        haystack
+            .as_bytes()
+            .windows(needle.len().max(1))
+            .any(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
+    } else {
+        haystack.to_lowercase().contains(needle)
+    }
 }
 
 /// Text that reads on top of `fill`.
 fn ink(fill: Color) -> Color {
-    if ink_is_dark(fill) {
+    let [r, g, b, _] = fill.into_rgba8();
+    if math::ink_is_dark(r, g, b) {
         Color::from_rgb8(0x11, 0x12, 0x14)
     } else {
         Color::WHITE

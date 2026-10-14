@@ -12081,13 +12081,10 @@ impl OpenCADStudio {
                 return (color, false, self.ribbon.active_color_name());
             }
             crate::app::ColorPickTarget::Layer(layer) => {
-                let name = document.layers.get(layer).and_then(|layer| {
-                    match (&layer.book_name, &layer.color_name) {
-                        (Some(book), Some(name)) => Some(format!("{book}${name}")),
-                        (None, Some(name)) => Some(name.clone()),
-                        _ => None,
-                    }
-                });
+                let name = document
+                    .layers
+                    .get(layer)
+                    .and_then(crate::ui::color_select::document::layer_identity);
                 return (color, false, name);
             }
             _ => return (color, false, None),

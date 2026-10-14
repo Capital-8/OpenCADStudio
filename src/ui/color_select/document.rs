@@ -89,19 +89,20 @@ fn key(color: AcadColor) -> Option<u32> {
     }
 }
 
+/// A layer's colour-book identity, `BOOK$NAME`. Layers keep the book and
+/// the colour name apart; objects store them joined like this.
+pub fn layer_identity(layer: &codec::tables::Layer) -> Option<String> {
+    match (&layer.book_name, &layer.color_name) {
+        (Some(book), Some(name)) => Some(format!("{book}${name}")),
+        (None, Some(name)) => Some(name.clone()),
+        _ => None,
+    }
+}
+
 /// Every concrete colour in the drawing. ByLayer, ByBlock and None are
 /// states rather than colours and are skipped.
 pub fn collect(document: &codec::CadDocument) -> Vec<DocColor> {
-    // Layers keep book and colour name apart; join them like objects do.
-    let layer_names: Vec<Option<String>> = document
-        .layers
-        .iter()
-        .map(|layer| match (&layer.book_name, &layer.color_name) {
-            (Some(book), Some(name)) => Some(format!("{book}${name}")),
-            (None, Some(name)) => Some(name.clone()),
-            _ => None,
-        })
-        .collect();
+    let layer_names: Vec<Option<String>> = document.layers.iter().map(layer_identity).collect();
     let objects = document.entities().map(|entity| {
         let common = entity.common();
         (common.color, common.color_name.as_deref(), common.handle)
@@ -139,16 +140,15 @@ fn tally<'a>(uses: impl Iterator<Item = (AcadColor, Option<&'a str>, Handle)>) -
 /// Sort for display. `recent` is this drawing's pick history, newest first;
 /// colours not picked this session follow, newest object first.
 pub fn sort(colors: &mut [DocColor], by: DocSort, recent: &[AcadColor]) {
-    let rank = |c: &DocColor| {
-        recent
-            .iter()
-            .position(|&r| r == c.color)
-            .unwrap_or(usize::MAX)
-    };
     match by {
-        DocSort::Recent => {
-            colors.sort_by(|a, b| rank(a).cmp(&rank(b)).then(b.newest.cmp(&a.newest)))
-        }
+        // The rank is looked up once per colour, not on every comparison.
+        DocSort::Recent => colors.sort_by_cached_key(|c| {
+            let rank = recent
+                .iter()
+                .position(|&r| r == c.color)
+                .unwrap_or(usize::MAX);
+            (rank, std::cmp::Reverse(c.newest))
+        }),
         DocSort::Usage => colors.sort_by(|a, b| b.uses.cmp(&a.uses).then(b.newest.cmp(&a.newest))),
         DocSort::Hue => colors.sort_by_cached_key(|c| {
             let (r, g, b) = math::color_rgb(c.color).unwrap_or_default();
