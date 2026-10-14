@@ -11934,38 +11934,12 @@ impl OpenCADStudio {
                     Some(crate::ui::color_select::Outcome::Commit(color, name)) => {
                         self.update(Message::ColorWindowPick(color, name))
                     }
-                    Some(crate::ui::color_select::Outcome::LoadBook) => {
-                        // Copied into the first colour book folder so it stays
-                        // when the original moves; the web keeps it for the
-                        // session only.
-                        let folder = self.color_book_dirs.first().cloned();
-                        Task::perform(
-                            async move {
-                                let file = crate::sys::file_dialog()
-                                    .add_filter(crate::t!("Color book").as_ref(), &["acb", "ACB"])
-                                    .pick_file()
-                                    .await
-                                    .ok_or_else(|| "Cancelled".to_string())?;
-                                let bytes = file.read().await;
-                                let book = crate::ui::color_select::book::parse(
-                                    &String::from_utf8_lossy(&bytes),
-                                )?;
-                                #[cfg(not(target_arch = "wasm32"))]
-                                if let Some(folder) = folder {
-                                    let folder = std::path::PathBuf::from(folder);
-                                    std::fs::create_dir_all(&folder)
-                                        .and_then(|()| {
-                                            std::fs::write(folder.join(file.file_name()), &bytes)
-                                        })
-                                        .map_err(|e| e.to_string())?;
-                                }
-                                #[cfg(target_arch = "wasm32")]
-                                let _ = folder;
-                                Ok(book)
-                            },
-                            Message::ColorBookLoaded,
-                        )
-                    }
+                    Some(crate::ui::color_select::Outcome::LoadBook) => Task::perform(
+                        crate::ui::color_select::book::load_from_dialog(
+                            self.color_book_dirs.first().cloned(),
+                        ),
+                        Message::ColorBookLoaded,
+                    ),
                     Some(crate::ui::color_select::Outcome::Cancel) => {
                         self.color_picker = None;
                         Task::none()
@@ -12132,32 +12106,9 @@ impl OpenCADStudio {
         if std::mem::replace(&mut self.color_books_read, true) {
             return;
         }
-        use crate::ui::color_select::book;
-        #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
-        let mut books: Vec<_> = book::builtin().collect();
-        #[cfg(not(target_arch = "wasm32"))]
-        for loaded in self
-            .color_book_dirs
-            .iter()
-            .flat_map(|dir| {
-                let mut files: Vec<_> = std::fs::read_dir(dir)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-                    .filter(|path| {
-                        path.extension()
-                            .is_some_and(|ext| ext.eq_ignore_ascii_case("acb"))
-                    })
-                    .collect();
-                files.sort();
-                files
-            })
-            .filter_map(|path| std::fs::read_to_string(path).ok())
-            .filter_map(|text| book::parse(&text).ok())
-        {
-            book::add_or_replace(&mut books, loaded);
-        }
-        self.color_books = std::sync::Arc::new(books);
+        self.color_books = std::sync::Arc::new(crate::ui::color_select::book::read_all(
+            &self.color_book_dirs,
+        ));
     }
 
     /// Colour the selected objects (or set the current colour when nothing

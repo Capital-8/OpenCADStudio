@@ -77,6 +77,61 @@ pub fn builtin() -> impl Iterator<Item = ColorBook> {
     parse(include_str!("../../../assets/color_books/ral-classic.acb")).into_iter()
 }
 
+/// The built-in book plus every `.acb` file in `dirs`, folder by folder in
+/// file-name order. A book replaces an earlier one of the same name.
+pub fn read_all(dirs: &[String]) -> Vec<ColorBook> {
+    #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
+    let mut books: Vec<_> = builtin().collect();
+    // Browsers have no folders.
+    #[cfg(target_arch = "wasm32")]
+    let _ = dirs;
+    #[cfg(not(target_arch = "wasm32"))]
+    for book in dirs
+        .iter()
+        .flat_map(|dir| {
+            let mut files: Vec<_> = std::fs::read_dir(dir)
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+                .filter(|path| {
+                    path.extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("acb"))
+                })
+                .collect();
+            files.sort();
+            files
+        })
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .filter_map(|text| parse(&text).ok())
+    {
+        add_or_replace(&mut books, book);
+    }
+    books
+}
+
+/// Ask for an `.acb` file and read it. On desktop the file is copied into
+/// `folder`, the first colour book folder, so it stays when the original
+/// moves; the web keeps the book for the session only.
+pub async fn load_from_dialog(folder: Option<String>) -> Result<ColorBook, String> {
+    let file = crate::sys::file_dialog()
+        .add_filter(crate::t!("Color book").as_ref(), &["acb", "ACB"])
+        .pick_file()
+        .await
+        .ok_or_else(|| "Cancelled".to_string())?;
+    let bytes = file.read().await;
+    let book = parse(&String::from_utf8_lossy(&bytes))?;
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(folder) = folder {
+        let folder = std::path::PathBuf::from(folder);
+        std::fs::create_dir_all(&folder)
+            .and_then(|()| std::fs::write(folder.join(file.file_name()), &bytes))
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _ = folder;
+    Ok(book)
+}
+
 /// Read an `.acb` file's text.
 pub fn parse(text: &str) -> Result<ColorBook, String> {
     let doc = roxmltree::Document::parse(text.trim_start_matches('\u{feff}'))
