@@ -3851,6 +3851,7 @@ insert =
     .display-and-plot-frames = ສະແດງ ແລະ ພິມຂອບ
     .display-not-plot-frames = ສະແດງແຕ່ບໍ່ພິມຂອບ
     .frames-vary = *ຂອບແຕກຕ່າງກັນ*
+    .underlay-osnaps-vary = *ການຈັບຈຸດພື້ນຫຼັງແຕກຕ່າງກັນ*
     .regenerating-model = ກໍາລັງສ້າງໂມເດວໃໝ່ຄືນ.
     .requires-int-0-2 = ຕ້ອງການຈໍານວນຖ້ວນລະຫວ່າງ 0 ຫາ 2.
     .insert-prompt-hint = INSERT  __ocs_arg_prompt____ocs_arg_hint__:

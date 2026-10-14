@@ -3847,6 +3847,7 @@ insert =
     .display-and-plot-frames = Keretek megjelenítése és nyomtatása
     .display-not-plot-frames = Keretek megjelenítése nyomtatás nélkül
     .frames-vary = { "*" }Eltérő keretbeállítások*
+    .underlay-osnaps-vary = *Az alátétek tárgyraszterei eltérnek*
     .regenerating-model = Modell újragenerálása.
     .requires-int-0-2 = 0 és 2 közötti egész szám szükséges.
     .insert-prompt-hint = INSERT __ocs_arg_prompt____ocs_arg_hint__:
