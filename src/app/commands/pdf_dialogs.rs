@@ -289,7 +289,8 @@ impl OpenCADStudio {
         }
     }
 
-    /// ULAYERS: every underlay of the drawing, the selected one first shown.
+    /// ULAYERS: every underlay of the drawing, the selected one first shown
+    /// (none: an empty dialog).
     pub(in crate::app) fn open_underlay_layers_dialog(&mut self, i: usize) {
         let document = &self.tabs[i].scene.document;
         let selected: Vec<codec::Handle> = self.tabs[i]
@@ -328,10 +329,6 @@ impl OpenCADStudio {
                 layers,
                 hidden: crate::scene::model::pdf_layers::hidden_layers(u),
             });
-        }
-        if targets.is_empty() {
-            self.command_line.push_error("No underlays found.");
-            return;
         }
         let current = targets
             .iter()

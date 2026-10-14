@@ -1037,10 +1037,16 @@ pub fn view_layers<'a>(
 ) -> Element<'a, Message> {
     let names: Vec<String> = state.targets.iter().map(|t| t.name.clone()).collect();
     let target = state.targets.get(state.current);
+    let has_underlays = !names.is_empty();
     let underlay = pick_list(target.map(|t| t.name.clone()), names, |n: &String| {
         n.clone()
-    })
-    .on_select(|n| msg(PdfDialogMsg::LayersUnderlay(n)))
+    });
+    // No underlays: the list stays empty and disabled.
+    let underlay = if has_underlays {
+        underlay.on_select(|n| msg(PdfDialogMsg::LayersUnderlay(n)))
+    } else {
+        underlay
+    }
     .text_size(12)
     .padding([5, 8])
     .width(Fill);
