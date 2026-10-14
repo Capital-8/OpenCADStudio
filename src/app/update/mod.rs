@@ -11699,6 +11699,9 @@ impl OpenCADStudio {
         };
         match target {
             crate::app::ColorPickTarget::Properties => {}
+            crate::app::ColorPickTarget::Ribbon => {
+                return (color, false, self.ribbon.active_color_name());
+            }
             crate::app::ColorPickTarget::Layer(layer) => {
                 let name = document.layers.get(layer).and_then(|layer| {
                     match (&layer.book_name, &layer.color_name) {
@@ -11767,6 +11770,7 @@ impl OpenCADStudio {
         let handles = self.property_target_handles(i);
         if handles.is_empty() {
             let task = self.on_ribbon_color_changed(color);
+            self.ribbon.active_color_book = name.map(|name| (color, name));
             self.refresh_properties();
             return task;
         }

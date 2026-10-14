@@ -82,6 +82,9 @@ pub struct Ribbon {
     pub layer_filter: String,
     /// Active object color — ACI / ByLayer / ByBlock.
     pub active_color: AcadColor,
+    /// Colour-book identity (`BOOK$NAME`) of a colour picked from a colour
+    /// book, with the colour it was picked as; see `active_color_name`.
+    pub active_color_book: Option<(AcadColor, String)>,
     /// Active linetype override ("ByLayer", "Continuous", …).
     pub active_linetype: String,
     /// Active lineweight.
@@ -171,6 +174,15 @@ fn position_ribbon_dropdown<'a>(
 }
 
 impl Ribbon {
+    /// The colour-book identity of the active colour, while the active colour
+    /// is still the one picked from the book.
+    pub fn active_color_name(&self) -> Option<String> {
+        self.active_color_book
+            .as_ref()
+            .filter(|(color, _)| *color == self.active_color)
+            .map(|(_, name)| name.clone())
+    }
+
     pub fn new() -> Self {
         Self {
             modules: all_ribbon_modules(),
@@ -195,6 +207,7 @@ impl Ribbon {
             layer_infos: vec![],
             layer_filter: String::new(),
             active_color: AcadColor::ByLayer,
+            active_color_book: None,
             active_linetype: "ByLayer".to_string(),
             active_lineweight: LineWeight::ByLayer,
             available_linetypes: vec![LinetypeItem {

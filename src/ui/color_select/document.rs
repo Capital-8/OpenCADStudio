@@ -21,21 +21,35 @@ pub struct DocColor {
 }
 
 impl DocColor {
-    /// The few characters drawn on the swatch: the index number, `RGB`, or
-    /// the first word of the colour book.
+    /// The text drawn on the swatch: the index number, `RGB`, or the
+    /// colour-book colour's own name.
     pub fn tag(&self) -> String {
         match (&self.name, self.color) {
-            (Some(name), _) => name
-                .split(['$', ' '])
-                .next()
-                .unwrap_or_default()
-                .chars()
-                .take(5)
-                .collect(),
+            (Some(_), _) => self.label(),
             (None, AcadColor::Index(i)) => i.to_string(),
             _ => "RGB".to_string(),
         }
     }
+
+    /// The name in the list view: the colour-book colour's own name (without
+    /// the book), `ACI n` or `#RRGGBB`.
+    pub fn label(&self) -> String {
+        match &self.name {
+            Some(name) => name
+                .split_once('$')
+                .map_or(name.as_str(), |(_, name)| name)
+                .to_string(),
+            None => math::short_name(self.color),
+        }
+    }
+}
+
+/// Swatches or a list of named bars.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DocView {
+    #[default]
+    Grid,
+    List,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -45,14 +59,18 @@ pub enum DocSort {
     Usage,
     Hue,
     Number,
+    NameAsc,
+    NameDesc,
 }
 
 impl DocSort {
-    pub const ALL: [DocSort; 4] = [
+    pub const ALL: [DocSort; 6] = [
         DocSort::Recent,
         DocSort::Usage,
         DocSort::Hue,
         DocSort::Number,
+        DocSort::NameAsc,
+        DocSort::NameDesc,
     ];
 }
 
@@ -63,6 +81,8 @@ impl std::fmt::Display for DocSort {
             DocSort::Usage => crate::t!("Most used"),
             DocSort::Hue => crate::t!("Color"),
             DocSort::Number => crate::t!("Color number"),
+            DocSort::NameAsc => crate::t!("Name A–Z"),
+            DocSort::NameDesc => crate::t!("Name Z–A"),
         })
     }
 }
@@ -163,6 +183,10 @@ pub fn sort(colors: &mut [DocColor], by: DocSort, recent: &[AcadColor]) {
                 .then_with(|| a.name.cmp(&b.name))
                 .then_with(|| key(a.color).cmp(&key(b.color)))
         }),
+        DocSort::NameAsc => colors.sort_by_cached_key(|c| c.label().to_lowercase()),
+        DocSort::NameDesc => {
+            colors.sort_by_cached_key(|c| std::cmp::Reverse(c.label().to_lowercase()))
+        }
     }
 }
 
@@ -201,7 +225,7 @@ mod tests {
         assert_eq!(colors[0].uses, 3);
         assert_eq!(colors[0].newest, Handle::new(3));
         assert_eq!(colors[3].name, None, "an empty name is no name");
-        assert_eq!(colors[2].tag(), "RAL");
+        assert_eq!(colors[2].tag(), "RAL 5015");
         assert_eq!(colors[0].tag(), "1");
         assert_eq!(colors[1].tag(), "RGB");
     }

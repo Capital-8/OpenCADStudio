@@ -6,7 +6,7 @@
 //! colour editor: no tabs, no index colours.
 
 use super::book::ColorBook;
-use super::document::{self, DocColor, DocSort};
+use super::document::{self, DocColor, DocSort, DocView};
 use super::editor::{rgb_color, ColorEditor, EditorMsg};
 use super::eyedropper::{Eyedropper, EyedropperMsg};
 use super::math;
@@ -54,6 +54,7 @@ pub enum ColorPickerMsg {
     /// A colour of the Document tab, by its place in the list.
     PickDocument(usize),
     DocSort(DocSort),
+    DocView(DocView),
     /// Show another loaded colour book.
     Book(usize),
     BookPage(usize),
@@ -94,6 +95,7 @@ pub struct ColorPicker {
     eyedropper: Option<Eyedropper>,
     doc: Vec<DocColor>,
     doc_sort: DocSort,
+    doc_view: DocView,
     /// This drawing's colours picked this session, newest first.
     recent: Vec<AcadColor>,
     books: Arc<Vec<ColorBook>>,
@@ -118,6 +120,7 @@ impl ColorPicker {
             eyedropper: None,
             doc: Vec::new(),
             doc_sort: DocSort::default(),
+            doc_view: DocView::default(),
             recent: Vec::new(),
             books: Arc::default(),
             book: 0,
@@ -284,6 +287,7 @@ impl ColorPicker {
                     self.pending_name = name;
                 }
             }
+            ColorPickerMsg::DocView(view) => self.doc_view = view,
             ColorPickerMsg::DocSort(by) => {
                 self.doc_sort = by;
                 document::sort(&mut self.doc, by, &self.recent);
@@ -358,8 +362,8 @@ impl ColorPicker {
         // height across its tabs, with the info line at the bottom.
         let mut body = column![body].spacing(8);
         if !editor_only {
-            // Document and Color books fill the height themselves.
-            if matches!(self.tab, ColorPickerTab::Index | ColorPickerTab::TrueColor) {
+            // The other tabs fill the height themselves.
+            if self.tab == ColorPickerTab::Index {
                 body = body.push(Space::new().height(Length::Fill));
             }
             let fill =
@@ -578,6 +582,11 @@ impl ColorPicker {
                 .on_select(|by| picker_msg(ColorPickerMsg::DocSort(by)))
                 .text_size(12)
                 .padding([3, 6]),
+            row![
+                self.view_button(crate::ui::icons::GRID, DocView::Grid),
+                self.view_button(crate::ui::icons::LIST, DocView::List),
+            ]
+            .spacing(2),
         ]
         .spacing(6)
         .align_y(iced::Center);
@@ -589,9 +598,59 @@ impl ColorPicker {
             .spacing(10)
             .into();
         }
-        let grid = self.doc.chunks(DOC_COLUMNS).enumerate().fold(
-            column![].spacing(4),
-            |grid, (r, chunk)| {
+        let list: Element<'_, Message> = if self.doc_view == DocView::List {
+            self.doc
+                .iter()
+                .enumerate()
+                .fold(column![].spacing(2), |list, (i, entry)| {
+                    let fill = math::color_rgb(entry.color)
+                        .map_or(Color::from_rgb8(128, 128, 128), rgb_color);
+                    let selected = self.pending == entry.color && self.pending_name == entry.name;
+                    list.push(
+                        color_bar(
+                            entry.label(),
+                            fill,
+                            selected,
+                            ColorPickerMsg::PickDocument(i),
+                        )
+                        .height(26),
+                    )
+                })
+                .into()
+        } else {
+            self.doc_grid()
+        };
+        column![
+            header,
+            scrollable(list).height(Length::Fill).spacing(4).direction(
+                scrollable::Direction::Vertical(
+                    scrollable::Scrollbar::new().width(4).scroller_width(4)
+                )
+            ),
+        ]
+        .spacing(10)
+        .into()
+    }
+
+    /// Grid or list toggle for the Document tab.
+    fn view_button(&self, icon: &'static [u8], view: DocView) -> Element<'_, Message> {
+        let active = self.doc_view == view;
+        button(
+            svg(crate::ui::icons::themed_handle(icon))
+                .width(14)
+                .height(14),
+        )
+        .on_press(picker_msg(ColorPickerMsg::DocView(view)))
+        .padding(5)
+        .style(move |theme: &Theme, status| toggle_style(theme, active, status))
+        .into()
+    }
+
+    fn doc_grid(&self) -> Element<'_, Message> {
+        self.doc
+            .chunks(DOC_COLUMNS)
+            .enumerate()
+            .fold(column![].spacing(4), |grid, (r, chunk)| {
                 let line = chunk
                     .iter()
                     .enumerate()
@@ -601,18 +660,8 @@ impl ColorPicker {
                 let line = (chunk.len()..DOC_COLUMNS)
                     .fold(line, |line, _| line.push(Space::new().width(Length::Fill)));
                 grid.push(line)
-            },
-        );
-        column![
-            header,
-            scrollable(grid).height(Length::Fill).spacing(4).direction(
-                scrollable::Direction::Vertical(
-                    scrollable::Scrollbar::new().width(4).scroller_width(4)
-                )
-            ),
-        ]
-        .spacing(10)
-        .into()
+            })
+            .into()
     }
 
     fn doc_swatch<'a>(&self, i: usize, entry: &'a DocColor) -> Element<'a, Message> {
@@ -627,7 +676,8 @@ impl ColorPicker {
             )
             .align_y(iced::Bottom)
             .padding([1, 4])
-            .height(Length::Fill),
+            .height(Length::Fill)
+            .clip(true),
         )
         .on_press(picker_msg(ColorPickerMsg::PickDocument(i)))
         .padding(0)
@@ -863,7 +913,7 @@ impl ColorPicker {
             )
         };
         let nearest = (!self.editor_only()).then(|| self.nearest_button());
-        self.editor.view(pipette, nearest)
+        self.editor.view(pipette, nearest, !self.editor_only())
     }
 
     fn nearest_button(&self) -> Element<'_, Message> {
@@ -985,24 +1035,37 @@ fn book_bar(
     color: &super::book::BookColor,
     selected: Option<usize>,
 ) -> Element<'_, Message> {
-    let fill = rgb_color(color.rgb);
+    color_bar(
+        &color.name,
+        rgb_color(color.rgb),
+        selected == Some(i),
+        ColorPickerMsg::PickBook(i),
+    )
+    .height(Length::Fill)
+    .into()
+}
+
+/// A full-width colour bar with a name: the Color books pages and the
+/// Document tab's list.
+fn color_bar<'a>(
+    name: impl text::IntoFragment<'a>,
+    fill: Color,
+    selected: bool,
+    on_press: ColorPickerMsg,
+) -> button::Button<'a, Message> {
     button(
         container(
-            text(&color.name)
+            text(name)
                 .size(12)
                 .font(iced::Font::MONOSPACE)
                 .color(ink(fill)),
         )
         .center(Length::Fill),
     )
-    .on_press(picker_msg(ColorPickerMsg::PickBook(i)))
+    .on_press(picker_msg(on_press))
     .padding(0)
     .width(Length::Fill)
-    .height(Length::Fill)
-    .style(move |theme: &Theme, status| {
-        swatch_button_style(theme, status, fill, selected == Some(i))
-    })
-    .into()
+    .style(move |theme: &Theme, status| swatch_button_style(theme, status, fill, selected))
 }
 
 /// A short gray note in the middle of the free space.

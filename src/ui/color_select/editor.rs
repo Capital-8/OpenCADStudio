@@ -15,15 +15,15 @@ use iced::{Background, Border, Color, Element, Gradient, Length, Radians, Theme}
 const ROW_HEIGHT: f32 = 26.0;
 const TRACK: f32 = 18.0;
 const STRIP_WIDTH: f32 = 22.0;
-const ROW_GAP: f32 = 8.0;
+const ROW_GAP: f32 = 6.0;
 const FIELD_HEIGHT: f32 = 96.0;
 const MODE_WIDTH: f32 = 48.0;
 const MODE_HEIGHT: f32 = 24.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EditorMode {
-    Rgb,
     #[default]
+    Rgb,
     Hsb,
     Cmyk,
 }
@@ -151,19 +151,19 @@ impl ColorEditor {
 
     /// `mode_end` sits at the far right of the mode buttons (the pipette);
     /// `hex_end` at the far right of the hex row (the nearest index colour).
+    /// With `fill` the field and hex row sit at the bottom of the space, so
+    /// they stay put when CMYK adds a fourth slider.
     pub fn view<'a>(
         &'a self,
         mode_end: Option<Element<'a, Message>>,
         hex_end: Option<Element<'a, Message>>,
+        fill: bool,
     ) -> Element<'a, Message> {
-        column![
-            self.mode_row(mode_end),
-            self.slider_rows(),
-            self.field(),
-            self.hex_row(hex_end),
-        ]
-        .spacing(12)
-        .into()
+        let mut view = column![self.mode_row(mode_end), self.slider_rows()].spacing(12);
+        if fill {
+            view = view.push(Space::new().height(Length::Fill));
+        }
+        view.push(self.field()).push(self.hex_row(hex_end)).into()
     }
 
     /// RGB, HSB and CMYK, with `end` at the far right.

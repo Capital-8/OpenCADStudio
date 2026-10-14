@@ -1215,7 +1215,11 @@ impl OpenCADStudio {
                 Some(Message::PropColorFieldChanged { field, color })
             }
             Some(crate::app::ColorPickTarget::MText) => Some(Message::MTextColorChanged(color)),
-            Some(crate::app::ColorPickTarget::Ribbon) => Some(Message::RibbonColorChanged(color)),
+            Some(crate::app::ColorPickTarget::Ribbon) => {
+                let task = self.update(Message::RibbonColorChanged(color));
+                self.ribbon.active_color_book = name.map(|name| (color, name));
+                return task;
+            }
             Some(crate::app::ColorPickTarget::Layer(layer)) => {
                 let i = self.active_tab;
                 match self.layer_panel_index(i, &layer) {
