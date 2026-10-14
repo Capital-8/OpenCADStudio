@@ -1385,6 +1385,9 @@ impl Scene {
             // LAYOUTCREATEVIEWPORT, it gets its first viewport.
             let unopened = self.unopened_layouts.remove(&layout);
             let initialized = self.initialize_layout_page_setup(&layout);
+            if unopened && !initialized {
+                self.fit_layout_sheet(&layout);
+            }
             self.ensure_sheet_viewport(&layout);
             if unopened || initialized {
                 self.add_layout_default_viewport(&layout);

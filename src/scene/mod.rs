@@ -4819,6 +4819,22 @@ impl Scene {
         true
     }
 
+    /// Fit a layout's sheet viewport to its page. (Taking the sheet out
+    /// instead would leave a viewport onto the model looking like the sheet.)
+    pub fn fit_layout_sheet(&mut self, layout_name: &str) {
+        let layout = self.document.objects.values().find_map(|object| match object {
+            ObjectType::Layout(layout) if layout.name == layout_name => Some(layout.clone()),
+            _ => None,
+        });
+        let Some(layout) = layout else {
+            return;
+        };
+        let sheet = Self::layout_sheet_viewport_handle(&self.document, &layout);
+        if let Some(EntityType::Viewport(vp)) = self.document.get_entity_mut(sheet) {
+            fit_sheet_viewport(vp, layout.min_limits, layout.max_limits);
+        }
+    }
+
     /// Gives a layout whose page setup was never initialized (no paper size
     /// and no media name, as the reference leaves a layout until it is first
     /// opened) the default page setup; true when it did.
@@ -4831,16 +4847,9 @@ impl Scene {
                         return false;
                     }
                     crate::scene::apply_default_page_setup(layout, &plot_style);
-                    let limits = (layout.min_limits, layout.max_limits);
-                    let layout = layout.clone();
                     // A sheet written for a layout never set up is not the
-                    // page's; it is fitted to the page. (Taking it out instead
-                    // would leave a viewport onto the model looking like the
-                    // sheet.)
-                    let sheet = Self::layout_sheet_viewport_handle(&self.document, &layout);
-                    if let Some(EntityType::Viewport(vp)) = self.document.get_entity_mut(sheet) {
-                        fit_sheet_viewport(vp, limits.0, limits.1);
-                    }
+                    // page's; it is fitted to the page.
+                    self.fit_layout_sheet(layout_name);
                     self.bump_layout_epoch();
                     return true;
                 }
