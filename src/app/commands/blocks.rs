@@ -908,7 +908,7 @@ impl OpenCADStudio {
                     .split_once(char::is_whitespace)
                     .map(|(verb, rest)| (verb.to_ascii_uppercase(), rest.trim()))
                     .unwrap_or_else(|| (cmd.to_ascii_uppercase(), ""));
-                if verb == "PDFATTACH" && rest.is_empty() {
+                if verb == "PDFATTACH" && rest.is_empty() && crate::sys::file_dia() {
                     return Some(Task::done(Message::PdfAttachPick));
                 }
                 let insunits = self.tabs[i].scene.document.header.insertion_units;

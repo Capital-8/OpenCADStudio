@@ -425,6 +425,10 @@ pub struct UserSettings {
     pub field_display: bool,
     /// XDWGFADECTL: how much referenced drawings fade (-90..=90; negative is off).
     pub xref_fade: i32,
+    /// FILEDIA: file dialogs of commands that have a command-line form.
+    pub file_dia: bool,
+    /// The file type ATTACH's picker was last left on (1-based).
+    pub attach_filter: u32,
     /// SURFACEASSOCIATIVITY: new surfaces stay associative to their sources.
     pub surface_associativity: bool,
     /// UCSORTHO: an orthographic view preset also sets its orthographic UCS.
@@ -856,6 +860,8 @@ impl Default for UserSettings {
             attdef_on_screen: true,
             field_display: true,
             xref_fade: 50,
+            file_dia: true,
+            attach_filter: 7,
             surface_associativity: true,
             ucs_ortho: true,
             ucs_view: true,
