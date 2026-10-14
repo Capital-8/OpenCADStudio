@@ -3484,6 +3484,7 @@ pub enum Message {
     DraftingSettingsTogglePolar,
     DraftingSettingsToggleOrtho,
     DraftingSettingsToggleOsnap,
+    DraftingSettingsOsnapApertureChanged(String),
     DraftingSettingsToggleOtrack,
     DraftingSettingsToggleSnapMode(crate::snap::SnapType),
     DraftingSettingsToggleSnapMode3d(crate::snap::SnapType),
