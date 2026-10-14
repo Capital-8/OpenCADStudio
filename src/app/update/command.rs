@@ -3461,6 +3461,11 @@ impl OpenCADStudio {
                 } else {
                     crate::command::WorkingPlane::default()
                 };
+                // A text taking a style takes what the style fixes: its height
+                // when the style sets one, its width factor and oblique angle.
+                let text_style = (field == "style")
+                    .then(|| self.tabs[i].scene.document.text_styles.get(&value).cloned())
+                    .flatten();
                 for &handle in &handles {
                     let mline_style =
                         self.tabs[i]
@@ -3488,6 +3493,19 @@ impl OpenCADStudio {
                         crate::scene::view::dispatch::apply_geom_prop_in_working_plane(
                             entity, field, &value, plane,
                         );
+                        match (entity as &mut codec::EntityType, text_style.as_ref()) {
+                            (codec::EntityType::Text(text), Some(style)) => {
+                                if style.height > 0.0 {
+                                    text.height = style.height;
+                                }
+                                text.width_factor = style.width_factor;
+                                text.oblique_angle = style.oblique_angle;
+                            }
+                            (codec::EntityType::MText(text), Some(style)) if style.height > 0.0 => {
+                                text.height = style.height;
+                            }
+                            _ => {}
+                        }
                         if matches!(field, "ml_justification" | "ml_scale") {
                             if let (codec::EntityType::MLine(mline), Some(style)) =
                                 (entity, mline_style.as_ref())
