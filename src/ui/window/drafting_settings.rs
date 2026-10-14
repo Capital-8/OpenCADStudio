@@ -44,6 +44,7 @@ pub struct DraftingSettingsState {
     pub polar_increment_deg: f32,
     // Object Snap
     pub osnap_on: bool,
+    pub osnap_aperture_input: String,
     pub otrack_on: bool,
     pub snap_modes: rustc_hash::FxHashSet<SnapType>,
     // 3D Object Snap
@@ -78,6 +79,7 @@ impl DraftingSettingsState {
             || self.ortho_on != saved.ortho_on
             || (self.polar_increment_deg - saved.polar_increment_deg).abs() > 0.001
             || self.osnap_on != saved.osnap_on
+            || self.osnap_aperture_input != saved.osnap_aperture_input
             || self.otrack_on != saved.otrack_on
             || self.snap_modes != saved.snap_modes
             || self.osnap3d_on != saved.osnap3d_on
@@ -508,6 +510,14 @@ pub fn view_window<'a>(
 
         column![
             row![osnap_on_toggle, Space::new().width(24), otrack_on_toggle].align_y(iced::Center),
+            row![
+                text("OSNAP capture radius (pixels)").size(11),
+                text_input("15", &state.osnap_aperture_input)
+                    .on_input(Message::DraftingSettingsOsnapApertureChanged)
+                    .width(70),
+            ]
+            .spacing(10)
+            .align_y(iced::Center),
             action_buttons,
             Space::new().height(4),
             snap_modes_group,
