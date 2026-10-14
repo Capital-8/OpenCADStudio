@@ -6330,6 +6330,12 @@ impl OpenCADStudio {
                 }
                 Task::none()
             }
+            Message::DraftingSettingsOsnapApertureChanged(value) => {
+                if let Some(state) = &mut self.drafting_settings_state {
+                    state.osnap_aperture_input = value;
+                }
+                Task::none()
+            }
             Message::DraftingSettingsToggleOsnap => {
                 if let Some(state) = &mut self.drafting_settings_state {
                     state.osnap_on = !state.osnap_on;
