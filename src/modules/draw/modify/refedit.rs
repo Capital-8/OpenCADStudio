@@ -94,6 +94,79 @@ pub struct RefEditSession {
     pub handle_watermark: u64,
     /// The referenced file when the definition is an xref.
     pub xref_path: Option<String>,
+    /// Objects outside the working set can't be selected while it is open.
+    pub lock: bool,
+    /// The external reference's named objects the working set uses under
+    /// host names, and the host records made for the session.
+    pub names: RefEditNames,
+}
+
+/// A kind of named object the working set's objects refer to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolKind {
+    Layer,
+    Linetype,
+    TextStyle,
+    Block,
+}
+
+/// How an external reference's dependent names (`XREF|NAME`) are used in
+/// the host while its objects are checked out: as `$0$NAME` records of
+/// their own (unique names), or under the plain name, sharing a host record
+/// of that name when there is one.
+#[derive(Debug, Clone, Default)]
+pub struct RefEditNames {
+    /// (kind, name used in the host, the reference's dependent name).
+    pub renamed: Vec<(SymbolKind, String, String)>,
+    /// Records added to the host for the session, removed when it closes.
+    pub created: Vec<(SymbolKind, String)>,
+}
+
+impl RefEditNames {
+    /// The reference's own name for a host name used in the session.
+    pub fn original(&self, kind: SymbolKind, name: &str) -> Option<&str> {
+        self.renamed
+            .iter()
+            .find(|(k, used, _)| *k == kind && used.eq_ignore_ascii_case(name))
+            .map(|(_, _, original)| original.as_str())
+    }
+}
+
+/// Rewrites every named-object reference of an entity through `map`
+/// (layer, linetype, text style, block).
+pub fn rename_symbols(entity: &mut EntityType, map: &dyn Fn(SymbolKind, &str) -> Option<String>) {
+    let common = entity.common_mut();
+    if let Some(name) = map(SymbolKind::Layer, &common.layer) {
+        common.layer = name;
+        common.layer_handle = None;
+    }
+    if let Some(name) = map(SymbolKind::Linetype, &common.linetype) {
+        common.linetype = name;
+        common.linetype_handle = None;
+    }
+    match entity {
+        EntityType::Insert(insert) => {
+            if let Some(name) = map(SymbolKind::Block, &insert.block_name) {
+                insert.block_name = name;
+            }
+        }
+        EntityType::Text(text) => {
+            if let Some(name) = map(SymbolKind::TextStyle, &text.style) {
+                text.style = name;
+            }
+        }
+        EntityType::MText(text) => {
+            if let Some(name) = map(SymbolKind::TextStyle, &text.style) {
+                text.style = name;
+            }
+        }
+        EntityType::AttributeDefinition(attdef) => {
+            if let Some(name) = map(SymbolKind::TextStyle, &attdef.text_style) {
+                attdef.text_style = name;
+            }
+        }
+        _ => {}
+    }
 }
 
 impl RefEditSession {
@@ -334,10 +407,23 @@ pub struct RefEditOptionsCommand {
     level: usize,
     step: OptionStep,
     nested: Vec<Handle>,
+    /// The session settings (lock objects outside the working set, unique
+    /// names for an external reference's named objects).
+    lock: bool,
+    unique: bool,
+    /// Set when the Edit Reference dialog already chose the attribute
+    /// option: the nested pick then opens the session directly.
+    attributes: Option<bool>,
 }
 
 impl RefEditOptionsCommand {
-    pub fn new(top: Handle, chain: Vec<ChainLevel>, hits: Vec<LevelHits>) -> Self {
+    pub fn new(
+        top: Handle,
+        chain: Vec<ChainLevel>,
+        hits: Vec<LevelHits>,
+        lock: bool,
+        unique: bool,
+    ) -> Self {
         let level = chain.len().saturating_sub(1);
         Self {
             top,
@@ -346,7 +432,28 @@ impl RefEditOptionsCommand {
             level,
             step: OptionStep::Nesting,
             nested: Vec::new(),
+            lock,
+            unique,
+            attributes: None,
         }
+    }
+
+    /// `Select nested objects:` for the dialog's "pick in the drawing"
+    /// working set at `level`.
+    pub fn nested_pick(
+        top: Handle,
+        chain: Vec<ChainLevel>,
+        hits: Vec<LevelHits>,
+        level: usize,
+        attributes: bool,
+        lock: bool,
+        unique: bool,
+    ) -> Self {
+        let mut command = Self::new(top, chain, hits, lock, unique);
+        command.level = level.min(command.chain.len().saturating_sub(1));
+        command.step = OptionStep::Nested;
+        command.attributes = Some(attributes);
+        command
     }
 
     fn begin(&self, attributes: bool) -> CmdResult {
@@ -357,11 +464,13 @@ impl RefEditOptionsCommand {
         let nested: Vec<String> = self.nested.iter().map(|h| h.value().to_string()).collect();
         CmdResult::Relaunch(
             format!(
-                "REFEDIT_BEGIN:{}:{}:{}:{}",
+                "REFEDIT_BEGIN:{}:{}:{}:{}:{}:{}",
                 self.top.value(),
                 path.join(","),
                 attributes as u8,
-                nested.join(",")
+                nested.join(","),
+                self.lock as u8,
+                self.unique as u8
             ),
             vec![],
         )
@@ -468,6 +577,9 @@ impl CadCommand for RefEditOptionsCommand {
                 let n = self.nested.len();
                 if n == 0 {
                     return CmdResult::CancelWithMessage(t!("0 items selected").into_owned());
+                }
+                if let Some(attributes) = self.attributes {
+                    return self.begin(attributes);
                 }
                 self.step = OptionStep::Attributes;
                 CmdResult::ReportMeasurement(if n == 1 {

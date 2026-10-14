@@ -41,6 +41,7 @@ impl OpenCADStudio {
                 self.view_background.as_ref().map_or("", |s| s.view.as_str())
             ),
             Some(K::ImageAdjust) => crate::tr!("image-adjust", "title"),
+            Some(K::RefEdit) => crate::tr!("ref-edit", "dialog-title"),
             Some(K::UnderlayLayers) => crate::t!("Underlay Layers").into_owned(),
             Some(K::PdfImportSettings) => crate::t!("PDF Import Settings").into_owned(),
             Some(K::PdfImportFile) => crate::t!("Import PDF").into_owned(),
@@ -540,6 +541,12 @@ impl OpenCADStudio {
                 let state = self.image_adjust.as_ref()?;
                 sized_flow(ex, 520, 560, |flow| {
                     crate::ui::window::pdf_dialogs::image_adjust(state, flow)
+                })
+            }
+            super::super::ModalKind::RefEdit => {
+                let state = self.refedit_dialog.as_ref()?;
+                sized_flow(ex, 560, 470, |flow| {
+                    crate::ui::window::refedit_dialog::view(state, flow)
                 })
             }
             super::super::ModalKind::UnderlayLayers => {

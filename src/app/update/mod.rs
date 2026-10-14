@@ -2281,6 +2281,7 @@ impl OpenCADStudio {
             Message::PdfDialog(message) => self.update_pdf_dialog(message),
             Message::AttdefDialog(message) => self.on_attdef_dialog(message),
             Message::FieldDialog(message) => self.on_field_dialog(message),
+            Message::RefEditDialog(message) => self.update_refedit_dialog(message),
             Message::PcManager(message) => self.update_pc_manager(message),
             Message::Count(message) => self.on_count(message),
             Message::SheetSet(message) => self.on_sheet_set(message),
@@ -9502,6 +9503,9 @@ impl OpenCADStudio {
                     } else {
                         Task::none()
                     };
+                }
+                if self.active_modal == Some(super::ModalKind::RefEdit) {
+                    self.refedit_dialog = None;
                 }
                 // Cancelling the section settings drops the waiting extraction.
                 if self.active_modal == Some(super::ModalKind::PcSection) {
