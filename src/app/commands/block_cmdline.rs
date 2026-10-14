@@ -160,13 +160,16 @@ impl OpenCADStudio {
         glam::DVec3::new(base.x, base.y, base.z)
     }
 
-    /// Reconcile every editable reference of `block` with the block's
-    /// attribute definitions: attributes whose tag is gone are dropped, new
-    /// ones are added with their default value, and the values of the rest
-    /// are kept.
+    /// Rebuild the attributes of every editable reference of `block` from the
+    /// block's attribute definitions, in their order: each attribute takes
+    /// its definition's placement and text settings through the reference's
+    /// transform, keeps the value it had (new ones take the default), and
+    /// attributes whose definition is gone are dropped. Constant definitions
+    /// carry no attribute.
     pub(in crate::app) fn attsync_block(&mut self, i: usize, block: &str) {
+        use codec::Entity as _;
         let doc = &self.tabs[i].scene.document;
-        let attdefs: Vec<(String, String)> = doc
+        let attdefs: Vec<codec::entities::AttributeDefinition> = doc
             .block_records
             .get(block)
             .map(|br| {
@@ -174,14 +177,15 @@ impl OpenCADStudio {
                     .iter()
                     .filter_map(|h| doc.get_entity(*h))
                     .filter_map(|e| match e {
-                        codec::EntityType::AttributeDefinition(a) => {
-                            Some((a.tag.clone(), a.default_value.clone()))
+                        codec::EntityType::AttributeDefinition(a) if !a.flags.constant => {
+                            Some(a.clone())
                         }
                         _ => None,
                     })
                     .collect()
             })
             .unwrap_or_default();
+        let base = crate::scene::render_graph::block_base_point(doc, block);
         let inserts: Vec<_> = doc
             .entities()
             .filter_map(|entity| match entity {
@@ -200,22 +204,37 @@ impl OpenCADStudio {
         self.push_undo_snapshot(i, "ATTSYNC");
         let mut changes = Vec::new();
         for handle in inserts {
-            let Some(codec::EntityType::Insert(ins)) =
-                self.tabs[i].scene.document.get_entity_mut(handle)
+            let Some(codec::EntityType::Insert(ins)) = self.tabs[i].scene.document.get_entity(handle)
             else {
                 continue;
             };
-            ins.attributes
-                .retain(|a| attdefs.iter().any(|(t, _)| t.eq_ignore_ascii_case(&a.tag)));
-            for (tag, default) in &attdefs {
-                if !ins.attributes.iter().any(|a| a.tag.eq_ignore_ascii_case(tag)) {
-                    ins.attributes.push(codec::entities::AttributeEntity::new(
-                        tag.clone(),
-                        default.clone(),
-                    ));
+            let transform = crate::scene::render_graph::insert_transform_with_base(ins, base);
+            let mut rebuilt = Vec::with_capacity(attdefs.len());
+            for def in &attdefs {
+                let previous = ins
+                    .attributes
+                    .iter()
+                    .find(|a| a.tag.eq_ignore_ascii_case(&def.tag));
+                let mut attribute = codec::entities::AttributeEntity::from_definition(
+                    def,
+                    previous.map(|a| a.value.clone()),
+                );
+                attribute.apply_transform(&transform);
+                attribute.common.handle = previous.map_or(codec::Handle::NULL, |a| a.common.handle);
+                attribute.common.owner_handle = handle;
+                rebuilt.push(attribute);
+            }
+            for attribute in &mut rebuilt {
+                if attribute.common.handle.is_null() {
+                    attribute.common.handle = self.tabs[i].scene.document.allocate_handle();
                 }
             }
-            changes.push((ins.common.handle, crate::scene::ChangeKind::Modified));
+            if let Some(codec::EntityType::Insert(ins)) =
+                self.tabs[i].scene.document.get_entity_mut(handle)
+            {
+                ins.attributes = rebuilt;
+                changes.push((handle, crate::scene::ChangeKind::Modified));
+            }
         }
         self.tabs[i].scene.bump_entities(&changes);
         self.tabs[i].dirty = true;
