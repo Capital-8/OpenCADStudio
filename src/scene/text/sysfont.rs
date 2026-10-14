@@ -316,7 +316,7 @@ pub fn with_face_data_weighted<T>(
 
 /// The family of the installed face whose file is named `name` — a bare file
 /// name or any path to one, matched case-insensitively.
-fn family_for_file(name: &str) -> Option<String> {
+pub(crate) fn family_for_file(name: &str) -> Option<String> {
     let file = name.rsplit(['/', '\\']).next()?.trim();
     if file.is_empty() {
         return None;
