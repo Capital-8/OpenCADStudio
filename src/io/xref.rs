@@ -880,6 +880,23 @@ fn import_xref_symbols(
 
     for layer in xref_doc.layers.iter() {
         let old = layer.name.clone();
+        // Layer 0 and Defpoints are never dependent symbols: the reference's
+        // objects on them use the host's layer of the same name (made from
+        // the reference's when the host has none), on load and on bind.
+        if old == "0" || old.eq_ignore_ascii_case("Defpoints") {
+            if !doc.layers.contains(&old) {
+                let mut cloned = layer.clone();
+                cloned.plotstyle_handle = host_plotstyle;
+                cloned.material = host_material;
+                cloned.flags.xref_dependent = false;
+                cloned.xref_block_record_handle = Handle::NULL;
+                cloned.set_handle(doc.allocate_handle());
+                let _ = doc.layers.add(cloned);
+            }
+            let host = doc.layers.get(&old).map_or(old.clone(), |l| l.name.clone());
+            maps.layers.insert(old.to_uppercase(), host);
+            continue;
+        }
         let new = naming.name_for(SymbolKind::Layer, &old);
         let mut cloned = layer.clone();
         cloned.name = new.clone();
