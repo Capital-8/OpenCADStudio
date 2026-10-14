@@ -2512,8 +2512,10 @@ impl OpenCADStudio {
         let web_fonts = Subscription::none();
         // Periodic autosave (SAVETIME): a `.sv$` recovery copy beside the file
         // on native, an OPFS snapshot on web. SAVETIME is the interval in
-        // minutes; 0 disables it.
-        let autosave = if self.savetime_min > 0 {
+        // minutes; 0 disables it. The web build checks the deadline from the
+        // `PollWebFonts` tick instead: a long `time::every` there stalls every
+        // other timer for its whole period (#1775).
+        let autosave = if self.savetime_min > 0 && cfg!(not(target_arch = "wasm32")) {
             iced::time::every(std::time::Duration::from_secs(
                 self.savetime_min as u64 * 60,
             ))

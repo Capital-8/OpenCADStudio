@@ -850,15 +850,23 @@ impl OpenCADStudio {
             // Web: fetch every script queued by startup language selection or
             // drawing text discovery. Each script has one shared store entry.
             Message::PollWebFonts => {
+                #[cfg(target_arch = "wasm32")]
+                let autosave = if web_autosave_due(self.savetime_min) {
+                    self.on_autosave()
+                } else {
+                    Task::none()
+                };
+                #[cfg(not(target_arch = "wasm32"))]
+                let autosave = Task::none();
                 let pending = crate::scene::text::web_font::take_pending();
                 if pending.is_empty() {
-                    return Task::none();
+                    return autosave;
                 }
-                Task::batch(pending.into_iter().map(|script| {
+                Task::batch(std::iter::once(autosave).chain(pending.into_iter().map(|script| {
                     Task::perform(crate::scene::text::web_font::fetch(script), move |res| {
                         Message::WebFontLoaded(script, res)
                     })
-                }))
+                })))
             }
 
             // Web: a per-script font arrived. The same bytes feed drawing text,
@@ -12346,4 +12354,25 @@ fn set_preview_bit(current: u8, bit: u8, enabled: bool) -> u8 {
     } else {
         current & !bit
     }
+}
+
+/// Web autosave deadline (SAVETIME minutes), polled from a short tick: the
+/// first call arms it, a later one past it re-arms it and answers true.
+#[cfg(target_arch = "wasm32")]
+fn web_autosave_due(savetime_min: i32) -> bool {
+    use std::cell::Cell;
+    thread_local!(static DUE_MS: Cell<f64> = const { Cell::new(0.0) });
+    let now = js_sys::Date::now();
+    let period = savetime_min.max(0) as f64 * 60_000.0;
+    DUE_MS.with(|due| {
+        if period == 0.0 || due.get() == 0.0 {
+            due.set(if period == 0.0 { 0.0 } else { now + period });
+            return false;
+        }
+        let fire = now >= due.get();
+        if fire {
+            due.set(now + period);
+        }
+        fire
+    })
 }
