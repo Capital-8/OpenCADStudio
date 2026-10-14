@@ -6469,9 +6469,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
-    .add-to-working-set = Add to Working Set
-    .remove-from-working-set = Remove from Working Set
-    .toolbar-objects = objects
+    .add-to-working-set = Lisää työjoukkoon
+    .remove-from-working-set = Poista työjoukosta
+    .toolbar-objects = objektia
     .select-reference = Valitse viittaus:
     .reference-not-found = Viittausta ei löydy.
     .not-valid-reference = Objekti ei ole kelvollinen viittaus

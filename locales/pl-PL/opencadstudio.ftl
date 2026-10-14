@@ -6471,9 +6471,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
-    .add-to-working-set = Add to Working Set
-    .remove-from-working-set = Remove from Working Set
-    .toolbar-objects = objects
+    .add-to-working-set = Dodaj do zbioru roboczego
+    .remove-from-working-set = Usuń ze zbioru roboczego
+    .toolbar-objects = obiekty
     .select-reference = Wybierz odnośnik:
     .reference-not-found = Nie znaleziono odnośnika.
     .not-valid-reference = Obiekt nie jest prawidłowym odnośnikiem

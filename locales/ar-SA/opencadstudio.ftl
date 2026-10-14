@@ -6484,9 +6484,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
-    .add-to-working-set = Add to Working Set
-    .remove-from-working-set = Remove from Working Set
-    .toolbar-objects = objects
+    .add-to-working-set = إضافة إلى مجموعة العمل
+    .remove-from-working-set = إزالة من مجموعة العمل
+    .toolbar-objects = كائنات
     .select-reference = حدد المرجع:
     .reference-not-found = لم يتم العثور على المرجع.
     .not-valid-reference = الكائن ليس مرجعًا صالحًا

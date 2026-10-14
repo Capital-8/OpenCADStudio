@@ -6460,9 +6460,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
-    .add-to-working-set = Add to Working Set
-    .remove-from-working-set = Remove from Working Set
-    .toolbar-objects = objects
+    .add-to-working-set = 作業セットに追加
+    .remove-from-working-set = 作業セットから除去
+    .toolbar-objects = 個のオブジェクト
     .select-reference = 参照を選択:
     .reference-not-found = 参照が見つかりません。
     .not-valid-reference = オブジェクトは有効な参照ではありません

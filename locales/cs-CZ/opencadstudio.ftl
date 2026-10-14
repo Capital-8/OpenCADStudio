@@ -6469,9 +6469,9 @@ view-background =
     .select-image = Select Background Image
 
 ref-edit =
-    .add-to-working-set = Add to Working Set
-    .remove-from-working-set = Remove from Working Set
-    .toolbar-objects = objects
+    .add-to-working-set = Přidat do pracovní sady
+    .remove-from-working-set = Odebrat z pracovní sady
+    .toolbar-objects = objektů
     .select-reference = Vyberte referenci:
     .reference-not-found = Reference nebyla nalezena.
     .not-valid-reference = Objekt není platná reference
