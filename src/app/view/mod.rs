@@ -1036,6 +1036,20 @@ bg={bg_ms:.1}ms n={view_count}"
         {
             let w = tab.last_cursor_world;
             let base = tab.dyn_anchor.or(self.last_point);
+            // A single distance field on an acquired tracking ray is measured
+            // from the acquired OSNAP/OTRACK point, not from the command's
+            // previous point (or from WCS zero before the first pick).
+            // Keep typed fields and ordinary polar distance inputs unchanged.
+            let tracking_distance = if tab.dyn_fields.len() == 1
+                && tab.dyn_fields[0].component == DynComponent::Distance
+            {
+                self.active_distance_ray(self.active_tab).and_then(|(origin, direction)| {
+                    let axis = direction.try_normalize()?;
+                    Some((w - origin).dot(axis).abs())
+                })
+            } else {
+                None
+            };
             let label_screen = tab
                 .active_cmd
                 .as_ref()
@@ -1184,6 +1198,16 @@ bg={bg_ms:.1}ms n={view_count}"
                             } else {
                                 format!("{lv:.4}")
                             }
+                        }
+                        // The displayed live distance must use the same
+                        // acquired tracking origin as the guide and typed
+                        // distance placement, not the last picked point.
+                        (None, _) if f.component == DynComponent::Distance
+                            && tracking_distance.is_some() =>
+                        {
+                            crate::entities::common::format_length(
+                                tracking_distance.unwrap() * f.role.value_scale() as f64,
+                            )
                         }
                         _ => dyn_component_value(
                             f,
