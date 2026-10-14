@@ -1012,8 +1012,10 @@ impl Ribbon {
                         color: (!is_current || disabled)
                             .then_some(theme.palette().background.base.text.scale_alpha(0.72)),
                     });
-                let label_el =
-                    keytips::label_anchor(|| keytips::label_id(&keytips::item_anchor(dd_id, cmd)), label_el);
+                let label_el = keytips::label_anchor(
+                    || keytips::label_id(&keytips::item_anchor(dd_id, cmd)),
+                    label_el,
+                );
 
                 let item = button(
                     row![checkmark, icon_el, label_el]
