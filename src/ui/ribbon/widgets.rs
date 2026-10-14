@@ -560,7 +560,10 @@ pub(super) fn render_small<'a>(
             let tip_text = tool_tip_text(&label, t.id);
             let content = row![
                 container(make_icon(t.icon, SMALL_ICON)).width(Length::Fixed(SMALL_W)),
-                text(label).size(10).wrapping(advanced_text::Wrapping::None),
+                super::keytips::label_anchor(
+                    || super::keytips::label_id(t.id),
+                    text(label).size(10).wrapping(advanced_text::Wrapping::None),
+                ),
             ]
             .spacing(3)
             .align_y(iced::Center);
@@ -699,9 +702,12 @@ pub(super) fn render_small<'a>(
             };
             let face = row![
                 container(make_icon(cur_icon, SMALL_ICON)).width(Length::Fixed(SMALL_W)),
-                text(localized_label.clone())
-                    .size(10)
-                    .wrapping(advanced_text::Wrapping::None),
+                super::keytips::label_anchor(
+                    || super::keytips::label_id(id),
+                    text(localized_label.clone())
+                        .size(10)
+                        .wrapping(advanced_text::Wrapping::None),
+                ),
             ]
             .spacing(3)
             .align_y(iced::Center);
@@ -832,11 +838,14 @@ pub(super) fn render_large_dropdown<'a>(
                 .height(Fill)
                 .align_x(iced::Center)
                 .align_y(iced::Center),
-            text(label.clone())
-                .size(10)
-                .width(Fill)
-                .align_x(iced::Center)
-                .wrapping(advanced_text::Wrapping::Word),
+            super::keytips::label_anchor(
+                || super::keytips::label_id(id),
+                text(label.clone())
+                    .size(10)
+                    .width(Fill)
+                    .align_x(iced::Center)
+                    .wrapping(advanced_text::Wrapping::Word),
+            ),
         ]
         .align_x(iced::Center)
         .spacing(0)
@@ -957,11 +966,14 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                         .height(Fill)
                         .align_x(iced::Center)
                         .align_y(iced::Center),
-                    text(label.clone())
-                        .size(10)
-                        .width(Fill)
-                        .align_x(iced::Center)
-                        .wrapping(advanced_text::Wrapping::Word),
+                    super::keytips::label_anchor(
+                        || super::keytips::label_id(t.id),
+                        text(label.clone())
+                            .size(10)
+                            .width(Fill)
+                            .align_x(iced::Center)
+                            .wrapping(advanced_text::Wrapping::Word),
+                    ),
                 ]
                 .align_x(iced::Center)
                 .spacing(0)
@@ -1087,7 +1099,10 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                     freeze_icon,
                     lock_icon,
                     swatch,
-                    container(text(active_layer_label).size(11))
+                    container(super::keytips::label_anchor(
+                        || super::keytips::label_id(LAYER_COMBO_ID),
+                        text(active_layer_label).size(11),
+                    ))
                         .width(name_w)
                         .clip(true),
                     icons::themed_arrow_down(9.0),
@@ -1157,7 +1172,12 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                 button(
                     row![
                         swatch_el,
-                        container(text(label).size(10)).width(Fill).clip(true),
+                        container(super::keytips::label_anchor(
+                            || super::keytips::label_id(dd_id),
+                            text(label).size(10),
+                        ))
+                        .width(Fill)
+                        .clip(true),
                         if is_open {
                             icons::themed_arrow_up(8.0)
                         } else {
@@ -1226,7 +1246,10 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
             // ── combo button ──
             let combo_btn = button(
                 row![
-                    container(text(active.clone()).size(11))
+                    container(super::keytips::label_anchor(
+                        || super::keytips::label_id(combo_id),
+                        text(active.clone()).size(11),
+                    ))
                         .width(Fill)
                         .clip(true),
                     if is_open {
