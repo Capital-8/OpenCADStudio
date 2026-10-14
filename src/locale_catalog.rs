@@ -3,7 +3,8 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
-        "{removed} found, {removed} removed, {total} total" => Some(("selection-report", "found-removed-total")),
+        "{found} found, {known} removed, {total} total" => Some(("selection-report", "found-removed-total")),
+        "{found} found ({known} duplicate), {total} total" => Some(("selection-report", "found-duplicate-total")),
         "Add to Working Set" => Some(("ref-edit", "add-to-working-set")),
         "Remove from Working Set" => Some(("ref-edit", "remove-from-working-set")),
         "Select reference:" => Some(("ref-edit", "select-reference")),

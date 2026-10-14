@@ -6540,4 +6540,5 @@ keytips =
     .hint-items = Zadejte písmeno položky · Esc o úroveň zpět
 
 selection-report =
+    .found-duplicate-total = __ocs_fmt_0__ found (__ocs_fmt_1__ duplicate), __ocs_fmt_2__ total
     .found-removed-total = __ocs_fmt_0__ found, __ocs_fmt_1__ removed, __ocs_fmt_2__ total

@@ -574,16 +574,16 @@ impl OpenCADStudio {
         StepInput::SelectionComplete(kept)
     }
 
-/// What one pick added to (or removed from) a gathering selection, as the
-    /// reference words it: `N found`, `N found, M total`, `N found, N removed,
-    /// M total`. Returns the command's key while it gathers.
-    // ponytail: compares the whole selection before and after, so a pick of an
-    // already chosen object reads `0 found` (the reference says `1 found (1
-    // duplicate)`); pass the pick's own objects through StepInput if needed.
+/// What one selection step picked, as the reference words it: `N found`
+    /// for the first step, `N found, M total`, `N found (D duplicate), M
+    /// total` when some were chosen already, `N found, R removed, M total` in
+    /// remove mode. Returns the command's key while it gathers.
     fn report_selection_found(&mut self, input: &StepInput) -> Option<usize> {
         let StepInput::SelectionComplete(handles) = input else {
             return None;
         };
+        // A pick belongs to this step only; never to a later one.
+        let last_pick = self.last_pick.take();
         let command = self.tabs[self.active_tab].active_cmd.as_ref()?;
         if !command.is_selection_gathering() {
             return None;
@@ -594,13 +594,29 @@ impl OpenCADStudio {
             _ => Default::default(),
         };
         let now: rustc_hash::FxHashSet<Handle> = handles.iter().copied().collect();
-        let found = now.difference(&previous).count();
-        let removed = previous.difference(&now).count();
         let total = now.len();
-        let line = if removed > 0 {
-            crate::tf!("{removed} found, {removed} removed, {total} total")
-        } else if found == 0 || previous.is_empty() {
+        // What the step picked: its own objects when the pick says so, else
+        // what the selection gained or lost.
+        let (picked, remove) = match last_pick {
+            Some((picked, remove)) => (picked.into_iter().collect(), remove),
+            None => {
+                let lost: rustc_hash::FxHashSet<Handle> =
+                    previous.difference(&now).copied().collect();
+                if lost.is_empty() {
+                    (now.difference(&previous).copied().collect(), false)
+                } else {
+                    (lost, true)
+                }
+            }
+        };
+        let found = picked.len();
+        let known = picked.intersection(&previous).count();
+        let line = if found == 0 || previous.is_empty() && !remove {
             crate::tf!("{found} found")
+        } else if remove && known > 0 {
+            crate::tf!("{found} found, {known} removed, {total} total")
+        } else if !remove && known > 0 {
+            crate::tf!("{found} found ({known} duplicate), {total} total")
         } else {
             crate::tf!("{found} found, {total} total")
         };
@@ -1083,6 +1099,7 @@ impl OpenCADStudio {
             );
             return Some(Task::none());
         }
+        self.last_pick = Some((add.clone(), false));
         for h in add {
             self.tabs[i].scene.select_entity(h, false);
         }

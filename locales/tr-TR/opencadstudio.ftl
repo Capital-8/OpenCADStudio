@@ -6464,4 +6464,5 @@ keytips =
     .hint-items = Öğe harfini yazın · Esc bir düzey geri
 
 selection-report =
+    .found-duplicate-total = __ocs_fmt_0__ bulundu (__ocs_fmt_1__ yinelenen), toplam __ocs_fmt_2__
     .found-removed-total = __ocs_fmt_0__ bulundu, __ocs_fmt_1__ çıkarıldı, toplam __ocs_fmt_2__
