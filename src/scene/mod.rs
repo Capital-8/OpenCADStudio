@@ -4803,27 +4803,10 @@ impl Scene {
         }
 
         // Create the full-screen overall viewport covering the paper limits.
-        let pw = (max_lim.0 - min_lim.0).abs().max(1.0);
-        let ph = (max_lim.1 - min_lim.1).abs().max(1.0);
         let mut vp = codec::entities::Viewport::new();
         vp.id = 1;
         vp.status = codec::entities::ViewportStatusFlags::default_on();
-        // Paper-space center is an (x, y) point with z = 0.
-        vp.center = codec::types::Vector3::new(
-            (min_lim.0 + max_lim.0) / 2.0,
-            (min_lim.1 + max_lim.1) / 2.0,
-            0.0,
-        );
-        vp.width = pw;
-        vp.height = ph;
-        // Frame the full sheet with a small margin.
-        vp.view_target = codec::types::Vector3::new(
-            (min_lim.0 + max_lim.0) / 2.0,
-            (min_lim.1 + max_lim.1) / 2.0,
-            0.0,
-        );
-        vp.view_center = codec::types::Vector3::ZERO;
-        vp.view_height = ph * 1.1;
+        fit_sheet_viewport(&mut vp, min_lim, max_lim);
         if let Ok(handle) = self
             .document
             .add_entity_to_layout(EntityType::Viewport(vp), layout_name)
@@ -4848,10 +4831,16 @@ impl Scene {
                         return false;
                     }
                     crate::scene::apply_default_page_setup(layout, &plot_style);
-                    let block = layout.block_record;
+                    let limits = (layout.min_limits, layout.max_limits);
+                    let layout = layout.clone();
                     // A sheet written for a layout never set up is not the
-                    // page's; it is made again for the page.
-                    drop_layout_viewports(&mut self.document, block);
+                    // page's; it is fitted to the page. (Taking it out instead
+                    // would leave a viewport onto the model looking like the
+                    // sheet.)
+                    let sheet = Self::layout_sheet_viewport_handle(&self.document, &layout);
+                    if let Some(EntityType::Viewport(vp)) = self.document.get_entity_mut(sheet) {
+                        fit_sheet_viewport(vp, limits.0, limits.1);
+                    }
                     self.bump_layout_epoch();
                     return true;
                 }
@@ -13089,8 +13078,21 @@ pub fn page_setup_uninitialized(layout: &codec::objects::Layout) -> bool {
 
 /// A layout written as never opened: the page setup fields back to the
 /// uninitialized state and no viewports, as the reference stores a layout
-/// it has not opened yet.
+/// it has not opened yet. A layout already holding a viewport onto the model
+/// (one added by automation) is plainly set up and is written as it is.
 pub(crate) fn write_layout_unopened(document: &mut codec::CadDocument, layout_name: &str) {
+    let block = document.objects.values().find_map(|object| match object {
+        ObjectType::Layout(layout) if layout.name == layout_name => Some(layout.block_record),
+        _ => None,
+    });
+    let has_model_view = document.entities().any(|entity| {
+        matches!(entity, EntityType::Viewport(viewport)
+            if Some(viewport.common.owner_handle) == block
+                && !Scene::is_sheet_viewport(document, viewport))
+    });
+    if has_model_view {
+        return;
+    }
     let fresh = codec::objects::Layout::new(layout_name);
     let mut block = Handle::NULL;
     for object in document.objects.values_mut() {
@@ -13106,15 +13108,29 @@ pub(crate) fn write_layout_unopened(document: &mut codec::CadDocument, layout_na
                 layout.max_limits = fresh.max_limits;
                 layout.min_extents = fresh.min_extents;
                 layout.max_extents = fresh.max_extents;
-                layout.viewports.clear();
-                layout.viewport = Handle::NULL;
             }
         }
     }
     drop_layout_viewports(document, block);
 }
 
-/// Takes every viewport out of a layout's block (entity and membership).
+/// Size a sheet (overall paper) viewport to the paper limits `min`..`max`,
+/// framing the whole sheet with a small margin.
+fn fit_sheet_viewport(vp: &mut codec::entities::Viewport, min: (f64, f64), max: (f64, f64)) {
+    let height = (max.1 - min.1).abs().max(1.0);
+    // Paper-space center is an (x, y) point with z = 0.
+    let center = codec::types::Vector3::new((min.0 + max.0) / 2.0, (min.1 + max.1) / 2.0, 0.0);
+    vp.center = center;
+    vp.width = (max.0 - min.0).abs().max(1.0);
+    vp.height = height;
+    vp.view_target = center;
+    vp.view_center = codec::types::Vector3::ZERO;
+    vp.view_height = height * 1.1;
+}
+
+/// Takes a layout's sheet (overall paper) viewport out of its block (entity
+/// and membership). Viewports onto the model are the user's drawing and stay:
+/// a file may carry them on a layout whose page setup was never filled in.
 pub(crate) fn drop_layout_viewports(document: &mut codec::CadDocument, block: Handle) {
     if block.is_null() {
         return;
@@ -13122,7 +13138,10 @@ pub(crate) fn drop_layout_viewports(document: &mut codec::CadDocument, block: Ha
     let viewports: Vec<Handle> = document
         .entities()
         .filter_map(|entity| match entity {
-            EntityType::Viewport(viewport) if viewport.common.owner_handle == block => {
+            EntityType::Viewport(viewport)
+                if viewport.common.owner_handle == block
+                    && Scene::is_sheet_viewport(document, viewport) =>
+            {
                 Some(viewport.common.handle)
             }
             _ => None,
