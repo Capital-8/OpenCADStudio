@@ -979,6 +979,8 @@ impl Ribbon {
                         color: (!is_current || disabled)
                             .then_some(theme.palette().background.base.text.scale_alpha(0.72)),
                     });
+                let label_el =
+                    keytips::label_anchor(|| keytips::label_id(&keytips::item_anchor(dd_id, cmd)), label_el);
 
                 let item = button(
                     row![checkmark, icon_el, label_el]
@@ -1560,12 +1562,15 @@ fn collapse_button<'a>(
             column![
                 icon,
                 row![
-                    text(localized_title.clone())
-                        .size(9)
-                        .width(Fill)
-                        .align_x(iced::Center)
-                        .wrapping(iced::advanced::text::Wrapping::Word)
-                        .style(muted_text_style),
+                    keytips::label_anchor(
+                        || keytips::label_id(&keytips::collapsed_anchor(title)),
+                        text(localized_title.clone())
+                            .size(9)
+                            .width(Fill)
+                            .align_x(iced::Center)
+                            .wrapping(iced::advanced::text::Wrapping::Word)
+                            .style(muted_text_style),
+                    ),
                     crate::ui::icons::themed_secondary_arrow_down(8.0),
                 ]
                 .spacing(3)
@@ -1632,12 +1637,15 @@ fn collapse_button<'a>(
 
     let opener = button(
         row![
-            text(localized_title.clone())
-                .size(9)
-                .width(Fill)
-                .align_x(iced::Center)
-                .wrapping(iced::advanced::text::Wrapping::Word)
-                .style(muted_text_style),
+            keytips::label_anchor(
+                || keytips::label_id(&keytips::collapsed_anchor(title)),
+                text(localized_title.clone())
+                    .size(9)
+                    .width(Fill)
+                    .align_x(iced::Center)
+                    .wrapping(iced::advanced::text::Wrapping::Word)
+                    .style(muted_text_style),
+            ),
             crate::ui::icons::themed_secondary_arrow_down(8.0),
         ]
         .spacing(3)

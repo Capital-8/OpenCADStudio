@@ -302,9 +302,11 @@ pub(super) fn group_title<'a>(
     active_tool: Option<&str>,
 ) -> Element<'a, Message> {
     let Some(panel) = panel_for_group(title, group_ids) else {
-        return container(text(t!(title)).size(9).style(muted_text_style))
-            .padding([1, 4])
-            .into();
+        let label = keytips::label_anchor(
+            || format!("title:{title}"),
+            text(t!(title)).size(9).style(muted_text_style),
+        );
+        return container(label).padding([1, 4]).into();
     };
     let expanded = open.as_deref().and_then(parent_panel) == Some(panel.id);
     // A command running from the closed slide-out lights its title, the way a
@@ -323,7 +325,10 @@ pub(super) fn group_title<'a>(
         panel.id,
         button(
             row![
-                PosReport::new(panel.title_id, text(t!(title)).size(9)),
+                keytips::label_anchor(
+                    || keytips::label_id(panel.id),
+                    PosReport::new(panel.title_id, text(t!(title)).size(9)),
+                ),
                 arrow
             ]
             .spacing(4)
@@ -417,7 +422,10 @@ fn reference_overlay<'a>(ribbon: &Ribbon, panel: Panel, win: (f32, f32)) -> Elem
     let edit = button(
         row![
             make_icon(IconKind::Svg(tool.icon), 16.0),
-            text(t!(tool.label)).size(11)
+            keytips::label_anchor(
+                || keytips::label_id(&keytips::item_anchor(panel.id, tool.command)),
+                text(t!(tool.label)).size(11),
+            ),
         ]
         .spacing(6)
         .align_y(iced::Center),
@@ -457,7 +465,10 @@ fn reference_overlay<'a>(ribbon: &Ribbon, panel: Panel, win: (f32, f32)) -> Elem
     );
     let fading = row![
         switch,
-        text(t!("Xref fading")).size(11),
+        keytips::label_anchor(
+            || keytips::label_id(&keytips::item_anchor(panel.id, keytips::XREF_FADE)),
+            text(t!("Xref fading")).size(11),
+        ),
         iced::widget::slider(0..=90u8, amount, Message::XrefFadeSlide)
             .on_release(Message::XrefFadeCommit)
             .width(Fill),
