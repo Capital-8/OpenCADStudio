@@ -1143,6 +1143,12 @@ impl Scene {
                     let before = self.document.objects.get(&manager_handle).cloned();
                     self.record_undo_object_before(manager_handle, before);
                 }
+                // The designation set is scene state, not document state: a
+                // designated entity's set entry joins the same first-touch
+                // recording so undo restores entity and designation together.
+                if self.reference_only.is_marked(h) {
+                    self.record_undo_reference_designation_before(h);
+                }
             }
             self.delete_solid_history(h);
             if let Some(settings_handle) = settings_handle {
@@ -1161,6 +1167,9 @@ impl Scene {
             }
             self.remember_removed_cache_categories(h);
             self.document.remove_entity_arc(h);
+            // The set entry dies with its entity (an absent entity is never
+            // reference-only). Undo restores it through the recorded channel.
+            self.reference_only.remove(h);
             selection_changed |= self.selected.remove(&h);
             self.selected_order.retain(|selected| *selected != h);
             if self.hover_highlight == Some(h) {

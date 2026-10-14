@@ -400,3 +400,33 @@ and `box_selections_skip_reference_only_wires`; the record surface test
 `entities_records_expose_the_reference_only_designation`; and the IPC round-trip
 `reference_only_request_and_response_roundtrip`. Like the XRecord API, a Python mapping is future
 work.
+
+**Reference-only rework: scene-scoped storage (2026-10-14, API v9).**
+Supersedes the storage decision above after the upstream review: the designation is no longer
+written to the file at all. The XDATA marker under the host-owned `OCS` APPID (and the APPID
+registration, the verbatim-EED rewrite handling and the storage unit tests built on it) is removed;
+the single source of truth is now a scene-scoped in-memory set of entity handles
+(`Scene::reference_only`, `scene::reference_only`), deliberately not serialized — the host writes
+nothing of its own into the saved DWG/DXF, the set dies with the drawing tab, and a reopened file
+starts undesignated. Every behaviour site is unchanged and driven by the set: the wire
+`tessellate_entity` stamp (threaded through the tessellation pipelines as a plain handle-set
+parameter), the pick-side wire filters, the selection-gather retains, the update/erase refusals
+and the MCP `entities` boolean. Undo keeps the entity-write contract through an explicit
+designation channel on each history delta (the `parametric_constraints` pattern): a marking inside
+a plugin-opened `push_undo` scope joins it, a scope-less change is one step of its own, an
+idempotent re-mark records nothing, erasing a designated entity drops the set entry in the same
+step, and undo/redo restores entity and designation together. The round-trip test is inverted:
+`reference_only_designation_is_not_written_to_dwg_or_dxf` now asserts the marker appears in
+neither format's bytes, that no `OCS` APPID or marker record survives a reload, and that the
+designation stays live in memory. Evidence: the set-storage tests
+`marking_and_unmarking_report_and_track_membership`, `removing_a_handle_forgets_it`,
+`retain_present_drops_entries_of_absent_entities`, `scene_membership_is_guarded_by_entity_presence`
+and `tessellated_wires_stamp_from_the_designation_set`; the host tests
+`reference_only_refusals_record_no_undo_step`,
+`reference_only_designation_composes_undo_like_entity_writes`,
+`reference_only_designation_is_not_written_to_dwg_or_dxf`,
+`erasing_a_designated_entity_undoes_designation_with_it`,
+`user_paths_refuse_and_plugin_paths_write_reference_only_entities`,
+`select_all_visible_skips_reference_only_entities`,
+`entities_records_expose_the_reference_only_designation`; the unchanged pick tests; and the IPC
+round-trip `reference_only_request_and_response_roundtrip` (unchanged).

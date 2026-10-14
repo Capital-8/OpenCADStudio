@@ -226,7 +226,7 @@ fn record(
     value
 }
 
-fn entity_record(entity: &codec::EntityType) -> Result<Value, String> {
+fn entity_record(entity: &codec::EntityType, reference_only: bool) -> Result<Value, String> {
     let (kind, properties) = enum_parts(entity)?;
     let mut value = record(
         "entities",
@@ -245,7 +245,8 @@ fn entity_record(entity: &codec::EntityType) -> Result<Value, String> {
         "record_type".into(),
         json!(crate::entities::names::dxf_name(entity)),
     );
-    let reference_only = crate::scene::reference_only::entity_is_reference_only(entity);
+    // Scene-scoped designation (API v9): the set membership of this entity's
+    // handle, resolved by the caller from the live scene.
     object.insert("reference_only".into(), json!(reference_only));
     Ok(value)
 }
@@ -307,12 +308,13 @@ fn map_records<T: Serialize>(
         .collect()
 }
 
-fn collection_records(
-    document: &codec::CadDocument,
-    collection: &str,
-) -> Result<Vec<Value>, String> {
+fn collection_records(scene: &crate::scene::Scene, collection: &str) -> Result<Vec<Value>, String> {
+    let document = &scene.document;
     match collection {
-        "entities" => document.entities().map(entity_record).collect(),
+        "entities" => document
+            .entities()
+            .map(|entity| entity_record(entity, scene.is_reference_only(entity.common().handle)))
+            .collect(),
         "objects" => {
             let mut objects: Vec<_> = document.objects.iter().collect();
             objects.sort_by_key(|(handle, _)| handle.value());
@@ -1387,7 +1389,7 @@ impl OpenCADStudio {
         }
         let definitions = referenced_definitions(&root_type);
         let runtime_schema = collection.and_then(|collection| {
-            collection_records(&self.tabs[self.active_tab].scene.document, collection)
+            collection_records(&self.tabs[self.active_tab].scene, collection)
                 .ok()?
                 .into_iter()
                 .find(|record| {
@@ -1431,20 +1433,20 @@ impl OpenCADStudio {
     }
 
     pub(super) fn record_query(&self, request: &Value) -> Value {
-        let document = &self.tabs[self.active_tab].scene.document;
+        let scene = &self.tabs[self.active_tab].scene;
         let Some(collection) = request["collection"].as_str() else {
             return self.record_capabilities();
         };
         let mut records = Vec::new();
         if collection == "all" {
             for (name, _) in COLLECTIONS {
-                match collection_records(document, name) {
+                match collection_records(scene, name) {
                     Ok(mut values) => records.append(&mut values),
                     Err(error) => return failure("serialization_failed", error),
                 }
             }
         } else {
-            match collection_records(document, collection) {
+            match collection_records(scene, collection) {
                 Ok(values) => records = values,
                 Err(error) => return failure("unknown_collection", error),
             }
@@ -1712,14 +1714,18 @@ mod tests {
                 Vector3::new(10.0, 0.0, 0.0),
             ),
         ));
-        fn mark(app: &mut OpenCADStudio, i: usize, handle: Handle, on: bool) {
-            if let Some(entity) = app.tabs[i].scene.document.get_entity_mut(handle) {
-                crate::scene::reference_only::set_entity_reference_only(entity, on);
-            }
+        // The designation is plugin-mutated scene state: mark through the
+        // same host API a plugin uses, so the read surface reflects the
+        // live set rather than any stored marker.
+        fn mark(app: &mut OpenCADStudio, handle: Handle, on: bool) {
+            let i = app.active_tab;
+            crate::app::plugin_host::HostSession::new(app, i)
+                .set_reference_only(handle, on)
+                .expect("mark through the plugin host API");
         }
 
         // The read surface reports the designation alongside the record.
-        mark(&mut app, i, handle, true);
+        mark(&mut app, handle, true);
         let records = app.record_query(&json!({"collection":"entities"}));
         assert_eq!(records["count"], 1);
         assert_eq!(
@@ -1744,7 +1750,7 @@ mod tests {
         assert_eq!(refused["code"], json!("reference_only"));
 
         // Clearing the designation is reported too.
-        mark(&mut app, i, handle, false);
+        mark(&mut app, handle, false);
         let records = app.record_query(&json!({"collection":"entities"}));
         assert_eq!(records["records"][0]["reference_only"], json!(false));
     }

@@ -1189,12 +1189,21 @@ pub trait HostApi {
     /// plugin keeps full write access through this API: `update_entity`,
     /// [`update_entities_transaction`](HostApi::update_entities_transaction),
     /// `remove_entity` and the XDATA record methods keep working, so derived
-    /// display geometry can be refreshed in place. The designation survives
-    /// DWG/DXF save and reload.
+    /// display geometry can be refreshed in place.
+    ///
+    /// The designation is a scene-scoped, in-memory set keyed by entity
+    /// handle: it is not written to the saved DWG/DXF (the host stores no
+    /// state of its own in the file), it lives and dies with the drawing tab,
+    /// and a reloaded drawing starts undesignated — the owning plugin
+    /// re-marks its entities when the document opens, which makes the
+    /// in-memory designation fully equivalent to a persisted one for its use
+    /// case.
     ///
     /// Fails when the entity does not exist or is on a locked layer (the same
     /// policy as the XDATA record methods). A call that would not change the
-    /// current designation succeeds without recording an undo step.
+    /// current designation succeeds without recording an undo step — and
+    /// without publishing a document change, so idempotent re-marks cannot
+    /// loop with the notification dispatch.
     ///
     /// Undo composition — the entity-write contract: a change performed
     /// inside a plugin-opened [`HostApi::push_undo`] scope joins that scope,

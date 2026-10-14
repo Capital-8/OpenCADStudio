@@ -1,8 +1,8 @@
 use super::{
     document::{
         DeltaSnapshot, HistorySnapshot, ObjectEntryDelta, ObjectVisibilitySnapshot,
-        ParametricConstraintsEntryDelta, PendingHistorySnapshot, StructureSnapshot,
-        TableEntryDelta,
+        ParametricConstraintsEntryDelta, PendingHistorySnapshot, ReferenceDesignationDelta,
+        StructureSnapshot, TableEntryDelta,
     },
     OpenCADStudio,
 };
@@ -226,6 +226,7 @@ impl OpenCADStudio {
             active_layer: None,
             structure: (!objects.is_empty()).then_some(StructureSnapshot::Objects(objects)),
             parametric_constraints: Vec::new(),
+            reference_designations: Vec::new(),
             named_parameters: None,
             label: label.into(),
         };
@@ -313,8 +314,26 @@ impl OpenCADStudio {
         let selected_after: Vec<Handle> = self.tabs[i].scene.selected.iter().copied().collect();
         let dirty_after = self.tabs[i].dirty;
         let active_layer_after = self.tabs[i].active_layer.clone();
+        // The designation set is scene state mutated through the plugin API:
+        // a scope that (un)marked entities carries the first-touch before
+        // values here; the after value is whatever the set holds now, and
+        // only untouched-value entries drop out (an idempotent re-mark never
+        // got recorded in the first place).
+        let reference_designations: Vec<_> = pending
+            .reference_designations_before
+            .into_iter()
+            .filter_map(|(handle, before)| {
+                let after = self.tabs[i].scene.reference_only.is_marked(handle);
+                (before != after).then_some(ReferenceDesignationDelta {
+                    handle,
+                    before,
+                    after,
+                })
+            })
+            .collect();
         if !pending.keep_empty
             && entities.is_empty()
+            && reference_designations.is_empty()
             && !structure_changed
             && pending.selected_before == selected_after
             && pending.dirty_before == dirty_after
@@ -335,6 +354,7 @@ impl OpenCADStudio {
             structure: structure_changed
                 .then_some(StructureSnapshot::Full(pending.structure_before)),
             parametric_constraints: Vec::new(),
+            reference_designations,
             named_parameters: None,
             label: pending.label,
         };
@@ -375,8 +395,31 @@ impl OpenCADStudio {
             dirty_before,
             structure_before,
             recorder,
+            reference_designations_before: Vec::new(),
             keep_empty: false,
         });
+    }
+
+    /// Record the pre-mutation value of a reference-only designation (API v9)
+    /// into the open plugin pending scope — first touch wins. No-op when no
+    /// scope is open: like the XRecord methods, a designation change must open
+    /// its own scope before mutating, so by the time this runs a scope either
+    /// covers it or the caller owns one.
+    pub(super) fn record_reference_designation_before_pending(
+        &mut self,
+        i: usize,
+        handle: Handle,
+        before: bool,
+    ) {
+        if let Some(pending) = self.tabs[i].history.pending.as_mut() {
+            if !pending
+                .reference_designations_before
+                .iter()
+                .any(|(recorded, _)| *recorded == handle)
+            {
+                pending.reference_designations_before.push((handle, before));
+            }
+        }
     }
 
     /// [`Self::push_undo_snapshot`] for a command that is an undo step even
@@ -466,6 +509,7 @@ impl OpenCADStudio {
             active_layer: None,
             structure: Some(StructureSnapshot::Layers(entries)),
             parametric_constraints: Vec::new(),
+            reference_designations: Vec::new(),
             named_parameters: None,
             label: pending.label,
         };
@@ -523,6 +567,7 @@ impl OpenCADStudio {
             active_layer: None,
             structure: Some(StructureSnapshot::TextStyles(entries)),
             parametric_constraints: Vec::new(),
+            reference_designations: Vec::new(),
             named_parameters: None,
             label: pending.label,
         };
@@ -580,6 +625,7 @@ impl OpenCADStudio {
             active_layer: None,
             structure: Some(StructureSnapshot::DimStyles(entries)),
             parametric_constraints: Vec::new(),
+            reference_designations: Vec::new(),
             named_parameters: None,
             label: pending.label,
         };
@@ -645,6 +691,7 @@ impl OpenCADStudio {
             active_layer: None,
             structure: Some(StructureSnapshot::Objects(entries)),
             parametric_constraints: Vec::new(),
+            reference_designations: Vec::new(),
             named_parameters: None,
             label: pending.label,
         };
@@ -680,6 +727,7 @@ impl OpenCADStudio {
                 object_handles,
             }),
             parametric_constraints: Vec::new(),
+            reference_designations: Vec::new(),
             named_parameters: None,
             label: "STYLE".to_string(),
         };
@@ -761,8 +809,13 @@ impl OpenCADStudio {
                 pending.label
             );
         }
-        let (entity_before, object_before, parametric_constraints_before, named_parameters_before) =
-            rec.into_recorded_images();
+        let (
+            entity_before,
+            object_before,
+            parametric_constraints_before,
+            named_parameters_before,
+            reference_designations_before,
+        ) = rec.into_recorded_images();
         let entities: Vec<(Handle, Option<Arc<EntityType>>, Option<Arc<EntityType>>)> =
             entity_before
                 .into_iter()
@@ -808,6 +861,20 @@ impl OpenCADStudio {
             let after = self.tabs[i].scene.named_parameters().clone();
             (before != after).then_some((before, after))
         });
+        // Designations recorded by `remove_entities`'s delta path (the
+        // first-touch before values) close symmetric with the set's current
+        // state as the after image.
+        let reference_designations: Vec<ReferenceDesignationDelta> = reference_designations_before
+            .into_iter()
+            .filter_map(|(handle, before)| {
+                let after = self.tabs[i].scene.reference_only.is_marked(handle);
+                (before != after).then_some(ReferenceDesignationDelta {
+                    handle,
+                    before,
+                    after,
+                })
+            })
+            .collect();
         let selected_after = self.tabs[i].scene.selected.iter().copied().collect();
         let dirty_after = self.tabs[i].dirty;
         let mut structure = pending.structure_before.map(StructureSnapshot::Full);
@@ -844,6 +911,7 @@ impl OpenCADStudio {
             active_layer: None,
             structure,
             parametric_constraints,
+            reference_designations,
             named_parameters,
             label: pending.label,
         };
@@ -998,8 +1066,19 @@ impl OpenCADStudio {
                 }
             }
         }
-        let changes = self.tabs[i].scene.apply_entity_delta(&d.entities, undo);
+        let mut changes = self.tabs[i].scene.apply_entity_delta(&d.entities, undo);
         let scene = &mut self.tabs[i].scene;
+        // Designations: restore the chosen side's value on the scene-owned set
+        // (the entity images above already applied, so a restored entity is
+        // present before its designation is). Each actual flip joins the
+        // returned per-handle change list so the deferred cache reseed and
+        // geometry bump re-stamp that entity's wires.
+        for entry in &d.reference_designations {
+            let value = if undo { entry.before } else { entry.after };
+            if scene.set_reference_only_membership(entry.handle, value) {
+                changes.push((entry.handle, crate::scene::ChangeKind::Modified));
+            }
+        }
         if !d.parametric_constraints.is_empty() {
             scene.bump_constraints_epoch();
         }

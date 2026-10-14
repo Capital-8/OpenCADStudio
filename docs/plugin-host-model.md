@@ -123,13 +123,23 @@ re-designation that would not change the state succeeds without recording an
 undo step. Undo composition is the entity-write contract: a change inside a
 plugin-opened `push_undo` scope joins it, so an operation composed of several
 writes is a single undo step under the plugin's label; with no scope open a
-change is one undo step of its own. The designation survives DWG and DXF
-save/reload, stored as a marker value in an XDATA record under the host-owned
-`OCS` application namespace — plugins register their own APPIDs through their
-manifest, so the two cannot collide. Out of scope today: entities nested
-inside block instances (the block cache rebuilds instance wires without the
-flag) and a Python mapping. The MCP `entities` read exposes the flag as a
-`reference_only` boolean on every entity record.
+change is one undo step of its own.
+
+**Storage is a scene-scoped in-memory set, not a file format.** The host
+writes nothing of its own into the saved DWG/DXF — no APPID registration, no
+XDATA marker on the entity — so a saved drawing never depends on host state
+to load correctly. The set lives and dies with the drawing tab: closing a
+tab forgets its designations, and a freshly opened drawing starts
+undesignated. Because the designation is per handle, an in-place refresh
+(clone → edit → replace) keeps it by construction. Undo keeps the contract
+through an explicit designation channel on each history step (the same
+pattern the parametric-constraint directory uses): undo/redo restores the
+designation together with the entity it belongs to — erasing a designated
+entity inside a scope, then undoing, brings back the entity *and* its
+designation. Out of scope today: entities nested inside block instances
+(the block cache rebuilds instance wires without the flag) and a Python
+mapping. The MCP `entities` read exposes the flag as a `reference_only`
+boolean on every entity record.
 
 ### Usage from a plugin
 
@@ -169,6 +179,9 @@ Notes for plugin authors:
   no undo step.
 - The designation travels with the entity: a clone → edit → replace refresh
   keeps it, so a plugin marks its display data once and refreshes freely.
+- The designation is scene state, not file state: it does not survive
+  DWG/DXF save and reload — a plugin re-marks its display data when the
+  document opens, and idempotent re-marks keep that loop finite.
 - Rendering and object snap are unaffected; grips, picking and the built-in
   write paths are the only observers.
 - Plugins that read the document through the IPC client (the

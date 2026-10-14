@@ -7,143 +7,181 @@
 //! plugin keeps full write access through the plugin host API, so it can
 //! refresh derived geometry in place.
 //!
-//! The designation persists as a marker value inside an XDATA record under a
-//! host-owned APPID, so it round-trips DWG and DXF with the entity and never
-//! collides with plugin APPID namespaces (plugins register their own
-//! application names through their manifest).
+//! Storage is a scene-scoped in-memory set of entity handles — the host
+//! writes nothing of its own into the saved DWG/DXF: no APPID registration,
+//! no XDATA marker on the entity, no host-owned state a saved file depends
+//! on. The set lives and dies with the scene (per drawing tab): closing a
+//! tab forgets its designations, and a freshly opened drawing starts
+//! undesignated. The owning plugin re-marks its entities when the host
+//! dispatches the document-opened notification (API v9's
+//! `BuiltinPlugin::on_notification` surface), which makes the in-memory
+//! designation fully equivalent to a persisted one for its use case.
+//!
+//! Undo keeps the entity-write contract: a designation change performed
+//! inside a plugin-opened `push_undo` scope joins that scope, a scope-less
+//! change is one undo step of its own, and undo/redo restores the
+//! designation with the entities it belongs to. Because the set is not part
+//! of the document, set mutations are recorded as explicit first-touch
+//! before-images on the history delta (see
+//! `DeltaSnapshot::reference_designations`), the same channel pattern
+//! `parametric_constraints` uses.
 
-use codec::entities::EntityType;
-use codec::xdata::{ExtendedDataRecord, XDataValue};
+use codec::types::Handle;
+use rustc_hash::FxHashSet;
 
-/// Host-owned APPID carrying the designation. The name belongs to the host
-/// alone; plugin records live under the plugin's own registered APPIDs.
-pub const REFERENCE_ONLY_APP_ID: &str = "OCS";
-
-/// Marker value (DXF group code 1000) that flags an entity reference-only.
-/// Human-readable so an exported file explains itself.
-const REFERENCE_ONLY_MARKER: &str = "REFERENCE_ONLY";
-
-/// True when `value` is the reference-only marker.
-fn is_marker(value: &XDataValue) -> bool {
-    matches!(value, XDataValue::String(text) if text.as_str() == REFERENCE_ONLY_MARKER)
+/// The in-memory designation set owned by a [`Scene`](crate::Scene).
+///
+/// Deliberately tiny: a plain set of handles plus the operations the scene,
+/// the plugin host and the history channels use. Not `Serialize` — the set
+/// is never written anywhere and never leaves the process.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ReferenceOnlyDesignation {
+    handles: FxHashSet<Handle>,
 }
 
-/// True when `entity` carries the reference-only designation. Tolerant read:
-/// a record without the marker (foreign or damaged content) is not
-/// reference-only.
-pub fn entity_is_reference_only(entity: &EntityType) -> bool {
-    let Some(record) = entity
-        .common()
-        .extended_data
-        .get_record(REFERENCE_ONLY_APP_ID)
-    else {
-        return false;
-    };
-    record.values.iter().any(is_marker)
-}
-
-/// Set (or clear) the designation on `entity`, returning whether the entity
-/// changed. Only the marker value is added or removed; foreign values under
-/// the host APPID are preserved verbatim, and a record left without values is
-/// dropped so a cleared flag leaves no empty record behind.
-pub fn set_entity_reference_only(entity: &mut EntityType, reference_only: bool) -> bool {
-    if entity_is_reference_only(entity) == reference_only {
-        return false;
+impl ReferenceOnlyDesignation {
+    /// Raw membership (by handle) — the caller guarantees the entity exists,
+    /// or accepts a stale entry; [`Scene::is_reference_only`] does the
+    /// existential check.
+    pub(crate) fn is_marked(&self, handle: Handle) -> bool {
+        self.handles.contains(&handle)
     }
-    let xd = &mut entity.common_mut().extended_data;
-    if reference_only {
-        let mut record = xd
-            .get_record(REFERENCE_ONLY_APP_ID)
-            .cloned()
-            .unwrap_or_else(|| ExtendedDataRecord::new(REFERENCE_ONLY_APP_ID));
-        record
-            .values
-            .push(XDataValue::String(REFERENCE_ONLY_MARKER.to_owned()));
-        xd.upsert_record(record);
-    } else {
-        let Some(mut record) = xd.get_record(REFERENCE_ONLY_APP_ID).cloned() else {
-            return false;
-        };
-        record.values.retain(|value| !is_marker(value));
-        if record.values.is_empty() {
-            xd.remove_record(REFERENCE_ONLY_APP_ID);
+
+    /// Insert or remove `handle`, returning whether the membership changed.
+    /// Idempotent: re-marking a designated handle reports `false` and touches
+    /// nothing, which is what terminates the re-mark loop driven by the
+    /// document-changed notification dispatch.
+    pub(crate) fn set(&mut self, handle: Handle, on: bool) -> bool {
+        if on {
+            self.handles.insert(handle)
         } else {
-            xd.upsert_record(record);
+            self.handles.remove(&handle)
         }
     }
-    true
+
+    /// Forget `handle` — called when its entity is erased so the set never
+    /// leaks an entry for a removed entity. The undo channels restore the
+    /// entry together with the entity on undo.
+    pub(crate) fn remove(&mut self, handle: Handle) {
+        self.handles.remove(&handle);
+    }
+
+    /// The marked handles, for the tessellation pipelines (wire stamping)
+    /// and the history channels.
+    pub(crate) fn handles(&self) -> &FxHashSet<Handle> {
+        &self.handles
+    }
+
+    /// True when nothing is designated.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.handles.is_empty()
+    }
+
+    /// Drop entries whose entities no longer exist. The undo/redo channels
+    /// model the exact designation state, so this is only a defensive sweep
+    /// after history replay (an entity the chosen delta side removed must
+    /// never stay designated through a stale entry).
+    pub(crate) fn retain_present(&mut self, document: &codec::CadDocument) {
+        self.handles
+            .retain(|handle| document.get_entity(*handle).is_some());
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codec::entities::Line;
+    use codec::entities::{EntityType, Line};
 
-    fn entity() -> EntityType {
-        EntityType::Line(Line::new())
+    fn handle(value: u64) -> Handle {
+        Handle::new(value)
     }
 
     #[test]
-    fn marking_flags_and_unmarking_clears() {
-        let mut entity = entity();
-        assert!(!entity_is_reference_only(&entity));
-        assert!(set_entity_reference_only(&mut entity, true));
-        assert!(entity_is_reference_only(&entity));
-        // Idempotent: a second mark changes nothing and reports it.
-        assert!(!set_entity_reference_only(&mut entity, true));
-        assert!(set_entity_reference_only(&mut entity, false));
-        assert!(!entity_is_reference_only(&entity));
-        assert!(!set_entity_reference_only(&mut entity, false));
-        // A cleared flag leaves no empty record behind.
-        assert!(entity
-            .common()
-            .extended_data
-            .get_record(REFERENCE_ONLY_APP_ID)
-            .is_none());
+    fn marking_and_unmarking_report_and_track_membership() {
+        let mut designation = ReferenceOnlyDesignation::default();
+        assert!(!designation.is_marked(handle(7)));
+        assert!(designation.set(handle(7), true));
+        assert!(designation.is_marked(handle(7)));
+        // Idempotent: a second mark changes nothing and reports it — the
+        // property that terminates re-mark loops.
+        assert!(!designation.set(handle(7), true));
+        assert!(designation.set(handle(7), false));
+        assert!(!designation.is_marked(handle(7)));
+        assert!(!designation.set(handle(7), false));
+        assert!(designation.handles().is_empty());
     }
 
     #[test]
-    fn foreign_values_under_the_host_app_id_survive() {
-        let mut entity = entity();
-        let mut record = ExtendedDataRecord::new(REFERENCE_ONLY_APP_ID);
-        record.values.push(XDataValue::Integer16(7));
-        entity.common_mut().extended_data.add_record(record);
-        // A record without the marker is not reference-only.
-        assert!(!entity_is_reference_only(&entity));
-        assert!(set_entity_reference_only(&mut entity, true));
-        let record = entity
-            .common()
-            .extended_data
-            .get_record(REFERENCE_ONLY_APP_ID)
-            .expect("record exists");
-        assert_eq!(
-            record.values,
-            vec![
-                XDataValue::Integer16(7),
-                XDataValue::String(REFERENCE_ONLY_MARKER.to_owned()),
-            ]
-        );
-        assert!(set_entity_reference_only(&mut entity, false));
-        let record = entity
-            .common()
-            .extended_data
-            .get_record(REFERENCE_ONLY_APP_ID)
-            .expect("record survives");
-        assert_eq!(record.values, vec![XDataValue::Integer16(7)]);
+    fn removing_a_handle_forgets_it() {
+        let mut designation = ReferenceOnlyDesignation::default();
+        designation.set(handle(7), true);
+        designation.remove(handle(7));
+        assert!(!designation.is_marked(handle(7)));
+        // Removing an unmarked handle is a no-op.
+        designation.remove(handle(8));
+        assert!(designation.is_empty());
     }
 
     #[test]
-    fn other_apps_are_untouched() {
-        let mut entity = entity();
-        assert!(set_entity_reference_only(&mut entity, true));
-        let mut foreign = ExtendedDataRecord::new("CVIFC");
-        foreign.values.push(XDataValue::String("road".to_owned()));
-        entity.common_mut().extended_data.add_record(foreign);
-        assert!(set_entity_reference_only(&mut entity, false));
-        assert!(entity
-            .common()
-            .extended_data
-            .get_record("CVIFC")
-            .is_some_and(|record| record.values.len() == 1));
+    fn retain_present_drops_entries_of_absent_entities() {
+        let mut document = codec::CadDocument::new();
+        let live = document.add_entity(EntityType::Line(Line::new())).unwrap();
+        let mut designation = ReferenceOnlyDesignation::default();
+        designation.set(live, true);
+        designation.set(handle(999_999), true);
+        designation.retain_present(&document);
+        assert!(designation.is_marked(live));
+        assert!(!designation.is_marked(handle(999_999)));
+    }
+
+    #[test]
+    fn scene_membership_is_guarded_by_entity_presence() {
+        let mut scene = crate::scene::Scene::new();
+        let handle = scene
+            .document
+            .add_entity(EntityType::Line(Line::new()))
+            .unwrap();
+        assert!(!scene.is_reference_only(handle));
+        assert!(scene.set_reference_only_membership(handle, true));
+        assert!(scene.is_reference_only(handle));
+        // A stale set entry alone never designates: absent entities are not
+        // reference-only even if the set still lists them.
+        scene.set_reference_only_membership(Handle::new(999_999), true);
+        assert!(!scene.is_reference_only(Handle::new(999_999)));
+    }
+
+    #[test]
+    fn tessellated_wires_stamp_from_the_designation_set() {
+        let document = codec::CadDocument::new();
+        let line = EntityType::Line(Line::new());
+        let handle = line.common().handle;
+        let selected: rustc_hash::FxHashSet<Handle> = Default::default();
+        let none: rustc_hash::FxHashSet<Handle> = Default::default();
+        let mut designated: rustc_hash::FxHashSet<Handle> = Default::default();
+        designated.insert(handle);
+        let context = crate::scene::cache::block_cache::BlockCache::default();
+        for designated in [&none, &designated] {
+            let wires = crate::scene::tessellate_entity(
+                &document,
+                &selected,
+                None,
+                [0.0, 0.0, 0.0, 1.0],
+                1.0,
+                None,
+                &line,
+                Some(&context),
+                None,
+                None,
+                false,
+                designated,
+            );
+            assert!(!wires.is_empty());
+            assert!(
+                wires
+                    .iter()
+                    .all(|wire| wire.reference_only == designated.contains(&handle)),
+                "every wire carries the set's stamp for its entity"
+            );
+        }
     }
 }

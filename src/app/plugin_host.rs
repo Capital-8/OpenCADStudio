@@ -519,6 +519,28 @@ impl<'a> HostSession<'a> {
         Ok(())
     }
 
+    /// Erase through the plugin path while keeping reference-only designations
+    /// undoable with the erase (API v9). The designation set is scene state,
+    /// not a document write: erasing drops the set entry in
+    /// `Scene::remove_entities`, so its first-touch before-image must join the
+    /// open plugin scope here — otherwise undoing the erase would restore the
+    /// entity without its designation. No-op for undesignated handles and when
+    /// no scope is open (then the erase follows the same no-bookkeeping
+    /// contract as any other entity write).
+    fn erase_entities_recording_designations(&mut self, handles: &[Handle]) {
+        for &handle in handles {
+            if self.app.tabs[self.tab]
+                .scene
+                .reference_only
+                .is_marked(handle)
+            {
+                self.app
+                    .record_reference_designation_before_pending(self.tab, handle, true);
+            }
+        }
+        self.app.tabs[self.tab].scene.erase_entities_plugin(handles);
+    }
+
     /// Delete the entity with `handle`, keeping the scene's render caches in
     /// sync. Returns `false` when the entity is absent or on a locked layer
     /// (which `erase_entities` refuses to remove).
@@ -548,9 +570,7 @@ impl<'a> HostSession<'a> {
             .document()
             .get_entity(handle)
             .map(|entity| entity.common().owner_handle);
-        self.app.tabs[self.tab]
-            .scene
-            .erase_entities_plugin(&[handle]);
+        self.erase_entities_recording_designations(&[handle]);
         let removed = self.document().get_entity(handle).is_none();
         if removed {
             // The document keeps a block record's member list separately from the
@@ -1140,9 +1160,7 @@ impl<'a> HostSession<'a> {
             return Err("the result could not be added".into());
         }
         if delete_source {
-            self.app.tabs[self.tab]
-                .scene
-                .erase_entities_plugin(&[source]);
+            self.erase_entities_recording_designations(&[source]);
             self.publish_document_view();
         }
         Ok(handle)
@@ -1405,9 +1423,7 @@ impl<'a> HostSession<'a> {
                 self.push_undo("Delete layer");
                 self.document_mut().layers.remove(&name);
                 if !on_layer.is_empty() {
-                    self.app.tabs[self.tab]
-                        .scene
-                        .erase_entities_plugin(&on_layer);
+                    self.erase_entities_recording_designations(&on_layer);
                 }
                 self.finish_layer_change(&[name]);
                 Ok(handle)
@@ -2262,9 +2278,7 @@ impl<'a> HostSession<'a> {
                     }
                 }
                 if erase_originals {
-                    self.app.tabs[self.tab]
-                        .scene
-                        .erase_entities_plugin(&entities);
+                    self.erase_entities_recording_designations(&entities);
                 }
                 self.finish_block_change();
                 Ok(handle)
@@ -3134,62 +3148,64 @@ impl<'a> HostSession<'a> {
     /// Mark (or unmark) an entity as reference-only (API v9, additive):
     /// plugin-owned display geometry the built-in edit paths treat like a
     /// locked-layer entity, while the owning plugin keeps full write access
-    /// through this session. The designation survives DWG/DXF save and reload.
+    /// through this session. The designation is a scene-scoped in-memory set
+    /// keyed by handle: nothing is written to the saved DWG/DXF, the set dies
+    /// with the tab, and a reloaded drawing starts undesignated — the owning
+    /// plugin re-marks its entities when the document opens, which makes the
+    /// in-memory designation fully equivalent to a persisted one for its use
+    /// case.
     ///
     /// Every refusal — absent entity, locked layer — is decided before the
     /// undo scope is touched, so a failure changes nothing. A call that would
     /// not change the current designation succeeds without recording an undo
-    /// step. Undo composition: a change inside a plugin-opened `push_undo`
-    /// scope joins it (see [`HostSession::ensure_xrecord_undo_scope`]); a
-    /// scope-less call is one undo step of its own.
+    /// step, without bumping the geometry epoch and without publishing — the
+    /// idempotence that terminates the re-mark loop driven by the
+    /// document-changed dispatch. Undo composition: a change inside a
+    /// plugin-opened `push_undo` scope joins it (see
+    /// [`HostSession::ensure_xrecord_undo_scope`]); a scope-less call is one
+    /// undo step of its own. The set is scene state, not a document write, so
+    /// the undo delta restores it through the explicit designation channel
+    /// (`DeltaSnapshot::reference_designations`).
     pub fn set_reference_only(
         &mut self,
         handle: Handle,
         reference_only: bool,
     ) -> Result<(), String> {
         // Refusals precede any change (and any undo step).
-        let Some(entity) = self.document().get_entity(handle) else {
+        if self.document().get_entity(handle).is_none() {
             return Err(format!("entity {handle:?} does not exist"));
-        };
+        }
         if self.app.tabs[self.tab].scene.is_layer_locked(handle) {
             return Err(format!("entity {handle:?} is on a locked layer"));
         }
-        if crate::scene::reference_only::entity_is_reference_only(entity) == reference_only {
+        if self.app.tabs[self.tab].scene.is_reference_only(handle) == reference_only {
             return Ok(());
         }
         let own_scope = self.ensure_xrecord_undo_scope("Set Reference-Only");
-        // Register the host APPID before the marker is written so the record's
-        // application is resolvable on save.
-        if reference_only {
-            self.ensure_app_id(crate::scene::reference_only::REFERENCE_ONLY_APP_ID);
-        }
-        let app_handle = self
-            .document()
-            .app_ids
-            .get(crate::scene::reference_only::REFERENCE_ONLY_APP_ID)
-            .map(|app| app.handle.value());
-        let changed = self
-            .document_mut()
-            .get_entity_mut(handle)
-            .map(|entity| {
-                let changed =
-                    crate::scene::reference_only::set_entity_reference_only(entity, reference_only);
-                // Drop stale verbatim EED for the host app so the fresh
-                // marker — not pre-edit bytes captured on a prior read —
-                // wins on the next save.
-                if changed {
-                    if let Some(app_handle) = app_handle {
-                        entity
-                            .common_mut()
-                            .extended_data
-                            .raw_dwg_eed
-                            .retain(|(a, _)| *a != app_handle);
-                    }
-                }
-                changed
-            })
-            .unwrap_or(false);
-        debug_assert!(changed, "designation state was checked before the mutation");
+        // First-touch before-image for the pending scope's designation
+        // channel, recorded before the set changes (see
+        // `Scene::record_undo_reference_designation_before`).
+        let before = self.app.tabs[self.tab]
+            .scene
+            .reference_only
+            .is_marked(handle);
+        self.app
+            .record_reference_designation_before_pending(self.tab, handle, before);
+        self.app.tabs[self.tab]
+            .scene
+            .set_reference_only_membership(handle, reference_only);
+        debug_assert!(
+            self.app.tabs[self.tab]
+                .scene
+                .reference_only
+                .is_marked(handle)
+                == reference_only,
+            "designation state was checked before the mutation"
+        );
+        // The wires carry the click-through stamp baked at tessellation, so a
+        // designation change must rebuild them: bump_geometry clears the
+        // tessellation memos and resident wire sets exactly like an entity
+        // edit would.
         self.bump_geometry();
         self.set_dirty();
         self.publish_document_view();
@@ -13491,9 +13507,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
             .get_mut("0")
             .map(|layer| layer.unlock());
         assert!(
-            !crate::scene::reference_only::entity_is_reference_only(
-                host.document().get_entity(handle).unwrap()
-            ),
+            !host.app.tabs[0].scene.is_reference_only(handle),
             "refusals must not partially apply the designation"
         );
         assert_eq!(
@@ -13526,7 +13540,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         // Undo reverts the unmark, redo re-applies it.
         drop(host);
         app.undo_steps(1);
-        let mut host = HostSession::new(&mut app, 0);
+        let host = HostSession::new(&mut app, 0);
         assert!(host.app.tabs[0].scene.is_reference_only(handle));
         drop(host);
         app.redo_steps(1);
@@ -13549,7 +13563,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
 
         // Undoing the plugin operation reverts it whole.
         app.undo_steps(1);
-        let mut host = HostSession::new(&mut app, 0);
+        let host = HostSession::new(&mut app, 0);
         assert!(
             host.app.tabs[0]
                 .scene
@@ -13565,32 +13579,101 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
     }
 
     #[test]
-    fn reference_only_survives_dxf_and_dwg_round_trips() {
+    fn reference_only_designation_is_not_written_to_dwg_or_dxf() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let mut host = HostSession::new(&mut app, 0);
+        let handle = host.add_entity(reference_test_line(10.0, 0.0, Handle::NULL));
+        host.set_reference_only(handle, true).unwrap();
+        // The designation lives in the scene's in-memory set only.
+        assert!(host.app.tabs[0].scene.is_reference_only(handle));
+
+        // The host writes nothing of its own into the document: no APPID
+        // registration, no marker XDATA on the designated entity.
+        assert!(host.document().app_ids.get("OCS").is_none());
+        assert!(host
+            .document()
+            .get_entity(handle)
+            .expect("designated entity")
+            .common()
+            .extended_data
+            .get_record("OCS")
+            .is_none());
+
+        let contains_marker =
+            |bytes: &[u8]| bytes.windows(15).any(|window| window == b"REFERENCE_ONLY");
+
+        // DWG: the marker string appears nowhere in the saved bytes, and a
+        // reopened file carries neither the host APPID nor the marker record.
+        let dwg = codec::DwgWriter::write_to_vec(host.document()).unwrap();
+        assert!(
+            !contains_marker(&dwg),
+            "DWG save must not contain the designation marker"
+        );
+        let reloaded = crate::io::load_bytes("reference-only.dwg", dwg).unwrap();
+        assert!(reloaded.app_ids.get("OCS").is_none());
+        assert!(reloaded
+            .get_entity(handle)
+            .expect("the line survives the round trip")
+            .common()
+            .extended_data
+            .get_record("OCS")
+            .is_none());
+        assert!(
+            !contains_marker(&codec::DwgWriter::write_to_vec(&reloaded).unwrap()),
+            "a re-save of the reopened file stays marker-free"
+        );
+
+        // DXF: same contract for the text format.
+        let dxf = codec::DxfWriter::new(host.document())
+            .write_to_vec()
+            .unwrap();
+        assert!(
+            !contains_marker(&dxf),
+            "DXF save must not contain the designation marker"
+        );
+        let reloaded = crate::io::load_bytes("reference-only.dxf", dxf).unwrap();
+        assert!(reloaded.app_ids.get("OCS").is_none());
+        assert!(reloaded
+            .get_entity(handle)
+            .expect("the line survives the round trip")
+            .common()
+            .extended_data
+            .get_record("OCS")
+            .is_none());
+    }
+
+    #[test]
+    fn erasing_a_designated_entity_undoes_designation_with_it() {
         let mut app = OpenCADStudio::new_for_test();
         app.tabs[0].is_start = false;
         let mut host = HostSession::new(&mut app, 0);
         let handle = host.add_entity(reference_test_line(10.0, 0.0, Handle::NULL));
         host.set_reference_only(handle, true).unwrap();
 
-        let flagged = |document: &codec::CadDocument| {
-            document
-                .get_entity(handle)
-                .is_some_and(crate::scene::reference_only::entity_is_reference_only)
-        };
-        // The host APPID the marker lives under travels with the record.
-        assert!(host.document().app_ids.get("OCS").is_some());
+        // The plugin erase path removes a designated entity inside a scope:
+        // entity and set entry leave together.
+        host.push_undo("CVI: replace the underlying model");
+        host.remove_entity(handle);
+        drop(host);
+        app.finish_pending_history(0);
+        let host = HostSession::new(&mut app, 0);
+        assert!(host.app.tabs[0].scene.document.get_entity(handle).is_none());
+        assert!(!host.app.tabs[0].scene.is_reference_only(handle));
+        drop(host);
 
-        let dwg = codec::DwgWriter::write_to_vec(host.document()).unwrap();
-        let reloaded = crate::io::load_bytes("reference-only.dwg", dwg).unwrap();
-        assert!(flagged(&reloaded), "DWG save/reopen keeps the designation");
-        assert!(reloaded.app_ids.get("OCS").is_some());
-
-        let dxf = codec::DxfWriter::new(host.document())
-            .write_to_vec()
-            .unwrap();
-        let reloaded = crate::io::load_bytes("reference-only.dxf", dxf).unwrap();
-        assert!(flagged(&reloaded), "DXF save/reopen keeps the designation");
-        assert!(reloaded.app_ids.get("OCS").is_some());
+        // Undoing the erase restores the entity AND its designation: the set
+        // mutation rode the scope as an explicit designation channel.
+        app.undo_steps(1);
+        let host = HostSession::new(&mut app, 0);
+        assert!(
+            host.app.tabs[0].scene.document.get_entity(handle).is_some(),
+            "undo restored the erased entity"
+        );
+        assert!(
+            host.app.tabs[0].scene.is_reference_only(handle),
+            "undo restored the designation together with its entity"
+        );
     }
 
     #[test]
