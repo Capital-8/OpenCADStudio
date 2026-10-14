@@ -14,7 +14,7 @@ use kernel::geom2d::Curve;
 use crate::command::{DimensionAssociationSource, TangentObject};
 use crate::scene::model::wire_model::{SnapHint, TangentGeom, WireModel};
 use crate::scene::pick::interaction_index::WireSource;
-const DEFAULT_OSNAP_RADIUS_PX: f32 = 15.0;
+const DEFAULT_OSNAP_RADIUS_PX: f32 = 25.0;
 
 // ── Snap type ─────────────────────────────────────────────────────────────
 
