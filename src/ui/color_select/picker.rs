@@ -104,6 +104,8 @@ pub struct ColorPicker {
     book_query: String,
     /// Why the last colour book did not load.
     status: Option<String>,
+    /// What ByLayer looks like here: the layer's colour.
+    by_layer: Option<AcadColor>,
 }
 
 impl ColorPicker {
@@ -127,18 +129,23 @@ impl ColorPicker {
             book_page: 0,
             book_query: String::new(),
             status: None,
+            by_layer: None,
         }
     }
 
     /// Fill the Document and Color books tabs. `current_name` is the
     /// `BOOK$NAME` of the current colour; the Color books tab shows its page.
+    /// `by_layer` is the colour of the layer the colour is for, so ByLayer
+    /// shows that colour instead of gray.
     pub fn with_drawing(
         mut self,
         mut doc: Vec<DocColor>,
         recent: &[AcadColor],
         books: Arc<Vec<ColorBook>>,
         current_name: Option<String>,
+        by_layer: Option<AcadColor>,
     ) -> Self {
+        self.by_layer = by_layer;
         document::sort(&mut doc, self.doc_sort, recent);
         self.doc = doc;
         self.recent = recent.to_vec();
@@ -330,6 +337,14 @@ impl ColorPicker {
         None
     }
 
+    /// How a colour looks; ByLayer takes the layer's colour when known.
+    fn shown(&self, color: AcadColor) -> Color {
+        match (color, self.by_layer) {
+            (AcadColor::ByLayer, Some(layer)) => acad_color_display(layer).0,
+            _ => acad_color_display(color).0,
+        }
+    }
+
     fn pick_book(&mut self, index: usize) {
         let books = Arc::clone(&self.books);
         let Some(book) = books.get(self.book) else {
@@ -366,8 +381,7 @@ impl ColorPicker {
             if self.tab == ColorPickerTab::Index {
                 body = body.push(Space::new().height(Length::Fill));
             }
-            let fill =
-                math::color_rgb(self.pending).map_or(Color::from_rgb8(128, 128, 128), rgb_color);
+            let fill = self.shown(self.pending);
             let info = match (&self.status, &self.pending_name) {
                 (Some(status), _) => status.clone(),
                 (None, Some(name)) => {
@@ -469,8 +483,8 @@ impl ColorPicker {
             .width(Length::Fill)
             .height(Length::Fill)
         };
-        let (current_bg, _) = acad_color_display(self.current);
-        let (new_bg, _) = acad_color_display(self.pending);
+        let current_bg = self.shown(self.current);
+        let new_bg = self.shown(self.pending);
         // A colour-book colour shows its own name, without the book.
         let name = |color: AcadColor, identity: &Option<String>| match identity {
             Some(identity) => identity
@@ -1336,7 +1350,7 @@ mod tests {
 
     #[test]
     fn book_colours_keep_their_name_until_edited() {
-        let mut p = picker(AcadColor::Index(30)).with_drawing(Vec::new(), &[], ral(), None);
+        let mut p = picker(AcadColor::Index(30)).with_drawing(Vec::new(), &[], ral(), None, None);
         p.update(ColorPickerMsg::PickBook(2));
         assert_eq!(p.book_page, 1, "turns to the colour's page");
         assert_eq!(
@@ -1367,7 +1381,13 @@ mod tests {
             g: 113,
             b: 179,
         })
-        .with_drawing(Vec::new(), &[], ral(), Some("RAL CLASSIC$RAL 5015".into()));
+        .with_drawing(
+            Vec::new(),
+            &[],
+            ral(),
+            Some("RAL CLASSIC$RAL 5015".into()),
+            None,
+        );
         assert_eq!(p.book_selection(), Some(2));
         assert_eq!(p.book_page, 1);
     }
@@ -1377,7 +1397,7 @@ mod tests {
         // A new drawing's layer 0 is white.
         let doc = document::collect(&codec::CadDocument::new());
         assert!(doc.iter().any(|c| c.color == AcadColor::Index(7)));
-        let mut p = picker(AcadColor::Index(30)).with_drawing(doc, &[], Arc::default(), None);
+        let mut p = picker(AcadColor::Index(30)).with_drawing(doc, &[], Arc::default(), None, None);
         p.update(ColorPickerMsg::Tab(ColorPickerTab::Document));
         p.update(ColorPickerMsg::Arrow(ArrowKey::Right));
         assert_eq!(
@@ -1586,6 +1606,7 @@ mod tests {
                     document::collect(&codec::CadDocument::new()),
                     &[],
                     books,
+                    None,
                     None,
                 );
                 p.update(ColorPickerMsg::Tab(tab));

@@ -157,12 +157,14 @@ fn divider<'a>() -> Element<'a, Message> {
         .into()
 }
 
+/// `shown` overrides the swatch, so ByLayer can show the layer's colour.
 fn logical_row<'a>(
     color: AcadColor,
     cur_color: AcadColor,
     label: &'static str,
+    shown: Option<iced::Color>,
 ) -> Element<'a, Message> {
-    let (bg, _) = acad_color_display(color);
+    let bg = shown.unwrap_or_else(|| acad_color_display(color).0);
     let selected = color == cur_color;
 
     let swatch = container(
@@ -212,13 +214,15 @@ fn more_colors_row<'a>(active_color: AcadColor) -> Element<'a, Message> {
 }
 
 /// Builds the complete 5-section color dropdown panel element.
+/// `layer_color` is the current layer's colour, shown on the ByLayer row.
 pub fn color_dropdown_panel<'a>(
     active_color: AcadColor,
     recent_colors: &[AcadColor],
+    layer_color: Option<iced::Color>,
 ) -> Element<'a, Message> {
     // 1. ByLayer and ByBlock
-    let by_layer = logical_row(AcadColor::ByLayer, active_color, "ByLayer");
-    let by_block = logical_row(AcadColor::ByBlock, active_color, "ByBlock");
+    let by_layer = logical_row(AcadColor::ByLayer, active_color, "ByLayer", layer_color);
+    let by_block = logical_row(AcadColor::ByBlock, active_color, "ByBlock", None);
     let section1 = column![by_layer, by_block].spacing(2);
 
     // 2. 45-swatch Quick Pick Grid (5 rows × 9 columns)

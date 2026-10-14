@@ -174,6 +174,14 @@ fn position_ribbon_dropdown<'a>(
 }
 
 impl Ribbon {
+    /// The current layer's colour: what ByLayer looks like for new objects.
+    pub fn active_layer_color(&self) -> Option<Color> {
+        self.layer_infos
+            .iter()
+            .find(|layer| layer.name == self.active_layer)
+            .map(|layer| layer.color)
+    }
+
     /// The colour-book identity of the active colour, while the active colour
     /// is still the one picked from the book.
     pub fn active_color_name(&self) -> Option<String> {
@@ -1232,7 +1240,11 @@ impl Ribbon {
         win: (f32, f32),
         recent_colors: &[AcadColor],
     ) -> Option<Element<'_, Message>> {
-        let panel = color_dropdown::color_dropdown_panel(self.active_color, recent_colors);
+        let panel = color_dropdown::color_dropdown_panel(
+            self.active_color,
+            recent_colors,
+            self.active_layer_color(),
+        );
 
         let (align_right, h_pad, top) =
             self.dd_anchor(PROP_COLOR_ID, color_dropdown::PANEL_W, win.0);

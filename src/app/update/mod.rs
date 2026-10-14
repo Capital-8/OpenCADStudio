@@ -11563,12 +11563,14 @@ impl OpenCADStudio {
                 let mut picker = crate::ui::color_select::ColorPicker::new(target, current, varies);
                 if !matches!(picker.target, crate::app::ColorPickTarget::Interface(_)) {
                     self.read_color_books();
+                    let by_layer = self.color_picker_layer_color(&picker.target);
                     let tab = &self.tabs[self.active_tab];
                     picker = picker.with_drawing(
                         crate::ui::color_select::document::collect(&tab.scene.document),
                         &tab.recent_colors,
                         std::sync::Arc::clone(&self.color_books),
                         name,
+                        by_layer,
                     );
                 }
                 self.color_picker = Some(picker);
@@ -11732,6 +11734,29 @@ impl OpenCADStudio {
         colors.sort_by_key(|&(handle, _)| handle);
         let (newest_handle, newest) = colors.last().copied().unwrap_or((first_handle, color));
         (newest, true, name_of(newest_handle))
+    }
+
+    /// The colour ByLayer stands for in the Select Color panel: the layer of
+    /// the newest selected object, or the current layer for new objects.
+    fn color_picker_layer_color(
+        &self,
+        target: &crate::app::ColorPickTarget,
+    ) -> Option<codec::types::Color> {
+        let i = self.active_tab;
+        let document = &self.tabs[i].scene.document;
+        let layer = match target {
+            crate::app::ColorPickTarget::Properties => self
+                .property_target_handles(i)
+                .into_iter()
+                .max()
+                .and_then(|handle| document.get_entity(handle))
+                .map_or(self.tabs[i].active_layer.as_str(), |entity| {
+                    entity.as_entity().layer()
+                }),
+            crate::app::ColorPickTarget::Ribbon => self.tabs[i].active_layer.as_str(),
+            _ => return None,
+        };
+        document.layers.get(layer).map(|layer| layer.color)
     }
 
     /// Read the built-in colour books and the ones remembered in the
