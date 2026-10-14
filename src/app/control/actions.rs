@@ -104,6 +104,7 @@ pub(super) const NAMES: &[&str] = &[
     "external_change_cancel",
     "pdf_dialog_ok",
     "view_background",
+    "image_adjust",
     "pdf_layer_toggle",
     "pc_manager_toggle",
     "pc_manager",
@@ -1955,6 +1956,43 @@ impl OpenCADStudio {
                         Message::PdfDialog(P::BgStep(field, dir))
                     }
                     "reset" => Message::PdfDialog(P::BgReset),
+                    _ => return Err(bad()),
+                }
+            }
+            // The Image Adjust dialog, one field per call: "brightness=70",
+            // "contrast=40", "fade=20" (the bar), "type=fade,abc" (typed into
+            // the box), "step=brightness,+1|-1", "reset", "apply" or "cancel".
+            "image_adjust" => {
+                use crate::ui::window::pdf_dialogs::PdfDialogMsg as P;
+                if self.active_modal != Some(crate::app::ModalKind::ImageAdjust) {
+                    return Err(failure("no_dialog", "The Image Adjust dialog is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                let row = |name: &str| match name.trim() {
+                    "brightness" => Ok(0u8),
+                    "contrast" => Ok(1),
+                    "fade" => Ok(2),
+                    _ => Err(bad()),
+                };
+                match key {
+                    "cancel" => Message::CloseModal,
+                    "apply" => Message::PdfDialog(P::IaApply),
+                    "reset" => Message::PdfDialog(P::IaReset),
+                    "brightness" | "contrast" | "fade" => {
+                        let v: u8 = value.trim().parse().ok().filter(|v| *v <= 100).ok_or_else(bad)?;
+                        Message::PdfDialog(P::IaValue(row(key)?, v))
+                    }
+                    "type" => {
+                        let (name, typed) = value.split_once(',').ok_or_else(bad)?;
+                        Message::PdfDialog(P::IaText(row(name)?, typed.to_string()))
+                    }
+                    "step" => {
+                        let (name, dir) = value.split_once(',').ok_or_else(bad)?;
+                        let dir: i8 = dir.trim().parse().map_err(|_| bad())?;
+                        Message::PdfDialog(P::IaStep(row(name)?, dir))
+                    }
                     _ => return Err(bad()),
                 }
             }

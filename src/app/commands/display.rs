@@ -1391,6 +1391,40 @@ impl OpenCADStudio {
                 return Some(Task::none());
             }
 
+            // IMAGEADJUST: chosen images (pickfirst first), then the dialog.
+            "IMAGEADJUST" => {
+                let keep = crate::modules::insert::xadjust::keeps("I");
+                let chosen: Vec<codec::Handle> = self.tabs[i]
+                    .scene
+                    .selected_entities()
+                    .into_iter()
+                    .filter(|(_, e)| keep(e))
+                    .map(|(h, _)| h)
+                    .collect();
+                if chosen.is_empty() {
+                    self.tabs[i].scene.deselect_all();
+                    self.refresh_properties();
+                    let command = crate::modules::draw::select::SelectObjectsCommand::filtered(
+                        "IMAGEADJUST",
+                        "_IMAGEADJUSTSEL",
+                        crate::modules::insert::xadjust::select_prompt("I"),
+                        keep,
+                    );
+                    use crate::command::CadCommand;
+                    self.command_line.push_info(&command.prompt());
+                    self.command_line.set_step_options(command.options());
+                    self.tabs[i].active_cmd = Some(Box::new(command));
+                } else {
+                    self.tabs[i]
+                        .scene
+                        .replace_selection(chosen.into_iter().collect());
+                    return Some(self.dispatch_command("_IMAGEADJUSTSEL"));
+                }
+            }
+            "_IMAGEADJUSTSEL" => {
+                self.open_image_adjust(i);
+                return Some(self.finish_dispatch("IMAGEADJUST"));
+            }
             // ADJUST / -IMAGEADJUST / PDFADJUST / DWFADJUST / DGNADJUST:
             // chosen images or underlays (pickfirst first), then the option
             // and the value.
@@ -2252,6 +2286,93 @@ impl OpenCADStudio {
         self.command_line.push_info(&command.prompt());
         self.command_line.set_step_options(command.options());
         self.tabs[i].active_cmd = Some(Box::new(command));
+    }
+
+    /// The Image Adjust dialog for the chosen images, starting from the
+    /// first one's values; nothing opens without an image.
+    fn open_image_adjust(&mut self, i: usize) {
+        let keep = crate::modules::insert::xadjust::keeps("I");
+        let scene = &self.tabs[i].scene;
+        let images: Vec<(codec::Handle, codec::EntityType)> = scene
+            .selected_entities()
+            .into_iter()
+            .filter(|(h, e)| keep(e) && !scene.is_layer_locked(*h))
+            .map(|(h, e)| (h, e.clone()))
+            .collect();
+        let Some((_, codec::EntityType::RasterImage(first))) = images.first() else {
+            return;
+        };
+        let canvas = scene.bg_color;
+        let state = crate::ui::window::pdf_dialogs::ImageAdjustState::new(
+            images.iter().map(|(h, _)| *h).collect(),
+            &first.file_path,
+            [first.brightness, first.contrast, first.fade],
+            [0, 1, 2].map(|k| (canvas[k].clamp(0.0, 1.0) * 255.0).round() as u8),
+        );
+        self.image_adjust = Some(state);
+        self.active_modal = Some(crate::app::ModalKind::ImageAdjust);
+    }
+
+    pub(in crate::app) fn update_image_adjust(
+        &mut self,
+        message: crate::ui::window::pdf_dialogs::PdfDialogMsg,
+    ) -> Task<Message> {
+        use crate::ui::window::pdf_dialogs::{PdfDialogMsg as M, IMAGE_ADJUST_DEFAULTS};
+        let i = self.active_tab;
+        let Some(state) = self.image_adjust.as_mut() else {
+            return Task::none();
+        };
+        match message {
+            M::IaValue(row, value) => state.set(row as usize, value),
+            M::IaStep(row, dir) => {
+                let k = row as usize;
+                state.set(k, state.values[k].saturating_add_signed(dir.signum()));
+            }
+            // A box takes whole numbers 0–100 only; anything else is not
+            // typed in. An emptied box keeps the value until a number comes.
+            M::IaText(row, typed) => {
+                let k = row as usize;
+                let typed = typed.trim().to_string();
+                if typed.is_empty() {
+                    state.texts[k] = typed;
+                } else if let Some(value) = typed
+                    .parse::<u8>()
+                    .ok()
+                    .filter(|v| *v <= 100 && typed.chars().all(|c| c.is_ascii_digit()))
+                {
+                    state.set(k, value);
+                }
+            }
+            M::IaReset => state.set_all(IMAGE_ADJUST_DEFAULTS),
+            M::IaApply => {
+                let Some(state) = self.image_adjust.take() else {
+                    return Task::none();
+                };
+                self.close_active_modal();
+                let [brightness, contrast, fade] = state.values;
+                self.push_undo_snapshot(i, "IMAGEADJUST");
+                let mut changed = Vec::new();
+                for h in &state.handles {
+                    if let Some(codec::EntityType::RasterImage(img)) =
+                        self.tabs[i].scene.document.get_entity_mut(*h)
+                    {
+                        img.brightness = brightness;
+                        img.contrast = contrast;
+                        img.fade = fade;
+                        self.tabs[i].scene.reseed_derived_caches(*h);
+                        changed.push((*h, crate::scene::ChangeKind::Modified));
+                    }
+                }
+                if !changed.is_empty() {
+                    self.tabs[i].scene.bump_entities(&changed);
+                    self.tabs[i].dirty = true;
+                }
+                self.tabs[i].scene.deselect_all();
+                self.refresh_properties();
+            }
+            _ => {}
+        }
+        Task::none()
     }
 }
 
