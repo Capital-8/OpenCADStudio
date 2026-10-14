@@ -6558,3 +6558,20 @@ block-def =
     .name-unsupported-chars = The name contains unsupported characters. The following characters are not supported: \ < > / ? " : ; * | , = `
     .definition-changed-redefine = The block definition has changed. Do you want to redefine it ?
     .create-drawing-file = Create Drawing File
+
+# Transient geometry inquiry readouts.
+measurement =
+    .distance = Distance = { $value }
+    .angle-start = { $command }  Specify vertex point or [Lines]:
+    .first-line = { $command }  Select first line or [Points] (smaller angle):
+    .second-line = { $command }  Select second line (smaller angle):
+    .lines = Lines
+    .points = Points
+    .invalid-radius = Select a circle or arc with a finite, positive radius.
+    .invalid-line = Select a nonzero, finite line.
+    .different-line = Select a different line.
+    .invalid-point = Specify a point with finite coordinates.
+    .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .area-preview =
+        { $current }
+        Preview total area = { $total }

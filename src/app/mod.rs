@@ -29,6 +29,7 @@ mod find_replace;
 pub(crate) mod helpers;
 mod history;
 mod layers;
+mod measurement;
 mod model_ops;
 mod mtext_editor;
 mod navigation;

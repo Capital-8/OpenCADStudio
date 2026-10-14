@@ -1236,6 +1236,7 @@ impl OpenCADStudio {
             return Task::none();
         }
         let i = self.active_tab;
+        self.tabs[i].measurement.live_visible = true;
         if let Some(task) = self.start_drag_move(i, p) {
             return Task::batch([task, self.on_viewport_move(p)]);
         }
@@ -3162,6 +3163,7 @@ impl OpenCADStudio {
 
     pub(crate) fn on_viewport_exit(&mut self) -> Task<Message> {
         let i = self.active_tab;
+        self.tabs[i].measurement.live_visible = false;
         self.hover_dwell = None;
         if self.tabs[i]
             .active_cmd
@@ -3658,6 +3660,7 @@ impl OpenCADStudio {
 
     pub(super) fn on_viewport_left_press(&mut self) -> Task<Message> {
         let i = self.active_tab;
+        self.tabs[i].measurement.dismiss_result();
         self.block_palette.pressed = None;
         if let Some(command) = self.tabs[i].active_cmd.as_mut() {
             command.set_ctrl(self.ctrl_down);
@@ -5916,6 +5919,7 @@ properties={:.1}ms picked={}",
 
     pub(super) fn on_viewport_middle_press(&mut self) -> Task<Message> {
         let i = self.active_tab;
+        self.tabs[i].measurement.dismiss_result();
         self.clear_navigation_hover(i);
         self.ribbon.close_dropdown();
         self.tabs[i].scene.remember_current_view();
