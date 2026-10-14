@@ -3433,6 +3433,32 @@ pub(in crate::scene) fn render_style_for(
     render_style_for_viewport(document, e, None)
 }
 
+/// A viewport layer colour override as the format packs it (code 420): the
+/// top byte says what follows — 0xC3 an index colour in the low byte, 0xC2 a
+/// 24-bit true colour, 0xC0 / 0xC1 ByLayer / ByBlock. A bare 24-bit value is
+/// read as true colour.
+pub(crate) fn layer_override_color(value: i32) -> AcadColor {
+    match (value as u32) >> 24 {
+        0xC0 => AcadColor::ByLayer,
+        0xC1 => AcadColor::ByBlock,
+        0xC3 => AcadColor::Index((value & 0xFF) as u8),
+        _ => AcadColor::from_true_color_value(value),
+    }
+}
+
+/// [`layer_override_color`] the other way round; `None` for a colour an
+/// override cannot hold.
+pub(crate) fn pack_layer_override_color(color: &AcadColor) -> Option<i32> {
+    let packed = match color {
+        AcadColor::Index(index) => 0xC300_0000u32 | *index as u32,
+        AcadColor::Rgb { r, g, b } => {
+            0xC200_0000u32 | (*r as u32) << 16 | (*g as u32) << 8 | *b as u32
+        }
+        _ => return None,
+    };
+    Some(packed as i32)
+}
+
 fn viewport_override(
     document: &CadDocument,
     layer_name: &str,
@@ -3473,7 +3499,7 @@ pub(crate) fn render_style_for_common_viewport(
                         codec::objects::KnownXRecordKind::LayerViewportColorOverride,
                     )
                     .and_then(|value| value.as_i32())
-                    .map(AcadColor::from_true_color_value)
+                    .map(layer_override_color)
                 })
                 .flatten();
         let resolved = if *ec == AcadColor::ByLayer {
@@ -3622,7 +3648,7 @@ pub(crate) fn layer_render_style_viewport(
             codec::objects::KnownXRecordKind::LayerViewportColorOverride,
         )
         .and_then(|value| value.as_i32())
-        .map(AcadColor::from_true_color_value)
+        .map(layer_override_color)
     } else {
         None
     };

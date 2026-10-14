@@ -3799,11 +3799,7 @@ impl OpenCADStudio {
                     .map(|layer| layer.name.clone())
                     .collect();
                 self.push_undo_snapshot(i, "LAYERSTATE RESTORE");
-                let restored = self.tabs[i]
-                    .scene
-                    .document
-                    .restore_layer_state(&name)
-                    .unwrap_or(0);
+                let restored = self.restore_layer_state_here(i, &name);
                 let active = self.tabs[i]
                     .scene
                     .document
