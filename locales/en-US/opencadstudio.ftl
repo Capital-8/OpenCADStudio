@@ -3849,6 +3849,7 @@ insert =
     .display-and-plot-frames = Display and plot frames
     .display-not-plot-frames = Display but don't plot frames
     .frames-vary = *Frames vary*
+    .underlay-osnaps-vary = *Underlay OSnap's vary*
     .regenerating-model = Regenerating model.
     .requires-int-0-2 = Requires an integer between 0 and 2.
     .insert-prompt-hint = INSERT  __ocs_arg_prompt____ocs_arg_hint__:

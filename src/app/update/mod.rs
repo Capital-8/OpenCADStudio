@@ -362,6 +362,12 @@ impl OpenCADStudio {
             _ => "FRAMES3",
         };
         self.ribbon.set_dropdown_current("FRAMES_DROPDOWN", current);
+        let uosnap = match crate::scene::model::pdf_vector::uosnap() {
+            0 => "UOSNAP0",
+            1 => "UOSNAP1",
+            _ => "UOSNAP2",
+        };
+        self.ribbon.set_dropdown_current("UOSNAP_DROPDOWN", uosnap);
         let attmode = match tab.scene.document.header.attribute_visibility {
             0 => "ATTMODE0",
             2 => "ATTMODE2",
