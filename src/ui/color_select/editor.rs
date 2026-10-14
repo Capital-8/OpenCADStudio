@@ -16,6 +16,7 @@ const ROW_HEIGHT: f32 = 26.0;
 const TRACK: f32 = 18.0;
 const STRIP_WIDTH: f32 = 22.0;
 const ROW_GAP: f32 = 6.0;
+/// The field's height in the interface picker, which has no fixed height.
 const FIELD_HEIGHT: f32 = 96.0;
 const MODE_WIDTH: f32 = 48.0;
 const MODE_HEIGHT: f32 = 24.0;
@@ -151,19 +152,28 @@ impl ColorEditor {
 
     /// `mode_end` sits at the far right of the mode buttons (the pipette);
     /// `hex_end` at the far right of the hex row (the nearest index colour).
-    /// With `fill` the field and hex row sit at the bottom of the space, so
-    /// they stay put when CMYK adds a fourth slider.
+    /// With `fill` the field takes all the height the sliders leave, so the
+    /// hex row stays at the bottom and CMYK's fourth slider only makes the
+    /// field a little lower.
     pub fn view<'a>(
         &'a self,
         mode_end: Option<Element<'a, Message>>,
         hex_end: Option<Element<'a, Message>>,
         fill: bool,
     ) -> Element<'a, Message> {
-        let mut view = column![self.mode_row(mode_end), self.slider_rows()].spacing(12);
-        if fill {
-            view = view.push(Space::new().height(Length::Fill));
-        }
-        view.push(self.field()).push(self.hex_row(hex_end)).into()
+        let height = if fill {
+            Length::Fill
+        } else {
+            Length::Fixed(FIELD_HEIGHT)
+        };
+        column![
+            self.mode_row(mode_end),
+            self.slider_rows(),
+            self.field(height),
+            self.hex_row(hex_end),
+        ]
+        .spacing(12)
+        .into()
     }
 
     /// RGB, HSB and CMYK, with `end` at the far right.
@@ -270,21 +280,21 @@ impl ColorEditor {
     }
 
     /// The saturation/brightness field with its hue strip.
-    fn field<'a>(&self) -> Element<'a, Message> {
+    fn field<'a>(&self, height: Length) -> Element<'a, Message> {
         let Hsb { h, s, b } = self.hsb;
         let area = ColorArea::new(hsb_color(h, 1.0, 1.0), rgb_color(self.rgb), s, b, |s, b| {
             msg(EditorMsg::Field(s, b))
         })
-        .height(Length::Fixed(FIELD_HEIGHT));
+        .height(height);
         // A vertical slider grows upwards; the strip runs red at the top.
         let strip = stack![
             container(Space::new())
                 .width(STRIP_WIDTH)
-                .height(FIELD_HEIGHT)
+                .height(height)
                 .style(|_theme: &Theme| gradient_box(std::f32::consts::PI, &hue_stops())),
             vertical_slider(0.0..=360.0, 360.0 - h, |v| msg(EditorMsg::Hue(360.0 - v)))
                 .width(STRIP_WIDTH)
-                .height(FIELD_HEIGHT)
+                .height(height)
                 .style(handle_style),
         ];
         row![area, strip].spacing(12).into()
