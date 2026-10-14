@@ -427,8 +427,8 @@ and `SelectionChanged` (the plain selection set) at the fingerprint-guarded mess
 the v4 bridge already uses (`notify_plugins_selection_changed` / `notify_plugins_document_changed`,
 plus the automation post-op boundary), and a new additive `DocumentOpened { tab_id }` variant
 (discriminant 10, the counterpart of the existing `DocumentTabClosed`) that fires once per whole
-document install — file open, template new, system open — keyed on a new per-tab document
-generation. Boundary rule: dispatch happens after the mutation settles and pending history scopes
+document install — file open, template new, system open — keyed on a per-tab pending flag, so
+neither an edit nor a tab switch repeats it. Boundary rule: dispatch happens after the mutation settles and pending history scopes
 closed, never mid-undo/mid-pick, and history (undo/redo) replay itself emits nothing — the
 boundary is the only channel; plugin-initiated writes publish immediately after settling, like
 the drawing-changed event, with the boundary fingerprint deduplicating. Handlers may call HostApi

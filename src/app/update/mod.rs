@@ -344,9 +344,9 @@ impl OpenCADStudio {
 
     /// Announce that a whole document became resident in the active tab —
     /// opened from file, created from a template, or loaded by a system open
-    /// (API v9). Keyed on `(tab id, document generation)`, which changes only
-    /// when a tab's content is wholesale replaced, so an edit can never fire
-    /// it twice and a reload fires it exactly once. Part of the same
+    /// (API v9). Each tab carries its own pending flag, set only when its
+    /// content is wholesale replaced, so neither an edit nor a tab switch can
+    /// fire it twice and a reload fires it exactly once. Part of the same
     /// post-message boundary as the selection and document dispatches: runs
     /// after the mutation settles and pending history scopes closed, never
     /// inside history replay or interactive picking.
@@ -359,11 +359,9 @@ impl OpenCADStudio {
         if self.tabs[i].is_start {
             return;
         }
-        let key = (self.tabs[i].id, self.tabs[i].document_generation);
-        if self.last_plugin_document_opened == Some(key) {
+        if !std::mem::take(&mut self.tabs[i].document_opened_pending) {
             return;
         }
-        self.last_plugin_document_opened = Some(key);
         crate::plugin::v4_support::publish_document_opened(self.tabs[i].id);
     }
 

@@ -729,8 +729,8 @@ impl OpenCADStudio {
                 // The headless session starts on the welcome (Start) tab, which
                 // blocks drawing commands; turn it into a real drawing.
                 self.tabs[i].is_start = false;
-                // A fresh document became resident (API v9): mint a new
-                // generation so the post-op boundary announces `DocumentOpened`.
+                // A fresh document became resident (API v9): the post-op
+                // boundary announces `DocumentOpened`.
                 self.tabs[i].note_document_loaded();
                 self.entity_summary()
             }
@@ -770,9 +770,8 @@ impl OpenCADStudio {
                         self.tabs[i].current_path = Some(path_buf);
                         self.tabs[i].is_start = false;
                         self.tabs[i].scene.rebuild_derived_caches();
-                        // The opened document settled (API v9): mint a new
-                        // generation so the post-op boundary announces
-                        // `DocumentOpened` once for this load.
+                        // The opened document settled (API v9): the post-op
+                        // boundary announces `DocumentOpened` once for this load.
                         self.tabs[i].note_document_loaded();
                         let mut summary = self.entity_summary();
                         if dropped > 0 {
@@ -1855,7 +1854,7 @@ mod tests {
             "a new document announces exactly one open: {log:?}"
         );
 
-        // A follow-up op does not repeat it: generation-keyed dispatch.
+        // A follow-up op does not repeat it: the tab's pending flag cleared.
         app.automation_op(r#"{"op":"query","type":"Line"}"#);
         let log = plugin_dispatch_log();
         assert!(
@@ -1917,7 +1916,7 @@ mod tests {
         // The next message boundary does not repeat it.
         app.notify_plugins_document_opened();
         let log = plugin_dispatch_log();
-        assert_eq!(log.len(), 0, "generation-keyed dispatch dedupes: {log:?}");
+        assert_eq!(log.len(), 0, "the pending flag dedupes: {log:?}");
         let _ = std::fs::remove_file(&path);
     }
 

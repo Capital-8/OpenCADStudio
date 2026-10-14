@@ -2276,9 +2276,9 @@ impl OpenCADStudio {
                 .set(crate::app::OPEN_PHASE_FINALIZING, 10000, 1, 1);
         }
         self.opening.take();
-        // The document and its derived caches have settled: mark the tab's
-        // generation so the next message boundary announces `DocumentOpened`
-        // to native plugins exactly once for this load (API v9).
+        // The document and its derived caches have settled: the next message
+        // boundary announces `DocumentOpened` to native plugins exactly once
+        // for this load (API v9).
         self.tabs[i].note_document_loaded();
         // The tab list just changed (and the active tab with it): remember
         // it for the next boot's restore flow (web session memory).

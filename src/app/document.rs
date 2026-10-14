@@ -18,17 +18,6 @@ use std::sync::Arc;
 
 static NEXT_DOCUMENT_TAB_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Monotonic source for `DocumentTab::document_generation` (API v9): every
-/// minted value is process-unique, so any freshly installed document — file
-/// open, template new, system open — differs from every generation a plugin
-/// has been told about, and the opened-notification guard fires exactly once
-/// per load.
-static NEXT_DOCUMENT_GENERATION: AtomicU64 = AtomicU64::new(1);
-
-fn next_document_generation() -> u64 {
-    NEXT_DOCUMENT_GENERATION.fetch_add(1, Ordering::Relaxed)
-}
-
 // ── Dynamic input ──────────────────────────────────────────────────────────
 
 /// One quantity shown in the dynamic-input overlay near the cursor.
@@ -158,13 +147,12 @@ pub(super) struct DocumentTab {
     /// Monotonic committed-edit/undo/redo revision. Background save completion
     /// uses it with scene epochs so an older snapshot never clears newer work.
     pub(super) edit_revision: u64,
-    /// Monotonic identity of the document currently resident in this tab: a
-    /// fresh value is minted whenever a whole document replaces the tab's
-    /// content (file open, template new, system open), and edits leave it
-    /// alone. The plugin-opened notification guard
-    /// (`OpenCADStudio::notify_plugins_document_opened`, API v9) keys on it
-    /// so `DocumentOpened` dispatches exactly once per load.
-    pub(super) document_generation: u64,
+    /// A whole document replaced this tab's content (file open, template new,
+    /// system open) and native plugins have not been told yet: the
+    /// message boundary (`OpenCADStudio::notify_plugins_document_opened`,
+    /// API v9) dispatches `DocumentOpened` once and clears it, so edits and
+    /// switching between tabs never announce the same load again.
+    pub(super) document_opened_pending: bool,
     pub(super) tab_title: String,
     pub(super) properties: PropertiesPanel,
     pub(super) layers: LayerPanel,
@@ -648,7 +636,7 @@ impl DocumentTab {
             dirty: false,
             recovery_save_as_required: false,
             edit_revision: 0,
-            document_generation: next_document_generation(),
+            document_opened_pending: true,
             prev_selection: Vec::new(),
             tab_title: format!("Drawing{}", n),
             properties: PropertiesPanel::empty(),
@@ -723,11 +711,11 @@ impl DocumentTab {
     }
 
     /// A whole document just replaced this tab's content (file open, template
-    /// new, system open): mint a fresh generation so the message-boundary
-    /// dispatch announces `DocumentOpened` exactly once for this load (API
-    /// v9). Call after the document and its derived caches have settled.
+    /// new, system open): the next message boundary announces
+    /// `DocumentOpened` once for this load (API v9). Call after the document
+    /// and its derived caches have settled.
     pub(super) fn note_document_loaded(&mut self) {
-        self.document_generation = next_document_generation();
+        self.document_opened_pending = true;
     }
 
     pub(super) fn tab_display_name(&self) -> String {
