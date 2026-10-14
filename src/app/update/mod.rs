@@ -613,6 +613,12 @@ impl OpenCADStudio {
         // open, template new); announce it on the same boundary (API v9).
         #[cfg(not(target_arch = "wasm32"))]
         self.notify_plugins_document_opened();
+        // The `N found, M total` count belongs to the command that gathered
+        // it; the next command, even one boxed at the same address, starts
+        // from nothing.
+        if self.tabs[self.active_tab].active_cmd.is_none() {
+            self.selection_report = None;
+        }
         // OTRACK acquires tracking points only while a command or grip drag is
         // running; drop them once neither is active so the temporary tracking
         // points / vectors disappear when the command ends (issue #64). A grip

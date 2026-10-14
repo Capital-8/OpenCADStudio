@@ -574,7 +574,7 @@ impl OpenCADStudio {
         StepInput::SelectionComplete(kept)
     }
 
-/// What one selection step picked, as the reference words it: `N found`
+    /// What one selection step picked, as the reference words it: `N found`
     /// for the first step, `N found, M total`, `N found (D duplicate), M
     /// total` when some were chosen already, `N found, R removed, M total` in
     /// remove mode. Returns the command's key while it gathers.
