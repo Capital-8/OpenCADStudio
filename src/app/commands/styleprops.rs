@@ -1214,6 +1214,7 @@ impl OpenCADStudio {
                     | "UOSNAP"
                     | "FIELDDISPLAY"
                     | "FILEDIA"
+                    | "TRIMEXTENDMODE"
                     | "SURFACEASSOCIATIVITY"
                     | "UCSORTHO"
                     | "UCSVIEW"
@@ -1598,6 +1599,33 @@ impl OpenCADStudio {
                                 self.command_line.push_output(&format!(
                                     "Enter new value for FIELDDISPLAY <{current}>:"
                                 ));
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    if name == "TRIMEXTENDMODE" {
+                        use crate::modules::draw::modify::trim;
+                        let current = i16::from(trim::quick_mode());
+                        let prompt = format!("Enter new value for TRIMEXTENDMODE <{current}>:");
+                        match value
+                            .as_deref()
+                            .map(|v| v.trim().parse::<i16>().ok().filter(|v| (0..=1).contains(v)))
+                        {
+                            Some(Some(mode)) => {
+                                if current != mode {
+                                    trim::set_quick_mode(mode == 1);
+                                    self.save_config();
+                                }
+                            }
+                            Some(None) => {
+                                self.command_line
+                                    .push_error(crate::t!("Requires 0 or 1 only.").as_ref());
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&prompt);
                                 self.pending_setvar = Some(name.clone());
                             }
                         }

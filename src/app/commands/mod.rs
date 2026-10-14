@@ -756,6 +756,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "UOSNAP",
         "FIELDDISPLAY",
         "FILEDIA",
+        "TRIMEXTENDMODE",
         "SURFACEASSOCIATIVITY",
         "LAYOUTCREATEVIEWPORT",
         "FIELDEVAL",

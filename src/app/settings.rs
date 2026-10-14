@@ -441,6 +441,8 @@ pub struct UserSettings {
     pub xref_fade: i32,
     /// FILEDIA: file dialogs of commands that have a command-line form.
     pub file_dia: bool,
+    /// TRIMEXTENDMODE: TRIM and EXTEND start in Quick mode (else Standard).
+    pub trim_extend_quick: bool,
     /// The file type ATTACH's picker was last left on (1-based).
     pub attach_filter: u32,
     /// SURFACEASSOCIATIVITY: new surfaces stay associative to their sources.
@@ -915,6 +917,7 @@ impl Default for UserSettings {
             field_display: true,
             xref_fade: 50,
             file_dia: true,
+            trim_extend_quick: true,
             attach_filter: 7,
             surface_associativity: true,
             ucs_ortho: true,

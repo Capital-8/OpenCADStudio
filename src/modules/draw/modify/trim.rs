@@ -1755,6 +1755,73 @@ enum TrimMode {
     CrossSecond([f64; 2]),
     /// Erase mode: each pick deletes the object; Enter returns to Pick.
     Erase,
+    /// mOde: choosing between Quick and Standard (TRIMEXTENDMODE).
+    ChooseMode,
+}
+
+/// TRIMEXTENDMODE: 1 (Quick) starts TRIM and EXTEND ready to pick, every
+/// object a cutting or boundary edge; 0 (Standard) starts them selecting
+/// those edges first.
+static QUICK_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn quick_mode() -> bool {
+    QUICK_MODE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn set_quick_mode(quick: bool) {
+    QUICK_MODE.store(quick, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The mOde prompt, offering the current mode as the default.
+fn mode_prompt(command: &str) -> String {
+    let current = if quick_mode() { "Quick" } else { "Standard" };
+    crate::tf!("{command}  Enter a trim mode option [Quick/Standard] <{current}>:").into_owned()
+}
+
+fn mode_options() -> Vec<crate::command::CmdOption> {
+    use crate::command::CmdOption;
+    vec![CmdOption::new("Quick", "Q"), CmdOption::new("Standard", "S")]
+}
+
+/// The mOde option and its answer, shared by TRIM and EXTEND. Returns the
+/// step's result and whether the edges must be rebuilt, or `None` for input
+/// that is not about the mode.
+fn choose_mode(
+    mode: &mut TrimMode,
+    edge_set: &mut Vec<Handle>,
+    text: &str,
+) -> Option<(CmdResult, bool)> {
+    let word = text.trim().to_uppercase();
+    match (&*mode, word.as_str()) {
+        (TrimMode::Pick, "O" | "MODE") => *mode = TrimMode::ChooseMode,
+        (TrimMode::ChooseMode, "Q" | "QUICK") => {
+            set_quick_mode(true);
+            edge_set.clear();
+            *mode = TrimMode::Pick;
+            return Some((CmdResult::NeedPoint, true));
+        }
+        (TrimMode::ChooseMode, "S" | "STANDARD") => {
+            set_quick_mode(false);
+            edge_set.clear();
+            *mode = TrimMode::SelectEdges;
+        }
+        (TrimMode::ChooseMode, _) => {
+            let message = crate::t!("Invalid option keyword.").into_owned();
+            return Some((CmdResult::ReportError(message), false));
+        }
+        _ => return None,
+    }
+    Some((CmdResult::NeedPoint, false))
+}
+
+/// The first step: picking in Quick mode or when edges were preselected,
+/// selecting edges in Standard mode.
+fn starting_mode(initial_edges: &[Handle]) -> TrimMode {
+    if quick_mode() || !initial_edges.is_empty() {
+        TrimMode::Pick
+    } else {
+        TrimMode::SelectEdges
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -2622,6 +2689,14 @@ pub struct TrimCommand {
 }
 
 impl TrimCommand {
+    fn choose_mode(&mut self, text: &str) -> Option<CmdResult> {
+        let (result, rebuild) = choose_mode(&mut self.mode, &mut self.edge_set, text)?;
+        if rebuild {
+            self.rebuild_geos();
+        }
+        Some(result)
+    }
+
     pub fn new(all_entities: Vec<EntityType>) -> Self {
         Self::with_cutting_edges(all_entities, Vec::new())
     }
@@ -2638,7 +2713,7 @@ impl TrimCommand {
             all_entities,
             entity_index,
             geos: Vec::new(),
-            mode: TrimMode::Pick,
+            mode: starting_mode(&initial_edges),
             edge_set: initial_edges,
             implied_edges: false,
             shift: false,
@@ -2745,6 +2820,7 @@ impl CadCommand for TrimCommand {
             TrimMode::Erase => {
                 t!("TRIM  Erase: click objects to delete [Enter = done]:").into_owned()
             }
+            TrimMode::ChooseMode => mode_prompt("TRIM"),
         }
     }
 
@@ -2764,8 +2840,10 @@ impl CadCommand for TrimCommand {
                     "E",
                 ),
                 CmdOption::new("Erase", "R"),
+                CmdOption::new("mOde", "O"),
                 CmdOption::enter("Done"),
             ],
+            TrimMode::ChooseMode => mode_options(),
             _ => vec![CmdOption::enter("Done")],
         }
     }
@@ -2777,6 +2855,9 @@ impl CadCommand for TrimCommand {
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
         // Consumed inputs return Some(NeedPoint) — None would be offered to
         // the command a second time by the driver.
+        if let Some(result) = self.choose_mode(text) {
+            return Some(result);
+        }
         match text.trim().to_uppercase().as_str() {
             "T" | "CUTTING" | "B" | "BOUNDARY" => {
                 self.edge_set.clear();
@@ -3325,7 +3406,8 @@ impl CadCommand for TrimCommand {
             TrimMode::Fence(_)
             | TrimMode::CrossFirst
             | TrimMode::CrossSecond(_)
-            | TrimMode::Erase => CmdResult::NeedPoint,
+            | TrimMode::Erase
+            | TrimMode::ChooseMode => CmdResult::NeedPoint,
             TrimMode::Pick => CmdResult::Cancel,
         }
     }
@@ -3357,6 +3439,14 @@ pub struct ExtendCommand {
 }
 
 impl ExtendCommand {
+    fn choose_mode(&mut self, text: &str) -> Option<CmdResult> {
+        let (result, rebuild) = choose_mode(&mut self.mode, &mut self.edge_set, text)?;
+        if rebuild {
+            self.rebuild_geos();
+        }
+        Some(result)
+    }
+
     pub fn new(all_entities: Vec<EntityType>) -> Self {
         Self::with_boundary_edges(all_entities, Vec::new())
     }
@@ -3373,7 +3463,7 @@ impl ExtendCommand {
             all_entities,
             entity_index,
             geos: Vec::new(),
-            mode: TrimMode::Pick,
+            mode: starting_mode(&initial_edges),
             edge_set: initial_edges,
             implied_edges: false,
             shift: false,
@@ -3443,6 +3533,7 @@ impl CadCommand for ExtendCommand {
                 crate::tf!("EXTEND{edge}  Crossing: opposite corner:").into_owned()
             }
             TrimMode::Erase => t!("EXTEND  [Enter = done]:").into_owned(),
+            TrimMode::ChooseMode => mode_prompt("EXTEND"),
         }
     }
 
@@ -3461,8 +3552,10 @@ impl CadCommand for ExtendCommand {
                     },
                     "E",
                 ),
+                CmdOption::new("mOde", "O"),
                 CmdOption::enter("Done"),
             ],
+            TrimMode::ChooseMode => mode_options(),
             _ => vec![CmdOption::enter("Done")],
         }
     }
@@ -3472,6 +3565,9 @@ impl CadCommand for ExtendCommand {
     }
 
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        if let Some(result) = self.choose_mode(text) {
+            return Some(result);
+        }
         match text.trim().to_uppercase().as_str() {
             "B" | "BOUNDARY" | "T" | "CUTTING" => {
                 self.edge_set.clear();
@@ -3788,7 +3884,8 @@ impl CadCommand for ExtendCommand {
             TrimMode::Fence(_)
             | TrimMode::CrossFirst
             | TrimMode::CrossSecond(_)
-            | TrimMode::Erase => CmdResult::NeedPoint,
+            | TrimMode::Erase
+            | TrimMode::ChooseMode => CmdResult::NeedPoint,
             TrimMode::Pick => CmdResult::Cancel,
         }
     }
