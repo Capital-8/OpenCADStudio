@@ -730,7 +730,7 @@ impl ColorPicker {
         let load_button = |content: Element<'static, Message>| {
             button(content)
                 .on_press(picker_msg(ColorPickerMsg::LoadBook))
-                .style(button::secondary)
+                .style(tab_button_style)
         };
         let Some(book) = self.books.get(self.book) else {
             return container(
@@ -761,7 +761,7 @@ impl ColorPicker {
                 .width(Length::Fill),
                 load_button(
                     container(
-                        secondary_icon(crate::ui::icons::themed_handle(
+                        tab_icon(crate::ui::icons::themed_handle(
                             crate::ui::icons::FOLDER_OPEN
                         ))
                         .width(16)
@@ -854,14 +854,14 @@ impl ColorPicker {
                 .width(9)
                 .height(5)
                 .style(|theme: &Theme, _status| svg::Style {
-                    color: Some(theme.palette().secondary.base.text),
+                    color: Some(theme.palette().background.strong.text),
                 }),
             )
             .on_press(picker_msg(ColorPickerMsg::BookPage(page)))
             .width(Length::Fill)
             .height(18)
             .padding([6, 8])
-            .style(button::secondary)
+            .style(tab_button_style)
         };
         let strip = column![
             arrow("M0 4L3.5 0L7 4z", self.book_page.saturating_sub(1)),
@@ -1139,10 +1139,20 @@ fn search_box<'a>(
     .into()
 }
 
-/// An icon in the text colour of a secondary button, so it reads on it.
-fn secondary_icon<'a>(handle: svg::Handle) -> svg::Svg<'a> {
+/// A small button in the colours of the active tab: the load button and
+/// the page arrows.
+fn tab_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let mut style = segment_style(theme, true, status);
+    if matches!(status, button::Status::Hovered | button::Status::Pressed) {
+        style.background = Some(theme.palette().background.stronger.color.into());
+    }
+    style
+}
+
+/// An icon in the active tab's text colour, for `tab_button_style`.
+fn tab_icon<'a>(handle: svg::Handle) -> svg::Svg<'a> {
     svg(handle).style(|theme: &Theme, _status| svg::Style {
-        color: Some(theme.palette().secondary.base.text),
+        color: Some(theme.palette().background.strong.text),
     })
 }
 
