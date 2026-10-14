@@ -57,15 +57,10 @@ impl ColorBook {
     }
 }
 
-/// The colour books that ship with the program; their licences are in the
-/// files' header comments.
+/// The colour book that ships with the program; its licence is in the
+/// file's header comment.
 pub fn builtin() -> impl Iterator<Item = ColorBook> {
-    [
-        include_str!("../../../assets/color_books/ral-classic.acb"),
-        include_str!("../../../assets/color_books/sikkens-4041.acb"),
-    ]
-    .into_iter()
-    .filter_map(|text| parse(text).ok())
+    parse(include_str!("../../../assets/color_books/ral-classic.acb")).into_iter()
 }
 
 /// Read an `.acb` file's text.
