@@ -142,6 +142,11 @@ impl<'a> HostSession<'a> {
             let key = (self.tab_id(), self.app.tabs[self.tab].scene.geometry_epoch);
             if self.app.last_plugin_document != Some(key) {
                 v4_support::publish_drawing_changed(key.0, key.1);
+                // The plain `DocumentChanged` follows the same immediate
+                // publish contract (API v9): a plugin-initiated write settles
+                // here, so native plugins' `on_notification` sees it now —
+                // the message boundary's fingerprint guard then dedupes.
+                v4_support::publish_document_changed(key.1);
             }
             v4_support::publish_document_view_v4(self.tab_id(), doc);
             self.app.last_plugin_document =
@@ -3151,7 +3156,7 @@ impl<'a> HostSession<'a> {
     /// through this session. The designation is a scene-scoped in-memory set
     /// keyed by handle: nothing is written to the saved DWG/DXF, the set dies
     /// with the tab, and a reloaded drawing starts undesignated — the owning
-    /// plugin re-marks its entities when the document opens, which makes the
+    /// plugin re-marks on the `DocumentOpened` notification, which makes the
     /// in-memory designation fully equivalent to a persisted one for its use
     /// case.
     ///

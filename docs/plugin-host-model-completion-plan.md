@@ -401,7 +401,7 @@ and `box_selections_skip_reference_only_wires`; the record surface test
 `reference_only_request_and_response_roundtrip`. Like the XRecord API, a Python mapping is future
 work.
 
-**Reference-only rework: scene-scoped storage (2026-10-14, API v9).**
+**Reference-only rework: scene-scoped storage and notification dispatch (2026-10-14, API v9).**
 Supersedes the storage decision above after the upstream review: the designation is no longer
 written to the file at all. The XDATA marker under the host-owned `OCS` APPID (and the APPID
 registration, the verbatim-EED rewrite handling and the storage unit tests built on it) is removed;
@@ -418,8 +418,27 @@ idempotent re-mark records nothing, erasing a designated entity drops the set en
 step, and undo/redo restores entity and designation together. The round-trip test is inverted:
 `reference_only_designation_is_not_written_to_dwg_or_dxf` now asserts the marker appears in
 neither format's bytes, that no `OCS` APPID or marker record survives a reload, and that the
-designation stays live in memory. Evidence: the set-storage tests
-`marking_and_unmarking_report_and_track_membership`, `removing_a_handle_forgets_it`,
+designation stays live in memory.
+
+The same rework closes the missing load callback with real notification dispatch: the host now
+delivers the existing `HostNotification`s to every loaded native plugin through
+`BuiltinPlugin::on_notification` — `DocumentChanged` (the active tab's settled geometry epoch)
+and `SelectionChanged` (the plain selection set) at the fingerprint-guarded message boundaries
+the v4 bridge already uses (`notify_plugins_selection_changed` / `notify_plugins_document_changed`,
+plus the automation post-op boundary), and a new additive `DocumentOpened { tab_id }` variant
+(discriminant 10, the counterpart of the existing `DocumentTabClosed`) that fires once per whole
+document install — file open, template new, system open — keyed on a new per-tab document
+generation. Boundary rule: dispatch happens after the mutation settles and pending history scopes
+closed, never mid-undo/mid-pick, and history (undo/redo) replay itself emits nothing — the
+boundary is the only channel; plugin-initiated writes publish immediately after settling, like
+the drawing-changed event, with the boundary fingerprint deduplicating. Handlers may call HostApi
+write methods through the same session (`set_reference_only` at minimum), and the loop closes
+because an idempotent re-mark bumps nothing: no epoch, no undo step, no publish. With
+`DocumentOpened`, a plugin re-marks on every load and the in-memory designation is fully
+equivalent to a persisted one for its use case; the remaining gap (a plugin process restarted
+while its drawing is open) stays open and documented — the plugin's own session persistence
+covers it on reopen. No Python mapping, like the rest of this increment. Evidence: the set-storage
+tests `marking_and_unmarking_report_and_track_membership`, `removing_a_handle_forgets_it`,
 `retain_present_drops_entries_of_absent_entities`, `scene_membership_is_guarded_by_entity_presence`
 and `tessellated_wires_stamp_from_the_designation_set`; the host tests
 `reference_only_refusals_record_no_undo_step`,
@@ -428,5 +447,12 @@ and `tessellated_wires_stamp_from_the_designation_set`; the host tests
 `erasing_a_designated_entity_undoes_designation_with_it`,
 `user_paths_refuse_and_plugin_paths_write_reference_only_entities`,
 `select_all_visible_skips_reference_only_entities`,
-`entities_records_expose_the_reference_only_designation`; the unchanged pick tests; and the IPC
-round-trip `reference_only_request_and_response_roundtrip` (unchanged).
+`entities_records_expose_the_reference_only_designation`; the unchanged pick tests; the dispatch
+tests `an_edit_dispatches_document_changed_once_per_epoch`,
+`a_selection_change_dispatches_selection_changed`,
+`a_document_open_dispatches_document_opened_once`,
+`a_file_open_dispatches_document_opened_through_the_message_flow`,
+`idempotent_designation_remarks_cannot_loop_the_dispatch`,
+`history_replay_emits_no_plugin_notifications_itself` and
+`dispatching_without_loaded_plugins_leaves_the_app_state_untouched`; and the IPC round-trip
+`reference_only_request_and_response_roundtrip` (unchanged).

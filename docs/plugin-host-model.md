@@ -141,6 +141,31 @@ designation. Out of scope today: entities nested inside block instances
 mapping. The MCP `entities` read exposes the flag as a `reference_only`
 boolean on every entity record.
 
+**Re-marking on load: `HostNotification` dispatch (API v9).** The host
+dispatches the existing `HostNotification`s to every loaded native plugin
+through `BuiltinPlugin::on_notification`: `DocumentChanged` (carrying the
+active tab's settled geometry epoch), `SelectionChanged` (the plain selection
+set), and a new `DocumentOpened` — the counterpart of the existing
+`DocumentTabClosed` — which fires once whenever a whole document becomes
+resident in a tab (file open, template new, system open). With
+`DocumentOpened`, the owning plugin re-marks its entities when a drawing
+loads, which makes the in-memory designation fully equivalent to a persisted
+one for its use case. Dispatch happens at the message boundary — after the
+mutation settles and pending history scopes have closed — never mid-undo or
+mid-pick; history (undo/redo) replay itself emits nothing, the boundary is
+the only channel. Plugin-initiated writes publish immediately after they
+settle (the same contract the drawing-changed event follows), and the
+boundary's fingerprint guard deduplicates. Handlers may call HostApi write
+methods through the same session (`set_reference_only` at minimum;
+`update_entity` for reference-only refresh goes through the plugin write
+paths): a handler's write bumps the epoch, the next boundary notifies once
+more, and because a re-mark of already-designated geometry is a documented
+no-op — no epoch bump, no undo step, no publish — the loop terminates. The
+remaining gap stays open and documented: a plugin process restarted while
+its drawing is open has no snapshot of the designations (the plugin's own
+session persistence closes it; reopen from disk re-marks via
+`DocumentOpened`). Not mapped to Python.
+
 ### Usage from a plugin
 
 Build the derived geometry and designate it inside one `push_undo` scope, so
@@ -180,8 +205,9 @@ Notes for plugin authors:
 - The designation travels with the entity: a clone → edit → replace refresh
   keeps it, so a plugin marks its display data once and refreshes freely.
 - The designation is scene state, not file state: it does not survive
-  DWG/DXF save and reload — a plugin re-marks its display data when the
-  document opens, and idempotent re-marks keep that loop finite.
+  DWG/DXF save and reload. Subscribe to `on_notification` and re-mark on
+  `DocumentOpened`; the idempotent re-mark guarantees the
+  `DocumentChanged`-driven loop terminates.
 - Rendering and object snap are unaffected; grips, picking and the built-in
   write paths are the only observers.
 - Plugins that read the document through the IPC client (the

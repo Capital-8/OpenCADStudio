@@ -396,6 +396,15 @@ pub enum HostNotification {
         tab_id: u64,
         epoch: u64,
     },
+    /// V9 a document became resident in a tab: a whole document replaced the
+    /// tab's previous content — opened from file, created from a template, or
+    /// loaded by an automation/system open. The counterpart of
+    /// [`HostNotification::DocumentTabClosed`]: with both, a plugin can keep
+    /// per-document state (e.g. runtime designations) in sync from load to
+    /// close. Discriminant 10.
+    DocumentOpened {
+        tab_id: u64,
+    },
     /// Fallback for notification variants added in future minor revisions.
     /// Carries the raw bincode payload so an older peer can ignore it without
     /// failing deserialization.
@@ -447,6 +456,10 @@ impl Serialize for HostNotification {
                 bincode::serialize_into(&mut bytes, tab_id).map_err(serde::ser::Error::custom)?;
                 bincode::serialize_into(&mut bytes, epoch).map_err(serde::ser::Error::custom)?;
             }
+            HostNotification::DocumentOpened { tab_id } => {
+                bytes.push(10);
+                bincode::serialize_into(&mut bytes, tab_id).map_err(serde::ser::Error::custom)?;
+            }
             HostNotification::Unknown(raw) => bytes.extend_from_slice(raw),
         }
         bytes.serialize(serializer)
@@ -489,6 +502,9 @@ impl<'de> Deserialize<'de> for HostNotification {
                 .map_err(serde::de::Error::custom),
             9 => bincode::deserialize(rest)
                 .map(|(tab_id, epoch)| HostNotification::DrawingChanged { tab_id, epoch })
+                .map_err(serde::de::Error::custom),
+            10 => bincode::deserialize(rest)
+                .map(|tab_id| HostNotification::DocumentOpened { tab_id })
                 .map_err(serde::de::Error::custom),
             _ => Ok(HostNotification::Unknown(bytes)),
         }
@@ -1195,9 +1211,10 @@ pub trait HostApi {
     /// handle: it is not written to the saved DWG/DXF (the host stores no
     /// state of its own in the file), it lives and dies with the drawing tab,
     /// and a reloaded drawing starts undesignated — the owning plugin
-    /// re-marks its entities when the document opens, which makes the
-    /// in-memory designation fully equivalent to a persisted one for its use
-    /// case.
+    /// re-marks its entities when
+    /// [`on_notification`](BuiltinPlugin::on_notification) delivers
+    /// [`HostNotification::DocumentOpened`], making the in-memory designation
+    /// fully equivalent to a persisted one for its use case.
     ///
     /// Fails when the entity does not exist or is on a locked layer (the same
     /// policy as the XDATA record methods). A call that would not change the
