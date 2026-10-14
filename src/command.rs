@@ -1965,7 +1965,8 @@ pub enum CmdResult {
         handles: Vec<Handle>,
         factor: f64,
     },
-    /// Print a measurement result to the command line and end the command.
+    /// Print a measurement result to the command line and end the command
+    /// (an empty one ends it silently).
     Measurement(String),
     /// Print a measurement result and keep the command active.
     ReportMeasurement(String),
