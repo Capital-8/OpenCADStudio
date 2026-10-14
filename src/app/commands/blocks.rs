@@ -990,17 +990,30 @@ impl OpenCADStudio {
                 }
             }
 
-            // EXTERNALREFERENCES — toggle the docked External References panel.
+            // EXTERNALREFERENCES opens the docked External References panel
+            // (an open one stays open); EXTERNALREFERENCESCLOSE closes it.
             // (XREFMAN was a provisional name and is not kept, not even as an
             // alias.) The XREF command below is untouched.
             "EXTERNALREFERENCES" => {
-                self.show_external_references ^= true;
-                if self.show_external_references {
-                    // Always open expanded so the panel is immediately usable;
-                    // dock it on the right if the user closed it from the layout.
-                    self.dock_open_at_default(crate::ui::dock::PanelId::ExternalReferences);
-                    self.refresh_xref_manager();
-                }
+                self.show_external_references = true;
+                // Always open expanded so the panel is immediately usable;
+                // dock it on the right if the user closed it from the layout.
+                self.dock_open_at_default(crate::ui::dock::PanelId::ExternalReferences);
+                self.refresh_xref_manager();
+            }
+            "EXTERNALREFERENCESCLOSE" => self.show_external_references = false,
+            // ERSTATE (read only): whether the panel is open.
+            cmd if cmd
+                .strip_prefix("SETVAR ")
+                .unwrap_or(cmd)
+                .split_whitespace()
+                .next()
+                .is_some_and(|name| name.eq_ignore_ascii_case("ERSTATE")) =>
+            {
+                self.command_line.push_output(&format!(
+                    "ERSTATE = {} (read only)",
+                    u8::from(self.show_external_references)
+                ));
             }
 
             cmd if cmd.eq_ignore_ascii_case("XREF")
