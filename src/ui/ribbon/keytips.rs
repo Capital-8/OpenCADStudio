@@ -193,15 +193,17 @@ fn tab_code(module: &str) -> Option<&'static str> {
     })
 }
 
-/// Quick-access buttons in order; their codes are their positions.
-const QUICK_ACCESS: &[&str] = &[
-    "QNEW",
-    "OPEN",
-    "SAVE",
-    "SAVEAS",
-    "PRINT",
-    super::widgets::UNDO_HISTORY_ID,
-    super::widgets::REDO_HISTORY_ID,
+/// Quick-access buttons with the number the reference toolbar gives the same
+/// button (its 5 and 9, the web and mobile and workspace items, have no
+/// counterpart here).
+const QUICK_ACCESS: &[(&str, &str)] = &[
+    ("QNEW", "1"),
+    ("OPEN", "2"),
+    ("SAVE", "3"),
+    ("SAVEAS", "4"),
+    ("PRINT", "6"),
+    (super::widgets::UNDO_HISTORY_ID, "7"),
+    (super::widgets::REDO_HISTORY_ID, "8"),
 ];
 
 /// Reference codes as (scope, target, code). In a tab's scope (its module id)
@@ -395,6 +397,8 @@ const CODES: &[(&str, &str, &str)] = &[
     ("annotate", "DATALINK", "DL"),
     ("annotate", "WIPEOUT", "WI"),
     ("annotate", "REVCLOUD", "AC"),
+    // The reference shows AC here too; the first one in ribbon order runs.
+    ("annotate", "ANNOTATION_CURRENT_SCALE", "AC"),
     ("annotate", "SCALELISTEDIT", "SL"),
     ("annotate", "OBJECTSCALE", "AS"),
     ("annotate", "ANNORESET", "SS"),
@@ -402,6 +406,8 @@ const CODES: &[(&str, &str, &str)] = &[
     ("view", "Viewport Tools", "VT"),
     ("view", "UCSICON", "UI"),
     ("view", "NAVVCUBE", "VC"),
+    // Viewport Configuration carries VC too in the reference.
+    ("view", "VPORTS", "VC"),
     ("view", "PAN", "PA"),
     ("view", "3DORBIT", "OR"),
     ("view", "Model Viewports", "VP"),
@@ -439,8 +445,9 @@ const CODES: &[(&str, &str, &str)] = &[
     ("block_editor", "CCONSTRAINT", "CI"),
     ("block_editor", "PCONSTRAINT", "PA"),
     ("block_editor", "TCONSTRAINT", "TA"),
-    // The reference gives Concentric the same code; Collinear comes first.
+    // Collinear and Concentric share CO in the reference; the first runs.
     ("block_editor", "LCONSTRAINT", "CO"),
+    ("block_editor", "GCCONCENTRIC", "CO"),
     ("block_editor", "QCONSTRAINT", "PE"),
     ("block_editor", "GCSMOOTH", "SM"),
     ("block_editor", "GCHORIZONTAL", "HO"),
@@ -611,10 +618,10 @@ impl Ribbon {
                 action: Action::Tab(index),
             })
             .collect();
-        tips.extend(QUICK_ACCESS.iter().enumerate().map(|(index, &id)| Tip {
+        tips.extend(QUICK_ACCESS.iter().map(|&(id, code)| Tip {
             anchor: quick_access_anchor(id),
             target: id,
-            code: Some((index + 1).to_string()),
+            code: Some(code.to_string()),
             action: Action::Run(match id {
                 super::widgets::UNDO_HISTORY_ID => Message::Undo,
                 super::widgets::REDO_HISTORY_ID => Message::Redo,
@@ -803,12 +810,13 @@ impl Ribbon {
     /// The hint bar layer and the codes layer.
     pub fn keytip_layers(&self) -> Option<(Element<'_, Message>, Element<'_, Message>)> {
         let state = self.keytips.as_ref()?;
-        let tips: Vec<(String, String)> = self
+        let tips: Vec<(String, String, bool)> = self
             .keytip_list()
             .into_iter()
             .filter_map(|tip| {
                 let code = tip.code?;
-                code.starts_with(&state.typed).then_some((tip.anchor, code))
+                let dropdown = matches!(tip.action, Action::Open(Message::ToggleRibbonDropdown(_)));
+                code.starts_with(&state.typed).then_some((tip.anchor, code, dropdown))
             })
             .collect();
         let mut path = state.path.join(" › ");
@@ -854,7 +862,8 @@ impl Ribbon {
 /// they sit above flyouts and dropdowns, after their widgets reported where
 /// they are.
 struct KeyTipLayer {
-    tips: Vec<(String, String)>,
+    /// (anchor, code, opens a dropdown).
+    tips: Vec<(String, String, bool)>,
     /// Characters of a partial code, shown dimmed on matching tips.
     typed: usize,
     bar: Option<[String; 3]>,
@@ -1009,35 +1018,36 @@ impl overlay::Overlay<Message, Theme, Renderer> for KeyTipOverlay<'_> {
         let font = bold(renderer);
         let mut shown = Vec::new();
         renderer.with_layer(window, |renderer| {
-            for (anchor, code) in &self.layer.tips {
-                let Some(b) = fresh_bounds(anchor) else {
-                    continue;
-                };
-                let width = text_width(code, PILL_TEXT, font) + 10.0;
-                let top_row = anchor.starts_with("tab:")
-                    || anchor.starts_with("qa:")
-                    || anchor == super::widgets::UNDO_HISTORY_ID
-                    || anchor == super::widgets::REDO_HISTORY_ID;
-                let center = if top_row {
-                    // Tabs and quick-access buttons: on the lower edge, so the
-                    // label stays readable.
-                    Point::new(b.center_x(), b.y + b.height - 2.0)
-                } else if anchor.contains('/') && b.width >= 60.0 {
-                    // Menu rows: at the right end, clear of the label.
-                    Point::new(b.x + b.width - width / 2.0 - 4.0, b.center_y())
-                } else if anchor.contains('/') {
-                    // Slide-out icons: on the lower edge.
-                    Point::new(b.center_x(), b.y + b.height - 2.0)
-                } else if b.height >= 40.0 {
-                    // Large buttons: over the label.
-                    Point::new(b.center_x(), b.y + b.height - PILL_H / 2.0 - 2.0)
-                } else {
-                    // Small buttons: at the lower left, over the icon.
-                    Point::new(b.x + width / 2.0, b.y + b.height - PILL_H / 2.0 + 3.0)
-                };
-                let x = (center.x - width / 2.0).clamp(window.x, (window.width - width).max(window.x));
-                let y = (center.y - PILL_H / 2.0).clamp(window.y, (window.height - PILL_H).max(window.y));
-                let pill = Rectangle::new(Point::new(x, y), Size::new(width, PILL_H));
+            // Place every code; a panel-title code keeps the reference place
+            // and a button code it would cover rises just clear of it.
+            let mut pills: Vec<(&String, &String, Rectangle, bool)> = self
+                .layer
+                .tips
+                .iter()
+                .filter_map(|(anchor, code, dropdown)| {
+                    let b = fresh_bounds(anchor)?;
+                    let width = text_width(code, PILL_TEXT, font) + 10.0;
+                    let (center, panel) = pill_center(anchor, b, width, *dropdown);
+                    let x = (center.x - width / 2.0)
+                        .clamp(window.x, (window.width - width).max(window.x));
+                    let y = (center.y - PILL_H / 2.0)
+                        .clamp(window.y, (window.height - PILL_H).max(window.y));
+                    Some((anchor, code, Rectangle::new(Point::new(x, y), Size::new(width, PILL_H)), panel))
+                })
+                .collect();
+            let panels: Vec<Rectangle> = pills.iter().filter(|p| p.3).map(|p| p.2).collect();
+            for pill in pills.iter_mut().filter(|p| !p.3) {
+                for panel in &panels {
+                    // Touching edges do not count.
+                    if panel
+                        .intersection(&pill.2)
+                        .is_some_and(|r| r.width > 1.0 && r.height > 1.0)
+                    {
+                        pill.2.y = pill.2.y.min(panel.y - PILL_H - 1.0);
+                    }
+                }
+            }
+            for (anchor, code, pill, _) in pills {
                 renderer.fill_quad(
                     renderer::Quad {
                         bounds: pill,
@@ -1126,4 +1136,45 @@ fn draw_bar(renderer: &mut Renderer, theme: &Theme, parts: &[String; 3]) {
 /// Anchor for the whole ribbon (the hint bar sits under it).
 pub(super) fn ribbon_area<'a>(el: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     anchor(RIBBON_AREA, el)
+}
+
+/// Where a code sits on its widget, after the reference ribbon: under a
+/// tab's label; with its corner at the icon's centre on quick-access, small
+/// and slide-out buttons; centred on a panel title or the corner launcher
+/// (`true`); under a large button's label, or on a large dropdown's arrow.
+/// Menu rows of dropdown lists, which the reference gives no codes, carry it
+/// at their right end.
+fn pill_center(anchor: &str, b: Rectangle, width: f32, dropdown: bool) -> (Point, bool) {
+    let top_left = |x: f32, y: f32| Point::new(x + width / 2.0, y + PILL_H / 2.0);
+    if anchor.starts_with("tab:") {
+        return (Point::new(b.center_x(), b.y + b.height - 4.0 + PILL_H / 2.0), false);
+    }
+    if anchor.starts_with("qa:")
+        || anchor == super::widgets::UNDO_HISTORY_ID
+        || anchor == super::widgets::REDO_HISTORY_ID
+    {
+        return (top_left(b.x + 14.0, b.center_y()), false);
+    }
+    if anchor.ends_with("_extension")
+        || anchor == XREF_LAUNCHER
+        || (anchor.starts_with(COLLAPSED_PREFIX) && b.height < 40.0)
+    {
+        return (b.center(), true);
+    }
+    let slide_out_item = anchor
+        .split_once('/')
+        .is_some_and(|(parent, _)| parent.ends_with("_extension"));
+    if anchor.contains('/') && !slide_out_item && b.width >= 60.0 {
+        return (Point::new(b.x + b.width - width / 2.0 - 4.0, b.center_y()), false);
+    }
+    if b.height >= 40.0 {
+        // A large dropdown's arrow strip lies under its label.
+        let below_label = if dropdown {
+            b.y + b.height - super::widgets::LARGE_ARR / 2.0
+        } else {
+            b.y + b.height + 1.0
+        };
+        return (Point::new(b.center_x(), below_label), false);
+    }
+    (top_left(b.x + (b.width / 2.0).min(15.0), b.center_y()), false)
 }
