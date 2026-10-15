@@ -682,6 +682,7 @@ common =
     .layers = Livelli
     .layout = Disposizione
     .layout-name-silindi = Layout "__ocs_fmt_0__" eliminato
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = Layout "__ocs_fmt_0__" creato: utilizza MVIEW per aggiungere una finestra
     .layout-orig-new-name = Disposizione "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = Layout '__ocs_fmt_0__' creato.

@@ -695,6 +695,7 @@ common =
     .layers = الطبقات
     .layout = التخطيط
     .layout-name-silindi = حُذف التخطيط "__ocs_fmt_0__"
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = أُنشئ التخطيط "__ocs_fmt_0__" — استخدم MVIEW لإضافة منفذ عرض
     .layout-orig-new-name = التخطيط "__ocs_fmt_0__" ← "__ocs_fmt_1__"
     .layout-name-created = أُنشئ التخطيط '__ocs_fmt_0__'.

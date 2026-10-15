@@ -687,6 +687,7 @@ common =
     .layers = Fóliák
     .layout = Elrendezés
     .layout-name-silindi = A(z) „__ocs_fmt_0__” elrendezés törölve
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = A „__ocs_fmt_0__” elrendezés létrehozva – használja a MVIEW elemet nézetablak hozzáadásához
     .layout-orig-new-name = „__ocs_fmt_0__” → „__ocs_fmt_1__” elrendezés
     .layout-name-created = „__ocs_fmt_0__” elrendezés létrehozva.

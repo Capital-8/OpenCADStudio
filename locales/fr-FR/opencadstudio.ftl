@@ -683,6 +683,7 @@ common =
     .layers = Calques
     .layout = Mise en page
     .layout-name-silindi = Présentation « __ocs_fmt_0__ » supprimée
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = Présentation « __ocs_fmt_0__ » créée — utilisez MVIEW pour ajouter une fenêtre
     .layout-orig-new-name = Disposition "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = Mise en page '__ocs_fmt_0__' créée.

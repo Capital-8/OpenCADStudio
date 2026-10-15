@@ -3765,6 +3765,12 @@ pub enum Message {
     },
     /// Create a new paper space layout.
     LayoutCreate,
+    /// Copy the named layout, its page setup and paper-space objects.
+    LayoutCopy(String),
+    /// Open the named layout's page setup.
+    LayoutPageSetup(String),
+    /// Plot the named layout.
+    LayoutPlot(String),
     /// Delete the named paper space layout (Model cannot be deleted).
     LayoutDelete(String),
     /// Begin inline rename for the given layout tab.

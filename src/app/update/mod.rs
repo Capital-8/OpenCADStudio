@@ -8297,6 +8297,18 @@ impl OpenCADStudio {
 
             Message::LayoutCreate => self.on_layout_create(),
 
+            Message::LayoutCopy(name) => self.on_layout_copy(name),
+
+            Message::LayoutPageSetup(name) => {
+                let switch_task = self.on_layout_switch(name);
+                Task::batch([switch_task, self.on_plot_dialog_open()])
+            }
+
+            Message::LayoutPlot(name) => {
+                let switch_task = self.on_layout_switch(name);
+                Task::batch([switch_task, Task::done(Message::Command("PLOT".into()))])
+            }
+
             Message::LayoutDelete(name) => {
                 let i = self.active_tab;
                 let deleting_current = self.tabs[i].scene.current_layout == name;

@@ -682,6 +682,7 @@ common =
     .layers = Kerrokset
     .layout = Asettelu
     .layout-name-silindi = Asettelu "__ocs_fmt_0__" poistettiin
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = Asettelu "__ocs_fmt_0__" luotu — käytä MVIEW:tä lisätäksesi näkymän
     .layout-orig-new-name = Asettelu "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = Asettelu '__ocs_fmt_0__' luotu.

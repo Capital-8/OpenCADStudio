@@ -671,6 +671,7 @@ common =
     .layers = लेयर
     .layout = लेआउट
     .layout-name-silindi = लेआउट “__ocs_fmt_0__” हटाया गया
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = लेआउट "__ocs_fmt_0__" बनाया गया है - एक व्यूपोर्ट जोड़ने के लिए MVIEW का उपयोग करें
     .layout-orig-new-name = लेआउट "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = लेआउट '__ocs_fmt_0__' बनाया गया है।

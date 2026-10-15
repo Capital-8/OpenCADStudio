@@ -6920,6 +6920,47 @@ properties={:.1}ms picked={}",
         cancel_task
     }
 
+    /// Copy layout `source` as "source (2)": its page setup and every
+    /// paper-space object, viewports included. The copy opens.
+    pub(super) fn on_layout_copy(&mut self, source: String) -> Task<Message> {
+        let i = self.active_tab;
+        if self.tabs[i].is_start || source == "Model" {
+            return Task::none();
+        }
+        let existing = self.tabs[i].scene.layout_names();
+        let Some(name) = (2..)
+            .map(|n| format!("{source} ({n})"))
+            .find(|candidate| !existing.contains(candidate))
+        else {
+            return Task::none();
+        };
+        let cancel_task = self.cancel_active_command_for_space_change();
+        self.push_undo_snapshot(i, "LAYOUT");
+        let scene = &mut self.tabs[i].scene;
+        if let Err(e) = scene.add_layout(&name) {
+            self.command_line
+                .push_error(crate::tf!("Failed to create layout: {e}").as_ref());
+            return cancel_task;
+        }
+        scene.copy_layout_page(&source, &name);
+        let handles = scene.layout_paper_entities(&source);
+        let (entities, deps) = crate::app::copy_to_clipboard_kernel(&scene.document, &handles);
+        crate::app::paste_entities_kernel(
+            &mut scene.document,
+            &entities,
+            &deps,
+            None,
+            crate::app::PasteSpace::Layout(&name),
+        );
+        scene.populate_meshes_from_document();
+        scene.bump_geometry();
+        self.tabs[i].dirty = true;
+        self.command_line
+            .push_output(crate::tf!("Layout \"{source}\" copied as \"{name}\"").as_ref());
+        let switch_task = self.on_layout_switch(name);
+        Task::batch([cancel_task, switch_task])
+    }
+
     pub(super) fn on_layout_rename_commit(&mut self) -> Task<Message> {
         if let Some((orig, new_name)) = self.layout_rename_state.take() {
             let new_name = new_name.trim().to_string();

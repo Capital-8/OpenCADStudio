@@ -686,6 +686,7 @@ common =
     .layers = ເລເຢີ
     .layout = ເລເອົາຕ໌
     .layout-name-silindi = ລຶບເລເອົາຕ໌ "__ocs_fmt_0__" ແລ້ວ
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = ສ້າງເລເອົາຕ໌ "__ocs_fmt_0__" ແລ້ວ — ໃຊ້ MVIEW ເພື່ອເພີ່ມວິວພອດ
     .layout-orig-new-name = ເລເອົາຕ໌ "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = ສ້າງເລເອົາຕ໌ '__ocs_fmt_0__' ແລ້ວ.

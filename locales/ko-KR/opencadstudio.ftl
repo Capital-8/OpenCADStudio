@@ -682,6 +682,7 @@ common =
     .layers = 레이어
     .layout = 레이아웃
     .layout-name-silindi = 레이아웃 "__ocs_fmt_0__" 삭제됨
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = "__ocs_fmt_0__" 레이아웃이 생성되었습니다. MVIEW를 사용하여 뷰포트를 추가하세요.
     .layout-orig-new-name = 레이아웃 "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = '__ocs_fmt_0__' 레이아웃이 생성되었습니다.

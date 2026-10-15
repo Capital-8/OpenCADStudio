@@ -669,6 +669,7 @@ common =
     .layers = Katmanlar
     .layout = Yerleşim
     .layout-name-silindi = "__ocs_fmt_0__" yerleşimi silindi
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = "__ocs_fmt_0__" yerleşimi oluşturuldu — görünüm alanı eklemek için MVIEW komutunu kullanın
     .layout-orig-new-name = "__ocs_fmt_0__" yerleşimi → "__ocs_fmt_1__"
     .layout-name-created = '__ocs_fmt_0__' yerleşimi oluşturuldu.

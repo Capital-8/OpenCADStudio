@@ -682,6 +682,7 @@ common =
     .layers = Warstwy
     .layout = Układ
     .layout-name-silindi = Układ „__ocs_fmt_0__” został usunięty
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = Utworzono układ „__ocs_fmt_0__” — użyj MVIEW, aby dodać rzutnię
     .layout-orig-new-name = Układ „__ocs_fmt_0__” → „__ocs_fmt_1__”
     .layout-name-created = Utworzono układ „__ocs_fmt_0__”.

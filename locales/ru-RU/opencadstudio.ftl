@@ -686,6 +686,7 @@ common =
     .layers = Слои
     .layout = Расположение
     .layout-name-silindi = Лист «__ocs_fmt_0__» удалён
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = Создан лист «__ocs_fmt_0__» — используйте MVIEW для добавления видового экрана
     .layout-orig-new-name = Выравнивание "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = Создан лист «__ocs_fmt_0__».

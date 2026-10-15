@@ -681,6 +681,7 @@ common =
     .layers = Lagen
     .layout = Indeling
     .layout-name-silindi = Lay-out "__ocs_fmt_0__" verwijderd
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = Lay-out "__ocs_fmt_0__" gemaakt — voeg een weergavevenster toe met MVIEW
     .layout-orig-new-name = Indeling "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = Layout '__ocs_fmt_0__' aangemaakt.

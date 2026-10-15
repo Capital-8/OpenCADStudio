@@ -683,6 +683,7 @@ common =
     .layers = Capas
     .layout = Presentación
     .layout-name-silindi = Se eliminó la presentación «__ocs_fmt_0__»
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = Se creó la presentación «__ocs_fmt_0__»; use MVIEW para añadir una ventana gráfica
     .layout-orig-new-name = Presentación «__ocs_fmt_0__» → «__ocs_fmt_1__»
     .layout-name-created = Se creó la presentación «__ocs_fmt_0__».

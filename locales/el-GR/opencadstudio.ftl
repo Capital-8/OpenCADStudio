@@ -684,6 +684,7 @@ common =
     .layers = Επίπεδα
     .layout = Διάταξη
     .layout-name-silindi = Η διάταξη "__ocs_fmt_0__" διαγράφηκε
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = Η διάταξη "__ocs_fmt_0__" δημιουργήθηκε — χρησιμοποιήστε MVIEW για να προσθέσετε θύρα προβολής
     .layout-orig-new-name = Διάταξη "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = Η διάταξη '__ocs_fmt_0__' δημιουργήθηκε.

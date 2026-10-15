@@ -937,23 +937,25 @@ fn osnap_btn<'a>(
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 fn layout_tab_context_menu(name: String) -> Element<'static, Message> {
-    let rename = mouse_area(
-        container(text(t!("Rename")).size(12))
-            .padding([4, 12])
-            .width(Length::Fill),
-    )
-    .on_press(Message::LayoutRenameStart(name.clone()))
-    .interaction(iced::mouse::Interaction::Pointer);
+    let item = |label: std::borrow::Cow<'static, str>, message: Message| {
+        mouse_area(
+            container(text(label).size(12))
+                .padding([4, 12])
+                .width(Length::Fill),
+        )
+        .on_press(message)
+        .interaction(iced::mouse::Interaction::Pointer)
+    };
+    let items = column![
+        item(t!("New Layout"), Message::LayoutCreate),
+        item(t!("Copy"), Message::LayoutCopy(name.clone())),
+        item(t!("Rename"), Message::LayoutRenameStart(name.clone())),
+        item(t!("Delete"), Message::LayoutDelete(name.clone())),
+        item(t!("Page Setup"), Message::LayoutPageSetup(name.clone())),
+        item(t!("Plot"), Message::LayoutPlot(name)),
+    ];
 
-    let delete = mouse_area(
-        container(text(t!("Delete")).size(12))
-            .padding([4, 12])
-            .width(Length::Fill),
-    )
-    .on_press(Message::LayoutDelete(name))
-    .interaction(iced::mouse::Interaction::Pointer);
-
-    container(column![rename, delete].spacing(0).width(160))
+    container(items.spacing(0).width(160))
         .style(container::bordered_box)
         .padding([4, 0])
         .into()

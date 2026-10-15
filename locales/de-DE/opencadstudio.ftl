@@ -683,6 +683,7 @@ common =
     .layers = Ebenen
     .layout = Layout
     .layout-name-silindi = Layout „__ocs_fmt_0__“ gelöscht
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = Layout „__ocs_fmt_0__“ erstellt — mit MVIEW kann ein Ansichtsfenster hinzugefügt werden
     .layout-orig-new-name = Layout „__ocs_fmt_0__“ → „__ocs_fmt_1__“
     .layout-name-created = Layout „__ocs_fmt_0__“ erstellt.

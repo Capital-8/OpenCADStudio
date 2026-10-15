@@ -682,6 +682,7 @@ common =
     .layers = Vrstvy
     .layout = Rozložení
     .layout-name-silindi = Rozložení „__ocs_fmt_0__“ bylo odstraněno
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = Bylo vytvořeno rozvržení „__ocs_fmt_0__“ – pomocí MVIEW přidejte výřez
     .layout-orig-new-name = Rozložení "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = Bylo vytvořeno rozvržení '__ocs_fmt_0__'.

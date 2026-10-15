@@ -1963,6 +1963,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Layout" => Some(("common", "layout")),
         "Layout\nTabs" => Some(("view", "layout-tabs")),
         "Layout \"{name}\" silindi" => Some(("common", "layout-name-silindi")),
+        "Layout \"{source}\" copied as \"{name}\"" => Some(("common", "layout-copied")),
         "Layout \"{new_name}\" created — use MVIEW to add a viewport" => Some(("common", "layout-new-name-created-use-mview-to-add-a-vie")),
         "Layout \"{orig}\" → \"{new_name}\"" => Some(("common", "layout-orig-new-name")),
         "Layout '{name}' created." => Some(("common", "layout-name-created")),

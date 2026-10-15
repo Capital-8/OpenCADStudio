@@ -682,6 +682,7 @@ common =
     .layers = 圖層
     .layout = 配置
     .layout-name-silindi = 配置“__ocs_fmt_0__”已刪除
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = 建立的版式“ __ocs_fmt_0__ ” — 使用 MVIEW 新增視圖
     .layout-orig-new-name = 版式“ __ocs_fmt_0__” − “__ocs_fmt_1__ ”
     .layout-name-created = 建立了版式“ __ocs_fmt_0__ ” 。

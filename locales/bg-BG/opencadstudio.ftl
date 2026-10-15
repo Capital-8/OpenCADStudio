@@ -682,6 +682,7 @@ common =
     .layers = Слоеве
     .layout = Оформление
     .layout-name-silindi = Оформление "__ocs_fmt_0__" изтрито
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = Оформление "__ocs_fmt_0__" създадено — използвай MVIEW, за да добавиш изглед
     .layout-orig-new-name = Оформление "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = Оформление "__ocs_fmt_0__" създадено.

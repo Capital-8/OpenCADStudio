@@ -673,6 +673,7 @@ common =
     .layers = レイヤー
     .layout = レイアウト
     .layout-name-silindi = レイアウト "__ocs_fmt_0__" を削除しました
+    .layout-copied = Layout "__ocs_fmt_0__" copied as "__ocs_fmt_1__"
     .layout-new-name-created-use-mview-to-add-a-vie = レイアウト "__ocs_fmt_0__" を作成しました — MVIEW でビューポートを追加できます
     .layout-orig-new-name = レイアウト "__ocs_fmt_0__" → "__ocs_fmt_1__"
     .layout-name-created = レイアウト '__ocs_fmt_0__' を作成しました。
