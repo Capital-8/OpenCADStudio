@@ -1412,13 +1412,12 @@ fn build_instanced_chunks(
             Vec::new()
         };
     let vertices_at = profile_enabled.then(iced::time::Instant::now);
+    let edge_base = first.set.edge_color.unwrap_or(first.display_color);
     let edge_color = first
         .set
         .visual_style
         .as_ref()
-        .map_or(first.display_color, |style| {
-            style.edge_color(first.display_color)
-        });
+        .map_or(edge_base, |style| style.edge_color(edge_base));
     let edge_key = (source_handle, edge_color.map(f32::to_bits));
     let shared_edge_buffer = (first.include_edges && !split_geometry)
         .then(|| buffers.edges.get(&edge_key).cloned())
@@ -2215,12 +2214,11 @@ pub fn build_mesh_batch_filtered(
         let uv_mesh = part.uv_mesh;
         let local_bounds = mesh_bounds(uv_mesh);
         let model_bounds = mesh_bounds(mesh);
+        let edge_base = set.edge_color.unwrap_or(part.display_color);
         let edge_color = set
             .visual_style
             .as_ref()
-            .map_or(part.display_color, |style| {
-                style.edge_color(part.display_color)
-            });
+            .map_or(edge_base, |style| style.edge_color(edge_base));
         let vtx = |vi: usize,
                    local_mapping_normal: Option<[f32; 3]>,
                    model_mapping_normal: Option<[f32; 3]>| {

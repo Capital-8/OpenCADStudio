@@ -3191,7 +3191,10 @@ analytic={:.1} regular={:.1} blocks={:.1}",
             let mut slots = rustc_hash::FxHashMap::default();
             let mut groups: Vec<Vec<&crate::scene::model::mesh_model::MeshLodSet>> = Vec::new();
             for (index, set) in sets.iter().enumerate() {
-                let color = set.display_color().unwrap_or([0.0, 0.0, 0.0, 1.0]);
+                let color = set
+                    .edge_color
+                    .or_else(|| set.display_color())
+                    .unwrap_or([0.0, 0.0, 0.0, 1.0]);
                 let key = match (&set.instance_source, set.instance_transform) {
                     (Some(source), Some(transform)) => {
                         let matrix = &transform.matrix.m;

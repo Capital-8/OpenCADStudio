@@ -1991,6 +1991,7 @@ fn transform_block_mesh_lod_set(set: &MeshLodSet, xform: &codec::types::Transfor
         instance_transform: Some(*xform),
         instance_handle: None,
         instance_color: set.display_color(),
+        edge_color: set.edge_color,
         instance_aabb: bounds
             .iter()
             .all(|value| value.is_finite())
@@ -8994,6 +8995,12 @@ impl Scene {
                         entity,
                         viewport,
                     );
+                    // Colour 7 lines contrast with what the solid is drawn
+                    // on; shaded faces keep the colour so they still read as
+                    // lit. White edges on a white sheet hid a wireframe solid
+                    // in a layout viewport. (#1446)
+                    let edge = crate::scene::view::render::adapt_to_bg(style.0, self.current_bg());
+                    set.edge_color = (edge != style.0).then_some(edge);
                     let attached_material = set
                         .material
                         .as_ref()

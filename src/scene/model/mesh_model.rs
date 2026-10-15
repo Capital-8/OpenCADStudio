@@ -145,6 +145,9 @@ pub struct MeshLodSet {
     pub instance_handle: Option<codec::Handle>,
     /// Effective colour after INSERT inheritance, without copying the mesh.
     pub instance_color: Option<[f32; 4]>,
+    /// Colour of the edge and silhouette lines when it differs from the
+    /// faces': colour 7 drawn against the background it sits on.
+    pub edge_color: Option<[f32; 4]>,
     /// Precise world bounds used by the interaction index.
     pub instance_aabb: Option<[f64; 6]>,
 }
@@ -249,6 +252,7 @@ impl MeshLodSet {
             instance_transform: None,
             instance_handle: None,
             instance_color: None,
+            edge_color: None,
             instance_aabb: None,
         }
     }

@@ -2549,6 +2549,7 @@ mod tests {
             instance_transform: None,
             instance_handle: None,
             instance_color: None,
+            edge_color: None,
             instance_aabb: None,
         }
     }

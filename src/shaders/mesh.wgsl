@@ -594,7 +594,10 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
 // wireframe and hidden-line edge passes so lines read at their true colour.
 @fragment
 fn fs_edge(in: EdgeVertexOut) -> @location(0) vec4<f32> {
-    return vec4<f32>(surface.face_color.rgb, 1.0);
+    // The edge buffers carry their own colour (keyed by it, so instances
+    // share a buffer only with the same colour): a visual style's edge
+    // colour, or colour 7 turned against the background (#1446).
+    return vec4<f32>(in.color.rgb, 1.0);
 }
 
 // Edge fragment for filled render modes: force black so edges frame the shaded
