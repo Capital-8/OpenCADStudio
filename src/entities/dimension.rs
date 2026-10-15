@@ -1756,6 +1756,12 @@ pub(crate) fn resolved_dimension_style(
         }
     }
 
+    // An annotative style sizes its features by the annotation scale; the
+    // DIMSCALE it still stores is inert.
+    if style.annotative {
+        style.dimscale = 0.0;
+    }
+
     // Negative DIMLFAC applies only in paper space, and there only to a
     // dimension that measures model space through a viewport. The associative
     // record stores the applied factor; zero marks paper-space geometry whose

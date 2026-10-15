@@ -5654,11 +5654,30 @@ impl Scene {
             4 // Millimeters
         };
 
-        crate::modules::draw::units::conversion_factor(
+        let factor = crate::modules::draw::units::conversion_factor(
             self.document.header.insertion_units,
             paper_unit,
         )
-        .unwrap_or(1.0)
+        .unwrap_or(1.0);
+        // Some templates store their ratio scales already converted to the
+        // drawing unit (a metre drawing's "1:50" as 1 paper = 0.05 drawing).
+        // Those must not be converted a second time.
+        let converted = self.document.objects.values().find_map(|object| {
+            let ObjectType::Scale(scale) = object else {
+                return None;
+            };
+            let (paper, drawing) = scale.name.split_once(':')?;
+            let paper = paper.trim().parse::<f64>().ok()?;
+            let nominal = drawing.trim().parse::<f64>().ok()? / paper;
+            let stored = scale.drawing_units / scale.paper_units;
+            (nominal.is_finite() && nominal > 0.0)
+                .then(|| (stored * factor - nominal).abs() <= 1.0e-6 * nominal)
+        });
+        if factor != 1.0 && converted == Some(true) {
+            1.0
+        } else {
+            factor
+        }
     }
 
     fn is_architectural_scale_name(name: &str) -> bool {
