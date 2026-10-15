@@ -1432,6 +1432,11 @@ impl Scene {
             self.define_block_raw(name, base_point, entities);
             return Ok(());
         };
+        if self.block_edit_block == Some(br_handle) {
+            return Err(format!(
+                "block \"{name}\" is open in the Block Editor; close it before redefining"
+            ));
+        }
         let owned: Vec<Handle> = self
             .document
             .entities()

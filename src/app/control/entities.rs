@@ -65,6 +65,12 @@ impl OpenCADStudio {
     /// layers they name, and commit everything as one undoable step. All definitions are validated before the first
     /// entity is added, so the batch is all-or-nothing.
     pub(super) fn control_entities_create(&mut self, req: &Value) -> Result<Task<Message>, Value> {
+        if self.tabs[self.active_tab].scene.block_edit_block.is_some() {
+            return Err(failure(
+                "block_editor_open",
+                "finish the open block editor before adding entities to a block",
+            ));
+        }
         let list = req["entities"]
             .as_array()
             .filter(|v| !v.is_empty())

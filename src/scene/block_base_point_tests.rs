@@ -1255,3 +1255,71 @@ fn locked_redefine_block_raw_refuses_cycle() {
         "expected cycle error, got: {err}"
     );
 }
+
+#[test]
+fn locked_redefine_block_raw_refuses_open_block() {
+    let mut scene = Scene::new();
+    let open_name = "REDEF_OPEN";
+    let other_name = "REDEF_CLOSED";
+
+    scene.define_block_raw(
+        open_name,
+        Vector3::ZERO,
+        vec![EntityType::Line(Line::from_points(
+            Vector3::ZERO,
+            Vector3::new(1.0, 0.0, 0.0),
+        ))],
+    );
+    scene.define_block_raw(
+        other_name,
+        Vector3::ZERO,
+        vec![EntityType::Line(Line::from_points(
+            Vector3::ZERO,
+            Vector3::new(2.0, 0.0, 0.0),
+        ))],
+    );
+
+    let open_record = scene.document.block_records.get(open_name).unwrap().handle;
+    let members_before = scene
+        .document
+        .block_records
+        .get(open_name)
+        .unwrap()
+        .entity_handles
+        .clone();
+    scene.block_edit_block = Some(open_record);
+
+    let res = scene.redefine_block_raw(
+        open_name,
+        Vector3::ZERO,
+        vec![EntityType::Line(Line::from_points(
+            Vector3::ZERO,
+            Vector3::new(9.0, 9.0, 0.0),
+        ))],
+    );
+    let err = res.expect_err("redefining the open block must be refused");
+    assert!(
+        err.contains(open_name) && err.contains("Block Editor"),
+        "expected refusal naming the block and the editor, got: {err}"
+    );
+    assert_eq!(
+        scene
+            .document
+            .block_records
+            .get(open_name)
+            .unwrap()
+            .entity_handles,
+        members_before,
+        "the open definition must be untouched"
+    );
+
+    let res = scene.redefine_block_raw(
+        other_name,
+        Vector3::ZERO,
+        vec![EntityType::Line(Line::from_points(
+            Vector3::ZERO,
+            Vector3::new(8.0, 0.0, 0.0),
+        ))],
+    );
+    assert!(res.is_ok(), "a closed block must still redefine: {res:?}");
+}

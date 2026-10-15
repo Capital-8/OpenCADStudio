@@ -54,6 +54,11 @@ fn main_depth(app: &OpenCADStudio) -> usize {
         .unwrap_or(tab.history.undo_stack.len())
 }
 
+fn feed(app: &mut OpenCADStudio, text: &str) {
+    let _ = app.update(Message::CommandInput(text.to_string()));
+    let _ = app.update(Message::CommandSubmit);
+}
+
 #[test]
 fn local_undo_preserves_imported_native_networks_when_constraints_are_unchanged() {
     use codec::objects::{
@@ -920,6 +925,182 @@ fn close_all_resumes_after_discarding_a_dirty_block() {
         .iter()
         .any(|tab| tab.id == first || tab.id == second));
     assert!(app.pending_tab_closes.is_empty());
+}
+
+#[test]
+fn explode_inside_session_edits_the_definition_and_marks_dirty() {
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    app.tabs[i].scene.define_block_raw(
+        "CHILD",
+        Vector3::ZERO,
+        vec![EntityType::Line(Line::from_points(
+            Vector3::ZERO,
+            Vector3::new(3.0, 0.0, 0.0),
+        ))],
+    );
+    begin(&mut app, reference);
+    let _ = app.dispatch_command("-INSERT");
+    feed(&mut app, "CHILD");
+    feed(&mut app, "0,5");
+    feed(&mut app, "1");
+    feed(&mut app, "1");
+    feed(&mut app, "0");
+    app.finish_pending_history(i);
+    let before = members(&app);
+    assert_eq!(before.len(), 2, "the nested INSERT joins the definition");
+    let insert_handle = *before.last().unwrap();
+    assert!(
+        matches!(
+            app.tabs[i].scene.document.get_entity(insert_handle),
+            Some(EntityType::Insert(_))
+        ),
+        "expected the member just added to be the INSERT"
+    );
+    let depth = main_depth(&app);
+    app.tabs[i].scene.select_entity(insert_handle, true);
+    let _ = app.dispatch_command("EXPLODE");
+    assert!(
+        app.block_edit_dirty(i),
+        "the explode marks the session dirty"
+    );
+    assert_eq!(main_depth(&app), depth, "the main stack is untouched");
+    let _ = app.dispatch_command("BSAVE");
+    let saved = members(&app);
+    assert!(
+        saved
+            .iter()
+            .all(|h| app.tabs[i].scene.document.get_entity(*h).is_some()),
+        "the saved definition carries no dangling member handle: {saved:?}"
+    );
+    assert_eq!(saved.len(), 2, "the INSERT is replaced by its piece");
+    assert!(
+        !saved.contains(&insert_handle),
+        "the exploded INSERT leaves the saved definition"
+    );
+    assert!(
+        saved.iter().any(|h| {
+            matches!(
+                app.tabs[i].scene.document.get_entity(*h),
+                Some(EntityType::Line(_))
+            )
+        }),
+        "the child line lands as a member of the edited block"
+    );
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+}
+
+#[test]
+fn xclip_inside_session_stays_in_the_definition() {
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    app.tabs[i].scene.define_block_raw(
+        "CHILD",
+        Vector3::ZERO,
+        vec![EntityType::Line(Line::from_points(
+            Vector3::ZERO,
+            Vector3::new(3.0, 0.0, 0.0),
+        ))],
+    );
+    begin(&mut app, reference);
+    let _ = app.dispatch_command("-INSERT");
+    feed(&mut app, "CHILD");
+    feed(&mut app, "0,5");
+    feed(&mut app, "1");
+    feed(&mut app, "1");
+    feed(&mut app, "0");
+    app.finish_pending_history(i);
+    let before = members(&app);
+    let insert_handle = *before.last().unwrap();
+    let depth = main_depth(&app);
+    app.tabs[i].scene.select_entity(insert_handle, true);
+    let _ = app.dispatch_command("XCLIP");
+    feed(&mut app, "N");
+    feed(&mut app, "R");
+    feed(&mut app, "0,0");
+    feed(&mut app, "10,10");
+    app.finish_pending_history(i);
+    assert!(
+        crate::scene::pick::xclip::filter_handle(&app.tabs[i].scene.document, insert_handle)
+            .is_some(),
+        "the clip filter attaches to the in-block reference"
+    );
+    assert!(
+        members(&app).contains(&insert_handle),
+        "the clipped reference stays a member of the definition"
+    );
+    assert!(app.block_edit_dirty(i), "the clip marks the session dirty");
+    assert_eq!(main_depth(&app), depth, "the main stack is untouched");
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+}
+
+#[test]
+fn attdef_inside_session_lands_in_the_definition_and_undo_stays_local() {
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    let depth = main_depth(&app);
+    begin(&mut app, reference);
+    assert_eq!(members(&app).len(), 1);
+    let _ = app.dispatch_command("-ATTDEF");
+    feed(&mut app, ""); // modes: done
+    feed(&mut app, "TAG1");
+    feed(&mut app, "prompt text");
+    feed(&mut app, ""); // default value
+    feed(&mut app, ""); // single line
+    feed(&mut app, "0,5");
+    feed(&mut app, "2");
+    feed(&mut app, "0");
+    app.finish_pending_history(i);
+    let after = members(&app);
+    assert_eq!(after.len(), 2, "the ATTDEF joins the definition");
+    assert!(
+        matches!(
+            app.tabs[i]
+                .scene
+                .document
+                .get_entity(*after.last().unwrap()),
+            Some(EntityType::AttributeDefinition(_))
+        ),
+        "the new member is the ATTDEF"
+    );
+    assert!(
+        app.block_edit_dirty(i),
+        "the ATTDEF marks the session dirty"
+    );
+    assert_eq!(main_depth(&app), depth, "the main stack is untouched");
+    app.undo_steps(1);
+    assert_eq!(members(&app).len(), 1, "session undo removes the ATTDEF");
+    assert_eq!(main_depth(&app), depth, "the main stack is still untouched");
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+}
+
+#[test]
+fn save_after_session_undo_does_not_write_a_dangling_member() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    circle(&mut app, 1.0);
+    assert_eq!(members(&app).len(), 2);
+    app.undo_steps(1);
+    assert_eq!(members(&app).len(), 1);
+    let depth = main_depth(&app);
+    let _ = app.dispatch_command("BSAVE");
+    assert!(app.tabs[app.active_tab].active_block_edit.is_some());
+    let saved = members(&app);
+    assert!(
+        saved.iter().all(|h| app.tabs[app.active_tab]
+            .scene
+            .document
+            .get_entity(*h)
+            .is_some()),
+        "save after a session undo must not write a member handle whose entity is gone: {saved:?}"
+    );
+    assert_eq!(
+        main_depth(&app),
+        depth,
+        "a clean save commits no new drawing step"
+    );
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    assert_eq!(members(&app).len(), 1);
 }
 
 #[test]

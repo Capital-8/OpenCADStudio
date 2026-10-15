@@ -1227,6 +1227,47 @@ fn locked_mcp_block_delete_with_force_still_refuses_an_open_bedit_session() {
     let _ = app.dispatch_command("BEDIT_DISCARD");
 }
 
+/// Control/MCP `entities_create` must not route new entities into the open
+/// block while pushing a main-stack entry (same policy as the plugin guard).
+#[test]
+fn locked_control_entities_create_refused_while_block_editor_open() {
+    let mut app = app();
+    let name = fixture_unreferenced(&mut app);
+    let insert = add_insert(&mut app, &name);
+    begin_bedit(&mut app, insert);
+    assert!(bedit_open(&app));
+    let depth = entity_count(&app);
+    let main_depth = app.tabs[app.active_tab]
+        .block_edit_history
+        .as_ref()
+        .map(|h| h.main.undo_stack.len())
+        .unwrap_or(app.tabs[app.active_tab].history.undo_stack.len());
+    let doc = app.automation_op(r#"{"protocol":1,"op":"state"}"#)["document_id"]
+        .as_u64()
+        .unwrap();
+    let response = app.automation_op(&format!(
+        r#"{{"protocol":1,"op":"entities_create","request_id":"p11s15","document_id":{doc},"entities":[{{"type":"Point","location":[5,5]}}]}}"#
+    ));
+    assert_eq!(response["ok"], false, "{response}");
+    assert_eq!(response["code"], "block_editor_open", "{response}");
+    assert_eq!(
+        response["error"], "finish the open block editor before adding entities to a block",
+        "{response}"
+    );
+    assert_eq!(
+        entity_count(&app),
+        depth,
+        "no entity may be created through the control path"
+    );
+    let main_depth_after = app.tabs[app.active_tab]
+        .block_edit_history
+        .as_ref()
+        .map(|h| h.main.undo_stack.len())
+        .unwrap_or(app.tabs[app.active_tab].history.undo_stack.len());
+    assert_eq!(main_depth_after, main_depth, "no undo entry may be pushed");
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+}
+
 // ── PURGE ────────────────────────────────────────────────────────────────
 
 #[test]
