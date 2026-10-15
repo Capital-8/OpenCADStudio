@@ -2409,6 +2409,7 @@ impl OpenCADStudio {
             Message::AttdefDialog(message) => self.on_attdef_dialog(message),
             Message::FieldDialog(message) => self.on_field_dialog(message),
             Message::RefEditDialog(message) => self.update_refedit_dialog(message),
+            Message::PdfShxDialog(message) => self.update_pdf_shx_dialog(message),
             Message::PcManager(message) => self.update_pc_manager(message),
             Message::Count(message) => self.on_count(message),
             Message::SheetSet(message) => self.on_sheet_set(message),
@@ -9586,6 +9587,14 @@ impl OpenCADStudio {
                 }
                 if self.active_modal == Some(super::ModalKind::RefEdit) {
                     self.refedit_dialog = None;
+                }
+                // Cancel returns to PDFSHXTEXT's selection prompt.
+                if self.active_modal == Some(super::ModalKind::PdfShxSettings) {
+                    self.pdf_shx_dialog = None;
+                    self.close_active_modal();
+                    let i = self.active_tab;
+                    self.start_pdf_shx_gather(i);
+                    return self.focus_cmd_input();
                 }
                 // Cancelling the section settings drops the waiting extraction.
                 if self.active_modal == Some(super::ModalKind::PcSection) {

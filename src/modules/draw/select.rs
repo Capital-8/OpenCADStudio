@@ -44,6 +44,8 @@ pub struct SelectObjectsCommand {
     /// The kinds of object the command takes; the host drops the rest of
     /// each completed selection silently, and Enter on nothing ends quietly.
     keep: Option<fn(&codec::EntityType) -> bool>,
+    /// A command-specific SEttings option: the private command it runs.
+    settings_cmd: Option<&'static str>,
 }
 
 impl SelectObjectsCommand {
@@ -61,6 +63,7 @@ impl SelectObjectsCommand {
             prompt_text: None,
             associative_dimensions_only: false,
             keep: None,
+            settings_cmd: None,
         }
     }
 
@@ -79,6 +82,7 @@ impl SelectObjectsCommand {
             prompt_text: None,
             associative_dimensions_only: false,
             keep: None,
+            settings_cmd: None,
         }
     }
 
@@ -97,6 +101,7 @@ impl SelectObjectsCommand {
             prompt_text: None,
             associative_dimensions_only: false,
             keep: None,
+            settings_cmd: None,
         }
     }
 
@@ -115,6 +120,7 @@ impl SelectObjectsCommand {
             prompt_text: None,
             associative_dimensions_only: false,
             keep: None,
+            settings_cmd: None,
         }
     }
 
@@ -147,6 +153,19 @@ impl SelectObjectsCommand {
     ) -> Self {
         let mut command = Self::with_prompt(prompt_cmd, pending_cmd, prompt_text);
         command.keep = Some(keep);
+        command
+    }
+
+    /// The command's own wording with a SEttings option that runs
+    /// `settings_cmd` (which brings the gather back when it is done).
+    pub fn with_settings(
+        prompt_cmd: &str,
+        pending_cmd: &str,
+        prompt_text: &'static str,
+        settings_cmd: &'static str,
+    ) -> Self {
+        let mut command = Self::with_prompt(prompt_cmd, pending_cmd, prompt_text);
+        command.settings_cmd = Some(settings_cmd);
         command
     }
 
@@ -242,6 +261,9 @@ impl CadCommand for SelectObjectsCommand {
     // they work typed as well — these buttons only surface them, which is what
     // the on-screen keyboard-less case needs.
     fn options(&self) -> Vec<CmdOption> {
+        if self.settings_cmd.is_some() {
+            return vec![CmdOption::new(t!("SEttings").as_ref(), "SE")];
+        }
         if self.commit_on_enter && self.show_options {
             if self.auto_constrain_settings {
                 return vec![CmdOption::new(t!("Settings").as_ref(), "S")];
@@ -296,6 +318,12 @@ impl CadCommand for SelectObjectsCommand {
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
         if !self.commit_on_enter {
             return None;
+        }
+        let token = text.trim().trim_start_matches('_').to_uppercase();
+        if let Some(cmd) = self.settings_cmd {
+            if token.len() >= 2 && "SETTINGS".starts_with(token.as_str()) {
+                return Some(CmdResult::Dispatch(cmd.to_string()));
+            }
         }
         match text.trim().to_uppercase().as_str() {
             "S" | "SETTINGS" if self.auto_constrain_settings => {

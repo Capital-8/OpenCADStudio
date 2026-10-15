@@ -27,6 +27,7 @@ pub mod open_progress;
 pub mod options;
 pub mod pc_manager;
 pub mod pdf_dialogs;
+pub mod pdf_shx_dialog;
 pub mod plot;
 pub mod plugin_manager;
 pub mod print_all;

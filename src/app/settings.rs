@@ -457,6 +457,9 @@ pub struct UserSettings {
     /// LAYOUTCREATEVIEWPORT: a layout opened for the first time gets a
     /// viewport.
     pub layout_create_viewport: bool,
+    /// PDFSHXTEXT's recognition settings (fonts, threshold, PDFSHXLAYER,
+    /// PDFSHXBESTFONT, PDFSHXTEXTSETTINGS).
+    pub pdf_shx_text: crate::modules::insert::pdf_shx_text::ShxTextSettings,
     /// Nested-copy symbol handling: false inserts, true binds.
     pub ncopy_bind: bool,
     /// Last Options page; unknown saved names fall back without rejecting the config.
@@ -928,6 +931,7 @@ impl Default for UserSettings {
             ucs_ortho: true,
             ucs_view: true,
             layout_create_viewport: true,
+            pdf_shx_text: Default::default(),
             ncopy_bind: false,
             cursor_type: CursorType::Crosshair,
             crosshair_color: None,

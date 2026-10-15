@@ -1224,6 +1224,9 @@ impl OpenCADStudio {
                     | "PDFIMPORTFILTER"
                     | "PDFIMPORTLAYERS"
                     | "PDFIMPORTIMAGEPATH"
+                    | "PDFSHXLAYER"
+                    | "PDFSHXBESTFONT"
+                    | "PDFSHXTEXTSETTINGS"
                     | "XDWGFADECTL"
                     | "POINTCLOUDCLIPFRAME"
                     | "POINTCLOUDDENSITY"
@@ -1459,6 +1462,68 @@ impl OpenCADStudio {
                                 self.command_line.push_output(&format!(
                                     "Enter new value for PDFIMPORTIMAGEPATH, or . for none <\"{}\">:",
                                     image_path()
+                                ));
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    // PDFSHXTEXT's profile switches, taken as 1 / 0 or ON / OFF;
+                    // PDFSHXTEXTSETTINGS shows its value as a number.
+                    if matches!(
+                        name.as_str(),
+                        "PDFSHXLAYER" | "PDFSHXBESTFONT" | "PDFSHXTEXTSETTINGS"
+                    ) {
+                        use crate::modules::insert::pdf_shx_text::{set_settings, settings};
+                        let mut s = settings();
+                        let on = match name.as_str() {
+                            "PDFSHXLAYER" => s.current_layer,
+                            "PDFSHXBESTFONT" => s.best_font,
+                            _ => s.show_settings,
+                        };
+                        let current = if name == "PDFSHXTEXTSETTINGS" {
+                            i16::from(on).to_string()
+                        } else if on {
+                            "ON".to_string()
+                        } else {
+                            "OFF".to_string()
+                        };
+                        let parsed = value.as_deref().map(|v| {
+                            match v
+                                .trim()
+                                .trim_start_matches('_')
+                                .to_ascii_uppercase()
+                                .as_str()
+                            {
+                                "1" | "ON" => Some(true),
+                                "0" | "OFF" => Some(false),
+                                _ => None,
+                            }
+                        });
+                        match parsed {
+                            Some(Some(v)) => {
+                                if v != on {
+                                    match name.as_str() {
+                                        "PDFSHXLAYER" => s.current_layer = v,
+                                        "PDFSHXBESTFONT" => s.best_font = v,
+                                        _ => s.show_settings = v,
+                                    }
+                                    set_settings(s);
+                                    self.save_config();
+                                }
+                            }
+                            Some(None) => {
+                                self.command_line.push_error(
+                                    crate::t!("Requires 0 or 1 only, or option keyword.").as_ref(),
+                                );
+                                self.command_line.push_output(&format!(
+                                    "Enter new value for {name} <{current}>:"
+                                ));
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&format!(
+                                    "Enter new value for {name} <{current}>:"
                                 ));
                                 self.pending_setvar = Some(name.clone());
                             }

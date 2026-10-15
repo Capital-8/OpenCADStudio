@@ -22,6 +22,7 @@ pub(crate) mod pc_stylize;
 pub(crate) mod pdf_attach;
 pub(crate) mod pdf_clip;
 pub(crate) mod pdf_import;
+pub(crate) mod pdf_shx_text;
 pub(crate) mod picker;
 mod snap_underlays;
 pub(crate) mod solid3d_cmds;
