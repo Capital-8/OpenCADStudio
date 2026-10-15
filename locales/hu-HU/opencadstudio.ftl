@@ -2130,6 +2130,7 @@ common =
     .display-selection-cycling-list-box = Kijelölésváltó lista megjelenítése
     .display-coordinate-input-near-crosshairs = Koordinátabevitel megjelenítése a szálkeresztnél
     .display-grid-beyond-limits = Rács megjelenítése a rajzhatárokon túl
+    .display-grid-axis-lines = Display grid axis lines
     .display-selection-candidate-list-box-on-click = Kiválasztható objektumok listája kattintáskor
     .distance-and-angle-tolerances-must-be-non-negative-numbers = A távolság- és szögtűrések nemnegatív számok legyenek.
     .distance1-distance2 = 1. távolság = __ocs_fmt_0__, 2. távolság = __ocs_fmt_1__

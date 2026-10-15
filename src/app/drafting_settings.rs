@@ -25,6 +25,7 @@ impl DraftingSettingsState {
             grid_major_input: format!("{}", app.grid_major_every),
             grid_adaptive: app.grid_adaptive,
             grid_beyond_limits: app.grid_beyond_limits,
+            grid_axes: app.grid_axes,
             isometric: app.isometric_drafting,
             iso_plane: app.iso_plane,
             snap_angle_deg: app.snap_angle_deg,
@@ -99,6 +100,7 @@ impl OpenCADStudio {
         self.grid_major_every = gm;
         self.grid_adaptive = state.grid_adaptive;
         self.grid_beyond_limits = state.grid_beyond_limits;
+        self.grid_axes = state.grid_axes;
         self.snapper.grid_snap_on = state.snap_on;
         self.snapper.snap_spacing_x = sx;
         self.snapper.snap_spacing_y = sy;
@@ -151,6 +153,7 @@ mod tests {
             grid_major_input: "5".to_string(),
             grid_adaptive: true,
             grid_beyond_limits: true,
+            grid_axes: true,
             isometric: false,
             iso_plane: crate::app::settings::IsoPlane::Left,
             snap_angle_deg: 0.0,
@@ -193,6 +196,7 @@ mod tests {
             grid_major_input: "5".to_string(),
             grid_adaptive: true,
             grid_beyond_limits: true,
+            grid_axes: true,
             isometric: false,
             iso_plane: crate::app::settings::IsoPlane::Left,
             snap_angle_deg: 0.0,

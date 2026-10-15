@@ -6401,6 +6401,12 @@ impl OpenCADStudio {
                 }
                 Task::none()
             }
+            Message::DraftingSettingsToggleGridAxes => {
+                if let Some(state) = &mut self.drafting_settings_state {
+                    state.grid_axes = !state.grid_axes;
+                }
+                Task::none()
+            }
             Message::DraftingSettingsToggleEqualSnap => {
                 if let Some(state) = &mut self.drafting_settings_state {
                     state.snap_equal = !state.snap_equal;

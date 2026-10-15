@@ -704,6 +704,9 @@ pub struct UserSettings {
     /// Display grid beyond LIMITS (default on, matches dialog).
     #[serde(default = "default_true")]
     pub grid_beyond_limits: bool,
+    /// Draw the coloured X/Y axis lines through the grid origin.
+    #[serde(default = "default_true")]
+    pub grid_axes: bool,
     /// Most-recently-inserted block names, most recent first, capped to 20.
     /// Used to rank INSERT suggestions without touching the drawing file.
     #[serde(default)]
@@ -1052,6 +1055,7 @@ impl Default for UserSettings {
             grid_major_every: 5,
             grid_adaptive: true,
             grid_beyond_limits: true,
+            grid_axes: true,
             block_mru: Vec::new(),
             block_freq: std::collections::HashMap::new(),
             block_recent: Vec::new(),

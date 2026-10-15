@@ -2124,6 +2124,7 @@ common =
     .display-selection-cycling-list-box = ສະແດງກ່ອງລາຍການເລືອກແບບວຽນຮອບ
     .display-coordinate-input-near-crosshairs = ສະແດງຊ່ອງປ້ອນພິກັດໃກ້ເສັ້ນກາກະບາດ
     .display-grid-beyond-limits = ສະແດງເສັ້ນຕາຕະລາງເກີນຂອບເຂດ (Limits)
+    .display-grid-axis-lines = Display grid axis lines
     .display-selection-candidate-list-box-on-click = ສະແດງກ່ອງລາຍການຕົວເລືອກທີ່ອາດຈະເລືອກເມື່ອກົດຄລິກ
     .distance-and-angle-tolerances-must-be-non-negative-numbers = ຄ່າຄວາມຄາດເຄື່ອນຂອງໄລຍະຫ່າງ ແລະ ມຸມ ຕ້ອງບໍ່ເປັນຄ່າລົບ.
     .distance1-distance2 = ໄລຍະຫ່າງ1 = __ocs_fmt_0__, ໄລຍະຫ່າງ2 = __ocs_fmt_1__

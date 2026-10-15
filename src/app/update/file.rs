@@ -925,6 +925,7 @@ impl OpenCADStudio {
             grid_major_every: self.grid_major_every,
             grid_adaptive: self.grid_adaptive,
             grid_beyond_limits: self.grid_beyond_limits,
+            grid_axes: self.grid_axes,
             block_mru: self.block_mru.clone(),
             block_freq: self.block_freq.clone(),
             block_recent: self.block_palette.recent.clone(),
@@ -1110,6 +1111,7 @@ impl OpenCADStudio {
         self.grid_major_every = crate::app::settings::sanitize_grid_major(s.grid_major_every);
         self.grid_adaptive = s.grid_adaptive;
         self.grid_beyond_limits = s.grid_beyond_limits;
+        self.grid_axes = s.grid_axes;
         // Block usage: clone but cap to sane sizes (MRU 20, freq map 200)
         self.block_mru = s.block_mru.iter().take(20).cloned().collect();
         self.block_freq = s

@@ -5680,6 +5680,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Display Selection Cycling List Box" => Some(("common", "display-selection-cycling-list-box")),
         "Display coordinate input near crosshairs" => Some(("common", "display-coordinate-input-near-crosshairs")),
         "Display grid beyond Limits" => Some(("common", "display-grid-beyond-limits")),
+        "Display grid axis lines" => Some(("common", "display-grid-axis-lines")),
         "Display selection candidate list box on click" => Some(("common", "display-selection-candidate-list-box-on-click")),
         "Distance and angle tolerances must be non-negative numbers." => Some(("common", "distance-and-angle-tolerances-must-be-non-negative-numbers")),
         "Distance1 = {:.4}, Distance2 = {:.4}" => Some(("common", "distance1-distance2")),

@@ -2123,6 +2123,7 @@ common =
     .display-selection-cycling-list-box = Mostra box elenco per la selezione ciclica
     .display-coordinate-input-near-crosshairs = Mostra le coordinate vicino al mirino
     .display-grid-beyond-limits = Mostra griglia oltre ai limiti
+    .display-grid-axis-lines = Display grid axis lines
     .display-selection-candidate-list-box-on-click = Display selection candidate list box on click
     .distance-and-angle-tolerances-must-be-non-negative-numbers = Distanze e tolleranze degli angoli non possono essere numeri negativi.
     .distance1-distance2 = Distance1 = __ocs_fmt_0__, Distance2 = __ocs_fmt_1__

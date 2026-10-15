@@ -35,6 +35,7 @@ pub struct DraftingSettingsState {
     pub grid_major_input: String,
     pub grid_adaptive: bool,
     pub grid_beyond_limits: bool,
+    pub grid_axes: bool,
     pub isometric: bool,
     pub iso_plane: IsoPlane,
     pub snap_angle_deg: f32,
@@ -72,6 +73,7 @@ impl DraftingSettingsState {
             || self.grid_major_input != saved.grid_major_input
             || self.grid_adaptive != saved.grid_adaptive
             || self.grid_beyond_limits != saved.grid_beyond_limits
+            || self.grid_axes != saved.grid_axes
             || self.isometric != saved.isometric
             || self.iso_plane != saved.iso_plane
             || (self.snap_angle_deg - saved.snap_angle_deg).abs() > 0.001
@@ -384,6 +386,14 @@ pub fn view_window<'a>(
                         .on_toggle(|_| Message::DraftingSettingsToggleBeyondLimits)
                         .size(14),
                     text(crate::t!("Display grid beyond Limits")).size(11),
+                ]
+                .spacing(6)
+                .align_y(iced::Center),
+                row![
+                    checkbox(state.grid_axes)
+                        .on_toggle(|_| Message::DraftingSettingsToggleGridAxes)
+                        .size(14),
+                    text(crate::t!("Display grid axis lines")).size(11),
                 ]
                 .spacing(6)
                 .align_y(iced::Center),

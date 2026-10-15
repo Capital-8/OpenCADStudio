@@ -756,6 +756,8 @@ pub(super) struct OpenCADStudio {
     pub grid_adaptive: bool,
     /// Display the grid beyond LIMITS (infinite) instead of clipping to them.
     pub grid_beyond_limits: bool,
+    /// Draw the coloured X/Y axis lines through the grid origin.
+    pub grid_axes: bool,
     /// Dynamic input overlay (F12): show coordinate tooltip near cursor.
     dyn_input: bool,
     /// Dynamic input mode (DYNMODE): 0=off, 1=pointer, 2=dimensional, 3=both.
@@ -3567,6 +3569,7 @@ pub enum Message {
     DraftingSettingsGridMajorChanged(String),
     DraftingSettingsToggleAdaptiveGrid,
     DraftingSettingsToggleBeyondLimits,
+    DraftingSettingsToggleGridAxes,
     DraftingSettingsToggleEqualSnap,
     DraftingSettingsToggleIsometric,
     DraftingSettingsSetIsoPlane(crate::app::settings::IsoPlane),
@@ -4754,6 +4757,7 @@ impl OpenCADStudio {
             grid_major_every: 5,
             grid_adaptive: true,
             grid_beyond_limits: true,
+            grid_axes: true,
             dyn_input: true,
             dyn_mode: 3,
             options_tab: crate::ui::window::options::OptionsTab::General,

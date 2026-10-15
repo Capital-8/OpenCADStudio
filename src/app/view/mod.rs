@@ -627,6 +627,7 @@ bg={bg_ms:.1}ms n={view_count}"
             let grid_style = crate::ui::overlay::GridStyle {
                 opacity: self.model_space.grid_opacity,
                 bg_luminance: bg_lum,
+                axes: self.grid_axes,
             };
             crate::ui::overlay::grid_overlay(grid, grid_style)
         };

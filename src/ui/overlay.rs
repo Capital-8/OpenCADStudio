@@ -316,6 +316,8 @@ pub struct CrosshairOptions {
 pub struct GridStyle {
     pub opacity: u8,
     pub bg_luminance: f32,
+    /// Draw the coloured X/Y axis lines through the grid origin.
+    pub axes: bool,
 }
 
 impl Default for GridStyle {
@@ -323,6 +325,7 @@ impl Default for GridStyle {
         Self {
             opacity: 18,
             bg_luminance: 0.15,
+            axes: true,
         }
     }
 }
@@ -2722,7 +2725,7 @@ fn draw_grid(
         });
         frame.stroke(&path, major_stroke);
     }
-    if geometry.axis_extent > 0.0 {
+    if style.axes && geometry.axis_extent > 0.0 {
         let (gx, gy, gz) = grid_axes;
         let extent = (geometry.axis_extent + step_x.max(step_y)) * 1.5;
         draw_axes(
