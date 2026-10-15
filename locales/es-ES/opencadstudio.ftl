@@ -6597,3 +6597,9 @@ ucs-follow =
     .prompt = UCSFOLLOW: introduce 0 (conservar vista) o 1 (seguir SCP) <__ocs_fmt_0__>:
     .paper-space = UCSFOLLOW: activa una ventana de modelo; no se aplica al espacio papel.
     .invalid = UCSFOLLOW: solo se permite 0 o 1.
+
+block-def-dialog =
+    .open-in-editor = Open in block editor after creating
+    .remembered = Specify On-screen, the object option, Allow exploding and this switch are remembered for the next time.
+    .no-objects = No objects are selected for the block.
+    .create-empty = Create empty block

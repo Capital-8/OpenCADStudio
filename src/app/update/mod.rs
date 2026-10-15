@@ -5686,6 +5686,7 @@ impl OpenCADStudio {
                     state.error_message = None;
                     state.confirm_redefine = None;
                 }
+                self.refresh_block_definition_preview();
                 Task::none()
             }
             Message::BlockDefNameSelect(chosen) => {
@@ -5701,6 +5702,7 @@ impl OpenCADStudio {
                     );
                     state.set_base_point(glam::DVec3::new(base.x, base.y, base.z));
                 }
+                self.refresh_block_definition_preview();
                 Task::none()
             }
             Message::BlockDefBaseOnScreen(val) => {
@@ -5821,6 +5823,12 @@ impl OpenCADStudio {
                 }
                 Task::none()
             }
+            Message::BlockDefOpenInEditor(on) => {
+                if let Some(state) = self.block_definition.as_mut() {
+                    state.open_in_editor = on;
+                }
+                Task::none()
+            }
             Message::BlockDefHelp => {
                 self.command_line.push_info(
                     crate::t!("BLOCK creates a block definition from objects you select.").as_ref(),
@@ -5836,7 +5844,8 @@ impl OpenCADStudio {
                 }
                 self.commit_block_definition(true)
             }
-            Message::BlockDefApply => {
+            m @ (Message::BlockDefApply | Message::BlockDefCreateEmpty) => {
+                let create_empty = matches!(m, Message::BlockDefCreateEmpty);
                 let Some(state) = self.block_definition.as_mut() else {
                     return Task::none();
                 };
@@ -5859,15 +5868,16 @@ impl OpenCADStudio {
                         Some(crate::t!("Block name cannot start with '*'.").into_owned());
                     return Task::none();
                 }
-                if !state.objects_specify_onscreen && state.selected_handles.is_empty() {
-                    state.error_message = Some(
-                        crate::t!(
-                            "No objects selected. You must select objects to define a block."
-                        )
-                        .into_owned(),
-                    );
+                // No objects: the band offers to select some or to define
+                // an empty block.
+                if !state.objects_specify_onscreen
+                    && state.selected_handles.is_empty()
+                    && !create_empty
+                {
+                    state.empty_prompt = true;
                     return Task::none();
                 }
+                state.empty_prompt = false;
                 let i = self.active_tab;
                 if self.tabs[i]
                     .scene
@@ -7394,6 +7404,7 @@ impl OpenCADStudio {
                         .collect();
                     block_def.error_message = None;
                     self.active_modal = Some(super::ModalKind::BlockDefinition);
+                    self.refresh_block_definition_preview();
                 } else if let Some(ref mut wblock) = self.wblock {
                     wblock.selected_handles = self.tabs[i]
                         .scene

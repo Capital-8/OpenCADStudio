@@ -577,6 +577,9 @@ pub(super) struct OpenCADStudio {
     drawing_units: Option<crate::ui::window::drawing_units::State>,
     /// Working copy of the Block Definition dialog; `None` while it is closed.
     block_definition: Option<crate::ui::window::block_definition::BlockDefinitionState>,
+    /// The block the Block Definition dialog defines with "Open in block
+    /// editor" on; it opens once the definition is committed.
+    block_definition_open_editor: Option<String>,
     block_edit_picker: Option<crate::ui::window::block_edit_picker::State>,
     block_save_as: Option<crate::ui::window::block_save_as::State>,
     /// PDF dialogs' working copies; `None` while closed.
@@ -3441,6 +3444,10 @@ pub enum Message {
     BlockDefConfirmRedefine(bool),
     BlockDefDismissError,
     BlockDefHelp,
+    /// Block Definition: open the new block in the block editor.
+    BlockDefOpenInEditor(bool),
+    /// Block Definition: define the block with no objects.
+    BlockDefCreateEmpty,
     /// Write Block (WBLOCK) dialog messages
     WblockSourceMode(crate::ui::window::wblock::WblockSourceMode),
     WblockBlockName(String),
@@ -4602,6 +4609,7 @@ impl OpenCADStudio {
             layer_translator: None,
             drawing_units: None,
             block_definition: None,
+            block_definition_open_editor: None,
             block_edit_picker: None,
             block_save_as: None,
             pdf_attach: None,

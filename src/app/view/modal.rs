@@ -505,7 +505,7 @@ impl OpenCADStudio {
             }
             super::super::ModalKind::BlockDefinition => {
                 let state = self.block_definition.as_ref()?;
-                sized_flow(ex, 580, 390, |flow| {
+                sized_flow(ex, 600, 560, |flow| {
                     crate::ui::window::block_definition::view_window(state, flow)
                 })
             }

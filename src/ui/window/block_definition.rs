@@ -11,6 +11,7 @@ use iced::widget::{
 use iced::{Background, Border, Element, Fill, Length, Theme};
 
 use crate::app::Message;
+use crate::scene::WireModel;
 use crate::modules::draw::units;
 use crate::t;
 use crate::ui::style::common::muted_style;
@@ -73,6 +74,14 @@ pub struct BlockDefinitionState {
     pub error_message: Option<String>,
     pub confirm_redefine: Option<String>,
     pub desc_placeholder: String,
+    /// The selected objects, or the chosen existing definition, as drawn in
+    /// the name card.
+    pub preview: Vec<WireModel>,
+    /// OK was pressed with no objects: the band offers to select some or to
+    /// define an empty block.
+    pub empty_prompt: bool,
+    /// Open the new block in the block editor once it is defined.
+    pub open_in_editor: bool,
 }
 
 impl Clone for BlockDefinitionState {
@@ -100,6 +109,9 @@ impl Clone for BlockDefinitionState {
             error_message: self.error_message.clone(),
             confirm_redefine: self.confirm_redefine.clone(),
             desc_placeholder: self.desc_placeholder.clone(),
+            preview: self.preview.clone(),
+            empty_prompt: self.empty_prompt,
+            open_in_editor: self.open_in_editor,
         }
     }
 }
@@ -132,6 +144,9 @@ impl BlockDefinitionState {
             error_message: None,
             confirm_redefine: None,
             desc_placeholder: crate::t!("Enter block description...").into_owned(),
+            preview: Vec::new(),
+            empty_prompt: false,
+            open_in_editor: remembered.open_in_editor,
         }
     }
 
@@ -219,6 +234,44 @@ pub(crate) fn labeled_checkbox<'a>(
     .into()
 }
 
+/// The in-window warning shown when OK is pressed with no objects: select
+/// some, or define an empty block.
+fn empty_band<'a>() -> Element<'a, Message> {
+    container(
+        row![
+            crate::ui::icons::semantic(ICON_WARN, 15.0),
+            text(t!("No objects are selected for the block."))
+                .size(11)
+                .width(Fill),
+            button(text(t!("Select objects")).size(11))
+                .on_press(Message::BlockDefSelectObjects)
+                .style(button_style(false))
+                .padding([4, 12]),
+            button(text(t!("Create empty block")).size(11))
+                .on_press(Message::BlockDefCreateEmpty)
+                .style(button_style(false))
+                .padding([4, 12]),
+        ]
+        .spacing(10)
+        .align_y(iced::Center),
+    )
+    .padding([7, 10])
+    .width(Fill)
+    .style(|theme: &Theme| {
+        let warn = theme.palette().warning.base.color;
+        container::Style {
+            background: Some(Background::Color(warn.scale_alpha(0.16))),
+            border: Border {
+                width: 1.0,
+                radius: 6.0.into(),
+                color: warn,
+            },
+            ..Default::default()
+        }
+    })
+    .into()
+}
+
 pub fn view_window<'a>(
     state: &'a BlockDefinitionState,
     sizing: crate::ui::modal::ModalSizing,
@@ -274,7 +327,21 @@ pub fn view_window<'a>(
         name_column = name_column.push(hint);
     }
 
-    let name_section = name_column;
+    // The name card carries a live preview of the selected objects, or of
+    // the existing definition the name picks.
+    let preview = container(super::block_palette::preview_canvas(&state.preview, 86.0))
+        .padding(3)
+        .width(Length::Fixed(150.0))
+        .height(Length::Fixed(92.0))
+        .style(crate::ui::window::pdf_dialogs::well_style);
+    let name_section = container(
+        row![name_column, preview]
+            .spacing(12)
+            .align_y(iced::Center),
+    )
+    .padding([8, 10])
+    .width(Fill)
+    .style(crate::ui::window::pdf_dialogs::card_style);
 
     // ── Group: Base Point ─────────────────────────────────────────────────────
     let base_onscreen = labeled_checkbox(
@@ -587,16 +654,49 @@ pub fn view_window<'a>(
 
     // ── Footer Bar ────────────────────────────────────────────────────────────
     let actions = row![
+        button(text("?").size(12))
+            .on_press(Message::BlockDefHelp)
+            .style(button_style(false))
+            .padding([3, 10]),
         Space::new().width(Fill),
-        dialog_button(t!("OK"), Message::BlockDefApply, true),
         dialog_button(t!("Cancel"), Message::CloseModal, false),
-        dialog_button(t!("Help"), Message::BlockDefHelp, false),
+        dialog_button(t!("OK"), Message::BlockDefApply, true),
     ]
     .spacing(8)
     .align_y(iced::Center);
 
+    // ── Open in the block editor ─────────────────────────────────────────────
+    let editor_card = container(
+        column![
+            row![
+                iced::widget::toggler(state.open_in_editor)
+                    .on_toggle(Message::BlockDefOpenInEditor)
+                    .size(16.0),
+                text(t!("Open in block editor after creating")).size(11),
+            ]
+            .spacing(8)
+            .align_y(iced::Center),
+            text(t!(
+                "Specify On-screen, the object option, Allow exploding and this switch are remembered for the next time."
+            ))
+            .size(10)
+            .style(muted_style),
+        ]
+        .spacing(4),
+    )
+    .padding([8, 10])
+    .width(Fill)
+    .style(crate::ui::window::pdf_dialogs::card_style);
+
     // ── Error Banner ──────────────────────────────────────────────────────────
-    let mut main_column = column![name_section, main_body, actions,]
+    let mut main_column = column![name_section];
+    if state.empty_prompt {
+        main_column = main_column.push(empty_band());
+    }
+    let mut main_column = main_column
+        .push(main_body)
+        .push(editor_card)
+        .push(actions)
         .spacing(6)
         .padding([8, 10])
         .width(sizing.width);

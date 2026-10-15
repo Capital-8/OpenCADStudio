@@ -6518,3 +6518,9 @@ ucs-follow =
     .prompt = UCSFOLLOW: enter 0 (keep view) or 1 (follow UCS) <__ocs_fmt_0__>:
     .paper-space = UCSFOLLOW: activate a model viewport; paper space cannot follow the UCS.
     .invalid = UCSFOLLOW: only 0 or 1 is allowed.
+
+block-def-dialog =
+    .open-in-editor = Oluşturduktan sonra blok düzenleyicide aç
+    .remembered = Ekranda belirt, nesne seçeneği, dağıtmaya izin ve bu anahtar sonraki açılışta hatırlanır.
+    .no-objects = Blok için nesne seçilmedi.
+    .create-empty = Boş blok oluştur

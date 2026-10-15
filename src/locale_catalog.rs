@@ -3,6 +3,10 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
+        "Open in block editor after creating" => Some(("block-def-dialog", "open-in-editor")),
+        "Specify On-screen, the object option, Allow exploding and this switch are remembered for the next time." => Some(("block-def-dialog", "remembered")),
+        "No objects are selected for the block." => Some(("block-def-dialog", "no-objects")),
+        "Create empty block" => Some(("block-def-dialog", "create-empty")),
         "{} entities added" => Some(("ref-edit", "entities-added")),
         "Use REFCLOSE or the Refedit toolbar to end reference editing session." => Some(("ref-edit", "use-refclose")),
         "Specify opposite corner:" => Some(("ref-edit", "opposite-corner")),
