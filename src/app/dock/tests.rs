@@ -394,6 +394,30 @@ fn dock_hover_reveals_groups_only_on_an_auto_hiding_edge() {
 }
 
 #[test]
+fn dock_auto_hide_waits_for_an_open_layer_color_dropdown() {
+    use crate::ui::dock::{DockGroup, DockMsg, PanelId};
+    let mut app = dock_app();
+    app.dock.left.push(DockGroup::single(PanelId::Layers));
+    let _ = app.on_dock(DockMsg::AutoCollapseToggle(PanelId::Layers));
+    let _ = app.on_dock(DockMsg::Hover(PanelId::Layers));
+    let _ = app.on_dock(DockMsg::HoverSettled(app.dock_hover_gen));
+    assert_eq!(app.dock_peek, Some(PanelId::Layers));
+    // Opening a row's colour swatch, then moving onto its dropdown, reads
+    // as the pointer leaving the edge: the panel must stay out.
+    let _ = app.update(Message::LayerColorPickerToggle("0".to_string()));
+    assert!(app.tabs[app.active_tab].layers.color_picker_row.is_some());
+    let _ = app.on_dock(DockMsg::HoverExit);
+    let _ = app.on_dock(DockMsg::HoverSettled(app.dock_hover_gen));
+    assert_eq!(app.dock_peek, Some(PanelId::Layers));
+    let _ = app.on_dock(DockMsg::HoverSettled(app.dock_hover_gen));
+    assert_eq!(app.dock_peek, Some(PanelId::Layers));
+    // Once the dropdown closes with the pointer still away, it hides.
+    let _ = app.update(Message::LayerColorPickerToggle("0".to_string()));
+    let _ = app.on_dock(DockMsg::HoverSettled(app.dock_hover_gen));
+    assert_eq!(app.dock_peek, None);
+}
+
+#[test]
 fn dock_float_resize_grows_the_panel() {
     use crate::ui::dock::{DockMsg, FloatPanel, PanelId};
     let mut app = dock_app();
@@ -556,6 +580,141 @@ fn drive_view(app: &mut OpenCADStudio, at: iced::Point, events: &[iced::Event]) 
             let _ = app.update(message);
         }
     }
+}
+
+/// The hover messages an open dropdown inside a hover zone (`zone`) or a
+/// `mouse_area` publishes as the pointer goes from the field onto the
+/// dropdown's list, then out of the area, each tagged with where the pointer
+/// was.
+fn hover_messages_over_an_open_dropdown(zone: bool) -> Vec<(&'static str, &'static str)> {
+    use crate::ui::dock::DockMsg;
+    use iced::widget::{button, column, container, mouse_area, text};
+    use iced_test::core::{mouse, shell, window};
+    use iced_test::runtime::user_interface::{Cache, UserInterface};
+    let view = || -> iced::Element<'static, Message> {
+        let field = button(text("ByLayer")).width(120).height(20);
+        // A pointer-wanting list, like a linetype combo's, under the field.
+        let list = button(column![text("Continuous"), text("Dashed")])
+            .on_press(Message::Dock(DockMsg::HoverEnd(
+                crate::ui::dock::PanelId::Layers,
+            )))
+            .width(120)
+            .height(100);
+        let dd = iced_aw::DropDown::new(field, list, true)
+            .alignment(iced_aw::drop_down::Alignment::Bottom);
+        let area = container(dd).width(300).height(400);
+        let (enter, exit) = (
+            Message::Dock(DockMsg::HoverStay),
+            Message::Dock(DockMsg::HoverExit),
+        );
+        if zone {
+            crate::ui::hover_zone::hover_zone(area, enter, exit)
+        } else {
+            mouse_area(area).on_enter(enter).on_exit(exit).into()
+        }
+    };
+    let mut renderer = headless_renderer();
+    let mut cache = Cache::default();
+    let mut seen = Vec::new();
+    // On the field, on the open list (both inside the area), then outside.
+    for (place, x, y) in [
+        ("field", 60.0, 10.0),
+        ("list", 60.0, 70.0),
+        ("list", 60.0, 90.0),
+        ("outside", 500.0, 70.0),
+    ] {
+        let at = iced::Point::new(x, y);
+        let mut messages = Vec::new();
+        let mut ui = UserInterface::build(view(), VIEW_SIZE, cache, &mut renderer);
+        let _ = ui.update(
+            &window::Headless,
+            &shell::Waker::noop(),
+            &[iced::Event::Mouse(mouse::Event::CursorMoved {
+                position: at,
+            })],
+            mouse::Cursor::Available(at),
+            &mut renderer,
+            &mut messages,
+        );
+        cache = ui.into_cache();
+        seen.extend(messages.into_iter().filter_map(|m| match m {
+            Message::Dock(DockMsg::HoverStay) => Some(("enter", place)),
+            Message::Dock(DockMsg::HoverExit) => Some(("exit", place)),
+            _ => None,
+        }));
+    }
+    seen
+}
+
+#[test]
+fn an_open_dropdown_in_a_hover_zone_does_not_read_as_leaving() {
+    with_stack(|| {
+        // The bug: a mouse area reads the pointer on the list as gone.
+        assert_eq!(
+            hover_messages_over_an_open_dropdown(false),
+            [("enter", "field"), ("exit", "list")]
+        );
+        assert_eq!(
+            hover_messages_over_an_open_dropdown(true),
+            [("enter", "field"), ("exit", "outside")]
+        );
+    });
+}
+
+/// Bounds of the field (text `ByLayer`) and of its open list (text `Opaque`)
+/// for a `drop_down_below` in a scrollable that, like a pallet, sits away
+/// from the window's top-left corner.
+fn drop_down_below_in_an_offset_scrollable() -> (iced::Rectangle, iced::Rectangle) {
+    use iced::widget::{button, column, container, row, scrollable, text, Space};
+    use iced_test::core::widget;
+    use iced_test::runtime::user_interface::{Cache, UserInterface};
+    use iced_test::Selector;
+    let view = || -> iced::Element<'static, Message> {
+        let field = container(text("ByLayer")).width(200).height(20);
+        let list = column![
+            button(text("Opaque")).width(iced::Fill),
+            button(text("50")).width(iced::Fill),
+        ];
+        let dd = crate::ui::color_select::drop_down_below(
+            field.into(),
+            list.into(),
+            None,
+            iced::Length::Shrink,
+            Message::PropEditChoiceToggle,
+        );
+        let pallet = scrollable(column![Space::new().height(300), dd]).height(500);
+        row![
+            Space::new().width(1000),
+            container(pallet).width(300).height(iced::Fill)
+        ]
+        .into()
+    };
+    let mut renderer = headless_renderer();
+    let mut ui = UserInterface::build(view(), VIEW_SIZE, Cache::default(), &mut renderer);
+    let mut find = |label: &str| {
+        let mut find = Selector::find(label);
+        ui.operate(&renderer, &mut widget::operation::black_box(&mut find));
+        match widget::Operation::finish(&find) {
+            widget::operation::Outcome::Some(Some(target)) => target.bounds(),
+            _ => panic!("{label} not found"),
+        }
+    };
+    (find("ByLayer"), find("Opaque"))
+}
+
+#[test]
+fn a_drop_down_in_a_pallet_opens_right_below_its_field() {
+    with_stack(|| {
+        let (field, item) = drop_down_below_in_an_offset_scrollable();
+        assert!(
+            item.y >= field.y + field.height && item.y < field.y + field.height + 20.0,
+            "list starts below the field: field {field:?}, first item {item:?}"
+        );
+        assert!(
+            item.x >= field.x - 1.0 && item.x < field.x + field.width,
+            "list lines up with the field: field {field:?}, first item {item:?}"
+        );
+    });
 }
 
 #[test]

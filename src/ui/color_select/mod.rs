@@ -322,5 +322,5 @@ pub fn drop_down_below<'a>(
     if let Some(w) = popup_width {
         dd = dd.width(w);
     }
-    dd.into()
+    crate::ui::drop_down_fit::drop_down_fit(dd)
 }
