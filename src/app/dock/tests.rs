@@ -394,6 +394,30 @@ fn dock_hover_reveals_groups_only_on_an_auto_hiding_edge() {
 }
 
 #[test]
+fn dock_auto_hide_waits_for_an_open_layer_color_dropdown() {
+    use crate::ui::dock::{DockGroup, DockMsg, PanelId};
+    let mut app = dock_app();
+    app.dock.left.push(DockGroup::single(PanelId::Layers));
+    let _ = app.on_dock(DockMsg::AutoCollapseToggle(PanelId::Layers));
+    let _ = app.on_dock(DockMsg::Hover(PanelId::Layers));
+    let _ = app.on_dock(DockMsg::HoverSettled(app.dock_hover_gen));
+    assert_eq!(app.dock_peek, Some(PanelId::Layers));
+    // Opening a row's colour swatch, then moving onto its dropdown, reads
+    // as the pointer leaving the edge: the panel must stay out.
+    let _ = app.update(Message::LayerColorPickerToggle("0".to_string()));
+    assert!(app.tabs[app.active_tab].layers.color_picker_row.is_some());
+    let _ = app.on_dock(DockMsg::HoverExit);
+    let _ = app.on_dock(DockMsg::HoverSettled(app.dock_hover_gen));
+    assert_eq!(app.dock_peek, Some(PanelId::Layers));
+    let _ = app.on_dock(DockMsg::HoverSettled(app.dock_hover_gen));
+    assert_eq!(app.dock_peek, Some(PanelId::Layers));
+    // Once the dropdown closes with the pointer still away, it hides.
+    let _ = app.update(Message::LayerColorPickerToggle("0".to_string()));
+    let _ = app.on_dock(DockMsg::HoverSettled(app.dock_hover_gen));
+    assert_eq!(app.dock_peek, None);
+}
+
+#[test]
 fn dock_float_resize_grows_the_panel() {
     use crate::ui::dock::{DockMsg, FloatPanel, PanelId};
     let mut app = dock_app();

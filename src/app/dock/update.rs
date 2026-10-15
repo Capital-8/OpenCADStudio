@@ -207,6 +207,15 @@ impl OpenCADStudio {
                         Some(HoverPending::Hide)
                             if self.dock_peek.is_some_and(|id| self.dock.auto_hides(id)) =>
                         {
+                            // A dropdown or the colour window opened from the
+                            // panel draws as an overlay, which the edge's
+                            // mouse area reads as the pointer leaving. Keep
+                            // the panel out until it closes, so a pick can
+                            // still land; then hide unless the pointer is
+                            // back (its re-entry cancels this).
+                            if self.dock_popup_open() {
+                                return self.dock_hover_arm(HoverPending::Hide);
+                            }
                             self.dock_peek = None;
                         }
                         _ => {}
@@ -410,6 +419,17 @@ impl OpenCADStudio {
         iced::Task::perform(hover_delay(), move |()| {
             Message::Dock(crate::ui::dock::DockMsg::HoverSettled(gen))
         })
+    }
+
+    /// Whether a popup a pallet opened is showing: a colour dropdown in the
+    /// Layer Manager or Properties, or the Select Color window.
+    fn dock_popup_open(&self) -> bool {
+        let tab = &self.tabs[self.active_tab];
+        tab.layers.color_picker_row.is_some()
+            || tab.properties.color_picker_open
+            || tab.properties.bg_color_picker_open
+            || tab.properties.open_color_field.is_some()
+            || self.color_picker.is_some()
     }
 
     /// Drop any pending delayed reveal / hide.
