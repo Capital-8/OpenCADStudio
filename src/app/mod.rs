@@ -380,7 +380,7 @@ use iced::window;
 use iced::{mouse, Point, Task, Theme};
 use std::sync::Arc;
 
-pub(super) const POLY_START_DELAY_MS: u128 = 150;
+pub(super) const POLY_START_DELAY_MS: u128 = 250;
 /// Squared screen distance (12 px) past which a left press is a drag
 /// without waiting for `POLY_START_DELAY_MS`.
 pub(super) const DRAG_START_FAST_PX2: f32 = 144.0;
