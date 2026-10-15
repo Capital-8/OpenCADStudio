@@ -94,8 +94,9 @@ const COMBO_PANEL_PAD: Padding = Padding {
 thread_local! {
     /// Ribbon layout runs on every pointer-driven view update. Cache the font-
     /// measured width per translated label so the automatic sizing stays cheap.
-    static LARGE_WIDTH_CACHE: RefCell<HashMap<String, f32>> =
-        RefCell::new(HashMap::default());
+    /// Tagged with the UI-font generation it was measured with.
+    static LARGE_WIDTH_CACHE: RefCell<(u32, HashMap<String, f32>)> =
+        RefCell::new((0, HashMap::default()));
 }
 
 /// Dropdown items that report a state and cannot be picked.
@@ -173,13 +174,20 @@ fn measure_large_width(renderer: &iced::Renderer, label: &str) -> f32 {
 }
 
 fn automatic_large_width(renderer: &iced::Renderer, label: &str) -> f32 {
-    if let Some(width) = LARGE_WIDTH_CACHE.with(|cache| cache.borrow().get(label).copied()) {
+    let generation = crate::sys::ui_font::generation();
+    if let Some(width) = LARGE_WIDTH_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.0 != generation {
+            *cache = (generation, HashMap::default());
+        }
+        cache.1.get(label).copied()
+    }) {
         return width;
     }
 
     let width = measure_large_width(renderer, label);
     LARGE_WIDTH_CACHE.with(|cache| {
-        cache.borrow_mut().insert(label.to_string(), width);
+        cache.borrow_mut().1.insert(label.to_string(), width);
     });
     width
 }
