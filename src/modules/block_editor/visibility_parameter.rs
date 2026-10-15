@@ -28,7 +28,7 @@ impl CadCommand for VisibilityParameterCommand {
     fn prompt(&self) -> String {
         if self.choosing_type {
             crate::t!(
-                "BPARAMETER  Enter parameter type [Point/Linear/Polar/XY/Visibility] <Visibility>:"
+                "BPARAMETER  Enter parameter type [Point/Linear/Polar/XY/Rotation/Alignment/Flip/Visibility] <Visibility>:"
             )
             .into_owned()
         } else {
@@ -43,6 +43,9 @@ impl CadCommand for VisibilityParameterCommand {
                 CmdOption::new(crate::t!("Linear").as_ref(), "L"),
                 CmdOption::new(crate::t!("Polar").as_ref(), "PO"),
                 CmdOption::new(crate::t!("XY").as_ref(), "XY"),
+                CmdOption::new(crate::t!("Rotation").as_ref(), "R"),
+                CmdOption::new(crate::t!("Alignment").as_ref(), "A"),
+                CmdOption::new(crate::t!("Flip").as_ref(), "F"),
                 CmdOption::new(crate::t!("Visibility").as_ref(), "V"),
             ]
         } else {
@@ -68,13 +71,16 @@ impl CadCommand for VisibilityParameterCommand {
                 "L" | "LINEAR" => CmdResult::Dispatch("BPARAMETER LINEAR".into()),
                 "PO" | "POLAR" => CmdResult::Dispatch("BPARAMETER POLAR".into()),
                 "XY" => CmdResult::Dispatch("BPARAMETER XY".into()),
+                "R" | "ROTATION" => CmdResult::Dispatch("BPARAMETER ROTATION".into()),
+                "A" | "ALIGNMENT" => CmdResult::Dispatch("BPARAMETER ALIGNMENT".into()),
+                "F" | "FLIP" => CmdResult::Dispatch("BPARAMETER FLIP".into()),
                 "P" | "POINT" => CmdResult::Dispatch("BPARAMETER POINT".into()),
                 "" | "V" | "VISIBILITY" => {
                     self.choosing_type = false;
                     CmdResult::NeedPoint
                 }
                 _ => CmdResult::ReportError(
-                    crate::t!("Supported parameter types: Point, Linear, Polar, XY, Visibility.")
+                    crate::t!("Supported parameter types: Point, Linear, Polar, XY, Rotation, Alignment, Flip, Visibility.")
                         .into_owned(),
                 ),
             },

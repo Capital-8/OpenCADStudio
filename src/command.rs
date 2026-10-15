@@ -1514,6 +1514,15 @@ impl DimensionPreview {
 /// Returned by every `CadCommand` method to tell main.rs what to do.
 #[allow(dead_code)]
 pub enum CmdResult {
+    /// Place a native Rotation, Alignment or Flip parameter.
+    PlaceBlockOrientationParameter {
+        document_id: u64,
+        definition: Handle,
+        kind: crate::scene::block_orientation_parameter::Kind,
+        base: DVec3,
+        end: DVec3,
+        reference: DVec3,
+    },
     /// Place a native two-point parameter after its base, end and label picks.
     PlaceBlockDistanceParameter {
         document_id: u64,

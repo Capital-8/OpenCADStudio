@@ -565,6 +565,12 @@ impl Scene {
                 block_record,
                 local_from_old,
             );
+        let parameter_changes = parameter_changes
+            + super::block_orientation_parameter::reframe(
+                &mut self.document,
+                block_record,
+                local_from_old,
+            );
         if !changed.is_empty() || parameter_changes > 0 {
             self.rebuild_derived_caches();
         }

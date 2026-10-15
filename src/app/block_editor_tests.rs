@@ -86,6 +86,155 @@ fn distance_parameter_count(app: &OpenCADStudio) -> usize {
     crate::scene::block_distance_parameter::parameters(&tab.scene.document, definition).len()
 }
 
+fn orientation_parameter_count(app: &OpenCADStudio) -> usize {
+    let tab = &app.tabs[app.active_tab];
+    let definition = tab
+        .scene
+        .document
+        .block_records
+        .get("EDIT_ME")
+        .unwrap()
+        .handle;
+    crate::scene::block_orientation_parameter::parameters(&tab.scene.document, definition).len()
+}
+
+#[test]
+fn orientation_parameter_batch_numeric_rotation_local_history_save_and_parent_undo() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    for (index, (kind, inputs)) in [
+        ("ROTATION", vec!["0,0", "2", "90"]),
+        ("ALIGNMENT", vec!["0,0", "0,2"]),
+        ("FLIP", vec!["0,0", "0,2", "3,3"]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let before = app.tabs[i].scene.document.clone();
+        let _ = app.dispatch_command(&format!("BPARAMETER {kind}"));
+        for text in &inputs[..inputs.len() - 1] {
+            feed(&mut app, text);
+            assert_eq!(app.tabs[i].scene.document, before, "incomplete placement");
+        }
+        feed(&mut app, inputs.last().unwrap());
+        assert_eq!(orientation_parameter_count(&app), index + 1, "{kind}");
+        assert_eq!(app.tabs[i].history.undo_stack.len(), index + 1);
+        assert!(app.tabs[i].scene.preview_wires.is_empty());
+        app.undo_steps(1);
+        assert_eq!(orientation_parameter_count(&app), index);
+        app.redo_steps(1);
+        assert_eq!(orientation_parameter_count(&app), index + 1);
+    }
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let p = &crate::scene::block_orientation_parameter::parameters(
+        &app.tabs[i].scene.document,
+        definition,
+    )[0];
+    assert!((p.native.definition_end_point - Vector3::new(0.0, 2.0, 0.0)).length() < 1e-10);
+    assert_eq!(p.reference, Vector3::new(2.0, 0.0, 0.0));
+    let editor = app.tabs[i].scene.document.clone();
+    let _ = app.dispatch_command("BTESTBLOCK");
+    assert!(app.tabs[app.active_tab]
+        .active_block_edit_session()
+        .is_none());
+    assert_eq!(
+        app.tabs[app.active_tab]
+            .scene
+            .document
+            .entities_in_block("EDIT_ME")
+            .count(),
+        1
+    );
+    let _ = app.dispatch_command("BCLOSETESTBLOCK");
+    assert_eq!(app.tabs[i].scene.document, editor);
+    let _ = app.run_command_line("UCS ORIGIN 1,2,0");
+    for p in crate::scene::block_orientation_parameter::parameters(
+        &app.tabs[i].scene.document,
+        definition,
+    ) {
+        assert_eq!(
+            p.native.definition_base_point,
+            Vector3::new(-1.0, -2.0, 0.0)
+        );
+    }
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    assert_eq!(orientation_parameter_count(&app), 3);
+    app.undo_steps(1);
+    assert_eq!(orientation_parameter_count(&app), 0);
+    app.redo_steps(1);
+    assert_eq!(orientation_parameter_count(&app), 3);
+}
+
+#[test]
+fn orientation_parameter_chooser_cancels_invalid_picks_and_rotation_default_angle() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let before = app.tabs[i].scene.document.clone();
+    for (kind, maximum) in [("R", 2), ("A", 1), ("F", 2)] {
+        for picks in 0..=maximum {
+            let _ = app.dispatch_command("BPARAMETER");
+            feed(&mut app, kind);
+            if picks > 0 {
+                feed(&mut app, "0,0");
+                feed(&mut app, "0,0");
+                assert_eq!(app.tabs[i].scene.document, before);
+            }
+            if picks > 1 {
+                feed(&mut app, "0,2");
+            }
+            let _ = app.update(Message::CommandEscape);
+            assert_eq!(app.tabs[i].scene.document, before);
+            assert!(app.tabs[i].history.undo_stack.is_empty());
+        }
+    }
+    let _ = app.dispatch_command("BPARAMETER ROTATION");
+    feed(&mut app, "0,0");
+    feed(&mut app, "-2");
+    assert_eq!(app.tabs[i].scene.document, before);
+    feed(&mut app, "2");
+    feed(&mut app, "");
+    assert_eq!(orientation_parameter_count(&app), 1);
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    assert_eq!(orientation_parameter_count(&app), 0);
+    let _ = app.dispatch_command("LINE");
+    for kind in ["ROTATION", "ALIGNMENT", "FLIP"] {
+        let _ = app.dispatch_command(&format!("BPARAMETER {kind}"));
+        assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+    }
+}
+
+#[test]
+fn orientation_parameter_stale_context_and_invalid_result_do_not_start_history() {
+    use crate::scene::block_orientation_parameter::Kind;
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let id = app.tabs[i].id;
+    let before = app.tabs[i].scene.document.clone();
+    for (document_id, end) in [
+        (id + 1, glam::DVec3::Y),
+        (id, glam::DVec3::ZERO),
+        (id, glam::DVec3::splat(f64::NAN)),
+    ] {
+        let _ = app.handle_place_block_orientation_parameter(
+            crate::command::CmdResult::PlaceBlockOrientationParameter {
+                document_id,
+                definition,
+                kind: Kind::Flip,
+                base: glam::DVec3::ZERO,
+                end,
+                reference: glam::DVec3::X,
+            },
+        );
+        assert_eq!(app.tabs[i].scene.document, before);
+        assert!(app.tabs[i].history.undo_stack.is_empty());
+    }
+}
+
 #[test]
 fn distance_parameter_batch_three_picks_local_undo_redo_and_saved_parent_undo() {
     let (mut app, reference) = fixture();

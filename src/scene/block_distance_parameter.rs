@@ -176,10 +176,15 @@ pub(crate) fn create(
     if let Some(error) = points_error(kind, base, end, label) {
         return Err(error);
     }
-    let names = parameters(document, definition)
+    let mut names = parameters(document, definition)
         .into_iter()
         .flat_map(|p| p.labels)
         .collect::<Vec<_>>();
+    names.extend(
+        super::block_orientation_parameter::parameters(document, definition)
+            .into_iter()
+            .map(|p| p.label),
+    );
     let unique = |prefix: &str| {
         (1..)
             .map(|n| format!("{prefix}{n}"))
@@ -329,6 +334,7 @@ pub(crate) fn create(
 #[derive(Default)]
 pub(crate) struct Graphic {
     pub lines: Vec<[Vector3; 2]>,
+    pub round_grips: Vec<Vector3>,
     pub dimensions: Vec<[Vector3; 2]>,
     pub labels: Vec<(Vector3, String)>,
     pub grips: Vec<(Vector3, bool)>, // Linear uses a direction arrow; others a square.

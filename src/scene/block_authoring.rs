@@ -183,6 +183,30 @@ pub(super) fn prepare(
     Ok((handle, slots(None)?))
 }
 
+/// Preflight the larger subgraph needed by parameters with state expressions.
+pub(super) fn capacity(
+    document: &CadDocument,
+    definition: Handle,
+    nodes: i32,
+    edges: i32,
+) -> Result<(), &'static str> {
+    let graph = graph(document, definition)?.and_then(|handle| match &document.objects[&handle] {
+        ObjectType::DynamicBlock(object) => match &object.data {
+            DynamicBlockData::EvaluationGraph(graph) => Some(graph),
+            _ => None,
+        },
+        _ => None,
+    });
+    let start = slots(graph)?;
+    if start.node.checked_add(nodes - 1).is_none()
+        || start.eval.checked_add(nodes - 1).is_none()
+        || start.edge.checked_add(edges - 1).is_none()
+    {
+        return Err("The block authoring graph has no free node IDs.");
+    }
+    Ok(())
+}
+
 /// A parameter, its single grip and two position expressions. Supports one-point
 /// parameters and two-point parameters configured with one end grip.
 /// Graph node IDs, expression IDs and edge IDs are separate namespaces.
@@ -191,6 +215,18 @@ pub(super) fn append(
     handle: Handle,
     slots: Slots,
     expressions: [Handle; 4],
+) {
+    append_components(document, handle, slots, &expressions, &[2, 3]);
+}
+
+/// Append a parameter and grip, followed by its location/state expressions.
+/// `components` gives the expression offsets in native dependency order.
+pub(super) fn append_components(
+    document: &mut CadDocument,
+    handle: Handle,
+    slots: Slots,
+    expressions: &[Handle],
+    components: &[usize],
 ) {
     use codec::objects::{BlockEvaluationEdge, BlockEvaluationNode};
     let ObjectType::DynamicBlock(object) = document.objects.get_mut(&handle).unwrap() else {
@@ -201,13 +237,14 @@ pub(super) fn append(
     };
     let n = slots.node;
     let e = slots.edge;
-    let links = [
-        [e, e, e + 1, e + 2],
-        [-1, -1, e, e],
-        [e + 1, e + 1, -1, -1],
-        [e + 2, e + 2, -1, -1],
-    ];
-    for (offset, expression) in expressions.into_iter().enumerate() {
+    let mut links = vec![[-1; 4]; expressions.len()];
+    links[0] = [e, e, e + 1, e + components.len() as i32];
+    links[1] = [-1, -1, e, e];
+    for (index, component) in components.iter().enumerate() {
+        let edge = e + 1 + index as i32;
+        links[*component] = [edge, edge, -1, -1];
+    }
+    for (offset, expression) in expressions.iter().copied().enumerate() {
         graph.nodes.push(BlockEvaluationNode {
             id: n + offset as i32,
             edge_flags: 32,
@@ -217,11 +254,24 @@ pub(super) fn append(
             active_cycles: None,
         });
     }
-    for (offset, source_node, destination_node, outgoing_edges) in [
-        (0, n + 1, n, [-1; 5]),
-        (1, n, n + 2, [-1, -1, -1, e + 2, -1]),
-        (2, n, n + 3, [-1, -1, e + 1, -1, -1]),
-    ] {
+    let dependencies = std::iter::once((0, n + 1, n, [-1; 5])).chain(
+        components.iter().enumerate().map(|(index, component)| {
+            let offset = index as i32 + 1;
+            let previous = if index == 0 { -1 } else { e + offset - 1 };
+            let next = if index + 1 == components.len() {
+                -1
+            } else {
+                e + offset + 1
+            };
+            (
+                offset,
+                n,
+                n + *component as i32,
+                [-1, -1, previous, next, -1],
+            )
+        }),
+    );
+    for (offset, source_node, destination_node, outgoing_edges) in dependencies {
         graph.edges.push(BlockEvaluationEdge {
             id: e + offset,
             next_id: 0,
@@ -231,7 +281,7 @@ pub(super) fn append(
             outgoing_edges,
         });
     }
-    graph.first_node_id = slots.eval + 3;
+    graph.first_node_id = slots.eval + (expressions.len() as i32 - 1);
     graph.first_node_id_copy = graph.first_node_id;
 }
 

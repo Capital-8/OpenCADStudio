@@ -192,6 +192,7 @@ fn catalog(
     tab: Tab,
     visibility_error: Option<&'static str>,
     point_error: Option<&'static str>,
+    flip_error: Option<&'static str>,
 ) -> Element<'static, Message> {
     let (entries, unavailable) = match tab {
         Tab::Parameters => (
@@ -209,7 +210,9 @@ fn catalog(
         let visibility = tab == Tab::Parameters && *label == "Visibility";
         let point = tab == Tab::Parameters && *label == "Point";
         let distance = tab == Tab::Parameters && matches!(*label, "Linear" | "Polar" | "XY");
-        let enabled = (visibility && visibility_error.is_none()) || ((point || distance) && point_error.is_none());
+        let orientation = tab == Tab::Parameters && matches!(*label,"Rotation"|"Alignment"|"Flip");
+        let orientation_error = if *label=="Flip" {flip_error} else {point_error};
+        let enabled = (orientation && orientation_error.is_none()) || (visibility && visibility_error.is_none()) || ((point || distance) && point_error.is_none());
         let base = if enabled {
             icons::semantic(icon, 28.0)
         } else {
@@ -244,6 +247,12 @@ fn catalog(
                 .into_owned()
         } else if distance {
             crate::t!(point_error.unwrap_or("Place the base point, endpoint, and dimension label. Creates one end grip; associate an action to change geometry.")).into_owned()
+        } else if orientation {
+            crate::t!(orientation_error.unwrap_or(match *label {
+                "Rotation" => "Place the center, specify a radius, then the default rotation angle.",
+                "Alignment" => "Place the alignment base point and tangent direction.",
+                _ => "Place a reflection line and its flip-state label. Associate a Flip action to mirror geometry.",
+            })).into_owned()
         } else {
             unavailable.to_string()
         };
@@ -254,6 +263,8 @@ fn catalog(
             container(entry).id("authoring-tool-point").into()
         } else if distance {
             container(entry).id(match *label { "Linear" => "authoring-tool-linear", "Polar" => "authoring-tool-polar", _ => "authoring-tool-xy" }).into()
+        } else if orientation {
+            container(entry).id(match *label {"Rotation"=>"authoring-tool-rotation","Alignment"=>"authoring-tool-alignment",_=>"authoring-tool-flip"}).into()
         } else {
             entry
         }
@@ -366,6 +377,7 @@ pub fn view(
     chrome: Chrome,
     visibility_error: Option<&'static str>,
     point_error: Option<&'static str>,
+    flip_error: Option<&'static str>,
 ) -> Element<'static, Message> {
     let tabs = column(Tab::ALL.into_iter().map(|category| {
         let label = category.label();
@@ -415,9 +427,14 @@ pub fn view(
             chrome,
         ),
         row![
-            scrollable(catalog(selected_tab, visibility_error, point_error))
-                .width(Fill)
-                .height(Fill),
+            scrollable(catalog(
+                selected_tab,
+                visibility_error,
+                point_error,
+                flip_error
+            ))
+            .width(Fill)
+            .height(Fill),
             tabs
         ]
         .spacing(4)

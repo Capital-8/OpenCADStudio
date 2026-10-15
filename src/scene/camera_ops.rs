@@ -1687,6 +1687,22 @@ impl Scene {
                     fold!(Some((point, point)));
                 }
             }
+            for parameter in super::block_orientation_parameter::parameters(&self.document, block) {
+                let graphic = super::block_orientation_parameter::graphic(&parameter);
+                for point in graphic
+                    .lines
+                    .into_iter()
+                    .flatten()
+                    .chain(graphic.labels.into_iter().map(|(p, _)| p))
+                    .chain([
+                        parameter.native.definition_base_point,
+                        parameter.native.definition_end_point,
+                    ])
+                {
+                    let point = glam::DVec3::new(point.x, point.y, point.z);
+                    fold!(Some((point, point)));
+                }
+            }
             if let Some(parameter) = super::block_visibility::parameter(&self.document, block) {
                 let point = parameter.def_point;
                 let point = glam::DVec3::new(point.x, point.y, point.z);

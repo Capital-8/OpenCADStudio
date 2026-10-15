@@ -408,6 +408,7 @@ impl OpenCADStudio {
                     chrome,
                     self.visibility_placement_error(),
                     self.point_parameter_placement_error(),
+                    self.parameter_placement_error("FLIP"),
                 )
             }
             crate::ui::dock::PanelId::BlockPalette => {

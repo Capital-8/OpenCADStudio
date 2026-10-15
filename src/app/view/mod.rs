@@ -1083,7 +1083,26 @@ bg={bg_ms:.1}ms n={view_count}"
                         session.br_handle,
                     )
                     .iter()
-                    .filter_map(|parameter| {
+                    .map(|p| {
+                        (
+                            crate::scene::block_distance_parameter::graphic(p),
+                            p.native.definition_base_point,
+                        )
+                    })
+                    .chain(
+                        crate::scene::block_orientation_parameter::parameters(
+                            &tab.scene.document,
+                            session.br_handle,
+                        )
+                        .iter()
+                        .map(|p| {
+                            (
+                                crate::scene::block_orientation_parameter::graphic(p),
+                                crate::scene::block_orientation_parameter::marker_tail(p),
+                            )
+                        }),
+                    )
+                    .filter_map(|(graphic, marker_tail)| {
                         let project = |p: codec::types::Vector3| {
                             let p = tab
                                 .scene
@@ -1093,7 +1112,6 @@ bg={bg_ms:.1}ms n={view_count}"
                             (p.x.is_finite() && p.y.is_finite())
                                 .then_some(iced::Point::new(vp_bounds.x + p.x, vp_bounds.y + p.y))
                         };
-                        let graphic = crate::scene::block_distance_parameter::graphic(parameter);
                         let lines = graphic
                             .lines
                             .into_iter()
@@ -1111,7 +1129,7 @@ bg={bg_ms:.1}ms n={view_count}"
                                 Some((
                                     project(point)?,
                                     if oriented {
-                                        Some(project(parameter.native.definition_base_point)?)
+                                        Some(project(marker_tail)?)
                                     } else {
                                         None
                                     },
@@ -1120,6 +1138,11 @@ bg={bg_ms:.1}ms n={view_count}"
                             .collect::<Option<Vec<_>>>()?;
                         Some(crate::ui::overlay::AuthoringDimension {
                             lines,
+                            round_grips: graphic
+                                .round_grips
+                                .into_iter()
+                                .map(project)
+                                .collect::<Option<Vec<_>>>()?,
                             dimensions: graphic
                                 .dimensions
                                 .into_iter()

@@ -863,6 +863,54 @@ fn distance_parameter_batch_starts_from_actual_palette_rows() {
     });
 }
 
+#[test]
+fn orientation_parameter_batch_starts_from_actual_palette_rows() {
+    with_stack(|| {
+        for (id, name, inputs) in [
+            (
+                "authoring-tool-rotation",
+                "rotation",
+                vec!["0.35,-0.12", "0.65,-0.12", "0.35,0.2"],
+            ),
+            (
+                "authoring-tool-alignment",
+                "alignment",
+                vec!["0.25,-0.1", "0.6,0.15"],
+            ),
+            (
+                "authoring-tool-flip",
+                "flip",
+                vec!["0.35,-0.15", "0.35,0.15", "0.6,0.15"],
+            ),
+        ] {
+            let mut app = authoring_app();
+            let _ = app.dispatch_command("BAUTHORPALETTE");
+            let point = authoring_control(&app, id);
+            authoring_click(&mut app, point);
+            let i = app.active_tab;
+            let before = app.tabs[i].scene.document.clone();
+            for text in &inputs[..inputs.len() - 1] {
+                let _ = app.update(Message::CommandInput((*text).into()));
+                let _ = app.update(Message::CommandSubmit);
+                assert_eq!(app.tabs[i].scene.document, before);
+            }
+            let _ = app.update(Message::CommandInput(inputs.last().unwrap().to_string()));
+            let _ = app.update(Message::CommandSubmit);
+            let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+            let found = crate::scene::block_orientation_parameter::parameters(
+                &app.tabs[i].scene.document,
+                definition,
+            );
+            assert_eq!(found.len(), 1);
+            assert!(found[0].kind.name().eq_ignore_ascii_case(name));
+            assert!(app.tabs[i].scene.preview_wires.is_empty());
+            assert_eq!(app.tabs[i].history.undo_stack.len(), 1);
+            let _ = app.run_command_line("ZOOM E");
+            authoring_capture(&app, &format!("{name}-parameter-placed"));
+        }
+    });
+}
+
 fn authoring_app() -> OpenCADStudio {
     use codec::{
         entities::{Insert, Line},

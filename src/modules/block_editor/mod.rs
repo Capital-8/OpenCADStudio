@@ -8,6 +8,7 @@ use crate::modules::{CadModule, IconKind, ModuleEvent, RibbonGroup, RibbonItem, 
 pub mod visibility_parameter;
 pub mod point_parameter;
 pub mod distance_parameter;
+pub mod orientation_parameter;
 
 pub struct BlockEditorModule;
 
