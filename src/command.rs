@@ -1514,6 +1514,12 @@ impl DimensionPreview {
 /// Returned by every `CadCommand` method to tell main.rs what to do.
 #[allow(dead_code)]
 pub enum CmdResult {
+    /// Place the visibility parameter in the definition that requested it.
+    PlaceBlockVisibilityParameter {
+        document_id: u64,
+        definition: Handle,
+        location: DVec3,
+    },
     /// Return the suspended filter after a read-only sample pick or cancellation.
     QSelectSample {
         state: Box<crate::app::QSelectState>,

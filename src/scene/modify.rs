@@ -552,10 +552,12 @@ impl Scene {
         for handle in changed.iter().copied() {
             let _ = self.sync_displayed_annotation_context(handle);
         }
-        if !changed.is_empty() {
+        let parameter_changes =
+            super::block_visibility::reframe(&mut self.document, block_record, local_from_old);
+        if !changed.is_empty() || parameter_changes > 0 {
             self.rebuild_derived_caches();
         }
-        changed.len()
+        changed.len() + parameter_changes
     }
 
     /// Give a freshly-cloned entity brand-new handles for every *inline*

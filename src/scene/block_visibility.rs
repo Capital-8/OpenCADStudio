@@ -234,12 +234,47 @@ fn new_guid() -> String {
     )
 }
 
+/// Why another visibility parameter cannot be placed in this definition.
+/// Existing evaluation graphs must be composed, never replaced by a new graph.
+pub fn placement_error(document: &CadDocument, definition: Handle) -> Option<&'static str> {
+    if parameter(document, definition).is_some() {
+        return Some("This block already has a visibility parameter.");
+    }
+    if !document
+        .block_records
+        .iter()
+        .any(|record| record.handle == definition)
+    {
+        return Some("The block definition is no longer available.");
+    }
+    if let Some(handle) = document.extension_dictionary_handle(definition) {
+        match document.objects.get(&handle) {
+            Some(ObjectType::Dictionary(dictionary)) => {
+                if dictionary.get("ACAD_ENHANCEDBLOCK").is_some() {
+                    return Some(
+                        "Adding Visibility to an existing authoring graph is not available yet.",
+                    );
+                }
+            }
+            _ => return Some("The block extension dictionary is unavailable."),
+        }
+    }
+    None
+}
+
 /// Make block definition `definition` dynamic with a visibility parameter
 /// whose grip sits at `location`, one state showing every object. Returns
 /// the parameter, or the one the block has already.
 pub fn create(document: &mut CadDocument, definition: Handle, location: Vector3) -> Option<Handle> {
     if let Some(existing) = parameter(document, definition) {
         return Some(existing.handle);
+    }
+    if placement_error(document, definition).is_some()
+        || !location.x.is_finite()
+        || !location.y.is_finite()
+        || !location.z.is_finite()
+    {
+        return None;
     }
     let name = document
         .block_records
@@ -398,6 +433,46 @@ pub fn create(document: &mut CadDocument, definition: Handle, location: Vector3)
     document.set_object_xdata_record(definition, guid);
     tag_members(document, definition);
     Some(parameter)
+}
+
+/// Carry the parameter and its grip through a change of definition coordinates.
+/// Expressions read UpdatedX/UpdatedY from the parameter; their cached scalar
+/// values are not geometry and must not receive the point transform.
+pub fn reframe(
+    document: &mut CadDocument,
+    definition: Handle,
+    transform: &codec::types::Transform,
+) -> usize {
+    let Some(mut parameter) = parameter(document, definition).cloned() else {
+        return 0;
+    };
+    parameter.def_point = transform.apply(parameter.def_point);
+    let graph = parameter.owner;
+    let handle = parameter.handle;
+    match document.objects.get_mut(&handle) {
+        Some(ObjectType::BlockVisibilityParameter(stored)) => {
+            stored.def_point = parameter.def_point
+        }
+        Some(ObjectType::DynamicBlock(object)) => {
+            if let DynamicBlockData::VisibilityParameter(stored) = &mut object.data {
+                stored.def_point = parameter.def_point;
+            }
+        }
+        _ => {}
+    }
+    document.block_visibility_params.insert(handle, parameter);
+    let mut changed = 1;
+    for object in document.objects.values_mut() {
+        if let ObjectType::DynamicBlock(object) = object {
+            if object.owner == graph {
+                if let DynamicBlockData::VisibilityGrip(grip) = &mut object.data {
+                    grip.location = transform.apply(grip.location);
+                    changed += 1;
+                }
+            }
+        }
+    }
+    changed
 }
 
 /// The names of the states of `parameter`, in list order.
@@ -762,6 +837,100 @@ mod tests {
             let names: Vec<&str> = parameter.states.iter().map(|s| s.name.as_str()).collect();
             assert_eq!(names, ["VisibilityState0", "Open"], "{ext}");
             assert_eq!(parameter.states[1].visible_blocks.len(), 0, "{ext}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod placement_fixtures {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    #[ignore = "requires OCS_DYNAMIC_BLOCK_FIXTURES with local DWG fixtures"]
+    fn visibility_parameter_placement_fixture_roundtrips() {
+        let directory = std::env::var_os("OCS_DYNAMIC_BLOCK_FIXTURES").expect("fixture directory");
+        let mut paths = std::fs::read_dir(directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("dwg"))
+            })
+            .collect::<Vec<_>>();
+        paths.sort();
+        assert!(!paths.is_empty(), "no DWG fixtures found");
+        for path in paths {
+            let original = std::fs::read(&path).unwrap();
+            let digest = Sha256::digest(&original);
+            let filename = path.file_name().unwrap().to_string_lossy();
+            let document = crate::io::load_bytes(&filename, original).expect(&filename);
+            let before = document.clone();
+            let mut scene = Scene::new();
+            scene.document = document;
+            let protected = scene
+                .document
+                .block_records
+                .iter()
+                .map(|record| record.handle)
+                .filter(|definition| {
+                    parameter(&scene.document, *definition).is_none()
+                        && placement_error(&scene.document, *definition).is_some()
+                })
+                .collect::<Vec<_>>();
+            for definition in &protected {
+                assert!(create(&mut scene.document, *definition, Vector3::ZERO).is_none());
+            }
+            assert_eq!(
+                scene.document, before,
+                "{filename}: existing graphs remain untouched"
+            );
+            scene.define_block_raw(
+                "PALETTE_VISIBILITY_TEST",
+                Vector3::ZERO,
+                vec![EntityType::Line(codec::entities::Line::from_points(
+                    Vector3::ZERO,
+                    Vector3::UNIT_X,
+                ))],
+            );
+            let definition = scene
+                .document
+                .block_records
+                .get("PALETTE_VISIBILITY_TEST")
+                .unwrap()
+                .handle;
+            let location = Vector3::new(3.25, -4.5, 0.0);
+            create(&mut scene.document, definition, location).expect(&filename);
+            for (handle, object) in &before.objects {
+                assert_eq!(
+                    scene.document.objects.get(handle),
+                    Some(object),
+                    "{filename}: preserved object {handle}"
+                );
+            }
+            for extension in ["dwg", "dxf"] {
+                let bytes =
+                    crate::io::save_to_bytes(&scene.document, extension, scene.document.version)
+                        .expect(&filename);
+                let read =
+                    crate::io::load_bytes(&format!("placed.{extension}"), bytes).expect(&filename);
+                let owner = read
+                    .block_records
+                    .get("PALETTE_VISIBILITY_TEST")
+                    .unwrap()
+                    .handle;
+                assert_eq!(
+                    parameter(&read, owner).expect(&filename).def_point,
+                    location,
+                    "{filename}: {extension}"
+                );
+            }
+            assert_eq!(
+                Sha256::digest(std::fs::read(&path).unwrap()),
+                digest,
+                "{filename}: source checksum"
+            );
+            eprintln!("{filename}: DWG/DXF placement roundtrips; {} existing graphs protected; source unchanged", protected.len());
         }
     }
 }

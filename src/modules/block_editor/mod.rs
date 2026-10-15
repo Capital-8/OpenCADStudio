@@ -5,6 +5,8 @@
 use crate::modules::parametric::ParametricModule;
 use crate::modules::{CadModule, IconKind, ModuleEvent, RibbonGroup, RibbonItem, ToolDef};
 
+pub mod visibility_parameter;
+
 pub struct BlockEditorModule;
 
 impl CadModule for BlockEditorModule {

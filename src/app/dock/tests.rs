@@ -988,3 +988,35 @@ fn authoring_snapshot(
         .matches_image(path)
         .expect("write palette evidence"));
 }
+
+#[test]
+fn visibility_parameter_placement_starts_from_the_actual_palette_row() {
+    with_stack(|| {
+        let mut app = authoring_app();
+        let _ = app.dispatch_command("BAUTHORPALETTE");
+        let before = app.tabs[app.active_tab].scene.document.clone();
+        let point = authoring_control(&app, "authoring-tool-visibility");
+        authoring_click(&mut app, point);
+        assert_eq!(
+            app.tabs[app.active_tab].active_cmd.as_ref().unwrap().name(),
+            "BPARAMETER"
+        );
+        assert_eq!(app.tabs[app.active_tab].scene.document, before);
+        let _ = app.update(Message::CommandInput("0.25,0.25,0".into()));
+        let _ = app.update(Message::CommandSubmit);
+        assert!(app
+            .visibility_placement_error()
+            .unwrap()
+            .contains("already"));
+        let before = app.tabs[app.active_tab].scene.document.clone();
+        let _ = app.dispatch_command("LINE");
+        let point = authoring_control(&app, "authoring-tool-visibility");
+        authoring_click(&mut app, point);
+        assert_eq!(
+            app.tabs[app.active_tab].active_cmd.as_ref().unwrap().name(),
+            "LINE"
+        );
+        assert_eq!(app.tabs[app.active_tab].scene.document, before);
+        authoring_capture(&app, "visibility-parameter-placed");
+    });
+}

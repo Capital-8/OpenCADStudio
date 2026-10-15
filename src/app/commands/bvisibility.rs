@@ -7,6 +7,60 @@ use codec::{CadDocument, EntityType, Handle};
 use iced::Task;
 
 impl OpenCADStudio {
+    pub(in crate::app) fn visibility_placement_error(&self) -> Option<&'static str> {
+        let tab = &self.tabs[self.active_tab];
+        let Some(session) = tab.active_block_edit_session() else {
+            return Some("Open a block in the Block Editor before placing a parameter.");
+        };
+        visibility::placement_error(&tab.scene.document, session.br_handle)
+    }
+
+    pub(in crate::app) fn handle_place_block_visibility_parameter(
+        &mut self,
+        document_id: u64,
+        definition: Handle,
+        location: glam::DVec3,
+    ) -> Task<Message> {
+        let i = self.active_tab;
+        if self.tabs[i].id != document_id
+            || self.tabs[i]
+                .active_block_edit_session()
+                .map(|session| session.br_handle)
+                != Some(definition)
+        {
+            self.command_line.push_error(
+                crate::t!("The parameter's Block Editor session is no longer active.").as_ref(),
+            );
+            return Task::none();
+        }
+        if let Some(error) = self.visibility_placement_error() {
+            self.command_line.push_error(crate::t!(error).as_ref());
+            return Task::none();
+        }
+        if !location.is_finite() {
+            self.command_line
+                .push_error(crate::t!("Specify a finite parameter location.").as_ref());
+            return Task::none();
+        }
+        self.push_undo_snapshot(i, "Visibility parameter");
+        let document = &mut self.tabs[i].scene.document;
+        visibility::create(
+            document,
+            definition,
+            codec::types::Vector3::new(location.x, location.y, location.z),
+        )
+        .expect("validated visibility placement");
+        self.tabs[i].scene.bump_geometry();
+        self.tabs[i].dirty = true;
+        self.tabs[i].active_cmd = None;
+        self.finish_pending_history(i);
+        self.refresh_properties();
+        self.command_line.push_output(
+            crate::t!("Visibility parameter placed. Use BVSTATE to manage its states.").as_ref(),
+        );
+        Task::none()
+    }
+
     /// The block open in the Block Editor, or an error naming `command`.
     fn visibility_block(&mut self, i: usize, command: &str) -> Option<Handle> {
         let block = self.tabs[i]
@@ -72,7 +126,45 @@ impl OpenCADStudio {
     pub(super) fn dispatch_bvisibility(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {
         use crate::command::CadCommand;
         use crate::modules::draw::modify::bvstate::{BvStateCommand, SEP};
+        if matches!(cmd, "BVSTATE" | "BVHIDE" | "BVSHOW" | "_BVHIDE" | "_BVSHOW")
+            || cmd.starts_with("_BVSTATE")
+        {
+            if let Some(block) = self.tabs[i]
+                .active_block_edit_session()
+                .map(|session| session.br_handle)
+            {
+                if visibility::parameter(&self.tabs[i].scene.document, block).is_none() {
+                    if let Some(error) =
+                        visibility::placement_error(&self.tabs[i].scene.document, block)
+                    {
+                        self.command_line.push_error(crate::t!(error).as_ref());
+                        return Some(Task::none());
+                    }
+                }
+            }
+        }
         match cmd {
+            cmd if cmd == "BPARAMETER" || cmd.starts_with("BPARAMETER ") => {
+                let Some(block) = self.visibility_block(i, "BPARAMETER") else {
+                    return Some(Task::none());
+                };
+                let parameter_type = cmd.strip_prefix("BPARAMETER").unwrap().trim();
+                if !parameter_type.is_empty()
+                    && !parameter_type.eq_ignore_ascii_case("VISIBILITY")
+                    && !parameter_type.eq_ignore_ascii_case("V")
+                {
+                    self.command_line.push_error(
+                        crate::t!("Only Visibility parameter placement is currently supported.")
+                            .as_ref(),
+                    );
+                    return Some(Task::none());
+                }
+                let command = crate::modules::block_editor::visibility_parameter::VisibilityParameterCommand::new(self.tabs[i].id, block, parameter_type.is_empty());
+                self.command_line.push_info(&command.prompt());
+                self.command_line.set_step_options(command.options());
+                self.tabs[i].active_cmd = Some(Box::new(command));
+                Some(Task::none())
+            }
             "BVSTATE" => {
                 let block = self.visibility_block(i, "BVSTATE")?;
                 let document = &self.tabs[i].scene.document;

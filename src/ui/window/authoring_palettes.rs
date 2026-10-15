@@ -188,7 +188,7 @@ const PARAMETER_SETS: &[(&str, &[u8])] = &[
 ];
 
 /// Catalog rows remain inert until their authoring commands exist.
-fn catalog(tab: Tab) -> Element<'static, Message> {
+fn catalog(tab: Tab, visibility_error: Option<&'static str>) -> Element<'static, Message> {
     let (entries, unavailable) = match tab {
         Tab::Parameters => (
             PARAMETERS,
@@ -202,7 +202,13 @@ fn catalog(tab: Tab) -> Element<'static, Message> {
         Tab::Constraints => return constraints(),
     };
     column(entries.iter().map(|(label, icon)| {
-        let base = icons::semantic_disabled(icon, 28.0);
+        let visibility = tab == Tab::Parameters && *label == "Visibility";
+        let enabled = visibility && visibility_error.is_none();
+        let base = if enabled {
+            icons::semantic(icon, 28.0)
+        } else {
+            icons::semantic_disabled(icon, 28.0)
+        };
         let icon = if tab != Tab::Parameters && *label != "Block Properties Table" {
             stack![
                 base,
@@ -219,7 +225,23 @@ fn catalog(tab: Tab) -> Element<'static, Message> {
         } else {
             base
         };
-        tool_row(label, icon, None, &unavailable)
+        let message = enabled.then(|| Message::RibbonToolClick {
+            tool_id: "BPARAMETER_VISIBILITY".into(),
+            event: crate::modules::ModuleEvent::Command("BPARAMETER VISIBILITY".into()),
+        });
+        let description = if visibility {
+            crate::t!(visibility_error
+                .unwrap_or("Place a visibility parameter, then use BVSTATE to manage its states."))
+            .into_owned()
+        } else {
+            unavailable.to_string()
+        };
+        let entry = tool_row(label, icon, message, &description);
+        if visibility {
+            container(entry).id("authoring-tool-visibility").into()
+        } else {
+            entry
+        }
     }))
     .spacing(2)
     .into()
@@ -323,7 +345,12 @@ fn constraints() -> Element<'static, Message> {
     .into()
 }
 
-pub fn view(selected_tab: Tab, width: f32, chrome: Chrome) -> Element<'static, Message> {
+pub fn view(
+    selected_tab: Tab,
+    width: f32,
+    chrome: Chrome,
+    visibility_error: Option<&'static str>,
+) -> Element<'static, Message> {
     let tabs = column(Tab::ALL.into_iter().map(|category| {
         let label = category.label();
         let selected = category == selected_tab;
@@ -372,7 +399,9 @@ pub fn view(selected_tab: Tab, width: f32, chrome: Chrome) -> Element<'static, M
             chrome,
         ),
         row![
-            scrollable(catalog(selected_tab)).width(Fill).height(Fill),
+            scrollable(catalog(selected_tab, visibility_error))
+                .width(Fill)
+                .height(Fill),
             tabs
         ]
         .spacing(4)

@@ -977,6 +977,7 @@ pub fn selection_overlay<'a>(
     constraint_glyph_selected: Arc<[bool]>,
     constraint_glyph_tooltip: Option<String>,
     constraint_cursor_badge: Option<String>,
+    authoring_visibility: Option<(Point, String, iced::Rectangle)>,
 ) -> Element<'a, Message> {
     canvas(SelectionCanvas {
         selection,
@@ -1005,6 +1006,7 @@ pub fn selection_overlay<'a>(
         constraint_glyph_selected,
         constraint_glyph_tooltip,
         constraint_cursor_badge,
+        authoring_visibility,
     })
     .width(Length::Fill)
     .height(Length::Fill)
@@ -1081,6 +1083,7 @@ struct SelectionCanvas {
     /// Symbol shown beside the cursor while it targets an entity that already
     /// participates in an enabled geometric constraint.
     constraint_cursor_badge: Option<String>,
+    authoring_visibility: Option<(Point, String, iced::Rectangle)>,
 }
 
 /// The move gizmo: an arrow per axis (X red, Y green, Z blue) from the
@@ -2302,6 +2305,25 @@ impl canvas::Program<Message> for SelectionCanvas {
             });
             frame.stroke(&b1, stroke.clone());
             frame.stroke(&b2, stroke);
+        }
+        if let Some((point, label, clip)) = &self.authoring_visibility {
+            frame.with_clip(*clip, |frame| {
+                let color = theme.palette().primary.base.color;
+                let triangle = canvas::Path::new(|builder| {
+                    builder.move_to(Point::new(point.x - 5.0, point.y - 3.0));
+                    builder.line_to(Point::new(point.x + 5.0, point.y - 3.0));
+                    builder.line_to(Point::new(point.x, point.y + 5.0));
+                    builder.close();
+                });
+                frame.fill(&triangle, color);
+                frame.fill_text(canvas::Text {
+                    content: label.clone(),
+                    position: Point::new(point.x + 10.0, point.y - 9.0),
+                    color,
+                    size: iced::Pixels(13.0),
+                    ..Default::default()
+                });
+            });
         }
         // Draw + hover + tooltip all read the memoised entries' precomputed
         // `top_left`/`size` (one shared `hovered` lookup below) — no offset

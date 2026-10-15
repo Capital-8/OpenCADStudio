@@ -1032,6 +1032,21 @@ bg={bg_ms:.1}ms n={view_count}"
                 .iter()
                 .map(|entry| tab.scene.selected_constraint == Some(entry.id))
                 .collect();
+            let authoring_visibility = tab.active_block_edit_session().and_then(|session| {
+                let parameter = crate::scene::block_visibility::parameter(
+                    &tab.scene.document,
+                    session.br_handle,
+                )?;
+                let location = glam::DVec3::new(
+                    parameter.def_point.x,
+                    parameter.def_point.y,
+                    parameter.def_point.z,
+                );
+                let point = tab.scene.camera.borrow().project(location, vp_bounds)?;
+                let point = iced::Point::new(vp_bounds.x + point.x, vp_bounds.y + point.y);
+                (point.x.is_finite() && point.y.is_finite())
+                    .then(|| (point, parameter.name.clone(), vp_bounds))
+            });
             crate::ui::overlay::selection_overlay(
                 std::sync::Arc::clone(&tab.scene.selection),
                 snap_info,
@@ -1096,6 +1111,7 @@ bg={bg_ms:.1}ms n={view_count}"
                 self.constraint_glyph_tooltip
                     .map(|kind| crate::t!(kind.label()).into_owned()),
                 constraint_cursor_badge,
+                authoring_visibility,
             )
         };
 

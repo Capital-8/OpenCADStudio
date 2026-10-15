@@ -406,6 +406,7 @@ impl OpenCADStudio {
                     self.authoring_palette_tab,
                     width,
                     chrome,
+                    self.visibility_placement_error(),
                 )
             }
             crate::ui::dock::PanelId::BlockPalette => {

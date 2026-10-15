@@ -575,6 +575,17 @@ impl OpenCADStudio {
                     return task;
                 }
             }
+            CmdResult::PlaceBlockVisibilityParameter {
+                document_id,
+                definition,
+                location,
+            } => {
+                return self.handle_place_block_visibility_parameter(
+                    document_id,
+                    definition,
+                    location,
+                );
+            }
             CmdResult::CreateBlockWithOptions { options } => {
                 if let Some(task) = self.handle_create_block_with_options(options) {
                     return task;

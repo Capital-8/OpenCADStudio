@@ -173,6 +173,12 @@ impl OpenCADStudio {
         };
         let resolved = self.resolve_alias(cmd);
         let cmd = resolved.as_deref().unwrap_or(cmd);
+        if cmd == "BPARAMETER" || cmd.starts_with("BPARAMETER ") {
+            if let Some(error) = self.visibility_placement_error() {
+                self.command_line.push_error(crate::t!(error).as_ref());
+                return Task::none();
+            }
+        }
         if self.tabs[i].block_test.is_some() {
             let name = cmd.split([' ', ':']).next().unwrap_or(cmd);
             if matches!(
