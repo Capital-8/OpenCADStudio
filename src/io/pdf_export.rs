@@ -2700,6 +2700,7 @@ pub(crate) fn pdf_stream_text(bytes: &[u8]) -> String {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
+    use crate::io::plot_style::PlotStyleTableExt as _;
     use super::*;
 
     fn test_page(wires: Vec<PlotWire>) -> PdfPageInput {

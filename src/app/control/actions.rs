@@ -1,3 +1,5 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::io::plot_style::PlotStyleTableExt as _;
 use super::*;
 use crate::scene::model::object::PropValue;
 

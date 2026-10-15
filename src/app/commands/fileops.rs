@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(target_arch = "wasm32")]
+use crate::io::plot_style::PlotStyleTableExt as _;
 
 impl OpenCADStudio {
     pub(super) fn dispatch_fileops(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {

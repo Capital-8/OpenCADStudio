@@ -51,6 +51,8 @@ pub mod windows_media;
 pub mod xref;
 pub mod xref_model;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::io::plot_style::PlotStyleTableExt as _;
 use crate::scene::DerivedCaches;
 use codec::entities::EntityType;
 // The path-based readers are native-only; web parsing runs through the

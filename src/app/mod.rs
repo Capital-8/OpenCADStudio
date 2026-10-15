@@ -66,6 +66,7 @@ pub use settings::MAX_SELECTED_GRIPS;
 /// as they are; only these two names are reachable externally.
 pub use settings::{CursorType, IsoPlane};
 
+use crate::io::plot_style::PlotStyleTableExt as _;
 use document::DocumentTab;
 
 use crate::modules::ModuleEvent;

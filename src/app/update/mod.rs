@@ -1,3 +1,4 @@
+use crate::io::plot_style::PlotStyleTableExt as _;
 use super::{ArrowKey, Message, OpenCADStudio, TextEntryMode};
 use crate::command::CadCommand;
 use crate::scene::VIEWCUBE_DRAW_PX;

@@ -1,6 +1,7 @@
 // GPU rendering primitives, shader::Program / shader::Primitive impls,
 // and entity render-style helpers for the Scene.
 
+use crate::io::plot_style::PlotStyleTableExt as _;
 use codec::tables::LineType;
 use codec::types::{Color as AcadColor, LineWeight};
 use codec::{CadDocument, EntityType, Handle};

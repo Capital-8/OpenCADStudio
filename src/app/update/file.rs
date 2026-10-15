@@ -1,6 +1,7 @@
 //! `file` arms and helpers, split out of the original `update.rs` (#mechanical decomposition).
 
 #![allow(unused_imports)]
+use crate::io::plot_style::PlotStyleTableExt as _;
 use super::util::*;
 use super::{format_size, VIEWCUBE_HIT_SIZE};
 use crate::app::helpers::{
