@@ -9,12 +9,12 @@ pub(crate) mod config;
 pub use automation::{export_headless, serve};
 mod annotation_data;
 mod block_editor;
+#[cfg(test)]
+mod block_editor_tests;
+mod block_save_as;
 mod block_test;
 #[cfg(test)]
 mod block_test_tests;
-mod block_save_as;
-#[cfg(test)]
-mod block_editor_tests;
 mod command_driver;
 pub(crate) use command_driver::{copy_to_clipboard_kernel, paste_entities_kernel, PasteSpace};
 pub(crate) mod commands;
@@ -2702,7 +2702,10 @@ pub enum Message {
     /// cancelled).
     ChooseFolder(crate::ui::window::options::MovableFolder),
     /// Use this folder, or the default one for `None`.
-    FolderChosen(crate::ui::window::options::MovableFolder, Option<std::path::PathBuf>),
+    FolderChosen(
+        crate::ui::window::options::MovableFolder,
+        Option<std::path::PathBuf>,
+    ),
     /// Change isolines per surface in the current drawing (ISOLINES).
     IsolinesChanged(i16),
     /// The isolines slider was released; rebuild the meshes if it moved.

@@ -453,18 +453,31 @@ mod tests {
         let mut app = OpenCADStudio::new_for_test();
         let original = app.command_aliases.clone();
         app.alias_editor_rows = vec![("KEEP".into(), "LINE".into()), ("E".into(), "ERASE".into())];
-        app.import_alias_pgp(concat!(
-            "E,*BORRA\n",
-            "E,*EMPALME\n",
-            "SQ,*SCP\n",
-            "CIVIL,*AECCUNSUPPORTED\n",
-            "NOTEPAD,START NOTEPAD,1,,\n",
-        ).as_bytes());
-        assert!(app.alias_editor_rows.contains(&("E".into(), "FILLET".into())));
+        app.import_alias_pgp(
+            concat!(
+                "E,*BORRA\n",
+                "E,*EMPALME\n",
+                "SQ,*SCP\n",
+                "CIVIL,*AECCUNSUPPORTED\n",
+                "NOTEPAD,START NOTEPAD,1,,\n",
+            )
+            .as_bytes(),
+        );
+        assert!(app
+            .alias_editor_rows
+            .contains(&("E".into(), "FILLET".into())));
         assert!(app.alias_editor_rows.contains(&("SQ".into(), "UCS".into())));
-        assert!(app.alias_editor_rows.contains(&("KEEP".into(), "LINE".into())));
-        assert!(!app.alias_editor_rows.iter().any(|(a, _)| a == "CIVIL" || a == "NOTEPAD"));
-        assert_eq!(app.command_aliases, original, "import must not activate or persist aliases");
+        assert!(app
+            .alias_editor_rows
+            .contains(&("KEEP".into(), "LINE".into())));
+        assert!(!app
+            .alias_editor_rows
+            .iter()
+            .any(|(a, _)| a == "CIVIL" || a == "NOTEPAD"));
+        assert_eq!(
+            app.command_aliases, original,
+            "import must not activate or persist aliases"
+        );
         let staged = app.alias_editor_rows.clone();
         app.import_alias_pgp(b"; no aliases\n");
         assert_eq!(app.alias_editor_rows, staged);

@@ -222,7 +222,9 @@ impl Scene {
         let unchanged = {
             let cam = self.camera.borrow();
             cam.rotation.abs_diff_eq(before.0, 1e-6)
-                && cam.target.abs_diff_eq(before.1, 1e-6 * before.1.length().max(1.0))
+                && cam
+                    .target
+                    .abs_diff_eq(before.1, 1e-6 * before.1.length().max(1.0))
                 && (cam.distance - before.2).abs() <= 1e-6 * before.2.abs().max(1.0)
         };
         // The model viewport takes a copy of the view's background; a view
@@ -238,7 +240,9 @@ impl Scene {
             }
             if view.visual_style_handle.is_valid() {
                 if let Some(handle) = self.active_tile_vport_handle() {
-                    if let Some(value) = self.document.vports.iter_mut().find(|v| v.handle == handle) {
+                    if let Some(value) =
+                        self.document.vports.iter_mut().find(|v| v.handle == handle)
+                    {
                         value.visual_style_handle = view.visual_style_handle;
                     }
                 }
@@ -277,7 +281,9 @@ impl Scene {
         let sheet = self.current_layout_sheet_viewport_handle();
         let background = copy_background(&mut self.document, view.background_handle);
         let old = match self.document.get_entity_mut(sheet) {
-            Some(EntityType::Viewport(value)) => std::mem::replace(&mut value.background_handle, background),
+            Some(EntityType::Viewport(value)) => {
+                std::mem::replace(&mut value.background_handle, background)
+            }
             _ => background,
         };
         erase_background(&mut self.document, old);
@@ -324,36 +330,58 @@ impl Scene {
         if self.current_layout != "Model" {
             // Inside a viewport, that viewport's; the sheet's is not saved
             // with a paper-space view.
-            return match self.active_viewport.and_then(|handle| self.document.get_entity(handle)) {
+            return match self
+                .active_viewport
+                .and_then(|handle| self.document.get_entity(handle))
+            {
                 Some(EntityType::Viewport(value)) => value.background_handle,
                 _ => Handle::NULL,
             };
         }
         self.active_tile_vport_handle()
-            .and_then(|handle| self.document.vports.iter().find(|value| value.handle == handle))
+            .and_then(|handle| {
+                self.document
+                    .vports
+                    .iter()
+                    .find(|value| value.handle == handle)
+            })
             .map_or(Handle::NULL, |value| value.background_handle)
     }
 
     /// The visual style of the active Model tile's viewport record.
     pub fn active_visual_style(&self) -> Handle {
         if self.current_layout != "Model" {
-            return match self.active_viewport.and_then(|handle| self.document.get_entity(handle)) {
+            return match self
+                .active_viewport
+                .and_then(|handle| self.document.get_entity(handle))
+            {
                 Some(EntityType::Viewport(value)) => value.visual_style_handle,
                 _ => Handle::NULL,
             };
         }
         self.active_tile_vport_handle()
-            .and_then(|handle| self.document.vports.iter().find(|value| value.handle == handle))
+            .and_then(|handle| {
+                self.document
+                    .vports
+                    .iter()
+                    .find(|value| value.handle == handle)
+            })
             .map_or(Handle::NULL, |value| value.visual_style_handle)
     }
 
     /// Records the visual style named `name` on the active Model tile's
     /// viewport record, when the drawing has it.
     pub fn set_active_visual_style_named(&mut self, name: &str) {
-        let style = self.document.objects.iter().find_map(|(handle, object)| match object {
-            codec::objects::ObjectType::VisualStyle(style) if style.description == name => Some(*handle),
-            _ => None,
-        });
+        let style = self
+            .document
+            .objects
+            .iter()
+            .find_map(|(handle, object)| match object {
+                codec::objects::ObjectType::VisualStyle(style) if style.description == name => {
+                    Some(*handle)
+                }
+                _ => None,
+            });
         let Some(style) = style else { return };
         if self.current_layout != "Model" {
             if let Some(handle) = self.active_viewport {
@@ -363,15 +391,29 @@ impl Scene {
             }
             return;
         }
-        let Some(handle) = self.active_tile_vport_handle() else { return };
-        if let Some(value) = self.document.vports.iter_mut().find(|value| value.handle == handle) {
+        let Some(handle) = self.active_tile_vport_handle() else {
+            return;
+        };
+        if let Some(value) = self
+            .document
+            .vports
+            .iter_mut()
+            .find(|value| value.handle == handle)
+        {
             value.visual_style_handle = style;
         }
     }
 
     fn set_active_background(&mut self, background: Handle) {
-        let Some(handle) = self.active_tile_vport_handle() else { return };
-        let Some(value) = self.document.vports.iter_mut().find(|value| value.handle == handle) else {
+        let Some(handle) = self.active_tile_vport_handle() else {
+            return;
+        };
+        let Some(value) = self
+            .document
+            .vports
+            .iter_mut()
+            .find(|value| value.handle == handle)
+        else {
             return;
         };
         let old = std::mem::replace(&mut value.background_handle, background);
@@ -1075,13 +1117,21 @@ impl Scene {
 
     /// Index of the current model pane's record, independent of record ordering.
     fn ucs_follow_vport_index(&self) -> Option<usize> {
-        let rect = self.model_tiles.borrow().get(self.active_model_tile.get()).map(|t| t.rect);
+        let rect = self
+            .model_tiles
+            .borrow()
+            .get(self.active_model_tile.get())
+            .map(|t| t.rect);
         let bounds = rect.map(Self::tile_rect_to_vport);
-        self.document.vports.iter().enumerate().find_map(|(index, entry)| {
-            (is_active_vport_name(&entry.name)
-                && bounds.map_or(true, |(ll, ur)| Self::vport_rect_matches(entry, ll, ur)))
+        self.document
+            .vports
+            .iter()
+            .enumerate()
+            .find_map(|(index, entry)| {
+                (is_active_vport_name(&entry.name)
+                    && bounds.map_or(true, |(ll, ur)| Self::vport_rect_matches(entry, ll, ur)))
                 .then_some(index)
-        })
+            })
     }
 
     /// Read the persisted per-viewport UCSFOLLOW bit. Paper space itself never follows.
@@ -1108,7 +1158,9 @@ impl Scene {
             // matching their rectangles, even when the active pane is reordered.
             self.save_model_tiles_to_vports();
             if self.ucs_follow_vport_index().is_none() {
-                self.document.vports.add_or_replace(codec::tables::VPort::new("*Active"));
+                self.document
+                    .vports
+                    .add_or_replace(codec::tables::VPort::new("*Active"));
             }
             if let Some(index) = self.ucs_follow_vport_index() {
                 if let Some(vp) = self.document.vports.iter_mut().nth(index) {
@@ -1841,7 +1893,10 @@ fn background_dictionary(document: &mut codec::CadDocument) -> Option<Handle> {
         return None;
     };
     if let Some(existing) = root_dictionary.get("ACAD_BACKGROUND") {
-        if matches!(document.objects.get(&existing), Some(ObjectType::Dictionary(_))) {
+        if matches!(
+            document.objects.get(&existing),
+            Some(ObjectType::Dictionary(_))
+        ) {
             return Some(existing);
         }
     }
@@ -1850,7 +1905,9 @@ fn background_dictionary(document: &mut codec::CadDocument) -> Option<Handle> {
     dictionary.handle = handle;
     dictionary.owner = root;
     dictionary.reactors.push(root);
-    document.objects.insert(handle, ObjectType::Dictionary(dictionary));
+    document
+        .objects
+        .insert(handle, ObjectType::Dictionary(dictionary));
     if let Some(ObjectType::Dictionary(root_dictionary)) = document.objects.get_mut(&root) {
         root_dictionary.add_entry("ACAD_BACKGROUND", handle);
     }
@@ -1872,7 +1929,9 @@ pub fn add_background(
     object.handle = handle;
     object.owner = dictionary;
     object.reactors = vec![dictionary];
-    document.objects.insert(handle, ObjectType::ClassObject(object));
+    document
+        .objects
+        .insert(handle, ObjectType::ClassObject(object));
     if let Some(ObjectType::Dictionary(entries)) = document.objects.get_mut(&dictionary) {
         entries.add_entry(format!("{:X}", handle.value()), handle);
     }
@@ -1897,8 +1956,12 @@ pub fn erase_background(document: &mut codec::CadDocument, handle: Handle) {
         Some(ObjectType::ClassObject(object))
             if matches!(
                 object.data,
-                D::SolidBackground(_) | D::GradientBackground(_) | D::ImageBackground(_)
-                    | D::GroundPlaneBackground(_) | D::SkyLightBackground(_) | D::IblBackground(_)
+                D::SolidBackground(_)
+                    | D::GradientBackground(_)
+                    | D::ImageBackground(_)
+                    | D::GroundPlaneBackground(_)
+                    | D::SkyLightBackground(_)
+                    | D::IblBackground(_)
             ) =>
         {
             object.owner
@@ -1919,8 +1982,12 @@ pub fn copy_background(document: &mut codec::CadDocument, handle: Handle) -> Han
         Some(ObjectType::ClassObject(object))
             if matches!(
                 object.data,
-                D::SolidBackground(_) | D::GradientBackground(_) | D::ImageBackground(_)
-                    | D::GroundPlaneBackground(_) | D::SkyLightBackground(_) | D::IblBackground(_)
+                D::SolidBackground(_)
+                    | D::GradientBackground(_)
+                    | D::ImageBackground(_)
+                    | D::GroundPlaneBackground(_)
+                    | D::SkyLightBackground(_)
+                    | D::IblBackground(_)
             ) =>
         {
             let data = object.data.clone();

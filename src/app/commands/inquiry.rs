@@ -505,10 +505,13 @@ impl OpenCADStudio {
                     ));
                 }
                 let pre_doc = self.tabs[i].scene.document.clone();
-                self.tabs[i]
-                    .scene
-                    .define_block_raw(&block_name, codec::types::Vector3::ZERO, vec![]);
-                let Some(record) = self.tabs[i].scene.document.block_records.get(&block_name) else {
+                self.tabs[i].scene.define_block_raw(
+                    &block_name,
+                    codec::types::Vector3::ZERO,
+                    vec![],
+                );
+                let Some(record) = self.tabs[i].scene.document.block_records.get(&block_name)
+                else {
                     return Some(Task::none());
                 };
                 let br_handle = record.handle;

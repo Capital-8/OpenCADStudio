@@ -2,7 +2,9 @@
 use crate::app::{Message, OpenCADStudio};
 use iced::Task;
 
-inventory::submit!(crate::command::CommandRegistration { names: &["UCSFOLLOW"] });
+inventory::submit!(crate::command::CommandRegistration {
+    names: &["UCSFOLLOW"]
+});
 
 impl OpenCADStudio {
     pub(super) fn dispatch_ucsfollow(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {
@@ -54,7 +56,8 @@ impl OpenCADStudio {
                         self.plan_snap(i, rotation);
                         self.tabs[i].dirty = true;
                     }
-                    self.command_line.push_output(&format!("UCSFOLLOW = {}", u8::from(next)));
+                    self.command_line
+                        .push_output(&format!("UCSFOLLOW = {}", u8::from(next)));
                 }
             }
             Some(_) => {
@@ -111,7 +114,10 @@ mod tests {
         assert_ne!(unchanged.rotation, followed.rotation);
         let _ = app.run_command_line("UF 0");
         let _ = app.run_command_line("SQ Z 30");
-        assert_eq!(followed.rotation, app.tabs[i].scene.camera.borrow().rotation);
+        assert_eq!(
+            followed.rotation,
+            app.tabs[i].scene.camera.borrow().rotation
+        );
     }
 
     #[test]
@@ -147,7 +153,10 @@ mod tests {
         assert_eq!(before, app.tabs[i].scene.camera.borrow().rotation);
         let _ = app.run_command_line("UCSFOLLOW 1");
         let aligned = app.tabs[i].scene.camera.borrow().rotation;
-        assert_ne!(before, aligned, "enabling must align the existing UCS immediately");
+        assert_ne!(
+            before, aligned,
+            "enabling must align the existing UCS immediately"
+        );
         // The same orientation must be obtained through the explicit PLAN path.
         let _ = app.run_command_line("PLAN CURRENT");
         assert_eq!(aligned, app.tabs[i].scene.camera.borrow().rotation);

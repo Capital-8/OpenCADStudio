@@ -29,7 +29,9 @@ pub enum KeyTipInput {
     AltTap,
     /// Show the tab level; `refocus` returns the focus to the command line
     /// when the tips close.
-    Open { refocus: bool },
+    Open {
+        refocus: bool,
+    },
     /// One typed character (upper case).
     Char(String),
     /// Settle a code that also starts a longer one.
@@ -104,7 +106,10 @@ pub fn active() -> bool {
 }
 
 /// Record `el`'s bounds under `id` while key tips show.
-pub(super) fn anchor<'a>(id: &'static str, el: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+pub(super) fn anchor<'a>(
+    id: &'static str,
+    el: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
     if active() {
         PosReport::new(id, el).into()
     } else {
@@ -166,7 +171,11 @@ pub(super) fn collapsed_anchor(title: &str) -> String {
 
 /// Keyboard listener hook for a key press. `Some` while key tips own the
 /// keyboard (the inner value is the message to send, if any).
-pub fn key_pressed(key: &Key, modifiers: keyboard::Modifiers, repeat: bool) -> Option<Option<Message>> {
+pub fn key_pressed(
+    key: &Key,
+    modifiers: keyboard::Modifiers,
+    repeat: bool,
+) -> Option<Option<Message>> {
     let alt = matches!(key, Key::Named(Named::Alt));
     if !repeat {
         ALT_ALONE.store(
@@ -607,7 +616,8 @@ impl Ribbon {
                 .filter(|tip| tip.code.as_deref() == Some(typed))
                 .min_by_key(|tip| rank(tip))
         };
-        let longer = |typed: &str| codes().any(|code| code.len() > typed.len() && code.starts_with(typed));
+        let longer =
+            |typed: &str| codes().any(|code| code.len() > typed.len() && code.starts_with(typed));
         let typed = ch.map(|ch| format!("{}{ch}", state.typed));
         let chosen = match typed {
             Some(typed) if codes().any(|code| code.starts_with(&typed)) => {
@@ -791,7 +801,9 @@ impl Ribbon {
             .map(|(position, (dropdown_id, cmd, submenu))| Tip {
                 anchor: item_anchor(dropdown_id, cmd),
                 target: cmd,
-                code: Some(code(open, cmd).map_or_else(|| (position + 1).to_string(), str::to_string)),
+                code: Some(
+                    code(open, cmd).map_or_else(|| (position + 1).to_string(), str::to_string),
+                ),
                 action: if submenu {
                     Action::Open(Message::ToggleRibbonDropdown(cmd.to_string()))
                 } else {
@@ -1103,7 +1115,9 @@ impl overlay::Overlay<Message, Theme, Renderer> for KeyTipOverlay<'_> {
             let free = |rect: &Rectangle, blocked: &[Rectangle]| {
                 // Touching edges do not count.
                 !blocked.iter().any(|other| {
-                    other.intersection(rect).is_some_and(|r| r.width > 1.0 && r.height > 1.0)
+                    other
+                        .intersection(rect)
+                        .is_some_and(|r| r.width > 1.0 && r.height > 1.0)
                 })
             };
             let mut pills: Vec<(&String, &String, Rectangle)> = Vec::new();
@@ -1125,7 +1139,11 @@ impl overlay::Overlay<Message, Theme, Renderer> for KeyTipOverlay<'_> {
                 let Some(&first) = rects.first() else {
                     continue;
                 };
-                let pill = rects.iter().copied().find(|rect| free(rect, &blocked)).unwrap_or(first);
+                let pill = rects
+                    .iter()
+                    .copied()
+                    .find(|rect| free(rect, &blocked))
+                    .unwrap_or(first);
                 blocked.push(pill);
                 pills.push((anchor, code, pill));
             }
@@ -1161,9 +1179,27 @@ impl overlay::Overlay<Message, Theme, Renderer> for KeyTipOverlay<'_> {
                     ..pill
                 };
                 if !done.is_empty() {
-                    draw_text(renderer, done, Point::new(left, pill.center_y() - 0.5), PILL_TEXT, font, ink.scale_alpha(0.45), false, clip);
+                    draw_text(
+                        renderer,
+                        done,
+                        Point::new(left, pill.center_y() - 0.5),
+                        PILL_TEXT,
+                        font,
+                        ink.scale_alpha(0.45),
+                        false,
+                        clip,
+                    );
                 }
-                draw_text(renderer, rest, Point::new(left + done_w, pill.center_y() - 0.5), PILL_TEXT, font, ink, false, clip);
+                draw_text(
+                    renderer,
+                    rest,
+                    Point::new(left + done_w, pill.center_y() - 0.5),
+                    PILL_TEXT,
+                    font,
+                    ink,
+                    false,
+                    clip,
+                );
                 shown.push(anchor.clone());
             }
         });
@@ -1210,7 +1246,16 @@ fn draw_bar(renderer: &mut Renderer, theme: &Theme, parts: &[String; 3]) {
             1 => (regular, ink),
             _ => (regular, ink.scale_alpha(0.6)),
         };
-        draw_text(renderer, part, Point::new(x, y), BAR_TEXT, part_font, color, false, bar);
+        draw_text(
+            renderer,
+            part,
+            Point::new(x, y),
+            BAR_TEXT,
+            part_font,
+            color,
+            false,
+            bar,
+        );
         x += text_width(part, BAR_TEXT, part_font) + 18.0;
     }
 }
@@ -1239,13 +1284,19 @@ fn pill_candidates(
     let left_corner = |x: f32, y: f32| Point::new(x - width / 2.0, y + PILL_H / 2.0);
     let label = fresh_bounds(&label_id(anchor));
     if anchor.starts_with("tab:") {
-        return vec![Point::new(b.center_x(), b.y + b.height - 4.0 + PILL_H / 2.0)];
+        return vec![Point::new(
+            b.center_x(),
+            b.y + b.height - 4.0 + PILL_H / 2.0,
+        )];
     }
     if anchor.starts_with("qa:")
         || anchor == super::widgets::UNDO_HISTORY_ID
         || anchor == super::widgets::REDO_HISTORY_ID
     {
-        return vec![corner(b.x + 14.0, b.center_y()), Point::new(b.x + 14.0, b.center_y())];
+        return vec![
+            corner(b.x + 14.0, b.center_y()),
+            Point::new(b.x + 14.0, b.center_y()),
+        ];
     }
     if anchor == XREF_LAUNCHER {
         return vec![
@@ -1291,7 +1342,10 @@ fn pill_candidates(
         let mut spots = Vec::new();
         if dropdown {
             // The arrow strip lies under the label.
-            spots.push(Point::new(b.center_x(), b.y + b.height - super::widgets::LARGE_ARR / 2.0));
+            spots.push(Point::new(
+                b.center_x(),
+                b.y + b.height - super::widgets::LARGE_ARR / 2.0,
+            ));
         }
         spots.extend([
             Point::new(b.center_x(), label.y + label.height + 1.0 + PILL_H / 2.0),

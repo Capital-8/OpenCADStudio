@@ -759,7 +759,12 @@ impl OpenCADStudio {
                     self.command_line.push_info(&cmd.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(cmd));
                 } else {
-                    let layer = self.tabs[i].scene.document.header.current_layer_name.clone();
+                    let layer = self.tabs[i]
+                        .scene
+                        .document
+                        .header
+                        .current_layer_name
+                        .clone();
                     let editable: Vec<_> = handles
                         .into_iter()
                         .filter(|handle| !self.tabs[i].scene.is_layer_locked(*handle))
@@ -1193,7 +1198,10 @@ impl OpenCADStudio {
         let scene = &mut self.tabs[i].scene;
         let viewport = scene.active_viewport.filter(|handle| {
             scene.current_layout != "Model"
-                && matches!(scene.document.get_entity(*handle), Some(EntityType::Viewport(_)))
+                && matches!(
+                    scene.document.get_entity(*handle),
+                    Some(EntityType::Viewport(_))
+                )
         });
         let document = &mut scene.document;
         let Some(viewport) = viewport else {
@@ -1284,7 +1292,9 @@ impl OpenCADStudio {
                         .layer_viewport_overrides(layer.handle, kind)
                         .iter()
                         .any(|(handle, _)| *handle == viewport);
-                    value.filter(|_| differs || existing).map(|value| (kind, value))
+                    value
+                        .filter(|_| differs || existing)
+                        .map(|value| (kind, value))
                 })
                 .collect();
             for (kind, value) in overrides {
@@ -1302,7 +1312,9 @@ impl OpenCADStudio {
         scene.bump_geometry();
         let doc_layers = self.tabs[i].scene.document.layers.clone();
         let vp_info = self.tabs[i].scene.viewport_list();
-        self.tabs[i].layers.sync_with_viewports(&doc_layers, vp_info);
+        self.tabs[i]
+            .layers
+            .sync_with_viewports(&doc_layers, vp_info);
         restored
     }
 }

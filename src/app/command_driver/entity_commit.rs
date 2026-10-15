@@ -786,7 +786,12 @@ impl OpenCADStudio {
         self.push_undo_snapshot(i, "BLOCK");
         let name = options.name.clone();
         let redefined = options.redefine
-            && self.tabs[i].scene.document.block_records.get(&name).is_some();
+            && self.tabs[i]
+                .scene
+                .document
+                .block_records
+                .get(&name)
+                .is_some();
         match self.tabs[i].scene.create_block_with_options(*options) {
             Ok(insert_handle) => {
                 self.tabs[i].dirty = true;

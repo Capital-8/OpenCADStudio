@@ -664,7 +664,11 @@ pub fn view_window<'a>(
                     .align_x(iced::alignment::Horizontal::Center),
                 Space::new().height(16),
                 row![
-                    dialog_button(t!("Redefine"), Message::BlockDefConfirmRedefine(true), false),
+                    dialog_button(
+                        t!("Redefine"),
+                        Message::BlockDefConfirmRedefine(true),
+                        false
+                    ),
                     // Default / safe focus on "No"
                     dialog_button(t!("No"), Message::BlockDefConfirmRedefine(false), true),
                 ]

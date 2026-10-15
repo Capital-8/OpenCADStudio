@@ -41,12 +41,17 @@ static PLOT_STYLES_FOLDER: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLoc
 /// default one, such as a share on the office network.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn plot_styles_folder() -> Option<PathBuf> {
-    PLOT_STYLES_FOLDER.read().unwrap_or_else(|e| e.into_inner()).clone()
+    PLOT_STYLES_FOLDER
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn set_plot_styles_folder(folder: Option<PathBuf>) {
-    *PLOT_STYLES_FOLDER.write().unwrap_or_else(|e| e.into_inner()) = folder;
+    *PLOT_STYLES_FOLDER
+        .write()
+        .unwrap_or_else(|e| e.into_inner()) = folder;
 }
 
 #[cfg(not(target_arch = "wasm32"))]

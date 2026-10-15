@@ -96,7 +96,11 @@ impl CadCommand for UcsCommand {
             [origin, on_x] => {
                 let x = *on_x - *origin;
                 let d = pt - *origin;
-                (*origin, x, d - x * (d.dot(x) / x.length_squared().max(1.0e-300)))
+                (
+                    *origin,
+                    x,
+                    d - x * (d.dot(x) / x.length_squared().max(1.0e-300)),
+                )
             }
             _ => return None,
         };
@@ -139,7 +143,8 @@ impl CadCommand for UcsCommand {
                     "ELIMINAR" | "E" => "DELETE",
                     "3" | "3PUNTOS" | "3 PUNTOS" => "3POINT",
                     value => value,
-                }.to_owned();
+                }
+                .to_owned();
                 if Self::is_zero_arg(&up) {
                     Some(CmdResult::Dispatch(format!("UCS {up}")))
                 } else if Self::takes_value(&up) || Self::takes_point(&up) {
@@ -225,13 +230,19 @@ mod tests {
     #[test]
     fn bare_ucs_accepts_origin_then_x_then_xy_without_option() {
         let mut cmd = UcsCommand::new();
-        assert!(matches!(cmd.on_point(DVec3::new(10.0, 20.0, 0.0)), CmdResult::NeedPoint));
+        assert!(matches!(
+            cmd.on_point(DVec3::new(10.0, 20.0, 0.0)),
+            CmdResult::NeedPoint
+        ));
         assert_eq!(cmd.points.len(), 1);
-        assert!(matches!(cmd.on_point(DVec3::new(11.0, 20.0, 0.0)), CmdResult::NeedPoint));
+        assert!(matches!(
+            cmd.on_point(DVec3::new(11.0, 20.0, 0.0)),
+            CmdResult::NeedPoint
+        ));
         match cmd.on_point(DVec3::new(10.0, 21.0, 0.0)) {
-            CmdResult::Dispatch(command) => assert_eq!(
-                command, "UCS 3POINTW 10,20,0|11,20,0|10,21,0"
-            ),
+            CmdResult::Dispatch(command) => {
+                assert_eq!(command, "UCS 3POINTW 10,20,0|11,20,0|10,21,0")
+            }
             _ => panic!("three clicks must dispatch the new UCS"),
         }
     }
@@ -240,7 +251,10 @@ mod tests {
     fn initial_coordinate_is_delegated_to_point_pipeline() {
         let mut cmd = UcsCommand::new();
         assert!(cmd.on_text_input("10,20,0").is_none());
-        assert!(matches!(cmd.on_point(DVec3::new(10.0, 20.0, 0.0)), CmdResult::NeedPoint));
+        assert!(matches!(
+            cmd.on_point(DVec3::new(10.0, 20.0, 0.0)),
+            CmdResult::NeedPoint
+        ));
         assert_eq!(cmd.points.len(), 1);
     }
 
@@ -262,7 +276,10 @@ mod tests {
             assert!(matches!(result, Some(CmdResult::Dispatch(s)) if s == "UCS WORLD"));
         }
         let mut cmd = UcsCommand::new();
-        assert!(matches!(cmd.on_text_input("Guardar"), Some(CmdResult::NeedPoint)));
+        assert!(matches!(
+            cmd.on_text_input("Guardar"),
+            Some(CmdResult::NeedPoint)
+        ));
         let result = cmd.on_text_input("MiPlano");
         assert!(matches!(result, Some(CmdResult::Dispatch(s)) if s == "UCS SAVE MiPlano"));
     }

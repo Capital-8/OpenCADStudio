@@ -15,7 +15,7 @@ use iced::widget::{
 use iced::window;
 use iced::{keyboard, Background, Border, Color, Element, Fill, Subscription, Task, Theme};
 use iced_aw::ContextMenu;
- 
+
 /// Invisible event surface for accurate point picking. MouseArea emits a
 /// positionless press message; capturing the cursor in the actual button
 /// event avoids using the previous hover location when clicking quickly.
@@ -1095,10 +1095,11 @@ bg={bg_ms:.1}ms n={view_count}"
             let tracking_distance = if tab.dyn_fields.len() == 1
                 && tab.dyn_fields[0].component == DynComponent::Distance
             {
-                self.active_distance_ray(self.active_tab).and_then(|(origin, direction)| {
-                    let axis = direction.try_normalize()?;
-                    Some((w - origin).dot(axis).abs())
-                })
+                self.active_distance_ray(self.active_tab)
+                    .and_then(|(origin, direction)| {
+                        let axis = direction.try_normalize()?;
+                        Some((w - origin).dot(axis).abs())
+                    })
             } else {
                 None
             };
@@ -1254,8 +1255,9 @@ bg={bg_ms:.1}ms n={view_count}"
                         // The displayed live distance must use the same
                         // acquired tracking origin as the guide and typed
                         // distance placement, not the last picked point.
-                        (None, _) if f.component == DynComponent::Distance
-                            && tracking_distance.is_some() =>
+                        (None, _)
+                            if f.component == DynComponent::Distance
+                                && tracking_distance.is_some() =>
                         {
                             crate::entities::common::format_length(
                                 tracking_distance.unwrap() * f.role.value_scale() as f64,
@@ -4024,7 +4026,9 @@ pub(super) fn recent_files_panel<'a>(
                         ..Default::default()
                     }
                 }),
-            container(text(tip).size(11)).padding([2, 6]).style(container::rounded_box),
+            container(text(tip).size(11))
+                .padding([2, 6])
+                .style(container::rounded_box),
             iced::widget::tooltip::Position::Bottom,
         )
     };
@@ -4061,12 +4065,10 @@ pub(super) fn recent_files_panel<'a>(
         .into()
     } else if view != RecentView::List {
         iced::widget::scrollable(
-            recent_tiles(recents, thumbs, view == RecentView::Preview).padding(
-                iced::Padding {
-                    right: 12.0,
-                    ..iced::Padding::ZERO
-                },
-            ),
+            recent_tiles(recents, thumbs, view == RecentView::Preview).padding(iced::Padding {
+                right: 12.0,
+                ..iced::Padding::ZERO
+            }),
         )
         .width(Fill)
         .height(Fill)

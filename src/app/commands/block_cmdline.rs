@@ -4,8 +4,7 @@
 
 use crate::app::{Message, OpenCADStudio};
 use crate::modules::insert::block_cmdline::{
-    AttsyncCommand, BlockTable, DashBeditCommand, DashBlockCommand, DashWblockCommand,
-    WblockSource,
+    AttsyncCommand, BlockTable, DashBeditCommand, DashBlockCommand, DashWblockCommand, WblockSource,
 };
 use iced::Task;
 

@@ -468,9 +468,9 @@ impl CadCommand for DashBlockCommand {
             BlockStep::Base => {
                 CmdResult::ReportError("Point or option keyword required.".to_string())
             }
-            BlockStep::Annotative | BlockStep::Orient | BlockStep::Mode => self
-                .on_text_input("")
-                .unwrap_or(CmdResult::NeedPoint),
+            BlockStep::Annotative | BlockStep::Orient | BlockStep::Mode => {
+                self.on_text_input("").unwrap_or(CmdResult::NeedPoint)
+            }
             BlockStep::Objects => {
                 let handles = std::mem::take(&mut self.handles);
                 self.create(handles)
@@ -801,8 +801,10 @@ impl DashBeditCommand {
         if lines.is_empty() {
             "No blocks found.".to_string()
         } else {
-            lines.join("
-")
+            lines.join(
+                "
+",
+            )
         }
     }
 }

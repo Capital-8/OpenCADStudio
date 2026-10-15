@@ -25,7 +25,10 @@ static FONTS_FOLDER: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLock::new
 /// such as a share on the office network.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn fonts_folder() -> Option<PathBuf> {
-    FONTS_FOLDER.read().unwrap_or_else(|e| e.into_inner()).clone()
+    FONTS_FOLDER
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -1780,7 +1780,10 @@ fn mode_prompt(command: &str) -> String {
 
 fn mode_options() -> Vec<crate::command::CmdOption> {
     use crate::command::CmdOption;
-    vec![CmdOption::new("Quick", "Q"), CmdOption::new("Standard", "S")]
+    vec![
+        CmdOption::new("Quick", "Q"),
+        CmdOption::new("Standard", "S"),
+    ]
 }
 
 /// The mOde option and its answer, shared by TRIM and EXTEND. Returns the
@@ -5047,7 +5050,11 @@ mod tests {
         let geos = build_geos(&all);
         let curve_line = entity_curve_xy(&EntityType::Line(l1.clone())).unwrap();
         let ts_line = cut_params(&curve_line, Handle::new(1), &geos);
-        assert!(!ts_line.is_empty(), "line must have cut point where tangent arc touches it: ts={:?}", ts_line);
+        assert!(
+            !ts_line.is_empty(),
+            "line must have cut point where tangent arc touches it: ts={:?}",
+            ts_line
+        );
 
         let curve_arc = entity_curve_xy(&EntityType::Arc(a.clone())).unwrap();
         let ts_arc = cut_params(&curve_arc, Handle::new(2), &geos);
@@ -5056,9 +5063,9 @@ mod tests {
 
     #[test]
     fn test_trim_arc_tangent_to_two_lines() {
-        use codec::entities::{Arc as CadArc, Line as LineEnt};
         use crate::command::{TangentObject, WorkingPlane};
         use crate::modules::draw::draw::arc::{solve_arc_3_inputs, ArcPick};
+        use codec::entities::{Arc as CadArc, Line as LineEnt};
 
         let mut l1 = LineEnt::new();
         l1.common.handle = Handle::new(1);
@@ -5082,9 +5089,15 @@ mod tests {
         // Middle point: (1 - sqrt(0.5), 1 - sqrt(0.5)) -> radius ~ 1
         let mid = DVec3::new(1.0 - (0.5_f64).sqrt(), 1.0 - (0.5_f64).sqrt(), 0.0);
         let sol = solve_arc_3_inputs(
-            ArcPick::Tangent { target: t1, hit: DVec3::new(2.0, 0.0, 0.0) },
+            ArcPick::Tangent {
+                target: t1,
+                hit: DVec3::new(2.0, 0.0, 0.0),
+            },
             ArcPick::Point(mid),
-            ArcPick::Tangent { target: t2, hit: DVec3::new(0.0, 2.0, 0.0) },
+            ArcPick::Tangent {
+                target: t2,
+                hit: DVec3::new(0.0, 2.0, 0.0),
+            },
             WorkingPlane::default(),
         );
 
@@ -5135,9 +5148,9 @@ mod tests {
 
     #[test]
     fn test_trim_arc_tangent_angled_lines() {
-        use codec::entities::{Arc as CadArc, Line as LineEnt};
         use crate::command::{TangentObject, WorkingPlane};
         use crate::modules::draw::draw::arc::{solve_arc_3_inputs, ArcPick};
+        use codec::entities::{Arc as CadArc, Line as LineEnt};
 
         // Two lines meeting at (0, 0): one along (cos(20 deg), sin(20 deg)), other along (cos(80 deg), sin(80 deg))
         let a1 = 20.0_f64.to_radians();
@@ -5166,12 +5179,22 @@ mod tests {
 
         // Midpoint between points at distance 20 on the bisector
         let bisector_angle = (a1 + a2) * 0.5;
-        let mid = DVec3::new(15.0 * bisector_angle.cos(), 15.0 * bisector_angle.sin(), 0.0);
+        let mid = DVec3::new(
+            15.0 * bisector_angle.cos(),
+            15.0 * bisector_angle.sin(),
+            0.0,
+        );
 
         let sol = solve_arc_3_inputs(
-            ArcPick::Tangent { target: t1, hit: DVec3::new(20.0 * dir1.x, 20.0 * dir1.y, 0.0) },
+            ArcPick::Tangent {
+                target: t1,
+                hit: DVec3::new(20.0 * dir1.x, 20.0 * dir1.y, 0.0),
+            },
             ArcPick::Point(mid),
-            ArcPick::Tangent { target: t2, hit: DVec3::new(20.0 * dir2.x, 20.0 * dir2.y, 0.0) },
+            ArcPick::Tangent {
+                target: t2,
+                hit: DVec3::new(20.0 * dir2.x, 20.0 * dir2.y, 0.0),
+            },
             WorkingPlane::default(),
         );
 
@@ -5199,8 +5222,16 @@ mod tests {
         println!("angled ts_l2: {:?}", ts_l2);
 
         // We expect l1 to have at least 2 cuts: the intersection with l2 at (0,0) and the tangent point with arc!
-        assert!(ts_l1.len() >= 2, "Line 1 must have intersection and tangent cut: got {:?}", ts_l1);
-        assert!(ts_l2.len() >= 2, "Line 2 must have intersection and tangent cut: got {:?}", ts_l2);
+        assert!(
+            ts_l1.len() >= 2,
+            "Line 1 must have intersection and tangent cut: got {:?}",
+            ts_l1
+        );
+        assert!(
+            ts_l2.len() >= 2,
+            "Line 2 must have intersection and tangent cut: got {:?}",
+            ts_l2
+        );
 
         // Trimming l1 arm past the tangent point
         let click_l1 = 40.0 * dir1;
@@ -5212,7 +5243,10 @@ mod tests {
     #[test]
     fn test_kernel_intersect_tangency() {
         use std::f64::consts::FRAC_PI_2;
-        let line = Curve::Line(KernelLine { start: [-10.0, 0.0], end: [10.0, 0.0] });
+        let line = Curve::Line(KernelLine {
+            start: [-10.0, 0.0],
+            end: [10.0, 0.0],
+        });
 
         // Case 1: Exact tangency at interior of arc
         let arc_exact = Curve::Arc(KernelArc {
@@ -5275,14 +5309,18 @@ mod tests {
         println!("hits_end (-PI/2): {:?}", hits_end);
 
         // Case 7: Large coordinates (e.g. 5000, 5005)
-        let line_large = Curve::Line(KernelLine { start: [4990.0, 5000.0], end: [5010.0, 5000.0] });
+        let line_large = Curve::Line(KernelLine {
+            start: [4990.0, 5000.0],
+            end: [5010.0, 5000.0],
+        });
         let arc_large = Curve::Arc(KernelArc {
             centre: [5000.0, 5005.0],
             radius: 5.0,
             start_angle: -FRAC_PI_2,
             end_angle: 0.0,
         });
-        let hits_large = kernel_intersect(&line_large, &arc_large, KernelTolerance::new(CUT_TOLERANCE));
+        let hits_large =
+            kernel_intersect(&line_large, &arc_large, KernelTolerance::new(CUT_TOLERANCE));
         println!("hits_large: {:?}", hits_large);
 
         // Test with cut_params:
@@ -5300,9 +5338,9 @@ mod tests {
 
     #[test]
     fn test_arc_tangent_line_precision_sweep() {
-        use codec::entities::{Arc as CadArc, Line as LineEnt};
         use crate::command::{TangentObject, WorkingPlane};
         use crate::modules::draw::draw::arc::{solve_arc_3_inputs, ArcPick};
+        use codec::entities::{Arc as CadArc, Line as LineEnt};
 
         let mut max_dist = 0.0_f64;
         let mut failed_cuts = 0;
@@ -5337,9 +5375,15 @@ mod tests {
             let mid = bisector * 30.0;
 
             let sol = solve_arc_3_inputs(
-                ArcPick::Tangent { target: t1, hit: DVec3::new(50.0, 0.0, 0.0) },
+                ArcPick::Tangent {
+                    target: t1,
+                    hit: DVec3::new(50.0, 0.0, 0.0),
+                },
                 ArcPick::Point(mid),
-                ArcPick::Tangent { target: t2, hit: dir2 * 50.0 },
+                ArcPick::Tangent {
+                    target: t2,
+                    hit: dir2 * 50.0,
+                },
                 WorkingPlane::default(),
             );
 
@@ -5366,13 +5410,18 @@ mod tests {
 
                 if ts_l1.len() < 2 || ts_l2.len() < 2 {
                     failed_cuts += 1;
-                    println!("FAILED at angle {angle_deg} deg: ts_l1={:?}, ts_l2={:?}", ts_l1, ts_l2);
+                    println!(
+                        "FAILED at angle {angle_deg} deg: ts_l1={:?}, ts_l2={:?}",
+                        ts_l1, ts_l2
+                    );
                 }
 
                 // Check distance of arc endpoints to line
                 let ep1 = [center.x + radius * sa.cos(), center.y + radius * sa.sin()];
                 let d1 = (ep1[1] - 0.0).abs(); // distance to l1 (y=0)
-                if d1 > max_dist { max_dist = d1; }
+                if d1 > max_dist {
+                    max_dist = d1;
+                }
             }
         }
         println!("Sweep results: failed_cuts={failed_cuts}, max_dist={max_dist:e}");

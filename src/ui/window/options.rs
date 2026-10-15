@@ -1810,11 +1810,9 @@ pub fn view_window<'a>(
     let files = column![
         text(crate::t!("Files")).size(15),
         Space::new().height(6),
-        text(crate::t!(
-            "Where the application keeps its own files."
-        ))
-        .size(11)
-        .width(sizing.width),
+        text(crate::t!("Where the application keeps its own files."))
+            .size(11)
+            .width(sizing.width),
         Space::new().height(16),
         folder_row(crate::t!("Configuration"), folders.config.clone(), None),
         Space::new().height(12),

@@ -1103,8 +1103,8 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                         || super::keytips::label_id(LAYER_COMBO_ID),
                         text(active_layer_label).size(11),
                     ))
-                        .width(name_w)
-                        .clip(true),
+                    .width(name_w)
+                    .clip(true),
                     icons::themed_arrow_down(9.0),
                 ]
                 .spacing(4)
@@ -1253,8 +1253,8 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                         || super::keytips::label_id(combo_id),
                         text(active.clone()).size(11),
                     ))
-                        .width(Fill)
-                        .clip(true),
+                    .width(Fill)
+                    .clip(true),
                     if is_open {
                         icons::themed_arrow_up(9.0)
                     } else {

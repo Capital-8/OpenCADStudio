@@ -221,10 +221,14 @@ pub fn view_window<'a>(
                 .style(button::secondary)]
             .spacing(8)
             .align_y(iced::Center),
-            row![add, button(text(t!("Import PGP…")).size(12))
-                .on_press_maybe((!pending_add).then_some(Message::AliasEditorImport))
-                .padding([4, 10])
-                .style(button::secondary)].spacing(8),
+            row![
+                add,
+                button(text(t!("Import PGP…")).size(12))
+                    .on_press_maybe((!pending_add).then_some(Message::AliasEditorImport))
+                    .padding([4, 10])
+                    .style(button::secondary)
+            ]
+            .spacing(8),
         )
     };
     // Apply — primary action; commits the rows to ocad.pgp and stays open.
@@ -276,12 +280,7 @@ pub fn view_window<'a>(
             Space::new().height(6),
             scrollable(conflict_banner).height(Length::Fit.max(72)),
             Space::new().height(4),
-            row![
-                add_area,
-                reset_area,
-            ]
-            .spacing(8)
-            .align_y(iced::Center),
+            row![add_area, reset_area,].spacing(8).align_y(iced::Center),
             row![stats, Space::new().width(Length::Fill), apply_area]
                 .spacing(8)
                 .align_y(iced::Center),

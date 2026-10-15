@@ -108,10 +108,15 @@ impl OpenCADStudio {
         self.polar_mode = state.polar_on;
         self.ortho_mode = state.ortho_on;
         self.polar_increment_deg = state.polar_increment_deg;
-        let aperture = state.osnap_aperture_input.trim().parse::<f32>().ok()
+        let aperture = state
+            .osnap_aperture_input
+            .trim()
+            .parse::<f32>()
+            .ok()
             .filter(|v| v.is_finite() && (4.0..=40.0).contains(v));
         let Some(aperture) = aperture else {
-            self.command_line.push_error("OSNAP capture radius must be between 4 and 40 pixels.");
+            self.command_line
+                .push_error("OSNAP capture radius must be between 4 and 40 pixels.");
             return false;
         };
         self.snapper.osnap_radius_px = aperture;

@@ -302,7 +302,10 @@ pub fn nesting_chain(
         return chain;
     };
     for _ in 0..16 {
-        let level = chain.last().expect("chain starts with the top level").clone();
+        let level = chain
+            .last()
+            .expect("chain starts with the top level")
+            .clone();
         let nearest = level_hits(document, &level)
             .into_iter()
             .filter_map(|(h, paths)| paths_distance(&paths, point).map(|d| (h, d)))
@@ -525,7 +528,8 @@ impl RefEditOptionsCommand {
                 if crossing {
                     points().any(inside)
                         || paths.iter().any(|path| {
-                            path.windows(2).any(|s| segment_meets_box(s[0], s[1], lo, hi))
+                            path.windows(2)
+                                .any(|s| segment_meets_box(s[0], s[1], lo, hi))
                         })
                 } else {
                     points().next().is_some() && points().all(inside)
@@ -859,7 +863,6 @@ pub fn inverse_placement(t: &codec::types::Transform) -> Option<codec::types::Tr
     }
     Some(codec::types::Transform::from_matrix(out))
 }
-
 
 /// Apply the session's forward transform to a definition-local entity so it
 /// appears at its correct world-space position.

@@ -1053,7 +1053,8 @@ impl OpenCADStudio {
         self.cliprompt_lines = crate::app::settings::clamp_clipromptlines(s.cliprompt_lines);
         self.command_line
             .set_cliprompt_lines(self.cliprompt_lines.clamp(0, 50) as u8);
-        self.command_line.set_opacity_percent(s.command_line_opacity);
+        self.command_line
+            .set_opacity_percent(s.command_line_opacity);
         self.commandline_fade_ms =
             crate::app::settings::clamp_commandline_fade_ms(s.commandline_fade_ms);
         self.command_line
@@ -1460,7 +1461,8 @@ impl OpenCADStudio {
         self.show_graphic_attributes = cfg.show_graphic_attributes;
         self.graphic_attributes.fill_on_current_layer = cfg.graphic_fills_on_current_layer;
         if self.show_graphic_attributes {
-            self.dock.dock_below_properties(crate::ui::dock::PanelId::GraphicAttributes);
+            self.dock
+                .dock_below_properties(crate::ui::dock::PanelId::GraphicAttributes);
         }
         self.ribbon
             .set_graphic_attributes(self.show_graphic_attributes);
@@ -2246,7 +2248,9 @@ impl OpenCADStudio {
         let enter_viewport_task = self.tabs[i]
             .scene
             .saved_entered_viewport()
-            .map_or_else(Task::none, |handle| Task::done(Message::EnterViewport(handle)));
+            .map_or_else(Task::none, |handle| {
+                Task::done(Message::EnterViewport(handle))
+            });
 
         // The tab may have been reused for the newly opened file. Any Plot
         // dialog cache belongs to the previous/startup drawing and must not
@@ -2463,12 +2467,10 @@ impl OpenCADStudio {
                         handles,
                         base,
                         ..
-                    } => {
-                        crate::modules::insert::wblock::extract_entities_to_doc_with_base(
-                            &document, &handles, base, unit,
-                        )
-                        .map_err(|e| e.to_string())?
-                    }
+                    } => crate::modules::insert::wblock::extract_entities_to_doc_with_base(
+                        &document, &handles, base, unit,
+                    )
+                    .map_err(|e| e.to_string())?,
                 };
                 crate::io::save(&out_doc, &worker_path).map_err(|e| e.to_string())
             },
@@ -2496,7 +2498,10 @@ impl OpenCADStudio {
                     let document = if worker_name == "*" {
                         crate::modules::insert::wblock::extract_entities_to_doc(&document, &handles)
                     } else {
-                        crate::modules::insert::wblock::extract_block_to_doc(&document, &worker_name)
+                        crate::modules::insert::wblock::extract_block_to_doc(
+                            &document,
+                            &worker_name,
+                        )
                     }
                     .map_err(|e| e.to_string())?;
                     crate::io::save(&document, &worker_path).map_err(|e| e.to_string())
@@ -2526,11 +2531,7 @@ impl OpenCADStudio {
                 // Same reporting the background path used for a failed
                 // extraction — straight through the existing message.
                 Err(error) => {
-                    return Task::done(Message::WblockWriteFinished(
-                        block_name,
-                        path,
-                        Err(error),
-                    ))
+                    return Task::done(Message::WblockWriteFinished(block_name, path, Err(error)))
                 }
             };
             let ext = path
@@ -3088,10 +3089,8 @@ impl OpenCADStudio {
         if let Err(error) = result {
             crate::io::fs_access::drop_handle(tab_id);
             self.command_line.push_error(
-                crate::tf!(
-                    "In-place save failed ({error}); a copy was downloaded instead"
-                )
-                .as_ref(),
+                crate::tf!("In-place save failed ({error}); a copy was downloaded instead")
+                    .as_ref(),
             );
         }
         self.finalize_web_save(
@@ -4105,8 +4104,7 @@ impl OpenCADStudio {
                     // updates the picked file, no dialog at all. The real
                     // name (the user may have renamed it in the picker)
                     // drives the save bookkeeping.
-                    let picked_name =
-                        crate::io::fs_access::handle_name(tab_id).unwrap_or(filename);
+                    let picked_name = crate::io::fs_access::handle_name(tab_id).unwrap_or(filename);
                     Task::batch([
                         close,
                         self.web_save_capture(tab_id, picked_name, ext.to_string(), version),
@@ -4124,12 +4122,8 @@ impl OpenCADStudio {
                         close,
                         Task::perform(
                             async move {
-                                crate::io::fs_access::pick_save_handle(
-                                    tab_id,
-                                    &pick_suggested,
-                                    ext,
-                                )
-                                .await
+                                crate::io::fs_access::pick_save_handle(tab_id, &pick_suggested, ext)
+                                    .await
                             },
                             move |picked| Message::WebSaveHandlePicked {
                                 tab_id,
@@ -4143,12 +4137,10 @@ impl OpenCADStudio {
                 }
                 // Firefox/Safari (no showSaveFilePicker): untouched legacy
                 // download flow.
-                crate::io::fs_access::SaveRoute::Download => {
-                    Task::batch([
-                        close,
-                        self.web_save_capture(tab_id, filename, ext.to_string(), version),
-                    ])
-                }
+                crate::io::fs_access::SaveRoute::Download => Task::batch([
+                    close,
+                    self.web_save_capture(tab_id, filename, ext.to_string(), version),
+                ]),
             }
         }
     }
@@ -4171,7 +4163,8 @@ impl OpenCADStudio {
         // record the intended ext, which the completion half re-checks
         // against the retained handle before writing.
         crate::io::fs_access::begin_web_save(tab_id, &ext);
-        let bounds = crate::ui::wrap_bar::dropdown_bounds(crate::app::view::VIEWPORT_CAPTURE_BOUNDS_ID);
+        let bounds =
+            crate::ui::wrap_bar::dropdown_bounds(crate::app::view::VIEWPORT_CAPTURE_BOUNDS_ID);
         let Some(bounds) = bounds else {
             return Task::done(Message::WebSaveScreenshot {
                 tab_id,
@@ -4212,9 +4205,7 @@ impl OpenCADStudio {
         picked: Result<Option<String>, String>,
     ) -> Task<Message> {
         match picked {
-            Ok(Some(picked_name)) => {
-                self.web_save_capture(tab_id, picked_name, ext, version)
-            }
+            Ok(Some(picked_name)) => self.web_save_capture(tab_id, picked_name, ext, version),
             Ok(None) => {
                 // The picker was the save dialog: dismissing it means no
                 // save — the download fallback must NOT fire (that would
@@ -4547,9 +4538,8 @@ impl OpenCADStudio {
         let entries = std::mem::take(&mut self.web_autosave_pending);
         self.web_autosave_restore_all_remaining = entries.len();
         self.close_active_modal();
-        self.command_line.push_info(
-            crate::tf!("Restoring {} drawing(s)…", entries.len()).as_ref(),
-        );
+        self.command_line
+            .push_info(crate::tf!("Restoring {} drawing(s)…", entries.len()).as_ref());
         let reads = crate::io::web_autosave::restore_all_plan(&entries)
             .into_iter()
             .map(|(open_name, key)| {
@@ -4708,7 +4698,7 @@ impl OpenCADStudio {
         self.sync_ribbon_layers();
         self.sync_ribbon_styles();
         self.sync_ribbon_from_selection();
-    
+
         Task::none()
     }
 
@@ -5734,9 +5724,9 @@ impl OpenCADStudio {
             background_task(
                 crate::t!("Print to printer"),
                 move || {
-                    iced::futures::executor::block_on(crate::io::print_to_printer::print_wires_with(
-                        page, options,
-                    ))
+                    iced::futures::executor::block_on(
+                        crate::io::print_to_printer::print_wires_with(page, options),
+                    )
                 },
                 Message::PrintResult,
             )
@@ -8232,7 +8222,10 @@ mod plot_paper_tests {
         // and PDF drivers, so an SVG plot stores the PDF driver spelling.
         let _ = app.on_plot_dlg(PlotDlgMsg::Printer(crate::ui::window::plot::OUT_SVG.into()));
         let _ = app.on_plot_dlg(PlotDlgMsg::SetCurrent);
-        let ps = app.tabs[app.active_tab].scene.plot_settings_for("Layout1").unwrap();
+        let ps = app.tabs[app.active_tab]
+            .scene
+            .plot_settings_for("Layout1")
+            .unwrap();
         assert_eq!(ps.printer_name, "DWG To PDF.pc3");
     }
 

@@ -3241,7 +3241,10 @@ mod constraint_registry_tests {
     fn default_block_alias_targets_are_registered() {
         let names = all_registered_command_names();
         for target in ["-BLOCK", "-WBLOCK", "-ATTEDIT"] {
-            assert!(names.contains(&target), "{target} must validate in ALIASEDIT");
+            assert!(
+                names.contains(&target),
+                "{target} must validate in ALIASEDIT"
+            );
         }
     }
 

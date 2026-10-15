@@ -50,7 +50,9 @@ fn is_modal_blocked_key_msg(msg: &Message) -> bool {
 
 fn perf_message_label(msg: &Message) -> &'static str {
     match msg {
-        Message::ViewportLeftPressAt(_) | Message::ViewportLeftPress | Message::PanePress(_) => "pointer-down",
+        Message::ViewportLeftPressAt(_) | Message::ViewportLeftPress | Message::PanePress(_) => {
+            "pointer-down"
+        }
         Message::ViewportLeftRelease | Message::PaneRelease(_) => "pointer-up",
         Message::ViewportMove(_) | Message::PaneMove(_, _) => "pointer-move",
         Message::CommandFinalize => "command-finalize",
@@ -960,11 +962,13 @@ impl OpenCADStudio {
                 if pending.is_empty() {
                     return autosave;
                 }
-                Task::batch(std::iter::once(autosave).chain(pending.into_iter().map(|script| {
-                    Task::perform(crate::scene::text::web_font::fetch(script), move |res| {
-                        Message::WebFontLoaded(script, res)
-                    })
-                })))
+                Task::batch(
+                    std::iter::once(autosave).chain(pending.into_iter().map(|script| {
+                        Task::perform(crate::scene::text::web_font::fetch(script), move |res| {
+                            Message::WebFontLoaded(script, res)
+                        })
+                    })),
+                )
             }
 
             // Web: a per-script font arrived. The same bytes feed drawing text,
@@ -1894,8 +1898,9 @@ impl OpenCADStudio {
 
             // -WBLOCK with FILEDIA 1: the file came from the dialog, the
             // command line asks for the rest.
-            Message::WblockSaveResult(block_name, Some(path)) if block_name == "-" => self
-                .dispatch_command(&format!("_-WBLOCKFILE {}", path.display())),
+            Message::WblockSaveResult(block_name, Some(path)) if block_name == "-" => {
+                self.dispatch_command(&format!("_-WBLOCKFILE {}", path.display()))
+            }
             Message::WblockSaveResult(block_name, Some(path)) => {
                 self.on_wblock_save_result_some(block_name, path)
             }
@@ -8592,11 +8597,16 @@ impl OpenCADStudio {
                 async {
                     let handle = rfd::AsyncFileDialog::new()
                         .add_filter(crate::t!("Command aliases (*.pgp)").as_ref(), &["pgp"])
-                        .pick_file().await?;
+                        .pick_file()
+                        .await?;
                     #[cfg(not(target_arch = "wasm32"))]
-                    { Some(std::fs::read(handle.path()).map_err(|e| e.to_string())) }
+                    {
+                        Some(std::fs::read(handle.path()).map_err(|e| e.to_string()))
+                    }
                     #[cfg(target_arch = "wasm32")]
-                    { Some(Ok(handle.read().await)) }
+                    {
+                        Some(Ok(handle.read().await))
+                    }
                 },
                 Message::AliasEditorImported,
             ),
@@ -10553,16 +10563,14 @@ impl OpenCADStudio {
                             .err()
                             .map(|e| e.to_string())
                     };
-                    if let Some(tab_idx) =
-                        self.tabs.iter().position(|t| t.id == state.document_id)
+                    if let Some(tab_idx) = self.tabs.iter().position(|t| t.id == state.document_id)
                     {
                         if let Some(matched) = state
                             .existing_names
                             .iter()
                             .find(|n| n.eq_ignore_ascii_case(trimmed))
                         {
-                            state.preview =
-                                self.tabs[tab_idx].scene.block_preview_wires(matched);
+                            state.preview = self.tabs[tab_idx].scene.block_preview_wires(matched);
                             state.description = self.tabs[tab_idx]
                                 .scene
                                 .document
@@ -10582,8 +10590,7 @@ impl OpenCADStudio {
                 if let Some(state) = self.block_edit_picker.as_mut() {
                     state.name = name.clone();
                     state.error = None;
-                    if let Some(tab_idx) =
-                        self.tabs.iter().position(|t| t.id == state.document_id)
+                    if let Some(tab_idx) = self.tabs.iter().position(|t| t.id == state.document_id)
                     {
                         state.preview = self.tabs[tab_idx].scene.block_preview_wires(&name);
                         state.description = self.tabs[tab_idx]
