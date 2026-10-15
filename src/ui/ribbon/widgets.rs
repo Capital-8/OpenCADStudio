@@ -501,6 +501,8 @@ fn tool_description(id: &str) -> Option<&'static str> {
 /// A tool's tooltip: its name, its description when one is known, and the
 /// command it runs.
 fn tool_tip_text(label: &str, id: &str) -> String {
+    // A macro (`PDFIMPORT;FILE`) shows the command it starts.
+    let id = id.split(';').next().unwrap_or(id);
     match tool_description(id) {
         Some(description) => format!("{label}\n{}\n{} {id}", t!(description), t!("Command:")),
         None => format!("{label}\n{} {id}", t!("Command:")),
@@ -827,6 +829,10 @@ pub(super) fn render_large_dropdown<'a>(
         })
         .or_else(|| items.first().map(|(_, lbl, _)| *lbl))
         .unwrap_or(id);
+    // An empty label: the face keeps its own icon and names the chosen item.
+    let names_item = explicit_label == Some("");
+    let cur_icon = if names_item { icon } else { cur_icon };
+    let explicit_label = explicit_label.filter(|label| !label.is_empty());
     let label = t!(explicit_label.unwrap_or(cur_label)).into_owned();
     let tip_text = tool_tip_text(&t!(cur_label), last);
     let arr_tip = format!("{} {}", label, t!("options"));
