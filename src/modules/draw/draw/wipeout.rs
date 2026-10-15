@@ -245,13 +245,13 @@ impl CadCommand for WipeoutCommand {
         };
         if !matches!(
             entity,
-            EntityType::LwPolyline(_) | EntityType::Polyline2D(_)
+            EntityType::LwPolyline(_) | EntityType::Polyline2D(_) | EntityType::Circle(_)
         ) {
             return CmdResult::NeedPoint;
         }
         if wipeout_from_polyline(&entity).is_none() {
             return CmdResult::Measurement(
-                "WIPEOUT: select a closed planar polyline made of zero-width straight segments."
+                "WIPEOUT: select a circle or a closed planar polyline of zero-width segments."
                     .into(),
             );
         }
@@ -457,52 +457,92 @@ fn explicitly_closed(points: &[[f64; 2]]) -> bool {
             <= Tolerance::default().linear()
 }
 
-/// Build a wipeout boundary from a picked closed polyline without consuming
-/// the source entity. Only straight, closed 2D polygonal boundaries qualify.
+/// The largest turn between boundary points along an arc. A wipeout stores
+/// a polygon, so circles and arc segments are drawn as fine polygons.
+const ARC_STEP: f64 = std::f64::consts::PI / 36.0;
+
+/// The polygon of a closed run of `(point, bulge)` vertices, arc segments
+/// sampled at [`ARC_STEP`].
+fn bulged_polygon(vertices: &[([f64; 2], f64)]) -> Vec<[f64; 2]> {
+    let mut points = Vec::new();
+    for (index, &(point, bulge)) in vertices.iter().enumerate() {
+        points.push(point);
+        let next = vertices[(index + 1) % vertices.len()].0;
+        if let Some(arc) = crate::entities::common::BulgeArc::from_bulge(point, next, bulge) {
+            let samples = arc.tessellate_angle(ARC_STEP);
+            points.extend_from_slice(&samples[1..samples.len() - 1]);
+        }
+    }
+    points
+}
+
+/// Build a wipeout boundary from a picked circle or closed polyline without
+/// consuming the source entity. Widened polylines do not qualify.
 pub(crate) fn wipeout_from_polyline(entity: &EntityType) -> Option<EntityType> {
     fn from_ocs(points: &[[f64; 2]], normal: Vector3, elevation: f64) -> Option<EntityType> {
         make_poly_wipeout(points, crate::entities::curve::ocs_plane(normal, elevation))
+    }
+    // An explicitly repeated closing vertex is the same corner twice.
+    fn closed_run(mut vertices: Vec<([f64; 2], f64)>, closed: bool) -> Option<Vec<[f64; 2]>> {
+        let points: Vec<[f64; 2]> = vertices.iter().map(|(point, _)| *point).collect();
+        if explicitly_closed(&points) {
+            vertices.pop();
+        } else if !closed {
+            return None;
+        }
+        Some(bulged_polygon(&vertices))
     }
 
     match entity {
         EntityType::LwPolyline(polyline) => {
             if polyline.constant_width != 0.0
-                || polyline.vertices.iter().any(|vertex| {
-                    vertex.bulge != 0.0 || vertex.start_width != 0.0 || vertex.end_width != 0.0
-                })
+                || polyline
+                    .vertices
+                    .iter()
+                    .any(|vertex| vertex.start_width != 0.0 || vertex.end_width != 0.0)
             {
                 return None;
             }
-            let raw: Vec<[f64; 2]> = polyline
+            let vertices = polyline
                 .vertices
                 .iter()
-                .map(|vertex| [vertex.location.x, vertex.location.y])
+                .map(|vertex| ([vertex.location.x, vertex.location.y], vertex.bulge))
                 .collect();
-            if !polyline.is_closed && !explicitly_closed(&raw) {
-                return None;
-            }
-            from_ocs(&raw, polyline.normal, polyline.elevation)
+            let points = closed_run(vertices, polyline.is_closed)?;
+            from_ocs(&points, polyline.normal, polyline.elevation)
         }
         EntityType::Polyline2D(polyline) => {
             if polyline.start_width != 0.0
                 || polyline.end_width != 0.0
-                || polyline.vertices.iter().any(|vertex| {
-                    vertex.bulge != 0.0 || vertex.start_width != 0.0 || vertex.end_width != 0.0
-                })
+                || polyline
+                    .vertices
+                    .iter()
+                    .any(|vertex| vertex.start_width != 0.0 || vertex.end_width != 0.0)
             {
                 return None;
             }
-            let raw: Vec<[f64; 2]> = polyline
+            let vertices = polyline
                 .vertices
                 .iter()
-                .map(|vertex| [vertex.location.x, vertex.location.y])
+                .map(|vertex| ([vertex.location.x, vertex.location.y], vertex.bulge))
                 .collect();
-            if !polyline.is_closed() && !explicitly_closed(&raw) {
-                return None;
-            }
-            from_ocs(&raw, polyline.normal, polyline.elevation)
+            let points = closed_run(vertices, polyline.is_closed())?;
+            from_ocs(&points, polyline.normal, polyline.elevation)
         }
-        _ => return None,
+        EntityType::Circle(circle) if circle.radius > 0.0 => {
+            let steps = (std::f64::consts::TAU / ARC_STEP).round() as usize;
+            let points: Vec<[f64; 2]> = (0..steps)
+                .map(|step| {
+                    let angle = std::f64::consts::TAU * step as f64 / steps as f64;
+                    [
+                        circle.center.x + circle.radius * angle.cos(),
+                        circle.center.y + circle.radius * angle.sin(),
+                    ]
+                })
+                .collect();
+            from_ocs(&points, circle.normal, circle.center.z)
+        }
+        _ => None,
     }
 }
 
