@@ -2683,10 +2683,9 @@ impl OpenCADStudio {
                             .unwrap_or(cursor_world);
                         axis_lock_apply(point, base, dir)
                     } else if let Some(h) = otrack_hit.filter(|_| {
-                        // A real object snap must win over tracking alignment.
-                        // Otherwise the endpoint glyph can appear at the
-                        // corner while the preview/accepted point follows the
-                        // tracking line instead.
+                        // Exact object snaps win over tracking alignment, but
+                        // Extension is a construction guide and must remain
+                        // eligible for OTRACK intersections.
                         !self.tabs[i].snap_result.is_some_and(|s| {
                             !matches!(
                                 s.snap_type,
@@ -4560,8 +4559,8 @@ impl OpenCADStudio {
                     None
                 };
                 if let Some(h) = otrack.filter(|_| {
-                    // Match the hover path: never override a genuine OSNAP
-                    // endpoint/intersection with a tracking projection.
+                    // Match the hover path: preserve exact object snaps, but
+                    // allow Extension to resolve a crossing with OTRACK.
                     !snap_hit.is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid)
                 }) {
                     pt = h.aligned;
