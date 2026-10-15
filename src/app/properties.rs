@@ -1780,6 +1780,7 @@ impl OpenCADStudio {
         // Which entities the previous panel was built for — an uncommitted
         // edit buffer only survives a rebuild for the *same* selection.
         let prev_handles = std::mem::take(&mut self.tabs[i].properties.source_handles);
+        let previous_definition = self.tabs[i].properties.block_definition;
         let selected_group = self.tabs[i].properties.selected_group.clone();
 
         // Seed the per-thread unit context from the document header so the
@@ -2026,7 +2027,7 @@ impl OpenCADStudio {
                             value => value.to_string(),
                         })
                         .collect();
-                    let sections = vec![
+                    let mut sections = vec![
                         PropSection {
                             title: t!("General").into_owned(),
                             props: vec![
@@ -2261,8 +2262,14 @@ impl OpenCADStudio {
                             },
                         },
                     ];
+                    if let Some(section) = self.block_property_section(i) {
+                        sections.insert(5, section);
+                    }
                     ui::PropertiesPanel {
                         title: t!("No selection").into_owned(),
+                        block_definition: tab
+                            .active_block_edit_session()
+                            .map(|session| session.br_handle),
                         choice_combos: sections
                             .iter()
                             .flat_map(|section| section.props.iter())
@@ -2469,7 +2476,9 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
             // Carry the in-progress edits only when the selection is unchanged
             // (a commit-triggered rebuild); a genuine selection change starts
             // with a clean buffer so no stale value leaks onto the new entity.
-            panel.edit_buf = if prev_handles == new_handles {
+            let same_target =
+                prev_handles == new_handles && previous_definition == panel.block_definition;
+            panel.edit_buf = if same_target {
                 edit_buf
             } else {
                 Default::default()
@@ -2477,11 +2486,7 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
             // The active-row highlight only survives a rebuild for the same
             // selection (like the edit buffer); a selection change clears it so
             // an old row isn't marked active against new content.
-            panel.active_field = if prev_handles == new_handles {
-                active_field
-            } else {
-                None
-            };
+            panel.active_field = if same_target { active_field } else { None };
             panel.expanded_groups = expanded_groups;
             panel.collapsed_sections = collapsed_sections;
             panel.source_handles = new_handles;

@@ -12,6 +12,9 @@ mod block_editor;
 #[cfg(test)]
 mod block_editor_tests;
 mod block_save_as;
+mod block_properties;
+#[cfg(test)]
+mod block_properties_tests;
 mod block_test;
 #[cfg(test)]
 mod block_test_tests;
@@ -1099,6 +1102,7 @@ pub(super) struct OpenCADStudio {
     active_modal: Option<ModalKind>,
     /// Selection and staged values owned by the Properties hyperlink dialog.
     hyperlink_editor_handles: Vec<codec::Handle>,
+    hyperlink_editor_block: Option<(u64, codec::Handle)>,
     hyperlink_editor_url: String,
     hyperlink_editor_description: String,
     hyperlink_editor_mixed: bool,
@@ -4839,6 +4843,7 @@ impl OpenCADStudio {
             color_books_read: false,
             active_modal: None,
             hyperlink_editor_handles: Vec::new(),
+            hyperlink_editor_block: None,
             hyperlink_editor_url: String::new(),
             hyperlink_editor_description: String::new(),
             hyperlink_editor_mixed: false,

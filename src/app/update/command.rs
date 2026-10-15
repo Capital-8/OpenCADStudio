@@ -2655,6 +2655,9 @@ impl OpenCADStudio {
         field: &'static str,
         value: String,
     ) -> Task<Message> {
+        if field.starts_with("bedit_") {
+            return self.set_block_property(field, &value);
+        }
         if matches!(field, "dyn_constraint_form" | "dyn_constraint_reference") {
             return self.on_dynamic_dimension_choice(field, &value);
         }
@@ -3886,6 +3889,9 @@ impl OpenCADStudio {
     }
 
     pub(super) fn on_prop_geom_commit(&mut self, field: &'static str) -> Task<Message> {
+        if field.starts_with("bedit_") {
+            return self.commit_block_property(field);
+        }
         use crate::ui::window::named_parameters::ParamField;
         // A dynamic dimension's Name/Expression rows edit its parameter.
         let dynamic_field = match field {

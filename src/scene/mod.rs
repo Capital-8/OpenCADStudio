@@ -7,6 +7,7 @@
 //   cache   — block-definition and property caches
 pub mod annotative;
 pub mod assoc_array;
+pub(crate) mod block_metadata;
 pub mod block_service;
 pub mod block_visibility;
 pub mod cache;

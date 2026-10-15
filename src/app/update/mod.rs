@@ -243,6 +243,7 @@ impl OpenCADStudio {
             Some(WriteBlock) => self.wblock = None,
             Some(Hyperlink) => {
                 self.hyperlink_editor_handles.clear();
+                self.hyperlink_editor_block = None;
                 self.hyperlink_editor_url.clear();
                 self.hyperlink_editor_description.clear();
                 self.hyperlink_editor_mixed = false;
@@ -5251,7 +5252,11 @@ impl OpenCADStudio {
             }
             Message::PropHyperlinkOpen => {
                 let i = self.active_tab;
+                self.hyperlink_editor_block = None;
                 let handles = self.property_target_handles(i);
+                if handles.is_empty() && self.open_block_property_hyperlink(i) {
+                    return Task::none();
+                }
                 if handles.is_empty() {
                     return Task::none();
                 }
@@ -5311,6 +5316,9 @@ impl OpenCADStudio {
                     return Task::none();
                 }
                 let description = self.hyperlink_editor_description.trim().to_owned();
+                if self.hyperlink_editor_block.is_some() {
+                    return self.apply_block_property_hyperlink(&url, &description);
+                }
                 if let Some(block_def) = self.block_definition.as_mut() {
                     block_def.hyperlink_url = url;
                     block_def.hyperlink_desc = description;
@@ -5340,6 +5348,9 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::HyperlinkRemove => {
+                if self.hyperlink_editor_block.is_some() {
+                    return self.apply_block_property_hyperlink("", "");
+                }
                 if let Some(block_def) = self.block_definition.as_mut() {
                     block_def.hyperlink_url.clear();
                     block_def.hyperlink_desc.clear();
@@ -5858,6 +5869,7 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::BlockDefHyperlink => {
+                self.hyperlink_editor_block = None;
                 if let Some(state) = self.block_definition.as_ref() {
                     self.hyperlink_editor_url = state.hyperlink_url.clone();
                     self.hyperlink_editor_description = state.hyperlink_desc.clone();

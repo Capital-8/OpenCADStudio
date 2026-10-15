@@ -595,6 +595,8 @@ pub struct PropertiesPanel {
     /// commit onto a different entity (e.g. two title blocks sharing a `REV1`
     /// tag).
     pub source_handles: Vec<Handle>,
+    /// Definition shown by the no-selection Block section, separate from entity targets.
+    pub block_definition: Option<Handle>,
     /// Whether the quick color picker dropdown is open.
     pub color_picker_open: bool,
     /// Whether the MTEXT background-colour picker dropdown is open. Separate
@@ -657,6 +659,7 @@ impl Default for PropertiesPanel {
             hatch_pattern_focus: 0,
             edit_buf: HashMap::default(),
             source_handles: vec![],
+            block_definition: None,
             color_picker_open: false,
             bg_color_picker_open: false,
             open_color_field: None,
