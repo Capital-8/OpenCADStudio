@@ -3888,6 +3888,7 @@ fn materialize_scope(
             work_plane: [Vector3::ZERO, Vector3::UNIT_X, Vector3::UNIT_Y],
             dependency: Handle::NULL,
             actions: group_dependencies,
+            next_node_id: 0,
             nodes,
         };
         allocator.insert_associative_at(
