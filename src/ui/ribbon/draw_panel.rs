@@ -123,6 +123,8 @@ const REFERENCE_TOOLS: &[Tool] = &[Tool {
     options: &[],
 }];
 pub(super) const REFERENCE_PANEL_ID: &str = "reference_extension";
+/// Insert > Block Definition slide-out: its tools are listed with labels.
+const BLOCK_DEFINITION_PANEL_ID: &str = "block_definition_extension";
 
 const fn icon_tool(command: &'static str, label: &'static str, icon: &'static [u8]) -> Tool {
     Tool {
@@ -201,7 +203,7 @@ const PANELS: &[Panel] = &[
         tools: HOME_BLOCK_TOOLS,
     },
     Panel {
-        id: "block_definition_extension",
+        id: BLOCK_DEFINITION_PANEL_ID,
         anchor: None,
         title_id: "block_definition_extension_title",
         title: "Block Definition",
@@ -490,10 +492,57 @@ fn reference_overlay<'a>(ribbon: &Ribbon, panel: Panel, win: (f32, f32)) -> Elem
     dropdown_backdrop(position_ribbon_dropdown(body.into(), false, left, top))
 }
 
+/// A slide-out listing each tool as icon and label, one per row.
+fn labeled_overlay<'a>(ribbon: &Ribbon, panel: Panel, win: (f32, f32)) -> Element<'a, Message> {
+    let width: f32 = 200.0_f32.min((win.0 - 8.0).max(120.0));
+    let (_, x, anchor_top) = ribbon.dd_anchor(panel.id, width, win.0);
+    let left = x.clamp(0.0, (win.0 - width).max(0.0));
+    let top = anchor_top.min((win.1 - 80.0).max(0.0));
+    let rows = panel.tools.iter().map(|tool| {
+        let active = tool_is_active(tool, ribbon.active_tool.as_deref());
+        let item = button(
+            row![
+                make_icon(IconKind::Svg(tool.icon), 16.0),
+                keytips::label_anchor(
+                    || keytips::label_id(&keytips::item_anchor(panel.id, tool.command)),
+                    text(t!(tool.label)).size(11),
+                ),
+            ]
+            .spacing(6)
+            .align_y(iced::Center),
+        )
+        .on_press(Message::DropdownSelectItem {
+            dropdown_id: panel.id,
+            cmd: tool.command,
+        })
+        .style(move |theme: &Theme, status| {
+            if active {
+                tool_btn_style(theme, true, status)
+            } else {
+                popup_row_style(theme, status)
+            }
+        })
+        .width(Fill)
+        .padding([3, 6]);
+        keytips::anchor_with(|| keytips::item_anchor(panel.id, tool.command), item)
+    });
+    let body = container(column(rows.collect::<Vec<_>>()).spacing(2).padding(6))
+        .width(width)
+        .style(|theme: &Theme| {
+            let mut style = popup_panel_style(theme);
+            style.border.color = theme.palette().primary.base.color;
+            style
+        });
+    dropdown_backdrop(position_ribbon_dropdown(body.into(), false, left, top))
+}
+
 pub(super) fn overlay<'a>(ribbon: &Ribbon, id: &str, win: (f32, f32)) -> Element<'a, Message> {
     let panel = panel_for_dropdown(id).expect("registered ribbon extension");
     if panel.id == REFERENCE_PANEL_ID {
         return reference_overlay(ribbon, panel, win);
+    }
+    if panel.id == BLOCK_DEFINITION_PANEL_ID {
+        return labeled_overlay(ribbon, panel, win);
     }
     let tools = panel.tools;
     let width = (7.0 * (CELL + GAP) - GAP + 12.0).min((win.0 - 8.0).max(CELL + 12.0));

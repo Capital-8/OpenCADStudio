@@ -32,7 +32,10 @@ pub(crate) mod xattach;
 pub(crate) mod xclip;
 pub(crate) mod xref_cmd;
 
-use crate::modules::{CadModule, IconKind, RibbonGroup, RibbonItem};
+use crate::modules::{CadModule, IconKind, RibbonGroup, RibbonItem, ToolDef};
+
+/// Insert > Block Definition: the Create Block / Write Block split button.
+pub(crate) const CREATE_BLOCK_DROPDOWN: &str = "CREATE_BLOCK_DROPDOWN";
 
 const FRAMES_ICON: IconKind =
     IconKind::Svg(include_bytes!("../../../assets/icons/underlay_frames.svg"));
@@ -85,10 +88,26 @@ impl CadModule for InsertModule {
                 RibbonGroup {
                     title: "Block Definition",
                     tools: vec![
-                        RibbonItem::LargeTool(create_block::tool()),
+                        // Split button: the face runs the last one chosen.
+                        RibbonItem::LargeDropdown {
+                            id: CREATE_BLOCK_DROPDOWN,
+                            label: "Create Block",
+                            icon: create_block::tool().icon,
+                            items: vec![
+                                ("BLOCK", "Create Block", create_block::tool().icon),
+                                ("WBLOCK", "Write Block", wblock::tool().icon),
+                            ],
+                            default: "BLOCK",
+                        },
                         RibbonItem::LargeTool(attdef::tool()),
-                        RibbonItem::LargeTool(attman::tool()),
-                        RibbonItem::LargeTool(edit_block::tool()),
+                        RibbonItem::LargeTool(ToolDef {
+                            label: "Manage Attributes",
+                            ..attman::tool()
+                        }),
+                        RibbonItem::LargeTool(ToolDef {
+                            label: "Block Editor",
+                            ..edit_block::tool()
+                        }),
                     ],
                 },
                 // ── Reference ────────────────────────────────────────────────────
