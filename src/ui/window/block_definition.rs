@@ -257,8 +257,9 @@ fn empty_band<'a>() -> Element<'a, Message> {
     )
     .padding([7, 10])
     .width(Fill)
-    .style(|theme: &Theme| {
-        let warn = theme.palette().warning.base.color;
+    .style(|_: &Theme| {
+        // Amber: the theme's warning colour is not a caution tone in every theme.
+        let warn = iced::Color::from_rgb8(0xD9, 0xA4, 0x00);
         container::Style {
             background: Some(Background::Color(warn.scale_alpha(0.16))),
             border: Border {

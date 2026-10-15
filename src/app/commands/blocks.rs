@@ -143,12 +143,39 @@ impl OpenCADStudio {
                 .unwrap_or_default()
         } else {
             state.empty_prompt = false;
-            let entities: Vec<_> = state
-                .selected_handles
-                .iter()
-                .filter_map(|handle| scene.document.get_entity(*handle).cloned())
-                .collect();
-            scene.wires_for_entities(&entities)
+            let mut wires = Vec::new();
+            for handle in &state.selected_handles {
+                match scene.document.get_entity(*handle) {
+                    // A reference is drawn from its definition, placed by the
+                    // reference's transform.
+                    Some(codec::EntityType::Insert(insert)) => {
+                        let base = crate::scene::render_graph::block_base_point(
+                            &scene.document,
+                            &insert.block_name,
+                        );
+                        let xform =
+                            crate::scene::render_graph::insert_transform_with_base(insert, base);
+                        for mut wire in scene.block_preview_wires(&insert.block_name) {
+                            for p in &mut wire.points {
+                                if p.iter().all(|v| v.is_finite()) {
+                                    let q = xform.apply(codec::types::Vector3::new(
+                                        f64::from(p[0]),
+                                        f64::from(p[1]),
+                                        f64::from(p[2]),
+                                    ));
+                                    *p = [q.x as f32, q.y as f32, q.z as f32];
+                                }
+                            }
+                            wires.push(wire);
+                        }
+                    }
+                    Some(entity) => {
+                        wires.extend(scene.wires_for_entities(std::slice::from_ref(entity)))
+                    }
+                    None => {}
+                }
+            }
+            wires
         };
     }
 
