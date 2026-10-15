@@ -6176,6 +6176,31 @@ impl Scene {
         added
     }
 
+    /// For an annotative TEXT/MTEXT, its stored height per unit of paper text
+    /// height at the displayed scale (the stored height is the model height
+    /// of its default representation). `None` for anything else.
+    pub(crate) fn annotative_text_height_factor(&self, handle: Handle) -> Option<f64> {
+        let entity = self.document.get_entity(handle)?;
+        if !matches!(entity, EntityType::Text(_) | EntityType::MText(_))
+            || !crate::scene::annotative::is_annotative(&self.document, entity)
+        {
+            return None;
+        }
+        let scale = self.displayed_annotation_scale_handle();
+        let model_per_paper = scale
+            .and_then(|scale| match self.document.objects.get(&scale) {
+                Some(ObjectType::Scale(scale)) => {
+                    Some(scale.inverse_factor() / self.annotation_scale_unit_factor())
+                }
+                _ => None,
+            })
+            .unwrap_or(self.annotation_scale as f64);
+        let ratio =
+            crate::scene::annotative::text_context_ratio(&self.document, handle, scale)
+                .unwrap_or(1.0);
+        Some(model_per_paper / ratio)
+    }
+
     pub(crate) fn displayed_annotation_scale_handle(&self) -> Option<Handle> {
         if self.current_layout == "Model" {
             return self.scale_object_handle(&self.document.header.current_annotation_scale);

@@ -1538,7 +1538,7 @@ impl OpenCADStudio {
                         codec::EntityType::MText(t) => set_row_value(
                             &mut sections,
                             "annotative",
-                            yes_no_choice(t.is_annotative),
+                            yes_no_choice(t.is_annotative || is_anno),
                         ),
                         codec::EntityType::Dimension(codec::entities::Dimension::Arc(_)) => {
                             set_row(
@@ -1600,54 +1600,56 @@ impl OpenCADStudio {
         // text derives its paper height from the two endpoints,
         // while annotative text exposes that paper height and a
         // separate calculated model height.
-        if let codec::EntityType::Text(text) = entity {
-            let aligned = matches!(
-                text.horizontal_alignment,
-                codec::entities::TextHorizontalAlignment::Aligned
-            );
-            let annotative = crate::scene::annotative::is_annotative(doc, entity);
-            let model_factor = if annotative {
-                annotation_scale_handle
-                    .and_then(|handle| match doc.objects.get(&handle) {
-                        Some(codec::objects::ObjectType::Scale(scale)) => Some(
-                            scale.inverse_factor()
-                                / self.tabs[i].scene.annotation_scale_unit_factor(),
-                        ),
-                        _ => None,
-                    })
-                    .unwrap_or(self.tabs[i].scene.annotation_scale as f64)
-            } else {
-                1.0
+        if let Some(factor) =
+            self.tabs[i].scene.annotative_text_height_factor(entity.common().handle)
+        {
+            // Annotative text stores the model height of its default scale;
+            // the Height row edits the paper height at the displayed scale.
+            let (stored, model_factor, aligned) = match entity {
+                codec::EntityType::Text(text) => {
+                    let aligned = matches!(
+                        text.horizontal_alignment,
+                        codec::entities::TextHorizontalAlignment::Aligned
+                    );
+                    let stored = if aligned {
+                        crate::entities::text::text_run_placement_at_scale(text, doc, 1.0).height
+                            as f64
+                    } else {
+                        text.height
+                    };
+                    (stored, factor, aligned)
+                }
+                codec::EntityType::MText(text) => (text.height, factor, false),
+                _ => unreachable!("annotative_text_height_factor is text-only"),
             };
-            let paper_height = if aligned {
-                crate::entities::text::text_run_placement_at_scale(text, doc, model_factor as f32)
-                    .height as f64
-            } else {
-                text.height
-            };
+            let ratio = crate::scene::annotative::text_context_ratio(
+                doc,
+                entity.common().handle,
+                annotation_scale_handle,
+            )
+            .unwrap_or(1.0);
+            let paper_height = stored / model_factor;
             for section in sections.iter_mut() {
                 if let Some(row) = section.props.iter_mut().find(|row| row.field == "height") {
-                    if annotative {
-                        row.label = t!("Paper text height").into_owned();
-                    }
-                    if aligned {
-                        row.value = crate::scene::model::object::PropValue::ReadOnly(
-                            crate::entities::common::format_length(paper_height),
-                        );
-                    }
+                    let editable = !aligned
+                        && !matches!(row.value, crate::scene::model::object::PropValue::ReadOnly(_));
+                    *row = crate::entities::common::num_prop(
+                        t!("Paper text height").as_ref(),
+                        "height",
+                        paper_height,
+                        editable,
+                    );
                 }
             }
-            if annotative {
-                insert_row_after(
-                    &mut sections,
-                    "height",
-                    crate::entities::common::ro_prop(
-                        t!("Model text height").as_ref(),
-                        "model_text_height",
-                        crate::entities::common::format_length(paper_height * model_factor),
-                    ),
-                );
-            }
+            insert_row_after(
+                &mut sections,
+                "height",
+                crate::entities::common::ro_prop(
+                    t!("Model text height").as_ref(),
+                    "model_text_height",
+                    crate::entities::common::format_length(stored * ratio),
+                ),
+            );
         }
 
         if !group_names.is_empty() {

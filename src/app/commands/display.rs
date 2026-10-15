@@ -1608,12 +1608,14 @@ impl OpenCADStudio {
                 }
                 self.push_undo_snapshot(i, "ANNOUPDATE");
                 let scale = self.tabs[i].scene.creation_annotation_scale_handle();
+                let paper_to_model = self.tabs[i].scene.creation_annotation_multiplier();
                 let mut updated = 0usize;
                 for handle in &handles {
                     if crate::scene::annotative::update_entity_from_annotation_style(
                         &mut self.tabs[i].scene.document,
                         *handle,
                         scale,
+                        paper_to_model,
                     ) {
                         updated += 1;
                     }

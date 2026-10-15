@@ -722,18 +722,12 @@ pub fn effective_annotation_scale_for(
     if !context_annotative && (text_like || !style_annotative) {
         return 1.0;
     }
-    // Annotative TEXT/MTEXT store their paper text height as the base value.
-    // `fallback` is the absolute paper-to-model multiplier for the active
-    // annotation scale and already includes the drawing's INSUNITS conversion.
-    //
-    // Example for a metre drawing with 2 mm paper text:
-    //   1:1   -> 2 * 0.001 = 0.002 m
-    //   1:100 -> 2 * 0.100 = 0.200 m
-    //
-    // Using active/native here would only produce 1 / 100 and would lose the
-    // millimetre-to-metre conversion entirely.
+    // Annotative TEXT/MTEXT store the model height of their default (native)
+    // scale representation; another scale draws it at the ratio of the two.
+    // A scale the object has no representation for shows the stored one.
     if matches!(entity, EntityType::Text(_) | EntityType::MText(_)) {
-        return fallback;
+        return text_context_ratio(doc, entity.common().handle, scale_handle)
+            .map_or(1.0, |ratio| ratio as f32);
     }
     if matches!(
         entity,
@@ -750,41 +744,39 @@ pub fn effective_annotation_scale_for(
         return fallback;
     }
 
-    let Some(coll_h) = annotation_scales_dict(doc, entity.common().handle) else {
-        return fallback;
-    };
-    let Some(coll) = as_dict(doc, coll_h) else {
-        return fallback;
-    };
+    text_context_ratio(doc, entity.common().handle, scale_handle)
+        .map_or(fallback, |ratio| ratio as f32)
+}
 
-    let active = active_object_context_for_scale(doc, entity.common().handle, scale_handle);
+/// How much larger the representation at `scale_handle` (the displayed scale
+/// when `None`) draws than the object's default representation: the ratio of
+/// their model-per-paper factors. `None` when either is missing.
+pub fn text_context_ratio(
+    doc: &CadDocument,
+    handle: Handle,
+    scale_handle: Option<Handle>,
+) -> Option<f64> {
+    let coll = as_dict(doc, annotation_scales_dict(doc, handle)?)?;
+    let active = active_object_context_for_scale(doc, handle, scale_handle)?;
     let native = coll
         .entries
         .iter()
         .find_map(|(_, leaf_h)| match doc.objects.get(leaf_h) {
             Some(ObjectType::ObjectContextData(leaf)) if leaf.is_default => Some(leaf),
             _ => None,
-        });
-    let (Some(active), Some(native)) = (active, native) else {
-        return fallback;
-    };
+        })?;
     let (Some(ObjectType::Scale(active_scale)), Some(ObjectType::Scale(native_scale))) = (
         doc.objects.get(&active.scale),
         doc.objects.get(&native.scale),
     ) else {
-        return fallback;
+        return None;
     };
-
     let native_factor = native_scale.inverse_factor();
     if native_factor.abs() <= 1.0e-12 {
-        return fallback;
+        return None;
     }
     let relative = active_scale.inverse_factor() / native_factor;
-    if relative.is_finite() && relative > 0.0 {
-        relative as f32
-    } else {
-        fallback
-    }
+    (relative.is_finite() && relative > 0.0).then_some(relative)
 }
 
 fn text_horizontal(value: i16) -> codec::entities::TextHorizontalAlignment {
@@ -1864,6 +1856,7 @@ pub fn update_entity_from_annotation_style(
     doc: &mut CadDocument,
     handle: Handle,
     current_scale: Option<Handle>,
+    paper_to_model: f64,
 ) -> bool {
     enum StyleUpdate {
         Text { annotative: bool, height: f64 },
@@ -1943,19 +1936,10 @@ pub fn update_entity_from_annotation_style(
         return false;
     };
 
+    let mut style_height = None;
     let annotative = match update {
         StyleUpdate::Text { annotative, height } => {
-            if height > 0.0 {
-                if let Some(entity) = doc.get_entity_mut(handle) {
-                    match entity {
-                        EntityType::Text(text) => text.height = height,
-                        EntityType::MText(text) => text.height = height,
-                        EntityType::AttributeEntity(attribute) => attribute.height = height,
-                        EntityType::AttributeDefinition(attribute) => attribute.height = height,
-                        _ => {}
-                    }
-                }
-            }
+            style_height = (height > 0.0).then_some(height);
             annotative
         }
         StyleUpdate::Dimension { annotative } => annotative,
@@ -1970,6 +1954,27 @@ pub fn update_entity_from_annotation_style(
     if annotative {
         if let Some(scale) = current_scale {
             create_annotation_context(doc, handle, scale);
+        }
+    }
+    if let Some(mut height) = style_height {
+        // An annotative style's height is on paper; the entity stores the
+        // model height of its default representation.
+        let text = matches!(
+            doc.get_entity(handle),
+            Some(EntityType::Text(_) | EntityType::MText(_))
+        );
+        if annotative && text {
+            let ratio = text_context_ratio(doc, handle, current_scale).unwrap_or(1.0);
+            height *= paper_to_model / ratio;
+        }
+        if let Some(entity) = doc.get_entity_mut(handle) {
+            match entity {
+                EntityType::Text(text) => text.height = height,
+                EntityType::MText(text) => text.height = height,
+                EntityType::AttributeEntity(attribute) => attribute.height = height,
+                EntityType::AttributeDefinition(attribute) => attribute.height = height,
+                _ => {}
+            }
         }
     }
     true

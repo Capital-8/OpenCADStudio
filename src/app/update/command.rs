@@ -4179,6 +4179,29 @@ impl OpenCADStudio {
                                     }
                                 }
                             }
+                            // Annotative text: the row holds the paper height.
+                            "height"
+                                if self.tabs[i]
+                                    .scene
+                                    .annotative_text_height_factor(handle)
+                                    .is_some() =>
+                            {
+                                let factor = self.tabs[i]
+                                    .scene
+                                    .annotative_text_height_factor(handle)
+                                    .unwrap_or(1.0);
+                                if let (Ok(paper), Some(entity)) = (
+                                    val.trim().parse::<f64>(),
+                                    self.tabs[i].scene.document.get_entity_mut(handle),
+                                ) {
+                                    crate::scene::view::dispatch::apply_geom_prop_in_working_plane(
+                                        entity,
+                                        "height",
+                                        &(paper * factor).to_string(),
+                                        plane,
+                                    );
+                                }
+                            }
                             "hyperlink" => {
                                 // Stored in the standard PE_URL XDATA
                                 // record; an empty value clears it.

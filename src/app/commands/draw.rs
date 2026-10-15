@@ -2697,6 +2697,16 @@ impl OpenCADStudio {
                     .header
                     .current_text_style_name
                     .clone();
+                // An annotative style's default height is on paper; the editor
+                // and the entity work in the model height of this scale.
+                let height = if crate::scene::annotative::text_style_is_annotative(
+                    &self.tabs[i].scene.document,
+                    &style,
+                ) {
+                    height * self.tabs[i].scene.creation_annotation_multiplier()
+                } else {
+                    height
+                };
                 let new_cmd = MTextCommand::with_defaults(height, style);
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));

@@ -1721,7 +1721,7 @@ impl super::OpenCADStudio {
                     annotative,
                 );
                 if annotative {
-                    if let Some(scale) = self.tabs[i].scene.current_annotation_scale_handle() {
+                    if let Some(scale) = self.tabs[i].scene.creation_annotation_scale_handle() {
                         crate::scene::annotative::create_annotation_context(
                             &mut self.tabs[i].scene.document,
                             h,
@@ -1755,7 +1755,7 @@ impl super::OpenCADStudio {
             self.push_undo_snapshot(i, "MTEXT");
             let handle = self.commit_entity_handle(plane.place_entity(EntityType::MText(mt)));
             if annotative {
-                let scale = self.tabs[i].scene.current_annotation_scale_handle();
+                let scale = self.tabs[i].scene.creation_annotation_scale_handle();
                 if let (Some(handle), Some(scale)) = (handle, scale) {
                     crate::scene::annotative::create_annotation_context(
                         &mut self.tabs[i].scene.document,
@@ -1837,7 +1837,7 @@ impl super::OpenCADStudio {
                     annotative,
                 );
                 if annotative {
-                    if let Some(scale) = self.tabs[i].scene.current_annotation_scale_handle() {
+                    if let Some(scale) = self.tabs[i].scene.creation_annotation_scale_handle() {
                         crate::scene::annotative::create_annotation_context(
                             &mut self.tabs[i].scene.document,
                             h,
@@ -1872,7 +1872,7 @@ impl super::OpenCADStudio {
             let handle = self.commit_entity_handle(plane.place_entity(EntityType::MText(mt)));
             self.tabs[i].dirty = true;
             if annotative {
-                let scale = self.tabs[i].scene.current_annotation_scale_handle();
+                let scale = self.tabs[i].scene.creation_annotation_scale_handle();
                 if let (Some(handle), Some(scale)) = (handle, scale) {
                     crate::scene::annotative::create_annotation_context(
                         &mut self.tabs[i].scene.document,
