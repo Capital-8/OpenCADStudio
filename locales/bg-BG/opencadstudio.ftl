@@ -850,6 +850,7 @@ common =
     .recent-documents = Скорошни документи
     .recent-files = Скорошни файлове
     .recent-file-no-longer-exists = Скорошният файл вече не съществува: __ocs_fmt_0__
+    .web-drawing-too-large = Този чертеж е __ocs_fmt_0__ MB – повече, отколкото браузърната версия обработва надеждно. Отворете го в настолното приложение.
     .red = Червено
     .redo-last-label = Повтори: __ocs_fmt_0__
     .reference = Референция

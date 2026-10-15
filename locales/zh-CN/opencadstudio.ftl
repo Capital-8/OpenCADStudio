@@ -838,6 +838,7 @@ common =
     .recent-documents = 最近文档
     .recent-files = 最近的文件
     .recent-file-no-longer-exists = 最近的文件已不存在 : __ocs_fmt_0__
+    .web-drawing-too-large = 此图形为 __ocs_fmt_0__ MB，超出了浏览器版本可靠处理的范围。请在桌面应用中打开。
     .red = 红色
     .redo-last-label = 重做 : __ocs_fmt_0__
     .reference = 参考

@@ -850,6 +850,7 @@ common =
     .recent-documents = Nedávné dokumenty
     .recent-files = Nedávné soubory
     .recent-file-no-longer-exists = Poslední soubor již neexistuje: __ocs_fmt_0__
+    .web-drawing-too-large = Tento výkres má __ocs_fmt_0__ MB, víc, než verze v prohlížeči spolehlivě zvládne. Otevřete jej v desktopové aplikaci.
     .red = Červená
     .redo-last-label = Znovu: __ocs_fmt_0__
     .reference = Odkaz

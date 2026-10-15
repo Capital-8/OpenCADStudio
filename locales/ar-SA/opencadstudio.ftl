@@ -863,6 +863,7 @@ common =
     .recent-documents = المستندات الأخيرة
     .recent-files = الملفات الأخيرة
     .recent-file-no-longer-exists = الملف الأخير لم يعد موجودًا: __ocs_fmt_0__
+    .web-drawing-too-large = حجم هذا الرسم __ocs_fmt_0__ ميغابايت، وهو أكبر مما يتعامل معه إصدار المتصفح بشكل موثوق. افتحه في تطبيق سطح المكتب.
     .red = أحمر
     .redo-last-label = إعادة: __ocs_fmt_0__
     .reference = مرجع

@@ -2771,6 +2771,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Recent Documents" => Some(("common", "recent-documents")),
         "Recent Files" => Some(("common", "recent-files")),
         "Recent file no longer exists: {}" => Some(("common", "recent-file-no-longer-exists")),
+        "This drawing is {} MB, more than the browser version handles reliably. Open it in the desktop app." => Some(("common", "web-drawing-too-large")),
         "Records" => Some(("properties", "records")),
         "Rectangle - Center" => Some(("draw", "rectangle-center")),
         "Rectangle - Rotated" => Some(("draw", "rectangle-rotated")),

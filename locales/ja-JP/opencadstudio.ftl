@@ -841,6 +841,7 @@ common =
     .recent-documents = 最近使ったドキュメント
     .recent-files = 最近使ったファイル
     .recent-file-no-longer-exists = 最近使ったファイルがありません: __ocs_fmt_0__
+    .web-drawing-too-large = この図面は __ocs_fmt_0__ MB で、ブラウザー版で確実に扱える大きさを超えています。デスクトップ アプリで開いてください。
     .red = 赤
     .redo-last-label = やり直し: __ocs_fmt_0__
     .reference = 参照

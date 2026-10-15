@@ -851,6 +851,7 @@ common =
     .recent-documents = Documentos recentes
     .recent-files = Arquivos recentes
     .recent-file-no-longer-exists = O arquivo recente não existe mais: __ocs_fmt_0__
+    .web-drawing-too-large = Este desenho tem __ocs_fmt_0__ MB, mais do que a versão do navegador suporta com segurança. Abra-o no aplicativo de desktop.
     .red = Vermelho
     .redo-last-label = Refazer: __ocs_fmt_0__
     .reference = Referência

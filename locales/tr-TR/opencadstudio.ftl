@@ -839,6 +839,7 @@ common =
     .recent-documents = Son Belgeler
     .recent-files = Son Dosyalar
     .recent-file-no-longer-exists = Son kullanılan dosya artık yok: __ocs_fmt_0__
+    .web-drawing-too-large = Bu çizim __ocs_fmt_0__ MB; tarayıcı sürümünün güvenle açabileceğinden büyük. Masaüstü uygulamasında açın.
     .red = Kırmızı
     .redo-last-label = Yinele: __ocs_fmt_0__
     .reference = Referans

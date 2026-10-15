@@ -856,6 +856,7 @@ common =
     .recent-documents = ເອກະສານຫຼ້າສຸດ
     .recent-files = ໄຟລ໌ຫຼ້າສຸດ
     .recent-file-no-longer-exists = ໄຟລ໌ຫຼ້າສຸດບໍ່ມີຢູ່ນີ້ອີກຕໍ່ໄປ: __ocs_fmt_0__
+    .web-drawing-too-large = ແບບແຕ້ມນີ້ມີຂະໜາດ __ocs_fmt_0__ MB, ໃຫຍ່ເກີນກວ່າທີ່ລຸ້ນບຣາວເຊີຈະຈັດການໄດ້ຢ່າງໝັ້ນໃຈ. ກະລຸນາເປີດໃນແອັບເດັສທັອບ.
     .red = ສີແດງ
     .redo-last-label = ເຮັດຄືນ: __ocs_fmt_0__
     .reference = ອ້າງອີງ

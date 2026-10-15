@@ -850,6 +850,7 @@ common =
     .recent-documents = 최근 문서
     .recent-files = 최근 파일
     .recent-file-no-longer-exists = 최근 파일이 더 이상 존재하지 않습니다: __ocs_fmt_0__
+    .web-drawing-too-large = 이 도면은 __ocs_fmt_0__ MB로, 브라우저 버전이 안정적으로 처리할 수 있는 크기를 넘습니다. 데스크톱 앱에서 여세요.
     .red = 빨간색
     .redo-last-label = 다시 실행: __ocs_fmt_0__
     .reference = 참고자료

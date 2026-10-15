@@ -852,6 +852,7 @@ common =
     .recent-documents = Πρόσφατα έγγραφα
     .recent-files = Πρόσφατα αρχεία
     .recent-file-no-longer-exists = Το πρόσφατο αρχείο δεν υπάρχει πλέον: __ocs_fmt_0__
+    .web-drawing-too-large = Αυτό το σχέδιο είναι __ocs_fmt_0__ MB, περισσότερο από όσο χειρίζεται αξιόπιστα η έκδοση του προγράμματος περιήγησης. Ανοίξτε το στην εφαρμογή επιφάνειας εργασίας.
     .red = Κόκκινο
     .redo-last-label = Επανάληψη: __ocs_fmt_0__
     .reference = Αναφορά

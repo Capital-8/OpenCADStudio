@@ -849,6 +849,7 @@ common =
     .recent-documents = Recent Documents
     .recent-files = Recent Files
     .recent-file-no-longer-exists = Recent file no longer exists: __ocs_fmt_0__
+    .web-drawing-too-large = This drawing is __ocs_fmt_0__ MB, more than the browser version handles reliably. Open it in the desktop app.
     .red = Red
     .redo-last-label = Redo: __ocs_fmt_0__
     .reference = Reference

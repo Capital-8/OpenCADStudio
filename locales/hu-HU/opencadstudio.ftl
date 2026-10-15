@@ -855,6 +855,7 @@ common =
     .recent-documents = Legutóbbi dokumentumok
     .recent-files = Legutóbbi fájlok
     .recent-file-no-longer-exists = A legutóbbi fájl már nem létezik: __ocs_fmt_0__
+    .web-drawing-too-large = Ez a rajz __ocs_fmt_0__ MB, több, mint amit a böngészős változat megbízhatóan kezel. Nyissa meg az asztali alkalmazásban.
     .red = Piros
     .redo-last-label = Újra: __ocs_fmt_0__
     .reference = Hivatkozás

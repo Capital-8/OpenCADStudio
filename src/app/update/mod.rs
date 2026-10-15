@@ -1421,6 +1421,18 @@ impl OpenCADStudio {
                         self.queue_next_web_autosave_prompt();
                     }
                 }
+                // A browser tab has a few GB of memory at most; a very large
+                // drawing that fails here usually opens in the desktop app.
+                const WEB_LARGE_DRAWING: u64 = 150 * 1024 * 1024;
+                if outcome.result.is_err() && outcome.size_bytes > WEB_LARGE_DRAWING {
+                    self.command_line.push_info(
+                        crate::tf!(
+                            "This drawing is {} MB, more than the browser version handles reliably. Open it in the desktop app.",
+                            outcome.size_bytes / (1024 * 1024)
+                        )
+                        .as_ref(),
+                    );
+                }
                 if let Some(opening) = self.opening.as_mut() {
                     opening.name = outcome.name.clone();
                     opening.source_path = Some(std::path::PathBuf::from(&outcome.name));

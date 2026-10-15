@@ -839,6 +839,7 @@ common =
     .recent-documents = हाल के दस्तावेज़
     .recent-files = हाल ही में फ़ाइलें
     .recent-file-no-longer-exists = हाल ही में फ़ाइल अब मौजूद नहीं है: __ocs_fmt_0__
+    .web-drawing-too-large = यह ड्रॉइंग __ocs_fmt_0__ MB की है, जो ब्राउज़र संस्करण के विश्वसनीय रूप से संभालने से अधिक है। इसे डेस्कटॉप ऐप में खोलें।
     .red = लाल
     .redo-last-label = रेनो: __ocs_fmt_0__
     .reference = संदर्भ

@@ -850,6 +850,7 @@ common =
     .recent-documents = Viimeaikaiset asiakirjat
     .recent-files = Viimeisimmät tiedostot
     .recent-file-no-longer-exists = Viimeisintä tiedostoa ei enää ole: __ocs_fmt_0__
+    .web-drawing-too-large = Tämä piirustus on __ocs_fmt_0__ Mt, enemmän kuin selainversio käsittelee luotettavasti. Avaa se työpöytäsovelluksessa.
     .red = Punainen
     .redo-last-label = Toista: __ocs_fmt_0__
     .reference = Viite
