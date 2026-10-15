@@ -424,17 +424,26 @@ impl OpenCADStudio {
         let i = self.active_tab;
         self.push_undo_snapshot(i, "INSERT");
         self.merge_dependencies(i, &deps);
-        for def in deps.blocks {
+        let mut created = Vec::new();
+        for def in &deps.blocks {
             let scene = &mut self.tabs[i].scene;
             if redefine && def.name.eq_ignore_ascii_case(name) {
-                if let Err(err) = scene.redefine_block_raw(&def.name, def.base_point, def.entities)
-                {
+                let entities = def.entities.clone();
+                if let Err(err) = scene.redefine_block_raw(&def.name, def.base_point, entities) {
                     self.command_line.push_error(&err);
                     return Err(err);
                 }
             } else if scene.document.block_records.get(&def.name).is_none() {
-                scene.define_block_raw(&def.name, def.base_point, def.entities);
+                scene.define_block_raw(&def.name, def.base_point, def.entities.clone());
+                created.push(def);
             }
+        }
+        // A dynamic definition keeps its parameters and states.
+        use crate::app::command_driver::clipboard::{block_record_map, import_block_def_graph};
+        let document = &mut self.tabs[i].scene.document;
+        let records = block_record_map(document, &deps.blocks);
+        for def in created {
+            import_block_def_graph(document, def, &records);
         }
         self.tabs[i].scene.populate_meshes_from_document();
         self.tabs[i].dirty = true;

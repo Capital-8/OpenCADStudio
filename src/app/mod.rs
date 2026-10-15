@@ -1916,6 +1916,10 @@ pub struct BlockDef {
     pub name: String,
     pub base_point: codec::types::Vector3,
     pub entities: Vec<codec::EntityType>,
+    /// The source drawing's record, which other captured graphs name.
+    pub source: codec::Handle,
+    /// The record's object graph: a dynamic block's parameters and states.
+    pub graph: Option<codec::BlockGraph>,
 }
 
 /// The extension-dictionary object graph captured for one copied entity.
@@ -2131,8 +2135,16 @@ impl ClipboardDeps {
         let mut queue: Vec<String> = Vec::new();
         for e in entities {
             if let EntityType::Insert(ins) = e {
-                if seen.insert(ins.block_name.clone()) {
-                    queue.push(ins.block_name.clone());
+                // A reference showing an evaluated copy needs its dynamic
+                // definition too.
+                let definition = doc
+                    .dynamic_definition_for_insert(ins.common.handle)
+                    .and_then(|h| doc.block_records.iter().find(|r| r.handle == h))
+                    .map(|record| record.name.clone());
+                for name in std::iter::once(ins.block_name.clone()).chain(definition) {
+                    if seen.insert(name.clone()) {
+                        queue.push(name);
+                    }
                 }
             }
         }
@@ -2182,6 +2194,8 @@ impl ClipboardDeps {
             name: name.to_string(),
             base_point,
             entities: owned,
+            source: br.handle,
+            graph: doc.export_block_graph(br.handle),
         })
     }
 

@@ -348,7 +348,7 @@ pub(super) fn dynamic(
     object
 }
 
-pub(super) fn members(document: &CadDocument, definition: Handle) -> Vec<Handle> {
+pub(crate) fn members(document: &CadDocument, definition: Handle) -> Vec<Handle> {
     document
         .block_records
         .iter()
@@ -406,6 +406,16 @@ pub(super) fn set_entity_tag(
             xdata.raw_dwg_eed.retain(|(owner, _)| *owner != app);
         }
         xdata.upsert_record(record);
+    }
+}
+
+/// Point each tagged member's element tag back at the member itself, after
+/// the definition was copied onto new handles.
+pub(crate) fn retag_members(document: &mut CadDocument, definition: Handle) {
+    for handle in members(document, definition) {
+        if let Some(id) = document.get_entity(handle).and_then(element_id) {
+            set_entity_tag(document, handle, element_tag(id, handle));
+        }
     }
 }
 

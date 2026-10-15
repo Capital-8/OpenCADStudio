@@ -469,8 +469,9 @@ impl OpenCADStudio {
         }
         let captures = self.clipboard_deps.ext_objects.clone();
         let doc = &mut self.tabs[i].scene.document;
+        let records = block_record_map(doc, &self.clipboard_deps.blocks);
         for cap in &captures {
-            if let Some(new_root) = recreate_ext_subtree(doc, cap, None) {
+            if let Some(new_root) = recreate_ext_subtree(doc, cap, None, &records) {
                 out.insert(cap.entity_index, new_root);
             }
         }
@@ -524,13 +525,56 @@ pub(crate) fn merge_block_defs(
     doc: &mut codec::CadDocument,
     blocks: &[crate::app::BlockDef],
 ) -> usize {
-    let mut created = 0;
+    let mut created = Vec::new();
     for def in blocks {
         let before = doc.block_records.len();
         define_block_raw_doc(doc, &def.name, def.base_point, &def.entities);
-        created += usize::from(doc.block_records.len() > before);
+        if doc.block_records.len() > before {
+            created.push(def);
+        }
     }
-    created
+    // Graphs name other records (an evaluated copy names its definition), so
+    // they go in once every record exists.
+    let records = block_record_map(doc, blocks);
+    for def in &created {
+        import_block_def_graph(doc, def, &records);
+    }
+    created.len()
+}
+
+/// Source record → this drawing's record of the same name, per definition.
+pub(crate) fn block_record_map(
+    doc: &codec::CadDocument,
+    blocks: &[crate::app::BlockDef],
+) -> std::collections::HashMap<Handle, Handle> {
+    blocks
+        .iter()
+        .filter_map(|def| Some((def.source, doc.block_records.get(&def.name)?.handle)))
+        .collect()
+}
+
+/// Carry `def`'s object graph (a dynamic block's parameters and states) onto
+/// the record just defined from it here. `records` maps the source records
+/// the graph may name.
+pub(crate) fn import_block_def_graph(
+    doc: &mut codec::CadDocument,
+    def: &crate::app::BlockDef,
+    records: &std::collections::HashMap<Handle, Handle>,
+) {
+    let Some(graph) = &def.graph else {
+        return;
+    };
+    let Some(record) = doc.block_records.get(&def.name).map(|record| record.handle) else {
+        return;
+    };
+    let members = crate::scene::block_authoring::members(doc, record);
+    if members.len() != def.entities.len() {
+        return;
+    }
+    let mut map = records.clone();
+    map.extend(def.entities.iter().map(|e| e.common().handle).zip(members));
+    doc.import_block_graph(graph, record, &map);
+    crate::scene::block_authoring::retag_members(doc, record);
 }
 
 /// (`NULL` where an add failed) plus the source-handle → pasted-handle map.
@@ -612,6 +656,7 @@ pub(crate) fn paste_entities_kernel(
         Some(crate::command::EntityTransform::Translate(delta)) => *delta,
         _ => glam::DVec3::ZERO,
     };
+    let records = block_record_map(doc, &deps.blocks);
     for cap in &deps.ext_objects {
         let Some(&new_entity) = by_index.get(cap.entity_index) else {
             continue;
@@ -619,7 +664,7 @@ pub(crate) fn paste_entities_kernel(
         if new_entity.is_null() {
             continue;
         }
-        if let Some(new_root) = recreate_ext_subtree(doc, cap, Some(new_entity)) {
+        if let Some(new_root) = recreate_ext_subtree(doc, cap, Some(new_entity), &records) {
             if let Some(e) = doc.get_entity_mut(new_entity) {
                 e.common_mut().xdictionary_handle = Some(new_root);
             }
@@ -837,9 +882,10 @@ fn recreate_ext_subtree(
     doc: &mut codec::CadDocument,
     cap: &crate::app::ClipExtObjects,
     entity_handle: Option<Handle>,
+    records: &std::collections::HashMap<Handle, Handle>,
 ) -> Option<Handle> {
     use std::collections::HashMap;
-    let mut remap: HashMap<Handle, Handle> = HashMap::new();
+    let mut remap: HashMap<Handle, Handle> = records.clone();
     if let Some(eh) = entity_handle {
         remap.insert(cap.src_entity_handle, eh);
     }
@@ -854,6 +900,14 @@ fn recreate_ext_subtree(
         let mut obj = obj.clone();
         let new_h = remap[old];
         remap_object(&mut obj, new_h, &remap);
+        // A dynamic reference's link to its definition, indexed.
+        if let codec::objects::ObjectType::DynamicBlock(object) = &obj {
+            if let codec::objects::DynamicBlockData::Representation(link) = &object.data {
+                if object.dxf_name == "ACDB_BLOCKREPRESENTATION_DATA" {
+                    doc.block_representations.insert(new_h, link.block);
+                }
+            }
+        }
         doc.objects.insert(new_h, obj);
     }
     remap.get(&cap.root).copied()
@@ -1013,6 +1067,10 @@ pub(crate) fn remap_object(
                 _ => {}
             }
         }
+        ObjectType::DynamicBlock(object) => {
+            object.handle = new_handle;
+            object.visit_handles_mut(&mut |h| *h = map(*h));
+        }
         // Other leaf object kinds don't appear in an entity xdictionary; if one
         // does, it's inserted with the fresh handle below via the caller's key,
         // but its internal owner is left as-is (best effort).
@@ -1082,7 +1140,7 @@ mod clipboard_xdict_clone_tests {
         let before: Vec<Handle> = dst.objects.keys().copied().collect();
         let dst_entity = dst.allocate_handle();
 
-        let new_root = recreate_ext_subtree(&mut dst, &cap, Some(dst_entity))
+        let new_root = recreate_ext_subtree(&mut dst, &cap, Some(dst_entity), &Default::default())
             .expect("recreated xdictionary root");
         assert!(!new_root.is_null());
         assert!(!before.contains(&new_root), "clone must use a fresh handle");
@@ -1119,7 +1177,8 @@ mod clipboard_xdict_clone_tests {
         let mut dst = codec::CadDocument::new();
         let before_len = dst.objects.len();
 
-        let root = recreate_ext_subtree(&mut dst, &cap, None).expect("recreated xdictionary root");
+        let root = recreate_ext_subtree(&mut dst, &cap, None, &Default::default())
+            .expect("recreated xdictionary root");
         let leaf = leaf_of(&dst, root);
         match dst.objects.get(&leaf) {
             Some(ObjectType::XRecord(x)) => assert!(

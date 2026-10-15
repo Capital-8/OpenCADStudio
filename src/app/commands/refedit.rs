@@ -915,8 +915,8 @@ impl OpenCADStudio {
                 }
                 Some(crate::app::BlockDef {
                     name: used,
-                    base_point: def.base_point,
                     entities,
+                    ..def.clone()
                 })
             })
             .collect();

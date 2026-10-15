@@ -521,11 +521,7 @@ impl Scene {
         record.flags.anonymous = true;
         let copy = record.handle;
         // The copies keep their element ids, now naming themselves.
-        for handle in members(&self.document, copy) {
-            if let Some(id) = self.document.get_entity(handle).and_then(element_id) {
-                set_entity_tag(&mut self.document, handle, element_tag(id, handle));
-            }
-        }
+        super::block_authoring::retag_members(&mut self.document, copy);
         let mut tag = ExtendedDataRecord::new(REPRESENTATION_TAG);
         tag.add_value(XDataValue::Integer16(1));
         tag.add_value(XDataValue::Handle(definition));
