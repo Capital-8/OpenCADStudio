@@ -101,6 +101,13 @@ pub enum PdfDialogMsg {
     Lineweights(bool),
     Linetypes(bool),
     SettingsOk,
+    // Text to MText Settings (TXT2MTXT)
+    T2mCombine(bool),
+    /// Keep the selection order (else top-down).
+    T2mSelectOrder(bool),
+    T2mWrap(bool),
+    T2mUniform(bool),
+    T2mOk,
     // Import PDF
     ImportBrowse,
     ImportPage(usize),
@@ -1253,6 +1260,194 @@ pub fn view_import_settings<'a>(
             Some(more.into()),
             t!("Save"),
             PdfDialogMsg::SettingsOk
+        ),
+    ]
+    .spacing(10)
+    .padding([10, 12])
+    .width(sizing.width)
+    .into()
+}
+
+// ── Text to MText Settings (TXT2MTXT) ──────────────────────────────────────
+
+/// A labelled switch; inactive (dimmed) while `on` is None.
+fn t2m_switch<'a>(
+    label: String,
+    hint: String,
+    value: bool,
+    on: Option<fn(bool) -> PdfDialogMsg>,
+) -> Element<'a, Message> {
+    let enabled = on.is_some();
+    let mut switch = iced::widget::toggler(value).size(18.0);
+    if let Some(on) = on {
+        switch = switch.on_toggle(move |v| msg(on(v)));
+    }
+    let dim = move |theme: &Theme| text::Style {
+        color: Some(theme.palette().background.strong.color),
+    };
+    let name = text(label).size(12);
+    let name = if enabled { name } else { name.style(dim) };
+    row![
+        switch,
+        name,
+        text(hint).size(11).style(if enabled { muted_style } else { dim }),
+    ]
+    .spacing(8)
+    .align_y(iced::Center)
+    .into()
+}
+
+/// Top-down or selection order, as joined buttons; inactive without `enabled`.
+fn t2m_order<'a>(select_order: bool, enabled: bool) -> Element<'a, Message> {
+    let choice = |value: bool, label: String| -> Element<'a, Message> {
+        let chosen = enabled && value == select_order;
+        button(text(label).size(11).width(Fill).align_x(iced::Center))
+            .on_press_maybe(enabled.then(|| msg(PdfDialogMsg::T2mSelectOrder(value))))
+            .style(move |theme: &Theme, status| {
+                let mut style = button_style(chosen)(theme, status);
+                if !enabled {
+                    style.text_color = theme.palette().background.strong.color;
+                }
+                style
+            })
+            .padding([5, 6])
+            .width(Fill)
+            .into()
+    };
+    container(
+        row![
+            choice(false, crate::tr!("txt2mtxt", "top-down")),
+            choice(true, crate::tr!("txt2mtxt", "selection-order"))
+        ]
+        .spacing(2),
+    )
+    .padding(2)
+    .width(Length::Fixed(300.0))
+    .style(well_style)
+    .into()
+}
+
+/// A text sample in a well, one line per entry.
+fn t2m_sample<'a>(lines: Vec<String>, framed: bool, width: f32) -> Element<'a, Message> {
+    let body = iced::widget::Column::with_children(
+        lines
+            .into_iter()
+            .map(|l| text(l).size(12).font(iced::Font::MONOSPACE).into())
+            .collect::<Vec<_>>(),
+    )
+    .spacing(6);
+    let inner = container(body).padding([6, 8]).width(Fill);
+    let inner: Element<'a, Message> = if framed {
+        inner
+            .style(|theme: &Theme| container::Style {
+                border: Border {
+                    width: 1.0,
+                    radius: 2.0.into(),
+                    color: theme.palette().primary.base.color,
+                },
+                ..Default::default()
+            })
+            .into()
+    } else {
+        inner.into()
+    };
+    container(inner)
+        .padding(6)
+        .width(Length::Fixed(width))
+        .height(Length::Fixed(86.0))
+        .style(well_style)
+        .into()
+}
+
+pub fn view_txt2mtxt_settings<'a>(
+    s: &'a crate::app::settings::Txt2MtxtSettings,
+    sizing: crate::ui::modal::ModalSizing,
+) -> Element<'a, Message> {
+    let result = card(
+        crate::tr!("txt2mtxt", "result"),
+        column![
+            t2m_switch(
+                crate::tr!("txt2mtxt", "combine"),
+                String::new(),
+                s.combine,
+                Some(PdfDialogMsg::T2mCombine),
+            ),
+            column![
+                text(crate::tr!("txt2mtxt", "order")).size(11).style(muted_style),
+                t2m_order(s.select_order, s.combine),
+            ]
+            .spacing(6)
+            .padding(iced::Padding::ZERO.left(44)),
+            text(crate::tr!("txt2mtxt", "combine-note"))
+            .size(11)
+            .style(muted_style),
+        ]
+        .spacing(8),
+    );
+    let lines = card(
+        crate::tr!("txt2mtxt", "lines"),
+        column![
+            t2m_switch(
+                crate::tr!("txt2mtxt", "wrap"),
+                crate::tr!("txt2mtxt", "wrap-hint"),
+                s.word_wrap,
+                s.combine.then_some(PdfDialogMsg::T2mWrap as fn(bool) -> PdfDialogMsg),
+            ),
+            t2m_switch(
+                crate::tr!("txt2mtxt", "uniform"),
+                crate::tr!("txt2mtxt", "uniform-hint"),
+                s.uniform_spacing || s.word_wrap,
+                (s.combine && !s.word_wrap)
+                    .then_some(PdfDialogMsg::T2mUniform as fn(bool) -> PdfDialogMsg),
+            ),
+        ]
+        .spacing(10),
+    );
+    let sample: Vec<String> = ["First line", "Second line", "Third line"]
+        .into_iter()
+        .map(String::from)
+        .collect();
+    let (count, out) = if !s.combine {
+        (3, sample.clone())
+    } else if s.word_wrap {
+        (
+            1,
+            vec!["First line Second line Third".into(), "line".into()],
+        )
+    } else {
+        (1, sample.clone())
+    };
+    let preview = container(
+        row![
+            column![
+                text(crate::tr!("txt2mtxt", "selected")).size(11).style(muted_style),
+                t2m_sample(sample, false, 190.0)
+            ]
+            .spacing(4),
+            text("→").size(20).style(accent_text),
+            column![
+                text(crate::tr!("txt2mtxt", "result-count", count = count))
+                    .size(11)
+                    .style(muted_style),
+                t2m_sample(out, true, 262.0)
+            ]
+            .spacing(4),
+        ]
+        .spacing(14)
+        .align_y(iced::Center),
+    )
+    .padding([10, 12])
+    .width(Fill)
+    .style(card_style);
+    column![
+        result,
+        lines,
+        preview,
+        footer(
+            "txt2mtxt",
+            None,
+            crate::tr!("txt2mtxt", "apply").into(),
+            PdfDialogMsg::T2mOk,
         ),
     ]
     .spacing(10)

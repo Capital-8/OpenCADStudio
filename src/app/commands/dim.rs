@@ -1335,6 +1335,30 @@ impl OpenCADStudio {
                 }
             }
 
+            // TXT2MTXT — TEXT / MTEXT combined into MTEXT. A preselection is
+            // used at once; otherwise the selection prompt with SEttings.
+            "TXT2MTXT" => {
+                if !self.tabs[i].scene.selected.is_empty() {
+                    return Some(self.dispatch_command("_TXT2MTXTSEL"));
+                }
+                use crate::modules::draw::select::SelectObjectsCommand;
+                self.command_line
+                    .push_output(crate::t!("Select text objects to combine ...").as_ref());
+                let command = SelectObjectsCommand::with_settings(
+                    "TXT2MTXT",
+                    "_TXT2MTXTSEL",
+                    "Select objects or [SEttings]:",
+                    || crate::command::CmdResult::OpenTxt2MtxtSettings,
+                );
+                self.command_line.push_info(&command.prompt());
+                self.command_line.set_step_options(command.options());
+                self.tabs[i].active_cmd = Some(Box::new(command));
+            }
+            "_TXT2MTXTSEL" => {
+                self.apply_txt2mtxt(i);
+                return Some(self.finish_dispatch("TXT2MTXT"));
+            }
+
             "OFFSET" => {
                 use crate::modules::draw::modify::offset::{is_offsettable, OffsetCommand};
                 let all_entities: Vec<_> = self.tabs[i]
@@ -1545,4 +1569,53 @@ fn title_case(s: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+impl OpenCADStudio {
+    /// TXT2MTXT on the selection (in selection order), as one undo step.
+    fn apply_txt2mtxt(&mut self, i: usize) {
+        let scene = &self.tabs[i].scene;
+        let handles: Vec<codec::Handle> = scene
+            .selected_handles_in_order()
+            .into_iter()
+            .filter(|handle| !scene.is_layer_locked(*handle))
+            .collect();
+        let plan = {
+            let selected: Vec<(codec::Handle, &codec::EntityType)> = handles
+                .iter()
+                .filter_map(|h| scene.document.get_entity(*h).map(|e| (*h, e)))
+                .collect();
+            crate::modules::annotate::txt2mtxt::plan(
+                &selected,
+                &scene.document,
+                self.txt2mtxt_settings,
+            )
+        };
+        self.tabs[i].scene.deselect_all();
+        // Enter on an empty selection ends quietly.
+        if handles.is_empty() {
+            return;
+        }
+        let Some(plan) = plan else {
+            self.command_line
+                .push_output("  0 Text objects removed, 0 MText objects added.");
+            return;
+        };
+        self.push_undo_snapshot(i, "TXT2MTXT");
+        self.tabs[i].scene.erase_entities(&plan.erase);
+        let added = plan.add.len();
+        for entity in plan.add {
+            self.tabs[i].scene.add_entity(entity);
+        }
+        self.tabs[i].dirty = true;
+        self.refresh_properties();
+        // Every selected object counts as removed text, the way the
+        // reference reports it.
+        let removed = handles.len();
+        self.command_line.push_output(&if added == 1 {
+            format!("  {removed} Text objects removed, 1 MText object added.")
+        } else {
+            format!("  {removed} Text objects removed, {added} MText objects added.")
+        });
+    }
 }

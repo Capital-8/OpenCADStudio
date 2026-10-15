@@ -1812,6 +1812,9 @@ pub enum CmdResult {
         second: crate::scene::parametric_constraints::ParametricRef,
         label: &'static str,
     },
+    /// Opens the Text to MText Settings dialog from TXT2MTXT's selection
+    /// prompt; the command keeps its prompt.
+    OpenTxt2MtxtSettings,
     /// Opens the Auto Constrain settings dialog from the selection prompt.
     OpenAutoConstrainSettings,
     /// Adds an ordered Coincident relation.  Point/point selections create a

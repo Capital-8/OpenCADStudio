@@ -237,6 +237,17 @@ impl OpenCADStudio {
             Some(PdfAttach) => self.pdf_attach = None,
             Some(UnderlayLayers) => self.underlay_layers = None,
             Some(PdfImportSettings) => self.pdf_import_settings = None,
+            // OK or Cancel: TXT2MTXT asks for its selection again.
+            Some(Txt2MtxtSettings) => {
+                self.txt2mtxt_dialog = None;
+                if let Some(prompt) = self.tabs[self.active_tab]
+                    .active_cmd
+                    .as_ref()
+                    .map(|command| command.prompt())
+                {
+                    self.command_line.push_info(&prompt);
+                }
+            }
             Some(PdfImportFile) => self.pdf_import_file = None,
             Some(XrefAttach) => self.xref_attach = None,
             Some(WriteBlock) => self.wblock = None,

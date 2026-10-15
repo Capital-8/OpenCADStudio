@@ -764,6 +764,10 @@ pub(super) struct OpenCADStudio {
     /// pill shows only the glyph.
     pub show_constraint_values: bool,
     pub auto_constrain_settings: settings::AutoConstrainSettings,
+    /// TXT2MTXT settings (profile).
+    pub txt2mtxt_settings: settings::Txt2MtxtSettings,
+    /// The Text to MText Settings dialog's working copy.
+    txt2mtxt_dialog: Option<settings::Txt2MtxtSettings>,
     auto_constrain_saved: Option<settings::AutoConstrainSettings>,
     auto_constrain_selected_row: usize,
     auto_constrain_distance_input: String,
@@ -2178,6 +2182,8 @@ pub enum ModalKind {
     RefEdit,
     UnderlayLayers,
     PdfImportSettings,
+    /// TXT2MTXT's Text to MText Settings, over the running command.
+    Txt2MtxtSettings,
     PdfImportFile,
     XrefAttach,
     WriteBlock,
@@ -4693,6 +4699,8 @@ impl OpenCADStudio {
             file_assoc_enabled: true,
             show_constraint_values: true,
             auto_constrain_settings: settings::AutoConstrainSettings::default(),
+            txt2mtxt_settings: settings::Txt2MtxtSettings::default(),
+            txt2mtxt_dialog: None,
             auto_constrain_saved: None,
             auto_constrain_selected_row: 0,
             auto_constrain_distance_input: "0.05".to_string(),

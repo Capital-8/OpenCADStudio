@@ -862,6 +862,7 @@ impl OpenCADStudio {
             file_assoc_enabled: self.file_assoc_enabled,
             show_constraint_values: self.show_constraint_values,
             auto_constrain: self.auto_constrain_settings.clone(),
+            txt2mtxt: self.txt2mtxt_settings,
             constraint_solve_mode: self.constraint_solve_mode,
             constraint_infer: self.constraint_infer,
             constraint_bar_display: self.constraint_bar_display,
@@ -1031,6 +1032,7 @@ impl OpenCADStudio {
         self.file_assoc_enabled = s.file_assoc_enabled;
         self.show_constraint_values = s.show_constraint_values;
         self.auto_constrain_settings = s.auto_constrain.clone();
+        self.txt2mtxt_settings = s.txt2mtxt;
         self.auto_constrain_settings.sanitize();
         self.auto_constrain_distance_input =
             format!("{}", self.auto_constrain_settings.distance_tolerance);
