@@ -11,7 +11,11 @@ OpenCADStudio provides interactive tools for measuring distances, radii, angles,
 | Angle | `MEASUREANGLE` | Measure an angle using three points or two LINE entities. |
 | Area | `AREA` | Measure areas and perimeters, including accumulated areas. |
 
-The **Measure** dropdown lists **Distance**, **Radius**, **Angle**, and **Area**, in that order. Each tool can be started from the menu or by entering its command. `MEASUREGEOM` and its `MEA` alias remain available with their four measurement modes.
+The **Measure** dropdown lists **Distance**, **Radius**, **Angle**, and **Area**, in that order. Each tool can be started from the menu or by entering its command. `MEASUREGEOM` and its `MEA` alias offer the same four modes plus **Quick**.
+
+### Quick — `MEASUREGEOM` → `Q`
+
+As the cursor moves, the nearest geometry along the working plane's X and Y axes is measured live: cyan measurement lines and a Horizontal/Vertical readout appear by the cursor. A click prints the current readout to the command line and measuring continues; Enter ends the command. Angles where the lines meet slanted geometry are not shown yet.
 
 ## Using the measurement tools
 

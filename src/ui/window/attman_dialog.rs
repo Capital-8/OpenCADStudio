@@ -981,7 +981,7 @@ pub fn view<'a>(
                         15.0
                     ),
                     text(error.clone()).size(11).width(Fill),
-                    button(text("×").size(12))
+                    button(crate::ui::icons::semantic(crate::ui::icons::CLOSE, 12.0))
                         .on_press(msg(AttManMsg::DismissError))
                         .style(button_style(false))
                         .padding([1, 6]),

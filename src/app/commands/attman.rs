@@ -16,7 +16,11 @@ use crate::ui::window::attman_dialog::{
 impl OpenCADStudio {
     /// Open the dialog on the block of the first preselected attributed
     /// reference, else on the first attributed block.
-    pub(in crate::app) fn open_attman(&mut self, i: usize, preselected: &[Handle]) -> Task<Message> {
+    pub(in crate::app) fn open_attman(
+        &mut self,
+        i: usize,
+        preselected: &[Handle],
+    ) -> Task<Message> {
         let document = &self.tabs[i].scene.document;
         let table = BlockTable::of(document);
         let model = document

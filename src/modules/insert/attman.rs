@@ -30,7 +30,11 @@ impl crate::command::CadCommand for AttmanPickCommand {
         true
     }
 
-    fn on_entity_pick(&mut self, handle: codec::Handle, _pt: glam::DVec3) -> crate::command::CmdResult {
+    fn on_entity_pick(
+        &mut self,
+        handle: codec::Handle,
+        _pt: glam::DVec3,
+    ) -> crate::command::CmdResult {
         if handle.is_null() {
             return crate::command::CmdResult::NeedPoint;
         }
