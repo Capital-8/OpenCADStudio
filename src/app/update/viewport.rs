@@ -4325,6 +4325,7 @@ impl OpenCADStudio {
             };
 
             let snap_taken = self.tabs[i].snap_result.take();
+            let snapped = snap_taken.is_some();
             let tangent_obj_at_click = snap_taken.and_then(|s| s.tangent_obj);
 
             let world_pt = {
@@ -5019,6 +5020,11 @@ impl OpenCADStudio {
                     self.finish_command_click(i);
                     return Task::none();
                 }
+                // An unsnapped first point on a solid face lands on the face.
+                let world_pt = match self.apply_dynamic_ucs(snapped.then_some(world_pt)) {
+                    Some(on_face) if !snapped => on_face,
+                    _ => world_pt,
+                };
                 self.last_point = Some(world_pt);
                 // The one-shot snap override is spent by this pick —
                 // restore the running osnap configuration (#337).

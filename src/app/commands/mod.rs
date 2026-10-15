@@ -768,6 +768,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "FILEDIA",
         "TRIMEXTENDMODE",
         "SELECTIONCYCLING",
+        "UCSDETECT",
         "SURFACEASSOCIATIVITY",
         "LAYOUTCREATEVIEWPORT",
         "FIELDEVAL",

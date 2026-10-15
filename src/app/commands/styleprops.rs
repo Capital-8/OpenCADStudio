@@ -1216,6 +1216,7 @@ impl OpenCADStudio {
                     | "FILEDIA"
                     | "TRIMEXTENDMODE"
                     | "SELECTIONCYCLING"
+                    | "UCSDETECT"
                     | "SURFACEASSOCIATIVITY"
                     | "UCSORTHO"
                     | "UCSVIEW"
@@ -1642,6 +1643,30 @@ impl OpenCADStudio {
                                     trim::set_quick_mode(mode == 1);
                                     self.save_config();
                                 }
+                            }
+                            Some(None) => {
+                                self.command_line
+                                    .push_error(crate::t!("Requires 0 or 1 only.").as_ref());
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    if name == "UCSDETECT" {
+                        let current = i16::from(self.dynamic_ucs);
+                        let prompt = format!("Enter new value for UCSDETECT <{current}>:");
+                        match value
+                            .as_deref()
+                            .map(|v| v.trim().parse::<i16>().ok().filter(|v| (0..=1).contains(v)))
+                        {
+                            Some(Some(mode)) => {
+                                self.dynamic_ucs = mode == 1;
+                                self.persist_settings_if_changed();
                             }
                             Some(None) => {
                                 self.command_line

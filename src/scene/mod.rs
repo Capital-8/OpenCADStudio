@@ -11363,6 +11363,25 @@ impl Scene {
         )
     }
 
+    /// The UCS of the planar solid face under `local` (relative to `bounds`),
+    /// Z along the face normal, and the picked point on the face.
+    pub fn planar_face_ucs_at(
+        &mut self,
+        bounds: iced::Rectangle,
+        local: iced::Point,
+    ) -> Option<(codec::tables::Ucs, glam::DVec3)> {
+        let camera = self.camera.borrow();
+        let view_rot = camera.view_proj_rte(bounds);
+        let eye = camera.eye();
+        drop(camera);
+        let (handle, pick) = self.solid_click_hit_point(local, view_rot, eye, bounds)?;
+        self.restore_solid_models(&[handle]);
+        let body = self.solid_models.get(&handle)?;
+        let face = crate::scene::model::solid_model::nearest_planar_face(body, pick.to_array())?;
+        crate::scene::model::solid_model::planar_face_ucs(body, face, pick.to_array())
+            .map(|ucs| (ucs, pick))
+    }
+
     /// The nearest solid or mesh surface under `local` (relative to `bounds`).
     pub fn surface_pivot_at(
         &self,

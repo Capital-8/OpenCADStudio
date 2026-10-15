@@ -374,6 +374,7 @@ impl OpenCADStudio {
         // document's selection.
         let before = self.tabs.get(self.active_tab).map(|tab| tab.id);
         let task = self.update_message(msg);
+        self.restore_dynamic_ucs_after_command();
         if self.tabs.get(self.active_tab).map(|tab| tab.id) != before {
             self.sync_underlay_tab();
         }
@@ -394,6 +395,25 @@ impl OpenCADStudio {
             self.ribbon.set_block_editing(block_editing);
         }
         task
+    }
+
+    /// A dynamic UCS lasts for the command that set it: once that tab's
+    /// command has ended, the UCS it replaced comes back.
+    fn restore_dynamic_ucs_after_command(&mut self) {
+        let Some((tab_id, _)) = self.dynamic_ucs_restore else {
+            return;
+        };
+        let Some(i) = self.tabs.iter().position(|tab| tab.id == tab_id) else {
+            self.dynamic_ucs_restore = None;
+            return;
+        };
+        if self.tabs[i].active_cmd.is_some() {
+            return;
+        }
+        if let Some((_, saved)) = self.dynamic_ucs_restore.take() {
+            self.tabs[i].active_ucs = saved;
+            self.tabs[i].sync_ucs_to_scene();
+        }
     }
 
     /// The Frames list on the ribbon shows the active drawing's frame state
@@ -9241,6 +9261,18 @@ impl OpenCADStudio {
 
             Message::ZoomWheelReversedChanged(reversed) => {
                 self.zoom_wheel_reversed = reversed;
+                self.persist_settings_if_changed();
+                Task::none()
+            }
+
+            Message::ToggleDynamicUcs => {
+                self.dynamic_ucs = !self.dynamic_ucs;
+                self.command_line.push_output(if self.dynamic_ucs {
+                    crate::t!("Dynamic UCS: on")
+                } else {
+                    crate::t!("Dynamic UCS: off")
+                }
+                .as_ref());
                 self.persist_settings_if_changed();
                 Task::none()
             }

@@ -624,6 +624,48 @@ impl OpenCADStudio {
         Some(key)
     }
 
+    /// Dynamic UCS: a command's first point picked on a planar solid face sets
+    /// the UCS to that face for the rest of the command. Returns the picked
+    /// point on the face. A snapped point (`snapped`) off the face's plane
+    /// belongs to other geometry, so it leaves the UCS alone.
+    pub(in crate::app) fn apply_dynamic_ucs(
+        &mut self,
+        snapped: Option<glam::DVec3>,
+    ) -> Option<glam::DVec3> {
+        let i = self.active_tab;
+        if !self.dynamic_ucs
+            || self.dynamic_ucs_restore.is_some()
+            || self.last_point.is_some()
+            || !self.tabs[i].editing_model_space()
+            || self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .is_none_or(|command| command.name().starts_with("UCS"))
+        {
+            return None;
+        }
+        let cursor = self.tabs[i].scene.selection.borrow().input.last_move_pos?;
+        let (vw, vh) = self.tabs[i].scene.selection.borrow().view.vp_size;
+        let bounds = self.tabs[i].scene.active_model_tile_bounds(vw, vh);
+        let local = iced::Point::new(cursor.x - bounds.x, cursor.y - bounds.y);
+        let (ucs, pick) = self.tabs[i].scene.planar_face_ucs_at(bounds, local)?;
+        if let Some(point) = snapped {
+            let normal = glam::DVec3::new(ucs.x_axis.x, ucs.x_axis.y, ucs.x_axis.z)
+                .cross(glam::DVec3::new(ucs.y_axis.x, ucs.y_axis.y, ucs.y_axis.z))
+                .normalize_or_zero();
+            let off_plane = (point - pick).dot(normal).abs();
+            if off_plane > 1.0e-6 * (1.0 + point.length().max(pick.length())) {
+                return None;
+            }
+        }
+        let saved = self.tabs[i].active_ucs.take();
+        self.dynamic_ucs_restore = Some((self.tabs[i].id, saved));
+        self.tabs[i].active_ucs = Some(ucs);
+        self.tabs[i].sync_ucs_to_scene();
+        self.push_ucs_to_cmd(i);
+        Some(pick)
+    }
+
     /// `feed_command`, also reporting whether the step actually took the input.
     /// Only a `Text` token can come back unclaimed (`on_text_input` returning
     /// `None`), which is what lets the caller read it as something else — a
@@ -632,6 +674,9 @@ impl OpenCADStudio {
         &mut self,
         input: StepInput,
     ) -> (Task<Message>, bool) {
+        if matches!(input, StepInput::Point(_)) {
+            let _ = self.apply_dynamic_ucs(None);
+        }
         let gathering = self.report_selection_found(&input);
         // A command that takes associative dimensions only keeps just those:
         // the rest leave the selection and the count of what went is reported,

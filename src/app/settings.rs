@@ -416,6 +416,9 @@ pub struct UserSettings {
     pub polar_increment_deg: f32,
     pub zoom_wheel_reversed: bool,
     pub navigation_style: NavigationStyle,
+    /// UCSDETECT: a command's first point on a planar solid face sets the
+    /// UCS to that face until the command ends.
+    pub dynamic_ucs: bool,
     /// Scrolling pans and Ctrl+scroll (a touchpad pinch) zooms, for a
     /// touchpad that reports two-finger drags as wheel scrolls.
     pub touchpad_pan: bool,
@@ -920,6 +923,7 @@ impl Default for UserSettings {
             polar_increment_deg: 45.0,
             zoom_wheel_reversed: false,
             navigation_style: NavigationStyle::Cad,
+            dynamic_ucs: true,
             touchpad_pan: false,
             ui_scale_percent: 100,
             zoom_factor: 60,

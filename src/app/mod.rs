@@ -655,6 +655,12 @@ pub(super) struct OpenCADStudio {
     /// CATIA navigation: the left button went down while the middle one was
     /// held, so the middle drag orbits until it is released.
     nav_left_with_middle: bool,
+    /// UCSDETECT: a command's first point on a planar solid face sets the
+    /// UCS to that face until the command ends.
+    dynamic_ucs: bool,
+    /// The UCS a dynamic UCS replaced, by tab id, restored when that tab's
+    /// command ends.
+    dynamic_ucs_restore: Option<(u64, Option<codec::tables::Ucs>)>,
     /// Scroll pans and Ctrl+scroll zooms (touchpads); see `scroll_intent`.
     touchpad_pan: bool,
     /// Multi-finger gestures on a touch screen.
@@ -2663,6 +2669,8 @@ pub enum Message {
     /// Toggle reversing the mouse-wheel zoom direction (ZOOMWHEEL).
     ZoomWheelReversedChanged(bool),
     NavigationStyleChanged(crate::app::settings::NavigationStyle),
+    /// F6 / UCSDETECT: toggle the dynamic UCS.
+    ToggleDynamicUcs,
     TouchpadPanChanged(bool),
     /// Options: show the pull-down menus (MENUBAR).
     MenuBarChanged(bool),
@@ -4640,6 +4648,8 @@ impl OpenCADStudio {
             zoom_wheel_reversed: false,
             navigation_style: Default::default(),
             nav_left_with_middle: false,
+            dynamic_ucs: true,
+            dynamic_ucs_restore: None,
             touchpad_pan: false,
             touch: Default::default(),
             touch_offset: None,

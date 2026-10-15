@@ -5074,6 +5074,8 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "CAD: Shift + middle button orbits" => Some(("common", "nav-style-cad")),
         "Blender: middle button orbits, Shift pans" => Some(("common", "nav-style-blender")),
         "CATIA: middle + left button orbits" => Some(("common", "nav-style-catia")),
+        "Dynamic UCS: on" => Some(("common", "dynamic-ucs-on")),
+        "Dynamic UCS: off" => Some(("common", "dynamic-ucs-off")),
         "Touchpad: scroll pans, Ctrl+scroll or pinch zooms" => Some(("common", "touchpad-scroll-pans-ctrl-scroll-or-pinch-zooms")),
         "Interface scale" => Some(("common", "interface-scale")),
         "Zoom factor" => Some(("common", "zoom-factor")),
