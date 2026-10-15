@@ -626,6 +626,9 @@ fn locked_rename_refuses_anonymous_and_layout_records_with_the_shared_text() {
 }
 
 /// A rename refuses a block with an open BEDIT session, whatever the new name.
+/// V7: the RENAME verb itself is refused at the command choke point while a
+/// session is open; the block service keeps its own refusal as defense in
+/// depth for the non-command paths (control op, palette).
 #[test]
 fn locked_rename_refuses_a_block_with_an_open_bedit_session() {
     let mut app = app();
@@ -639,9 +642,9 @@ fn locked_rename_refuses_a_block_with_an_open_bedit_session() {
     assert_eq!(undo_entry_count(&app), before);
     assert_eq!(
         errors(&app),
-        vec![command_line_error(&format!(
-            "block \"{name}\" is open in the block editor; close the editor first"
-        ))]
+        vec![command_line_error(
+            "RENAME command not allowed in block editor"
+        )]
     );
     let _ = app.dispatch_command("BEDIT_DISCARD");
 }

@@ -209,6 +209,30 @@ impl OpenCADStudio {
                 return Task::none();
             }
         }
+        // V7 (reference check): inside a block editor session a set of
+        // commands is refused outright. The hook sits after alias resolution
+        // and before the transparent split and the running-command teardown,
+        // so a rejected command leaves whatever is running untouched.
+        if self.tabs[i].active_block_edit.is_some() {
+            let name = cmd.split([' ', ':']).next().unwrap_or(cmd);
+            if matches!(
+                name,
+                "LAYOUT"
+                    | "VPORTS"
+                    | "MVIEW"
+                    | "WBLOCK"
+                    | "PURGE"
+                    | "RENAME"
+                    | "REFEDIT"
+                    | "REFEDIT_BEGIN"
+                    | "PLOT"
+            ) {
+                self.command_line.push_error(
+                    crate::tf!("{} command not allowed in block editor", name).as_ref(),
+                );
+                return Task::none();
+            }
+        }
         if is_spacemouse_command(cmd) {
             return self.run_action(cmd);
         }
