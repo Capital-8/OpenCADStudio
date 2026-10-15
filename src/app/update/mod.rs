@@ -1052,6 +1052,27 @@ impl OpenCADStudio {
                 Task::none()
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
+            Message::UiFontSettingsChanged => Task::perform(
+                async { crate::sys::ui_font::detect() },
+                Message::UiFontDetected,
+            ),
+            #[cfg(target_arch = "wasm32")]
+            Message::UiFontSettingsChanged => Task::none(),
+
+            // Re-setting the defaults recreates the renderers and lays out
+            // every window again with the remapped sans-serif family.
+            #[cfg(not(target_arch = "wasm32"))]
+            Message::UiFontDetected(system) => {
+                if crate::sys::ui_font::apply(system.as_ref()) {
+                    iced::font::set_defaults(iced::Font::DEFAULT, 16.0)
+                } else {
+                    Task::none()
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            Message::UiFontDetected(_) => Task::none(),
+
             Message::Tick(t) => self.on_tick(t),
 
             Message::OpenFile => self.on_open_file(),

@@ -2460,6 +2460,10 @@ pub enum Message {
     ApplyWebFont(crate::scene::text::web_font::Script),
     /// Completion of the UI renderer's runtime font registration.
     WebUiFontLoaded(crate::scene::text::web_font::Script, Result<(), String>),
+    /// The desktop reported (or a poll may have found) a UI-font change.
+    UiFontSettingsChanged,
+    /// A re-read of the desktop UI font finished.
+    UiFontDetected(Option<crate::sys::ui_font::SystemUiFont>),
     /// Ctrl+V. Routed by `update` into an open text editor, the drawing-object
     /// clipboard, or the system text clipboard.
     PasteShortcut,
@@ -5551,6 +5555,9 @@ use std::path::PathBuf;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn run() -> iced::Result {
+    // UI text follows the desktop's interface font: generic sans-serif, iced's
+    // default font, is remapped to it before the first window opens.
+    crate::sys::ui_font::apply(crate::sys::ui_font::detect().as_ref());
     iced::daemon(
         OpenCADStudio::boot,
         OpenCADStudio::update,

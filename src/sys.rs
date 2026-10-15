@@ -1,6 +1,8 @@
 // Small platform shims for things the desktop build does natively but the web
 // (wasm) build must handle differently or skip.
 
+pub mod ui_font;
+
 /// Drawing hyperlinks may open web pages, never local files or custom handlers.
 pub(crate) fn web_hyperlink(value: &str) -> Option<String> {
     if value.chars().any(char::is_control) {

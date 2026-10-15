@@ -146,6 +146,22 @@ pub(in crate::app) const VIEWPORT_CAPTURE_BOUNDS_ID: &str = "viewport-capture-bo
 
 const VIEWCUBE_HIT_SIZE: f32 = VIEWCUBE_REGION_PX;
 
+/// Desktop UI-font changes while running. Linux listens for the Settings
+/// portal's `SettingChanged` (no portal: restart to apply). Windows exposes no
+/// change notification through iced, but the metrics read is a cheap system
+/// call, so it is polled. macOS has no user-adjustable UI font, and the web
+/// build follows the font it loads for the UI language.
+fn ui_font_changes() -> Subscription<Message> {
+    #[cfg(target_os = "linux")]
+    return Subscription::run(crate::sys::ui_font::change_signals)
+        .map(|()| Message::UiFontSettingsChanged);
+    #[cfg(target_os = "windows")]
+    return iced::time::every(std::time::Duration::from_secs(2))
+        .map(|_| Message::UiFontSettingsChanged);
+    #[allow(unreachable_code)]
+    Subscription::none()
+}
+
 /// Background used by drafting overlays in model or paper space.
 fn crosshair_background(tab: &DocumentTab, is_paper: bool) -> [f32; 4] {
     if !is_paper {
@@ -3052,6 +3068,7 @@ impl OpenCADStudio {
             single_instance,
             hatch_pattern_keys,
             keyboard_events,
+            ui_font_changes(),
         ])
     }
 
