@@ -111,6 +111,7 @@ pub(super) const NAMES: &[&str] = &[
     "import_file_dialog",
     "dgn_import_dialog",
     "refedit_dialog",
+    "pdf_shx_settings",
     "pdf_layer_toggle",
     "pc_manager_toggle",
     "pc_manager",
@@ -2308,6 +2309,72 @@ impl OpenCADStudio {
                     "ok" => Message::PdfDialog(M::T2mOk),
                     "cancel" => Message::CloseModal,
                     _ => return Err(failure("invalid_value", "Unknown setting")),
+                }
+            }
+            // The PDF Text Recognition Settings dialog, one edit per call:
+            // "select=<n>", "toggle=<n>,0|1", "up", "down", "remove",
+            // "add=<path to .shx>", "move=<from>,<to>" (dragging a row),
+            // "threshold=<1-100>", "threshold_text=<typed>", "step=+1|-1",
+            // "layer=current|geometry", "best=0|1", "sample=<text>",
+            // "defaults", "apply" or "cancel" (rows count from 0).
+            "pdf_shx_settings" => {
+                use crate::ui::window::pdf_shx_dialog::ShxDialogMsg as S;
+                if self.active_modal != Some(crate::app::ModalKind::PdfShxSettings) {
+                    return Err(failure(
+                        "no_dialog",
+                        "The PDF Text Recognition Settings dialog is not open",
+                    ));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                let index = |v: &str| v.trim().parse::<usize>().map_err(|_| bad());
+                let flag = |v: &str| match v.trim() {
+                    "1" => Ok(true),
+                    "0" => Ok(false),
+                    _ => Err(bad()),
+                };
+                match key {
+                    "cancel" => Message::CloseModal,
+                    "move" => {
+                        let (from, to) = value.split_once(',').ok_or_else(bad)?;
+                        let (from, to) = (index(from)?, index(to)?);
+                        return Ok(Task::batch([
+                            self.update(Message::PdfShxDialog(S::DragStart(from))),
+                            self.update(Message::PdfShxDialog(S::DragDrop(to))),
+                        ]));
+                    }
+                    _ => Message::PdfShxDialog(match key {
+                        "apply" => S::Apply,
+                        "defaults" => S::Defaults,
+                        "up" => S::Up,
+                        "down" => S::Down,
+                        "remove" => S::Remove,
+                        "select" => S::Select(index(value)?),
+                        "toggle" => {
+                            let (row, on) = value.split_once(',').ok_or_else(bad)?;
+                            S::Toggle(index(row)?, flag(on)?)
+                        }
+                        "add" => S::Added(Some(std::path::PathBuf::from(value.trim()))),
+                        "threshold" => S::Threshold(
+                            value
+                                .trim()
+                                .parse::<u8>()
+                                .ok()
+                                .filter(|v| (1..=100).contains(v))
+                                .ok_or_else(bad)?,
+                        ),
+                        "threshold_text" => S::ThresholdText(value.to_string()),
+                        "step" => S::Step(value.trim().parse::<i8>().map_err(|_| bad())?),
+                        "layer" => match value.trim() {
+                            "current" => S::CurrentLayer(true),
+                            "geometry" => S::CurrentLayer(false),
+                            _ => return Err(bad()),
+                        },
+                        "best" => S::BestFont(flag(value)?),
+                        "sample" => S::Sample(value.to_string()),
+                        _ => return Err(bad()),
+                    }),
                 }
             }
             "pdf_dialog_ok" => {

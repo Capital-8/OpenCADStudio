@@ -44,6 +44,7 @@ impl OpenCADStudio {
             ),
             Some(K::ImageAdjust) => crate::tr!("image-adjust", "title"),
             Some(K::RefEdit) => crate::tr!("ref-edit", "dialog-title"),
+            Some(K::PdfShxSettings) => crate::tr!("pdf-shx", "title"),
             Some(K::UnderlayLayers) => crate::t!("Underlay Layers").into_owned(),
             Some(K::PdfImportSettings) => crate::t!("PDF Import Settings").into_owned(),
             Some(K::Txt2MtxtSettings) => crate::tr!("txt2mtxt", "title"),
@@ -567,6 +568,12 @@ impl OpenCADStudio {
                 let state = self.image_adjust.as_ref()?;
                 sized_flow(ex, 520, 560, |flow| {
                     crate::ui::window::pdf_dialogs::image_adjust(state, flow)
+                })
+            }
+            super::super::ModalKind::PdfShxSettings => {
+                let state = self.pdf_shx_dialog.as_ref()?;
+                sized_flow(ex, 780, 600, |flow| {
+                    crate::ui::window::pdf_shx_dialog::view(state, flow)
                 })
             }
             super::super::ModalKind::RefEdit => {

@@ -749,6 +749,7 @@ impl OpenCADStudio {
                 self.open_blocks_palette(Some(tab));
             }
 
+            cmd if self.dispatch_pdf_shx_text(cmd, i) => {}
             "PDFIMPORT" | "-PDFIMPORT" => {
                 use crate::command::CadCommand;
                 use crate::modules::insert::pdf_import::PdfImportCommand;

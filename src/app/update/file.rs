@@ -863,6 +863,7 @@ impl OpenCADStudio {
             ucs_ortho: crate::modules::view::view_cmd::ucs_ortho(),
             ucs_view: crate::modules::view::view_cmd::ucs_view(),
             layout_create_viewport: crate::scene::layout_create_viewport(),
+            pdf_shx_text: crate::modules::insert::pdf_shx_text::settings(),
             ncopy_bind: self.ncopy_bind,
             cursor_type: self.cursor_type,
             crosshair_color: self.crosshair_color,
@@ -1010,6 +1011,7 @@ impl OpenCADStudio {
         crate::modules::view::view_cmd::set_ucs_ortho(s.ucs_ortho);
         crate::modules::view::view_cmd::set_ucs_view(s.ucs_view);
         crate::scene::set_layout_create_viewport(s.layout_create_viewport);
+        crate::modules::insert::pdf_shx_text::set_settings(s.pdf_shx_text.clone());
         self.ncopy_bind = s.ncopy_bind;
         self.cursor_type = s.cursor_type;
         self.crosshair_color = s.crosshair_color;
