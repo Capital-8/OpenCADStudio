@@ -8,7 +8,8 @@
 //! via [`CmdResult::Dispatch`], so the coordinate-system math and persistence
 //! stay in one place. (#169)
 
-use crate::command::{CadCommand, CmdResult};
+use crate::command::{CadCommand, CmdResult, WorkingPlane};
+use crate::scene::model::wire_model::WireModel;
 use crate::t;
 use glam::DVec3;
 
@@ -17,6 +18,7 @@ pub struct UcsCommand {
     /// The chosen option keyword (uppercased), once entered; `None` until then.
     option: Option<String>,
     points: Vec<DVec3>,
+    plane: WorkingPlane,
 }
 
 impl UcsCommand {
@@ -79,9 +81,39 @@ impl CadCommand for UcsCommand {
         true
     }
 
+    fn set_working_plane(&mut self, plane: WorkingPlane) {
+        self.plane = plane;
+    }
+
+    /// The new X and Y axes, drawn from the origin while the 3-point UCS is
+    /// being placed.
+    fn on_mouse_move(&mut self, pt: DVec3) -> Option<WireModel> {
+        if !matches!(self.option.as_deref(), Some("3POINT") | Some("3P")) {
+            return None;
+        }
+        let (origin, x, y) = match self.points.as_slice() {
+            [origin] => (*origin, pt - *origin, self.plane.z.cross(pt - *origin)),
+            [origin, on_x] => {
+                let x = *on_x - *origin;
+                let d = pt - *origin;
+                (*origin, x, d - x * (d.dot(x) / x.length_squared().max(1.0e-300)))
+            }
+            _ => return None,
+        };
+        let y = y.normalize_or_zero() * x.length();
+        if y == DVec3::ZERO {
+            return None;
+        }
+        let corner = [origin + x, origin, origin + y].map(|p| p.to_array());
+        let (points, points_low) = crate::scene::convert::tessellate::points_to_ds(corner);
+        let mut wire = WireModel::solid("ucs_preview".into(), points, WireModel::CYAN, false);
+        wire.points_low = points_low;
+        Some(wire)
+    }
+
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
         let t = text.trim();
-        if matches!(self.option.as_deref(), Some("3POINT") | Some("3P"))
+        if matches!(self.option.as_deref(), None | Some("3POINT") | Some("3P"))
             && crate::app::helpers::parse_coord(t).is_some()
         {
             return None;
@@ -111,6 +143,11 @@ impl CadCommand for UcsCommand {
     }
 
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
+        // A click at the option prompt is the new origin; the X axis and XY
+        // plane points follow, each optional.
+        if self.option.is_none() {
+            self.option = Some("3P".into());
+        }
         if matches!(self.option.as_deref(), Some("3POINT") | Some("3P")) {
             self.points.push(pt);
             if self.points.len() < 3 {
@@ -141,9 +178,27 @@ impl CadCommand for UcsCommand {
     }
 
     fn on_enter(&mut self) -> CmdResult {
+        let points = std::mem::take(&mut self.points);
         match self.option.take() {
             // No option chosen yet → behave like bare `UCS` (list).
             None => CmdResult::Dispatch("UCS LIST".into()),
+            // Enter accepts the axes placed so far: the origin alone moves the
+            // UCS, an X point turns it about its current Z.
+            Some(opt) if matches!(opt.as_str(), "3POINT" | "3P") && !points.is_empty() => {
+                let origin = points[0];
+                let Some(&on_x) = points.get(1) else {
+                    return CmdResult::Dispatch(format!(
+                        "UCS ORIGINW {},{},{}",
+                        origin.x, origin.y, origin.z
+                    ));
+                };
+                let y = self.plane.z.cross(on_x - origin);
+                let on_xy = origin + if y == DVec3::ZERO { self.plane.y } else { y };
+                CmdResult::Dispatch(format!(
+                    "UCS 3POINTW {},{},{}|{},{},{}|{},{},{}",
+                    origin.x, origin.y, origin.z, on_x.x, on_x.y, on_x.z, on_xy.x, on_xy.y, on_xy.z,
+                ))
+            }
             // Option chosen but no value supplied → cancel cleanly.
             Some(_) => CmdResult::Cancel,
         }
