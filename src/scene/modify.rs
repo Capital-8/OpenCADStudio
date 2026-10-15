@@ -688,6 +688,7 @@ impl Scene {
             }
         };
         let mut clones = Vec::with_capacity(order.len());
+        let mut representations = Vec::new();
         for &h in &order {
             let new_h = remap[&h];
             let obj = doc.objects.get(&h)?;
@@ -726,6 +727,17 @@ impl Scene {
                     x.raw_dwg_version = None;
                     x.preserve_object_reference_stream = false;
                 }
+                // A dynamic reference's AcDbRepData naming its definition.
+                codec::objects::ObjectType::DynamicBlock(b) => {
+                    b.handle = new_h;
+                    b.owner = rewrite(b.owner);
+                    for r in &mut b.reactors {
+                        *r = rewrite(*r);
+                    }
+                    if let Some(&definition) = doc.block_representations.get(&h) {
+                        representations.push((new_h, definition));
+                    }
+                }
                 _ => {}
             }
             clones.push((new_h, obj));
@@ -734,6 +746,7 @@ impl Scene {
             doc.objects.insert(new_h, obj);
             created.push(new_h);
         }
+        doc.block_representations.extend(representations);
         Some(remap[&src_root])
     }
 

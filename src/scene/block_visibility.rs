@@ -464,18 +464,31 @@ pub fn finish_editing(document: &mut CadDocument, definition: Handle) {
 impl Scene {
     /// Give a reference to a dynamic definition its own evaluated copy, so a
     /// state picked for it leaves the definition and the other references
-    /// alone. Returns the copy's name; a reference already showing a copy,
-    /// or not dynamic, keeps its block and gets `None`.
+    /// alone. A copy shared with other references (after COPY) is copied
+    /// again with its current state. Returns the copy's name; a reference
+    /// already showing its own copy, or not dynamic, gets `None`.
     pub fn visibility_representation(&mut self, insert: Handle) -> Option<String> {
         let Some(EntityType::Insert(reference)) = self.document.get_entity(insert) else {
             return None;
         };
-        let definition = self
+        let source = self
             .document
             .block_records
             .get(&reference.block_name)?
             .handle;
+        let definition = self.document.dynamic_definition_for_insert(insert)?;
         parameter(&self.document, definition)?;
+        let direct = source == definition;
+        let shared = || {
+            self.document.entities().any(|entity| {
+                matches!(entity, EntityType::Insert(other)
+                    if other.common.handle != insert
+                        && other.block_name == reference.block_name)
+            })
+        };
+        if !direct && !shared() {
+            return None;
+        }
         let name = {
             let next = self
                 .document
@@ -490,7 +503,7 @@ impl Scene {
             .document
             .block_records
             .iter()
-            .find(|record| record.handle == definition)
+            .find(|record| record.handle == source)
             .and_then(
                 |record| match self.document.get_entity(record.block_entity_handle) {
                     Some(EntityType::Block(block)) => Some(block.base_point),
@@ -498,7 +511,7 @@ impl Scene {
                 },
             )
             .unwrap_or(Vector3::ZERO);
-        let originals = members(&self.document, definition);
+        let originals = members(&self.document, source);
         let copies: Vec<EntityType> = originals
             .iter()
             .filter_map(|handle| self.document.get_entity(*handle).cloned())
@@ -518,6 +531,11 @@ impl Scene {
         tag.add_value(XDataValue::Handle(definition));
         self.document.set_object_xdata_record(copy, tag);
         self.document.ensure_extension_dictionary(copy);
+        if !direct {
+            // Already linked to its definition; only its block changes.
+            self.repoint_representation(insert, source, copy, &name);
+            return Some(name);
+        }
 
         // The reference: AcDbBlockRepresentation / AcDbRepData names the
         // definition it was evaluated from.
@@ -550,18 +568,22 @@ impl Scene {
             .objects
             .insert(data, ObjectType::DynamicBlock(link));
         self.document.block_representations.insert(data, definition);
+        self.repoint_representation(insert, source, copy, &name);
+        Some(name)
+    }
+
+    fn repoint_representation(&mut self, insert: Handle, from: Handle, to: Handle, name: &str) {
         if let Some(EntityType::Insert(reference)) = self.document.get_entity_mut(insert) {
-            reference.block_name = name.clone();
+            reference.block_name = name.to_string();
         }
         for record in self.document.block_records.iter_mut() {
-            if record.handle == definition {
+            if record.handle == from {
                 record.insert_handles.retain(|handle| *handle != insert);
-            } else if record.handle == copy {
+            } else if record.handle == to {
                 record.insert_handles.push(insert);
             }
         }
         self.bump_geometry();
-        Some(name)
     }
 }
 
