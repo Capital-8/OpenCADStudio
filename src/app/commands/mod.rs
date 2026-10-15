@@ -5,6 +5,7 @@ use iced::Task;
 use std::path::PathBuf;
 
 mod attdef;
+mod attman;
 mod block_cmdline;
 mod blocks;
 mod blockvars;

@@ -135,7 +135,12 @@ impl OpenCADStudio {
                         .push_output("This drawing contains no attributed blocks.");
                     return Some(Task::none());
                 }
-                self.open_attedit_dialog();
+                let preselected = self.tabs[i].scene.selected_handles_in_order();
+                return Some(self.open_attman(i, &preselected));
+            }
+            cmd if cmd == "_ATTMAN_PICK" || cmd.starts_with("_ATTMAN_PICK ") => {
+                self.tabs[i].active_cmd = None;
+                return Some(self.attman_picked(i, cmd["_ATTMAN_PICK".len()..].trim()));
             }
             _ => return None,
         }
@@ -166,6 +171,11 @@ impl OpenCADStudio {
     /// attributes whose definition is gone are dropped. Constant definitions
     /// carry no attribute.
     pub(in crate::app) fn attsync_block(&mut self, i: usize, block: &str) {
+        self.attsync_block_with(i, block, true);
+    }
+
+    /// [`Self::attsync_block`], opening its own undo step only when `undo`.
+    pub(in crate::app) fn attsync_block_with(&mut self, i: usize, block: &str, undo: bool) {
         use codec::Entity as _;
         let doc = &self.tabs[i].scene.document;
         let attdefs: Vec<codec::entities::AttributeDefinition> = doc
@@ -200,7 +210,9 @@ impl OpenCADStudio {
         if inserts.is_empty() {
             return;
         }
-        self.push_undo_snapshot(i, "ATTSYNC");
+        if undo {
+            self.push_undo_snapshot(i, "ATTSYNC");
+        }
         let mut changes = Vec::new();
         for handle in inserts {
             let document = &self.tabs[i].scene.document;

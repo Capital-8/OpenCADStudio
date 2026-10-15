@@ -123,6 +123,7 @@ pub(super) const NAMES: &[&str] = &[
     "block_def_dialog",
     "attdef_dialog",
     "field_dialog",
+    "attman_dialog",
     "sheet_set",
     "close_document",
     "toggle_properties",
@@ -1570,6 +1571,96 @@ impl OpenCADStudio {
                     _ => return Err(failure("invalid_value", "Unknown attdef dialog field")),
                 })
             }
+            // The open Block Attribute Manager: `block=<name>`, `select=<row>`,
+            // `up`, `down`, `remove`, `edit`, `tab=attribute|text|properties`,
+            // `tag=…`, `prompt=…`, `default=…`, `mode=<invisible|verify|preset|multiline>:0|1`,
+            // `style=…`, `justify=MC`, `height=…`, `rotation=…`, `width=…`, `oblique=…`,
+            // `boundary=…`, `annotative=0|1`, `backwards=0|1`, `upside_down=0|1`,
+            // `layer=…`, `linetype=…`, `color=…`, `lineweight=…`, `column=<name>:0|1`,
+            // `more_columns`, `apply_existing=0|1`, `emphasize=0|1`, `live=0|1`,
+            // `pick`, `sync`, `apply`, `ok`, `cancel`.
+            "attman_dialog" => {
+                use crate::ui::window::attman_dialog::{AttManMsg as A, Column, EditTab};
+                let Some(state) = self.attman.as_ref() else {
+                    return Err(failure("no_dialog", "The attribute manager is not open"));
+                };
+                let value = string(req, "value")?;
+                let (key, v) = value.split_once('=').unwrap_or((value, ""));
+                let on = v == "1";
+                Message::AttMan(match key {
+                    "block" => A::Block(
+                        state
+                            .blocks
+                            .iter()
+                            .position(|b| b.name.eq_ignore_ascii_case(v))
+                            .ok_or_else(|| failure("invalid_value", "No such attributed block"))?,
+                    ),
+                    "select" => A::Select(
+                        v.parse()
+                            .ok()
+                            .filter(|r: &usize| *r < state.rows.len())
+                            .ok_or_else(|| failure("invalid_value", "No such row"))?,
+                    ),
+                    "up" => A::MoveUp,
+                    "down" => A::MoveDown,
+                    "remove" => A::Remove,
+                    "edit" => A::ToggleEdit,
+                    "tab" => A::Tab(match v {
+                        "text" => EditTab::Text,
+                        "properties" => EditTab::Properties,
+                        _ => EditTab::Attribute,
+                    }),
+                    "tag" => A::Tag(v.into()),
+                    "prompt" => A::Prompt(v.into()),
+                    "default" => A::Default(v.into()),
+                    "mode" => {
+                        let (mode, state) = v.split_once(':').unwrap_or((v, "1"));
+                        let mode = match mode {
+                            "invisible" => "invisible",
+                            "verify" => "verify",
+                            "preset" => "preset",
+                            "multiline" => "multiline",
+                            _ => return Err(failure("invalid_value", "Unknown mode")),
+                        };
+                        A::Mode(mode, state == "1")
+                    }
+                    "style" => A::Style(v.into()),
+                    "justify" => A::Justify(
+                        crate::modules::draw::draw::attdef::Justify::from_keyword(v)
+                            .ok_or_else(|| failure("invalid_value", "Unknown justification"))?,
+                    ),
+                    "height" => A::Height(v.into()),
+                    "rotation" => A::Rotation(v.into()),
+                    "width" => A::Width(v.into()),
+                    "oblique" => A::Oblique(v.into()),
+                    "boundary" => A::Boundary(v.into()),
+                    "annotative" => A::Annotative(on),
+                    "backwards" => A::Backwards(on),
+                    "upside_down" => A::UpsideDown(on),
+                    "layer" => A::Layer(v.into()),
+                    "linetype" => A::Linetype(v.into()),
+                    "color" => A::Color(v.into()),
+                    "lineweight" => A::Lineweight(v.into()),
+                    "column" => {
+                        let (name, state) = v.split_once(':').unwrap_or((v, "1"));
+                        A::Column(
+                            Column::from_name(name)
+                                .ok_or_else(|| failure("invalid_value", "Unknown column"))?,
+                            state == "1",
+                        )
+                    }
+                    "more_columns" => A::MoreColumns,
+                    "apply_existing" => A::ApplyExisting(on),
+                    "emphasize" => A::Emphasize(on),
+                    "live" => A::Live(on),
+                    "pick" => A::PickBlock,
+                    "sync" => A::Sync,
+                    "apply" => A::Apply,
+                    "ok" => A::Ok,
+                    "cancel" => A::Cancel,
+                    _ => return Err(failure("invalid_value", "Unknown attribute manager field")),
+                })
+            }
             // One field of the open Field dialog: `category=<index>`, `name=Date`,
             // `date=yyyy-MM-dd`, `case=0..4`, `file=1|2|3`, `ext=0|1`, `size=0..2`,
             // `sysvar=dimscale`, `diesel=…`, `named_type=<index>`, `named=<index>`,
@@ -2141,6 +2232,9 @@ impl OpenCADStudio {
                 }
                 Some(crate::app::ModalKind::Field) => {
                     Message::FieldDialog(crate::ui::window::field_dialog::FieldDialogMsg::Ok)
+                }
+                Some(crate::app::ModalKind::AttMan) => {
+                    Message::AttMan(crate::ui::window::attman_dialog::AttManMsg::Ok)
                 }
                 _ => return Err(failure("no_dialog", "No dialog with an OK button is open")),
             },

@@ -1790,9 +1790,9 @@ mod tests {
             .join("\n")
     }
 
-    // ATTMAN and BATTMAN are the Block Attribute Manager; this build routes both
-    // to the attribute editor (ATTEDIT). A drawing without attributed blocks
-    // has nothing to manage, which both report instead of opening it.
+    // ATTMAN and BATTMAN open the Block Attribute Manager. A drawing without
+    // attributed blocks has nothing to manage, which both report instead of
+    // opening it.
     #[test]
     fn attman_and_battman_report_a_drawing_without_attributed_blocks() {
         for command in ["ATTMAN", "BATTMAN"] {

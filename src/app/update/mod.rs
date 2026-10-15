@@ -233,6 +233,7 @@ impl OpenCADStudio {
             }
             Some(GeometricTolerance) => self.geometric_tolerance = None,
             Some(BlockDefinition) => self.block_definition = None,
+            Some(AttMan) => self.attman = None,
             Some(BlockEditPicker) => self.block_edit_picker = None,
             Some(BlockSaveAs) => self.block_save_as = None,
             Some(PdfAttach) => self.pdf_attach = None,
@@ -2441,6 +2442,7 @@ impl OpenCADStudio {
 
             Message::PdfDialog(message) => self.update_pdf_dialog(message),
             Message::AttdefDialog(message) => self.on_attdef_dialog(message),
+            Message::AttMan(message) => self.on_attman(message),
             Message::FieldDialog(message) => self.on_field_dialog(message),
             Message::RefEditDialog(message) => self.update_refedit_dialog(message),
             Message::PcManager(message) => self.update_pc_manager(message),
@@ -9665,6 +9667,13 @@ impl OpenCADStudio {
                 if self.active_modal == Some(super::ModalKind::Field) {
                     self.close_field_dialog();
                     return Task::none();
+                }
+                // Closing the attribute manager is its Cancel: live changes
+                // are taken back.
+                if self.active_modal == Some(super::ModalKind::AttMan) {
+                    return self.on_attman(
+                        crate::ui::window::attman_dialog::AttManMsg::Cancel,
+                    );
                 }
                 if matches!(
                     self.active_modal,
