@@ -604,12 +604,15 @@ fn plot_scene_content(
             wipeouts: paper_wipeouts.len(),
             images: paper_images.len(),
         };
+        let entity_layers =
+            plot_entity_layers(scene, &paper_wires, &paper_hatches, &paper_wipeouts);
         return PlotContent {
             wires: std::sync::Arc::new(paper_wires),
             hatches: paper_hatches,
             wipeouts: paper_wipeouts,
             images: paper_images,
             group_splits: splits,
+            entity_layers,
         };
     }
     let (mut model_pattern_wires, model_hatches, model_wipeouts, model_images) =
@@ -658,13 +661,45 @@ fn plot_scene_content(
         images.extend(model_images);
         (wires, hatches, wipeouts, images, splits)
     };
+    let entity_layers = plot_entity_layers(scene, &wires, &hatches, &wipeouts);
     PlotContent {
         wires: std::sync::Arc::new(wires),
         hatches,
         wipeouts,
         images,
         group_splits: splits,
+        entity_layers,
     }
+}
+
+/// Drawing layer of every entity the plot draws, keyed by the handle in its
+/// wire or hatch name.
+// ponytail: expanded block geometry carries its INSERT's handle, so a block's
+// children all land on the INSERT's layer; per-child layers need BlockCache to
+// keep the child handle on each wire.
+fn plot_entity_layers(
+    scene: &crate::scene::Scene,
+    wires: &[crate::io::pdf_export::PlotWire],
+    hatches: &[crate::scene::model::hatch_model::HatchModel],
+    wipeouts: &[crate::scene::model::hatch_model::HatchModel],
+) -> std::collections::HashMap<codec::Handle, String> {
+    let names = wires
+        .iter()
+        .map(|wire| wire.name.as_str())
+        .chain(hatches.iter().chain(wipeouts).map(|hatch| hatch.name.as_str()));
+    let mut layers = std::collections::HashMap::new();
+    for name in names {
+        let Some(handle) = crate::scene::Scene::handle_from_wire_name(name) else {
+            continue;
+        };
+        if layers.contains_key(&handle) {
+            continue;
+        }
+        if let Some(entity) = scene.document.get_entity(handle) {
+            layers.insert(handle, entity.common().layer.clone());
+        }
+    }
+    layers
 }
 
 impl OpenCADStudio {

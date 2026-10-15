@@ -442,11 +442,14 @@ pub(crate) fn render_pdf_bytes(
     // Allocation addresses cannot be reused by another source during this export.
     let mut image_resources = std::collections::HashMap::new();
     let mut text_fonts = TextFonts::default();
+    // One optional-content group per drawing layer, shared by every page.
+    let mut layer_ids = std::collections::HashMap::new();
     for (index, page) in pages.iter().enumerate() {
         append_pdf_page(
             &mut doc,
             &mut image_resources,
             &mut text_fonts,
+            &mut layer_ids,
             page,
             plot_style,
             &fonts,
@@ -473,6 +476,7 @@ fn append_pdf_page(
     doc: &mut PdfDocument,
     image_resources: &mut std::collections::HashMap<(usize, u32, u32), printpdf::XObjectId>,
     text_fonts: &mut TextFonts,
+    layer_ids: &mut std::collections::HashMap<String, printpdf::LayerInternalId>,
     page: &PdfPageInput,
     fallback_plot_style: Option<&PlotStyleTable>,
     fonts: &SearchableFontSet,
@@ -494,7 +498,13 @@ fn append_pdf_page(
         wipeouts,
         images,
         group_splits,
+        entity_layers,
     } = &page.content;
+    let layer_of = |name: &str| {
+        crate::scene::Scene::handle_from_wire_name(name)
+            .and_then(|handle| entity_layers.get(&handle))
+            .map(String::as_str)
+    };
     let (paper_w, paper_h) = (page.paper_w as f32, page.paper_h as f32);
     let (ox, oy) = (page.offset_x, page.offset_y);
     let (rotation_deg, scale, clip) = (page.rotation_deg, page.scale, page.clip);
@@ -686,8 +696,35 @@ fn append_pdf_page(
         // Current PDF dash array (empty = solid). Tracked so the dash op is only
         // re-emitted when it actually changes between wires.
         let mut last_dash: Option<Vec<i64>> = None;
+        // Consecutive items on one drawing layer share a marked-content run,
+        // so a viewer's layer panel can hide that layer.
+        let mut open_layer: Option<&str> = None;
 
         for (_, _, _, item) in draw_items {
+            let layer = match &item {
+                DrawItem::WireFill(wire) | DrawItem::Wire(wire) | DrawItem::Text(wire) => {
+                    layer_of(&wire.name)
+                }
+                DrawItem::Hatch(hatch) => layer_of(&hatch.name),
+                DrawItem::Image(_) => None,
+            };
+            if layer != open_layer {
+                if open_layer.is_some() {
+                    ops.push(Op::EndLayer);
+                }
+                if let Some(name) = layer {
+                    let layer_id = layer_ids
+                        .entry(name.to_string())
+                        .or_insert_with(|| {
+                            let mut layer = printpdf::Layer::new(name);
+                            layer.creator = "Open CAD Studio".into();
+                            doc.add_layer(&layer)
+                        })
+                        .clone();
+                    ops.push(Op::BeginLayer { layer_id });
+                }
+                open_layer = layer;
+            }
             let wire = match item {
                 DrawItem::WireFill(wire) => {
                     emit_wire_fills(
@@ -1069,6 +1106,9 @@ fn append_pdf_page(
                 }
             }
             flush_line(&mut ops, &segment, dot_radius);
+        }
+        if open_layer.is_some() {
+            ops.push(Op::EndLayer);
         }
     }
 
