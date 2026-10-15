@@ -2664,7 +2664,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = Fő tehetetlenségi nyomatékok a súlypontra  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE Válassza ki a mérendő objektumot:
     .measure-specify-segment-length = MEASURE Adja meg a szegmens hosszát:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  Válasszon beállítást [Distance/Radius/Angle/ARea]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  Válasszon beállítást [Quick/Distance/Radius/Angle/ARea]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM Ív vagy kör kiválasztása:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM  Adja meg az első sarokpontot (Enter a megszakításhoz):
     .measuregeom-specify-first-point = MEASUREGEOM Adja meg az első pontot:
@@ -6575,6 +6575,10 @@ measurement =
     .different-line = Jelöljön ki egy másik vonalat.
     .invalid-point = Adjon meg véges koordinátájú pontot.
     .degenerate-ray = A szár végpontja nem egyezhet meg a szög csúcspontjával.
+    .quick = Gyors
+    .quick-prompt = { $command }  Vigye a kurzort a geometria fölé; kattintás: kiírás, Enter: kilépés:
+    .quick-horizontal = Vízszintes = { $value }
+    .quick-vertical = Függőleges = { $value }
     .area-preview =
         { $current }
         Előzetes összterület = { $total }

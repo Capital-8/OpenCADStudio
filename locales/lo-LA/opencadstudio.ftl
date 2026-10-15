@@ -2665,7 +2665,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = ໂມເມັນຫຼັກອ້ອມຈຸດສູນກາງມວນ  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE  ເລືອກວັດຖຸທີ່ຈະວັດແທກ:
     .measure-specify-segment-length = MEASURE  ກຳນົດຄວາມຍາວຂອງສ່ວນແບ່ງ:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  ປ້ອນຕົວເລືອກ [Distance/Radius/Angle/ARea]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  ປ້ອນຕົວເລືອກ [Quick/Distance/Radius/Angle/ARea]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM  ເລືອກສ່ວນໂຄ້ງ ຫຼື ວົງມົນ:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM  ກຳນົດຈຸດມຸມທຳອິດ (ກົດ Enter ເພື່ອຍົກເລີກ):
     .measuregeom-specify-first-point = MEASUREGEOM  ກຳນົດຈຸດທຳອິດ:
@@ -6591,6 +6591,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = ດ່ວນ
+    .quick-prompt = { $command }  ເລື່ອນເຄີເຊີໄປເທິງຮູບຊົງ; ຄລິກເພື່ອລາຍງານ, Enter ເພື່ອອອກ:
+    .quick-horizontal = ແນວນອນ = { $value }
+    .quick-vertical = ແນວຕັ້ງ = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

@@ -2664,7 +2664,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = Κύριες ροπές ως προς το κέντρο βάρους  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE  Επιλέξτε αντικείμενο προς μέτρηση:
     .measure-specify-segment-length = MEASURE  Ορίστε μήκος τμήματος:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  Δώστε επιλογή [Απόσταση/Ακτίνα/Γωνία/Εμβαδόν]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  Δώστε επιλογή [Γρήγορα/Απόσταση/Ακτίνα/Γωνία/Εμβαδόν]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM  Επιλέξτε τόξο ή κύκλο:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM  Ορίστε πρώτο σημείο γωνίας (Enter για ακύρωση):
     .measuregeom-specify-first-point = MEASUREGEOM  Ορίστε πρώτο σημείο:
@@ -6591,6 +6591,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = Γρήγορα
+    .quick-prompt = { $command }  Μετακινήστε τον κέρσορα πάνω από τη γεωμετρία· κλικ για αναφορά, Enter για έξοδο:
+    .quick-horizontal = Οριζόντια = { $value }
+    .quick-vertical = Κατακόρυφα = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

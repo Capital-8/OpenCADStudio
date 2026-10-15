@@ -2664,7 +2664,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = Päähitausmomentit painopisteen suhteen  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE Valitse mitattava kohde:
     .measure-specify-segment-length = MEASURE Määritä segmentin pituus:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Enter vaihtoehto [etäisyys/säde/kulma/pinta-ala]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Enter vaihtoehto [pika/etäisyys/säde/kulma/pinta-ala]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM Valitse kaari tai ympyrä:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM Määritä ensimmäinen kulmapiste (Enter peruuttaaksesi):
     .measuregeom-specify-first-point = MEASUREGEOM Määritä ensimmäinen piste:
@@ -6588,6 +6588,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = Pika
+    .quick-prompt = { $command }  Siirrä kohdistin geometrian päälle; napsauta raportoidaksesi, Enter lopettaa:
+    .quick-horizontal = Vaaka = { $value }
+    .quick-vertical = Pysty = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

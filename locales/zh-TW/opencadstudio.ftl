@@ -2664,7 +2664,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = 關於質心的主力矩  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE  選擇要定距等分的物件：
     .measure-specify-segment-length = MEASURE  指定線段長度：
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  輸入選項 [距離/半徑/角度/面積]：
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  輸入選項 [快速/距離/半徑/角度/面積]：
     .measuregeom-select-arc-or-circle = MEASUREGEOM  選擇圓弧或圓：
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM  指定第一個角點（按 Enter 取消）：
     .measuregeom-specify-first-point = MEASUREGEOM  指定第一點：
@@ -6586,6 +6586,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = 快速
+    .quick-prompt = { $command }  將游標移到幾何圖形上；按一下回報，Enter 結束：
+    .quick-horizontal = 水平 = { $value }
+    .quick-vertical = 垂直 = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

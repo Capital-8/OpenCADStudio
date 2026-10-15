@@ -2665,7 +2665,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = Principal moments about centroid  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE  Select object to measure:
     .measure-specify-segment-length = MEASURE  Specify segment length:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  Enter an option [Distance/Radius/Angle/ARea]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  Enter an option [Quick/Distance/Radius/Angle/ARea]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM  Select arc or circle:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM  Specify first corner point (Enter to cancel):
     .measuregeom-specify-first-point = MEASUREGEOM  Specify first point:
@@ -6590,6 +6590,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = Quick
+    .quick-prompt = { $command }  Move the cursor over geometry; click to report, Enter to exit:
+    .quick-horizontal = Horizontal = { $value }
+    .quick-vertical = Vertical = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

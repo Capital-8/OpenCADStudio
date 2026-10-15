@@ -2646,7 +2646,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = Ağırlık merkezine göre asal momentler  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE  Ölçülecek nesneyi seçin:
     .measure-specify-segment-length = MEASURE  Parça uzunluğunu belirtin:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  Bir seçenek girin [Mesafe/Yarıçap/Açı/Alan]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  Bir seçenek girin [Hızlı/Mesafe/Yarıçap/Açı/Alan]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM  Yay veya çember seçin:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM  İlk köşe noktasını belirtin (iptal etmek için Enter):
     .measuregeom-specify-first-point = MEASUREGEOM  İlk noktayı belirtin:
@@ -6512,6 +6512,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = Hızlı
+    .quick-prompt = { $command }  İmleci geometrinin üzerinde gezdirin; bildirmek için tıklayın, çıkmak için Enter:
+    .quick-horizontal = Yatay = { $value }
+    .quick-vertical = Dikey = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

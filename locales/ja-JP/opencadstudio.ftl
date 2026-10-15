@@ -2655,7 +2655,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = 重心まわりの主慣性モーメント  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE  計測するオブジェクトを選択:
     .measure-specify-segment-length = MEASURE  区間長を指定:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  オプションを入力 [距離/半径/角度/面積]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  オプションを入力 [クイック/距離/半径/角度/面積]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM  円弧または円を選択:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM  最初のコーナー点を指定（Enter でキャンセル）:
     .measuregeom-specify-first-point = MEASUREGEOM  1 点目を指定:
@@ -6579,6 +6579,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = クイック
+    .quick-prompt = { $command }  カーソルを図形の上に移動; クリックで報告、Enter で終了:
+    .quick-horizontal = 水平 = { $value }
+    .quick-vertical = 垂直 = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

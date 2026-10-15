@@ -2653,7 +2653,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = केन्द्रक के सापेक्ष मुख्य आघूर्ण  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE ऑब्जेक्ट को मापने के लिए चुनें:
     .measure-specify-segment-length = MEASURE सेगमेंट की लंबाई निर्दिष्ट करें:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM विकल्प दर्ज करें [दूरी / त्रिज्या / कोण / क्षेत्रफल]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM विकल्प दर्ज करें [त्वरित / दूरी / त्रिज्या / कोण / क्षेत्रफल]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM आर्क या सर्कल का चयन करें:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM पहले कोने बिंदु निर्दिष्ट करें (निरस्त करने के लिए सक्षम):
     .measuregeom-specify-first-point = MEASUREGEOM पहली बिंदु निर्दिष्ट करें:
@@ -6579,6 +6579,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = त्वरित
+    .quick-prompt = { $command }  कर्सर को ज्यामिति पर ले जाएँ; रिपोर्ट के लिए क्लिक करें, बाहर निकलने के लिए Enter:
+    .quick-horizontal = क्षैतिज = { $value }
+    .quick-vertical = ऊर्ध्वाधर = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

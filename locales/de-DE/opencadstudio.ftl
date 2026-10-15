@@ -2665,7 +2665,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = Hauptträgheitsmomente um den Schwerpunkt  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE Objekt auswählen, um zu messen:
     .measure-specify-segment-length = MEASURE Segmentlänge angeben:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Geben Sie eine Option ein [Distance/Radius/Angle/ARea]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Geben Sie eine Option ein [Quick/Distance/Radius/Angle/ARea]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM Bogen oder Kreis auswählen:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM Ersten Eckpunkt angeben (Eingabe zum Abbrechen):
     .measuregeom-specify-first-point = MEASUREGEOM Geben Sie den ersten Punkt an:
@@ -6589,6 +6589,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = Schnell
+    .quick-prompt = { $command }  Cursor über die Geometrie bewegen; Klick zum Ausgeben, Eingabe zum Beenden:
+    .quick-horizontal = Horizontal = { $value }
+    .quick-vertical = Vertikal = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

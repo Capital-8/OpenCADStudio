@@ -2664,7 +2664,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = Główne momenty względem środka ciężkości  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE Wybierz obiekt do pomiaru:
     .measure-specify-segment-length = MEASURE Określ długość segmentu:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Enter opcja [Odległość/Promień/Kąt/Powierzchnia]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Enter opcja [Szybki/Odległość/Promień/Kąt/Powierzchnia]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM Wybierz łuk lub okrąg:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM Określ pierwszy punkt narożny (Enter, aby anulować):
     .measuregeom-specify-first-point = MEASUREGEOM Określ pierwszy punkt:
@@ -6590,6 +6590,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = Szybki
+    .quick-prompt = { $command }  Przesuń kursor nad geometrię; kliknij, aby podać wynik, Enter, aby zakończyć:
+    .quick-horizontal = Poziomo = { $value }
+    .quick-vertical = Pionowo = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

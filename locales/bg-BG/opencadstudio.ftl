@@ -2664,7 +2664,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = Главни моменти спрямо центъра на тежестта  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE  Избери обект за измерване:
     .measure-specify-segment-length = MEASURE  Посочи дължина на сегмент:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  Въведи опция [Разстояние/Радиус/Ъгъл/Площ]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  Въведи опция [Бързо/Разстояние/Радиус/Ъгъл/Площ]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM  Избери дъга или окръжност:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM  Посочи първа ъглова точка (Enter за отказ):
     .measuregeom-specify-first-point = MEASUREGEOM  Посочи първа точка:
@@ -6591,6 +6591,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = Бързо
+    .quick-prompt = { $command }  Преместете курсора над геометрията; щракнете за отчет, Enter за изход:
+    .quick-horizontal = Хоризонтално = { $value }
+    .quick-vertical = Вертикално = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

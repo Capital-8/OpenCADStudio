@@ -2664,7 +2664,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = 도심에 대한 주 모멘트  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE 측정할 물체 선택:
     .measure-specify-segment-length = MEASURE 세그먼트 길이 지정:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Enter 옵션 [거리/반경/각도/지역]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Enter 옵션 [빠른/거리/반경/각도/지역]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM 호 또는 원 선택:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM 첫 번째 꼭지점 지정(취소하려면 Enter):
     .measuregeom-specify-first-point = MEASUREGEOM 첫 번째 점 지정:
@@ -6590,6 +6590,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = 빠른
+    .quick-prompt = { $command }  형상 위로 커서를 이동하십시오. 클릭하면 보고, Enter로 종료:
+    .quick-horizontal = 수평 = { $value }
+    .quick-vertical = 수직 = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

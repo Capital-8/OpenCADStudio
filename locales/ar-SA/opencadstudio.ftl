@@ -2677,7 +2677,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = العزوم الرئيسية حول مركز الثقل  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE  حدد الكائن المراد قياسه:
     .measure-specify-segment-length = MEASURE  حدد طول المقطع:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  أدخل خيارًا [مسافة/نصف قطر/زاوية/مساحة]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM  أدخل خيارًا [سريع/مسافة/نصف قطر/زاوية/مساحة]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM  حدد قوسًا أو دائرة:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM  حدد نقطة الزاوية الأولى (Enter للإلغاء):
     .measuregeom-specify-first-point = MEASUREGEOM  حدد النقطة الأولى:
@@ -6603,6 +6603,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = سريع
+    .quick-prompt = { $command }  حرّك المؤشر فوق الأشكال؛ انقر للإبلاغ، Enter للخروج:
+    .quick-horizontal = أفقي = { $value }
+    .quick-vertical = عمودي = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

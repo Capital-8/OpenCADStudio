@@ -2665,7 +2665,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = Hoofdtraagheidsmomenten om het zwaartepunt  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE Selecteer object om mee te meten:
     .measure-specify-segment-length = MEASURE segmentlengte specificeren:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Voer een optie in [Afstand / Straal / Hoek / Oppervlakte]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Voer een optie in [Snel / Afstand / Straal / Hoek / Oppervlakte]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM Selecteer boog of cirkel:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM Geef het eerste hoekpunt op (Enter om te annuleren):
     .measuregeom-specify-first-point = MEASUREGEOM Geef het eerste punt op:
@@ -6589,6 +6589,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = Snel
+    .quick-prompt = { $command }  Beweeg de cursor over de geometrie; klik om te rapporteren, Enter om te stoppen:
+    .quick-horizontal = Horizontaal = { $value }
+    .quick-vertical = Verticaal = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

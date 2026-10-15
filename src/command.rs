@@ -2806,7 +2806,8 @@ pub trait CadCommand: Send {
         vec![]
     }
 
-    /// Message when `resolve_object_pick` returns none on click.
+    /// Message when `resolve_object_pick` returns none on click; an empty one
+    /// passes the click to `on_point` instead.
     fn object_pick_miss_message(&self) -> &'static str {
         "No object near click."
     }

@@ -10150,6 +10150,20 @@ impl Scene {
         }
     }
 
+    /// Wires of the space being edited that may cross a world-XY box: the
+    /// indexed broad phase in model space, every wire elsewhere.
+    pub fn interaction_candidates_xy(
+        &self,
+        aabb: [f64; 4],
+    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        let wires = self.hit_test_wires();
+        if self.current_layout != "Model" || !self.interaction_index_worthwhile(&wires) {
+            return crate::scene::pick::interaction_index::InteractionCandidates::all(wires)
+                .materialize_stubs();
+        }
+        self.indexed_interaction_candidates_xy(wires, aabb, false, false)
+    }
+
     /// Small simple sets are cheaper to scan. Either many wires or substantial
     /// sub-geometry (one giant polyline/text batch/mesh) enables the index.
     const INTERACTION_INDEX_MIN_WIRES: usize = 4_000;

@@ -2668,7 +2668,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = Главные моменты относительно центра масс  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE Выберите объект для измерения:
     .measure-specify-segment-length = MEASURE Укажите длину сегмента:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Введите опцию [Расстояние/Радиус/Англия/Арея]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Введите опцию [Быстро/Расстояние/Радиус/Англия/Арея]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM Выберите дугу или круг:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM Укажите первую точку угла (введите для отмены):
     .measuregeom-specify-first-point = MEASUREGEOM Укажите первую точку:
@@ -6592,6 +6592,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = Быстро
+    .quick-prompt = { $command }  Наведите курсор на геометрию; щелчок — вывести, Enter — выход:
+    .quick-horizontal = По горизонтали = { $value }
+    .quick-vertical = По вертикали = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }

@@ -1,7 +1,7 @@
 // MEASUREGEOM command (alias MEA) — multi-mode geometry measurement.
 //
 // First step prompts for a mode keyword:
-//   Distance / Radius / Angle / ARea
+//   Quick / Distance / Radius / Angle / ARea
 // then collects the geometry the mode needs and prints a one-line readout
 // via `CmdResult::Measurement`, ending the command.
 //
@@ -10,6 +10,9 @@
 //              vertex, mirroring inquiry/area.rs for precision) + perimeter.
 //   ANGLE    — three points (vertex + two ray endpoints) → angle in degrees.
 //   RADIUS   — pick a Circle or Arc → radius + diameter.
+//   QUICK    — no picks: as the cursor moves, the nearest geometry along the
+//              working plane's X and Y axes is measured live; a click
+//              reports the current readout and Enter ends the command.
 //
 // All arithmetic is kept in f64 (picked points stay full precision; downcasting
 // to f32 loses several hundredths of a unit at survey-scale coordinates).
@@ -40,6 +43,7 @@ pub fn tool() -> ToolDef {
 enum Mode {
     /// Awaiting the mode keyword.
     Choose,
+    Quick,
     Distance,
     Area,
     Angle,
@@ -65,6 +69,8 @@ pub struct MeasureGeomCommand {
     /// The picked entity for RADIUS, injected before `on_entity_pick`.
     picked: Option<EntityType>,
     plane: WorkingPlane,
+    /// QUICK readout for the last hovered cursor position.
+    quick: std::cell::RefCell<Option<String>>,
 }
 
 impl MeasureGeomCommand {
@@ -77,6 +83,7 @@ impl MeasureGeomCommand {
             points: vec![],
             picked: None,
             plane: WorkingPlane::default(),
+            quick: std::cell::RefCell::new(None),
         }
     }
 
@@ -255,6 +262,114 @@ impl MeasureGeomCommand {
     fn angle_msg(vertex: DVec3, a: DVec3, b: DVec3) -> Option<String> {
         Self::angle_degrees(a - vertex, b - vertex).map(Self::angle_value_msg)
     }
+
+    /// Signed offset along local `axis` (0 = X, 1 = Y) from `c` to where the
+    /// segment `a`–`b` crosses the line through `c` along that axis.
+    fn crossing(a: DVec3, b: DVec3, c: DVec3, axis: usize) -> Option<f64> {
+        let other = 1 - axis;
+        let (da, db) = (a[other] - c[other], b[other] - c[other]);
+        if da * db > 0.0 || da == db {
+            return None;
+        }
+        let t = da / (da - db);
+        Some(a[axis] + t * (b[axis] - a[axis]) - c[axis])
+    }
+
+    /// Nearest crossings of the drawn geometry with the working plane's X and
+    /// Y lines through `cursor`, as local offsets `[-X, +X, -Y, +Y]`.
+    fn quick_hits(
+        scene: &crate::scene::Scene,
+        plane: WorkingPlane,
+        cursor: DVec3,
+    ) -> [Option<f64>; 4] {
+        let c = plane.to_local(cursor);
+        // Long enough to leave the drawing from anywhere the cursor can be.
+        let reach = scene
+            .model_space_extents()
+            .map(|(lo, hi)| {
+                let (lo, hi) = (lo.as_dvec3(), hi.as_dvec3());
+                (hi - lo).length() + (cursor - (lo + hi) * 0.5).length()
+            })
+            .unwrap_or(0.0)
+            + 1.0;
+        let mut hits = [None; 4];
+        for (axis, direction) in [plane.x, plane.y].into_iter().enumerate() {
+            let (a, b) = (cursor - direction * reach, cursor + direction * reach);
+            let pad = reach * 1e-9;
+            let candidates = scene.interaction_candidates_xy([
+                a.x.min(b.x) - pad,
+                a.y.min(b.y) - pad,
+                a.x.max(b.x) + pad,
+                a.y.max(b.y) + pad,
+            ]);
+            for wire in candidates.iter() {
+                if !wire.display_visible
+                    || wire.snap_only
+                    || wire.point_marker.is_some()
+                    || !wire.text_verts.is_empty()
+                {
+                    continue;
+                }
+                let mut previous: Option<DVec3> = None;
+                for (index, point) in wire.points.iter().enumerate() {
+                    if point[0].is_nan() || point[1].is_nan() {
+                        previous = None;
+                        continue;
+                    }
+                    let local = plane.to_local(wire.point_world(index, 0.0));
+                    if let Some(offset) = previous
+                        .and_then(|previous| Self::crossing(previous, local, c, axis))
+                        .filter(|offset| offset.abs() > pad)
+                    {
+                        let slot = &mut hits[axis * 2 + usize::from(offset > 0.0)];
+                        if slot.is_none_or(|best: f64| offset.abs() < best.abs()) {
+                            *slot = Some(offset);
+                        }
+                    }
+                    previous = Some(local);
+                }
+            }
+        }
+        hits
+    }
+
+    /// QUICK measurement lines (world) and readout for crossings `hits`.
+    fn quick_result(
+        plane: WorkingPlane,
+        cursor: DVec3,
+        hits: [Option<f64>; 4],
+    ) -> (Vec<WireModel>, Option<String>) {
+        let c = plane.to_local(cursor);
+        let mut wires = Vec::new();
+        let mut lines = Vec::new();
+        for axis in 0..2 {
+            let (low, high) = (hits[axis * 2], hits[axis * 2 + 1]);
+            if low.is_none() && high.is_none() {
+                continue;
+            }
+            let (from, to) = (low.unwrap_or(0.0), high.unwrap_or(0.0));
+            let mut start = c;
+            let mut end = c;
+            start[axis] += from;
+            end[axis] += to;
+            let f = |p: DVec3| {
+                let p = plane.to_world(p);
+                [p.x as f32, p.y as f32, p.z as f32]
+            };
+            wires.push(Self::preview_wire(
+                "measuregeom_quick",
+                vec![f(start), f(end)],
+            ));
+            let value = crate::entities::common::format_length(to - from);
+            lines.push(if axis == 0 {
+                crate::tr!("measurement", "quick-horizontal", value = value)
+            } else {
+                crate::tr!("measurement", "quick-vertical", value = value)
+            });
+        }
+        let readout = (!lines.is_empty()).then(|| lines.join("\n"));
+        (wires, readout)
+    }
 }
 
 impl CadCommand for MeasureGeomCommand {
@@ -265,8 +380,9 @@ impl CadCommand for MeasureGeomCommand {
     fn prompt(&self) -> String {
         match self.mode {
             Mode::Choose => {
-                t!("MEASUREGEOM  Enter an option [Distance/Radius/Angle/ARea]:").into_owned()
+                t!("MEASUREGEOM  Enter an option [Quick/Distance/Radius/Angle/ARea]:").into_owned()
             }
+            Mode::Quick => return crate::tr!("measurement", "quick-prompt", command = self.name),
             Mode::Distance => {
                 if self.points.is_empty() {
                     t!("MEASUREGEOM  Specify first point:").into_owned()
@@ -322,6 +438,7 @@ impl CadCommand for MeasureGeomCommand {
 
     fn measurement_readout(&self, cursor: DVec3) -> Option<String> {
         match self.mode {
+            Mode::Quick => self.quick.borrow().clone(),
             Mode::Distance if !self.points.is_empty() && cursor.is_finite() => Some(crate::tr!(
                 "measurement",
                 "distance",
@@ -368,6 +485,10 @@ impl CadCommand for MeasureGeomCommand {
             };
         }
         vec![
+            CmdOption {
+                label: crate::tr!("measurement", "quick"),
+                keyword: "Q".into(),
+            },
             CmdOption::new("Distance", "D"),
             CmdOption::new("Radius", "R"),
             CmdOption::new("Angle", "A"),
@@ -397,6 +518,7 @@ impl CadCommand for MeasureGeomCommand {
         }
         let t = text.trim().to_uppercase();
         self.mode = match t.as_str() {
+            "Q" | "QUICK" => Mode::Quick,
             "D" | "DISTANCE" => Mode::Distance,
             "R" | "RADIUS" => Mode::Radius,
             "A" | "ANGLE" => Mode::Angle,
@@ -408,6 +530,30 @@ impl CadCommand for MeasureGeomCommand {
 
     fn needs_entity_pick(&self) -> bool {
         matches!(self.mode, Mode::Radius | Mode::AngleLines)
+    }
+
+    // QUICK reads the scene under the cursor; it never resolves an object, so
+    // every click lands in `on_point`.
+    fn needs_structure_point_pick(&self) -> bool {
+        self.mode == Mode::Quick
+    }
+
+    fn object_pick_hover_previews(
+        &self,
+        scene: &crate::scene::Scene,
+        cursor: DVec3,
+    ) -> Vec<WireModel> {
+        if self.mode != Mode::Quick || !cursor.is_finite() {
+            return Vec::new();
+        }
+        let hits = Self::quick_hits(scene, self.plane, cursor);
+        let (wires, readout) = Self::quick_result(self.plane, cursor, hits);
+        *self.quick.borrow_mut() = readout;
+        wires
+    }
+
+    fn object_pick_miss_message(&self) -> &'static str {
+        ""
     }
 
     fn inject_before_entity_pick(&self) -> bool {
@@ -468,6 +614,12 @@ impl CadCommand for MeasureGeomCommand {
     }
 
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
+        if self.mode == Mode::Quick {
+            return match self.quick.borrow().clone() {
+                Some(text) => CmdResult::ReportMeasurement(text),
+                None => CmdResult::NeedPoint,
+            };
+        }
         if matches!(self.mode, Mode::Distance | Mode::Angle | Mode::Area) && !pt.is_finite() {
             return CmdResult::ReportError(crate::tr!("measurement", "invalid-point"));
         }
@@ -771,7 +923,7 @@ mod measurement_tests {
     #[test]
     fn measuregeom_all_four_modes_remain_available() {
         units();
-        assert_eq!(MeasureGeomCommand::new().options().len(), 4);
+        assert_eq!(MeasureGeomCommand::new().options().len(), 5);
         let mut command = MeasureGeomCommand::new();
         command.on_text_input("D");
         command.on_point(DVec3::ZERO);

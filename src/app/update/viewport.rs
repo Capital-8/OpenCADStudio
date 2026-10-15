@@ -4656,8 +4656,15 @@ impl OpenCADStudio {
                         .as_ref()
                         .map(|c| c.object_pick_miss_message())
                         .unwrap_or("No object near click.");
-                    self.command_line.push_error(msg);
-                    None
+                    if msg.is_empty() {
+                        self.tabs[i]
+                            .active_cmd
+                            .as_mut()
+                            .map(|c| c.on_point(pick_wcs))
+                    } else {
+                        self.command_line.push_error(msg);
+                        None
+                    }
                 }
             } else if self.tabs[i]
                 .active_cmd

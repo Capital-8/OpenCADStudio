@@ -2664,7 +2664,7 @@ inquiry =
     .principal-moments-about-centroid-i-4-j-4-k-4 = Hlavní momenty k těžišti  I=__ocs_fmt_0__  J=__ocs_fmt_1__  K=__ocs_fmt_2__
     .measure-select-object-to-measure = MEASURE Vyberte objekt k měření:
     .measure-specify-segment-length = MEASURE Zadejte délku segmentu:
-    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Enter možnost [Vzdálenost/Poloměr/Úhel/Area]:
+    .measuregeom-enter-an-option-distance-radius-an = MEASUREGEOM Enter možnost [Rychlé/Vzdálenost/Poloměr/Úhel/Area]:
     .measuregeom-select-arc-or-circle = MEASUREGEOM Vyberte oblouk nebo kružnici:
     .measuregeom-specify-first-corner-point-enter-t = MEASUREGEOM Určete první rohový bod (zrušení Enter):
     .measuregeom-specify-first-point = MEASUREGEOM Zadejte první bod:
@@ -6588,6 +6588,10 @@ measurement =
     .different-line = Select a different line.
     .invalid-point = Specify a point with finite coordinates.
     .degenerate-ray = The ray endpoint must differ from the angle vertex.
+    .quick = Rychlé
+    .quick-prompt = { $command }  Přesuňte kurzor nad geometrii; kliknutím vypíšete, Enter ukončí:
+    .quick-horizontal = Vodorovně = { $value }
+    .quick-vertical = Svisle = { $value }
     .area-preview =
         { $current }
         Preview total area = { $total }
