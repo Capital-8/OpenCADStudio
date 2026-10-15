@@ -123,6 +123,18 @@ fn collect_item_command_ids(item: &OwnedRibbonItem, out: &mut Vec<String>) {
     }
 }
 
+/// Owned mirror of [`crate::manifest::EntityClasses`]: the entity-class
+/// declaration as it travels on the registered manifest across the IPC wire.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OwnedEntityClasses {
+    /// XDATA application name whose records carry the class-identity keys.
+    pub app_id: String,
+    /// Prefix that marks a string XDATA value as a class-identity key.
+    pub class_prefix: String,
+    /// Class key → display label.
+    pub labels: std::collections::BTreeMap<String, String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OwnedPluginManifest {
     pub id: String,
@@ -133,6 +145,11 @@ pub struct OwnedPluginManifest {
     pub ribbon_order: i32,
     pub xdata_apps: Vec<String>,
     pub command_prefixes: Vec<String>,
+    /// Entity-class display declarations (API v10), folded in by the runner
+    /// for plugins that declare them. `#[serde(default)]` keeps manifests
+    /// serialized before the field existed decoding as `None`.
+    #[serde(default)]
+    pub entity_classes: Option<OwnedEntityClasses>,
 }
 
 impl From<IconKind> for OwnedIconKind {

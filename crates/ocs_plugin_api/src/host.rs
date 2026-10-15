@@ -16,7 +16,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::manifest::PluginManifest;
+use crate::manifest::{EntityClasses, PluginManifest};
 use crate::ribbon::CadModule;
 
 // Re-export the opencadcodec crate and the types that appear in the HostApi trait
@@ -659,6 +659,21 @@ pub trait BuiltinPlugin: Send + Sync {
     /// Added in API v5. The runner only calls this for plugins that report API
     /// major 5 or newer.
     fn on_load(&mut self, _host: &mut dyn HostApi) {}
+
+    /// Entity-class display declarations (API v10): the XDATA
+    /// class-identity keys the plugin stamps on entities, mapped to the
+    /// display labels the host shows while this plugin is loaded (e.g. the
+    /// Properties panel title becomes `"Linear Element (Line)"`). Display-only
+    /// — the labels never round-trip the drawing and never govern behavior;
+    /// entities carry only the stable identity keys in their XDATA.
+    ///
+    /// The default (`None`) declares no entity classes. The runner only calls
+    /// this for plugins whose exported `ocs_plugin_api_version` symbol reports
+    /// API major 10 or newer, so older cdylibs are never touched past their
+    /// vtable.
+    fn entity_classes(&self) -> Option<&'static EntityClasses> {
+        None
+    }
 }
 
 /// A point-driven interactive command a plugin starts via
