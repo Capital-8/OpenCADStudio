@@ -1215,6 +1215,7 @@ impl OpenCADStudio {
                     | "FIELDDISPLAY"
                     | "FILEDIA"
                     | "TRIMEXTENDMODE"
+                    | "SELECTIONCYCLING"
                     | "SURFACEASSOCIATIVITY"
                     | "UCSORTHO"
                     | "UCSVIEW"
@@ -1621,6 +1622,37 @@ impl OpenCADStudio {
                             Some(None) => {
                                 self.command_line
                                     .push_error(crate::t!("Requires 0 or 1 only.").as_ref());
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    if name == "SELECTIONCYCLING" {
+                        // 1 and 2 both turn cycling on; the candidate list
+                        // always shows.
+                        let current = if self.selection_cycling { 2 } else { 0 };
+                        let prompt = format!("Enter new value for SELECTIONCYCLING <{current}>:");
+                        match value
+                            .as_deref()
+                            .map(|v| v.trim().parse::<i16>().ok().filter(|v| (0..=2).contains(v)))
+                        {
+                            Some(Some(mode)) => {
+                                if self.selection_cycling != (mode != 0) {
+                                    self.selection_cycling = mode != 0;
+                                    self.cycle_candidates = None;
+                                    self.persist_settings_if_changed();
+                                }
+                            }
+                            Some(None) => {
+                                let (min, max) = (0, 2);
+                                self.command_line.push_error(&crate::tf!(
+                                    "Requires an integer between {min} and {max}."
+                                ));
                                 self.command_line.push_output(&prompt);
                                 self.pending_setvar = Some(name.clone());
                             }
