@@ -8,7 +8,7 @@ use crate::app::helpers::{
     polar_constrain_if_near, polar_constrain_near, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis,
     CoordKind,
 };
-use crate::app::{Message, OpenCADStudio, POLY_START_DELAY_MS};
+use crate::app::{Message, OpenCADStudio, DRAG_START_FAST_PX2, POLY_START_DELAY_MS};
 use crate::modules::ModuleEvent;
 use crate::scene::model::object::GripApply;
 use crate::scene::pick::grip::{
@@ -1323,7 +1323,13 @@ impl OpenCADStudio {
                 .left_press_time
                 .map(|t| Instant::now().duration_since(t).as_millis())
                 .unwrap_or(u128::MAX);
-            if !sel.input.left_dragging && elapsed_ms >= POLY_START_DELAY_MS && dist2 > 9.0 {
+            // The delay keeps a click made while the mouse is still moving
+            // from turning into a drag; a press that has already travelled
+            // well past click jitter is a drag at once, or a fast flick
+            // released inside the delay read as a click. (#1808)
+            let dragged =
+                dist2 > 9.0 && (elapsed_ms >= POLY_START_DELAY_MS || dist2 > DRAG_START_FAST_PX2);
+            if !sel.input.left_dragging && dragged {
                 sel.input.left_dragging = true;
                 if self.pick_drag_rect {
                     // PICKDRAG 1 (#226): press-drag spans a RECTANGLE
