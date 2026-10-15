@@ -1184,6 +1184,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Could not set default app: {err}" => Some(("common", "could-not-set-default-app-err")),
         "Creased Edges" => Some(("properties", "creased-edges")),
         "Create Block" => Some(("insert", "create-block")),
+        "Block Editor" => Some(("ribbon-tab", "block-editor")),
         "Created new CTB table, ACI {aci} updated." => Some(("file", "created-new-ctb-table-aci-aci-updated")),
         "Croppings" => Some(("properties", "croppings")),
         "Crossing" => Some(("common", "crossing")),
