@@ -1254,7 +1254,7 @@ impl OpenCADStudio {
         }
     }
 
-    pub(super) fn on_command_escape(&mut self) -> Task<Message> {
+    pub(in crate::app) fn on_command_escape(&mut self) -> Task<Message> {
         self.tabs[self.active_tab].measurement.clear();
         // Escape answers a pending client getpoint request first: no point.
         if self.control.get_point.is_some() {

@@ -236,6 +236,7 @@ impl OpenCADStudio {
             Some(AttMan) => self.attman = None,
             Some(BlockEditPicker) => self.block_edit_picker = None,
             Some(BlockSaveAs) => self.block_save_as = None,
+            Some(BlockVisibility) => self.block_visibility = None,
             Some(PdfAttach) => self.pdf_attach = None,
             Some(UnderlayLayers) => self.underlay_layers = None,
             Some(PdfImportSettings) => self.pdf_import_settings = None,
@@ -390,6 +391,7 @@ impl OpenCADStudio {
         let before = self.tabs.get(self.active_tab).map(|tab| tab.id);
         let task = self.update_message(msg);
         self.restore_dynamic_ucs_after_command();
+        self.sync_block_visibility_display();
         if self.tabs.get(self.active_tab).map(|tab| tab.id) != before {
             self.sync_underlay_tab();
         }
@@ -9658,6 +9660,9 @@ impl OpenCADStudio {
             }
 
             Message::CloseModal => {
+                if self.active_modal == Some(super::ModalKind::BlockVisibility) {
+                    self.block_visibility = None;
+                }
                 // The Invalid Area dialog's ✕ undoes the boundary change, as its Cancel does.
                 if self.active_modal == Some(super::ModalKind::CountInvalidArea) {
                     return self.update(Message::Count(
@@ -10670,6 +10675,7 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::BlockSaveAsApply => self.apply_block_save_as_dialog(),
+            Message::BlockVisibility(action) => self.handle_block_visibility(action),
             Message::BlockEditPickerName(name) => {
                 if let Some(state) = self.block_edit_picker.as_mut() {
                     state.name = name.clone();

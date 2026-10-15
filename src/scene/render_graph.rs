@@ -280,6 +280,7 @@ pub struct RenderSceneGraph<'a> {
     all_visible: bool,
     depths: &'a FxHashMap<u64, [f32; 2]>,
     viewport: Option<Handle>,
+    visibility_reveal: Option<&'a FxHashSet<Handle>>,
 }
 
 impl<'a> RenderSceneGraph<'a> {
@@ -298,7 +299,13 @@ impl<'a> RenderSceneGraph<'a> {
             all_visible,
             depths,
             viewport: None,
+            visibility_reveal: None,
         }
+    }
+
+    pub fn with_visibility_reveal(mut self, handles: &'a FxHashSet<Handle>) -> Self {
+        self.visibility_reveal = Some(handles);
+        self
     }
 
     pub fn with_viewport(mut self, viewport: Option<Handle>) -> Self {
@@ -579,7 +586,11 @@ impl<'a> RenderSceneGraph<'a> {
 
     fn document_visible(&self, entity: &EntityType) -> bool {
         let common = entity.common();
-        if common.invisible {
+        if common.invisible
+            && !self
+                .visibility_reveal
+                .is_some_and(|handles| handles.contains(&common.handle))
+        {
             return false;
         }
         let layer = self.document.layers.get(&common.layer);

@@ -2991,6 +2991,12 @@ pub trait CadCommand: Send {
     /// While true, viewport clicks are routed through the normal selection
     /// system (single / box / polygon) instead of the command's point-pick path.
     /// After each completed selection action the host calls `on_selection_complete`.
+    /// A selection command may reveal state-hidden BEDIT members for picking.
+    /// This is a display request only; the document visibility flags stay intact.
+    fn reveals_hidden_block_objects(&self) -> bool {
+        false
+    }
+
     fn is_selection_gathering(&self) -> bool {
         false
     }

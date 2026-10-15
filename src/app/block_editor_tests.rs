@@ -59,6 +59,239 @@ fn feed(app: &mut OpenCADStudio, text: &str) {
     let _ = app.update(Message::CommandSubmit);
 }
 
+fn visibility_editor() -> (OpenCADStudio, crate::ui::window::block_visibility::Target) {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let _ = app.run_command_line("BPARAMETER VISIBILITY 0,0");
+    let target = app
+        .block_visibility_context()
+        .expect("placed parameter")
+        .target;
+    (app, target)
+}
+
+fn visibility_action(app: &mut OpenCADStudio, action: crate::ui::window::block_visibility::Action) {
+    let _ = app.update(Message::BlockVisibility(action));
+}
+
+#[test]
+fn visibility_ribbon_manager_cancel_validation_and_single_undo() {
+    use crate::ui::window::block_visibility::Action as A;
+    let (mut app, target) = visibility_editor();
+    let i = app.active_tab;
+    let before = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    visibility_action(&mut app, A::Open(target));
+    visibility_action(&mut app, A::Name("Alternate".into()));
+    visibility_action(&mut app, A::New);
+    assert_eq!(app.tabs[i].scene.document, before, "dialog is staged");
+    let _ = app.update(Message::CommandEscape);
+    assert!(app.block_visibility.is_none());
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    assert_eq!(app.tabs[i].scene.document, before);
+    visibility_action(&mut app, A::Open(target));
+    visibility_action(&mut app, A::Name("visibilitystate0".into()));
+    visibility_action(&mut app, A::New);
+    assert!(app.block_visibility.as_ref().unwrap().error.is_some());
+    visibility_action(&mut app, A::Delete);
+    assert_eq!(
+        app.block_visibility.as_ref().unwrap().edited.states.len(),
+        1
+    );
+    visibility_action(&mut app, A::Name("Alternate".into()));
+    visibility_action(&mut app, A::New);
+    visibility_action(&mut app, A::SetCurrent);
+    visibility_action(&mut app, A::Name("Alternate renamed".into()));
+    visibility_action(&mut app, A::Rename);
+    visibility_action(&mut app, A::Move(true));
+    visibility_action(&mut app, A::Apply);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    assert_eq!(
+        app.block_visibility_context().unwrap().current.as_deref(),
+        Some("Alternate renamed")
+    );
+    app.undo_steps(1);
+    assert_eq!(
+        app.block_visibility_context().unwrap().names,
+        ["VisibilityState0"]
+    );
+    app.redo_steps(1);
+    assert_eq!(
+        app.block_visibility_context().unwrap().names,
+        ["Alternate renamed", "VisibilityState0"]
+    );
+    assert_eq!(
+        app.block_visibility_context().unwrap().current.as_deref(),
+        Some("Alternate renamed")
+    );
+}
+
+#[test]
+fn visibility_ribbon_new_modes_state_selection_and_native_roundtrip() {
+    use crate::ui::window::block_visibility::{Action as A, NewVisibility as V};
+    let (mut app, target) = visibility_editor();
+    let i = app.active_tab;
+    let member = members(&app)[0];
+    visibility_action(&mut app, A::Open(target));
+    for (name, mode) in [("Hidden", V::Hide), ("Shown", V::Show), ("Copy", V::Keep)] {
+        visibility_action(&mut app, A::Name(name.into()));
+        visibility_action(&mut app, A::NewVisibility(mode));
+        visibility_action(&mut app, A::New);
+    }
+    visibility_action(&mut app, A::Apply);
+    let parameter =
+        crate::scene::block_visibility::parameter(&app.tabs[i].scene.document, target.definition)
+            .unwrap();
+    assert!(parameter.states[0].visible_blocks.contains(&member));
+    assert!(parameter.states[1].visible_blocks.is_empty());
+    assert!(parameter.states[2].visible_blocks.contains(&member));
+    assert!(parameter.states[3].visible_blocks.contains(&member));
+    visibility_action(&mut app, A::Current(target, "Hidden".into()));
+    assert!(
+        app.tabs[i]
+            .scene
+            .document
+            .get_entity(member)
+            .unwrap()
+            .common()
+            .invisible
+    );
+    visibility_action(&mut app, A::Current(target, "Shown".into()));
+    visibility_action(&mut app, A::Current(target, "Copy".into()));
+    app.undo_steps(1);
+    assert_eq!(
+        app.block_visibility_context().unwrap().current.as_deref(),
+        Some("Shown"),
+        "identical states retain their identity in history"
+    );
+    app.redo_steps(1);
+    assert_eq!(
+        app.block_visibility_context().unwrap().current.as_deref(),
+        Some("Copy")
+    );
+    app.save_block_edit(i);
+    for ext in ["dwg", "dxf"] {
+        let document = &app.tabs[i].scene.document;
+        let bytes = crate::io::save_to_bytes(document, ext, document.version).unwrap();
+        let loaded = crate::io::load_bytes(&format!("visibility.{ext}"), bytes).unwrap();
+        let parameter =
+            crate::scene::block_visibility::parameter(&loaded, target.definition).unwrap();
+        assert_eq!(
+            parameter
+                .states
+                .iter()
+                .map(|state| state.name.as_str())
+                .collect::<Vec<_>>(),
+            ["VisibilityState0", "Hidden", "Shown", "Copy"]
+        );
+        assert!(parameter.states[1].visible_blocks.is_empty());
+        assert!(parameter.states[2].visible_blocks.contains(&member));
+    }
+}
+
+#[test]
+fn visibility_ribbon_mode_and_make_visible_cancel_do_not_change_saved_flags() {
+    use crate::ui::window::block_visibility::Action as A;
+    let (mut app, target) = visibility_editor();
+    let i = app.active_tab;
+    let member = members(&app)[0];
+    app.tabs[i].scene.select_entity(member, true);
+    let _ = app.run_command_line("BVHIDE");
+    app.finish_pending_history(i);
+    let before = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let dirty = app.tabs[i].dirty;
+    let wires = |app: &OpenCADStudio| {
+        app.tabs[i]
+            .scene
+            .entity_wires()
+            .iter()
+            .filter(|wire| crate::scene::Scene::handle_from_wire_name(&wire.name) == Some(member))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    assert!(wires(&app).is_empty());
+    visibility_action(&mut app, A::Mode(target));
+    assert!(
+        !wires(&app).is_empty(),
+        "hidden member is rendered for picking"
+    );
+    assert_eq!(app.tabs[i].scene.document, before);
+    visibility_action(&mut app, A::Mode(target));
+    assert!(wires(&app).is_empty());
+    let _ = app.run_command_line("BVSHOW");
+    app.sync_block_visibility_display();
+    assert!(!wires(&app).is_empty());
+    let _ = app.update(Message::CommandEscape);
+    assert!(wires(&app).is_empty());
+    assert_eq!(app.tabs[i].scene.document, before);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    assert_eq!(app.tabs[i].dirty, dirty);
+    let _ = app.run_command_line("BVMODE 1");
+    assert!(app.block_visibility_mode);
+    let _ = app.run_command_line("SETVAR BVMODE 2");
+    assert!(app.block_visibility_mode);
+    let _ = app.run_command_line("BVMODE 0");
+    assert!(!app.block_visibility_mode);
+    assert!(
+        app.pending_setvar.is_none(),
+        "inline variable must close its probe prompt"
+    );
+    let _ = app.run_command_line("BVSHOW");
+    app.tabs[i].scene.select_entity(member, true);
+    let result = app.tabs[i]
+        .active_cmd
+        .as_mut()
+        .unwrap()
+        .on_selection_complete(vec![member]);
+    let _ = app.apply_cmd_result(result);
+    feed(&mut app, "");
+    assert!(
+        !app.tabs[i]
+            .scene
+            .document
+            .get_entity(member)
+            .unwrap()
+            .common()
+            .invisible
+    );
+    app.undo_steps(1);
+    assert!(
+        app.tabs[i]
+            .scene
+            .document
+            .get_entity(member)
+            .unwrap()
+            .common()
+            .invisible,
+        "undo uses the hidden flags from before picking"
+    );
+}
+
+#[test]
+fn visibility_ribbon_manager_rejects_stale_target_and_stale_document() {
+    use crate::ui::window::block_visibility::Action as A;
+    let (mut app, target) = visibility_editor();
+    visibility_action(&mut app, A::Open(target));
+    visibility_action(&mut app, A::Name("Alternate".into()));
+    visibility_action(&mut app, A::New);
+    app.tabs[app.active_tab].scene.bump_geometry();
+    visibility_action(&mut app, A::Apply);
+    assert!(app.block_visibility.as_ref().unwrap().error.is_some());
+    assert_eq!(
+        app.block_visibility_context().unwrap().names,
+        ["VisibilityState0"]
+    );
+    let _ = app.update(Message::CloseModal);
+    let mut stale = target;
+    stale.document += 1;
+    visibility_action(&mut app, A::Open(stale));
+    assert!(app.block_visibility.is_none());
+    assert!(app.active_modal.is_none());
+    let _ = app.run_command_line("BVSTATE DIALOG");
+    assert_eq!(app.active_modal, Some(ModalKind::BlockVisibility));
+}
+
 #[test]
 fn local_undo_preserves_imported_native_networks_when_constraints_are_unchanged() {
     use codec::objects::{

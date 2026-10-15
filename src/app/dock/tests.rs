@@ -692,6 +692,97 @@ fn floating_menu_docks_and_allow_docking_keeps_a_drag_floating() {
     );
 }
 
+#[test]
+fn visibility_ribbon_real_controls_disable_enable_and_open_manager() {
+    with_stack(|| {
+        use crate::ui::window::block_visibility::Action as A;
+        let mut app = authoring_app();
+        app.ribbon.set_block_editing(true);
+        app.ribbon
+            .set_collapse_mode(crate::ui::ribbon::CollapseMode::Compact);
+        let i = app.active_tab;
+        let before = app.tabs[i].scene.document.clone();
+        let point = authoring_control(&app, "BVSTATE_MANAGER");
+        authoring_click(&mut app, point);
+        assert!(app.block_visibility.is_none());
+        assert_eq!(app.tabs[i].scene.document, before);
+        authoring_capture(&app, "visibility-ribbon-disabled");
+        let _ = app.run_command_line("BPARAMETER VISIBILITY 0.5,0.5");
+        let target = app.block_visibility_context().unwrap().target;
+        let point = authoring_control(&app, "BVSTATE_MANAGER");
+        authoring_click(&mut app, point);
+        assert_eq!(
+            app.active_modal,
+            Some(crate::app::ModalKind::BlockVisibility)
+        );
+        let _ = app.update(Message::BlockVisibility(A::Name("Alternate".into())));
+        let _ = app.update(Message::BlockVisibility(A::New));
+        authoring_capture(&app, "visibility-states-dialog");
+        let point = find_in_view(&app, "OK");
+        authoring_click(&mut app, point);
+        assert!(app.block_visibility.is_none());
+        assert_eq!(app.block_visibility_context().unwrap().names.len(), 2);
+        let messages = {
+            let mut simulator = iced_test::Simulator::with_size(
+                iced::Settings::default(),
+                VIEW_SIZE,
+                app.view_main(),
+            );
+            let target = simulator
+                .click(iced::widget::Id::new("BVSTATE_CURRENT"))
+                .expect("current-state selector");
+            let bounds = target.visible_bounds().unwrap();
+            authoring_snapshot(
+                &mut simulator,
+                &app.active_theme,
+                "visibility-state-dropdown",
+            );
+            // Native pick-list options are painted text, not Text widgets.
+            // Pick the second row using the measured selector/row height.
+            let position = iced::Point::new(bounds.center_x(), bounds.y + bounds.height * 2.5);
+            simulator.point_at(position);
+            simulator.simulate([
+                iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }),
+                iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)),
+                iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
+                    iced::mouse::Button::Left,
+                )),
+            ]);
+            simulator.into_messages().collect::<Vec<_>>()
+        };
+        for message in messages {
+            let _ = app.update(message);
+        }
+        assert_eq!(
+            app.block_visibility_context().unwrap().current.as_deref(),
+            Some("Alternate")
+        );
+        let point = authoring_control(&app, "BVMODE_TOGGLE");
+        authoring_click(&mut app, point);
+        assert!(app.block_visibility_mode);
+        authoring_capture(&app, "visibility-ribbon-enabled");
+        app.ribbon
+            .set_collapse_mode(crate::ui::ribbon::CollapseMode::Collapsed);
+        let point = find_in_view(&app, "Visibility ▾");
+        authoring_click(&mut app, point);
+        let messages = {
+            let mut simulator = iced_test::Simulator::with_size(
+                iced::Settings::default(),
+                VIEW_SIZE,
+                app.view_main(),
+            );
+            simulator
+                .click("Visibility States")
+                .expect("manager in flyout");
+            simulator.into_messages().collect::<Vec<_>>()
+        };
+        for message in messages {
+            let _ = app.update(message);
+        }
+        assert_eq!(app.block_visibility.as_ref().unwrap().target, target);
+    });
+}
+
 fn authoring_app() -> OpenCADStudio {
     use codec::{
         entities::{Insert, Line},

@@ -32,6 +32,46 @@ const MINOR: i32 = 329;
 /// Value code of an expression that holds no value.
 const NO_VALUE: i16 = -9999;
 
+impl Scene {
+    /// BVMODE and BVSHOW picking reveal only state-controlled members of BEDIT.
+    pub(crate) fn visibility_revealed(&self, handle: Handle) -> bool {
+        self.block_visibility_reveal
+            && self.block_edit_block.is_some_and(|definition| {
+                self.document.get_entity(handle).is_some_and(|entity| {
+                    entity.common().owner_handle == definition && entity.common().invisible
+                }) && parameter(&self.document, definition)
+                    .is_some_and(|parameter| parameter.all_blocks.contains(&handle))
+            })
+    }
+
+    pub(crate) fn visibility_reveal_handles(&self) -> rustc_hash::FxHashSet<Handle> {
+        self.block_edit_block
+            .and_then(|definition| parameter(&self.document, definition))
+            .filter(|_| self.block_visibility_reveal)
+            .map(|parameter| {
+                parameter
+                    .all_blocks
+                    .iter()
+                    .copied()
+                    .filter(|handle| self.visibility_revealed(*handle))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn display_entity_invisible(&self, common: &codec::entities::EntityCommon) -> bool {
+        common.invisible && !self.visibility_revealed(common.handle)
+    }
+
+    pub(crate) fn set_block_visibility_reveal(&mut self, reveal: bool) {
+        if self.block_visibility_reveal != reveal {
+            self.block_visibility_reveal = reveal;
+            self.recolor_meshes();
+            self.bump_geometry();
+        }
+    }
+}
+
 /// (DXF name, class, DWG maintenance version) of the classes used here.
 const CLASSES: &[(&str, &str, i32)] = &[
     ("ACAD_EVALUATION_GRAPH", "AcDbEvalGraph", 55),
@@ -129,6 +169,20 @@ fn store(document: &mut CadDocument, parameter: BlockVisibilityParameter) {
         parameter.handle,
         ObjectType::BlockVisibilityParameter(parameter),
     );
+}
+
+/// Commit a staged state list while retaining the parameter's graph and identity.
+pub(crate) fn replace_states(
+    document: &mut CadDocument,
+    definition: Handle,
+    edited: BlockVisibilityParameter,
+) {
+    debug_assert_eq!(
+        parameter(document, definition).map(|p| p.handle),
+        Some(edited.handle)
+    );
+    store(document, edited);
+    tag_members(document, definition);
 }
 
 /// The objects of a definition, block begin and end left out.
@@ -783,6 +837,79 @@ impl Scene {
 mod tests {
     use super::*;
     use codec::entities::{Circle, Insert, Line};
+
+    #[test]
+    fn visibility_ribbon_reveal_respects_layers_uncontrolled_flags_and_nested_states() {
+        let mut scene = Scene::new();
+        scene.define_block_raw(
+            "nested",
+            Vector3::ZERO,
+            vec![EntityType::Line(Line::from_points(
+                Vector3::ZERO,
+                Vector3::UNIT_X,
+            ))],
+        );
+        let nested = scene.document.block_records.get("nested").unwrap().handle;
+        let child = members(&scene.document, nested)[0];
+        scene
+            .document
+            .get_entity_mut(child)
+            .unwrap()
+            .common_mut()
+            .invisible = true;
+        scene.define_block_raw(
+            "editor",
+            Vector3::ZERO,
+            vec![
+                EntityType::Line(Line::from_points(Vector3::ZERO, Vector3::UNIT_X)),
+                EntityType::Line(Line::from_points(
+                    Vector3::UNIT_Y,
+                    Vector3::UNIT_X + Vector3::UNIT_Y,
+                )),
+                EntityType::Insert(Insert::new("nested", Vector3::ZERO)),
+            ],
+        );
+        let definition = scene.document.block_records.get("editor").unwrap().handle;
+        let controlled = members(&scene.document, definition)[0];
+        let independent = members(&scene.document, definition)[1];
+        scene
+            .document
+            .get_entity_mut(independent)
+            .unwrap()
+            .common_mut()
+            .invisible = true;
+        let parameter = create(&mut scene.document, definition, Vector3::ZERO).unwrap();
+        set_visible(&mut scene.document, parameter, 0, &[controlled], false);
+        apply_state(&mut scene.document, parameter, 0);
+        scene.block_edit_block = Some(definition);
+        let before = scene.document.clone();
+        scene.set_block_visibility_reveal(true);
+        let wires = scene.entity_wires();
+        assert!(wires
+            .iter()
+            .any(|wire| Scene::handle_from_wire_name(&wire.name) == Some(controlled)));
+        assert!(!scene.visibility_revealed(independent));
+        assert!(!scene.visibility_revealed(child));
+        assert_eq!(scene.visibility_reveal_handles().len(), 1);
+        assert_eq!(
+            scene.select_all_visible(),
+            2,
+            "only revealed line and the insert can be selected"
+        );
+        let color = scene.count_color(controlled, [1.0; 4], [0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(color, [0.5, 0.5, 0.5, 1.0]);
+        scene.document.layers.get_mut("0").unwrap().flags.off = true;
+        scene.bump_geometry();
+        assert_eq!(
+            scene.select_all_visible(),
+            0,
+            "mode never overrides a hidden layer"
+        );
+        scene.document.layers.get_mut("0").unwrap().flags.off = false;
+        scene.set_block_visibility_reveal(false);
+        assert_eq!(scene.document, before);
+        assert!(!scene.visibility_revealed(controlled));
+    }
 
     /// A block given visibility states round-trips them, and a reference
     /// given its own copy still finds the definition and its states.

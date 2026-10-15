@@ -1510,7 +1510,7 @@ impl Scene {
                     return false;
                 }
                 let c = entity.common();
-                if c.invisible
+                if self.display_entity_invisible(c)
                     || self.entity_temporarily_hidden(handle)
                     || layer_hidden(&c.layer)
                     || crate::scene::annotative::annotative_offscale_for(
@@ -1811,6 +1811,11 @@ impl Scene {
         plot_only: bool,
     ) -> Vec<HatchModel> {
         let depth_map = self.draw_depth_map();
+        let visibility_reveal = if plot_only {
+            rustc_hash::FxHashSet::default()
+        } else {
+            self.visibility_reveal_handles()
+        };
         let graph = crate::scene::render_graph::RenderSceneGraph::new(
             &self.document,
             frozen,
@@ -1818,6 +1823,7 @@ impl Scene {
             all_visible,
             depth_map.as_ref(),
         )
+        .with_visibility_reveal(&visibility_reveal)
         .with_annotation_scale(self.annotation_scale)
         .with_viewport(viewport);
         let mut hatch_block_memo = std::collections::HashMap::new();
@@ -2022,6 +2028,11 @@ impl Scene {
         plot_only: bool,
     ) -> Vec<HatchModel> {
         let depth_map = self.draw_depth_map();
+        let visibility_reveal = if plot_only {
+            rustc_hash::FxHashSet::default()
+        } else {
+            self.visibility_reveal_handles()
+        };
         let graph = crate::scene::render_graph::RenderSceneGraph::new(
             &self.document,
             frozen,
@@ -2029,6 +2040,7 @@ impl Scene {
             all_visible,
             depth_map.as_ref(),
         )
+        .with_visibility_reveal(&visibility_reveal)
         .with_annotation_scale(self.annotation_scale);
         let mut models = Vec::new();
         let mut wipeout_sources = rustc_hash::FxHashMap::default();

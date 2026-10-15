@@ -97,12 +97,16 @@ impl OpenCADStudio {
     }
 
     /// The state the block shows in the editor.
-    fn visibility_current(&self, i: usize, block: Handle) -> usize {
+    pub(in crate::app) fn visibility_current(&self, i: usize, block: Handle) -> usize {
         let scene = &self.tabs[i].scene;
         scene
             .visibility_states
             .get(&block)
             .copied()
+            .filter(|index| {
+                visibility::parameter(&scene.document, block)
+                    .is_some_and(|parameter| *index < parameter.states.len())
+            })
             .unwrap_or_else(|| {
                 visibility::parameter(&scene.document, block).map_or(0, |parameter| {
                     visibility::shown_state(&scene.document, parameter.handle)
@@ -110,7 +114,13 @@ impl OpenCADStudio {
             })
     }
 
-    fn show_visibility_state(&mut self, i: usize, block: Handle, parameter: Handle, state: usize) {
+    pub(in crate::app) fn show_visibility_state(
+        &mut self,
+        i: usize,
+        block: Handle,
+        parameter: Handle,
+        state: usize,
+    ) {
         visibility::apply_state(&mut self.tabs[i].scene.document, parameter, state);
         self.tabs[i].scene.visibility_states.insert(block, state);
         self.tabs[i].scene.bump_geometry();
@@ -143,6 +153,40 @@ impl OpenCADStudio {
                 }
             }
         }
+        let variable = cmd.strip_prefix("SETVAR ").unwrap_or(cmd);
+        if variable == "BVMODE" || variable.starts_with("BVMODE ") {
+            let value = variable.strip_prefix("BVMODE").unwrap().trim();
+            // Inline command probing may have opened the bare variable prompt.
+            if !value.is_empty() && self.pending_setvar.as_deref() == Some("BVMODE") {
+                self.pending_setvar = None;
+            }
+            match value {
+                "" => {
+                    self.command_line.push_output(
+                        crate::tf!(
+                            "BVMODE: enter 0 (hide) or 1 (show dimmed) <{}>:",
+                            u8::from(self.block_visibility_mode)
+                        )
+                        .as_ref(),
+                    );
+                    self.pending_setvar = Some("BVMODE".into());
+                }
+                "TOGGLE" => {
+                    self.block_visibility_mode = !self.block_visibility_mode;
+                    self.sync_block_visibility_display();
+                }
+                value @ ("0" | "1") => {
+                    self.block_visibility_mode = value == "1";
+                    self.sync_block_visibility_display();
+                    self.command_line
+                        .push_output(crate::tf!("BVMODE = {}", value).as_ref());
+                }
+                _ => self
+                    .command_line
+                    .push_error(crate::t!("BVMODE: only 0 or 1 is allowed.").as_ref()),
+            }
+            return Some(Task::none());
+        }
         match cmd {
             cmd if cmd == "BPARAMETER" || cmd.starts_with("BPARAMETER ") => {
                 let Some(block) = self.visibility_block(i, "BPARAMETER") else {
@@ -163,6 +207,17 @@ impl OpenCADStudio {
                 self.command_line.push_info(&command.prompt());
                 self.command_line.set_step_options(command.options());
                 self.tabs[i].active_cmd = Some(Box::new(command));
+                Some(Task::none())
+            }
+            "BVSTATE DIALOG" => {
+                if let Some(context) = self.block_visibility_context() {
+                    return Some(self.handle_block_visibility(
+                        crate::ui::window::block_visibility::Action::Open(context.target),
+                    ));
+                }
+                self.command_line.push_error(
+                    crate::t!("Place a Visibility parameter in the Block Editor first.").as_ref(),
+                );
                 Some(Task::none())
             }
             "BVSTATE" => {
@@ -221,25 +276,8 @@ impl OpenCADStudio {
                 Some(Task::none())
             }
             "BVHIDE" | "BVSHOW" => {
-                let block = self.visibility_block(i, cmd)?;
+                self.visibility_block(i, cmd)?;
                 let hide = cmd == "BVHIDE";
-                if !hide {
-                    // Every object of the block shows while they are picked;
-                    // the state is put back once the pick ends.
-                    let document = &mut self.tabs[i].scene.document;
-                    let members: Vec<Handle> = document
-                        .block_records
-                        .iter()
-                        .find(|record| record.handle == block)
-                        .map(|record| record.entity_handles.clone())
-                        .unwrap_or_default();
-                    for handle in members {
-                        if let Some(entity) = document.get_entity_mut(handle) {
-                            entity.common_mut().invisible = false;
-                        }
-                    }
-                    self.tabs[i].scene.bump_geometry();
-                }
                 let pending = if hide { "_BVHIDE" } else { "_BVSHOW" };
                 if !self.tabs[i].scene.selected.is_empty() {
                     return Some(self.dispatch_command(pending));

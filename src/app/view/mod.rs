@@ -2218,6 +2218,7 @@ bg={bg_ms:.1}ms n={view_count}"
                     self.tabs[self.active_tab].history.undo_stack.len(),
                     self.tabs[self.active_tab].history.redo_stack.len(),
                     self.show_block_palette,
+                    self.block_visibility_context(),
                 ));
             }
             // Split the `chrome` bucket so live `view-detail` traces show

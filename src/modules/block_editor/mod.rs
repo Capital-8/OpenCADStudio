@@ -94,6 +94,41 @@ impl CadModule for BlockEditorModule {
                     ),
                 );
             }
+            groups.push(RibbonGroup {
+                title: "Visibility",
+                tools: vec![
+                    RibbonItem::LargeTool(ToolDef {
+                        id: "BVSTATE_MANAGER",
+                        label: "Visibility States",
+                        icon: IconKind::Svg(include_bytes!("../../../assets/icons/ui/list.svg")),
+                        event: ModuleEvent::Command("BVSTATE DIALOG".into()),
+                    }),
+                    RibbonItem::Tool(ToolDef {
+                        id: "BVMODE_TOGGLE",
+                        label: "Visibility Mode",
+                        icon: IconKind::Svg(include_bytes!(
+                            "../../../assets/icons/constrain/show_all.svg"
+                        )),
+                        event: ModuleEvent::Command("BVMODE TOGGLE".into()),
+                    }),
+                    RibbonItem::Tool(ToolDef {
+                        id: "BVSHOW",
+                        label: "Make Visible",
+                        icon: IconKind::Svg(include_bytes!(
+                            "../../../assets/icons/constrain/show.svg"
+                        )),
+                        event: ModuleEvent::Command("BVSHOW".into()),
+                    }),
+                    RibbonItem::Tool(ToolDef {
+                        id: "BVHIDE",
+                        label: "Make Invisible",
+                        icon: IconKind::Svg(include_bytes!(
+                            "../../../assets/icons/constrain/hide_all.svg"
+                        )),
+                        event: ModuleEvent::Command("BVHIDE".into()),
+                    }),
+                ],
+            });
             groups
         })
     }

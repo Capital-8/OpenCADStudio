@@ -10,6 +10,7 @@ pub mod block_definition;
 pub mod block_edit_picker;
 pub mod block_palette;
 pub mod block_save_as;
+pub mod block_visibility;
 pub mod browser;
 pub mod count_palette;
 pub mod drafting_settings;

@@ -797,6 +797,9 @@ impl HistorySnapshot {
                 .saturating_add(d.named_parameters.as_ref().map_or(0, |(before, after)| {
                     before.len().saturating_add(after.len()).saturating_mul(128)
                 }))
+                .saturating_add(d.visibility_states.as_ref().map_or(0, |(before, after)| {
+                    (before.len() + after.len()).saturating_mul(32)
+                }))
                 .saturating_add(d.reference_designations.len().saturating_mul(16))
                 .saturating_add(d.label.len()),
             HistorySnapshot::ObjectVisibility(v) => v
@@ -833,6 +836,11 @@ pub(super) struct ObjectVisibilitySnapshot {
 /// cloning the flat entity store.
 #[derive(Clone)]
 pub(super) struct DeltaSnapshot {
+    /// Editor current-state indices must follow undo even when two states show identical objects.
+    pub(super) visibility_states: Option<(
+        rustc_hash::FxHashMap<Handle, usize>,
+        rustc_hash::FxHashMap<Handle, usize>,
+    )>,
     pub(super) entities: Vec<(Handle, Option<Arc<EntityType>>, Option<Arc<EntityType>>)>,
     pub(super) current_layout_before: String,
     pub(super) current_layout_after: String,
@@ -949,6 +957,7 @@ pub(super) struct HistoryState {
 }
 
 pub(super) struct PendingHistorySnapshot {
+    pub(super) visibility_states_before: rustc_hash::FxHashMap<Handle, usize>,
     pub(super) label: String,
     pub(super) current_layout: String,
     pub(super) active_layer: String,

@@ -2149,6 +2149,7 @@ pub struct Scene {
     /// The visibility state each dynamic block shows in the Block Editor,
     /// by block record.
     pub visibility_states: HashMap<Handle, usize>,
+    pub(crate) block_visibility_reveal: bool,
     /// Currently selected entity handles.
     pub selected: HashSet<Handle>,
     /// Polylines only part of which is selected (Ctrl+click): the picked
@@ -2871,6 +2872,7 @@ impl Scene {
             paper_projected_cache: RefCell::new(HashMap::default()),
             current_layout: "Model".to_string(),
             block_edit_block: None,
+            block_visibility_reveal: false,
             viewcube_ucs: glam::Mat4::IDENTITY,
             hatches: HashMap::default(),
             meshes: HashMap::default(),
@@ -4558,6 +4560,11 @@ impl Scene {
     /// top-level entity): the count colours, else faded; unchanged outside
     /// count mode.
     pub(crate) fn count_color(&self, handle: Handle, color: [f32; 4], bg: [f32; 4]) -> [f32; 4] {
+        let color = if self.visibility_revealed(handle) {
+            crate::scene::cache::block_cache::fade_toward_bg(color, bg)
+        } else {
+            color
+        };
         let Some(count) = &self.count_display else {
             return color;
         };
@@ -4578,7 +4585,9 @@ impl Scene {
     fn apply_refedit_fade(&self, wires: &mut Vec<WireModel>, bg: [f32; 4]) {
         // Block copies kept as stubs draw in their prototype's colour; while
         // copies are recoloured one by one they are expanded instead.
-        if (self.count_display.is_some() || self.refedit_keep.is_some())
+        if (self.count_display.is_some()
+            || self.refedit_keep.is_some()
+            || self.block_visibility_reveal)
             && wires.iter().any(|wire| wire.stub.is_some())
         {
             *wires = crate::scene::model::instance_model::expand_stubs(wires).into_owned();
@@ -4600,6 +4609,19 @@ impl Scene {
                 // id counter never reaches.
                 if let Some(instance) = w.render_instance.as_mut() {
                     instance.source_id |= class << 62;
+                }
+            }
+        }
+        if self.block_visibility_reveal {
+            for wire in wires.iter_mut() {
+                if Self::handle_from_wire_name(&wire.name)
+                    .is_some_and(|handle| self.visibility_revealed(handle))
+                {
+                    wire.color = crate::scene::cache::block_cache::fade_toward_bg(wire.color, bg);
+                    for vertex in &mut wire.text_verts {
+                        vertex.color =
+                            crate::scene::cache::block_cache::fade_toward_bg(vertex.color, bg);
+                    }
                 }
             }
         }
@@ -6665,6 +6687,7 @@ impl Scene {
     /// Persisted `EntityCommon::invisible` values stay untouched and continue
     /// to serve file/dynamic-block visibility.
     pub fn reset_transient_visibility(&mut self) {
+        self.block_visibility_reveal = false;
         self.object_isolation = ObjectIsolationState::default();
         self.preview_hidden.clear();
         self.command_preview_hidden.clear();
@@ -7398,6 +7421,7 @@ impl Scene {
     fn resident_runs_match_memo(&self, block: Handle) -> bool {
         self.count_display.is_none()
             && self.refedit_keep.is_none()
+            && !self.block_visibility_reveal
             && self.active_live_section(block).is_none()
     }
 
@@ -8597,6 +8621,11 @@ impl Scene {
             return Vec::new();
         }
         let depth_map = self.draw_depth_map();
+        let visibility_reveal = if plotting {
+            HashSet::default()
+        } else {
+            self.visibility_reveal_handles()
+        };
         let graph = render_graph::RenderSceneGraph::new(
             &self.document,
             frozen,
@@ -8604,6 +8633,7 @@ impl Scene {
             all_visible,
             depth_map.as_ref(),
         )
+        .with_visibility_reveal(&visibility_reveal)
         .with_annotation_scale(self.annotation_scale)
         .with_viewport(viewport);
         let mut models = Vec::new();
@@ -8685,6 +8715,15 @@ impl Scene {
                             source_id,
                             translation: [matrix[0][3], matrix[1][3], matrix[2][3]],
                         });
+                }
+                if !plotting
+                    && self.visibility_revealed(if context.is_instanced() {
+                        context.root_handle
+                    } else {
+                        handle
+                    })
+                {
+                    placed.opacity *= 0.3;
                 }
                 placed.draw_depth = context.draw_depth(handle, depth_map.as_ref());
                 models.push(collect(placed, context));
@@ -8966,6 +9005,20 @@ impl Scene {
                             material.diffuse[0..3].copy_from_slice(&style.0[0..3]);
                         }
                         material.diffuse[3] = style.0[3];
+                    }
+                }
+                if self.visibility_revealed(handle) {
+                    for mesh in &mut set.lods {
+                        mesh.color = crate::scene::cache::block_cache::fade_toward_bg(
+                            mesh.color,
+                            self.current_bg(),
+                        );
+                    }
+                    if let Some(material) = set.material.as_mut() {
+                        material.diffuse = crate::scene::cache::block_cache::fade_toward_bg(
+                            material.diffuse,
+                            self.current_bg(),
+                        );
                     }
                 }
                 Some(set)
@@ -9390,13 +9443,15 @@ impl Scene {
         }
         let arc = if point_cloud::any_definition(&self.document) {
             let depths = rustc_hash::FxHashMap::default();
+            let visibility_reveal = self.visibility_reveal_handles();
             let graph = render_graph::RenderSceneGraph::new(
                 &self.document,
                 (!frozen.is_empty()).then_some(frozen),
                 None,
                 true,
                 &depths,
-            );
+            )
+            .with_visibility_reveal(&visibility_reveal);
             let mut clouds = Vec::new();
             graph.walk_root(
                 self.render_scene_root(target_block),
@@ -9473,7 +9528,7 @@ impl Scene {
                 continue;
             };
             let common = entity.common();
-            if common.invisible
+            if self.display_entity_invisible(common)
                 || self.entity_temporarily_hidden(common.handle)
                 || self
                     .document
@@ -9639,7 +9694,7 @@ impl Scene {
         let Some(c) = self.document.get_entity(handle).map(|e| e.common()) else {
             return false;
         };
-        if c.invisible {
+        if self.display_entity_invisible(c) {
             return false;
         }
         !self.layer_hidden(&c.layer)
@@ -9673,6 +9728,7 @@ impl Scene {
             return Vec::new();
         }
         let depth_map = self.draw_depth_map();
+        let visibility_reveal = self.visibility_reveal_handles();
         let graph = render_graph::RenderSceneGraph::new(
             &self.document,
             frozen,
@@ -9680,6 +9736,7 @@ impl Scene {
             all_visible,
             depth_map.as_ref(),
         )
+        .with_visibility_reveal(&visibility_reveal)
         .with_annotation_scale(self.annotation_scale)
         .with_viewport(viewport);
         let mut out = Vec::new();
@@ -9744,7 +9801,7 @@ impl Scene {
                         self.material_base_dir.as_deref(),
                     );
                 }
-                if self.count_display.is_some() {
+                if self.count_display.is_some() || self.visibility_revealed(context.root_handle) {
                     let own = transformed
                         .instance_color
                         .or(set.display_color())
@@ -9973,7 +10030,7 @@ impl Scene {
             return false;
         }
         let common = entity.common();
-        if common.invisible
+        if self.display_entity_invisible(common)
             || self.entity_temporarily_hidden(handle)
             || self.layer_hidden(&common.layer)
             || self.interaction_layer_frozen(&common.layer)
@@ -10037,6 +10094,7 @@ impl Scene {
             .flatten()
             .copied()
             .collect();
+        let visibility_reveal = self.visibility_reveal_handles();
         let graph = render_graph::RenderSceneGraph::new(
             &self.document,
             (!frozen.is_empty()).then_some(&frozen),
@@ -10044,6 +10102,7 @@ impl Scene {
             all_visible,
             depth_map.as_ref(),
         )
+        .with_visibility_reveal(&visibility_reveal)
         .with_annotation_scale(self.annotation_scale);
         for entity in self.document.entities() {
             let contextual = crate::scene::annotative::entity_for_annotation_context(
@@ -10053,7 +10112,7 @@ impl Scene {
             );
             let host = contextual.as_ref();
             let common = host.common();
-            if common.invisible
+            if self.display_entity_invisible(common)
                 || self.entity_temporarily_hidden(common.handle)
                 || layer_hidden(&common.layer)
                 || crate::scene::annotative::annotative_offscale_for(
@@ -11638,7 +11697,7 @@ impl Scene {
         layer: Option<&codec::tables::layer::Layer>,
     ) -> bool {
         let c = e.common();
-        if c.invisible {
+        if self.display_entity_invisible(c) {
             return false;
         }
         // Session-only Isolate / Hide and interactive replacement previews.

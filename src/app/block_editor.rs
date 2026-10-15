@@ -250,6 +250,7 @@ impl OpenCADStudio {
             return None;
         }
         Some(DeltaSnapshot {
+            visibility_states: None,
             entities,
             current_layout_before: session.return_layout.clone(),
             current_layout_after: session.return_layout.clone(),

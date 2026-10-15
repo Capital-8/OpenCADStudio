@@ -66,7 +66,8 @@ impl CadCommand for BvStateCommand {
     fn prompt(&self) -> String {
         match &self.step {
             Step::Option => {
-                crate::t!("BVSTATE  Enter an option [New/Set/Rename/Delete] <Set>:").into_owned()
+                crate::t!("BVSTATE  Enter an option [New/Set/Rename/Delete/Dialog] <Set>:")
+                    .into_owned()
             }
             Step::NewName => crate::t!("BVSTATE  Enter name of new visibility state:").into_owned(),
             Step::SetName => crate::tf!(
@@ -93,6 +94,7 @@ impl CadCommand for BvStateCommand {
                 CmdOption::new(crate::t!("Set").as_ref(), "S"),
                 CmdOption::new(crate::t!("Rename").as_ref(), "R"),
                 CmdOption::new(crate::t!("Delete").as_ref(), "D"),
+                CmdOption::new(crate::t!("Dialog").as_ref(), "DIALOG"),
             ],
             _ => Vec::new(),
         }
@@ -114,6 +116,7 @@ impl CadCommand for BvStateCommand {
         match &self.step {
             Step::Option => {
                 self.step = match text.trim_start_matches('_').to_ascii_uppercase().as_str() {
+                    "DIALOG" => return Some(CmdResult::Dispatch("BVSTATE DIALOG".into())),
                     "N" | "NEW" => Step::NewName,
                     "" | "S" | "SET" => Step::SetName,
                     "R" | "RENAME" => Step::RenameFrom,
@@ -196,5 +199,5 @@ impl CadCommand for BvStateCommand {
 }
 
 inventory::submit!(crate::command::CommandRegistration {
-    names: &["BVSTATE", "BVHIDE", "BVSHOW"]
+    names: &["BVSTATE", "BVHIDE", "BVSHOW", "BVMODE"]
 });

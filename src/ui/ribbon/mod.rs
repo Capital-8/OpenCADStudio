@@ -26,6 +26,7 @@ pub(crate) use draw_panel::tools as panel_tools;
 mod color_dropdown;
 mod context_tools;
 mod modify_panel;
+mod visibility_panel;
 pub use context_tools::{pdf_underlay_tools, point_cloud_tools, xref_tools, UnderlayContext};
 use widgets::{StyleContext, *};
 pub(crate) use widgets::{REDO_HISTORY_ID, UNDO_HISTORY_ID};
@@ -630,6 +631,7 @@ impl Ribbon {
         undo_count: usize,
         redo_count: usize,
         show_block_palette: bool,
+        visibility: Option<crate::ui::window::block_visibility::RibbonContext>,
     ) -> Element<'_, Message> {
         // ── Quick-access file commands + undo/redo, one merged flow ────────
         let lead = iced::widget::Row::with_children(vec![
@@ -825,7 +827,15 @@ impl Ribbon {
             // button. See `CollapsePanels`.
             let ts = self.toggle_state(show_block_palette);
             let panels: Vec<Panel<'_>> = groups
-                .map(|g| self.panel(g, ts, &style_ctx, &|_| Vec::new()))
+                .map(|g| {
+                    if self.modules[effective_active].id() == "block_editor"
+                        && g.title == "Visibility"
+                    {
+                        visibility_panel::panel(visibility.clone())
+                    } else {
+                        self.panel(g, ts, &style_ctx, &|_| Vec::new())
+                    }
+                })
                 .collect();
             CollapsePanels::new(panels, self.collapsed_open.clone(), TOOL_BAR_H)
                 .report_height(self.tool_bar_h.clone())

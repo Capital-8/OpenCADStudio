@@ -177,6 +177,10 @@ impl SelectObjectsCommand {
 }
 
 impl CadCommand for SelectObjectsCommand {
+    fn reveals_hidden_block_objects(&self) -> bool {
+        self.pending_cmd == "_BVSHOW"
+    }
+
     fn name(&self) -> &'static str {
         "SELECT"
     }

@@ -216,6 +216,7 @@ impl OpenCADStudio {
         }
         let selected: Vec<Handle> = self.tabs[i].scene.selected.iter().copied().collect();
         let delta = DeltaSnapshot {
+            visibility_states: None,
             entities,
             current_layout_before: self.tabs[i].scene.current_layout.clone(),
             current_layout_after: self.tabs[i].scene.current_layout.clone(),
@@ -346,7 +347,11 @@ impl OpenCADStudio {
                 })
             })
             .collect();
+        let visibility_after = self.tabs[i].scene.visibility_states.clone();
+        let visibility_states = (pending.visibility_states_before != visibility_after)
+            .then_some((pending.visibility_states_before, visibility_after));
         if !pending.keep_empty
+            && visibility_states.is_none()
             && entities.is_empty()
             && reference_designations.is_empty()
             && !structure_changed
@@ -357,6 +362,7 @@ impl OpenCADStudio {
             return;
         }
         let delta = DeltaSnapshot {
+            visibility_states,
             entities,
             current_layout_before: pending.current_layout,
             current_layout_after: self.tabs[i].scene.current_layout.clone(),
@@ -403,6 +409,7 @@ impl OpenCADStudio {
         let structure_before = self.tabs[i].scene.document.snapshot_structure();
         let recorder = self.tabs[i].scene.document.begin_entity_change_recording();
         self.tabs[i].history.pending = Some(PendingHistorySnapshot {
+            visibility_states_before: self.tabs[i].scene.visibility_states.clone(),
             label,
             current_layout,
             active_layer: self.tabs[i].active_layer.clone(),
@@ -514,6 +521,7 @@ impl OpenCADStudio {
         }
         let selected_after = self.tabs[i].scene.selected.iter().copied().collect();
         let delta = DeltaSnapshot {
+            visibility_states: None,
             entities: Vec::new(),
             current_layout_before: pending.current_layout,
             current_layout_after: self.tabs[i].scene.current_layout.clone(),
@@ -572,6 +580,7 @@ impl OpenCADStudio {
             return;
         }
         let delta = DeltaSnapshot {
+            visibility_states: None,
             entities: Vec::new(),
             current_layout_before: pending.current_layout,
             current_layout_after: self.tabs[i].scene.current_layout.clone(),
@@ -630,6 +639,7 @@ impl OpenCADStudio {
             return;
         }
         let delta = DeltaSnapshot {
+            visibility_states: None,
             entities: Vec::new(),
             current_layout_before: pending.current_layout,
             current_layout_after: self.tabs[i].scene.current_layout.clone(),
@@ -696,6 +706,7 @@ impl OpenCADStudio {
             return;
         }
         let delta = DeltaSnapshot {
+            visibility_states: None,
             entities: Vec::new(),
             current_layout_before: pending.current_layout,
             current_layout_after: self.tabs[i].scene.current_layout.clone(),
@@ -726,6 +737,7 @@ impl OpenCADStudio {
         self.finish_pending_history(i);
         let (text_names, dim_names, object_handles) = after.changed_keys(&before);
         let delta = DeltaSnapshot {
+            visibility_states: None,
             entities: Vec::new(),
             current_layout_before: self.tabs[i].scene.current_layout.clone(),
             current_layout_after: self.tabs[i].scene.current_layout.clone(),
@@ -932,6 +944,7 @@ impl OpenCADStudio {
             structure = Some(StructureSnapshot::Objects(objects));
         }
         let delta = DeltaSnapshot {
+            visibility_states: None,
             entities,
             current_layout_before: pending.current_layout,
             current_layout_after: self.tabs[i].scene.current_layout.clone(),
@@ -1130,6 +1143,10 @@ impl OpenCADStudio {
             }
             let value = if undo { &entry.before } else { &entry.after };
             *scene.parametric_constraint_set_mut(entry.scope) = value.clone();
+        }
+        if let Some((before, after)) = &d.visibility_states {
+            scene.visibility_states = if undo { before } else { after }.clone();
+            scene.bump_geometry();
         }
         if let Some((before, after)) = &d.named_parameters {
             scene.named_parameters = if undo { before } else { after }.clone();
