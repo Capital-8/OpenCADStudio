@@ -1304,6 +1304,7 @@ impl OpenCADStudio {
                 if name.is_empty() || name == "?" {
                     self.command_line
                         .push_info(&super::plotvars::setvar_listing());
+                    self.command_line.push_info("SETVAR (view): UCSFOLLOW");
                     self.command_line
                         .push_info(&super::blockvars::setvar_listing());
                     self.command_line.push_info(

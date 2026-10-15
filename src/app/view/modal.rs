@@ -257,6 +257,7 @@ impl OpenCADStudio {
                 sized_flow(ex, 480, 520, |flow| {
                     crate::ui::window::alias_editor::view_window(
                         &self.alias_editor_rows,
+                        &self.alias_import_report,
                         self.alias_pending_add,
                         self.alias_reset_confirm,
                         &duplicate_set,

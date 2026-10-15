@@ -1770,7 +1770,7 @@ impl OpenCADStudio {
         }
     }
 
-    fn plan_snap(&mut self, i: usize, r_ucs: glam::Mat4) {
+    pub(in crate::app) fn plan_snap(&mut self, i: usize, r_ucs: glam::Mat4) {
         let eye_dir = r_ucs.transform_vector3(
             crate::scene::CubeRegion::Face(crate::scene::pipeline::viewcube::FACE_TOP)
                 .snap_direction(),

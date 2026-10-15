@@ -28,6 +28,7 @@ mod plotvars;
 mod point_cloud;
 pub(crate) mod sheet_set;
 mod styleprops;
+mod ucsfollow;
 mod view;
 mod view_presets;
 mod xclip;
@@ -323,6 +324,9 @@ impl OpenCADStudio {
     /// `finish_dispatch`), or `None` to defer to the next — equivalent to one
     /// sequential `match` over all arms.
     fn dispatch_families(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {
+        if let Some(t) = self.dispatch_ucsfollow(cmd, i) {
+            return Some(t);
+        }
         if let Some(t) = self.dispatch_fileops(cmd, i) {
             return Some(t);
         }
@@ -504,6 +508,12 @@ inventory::submit!(crate::command::CommandRegistration {
         // Drafting-aid / display toggles + customization entry points wired in the
         // dispatch families (no interactive command module of their own).
         "ALIASEDIT",
+        // Implemented command-line block forms must also validate in ALIASEDIT.
+        "-BLOCK",
+        "-BMAKE",
+        "-WBLOCK",
+        "-WB",
+        "-ATTEDIT",
         "CLEANSCREEN",
         "CUI",
         "DSETTINGS",

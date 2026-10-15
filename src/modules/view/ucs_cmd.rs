@@ -57,7 +57,7 @@ impl CadCommand for UcsCommand {
     fn prompt(&self) -> String {
         match self.option.as_deref() {
             None => {
-                t!("UCS  option [Face/OBject/World/View/3Point/Z/X/Y/Origin/Save/Delete] or name:")
+                t!("UCS  specify new origin or [Face/OBject/World/View/3Point/Z/X/Y/Origin/Save/Delete] or name:")
                     .into_owned()
             }
             Some("Z") => t!("UCS  rotation angle about Z (degrees):").into_owned(),
@@ -126,6 +126,20 @@ impl CadCommand for UcsCommand {
                     return Some(CmdResult::Dispatch("UCS LIST".into()));
                 }
                 let up = t.to_uppercase();
+                // Accept the Spanish labels shown by the localized prompt as
+                // well as international option keywords. Only normalize the
+                // option token, never the value/name supplied in the next step.
+                let up = match up.trim_start_matches('_') {
+                    "UNIVERSAL" | "U" => "WORLD",
+                    "VISTA" => "VIEW",
+                    "CARA" => "FACE",
+                    "OBJETO" => "OBJECT",
+                    "ORIGEN" => "ORIGIN",
+                    "GUARDAR" | "G" => "SAVE",
+                    "ELIMINAR" | "E" => "DELETE",
+                    "3" | "3PUNTOS" | "3 PUNTOS" => "3POINT",
+                    value => value,
+                }.to_owned();
                 if Self::is_zero_arg(&up) {
                     Some(CmdResult::Dispatch(format!("UCS {up}")))
                 } else if Self::takes_value(&up) || Self::takes_point(&up) {
@@ -168,8 +182,7 @@ impl CadCommand for UcsCommand {
                 points[2].z,
             ));
         }
-        // A clicked point only makes sense for the Origin option; otherwise a
-        // stray click is ignored (keep waiting for the typed keyword / value).
+        // Other point-taking options retain their explicit behavior.
         if matches!(self.option.as_deref(), Some(o) if Self::takes_point(o)) {
             self.option.take();
             return CmdResult::Dispatch(format!("UCS ORIGINW {},{},{}", pt.x, pt.y, pt.z));
@@ -202,5 +215,53 @@ impl CadCommand for UcsCommand {
             // Option chosen but no value supplied → cancel cleanly.
             Some(_) => CmdResult::Cancel,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bare_ucs_accepts_origin_then_x_then_xy_without_option() {
+        let mut cmd = UcsCommand::new();
+        assert!(matches!(cmd.on_point(DVec3::new(10.0, 20.0, 0.0)), CmdResult::NeedPoint));
+        assert_eq!(cmd.points.len(), 1);
+        assert!(matches!(cmd.on_point(DVec3::new(11.0, 20.0, 0.0)), CmdResult::NeedPoint));
+        match cmd.on_point(DVec3::new(10.0, 21.0, 0.0)) {
+            CmdResult::Dispatch(command) => assert_eq!(
+                command, "UCS 3POINTW 10,20,0|11,20,0|10,21,0"
+            ),
+            _ => panic!("three clicks must dispatch the new UCS"),
+        }
+    }
+
+    #[test]
+    fn initial_coordinate_is_delegated_to_point_pipeline() {
+        let mut cmd = UcsCommand::new();
+        assert!(cmd.on_text_input("10,20,0").is_none());
+        assert!(matches!(cmd.on_point(DVec3::new(10.0, 20.0, 0.0)), CmdResult::NeedPoint));
+        assert_eq!(cmd.points.len(), 1);
+    }
+
+    #[test]
+    fn explicit_origin_still_changes_only_origin() {
+        let mut cmd = UcsCommand::new();
+        assert!(matches!(cmd.on_text_input("O"), Some(CmdResult::NeedPoint)));
+        match cmd.on_point(DVec3::new(10.0, 20.0, 0.0)) {
+            CmdResult::Dispatch(command) => assert_eq!(command, "UCS ORIGINW 10,20,0"),
+            _ => panic!("explicit Origin must dispatch after one point"),
+        }
+    }
+
+    #[test]
+    fn spanish_and_international_options_work() {
+        for option in ["Universal", "U", "_World"] {
+            let mut cmd = UcsCommand::new();
+            assert!(matches!(cmd.on_text_input(option), Some(CmdResult::Dispatch(s)) if s == "UCS WORLD"));
+        }
+        let mut cmd = UcsCommand::new();
+        assert!(matches!(cmd.on_text_input("Guardar"), Some(CmdResult::NeedPoint)));
+        assert!(matches!(cmd.on_text_input("MiPlano"), Some(CmdResult::Dispatch(s)) if s == "UCS SAVE MiPlano"));
     }
 }

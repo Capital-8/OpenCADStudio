@@ -1073,6 +1073,51 @@ impl Scene {
         true
     }
 
+    /// Index of the current model pane's record, independent of record ordering.
+    fn ucs_follow_vport_index(&self) -> Option<usize> {
+        let rect = self.model_tiles.borrow().get(self.active_model_tile.get()).map(|t| t.rect);
+        let bounds = rect.map(Self::tile_rect_to_vport);
+        self.document.vports.iter().enumerate().find_map(|(index, entry)| {
+            (is_active_vport_name(&entry.name)
+                && bounds.map_or(true, |(ll, ur)| Self::vport_rect_matches(entry, ll, ur)))
+                .then_some(index)
+        })
+    }
+
+    /// Read the persisted per-viewport UCSFOLLOW bit. Paper space itself never follows.
+    pub(crate) fn ucs_follow(&self) -> bool {
+        if let Some(handle) = self.active_viewport {
+            return matches!(self.document.get_entity(handle),
+                Some(codec::EntityType::Viewport(vp)) if vp.status.ucs_follow);
+        }
+        if self.current_layout != "Model" {
+            return false;
+        }
+        self.ucs_follow_vport_index()
+            .and_then(|index| self.document.vports.iter().nth(index))
+            .is_some_and(|vp| vp.ucsfollow)
+    }
+
+    pub(crate) fn set_ucs_follow(&mut self, enabled: bool) {
+        if let Some(handle) = self.active_viewport {
+            if let Some(codec::EntityType::Viewport(vp)) = self.document.get_entity_mut(handle) {
+                vp.status.ucs_follow = enabled;
+            }
+        } else if self.current_layout == "Model" {
+            // Materialize current panes first; saving them preserves the bit by
+            // matching their rectangles, even when the active pane is reordered.
+            self.save_model_tiles_to_vports();
+            if self.ucs_follow_vport_index().is_none() {
+                self.document.vports.add_or_replace(codec::tables::VPort::new("*Active"));
+            }
+            if let Some(index) = self.ucs_follow_vport_index() {
+                if let Some(vp) = self.document.vports.iter_mut().nth(index) {
+                    vp.ucsfollow = enabled;
+                }
+            }
+        }
+    }
+
     /// Persist model tiles as duplicate `*Active` VPort entries.
     fn save_model_tiles_to_vports(&mut self) {
         // Stash the live camera into the active tile so the about-to-write

@@ -3506,12 +3506,17 @@ impl OpenCADStudio {
                 }
                 _ => false,
             };
-        if !same_basis(self.tabs[i].active_ucs.as_ref(), persisted.as_ref()) {
+        let changed = !same_basis(self.tabs[i].active_ucs.as_ref(), persisted.as_ref());
+        if changed {
             self.push_undo_snapshot(i, label);
             self.tabs[i].persist_active_ucs();
             self.tabs[i].dirty = true;
         }
         self.tabs[i].sync_ucs_to_scene();
+        if changed && self.tabs[i].scene.ucs_follow() {
+            let rotation = self.tabs[i].scene.viewcube_ucs_mat();
+            self.plan_snap(i, rotation);
+        }
     }
 
     // ── Per-pane Model viewport (pane_grid) ───────────────────────────────
