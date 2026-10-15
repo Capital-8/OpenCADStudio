@@ -595,7 +595,9 @@ fn hover_messages_over_an_open_dropdown(zone: bool) -> Vec<(&'static str, &'stat
         let field = button(text("ByLayer")).width(120).height(20);
         // A pointer-wanting list, like a linetype combo's, under the field.
         let list = button(column![text("Continuous"), text("Dashed")])
-            .on_press(Message::Dock(DockMsg::HoverEnd(crate::ui::dock::PanelId::Layers)))
+            .on_press(Message::Dock(DockMsg::HoverEnd(
+                crate::ui::dock::PanelId::Layers,
+            )))
             .width(120)
             .height(100);
         let dd = iced_aw::DropDown::new(field, list, true)
@@ -627,7 +629,9 @@ fn hover_messages_over_an_open_dropdown(zone: bool) -> Vec<(&'static str, &'stat
         let _ = ui.update(
             &window::Headless,
             &shell::Waker::noop(),
-            &[iced::Event::Mouse(mouse::Event::CursorMoved { position: at })],
+            &[iced::Event::Mouse(mouse::Event::CursorMoved {
+                position: at,
+            })],
             mouse::Cursor::Available(at),
             &mut renderer,
             &mut messages,
