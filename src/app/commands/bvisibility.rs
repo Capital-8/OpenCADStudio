@@ -7,6 +7,80 @@ use codec::{CadDocument, EntityType, Handle};
 use iced::Task;
 
 impl OpenCADStudio {
+    pub(in crate::app) fn point_parameter_placement_error(&self) -> Option<&'static str> {
+        self.parameter_placement_error("POINT")
+    }
+
+    pub(in crate::app) fn parameter_placement_error(&self, kind: &str) -> Option<&'static str> {
+        let tab = &self.tabs[self.active_tab];
+        let Some(session) = tab.active_block_edit_session() else {
+            return Some("Open a block in the Block Editor before placing a parameter.");
+        };
+        match kind.to_ascii_uppercase().as_str() {
+            "POINT" | "P" | "" => crate::scene::block_point_parameter::placement_error(
+                &tab.scene.document,
+                session.br_handle,
+            ),
+            "VISIBILITY" | "V" => {
+                visibility::placement_error(&tab.scene.document, session.br_handle)
+            }
+            _ => Some("Only Point and Visibility parameter placement is currently supported."),
+        }
+    }
+
+    pub(in crate::app) fn handle_place_block_point_parameter(
+        &mut self,
+        result: crate::command::CmdResult,
+    ) -> Task<Message> {
+        let crate::command::CmdResult::PlaceBlockPointParameter {
+            document_id,
+            definition,
+            location,
+            label,
+        } = result
+        else {
+            unreachable!()
+        };
+        let i = self.active_tab;
+        if self.tabs[i].id != document_id
+            || self.tabs[i]
+                .active_block_edit_session()
+                .map(|session| session.br_handle)
+                != Some(definition)
+        {
+            self.command_line.push_error(
+                crate::t!("The parameter's Block Editor session is no longer active.").as_ref(),
+            );
+            return Task::none();
+        }
+        if let Some(error) = self.point_parameter_placement_error() {
+            self.command_line.push_error(crate::t!(error).as_ref());
+            return Task::none();
+        }
+        if !location.is_finite() || !label.is_finite() {
+            self.command_line
+                .push_error(crate::t!("Specify finite parameter and label locations.").as_ref());
+            return Task::none();
+        }
+        self.push_undo_snapshot(i, "Point parameter");
+        crate::scene::block_point_parameter::create(
+            &mut self.tabs[i].scene.document,
+            definition,
+            codec::types::Vector3::new(location.x, location.y, location.z),
+            codec::types::Vector3::new(label.x, label.y, label.z),
+        )
+        .expect("validated Point placement");
+        self.tabs[i].scene.bump_geometry();
+        self.tabs[i].dirty = true;
+        self.tabs[i].active_cmd = None;
+        self.tabs[i].scene.clear_preview_wire();
+        self.finish_pending_history(i);
+        self.refresh_properties();
+        self.command_line
+            .push_output(crate::t!("Point parameter placed.").as_ref());
+        Task::none()
+    }
+
     pub(in crate::app) fn visibility_placement_error(&self) -> Option<&'static str> {
         let tab = &self.tabs[self.active_tab];
         let Some(session) = tab.active_block_edit_session() else {
@@ -193,13 +267,27 @@ impl OpenCADStudio {
                     return Some(Task::none());
                 };
                 let parameter_type = cmd.strip_prefix("BPARAMETER").unwrap().trim();
+                if parameter_type.eq_ignore_ascii_case("POINT")
+                    || parameter_type.eq_ignore_ascii_case("P")
+                {
+                    let command =
+                        crate::modules::block_editor::point_parameter::PointParameterCommand::new(
+                            self.tabs[i].id,
+                            block,
+                        );
+                    self.command_line.push_info(&command.prompt());
+                    self.tabs[i].active_cmd = Some(Box::new(command));
+                    return Some(Task::none());
+                }
                 if !parameter_type.is_empty()
                     && !parameter_type.eq_ignore_ascii_case("VISIBILITY")
                     && !parameter_type.eq_ignore_ascii_case("V")
                 {
                     self.command_line.push_error(
-                        crate::t!("Only Visibility parameter placement is currently supported.")
-                            .as_ref(),
+                        crate::t!(
+                            "Only Point and Visibility parameter placement is currently supported."
+                        )
+                        .as_ref(),
                     );
                     return Some(Task::none());
                 }

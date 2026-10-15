@@ -1514,6 +1514,13 @@ impl DimensionPreview {
 /// Returned by every `CadCommand` method to tell main.rs what to do.
 #[allow(dead_code)]
 pub enum CmdResult {
+    /// Place a native Point parameter after both authoring picks complete.
+    PlaceBlockPointParameter {
+        document_id: u64,
+        definition: Handle,
+        location: DVec3,
+        label: DVec3,
+    },
     /// Place the visibility parameter in the definition that requested it.
     PlaceBlockVisibilityParameter {
         document_id: u64,

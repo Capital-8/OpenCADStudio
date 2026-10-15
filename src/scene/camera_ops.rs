@@ -1664,6 +1664,25 @@ impl Scene {
         // (`camera_for_viewport`), so reading the camera here recurses. A wire
         // with no precise position falls back to the z = 0 plane.
         let fallback_z = 0.0;
+        // Authoring graphics belong to the editor view, never INSERT geometry.
+        // Include them when framing/reopening an edited definition, even if
+        // the block contains parameters only.
+        if self.block_edit_block == Some(block) {
+            for (_, parameter) in super::block_point_parameter::parameters(&self.document, block) {
+                for point in [
+                    parameter.parameter.definition_point,
+                    parameter.definition_label_point,
+                ] {
+                    let point = glam::DVec3::new(point.x, point.y, point.z);
+                    fold!(Some((point, point)));
+                }
+            }
+            if let Some(parameter) = super::block_visibility::parameter(&self.document, block) {
+                let point = parameter.def_point;
+                let point = glam::DVec3::new(point.x, point.y, point.z);
+                fold!(Some((point, point)));
+            }
+        }
         let scale = crate::scene::annotative::scale_handle_by_name(
             &self.document,
             &self.document.header.current_annotation_scale,

@@ -59,6 +59,145 @@ fn feed(app: &mut OpenCADStudio, text: &str) {
     let _ = app.update(Message::CommandSubmit);
 }
 
+fn authored_points(app: &OpenCADStudio) -> Vec<codec::objects::BlockPointParameter> {
+    let tab = &app.tabs[app.active_tab];
+    let definition = tab
+        .scene
+        .document
+        .block_records
+        .get("EDIT_ME")
+        .unwrap()
+        .handle;
+    crate::scene::block_point_parameter::parameters(&tab.scene.document, definition)
+        .into_iter()
+        .map(|(_, parameter)| parameter.clone())
+        .collect()
+}
+
+#[test]
+fn point_parameter_placement_two_picks_one_undo_and_repeated_names() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let before = app.tabs[i].scene.document.clone();
+    let _ = app.dispatch_command("BPARAMETER POINT");
+    feed(&mut app, "3,4,0");
+    assert_eq!(
+        app.tabs[i].scene.document, before,
+        "first pick is preview only"
+    );
+    feed(&mut app, "6,7,0");
+    assert_eq!(authored_points(&app)[0].position_name, "Position1");
+    assert_eq!(
+        authored_points(&app)[0].definition_label_point,
+        Vector3::new(6.0, 7.0, 0.0)
+    );
+    assert_eq!(app.tabs[i].history.undo_stack.len(), 1);
+    assert!(app.block_edit_dirty(i));
+    app.undo_steps(1);
+    assert!(authored_points(&app).is_empty());
+    app.redo_steps(1);
+    assert_eq!(authored_points(&app).len(), 1);
+    let _ = app.run_command_line("BPARAMETER POINT 8,9 10,11");
+    assert_eq!(authored_points(&app)[1].position_name, "Position2");
+    assert_eq!(app.tabs[i].history.undo_stack.len(), 2);
+}
+
+#[test]
+fn point_parameter_placement_cancel_at_both_prompts_is_inert() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let before = app.tabs[i].scene.document.clone();
+    for picked in [false, true] {
+        let _ = app.dispatch_command("BPARAMETER POINT");
+        if picked {
+            feed(&mut app, "3,4");
+        }
+        let _ = app.update(Message::CommandEscape);
+        assert_eq!(app.tabs[i].scene.document, before);
+        assert!(app.tabs[i].history.undo_stack.is_empty());
+        assert!(!app.block_edit_dirty(i));
+    }
+    let _ = app.dispatch_command("BPARAMETER POINT");
+    feed(&mut app, "3,4");
+    feed(&mut app, "");
+    assert_eq!(app.tabs[i].scene.document, before);
+    assert!(app.tabs[i].history.undo_stack.is_empty());
+}
+
+#[test]
+fn point_parameter_placement_chooser_works_with_existing_visibility_and_reframes() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER VISIBILITY 0,0");
+    let _ = app.dispatch_command("BPARAMETER");
+    feed(&mut app, "Point");
+    feed(&mut app, "3,4,5");
+    feed(&mut app, "6,7,5");
+    assert_eq!(authored_points(&app).len(), 1);
+    assert!(app.block_visibility_context().is_some());
+    let _ = app.run_command_line("UCS ORIGIN 1,2,3");
+    assert_eq!(
+        authored_points(&app)[0].parameter.definition_point,
+        Vector3::new(2.0, 2.0, 2.0)
+    );
+    assert_eq!(
+        authored_points(&app)[0].definition_label_point,
+        Vector3::new(5.0, 5.0, 2.0)
+    );
+    app.undo_steps(1);
+    assert_eq!(
+        authored_points(&app)[0].parameter.definition_point,
+        Vector3::new(3.0, 4.0, 5.0)
+    );
+    let _ = app.dispatch_command("BSAVE");
+    assert!(!app.block_edit_dirty(i));
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    assert_eq!(authored_points(&app).len(), 1);
+    app.undo_steps(1);
+    assert!(
+        authored_points(&app).is_empty(),
+        "saved block undo restores the parent drawing"
+    );
+}
+
+#[test]
+fn point_parameter_placement_discard_and_stale_context_leave_no_objects() {
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    let before = app.tabs[i].scene.document.clone();
+    begin(&mut app, reference);
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let start = app.tabs[i].scene.document.clone();
+    let id = app.tabs[i].id;
+    for (document, location) in [
+        (id + 1, glam::DVec3::ZERO),
+        (id, glam::DVec3::splat(f64::NAN)),
+    ] {
+        let _ = app.handle_place_block_point_parameter(
+            crate::command::CmdResult::PlaceBlockPointParameter {
+                document_id: document,
+                definition,
+                location,
+                label: glam::DVec3::ZERO,
+            },
+        );
+        assert_eq!(app.tabs[i].scene.document, start);
+    }
+    let _ = app.run_command_line("BPARAMETER POINT 3,4 6,7");
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    let mut after = app.tabs[i].scene.document.clone();
+    after.vports = before.vports.clone();
+    assert_eq!(after, before);
+    let closed = app.tabs[i].scene.document.clone();
+    let _ = app.dispatch_command("LINE");
+    let _ = app.dispatch_command("BPARAMETER POINT");
+    assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+    assert_eq!(app.tabs[i].scene.document, closed);
+}
+
 fn visibility_editor() -> (OpenCADStudio, crate::ui::window::block_visibility::Target) {
     let (mut app, reference) = fixture();
     begin(&mut app, reference);
@@ -1721,8 +1860,8 @@ fn visibility_parameter_placement_rejects_duplicates_stale_context_and_nonfinite
 }
 
 #[test]
-fn visibility_parameter_placement_preserves_an_existing_authoring_graph() {
-    use codec::objects::{DynamicBlockObject, DynamicBlockData, BlockEvaluationGraph, ObjectType};
+fn visibility_parameter_placement_preserves_an_opaque_authoring_graph() {
+    use codec::objects::{DynamicBlockObject, DynamicBlockData, ObjectType};
     let (mut app, reference) = fixture();
     let i = app.active_tab;
     let doc = &mut app.tabs[i].scene.document;
@@ -1732,7 +1871,7 @@ fn visibility_parameter_placement_preserves_an_existing_authoring_graph() {
     let mut graph = DynamicBlockObject::new("ACAD_EVALUATION_GRAPH", "AcDbEvalGraph");
     graph.handle = graph_handle;
     graph.owner = dictionary;
-    graph.data = DynamicBlockData::EvaluationGraph(BlockEvaluationGraph::default());
+    graph.data = DynamicBlockData::Unknown;
     doc.objects
         .insert(graph_handle, ObjectType::DynamicBlock(graph));
     if let Some(ObjectType::Dictionary(dictionary)) = doc.objects.get_mut(&dictionary) {

@@ -27,7 +27,8 @@ impl CadCommand for VisibilityParameterCommand {
 
     fn prompt(&self) -> String {
         if self.choosing_type {
-            crate::t!("BPARAMETER  Enter parameter type [Visibility] <Visibility>:").into_owned()
+            crate::t!("BPARAMETER  Enter parameter type [Point/Visibility] <Visibility>:")
+                .into_owned()
         } else {
             crate::t!("BPARAMETER  Specify visibility parameter location:").into_owned()
         }
@@ -35,7 +36,10 @@ impl CadCommand for VisibilityParameterCommand {
 
     fn options(&self) -> Vec<CmdOption> {
         if self.choosing_type {
-            vec![CmdOption::new(crate::t!("Visibility").as_ref(), "V")]
+            vec![
+                CmdOption::new(crate::t!("Point").as_ref(), "P"),
+                CmdOption::new(crate::t!("Visibility").as_ref(), "V"),
+            ]
         } else {
             vec![]
         }
@@ -56,13 +60,16 @@ impl CadCommand for VisibilityParameterCommand {
                 .to_ascii_uppercase()
                 .as_str()
             {
+                "P" | "POINT" => CmdResult::Dispatch("BPARAMETER POINT".into()),
                 "" | "V" | "VISIBILITY" => {
                     self.choosing_type = false;
                     CmdResult::NeedPoint
                 }
                 _ => CmdResult::ReportError(
-                    crate::t!("Only Visibility parameter placement is currently supported.")
-                        .into_owned(),
+                    crate::t!(
+                        "Only Point and Visibility parameter placement is currently supported."
+                    )
+                    .into_owned(),
                 ),
             },
         )

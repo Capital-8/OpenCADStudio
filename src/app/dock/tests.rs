@@ -783,6 +783,50 @@ fn visibility_ribbon_real_controls_disable_enable_and_open_manager() {
     });
 }
 
+#[test]
+fn point_parameter_placement_starts_from_the_actual_palette_row() {
+    with_stack(|| {
+        let mut app = authoring_app();
+        let _ = app.dispatch_command("BAUTHORPALETTE");
+        let i = app.active_tab;
+        let before = app.tabs[i].scene.document.clone();
+        let point = authoring_control(&app, "authoring-tool-point");
+        authoring_click(&mut app, point);
+        assert_eq!(
+            app.tabs[i].active_cmd.as_ref().unwrap().name(),
+            "BPARAMETER"
+        );
+        let _ = app.update(Message::CommandInput("0.25,0.25".into()));
+        let _ = app.update(Message::CommandSubmit);
+        assert_eq!(app.tabs[i].scene.document, before);
+        let _ = app.update(Message::CommandInput("0.65,0.15".into()));
+        let _ = app.update(Message::CommandSubmit);
+        assert!(
+            app.tabs[i].scene.preview_wires.is_empty(),
+            "placement clears its rubber-band preview"
+        );
+        let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+        assert_eq!(
+            crate::scene::block_point_parameter::parameters(
+                &app.tabs[i].scene.document,
+                definition
+            )
+            .len(),
+            1
+        );
+        assert!(
+            app.visibility_placement_error().is_none(),
+            "Visibility can join the Point graph"
+        );
+        assert_eq!(app.tabs[i].history.undo_stack.len(), 1);
+        authoring_capture(&app, "point-parameter-placed");
+        let point = authoring_control(&app, "authoring-tool-point");
+        authoring_click(&mut app, point);
+        let _ = app.update(Message::CommandEscape);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), 1);
+    });
+}
+
 fn authoring_app() -> OpenCADStudio {
     use codec::{
         entities::{Insert, Line},

@@ -407,6 +407,7 @@ impl OpenCADStudio {
                     width,
                     chrome,
                     self.visibility_placement_error(),
+                    self.point_parameter_placement_error(),
                 )
             }
             crate::ui::dock::PanelId::BlockPalette => {

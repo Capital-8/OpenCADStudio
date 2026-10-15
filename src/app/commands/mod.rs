@@ -174,7 +174,9 @@ impl OpenCADStudio {
         let resolved = self.resolve_alias(cmd);
         let cmd = resolved.as_deref().unwrap_or(cmd);
         if cmd == "BPARAMETER" || cmd.starts_with("BPARAMETER ") {
-            if let Some(error) = self.visibility_placement_error() {
+            if let Some(error) =
+                self.parameter_placement_error(cmd.strip_prefix("BPARAMETER").unwrap().trim())
+            {
                 self.command_line.push_error(crate::t!(error).as_ref());
                 return Task::none();
             }

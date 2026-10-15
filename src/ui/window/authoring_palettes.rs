@@ -188,7 +188,11 @@ const PARAMETER_SETS: &[(&str, &[u8])] = &[
 ];
 
 /// Catalog rows remain inert until their authoring commands exist.
-fn catalog(tab: Tab, visibility_error: Option<&'static str>) -> Element<'static, Message> {
+fn catalog(
+    tab: Tab,
+    visibility_error: Option<&'static str>,
+    point_error: Option<&'static str>,
+) -> Element<'static, Message> {
     let (entries, unavailable) = match tab {
         Tab::Parameters => (
             PARAMETERS,
@@ -203,7 +207,9 @@ fn catalog(tab: Tab, visibility_error: Option<&'static str>) -> Element<'static,
     };
     column(entries.iter().map(|(label, icon)| {
         let visibility = tab == Tab::Parameters && *label == "Visibility";
-        let enabled = visibility && visibility_error.is_none();
+        let point = tab == Tab::Parameters && *label == "Point";
+        let enabled =
+            (visibility && visibility_error.is_none()) || (point && point_error.is_none());
         let base = if enabled {
             icons::semantic(icon, 28.0)
         } else {
@@ -226,19 +232,36 @@ fn catalog(tab: Tab, visibility_error: Option<&'static str>) -> Element<'static,
             base
         };
         let message = enabled.then(|| Message::RibbonToolClick {
-            tool_id: "BPARAMETER_VISIBILITY".into(),
-            event: crate::modules::ModuleEvent::Command("BPARAMETER VISIBILITY".into()),
+            tool_id: if point {
+                "BPARAMETER_POINT"
+            } else {
+                "BPARAMETER_VISIBILITY"
+            }
+            .into(),
+            event: crate::modules::ModuleEvent::Command(
+                if point {
+                    "BPARAMETER POINT"
+                } else {
+                    "BPARAMETER VISIBILITY"
+                }
+                .into(),
+            ),
         });
         let description = if visibility {
             crate::t!(visibility_error
                 .unwrap_or("Place a visibility parameter, then use BVSTATE to manage its states."))
             .into_owned()
+        } else if point {
+            crate::t!(point_error.unwrap_or("Place a point parameter and its position label."))
+                .into_owned()
         } else {
             unavailable.to_string()
         };
         let entry = tool_row(label, icon, message, &description);
         if visibility {
             container(entry).id("authoring-tool-visibility").into()
+        } else if point {
+            container(entry).id("authoring-tool-point").into()
         } else {
             entry
         }
@@ -350,6 +373,7 @@ pub fn view(
     width: f32,
     chrome: Chrome,
     visibility_error: Option<&'static str>,
+    point_error: Option<&'static str>,
 ) -> Element<'static, Message> {
     let tabs = column(Tab::ALL.into_iter().map(|category| {
         let label = category.label();
@@ -399,7 +423,7 @@ pub fn view(
             chrome,
         ),
         row![
-            scrollable(catalog(selected_tab, visibility_error))
+            scrollable(catalog(selected_tab, visibility_error, point_error))
                 .width(Fill)
                 .height(Fill),
             tabs

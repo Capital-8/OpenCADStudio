@@ -1047,6 +1047,34 @@ bg={bg_ms:.1}ms n={view_count}"
                 (point.x.is_finite() && point.y.is_finite())
                     .then(|| (point, parameter.name.clone(), vp_bounds))
             });
+            let authoring_points =
+                tab.active_block_edit_session()
+                    .map(|session| {
+                        crate::scene::block_point_parameter::parameters(
+                            &tab.scene.document,
+                            session.br_handle,
+                        )
+                        .into_iter()
+                        .filter_map(|(_, parameter)| {
+                            let project = |point: codec::types::Vector3| {
+                                let point = tab.scene.camera.borrow().project(
+                                    glam::DVec3::new(point.x, point.y, point.z),
+                                    vp_bounds,
+                                )?;
+                                (point.x.is_finite() && point.y.is_finite()).then_some(
+                                    iced::Point::new(vp_bounds.x + point.x, vp_bounds.y + point.y),
+                                )
+                            };
+                            Some((
+                                project(parameter.parameter.definition_point)?,
+                                project(parameter.definition_label_point)?,
+                                parameter.position_name.clone(),
+                                vp_bounds,
+                            ))
+                        })
+                        .collect()
+                    })
+                    .unwrap_or_default();
             crate::ui::overlay::selection_overlay(
                 std::sync::Arc::clone(&tab.scene.selection),
                 snap_info,
@@ -1112,6 +1140,7 @@ bg={bg_ms:.1}ms n={view_count}"
                     .map(|kind| crate::t!(kind.label()).into_owned()),
                 constraint_cursor_badge,
                 authoring_visibility,
+                authoring_points,
             )
         };
 

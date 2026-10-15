@@ -575,6 +575,9 @@ impl OpenCADStudio {
                     return task;
                 }
             }
+            result @ CmdResult::PlaceBlockPointParameter { .. } => {
+                return self.handle_place_block_point_parameter(result);
+            }
             CmdResult::PlaceBlockVisibilityParameter {
                 document_id,
                 definition,

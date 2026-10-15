@@ -978,6 +978,7 @@ pub fn selection_overlay<'a>(
     constraint_glyph_tooltip: Option<String>,
     constraint_cursor_badge: Option<String>,
     authoring_visibility: Option<(Point, String, iced::Rectangle)>,
+    authoring_points: Vec<(Point, Point, String, iced::Rectangle)>,
 ) -> Element<'a, Message> {
     canvas(SelectionCanvas {
         selection,
@@ -1007,6 +1008,7 @@ pub fn selection_overlay<'a>(
         constraint_glyph_tooltip,
         constraint_cursor_badge,
         authoring_visibility,
+        authoring_points,
     })
     .width(Length::Fill)
     .height(Length::Fill)
@@ -1084,6 +1086,7 @@ struct SelectionCanvas {
     /// participates in an enabled geometric constraint.
     constraint_cursor_badge: Option<String>,
     authoring_visibility: Option<(Point, String, iced::Rectangle)>,
+    authoring_points: Vec<(Point, Point, String, iced::Rectangle)>,
 }
 
 /// The move gizmo: an arrow per axis (X red, Y green, Z blue) from the
@@ -2319,6 +2322,29 @@ impl canvas::Program<Message> for SelectionCanvas {
                 frame.fill_text(canvas::Text {
                     content: label.clone(),
                     position: Point::new(point.x + 10.0, point.y - 9.0),
+                    color,
+                    size: iced::Pixels(13.0),
+                    ..Default::default()
+                });
+            });
+        }
+        for (point, label_point, label, clip) in &self.authoring_points {
+            frame.with_clip(*clip, |frame| {
+                let color = theme.palette().primary.base.color;
+                frame.stroke(
+                    &canvas::Path::line(*point, *label_point),
+                    canvas::Stroke::default().with_color(color),
+                );
+                frame.fill(
+                    &canvas::Path::rectangle(
+                        Point::new(point.x - 3.0, point.y - 3.0),
+                        iced::Size::new(6.0, 6.0),
+                    ),
+                    color,
+                );
+                frame.fill_text(canvas::Text {
+                    content: label.clone(),
+                    position: Point::new(label_point.x + 8.0, label_point.y - 9.0),
                     color,
                     size: iced::Pixels(13.0),
                     ..Default::default()

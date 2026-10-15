@@ -10,10 +10,9 @@
 //! no copy until another state is picked for it.
 
 use codec::objects::{
-    BlockElement, BlockEvalExpression, BlockEvalValue, BlockEvaluationEdge, BlockEvaluationGraph,
-    BlockEvaluationNode, BlockGrip, BlockGripExpression, BlockParameterPropertyInfo,
-    BlockRepresentationData, BlockVisibilityParameter, BlockVisibilityState, DynamicBlockData,
-    DynamicBlockObject, ObjectType,
+    BlockElement, BlockEvalExpression, BlockEvalValue, BlockGrip, BlockGripExpression,
+    BlockParameterPropertyInfo, BlockRepresentationData, BlockVisibilityParameter,
+    BlockVisibilityState, DynamicBlockData, ObjectType,
 };
 use codec::types::Vector3;
 use codec::xdata::{ExtendedDataRecord, XDataValue};
@@ -21,16 +20,7 @@ use codec::{CadDocument, EntityType, Handle};
 
 use super::Scene;
 
-const ELEMENT_TAG: &str = "AcDbBlockRepETag";
-const REPRESENTATION_TAG: &str = "AcDbBlockRepBTag";
-const TRUE_NAME: &str = "AcDbDynamicBlockTrueName";
-const GUID: &str = "AcDbDynamicBlockGUID";
-
-/// Object version the parameter, grip and expressions carry.
-const MAJOR: i32 = 33;
-const MINOR: i32 = 329;
-/// Value code of an expression that holds no value.
-const NO_VALUE: i16 = -9999;
+use super::block_authoring::*;
 
 impl Scene {
     /// BVMODE and BVSHOW picking reveal only state-controlled members of BEDIT.
@@ -94,67 +84,6 @@ const CLASSES: &[(&str, &str, i32)] = &[
     ),
 ];
 
-/// Register the classes with the flags and versions the reference writes
-/// for them; a reader takes a class registered otherwise for a proxy.
-fn register_classes(document: &mut CadDocument) {
-    for &(dxf_name, cpp_class_name, maintenance_version) in CLASSES {
-        if let Some(existing) = document.classes.get_mut_by_name(dxf_name) {
-            existing.proxy_flags = codec::classes::ProxyFlags(1153);
-            existing.dwg_version = 25;
-            existing.maintenance_version = maintenance_version;
-            continue;
-        }
-        document.classes.add_or_update(codec::classes::DxfClass {
-            dxf_name: dxf_name.to_string(),
-            cpp_class_name: cpp_class_name.to_string(),
-            application_name: "ObjectDBX Classes".to_string(),
-            proxy_flags: codec::classes::ProxyFlags(1153),
-            instance_count: 0,
-            was_zombie: false,
-            is_an_entity: false,
-            class_number: 0,
-            item_class_id: 0x1F3,
-            dwg_version: 25,
-            maintenance_version,
-            unknown1: 0,
-            unknown2: 0,
-        });
-    }
-}
-
-fn ensure_app_id(document: &mut CadDocument, name: &str) {
-    if !document.app_ids.contains(name) {
-        let mut app = codec::tables::AppId::new(name);
-        app.handle = document.allocate_handle();
-        let _ = document.app_ids.add(app);
-    }
-}
-
-fn expression(node_id: i32, value_code: i16, value: BlockEvalValue) -> BlockEvalExpression {
-    BlockEvalExpression {
-        parent_id: BlockEvalExpression::NO_PARENT,
-        major: MAJOR,
-        minor: MINOR,
-        value_code,
-        value,
-        node_id,
-    }
-}
-
-fn dynamic(
-    handle: Handle,
-    owner: Handle,
-    dxf_name: &str,
-    cpp_class_name: &str,
-    data: DynamicBlockData,
-) -> DynamicBlockObject {
-    let mut object = DynamicBlockObject::new(dxf_name, cpp_class_name);
-    object.handle = handle;
-    object.owner = owner;
-    object.data = data;
-    object
-}
-
 /// The visibility parameter of block definition `definition`.
 pub fn parameter(document: &CadDocument, definition: Handle) -> Option<&BlockVisibilityParameter> {
     document.block_visibility_param_for_def(definition)
@@ -185,135 +114,13 @@ pub(crate) fn replace_states(
     tag_members(document, definition);
 }
 
-/// The objects of a definition, block begin and end left out.
-fn members(document: &CadDocument, definition: Handle) -> Vec<Handle> {
-    document
-        .block_records
-        .iter()
-        .find(|record| record.handle == definition)
-        .map(|record| {
-            record
-                .entity_handles
-                .iter()
-                .copied()
-                .filter(|handle| {
-                    !matches!(
-                        document.get_entity(*handle),
-                        None | Some(EntityType::Block(_) | EntityType::BlockEnd(_))
-                    )
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn element_tag(id: i32, handle: Handle) -> ExtendedDataRecord {
-    let mut tag = ExtendedDataRecord::new(ELEMENT_TAG);
-    tag.add_value(XDataValue::Integer16(1));
-    tag.add_value(XDataValue::Integer32(id));
-    tag.add_value(XDataValue::Handle(handle));
-    tag
-}
-
-fn element_id(entity: &EntityType) -> Option<i32> {
-    entity
-        .common()
-        .extended_data
-        .get_record(ELEMENT_TAG)?
-        .values
-        .iter()
-        .find_map(|value| match value {
-            XDataValue::Integer32(id) => Some(*id),
-            _ => None,
-        })
-}
-
-fn set_entity_tag(document: &mut CadDocument, handle: Handle, record: ExtendedDataRecord) {
-    let app = document
-        .app_ids
-        .get(&record.application_name)
-        .map(|app| app.handle.value());
-    if let Some(entity) = document.get_entity_mut(handle) {
-        let xdata = &mut entity.common_mut().extended_data;
-        // The fresh record, not bytes kept from a read, is what gets written.
-        if let Some(app) = app {
-            xdata.raw_dwg_eed.retain(|(owner, _)| *owner != app);
-        }
-        xdata.upsert_record(record);
-    }
-}
-
-/// Give every object of the definition its element tag, numbering the new
-/// ones after the highest id in use, and record the next id on the block.
-fn tag_members(document: &mut CadDocument, definition: Handle) {
-    let members = members(document, definition);
-    let mut next = members
-        .iter()
-        .filter_map(|handle| document.get_entity(*handle).and_then(element_id))
-        .max()
-        .map_or(0, |id| id + 1);
-    for handle in members {
-        let id = match document.get_entity(handle).and_then(element_id) {
-            Some(id) => id,
-            None => {
-                next += 1;
-                next - 1
-            }
-        };
-        set_entity_tag(document, handle, element_tag(id, handle));
-    }
-    let mut tag = ExtendedDataRecord::new(ELEMENT_TAG);
-    tag.add_value(XDataValue::Integer16(1));
-    tag.add_value(XDataValue::Integer32(next));
-    document.set_object_xdata_record(definition, tag);
-}
-
-/// A registry-format GUID for a new dynamic block.
-fn new_guid() -> String {
-    let mut bytes = [0u8; 16];
-    if getrandom::fill(&mut bytes).is_err() {
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |elapsed| elapsed.as_nanos());
-        bytes = seed.to_le_bytes();
-    }
-    let hex: String = bytes.iter().map(|byte| format!("{byte:02X}")).collect();
-    format!(
-        "{{{}-{}-{}-{}-{}}}",
-        &hex[0..8],
-        &hex[8..12],
-        &hex[12..16],
-        &hex[16..20],
-        &hex[20..32]
-    )
-}
-
 /// Why another visibility parameter cannot be placed in this definition.
 /// Existing evaluation graphs must be composed, never replaced by a new graph.
 pub fn placement_error(document: &CadDocument, definition: Handle) -> Option<&'static str> {
     if parameter(document, definition).is_some() {
         return Some("This block already has a visibility parameter.");
     }
-    if !document
-        .block_records
-        .iter()
-        .any(|record| record.handle == definition)
-    {
-        return Some("The block definition is no longer available.");
-    }
-    if let Some(handle) = document.extension_dictionary_handle(definition) {
-        match document.objects.get(&handle) {
-            Some(ObjectType::Dictionary(dictionary)) => {
-                if dictionary.get("ACAD_ENHANCEDBLOCK").is_some() {
-                    return Some(
-                        "Adding Visibility to an existing authoring graph is not available yet.",
-                    );
-                }
-            }
-            _ => return Some("The block extension dictionary is unavailable."),
-        }
-    }
-    None
+    super::block_authoring::graph(document, definition).err()
 }
 
 /// Make block definition `definition` dynamic with a visibility parameter
@@ -330,18 +137,9 @@ pub fn create(document: &mut CadDocument, definition: Handle, location: Vector3)
     {
         return None;
     }
-    let name = document
-        .block_records
-        .iter()
-        .find(|record| record.handle == definition)?
-        .name
-        .clone();
-    register_classes(document);
-    for app in [ELEMENT_TAG, REPRESENTATION_TAG, TRUE_NAME, GUID] {
-        ensure_app_id(document, app);
-    }
-    let dictionary = document.ensure_extension_dictionary(definition);
-    let [graph, parameter, grip, x, y, preventer] = [(); 6].map(|_| document.allocate_handle());
+    let (graph, slots) = super::block_authoring::prepare(document, definition).ok()?;
+    register_classes(document, CLASSES);
+    let [parameter, grip, x, y] = [(); 4].map(|_| document.allocate_handle());
 
     store(
         document,
@@ -353,7 +151,7 @@ pub fn create(document: &mut CadDocument, definition: Handle, location: Vector3)
             eval_minor: MINOR,
             eval_value_code: NO_VALUE,
             eval_value: BlockEvalValue::None,
-            eval_node_id: 1,
+            eval_node_id: slots.eval,
             element_name: "Visibility State".to_string(),
             element_major: MAJOR,
             element_minor: MINOR,
@@ -367,7 +165,7 @@ pub fn create(document: &mut CadDocument, definition: Handle, location: Vector3)
                 BlockParameterPropertyInfo::default(),
                 BlockParameterPropertyInfo::default(),
             ],
-            property_info_count: 2,
+            property_info_count: slots.eval + 1,
             is_initialized: true,
             unknown_bool: false,
             all_blocks: Vec::new(),
@@ -384,14 +182,14 @@ pub fn create(document: &mut CadDocument, definition: Handle, location: Vector3)
         "AcDbBlockVisibilityGrip",
         DynamicBlockData::VisibilityGrip(BlockGrip {
             element: BlockElement {
-                eval: expression(2, NO_VALUE, BlockEvalValue::None),
+                eval: expression(slots.eval + 1, NO_VALUE, BlockEvalValue::None),
                 name: "Grip".to_string(),
                 major: MAJOR,
                 minor: MINOR,
                 eed_1071: 0,
             },
-            flags_91: 3,
-            flags_92: 4,
+            flags_91: slots.eval + 2,
+            flags_92: slots.eval + 3,
             location,
             insert_cycling: false,
             insert_cycling_weight: -1,
@@ -400,7 +198,10 @@ pub fn create(document: &mut CadDocument, definition: Handle, location: Vector3)
     document
         .objects
         .insert(grip, ObjectType::DynamicBlock(grip_object));
-    for (handle, node, axis) in [(x, 3, "UpdatedX"), (y, 4, "UpdatedY")] {
+    for (handle, node, axis) in [
+        (x, slots.eval + 2, "UpdatedX"),
+        (y, slots.eval + 3, "UpdatedY"),
+    ] {
         let component = dynamic(
             handle,
             graph,
@@ -408,7 +209,7 @@ pub fn create(document: &mut CadDocument, definition: Handle, location: Vector3)
             "AcDbBlockGripExpr",
             DynamicBlockData::GripLocationComponent(BlockGripExpression {
                 eval: expression(node, 40, BlockEvalValue::Real(0.0)),
-                grip_type: 1,
+                grip_type: slots.eval,
                 expression: axis.to_string(),
             }),
         );
@@ -416,76 +217,7 @@ pub fn create(document: &mut CadDocument, definition: Handle, location: Vector3)
             .objects
             .insert(handle, ObjectType::DynamicBlock(component));
     }
-    // The grip drives the parameter, whose position the two expressions
-    // read: node 0 the parameter, 1 the grip, 2 and 3 the expressions.
-    let node = |id: i32, expression: Handle, node_data: [i32; 4]| BlockEvaluationNode {
-        id,
-        edge_flags: 32,
-        next_id: id + 1,
-        expression,
-        node_data,
-        active_cycles: None,
-    };
-    let edge =
-        |id: i32, source_node: i32, destination_node: i32, outgoing_edges| BlockEvaluationEdge {
-            id,
-            next_id: 0,
-            incoming_edge: 1,
-            source_node,
-            destination_node,
-            outgoing_edges,
-        };
-    let mut graph_object = dynamic(
-        graph,
-        dictionary,
-        "ACAD_EVALUATION_GRAPH",
-        "AcDbEvalGraph",
-        DynamicBlockData::EvaluationGraph(BlockEvaluationGraph {
-            first_node_id: 4,
-            first_node_id_copy: 4,
-            nodes: vec![
-                node(0, parameter, [0, 0, 1, 2]),
-                node(1, grip, [-1, -1, 0, 0]),
-                node(2, x, [1, 1, -1, -1]),
-                node(3, y, [2, 2, -1, -1]),
-            ],
-            edges: vec![
-                edge(0, 1, 0, [-1; 5]),
-                edge(1, 0, 2, [-1, -1, -1, 2, -1]),
-                edge(2, 0, 3, [-1, -1, 1, -1, -1]),
-            ],
-        }),
-    );
-    graph_object.reactors.push(dictionary);
-    document
-        .objects
-        .insert(graph, ObjectType::DynamicBlock(graph_object));
-    let mut preventer_object = dynamic(
-        preventer,
-        dictionary,
-        "ACDB_DYNAMICBLOCKPURGEPREVENTER_VERSION",
-        "AcDbDynamicBlockPurgePreventer",
-        DynamicBlockData::Representation(BlockRepresentationData {
-            flags: 1,
-            block: definition,
-        }),
-    );
-    preventer_object.reactors.push(dictionary);
-    document
-        .objects
-        .insert(preventer, ObjectType::DynamicBlock(preventer_object));
-    if let Some(ObjectType::Dictionary(dictionary)) = document.objects.get_mut(&dictionary) {
-        dictionary.add_entry("ACAD_ENHANCEDBLOCK", graph);
-        dictionary.add_entry("AcDbDynamicBlockRoundTripPurgePreventer", preventer);
-    }
-
-    let mut true_name = ExtendedDataRecord::new(TRUE_NAME);
-    true_name.add_value(XDataValue::String(name));
-    document.set_object_xdata_record(definition, true_name);
-    let mut guid = ExtendedDataRecord::new(GUID);
-    guid.add_value(XDataValue::String(new_guid()));
-    document.set_object_xdata_record(definition, guid);
-    tag_members(document, definition);
+    super::block_authoring::append(document, graph, slots, [parameter, grip, x, y]);
     Some(parameter)
 }
 

@@ -553,7 +553,12 @@ impl Scene {
             let _ = self.sync_displayed_annotation_context(handle);
         }
         let parameter_changes =
-            super::block_visibility::reframe(&mut self.document, block_record, local_from_old);
+            super::block_visibility::reframe(&mut self.document, block_record, local_from_old)
+                + super::block_point_parameter::reframe(
+                    &mut self.document,
+                    block_record,
+                    local_from_old,
+                );
         if !changed.is_empty() || parameter_changes > 0 {
             self.rebuild_derived_caches();
         }
