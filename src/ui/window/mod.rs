@@ -17,6 +17,7 @@ pub mod drawing_units;
 pub mod field_dialog;
 pub mod find_replace;
 pub mod geometric_tolerance;
+pub mod import_dialogs;
 pub mod gradient_editor;
 pub mod graphic_attributes;
 pub mod layer_state_manager;

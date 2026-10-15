@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::io::Read;
 
 use super::model::{
-    arc_cubics, dgn_color_table, paths_bounds, Path, PathBuilder, Segment, Sheet, SubPath, Text,
-    DGN_DEFAULT_COLORS,
+    arc_cubics, dgn_color_table, paths_bounds, scaled_elements, DgnCollector, DgnElement, DgnGeom,
+    DgnImport, Path, PathBuilder, Segment, Sheet, SubPath, Text, DGN_DEFAULT_COLORS,
 };
 
 // ── Compound file ───────────────────────────────────────────────────────────
@@ -392,6 +392,8 @@ struct Raw {
     paths: Vec<Path>,
     texts: Vec<Text>,
     instances: Vec<Instance>,
+    /// The same run element by element, for DGNIMPORT.
+    elements: Vec<DgnElement>,
 }
 
 #[derive(Clone)]
@@ -551,11 +553,21 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
         let q = xf_vector(xf, v);
         [q[0], q[1]]
     };
-    for e in run {
+    let mut collect = DgnCollector::default();
+    for (index, e) in run.iter().enumerate() {
         if e.len() < 104 || styles.hidden.contains(&u32_at(e, 12).unwrap_or(0)) {
             continue;
         }
         let color = styles.color(e);
+        // Colour and weight words: 0xFFFFFFFF takes the level's; line style
+        // 0x7FFFFFFF (or 0xFFFFFFFF).
+        let element = |geom: DgnGeom| DgnElement {
+            level: u32_at(e, 12).unwrap_or(0),
+            color: (u32_at(e, 52) != Some(u32::MAX)).then_some(color),
+            weight: u32_at(e, 48).filter(|w| *w != u32::MAX).map(|w| w & 31),
+            style: u32_at(e, 44).filter(|s| *s != u32::MAX && *s != 0x7FFF_FFFF),
+            geom,
+        };
         let stroke = Some((color, -1.0));
         let d3 = is_3d(e);
         // A point: x, y (and z in a 3D element).
@@ -567,8 +579,20 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
             ])
         };
         match kind(e) {
+            // A text node: grouped when its count is followed by that many
+            // text components.
+            7 => {
+                let n = u32_at(e, 104).unwrap_or(0) as usize;
+                let texts = run.get(index + 1..index + 1 + n).is_some_and(|parts| {
+                    parts.iter().all(|p| p.len() >= 104 && kind(p) == 17 && is_component(p))
+                });
+                if texts {
+                    collect.open(n, element(DgnGeom::TextNode(Vec::new())));
+                }
+            }
             12 | 14 => {
                 let n = u32_at(e, 104).unwrap_or(0) as usize;
+                collect.open(n, element(DgnGeom::Chain(Vec::new())));
                 if n > 0 {
                     let fill = (kind(e) == 14
                         && e.windows(4).any(|w| w == [0x07, 0x10, 0x41, 0x00]))
@@ -578,6 +602,7 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
             }
             3 => {
                 if let (Some(a), Some(b)) = (p3(104), p3(if d3 { 128 } else { 120 })) {
+                    collect.push(element(DgnGeom::Line(plan(a), plan(b))));
                     push(
                         &mut raw,
                         &mut complex,
@@ -600,6 +625,7 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     .map(plan)
                     .collect();
                 if pts.len() >= 2 {
+                    collect.push(element(DgnGeom::Points(pts.clone())));
                     let mut pb = PathBuilder::default();
                     pb.move_to(pts[0]);
                     for p in &pts[1..] {
@@ -675,6 +701,16 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     sweep
                 };
                 let closed = sweep.abs() >= std::f64::consts::TAU - 1e-9;
+                {
+                    let (pu, pv) = (axis(u), axis(v));
+                    collect.push(element(DgnGeom::Arc {
+                        center: plan(c),
+                        u: [a * pu[0], a * pu[1]],
+                        v: [b * pv[0], b * pv[1]],
+                        start,
+                        sweep,
+                    }));
+                }
                 push(
                     &mut raw,
                     &mut complex,
@@ -730,11 +766,20 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     continue;
                 }
                 let (height, width) = (height * 6.0 / 1000.0 * sv, width * 6.0 / 1000.0 * su);
+                let width_factor = if height > 0.0 { width / height } else { 1.0 };
+                collect.push(element(DgnGeom::Text {
+                    text: text.clone(),
+                    origin: plan(origin),
+                    height,
+                    width_factor,
+                    rotation: pu[1].atan2(pu[0]),
+                    font: None,
+                }));
                 raw.texts.push(Text {
                     text,
                     origin: plan(origin),
                     height,
-                    width_factor: if height > 0.0 { width / height } else { 1.0 },
+                    width_factor,
                     rotation: pu[1].atan2(pu[0]),
                     color,
                     font: "txt".to_string(),
@@ -756,6 +801,12 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     [m[3], m[4], m[5], o[1]],
                     [m[6], m[7], m[8], o[2]],
                 ];
+                collect.push(element(DgnGeom::Cell {
+                    name: name.clone(),
+                    m: [m[0], m[1], m[3], m[4]],
+                    origin: [o[0], o[1]],
+                    z_scale: m[8],
+                }));
                 raw.instances.push(Instance {
                     name: name.to_ascii_uppercase(),
                     xf: xf_compose(xf, &local),
@@ -775,6 +826,8 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
             fill,
         });
     }
+    collect.close();
+    raw.elements = collect.elements;
     raw
 }
 
@@ -921,6 +974,17 @@ pub fn model_names(bytes: &[u8]) -> Option<Vec<String>> {
 /// name and colour index. The default level (64) is listed as "0", as the
 /// reference names it.
 fn level_table(nm: &[&[u8]]) -> Vec<(u32, String, u32)> {
+    let mut out = level_table_raw(nm);
+    for (id, name, _) in &mut out {
+        if *id == 64 && name.eq_ignore_ascii_case("Default") {
+            *name = "0".to_string();
+        }
+    }
+    out
+}
+
+/// The level table with the file's own names.
+fn level_table_raw(nm: &[&[u8]]) -> Vec<(u32, String, u32)> {
     let mut out = Vec::new();
     let mut in_levels = false;
     for e in nm {
@@ -930,10 +994,7 @@ fn level_table(nm: &[&[u8]]) -> Vec<(u32, String, u32)> {
                 let (Some(id), Some(color)) = (u32_at(e, 32), u32_at(e, 72)) else {
                     continue;
                 };
-                let mut name = marked_string(e, 32).unwrap_or_default();
-                if id == 64 && name.eq_ignore_ascii_case("Default") {
-                    name = "0".to_string();
-                }
+                let name = marked_string(e, 32).unwrap_or_default();
                 out.push((id, name, color));
             }
             _ => {}
@@ -1070,6 +1131,93 @@ fn stored_range(graphics: &[&[u8]]) -> Option<[f64; 4]> {
         r = [r[0].min(x), r[1].min(y), r[2].max(x + w), r[3].max(y + h)];
     }
     (r[0] <= r[2]).then_some(r)
+}
+
+/// The short name of a unit of `metres` per unit ("m", "mm", "ft" …), empty
+/// for one without a common name.
+fn unit_name(metres: f64) -> String {
+    const NAMES: [(f64, &str); 8] = [
+        (1.0, "m"),
+        (0.001, "mm"),
+        (0.01, "cm"),
+        (1000.0, "km"),
+        (0.0254, "in"),
+        (0.3048, "ft"),
+        (0.9144, "yd"),
+        (1609.344, "mi"),
+    ];
+    NAMES
+        .iter()
+        .find(|(m, _)| (metres / m - 1.0).abs() < 1e-6)
+        .map(|(_, n)| n.to_string())
+        .unwrap_or_default()
+}
+
+/// The named model element by element (DGNIMPORT): in master units with
+/// the global origin at 0,0, shared cell definitions in master units, and
+/// every level by id with its own name and colour.
+pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
+    let cfb = Cfb::open(bytes)?;
+    let all = models(&cfb);
+    let (_, graphics, header) = all
+        .iter()
+        .find(|m| m.0.eq_ignore_ascii_case(name))
+        .or_else(|| all.first())?;
+    let non_model = non_model(&cfb);
+    let nm = elements(&non_model);
+    let colors = nm
+        .iter()
+        .find(|e| kind(e) == 5)
+        .and_then(|e| dgn_color_table(e, 37))
+        .unwrap_or_else(|| DGN_DEFAULT_COLORS.to_vec());
+    let table = level_table_raw(&nm);
+    let styles = Styles {
+        levels: table.iter().map(|l| (l.0, l.2)).collect(),
+        hidden: Default::default(),
+        extended: extended_colors(&cfb),
+        colors,
+    };
+    let levels = table
+        .iter()
+        .map(|(id, name, color)| {
+            let rgb = styles.colors.get(*color as usize).copied();
+            (*id, (name.clone(), rgb))
+        })
+        .collect();
+    let (per_unit, sub_uor) = units(header);
+    let s = 1.0 / per_unit;
+    let mut cells = Vec::new();
+    let mut i = 0;
+    while i < nm.len() {
+        if kind(nm[i]) == 34 && !is_component(nm[i]) {
+            let cell = marked_string(nm[i], 248).unwrap_or_default();
+            let mut j = i + 1;
+            while j < nm.len() && is_component(nm[j]) {
+                j += 1;
+            }
+            let def = read_run(&nm[i + 1..j], &styles, &IDENTITY).elements;
+            cells.push((cell, scaled_elements(&def, s, [0.0, 0.0])));
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    let raw = read_run(&elements(graphics), &styles, &IDENTITY);
+    let origin = global_origin(header);
+    // Unit definitions: numerator / denominator per metre, master at 4180,
+    // sub at 4196.
+    let metres = |at: usize| match (f64_at(header, at), f64_at(header, at + 8)) {
+        (Some(n), Some(d)) if n > 0.0 && d > 0.0 => unit_name(d / n),
+        _ => String::new(),
+    };
+    Some(DgnImport {
+        elements: scaled_elements(&raw.elements, s, [-origin[0] * s, -origin[1] * s]),
+        cells,
+        levels,
+        sub_per_master: per_unit / sub_uor,
+        unit_names: (metres(4180), metres(4196)),
+        v7: false,
+    })
 }
 
 #[cfg(test)]

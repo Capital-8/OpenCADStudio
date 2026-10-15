@@ -11,6 +11,7 @@ mod blocks;
 mod blockvars;
 mod bvisibility;
 mod count;
+mod dgn_import;
 mod dim;
 pub(crate) mod display;
 mod draw;
@@ -335,6 +336,9 @@ impl OpenCADStudio {
             return Some(t);
         }
         if let Some(t) = self.dispatch_xref_attach(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_import(cmd, i) {
             return Some(t);
         }
         if let Some(t) = self.dispatch_bvisibility(cmd, i) {
@@ -934,6 +938,9 @@ inventory::submit!(crate::command::CommandRegistration {
         "NEW",
         "QNEW",
         "OBJIMPORT",
+        "IMPORT",
+        "DGNIMPORT",
+        "-DGNIMPORT",
         "OPEN",
         "ORTHO",
         "P",

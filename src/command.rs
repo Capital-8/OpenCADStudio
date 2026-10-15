@@ -2272,6 +2272,8 @@ pub enum CmdResult {
     SetTexteditMode(bool),
     /// Return a resolved point back to a suspended parent command (e.g. MTP / M2P).
     ReturnPoint(DVec3),
+    /// Import a DGN model (DGNIMPORT); ends the command.
+    DgnImport(crate::modules::insert::dgn_import::DgnImportRequest),
 }
 
 /// What kind of value the active command is currently asking for. Drives

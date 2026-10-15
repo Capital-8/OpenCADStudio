@@ -48,6 +48,8 @@ impl OpenCADStudio {
             Some(K::PdfImportSettings) => crate::t!("PDF Import Settings").into_owned(),
             Some(K::Txt2MtxtSettings) => crate::tr!("txt2mtxt", "title"),
             Some(K::PdfImportFile) => crate::t!("Import PDF").into_owned(),
+            Some(K::ImportFile) => crate::t!("Import File").into_owned(),
+            Some(K::DgnImport) => crate::t!("DGN Import").into_owned(),
             Some(K::XrefAttach) => crate::t!("Attach External Reference").into_owned(),
             Some(K::WriteBlock) => crate::t!("Write Block").into_owned(),
             Some(K::GeometricTolerance) => crate::t!("Geometric Tolerance").into_owned(),
@@ -588,6 +590,19 @@ impl OpenCADStudio {
                 let state = self.pdf_import_file.as_ref()?;
                 sized_flow(ex, 960, 560, |flow| {
                     crate::ui::window::pdf_dialogs::view_import_file(state, flow)
+                })
+            }
+            super::super::ModalKind::ImportFile => {
+                let state = self.import_dialogs.file.as_ref()?;
+                let recent = &self.import_dialogs.recent;
+                sized_flow(ex, 960, 620, |flow| {
+                    crate::ui::window::import_dialogs::view_import_file(state, recent, flow)
+                })
+            }
+            super::super::ModalKind::DgnImport => {
+                let state = self.import_dialogs.dgn.as_ref()?;
+                sized_flow(ex, 900, 680, |flow| {
+                    crate::ui::window::import_dialogs::view_dgn_import(state, flow)
                 })
             }
             super::super::ModalKind::XrefAttach => {

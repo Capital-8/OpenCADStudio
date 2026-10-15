@@ -108,6 +108,8 @@ pub(super) const NAMES: &[&str] = &[
     "txt2mtxt_settings",
     "view_background",
     "image_adjust",
+    "import_file_dialog",
+    "dgn_import_dialog",
     "refedit_dialog",
     "pdf_layer_toggle",
     "pc_manager_toggle",
@@ -2160,6 +2162,90 @@ impl OpenCADStudio {
                     "reset" => Message::PdfDialog(P::BgReset),
                     _ => return Err(bad()),
                 }
+            }
+            // The Import File window, one field per call: "path=<file>",
+            // "format=<index or name>", "search=<text>", "filter=all|supported",
+            // "recent=<n>", "ok" or "cancel".
+            "import_file_dialog" => {
+                use crate::ui::window::import_dialogs::{ImportDialogMsg as I, FORMATS};
+                if self.active_modal != Some(crate::app::ModalKind::ImportFile) {
+                    return Err(failure("no_dialog", "The Import File window is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                if key == "cancel" {
+                    return Ok(Task::done(Message::CloseModal));
+                }
+                Message::ImportDialog(match key {
+                    "ok" => I::ImportOk,
+                    "path" => I::Path(value.to_string()),
+                    "search" => I::Search(value.to_string()),
+                    "filter" => I::OnlySupported(match value {
+                        "all" => false,
+                        "supported" => true,
+                        _ => return Err(bad()),
+                    }),
+                    "recent" => I::Recent(value.trim().parse().map_err(|_| bad())?),
+                    "format" => I::Format(match value.trim().parse::<usize>() {
+                        Ok(k) if k < FORMATS.len() => k,
+                        _ => FORMATS
+                            .iter()
+                            .position(|f| f.name.eq_ignore_ascii_case(value.trim()))
+                            .ok_or_else(bad)?,
+                    }),
+                    _ => return Err(bad()),
+                })
+            }
+            // The DGN Import window, one field per call: "path=<file>" (as
+            // Change… picks it), "model=<n>", "target=new|current",
+            // "conflict=prefix|ignore", "units=master|sub", "explode=on|off",
+            // "mapping=layer|linetype|lineweight|color", "ok" or "cancel".
+            "dgn_import_dialog" => {
+                use crate::ui::window::import_dialogs::ImportDialogMsg as I;
+                if self.active_modal != Some(crate::app::ModalKind::DgnImport) {
+                    return Err(failure("no_dialog", "The DGN Import window is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                let on = |v: &str| match v {
+                    "on" | "1" | "true" => Ok(true),
+                    "off" | "0" | "false" => Ok(false),
+                    _ => Err(bad()),
+                };
+                if key == "cancel" {
+                    return Ok(Task::done(Message::CloseModal));
+                }
+                Message::ImportDialog(match key {
+                    "ok" => I::DgnOk,
+                    "path" => I::DgnPicked(Some(value.to_string())),
+                    "model" => I::DgnModel(value.trim().parse().map_err(|_| bad())?),
+                    "target" => I::DgnCurrent(match value {
+                        "new" => false,
+                        "current" => true,
+                        _ => return Err(bad()),
+                    }),
+                    "conflict" => I::DgnPrefix(match value {
+                        "prefix" => true,
+                        "ignore" => false,
+                        _ => return Err(bad()),
+                    }),
+                    "units" => I::DgnSub(match value {
+                        "master" => false,
+                        "sub" => true,
+                        _ => return Err(bad()),
+                    }),
+                    "explode" => I::DgnExplode(on(value)?),
+                    "mapping" => I::DgnMappingTab(match value {
+                        "layer" => 0,
+                        "linetype" => 1,
+                        "lineweight" => 2,
+                        "color" => 3,
+                        _ => return Err(bad()),
+                    }),
+                    _ => return Err(bad()),
+                })
             }
             // The Image Adjust dialog, one field per call: "brightness=70",
             // "contrast=40", "fade=20" (the bar), "type=fade,abc" (typed into

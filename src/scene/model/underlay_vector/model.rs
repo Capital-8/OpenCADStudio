@@ -532,6 +532,182 @@ pub fn dgn_color_table(e: &[u8], first: usize) -> Option<Vec<[u8; 3]>> {
     Some(out)
 }
 
+/// A DGN element as drawing geometry (what DGNIMPORT converts): its level,
+/// symbology and shape, in the units of the run that read it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DgnElement {
+    /// Level number (V7) or id (V8).
+    pub level: u32,
+    /// Colour; `None` takes the level's.
+    pub color: Option<[u8; 3]>,
+    /// Weight 0-31; `None` takes the level's.
+    pub weight: Option<u32>,
+    /// Line style; `None` takes the level's.
+    pub style: Option<u32>,
+    pub geom: DgnGeom,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DgnGeom {
+    Line([f64; 2], [f64; 2]),
+    /// A line string, curve or B-spline (sampled), or a shape (its points
+    /// end where they start).
+    Points(Vec<[f64; 2]>),
+    /// An elliptical arc: the point at parameter t is
+    /// `center + cos t · u + sin t · v`, from `start` over `sweep` (radians).
+    Arc {
+        center: [f64; 2],
+        u: [f64; 2],
+        v: [f64; 2],
+        start: f64,
+        sweep: f64,
+    },
+    /// A complex chain or shape: its components in order.
+    Chain(Vec<DgnGeom>),
+    Text {
+        text: String,
+        origin: [f64; 2],
+        height: f64,
+        width_factor: f64,
+        rotation: f64,
+        /// Font number (V7); `None` when the file's font is not read.
+        font: Option<u32>,
+    },
+    /// A text node: its lines.
+    TextNode(Vec<DgnGeom>),
+    /// A shared cell instance: x' = m[0]·x + m[1]·y + origin.x,
+    /// y' = m[2]·x + m[3]·y + origin.y.
+    Cell {
+        name: String,
+        m: [f64; 4],
+        origin: [f64; 2],
+        /// Scale along z (1 in a 2D file).
+        z_scale: f64,
+    },
+}
+
+impl DgnGeom {
+    /// The geometry through x' = s·x + t (lengths scaled by `s`).
+    pub fn scaled(&self, s: f64, t: [f64; 2]) -> DgnGeom {
+        let p = |q: [f64; 2]| [q[0] * s + t[0], q[1] * s + t[1]];
+        let v = |q: [f64; 2]| [q[0] * s, q[1] * s];
+        match self {
+            DgnGeom::Line(a, b) => DgnGeom::Line(p(*a), p(*b)),
+            DgnGeom::Points(pts) => DgnGeom::Points(pts.iter().map(|q| p(*q)).collect()),
+            DgnGeom::Arc {
+                center,
+                u,
+                v: w,
+                start,
+                sweep,
+            } => DgnGeom::Arc {
+                center: p(*center),
+                u: v(*u),
+                v: v(*w),
+                start: *start,
+                sweep: *sweep,
+            },
+            DgnGeom::Chain(parts) => DgnGeom::Chain(parts.iter().map(|g| g.scaled(s, t)).collect()),
+            DgnGeom::TextNode(parts) => {
+                DgnGeom::TextNode(parts.iter().map(|g| g.scaled(s, t)).collect())
+            }
+            DgnGeom::Text {
+                text,
+                origin,
+                height,
+                width_factor,
+                rotation,
+                font,
+            } => DgnGeom::Text {
+                text: text.clone(),
+                origin: p(*origin),
+                height: height * s,
+                width_factor: *width_factor,
+                rotation: *rotation,
+                font: *font,
+            },
+            DgnGeom::Cell {
+                name,
+                m,
+                origin,
+                z_scale,
+            } => DgnGeom::Cell {
+                name: name.clone(),
+                m: *m,
+                origin: p(*origin),
+                z_scale: *z_scale,
+            },
+        }
+    }
+}
+
+/// Collects elements in file order, gathering the components of a complex
+/// chain, shape or text node into their header's element.
+#[derive(Default)]
+pub struct DgnCollector {
+    pub elements: Vec<DgnElement>,
+    /// The open complex element and how many components it still takes.
+    open: Option<(usize, DgnElement)>,
+}
+
+impl DgnCollector {
+    /// A complex chain or shape (or a text node) header with `count`
+    /// components.
+    pub fn open(&mut self, count: usize, header: DgnElement) {
+        self.close();
+        if count > 0 {
+            self.open = Some((count, header));
+        }
+    }
+
+    pub fn push(&mut self, element: DgnElement) {
+        if let Some((left, header)) = self.open.as_mut() {
+            if let DgnGeom::Chain(parts) | DgnGeom::TextNode(parts) = &mut header.geom {
+                parts.push(element.geom);
+            }
+            *left -= 1;
+            if *left == 0 {
+                self.close();
+            }
+            return;
+        }
+        self.elements.push(element);
+    }
+
+    /// Ends a complex element cut short with the components it has.
+    pub fn close(&mut self) {
+        if let Some((_, header)) = self.open.take() {
+            self.elements.push(header);
+        }
+    }
+}
+
+/// What DGNIMPORT reads from a model: its elements and the shared cells
+/// they place (in master units, the global origin at 0,0), the levels by
+/// number or id (name, colour) and the sub units per master unit.
+#[derive(Clone, Debug, Default)]
+pub struct DgnImport {
+    pub elements: Vec<DgnElement>,
+    pub cells: Vec<(String, Vec<DgnElement>)>,
+    pub levels: std::collections::HashMap<u32, (String, Option<[u8; 3]>)>,
+    pub sub_per_master: f64,
+    /// Master and sub unit names, when the file has them.
+    pub unit_names: (String, String),
+    /// A V7 file (its elements carry their own line style and weight).
+    pub v7: bool,
+}
+
+/// The elements through x' = s·x + t.
+pub fn scaled_elements(elements: &[DgnElement], s: f64, t: [f64; 2]) -> Vec<DgnElement> {
+    elements
+        .iter()
+        .map(|e| DgnElement {
+            geom: e.geom.scaled(s, t),
+            ..e.clone()
+        })
+        .collect()
+}
+
 /// A line of text the host draws with its own font.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Text {

@@ -610,6 +610,8 @@ pub(super) struct OpenCADStudio {
     underlay_layers: Option<crate::ui::window::pdf_dialogs::UnderlayLayersState>,
     pdf_import_settings: Option<crate::modules::insert::pdf_import::PdfImportSettings>,
     pdf_import_file: Option<crate::ui::window::pdf_dialogs::PdfImportFileState>,
+    /// IMPORT and DGNIMPORT windows.
+    import_dialogs: crate::ui::window::import_dialogs::ImportDialogs,
     /// The dialog Options was opened from; it comes back when Options closes.
     options_parent: Option<ModalKind>,
     /// Working copy of the Attach External Reference dialog; None while closed.
@@ -2273,6 +2275,10 @@ pub enum ModalKind {
     XrefHelp,
     /// Sheet set wizard, properties and sheet / subset forms.
     SheetSet,
+    /// IMPORT's Import File window.
+    ImportFile,
+    /// DGNIMPORT's DGN Import window.
+    DgnImport,
     /// Web: a crash-recovery autosave snapshot newer than the drawing's last
     /// save awaits a restore/discard decision. Distinct from the corrupt-file
     /// `RecoveryPrompt` — nothing is wrong with the drawing itself.
@@ -4547,6 +4553,8 @@ pub enum Message {
         std::path::PathBuf,
         Result<crate::scene::model::mesh_model::MeshModel, String>,
     ),
+    /// An edit in the Import File or DGN Import window.
+    ImportDialog(crate::ui::window::import_dialogs::ImportDialogMsg),
 }
 
 #[derive(Debug, Clone)]
@@ -4664,6 +4672,7 @@ impl OpenCADStudio {
             underlay_layers: None,
             pdf_import_settings: None,
             pdf_import_file: None,
+            import_dialogs: Default::default(),
             options_parent: None,
             xref_attach: None,
             wblock: None,
