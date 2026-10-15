@@ -389,6 +389,20 @@ impl OpenCADStudio {
         // creating or closing a tab), the contextual ribbon tab follows that
         // document's selection.
         let before = self.tabs.get(self.active_tab).map(|tab| tab.id);
+        // Pickers offer the catalog linetypes the drawing lacks; the one
+        // picked is loaded before it is assigned.
+        if let Message::LayerLinetypeSet(name)
+        | Message::LayerStateEditorLayerLinetype(_, name)
+        | Message::RibbonLinetypeChanged(name)
+        | Message::PropLinetypeChanged(name)
+        | Message::AttrEditorLinetype(name) = &msg
+        {
+            if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                if crate::io::linetypes::ensure_catalog_linetype(&mut tab.scene.document, name) {
+                    tab.scene.bump_geometry();
+                }
+            }
+        }
         let task = self.update_message(msg);
         self.restore_dynamic_ucs_after_command();
         self.sync_block_visibility_display();

@@ -1824,6 +1824,9 @@ impl OpenCADStudio {
                 let art = linetypes::extract_pattern(&lt.description);
                 ui::properties::LinetypeItem { name, art }
             })
+            .chain(super::layers::catalog_linetype_items(
+                &self.tabs[i].scene.document,
+            ))
             .collect();
         let text_style_names: Vec<String> = self.tabs[i]
             .scene

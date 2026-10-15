@@ -2315,7 +2315,7 @@ impl OpenCADStudio {
         // not inherit the previous tab's filter, and persisted entity
         // visibility remains independent (not an isolation session).
         self.tabs[i].scene.reset_transient_visibility();
-        crate::io::linetypes::populate_document(&mut self.tabs[i].scene.document);
+        crate::io::linetypes::repair_document(&mut self.tabs[i].scene.document);
         self.tabs[i].properties = PropertiesPanel::empty();
         // Seed the current table / multileader style from the file's
         // header so the ✓ marks the right one (text/dim/mline come from

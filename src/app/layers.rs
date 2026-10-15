@@ -157,6 +157,7 @@ impl OpenCADStudio {
                 let art = crate::io::linetypes::extract_pattern(&lt.description);
                 ui::properties::LinetypeItem { name, art }
             })
+            .chain(catalog_linetype_items(&self.tabs[i].scene.document))
             .collect();
         self.tabs[i].layers.sync_linetypes(lt_items.clone());
         self.ribbon.set_available_linetypes(lt_items);
@@ -246,4 +247,17 @@ impl OpenCADStudio {
             &active_table2,
         );
     }
+}
+
+/// The catalog linetypes the drawing lacks, offered after its own; a pick
+/// loads the one chosen (`ensure_catalog_linetype`).
+pub(super) fn catalog_linetype_items(
+    document: &codec::CadDocument,
+) -> impl Iterator<Item = ui::properties::LinetypeItem> {
+    crate::io::linetypes::catalog_missing_from(document)
+        .into_iter()
+        .map(|(name, description)| ui::properties::LinetypeItem {
+            name,
+            art: crate::io::linetypes::extract_pattern(&description),
+        })
 }

@@ -205,6 +205,11 @@ impl OpenCADStudio {
                             } else if name.eq_ignore_ascii_case("BYBLOCK") {
                                 Some(("ByBlock".to_string(), codec::types::Handle::NULL))
                             } else {
+                                // A catalog linetype loads on first use.
+                                crate::io::linetypes::ensure_catalog_linetype(
+                                    &mut self.tabs[i].scene.document,
+                                    name,
+                                );
                                 self.tabs[i]
                                     .scene
                                     .document

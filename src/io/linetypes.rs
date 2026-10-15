@@ -271,6 +271,40 @@ pub fn populate_document(doc: &mut CadDocument) {
     populate_document_from_source(doc, lin_source());
 }
 
+/// Repair the catalog linetypes `doc` already has (see
+/// [`populate_document_from_source`]) without adding any: an opened drawing
+/// keeps exactly its own linetypes, so a purged one stays purged.
+pub fn repair_document(doc: &mut CadDocument) {
+    populate_matching(doc, lin_source(), |_| false);
+}
+
+/// The catalog linetypes `doc` does not have, as (name, description): what a
+/// picker offers beside the drawing's own. Picking one loads it with
+/// [`ensure_catalog_linetype`].
+pub fn catalog_missing_from(doc: &CadDocument) -> Vec<(String, String)> {
+    static CATALOG: OnceLock<Vec<(String, String)>> = OnceLock::new();
+    CATALOG
+        .get_or_init(|| {
+            parse(lin_source())
+                .into_iter()
+                .map(|lt| (lt.name, lt.description))
+                .collect()
+        })
+        .iter()
+        .filter(|(name, _)| !doc.line_types.contains(name))
+        .cloned()
+        .collect()
+}
+
+/// Load catalog linetype `name` into `doc` when the drawing lacks it.
+/// Returns whether it was added.
+pub fn ensure_catalog_linetype(doc: &mut CadDocument, name: &str) -> bool {
+    !doc.line_types.contains(name)
+        && populate_matching(doc, lin_source(), |candidate| {
+            candidate.eq_ignore_ascii_case(name)
+        }) > 0
+}
+
 /// Add the linetypes of a caller-supplied `.lin` source, embedded shapes and
 /// text included, so the drawing draws them and a saved file carries them.
 /// Returns the number of definitions newly registered in the drawing.
@@ -280,6 +314,12 @@ pub fn populate_document(doc: &mut CadDocument) {
 /// and so saved) gets its shapes and text back when its dashes match the
 /// source's exactly.
 pub fn populate_document_from_source(doc: &mut CadDocument, source: &str) -> usize {
+    populate_matching(doc, source, |_| true)
+}
+
+/// [`populate_document_from_source`], adding only the missing linetypes
+/// `add` accepts by name; existing ones are repaired either way.
+fn populate_matching(doc: &mut CadDocument, source: &str, add: impl Fn(&str) -> bool) -> usize {
     let complex = parse_complex(source);
     let mut added = 0;
     for mut lt in parse(source) {
@@ -301,6 +341,9 @@ pub fn populate_document_from_source(doc: &mut CadDocument, source: &str) -> usi
                     }
                 }
             }
+            continue;
+        }
+        if !add(&lt.name) {
             continue;
         }
         if let Some(elements) = segments.and_then(|s| complex_elements(doc, s, &lt.elements)) {
