@@ -3,10 +3,11 @@
 //! its bounds.
 //!
 //! `mouse_area` reads such a pointer as gone: iced hands the layer below an
-//! overlay a levitating cursor, which has no position. An auto-hiding dock
-//! edge then hides as soon as one of its own dropdowns opens under the
-//! pointer, taking the dropdown with it. Here the cursor is landed before the
-//! bounds test, so only a pointer that really leaves the area exits it.
+//! overlay that wants the pointer an unavailable cursor, with no position. An
+//! auto-hiding dock edge then hid as soon as one of its own dropdowns opened
+//! under the pointer, taking the dropdown with it. Here an unavailable cursor
+//! keeps the last state, so only a pointer seen outside the bounds, or one
+//! that leaves the window, exits the area.
 
 use iced::advanced::layout::{self, Layout};
 use iced::advanced::widget::{self, tree, Tree, Widget};
@@ -99,10 +100,13 @@ impl Widget<Message, Theme, Renderer> for HoverZone<'_> {
             shell,
             viewport,
         );
-        // Unlike `mouse_area`, this runs for captured events too: a pointer
-        // move over a dropdown is captured by the dropdown but must still
-        // not read as leaving.
-        let hovered = cursor.land().is_over(layout.bounds());
+        // Unlike `mouse_area`, this runs for captured events too, and a
+        // cursor without a position (on an overlay) changes nothing.
+        let hovered = match (event, cursor.land()) {
+            (Event::Mouse(mouse::Event::CursorLeft), _) => false,
+            (_, mouse::Cursor::Available(p)) => layout.bounds().contains(p),
+            _ => return,
+        };
         let state = tree.state.downcast_mut::<State>();
         if hovered != state.hovered {
             state.hovered = hovered;

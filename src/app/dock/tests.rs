@@ -582,6 +582,81 @@ fn drive_view(app: &mut OpenCADStudio, at: iced::Point, events: &[iced::Event]) 
     }
 }
 
+/// The hover messages an open dropdown inside a hover zone (`zone`) or a
+/// `mouse_area` publishes as the pointer goes from the field onto the
+/// dropdown's list, then out of the area, each tagged with where the pointer
+/// was.
+fn hover_messages_over_an_open_dropdown(zone: bool) -> Vec<(&'static str, &'static str)> {
+    use crate::ui::dock::DockMsg;
+    use iced::widget::{button, column, container, mouse_area, text};
+    use iced_test::core::{mouse, shell, window};
+    use iced_test::runtime::user_interface::{Cache, UserInterface};
+    let view = || -> iced::Element<'static, Message> {
+        let field = button(text("ByLayer")).width(120).height(20);
+        // A pointer-wanting list, like a linetype combo's, under the field.
+        let list = button(column![text("Continuous"), text("Dashed")])
+            .on_press(Message::Dock(DockMsg::HoverEnd(crate::ui::dock::PanelId::Layers)))
+            .width(120)
+            .height(100);
+        let dd = iced_aw::DropDown::new(field, list, true)
+            .alignment(iced_aw::drop_down::Alignment::Bottom);
+        let area = container(dd).width(300).height(400);
+        let (enter, exit) = (
+            Message::Dock(DockMsg::HoverStay),
+            Message::Dock(DockMsg::HoverExit),
+        );
+        if zone {
+            crate::ui::hover_zone::hover_zone(area, enter, exit)
+        } else {
+            mouse_area(area).on_enter(enter).on_exit(exit).into()
+        }
+    };
+    let mut renderer = headless_renderer();
+    let mut cache = Cache::default();
+    let mut seen = Vec::new();
+    // On the field, on the open list (both inside the area), then outside.
+    for (place, x, y) in [
+        ("field", 60.0, 10.0),
+        ("list", 60.0, 70.0),
+        ("list", 60.0, 90.0),
+        ("outside", 500.0, 70.0),
+    ] {
+        let at = iced::Point::new(x, y);
+        let mut messages = Vec::new();
+        let mut ui = UserInterface::build(view(), VIEW_SIZE, cache, &mut renderer);
+        let _ = ui.update(
+            &window::Headless,
+            &shell::Waker::noop(),
+            &[iced::Event::Mouse(mouse::Event::CursorMoved { position: at })],
+            mouse::Cursor::Available(at),
+            &mut renderer,
+            &mut messages,
+        );
+        cache = ui.into_cache();
+        seen.extend(messages.into_iter().filter_map(|m| match m {
+            Message::Dock(DockMsg::HoverStay) => Some(("enter", place)),
+            Message::Dock(DockMsg::HoverExit) => Some(("exit", place)),
+            _ => None,
+        }));
+    }
+    seen
+}
+
+#[test]
+fn an_open_dropdown_in_a_hover_zone_does_not_read_as_leaving() {
+    with_stack(|| {
+        // The bug: a mouse area reads the pointer on the list as gone.
+        assert_eq!(
+            hover_messages_over_an_open_dropdown(false),
+            [("enter", "field"), ("exit", "list")]
+        );
+        assert_eq!(
+            hover_messages_over_an_open_dropdown(true),
+            [("enter", "field"), ("exit", "outside")]
+        );
+    });
+}
+
 #[test]
 fn docked_title_bar_double_click_floats_the_pallet_in_the_real_view() {
     // Building the real view is deeper than a default test thread's stack.
