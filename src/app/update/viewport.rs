@@ -1323,12 +1323,17 @@ impl OpenCADStudio {
                 .left_press_time
                 .map(|t| Instant::now().duration_since(t).as_millis())
                 .unwrap_or(u128::MAX);
-            // The delay keeps a click made while the mouse is still moving
-            // from turning into a drag; a press that has already travelled
-            // well past click jitter is a drag at once, or a fast flick
-            // released inside the delay read as a click. (#1808)
-            let dragged =
-                dist2 > 9.0 && (elapsed_ms >= POLY_START_DELAY_MS || dist2 > DRAG_START_FAST_PX2);
+            // Selection gestures need a wider dead zone than ordinary
+            // pointer clicks. In particular, a quick press/release with
+            // residual mouse motion must not start a freeform lasso.
+            // Keep the existing delay and reserve immediate dragging for
+            // an unmistakable movement (24 px); after the delay, require
+            // at least 12 px. Grip editing follows its separate path.
+            const SELECTION_DRAG_MIN_PX2: f32 = 12.0 * 12.0;
+            const SELECTION_DRAG_FAST_PX2: f32 = 24.0 * 24.0;
+            let dragged = dist2 > SELECTION_DRAG_MIN_PX2
+                && (elapsed_ms >= POLY_START_DELAY_MS
+                    || dist2 > SELECTION_DRAG_FAST_PX2);
             if !sel.input.left_dragging && dragged {
                 sel.input.left_dragging = true;
                 if self.pick_drag_rect {
