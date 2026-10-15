@@ -257,12 +257,25 @@ pub(crate) fn entity_type_matches(entity: &codec::EntityType, requested: &str) -
 
 /// One entity as JSON. Summary mode carries identity only, geometry adds the
 /// entity's defining values, and full also includes its world bounds.
-pub(crate) fn entity_json(e: &codec::EntityType, detail: &str) -> Value {
+///
+/// `custom_label` is the plugin-declared class label for the entity's XDATA
+/// class identity, if a live declaring plugin provides one; it surfaces as
+/// `display_type` ("`<Label>` (`<Native>`)"), while `type` stays the raw
+/// native name so existing scripts and filters keep working.
+pub(crate) fn entity_json(
+    e: &codec::EntityType,
+    detail: &str,
+    custom_label: Option<String>,
+) -> Value {
     use codec::EntityType as E;
     let c = e.common();
     let mut obj = json!({
         "handle": format!("{:X}", c.handle.value()),
         "type": crate::entities::names::ui_name(e),
+        "display_type": crate::plugin::entity_labels::display_type_title(
+            custom_label,
+            crate::entities::names::ui_name(e).to_string(),
+        ),
         "layer": c.layer,
     });
     if detail == "summary" {
@@ -1343,7 +1356,11 @@ impl OpenCADStudio {
             if near.is_some() && nearest.is_none() {
                 continue;
             }
-            let mut entity = entity_json(e, detail);
+            let mut entity = entity_json(
+                e,
+                detail,
+                crate::plugin::entity_labels::custom_entity_class_label(&self.disabled_plugins, e),
+            );
             if let Some(nearest) = nearest {
                 let object = entity.as_object_mut().expect("entity JSON object");
                 object.insert("distance".into(), json!(nearest.distance));
@@ -4318,5 +4335,43 @@ mod tests {
             .read_line(&mut banner2)
             .expect("second ready banner");
         assert!(banner2.contains("ready"), "{banner2}");
+    }
+
+    #[test]
+    fn entity_json_display_type_is_native_without_a_label() {
+        let entity = codec::EntityType::Point(codec::entities::Point::new());
+        let json = super::entity_json(&entity, "summary", None);
+        assert_eq!(json["type"], "Point");
+        assert_eq!(json["display_type"], "Point");
+    }
+
+    #[test]
+    fn entity_json_display_type_qualifies_the_label() {
+        let entity = codec::EntityType::Point(codec::entities::Point::new());
+        let json = super::entity_json(&entity, "summary", Some("Survey Point".to_string()));
+        assert_eq!(json["type"], "Point");
+        assert_eq!(json["display_type"], "Survey Point (Point)");
+    }
+
+    #[test]
+    fn query_reports_native_display_type_for_plugin_classed_entities() {
+        // End-to-end through the automation query surface: an entity stamped
+        // with a plugin class identity keeps the native display while no
+        // declaring plugin is loaded (labels activate only through the live
+        // plugin manager, which the test harness does not populate).
+        let mut app = super::OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        let mut entity = codec::EntityType::Point(codec::entities::Point::new());
+        let mut record = codec::xdata::ExtendedDataRecord::new("CVIFC");
+        record.add_value(codec::xdata::XDataValue::String(
+            "CVIFC-CLASS:POINTMARK".to_string(),
+        ));
+        entity.common_mut().extended_data.add_record(record);
+        app.tabs[i].scene.add_entity(entity);
+
+        let query = app.automation_op(r#"{"op":"query","type":"Point"}"#);
+        assert_eq!(query["entities"][0]["type"], "Point");
+        assert_eq!(query["entities"][0]["display_type"], "Point");
     }
 }

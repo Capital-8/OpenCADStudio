@@ -27,8 +27,11 @@
 /// `delete_xrecord` / `list_xrecords`). v9 appends the reference-only entity
 /// designation (`HostApi::set_reference_only`): display-only geometry a plugin
 /// still owns and refreshes while the built-in edit paths treat it like a
-/// locked layer.
-pub const API_VERSION: u32 = 9;
+/// locked layer. v10 appends `BuiltinPlugin::entity_classes`: plugin-declared
+/// XDATA class-identity display labels, folded into the registered manifest.
+/// Display-only; the host consults the declaration only while the declaring
+/// plugin is loaded, and entities without one keep their native type names.
+pub const API_VERSION: u32 = 10;
 
 /// Oldest plugin API major the current host still loads. This keeps previously
 /// compiled cdylibs usable as long as their vtable layout is a prefix of the
@@ -75,6 +78,35 @@ pub fn effective_max_api_version() -> u32 {
 /// `OCS_PLUGIN_MAX_API_VERSION`.
 pub fn host_accepts_plugin_version(plugin_major: u32) -> bool {
     plugin_major >= API_VERSION_MIN_SUPPORTED && plugin_major <= effective_max_api_version()
+}
+
+/// A plugin's declaration of the entity classes it identifies via XDATA,
+/// surfaced by the host as display-only type labels (the Properties panel
+/// title and the automation `display_type` field).
+///
+/// The split is deliberate: the *identity* is a stable class KEY stamped into
+/// the entity's XDATA (one string value per entity, e.g. `"MYAPP-CLASS:LINE"`)
+/// and round-trips with the drawing; the *display labels* live in this
+/// declaration, so they are plugin-localizable and fixable without rewriting
+/// drawings. The declaration is consulted only while the declaring plugin is
+/// loaded — a plugin that is not installed, disabled, failed to load, or whose
+/// process has died contributes nothing, and its entities display as their
+/// bare native type.
+///
+/// Declared through [`crate::host::BuiltinPlugin::entity_classes`] (API v10);
+/// see `docs/plugin-architecture.md` for the full convention.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EntityClasses {
+    /// XDATA application name whose records carry the class-identity keys
+    /// (e.g. `"CVIFC"`). Should be one of the manifest's `xdata_apps` so the
+    /// host knows the plugin writes under this id.
+    pub app_id: &'static str,
+    /// Prefix that marks a string XDATA value as a class-identity key
+    /// (e.g. `"CVIFC-CLASS:"`). The remainder of the value is the class key.
+    pub class_prefix: &'static str,
+    /// Class key → display label (e.g. `"LINE"` → `"Linear Element"`), in
+    /// declaration order. Display text never round-trips the drawing.
+    pub labels: &'static [(&'static str, &'static str)],
 }
 
 #[cfg(test)]

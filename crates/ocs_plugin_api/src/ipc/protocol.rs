@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::host::{CommandSource, CommandStep, HostSettingValue};
 use crate::manifest::ApiVersion;
-use crate::ribbon::owned::{OwnedPluginManifest, OwnedRibbonGroup};
+use crate::ribbon::owned::{OwnedEntityClasses, OwnedPluginManifest, OwnedRibbonGroup};
 
 pub use crate::host::PreviewWire;
 pub use codec::xdata::{ExtendedDataRecord, XDataValue};
@@ -307,6 +307,24 @@ impl From<&'static crate::manifest::PluginManifest> for OwnedPluginManifest {
             ribbon_order: m.ribbon_order,
             xdata_apps: m.xdata_apps.iter().map(|s| s.to_string()).collect(),
             command_prefixes: m.command_prefixes.iter().map(|s| s.to_string()).collect(),
+            // The declaration does not live on the static manifest struct (its
+            // layout is frozen ABI, shared by pointer with older cdylibs); the
+            // runner folds the API-v10 trait accessor in after conversion.
+            entity_classes: None,
+        }
+    }
+}
+
+impl From<&'static crate::manifest::EntityClasses> for OwnedEntityClasses {
+    fn from(c: &'static crate::manifest::EntityClasses) -> Self {
+        Self {
+            app_id: c.app_id.to_string(),
+            class_prefix: c.class_prefix.to_string(),
+            labels: c
+                .labels
+                .iter()
+                .map(|(key, label)| (key.to_string(), label.to_string()))
+                .collect(),
         }
     }
 }

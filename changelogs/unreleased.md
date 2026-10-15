@@ -52,6 +52,9 @@
 * **Selection Event Streaming:** Automation clients now receive real-time selection change notifications. *(Contributed by [@YsDirector](https://github.com/YsDirector))*
 * **Host API v8:** Added name-addressed `XRecord` CRUD operations on `HostApi`. *(Contributed by [@schoeller](https://github.com/schoeller))*
 
+#### Plugins
+* **Plugin-Declared Entity Class Labels (Host API v10):** Plugins can now give their XDATA-stamped entities human type names: the plugin stamps a stable class-identity key (e.g. `CVIFC-CLASS:LINE`) into entity XDATA and declares key → label mappings via the new `BuiltinPlugin::entity_classes()` manifest accessor; while the plugin is loaded, the Properties panel title and the records/automation `display_type` field show `<Label> (<Native>)` (e.g. "Linear Element (Line)"). Labels are display-only, resolved live from the loaded plugin set (not installed / disabled / dead process → bare native type), and never round-trip the drawing — identity keys do, so labels stay plugin-localizable without rewriting files. Raw schema fields (`type`, `dxf_name`, `record_type`) and the `LIST` command output are unchanged. *(Contributed by [@schoeller](https://github.com/schoeller))*
+
 ---
 
 ### 🐛 Bug Fixes

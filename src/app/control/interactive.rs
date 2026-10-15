@@ -191,7 +191,16 @@ impl OpenCADStudio {
                     .scene
                     .document
                     .get_entity(*handle)
-                    .map(|entity| entity_json(entity, &session.detail))
+                    .map(|entity| {
+                        entity_json(
+                            entity,
+                            &session.detail,
+                            crate::plugin::entity_labels::custom_entity_class_label(
+                                &self.disabled_plugins,
+                                entity,
+                            ),
+                        )
+                    })
             })
             .collect();
         let count = entities.len();
@@ -359,11 +368,11 @@ impl OpenCADStudio {
 
     /// `get_selection` — read-only snapshot of the active tab's selection
     /// (the read-back half of the `user_select` sampling flow). `handle`,
-    /// `type`, `layer` and `bounds` come straight from the `query` output so
-    /// clients share one parser; `text`/`value` expose the stripped and raw
-    /// strings for TEXT/MTEXT, and `block`/`position` identify an INSERT's
-    /// block definition and insertion point (null otherwise). Reads
-    /// `scene.selection` and never mutates it.
+    /// `type`, `display_type`, `layer` and `bounds` come straight from the
+    /// `query` output so clients share one parser; `text`/`value` expose the
+    /// stripped and raw strings for TEXT/MTEXT, and `block`/`position`
+    /// identify an INSERT's block definition and insertion point (null
+    /// otherwise). Reads `scene.selection` and never mutates it.
     pub(in crate::app) fn control_get_selection(&self) -> Value {
         let scene = &self.tabs[self.active_tab].scene;
         let entities: Vec<Value> = scene
@@ -371,10 +380,18 @@ impl OpenCADStudio {
             .iter()
             .filter_map(|handle| {
                 scene.document.get_entity(*handle).map(|entity| {
-                    let full = entity_json(entity, "full");
+                    let full = entity_json(
+                        entity,
+                        "full",
+                        crate::plugin::entity_labels::custom_entity_class_label(
+                            &self.disabled_plugins,
+                            entity,
+                        ),
+                    );
                     json!({
                         "handle": full["handle"],
                         "type": full["type"],
+                        "display_type": full["display_type"],
                         "layer": full["layer"],
                         "bounds": full["bounds"],
                         "text": full.get("text").cloned().unwrap_or(Value::Null),
