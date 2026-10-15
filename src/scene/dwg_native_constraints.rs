@@ -4075,6 +4075,7 @@ impl Scene {
         // writes, which happen on the local set during decode.
         self.bump_constraints_epoch();
         self.import_sweep_expression_links();
+        self.refresh_hidden_dynamic_dimensions();
     }
 
     /// Makes the standard associative graph match the live command model.

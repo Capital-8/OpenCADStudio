@@ -435,6 +435,13 @@ pub const DYNAMIC_DIMENSION_TEXT_PX: f32 = 12.0;
 /// dimensional constraint sits on an ordinary layer instead.
 pub(crate) const DYNAMIC_DIMENSION_LAYER: &str = "*ADSK_CONSTRAINTS";
 
+/// Whether `layer` holds dynamic dimensions. Drawings from the first
+/// parametric release keep them on `*LayerNameForDynamicConstraint`.
+pub(crate) fn is_dynamic_dimension_layer(layer: &str) -> bool {
+    layer.eq_ignore_ascii_case(DYNAMIC_DIMENSION_LAYER)
+        || layer.eq_ignore_ascii_case("*LayerNameForDynamicConstraint")
+}
+
 /// The text a dynamic dimension shows: CONSTRAINTNAMEFORMAT 0 = name,
 /// 1 = value, 2 = name=value, the value with its trailing zeros dropped
 /// (`d9=80`, `d1=111.8034`). A parameter defined by a formula shows the
@@ -2499,12 +2506,9 @@ impl super::Scene {
     /// form: on an ordinary layer instead of the reference's constraints
     /// layer, drawn with its style, plotted, never rescaled to the screen.
     pub(crate) fn dimension_is_annotational(&self, handle: Handle) -> bool {
-        self.document.get_entity(handle).is_some_and(|entity| {
-            !entity
-                .common()
-                .layer
-                .eq_ignore_ascii_case(DYNAMIC_DIMENSION_LAYER)
-        })
+        self.document
+            .get_entity(handle)
+            .is_some_and(|entity| !is_dynamic_dimension_layer(&entity.common().layer))
     }
 
     /// The document as written to a file: a dynamic dimension's screen-size
@@ -2669,7 +2673,24 @@ impl super::Scene {
     /// DYNCONSTRAINTDISPLAY 0 for all of them) and redraws the ones that
     /// changed.
     pub(crate) fn refresh_hidden_dynamic_dimensions(&mut self) {
-        let desired: rustc_hash::FxHashSet<Handle> = self
+        let linked: rustc_hash::FxHashSet<Handle> = self
+            .parametric_constraints
+            .iter()
+            .flat_map(|set| set.dimensions.values().copied())
+            .collect();
+        // A dynamic dimension whose constraint did not load cannot be driven
+        // or placed on screen; like a viewer, leave it undrawn.
+        let orphans: Vec<Handle> = self
+            .document
+            .entities()
+            .filter(|entity| {
+                matches!(entity, codec::EntityType::Dimension(_))
+                    && is_dynamic_dimension_layer(&entity.common().layer)
+                    && !linked.contains(&entity.common().handle)
+            })
+            .map(|entity| entity.common().handle)
+            .collect();
+        let mut desired: rustc_hash::FxHashSet<Handle> = self
             .parametric_constraints
             .iter()
             .flat_map(|set| {
@@ -2681,6 +2702,7 @@ impl super::Scene {
                 })
             })
             .collect();
+        desired.extend(orphans);
         if desired == self.hidden_dynamic_dimensions {
             return;
         }

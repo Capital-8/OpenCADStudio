@@ -7860,10 +7860,7 @@ fn radial_leader_tip(dim: &Dimension, text: Vector3) -> Vector3 {
 /// A dimensional constraint's dynamic dimension: the reference keeps it on
 /// its own hidden layer and draws it by its own rules.
 fn dynamic_constraint_dimension(dim: &Dimension) -> bool {
-    dim.base()
-        .common
-        .layer
-        .eq_ignore_ascii_case(crate::scene::parametric_constraints::DYNAMIC_DIMENSION_LAYER)
+    crate::scene::parametric_constraints::is_dynamic_dimension_layer(&dim.base().common.layer)
 }
 
 /// How far a radial leader runs out from the rim before its hook, and how

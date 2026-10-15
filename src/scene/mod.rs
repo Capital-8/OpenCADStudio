@@ -3098,6 +3098,11 @@ impl Scene {
     /// so only immutable geometry is transferred and re-stamped here. The
     /// optional interaction index is cached against the exact same `Arc`.
     pub fn install_prepared_open_geometry(&self, prepared: PreparedOpenGeometry) {
+        // The loader tessellated before the constraints were read, so its
+        // wires still hold the dynamic dimensions that must stay hidden.
+        if !self.hidden_dynamic_dimensions.is_empty() {
+            return;
+        }
         let block = self.model_space_block_handle();
         let scale = crate::scene::annotative::scale_handle_by_name(
             &self.document,
