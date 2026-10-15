@@ -208,8 +208,8 @@ fn catalog(
     column(entries.iter().map(|(label, icon)| {
         let visibility = tab == Tab::Parameters && *label == "Visibility";
         let point = tab == Tab::Parameters && *label == "Point";
-        let enabled =
-            (visibility && visibility_error.is_none()) || (point && point_error.is_none());
+        let distance = tab == Tab::Parameters && matches!(*label, "Linear" | "Polar" | "XY");
+        let enabled = (visibility && visibility_error.is_none()) || ((point || distance) && point_error.is_none());
         let base = if enabled {
             icons::semantic(icon, 28.0)
         } else {
@@ -232,20 +232,8 @@ fn catalog(
             base
         };
         let message = enabled.then(|| Message::RibbonToolClick {
-            tool_id: if point {
-                "BPARAMETER_POINT"
-            } else {
-                "BPARAMETER_VISIBILITY"
-            }
-            .into(),
-            event: crate::modules::ModuleEvent::Command(
-                if point {
-                    "BPARAMETER POINT"
-                } else {
-                    "BPARAMETER VISIBILITY"
-                }
-                .into(),
-            ),
+            tool_id: format!("BPARAMETER_{}", label.to_ascii_uppercase()),
+            event: crate::modules::ModuleEvent::Command(format!("BPARAMETER {}", label.to_ascii_uppercase())),
         });
         let description = if visibility {
             crate::t!(visibility_error
@@ -254,6 +242,8 @@ fn catalog(
         } else if point {
             crate::t!(point_error.unwrap_or("Place a point parameter and its position label."))
                 .into_owned()
+        } else if distance {
+            crate::t!(point_error.unwrap_or("Place the base point, endpoint, and dimension label. Creates one end grip; associate an action to change geometry.")).into_owned()
         } else {
             unavailable.to_string()
         };
@@ -262,6 +252,8 @@ fn catalog(
             container(entry).id("authoring-tool-visibility").into()
         } else if point {
             container(entry).id("authoring-tool-point").into()
+        } else if distance {
+            container(entry).id(match *label { "Linear" => "authoring-tool-linear", "Polar" => "authoring-tool-polar", _ => "authoring-tool-xy" }).into()
         } else {
             entry
         }

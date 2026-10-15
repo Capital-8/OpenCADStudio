@@ -575,6 +575,9 @@ impl OpenCADStudio {
                     return task;
                 }
             }
+            result @ CmdResult::PlaceBlockDistanceParameter { .. } => {
+                return self.handle_place_block_distance_parameter(result);
+            }
             result @ CmdResult::PlaceBlockPointParameter { .. } => {
                 return self.handle_place_block_point_parameter(result);
             }

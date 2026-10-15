@@ -1075,6 +1075,64 @@ bg={bg_ms:.1}ms n={view_count}"
                         .collect()
                     })
                     .unwrap_or_default();
+            let authoring_dimensions = tab
+                .active_block_edit_session()
+                .map(|session| {
+                    crate::scene::block_distance_parameter::parameters(
+                        &tab.scene.document,
+                        session.br_handle,
+                    )
+                    .iter()
+                    .filter_map(|parameter| {
+                        let project = |p: codec::types::Vector3| {
+                            let p = tab
+                                .scene
+                                .camera
+                                .borrow()
+                                .project(glam::DVec3::new(p.x, p.y, p.z), vp_bounds)?;
+                            (p.x.is_finite() && p.y.is_finite())
+                                .then_some(iced::Point::new(vp_bounds.x + p.x, vp_bounds.y + p.y))
+                        };
+                        let graphic = crate::scene::block_distance_parameter::graphic(parameter);
+                        let lines = graphic
+                            .lines
+                            .into_iter()
+                            .map(|[a, b]| Some([project(a)?, project(b)?]))
+                            .collect::<Option<Vec<_>>>()?;
+                        let labels = graphic
+                            .labels
+                            .into_iter()
+                            .map(|(point, label)| Some((project(point)?, label)))
+                            .collect::<Option<Vec<_>>>()?;
+                        let grips = graphic
+                            .grips
+                            .into_iter()
+                            .map(|(point, oriented)| {
+                                Some((
+                                    project(point)?,
+                                    if oriented {
+                                        Some(project(parameter.native.definition_base_point)?)
+                                    } else {
+                                        None
+                                    },
+                                ))
+                            })
+                            .collect::<Option<Vec<_>>>()?;
+                        Some(crate::ui::overlay::AuthoringDimension {
+                            lines,
+                            dimensions: graphic
+                                .dimensions
+                                .into_iter()
+                                .map(|[a, b]| Some([project(a)?, project(b)?]))
+                                .collect::<Option<Vec<_>>>()?,
+                            labels,
+                            grips,
+                            clip: vp_bounds,
+                        })
+                    })
+                    .collect()
+                })
+                .unwrap_or_default();
             crate::ui::overlay::selection_overlay(
                 std::sync::Arc::clone(&tab.scene.selection),
                 snap_info,
@@ -1141,6 +1199,7 @@ bg={bg_ms:.1}ms n={view_count}"
                 constraint_cursor_badge,
                 authoring_visibility,
                 authoring_points,
+                authoring_dimensions,
             )
         };
 

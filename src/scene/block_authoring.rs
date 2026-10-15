@@ -183,7 +183,8 @@ pub(super) fn prepare(
     Ok((handle, slots(None)?))
 }
 
-/// A one-point parameter, its XY/visibility grip and two position expressions.
+/// A parameter, its single grip and two position expressions. Supports one-point
+/// parameters and two-point parameters configured with one end grip.
 /// Graph node IDs, expression IDs and edge IDs are separate namespaces.
 pub(super) fn append(
     document: &mut CadDocument,

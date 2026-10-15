@@ -7,6 +7,66 @@ use codec::{CadDocument, EntityType, Handle};
 use iced::Task;
 
 impl OpenCADStudio {
+    pub(in crate::app) fn handle_place_block_distance_parameter(
+        &mut self,
+        result: crate::command::CmdResult,
+    ) -> Task<Message> {
+        let crate::command::CmdResult::PlaceBlockDistanceParameter {
+            document_id,
+            definition,
+            kind,
+            base,
+            end,
+            label,
+        } = result
+        else {
+            unreachable!()
+        };
+        let i = self.active_tab;
+        if self.tabs[i].id != document_id
+            || self.tabs[i]
+                .active_block_edit_session()
+                .map(|s| s.br_handle)
+                != Some(definition)
+        {
+            self.command_line.push_error(
+                crate::t!("The parameter's Block Editor session is no longer active.").as_ref(),
+            );
+            return Task::none();
+        }
+        let vector = |p: glam::DVec3| codec::types::Vector3::new(p.x, p.y, p.z);
+        if let Some(error) = self.parameter_placement_error(kind.name()).or_else(|| {
+            crate::scene::block_distance_parameter::points_error(
+                kind,
+                vector(base),
+                vector(end),
+                vector(label),
+            )
+        }) {
+            self.command_line.push_error(crate::t!(error).as_ref());
+            return Task::none();
+        }
+        self.push_undo_snapshot(i, &format!("{} parameter", kind.name()));
+        crate::scene::block_distance_parameter::create(
+            &mut self.tabs[i].scene.document,
+            definition,
+            kind,
+            vector(base),
+            vector(end),
+            vector(label),
+        )
+        .expect("validated parameter placement");
+        self.tabs[i].scene.bump_geometry();
+        self.tabs[i].dirty = true;
+        self.tabs[i].active_cmd = None;
+        self.tabs[i].scene.clear_preview_wire();
+        self.finish_pending_history(i);
+        self.refresh_properties();
+        self.command_line
+            .push_output(crate::tf!("{} parameter placed.", crate::t!(kind.name())).as_ref());
+        Task::none()
+    }
+
     pub(in crate::app) fn point_parameter_placement_error(&self) -> Option<&'static str> {
         self.parameter_placement_error("POINT")
     }
@@ -21,10 +81,16 @@ impl OpenCADStudio {
                 &tab.scene.document,
                 session.br_handle,
             ),
+            "LINEAR" | "L" | "POLAR" | "PO" | "XY" => {
+                crate::scene::block_distance_parameter::placement_error(
+                    &tab.scene.document,
+                    session.br_handle,
+                )
+            }
             "VISIBILITY" | "V" => {
                 visibility::placement_error(&tab.scene.document, session.br_handle)
             }
-            _ => Some("Only Point and Visibility parameter placement is currently supported."),
+            _ => Some("Supported parameter types: Point, Linear, Polar, XY, Visibility."),
         }
     }
 
@@ -267,6 +333,14 @@ impl OpenCADStudio {
                     return Some(Task::none());
                 };
                 let parameter_type = cmd.strip_prefix("BPARAMETER").unwrap().trim();
+                if let Some(kind) =
+                    crate::scene::block_distance_parameter::Kind::parse(parameter_type)
+                {
+                    let command = crate::modules::block_editor::distance_parameter::DistanceParameterCommand::new(self.tabs[i].id, block, kind);
+                    self.command_line.push_info(&command.prompt());
+                    self.tabs[i].active_cmd = Some(Box::new(command));
+                    return Some(Task::none());
+                }
                 if parameter_type.eq_ignore_ascii_case("POINT")
                     || parameter_type.eq_ignore_ascii_case("P")
                 {
@@ -285,7 +359,7 @@ impl OpenCADStudio {
                 {
                     self.command_line.push_error(
                         crate::t!(
-                            "Only Point and Visibility parameter placement is currently supported."
+                            "Supported parameter types: Point, Linear, Polar, XY, Visibility."
                         )
                         .as_ref(),
                     );

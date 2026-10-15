@@ -1514,6 +1514,15 @@ impl DimensionPreview {
 /// Returned by every `CadCommand` method to tell main.rs what to do.
 #[allow(dead_code)]
 pub enum CmdResult {
+    /// Place a native two-point parameter after its base, end and label picks.
+    PlaceBlockDistanceParameter {
+        document_id: u64,
+        definition: Handle,
+        kind: crate::scene::block_distance_parameter::Kind,
+        base: DVec3,
+        end: DVec3,
+        label: DVec3,
+    },
     /// Place a native Point parameter after both authoring picks complete.
     PlaceBlockPointParameter {
         document_id: u64,

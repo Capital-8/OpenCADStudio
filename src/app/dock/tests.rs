@@ -827,6 +827,42 @@ fn point_parameter_placement_starts_from_the_actual_palette_row() {
     });
 }
 
+#[test]
+fn distance_parameter_batch_starts_from_actual_palette_rows() {
+    with_stack(|| {
+        for (id, name) in [
+            ("authoring-tool-linear", "linear"),
+            ("authoring-tool-polar", "polar"),
+            ("authoring-tool-xy", "xy"),
+        ] {
+            let mut app = authoring_app();
+            let _ = app.dispatch_command("BAUTHORPALETTE");
+            let point = authoring_control(&app, id);
+            authoring_click(&mut app, point);
+            let i = app.active_tab;
+            let before = app.tabs[i].scene.document.clone();
+            for text in ["0.25,-0.15", "0.65,0.15"] {
+                let _ = app.update(Message::CommandInput(text.into()));
+                let _ = app.update(Message::CommandSubmit);
+                assert_eq!(app.tabs[i].scene.document, before);
+            }
+            let _ = app.update(Message::CommandInput("0.3,0.2".into()));
+            let _ = app.update(Message::CommandSubmit);
+            let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+            let found = crate::scene::block_distance_parameter::parameters(
+                &app.tabs[i].scene.document,
+                definition,
+            );
+            assert_eq!(found.len(), 1);
+            assert!(found[0].kind.name().eq_ignore_ascii_case(name));
+            assert_eq!(app.tabs[i].history.undo_stack.len(), 1);
+            assert!(app.tabs[i].scene.preview_wires.is_empty());
+            let _ = app.run_command_line("ZOOM E");
+            authoring_capture(&app, &format!("{name}-parameter-placed"));
+        }
+    });
+}
+
 fn authoring_app() -> OpenCADStudio {
     use codec::{
         entities::{Insert, Line},

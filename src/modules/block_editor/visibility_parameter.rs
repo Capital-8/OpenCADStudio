@@ -27,8 +27,10 @@ impl CadCommand for VisibilityParameterCommand {
 
     fn prompt(&self) -> String {
         if self.choosing_type {
-            crate::t!("BPARAMETER  Enter parameter type [Point/Visibility] <Visibility>:")
-                .into_owned()
+            crate::t!(
+                "BPARAMETER  Enter parameter type [Point/Linear/Polar/XY/Visibility] <Visibility>:"
+            )
+            .into_owned()
         } else {
             crate::t!("BPARAMETER  Specify visibility parameter location:").into_owned()
         }
@@ -38,6 +40,9 @@ impl CadCommand for VisibilityParameterCommand {
         if self.choosing_type {
             vec![
                 CmdOption::new(crate::t!("Point").as_ref(), "P"),
+                CmdOption::new(crate::t!("Linear").as_ref(), "L"),
+                CmdOption::new(crate::t!("Polar").as_ref(), "PO"),
+                CmdOption::new(crate::t!("XY").as_ref(), "XY"),
                 CmdOption::new(crate::t!("Visibility").as_ref(), "V"),
             ]
         } else {
@@ -60,16 +65,17 @@ impl CadCommand for VisibilityParameterCommand {
                 .to_ascii_uppercase()
                 .as_str()
             {
+                "L" | "LINEAR" => CmdResult::Dispatch("BPARAMETER LINEAR".into()),
+                "PO" | "POLAR" => CmdResult::Dispatch("BPARAMETER POLAR".into()),
+                "XY" => CmdResult::Dispatch("BPARAMETER XY".into()),
                 "P" | "POINT" => CmdResult::Dispatch("BPARAMETER POINT".into()),
                 "" | "V" | "VISIBILITY" => {
                     self.choosing_type = false;
                     CmdResult::NeedPoint
                 }
                 _ => CmdResult::ReportError(
-                    crate::t!(
-                        "Only Point and Visibility parameter placement is currently supported."
-                    )
-                    .into_owned(),
+                    crate::t!("Supported parameter types: Point, Linear, Polar, XY, Visibility.")
+                        .into_owned(),
                 ),
             },
         )

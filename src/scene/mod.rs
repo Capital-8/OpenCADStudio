@@ -12,6 +12,7 @@ pub mod block_service;
 pub mod block_visibility;
 pub(crate) mod block_authoring;
 pub(crate) mod block_point_parameter;
+pub(crate) mod block_distance_parameter;
 pub mod cache;
 pub mod compare;
 pub mod convert;

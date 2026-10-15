@@ -74,6 +74,150 @@ fn authored_points(app: &OpenCADStudio) -> Vec<codec::objects::BlockPointParamet
         .collect()
 }
 
+fn distance_parameter_count(app: &OpenCADStudio) -> usize {
+    let tab = &app.tabs[app.active_tab];
+    let definition = tab
+        .scene
+        .document
+        .block_records
+        .get("EDIT_ME")
+        .unwrap()
+        .handle;
+    crate::scene::block_distance_parameter::parameters(&tab.scene.document, definition).len()
+}
+
+#[test]
+fn distance_parameter_batch_three_picks_local_undo_redo_and_saved_parent_undo() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    for (index, kind) in ["LINEAR", "POLAR", "XY"].iter().enumerate() {
+        let before = app.tabs[i].scene.document.clone();
+        let _ = app.dispatch_command(&format!("BPARAMETER {kind}"));
+        feed(&mut app, "2,3");
+        feed(&mut app, "6,7");
+        assert_eq!(
+            app.tabs[i].scene.document, before,
+            "base and endpoint are preview only"
+        );
+        feed(&mut app, "1,8");
+        assert_eq!(distance_parameter_count(&app), index + 1);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), index + 1);
+        assert!(app.tabs[i].scene.preview_wires.is_empty());
+        app.undo_steps(1);
+        assert_eq!(distance_parameter_count(&app), index);
+        app.redo_steps(1);
+        assert_eq!(distance_parameter_count(&app), index + 1);
+    }
+    let _ = app.run_command_line("BPARAMETER POINT 0,0 1,1");
+    let _ = app.run_command_line("BPARAMETER VISIBILITY 0,0");
+    let editor = app.tabs[i].scene.document.clone();
+    let _ = app.dispatch_command("BTESTBLOCK");
+    assert!(app.tabs[app.active_tab]
+        .active_block_edit_session()
+        .is_none());
+    assert_eq!(
+        app.tabs[app.active_tab]
+            .scene
+            .document
+            .entities_in_block("EDIT_ME")
+            .count(),
+        1,
+        "parameters and their editor graphics add no drawing geometry"
+    );
+    assert_eq!(distance_parameter_count(&app), 3);
+    let _ = app.dispatch_command("BCLOSETESTBLOCK");
+    assert_eq!(app.active_tab, i);
+    assert_eq!(app.tabs[i].scene.document, editor);
+    let _ = app.run_command_line("UCS ORIGIN 1,2,0");
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    for p in
+        crate::scene::block_distance_parameter::parameters(&app.tabs[i].scene.document, definition)
+    {
+        assert_eq!(p.native.definition_base_point, Vector3::new(1.0, 1.0, 0.0));
+        assert_eq!(p.native.definition_end_point, Vector3::new(5.0, 5.0, 0.0));
+    }
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    assert_eq!(distance_parameter_count(&app), 3);
+    app.undo_steps(1);
+    assert_eq!(distance_parameter_count(&app), 0);
+    app.redo_steps(1);
+    assert_eq!(distance_parameter_count(&app), 3);
+}
+
+#[test]
+fn distance_parameter_cancel_chooser_invalid_endpoint_and_discard_are_safe() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let before = app.tabs[i].scene.document.clone();
+    for kind in ["Linear", "Polar", "XY"] {
+        for picks in 0..3 {
+            let _ = app.dispatch_command("BPARAMETER");
+            feed(&mut app, kind);
+            if picks > 0 {
+                feed(&mut app, "2,3");
+            }
+            if picks > 1 {
+                feed(&mut app, "6,7");
+            }
+            let _ = app.update(Message::CommandEscape);
+            assert_eq!(app.tabs[i].scene.document, before);
+            assert!(app.tabs[i].history.undo_stack.is_empty());
+        }
+        let _ = app.dispatch_command(&format!("BPARAMETER {kind}"));
+        feed(&mut app, "2,3");
+        feed(&mut app, "2,3");
+        assert_eq!(app.tabs[i].scene.document, before);
+        assert!(
+            app.tabs[i].active_cmd.is_some(),
+            "invalid endpoint can be retried"
+        );
+        feed(&mut app, "6,7");
+        feed(&mut app, "1,8");
+        assert_eq!(distance_parameter_count(&app), 1);
+        app.undo_steps(1);
+    }
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 1,1 2,2");
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    assert_eq!(distance_parameter_count(&app), 0);
+    let _ = app.dispatch_command("LINE");
+    for kind in ["LINEAR", "POLAR", "XY"] {
+        let _ = app.dispatch_command(&format!("BPARAMETER {kind}"));
+        assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+    }
+}
+
+#[test]
+fn distance_parameter_stale_context_and_invalid_result_do_not_start_history() {
+    use crate::scene::block_distance_parameter::Kind;
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let id = app.tabs[i].id;
+    let before = app.tabs[i].scene.document.clone();
+    for (document_id, end) in [
+        (id + 1, glam::DVec3::ONE),
+        (id, glam::DVec3::ZERO),
+        (id, glam::DVec3::splat(f64::NAN)),
+    ] {
+        let _ = app.handle_place_block_distance_parameter(
+            crate::command::CmdResult::PlaceBlockDistanceParameter {
+                document_id,
+                definition,
+                kind: Kind::Linear,
+                base: glam::DVec3::ZERO,
+                end,
+                label: glam::DVec3::ZERO,
+            },
+        );
+        assert_eq!(app.tabs[i].scene.document, before);
+        assert!(app.tabs[i].history.undo_stack.is_empty());
+    }
+}
+
 #[test]
 fn point_parameter_placement_two_picks_one_undo_and_repeated_names() {
     let (mut app, reference) = fixture();

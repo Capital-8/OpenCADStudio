@@ -946,7 +946,7 @@ impl canvas::Program<Message> for GridCanvas {
     }
 }
 
-pub fn selection_overlay<'a>(
+pub(crate) fn selection_overlay<'a>(
     selection: Arc<RefCell<SelectionState>>,
     snap: Option<(Point, SnapType)>,
     snap_ext_base: Option<Point>,
@@ -979,6 +979,7 @@ pub fn selection_overlay<'a>(
     constraint_cursor_badge: Option<String>,
     authoring_visibility: Option<(Point, String, iced::Rectangle)>,
     authoring_points: Vec<(Point, Point, String, iced::Rectangle)>,
+    authoring_dimensions: Vec<AuthoringDimension>,
 ) -> Element<'a, Message> {
     canvas(SelectionCanvas {
         selection,
@@ -1009,10 +1010,19 @@ pub fn selection_overlay<'a>(
         constraint_cursor_badge,
         authoring_visibility,
         authoring_points,
+        authoring_dimensions,
     })
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
+}
+
+pub(crate) struct AuthoringDimension {
+    pub lines: Vec<[Point; 2]>,
+    pub dimensions: Vec<[Point; 2]>,
+    pub labels: Vec<(Point, String)>,
+    pub grips: Vec<(Point, Option<Point>)>,
+    pub clip: iced::Rectangle,
 }
 
 struct SelectionCanvas {
@@ -1087,6 +1097,7 @@ struct SelectionCanvas {
     constraint_cursor_badge: Option<String>,
     authoring_visibility: Option<(Point, String, iced::Rectangle)>,
     authoring_points: Vec<(Point, Point, String, iced::Rectangle)>,
+    authoring_dimensions: Vec<AuthoringDimension>,
 }
 
 /// The move gizmo: an arrow per axis (X red, Y green, Z blue) from the
@@ -2349,6 +2360,82 @@ impl canvas::Program<Message> for SelectionCanvas {
                     size: iced::Pixels(13.0),
                     ..Default::default()
                 });
+            });
+        }
+        for dimension in &self.authoring_dimensions {
+            frame.with_clip(dimension.clip, |frame| {
+                let color = theme.palette().primary.base.color;
+                for [a, b] in &dimension.lines {
+                    frame.stroke(
+                        &canvas::Path::line(*a, *b),
+                        canvas::Stroke::default().with_color(color),
+                    );
+                }
+                for [a, b] in &dimension.dimensions {
+                    let dx = b.x - a.x;
+                    let dy = b.y - a.y;
+                    let length = dx.hypot(dy).max(1.0);
+                    let (x, y) = (dx / length, dy / length);
+                    for (point, sign) in [(a, 1.0), (b, -1.0)] {
+                        let tip = Point::new(point.x + sign * 7.0 * x, point.y + sign * 7.0 * y);
+                        let arrow = canvas::Path::new(|path| {
+                            path.move_to(*point);
+                            path.line_to(Point::new(tip.x - 2.5 * y, tip.y + 2.5 * x));
+                            path.line_to(Point::new(tip.x + 2.5 * y, tip.y - 2.5 * x));
+                            path.close();
+                        });
+                        frame.fill(&arrow, color);
+                    }
+                }
+                for (point, label) in &dimension.labels {
+                    // Keep diagonal dimension lines from crossing the label.
+                    let background = Color::from_rgba(
+                        self.crosshair_bg[0],
+                        self.crosshair_bg[1],
+                        self.crosshair_bg[2],
+                        self.crosshair_bg[3],
+                    );
+                    frame.fill(
+                        &canvas::Path::rectangle(
+                            Point::new(point.x + 2.0, point.y - 19.0),
+                            iced::Size::new(label.chars().count() as f32 * 8.0 + 6.0, 19.0),
+                        ),
+                        background,
+                    );
+                    frame.fill_text(canvas::Text {
+                        content: label.clone(),
+                        position: Point::new(point.x + 5.0, point.y - 17.0),
+                        color,
+                        size: iced::Pixels(13.0),
+                        ..Default::default()
+                    });
+                }
+                for (point, base) in &dimension.grips {
+                    let marker = if let Some(base) = base {
+                        let dx = point.x - base.x;
+                        let dy = point.y - base.y;
+                        let length = dx.hypot(dy).max(1.0);
+                        let (x, y) = (dx / length, dy / length);
+                        canvas::Path::new(|path| {
+                            path.move_to(Point::new(point.x + 5.0 * x, point.y + 5.0 * y));
+                            path.line_to(Point::new(
+                                point.x - 4.0 * x - 4.0 * y,
+                                point.y - 4.0 * y + 4.0 * x,
+                            ));
+                            path.line_to(Point::new(
+                                point.x - 4.0 * x + 4.0 * y,
+                                point.y - 4.0 * y - 4.0 * x,
+                            ));
+                            path.close();
+                        })
+                    } else {
+                        canvas::Path::rectangle(
+                            Point::new(point.x - 3.0, point.y - 3.0),
+                            iced::Size::new(6.0, 6.0),
+                        )
+                    };
+                    frame.fill(&marker, color);
+                }
             });
         }
         // Draw + hover + tooltip all read the memoised entries' precomputed
