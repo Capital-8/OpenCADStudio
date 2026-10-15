@@ -628,6 +628,11 @@ impl OpenCADStudio {
                 return Some(Task::done(Message::ToggleQuickProperties));
             }
 
+            "BAUTHORPALETTE" | "BAUTHORPALETTECLOSE" => {
+                let open = cmd == "BAUTHORPALETTE" && !self.show_authoring_palettes;
+                return Some(self.dock_set_open(crate::ui::dock::PanelId::AuthoringPalettes, open));
+            }
+
             // ── TOOLPALETTES — not yet implemented ───────────────────────────────
             "TOOLPALETTES" => {
                 self.command_line.push_info(

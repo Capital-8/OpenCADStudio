@@ -3,6 +3,7 @@ pub mod alias_editor;
 pub mod annotation_data;
 pub mod attdef_dialog;
 pub mod attribute_editor;
+pub mod authoring_palettes;
 pub mod auto_constrain_settings;
 pub mod block_definition;
 pub mod block_edit_picker;

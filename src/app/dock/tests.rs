@@ -691,3 +691,300 @@ fn floating_menu_docks_and_allow_docking_keeps_a_drag_floating() {
         Some(DockSide::Left)
     );
 }
+
+fn authoring_app() -> OpenCADStudio {
+    use codec::{
+        entities::{Insert, Line},
+        types::Vector3,
+        EntityType,
+    };
+    let mut app = dock_app();
+    let i = app.active_tab;
+    app.tabs[i].scene.define_block_raw(
+        "AUTHOR",
+        Vector3::ZERO,
+        vec![EntityType::Line(Line::from_points(
+            Vector3::ZERO,
+            Vector3::UNIT_X,
+        ))],
+    );
+    let reference = app.tabs[i]
+        .scene
+        .document
+        .add_entity(EntityType::Insert(Insert::new("AUTHOR", Vector3::ZERO)))
+        .unwrap();
+    let _ = app.dispatch_command(&format!("BEDIT_BEGIN:{}", reference.value()));
+    app
+}
+
+#[test]
+fn authoring_palettes_ribbon_toggle_and_dock_close_leave_document_and_history_unchanged() {
+    use crate::ui::dock::{DockMsg, PanelId};
+    let mut app = authoring_app();
+    let i = app.active_tab;
+    let before = app.tabs[i].scene.document.clone();
+    let history = app.tabs[i].history.undo_stack.len();
+    let click = || Message::RibbonToolClick {
+        tool_id: "BAUTHORPALETTE".into(),
+        event: crate::modules::ModuleEvent::Command("BAUTHORPALETTE".into()),
+    };
+    let _ = app.update(click());
+    assert!(app.dock_panel_visible(PanelId::AuthoringPalettes));
+    assert!(app.ribbon.show_authoring_palettes);
+    assert!(app.dock.is_placed(PanelId::AuthoringPalettes));
+    let _ = app.update(click());
+    assert!(!app.dock_panel_visible(PanelId::AuthoringPalettes));
+    assert!(!app.ribbon.show_authoring_palettes);
+    let _ = app.dispatch_command("BAUTHORPALETTE");
+    let _ = app.on_dock(DockMsg::Close(PanelId::AuthoringPalettes));
+    assert!(!app.show_authoring_palettes);
+    assert!(!app.ribbon.show_authoring_palettes);
+    assert_eq!(app.tabs[i].scene.document, before);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), history);
+    assert!(!app.block_edit_dirty(i));
+}
+
+#[test]
+fn authoring_palettes_follow_editor_context_and_keep_the_docked_placement() {
+    use crate::app::config::DockSide;
+    use crate::ui::dock::{DockMsg, PanelId};
+    let mut app = authoring_app();
+    let _ = app.dispatch_command("BAUTHORPALETTE");
+    let _ = app.on_dock(DockMsg::DockTo(PanelId::AuthoringPalettes, DockSide::Left));
+    let placement = app.dock.location(PanelId::AuthoringPalettes);
+    let _ = app.dispatch_command("BTESTBLOCK");
+    assert!(!app.dock_panel_visible(PanelId::AuthoringPalettes));
+    let _ = app.dispatch_command("BCLOSETESTBLOCK");
+    assert!(app.dock_panel_visible(PanelId::AuthoringPalettes));
+    let _ = app.dispatch_command("BTESTBLOCK");
+    assert!(!app.dock_panel_visible(PanelId::AuthoringPalettes));
+    let _ = app.dispatch_command("BAUTHORPALETTECLOSE");
+    let _ = app.dispatch_command("BAUTHORPALETTE");
+    assert!(!app.show_authoring_palettes);
+    assert!(!app.dock_panel_visible(PanelId::AuthoringPalettes));
+    let _ = app.dispatch_command("BCLOSETESTBLOCK");
+    let _ = app.dispatch_command("BAUTHORPALETTE");
+    assert!(app.dock_panel_visible(PanelId::AuthoringPalettes));
+    assert_eq!(app.dock.location(PanelId::AuthoringPalettes), placement);
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    assert!(!app.dock_panel_visible(PanelId::AuthoringPalettes));
+    let _ = app.dispatch_command("BAUTHORPALETTECLOSE");
+    let _ = app.dispatch_command("BAUTHORPALETTE");
+    assert!(!app.show_authoring_palettes);
+}
+
+#[test]
+fn authoring_palettes_toggle_keeps_the_running_drawing_command() {
+    let mut app = authoring_app();
+    let _ = app.dispatch_command("LINE");
+    assert!(app.tabs[app.active_tab].active_cmd.is_some());
+    let _ = app.update(Message::RibbonToolClick {
+        tool_id: "BAUTHORPALETTE".into(),
+        event: crate::modules::ModuleEvent::Command("BAUTHORPALETTE".into()),
+    });
+    assert!(app.tabs[app.active_tab].active_cmd.is_some());
+    let _ = app.dispatch_command("BAUTHORPALETTECLOSE");
+    assert!(app.tabs[app.active_tab].active_cmd.is_some());
+}
+
+#[test]
+fn authoring_palettes_catalog_in_real_view_has_no_parameter_placement_action() {
+    with_stack(|| {
+        let mut app = authoring_app();
+        let _ = app.dispatch_command("BAUTHORPALETTE");
+        let point = find_in_view(&app, "Basepoint");
+        let before = app.tabs[app.active_tab].scene.document.clone();
+        drive_view(
+            &mut app,
+            point,
+            &[
+                iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)),
+                iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
+                    iced::mouse::Button::Left,
+                )),
+            ],
+        );
+        assert_eq!(app.tabs[app.active_tab].scene.document, before);
+        assert!(app.tabs[app.active_tab].active_cmd.is_none());
+    });
+}
+
+/// Locate rotated category controls by their stable widget IDs.
+fn authoring_control(app: &OpenCADStudio, id: &'static str) -> iced::Point {
+    use iced_test::core::widget;
+    use iced_test::runtime::user_interface::{Cache, UserInterface};
+    use iced_test::Selector;
+    let mut renderer = headless_renderer();
+    let mut ui = UserInterface::build(app.view_main(), VIEW_SIZE, Cache::default(), &mut renderer);
+    let mut find = widget::Id::new(id).find();
+    ui.operate(&renderer, &mut widget::operation::black_box(&mut find));
+    match widget::Operation::finish(&find) {
+        widget::operation::Outcome::Some(Some(target)) => {
+            target.visible_bounds().expect("visible").center()
+        }
+        _ => panic!("{id} not found"),
+    }
+}
+
+fn authoring_click(app: &mut OpenCADStudio, point: iced::Point) {
+    drive_view(
+        app,
+        point,
+        &[
+            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)),
+            iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
+                iced::mouse::Button::Left,
+            )),
+        ],
+    );
+}
+
+#[test]
+fn authoring_palettes_real_tabs_switch_catalogs_and_unavailable_rows_stay_inert() {
+    with_stack(|| {
+        use crate::ui::window::authoring_palettes::Tab;
+        let mut app = authoring_app();
+        let _ = app.dispatch_command("BAUTHORPALETTE");
+        let i = app.active_tab;
+        let before = app.tabs[i].scene.document.clone();
+        let history = app.tabs[i].history.undo_stack.len();
+        let _ = app.dispatch_command("LINE");
+        for (tab, row) in [
+            (Tab::Actions, "Block Properties Table"),
+            (Tab::ParameterSets, "Point Move"),
+            (Tab::Parameters, "Basepoint"),
+        ] {
+            let point = authoring_control(&app, tab.widget_id());
+            authoring_click(&mut app, point);
+            assert_eq!(app.authoring_palette_tab, tab);
+            authoring_capture(&app, tab.widget_id());
+            let point = find_in_view(&app, row);
+            authoring_click(&mut app, point);
+            if tab == Tab::ParameterSets {
+                let mut simulator = iced_test::Simulator::with_size(
+                    iced::Settings::default(),
+                    VIEW_SIZE,
+                    app.view_main(),
+                );
+                simulator.point_at(point);
+                simulator.simulate([iced::Event::Mouse(iced::mouse::Event::WheelScrolled {
+                    delta: iced::mouse::ScrollDelta::Lines { x: 0.0, y: -100.0 },
+                })]);
+                simulator
+                    .click("Lookup Set")
+                    .expect("last set is reachable by scrolling");
+                authoring_snapshot(&mut simulator, &app.active_theme, "parameter-sets-bottom");
+                let messages = simulator.into_messages().collect::<Vec<_>>();
+                for message in messages {
+                    let _ = app.update(message);
+                }
+            }
+            assert_eq!(
+                app.tabs[i]
+                    .active_cmd
+                    .as_ref()
+                    .map(|command| command.name()),
+                Some("LINE")
+            );
+        }
+        assert_eq!(app.tabs[i].scene.document, before);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), history);
+        assert!(!app.block_edit_dirty(i));
+    });
+}
+
+#[test]
+fn authoring_palettes_constraints_start_the_existing_commands_from_real_rows() {
+    with_stack(|| {
+        use crate::ui::window::authoring_palettes::Tab;
+        let mut app = authoring_app();
+        let _ = app.dispatch_command("BAUTHORPALETTE");
+        let point = authoring_control(&app, Tab::Constraints.widget_id());
+        authoring_click(&mut app, point);
+        assert_eq!(app.authoring_palette_tab, Tab::Constraints);
+        authoring_capture(&app, Tab::Constraints.widget_id());
+        // The palette row is distinct from the ribbon's Coincident button.
+        let point = authoring_control(&app, "authoring-tool-CCONSTRAINT");
+        authoring_click(&mut app, point);
+        assert_eq!(
+            app.tabs[app.active_tab]
+                .active_cmd
+                .as_ref()
+                .map(|command| command.name()),
+            Some("GCCOINCIDENT")
+        );
+        let messages = {
+            let mut simulator = iced_test::Simulator::with_size(
+                iced::Settings::default(),
+                VIEW_SIZE,
+                app.view_main(),
+            );
+            simulator.point_at(point);
+            simulator.simulate([iced::Event::Mouse(iced::mouse::Event::WheelScrolled {
+                delta: iced::mouse::ScrollDelta::Lines { x: 0.0, y: -100.0 },
+            })]);
+            simulator
+                .click(iced_test::core::widget::Id::new(
+                    "authoring-tool-DCDIAMETER",
+                ))
+                .expect("last dimensional constraint is reachable by scrolling");
+            authoring_snapshot(&mut simulator, &app.active_theme, "constraints-bottom");
+            simulator.into_messages().collect::<Vec<_>>()
+        };
+        for message in messages {
+            let _ = app.update(message);
+        }
+        assert_eq!(
+            app.tabs[app.active_tab]
+                .active_cmd
+                .as_ref()
+                .map(|command| command.name()),
+            Some("DCDIAMETER")
+        );
+        assert!(!app.block_edit_dirty(app.active_tab));
+    });
+}
+
+#[test]
+fn authoring_palettes_selected_page_survives_test_block_and_close_and_ignores_hidden_input() {
+    use crate::ui::window::authoring_palettes::Tab;
+    let mut app = authoring_app();
+    let _ = app.dispatch_command("BAUTHORPALETTE");
+    let _ = app.update(Message::AuthoringPaletteTabSelected(Tab::ParameterSets));
+    let _ = app.dispatch_command("BTESTBLOCK");
+    let _ = app.update(Message::AuthoringPaletteTabSelected(Tab::Constraints));
+    assert_eq!(app.authoring_palette_tab, Tab::ParameterSets);
+    let _ = app.dispatch_command("BCLOSETESTBLOCK");
+    assert_eq!(app.authoring_palette_tab, Tab::ParameterSets);
+    let _ = app.dispatch_command("BAUTHORPALETTECLOSE");
+    let _ = app.update(Message::AuthoringPaletteTabSelected(Tab::Actions));
+    assert_eq!(app.authoring_palette_tab, Tab::ParameterSets);
+    let _ = app.dispatch_command("BAUTHORPALETTE");
+    assert_eq!(app.authoring_palette_tab, Tab::ParameterSets);
+}
+
+/// Optional rendered evidence when reviewing palette layout changes.
+fn authoring_capture(app: &OpenCADStudio, name: &str) {
+    if std::env::var_os("OCS_AUTHORING_PALETTE_CAPTURES").is_none() {
+        return;
+    }
+    let mut simulator =
+        iced_test::Simulator::with_size(iced::Settings::default(), VIEW_SIZE, app.view_main());
+    authoring_snapshot(&mut simulator, &app.active_theme, name);
+}
+
+fn authoring_snapshot(
+    simulator: &mut iced_test::Simulator<'_, Message>,
+    theme: &iced::Theme,
+    name: &str,
+) {
+    let Some(directory) = std::env::var_os("OCS_AUTHORING_PALETTE_CAPTURES") else {
+        return;
+    };
+    let path = std::path::PathBuf::from(directory).join(format!("{name}.png"));
+    assert!(simulator
+        .snapshot(theme)
+        .expect("render palette")
+        .matches_image(path)
+        .expect("write palette evidence"));
+}

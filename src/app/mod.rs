@@ -948,6 +948,9 @@ pub(super) struct OpenCADStudio {
     graphic_attributes: crate::ui::window::graphic_attributes::GraphicAttributesState,
     /// Docked Insert Block panel visibility.
     pub(crate) show_block_palette: bool,
+    /// Authoring palette preference, visible only in a Block Editor session.
+    show_authoring_palettes: bool,
+    authoring_palette_tab: crate::ui::window::authoring_palettes::Tab,
     /// Node graph overlay over the viewport.
     pub(crate) show_node_graph: bool,
     /// Entity the Properties handlers act on instead of the selection, set
@@ -4148,6 +4151,7 @@ pub enum Message {
     /// A dock chrome interaction (grab/resize/pin/hover/dock move) on a side
     /// panel.
     Dock(crate::ui::dock::DockMsg),
+    AuthoringPaletteTabSelected(crate::ui::window::authoring_palettes::Tab),
     /// Open the paper-layout batch output dialog.
     PrintAllOpen,
     /// Toggle one paper layout in the batch.
@@ -4780,6 +4784,8 @@ impl OpenCADStudio {
             show_graphic_attributes: false,
             graphic_attributes: Default::default(),
             show_block_palette: false,
+            show_authoring_palettes: false,
+            authoring_palette_tab: Default::default(),
             show_node_graph: false,
             property_target_override: None,
             graph_undo_open: false,

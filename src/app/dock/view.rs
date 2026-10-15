@@ -36,6 +36,10 @@ impl OpenCADStudio {
                 // Checked = open and docked on this edge.
                 let checked: Vec<_> = crate::ui::dock::PanelId::ALL
                     .iter()
+                    .filter(|p| {
+                        **p != crate::ui::dock::PanelId::AuthoringPalettes
+                            || tab.active_block_edit_session().is_some()
+                    })
                     .map(|p| {
                         let here = self.dock.location(*p).map(|(s, _)| s) == Some(side);
                         (*p, here && self.dock_panel_visible(*p))
@@ -395,6 +399,13 @@ impl OpenCADStudio {
                         self.color_picker.as_ref().map(|picker| &picker.target),
                         Some(crate::app::ColorPickTarget::Gradient(_))
                     ),
+                )
+            }
+            crate::ui::dock::PanelId::AuthoringPalettes => {
+                crate::ui::window::authoring_palettes::view(
+                    self.authoring_palette_tab,
+                    width,
+                    chrome,
                 )
             }
             crate::ui::dock::PanelId::BlockPalette => {
@@ -886,44 +897,6 @@ fn dock_icon_ghost(icons: &[crate::ui::dock::PanelId]) -> Element<'static, Messa
         .into()
 }
 
-/// Canvas that draws a floating title bar's label, reading upward from the
-/// bar's bottom end.
-struct VBarLabel {
-    text: String,
-}
-
-impl canvas::Program<Message> for VBarLabel {
-    type State = ();
-
-    fn draw(
-        &self,
-        _state: &(),
-        renderer: &iced::Renderer,
-        theme: &Theme,
-        bounds: iced::Rectangle,
-        _cursor: iced::advanced::mouse::Cursor,
-    ) -> Vec<canvas::Geometry> {
-        let mut frame = canvas::Frame::new(renderer, bounds.size());
-        frame.with_save(|frame| {
-            frame.translate(iced::Vector::new(bounds.width / 2.0, bounds.height / 2.0));
-            frame.rotate(iced::Radians(-std::f32::consts::FRAC_PI_2));
-            // After the rotation the text runs along local +x (upward), so
-            // the bar's bottom end sits at -height/2.
-            frame.fill_text(canvas::Text {
-                content: self.text.clone(),
-                position: iced::Point::new(-bounds.height / 2.0, 0.0),
-                color: theme.palette().background.base.text.scale_alpha(0.72),
-                size: iced::Pixels(13.0),
-                align_x: iced::advanced::text::Alignment::Left,
-                align_y: iced::alignment::Vertical::Center,
-                shaping: iced::advanced::text::Shaping::Advanced,
-                ..Default::default()
-            });
-        });
-        vec![frame.into_geometry()]
-    }
-}
-
 /// Width of a floating panel's vertical title bar.
 const DOCK_FLOAT_BAR_W: f32 = 28.0;
 
@@ -974,7 +947,7 @@ fn floating_title_bar(
     } else {
         iced::widget::tooltip::Position::Right
     };
-    let title = canvas(VBarLabel {
+    let title = canvas(crate::ui::dock::VerticalLabel {
         text: t!(id.title()).into_owned(),
     })
     .width(Fill)

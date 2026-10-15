@@ -42,7 +42,7 @@ pub use perpendicular_command::{PerpendicularConstraintCommand, PerpendicularPic
 pub use point_on_entity::{
     center_point_tool, midpoint_tool, point_on_curve_tool, PointOnEntityConstraintCommand,
 };
-pub use smooth::SmoothConstraintCommand;
+pub use smooth::{smooth_tool, SmoothConstraintCommand};
 pub use symmetric_command::SymmetricConstraintCommand;
 pub use tangent_command::TangentConstraintCommand;
 pub use tools::{
@@ -89,11 +89,7 @@ impl CadModule for ParametricModule {
                         RibbonItem::LargeTool(tangent::tool()),
                         RibbonItem::LargeTool(colinear::tool()),
                         RibbonItem::LargeTool(perpendicular::tool()),
-                        RibbonItem::LargeTool(command(
-                            "GCSMOOTH",
-                            "Smooth",
-                            include_bytes!("../../../assets/icons/constrain/smooth.svg"),
-                        )),
+                        RibbonItem::LargeTool(smooth_tool()),
                         RibbonItem::LargeTool(concentric_tool::tool()),
                         RibbonItem::LargeTool(horizontal::tool()),
                         RibbonItem::LargeTool(symmetric::tool()),

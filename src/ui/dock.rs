@@ -106,6 +106,8 @@ pub enum PanelId {
     Properties,
     GraphicAttributes,
     BlockPalette,
+    /// Block Editor authoring tools.
+    AuthoringPalettes,
     ExternalReferences,
     /// Outline of the drawing's origin planes, open sketch and solid bodies.
     Browser,
@@ -123,10 +125,11 @@ pub enum PanelId {
 
 impl PanelId {
     /// Every panel, in the order the pallet menu lists them.
-    pub const ALL: [PanelId; 10] = [
+    pub const ALL: [PanelId; 11] = [
         PanelId::Properties,
         PanelId::GraphicAttributes,
         PanelId::BlockPalette,
+        PanelId::AuthoringPalettes,
         PanelId::ExternalReferences,
         PanelId::Browser,
         PanelId::NodeGraph,
@@ -142,6 +145,7 @@ impl PanelId {
             PanelId::Properties => "Properties",
             PanelId::GraphicAttributes => "Graphic Attributes",
             PanelId::BlockPalette => "Block Palette",
+            PanelId::AuthoringPalettes => "Authoring Palettes",
             PanelId::ExternalReferences => "External References",
             PanelId::Browser => "Browser",
             PanelId::NodeGraph => "Node Graph",
@@ -160,6 +164,7 @@ impl PanelId {
                 include_bytes!("../../assets/icons/graphic_attributes.svg")
             }
             PanelId::BlockPalette => include_bytes!("../../assets/icons/blocks/insert.svg"),
+            PanelId::AuthoringPalettes => include_bytes!("../../assets/icons/tool_palettes.svg"),
             PanelId::ExternalReferences => crate::ui::icons::FOLDER_OPEN,
             PanelId::Browser => include_bytes!("../../assets/icons/content_browser.svg"),
             PanelId::NodeGraph => crate::ui::icons::NODE_GRAPH,
@@ -176,6 +181,7 @@ impl PanelId {
             PanelId::Properties => 250.0,
             PanelId::GraphicAttributes => 250.0,
             PanelId::BlockPalette => 260.0,
+            PanelId::AuthoringPalettes => 260.0,
             PanelId::ExternalReferences => 460.0,
             PanelId::Browser => 230.0,
             PanelId::NodeGraph => 220.0,
@@ -1232,6 +1238,43 @@ pub fn frame<'a>(
         ..Default::default()
     })
     .into()
+}
+
+/// Rotated label shared by floating dock title bars and palette categories.
+pub(crate) struct VerticalLabel {
+    pub text: String,
+}
+
+impl iced::widget::canvas::Program<crate::app::Message> for VerticalLabel {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &iced::Renderer,
+        theme: &Theme,
+        bounds: iced::Rectangle,
+        _cursor: iced::advanced::mouse::Cursor,
+    ) -> Vec<iced::widget::canvas::Geometry> {
+        let mut frame = iced::widget::canvas::Frame::new(renderer, bounds.size());
+        frame.with_save(|frame| {
+            frame.translate(iced::Vector::new(bounds.width / 2.0, bounds.height / 2.0));
+            frame.rotate(iced::Radians(-std::f32::consts::FRAC_PI_2));
+            // After the rotation the text runs along local +x (upward), so
+            // the bar's bottom end sits at -height/2.
+            frame.fill_text(iced::widget::canvas::Text {
+                content: self.text.clone(),
+                position: iced::Point::new(-bounds.height / 2.0, 0.0),
+                color: theme.palette().background.base.text.scale_alpha(0.72),
+                size: iced::Pixels(13.0),
+                align_x: iced::advanced::text::Alignment::Left,
+                align_y: iced::alignment::Vertical::Center,
+                shaping: iced::advanced::text::Shaping::Advanced,
+                ..Default::default()
+            });
+        });
+        vec![frame.into_geometry()]
+    }
 }
 
 #[cfg(test)]

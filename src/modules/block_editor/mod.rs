@@ -82,6 +82,16 @@ impl CadModule for BlockEditorModule {
             // Parametric blocks are driven by the same constraints and
             // parameters as the Parametric tab.
             groups.extend(ParametricModule.ribbon_groups().iter().cloned());
+            if let Some(manage) = groups.iter_mut().find(|group| group.title == "Manage") {
+                manage.tools.insert(
+                    0,
+                    command(
+                        "BAUTHORPALETTE",
+                        "Authoring Palettes",
+                        include_bytes!("../../../assets/icons/tool_palettes.svg"),
+                    ),
+                );
+            }
             groups
         })
     }

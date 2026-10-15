@@ -479,6 +479,7 @@ const CODES: &[(&str, &str, &str)] = &[
     ("draw", "Close", "TC"),
     ("draw", "BCLOSETESTBLOCK", "CT"),
     ("block_editor", "ATTDEF", "AD"),
+    ("block_editor", "BAUTHORPALETTE", "AP"),
     ("block_editor", "AUTOCONSTRAIN", "AC"),
     ("block_editor", "CCONSTRAINT", "CI"),
     ("block_editor", "PCONSTRAINT", "PA"),

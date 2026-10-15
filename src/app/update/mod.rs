@@ -10876,6 +10876,12 @@ impl OpenCADStudio {
             Message::BlockPalette(m) => self.on_block_palette(m),
             Message::GraphicAttributes(m) => self.on_graphic_attributes(m),
             Message::Dock(m) => self.on_dock(m),
+            Message::AuthoringPaletteTabSelected(tab) => {
+                if self.dock_panel_visible(crate::ui::dock::PanelId::AuthoringPalettes) {
+                    self.authoring_palette_tab = tab;
+                }
+                Task::none()
+            }
             Message::PrintAllOpen => self.on_print_all_open(),
             Message::PrintAllToggle(name) => {
                 if let Some((_, selected)) = self

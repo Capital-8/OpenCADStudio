@@ -435,6 +435,16 @@ impl OpenCADStudio {
     ) -> iced::Task<Message> {
         use crate::ui::dock::{DockDrag, PanelId};
         let mut task = iced::Task::none();
+        if open
+            && id == PanelId::AuthoringPalettes
+            && self.tabs[self.active_tab]
+                .active_block_edit_session()
+                .is_none()
+        {
+            self.command_line
+                .push_error(crate::t!("Open the Block Editor to use Authoring Palettes.").as_ref());
+            return task;
+        }
         if open {
             if !self.dock_panel_visible(id) {
                 match id {
@@ -448,6 +458,12 @@ impl OpenCADStudio {
                         self.save_config();
                     }
                     PanelId::BlockPalette => self.open_blocks_palette(None),
+                    PanelId::AuthoringPalettes => {
+                        self.show_authoring_palettes = true;
+                        self.ribbon.show_authoring_palettes = true;
+                        self.dock_open_at_default(id);
+                        self.save_config();
+                    }
                     PanelId::ExternalReferences => {
                         self.show_external_references = true;
                         self.refresh_xref_manager();
@@ -472,6 +488,10 @@ impl OpenCADStudio {
             PanelId::BlockPalette => {
                 self.show_block_palette = false;
                 self.block_palette.placing = None;
+            }
+            PanelId::AuthoringPalettes => {
+                self.show_authoring_palettes = false;
+                self.ribbon.show_authoring_palettes = false;
             }
             PanelId::ExternalReferences => self.show_external_references = false,
             PanelId::Browser => self.show_browser = false,
@@ -562,6 +582,12 @@ impl OpenCADStudio {
         match id {
             PanelId::Properties => self.show_properties,
             PanelId::BlockPalette => self.show_block_palette,
+            PanelId::AuthoringPalettes => {
+                self.show_authoring_palettes
+                    && self.tabs[self.active_tab]
+                        .active_block_edit_session()
+                        .is_some()
+            }
             PanelId::ExternalReferences => self.show_external_references,
             PanelId::Browser => self.show_browser,
             PanelId::NodeGraph => self.show_node_graph,

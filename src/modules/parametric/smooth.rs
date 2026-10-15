@@ -5,6 +5,17 @@ use crate::command::{CadCommand, CmdResult};
 use crate::scene::parametric_constraints::{ConstraintKind, ParametricRef};
 use crate::t;
 
+pub fn smooth_tool() -> crate::modules::ToolDef {
+    crate::modules::ToolDef {
+        id: "GCSMOOTH",
+        label: "Smooth",
+        icon: crate::modules::IconKind::Svg(include_bytes!(
+            "../../../assets/icons/constrain/smooth.svg"
+        )),
+        event: crate::modules::ModuleEvent::Command("GCSMOOTH".into()),
+    }
+}
+
 #[derive(Clone, Copy)]
 struct SmoothTarget {
     endpoint: ParametricRef,

@@ -447,7 +447,14 @@ pub fn is_transparent(cmd: &str) -> bool {
     is_spacemouse_command(cmd)
         || matches!(
             cmd,
-            "ORTHO" | "GRID" | "SNAP" | "POLAR" | "OSNAP" | "DSETTINGS"
+            "ORTHO"
+                | "GRID"
+                | "SNAP"
+                | "POLAR"
+                | "OSNAP"
+                | "DSETTINGS"
+                | "BAUTHORPALETTE"
+                | "BAUTHORPALETTECLOSE"
         )
 }
 
@@ -983,6 +990,8 @@ inventory::submit!(crate::command::CommandRegistration {
         "STYLE",
         "STYLESMANAGER",
         "TABLESTYLE",
+        "BAUTHORPALETTE",
+        "BAUTHORPALETTECLOSE",
         "TOOLPALETTES",
         "TP",
         "TS",
