@@ -204,6 +204,33 @@ pub fn zoom_notch_percent(factor: i32) -> f32 {
     (1.0 - ratio) * 100.0
 }
 
+/// Which mouse gestures pan and orbit the model view.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NavigationStyle {
+    /// Middle button pans; Shift + middle button orbits.
+    #[default]
+    Cad,
+    /// Middle button orbits; Shift + middle button pans.
+    Blender,
+    /// Middle button pans; middle and left buttons together orbit.
+    Catia,
+}
+
+impl NavigationStyle {
+    pub const ALL: [NavigationStyle; 3] = [Self::Cad, Self::Blender, Self::Catia];
+}
+
+impl std::fmt::Display for NavigationStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&match self {
+            Self::Cad => crate::t!("CAD: Shift + middle button orbits"),
+            Self::Blender => crate::t!("Blender: middle button orbits, Shift pans"),
+            Self::Catia => crate::t!("CATIA: middle + left button orbits"),
+        })
+    }
+}
+
 /// Active pair of axes while isometric drafting is enabled.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IsoPlane {
@@ -388,6 +415,7 @@ pub struct UserSettings {
     pub polar: bool,
     pub polar_increment_deg: f32,
     pub zoom_wheel_reversed: bool,
+    pub navigation_style: NavigationStyle,
     /// Scrolling pans and Ctrl+scroll (a touchpad pinch) zooms, for a
     /// touchpad that reports two-finger drags as wheel scrolls.
     pub touchpad_pan: bool,
@@ -891,6 +919,7 @@ impl Default for UserSettings {
             polar: false,
             polar_increment_deg: 45.0,
             zoom_wheel_reversed: false,
+            navigation_style: NavigationStyle::Cad,
             touchpad_pan: false,
             ui_scale_percent: 100,
             zoom_factor: 60,

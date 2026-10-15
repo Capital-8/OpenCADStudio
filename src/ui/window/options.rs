@@ -63,6 +63,8 @@ pub struct AppPrefs {
     pub hatch_associative: bool,
     /// ZOOMWHEEL: reverse the mouse-wheel zoom direction.
     pub zoom_wheel_reversed: bool,
+    /// Which mouse gestures pan and orbit the model view.
+    pub navigation_style: crate::app::settings::NavigationStyle,
     /// Scroll pans and Ctrl+scroll zooms (touchpads).
     pub touchpad_pan: bool,
     /// Interface scale in percent.
@@ -1273,6 +1275,16 @@ pub fn view_window<'a>(
         text(crate::t!("User Preferences")).size(15),
         Space::new().height(10),
         spacemouse,
+        Space::new().height(12),
+        text(crate::t!("Navigation style")).size(15),
+        Space::new().height(10),
+        iced::widget::pick_list(
+            Some(prefs.navigation_style),
+            crate::app::settings::NavigationStyle::ALL,
+            |style| style.to_string(),
+        )
+        .on_select(Message::NavigationStyleChanged)
+        .text_size(12),
         Space::new().height(12),
         text(crate::t!("Zoom")).size(15),
         Space::new().height(10),

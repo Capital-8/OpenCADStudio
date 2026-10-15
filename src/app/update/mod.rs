@@ -4482,6 +4482,25 @@ impl OpenCADStudio {
                 Task::none()
             }
 
+            // CATIA navigation: the left button pressed during a middle drag
+            // turns the drag into an orbit instead of starting a pick.
+            Message::ViewportLeftPressAt(_) | Message::ViewportLeftPress | Message::PanePress(_)
+                if self.navigation_style == crate::app::settings::NavigationStyle::Catia
+                    && self.tabs[self.active_tab]
+                        .scene
+                        .selection
+                        .borrow()
+                        .input
+                        .middle_down =>
+            {
+                self.nav_left_with_middle = true;
+                Task::none()
+            }
+            Message::ViewportLeftRelease | Message::PaneRelease(_) if self.nav_left_with_middle => {
+                self.nav_left_with_middle = false;
+                Task::none()
+            }
+
             Message::ViewportMove(p) => self.on_viewport_move(p),
 
             Message::ViewportExit => self.on_viewport_exit(),
@@ -4686,6 +4705,7 @@ impl OpenCADStudio {
             }
 
             Message::ViewportMiddleRelease => {
+                self.nav_left_with_middle = false;
                 let i = self.active_tab;
                 let mut sel = self.tabs[i].scene.selection.borrow_mut();
                 sel.input.middle_down = false;
@@ -9221,6 +9241,12 @@ impl OpenCADStudio {
 
             Message::ZoomWheelReversedChanged(reversed) => {
                 self.zoom_wheel_reversed = reversed;
+                self.persist_settings_if_changed();
+                Task::none()
+            }
+
+            Message::NavigationStyleChanged(style) => {
+                self.navigation_style = style;
                 self.persist_settings_if_changed();
                 Task::none()
             }

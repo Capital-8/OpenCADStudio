@@ -1416,7 +1416,7 @@ impl OpenCADStudio {
                 // — the requested Zoom=wheel / Pan=MMB / Rotate=Shift+MMB
                 // scheme (#229). Floating viewports and paper keep the
                 // plain MMB pan.
-                if self.shift_down || self.tabs[i].orbit_mode {
+                if self.middle_drag_orbits(i) {
                     if self.tabs[i].scene.active_viewport.is_some() {
                         // Orbit the floating viewport's own model view.
                         drop(sel);
@@ -3163,6 +3163,18 @@ impl OpenCADStudio {
             crate::perf_record!("[perf] pointer-move mode={mode:<7} {:>7.1}ms", move_ms,);
         }
         Task::none()
+    }
+
+    /// Whether a middle-button drag orbits rather than pans, by the
+    /// navigation style (an armed orbit tool always orbits).
+    fn middle_drag_orbits(&self, i: usize) -> bool {
+        use crate::app::settings::NavigationStyle;
+        self.tabs[i].orbit_mode
+            || match self.navigation_style {
+                NavigationStyle::Cad => self.shift_down,
+                NavigationStyle::Blender => !self.shift_down,
+                NavigationStyle::Catia => self.nav_left_with_middle,
+            }
     }
 
     pub(crate) fn on_viewport_exit(&mut self) -> Task<Message> {

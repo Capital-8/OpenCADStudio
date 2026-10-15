@@ -650,6 +650,11 @@ pub(super) struct OpenCADStudio {
     polar_increment_deg: f32,
     /// Reverse the mouse-wheel zoom direction when true (ZOOMWHEEL = 1).
     zoom_wheel_reversed: bool,
+    /// Which mouse gestures pan and orbit the model view.
+    navigation_style: crate::app::settings::NavigationStyle,
+    /// CATIA navigation: the left button went down while the middle one was
+    /// held, so the middle drag orbits until it is released.
+    nav_left_with_middle: bool,
     /// Scroll pans and Ctrl+scroll zooms (touchpads); see `scroll_intent`.
     touchpad_pan: bool,
     /// Multi-finger gestures on a touch screen.
@@ -2657,6 +2662,7 @@ pub enum Message {
     CommandLineOpacityChanged(u8),
     /// Toggle reversing the mouse-wheel zoom direction (ZOOMWHEEL).
     ZoomWheelReversedChanged(bool),
+    NavigationStyleChanged(crate::app::settings::NavigationStyle),
     TouchpadPanChanged(bool),
     /// Options: show the pull-down menus (MENUBAR).
     MenuBarChanged(bool),
@@ -4632,6 +4638,8 @@ impl OpenCADStudio {
             polar_mode: false,
             polar_increment_deg: 45.0,
             zoom_wheel_reversed: false,
+            navigation_style: Default::default(),
+            nav_left_with_middle: false,
             touchpad_pan: false,
             touch: Default::default(),
             touch_offset: None,

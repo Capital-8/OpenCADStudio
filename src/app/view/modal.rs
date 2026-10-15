@@ -312,6 +312,7 @@ impl OpenCADStudio {
                             show_ribbon: !self.ribbon_closed,
                             hatch_associative: self.hatch_associative,
                             zoom_wheel_reversed: self.zoom_wheel_reversed,
+                            navigation_style: self.navigation_style,
                             touchpad_pan: self.touchpad_pan,
                             ui_scale_percent: self.ui_scale_percent,
                             zoom_factor: self.zoom_factor,

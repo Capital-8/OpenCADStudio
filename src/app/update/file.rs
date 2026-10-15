@@ -778,6 +778,7 @@ impl OpenCADStudio {
             polar: self.polar_mode,
             polar_increment_deg: self.polar_increment_deg,
             zoom_wheel_reversed: self.zoom_wheel_reversed,
+            navigation_style: self.navigation_style,
             touchpad_pan: self.touchpad_pan,
             ui_scale_percent: self.ui_scale_percent,
             zoom_factor: self.zoom_factor,
@@ -913,6 +914,7 @@ impl OpenCADStudio {
         self.polar_mode = s.polar;
         self.polar_increment_deg = s.polar_increment_deg;
         self.zoom_wheel_reversed = s.zoom_wheel_reversed;
+        self.navigation_style = s.navigation_style;
         self.touchpad_pan = s.touchpad_pan;
         self.ui_scale_percent = crate::app::settings::clamp_ui_scale(s.ui_scale_percent);
         self.zoom_factor = crate::app::settings::clamp_zoom_factor(s.zoom_factor);
