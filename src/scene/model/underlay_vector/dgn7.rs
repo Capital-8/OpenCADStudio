@@ -6,8 +6,9 @@
 use std::collections::HashMap;
 
 use super::model::{
-    arc_cubics, bspline_points, dgn_color_table, paths_bounds, Path, PathBuilder, Segment, Sheet,
-    SubPath, Text, DGN_DEFAULT_COLORS,
+    arc_cubics, bspline_points, dgn_color_table, paths_bounds, scaled_elements, DgnCollector,
+    DgnElement, DgnGeom, DgnImport, Path, PathBuilder, Segment, Sheet, SubPath, Text,
+    DGN_DEFAULT_COLORS,
 };
 
 /// A 32-bit integer stored as two little-endian words, high word first.
@@ -123,6 +124,8 @@ struct Raw {
     paths: Vec<Path>,
     texts: Vec<Text>,
     instances: Vec<Instance>,
+    /// The same run element by element, for DGNIMPORT.
+    elements: Vec<DgnElement>,
 }
 
 #[derive(Clone)]
@@ -199,6 +202,7 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]]) -> Raw {
             raw.paths.push(path);
         }
     };
+    let mut collect = DgnCollector::default();
     for e in run {
         let kind = e[1] & 0x7f;
         if e[1] & 0x80 != 0 || e.len() < 36 {
@@ -206,6 +210,13 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]]) -> Raw {
         }
         let symbology = uint16(e, 34).unwrap_or(0);
         let color = colors[(symbology >> 8) as usize];
+        let element = |geom: DgnGeom| DgnElement {
+            level: level(e) as u32,
+            color: Some(color),
+            weight: Some(((symbology >> 3) & 31) as u32),
+            style: Some((symbology & 7) as u32),
+            geom,
+        };
         // One pixel wide, as V8 models draw: the element weight is a
         // lineweight, not shown while lineweights are off.
         let stroke = Some((color, -1.0));
@@ -213,8 +224,14 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]]) -> Raw {
         let int_pt =
             |i: usize| -> Option<[f64; 2]> { Some([int32(e, i)? as f64, int32(e, i + 4)? as f64]) };
         match kind {
+            // A text node: its count of text components.
+            7 => collect.open(
+                uint16(e, 38).unwrap_or(0) as usize,
+                element(DgnGeom::TextNode(Vec::new())),
+            ),
             12 | 14 => {
                 let n = uint16(e, 38).unwrap_or(0) as usize;
+                collect.open(n, element(DgnGeom::Chain(Vec::new())));
                 if n > 0 {
                     complex = Some((
                         n,
@@ -227,6 +244,7 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]]) -> Raw {
             }
             3 => {
                 if let (Some(a), Some(b)) = (int_pt(36), int_pt(44)) {
+                    collect.push(element(DgnGeom::Line(a, b)));
                     push(
                         &mut raw,
                         &mut complex,
@@ -245,6 +263,7 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]]) -> Raw {
                 let n = uint16(e, 36).unwrap_or(0) as usize;
                 let pts: Vec<[f64; 2]> = (0..n).filter_map(|k| int_pt(38 + k * 8)).collect();
                 if pts.len() >= 2 {
+                    collect.push(element(DgnGeom::Points(pts.clone())));
                     push(
                         &mut raw,
                         &mut complex,
@@ -290,6 +309,15 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]]) -> Raw {
                 let Some((a, b, r, ox, oy, start, sweep)) = arc else {
                     continue;
                 };
+                let turn = (r as f64 / 360000.0).to_radians();
+                let (c, s) = (turn.cos(), turn.sin());
+                collect.push(element(DgnGeom::Arc {
+                    center: [ox, oy],
+                    u: [a * c, a * s],
+                    v: [-b * s, b * c],
+                    start: start.to_radians(),
+                    sweep: sweep.to_radians(),
+                }));
                 let pieces = arc_cubics(
                     [ox, oy],
                     a,
@@ -326,7 +354,7 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]]) -> Raw {
                     continue;
                 };
                 let (height, width) = (height as f64 * 6.0 / 1000.0, width as f64 * 6.0 / 1000.0);
-                raw.texts.push(Text {
+                let text = Text {
                     text: String::from_utf8_lossy(chars)
                         .trim_end_matches('\0')
                         .to_string(),
@@ -336,7 +364,16 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]]) -> Raw {
                     rotation: (rotation as f64 / 360000.0).to_radians(),
                     color,
                     font: "txt".to_string(),
-                });
+                };
+                collect.push(element(DgnGeom::Text {
+                    text: text.text.clone(),
+                    origin,
+                    height,
+                    width_factor: text.width_factor,
+                    rotation: text.rotation,
+                    font: Some(e[36] as u32),
+                }));
+                raw.texts.push(text);
             }
             27 => {
                 // B-spline curve header: order, pole count.
@@ -369,6 +406,10 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]]) -> Raw {
                         full.extend(interior);
                         full.extend(vec![1.0; order]);
                         let pts = bspline_points(order, &poles, &full, 24 * count);
+                        collect.push(DgnElement {
+                            color: Some(color),
+                            ..element(DgnGeom::Points(pts.clone()))
+                        });
                         push(
                             &mut raw,
                             &mut complex,
@@ -399,6 +440,12 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]]) -> Raw {
                 ) else {
                     continue;
                 };
+                collect.push(element(DgnGeom::Cell {
+                    name: name.clone(),
+                    m: [m0, m1, m2, m3],
+                    origin: [ox as f64, oy as f64],
+                    z_scale: 1.0,
+                }));
                 raw.instances.push(Instance {
                     name,
                     m: [m0, m1, m2, m3],
@@ -408,6 +455,8 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]]) -> Raw {
             _ => {}
         }
     }
+    collect.close();
+    raw.elements = collect.elements;
     raw
 }
 
@@ -631,4 +680,68 @@ pub fn model(bytes: &[u8], hidden: &[String]) -> Option<Sheet> {
         ])
     })?;
     Some(sheet)
+}
+
+/// A unit name of the design file header (two characters, zero padded).
+fn unit_name(b: &[u8], at: usize) -> String {
+    b.get(at..at + 2)
+        .map(|n| String::from_utf8_lossy(n).trim_matches(char::from(0)).trim().to_string())
+        .unwrap_or_default()
+}
+
+/// The model element by element (DGNIMPORT): in master units with the
+/// global origin at 0,0, shared cell definitions in their own units scaled
+/// to master units, and every level by number with its name.
+pub fn import(bytes: &[u8]) -> Option<DgnImport> {
+    if !is_v7(bytes) {
+        return None;
+    }
+    let u = units(bytes)?;
+    let all = elements(bytes);
+    let colors = color_table(&all).unwrap_or_else(|| DGN_DEFAULT_COLORS.to_vec());
+    let names = level_names(&all);
+    let per_unit = u.uor_per_sub * u.sub_per_master;
+    let s = 1.0 / per_unit;
+    let mut cells = Vec::new();
+    let mut top: Vec<&[u8]> = Vec::new();
+    let mut i = 0;
+    while i < all.len() {
+        let e = all[i];
+        if e[1] & 0x7f == 34 && e[0] & 0x80 == 0 {
+            let name = e
+                .get(164..180)
+                .map(|n| {
+                    String::from_utf8_lossy(n)
+                        .trim_end_matches('\0')
+                        .trim()
+                        .to_string()
+                })
+                .unwrap_or_default();
+            let mut j = i + 1;
+            while j < all.len() && all[j][0] & 0x80 != 0 {
+                j += 1;
+            }
+            let def = read_run(&all[i + 1..j], &colors).elements;
+            cells.push((name, scaled_elements(&def, s, [0.0, 0.0])));
+            i = j;
+            continue;
+        }
+        top.push(e);
+        i += 1;
+    }
+    let raw = read_run(&top, &colors);
+    let levels = (0..64u32)
+        .map(|l| {
+            let name = names.get(&(l as u8)).cloned().unwrap_or_else(|| l.to_string());
+            (l, (name, None))
+        })
+        .collect();
+    Some(DgnImport {
+        elements: scaled_elements(&raw.elements, s, [-u.origin[0] * s, -u.origin[1] * s]),
+        cells,
+        levels,
+        sub_per_master: u.sub_per_master,
+        unit_names: (unit_name(bytes, 1120), unit_name(bytes, 1122)),
+        v7: true,
+    })
 }

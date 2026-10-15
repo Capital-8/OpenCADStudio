@@ -20,9 +20,20 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use codec::entities::UnderlayType;
 
-pub use model::{Path, Segment, Sheet, SubPath};
+pub use model::{scaled_elements, DgnElement, DgnGeom, DgnImport, Path, Segment, Sheet, SubPath};
 
 use super::pdf_raster::{source_bytes, PdfPage};
+
+/// A DGN model element by element, for DGNIMPORT; `None` when the file is
+/// not a V7 or V8 design file.
+pub fn dgn_import(path: &str, item: &str) -> Option<DgnImport> {
+    let bytes = source_bytes(path)?;
+    if dgn7::is_v7(&bytes) {
+        dgn7::import(&bytes)
+    } else {
+        dgn8::import(&bytes, item)
+    }
+}
 
 /// Sheet names (DWF) or model names (DGN) of a file.
 pub fn item_names(kind: UnderlayType, path: &str) -> Option<Vec<String>> {

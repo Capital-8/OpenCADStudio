@@ -8,6 +8,7 @@ pub(crate) mod block_cmdline;
 mod content_browser;
 pub(crate) mod create_block;
 mod design_center;
+pub(crate) mod dgn_import;
 pub(crate) mod edit_block;
 pub(crate) mod image_transparency;
 pub(crate) mod insert_block;
