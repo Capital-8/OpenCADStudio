@@ -431,7 +431,8 @@ impl Scene {
 
     /// Tessellate one block definition's entities into block-local wire models
     /// (insertion base at origin) for the block-palette thumbnail. Nested INSERTs
-    /// expand through the block cache. Unknown / empty block → `vec![]`.
+    /// expand through the block cache; invisible members (another visibility
+    /// state) are left out, as on the canvas. Unknown / empty block → `vec![]`.
     pub(crate) fn block_preview_wires(&self, name: &str) -> Vec<WireModel> {
         use codec::EntityType;
         let Some(br) = self.document.block_records.get(name) else {
@@ -442,7 +443,9 @@ impl Scene {
             let Some(e) = self.document.get_entity(eh) else {
                 continue;
             };
-            if matches!(e, EntityType::Block(_) | EntityType::BlockEnd(_)) {
+            if matches!(e, EntityType::Block(_) | EntityType::BlockEnd(_))
+                || e.common().invisible
+            {
                 continue;
             }
             out.extend(self.tessellate_one(e));
