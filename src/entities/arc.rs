@@ -210,11 +210,7 @@ fn properties(arc: &Arc) -> Vec<PropSection> {
                 "total_angle",
                 format_angle(total_angle.to_radians()),
             ),
-            ro(
-                t!("Arc length").as_ref(),
-                "arc_length",
-                format_length(arc_length),
-            ),
+            edit(t!("Arc length").as_ref(), "arc_length", arc_length),
             ro(t!("Area").as_ref(), "area", format_area(area)),
             edit(t!("Normal X").as_ref(), "normal_x", arc.normal.x),
             edit(t!("Normal Y").as_ref(), "normal_y", arc.normal.y),
@@ -248,6 +244,10 @@ fn apply_geom_prop(arc: &mut Arc, field: &str, value: &str) {
         "radius" if v > 0.0 => arc.radius = v,
         "start_angle" => arc.start_angle = v.to_radians(),
         "end_angle" => arc.end_angle = v.to_radians(),
+        // The start stays put; the end moves along the circle.
+        "arc_length" if v > 0.0 && v < TAU * arc.radius => {
+            arc.end_angle = (arc.start_angle + v / arc.radius).rem_euclid(TAU);
+        }
         "normal_x" | "normal_y" | "normal_z" => {
             let center = arc.center_wcs();
             let mut normal = kernel::space::Vec3::new(arc.normal.x, arc.normal.y, arc.normal.z);
