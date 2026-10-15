@@ -17,10 +17,12 @@ fn gradient_stops_keep_entity_transparency() {
         codec::entities::hatch::GradientColorEntry {
             value: 0.0,
             color: codec::types::Color::Rgb { r: 255, g: 0, b: 0 },
+            ..Default::default()
         },
         codec::entities::hatch::GradientColorEntry {
             value: 1.0,
             color: codec::types::Color::Rgb { r: 0, g: 0, b: 255 },
+            ..Default::default()
         },
     ];
 

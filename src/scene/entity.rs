@@ -3176,10 +3176,12 @@ impl Scene {
                 codec::entities::hatch::GradientColorEntry {
                     value: 0.0,
                     color: to_color(c0),
+                    ..Default::default()
                 },
                 codec::entities::hatch::GradientColorEntry {
                     value: 1.0,
                     color: to_color(c1),
+                    ..Default::default()
                 },
             ];
         }

@@ -8142,6 +8142,7 @@ impl OpenCADStudio {
                                     codec::entities::hatch::GradientColorEntry {
                                         value,
                                         color: codec::types::Color::Index(7),
+                                        ..Default::default()
                                     },
                                 );
                             }

@@ -97,6 +97,7 @@ fn set_hatch_graphic_attribute(
                         g: channel(visible_color[1]),
                         b: channel(visible_color[2]),
                     },
+                    ..Default::default()
                 },
                 codec::entities::hatch::GradientColorEntry {
                     value: 1.0,
@@ -105,6 +106,7 @@ fn set_hatch_graphic_attribute(
                         g: 46,
                         b: 46,
                     },
+                    ..Default::default()
                 },
             ];
         }
@@ -688,10 +690,12 @@ impl OpenCADStudio {
                     codec::entities::hatch::GradientColorEntry {
                         value: 0.0,
                         color: state.color_1,
+                        ..Default::default()
                     },
                     codec::entities::hatch::GradientColorEntry {
                         value: 1.0,
                         color: state.color_2,
+                        ..Default::default()
                     },
                 ];
                 hatch.pattern_angle = angle;
