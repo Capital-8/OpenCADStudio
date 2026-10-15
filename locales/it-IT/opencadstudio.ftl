@@ -6596,3 +6596,11 @@ ucs-follow =
     .prompt = UCSFOLLOW: enter 0 (keep view) or 1 (follow UCS) <__ocs_fmt_0__>:
     .paper-space = UCSFOLLOW: activate a model viewport; paper space cannot follow the UCS.
     .invalid = UCSFOLLOW: only 0 or 1 is allowed.
+
+import-panel =
+    .dgn-import = Importa DGN
+    .recognize-shx = Riconosci testo SHX
+    .recognition-settings = Impostazioni di riconoscimento
+    .combine-text = Combina testo
+    .land-xml = Land XML
+    .import-file-header = Importa file — il pulsante esegue l'ultima scelta

@@ -107,6 +107,25 @@ impl OpenCADStudio {
         task
     }
 
+    /// Run a ribbon command. A `;` stands for Enter, as in a menu macro: each
+    /// part answers the running command's prompt, or starts a command when
+    /// none runs (`PDFIMPORT;FILE`).
+    pub(super) fn dispatch_ribbon_command(&mut self, cmd: &str) -> Task<Message> {
+        if !cmd.contains(';') {
+            return self.dispatch_command(cmd);
+        }
+        let i = self.active_tab;
+        let mut tasks = Vec::new();
+        for part in cmd.split(';') {
+            tasks.push(if self.tabs[i].active_cmd.is_some() {
+                self.feed_active_cmd(part)
+            } else {
+                self.dispatch_command(part)
+            });
+        }
+        Task::batch(tasks)
+    }
+
     /// Turn the ribbon highlight off when the command just dispatched left
     /// nothing running: no interactive command, dialog or navigation mode.
     /// One-shot commands (view changes, clipboard, toggles, audits…) would

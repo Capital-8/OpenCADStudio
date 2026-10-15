@@ -6613,7 +6613,7 @@ impl OpenCADStudio {
                 };
                 self.ribbon.select_dropdown_item(dropdown_id, face);
                 self.ribbon.activate_tool(cmd);
-                self.dispatch_command(cmd)
+                self.dispatch_ribbon_command(cmd)
             }
 
             Message::DeleteSelected => {

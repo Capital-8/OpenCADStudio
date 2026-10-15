@@ -6597,3 +6597,11 @@ ucs-follow =
     .prompt = UCSFOLLOW: introduce 0 (conservar vista) o 1 (seguir SCP) <__ocs_fmt_0__>:
     .paper-space = UCSFOLLOW: activa una ventana de modelo; no se aplica al espacio papel.
     .invalid = UCSFOLLOW: solo se permite 0 o 1.
+
+import-panel =
+    .dgn-import = Importar DGN
+    .recognize-shx = Reconocer texto SHX
+    .recognition-settings = Parámetros de reconocimiento
+    .combine-text = Combinar texto
+    .land-xml = Land XML
+    .import-file-header = Importar archivo — el botón ejecuta la última opción elegida

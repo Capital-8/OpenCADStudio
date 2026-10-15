@@ -50,6 +50,11 @@ pub(crate) fn tooltip_style(theme: &Theme) -> container::Style {
     widgets::tip_style(theme)
 }
 
+/// A line over the items of a split button whose face names the chosen item.
+fn dropdown_header(id: &str) -> Option<&'static str> {
+    (id == "IMPORT_FILE").then_some("Import File — the face runs the last one chosen")
+}
+
 // ── Ribbon state ───────────────────────────────────────────────────────────
 
 pub struct Ribbon {
@@ -1066,11 +1071,22 @@ impl Ribbon {
             .iter()
             .map(|(_, label, _)| t!(*label).to_string())
             .collect();
+        let header = dropdown_header(dd_id).map(|header| t!(header).into_owned());
+        let mut rows = rows;
+        if let Some(header) = &header {
+            rows.insert(
+                0,
+                container(text(header.clone()).size(10).style(muted_text_style))
+                    .padding([4, 10])
+                    .into(),
+            );
+        }
         let panel_w = crate::ui::style::common::dropdown_popup_width(
             labels.iter().map(|s| s.as_str()),
             11.0,
             68.0,
-            190.0,
+            // A header wraps rather than widening the menu.
+            if header.is_some() { 240.0 } else { 190.0 },
         );
 
         let panel = container(column(rows))

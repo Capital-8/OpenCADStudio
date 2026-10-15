@@ -133,7 +133,7 @@ impl OpenCADStudio {
         match event {
             // `dispatch_command` turns a one-shot tool's highlight off
             // again once nothing is left running (#355).
-            ModuleEvent::Command(cmd) => return self.dispatch_command(&cmd),
+            ModuleEvent::Command(cmd) => return self.dispatch_ribbon_command(&cmd),
             ModuleEvent::OpenFileDialog => {
                 self.command_line
                     .push_info(crate::t!("Open DWG/DXF: not yet implemented.").as_ref());

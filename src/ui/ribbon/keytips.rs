@@ -403,6 +403,13 @@ const CODES: &[(&str, &str, &str)] = &[
     ("insert", "UOSNAP_DROPDOWN", "SN"),
     ("reference_extension", "REFEDIT", "ER"),
     ("reference_extension", XREF_FADE, "XF"),
+    ("insert", "IMPORT_FILE", "IF"),
+    ("IMPORT_FILE", "PDFIMPORT;FILE", "PI"),
+    ("IMPORT_FILE", "DGNIMPORT", "DI"),
+    ("IMPORT_FILE", "IMPORT", "OI"),
+    ("insert", "PDFSHXTEXT", "PS"),
+    ("insert", "PDFSHXTEXT_SETTINGS", "PT"),
+    ("insert", "TXT2MTXT", "TM"),
     // Annotate.
     ("annotate", "Text", "TE"),
     ("annotate", "ANNOTATE_TEXT", "MT"),
