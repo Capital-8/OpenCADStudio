@@ -4993,9 +4993,17 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::ToggleProperties => {
-                self.show_properties ^= true;
-                self.ribbon.set_properties(self.show_properties);
-                Task::none()
+                let id = crate::ui::dock::PanelId::Properties;
+                let open = !self.dock_panel_visible(id);
+                if self.clean_screen {
+                    // Shown over clean screen without changing the panel's
+                    // normal state.
+                    self.clean_screen_properties = open;
+                    if !open {
+                        return Task::none();
+                    }
+                }
+                self.dock_set_open(id, open)
             }
             Message::ToggleGraphicAttributes => {
                 let id = crate::ui::dock::PanelId::GraphicAttributes;
@@ -5504,6 +5512,7 @@ impl OpenCADStudio {
             }
             Message::ToggleCleanScreen => {
                 self.clean_screen ^= true;
+                self.clean_screen_properties = false;
                 Task::none()
             }
             Message::ToggleTransparencyDisplay => {

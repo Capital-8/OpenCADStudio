@@ -553,7 +553,10 @@ impl OpenCADStudio {
     /// renderer applies before building each side's stack.
     pub(crate) fn dock_panel_visible(&self, id: crate::ui::dock::PanelId) -> bool {
         use crate::ui::dock::PanelId;
-        if self.tabs[self.active_tab].is_start || self.clean_screen {
+        if self.tabs[self.active_tab].is_start {
+            return false;
+        }
+        if self.clean_screen && !(id == PanelId::Properties && self.clean_screen_properties) {
             return false;
         }
         match id {

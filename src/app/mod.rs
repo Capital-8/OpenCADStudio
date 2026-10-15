@@ -550,6 +550,8 @@ pub(super) struct OpenCADStudio {
     status_menu_tooltip_hidden: bool,
     /// Clean-screen mode: hide ribbon and side panels for a full canvas.
     clean_screen: bool,
+    /// Properties opened on top of clean screen (Ctrl+1 while it is on).
+    clean_screen_properties: bool,
     /// Quick Properties: show a compact floating property panel on selection.
     quick_properties: bool,
     /// Canvas-space cursor position where Quick Properties was last opened.
@@ -4582,6 +4584,7 @@ impl OpenCADStudio {
             otrack_cross: None,
             otrack_kind: None,
             clean_screen: false,
+            clean_screen_properties: false,
             quick_properties: false,
             quick_properties_anchor: Point::new(12.0, 12.0),
             selection_cycling: false,
