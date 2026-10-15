@@ -3,6 +3,18 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
+        "Block Attribute Manager" => Some(("attman", "title")),
+        "Modes" => Some(("attman", "modes")),
+        "{} references" => Some(("attman", "references")),
+        "In drawing: {} · in model space: {}" => Some(("attman", "counts")),
+        "Columns:" => Some(("attman", "columns")),
+        "The Constant mode cannot be changed in the definition." => Some(("attman", "constant-note")),
+        "Show changes in the drawing as they are made" => Some(("attman", "live")),
+        "Apply changes to existing references" => Some(("attman", "apply-existing")),
+        "Emphasize duplicate tags" => Some(("attman", "emphasize")),
+        "Sync" => Some(("attman", "sync")),
+        "BATTMAN manages the attribute definitions of a block." => Some(("attman", "help")),
+        "Block table contains no attributed block named {}." => Some(("attman", "no-attributed-block")),
         "{} entities added" => Some(("ref-edit", "entities-added")),
         "Use REFCLOSE or the Refedit toolbar to end reference editing session." => Some(("ref-edit", "use-refclose")),
         "Specify opposite corner:" => Some(("ref-edit", "opposite-corner")),

@@ -2,6 +2,7 @@ pub mod about;
 pub mod alias_editor;
 pub mod annotation_data;
 pub mod attdef_dialog;
+pub mod attman_dialog;
 pub mod attribute_editor;
 pub mod auto_constrain_settings;
 pub mod block_definition;

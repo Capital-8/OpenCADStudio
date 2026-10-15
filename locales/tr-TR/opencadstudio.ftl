@@ -6518,3 +6518,17 @@ ucs-follow =
     .prompt = UCSFOLLOW: enter 0 (keep view) or 1 (follow UCS) <__ocs_fmt_0__>:
     .paper-space = UCSFOLLOW: activate a model viewport; paper space cannot follow the UCS.
     .invalid = UCSFOLLOW: only 0 or 1 is allowed.
+
+attman =
+    .title = Öznitelik Yöneticisi
+    .modes = Kipler
+    .references = __ocs_fmt_0__ referans
+    .counts = Çizimde __ocs_fmt_0__ · model alanında __ocs_fmt_1__
+    .columns = Sütunlar:
+    .constant-note = Sabit kipi tanımda değiştirilemez.
+    .live = Değişiklikleri çizimde canlı göster
+    .apply-existing = Mevcut referanslara uygula
+    .emphasize = Yinelenen etiketleri vurgula
+    .sync = Eşitle
+    .help = BATTMAN bir bloğun öznitelik tanımlarını yönetir.
+    .no-attributed-block = Blok tablosunda __ocs_fmt_0__ adlı öznitelikli blok yok.

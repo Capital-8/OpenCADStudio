@@ -2,7 +2,7 @@
 
 mod attdef;
 pub(crate) mod attedit;
-mod attman;
+pub(crate) mod attman;
 pub mod base_point;
 pub(crate) mod block_cmdline;
 mod content_browser;

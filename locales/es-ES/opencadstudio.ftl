@@ -6597,3 +6597,17 @@ ucs-follow =
     .prompt = UCSFOLLOW: introduce 0 (conservar vista) o 1 (seguir SCP) <__ocs_fmt_0__>:
     .paper-space = UCSFOLLOW: activa una ventana de modelo; no se aplica al espacio papel.
     .invalid = UCSFOLLOW: solo se permite 0 o 1.
+
+attman =
+    .title = Block Attribute Manager
+    .modes = Modes
+    .references = __ocs_fmt_0__ references
+    .counts = In drawing: __ocs_fmt_0__ · in model space: __ocs_fmt_1__
+    .columns = Columns:
+    .constant-note = The Constant mode cannot be changed in the definition.
+    .live = Show changes in the drawing as they are made
+    .apply-existing = Apply changes to existing references
+    .emphasize = Emphasize duplicate tags
+    .sync = Sync
+    .help = BATTMAN manages the attribute definitions of a block.
+    .no-attributed-block = Block table contains no attributed block named __ocs_fmt_0__.

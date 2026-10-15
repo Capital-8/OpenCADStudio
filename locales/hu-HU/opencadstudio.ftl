@@ -6581,3 +6581,17 @@ ucs-follow =
     .prompt = UCSFOLLOW: enter 0 (keep view) or 1 (follow UCS) <__ocs_fmt_0__>:
     .paper-space = UCSFOLLOW: activate a model viewport; paper space cannot follow the UCS.
     .invalid = UCSFOLLOW: only 0 or 1 is allowed.
+
+attman =
+    .title = Block Attribute Manager
+    .modes = Modes
+    .references = __ocs_fmt_0__ references
+    .counts = In drawing: __ocs_fmt_0__ · in model space: __ocs_fmt_1__
+    .columns = Columns:
+    .constant-note = The Constant mode cannot be changed in the definition.
+    .live = Show changes in the drawing as they are made
+    .apply-existing = Apply changes to existing references
+    .emphasize = Emphasize duplicate tags
+    .sync = Sync
+    .help = BATTMAN manages the attribute definitions of a block.
+    .no-attributed-block = Block table contains no attributed block named __ocs_fmt_0__.
