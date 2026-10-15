@@ -3187,9 +3187,13 @@ impl OpenCADStudio {
         sel.input.right_last_pos = None;
         sel.input.right_dragging = false;
         sel.input.right_click_entered = false;
-        sel.input.middle_down = false;
-        sel.input.middle_last_pos = None;
-        sel.orbit.pivot = None;
+        // A pan or orbit keeps following the pointer outside the viewport;
+        // its input layer reports the moves and the release there.
+        if !sel.input.middle_down {
+            sel.input.middle_down = false;
+            sel.input.middle_last_pos = None;
+            sel.orbit.pivot = None;
+        }
         sel.gesture.box_anchor = None;
         sel.gesture.box_anchor_world = None;
         sel.gesture.box_current = None;

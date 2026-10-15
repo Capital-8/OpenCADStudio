@@ -23,24 +23,93 @@ use iced_aw::ContextMenu;
 struct ViewportPickSurface;
 
 impl iced::widget::canvas::Program<Message> for ViewportPickSurface {
-    type State = ();
+    /// Whether a middle-button drag began inside the viewport.
+    type State = bool;
 
     fn update(
         &self,
-        _state: &mut Self::State,
+        middle_drag: &mut Self::State,
         event: &iced::Event,
         bounds: iced::Rectangle,
         cursor: iced::mouse::Cursor,
     ) -> Option<iced::widget::canvas::Action<Message>> {
-        if let iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)) =
-            event
-        {
-            return cursor.position_in(bounds).map(|position| {
-                iced::widget::canvas::Action::publish(Message::ViewportLeftPressAt(position))
-                    .and_capture()
-            });
+        use iced::mouse::{Button, Event as Mouse};
+        use iced::widget::canvas::Action;
+        let iced::Event::Mouse(event) = event else {
+            return None;
+        };
+        match event {
+            Mouse::ButtonPressed(Button::Left) => cursor.position_in(bounds).map(|position| {
+                Action::publish(Message::ViewportLeftPressAt(position)).and_capture()
+            }),
+            Mouse::ButtonPressed(Button::Middle) => {
+                *middle_drag = cursor.is_over(bounds);
+                None
+            }
+            // A pan or orbit keeps following the pointer past the viewport
+            // edge; the mouse area only reports it inside.
+            Mouse::CursorMoved { position } if *middle_drag && !cursor.is_over(bounds) => Some(
+                Action::publish(Message::ViewportMove(iced::Point::new(
+                    position.x - bounds.x,
+                    position.y - bounds.y,
+                ))),
+            ),
+            Mouse::ButtonReleased(Button::Middle) if *middle_drag => {
+                *middle_drag = false;
+                (!cursor.is_over(bounds)).then(|| Action::publish(Message::ViewportMiddleRelease))
+            }
+            _ => None,
         }
-        None
+    }
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        _renderer: &iced::Renderer,
+        _theme: &iced::Theme,
+        _bounds: iced::Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<iced::widget::canvas::Geometry> {
+        Vec::new()
+    }
+}
+
+/// Input layer of one Model pane: keeps a pan or orbit that began in the pane
+/// following the pointer past its edge, and hears the release there.
+struct PaneDragSurface(usize);
+
+impl iced::widget::canvas::Program<Message> for PaneDragSurface {
+    /// Whether a middle-button drag began inside this pane.
+    type State = bool;
+
+    fn update(
+        &self,
+        middle_drag: &mut Self::State,
+        event: &iced::Event,
+        bounds: iced::Rectangle,
+        cursor: iced::mouse::Cursor,
+    ) -> Option<iced::widget::canvas::Action<Message>> {
+        use iced::mouse::{Button, Event as Mouse};
+        use iced::widget::canvas::Action;
+        let iced::Event::Mouse(event) = event else {
+            return None;
+        };
+        match event {
+            Mouse::ButtonPressed(Button::Middle) => {
+                *middle_drag = cursor.is_over(bounds);
+                None
+            }
+            Mouse::CursorMoved { position } if *middle_drag && !cursor.is_over(bounds) => {
+                let local = iced::Point::new(position.x - bounds.x, position.y - bounds.y);
+                Some(Action::publish(Message::PaneMove(self.0, local)))
+            }
+            Mouse::ButtonReleased(Button::Middle) if *middle_drag => {
+                *middle_drag = false;
+                (!cursor.is_over(bounds))
+                    .then(|| Action::publish(Message::PaneMiddleRelease(self.0)))
+            }
+            _ => None,
+        }
     }
 
     fn draw(
@@ -3180,7 +3249,11 @@ fn start_primary_style(theme: &Theme) -> iced::widget::text::Style {
 /// that emits pane-tagged viewport events (`idx` = the pane's tile index). The
 /// handlers offset the pane-local point to canvas coords and focus the pane.
 fn pane_mouse_area<'a>(idx: usize) -> Element<'a, Message> {
-    mouse_area(container(Space::new().width(Fill).height(Fill)))
+    mouse_area(container(
+        iced::widget::canvas(PaneDragSurface(idx))
+            .width(Fill)
+            .height(Fill),
+    ))
         .on_move(move |p| Message::PaneMove(idx, p))
         .on_press(Message::PanePress(idx))
         .on_release(Message::PaneRelease(idx))
