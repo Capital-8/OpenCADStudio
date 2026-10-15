@@ -211,10 +211,41 @@ fn matching_face(faces: &[Vec<[f64; 2]>], seed: Option<[f64; 2]>) -> Option<&Vec
     })
 }
 
+/// The sources with a segment reaching the box around `rings`: the only ones
+/// their edges can lie on. Matching every edge against every source of a
+/// large drawing took half a minute per picked hatch region. (#1813)
+pub(crate) fn sources_near_rings(
+    rings: &[Vec<[f64; 2]>],
+    sources: &rustc_hash::FxHashMap<codec::Handle, BoundarySource>,
+    pad: f64,
+) -> rustc_hash::FxHashMap<codec::Handle, BoundarySource> {
+    let mut lo = [f64::INFINITY; 2];
+    let mut hi = [f64::NEG_INFINITY; 2];
+    for point in rings.iter().flatten() {
+        for axis in 0..2 {
+            lo[axis] = lo[axis].min(point[axis] - pad);
+            hi[axis] = hi[axis].max(point[axis] + pad);
+        }
+    }
+    let reaches = |line: &Line| {
+        (0..2).all(|axis| {
+            line.start[axis].min(line.end[axis]) <= hi[axis]
+                && line.start[axis].max(line.end[axis]) >= lo[axis]
+        })
+    };
+    sources
+        .iter()
+        .filter(|(_, source)| source.segments.iter().any(reaches))
+        .map(|(handle, source)| (*handle, source.clone()))
+        .collect()
+}
+
 pub(crate) fn ring_source_handles(
     ring: &[[f64; 2]],
     sources: &rustc_hash::FxHashMap<codec::Handle, BoundarySource>,
 ) -> Vec<codec::Handle> {
+    let near = sources_near_rings(&[ring.to_vec()], sources, WELD_TOLERANCE);
+    let sources = &near;
     let mut handles = rustc_hash::FxHashSet::default();
     for (&start, &end) in ring
         .iter()
@@ -411,6 +442,8 @@ pub(crate) fn exact_hatch_paths(
 ) -> Vec<codec::entities::BoundaryPath> {
     use codec::entities::{BoundaryPath, BoundaryPathFlags};
 
+    let near = sources_near_rings(rings, sources, tolerance.max(WELD_TOLERANCE));
+    let sources = &near;
     rings
         .iter()
         .enumerate()
@@ -568,6 +601,8 @@ fn refined_boundary_ring(
     if count < 3 {
         return (ring.to_vec(), Vec::new());
     }
+    let near = sources_near_rings(&[ring.to_vec()], sources, tolerance.max(WELD_TOLERANCE));
+    let sources = &near;
     let edge_curves: Vec<_> = (0..count)
         .map(|index| {
             edge_curve(
@@ -1021,6 +1056,32 @@ impl Scene {
                 })
                 .segments
                 .extend(segments);
+        }
+        // Objects on a layer that is turned off (not frozen) still bound a
+        // hatch, as in the reference: drawings switch off the layers that
+        // close the regions to be hatched. They draw no wire, so they come
+        // from the document. (#1813)
+        let space = if self.active_viewport.is_some() || self.current_layout == "Model" {
+            self.content_render_block_handle()
+        } else {
+            self.current_layout_block_handle()
+        };
+        for entity in self.document.entities() {
+            let common = entity.common();
+            if common.owner_handle != space || sources.contains_key(&common.handle) {
+                continue;
+            }
+            let hidden = self
+                .document
+                .layers
+                .get(&common.layer)
+                .is_some_and(|layer| layer.is_off() && !layer.is_frozen());
+            if !hidden {
+                continue;
+            }
+            if let Some(source) = entity_boundary_source_on_plane(entity, plane, tolerance, None) {
+                sources.insert(common.handle, source);
+            }
         }
         // Finite extents of the wire geometry, so rays and infinite
         // construction lines clip to something real instead of tessellating

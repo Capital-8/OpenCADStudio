@@ -350,12 +350,13 @@ impl HatchCommand {
             .into_iter()
             .map(|depth| depth == 0)
             .collect();
+        let near = crate::scene::sources_near_rings(&rings, &self.boundary_sources, 1.0e-6);
         let mut boundary_sources: Vec<Vec<Handle>> = rings
             .iter()
-            .map(|ring| crate::scene::ring_source_handles(ring, &self.boundary_sources))
+            .map(|ring| crate::scene::ring_source_handles(ring, &near))
             .collect();
-        let mut boundary_paths =
-            crate::scene::exact_hatch_paths(&rings, &exterior, &self.boundary_sources, 1.0e-6);
+        let mut boundary_paths = crate::scene::exact_hatch_paths(&rings, &exterior, &near, 1.0e-6);
+
         if !self.associative {
             for handles in &mut boundary_sources {
                 handles.clear();
@@ -983,12 +984,12 @@ impl GradientCommand {
             .into_iter()
             .map(|depth| depth == 0)
             .collect();
+        let near = crate::scene::sources_near_rings(&rings, &self.boundary_sources, 1.0e-6);
         let boundary_sources = rings
             .iter()
-            .map(|ring| crate::scene::ring_source_handles(ring, &self.boundary_sources))
+            .map(|ring| crate::scene::ring_source_handles(ring, &near))
             .collect();
-        let boundary_paths =
-            crate::scene::exact_hatch_paths(&rings, &exterior, &self.boundary_sources, 1.0e-6);
+        let boundary_paths = crate::scene::exact_hatch_paths(&rings, &exterior, &near, 1.0e-6);
         HatchModel {
             pattern_origin: None,
             render_instance: None,
