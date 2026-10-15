@@ -2674,6 +2674,8 @@ pub enum Message {
     SelectionAreaToggled(bool),
     /// Change Selection Area opacity percentage (0–100, SELECTIONAREAOPACITY).
     SelectionOpacityChanged(u8),
+    SelectionHighlightOpacityChanged(u8),
+    SelectionHighlightWidenChanged(u8),
     /// Change Window selection color ACI index (0 = Theme Primary, 1..=255 = ACI).
     SelectionWindowColorChanged(u8),
     /// Change Crossing selection color ACI index (0 = Theme Success, 1..=255 = ACI).

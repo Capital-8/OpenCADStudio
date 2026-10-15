@@ -1120,6 +1120,38 @@ pub fn view_window<'a>(
         ]
         .spacing(10)
         .align_y(iced::Center),
+        Space::new().height(10),
+        row![
+            text(crate::t!("Selection highlight opacity")).size(12).width(140),
+            slider(
+                10..=100,
+                model_space.selection_highlight_opacity.clamp(10, 100),
+                Message::SelectionHighlightOpacityChanged,
+            )
+            .step(5)
+            .width(Fill),
+            text(format!("{}%", model_space.selection_highlight_opacity.clamp(10, 100)))
+                .size(11)
+                .width(44),
+        ]
+        .spacing(10)
+        .align_y(iced::Center),
+        Space::new().height(10),
+        row![
+            text(crate::t!("Selection highlight extra width")).size(12).width(140),
+            slider(
+                0..=6,
+                model_space.selection_highlight_widen.min(6),
+                Message::SelectionHighlightWidenChanged,
+            )
+            .step(1)
+            .width(Fill),
+            text(format!("{} px", model_space.selection_highlight_widen.min(6)))
+                .size(11)
+                .width(44),
+        ]
+        .spacing(10)
+        .align_y(iced::Center),
         Space::new().height(24),
         text(crate::t!("Preview")).size(15),
         Space::new().height(10),

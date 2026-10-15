@@ -9175,6 +9175,20 @@ impl OpenCADStudio {
                 Task::none()
             }
 
+            Message::SelectionHighlightOpacityChanged(opacity) => {
+                self.model_space.selection_highlight_opacity = opacity.clamp(10, 100);
+                self.sync_model_space_theme(false);
+                self.persist_settings_if_changed();
+                Task::none()
+            }
+
+            Message::SelectionHighlightWidenChanged(widen) => {
+                self.model_space.selection_highlight_widen = widen.min(6);
+                self.sync_model_space_theme(false);
+                self.persist_settings_if_changed();
+                Task::none()
+            }
+
             Message::GripSizeChanged(size) => {
                 self.model_space.grip_size = size.clamp(1, 25);
                 self.sync_model_space_theme(false);

@@ -15,7 +15,7 @@ struct Uniforms {
     lineweight_scale: f32,
     view_rot:         mat4x4<f32>,
     eye_high:         vec3<f32>,
-    _pad_eh:          f32,
+    highlight_widen:          f32,
     eye_low:          vec3<f32>,
     _pad_el:          f32,
 }
@@ -79,7 +79,13 @@ struct VertexOut {
 // Half-width of one segment end: a tapered band's own end width wins, then a
 // constant world-unit band, then the screen-pixel lineweight (LWDISPLAY off
 // collapses to a hairline).
+// The selection pass widens highlighted lines by `highlight_widen` pixels;
+// every other pass uploads zero.
 fn resolve_hw(taper_ratio: f32, world_hw: f32, px_hw: f32) -> f32 {
+    return resolve_hw_base(taper_ratio, world_hw, px_hw) + u.highlight_widen * 0.5;
+}
+
+fn resolve_hw_base(taper_ratio: f32, world_hw: f32, px_hw: f32) -> f32 {
     if taper_ratio > 0.0 {
         return max((taper_ratio * world_hw) / u.world_per_pixel, 0.5);
     }

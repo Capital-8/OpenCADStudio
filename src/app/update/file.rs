@@ -1278,6 +1278,9 @@ impl OpenCADStudio {
             return;
         }
         tab.scene.model_lineweight_scale = self.lineweight_display_scale as f32 / 100.0;
+        tab.scene.selection_color = self.model_space.resolve_selection_color();
+        tab.scene.selection_effect = self.model_space.selection_effect;
+        tab.scene.selection_widen = f32::from(self.model_space.selection_highlight_widen.min(6));
         if bg.is_none() && paper_bg.is_none() {
             return;
         }
@@ -1551,6 +1554,7 @@ impl OpenCADStudio {
         let paper_bg = self.model_space.resolve_paper_bg();
         let sel_color = self.model_space.resolve_selection_color();
         let sel_effect = self.model_space.selection_effect;
+        let sel_widen = f32::from(self.model_space.selection_highlight_widen.min(6));
         self.default_bg_color = Some(model_bg);
         self.default_paper_bg_color = Some(paper_bg);
 
@@ -1563,10 +1567,14 @@ impl OpenCADStudio {
             tab.scene.paper_bg_color = paper_bg;
             tab.scene.selection_color = sel_color;
             tab.scene.selection_effect = sel_effect;
+            let old_sel_widen = std::mem::replace(&mut tab.scene.selection_widen, sel_widen);
             tab.bg_color = Some(model_bg);
             tab.paper_bg_color = Some(paper_bg);
 
-            if old_sel_color != sel_color || old_sel_effect != sel_effect {
+            if old_sel_color != sel_color
+                || old_sel_effect != sel_effect
+                || old_sel_widen != sel_widen
+            {
                 tab.scene.selection_generation = tab.scene.selection_generation.wrapping_add(1);
             }
 

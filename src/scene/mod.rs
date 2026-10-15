@@ -2204,6 +2204,8 @@ pub struct Scene {
     pub selection_color: [f32; 4],
     /// Whether selection visual effect (glow/highlight) is enabled (SELECTIONEFFECT).
     pub selection_effect: bool,
+    /// Extra screen pixels the selection highlight is drawn wider.
+    pub selection_widen: f32,
     /// Whether entity transparency is honoured on screen. When false the
     /// wire shader forces every line opaque (a uniform toggle, no retessellate).
     pub transparency_display: bool,
@@ -2827,6 +2829,7 @@ impl Scene {
             constraint_hover_refs: Vec::new(),
             constraint_hover_wires: Vec::new(),
             selection_color: crate::scene::model::wire_model::WireModel::SELECTED,
+            selection_widen: 0.0,
             selection_effect: true,
             transparency_display: true,
             model_lineweight_scale: 1.0,

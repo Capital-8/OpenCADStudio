@@ -5183,6 +5183,10 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Window selection color" => Some(("common", "window-selection-color")),
         "Crossing selection color" => Some(("common", "crossing-selection-color")),
         "Selection highlight color" => Some(("common", "selection-highlight-color")),
+        "Selection highlight opacity" => Some(("common", "selection-highlight-opacity")),
+        "Selection highlight extra width" => {
+            Some(("common", "selection-highlight-extra-width"))
+        }
         "Grip Settings" => Some(("common", "grip-settings")),
         "Grip size" => Some(("common", "grip-size")),
         "Unselected grip color" => Some(("common", "unselected-grip-color")),

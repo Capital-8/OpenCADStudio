@@ -15,7 +15,7 @@ struct Uniforms {
     // Relative-to-eye (double-single)
     view_rot:            mat4x4<f32>,
     eye_high:            vec3<f32>,
-    _pad_eh:             f32,
+    highlight_widen:             f32,
     eye_low:             vec3<f32>,
     _pad_el:             f32,
 }
@@ -50,7 +50,13 @@ struct VertexOut {
     @location(9) @interpolate(flat) end_param:   f32,
 }
 
+// The selection pass widens highlighted lines by `highlight_widen` pixels;
+// every other pass uploads zero.
 fn resolve_hw(px_hw: f32) -> f32 {
+    return resolve_hw_base(px_hw) + u.highlight_widen * 0.5;
+}
+
+fn resolve_hw_base(px_hw: f32) -> f32 {
     var display_hw = max(px_hw * u.lineweight_scale, 0.5);
     if u.lineweight_scale < 0.0 {
         let scale = -u.lineweight_scale;

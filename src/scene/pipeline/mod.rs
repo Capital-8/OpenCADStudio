@@ -182,6 +182,10 @@ pub struct Pipeline {
     uniform_buffer: wgpu::Buffer,
     frame_bgl: wgpu::BindGroupLayout,
     uniform_bind_group: wgpu::BindGroup,
+    /// The selection overlay's copy of the frame uniforms: transparency on,
+    /// so a translucent highlight colour shows, and lines widened.
+    selection_uniform_buffer: wgpu::Buffer,
+    selection_uniform_bind_group: wgpu::BindGroup,
     shadow_uniform_bind_group: wgpu::BindGroup,
     background_texture: wgpu::Texture,
     environment_texture: wgpu::Texture,
@@ -414,11 +418,48 @@ pub struct Pipeline {
     pub slot_id: u64,
 }
 
+/// The views and samplers the frame bind group carries beside its uniforms.
+struct FrameViews<'a> {
+    background: &'a wgpu::TextureView,
+    environment: &'a wgpu::TextureView,
+    background_sampler: &'a wgpu::Sampler,
+    shadow: &'a wgpu::TextureView,
+    shadow_sampler: &'a wgpu::Sampler,
+}
+
+fn frame_bind_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    uniforms: &wgpu::Buffer,
+    views: &FrameViews<'_>,
+) -> wgpu::BindGroup {
+    let entry = |binding, resource| wgpu::BindGroupEntry { binding, resource };
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("viewer.bind_group"),
+        layout,
+        entries: &[
+            entry(0, uniforms.as_entire_binding()),
+            entry(1, wgpu::BindingResource::TextureView(views.background)),
+            entry(2, wgpu::BindingResource::Sampler(views.background_sampler)),
+            entry(3, wgpu::BindingResource::TextureView(views.environment)),
+            entry(4, wgpu::BindingResource::Sampler(views.background_sampler)),
+            entry(5, wgpu::BindingResource::TextureView(views.shadow)),
+            entry(6, wgpu::BindingResource::Sampler(views.shadow_sampler)),
+        ],
+    })
+}
+
 impl Pipeline {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         // ── Shared frame uniform buffer (view_proj etc.) ───────────────────
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("viewer.uniform_buffer"),
+            size: std::mem::size_of::<Uniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let selection_uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("viewer.selection_uniform_buffer"),
             size: std::mem::size_of::<Uniforms>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -563,40 +604,17 @@ impl Pipeline {
             background_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let environment_view =
             environment_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("viewer.bind_group"),
-            layout: &frame_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&background_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&background_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&environment_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::Sampler(&background_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::TextureView(&shadow_fallback_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: wgpu::BindingResource::Sampler(&shadow_sampler),
-                },
-            ],
-        });
+        let frame_views = FrameViews {
+            background: &background_view,
+            environment: &environment_view,
+            background_sampler: &background_sampler,
+            shadow: &shadow_fallback_view,
+            shadow_sampler: &shadow_sampler,
+        };
+        let uniform_bind_group =
+            frame_bind_group(device, &frame_bgl, &uniform_buffer, &frame_views);
+        let selection_uniform_bind_group =
+            frame_bind_group(device, &frame_bgl, &selection_uniform_buffer, &frame_views);
         let shadow_uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shadow.frame_bind_group"),
             layout: &shadow_frame_bgl,
@@ -2390,6 +2408,8 @@ impl Pipeline {
             uniform_buffer,
             frame_bgl,
             uniform_bind_group,
+            selection_uniform_buffer,
+            selection_uniform_bind_group,
             shadow_uniform_bind_group,
             background_texture,
             environment_texture,
@@ -3926,40 +3946,18 @@ analytic={:.1} regular={:.1} blocks={:.1}",
         let environment_view = self
             .environment_texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        self.uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("viewer.bind_group"),
-            layout: &self.frame_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.uniform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&background_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&self.background_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&environment_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::Sampler(&self.background_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::TextureView(self.shadow_view()),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: wgpu::BindingResource::Sampler(&self.shadow_sampler),
-                },
-            ],
-        });
+        let views = FrameViews {
+            background: &background_view,
+            environment: &environment_view,
+            background_sampler: &self.background_sampler,
+            shadow: self.shadow_view(),
+            shadow_sampler: &self.shadow_sampler,
+        };
+        let frame = frame_bind_group(device, &self.frame_bgl, &self.uniform_buffer, &views);
+        let selection =
+            frame_bind_group(device, &self.frame_bgl, &self.selection_uniform_buffer, &views);
+        self.uniform_bind_group = frame;
+        self.selection_uniform_bind_group = selection;
     }
 
     /// Allocate or drop the shadow target to match `shadow_enabled`.
@@ -3995,7 +3993,11 @@ analytic={:.1} regular={:.1} blocks={:.1}",
         if self.shadow_full.is_none() {
             uniforms.shadow_params[0] = 0.0;
         }
+        let mut selection = uniforms;
+        selection.transparency_enable = 1.0;
+        uniforms.highlight_widen = 0.0;
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
+        queue.write_buffer(&self.selection_uniform_buffer, 0, bytemuck::bytes_of(&selection));
     }
 
     pub fn upload_background_images(
@@ -5120,7 +5122,7 @@ analytic={:.1} regular={:.1} blocks={:.1}",
                     multiview_mask: None,
                 });
                 pass.set_viewport(raster.x, raster.y, raster.width, raster.height, 0.0, 1.0);
-                pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                pass.set_bind_group(0, &self.selection_uniform_bind_group, &[]);
                 pass.set_stencil_reference(stencil_ref);
                 if !self.gpu_selected_wires.is_empty() {
                     pass.set_pipeline(if occluded {
@@ -5160,7 +5162,7 @@ analytic={:.1} regular={:.1} blocks={:.1}",
                     } else {
                         &self.circle_xray_pipeline
                     });
-                    pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    pass.set_bind_group(0, &self.selection_uniform_bind_group, &[]);
                     for cg in &self.gpu_selected_circles {
                         if cg.instance_count > 0 {
                             pass.set_vertex_buffer(0, cg.instance_buffer.slice(..));
@@ -5174,7 +5176,7 @@ analytic={:.1} regular={:.1} blocks={:.1}",
                     } else {
                         &self.ellipse_xray_pipeline
                     });
-                    pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    pass.set_bind_group(0, &self.selection_uniform_bind_group, &[]);
                     for eg in &self.gpu_selected_ellipses {
                         if eg.instance_count > 0 {
                             pass.set_vertex_buffer(0, eg.instance_buffer.slice(..));
