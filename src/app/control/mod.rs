@@ -777,6 +777,30 @@ impl OpenCADStudio {
                         Task::none(),
                     );
                 }
+                // Any other request settles once the work it started reports
+                // back. When that never happens (a save or open whose result
+                // never arrives) the bridge would stay busy until the app is
+                // killed, so `cancel` ends the active command and closes the
+                // request as cancelled. (#1801)
+                if op == "cancel" {
+                    let task = self.update(Message::CommandEscape);
+                    if let Some(p) = self.control.pending.as_mut() {
+                        p.cancelled = true;
+                        p.pending = 0;
+                    }
+                    self.control_settle_inner(true);
+                    let response = self
+                        .control
+                        .completed
+                        .iter()
+                        .find(|(i, _, _)| *i == pending_id)
+                        .map(|(_, _, r)| r.clone());
+                    return (
+                        response
+                            .unwrap_or_else(|| failure("busy", "Wait for the running operation")),
+                        task,
+                    );
+                }
                 return (
                     failure("busy", "Wait for the running operation"),
                     Task::none(),
@@ -1440,11 +1464,22 @@ impl OpenCADStudio {
         }
     }
     pub(super) fn control_settle(&mut self) {
-        if self.control.pending.as_ref().is_none_or(|p| p.pending != 0) || self.opening.is_some() {
+        self.control_settle_inner(false);
+    }
+
+    /// `force` closes the request even while an open or a save it may have
+    /// started is still running.
+    fn control_settle_inner(&mut self, force: bool) {
+        if self.control.pending.as_ref().is_none_or(|p| p.pending != 0) {
+            return;
+        }
+        if !force && self.opening.is_some() {
             return;
         }
         #[cfg(not(target_arch = "wasm32"))]
-        if !self.active_save_jobs.is_empty() || self.pending_native_thumbnail_save.is_some() {
+        if !force
+            && (!self.active_save_jobs.is_empty() || self.pending_native_thumbnail_save.is_some())
+        {
             return;
         }
         let p = self.control.pending.take().unwrap();
