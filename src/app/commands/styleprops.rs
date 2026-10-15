@@ -1282,6 +1282,10 @@ impl OpenCADStudio {
                     | "DYNCONSTRAINTDISPLAY"
                     | "CCONSTRAINTFORM"
                     | "DYNMODE"
+                    | "TXT2MTXTCOMBINEMTEXT"
+                    | "TXT2MTXTTEXTORDER"
+                    | "TXT2MTXTWORDWRAP"
+                    | "TXT2MTXTLINESPACING"
             ) =>
             {
                 return self.dispatch_styleprops(&format!("SETVAR {cmd}"), i);
@@ -1572,6 +1576,50 @@ impl OpenCADStudio {
                             None => {
                                 self.command_line.push_output(&format!(
                                     "Enter new value for SURFACEASSOCIATIVITY <{current}>:"
+                                ));
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    if let Some(field) = match name.as_str() {
+                        "TXT2MTXTCOMBINEMTEXT" => Some(0),
+                        "TXT2MTXTTEXTORDER" => Some(1),
+                        "TXT2MTXTWORDWRAP" => Some(2),
+                        "TXT2MTXTLINESPACING" => Some(3),
+                        _ => None,
+                    } {
+                        // TXT2MTXT's profile settings: 0 / 1 (TEXTORDER 1 =
+                        // selection order).
+                        let s = &mut self.txt2mtxt_settings;
+                        let slot = match field {
+                            0 => &mut s.combine,
+                            1 => &mut s.select_order,
+                            2 => &mut s.word_wrap,
+                            _ => &mut s.uniform_spacing,
+                        };
+                        let current = i16::from(*slot);
+                        match value
+                            .as_deref()
+                            .map(|v| v.trim().parse::<i16>().ok().filter(|v| (0..=1).contains(v)))
+                        {
+                            Some(Some(mode)) => {
+                                if current != mode {
+                                    *slot = mode == 1;
+                                    self.save_config();
+                                }
+                            }
+                            Some(None) => {
+                                self.command_line
+                                    .push_error(crate::t!("Requires 0 or 1 only.").as_ref());
+                                self.command_line.push_output(&format!(
+                                    "Enter new value for {name} <{current}>:"
+                                ));
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&format!(
+                                    "Enter new value for {name} <{current}>:"
                                 ));
                                 self.pending_setvar = Some(name.clone());
                             }

@@ -108,6 +108,34 @@ impl AutoConstrainSettings {
     }
 }
 
+/// TXT2MTXT (Combine Text) settings, the profile values
+/// TXT2MTXTCOMBINEMTEXT, TXT2MTXTTEXTORDER, TXT2MTXTWORDWRAP and
+/// TXT2MTXTLINESPACING.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Txt2MtxtSettings {
+    /// Combine everything into one MTEXT (else each TEXT becomes its own).
+    pub combine: bool,
+    /// Keep the selection order (else sort top-down).
+    pub select_order: bool,
+    /// Run the lines on separated by spaces in a computed width (else one
+    /// paragraph per object).
+    pub word_wrap: bool,
+    /// Force uniform line spacing (always on while word-wrap is).
+    pub uniform_spacing: bool,
+}
+
+impl Default for Txt2MtxtSettings {
+    fn default() -> Self {
+        Self {
+            combine: true,
+            select_order: false,
+            word_wrap: true,
+            uniform_spacing: true,
+        }
+    }
+}
+
 /// Cursor shown over the drawing viewport.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CursorType {
@@ -599,6 +627,9 @@ pub struct UserSettings {
     /// the Auto Constrain command.
     #[serde(default)]
     pub auto_constrain: AutoConstrainSettings,
+    /// TXT2MTXT settings (Text to MText Settings dialog).
+    #[serde(default)]
+    pub txt2mtxt: Txt2MtxtSettings,
     /// Keep existing geometry size while solving after a constraint edit.
     #[serde(default = "default_constraint_solve_mode")]
     pub constraint_solve_mode: bool,
@@ -995,6 +1026,7 @@ impl Default for UserSettings {
             file_assoc_enabled: true,
             show_constraint_values: true,
             auto_constrain: AutoConstrainSettings::default(),
+            txt2mtxt: Txt2MtxtSettings::default(),
             constraint_solve_mode: true,
             constraint_infer: false,
             constraint_bar_display: 3,

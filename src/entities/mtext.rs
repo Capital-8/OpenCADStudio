@@ -114,6 +114,16 @@ fn display_text(t: &MText, document: &codec::CadDocument) -> String {
 /// click-to-select preview. Uses the exact same layout opts as `to_render`
 /// so the boxes line up with the rendered glyphs.
 pub fn glyph_boxes(t: &MText, document: &codec::CadDocument) -> Vec<GlyphBox> {
+    layout_of(t, document, true).glyph_boxes
+}
+
+/// The MTEXT laid out as it is drawn: its sub-lines, their widths and the
+/// first baseline, in the entity's own (pre-rotation) frame.
+pub fn layout_of(
+    t: &MText,
+    document: &codec::CadDocument,
+    want_glyph_boxes: bool,
+) -> crate::entities::text_support::MTextLayout {
     let resolved_style = resolve_text_style(&t.style, document);
     let attach_h_anchor: f32 = match t.attachment_point {
         AttachmentPoint::TopCenter
@@ -143,7 +153,7 @@ pub fn glyph_boxes(t: &MText, document: &codec::CadDocument) -> Vec<GlyphBox> {
     // A field shows its stored value: fields update on their evaluation
     // events (open, save, plot, regen, UPDATEFIELD), never on a redraw.
     let display = display_text(t, document);
-    let layout = layout_mtext(&MTextRenderOpts {
+    layout_mtext(&MTextRenderOpts {
         value: &display,
         insertion: [
             t.insertion_point.x,
@@ -165,10 +175,9 @@ pub fn glyph_boxes(t: &MText, document: &codec::CadDocument) -> Vec<GlyphBox> {
         vertical_text: matches!(t.drawing_direction, DrawingDirection::TopToBottom)
             || matches!(t.drawing_direction, DrawingDirection::ByStyle)
                 && resolved_style.is_vertical,
-        want_glyph_boxes: true,
+        want_glyph_boxes,
         columns: columns_of(t),
-    });
-    layout.glyph_boxes
+    })
 }
 
 fn to_render(t: &MText, document: &codec::CadDocument) -> RenderEntity {

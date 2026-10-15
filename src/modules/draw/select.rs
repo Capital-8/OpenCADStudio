@@ -44,6 +44,8 @@ pub struct SelectObjectsCommand {
     /// The kinds of object the command takes; the host drops the rest of
     /// each completed selection silently, and Enter on nothing ends quietly.
     keep: Option<fn(&codec::EntityType) -> bool>,
+    /// A SEttings keyword at the prompt, and what it does.
+    settings: Option<fn() -> CmdResult>,
 }
 
 impl SelectObjectsCommand {
@@ -61,6 +63,7 @@ impl SelectObjectsCommand {
             prompt_text: None,
             associative_dimensions_only: false,
             keep: None,
+            settings: None,
         }
     }
 
@@ -79,6 +82,7 @@ impl SelectObjectsCommand {
             prompt_text: None,
             associative_dimensions_only: false,
             keep: None,
+            settings: None,
         }
     }
 
@@ -97,6 +101,7 @@ impl SelectObjectsCommand {
             prompt_text: None,
             associative_dimensions_only: false,
             keep: None,
+            settings: None,
         }
     }
 
@@ -115,6 +120,7 @@ impl SelectObjectsCommand {
             prompt_text: None,
             associative_dimensions_only: false,
             keep: None,
+            settings: None,
         }
     }
 
@@ -147,6 +153,19 @@ impl SelectObjectsCommand {
     ) -> Self {
         let mut command = Self::with_prompt(prompt_cmd, pending_cmd, prompt_text);
         command.keep = Some(keep);
+        command
+    }
+
+    /// The command's own wording with a SEttings keyword; Enter on nothing
+    /// ends quietly.
+    pub fn with_settings(
+        prompt_cmd: &str,
+        pending_cmd: &str,
+        prompt_text: &'static str,
+        settings: fn() -> CmdResult,
+    ) -> Self {
+        let mut command = Self::filtered(prompt_cmd, pending_cmd, prompt_text, |_| true);
+        command.settings = Some(settings);
         command
     }
 
@@ -242,6 +261,9 @@ impl CadCommand for SelectObjectsCommand {
     // they work typed as well — these buttons only surface them, which is what
     // the on-screen keyboard-less case needs.
     fn options(&self) -> Vec<CmdOption> {
+        if self.settings.is_some() && self.pick.is_none() {
+            return vec![CmdOption::new("SEttings", "SE")];
+        }
         if self.commit_on_enter && self.show_options {
             if self.auto_constrain_settings {
                 return vec![CmdOption::new(t!("Settings").as_ref(), "S")];
@@ -296,6 +318,12 @@ impl CadCommand for SelectObjectsCommand {
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
         if !self.commit_on_enter {
             return None;
+        }
+        let word = text.trim().trim_start_matches('_').to_uppercase();
+        if let Some(settings) = self.settings {
+            if word.len() >= 2 && "SETTINGS".starts_with(word.as_str()) {
+                return Some(settings());
+            }
         }
         match text.trim().to_uppercase().as_str() {
             "S" | "SETTINGS" if self.auto_constrain_settings => {

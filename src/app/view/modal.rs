@@ -46,6 +46,7 @@ impl OpenCADStudio {
             Some(K::RefEdit) => crate::tr!("ref-edit", "dialog-title"),
             Some(K::UnderlayLayers) => crate::t!("Underlay Layers").into_owned(),
             Some(K::PdfImportSettings) => crate::t!("PDF Import Settings").into_owned(),
+            Some(K::Txt2MtxtSettings) => crate::tr!("txt2mtxt", "title"),
             Some(K::PdfImportFile) => crate::t!("Import PDF").into_owned(),
             Some(K::XrefAttach) => crate::t!("Attach External Reference").into_owned(),
             Some(K::WriteBlock) => crate::t!("Write Block").into_owned(),
@@ -575,6 +576,12 @@ impl OpenCADStudio {
                 let settings = self.pdf_import_settings.as_ref()?;
                 sized_flow(ex, 640, 380, |flow| {
                     crate::ui::window::pdf_dialogs::view_import_settings(settings, flow)
+                })
+            }
+            super::super::ModalKind::Txt2MtxtSettings => {
+                let settings = self.txt2mtxt_dialog.as_ref()?;
+                sized_flow(ex, 600, 470, |flow| {
+                    crate::ui::window::pdf_dialogs::view_txt2mtxt_settings(settings, flow)
                 })
             }
             super::super::ModalKind::PdfImportFile => {

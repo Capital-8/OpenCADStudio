@@ -105,6 +105,7 @@ pub(super) const NAMES: &[&str] = &[
     #[cfg(not(target_arch = "wasm32"))]
     "external_change_cancel",
     "pdf_dialog_ok",
+    "txt2mtxt_settings",
     "view_background",
     "image_adjust",
     "refedit_dialog",
@@ -2200,6 +2201,27 @@ impl OpenCADStudio {
                         Message::PdfDialog(P::IaStep(row(name)?, dir))
                     }
                     _ => return Err(bad()),
+                }
+            }
+            // Text to MText Settings (TXT2MTXT SEttings): "combine=0",
+            // "order=select" / "order=top", "wrap=0", "uniform=1", "ok",
+            // "cancel".
+            "txt2mtxt_settings" => {
+                use crate::ui::window::pdf_dialogs::PdfDialogMsg as M;
+                if self.active_modal != Some(crate::app::ModalKind::Txt2MtxtSettings) {
+                    return Err(failure("no_dialog", "Text to MText Settings is not open"));
+                }
+                let value = string(req, "value")?;
+                let (key, arg) = value.split_once('=').unwrap_or((value, ""));
+                let on = arg != "0";
+                match key {
+                    "combine" => Message::PdfDialog(M::T2mCombine(on)),
+                    "order" => Message::PdfDialog(M::T2mSelectOrder(arg == "select")),
+                    "wrap" => Message::PdfDialog(M::T2mWrap(on)),
+                    "uniform" => Message::PdfDialog(M::T2mUniform(on)),
+                    "ok" => Message::PdfDialog(M::T2mOk),
+                    "cancel" => Message::CloseModal,
+                    _ => return Err(failure("invalid_value", "Unknown setting")),
                 }
             }
             "pdf_dialog_ok" => {

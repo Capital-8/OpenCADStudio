@@ -381,6 +381,7 @@ fn command_selection_policy(name: &str) -> &'static str {
         "ERASE",
         "EXPLODE",
         "TXTEXP",
+        "TXT2MTXT",
         "GROUP",
         "LAYFRZ",
         "LAYLCK",
