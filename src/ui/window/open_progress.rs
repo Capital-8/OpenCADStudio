@@ -153,16 +153,22 @@ pub fn view<'a>(progress: &'a OpenProgress, _now: Instant) -> Element<'a, Messag
     });
 
     // ── Backdrop (click-blocker + dim) ────────────────────────────────────
-    let backdrop: Element<'_, Message> = container(Space::new().width(Fill).height(Fill))
-        .style(|theme: &Theme| container::Style {
-            background: Some(Background::Color(
-                theme.palette().background.strong.color.scale_alpha(0.72),
-            )),
-            ..Default::default()
-        })
-        .width(Fill)
-        .height(Fill)
-        .into();
+    // It shows the arrow cursor: the viewport below hides the system cursor
+    // for its crosshair, which is not drawn while a drawing opens, so Cancel
+    // could not be found. (#1727)
+    let backdrop: Element<'_, Message> = iced::widget::mouse_area(
+        container(Space::new().width(Fill).height(Fill))
+            .style(|theme: &Theme| container::Style {
+                background: Some(Background::Color(
+                    theme.palette().background.strong.color.scale_alpha(0.72),
+                )),
+                ..Default::default()
+            })
+            .width(Fill)
+            .height(Fill),
+    )
+    .interaction(iced::mouse::Interaction::Idle)
+    .into();
 
     let centered: Element<'_, Message> = container(card)
         .center_x(Fill)
