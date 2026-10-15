@@ -287,6 +287,27 @@ pub fn page_size_inches(path: &str, page: &str) -> Option<(f64, f64)> {
     Some((w as f64 / 72.0, h as f64 / 72.0))
 }
 
+/// Drawing units per page inch that a page's measure gives: the X ratio of
+/// the first viewport's measure dictionary (`/VP [<< /Measure << /X [<< /C
+/// units-per-point >>] >> >>]`, written by plotters with the plot scale),
+/// times 72. `None` when the page has no viewport measure.
+pub fn page_units_per_inch(path: &str, page: &str) -> Option<f64> {
+    use hayro::hayro_syntax::object::{Array, Dict, Number};
+    let bytes = source_bytes(path)?;
+    let pdf = Pdf::new(bytes).ok()?;
+    let page_no = page.trim().parse::<usize>().ok()?;
+    let page = pdf.pages().get(page_no.checked_sub(1)?)?;
+    let viewport = page.raw().get::<Array<'_>>(b"VP")?.iter::<Dict<'_>>().next()?;
+    let ratio = viewport
+        .get::<Dict<'_>>(b"Measure")?
+        .get::<Array<'_>>(b"X")?
+        .iter::<Dict<'_>>()
+        .next()?
+        .get::<Number>(b"C")?
+        .as_f64();
+    (ratio.is_finite() && ratio > 0.0).then_some(ratio * 72.0)
+}
+
 /// Display adjustments of an underlay page, applied to its display raster.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PageAdjust {
