@@ -4561,8 +4561,15 @@ impl OpenCADStudio {
                 if let Some(h) = otrack.filter(|_| {
                     // Match the hover path: preserve exact object snaps, but
                     // allow Extension to resolve a crossing with OTRACK.
-                    !snap_hit.is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid)
+                    !snap_hit.is_some_and(|s| {
+                        !matches!(
+                            s.snap_type,
+                            crate::snap::SnapType::Grid | crate::snap::SnapType::Extension
+                        )
+                    })
                 }) {
+                    // Commit the actual OTRACK intersection, not the cursor
+                    // projection onto Extension.
                     pt = h.aligned;
                     if clamp_world_xy {
                         pt.z = 0.0;
