@@ -11322,14 +11322,22 @@ impl Scene {
     }
 
     pub fn view_center_surface_pivot(&self, bounds: iced::Rectangle) -> Option<glam::DVec3> {
+        self.surface_pivot_at(bounds, iced::Point::new(bounds.width * 0.5, bounds.height * 0.5))
+    }
+
+    /// The nearest solid or mesh surface under `local` (relative to `bounds`).
+    pub fn surface_pivot_at(
+        &self,
+        bounds: iced::Rectangle,
+        local: iced::Point,
+    ) -> Option<glam::DVec3> {
         let camera = self.camera.borrow();
         let view_rot = camera.view_proj_rte(bounds);
         let eye = camera.eye();
         drop(camera);
         let meshes = self.interaction_meshes_arc();
-        let center = iced::Point::new(bounds.width * 0.5, bounds.height * 0.5);
         pick::hit_test::mesh_click_point(
-            center,
+            local,
             meshes.iter().filter_map(|set| {
                 let handle = set.entity_handle()?;
                 let mesh = set.geometry_lods().first()?;
