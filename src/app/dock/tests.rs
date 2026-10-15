@@ -661,6 +661,62 @@ fn an_open_dropdown_in_a_hover_zone_does_not_read_as_leaving() {
     });
 }
 
+/// Bounds of the field (text `ByLayer`) and of its open list (text `Opaque`)
+/// for a `drop_down_below` in a scrollable that, like a pallet, sits away
+/// from the window's top-left corner.
+fn drop_down_below_in_an_offset_scrollable() -> (iced::Rectangle, iced::Rectangle) {
+    use iced::widget::{button, column, container, row, scrollable, text, Space};
+    use iced_test::core::widget;
+    use iced_test::runtime::user_interface::{Cache, UserInterface};
+    use iced_test::Selector;
+    let view = || -> iced::Element<'static, Message> {
+        let field = container(text("ByLayer")).width(200).height(20);
+        let list = column![
+            button(text("Opaque")).width(iced::Fill),
+            button(text("50")).width(iced::Fill),
+        ];
+        let dd = crate::ui::color_select::drop_down_below(
+            field.into(),
+            list.into(),
+            None,
+            iced::Length::Shrink,
+            Message::PropEditChoiceToggle,
+        );
+        let pallet = scrollable(column![Space::new().height(300), dd]).height(500);
+        row![
+            Space::new().width(1000),
+            container(pallet).width(300).height(iced::Fill)
+        ]
+        .into()
+    };
+    let mut renderer = headless_renderer();
+    let mut ui = UserInterface::build(view(), VIEW_SIZE, Cache::default(), &mut renderer);
+    let mut find = |label: &str| {
+        let mut find = Selector::find(label);
+        ui.operate(&renderer, &mut widget::operation::black_box(&mut find));
+        match widget::Operation::finish(&find) {
+            widget::operation::Outcome::Some(Some(target)) => target.bounds(),
+            _ => panic!("{label} not found"),
+        }
+    };
+    (find("ByLayer"), find("Opaque"))
+}
+
+#[test]
+fn a_drop_down_in_a_pallet_opens_right_below_its_field() {
+    with_stack(|| {
+        let (field, item) = drop_down_below_in_an_offset_scrollable();
+        assert!(
+            item.y >= field.y + field.height && item.y < field.y + field.height + 20.0,
+            "list starts below the field: field {field:?}, first item {item:?}"
+        );
+        assert!(
+            item.x >= field.x - 1.0 && item.x < field.x + field.width,
+            "list lines up with the field: field {field:?}, first item {item:?}"
+        );
+    });
+}
+
 #[test]
 fn docked_title_bar_double_click_floats_the_pallet_in_the_real_view() {
     // Building the real view is deeper than a default test thread's stack.
