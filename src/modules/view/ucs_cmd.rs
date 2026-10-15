@@ -258,10 +258,12 @@ mod tests {
     fn spanish_and_international_options_work() {
         for option in ["Universal", "U", "_World"] {
             let mut cmd = UcsCommand::new();
-            assert!(matches!(cmd.on_text_input(option), Some(CmdResult::Dispatch(s)) if s == "UCS WORLD"));
+            let result = cmd.on_text_input(option);
+            assert!(matches!(result, Some(CmdResult::Dispatch(s)) if s == "UCS WORLD"));
         }
         let mut cmd = UcsCommand::new();
         assert!(matches!(cmd.on_text_input("Guardar"), Some(CmdResult::NeedPoint)));
-        assert!(matches!(cmd.on_text_input("MiPlano"), Some(CmdResult::Dispatch(s)) if s == "UCS SAVE MiPlano"));
+        let result = cmd.on_text_input("MiPlano");
+        assert!(matches!(result, Some(CmdResult::Dispatch(s)) if s == "UCS SAVE MiPlano"));
     }
 }

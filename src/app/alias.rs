@@ -289,8 +289,12 @@ impl OpenCADStudio {
     pub(super) fn import_alias_pgp(&mut self, bytes: &[u8]) {
         let parsed = pgp::parse(&pgp::decode(bytes));
         let known = crate::command::all_registered_command_names();
-        let mut rows: FxHashMap<String, String> = self.alias_editor_rows.iter()
-            .filter(|(a, c)| !a.is_empty() && !c.is_empty()).cloned().collect();
+        let mut rows: FxHashMap<String, String> = self
+            .alias_editor_rows
+            .iter()
+            .filter(|(a, c)| !a.is_empty() && !c.is_empty())
+            .cloned()
+            .collect();
         let mut imported = 0;
         let mut unsupported = std::collections::BTreeSet::new();
         for (alias, target) in parsed {
@@ -310,9 +314,15 @@ impl OpenCADStudio {
             self.alias_close_confirm = false;
         }
         self.alias_import_report = if imported == 0 && unsupported.is_empty() {
-            crate::t!("PGP: no valid aliases found. The working rows were not changed.").into_owned()
+            crate::t!("PGP: no valid aliases found. The working rows were not changed.")
+                .into_owned()
         } else {
-            crate::tf!("PGP: {} alias(es) loaded for review; {} unsupported command(s) skipped. No changes activated. Apply to save.", imported, unsupported.len()).into_owned()
+            crate::tf!(
+                "PGP: {} alias(es) loaded for review; {} unsupported command(s) skipped. No changes activated. Apply to save.",
+                imported,
+                unsupported.len()
+            )
+            .into_owned()
         };
         self.command_line.push_info(&self.alias_import_report);
         // Unsupported AutoCAD/Civil 3D commands are an expected compatibility
@@ -443,7 +453,13 @@ mod tests {
         let mut app = OpenCADStudio::new_for_test();
         let original = app.command_aliases.clone();
         app.alias_editor_rows = vec![("KEEP".into(), "LINE".into()), ("E".into(), "ERASE".into())];
-        app.import_alias_pgp(b"E,*BORRA\nE,*EMPALME\nSQ,*SCP\nCIVIL,*AECCUNSUPPORTED\nNOTEPAD,START NOTEPAD,1,,\n");
+        app.import_alias_pgp(concat!(
+            "E,*BORRA\n",
+            "E,*EMPALME\n",
+            "SQ,*SCP\n",
+            "CIVIL,*AECCUNSUPPORTED\n",
+            "NOTEPAD,START NOTEPAD,1,,\n",
+        ).as_bytes());
         assert!(app.alias_editor_rows.contains(&("E".into(), "FILLET".into())));
         assert!(app.alias_editor_rows.contains(&("SQ".into(), "UCS".into())));
         assert!(app.alias_editor_rows.contains(&("KEEP".into(), "LINE".into())));

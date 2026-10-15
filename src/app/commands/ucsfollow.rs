@@ -15,17 +15,27 @@ impl OpenCADStudio {
         let current = self.tabs[i].scene.ucs_follow();
         match value {
             None => {
-                self.command_line.push_output(crate::tf!(
-                    "UCSFOLLOW: enter 0 (keep view) or 1 (follow UCS) <{}>:",
-                    u8::from(current)
-                ).as_ref());
+                self.command_line.push_output(
+                    crate::tf!(
+                        "UCSFOLLOW: enter 0 (keep view) or 1 (follow UCS) <{}>:",
+                        u8::from(current)
+                    )
+                    .as_ref(),
+                );
                 self.pending_setvar = Some("UCSFOLLOW".into());
             }
             Some("0" | "1") => {
                 let next = value == Some("1");
-                if next && self.tabs[i].scene.current_layout != "Model"
-                    && self.tabs[i].scene.active_viewport.is_none() {
-                    self.command_line.push_error(crate::t!("UCSFOLLOW: activate a model viewport; paper space cannot follow the UCS.").as_ref());
+                if next
+                    && self.tabs[i].scene.current_layout != "Model"
+                    && self.tabs[i].scene.active_viewport.is_none()
+                {
+                    self.command_line.push_error(
+                        crate::t!(
+                            "UCSFOLLOW: activate a model viewport; paper space cannot follow the UCS."
+                        )
+                        .as_ref(),
+                    );
                 } else {
                     if current != next {
                         self.push_undo_snapshot(i, "UCSFOLLOW");
@@ -48,7 +58,8 @@ impl OpenCADStudio {
                 }
             }
             Some(_) => {
-                self.command_line.push_error(crate::t!("UCSFOLLOW: only 0 or 1 is allowed.").as_ref());
+                self.command_line
+                    .push_error(crate::t!("UCSFOLLOW: only 0 or 1 is allowed.").as_ref());
             }
         }
         Some(Task::none())
@@ -107,10 +118,12 @@ mod tests {
     fn floating_viewport_setting_does_not_leak_into_model_or_paper() {
         let mut app = app();
         let i = app.active_tab;
-        let first = app.tabs[i].scene.add_entity(codec::EntityType::Viewport(
-            codec::entities::Viewport::new()));
-        let second = app.tabs[i].scene.add_entity(codec::EntityType::Viewport(
-            codec::entities::Viewport::new()));
+        let first = app.tabs[i]
+            .scene
+            .add_entity(codec::EntityType::Viewport(codec::entities::Viewport::new()));
+        let second = app.tabs[i]
+            .scene
+            .add_entity(codec::EntityType::Viewport(codec::entities::Viewport::new()));
         app.tabs[i].scene.active_viewport = Some(first);
         let _ = app.run_command_line("UCSFOLLOW 1");
         assert!(app.tabs[i].scene.ucs_follow());

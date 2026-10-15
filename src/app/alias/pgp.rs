@@ -7,8 +7,10 @@ pub(super) fn decode(bytes: &[u8]) -> String {
         return text.trim_start_matches('\u{feff}').to_owned();
     }
     const HIGH: [char; 32] = [
-        '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8d}', 'Ž', '\u{8f}',
-        '\u{90}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9d}', 'ž', 'Ÿ',
+        '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡',
+        'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8d}', 'Ž', '\u{8f}',
+        '\u{90}', '‘', '’', '“', '”', '•', '–', '—',
+        '˜', '™', 'š', '›', 'œ', '\u{9d}', 'ž', 'Ÿ',
     ];
     bytes.iter().map(|&b| match b {
         0x80..=0x9f => HIGH[(b - 0x80) as usize],
@@ -92,9 +94,12 @@ pub(super) fn canonical(target: &str) -> String {
         "ESCALA3D" => "3DSCALE", "ALINEAR3D" => "3DALIGN", "CAMARA" => "CAMERA",
         "CILINDRO" => "CYLINDER", "REFEXTERNAS" => "EXTERNALREFERENCES", "GEOPLANA" => "FLATSHOT",
         "POLISOLIDO" => "POLYSOLID", "PIRAMIDE" => "PYRAMID", "PLANOSECCION" => "SECTIONPLANE",
-        "ESTILVISUAL" => "VISUALSTYLES", "ESTVISACTUAL" => "VSCURRENT", "EDITATRINSITU" => "ATTIPEDIT",
-        "EXTRACDAT" => "DATAEXTRACTION", "ESTADOCAPAS" => "LAYERSTATE", "LUZPUNTUAL" => "POINTLIGHT",
-        "DIRECTRIZM" => "MLEADER", "ESTILDIRECTRIZM" => "MLEADERSTYLE", "EDITARDIRECTRIZM" => "MLEADEREDIT",
+        "ESTILVISUAL" => "VISUALSTYLES", "ESTVISACTUAL" => "VSCURRENT",
+        "EDITATRINSITU" => "ATTIPEDIT",
+        "EXTRACDAT" => "DATAEXTRACTION", "ESTADOCAPAS" => "LAYERSTATE",
+        "LUZPUNTUAL" => "POINTLIGHT",
+        "DIRECTRIZM" => "MLEADER", "ESTILDIRECTRIZM" => "MLEADERSTYLE",
+        "EDITARDIRECTRIZM" => "MLEADEREDIT",
         "ALINDIRECTRIZM" => "MLEADERALIGN", "COLECDIRECTRIZM" => "MLEADERCOLLECT",
         "MEDIRGEOM" => "MEASUREGEOM", "PARAMETROS" => "PARAMETERS", "TIPOPUNTO" => "PTYPE",
         "ALINEARTEXTO" => "TEXTALIGN", "ENLAZARNUBEPUNTOS" => "POINTCLOUDATTACH",
@@ -112,7 +117,15 @@ mod tests {
     use super::*;
     #[test]
     fn user_overrides_and_external_commands() {
-        let rows = parse("\u{feff}; header\r\nB,*BORRA\r\nNOTEPAD, START NOTEPAD,1,*File:,\nB,*BUSCAR ; custom\nE,*EMPALME\nBAD,*LINE,extra\nL,LINE\n");
+        let rows = parse(concat!(
+            "\u{feff}; header\r\n",
+            "B,*BORRA\r\n",
+            "NOTEPAD, START NOTEPAD,1,*File:,\n",
+            "B,*BUSCAR ; custom\n",
+            "E,*EMPALME\n",
+            "BAD,*LINE,extra\n",
+            "L,LINE\n",
+        ));
         assert_eq!(rows.len(), 3);
         assert_eq!(canonical(&rows["B"]), "FIND");
         assert_eq!(canonical(&rows["E"]), "FILLET");
