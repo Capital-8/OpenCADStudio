@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     fn execute_code_timeout_floor_is_at_least_60s_and_env_override() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev_call_timeout = std::env::var("OCS_PLUGIN_CALL_TIMEOUT_SECS").ok();
         let prev_test_floor = std::env::var("OCS_PLUGIN_TEST_FLOOR_SECS").ok();
         let prev_execute_timeout = std::env::var("OCS_PLUGIN_EXECUTE_TIMEOUT_SECS").ok();
@@ -519,7 +519,7 @@ mod tests {
 
     #[test]
     fn v4_connection_request_response() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_test_env();
         let (host_stream, mut runner_stream) = connect_pair();
         let handler: Arc<dyn Fn(Option<u64>, PluginNotification) + Send + Sync> =
@@ -565,7 +565,7 @@ mod tests {
 
     #[test]
     fn v4_connection_handles_nested_plugin_request() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_test_env();
         let (host_stream, mut runner_stream) = connect_pair();
         let handler: Arc<dyn Fn(Option<u64>, PluginNotification) + Send + Sync> =
@@ -635,7 +635,7 @@ mod tests {
 
     #[test]
     fn v4_connection_routes_entity_transaction_over_nested_ipc() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_test_env();
         let (host_stream, mut runner_stream) = connect_pair();
         let handler: Arc<dyn Fn(Option<u64>, PluginNotification) + Send + Sync> =
@@ -705,7 +705,7 @@ mod tests {
 
     #[test]
     fn v4_connection_notification_invokes_handler() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_test_env();
         use crate::host::LogLevel;
 
@@ -744,7 +744,7 @@ mod tests {
 
     #[test]
     fn v4_connection_handler_panic_is_isolated() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_test_env();
         use crate::host::LogLevel;
 
@@ -792,7 +792,7 @@ mod tests {
 
     #[test]
     fn v4_connection_notification_rate_limiter_drops_excess() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_test_env();
         std::env::set_var("OCS_PLUGIN_NOTIFY_RATE_LIMIT", "2");
         use crate::host::LogLevel;
@@ -805,6 +805,7 @@ mod tests {
                 *received2.lock().unwrap() += 1;
             });
         let conn = V4Connection::new(host_stream, handler).unwrap();
+        let (checked_tx, checked_rx) = mpsc::channel::<()>();
 
         let runner = thread::spawn(move || {
             for _ in 0..10 {
@@ -820,9 +821,9 @@ mod tests {
                 )
                 .unwrap();
             }
-            // Keep the stream open long enough for the host to verify the
-            // reader thread is still alive after the flood.
-            std::thread::sleep(Duration::from_millis(300));
+            // Keep the stream open until the host has checked the reader
+            // thread survived the flood; a fixed sleep raced on slow runners.
+            let _ = checked_rx.recv_timeout(Duration::from_secs(30));
         });
 
         std::thread::sleep(Duration::from_millis(200));
@@ -835,6 +836,7 @@ mod tests {
             conn.is_alive(),
             "connection should survive rate-limited flood"
         );
+        checked_tx.send(()).unwrap();
         runner.join().unwrap();
         drop(conn);
         std::env::remove_var("OCS_PLUGIN_NOTIFY_RATE_LIMIT");
@@ -843,7 +845,7 @@ mod tests {
 
     #[test]
     fn execute_code_returns_delayed_result_with_tab_index() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_test_env();
 
         let (host_stream, mut runner_stream) = connect_pair();

@@ -108,14 +108,14 @@ mod tests {
 
     #[test]
     fn effective_max_defaults_to_api_version() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var(MAX_API_VERSION_ENV);
         assert_eq!(effective_max_api_version(), API_VERSION);
     }
 
     #[test]
     fn effective_max_can_disable_v4() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var(MAX_API_VERSION_ENV, "3");
         assert_eq!(effective_max_api_version(), 3);
         assert!(!host_accepts_plugin_version(4));
@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn effective_max_below_minimum_is_v3_only_mode() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var(MAX_API_VERSION_ENV, "2");
         assert_eq!(effective_max_api_version(), 3);
         assert!(!host_accepts_plugin_version(4));
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn effective_max_clamps_to_supported_range() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var(MAX_API_VERSION_ENV, "99");
         assert_eq!(effective_max_api_version(), API_VERSION);
         std::env::set_var(MAX_API_VERSION_ENV, "1");
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn host_accepts_supported_range() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var(MAX_API_VERSION_ENV);
         assert!(host_accepts_plugin_version(API_VERSION_MIN_SUPPORTED));
         assert!(host_accepts_plugin_version(API_VERSION));

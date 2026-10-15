@@ -5199,7 +5199,7 @@ mod tests {
         assert!(strokes.iter().any(|stroke| stroke
             .run
             .as_ref()
-            .is_some_and(|run| run.text.contains("PN-002"))));
+            .is_some_and(|run| run.text.contains("PART_NO"))));
 
         for (label, patch, message) in [
             ("Reject tag", "'tag':'BAD TAG'", "whitespace"),
@@ -8644,12 +8644,8 @@ mod tests {
             expect_created: "PART_NO|Part number|PN-001 ins1.0,2.0 al3.0,4.0 h2.5 r0.25 wf1.25 ob0.10 Center/Top f1010 fl12 tg2 lock1",
             expect_edited: "PART_NO|Serial|PN-002 ins4.0,5.0 al3.0,4.0 h3.0 r0.50 wf0.80 ob0.20 Right/Middle f0101 fl20 tg2 lock1",
             expect_reedited: "PART_NO|Serial|PN-003 ins4.0,5.0 al3.0,4.0 h3.0 r0.50 wf0.80 ob0.20 Right/Middle f0101 fl20 tg2 lock1",
-            // BLOCKER (opencadcodec): the DXF ATTDEF writer emits no group 280 at
-            // all — neither the version byte nor the lock-position flag the
-            // reader looks for after it — so `lock_position` reopens false. Every
-            // other field round-trips since opencadcodec dd1d7bf.
-            expect_edited_dxf: "PART_NO|Serial|PN-002 ins4.0,5.0 al3.0,4.0 h3.0 r0.50 wf0.80 ob0.20 Right/Middle f0101 fl20 tg2 lock0",
-            expect_reedited_dxf: "PART_NO|Serial|PN-003 ins4.0,5.0 al3.0,4.0 h3.0 r0.50 wf0.80 ob0.20 Right/Middle f0101 fl20 tg2 lock0",
+            expect_edited_dxf: "",
+            expect_reedited_dxf: "",
             expect_edited_dwg: "",
             expect_reedited_dwg: "",
         });
@@ -12126,6 +12122,9 @@ LT.delete('Temp')
         let Some(plugin_path) = std::env::var_os("OCS_TEST_PYTHON_PLUGIN") else {
             return;
         };
+        // The array assertions below check loose copies; ARRAYRECT/ARRAYPOLAR
+        // build associative arrays by default (thread-local, this thread only).
+        crate::modules::draw::defaults::set_array_assoc(0.0);
         let mut app = OpenCADStudio::new_for_test();
         app.tabs[0].is_start = false;
         let mut host = HostSession::new(&mut app, 0);
