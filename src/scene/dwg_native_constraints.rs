@@ -1727,7 +1727,26 @@ fn dependency_entity(
 }
 
 fn group_requires_preservation(document: &CadDocument, group: &Assoc2dConstraintGroup) -> bool {
-    group.nodes.iter().any(|node| {
+    // Links the rebuild does not write: a dimensional constraint driving a
+    // dynamic block's constraint parameter rather than a dimension, and
+    // single edges of one polyline each held by a dependency of its own.
+    let mut curves = Vec::new();
+    let unmodelled = group.actions.iter().any(|handle| match document.objects.get(handle) {
+        Some(ObjectType::Associative(AssociativeObject { data, .. })) => match data {
+            AssociativeData::Dependency(dependency) => {
+                document.objects.contains_key(&dependency.dependent_on)
+            }
+            AssociativeData::GeomDependency(geometry) => {
+                let curve = geometry.dependency.dependent_on;
+                let repeated = curves.contains(&curve);
+                curves.push(curve);
+                repeated
+            }
+            _ => false,
+        },
+        _ => false,
+    });
+    unmodelled || group.nodes.iter().any(|node| {
         if matches!(node.data, AssocConstraintNodeData::RigidSet { .. }) {
             return true;
         }
