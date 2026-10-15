@@ -1722,9 +1722,20 @@ impl Scene {
         // Keep their base points as a fallback for otherwise empty drawings.
         let mut infinite_base: Vec<glam::DVec3> = Vec::new();
         for wire in wires.iter() {
-            let is_infinite = Self::handle_from_wire_name(&wire.name)
-                .and_then(|handle| self.document.get_entity(handle))
-                .is_some_and(|entity| matches!(entity, EntityType::XLine(_) | EntityType::Ray(_)));
+            let entity = Self::handle_from_wire_name(&wire.name)
+                .and_then(|handle| self.document.get_entity(handle));
+            // A block whose content draws no wire (3D solids only) leaves a
+            // marker carrying just its insertion snap. The content counts
+            // through its meshes; the insertion point is no geometry, and a
+            // georeferenced block's sits far from what it draws (#1829).
+            if matches!(entity, Some(EntityType::Insert(_)))
+                && wire.points.is_empty()
+                && wire.text_verts.is_empty()
+            {
+                continue;
+            }
+            let is_infinite =
+                entity.is_some_and(|entity| matches!(entity, EntityType::XLine(_) | EntityType::Ray(_)));
             if is_infinite {
                 infinite_base.extend(
                     wire.key_vertices

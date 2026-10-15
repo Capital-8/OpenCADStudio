@@ -120,16 +120,35 @@ impl Scene {
             .remove(&self.current_layout);
     }
 
-    /// ZOOM All frames the configured drawing limits. Object-only framing
-    /// remains the responsibility of ZOOM Extents.
+    /// ZOOM All frames the drawing limits together with what the drawing
+    /// draws.
     pub fn fit_all_with_limits(&mut self) {
         let Some((limit_min, limit_max)) = self.current_drawing_limits() else {
             self.fit_all();
             return;
         };
+        // In a 3D view ZOOM All is Zoom Extents. In plan it shows the larger
+        // of the limits and the extents, so geometry outside the limits (a
+        // drawing placed at survey coordinates) stays on screen (#1829).
+        // ponytail: plan means looking down world Z; a rotated UCS plan view
+        // counts as 3D and gets Zoom Extents.
+        let eye = self.camera.borrow().rotation * glam::Vec3::Z;
+        if self.active_viewport.is_none() && eye.z.abs() < 0.999 {
+            self.fit_all();
+            return;
+        }
 
-        let min = glam::Vec3::new(limit_min.x as f32, limit_min.y as f32, 0.0);
-        let max = glam::Vec3::new(limit_max.x as f32, limit_max.y as f32, 0.0);
+        let mut min = glam::Vec3::new(limit_min.x as f32, limit_min.y as f32, 0.0);
+        let mut max = glam::Vec3::new(limit_max.x as f32, limit_max.y as f32, 0.0);
+        let block = if self.current_layout == "Model" || self.active_viewport.is_some() {
+            self.model_space_block_handle()
+        } else {
+            self.current_layout_block_handle()
+        };
+        if let Some((lo, hi)) = self.visible_block_bounds(block) {
+            min = min.min(lo.as_vec3());
+            max = max.max(hi.as_vec3());
+        }
 
         // MSPACE owns a camera encoded on the active viewport entity.
         if self.active_viewport.is_some() {

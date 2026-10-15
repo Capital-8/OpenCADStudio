@@ -1185,11 +1185,9 @@ fn tessellate_entity_inner(
     }
 
     if let EntityType::Insert(ins) = e {
-        let ip = glam::Vec3::new(
-            (ins.insert_point.x) as f32,
-            (ins.insert_point.y) as f32,
-            (ins.insert_point.z) as f32,
-        );
+        // `insert_point` is in the OCS of `normal`.
+        let w = codec::types::Matrix3::arbitrary_axis(ins.normal) * ins.insert_point;
+        let ip = glam::DVec3::new(w.x, w.y, w.z);
         let marker = WireModel {
             bg_adapt: None,
             point_marker: None,
@@ -1217,7 +1215,7 @@ fn tessellate_entity_inner(
             pattern_length: 0.0,
             pattern: [0.0; 8],
             line_weight_px: 1.0,
-            snap_pts: vec![(ip.as_dvec3(), model::wire_model::SnapHint::Insertion)],
+            snap_pts: vec![(ip, model::wire_model::SnapHint::Insertion)],
             tangent_geoms: vec![],
             key_vertices: vec![],
             aabb: WireModel::UNBOUNDED_AABB,

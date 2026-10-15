@@ -329,11 +329,9 @@ crate::impl_entity_basics!(Insert);
 
 impl crate::entities::traits::FallbackTess for Insert {
     fn fallback_geometry(&self) -> crate::scene::convert::tess_util::FallbackGeometry {
-        let (ipx, ipy, ipz) = (
-            self.insert_point.x,
-            self.insert_point.y,
-            self.insert_point.z,
-        );
+        // `insert_point` is in the OCS of `normal`.
+        let w = Matrix3::arbitrary_axis(self.normal) * self.insert_point;
+        let (ipx, ipy, ipz) = (w.x, w.y, w.z);
         let ip = Vec3::new(ipx as f32, ipy as f32, ipz as f32);
         let s = 0.1_f64;
         let pts = vec![
