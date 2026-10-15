@@ -175,7 +175,7 @@ impl CadModule for InsertModule {
                                 "../../../assets/icons/options_tool.svg"
                             )),
                             event: ModuleEvent::Command(
-                                "PDFSHXTEXTSETTINGS 1;PDFSHXTEXT;SETTINGS".to_string(),
+                                "PDFSHXTEXT;SETTINGS".to_string(),
                             ),
                         }),
                         RibbonItem::LargeTool(ToolDef {
