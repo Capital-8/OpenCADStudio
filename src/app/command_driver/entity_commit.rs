@@ -810,6 +810,14 @@ impl OpenCADStudio {
                 self.refresh_properties();
                 self.note_recent_block(&name);
                 self.refresh_block_palette();
+                // The Block Definition dialog asked to edit the new block.
+                if self
+                    .block_definition_open_editor
+                    .take()
+                    .is_some_and(|wanted| wanted.eq_ignore_ascii_case(&name))
+                {
+                    return Some(self.dispatch_command(&format!("BEDIT_OPEN:{name}")));
+                }
             }
             Err(err) => {
                 self.discard_last_undo_entry(i);

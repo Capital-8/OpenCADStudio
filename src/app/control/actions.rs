@@ -120,6 +120,7 @@ pub(super) const NAMES: &[&str] = &[
     "ribbon_dropdown",
     "keytips",
     "dialog_ok",
+    "block_def_dialog",
     "attdef_dialog",
     "field_dialog",
     "sheet_set",
@@ -1503,6 +1504,26 @@ impl OpenCADStudio {
                     return Err(failure("no_tab", "No such ribbon tab"));
                 }
                 return Ok(Task::none());
+            }
+            // The open Block Definition dialog: `name=…`, `open_in_editor=0|1`,
+            // `base_on_screen=0|1`, `objects_on_screen=0|1`, `create_empty`,
+            // `select_objects`.
+            "block_def_dialog" => {
+                if self.block_definition.is_none() {
+                    return Err(failure("no_dialog", "The Block Definition dialog is not open"));
+                }
+                let value = string(req, "value")?;
+                let (key, v) = value.split_once('=').unwrap_or((value, ""));
+                let on = v == "1";
+                match key {
+                    "name" => Message::BlockDefNameSelect(v.to_string()),
+                    "open_in_editor" => Message::BlockDefOpenInEditor(on),
+                    "base_on_screen" => Message::BlockDefBaseOnScreen(on),
+                    "objects_on_screen" => Message::BlockDefObjectsOnScreen(on),
+                    "create_empty" => Message::BlockDefCreateEmpty,
+                    "select_objects" => Message::BlockDefSelectObjects,
+                    _ => return Err(failure("invalid_value", "Unknown block definition field")),
+                }
             }
             // One field of the open attribute definition dialog: `tag=…`,
             // `prompt=…`, `default=…`, `justify=MC`, `style=…`, `height=…`,

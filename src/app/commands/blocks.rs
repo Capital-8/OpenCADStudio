@@ -61,7 +61,11 @@ impl OpenCADStudio {
             remembered.objects_on_screen = state.objects_specify_onscreen;
             remembered.mode = state.object_mode;
             remembered.allow_exploding = state.allow_exploding;
+            remembered.open_in_editor = state.open_in_editor;
         }
+        self.block_definition_open_editor = state
+            .open_in_editor
+            .then(|| state.name.trim().to_string());
         self.persist_settings_if_changed();
         let i = self.active_tab;
         let base_point = state.parse_base_point();
@@ -120,6 +124,59 @@ impl OpenCADStudio {
                 defaults.height,
             ),
         )
+    }
+
+    /// Draw the selected objects, or else the existing definition the name
+    /// picks, in the Block Definition dialog's name card.
+    pub(in crate::app) fn refresh_block_definition_preview(&mut self) {
+        let scene = &self.tabs[self.active_tab].scene;
+        let Some(state) = self.block_definition.as_mut() else {
+            return;
+        };
+        state.preview = if state.selected_handles.is_empty() {
+            let name = state.name.trim();
+            state
+                .existing_names
+                .iter()
+                .find(|existing| existing.eq_ignore_ascii_case(name))
+                .map(|existing| scene.block_preview_wires(existing))
+                .unwrap_or_default()
+        } else {
+            state.empty_prompt = false;
+            let mut wires = Vec::new();
+            for handle in &state.selected_handles {
+                match scene.document.get_entity(*handle) {
+                    // A reference is drawn from its definition, placed by the
+                    // reference's transform.
+                    Some(codec::EntityType::Insert(insert)) => {
+                        let base = crate::scene::render_graph::block_base_point(
+                            &scene.document,
+                            &insert.block_name,
+                        );
+                        let xform =
+                            crate::scene::render_graph::insert_transform_with_base(insert, base);
+                        for mut wire in scene.block_preview_wires(&insert.block_name) {
+                            for p in &mut wire.points {
+                                if p.iter().all(|v| v.is_finite()) {
+                                    let q = xform.apply(codec::types::Vector3::new(
+                                        f64::from(p[0]),
+                                        f64::from(p[1]),
+                                        f64::from(p[2]),
+                                    ));
+                                    *p = [q.x as f32, q.y as f32, q.z as f32];
+                                }
+                            }
+                            wires.push(wire);
+                        }
+                    }
+                    Some(entity) => {
+                        wires.extend(scene.wires_for_entities(std::slice::from_ref(entity)))
+                    }
+                    None => {}
+                }
+            }
+            wires
+        };
     }
 
     pub(super) fn dispatch_blocks(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {
@@ -469,6 +526,7 @@ impl OpenCADStudio {
                     ),
                 );
                 self.active_modal = Some(crate::app::ModalKind::BlockDefinition);
+                self.refresh_block_definition_preview();
             }
 
             cmd if cmd.starts_with("BLOCK_POINT_PICKED ") => {
@@ -504,6 +562,7 @@ impl OpenCADStudio {
                 }
                 self.tabs[i].active_cmd = None;
                 self.active_modal = Some(crate::app::ModalKind::BlockDefinition);
+                self.refresh_block_definition_preview();
             }
 
             cmd if cmd.starts_with("WBLOCK_POINT_PICKED ") => {
