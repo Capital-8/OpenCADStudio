@@ -1287,6 +1287,12 @@ impl OpenCADStudio {
     }
 
     pub(super) fn undo_steps(&mut self, steps: usize) {
+        self.undo_steps_reported(steps, true);
+    }
+
+    /// [`Self::undo_steps`]; `report` false takes the steps back without
+    /// the command-line notice (a dialog withdrawing its own live changes).
+    pub(super) fn undo_steps_reported(&mut self, steps: usize, report: bool) {
         let i = self.active_tab;
         self.finish_pending_history(i);
         let available = self.tabs[i].history.undo_stack.len();
@@ -1353,8 +1359,10 @@ impl OpenCADStudio {
             native_graph_changed,
             &changes,
         );
-        self.command_line
-            .push_output(crate::tf!("Undo: {last_label}").as_ref());
+        if report {
+            self.command_line
+                .push_output(crate::tf!("Undo: {last_label}").as_ref());
+        }
     }
 
     pub(super) fn redo_steps(&mut self, steps: usize) {

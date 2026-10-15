@@ -179,9 +179,10 @@ pub struct AttManBlock {
 pub struct AttManRow {
     /// The definition object in the block.
     pub handle: Handle,
-    /// The tag the definition had when the block was loaded, for keeping the
-    /// references' values when it is renamed.
+    /// The tag the definition had when the block was loaded or applied.
     pub original_tag: String,
+    /// The tag the references hold now (changed by live writes).
+    pub live_tag: String,
     /// The working copy.
     pub def: AttributeDefinition,
 }

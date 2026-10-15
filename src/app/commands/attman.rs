@@ -111,6 +111,7 @@ impl OpenCADStudio {
                         Some(EntityType::AttributeDefinition(def)) => Some(AttManRow {
                             handle: *h,
                             original_tag: def.tag.clone(),
+                            live_tag: def.tag.clone(),
                             def: def.clone(),
                         }),
                         _ => None,
@@ -252,12 +253,9 @@ impl OpenCADStudio {
                 return Task::none();
             }
             AttManMsg::Cancel => {
-                let steps = state.live_steps;
+                self.attman_withdraw_live();
                 self.attman = None;
                 self.close_active_modal();
-                if steps > 0 {
-                    self.undo_steps(steps);
-                }
                 return Task::none();
             }
             _ => {
@@ -374,10 +372,26 @@ impl OpenCADStudio {
         }
     }
 
-    /// Write the working copy to the drawing. `finish` closes the undo step
-    /// (Apply / OK / Sync); otherwise the step stays open for the next live
-    /// edit. `sync` rebuilds the references' attributes even when "apply to
-    /// existing references" is off. Returns false when a field is invalid.
+    /// Take back the changes written live since the last Apply, quietly.
+    fn attman_withdraw_live(&mut self) {
+        let Some(state) = self.attman.as_mut() else {
+            return;
+        };
+        let steps = std::mem::take(&mut state.live_steps);
+        for row in &mut state.rows {
+            row.live_tag = row.original_tag.clone();
+        }
+        if steps > 0 {
+            self.undo_steps_reported(steps, false);
+        }
+    }
+
+    /// Write the working copy to the drawing. `finish` (Apply / OK / Sync)
+    /// leaves exactly one undo step: the live changes are taken back and the
+    /// whole list is written again in one step. Otherwise (a live edit) the
+    /// write joins the open live step. `sync` rebuilds the references'
+    /// attributes even when "apply to existing references" is off. Returns
+    /// false when a field is invalid.
     fn attman_commit(&mut self, i: usize, finish: bool, sync: bool) -> bool {
         let Some(state) = self.attman.as_mut() else {
             return false;
@@ -396,48 +410,51 @@ impl OpenCADStudio {
                 return false;
             }
             state.error = None;
+            self.attman_withdraw_live();
         }
+        let Some(state) = self.attman.as_mut() else {
+            return false;
+        };
         let Some(name) = state.current_block().map(|b| b.name.clone()) else {
             return false;
         };
         let rows: Vec<(Handle, String, AttributeDefinition)> = state
             .rows
             .iter()
-            .map(|r| (r.handle, r.original_tag.clone(), r.def.clone()))
+            .map(|r| (r.handle, r.live_tag.clone(), r.def.clone()))
             .collect();
         let removed = state.removed.clone();
         let write = state.dirty || sync;
-        let open = state.live_steps > 0 && self.tabs[i].history.pending.is_some();
+        let synced = sync || dialog::prefs().apply_existing;
+        // A live step something else closed starts a new one.
+        let open = !finish && state.live_steps > 0 && self.tabs[i].history.pending.is_some();
         if write {
-            // One undo step; a live step something else closed starts anew.
             if !open {
                 self.push_undo_snapshot(i, "BATTMAN");
             }
-            self.attman_write(i, &name, &rows, &removed, sync || dialog::prefs().apply_existing);
+            self.attman_write(i, &name, &rows, &removed, synced);
+        }
+        if finish && write {
+            self.finish_pending_history(i);
         }
         let Some(state) = self.attman.as_mut() else {
             return false;
         };
         if finish {
-            if state.live_steps > 0 || write {
-                self.finish_pending_history(i);
-            }
-            if let Some(state) = self.attman.as_mut() {
-                state.live_steps = 0;
-                state.dirty = false;
-                state.removed.clear();
-                for row in &mut state.rows {
-                    row.original_tag = row.def.tag.clone();
-                }
+            state.dirty = false;
+            state.removed.clear();
+            for row in &mut state.rows {
+                row.original_tag = row.def.tag.clone();
+                row.live_tag = row.def.tag.clone();
             }
         } else if write {
             if !open {
                 state.live_steps += 1;
             }
             // The references now hold the written tags.
-            if sync || dialog::prefs().apply_existing {
+            if synced {
                 for row in &mut state.rows {
-                    row.original_tag = row.def.tag.clone();
+                    row.live_tag = row.def.tag.clone();
                 }
             }
         }
