@@ -707,7 +707,7 @@ fn add_entity_clone_doc(
 /// Document-level verbatim block-definition recreate: the `&mut CadDocument`
 /// half of `Scene::define_block_raw` (no-op when the block exists). The
 /// trailing `bump_geometry` stays caller-side.
-fn define_block_raw_doc(
+pub(crate) fn define_block_raw_doc(
     doc: &mut codec::CadDocument,
     name: &str,
     base_point: codec::types::Vector3,

@@ -2803,10 +2803,11 @@ fn builtin_arrow_from_block_name(name: &str, dimasz: f32) -> Option<ArrowKind> {
             filled: false,
             size_mul: 1.0,
         }),
-        "SMALL" => Some(ArrowKind::Triangle {
-            size: dimasz,
-            filled: true,
-            size_mul: 0.5,
+        // `_Small` is the reference's "Dot small blank": a circle half the
+        // arrow size across.
+        "SMALL" => Some(ArrowKind::Dot {
+            size: dimasz * 0.5,
+            filled: false,
         }),
         "OPEN" => Some(ArrowKind::Open {
             size: dimasz,

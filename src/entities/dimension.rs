@@ -1953,15 +1953,6 @@ pub fn style_sections(
         }
     };
 
-    let mut arrow_options: Vec<String> = std::iter::once("Closed filled".to_string())
-        .chain(
-            document
-                .block_records
-                .iter()
-                .map(|record| record.name.clone())
-                .filter(|name| !name.is_empty()),
-        )
-        .collect();
     let mut linetype_options: Vec<String> = document
         .line_types
         .iter()
@@ -2001,11 +1992,9 @@ pub fn style_sections(
     } else {
         arrow_name(ov::DIMBLK2, s.dimblk2, &s.dimblk2_name)
     };
-    for current in [&arrow_1, &arrow_2] {
-        if !arrow_options.contains(current) {
-            arrow_options.push(current.clone());
-        }
-    }
+    // The standard arrowheads, then any user arrow block in use. (#1820)
+    let arrow_options =
+        crate::entities::arrowheads::options([&arrow_1, &arrow_2].map(String::as_str));
     for current in [
         linetype(ov::DIMLTYPE, s.dimltex_handle),
         linetype(ov::DIMLTEX1, s.dimltex1_handle),
@@ -3402,16 +3391,13 @@ fn choice_value(selected: &str, options: &[&str]) -> crate::scene::model::object
     }
 }
 
+/// The arrowhead picker's name for `handle`; `fallback` names a block the
+/// drawing does not hold.
 fn block_name(document: &CadDocument, handle: codec::Handle, fallback: &str) -> String {
-    if handle.is_null() {
-        return "Closed filled".to_string();
+    if !handle.is_null() && !document.block_records.iter().any(|b| b.handle == handle) {
+        return crate::entities::arrowheads::label_for_block(fallback);
     }
-    document
-        .block_records
-        .iter()
-        .find(|record| record.handle == handle)
-        .map(|record| record.name.clone())
-        .unwrap_or_else(|| fallback.to_string())
+    crate::entities::arrowheads::label(document, handle)
 }
 
 fn linetype_name(document: &CadDocument, handle: codec::Handle) -> String {

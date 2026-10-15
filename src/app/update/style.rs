@@ -976,6 +976,17 @@ impl OpenCADStudio {
         value: String,
     ) -> Task<Message> {
         let i = self.active_tab;
+        if field == "arrowhead_handle" {
+            let handle = crate::entities::arrowheads::resolve(
+                &mut self.tabs[i].scene.document,
+                &value,
+            )
+            .filter(|h| !h.is_null());
+            if let Some(s) = self.mleaderstyle_mut(i) {
+                s.arrowhead_handle = handle;
+            }
+            return Task::none();
+        }
         let doc = &self.tabs[i].scene.document;
         let handle: Option<codec::types::Handle> =
             if value == "None" || value == "ByBlock" || value == "Closed filled" {
@@ -1255,7 +1266,7 @@ impl OpenCADStudio {
             field,
             "dimltex_handle" | "dimltex1_handle" | "dimltex2_handle"
         );
-        let doc = &self.tabs[i].scene.document;
+        let doc = &mut self.tabs[i].scene.document;
         let handle = if value == "Default" || value == "ByBlock" {
             codec::types::Handle::NULL
         } else if is_lt {
@@ -1265,11 +1276,8 @@ impl OpenCADStudio {
                 .map(|lt| lt.handle)
                 .unwrap_or(codec::types::Handle::NULL)
         } else {
-            doc.block_records
-                .iter()
-                .find(|b| b.name == value)
-                .map(|b| b.handle)
-                .unwrap_or(codec::types::Handle::NULL)
+            // A standard arrowhead's block is created on first use.
+            crate::entities::arrowheads::resolve(doc, &value).unwrap_or(codec::types::Handle::NULL)
         };
         // Staged: persists on Apply.
         if let Some(ds) = self.tabs[i].scene.document.dim_styles.get_mut(&name) {

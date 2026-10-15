@@ -3184,6 +3184,16 @@ impl OpenCADStudio {
                 // handle on a failed lookup; the arrowhead/linetype rows
                 // take the resolved value directly (None = the default
                 // "Closed filled" / "ByBlock" option).
+                // A standard arrowhead's block is created on first use.
+                let picked_arrow = (field == "arrowhead_handle")
+                    .then(|| {
+                        crate::entities::arrowheads::resolve(
+                            &mut self.tabs[i].scene.document,
+                            &value,
+                        )
+                    })
+                    .flatten()
+                    .filter(|h| !h.is_null());
                 let doc = &self.tabs[i].scene.document;
                 let resolved_mleader_style = (field == "mleader_style")
                     .then(|| {
@@ -3204,16 +3214,7 @@ impl OpenCADStudio {
                         .iter()
                         .find(|s| s.name == value)
                         .map(|s| s.handle),
-                    "arrowhead_handle" => {
-                        if value == "Closed filled" {
-                            None
-                        } else {
-                            doc.block_records
-                                .iter()
-                                .find(|b| b.name == value)
-                                .map(|b| b.handle)
-                        }
-                    }
+                    "arrowhead_handle" => picked_arrow,
                     "line_type_handle" => {
                         if value == "ByBlock" {
                             None

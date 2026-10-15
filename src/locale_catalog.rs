@@ -6143,7 +6143,6 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Remote image \"{url}\" could not be fetched: the server returned HTTP {status}." => Some(("common", "remote-image-url-could-not-be-fetched-the-server-returned-http-status")),
         "Remote image \"{url}\" was not loaded: it exceeds the 64 MB remote-image limit." => Some(("common", "remote-image-url-was-not-loaded-it-exceeds-the-64-mb-remote-image-limit")),
         "Remote image \"{url}\" could not be fetched: the request timed out." => Some(("common", "remote-image-url-could-not-be-fetched-the-request-timed-out")),
-        "DGN Import" => Some(("import-panel", "dgn-import")),
         "Recognize SHX Text" => Some(("import-panel", "recognize-shx")),
         "Recognition Settings" => Some(("import-panel", "recognition-settings")),
         "Combine Text" => Some(("import-panel", "combine-text")),

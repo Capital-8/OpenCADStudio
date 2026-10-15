@@ -1164,8 +1164,12 @@ impl OpenCADStudio {
                 let doc = &tab.scene.document;
                 let mut block_opts: Vec<String> = vec!["None".to_string()];
                 block_opts.extend(doc.block_records.iter().map(|b| b.name.clone()));
-                let mut arrow_opts: Vec<String> = vec!["Closed filled".to_string()];
-                arrow_opts.extend(doc.block_records.iter().map(|b| b.name.clone()));
+                let arrow_opts = crate::entities::arrowheads::options(
+                    selected_style
+                        .and_then(|s| s.arrowhead_handle)
+                        .map(|h| crate::entities::arrowheads::label(doc, h))
+                        .as_deref(),
+                );
                 let mut lt_opts: Vec<String> = vec!["ByBlock".to_string()];
                 lt_opts.extend(doc.line_types.iter().map(|lt| lt.name.clone()));
                 let mut textstyle_opts: Vec<String> = vec!["None".to_string()];
@@ -1212,14 +1216,10 @@ impl OpenCADStudio {
                     match selected_style {
                         Some(s) => (
                             opt_lt(s.line_type_handle),
-                            s.arrowhead_handle
-                                .and_then(|handle| {
-                                    doc.block_records
-                                        .iter()
-                                        .find(|record| record.handle == handle)
-                                        .map(|record| record.name.clone())
-                                })
-                                .unwrap_or_else(|| "Closed filled".to_string()),
+                            crate::entities::arrowheads::label(
+                                doc,
+                                s.arrowhead_handle.unwrap_or(codec::types::Handle::NULL),
+                            ),
                             opt_ts(s.text_style_handle),
                             opt_block(s.block_content_handle),
                         ),
@@ -1417,20 +1417,17 @@ impl OpenCADStudio {
                 let doc = &tab.scene.document;
                 // Dropdown options (names must match the records exactly so the
                 // selection can be resolved back to a handle on the update side).
-                let mut block_opts: Vec<String> = vec!["Default".to_string()];
-                block_opts.extend(
-                    doc.block_records
+                // The standard arrowheads, then the user arrow blocks the
+                // selected style uses; not every block of the drawing. (#1820)
+                let block_opts = crate::entities::arrowheads::options(
+                    doc.dim_styles
+                        .get(&self.dimstyle_selected)
                         .iter()
-                        .filter(|b| {
-                            !b.is_layout()
-                                && !b.is_model_space()
-                                && !b.is_paper_space()
-                                && !b.flags.is_xref
-                                && !b.flags.is_xref_overlay
-                                && !b.flags.is_external
-                                && !b.name.starts_with('*')
-                        })
-                        .map(|b| b.name.clone()),
+                        .flat_map(|d| [d.dimblk, d.dimblk1, d.dimblk2, d.dimldrblk])
+                        .map(|h| crate::entities::arrowheads::label(doc, h))
+                        .collect::<Vec<_>>()
+                        .iter()
+                        .map(String::as_str),
                 );
                 let mut lt_opts: Vec<String> = vec!["ByBlock".to_string()];
                 lt_opts.extend(doc.line_types.iter().map(|lt| lt.name.clone()));
@@ -1445,17 +1442,8 @@ impl OpenCADStudio {
                     .get(&self.ds_dimtxsty)
                     .map(|style| style.height)
                     .filter(|height| *height > 0.0);
-                let blk_name = |h: codec::types::Handle| -> String {
-                    if h.is_null() {
-                        "Default".to_string()
-                    } else {
-                        doc.block_records
-                            .iter()
-                            .find(|b| b.handle == h)
-                            .map(|b| b.name.clone())
-                            .unwrap_or_else(|| "Default".to_string())
-                    }
-                };
+                let blk_name =
+                    |h: codec::types::Handle| crate::entities::arrowheads::label(doc, h);
                 let lt_name = |h: codec::types::Handle| -> String {
                     if h.is_null() {
                         "ByBlock".to_string()

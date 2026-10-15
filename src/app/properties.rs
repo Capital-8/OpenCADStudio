@@ -554,14 +554,8 @@ impl OpenCADStudio {
             // Arrowheads are blocks; the closed-filled default has no
             // block, so seed the list with it and add the arrowhead
             // blocks (leading underscore) present in the drawing.
-            let arrow_names: Vec<String> = std::iter::once("Closed filled".to_string())
-                .chain(
-                    doc.block_records
-                        .iter()
-                        .filter(|b| b.name.starts_with('_'))
-                        .map(|b| b.name.clone()),
-                )
-                .collect();
+            // Filled in below from the current arrowhead. (#1820)
+            let arrow_names: Vec<String>;
             let block_names: Vec<String> = doc
                 .block_records
                 .iter()
@@ -590,15 +584,11 @@ impl OpenCADStudio {
                         .map(|s| s.name.clone())
                 })
                 .unwrap_or_else(|| "Standard".to_string());
-            let cur_arrow = ml
-                .arrowhead_handle
-                .and_then(|h| {
-                    doc.block_records
-                        .iter()
-                        .find(|b| b.handle == h)
-                        .map(|b| b.name.clone())
-                })
-                .unwrap_or_else(|| "Closed filled".to_string());
+            let cur_arrow = crate::entities::arrowheads::label(
+                doc,
+                ml.arrowhead_handle.unwrap_or(codec::Handle::NULL),
+            );
+            arrow_names = crate::entities::arrowheads::options([cur_arrow.as_str()]);
             let cur_ltype = ml
                 .line_type_handle
                 .and_then(|h| {

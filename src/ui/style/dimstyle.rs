@@ -188,7 +188,9 @@ fn preview_arrow_kinds(
     dimblk2: &str,
     dimasz: f32,
 ) -> (ArrowKind, ArrowKind) {
-    let kind = |name: &str| arrow_from_block_name(Some(name), dimasz);
+    let kind = |name: &str| {
+        arrow_from_block_name(Some(crate::entities::arrowheads::block_name(name)), dimasz)
+    };
     if dimsah {
         (kind(dimblk1), kind(dimblk2))
     } else {

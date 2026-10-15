@@ -20,7 +20,9 @@ mod block_test;
 #[cfg(test)]
 mod block_test_tests;
 mod command_driver;
-pub(crate) use command_driver::{copy_to_clipboard_kernel, paste_entities_kernel, PasteSpace};
+pub(crate) use command_driver::{
+    copy_to_clipboard_kernel, define_block_raw_doc, paste_entities_kernel, PasteSpace,
+};
 pub(crate) mod commands;
 pub(crate) mod dim_viewport;
 #[cfg(test)]
