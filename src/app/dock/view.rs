@@ -164,12 +164,13 @@ impl OpenCADStudio {
                 children.push(strip);
             }
         }
-        Some(
-            mouse_area(row(children).height(Fill))
-                .on_enter(Message::Dock(crate::ui::dock::DockMsg::HoverStay))
-                .on_exit(Message::Dock(crate::ui::dock::DockMsg::HoverExit))
-                .into(),
-        )
+        // Not a `mouse_area`: the pointer on one of the pallet's own
+        // dropdowns must not read as leaving the edge.
+        Some(crate::ui::hover_zone::hover_zone(
+            row(children).height(Fill),
+            Message::Dock(crate::ui::dock::DockMsg::HoverStay),
+            Message::Dock(crate::ui::dock::DockMsg::HoverExit),
+        ))
     }
 
     /// An edge's vertical icon strip: per group its open pallets' icons in a
@@ -555,10 +556,14 @@ impl OpenCADStudio {
         // on its empty areas don't fall through to the drawing below.
         let panel = mouse_area(framed)
             .on_press(Message::Dock(DockMsg::FloatRaise(f.id)))
-            .on_enter(Message::Dock(DockMsg::Hover(f.id)))
-            .on_exit(Message::Dock(DockMsg::HoverExit))
             .interaction(iced::mouse::Interaction::Idle);
-        place_at(panel.into(), x, y)
+        // Enter / leave as on a docked edge: its dropdowns keep it shown.
+        let panel = crate::ui::hover_zone::hover_zone(
+            panel,
+            Message::Dock(DockMsg::Hover(f.id)),
+            Message::Dock(DockMsg::HoverExit),
+        );
+        place_at(panel, x, y)
     }
 
     /// Where floating panel `f` draws.

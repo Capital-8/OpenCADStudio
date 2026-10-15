@@ -207,12 +207,12 @@ impl OpenCADStudio {
                         Some(HoverPending::Hide)
                             if self.dock_peek.is_some_and(|id| self.dock.auto_hides(id)) =>
                         {
-                            // A dropdown or the colour window opened from the
-                            // panel draws as an overlay, which the edge's
-                            // mouse area reads as the pointer leaving. Keep
-                            // the panel out until it closes, so a pick can
-                            // still land; then hide unless the pointer is
-                            // back (its re-entry cancels this).
+                            // The edge's hover zone keeps a dropdown inside
+                            // it from reading as a leave; a colour popup can
+                            // still reach past it (or be the Select Color
+                            // window). Keep the panel out until it closes, so
+                            // a pick can still land; then hide unless the
+                            // pointer is back (its re-entry cancels this).
                             if self.dock_popup_open() {
                                 return self.dock_hover_arm(HoverPending::Hide);
                             }
