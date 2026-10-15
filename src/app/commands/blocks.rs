@@ -749,9 +749,14 @@ impl OpenCADStudio {
                 self.open_blocks_palette(Some(tab));
             }
 
-            "PDFIMPORT" => {
+            "PDFIMPORT" | "-PDFIMPORT" => {
                 use crate::command::CadCommand;
-                let command = crate::modules::insert::pdf_import::PdfImportCommand::new();
+                use crate::modules::insert::pdf_import::PdfImportCommand;
+                let command = if cmd == "-PDFIMPORT" {
+                    PdfImportCommand::command_line()
+                } else {
+                    PdfImportCommand::new()
+                };
                 self.command_line.push_info(&command.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(command));
             }
