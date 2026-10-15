@@ -1846,7 +1846,12 @@ impl OpenCADStudio {
 
             if axis_lock.is_none()
                 && otrack_hit.is_none()
-                && !snap_hit.is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid)
+                && !snap_hit.is_some_and(|s| {
+                        !matches!(
+                            s.snap_type,
+                            crate::snap::SnapType::Grid | crate::snap::SnapType::Extension
+                        )
+                    })
             {
                 let base = grip.origin_world;
                 let ucs_xf = self.tabs[i].ucs_xform();
@@ -2682,9 +2687,13 @@ impl OpenCADStudio {
                         // Otherwise the endpoint glyph can appear at the
                         // corner while the preview/accepted point follows the
                         // tracking line instead.
-                        !self.tabs[i]
-                            .snap_result
-                            .is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid)
+                        !self.tabs[i].snap_result.is_some_and(|s| {
+                            !matches!(
+                                s.snap_type,
+                                crate::snap::SnapType::Grid
+                                    | crate::snap::SnapType::Extension
+                            )
+                        })
                     }) {
                         h.aligned
                     } else {
