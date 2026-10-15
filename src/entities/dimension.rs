@@ -3924,6 +3924,7 @@ fn tessellate_dimension_inner(
             dimtofl: style.map(|s| s.dimtofl).unwrap_or(false),
             text_position: text_layout.position,
             horizontal_text: text_layout.horizontal,
+            text_lifted: style.map(|s| s.dimtad).unwrap_or(1) != 0,
             text_movement: style.map(|s| s.dimtmove).unwrap_or(0),
             text_break: text_layout.break_box,
             leader_anchor: style
@@ -4847,6 +4848,8 @@ struct DimLineParams {
     dimtofl: bool,
     text_position: Vec3,
     horizontal_text: bool,
+    /// DIMTAD lifts aligned text off its dimension line.
+    text_lifted: bool,
     text_movement: i16,
     text_break: Option<TextBreak>,
     /// DIMTMOVE 1: the point the file stores is where the leader's hook starts,
@@ -5530,6 +5533,14 @@ fn append_radial_leader(
             add_segment(&mut g.dim_lines, hook_start, text_edge);
         } else {
             add_segment(&mut g.dim_lines, tip, text_edge);
+        }
+    } else if params.text_lifted {
+        // Text above or below the line: the line carries on out from the
+        // rim, under the whole text to its far end.
+        let along = normalized_or(direction, Vec3::X);
+        let reach = (text - tip).dot(along) + params.text_width * 0.5;
+        if reach > 0.0 {
+            add_segment(&mut g.dim_lines, tip, tip + along * reach);
         }
     } else {
         let toward = normalized_or(text - tip, Vec3::X);
@@ -7893,16 +7904,45 @@ fn diameter_point_on_leader(
     point: Vector3,
     offset: f64,
 ) -> bool {
-    let (dx, dy) = (
-        d.definition_point.x - d.angle_vertex.x,
-        d.definition_point.y - d.angle_vertex.y,
-    );
+    point_on_line(d.angle_vertex, d.definition_point, point, offset)
+}
+
+/// Whether `point` lies on the line through `a` and `b` rather than an
+/// `offset` (a DIMTAD lift) away from it.
+fn point_on_line(a: Vector3, b: Vector3, point: Vector3, offset: f64) -> bool {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
     let length = dx.hypot(dy);
     if length < 1e-12 {
         return true;
     }
-    let across = ((point.x - d.angle_vertex.x) * dy - (point.y - d.angle_vertex.y) * dx) / length;
+    let across = ((point.x - a.x) * dy - (point.y - a.y) * dx) / length;
     across.abs() < offset.abs() * 0.5
+}
+
+/// `point` on the line through `a` and `b`, lifted `offset` to the side the
+/// line's readable text stands on (below for DIMTAD 4).
+fn lift_off_line(a: Vector3, b: Vector3, point: Vector3, offset: f64, dimtad: i16) -> Vector3 {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let len = (dx * dx + dy * dy).sqrt().max(1e-12);
+    // Match the readable orientation used by text_on_dim_line().
+    let (mut nx, mut ny) = (dx / len, dy / len);
+    if nx < 0.0 || (nx == 0.0 && ny < 0.0) {
+        nx = -nx;
+        ny = -ny;
+    }
+    let (px, py) = (-ny, nx);
+    let sign = if dimtad == 4 { -1.0 } else { 1.0 };
+    Vector3::new(
+        point.x + px * offset * sign,
+        point.y + py * offset * sign,
+        point.z,
+    )
+}
+
+/// DIMTOH / DIMTIH turn this dimension's text horizontal where it sits.
+fn dimension_text_reads_horizontal(dim: &Dimension, style: Option<&DimStyle>) -> bool {
+    let outside = dimension_text_is_outside(dim, style);
+    style.is_some_and(|style| (outside && style.dimtoh) || (!outside && style.dimtih))
 }
 
 fn dimension_text_pos_f64(
@@ -7956,6 +7996,18 @@ fn dimension_text_pos_f64(
                 let side = if point.x >= tip.x { 1.0 } else { -1.0 };
                 Vector3::new(point.x + side * (arrow + text_w * 0.5), point.y, point.z)
             }
+            // A radius places its text where it was clicked, on the line
+            // through the centre and the arc point; DIMTAD lifts aligned text
+            // off that line as it does on a diameter, and the line runs on
+            // under it. A point already off the line is the text's own
+            // middle, as a file saved elsewhere writes it. (#1675)
+            Dimension::Radius(d)
+                if dimtad != 0
+                    && !dimension_text_reads_horizontal(dim, style)
+                    && point_on_line(d.angle_vertex, d.definition_point, point, perp_off) =>
+            {
+                lift_off_line(d.angle_vertex, d.definition_point, point, perp_off, dimtad)
+            }
             // A diameter whose text the user dragged keeps the grip point on
             // the leader and lifts the text by the DIMTAD offset (#1323).
             // A stored point already standing off the leader is the text's
@@ -7966,22 +8018,7 @@ fn dimension_text_pos_f64(
                     && dimtad != 0
                     && diameter_point_on_leader(d, point, perp_off) =>
             {
-                let dx = d.definition_point.x - d.angle_vertex.x;
-                let dy = d.definition_point.y - d.angle_vertex.y;
-                let len = (dx * dx + dy * dy).sqrt().max(1e-12);
-                // Match the readable orientation used by text_on_dim_line().
-                let (mut nx, mut ny) = (dx / len, dy / len);
-                if nx < 0.0 || (nx == 0.0 && ny < 0.0) {
-                    nx = -nx;
-                    ny = -ny;
-                }
-                let (px, py) = (-ny, nx);
-                let perp_sign = if dimtad == 4 { -1.0 } else { 1.0 };
-                Vector3::new(
-                    point.x + px * perp_off * perp_sign,
-                    point.y + py * perp_off * perp_sign,
-                    point.z,
-                )
+                lift_off_line(d.angle_vertex, d.definition_point, point, perp_off, dimtad)
             }
             _ => point,
         };
@@ -8248,6 +8285,7 @@ pub(crate) fn baked_large_radial_geometry(
             dimtofl: style.is_some_and(|style| style.dimtofl),
             text_position: text.position,
             horizontal_text: text.horizontal,
+            text_lifted: style.map(|style| style.dimtad).unwrap_or(1) != 0,
             text_movement: style.map(|style| style.dimtmove).unwrap_or(0),
             text_break: text.break_box,
             leader_anchor: None,
