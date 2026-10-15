@@ -377,6 +377,21 @@ impl OpenCADStudio {
             if handle.is_null() {
                 continue;
             }
+            // `add_entity` seeds fill and raster models; the document-level
+            // add above does not, so a pasted hatch without an association
+            // to rebuild it was never drawn. (#1807)
+            if matches!(
+                self.tabs[i].scene.document.get_entity(handle),
+                Some(
+                    codec::EntityType::Hatch(_)
+                        | codec::EntityType::Solid(_)
+                        | codec::EntityType::RasterImage(_)
+                        | codec::EntityType::Ole2Frame(_)
+                        | codec::EntityType::Underlay(_)
+                )
+            ) {
+                self.tabs[i].scene.reseed_derived_caches(handle);
+            }
             if matches!(
                 self.tabs[i].scene.document.get_entity(handle),
                 Some(codec::EntityType::Block(_) | codec::EntityType::BlockEnd(_))
