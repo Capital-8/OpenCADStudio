@@ -2,6 +2,7 @@
 // from the application bundle or user plugins folder (see `external`).
 // See `docs/plugin-architecture.md`.
 
+pub mod entity_labels;
 pub mod external;
 pub mod host;
 pub mod marketplace;

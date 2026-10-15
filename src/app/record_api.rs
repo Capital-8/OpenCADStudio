@@ -226,7 +226,11 @@ fn record(
     value
 }
 
-fn entity_record(entity: &codec::EntityType, reference_only: bool) -> Result<Value, String> {
+fn entity_record(
+    entity: &codec::EntityType,
+    reference_only: bool,
+    disabled_plugins: &rustc_hash::FxHashSet<String>,
+) -> Result<Value, String> {
     let (kind, properties) = enum_parts(entity)?;
     let mut value = record(
         "entities",
@@ -237,9 +241,18 @@ fn entity_record(entity: &codec::EntityType, reference_only: bool) -> Result<Val
         properties,
     );
     let object = value.as_object_mut().expect("record object");
+    // `display_type` carries the plugin-declared class label
+    // ("<Label> (<Native>)") while a live declaring plugin claims the
+    // entity's XDATA class identity; without one it is byte-identical to the
+    // native ui_name. The raw `type` and `record_type` fields stay native so
+    // existing scripts and filters keep working.
+    let native = crate::entities::names::ui_name(entity);
     object.insert(
         "display_type".into(),
-        json!(crate::entities::names::ui_name(entity)),
+        json!(crate::plugin::entity_labels::display_type_title(
+            crate::plugin::entity_labels::custom_entity_class_label(disabled_plugins, entity),
+            native.to_string(),
+        )),
     );
     object.insert(
         "record_type".into(),
@@ -308,12 +321,22 @@ fn map_records<T: Serialize>(
         .collect()
 }
 
-fn collection_records(scene: &crate::scene::Scene, collection: &str) -> Result<Vec<Value>, String> {
+fn collection_records(
+    scene: &crate::scene::Scene,
+    collection: &str,
+    disabled_plugins: &rustc_hash::FxHashSet<String>,
+) -> Result<Vec<Value>, String> {
     let document = &scene.document;
     match collection {
         "entities" => document
             .entities()
-            .map(|entity| entity_record(entity, scene.is_reference_only(entity.common().handle)))
+            .map(|entity| {
+                entity_record(
+                    entity,
+                    scene.is_reference_only(entity.common().handle),
+                    disabled_plugins,
+                )
+            })
             .collect(),
         "objects" => {
             let mut objects: Vec<_> = document.objects.iter().collect();
@@ -1387,28 +1410,32 @@ impl OpenCADStudio {
         }
         let definitions = referenced_definitions(&root_type);
         let runtime_schema = collection.and_then(|collection| {
-            collection_records(&self.tabs[self.active_tab].scene, collection)
-                .ok()?
-                .into_iter()
-                .find(|record| {
-                    let type_matches = record["type"]
-                        .as_str()
-                        .is_some_and(|name| name.eq_ignore_ascii_case(requested_type))
-                        || collection_root_type(collection)
-                            .is_some_and(|name| name.eq_ignore_ascii_case(requested_type));
-                    type_matches
-                        && request["handle"].as_str().is_none_or(|handle| {
-                            record["handle"].as_str().is_some_and(|actual| {
-                                actual.eq_ignore_ascii_case(without_hex_prefix(handle))
-                            })
+            collection_records(
+                &self.tabs[self.active_tab].scene,
+                collection,
+                &self.disabled_plugins,
+            )
+            .ok()?
+            .into_iter()
+            .find(|record| {
+                let type_matches = record["type"]
+                    .as_str()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(requested_type))
+                    || collection_root_type(collection)
+                        .is_some_and(|name| name.eq_ignore_ascii_case(requested_type));
+                type_matches
+                    && request["handle"].as_str().is_none_or(|handle| {
+                        record["handle"].as_str().is_some_and(|actual| {
+                            actual.eq_ignore_ascii_case(without_hex_prefix(handle))
                         })
-                        && request["name"].as_str().is_none_or(|name| {
-                            record["name"]
-                                .as_str()
-                                .is_some_and(|actual| actual.eq_ignore_ascii_case(name))
-                        })
-                })
-                .map(|record| runtime_value_schema(&record["properties"], collection, ""))
+                    })
+                    && request["name"].as_str().is_none_or(|name| {
+                        record["name"]
+                            .as_str()
+                            .is_some_and(|actual| actual.eq_ignore_ascii_case(name))
+                    })
+            })
+            .map(|record| runtime_value_schema(&record["properties"], collection, ""))
         });
         json!({
             "ok":true,
@@ -1438,13 +1465,13 @@ impl OpenCADStudio {
         let mut records = Vec::new();
         if collection == "all" {
             for (name, _) in COLLECTIONS {
-                match collection_records(scene, name) {
+                match collection_records(scene, name, &self.disabled_plugins) {
                     Ok(mut values) => records.append(&mut values),
                     Err(error) => return failure("serialization_failed", error),
                 }
             }
         } else {
-            match collection_records(scene, collection) {
+            match collection_records(scene, collection, &self.disabled_plugins) {
                 Ok(values) => records = values,
                 Err(error) => return failure("unknown_collection", error),
             }
@@ -1764,6 +1791,36 @@ mod tests {
         mark(&mut app, handle, false);
         let records = app.record_query(&json!({"collection":"entities"}));
         assert_eq!(records["records"][0]["reference_only"], json!(false));
+    }
+
+    #[test]
+    fn entities_records_display_type_stays_native_without_a_loaded_plugin() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+
+        // An entity stamped with a perfect plugin class identity (registered
+        // app, class-prefix key) still shows the native display while no
+        // declaring plugin is loaded — the gating is live manager state.
+        let mut entity = EntityType::Line(codec::entities::Line::from_points(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(10.0, 0.0, 0.0),
+        ));
+        let mut record = codec::xdata::ExtendedDataRecord::new("CVIFC");
+        record.add_value(codec::xdata::XDataValue::String(
+            "CVIFC-CLASS:LINE".to_string(),
+        ));
+        entity.common_mut().extended_data.add_record(record);
+        app.tabs[i].scene.add_entity(entity);
+
+        let records = app.record_query(&json!({"collection":"entities"}));
+        assert_eq!(records["count"], 1);
+        assert_eq!(records["records"][0]["type"], json!("Line"));
+        assert_eq!(
+            records["records"][0]["display_type"],
+            json!("Line"),
+            "display_type is byte-identical to the native ui_name when no plugin is loaded"
+        );
     }
 
     #[test]

@@ -1752,6 +1752,19 @@ impl OpenCADStudio {
             }
             None => title,
         };
+
+        // A plugin-declared class identity (API v10) qualifies the title as
+        // "<Label> (<Native>)" while one of the live loaded plugins declares
+        // a label for this entity's XDATA class key; without one the title is
+        // exactly the native type. Display-only — the key round-trips the
+        // drawing, the label never does.
+        let title = crate::plugin::entity_labels::display_type_title(
+            crate::plugin::entity_labels::custom_entity_class_label(
+                &self.disabled_plugins,
+                source_entity,
+            ),
+            title,
+        );
         (sections, title)
     }
 
@@ -5056,5 +5069,42 @@ mod aggregation_tests {
         let sections = aggregate_sections(&selected, &[]);
         let layer = row(&sections, "layer").expect("a layer row");
         assert!(format!("{:?}", layer.value).contains("WALLS"));
+    }
+}
+
+#[cfg(test)]
+mod custom_class_title_tests {
+    // Plugin-declared class labels (API v10) qualify the single-entity panel
+    // title as "<Label> (<Native>)" only while a declaring plugin is loaded.
+    // The test harness never loads plugins, so the observable behavior here is
+    // the gating: an entity stamped with a perfect identity record (registered
+    // app, class-prefix key) still shows today's exact native title. The
+    // "<Label> (<Native>)" form itself is covered by
+    // plugin::entity_labels::display_type_title, and the live-manager
+    // filtering by plugin::process::manager tests.
+    use crate::app::OpenCADStudio;
+
+    #[test]
+    fn single_entity_title_stays_native_without_a_loaded_plugin() {
+        let mut app = OpenCADStudio::new_for_test();
+        let i = app.active_tab;
+        let mut entity = codec::EntityType::Line(codec::entities::Line::from_points(
+            codec::types::Vector3::ZERO,
+            codec::types::Vector3::new(1.0, 0.0, 0.0),
+        ));
+        let mut record = codec::xdata::ExtendedDataRecord::new("CVIFC");
+        record.add_value(codec::xdata::XDataValue::String(
+            "CVIFC-CLASS:LINE".to_string(),
+        ));
+        entity.common_mut().extended_data.add_record(record);
+        let handle = app.tabs[i].scene.add_entity(entity);
+
+        let source = app.tabs[i]
+            .scene
+            .document
+            .get_entity(handle)
+            .expect("committed line");
+        let (_, title) = app.entity_property_sections(i, handle, source, &Vec::new(), None, 0);
+        assert_eq!(title, "Line");
     }
 }
