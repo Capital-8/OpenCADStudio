@@ -32,6 +32,8 @@ pub enum ImportDialogMsg {
     DgnPrefix(bool),
     DgnSub(bool),
     DgnExplode(bool),
+    DgnReferences(crate::modules::insert::dgn_import::ReferenceMode),
+    DgnExisting(crate::modules::insert::dgn_import::ExistingReference),
     DgnMappingTab(usize),
     DgnOk,
     Help(&'static str),
@@ -142,6 +144,8 @@ pub struct DgnImportState {
     pub prefix_duplicates: bool,
     pub sub_units: bool,
     pub explode_text_nodes: bool,
+    pub references: crate::modules::insert::dgn_import::ReferenceMode,
+    pub existing_reference: crate::modules::insert::dgn_import::ExistingReference,
     /// Master and sub unit names.
     pub units: (String, String),
     pub mapping_tab: usize,
@@ -564,21 +568,49 @@ pub fn view_dgn_import<'a>(
         ]
         .spacing(8),
     );
-    // The DGN readers do not read reference attachments, so their handling
-    // is shown but cannot be chosen.
+    use crate::modules::insert::dgn_import::{ExistingReference as E, ReferenceMode as R};
+    let translate = state.references == R::Translate;
     let references = card(
         t!("External DGN references").into_owned(),
         column![
             segmented(vec![
-                (t!("Bind as block / xref").into_owned(), false, None),
-                (t!("Ignore").into_owned(), true, None),
-                (t!("Attach as DGN underlay").into_owned(), false, None),
+                (
+                    t!("Bind as block / xref").into_owned(),
+                    translate,
+                    Some(msg(ImportDialogMsg::DgnReferences(R::Translate)))
+                ),
+                (
+                    t!("Ignore").into_owned(),
+                    state.references == R::Ignore,
+                    Some(msg(ImportDialogMsg::DgnReferences(R::Ignore)))
+                ),
+                (
+                    t!("Attach as DGN underlay").into_owned(),
+                    state.references == R::Underlay,
+                    Some(msg(ImportDialogMsg::DgnReferences(R::Underlay)))
+                ),
             ]),
-            text(t!("Reference attachments of DGN files are not read; they are left out."))
-                .size(11)
+            text(t!("When the translated drawing exists"))
+                .size(10)
                 .style(muted_style),
+            segmented(
+                [
+                    (t!("Prompt to overwrite"), E::Prompt),
+                    (t!("Overwrite without prompting"), E::Overwrite),
+                    (t!("Do not overwrite"), E::Keep),
+                ]
+                .into_iter()
+                .map(|(label, value)| {
+                    (
+                        label.into_owned(),
+                        translate && state.existing_reference == value,
+                        translate.then(|| msg(ImportDialogMsg::DgnExisting(value))),
+                    )
+                })
+                .collect()
+            ),
         ]
-        .spacing(8),
+        .spacing(6),
     );
     let tabs = [t!("Layer"), t!("Linetype"), t!("Lineweight"), t!("Color")];
     let mut table = column![row![
