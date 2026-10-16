@@ -96,7 +96,9 @@ impl Face {
             }
         }
         let is_builtin = lff::is_builtin(font_name);
-        let has_sys = sysfont::has_family(font_name);
+        // A missing `.shx` file draws with a stroke substitute, never with a
+        // TrueType face of a similar name (measured).
+        let has_sys = !lff::is_shx_name(font_name) && sysfont::has_family(font_name);
         if !is_builtin && has_sys {
             let canonical =
                 sysfont::canonical_family_name(font_name).unwrap_or_else(|| font_name.to_string());

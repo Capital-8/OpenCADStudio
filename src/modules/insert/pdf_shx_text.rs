@@ -120,23 +120,27 @@ pub fn set_settings(mut settings: ShxTextSettings) {
 
 /// What `Face::resolve` loads for a listed font: an added file as it is; a
 /// font name's .shx next to the drawing (`drawing` is its path) or in the
-/// fonts folder; else the name, which the built-in stroke fonts answer.
-pub fn resolve_font(name: &str, drawing: Option<&str>) -> String {
+/// fonts folder; else the embedded stroke font of that very name. Nothing
+/// otherwise: no alias stand-in and no TrueType face — measured, a listed
+/// font without its .shx file is not compared at all ("-  0%").
+pub fn resolve_font(name: &str, drawing: Option<&str>) -> Option<String> {
     if name.to_ascii_lowercase().ends_with(".shx") && std::path::Path::new(name).is_file() {
-        return name.to_string();
+        return Some(name.to_string());
     }
-    let file = format!("{}.shx", font_label(name));
+    let label = font_label(name);
+    let file = format!("{label}.shx");
     let base = drawing.map(std::path::Path::new).and_then(|p| p.parent());
     crate::io::resolve_image_file(&file, base)
         .or_else(|| {
             crate::io::font_repo::local_font_file(&file).map(|p| p.to_string_lossy().into_owned())
         })
-        .unwrap_or_else(|| font_label(name))
+        .or_else(|| crate::scene::text::lff::is_embedded_font(&label).then_some(label))
 }
 
 // ── Recognition ────────────────────────────────────────────────────────────
 
 /// One curve of the selection, flattened to world XY.
+#[derive(Clone)]
 pub struct Stroke {
     pub handle: Handle,
     pub layer: String,
@@ -680,6 +684,10 @@ struct LineMatch {
     /// Recognised glyph per character (None: not recognised).
     glyphs: Vec<Option<usize>>,
     height: f64,
+    /// The created text's height: the mean of the characters' sizes, a
+    /// round letter's overshoot included (measured: nine letters 4.996 and
+    /// an O 5.138 high read 5.0102).
+    text_height: f64,
     width_factor: f64,
 }
 
@@ -750,12 +758,12 @@ fn match_line(line: &Line, font: &FontShapes) -> LineMatch {
             }
         }
     }
-    let height = median(
-        support
-            .iter()
-            .map(|(ci, gi)| line.chars[*ci].bbox.h() / font.glyphs[*gi].bbox.h())
-            .collect(),
-    );
+    let sizes: Vec<f64> = support
+        .iter()
+        .map(|(ci, gi)| line.chars[*ci].bbox.h() / font.glyphs[*gi].bbox.h())
+        .collect();
+    let text_height = sizes.iter().sum::<f64>() / sizes.len().max(1) as f64;
+    let height = median(sizes);
     let Some(height) = height.filter(|h| *h > 0.0) else {
         // Nothing with a height: the reference's flat-line height, flat
         // glyphs (a dash) taken as they are. Anything else here (a frame
@@ -777,6 +785,7 @@ fn match_line(line: &Line, font: &FontShapes) -> LineMatch {
         return LineMatch {
             glyphs,
             height: FLAT_LINE_HEIGHT,
+            text_height: FLAT_LINE_HEIGHT,
             width_factor: 1.0,
         };
     };
@@ -846,6 +855,7 @@ fn match_line(line: &Line, font: &FontShapes) -> LineMatch {
     LineMatch {
         glyphs,
         height,
+        text_height,
         width_factor,
     }
 }
@@ -897,6 +907,26 @@ fn line_text(line: &Line, m: &LineMatch, font: &FontShapes) -> Option<(String, B
     Some((value, ink))
 }
 
+/// The strokes of `strokes` but those of an object (a frame, a border line)
+/// whose extents' diagonal is more than five times the mean diagonal of the
+/// selected objects: such an object is no character and joins no group.
+/// Measured: with a 200 × 100 frame among 66 text curves a line 39 long
+/// still becomes "-" and one 39.2 long is left; twice the drawing, 78 and
+/// 78.4; one text line alone (the line counted in), five times the mean.
+fn without_oversized(strokes: &[Stroke]) -> Vec<Stroke> {
+    let mut boxes: std::collections::HashMap<Handle, BBox> = Default::default();
+    for s in strokes {
+        boxes.entry(s.handle).or_insert_with(BBox::empty).union(&BBox::of(&s.points));
+    }
+    let diagonal = |b: &BBox| b.w().hypot(b.h());
+    let mean = boxes.values().map(diagonal).sum::<f64>() / boxes.len().max(1) as f64;
+    strokes
+        .iter()
+        .filter(|s| diagonal(&boxes[&s.handle]) <= 5.0 * mean)
+        .cloned()
+        .collect()
+}
+
 fn percent(recognised: usize, total: usize) -> u32 {
     if total == 0 {
         0
@@ -906,25 +936,25 @@ fn percent(recognised: usize, total: usize) -> u32 {
 }
 
 /// Recognise the text in `strokes` with the fonts of `settings`; `resolve`
-/// turns a listed font into what `Face::resolve` loads.
+/// turns a listed font into what `Face::resolve` loads (`None`: the font
+/// is not available and is not compared).
 pub fn recognize(
     strokes: &[Stroke],
     settings: &ShxTextSettings,
-    resolve: impl Fn(&str) -> String,
+    resolve: impl Fn(&str) -> Option<String>,
 ) -> Recognition {
-    let mut pieces = pieces_of(strokes);
-    // A shape many times the size of the selection's typical piece (a
-    // frame, a border line) is no character: it joins no group.
-    if let Some(typical) = median(pieces.iter().map(|p| p.bbox.size()).collect()) {
-        pieces.retain(|p| p.bbox.size() <= 10.0 * typical);
-    }
+    let strokes = &without_oversized(strokes);
+    let pieces = pieces_of(strokes);
     let lines = lines_of(strokes, pieces);
     let groups = groups_of(&lines);
     let fonts: Vec<(String, FontShapes)> = settings
         .fonts
         .iter()
         .filter(|f| f.enabled)
-        .filter_map(|f| font_shapes(&resolve(&f.name)).map(|shapes| (f.name.clone(), shapes)))
+        .filter_map(|f| {
+            let spec = resolve(&f.name)?;
+            font_shapes(&spec).map(|shapes| (f.name.clone(), shapes))
+        })
         .collect();
     let mut out = Recognition {
         groups: Vec::new(),
@@ -998,7 +1028,7 @@ pub fn recognize(
                     out.lines.push(TextLine {
                         value,
                         insertion: ink.min,
-                        height: m.height,
+                        height: m.text_height,
                         font: font_label(spec),
                         font_spec: spec.clone(),
                         layer: strokes[line.first].layer.clone(),
