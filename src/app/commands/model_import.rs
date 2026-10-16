@@ -145,22 +145,21 @@ impl OpenCADStudio {
         };
         self.push_undo_snapshot(i, if prompt { "WMFIN" } else { "IMPORT" });
         let scene = &mut self.tabs[i].scene;
-        // A text style per font, named WMF-<n> after the first free number.
+        // A text style per face, `WMF-<face><n>` with `n` counting the
+        // face's bold and italic variants; the style's font is the
+        // installed file of that face, none when it is not installed. A
+        // style the drawing already has is used as it is.
         let mut styles: Vec<String> = Vec::new();
-        for _ in &picture.fonts {
-            let mut n = 0;
-            let name = loop {
-                let name = format!("WMF-{n}");
-                if !scene.document.text_styles.contains(&name) && !styles.contains(&name) {
-                    break name;
-                }
-                n += 1;
-            };
-            let mut style = codec::tables::TextStyle::new(name.as_str());
-            style.handle = scene.document.allocate_handle();
-            // No font of its own, as the metafile names the face only.
-            style.font_file = String::new();
-            let _ = scene.document.text_styles.add(style);
+        for (k, face) in picture.fonts.iter().enumerate() {
+            let n = picture.fonts[..k].iter().filter(|f| f.name == face.name).count();
+            let name = format!("WMF-{}{n}", face.name);
+            if !scene.document.text_styles.contains(&name) {
+                let mut style = codec::tables::TextStyle::new(name.as_str());
+                style.handle = scene.document.allocate_handle();
+                style.font_file =
+                    crate::scene::text::sysfont::face_file(&face.name, face.bold, face.italic).unwrap_or_default();
+                let _ = scene.document.text_styles.add(style);
+            }
             styles.push(name);
         }
         for (at, font) in &picture.text_fonts {
