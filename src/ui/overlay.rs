@@ -1789,19 +1789,6 @@ impl canvas::Program<Message> for SelectionCanvas {
                         if let Some((a, b)) = clip_seg(base, tip, bounds) {
                             frame.stroke(&canvas::Path::line(a, b), guide_dash.clone());
                         }
-                        #[cfg(not(target_arch = "wasm32"))]
-                        if std::env::var_os("OCS_EXT_DIAG").is_some() {
-                            frame.stroke(
-                                &canvas::Path::line(base, tip),
-                                canvas::Stroke::default()
-                                    .with_color(Color::from_rgb(1.0, 0.0, 1.0))
-                                    .with_width(1.0),
-                            );
-                            frame.fill(
-                                &canvas::Path::circle(base, 5.0),
-                                Color::from_rgb(0.0, 1.0, 0.0),
-                            );
-                        }
                     }
                 }
                 SnapType::Intersection => {
