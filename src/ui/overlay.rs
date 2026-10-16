@@ -783,6 +783,62 @@ fn clip_seg(p0: Point, p1: Point, bounds: iced::Rectangle) -> Option<(Point, Poi
     ))
 }
 
+/// Build a snap-guide end on the acquired screen ray, not on the noisy
+/// cursor-to-base line. Returns the normalized ray and its forward tip.
+fn extension_guide_tip(
+    base: Point,
+    snapped: Point,
+    acquired_direction: Option<Point>,
+) -> Option<(Point, Point)> {
+    let delta = acquired_direction.unwrap_or(Point::new(
+        snapped.x - base.x,
+        snapped.y - base.y,
+    ));
+    let len = delta.x.hypot(delta.y);
+    if !len.is_finite() || len <= 1e-3 {
+        return None;
+    }
+    let u = Point::new(delta.x / len, delta.y / len);
+    let along = (snapped.x - base.x) * u.x + (snapped.y - base.y) * u.y;
+    let tip = Point::new(
+        base.x + u.x * (along + 18.0),
+        base.y + u.y * (along + 18.0),
+    );
+    Some((u, tip))
+}
+
+#[cfg(test)]
+mod extension_guide_tests {
+    use super::*;
+
+    #[test]
+    fn acquired_extension_guide_stays_on_its_origin_when_cursor_wanders() {
+        let base = Point::new(100.0, 200.0);
+        for snap in [
+            Point::new(140.0, 202.0),
+            Point::new(175.0, 193.0),
+            Point::new(240.0, 215.0),
+        ] {
+            let (unit, tip) =
+                extension_guide_tip(base, snap, Some(Point::new(300.0, 0.0))).unwrap();
+            assert!((unit.y).abs() < 1e-5);
+            assert!((tip.y - base.y).abs() < 1e-5);
+            assert!((tip.x - (snap.x + 18.0)).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn extension_guide_fallback_keeps_original_behavior_without_acquired_ray() {
+        let base = Point::new(100.0, 200.0);
+        let snap = Point::new(130.0, 240.0);
+        let (u, tip) = extension_guide_tip(base, snap, None).unwrap();
+        assert!((u.x - 0.6).abs() < 1e-5);
+        assert!((u.y - 0.8).abs() < 1e-5);
+        assert!((tip.x - 140.8).abs() < 1e-4);
+        assert!((tip.y - 254.4).abs() < 1e-4);
+    }
+}
+
 pub fn compute_grid_step(distance: f32, fov_y: f32, bounds: iced::Rectangle) -> f32 {
     compute_grid_steps(1.0, 1.0, distance, fov_y, bounds, true).0
 }
@@ -954,6 +1010,7 @@ pub(crate) fn selection_overlay<'a>(
     snap: Option<(Point, SnapType)>,
     snap_ext_base: Option<Point>,
     snap_ext_base2: Option<Point>,
+    snap_ext_dir: Option<Point>,
     grips: Vec<GripMarker>,
     control_polygon: Option<(Vec<Point>, bool)>,
     grip_clip: Option<iced::Rectangle>,
@@ -989,6 +1046,7 @@ pub(crate) fn selection_overlay<'a>(
         snap,
         snap_ext_base,
         snap_ext_base2,
+        snap_ext_dir,
         grips,
         control_polygon,
         grip_clip,
@@ -1038,6 +1096,7 @@ struct SelectionCanvas {
     /// Second extension-guide base, present only for an extended intersection so
     /// both crossing extensions stay drawn when the crossing is caught. (#247, #259)
     snap_ext_base2: Option<Point>,
+    snap_ext_dir: Option<Point>,
     grips: Vec<GripMarker>,
     /// Selected spline control polygon and closed state.
     control_polygon: Option<(Vec<Point>, bool)>,
@@ -1915,35 +1974,23 @@ impl canvas::Program<Message> for SelectionCanvas {
                         frame.stroke(&path, stroke);
                     }
                     SnapType::Extension => {
-                        // Unit direction from the endpoint the snap extends from
-                        // toward the snap point, so the guide line and the three
-                        // dots follow the actual extension path (#238).
+                        // The engine provides the exact acquired world ray.
+                        // Its long-baseline projected direction is passed by the
+                        // view and remains stable even with OTRACK (F11) off.
                         let dir = self.snap_ext_base.and_then(|base| {
-                            // Reuse the acquired tracking ray when its origin
-                            // matches this Extension base. Deriving a new ray
-                            // from the moving snap marker makes the short OSNAP
-                            // guide rotate even while OTRACK stays stable.
-                            let acquired = self.otrack_lines.iter().find_map(|&(origin, tip)| {
-                                let offset = (origin.x - base.x).hypot(origin.y - base.y);
-                                if offset > 2.0 {
-                                    return None;
-                                }
-                                let dx = tip.x - origin.x;
-                                let dy = tip.y - origin.y;
-                                let len = dx.hypot(dy);
-                                (len > 1e-3).then_some(Point::new(dx / len, dy / len))
+                            let acquired = self.snap_ext_dir.or_else(|| {
+                                self.otrack_lines.iter().find_map(|&(origin, tip)| {
+                                    let offset = (origin.x - base.x).hypot(origin.y - base.y);
+                                    (offset <= 2.0).then_some(Point::new(
+                                        tip.x - origin.x,
+                                        tip.y - origin.y,
+                                    ))
+                                })
                             });
-                            let dx = sp.x - base.x;
-                            let dy = sp.y - base.y;
-                            let len = dx.hypot(dy);
-                            acquired
-                                .or_else(|| (len > 1e-3).then(|| Point::new(dx / len, dy / len)))
-                                .map(|u| (base, u))
+                            extension_guide_tip(base, sp, acquired)
+                                .map(|(unit, tip)| (base, unit, tip))
                         });
-                        // Dashed guide line from that endpoint, through the snap
-                        // point and a little beyond, so the extension path is
-                        // visible as the cursor tracks along it.
-                        if let Some((base, u)) = dir {
+                        if let Some((base, _, tip)) = dir {
                             let dash = canvas::Stroke {
                                 line_dash: canvas::LineDash {
                                     segments: &[4.0, 4.0],
@@ -1951,20 +1998,13 @@ impl canvas::Program<Message> for SelectionCanvas {
                                 },
                                 ..canvas::Stroke::default().with_color(marker).with_width(1.0)
                             };
-                            let along = (sp.x - base.x) * u.x + (sp.y - base.y) * u.y;
-                            let tip = Point::new(
-                                base.x + u.x * (along + 18.0),
-                                base.y + u.y * (along + 18.0),
-                            );
-                            // `base` is a projected entity endpoint: clip before
-                            // stroking (see `clip_seg`).
                             if let Some((a, b)) = clip_seg(base, tip, bounds) {
                                 frame.stroke(&canvas::Path::line(a, b), dash);
                             }
                         }
-                        // Three dots at the snap point, strung along the extension
-                        // direction (horizontal fallback when the base is unknown).
-                        let u = dir.map(|(_, u)| u).unwrap_or(Point::new(1.0, 0.0));
+                        // Three dots stay aligned with the *same* acquired ray
+                        // used by the dashed guide (rather than cursor jitter).
+                        let u = dir.map(|(_, u, _)| u).unwrap_or(Point::new(1.0, 0.0));
                         let r = 1.4_f32;
                         for k in [-7.0_f32, 0.0, 7.0] {
                             let dot =
