@@ -1908,6 +1908,10 @@ pub struct ClipboardDeps {
     /// the in-drawing COPY path preserves it. Partly-selected groups are not
     /// captured (copying one member should not spawn a fragment). See #440.
     pub groups: Vec<codec::objects::Group>,
+    /// The APPID records the copied XDATA names. EED refers to its
+    /// application by APPID handle, so a paste into another drawing
+    /// re-points it at that drawing's own record of the same name.
+    pub app_ids: Vec<codec::tables::AppId>,
 }
 
 /// A captured block definition: its base point and the entities it owns
@@ -2065,6 +2069,33 @@ impl ClipboardDeps {
             })
             .collect();
 
+        // APPIDs named by the copied XDATA, verbatim EED (by handle) and
+        // structured records (by name) alike, block members and attributes
+        // included.
+        let mut app_handles = rustc_hash::FxHashSet::default();
+        let mut app_names = rustc_hash::FxHashSet::default();
+        let mut note_apps = |xdata: &codec::xdata::ExtendedData| {
+            app_handles.extend(xdata.raw_dwg_eed.iter().map(|(app, _)| *app));
+            app_names.extend(xdata.records().iter().map(|r| r.application_name.clone()));
+        };
+        for e in entities
+            .iter()
+            .chain(blocks.iter().flat_map(|d| d.entities.iter()))
+        {
+            note_apps(&e.common().extended_data);
+            if let EntityType::Insert(insert) = e {
+                for attribute in &insert.attributes {
+                    note_apps(&attribute.common.extended_data);
+                }
+            }
+        }
+        let app_ids = doc
+            .app_ids
+            .iter()
+            .filter(|a| app_handles.contains(&a.handle.value()) || app_names.contains(&a.name))
+            .cloned()
+            .collect();
+
         ClipboardDeps {
             layers: layers
                 .iter()
@@ -2086,6 +2117,7 @@ impl ClipboardDeps {
             dim_blocks,
             ext_objects,
             groups,
+            app_ids,
         }
     }
 

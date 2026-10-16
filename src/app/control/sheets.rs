@@ -296,13 +296,21 @@ impl OpenCADStudio {
         // Copy the referenced layer definitions out of the source before the
         // target borrow starts (the two tabs never borrow together).
         let mut missing_layers: Vec<codec::tables::Layer> = Vec::new();
+        // The APPIDs their XDATA names, so it is re-pointed at the target's.
+        let deps = crate::app::ClipboardDeps {
+            app_ids: crate::app::ClipboardDeps::capture(
+                &self.tabs[source_index].scene.document,
+                &cloned,
+            )
+            .app_ids,
+            ..Default::default()
+        };
         {
             let source_document = &self.tabs[source_index].scene.document;
             for entity in &cloned {
                 let layer = entity.common().layer.clone();
                 if layer.is_empty()
                     || layer == "0"
-                    || source_document.layers.contains(&layer)
                     || missing_layers.iter().any(|l| l.name == layer)
                 {
                     continue;
@@ -317,7 +325,6 @@ impl OpenCADStudio {
         let mut created = Vec::new();
         {
             let scene = &mut self.tabs[target_index].scene;
-            crate::io::linetypes::populate_document(&mut scene.document);
             for layer_record in &missing_layers {
                 if !scene.document.layers.contains(&layer_record.name) {
                     let mut layer_record = layer_record.clone();
@@ -325,7 +332,13 @@ impl OpenCADStudio {
                     let _ = scene.document.layers.add(layer_record);
                 }
             }
-            for entity in cloned {
+            use crate::app::command_driver::clipboard::{eed_app_map, merge_app_ids, remap_eed_apps};
+            merge_app_ids(&mut scene.document, &deps);
+            let apps = eed_app_map(&scene.document, &deps);
+            for mut entity in cloned {
+                remap_eed_apps(&mut entity, &apps);
+                let linetype = entity.common().linetype.clone();
+                crate::io::linetypes::ensure_catalog_linetype(&mut scene.document, &linetype);
                 created.push(format!("{:X}", scene.add_entity_clone(entity).value()));
             }
         }
