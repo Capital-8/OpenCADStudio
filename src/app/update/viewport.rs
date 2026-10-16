@@ -31,6 +31,56 @@ const UCS_ICON_PICK_PX: f32 = 10.0;
 /// Pixel half-width for clicking an icon arm (line segment).
 const UCS_ICON_ARM_PX: f32 = 6.0;
 
+/// Snapper coordinates are local to the active pane, while the overlay
+/// consumes canvas coordinates. Apply the same translation to the visible
+/// snap glyph and both Extension guide origins.
+fn snap_pixels_to_canvas(hit: &mut crate::snap::SnapResult, pane: iced::Rectangle) {
+    let translate = |point: &mut Point| {
+        point.x += pane.x;
+        point.y += pane.y;
+    };
+    translate(&mut hit.screen);
+    if let Some(base) = hit.extension_base.as_mut() {
+        translate(base);
+    }
+    if let Some(base) = hit.extension_base2.as_mut() {
+        translate(base);
+    }
+}
+
+#[cfg(test)]
+mod extension_canvas_tests {
+    use super::*;
+
+    #[test]
+    fn translates_extension_anchors_with_the_snap_marker() {
+        let mut hit = crate::snap::SnapResult {
+            world: glam::DVec3::ZERO,
+            screen: Point::new(150.0, 75.0),
+            snap_type: crate::snap::SnapType::Extension,
+            tangent_obj: None,
+            extension_base: Some(Point::new(100.0, 150.0)),
+            extension_base2: Some(Point::new(75.0, 200.0)),
+            extension_origin: None,
+            extension_dir: None,
+            viewport: None,
+            source: None,
+            secondary_source: None,
+            model_point: None,
+        };
+        let pane = iced::Rectangle {
+            x: 32.0,
+            y: 56.0,
+            width: 600.0,
+            height: 400.0,
+        };
+        snap_pixels_to_canvas(&mut hit, pane);
+        assert_eq!(hit.screen, Point::new(182.0, 131.0));
+        assert_eq!(hit.extension_base, Some(Point::new(132.0, 206.0)));
+        assert_eq!(hit.extension_base2, Some(Point::new(107.0, 256.0)));
+    }
+}
+
 fn pt_pt_d2(a: Point, b: Point) -> f32 {
     (a.x - b.x).powi(2) + (a.y - b.y).powi(2)
 }
@@ -1845,8 +1895,7 @@ impl OpenCADStudio {
                 snap_hit.map(|s| s.world).unwrap_or(raw)
             };
             if let Some(s) = self.tabs[i].snap_result.as_mut() {
-                s.screen.x += tile_b.x;
-                s.screen.y += tile_b.y;
+                snap_pixels_to_canvas(s, tile_b);
             }
 
             if axis_lock.is_none()
@@ -2890,11 +2939,11 @@ impl OpenCADStudio {
                 }
             }
 
-            // Snap glyph is positioned in canvas space; shift the
-            // tile-local snap screen point back to the full canvas.
+            // Move Extension's acquired endpoints along with the snap glyph.
+            // Previously only s.screen moved to canvas pixels, leaving the
+            // dashed Extension line offset from the actual endpoint.
             if let Some(s) = self.tabs[i].snap_result.as_mut() {
-                s.screen.x += tile_b.x;
-                s.screen.y += tile_b.y;
+                snap_pixels_to_canvas(s, tile_b);
             }
 
             // Give the command the current UCS + Ctrl state before it
@@ -3428,18 +3477,7 @@ impl OpenCADStudio {
         let world = snap_hit.map(|s| s.world).unwrap_or(raw);
         self.tabs[i].snap_result = snap_hit;
         if let Some(s) = self.tabs[i].snap_result.as_mut() {
-            // Snap marker and its extension anchors are pane-local; lift them to
-            // absolute canvas px.
-            s.screen.x += tile_b.x;
-            s.screen.y += tile_b.y;
-            if let Some(base) = s.extension_base.as_mut() {
-                base.x += tile_b.x;
-                base.y += tile_b.y;
-            }
-            if let Some(base) = s.extension_base2.as_mut() {
-                base.x += tile_b.x;
-                base.y += tile_b.y;
-            }
+            snap_pixels_to_canvas(s, tile_b);
         }
 
         use codec::types::Vector3;
