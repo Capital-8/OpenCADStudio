@@ -616,6 +616,9 @@ struct Converter<'a> {
     /// (cell, made inside a copy) → copy block name.
     copies: HashMap<(String, bool), String>,
     names: Vec<String>,
+    /// Converting a shared cell definition: the cells inside it are not
+    /// blocks of their own, their objects are part of the definition.
+    in_definition: bool,
 }
 
 impl<'a> Converter<'a> {
@@ -774,6 +777,9 @@ impl<'a> Converter<'a> {
             // A cell that is not shared becomes a block of its own ("the
             // cell's name, else AnonymousCell" and a number) placed at the
             // origin; its objects keep their layers.
+            DgnGeom::CellGroup { parts, .. } if self.in_definition => {
+                self.elements(parts, true, copy, depth + 1)
+            }
             DgnGeom::CellGroup { name, parts } => {
                 let base = if name.is_empty() { "AnonymousCell" } else { name.as_str() };
                 let block = self.unique(&block_name(base));
@@ -864,6 +870,7 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
             .collect(),
         copies: HashMap::new(),
         names: cells.iter().map(|(name, _)| block_name(name)).collect(),
+        in_definition: false,
     };
     if !import.v7 {
         for level in &import.level_order {
@@ -877,13 +884,14 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
             c.layer(&element, false);
         }
     }
+    c.in_definition = true;
     for (name, elements) in &cells {
         let entities = c.elements(elements, true, CellCopy::default(), 0);
-        // Every named cell becomes a block, even one with nothing it draws.
-        if !name.is_empty() {
+        if !name.is_empty() && !entities.is_empty() {
             c.out.blocks.push((block_name(name), entities));
         }
     }
+    c.in_definition = false;
     let entities = c.elements(&top, false, CellCopy::default(), 0);
     c.out.entities = entities;
     c.out
