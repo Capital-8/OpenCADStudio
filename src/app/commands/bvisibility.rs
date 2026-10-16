@@ -391,6 +391,17 @@ impl OpenCADStudio {
             return Some(Task::none());
         }
         match cmd {
+            cmd if cmd == "BACTION"
+                || cmd.starts_with("BACTION ")
+                || cmd == "BACTIONTOOL"
+                || cmd.starts_with("BACTIONTOOL ") =>
+            {
+                Some(
+                    self.start_block_action(
+                        cmd.split_once(' ').map_or("", |(_, args)| args.trim()),
+                    ),
+                )
+            }
             cmd if cmd == "BLOOKUPTABLE" || cmd.starts_with("BLOOKUPTABLE ") => {
                 Some(self.open_lookup_table(cmd.strip_prefix("BLOOKUPTABLE").unwrap().trim()))
             }

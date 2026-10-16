@@ -1107,6 +1107,144 @@ fn authoring_app() -> OpenCADStudio {
 }
 
 #[test]
+fn block_actions_palette_controls_require_compatible_parameters_and_start_commands() {
+    with_stack(|| {
+        use crate::ui::window::authoring_palettes::Tab;
+        let mut app = authoring_app();
+        let _ = app.dispatch_command("BAUTHORPALETTE");
+        let point = authoring_control(&app, Tab::Actions.widget_id());
+        authoring_click(&mut app, point);
+        for id in ["authoring-tool-move-action", "authoring-tool-scale-action"] {
+            let point = authoring_control(&app, id);
+            authoring_click(&mut app, point);
+            assert!(app.tabs[app.active_tab].active_cmd.is_none());
+        }
+        let _ = app.run_command_line("BPARAMETER POINT 0.5,0.5 0.7,0.7");
+        let point = authoring_control(&app, "authoring-tool-scale-action");
+        authoring_click(&mut app, point);
+        assert!(app.tabs[app.active_tab].active_cmd.is_none());
+        let point = authoring_control(&app, "authoring-tool-move-action");
+        authoring_click(&mut app, point);
+        assert_eq!(
+            app.tabs[app.active_tab].active_cmd.as_ref().unwrap().name(),
+            "BACTION"
+        );
+        let _ = app.update(Message::CommandEscape);
+        let _ = app.run_command_line("BPARAMETER LINEAR 0,0 1,0 0.5,0.3");
+        let point = authoring_control(&app, "authoring-tool-scale-action");
+        authoring_click(&mut app, point);
+        assert_eq!(
+            app.tabs[app.active_tab].active_cmd.as_ref().unwrap().name(),
+            "BACTION"
+        );
+        let _ = app.update(Message::CommandEscape);
+        authoring_capture(&app, "move-scale-actions-enabled");
+        let i = app.active_tab;
+        let targets = app.tabs[i]
+            .scene
+            .document
+            .block_records
+            .get("AUTHOR")
+            .unwrap()
+            .entity_handles
+            .clone();
+        let point = authoring_control(&app, "authoring-tool-scale-action");
+        authoring_click(&mut app, point);
+        let _ = app.feed_command(crate::command::StepInput::Point(glam::DVec3::X));
+        assert!(
+            app.tabs[i]
+                .active_cmd
+                .as_ref()
+                .unwrap()
+                .is_selection_gathering(),
+            "picking the parameter endpoint starts object selection"
+        );
+        let _ = app.feed_command(crate::command::StepInput::SelectionComplete(targets));
+        let _ = app.feed_command(crate::command::StepInput::Enter);
+        let _ = app.update(Message::CommandInput("0.8,0.5".into()));
+        let _ = app.update(Message::CommandSubmit);
+        assert!(app.tabs[i].active_cmd.is_none());
+        let _ = app.run_command_line("ZOOM E");
+        authoring_capture(&app, "scale-action-placed");
+        let _ = app.dispatch_command("BTESTBLOCK");
+        let i = app.active_tab;
+        app.tabs[i].scene.selection.borrow_mut().view.vp_size = (1600., 900.);
+        app.tabs[i].scene.camera.borrow_mut().fit_to_bounds_f64(
+            glam::DVec3::new(-0.2, -0.4, 0.),
+            glam::DVec3::new(1.2, 0.6, 0.),
+            1600. / 900.,
+        );
+        let insert = app.tabs[i].block_test.as_ref().unwrap().insert;
+        app.tabs[i].scene.select_entity(insert, true);
+        app.refresh_properties();
+        assert!(app.tabs[i]
+            .selected_grips
+            .iter()
+            .any(|g| crate::app::block_actions::is_test_grip(g.id)));
+        authoring_capture(&app, "scale-action-test-grip");
+        // Drawing a software snapshot updates the canvas size. Use the same
+        // current tile as the viewport input path, including when captures run.
+        let (vw, vh) = app.tabs[i].scene.selection.borrow().view.vp_size;
+        let tile = app.tabs[i].scene.active_model_tile_bounds(vw, vh);
+        let bounds = iced::Rectangle {
+            x: 0.,
+            y: 0.,
+            width: tile.width,
+            height: tile.height,
+        };
+        let grip = app.tabs[i]
+            .selected_grips
+            .iter()
+            .find(|g| crate::app::block_actions::is_test_grip(g.id))
+            .unwrap();
+        let screen = app.tabs[i]
+            .scene
+            .camera
+            .borrow()
+            .project(grip.world, bounds)
+            .unwrap();
+        app.cursor_pos = iced::Point::new(screen.x + tile.x, screen.y + tile.y);
+        app.tabs[i].scene.selection.borrow_mut().input.last_move_pos = Some(app.cursor_pos);
+        assert!(
+            app.tabs[i].active_cmd.is_none(),
+            "a running command consumes the test grip"
+        );
+        let hit = crate::scene::pick::grip::find_hit_grip(
+            iced::Point::new(screen.x, screen.y),
+            &app.tabs[i].selected_grips,
+            &app.tabs[i].scene.camera.borrow(),
+            bounds,
+        );
+        assert!(
+            hit.is_some_and(|(_, id, _, _)| crate::app::block_actions::is_test_grip(id)),
+            "test grip hit failed: {hit:?}; bounds={bounds:?}, cursor={:?}",
+            app.cursor_pos
+        );
+        let _ = app.update(Message::ViewportLeftPressAt(app.cursor_pos));
+        assert_eq!(
+            app.tabs[i].active_cmd.as_ref().map(|c|c.name()),
+            Some("BTESTBLOCK"),
+            "viewport click routes the parameter grip to the test command: modal={:?}, active grip={:?}, selected={:?}, navigation={:?}, ucs={}",app.active_modal,app.tabs[i].active_grip,app.tabs[i].selected_handle,(app.tabs[i].orbit_mode,app.tabs[i].pan_mode,app.tabs[i].zoom_dynamic_mode),app.ucs_icon_selected
+        );
+        let _ = app.update(Message::CommandInput("2,0".into()));
+        let _ = app.update(Message::CommandSubmit);
+        let line = app.tabs[i]
+            .scene
+            .document
+            .entities_in_block("AUTHOR")
+            .find_map(|e| {
+                if let codec::EntityType::Line(l) = e {
+                    Some(l)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert_eq!(line.end, codec::types::Vector3::new(2., 0., 0.));
+    });
+}
+
+#[test]
 fn lookup_basepoint_palette_and_table_dialog_real_controls() {
     with_stack(|| {
         use crate::ui::window::{authoring_palettes::Tab, block_lookup::Action as A};

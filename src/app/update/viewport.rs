@@ -829,7 +829,10 @@ impl OpenCADStudio {
                 .copied()
                 .zip(self.tabs[i].selected_grips.iter())
                 .filter(|(owner, grip)| self.tabs[i].hot_grips.contains(&(*owner, grip.id)))
-                .filter(|(_, grip)| grip.id != crate::app::visibility::VIS_GRIP_ID)
+                .filter(|(_, grip)| {
+                    grip.id != crate::app::visibility::VIS_GRIP_ID
+                        && !crate::app::block_actions::is_test_grip(grip.id)
+                })
                 .map(|(owner, grip)| GripTarget {
                     handle: owner,
                     grip_id: grip.id,
@@ -851,7 +854,10 @@ impl OpenCADStudio {
                 .iter()
                 .copied()
                 .zip(self.tabs[i].selected_grips.iter())
-                .filter(|(_, grip)| grip.id != crate::app::visibility::VIS_GRIP_ID)
+                .filter(|(_, grip)| {
+                    grip.id != crate::app::visibility::VIS_GRIP_ID
+                        && !crate::app::block_actions::is_test_grip(grip.id)
+                })
                 .filter(|(_, grip)| (grip.world - world).length_squared() <= epsilon_sq)
                 .map(|(owner, grip)| GripTarget {
                     handle: owner,
@@ -993,6 +999,7 @@ impl OpenCADStudio {
                 // hover grip-menu.
                 if self.grip_popup.is_none()
                     && grip_id != crate::app::visibility::VIS_GRIP_ID
+                    && !crate::app::block_actions::is_test_grip(grip_id)
                     && self
                         .grip_hover
                         .as_ref()
@@ -3991,6 +3998,9 @@ impl OpenCADStudio {
                         self.open_visibility_popup(p);
                         self.grip_hover = None;
                         self.grip_popup = None;
+                        return Task::none();
+                    }
+                    if self.start_test_action_grip(handle, grip_id) {
                         return Task::none();
                     }
                     if self.shift_down {

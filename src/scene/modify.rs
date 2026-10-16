@@ -9,7 +9,9 @@ struct TextOrient {
     x_scale: f64,
 }
 
-fn inverse_affine(transform: &codec::types::Transform) -> Option<codec::types::Transform> {
+pub(crate) fn inverse_affine(
+    transform: &codec::types::Transform,
+) -> Option<codec::types::Transform> {
     use codec::types::{Matrix3, Matrix4, Transform, Vector3};
     let matrix = &transform.matrix.m;
     let linear = Matrix3::from_rows(
@@ -580,7 +582,8 @@ impl Scene {
             );
         let parameter_changes = parameter_changes
             + basepoint_changes
-            + super::block_lookup::reframe(&mut self.document, block_record, local_from_old);
+            + super::block_lookup::reframe(&mut self.document, block_record, local_from_old)
+            + super::block_actions::reframe(&mut self.document, block_record, local_from_old);
         if !changed.is_empty() || parameter_changes > 0 {
             self.rebuild_derived_caches();
         }

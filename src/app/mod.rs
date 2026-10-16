@@ -14,6 +14,7 @@ mod block_editor_tests;
 mod block_save_as;
 mod block_visibility;
 mod block_lookup;
+mod block_actions;
 mod block_properties;
 #[cfg(test)]
 mod block_properties_tests;

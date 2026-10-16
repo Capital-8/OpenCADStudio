@@ -5,6 +5,9 @@ use iced::Task;
 
 pub(super) struct BlockTestSession {
     pub source_id: u64,
+    pub definition: codec::Handle,
+    pub insert: codec::Handle,
+    pub baseline: std::sync::Arc<codec::CadDocument>,
 }
 
 impl OpenCADStudio {
@@ -97,13 +100,19 @@ impl OpenCADStudio {
         if !insert.attributes.is_empty() {
             insert.seqend_handle = Some(document.allocate_handle());
         }
+        let insert_handle = insert.common.handle;
         if let Err(error) = document.add_entity(EntityType::Insert(insert)) {
             self.command_line.push_error(&error.to_string());
             return Task::none();
         }
         let mut tab = DocumentTab::new_drawing(0);
         tab.tab_title = crate::tf!("Test Block Window - {}", name).into_owned();
-        tab.block_test = Some(BlockTestSession { source_id });
+        tab.block_test = Some(BlockTestSession {
+            source_id,
+            definition,
+            insert: insert_handle,
+            baseline: std::sync::Arc::new(document.clone()),
+        });
         tab.active_layer = self.tabs[i].active_layer.clone();
         tab.scene.document = document;
         tab.scene.named_parameters = self.tabs[i].scene.named_parameters.clone();

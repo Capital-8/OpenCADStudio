@@ -1514,6 +1514,20 @@ impl DimensionPreview {
 /// Returned by every `CadCommand` method to tell main.rs what to do.
 #[allow(dead_code)]
 pub enum CmdResult {
+    PlaceBlockAction {
+        document: u64,
+        definition: Handle,
+        kind: crate::scene::block_actions::Kind,
+        parameter: Handle,
+        targets: Vec<Handle>,
+        location: DVec3,
+    },
+    EvaluateBlockParameter {
+        document: u64,
+        definition: Handle,
+        parameter: Handle,
+        position: DVec3,
+    },
     /// Place or relocate a Basepoint, or place a Lookup parameter.
     PlaceBlockSingleParameter {
         document_id: u64,

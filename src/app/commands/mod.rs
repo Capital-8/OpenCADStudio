@@ -174,6 +174,22 @@ impl OpenCADStudio {
         };
         let resolved = self.resolve_alias(cmd);
         let cmd = resolved.as_deref().unwrap_or(cmd);
+        if matches!(cmd.split(' ').next(), Some("BACTION" | "BACTIONTOOL")) {
+            let args = cmd.split_once(' ').map_or("", |(_, a)| a.trim());
+            if !args.is_empty() && crate::scene::block_actions::Kind::parse(args).is_none() {
+                self.command_line.push_error(
+                    crate::t!(
+                        "Supported actions: Move, Scale. Other action types are not wired yet."
+                    )
+                    .as_ref(),
+                );
+                return Task::none();
+            }
+            if let Some(error) = self.action_error(crate::scene::block_actions::Kind::parse(args)) {
+                self.command_line.push_error(crate::t!(error).as_ref());
+                return Task::none();
+            }
+        }
         if cmd == "BPARAMETER" || cmd.starts_with("BPARAMETER ") {
             if let Some(error) =
                 self.parameter_placement_error(cmd.strip_prefix("BPARAMETER").unwrap().trim())

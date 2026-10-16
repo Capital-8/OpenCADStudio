@@ -1710,6 +1710,11 @@ impl Scene {
                     super::block_lookup::parameters(&self.document, block)
                         .into_iter()
                         .map(|(_, p)| p.parameter.definition_point),
+                )
+                .chain(
+                    super::block_actions::actions(&self.document, block)
+                        .into_iter()
+                        .map(|(_, a, _, _)| a.display_location),
                 );
             for point in locations {
                 let point = glam::DVec3::new(point.x, point.y, point.z);

@@ -9,7 +9,7 @@ use codec::{
     types::{Transform, Vector3},
     CadDocument, Handle,
 };
-mod graph;
+use super::block_authoring::graph;
 #[cfg(test)]
 mod tests;
 
@@ -349,7 +349,13 @@ fn apply_table_inner(
         h
     };
     let node_id = edited.action.element.eval.node_id;
-    graph::bind(document, graph, node_id, &edited.columns).map_err(str::to_string)?;
+    graph::bind_ids(
+        document,
+        graph,
+        node_id,
+        &edited.columns.iter().map(|c| c.node_id).collect::<Vec<_>>(),
+    )
+    .map_err(str::to_string)?;
     if let Some(ObjectType::DynamicBlock(o)) = document.objects.get_mut(&handle) {
         o.data = DynamicBlockData::LookupAction(edited);
     }

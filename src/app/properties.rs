@@ -2886,6 +2886,7 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
         // Append the dynamic-block visibility (lookup) grip, if the lone
         // selection is a visibility-parametric block reference.
         self.refresh_visibility_grip(wo);
+        self.refresh_test_action_grips(wo);
     }
 
     pub(super) fn property_target_handles(&self, i: usize) -> Vec<Handle> {

@@ -575,6 +575,10 @@ impl OpenCADStudio {
                     return task;
                 }
             }
+            result @ (CmdResult::PlaceBlockAction { .. }
+            | CmdResult::EvaluateBlockParameter { .. }) => {
+                return self.handle_block_action_result(result);
+            }
             result @ CmdResult::PlaceBlockSingleParameter { .. } => {
                 return self.handle_place_block_single_parameter(result);
             }

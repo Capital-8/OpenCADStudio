@@ -194,6 +194,8 @@ fn catalog(
     point_error: Option<&'static str>,
     flip_error: Option<&'static str>,
     lookup_error: Option<&'static str>,
+    move_error: Option<&'static str>,
+    scale_error: Option<&'static str>,
 ) -> Element<'static, Message> {
     let (entries, unavailable) = match tab {
         Tab::Parameters => (
@@ -215,7 +217,9 @@ fn catalog(
         let orientation_error = if *label=="Flip" {flip_error} else {point_error};
         let single=tab==Tab::Parameters&&matches!(*label,"Lookup"|"Basepoint");
         let lookup_action=tab==Tab::Actions&&*label=="Lookup";
-        let enabled = (single&&point_error.is_none())||(lookup_action&&lookup_error.is_none())||(orientation && orientation_error.is_none()) || (visibility && visibility_error.is_none()) || ((point || distance) && point_error.is_none());
+        let geometry_action=tab==Tab::Actions&&matches!(*label,"Move"|"Scale");
+        let action_error=if *label=="Scale" {scale_error}else{move_error};
+        let enabled = (geometry_action&&action_error.is_none())||(single&&point_error.is_none())||(lookup_action&&lookup_error.is_none())||(orientation && orientation_error.is_none()) || (visibility && visibility_error.is_none()) || ((point || distance) && point_error.is_none());
         let base = if enabled {
             icons::semantic(icon, 28.0)
         } else {
@@ -239,8 +243,8 @@ fn catalog(
             base
         };
         let message = enabled.then(|| Message::RibbonToolClick {
-            tool_id: if lookup_action {"BLOOKUPTABLE".into()}else{format!("BPARAMETER_{}", label.to_ascii_uppercase())},
-            event: crate::modules::ModuleEvent::Command(if lookup_action {"BLOOKUPTABLE".into()}else{format!("BPARAMETER {}", label.to_ascii_uppercase())}),
+            tool_id: if geometry_action {format!("BACTION_{}",label.to_ascii_uppercase())}else if lookup_action {"BLOOKUPTABLE".into()}else{format!("BPARAMETER_{}", label.to_ascii_uppercase())},
+            event: crate::modules::ModuleEvent::Command(if geometry_action {format!("BACTION {}",label.to_ascii_uppercase())}else if lookup_action {"BLOOKUPTABLE".into()}else{format!("BPARAMETER {}", label.to_ascii_uppercase())}),
         });
         let description = if visibility {
             crate::t!(visibility_error
@@ -259,6 +263,8 @@ fn catalog(
             })).into_owned()
         } else if single {
             crate::t!(point_error.unwrap_or(if *label=="Basepoint" {"Place or relocate the dynamic block insertion anchor."}else{"Place a Lookup parameter, then use the Lookup action to edit its property table."})).into_owned()
+        } else if geometry_action {
+            crate::t!(action_error.unwrap_or("Select a parameter endpoint, select the objects it controls, then place the action marker. Test it using the parameter grip in Test Block.")).into_owned()
         } else if lookup_action {
             crate::t!(lookup_error.unwrap_or("Create or edit property Lookup tables for this block.")).into_owned()
         } else {
@@ -275,6 +281,8 @@ fn catalog(
             container(entry).id(match *label {"Rotation"=>"authoring-tool-rotation","Alignment"=>"authoring-tool-alignment",_=>"authoring-tool-flip"}).into()
         } else if single {
             container(entry).id(if *label=="Lookup" {"authoring-tool-lookup"}else{"authoring-tool-basepoint"}).into()
+        } else if geometry_action {
+            container(entry).id(if *label=="Move" {"authoring-tool-move-action"}else{"authoring-tool-scale-action"}).into()
         } else if lookup_action {
             container(entry).id("authoring-tool-lookup-table").into()
         } else {
@@ -391,6 +399,8 @@ pub fn view(
     point_error: Option<&'static str>,
     flip_error: Option<&'static str>,
     lookup_error: Option<&'static str>,
+    move_error: Option<&'static str>,
+    scale_error: Option<&'static str>,
 ) -> Element<'static, Message> {
     let tabs = column(Tab::ALL.into_iter().map(|category| {
         let label = category.label();
@@ -445,7 +455,9 @@ pub fn view(
                 visibility_error,
                 point_error,
                 flip_error,
-                lookup_error
+                lookup_error,
+                move_error,
+                scale_error
             ))
             .width(Fill)
             .height(Fill),

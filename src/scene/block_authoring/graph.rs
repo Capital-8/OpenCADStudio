@@ -1,8 +1,8 @@
-//! Maintain native adjacency lists while adding/replacing lookup dependencies.
-use super::*;
-use codec::objects::{BlockEvaluationEdge, BlockEvaluationGraph};
+//! Maintain native adjacency lists while adding/replacing action dependencies.
+use codec::objects::{BlockEvaluationEdge, BlockEvaluationGraph, DynamicBlockData, ObjectType};
+use codec::{CadDocument, Handle};
 
-pub(super) fn valid_lists(g: &BlockEvaluationGraph, node: i32) -> bool {
+pub(crate) fn valid_lists(g: &BlockEvaluationGraph, node: i32) -> bool {
     let Some(n) = g.nodes.iter().find(|n| n.id == node) else {
         return false;
     };
@@ -115,11 +115,11 @@ fn add(g: &mut BlockEvaluationGraph, id: i32, source: i32, destination: i32, inv
         outgoing_edges: [incoming, -1, outgoing, -1, inverse],
     });
 }
-pub(super) fn bind(
+pub(crate) fn bind_ids(
     document: &mut CadDocument,
     graph: Handle,
     action: i32,
-    columns: &[BlockLookupColumn],
+    parameters: &[i32],
 ) -> Result<(), &'static str> {
     let Some(ObjectType::DynamicBlock(object)) = document.objects.get(&graph) else {
         return Err("The authoring graph is unavailable.");
@@ -129,27 +129,27 @@ pub(super) fn bind(
     };
     let mut g = original.clone();
     if std::iter::once(action)
-        .chain(columns.iter().map(|c| c.node_id))
+        .chain(parameters.iter().copied())
         .any(|id| g.nodes.iter().filter(|n| n.next_id == id).count() != 1)
     {
-        return Err("A Lookup binding has an invalid or ambiguous expression ID.");
+        return Err("An action binding has an invalid or ambiguous expression ID.");
     }
     let action = g
         .nodes
         .iter()
         .find(|n| n.next_id == action)
-        .ok_or("The Lookup action node is unavailable.")?
+        .ok_or("The action node is unavailable.")?
         .id;
     let mut bindings = vec![];
-    for column in columns {
+    for parameter in parameters {
         let node = g
             .nodes
             .iter()
-            .find(|n| n.next_id == column.node_id)
-            .ok_or("A table property no longer belongs to this block.")?
+            .find(|n| n.next_id == *parameter)
+            .ok_or("A bound parameter no longer belongs to this block.")?
             .id;
         if node == action {
-            return Err("A Lookup table cannot use its action as a property.");
+            return Err("An action cannot bind to itself.");
         }
         if !bindings.contains(&node) {
             bindings.push(node);
@@ -165,10 +165,10 @@ pub(super) fn bind(
         .chain(old.iter().flat_map(|e| [e.source_node, e.destination_node]))
         .any(|n| !valid_lists(&g, n))
     {
-        return Err("The Lookup graph has invalid adjacency links.");
+        return Err("The authoring graph has invalid adjacency links.");
     }
     if old.iter().any(|e| e.next_id != 4) {
-        return Err("This Lookup action has unsupported graph dependencies.");
+        return Err("This action has unsupported graph dependencies.");
     }
     if old.iter().any(|e| {
         !old.iter().any(|inverse| {
@@ -178,7 +178,7 @@ pub(super) fn bind(
                 && inverse.destination_node == e.source_node
         })
     }) {
-        return Err("The Lookup graph has invalid inverse dependencies.");
+        return Err("The authoring graph has invalid inverse dependencies.");
     }
     let expected = bindings
         .iter()

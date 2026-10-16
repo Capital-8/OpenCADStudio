@@ -1144,6 +1144,20 @@ bg={bg_ms:.1}ms n={view_count}"
                             (g, p.parameter.definition_point)
                         }),
                     )
+                    .chain(
+                        crate::scene::block_actions::actions(
+                            &tab.scene.document,
+                            session.br_handle,
+                        )
+                        .into_iter()
+                        .map(|(_, action, _, _)| {
+                            let mut g = crate::scene::block_distance_parameter::Graphic::default();
+                            g.grips.push((action.display_location, false));
+                            g.labels
+                                .push((action.display_location, action.element.name.clone()));
+                            (g, action.display_location)
+                        }),
+                    )
                     .filter_map(|(graphic, marker_tail)| {
                         let project = |p: codec::types::Vector3| {
                             let p = tab
