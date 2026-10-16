@@ -673,6 +673,7 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                 Some(s) => By::Own(s),
             },
             geom,
+            filled: matches!(kind(e), 6 | 14) && e.windows(4).any(|w| w == [0x07, 0x10, 0x41, 0x00]),
         };
         let stroke = Some((color, -1.0));
         let d3 = is_3d(e);

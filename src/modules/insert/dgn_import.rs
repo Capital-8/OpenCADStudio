@@ -213,6 +213,22 @@ fn polyline(points: &[P3], bulges: &[f64]) -> EntityType {
     EntityType::LwPolyline(pl)
 }
 
+/// A solid hatch filling a closed outline, in its plane.
+fn solid_hatch(points: &[P3]) -> EntityType {
+    use codec::entities::{BoundaryEdge, BoundaryPath, Hatch, PolylineEdge};
+    let mut ring: Vec<Vector2> = points.iter().map(|p| Vector2::new(p[0], p[1])).collect();
+    if ring.len() > 1 && ring.first() == ring.last() {
+        ring.pop();
+    }
+    let mut hatch = Hatch::solid();
+    let mut boundary = BoundaryPath::external();
+    boundary.flags.set_polyline(true);
+    boundary.edges.push(BoundaryEdge::Polyline(PolylineEdge::new(ring, true)));
+    hatch.add_path(boundary);
+    hatch.elevation = points.first().map_or(0.0, |p| p[2]);
+    EntityType::Hatch(Box::new(hatch))
+}
+
 /// A complex chain's vertices and bulges: lines and line strings add their
 /// points, circular arcs a bulge, other arcs their points.
 fn chain(parts: &[DgnGeom]) -> (Vec<P3>, Vec<f64>) {
@@ -712,6 +728,10 @@ impl<'a> Converter<'a> {
                 vec![EntityType::Point(Point::from_coords(a[0], a[1], a[2]))]
             }
             DgnGeom::Line(a, b) => vec![EntityType::Line(Line::from_points(v3(*a), v3(*b)))],
+            // A filled shape is its outline and a solid hatch inside it.
+            DgnGeom::Points(pts) if pts.len() >= 3 && element.filled => {
+                vec![polyline(pts, &[]), solid_hatch(pts)]
+            }
             DgnGeom::Points(pts) if pts.len() >= 2 => vec![polyline(pts, &[])],
             DgnGeom::Points(_) => Vec::new(),
             DgnGeom::Arc {
@@ -880,6 +900,7 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
                 weight: By::Level,
                 style: By::Level,
                 geom: DgnGeom::Points(Vec::new()),
+                filled: false,
             };
             c.layer(&element, false);
         }

@@ -572,6 +572,8 @@ pub struct DgnElement {
     /// Line style.
     pub style: By<u32>,
     pub geom: DgnGeom,
+    /// The element is a filled shape (it has a fill linkage).
+    pub filled: bool,
 }
 
 /// A point of a DGN element (z 0 in a 2D file).
