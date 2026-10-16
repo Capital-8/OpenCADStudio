@@ -209,16 +209,22 @@ impl<'a> Cfb<'a> {
     }
 }
 
+/// Far above any real element stream; stops a crafted one from inflating
+/// until memory runs out.
+const STREAM_LIMIT: u64 = 512 << 20;
+
 /// A DGN stream: raw, or zlib data after a 16-byte header.
 fn inflate(data: &[u8]) -> Vec<u8> {
-    // Far above any real element stream; stops a crafted one from
-    // inflating until memory runs out.
-    const STREAM_LIMIT: u64 = 512 << 20;
+    inflate_at_most(data, STREAM_LIMIT)
+}
+
+/// [`inflate`] stopping after `limit` bytes.
+fn inflate_at_most(data: &[u8], limit: u64) -> Vec<u8> {
     for skip in [16usize, 0] {
         if let Some(z) = data.get(skip..) {
             let mut out = Vec::new();
             if flate2::read::ZlibDecoder::new(z)
-                .take(STREAM_LIMIT)
+                .take(limit)
                 .read_to_end(&mut out)
                 .is_ok()
                 && !out.is_empty()
@@ -997,7 +1003,10 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
             27 => {
                 // B-spline curve header: order and closure in the word at
                 // 108, pole count 112; its poles follow (type 21).
-                let flags = u16::from_le_bytes([e[108], e[109]]);
+                let Some(&[lo, hi]) = e.get(108..110) else {
+                    continue;
+                };
+                let flags = u16::from_le_bytes([lo, hi]);
                 spline = Some((
                     ((flags & 0x0f) + 2) as usize,
                     u32_at(e, 112).unwrap_or(0) as usize,
@@ -1149,6 +1158,11 @@ fn units(header: &[u8]) -> (f64, f64) {
     (master, sub)
 }
 
+/// How many bytes the streams of one file may inflate to in all.
+fn inflate_budget(cfb: &Cfb) -> usize {
+    cfb.b.len().saturating_mul(64).max(256 << 20)
+}
+
 /// Models of the file: (name, graphic stream, header stream).
 fn models(cfb: &Cfb) -> Vec<(String, Vec<u8>, Vec<u8>)> {
     let streams = cfb.streams();
@@ -1163,7 +1177,7 @@ fn models(cfb: &Cfb) -> Vec<(String, Vec<u8>, Vec<u8>)> {
     // scales with the file (×64 covers any real compression ratio, so
     // legitimate files never trip it) with a 256 MiB floor for small ones;
     // models past the budget are dropped, the earlier ones still load.
-    let total_limit = cfb.b.len().saturating_mul(64).max(256 << 20);
+    let total_limit = inflate_budget(cfb);
     let mut total = 0usize;
     let mut out = Vec::new();
     for dir in dirs {
@@ -1400,24 +1414,28 @@ pub fn design_model_names(bytes: &[u8]) -> Option<Vec<String>> {
     (!names.is_empty()).then_some(names)
 }
 
-/// The control stream (Dgn^C) of each model, in the order `models` lists
-/// them.
-fn control_streams(cfb: &Cfb) -> Vec<Vec<u8>> {
+/// The control stream (Dgn^C) of model `k` in the order `models` lists
+/// them, inflated within what is left of the file's budget (`used` bytes
+/// are taken by the models already read).
+fn control_stream(cfb: &Cfb, k: usize, used: usize) -> Vec<u8> {
     let streams = cfb.streams();
-    let mut dirs: Vec<String> = streams
+    let mut dirs: Vec<&str> = streams
         .iter()
-        .filter_map(|(p, _)| p.strip_suffix("/Dgn^G/$1").map(|d| d.to_string()))
+        .filter_map(|(p, _)| p.strip_suffix("/Dgn^G/$1"))
         .collect();
     dirs.sort();
-    dirs.iter()
-        .map(|dir| {
-            streams
-                .iter()
-                .find(|(p, _)| *p == format!("{dir}/Dgn^C/$1"))
-                .map(|(_, e)| inflate(&cfb.stream(e)))
-                .unwrap_or_default()
-        })
-        .collect()
+    let Some(dir) = dirs.get(k) else {
+        return Vec::new();
+    };
+    let left = inflate_budget(cfb).saturating_sub(used) as u64;
+    if left == 0 {
+        return Vec::new();
+    }
+    streams
+        .iter()
+        .find(|(p, _)| *p == format!("{dir}/Dgn^C/$1"))
+        .map(|(_, e)| inflate_at_most(&cfb.stream(e), left.min(STREAM_LIMIT)))
+        .unwrap_or_default()
 }
 
 /// Every string of an element stored after the "ff fe 01 00" marker, with
@@ -1476,7 +1494,6 @@ fn references(control: &[u8]) -> Vec<DgnReference> {
 pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
     let cfb = Cfb::open(bytes)?;
     let all = models(&cfb);
-    let controls = control_streams(&cfb);
     let designs: Vec<usize> = (0..all.len()).filter(|k| is_design(&all[*k].2)).collect();
     let k = designs
         .iter()
@@ -1536,10 +1553,8 @@ pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
         (Some(n), Some(d)) if n > 0.0 && d > 0.0 => unit_name(d / n),
         _ => String::new(),
     };
-    let references = controls
-        .get(k)
-        .map(|c| references(c))
-        .unwrap_or_default()
+    let used = all.iter().map(|m| m.1.len() + m.2.len()).sum();
+    let references = references(&control_stream(&cfb, k, used))
         .into_iter()
         .map(|r| DgnReference {
             origin: [

@@ -172,11 +172,14 @@ struct Instance {
     origin: [f64; 2],
 }
 
+/// How deep cells inside cells are read.
+const MAX_CELL_DEPTH: usize = 16;
+
 /// Reads a run of elements into raw geometry: plain elements, complex
 /// chains and shapes (joined), B-splines, text, cells and shared cell
 /// instances. In a 3D file (`d3`) points have a z and planar elements their
 /// plane; the drawn geometry is their plan.
-fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool) -> Raw {
+fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
     let mut raw = Raw::default();
     // An open B-spline curve: order, pole count, colour, closed, and the
     // header as the element it imports as.
@@ -280,14 +283,21 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool) -> Raw {
         let plan = |p: [f64; 3]| [p[0], p[1]];
         let step = if d3 { 12 } else { 8 };
         match kind {
-            // A cell: its components follow as complex elements; they are
-            // already placed, so the cell keeps them as they are.
+            // A cell: its components follow as complex elements, as many as
+            // its total length (36, the words after its first 38 bytes)
+            // covers; they are already placed, so the cell keeps them as
+            // they are. Nesting past `MAX_CELL_DEPTH` is left out.
             2 => {
+                let mut left = (38 + uint16(e, 36).unwrap_or(0) as usize * 2).saturating_sub(e.len());
                 let start = index;
-                while index < run.len() && run[index][0] & 0x80 != 0 {
+                while left > 0 && index < run.len() && run[index][0] & 0x80 != 0 {
+                    left = left.saturating_sub(run[index].len());
                     index += 1;
                 }
-                let inner = read_run(&run[start..index], colors, d3);
+                if depth >= MAX_CELL_DEPTH {
+                    continue;
+                }
+                let inner = read_run(&run[start..index], colors, d3, depth + 1);
                 raw.paths.extend(inner.paths);
                 raw.texts.extend(inner.texts);
                 raw.instances.extend(inner.instances);
@@ -836,14 +846,14 @@ pub fn model(bytes: &[u8], hidden: &[String]) -> Option<Sheet> {
             while j < all.len() && all[j][0] & 0x80 != 0 {
                 j += 1;
             }
-            defs.insert(name, read_run(&all[i + 1..j], &colors, is_3d(bytes)));
+            defs.insert(name, read_run(&all[i + 1..j], &colors, is_3d(bytes), 0));
             i = j;
             continue;
         }
         top.push(e);
         i += 1;
     }
-    let raw = read_run(&top, &colors, is_3d(bytes));
+    let raw = read_run(&top, &colors, is_3d(bytes), 0);
     let per_unit = u.uor_per_sub * u.sub_per_master;
     let m: Affine = [
         1.0 / per_unit,
@@ -910,7 +920,7 @@ pub fn import(bytes: &[u8]) -> Option<DgnImport> {
             while j < all.len() && all[j][0] & 0x80 != 0 {
                 j += 1;
             }
-            let def = read_run(&all[i + 1..j], &colors, is_3d(bytes)).elements;
+            let def = read_run(&all[i + 1..j], &colors, is_3d(bytes), 0).elements;
             cells.push((name, scaled_elements(&def, s, [0.0, 0.0])));
             i = j;
             continue;
@@ -918,7 +928,7 @@ pub fn import(bytes: &[u8]) -> Option<DgnImport> {
         top.push(e);
         i += 1;
     }
-    let raw = read_run(&top, &colors, is_3d(bytes));
+    let raw = read_run(&top, &colors, is_3d(bytes), 0);
     let levels = (0..64u32)
         .map(|l| {
             let name = names.get(&(l as u8)).cloned().unwrap_or_else(|| l.to_string());
