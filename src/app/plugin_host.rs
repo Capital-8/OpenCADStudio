@@ -3220,6 +3220,87 @@ impl<'a> HostSession<'a> {
         Ok(())
     }
 
+    /// Enumerate an entity's built-in grips with viewport parity (API v11):
+    /// the same per-entity enumeration the selection cache builder produces —
+    /// whatever each entity module declares, generic over every entity type.
+    /// Reference-only entities and locked layers answer an empty list, the
+    /// same answer the viewport gives. This is a pure read: it opens no undo
+    /// scope, records nothing, and audits nothing.
+    pub fn entity_grips(
+        &self,
+        handle: Handle,
+    ) -> Result<Vec<ocs_plugin_api::host::GripInfo>, String> {
+        let grips = self.app.entity_grips_for(self.tab, handle)?;
+        Ok(grips
+            .into_iter()
+            .map(|grip| ocs_plugin_api::host::GripInfo {
+                grip_id: grip.id,
+                point: grip.world.to_array(),
+                moves_entity: grip.is_midpoint,
+                shape: format!("{:?}", grip.shape),
+                axis: grip.axis.map(|axis| axis.to_array()),
+            })
+            .collect())
+    }
+
+    /// Perform the grip edit an interactive drag performs (API v11): the ONE
+    /// shared pipeline (select → engage → move with snaps off → commit),
+    /// exactly one undo step labeled like the interactive grip step,
+    /// byte-exact restore on undo, refusal parity (unknown entity/grip,
+    /// reference-only, locked layer, point out of view).
+    pub fn grip_drag(
+        &mut self,
+        handle: Handle,
+        grip_id: usize,
+        to: [f64; 3],
+    ) -> Result<(), String> {
+        let task = self
+            .app
+            .perform_grip_drag(self.tab, handle, grip_id, to)
+            .map_err(|(code, message)| format!("grip drag failed ({code}): {message}"))?;
+        let _ = task;
+        Ok(())
+    }
+
+    /// Declare (or clear) the calling plugin's custom grip points (API v11).
+    /// The whole batch REPLACES the plugin's previous set; the host applies
+    /// it as a diff keyed by grip id so an unchanged re-declare is near-free
+    /// (the pull model's message-boundary re-declare). Display-session state
+    /// only: nothing is persisted, nothing is host-interpreted, and the set
+    /// dies with the plugin's process.
+    ///
+    /// `plugin_id` is the identity the transport attached: over the plugin
+    /// IPC the host serves this with the speaking process's own manifest id
+    /// and refuses mismatches, so a plugin cannot declare grips in another
+    /// plugin's name; an in-process host (tests) registers the id it passes.
+    pub fn set_plugin_grips(
+        &mut self,
+        plugin_id: &str,
+        grips: Vec<ocs_plugin_api::host::PluginGrip>,
+    ) -> Result<(), String> {
+        let known = crate::plugin::grip_points::visibility(&self.app.disabled_plugins)(plugin_id);
+        if !known {
+            return Err(format!(
+                "plugin {plugin_id:?} is not a loaded, alive plugin; custom grips must be declared by their owner"
+            ));
+        }
+        // Anchors accept ANY live entity handle — never a type restriction —
+        // and never add host-side movement semantics (the points are absolute).
+        for grip in &grips {
+            if let Some(anchor) = grip.anchor {
+                if self.document().get_entity(anchor).is_none() {
+                    return Err(format!(
+                        "grip {} anchors entity {anchor:?}, which does not exist",
+                        grip.grip_id
+                    ));
+                }
+            }
+        }
+        let tab = self.tab;
+        self.app.tabs[tab].plugin_grips.declare(plugin_id, grips)?;
+        Ok(())
+    }
+
     /// Resolve an existing XRecord to its containing dictionary, its validated
     /// name and its handle, after validating the path, the name and the target
     /// kind.
@@ -3626,6 +3707,19 @@ impl HostApi for HostSession<'_> {
     fn set_reference_only(&mut self, handle: Handle, reference_only: bool) -> Result<(), String> {
         self.set_reference_only(handle, reference_only)
     }
+    fn entity_grips(&self, handle: Handle) -> Result<Vec<ocs_plugin_api::host::GripInfo>, String> {
+        self.entity_grips(handle)
+    }
+    fn grip_drag(&mut self, handle: Handle, grip_id: usize, to: [f64; 3]) -> Result<(), String> {
+        self.grip_drag(handle, grip_id, to)
+    }
+    fn set_plugin_grips(
+        &mut self,
+        plugin_id: &str,
+        grips: Vec<ocs_plugin_api::host::PluginGrip>,
+    ) -> Result<(), String> {
+        self.set_plugin_grips(plugin_id, grips)
+    }
 }
 
 /// Bridges a plugin's [`InteractiveCommand`](ocs_plugin_api::host::InteractiveCommand)
@@ -3824,7 +3918,9 @@ impl crate::command::CadCommand for PluginProcessInteractiveAdapter {
     }
 }
 
-fn convert_preview_wires(
+/// Convert plugin-declared preview wires to scene wire models. Shared by the
+/// interactive-command previews and the custom-grip drag previews (API v11).
+pub(in crate::app) fn convert_preview_wires(
     raw_wires: Vec<ocs_plugin_api::host::PreviewWire>,
 ) -> Vec<crate::scene::model::wire_model::WireModel> {
     use crate::scene::model::wire_model::{TangentGeom, WireModel};

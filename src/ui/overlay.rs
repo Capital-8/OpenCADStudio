@@ -584,6 +584,10 @@ pub struct GripMarker {
     pub is_hovered: bool,
     /// Screen-plane direction with positive Y pointing up.
     pub dir: Option<[f32; 2]>,
+    /// True → a plugin-declared custom grip (API v11): drawn with the
+    /// distinct plugin accent so it reads differently from built-in
+    /// selection grips.
+    pub is_plugin: bool,
 }
 
 // ── Grid display params ───────────────────────────────────────────────────
@@ -1285,7 +1289,12 @@ fn draw_grip_marker(
         );
     } else {
         let palette = theme.palette();
-        let color = if visual.grip_color > 0 {
+        let color = if grip.is_plugin {
+            // Plugin-declared custom grip (API v11): a distinct accent so
+            // it never reads as a built-in selection grip. Hot and hover
+            // treatments stay identical to built-ins.
+            palette.success.base.color
+        } else if visual.grip_color > 0 {
             if let Some((r, g, b)) = codec::types::aci_table::aci_to_rgb(visual.grip_color) {
                 Color::from_rgb8(r, g, b)
             } else {
