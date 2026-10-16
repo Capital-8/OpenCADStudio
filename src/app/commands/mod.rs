@@ -20,6 +20,7 @@ mod fileops;
 mod inquiry;
 mod layerprops;
 mod layers;
+mod model_import;
 mod pc_colormap;
 mod pc_extract;
 mod pdf_dialogs;
@@ -413,6 +414,9 @@ impl OpenCADStudio {
             return Some(t);
         }
         if let Some(t) = self.dispatch_import(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_model_import(cmd, i) {
             return Some(t);
         }
         if let Some(t) = self.dispatch_bvisibility(cmd, i) {
@@ -1016,6 +1020,8 @@ inventory::submit!(crate::command::CommandRegistration {
         "QNEW",
         "OBJIMPORT",
         "IMPORT",
+        "ACISIN",
+        "WMFIN",
         "DGNIMPORT",
         "-DGNIMPORT",
         "OPEN",

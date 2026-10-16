@@ -112,6 +112,7 @@ pub(super) const NAMES: &[&str] = &[
     "pdf_import_pick",
     "pdf_import_dialog",
     "dgn_import_dialog",
+    "tds_import_dialog",
     "refedit_dialog",
     "pdf_shx_settings",
     "pdf_layer_toggle",
@@ -2231,6 +2232,45 @@ impl OpenCADStudio {
                             .position(|f| f.name.eq_ignore_ascii_case(value.trim()))
                             .ok_or_else(bad)?,
                     }),
+                    _ => return Err(bad()),
+                })
+            }
+            // The 3D Studio Import window, one field per call: "check=<name>"
+            // and "uncheck=<name>" (the object's name, or "Global Settings"),
+            // "all", "clear", "filter=all|mesh|light|camera|general",
+            // "search=<text>", "layers=object|material|color|single",
+            // "multi=ask|split|first|none", "path=<file>" (as Change… picks
+            // it), "ok" or "cancel".
+            "tds_import_dialog" => {
+                use crate::ui::window::import_dialogs::ImportDialogMsg as I;
+                if self.active_modal != Some(crate::app::ModalKind::TdsImport) {
+                    return Err(failure("no_dialog", "The 3D Studio Import window is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                if key == "cancel" {
+                    return Ok(Task::done(Message::CloseModal));
+                }
+                let pick = |options: &[&str]| options.iter().position(|o| *o == value).ok_or_else(bad);
+                Message::ImportDialog(match key {
+                    "ok" => I::TdsOk,
+                    "all" => I::TdsAll,
+                    "clear" => I::TdsClear,
+                    "check" | "uncheck" => {
+                        let k = self
+                            .import_dialogs
+                            .tds
+                            .as_ref()
+                            .and_then(|s| s.objects.iter().position(|(name, _, _)| name.eq_ignore_ascii_case(value)))
+                            .ok_or_else(bad)?;
+                        I::TdsCheck(k, key == "check")
+                    }
+                    "filter" => I::TdsFilter(pick(&["all", "mesh", "light", "camera", "general"])?),
+                    "search" => I::TdsSearch(value.to_string()),
+                    "layers" => I::TdsLayers(pick(&["object", "material", "color", "single"])?),
+                    "multi" => I::TdsMulti(pick(&["ask", "split", "first", "none"])?),
+                    "path" => I::TdsPicked(Some(value.to_string())),
                     _ => return Err(bad()),
                 })
             }

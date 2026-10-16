@@ -255,6 +255,7 @@ impl OpenCADStudio {
             Some(PdfImportFile) => self.pdf_import_file = None,
             Some(ImportFile) => self.import_dialogs.file = None,
             Some(DgnImport) => self.import_dialogs.dgn = None,
+            Some(TdsImport) => self.import_dialogs.tds = None,
             Some(XrefAttach) => self.xref_attach = None,
             Some(WriteBlock) => self.wblock = None,
             Some(Hyperlink) => {

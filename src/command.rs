@@ -2333,6 +2333,8 @@ pub enum CmdResult {
     ReturnPoint(DVec3),
     /// Import a DGN model (DGNIMPORT); ends the command.
     DgnImport(crate::modules::insert::dgn_import::DgnImportRequest),
+    /// Import a 3D Studio file with every question answered; ends the command.
+    TdsImport(crate::modules::insert::tds_import::TdsImportRequest),
 }
 
 /// What kind of value the active command is currently asking for. Drives
