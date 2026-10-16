@@ -2974,6 +2974,13 @@ pub trait CadCommand: Send {
         self.on_preview_wires(pt)
     }
 
+    /// Entities the host draws as the live preview, tessellated like the
+    /// drawing's own (arcs, text, linetypes and all). Commands whose preview
+    /// changes an entity's shape return edited copies of it here.
+    fn preview_entities(&mut self, _document: &codec::CadDocument, _pt: DVec3) -> Vec<EntityType> {
+        Vec::new()
+    }
+
     /// Source entities replaced by the current live preview. The host removes
     /// these from the resident render until the command commits or cancels.
     /// Commands such as COPY keep their sources visible and use the default.
