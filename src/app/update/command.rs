@@ -1410,6 +1410,7 @@ impl OpenCADStudio {
             // ESC while in MSPACE → exit back to paper space.
             return Task::done(Message::ExitViewport);
         } else {
+            self.tabs[i].selected_authoring = None;
             self.tabs[i].scene.deselect_all();
             self.refresh_properties();
             let mut sel = self.tabs[i].scene.selection.borrow_mut();

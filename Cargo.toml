@@ -37,10 +37,10 @@ rfd = "0.17"
 clap = { version = "4", features = ["derive", "string"] }
 env_logger = "0.11"
 log = "0.4"
-codec = { package = "opencadcodec", git = "https://github.com/HakanSeven12/opencadcodec.git", rev = "325fa98", features = ["serde"] }
-kernel = { package = "opencadkernel", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "dfca391", features = ["acis", "offset"] }
-kernel-constraints = { package = "opencadkernel-constraints", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "dfca391" }
-graph = { package = "opencadgraph", git = "https://github.com/HakanSeven12/opencadgraph.git", rev = "5d4e713" }
+codec = { package = "opencadcodec", git = "https://github.com/HakanSeven12/opencadcodec.git", rev = "0dc8585", features = ["serde"] }
+kernel = { package = "opencadkernel", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "d530a52", features = ["acis", "offset"] }
+kernel-constraints = { package = "opencadkernel-constraints", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "d530a52" }
+graph = { package = "opencadgraph", git = "https://github.com/HakanSeven12/opencadgraph.git", rev = "7dd8cf6" }
 dwg-thumbnailer = { path = "crates/dwg-thumbnailer" }
 # Shared SAVE serialization dispatch + web-worker wire format: one
 # implementation for the inline (fallback/native) path and the worker path.
@@ -224,8 +224,8 @@ name = "integration"
 path = "tests/integration.rs"
 
 [patch."https://github.com/HakanSeven12/opencadcodec.git"]
-opencadcodec = { git = "https://github.com/ramox81/cadcodec.git", rev = "58fac2c" }
+opencadcodec = { git = "https://github.com/ramox81/cadcodec.git", rev = "65511ca" }
 
 [patch."https://github.com/HakanSeven12/opencadkernel.git"]
-opencadkernel = { git = "https://github.com/ramox81/cadkernel.git", rev = "9490fb8" }
-opencadkernel-constraints = { git = "https://github.com/ramox81/cadkernel.git", rev = "9490fb8" }
+opencadkernel = { git = "https://github.com/ramox81/cadkernel.git", rev = "8d24b7f" }
+opencadkernel-constraints = { git = "https://github.com/ramox81/cadkernel.git", rev = "8d24b7f" }

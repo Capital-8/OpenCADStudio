@@ -2475,6 +2475,45 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                     }
                 }
             };
+            if selected.is_empty() {
+                if let Some(item) = self.tabs[i].selected_authoring.and_then(|handle| {
+                    let session = self.tabs[i].active_block_edit_session()?;
+                    crate::scene::block_authoring::edit::items(
+                        &self.tabs[i].scene.document,
+                        session.br_handle,
+                    )
+                    .into_iter()
+                    .find(|item| item.handle == handle)
+                }) {
+                    use crate::scene::model::object::{PropSection, PropValue, Property};
+                    panel.title = item.name;
+                    panel.sections = vec![PropSection {
+                        title: crate::t!("Geometry").into_owned(),
+                        props: item
+                            .grips
+                            .into_iter()
+                            .map(|(part, point)| Property {
+                                label: crate::t!(match part {
+                                    crate::scene::block_authoring::edit::Part::Point => "Position",
+                                    crate::scene::block_authoring::edit::Part::Base => "Base point",
+                                    crate::scene::block_authoring::edit::Part::End => "End point",
+                                    crate::scene::block_authoring::edit::Part::Reference =>
+                                        "Reference point",
+                                    crate::scene::block_authoring::edit::Part::Label(0) =>
+                                        "Label position",
+                                    _ => "Second label position",
+                                })
+                                .into_owned(),
+                                field: "authoring_grip_position",
+                                value: PropValue::ReadOnly(format!(
+                                    "{:.4}, {:.4}, {:.4}",
+                                    point.x, point.y, point.z
+                                )),
+                            })
+                            .collect(),
+                    }];
+                }
+            }
             // Precompute the focused-id → field-key map for O(1) lookups on
             // `PropSyncActive`; derived from `sections`, so rebuild it here.
             panel.field_key_by_id = crate::ui::properties::build_field_key_map(&panel.sections);
@@ -2886,6 +2925,8 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
         // Append the dynamic-block visibility (lookup) grip, if the lone
         // selection is a visibility-parametric block reference.
         self.refresh_visibility_grip(wo);
+        self.refresh_test_action_grips(wo);
+        self.refresh_authoring_grips(wo);
     }
 
     pub(super) fn property_target_handles(&self, i: usize) -> Vec<Handle> {

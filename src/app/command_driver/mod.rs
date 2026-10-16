@@ -575,6 +575,16 @@ impl OpenCADStudio {
                     return task;
                 }
             }
+            result @ CmdResult::EditBlockAuthoring { .. } => {
+                return self.handle_authoring_edit(result);
+            }
+            result @ (CmdResult::PlaceBlockAction { .. }
+            | CmdResult::EvaluateBlockParameter { .. }) => {
+                return self.handle_block_action_result(result);
+            }
+            result @ CmdResult::PlaceBlockSingleParameter { .. } => {
+                return self.handle_place_block_single_parameter(result);
+            }
             result @ CmdResult::PlaceBlockOrientationParameter { .. } => {
                 return self.handle_place_block_orientation_parameter(result);
             }

@@ -1023,6 +1023,8 @@ pub(crate) fn selection_overlay<'a>(
 pub(crate) struct AuthoringDimension {
     pub lines: Vec<[Point; 2]>,
     pub round_grips: Vec<Point>,
+    pub base_grips: Vec<Point>,
+    pub lookup_grips: Vec<Point>,
     pub dimensions: Vec<[Point; 2]>,
     pub labels: Vec<(Point, String)>,
     pub grips: Vec<(Point, Option<Point>)>,
@@ -2413,6 +2415,35 @@ impl canvas::Program<Message> for SelectionCanvas {
                         size: iced::Pixels(13.0),
                         ..Default::default()
                     });
+                }
+                for point in &dimension.base_grips {
+                    let stroke = canvas::Stroke::default().with_color(color);
+                    frame.stroke(&canvas::Path::circle(*point, 6.0), stroke);
+                    frame.stroke(
+                        &canvas::Path::line(
+                            Point::new(point.x - 9.0, point.y),
+                            Point::new(point.x + 9.0, point.y),
+                        ),
+                        stroke,
+                    );
+                    frame.stroke(
+                        &canvas::Path::line(
+                            Point::new(point.x, point.y - 9.0),
+                            Point::new(point.x, point.y + 9.0),
+                        ),
+                        stroke,
+                    );
+                }
+                for point in &dimension.lookup_grips {
+                    frame.fill(
+                        &canvas::Path::new(|p| {
+                            p.move_to(Point::new(point.x - 5.0, point.y - 4.0));
+                            p.line_to(Point::new(point.x + 5.0, point.y - 4.0));
+                            p.line_to(Point::new(point.x, point.y + 5.0));
+                            p.close();
+                        }),
+                        color,
+                    );
                 }
                 for point in &dimension.round_grips {
                     frame.fill(&canvas::Path::circle(*point, 3.5), color);
