@@ -941,6 +941,21 @@ bg={bg_ms:.1}ms n={view_count}"
                 }
                 None
             };
+            // Draw the Extension start at the actual acquired *world* point,
+            // projected through the same camera/rect as the entity and guides.
+            // The snap engine's screen-space base is only pane-local and can
+            // differ from the final canvas coordinates used by the overlay.
+            // Keep that older value as a fallback for snaps without origin.
+            let snap_ext_base = tab
+                .snap_result
+                .filter(|hit| hit.snap_type == crate::snap::SnapType::Extension)
+                .and_then(|hit| hit.extension_origin)
+                .and_then(|origin| {
+                    let (rot, eye, rect) = otrack_proj?;
+                    let pixel = ost_project(origin, rot, eye, rect);
+                    (pixel.x.is_finite() && pixel.y.is_finite()).then_some(pixel)
+                })
+                .or(snap_ext_base);
             // OSNAP Extension is also active with F11 / OTRACK turned off.
             // Give its marker the actual acquired geometric direction instead
             // of reconstructing a new ray from the moving snap cursor.
