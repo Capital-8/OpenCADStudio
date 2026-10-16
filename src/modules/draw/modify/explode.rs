@@ -1439,7 +1439,7 @@ fn sync_dimension_base_points_and_collect_pending(doc: &mut CadDocument) -> Vec<
             let EntityType::Dimension(dimension) = entity else {
                 return None;
             };
-            let definition_point = match dimension {
+            let definition_point = match &**dimension {
                 Dimension::Linear(value) => Some(value.definition_point),
                 Dimension::Aligned(value) => Some(value.definition_point),
                 Dimension::Radius(value) => Some(value.definition_point),
@@ -1493,7 +1493,7 @@ pub fn bake_dimension_blocks(doc: &mut CadDocument) {
     let dimensions: Vec<(Handle, Dimension)> = pending
         .into_iter()
         .filter_map(|handle| match doc.get_entity(handle) {
-            Some(EntityType::Dimension(d)) => Some((handle, d.clone())),
+            Some(EntityType::Dimension(d)) => Some((handle, (**d).clone())),
             _ => None,
         })
         .collect();
@@ -1654,7 +1654,7 @@ mod tests {
         d.base.text_middle_point = Vector3::new(5.0, 5.0, 0.0);
         // block_name is left empty — exactly what OCS-created dimensions carry.
         let handle = doc
-            .add_entity(EntityType::Dimension(Dimension::Linear(d)))
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Linear(d))))
             .unwrap();
 
         bake_dimension_blocks(&mut doc);
@@ -1693,7 +1693,7 @@ mod tests {
         // Exactly what OCS-created dimensions carry: insertion == text anchor.
         d.base.insertion_point = d.base.text_middle_point;
         let handle = doc
-            .add_entity(EntityType::Dimension(Dimension::Linear(d)))
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Linear(d))))
             .unwrap();
 
         bake_dimension_blocks(&mut doc);
@@ -1720,7 +1720,7 @@ mod tests {
         d.definition_point = Vector3::new(0.0, 5.0, 0.0);
         d.base.text_middle_point = Vector3::new(5.0, 5.0, 0.0);
         let handle = doc
-            .add_entity(EntityType::Dimension(Dimension::Linear(d)))
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Linear(d))))
             .unwrap();
 
         bake_dimension_blocks(&mut doc);
@@ -1798,7 +1798,7 @@ mod tests {
         d.rotation = 0.0;
         d.definition_point = Vector3::new(0.0, 8.0, 0.0);
         let handle = doc
-            .add_entity(EntityType::Dimension(Dimension::Linear(d)))
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Linear(d))))
             .unwrap();
         bake_dimension_blocks(&mut doc);
         let name = match doc.get_entity(handle) {
@@ -1827,7 +1827,7 @@ mod tests {
         let mut d = DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0));
         d.definition_point = Vector3::new(0.0, 5.0, 0.0);
         let handle = doc
-            .add_entity(EntityType::Dimension(Dimension::Linear(d)))
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Linear(d))))
             .unwrap();
         bake_dimension_blocks(&mut doc);
         let name = match doc.get_entity(handle) {
@@ -1875,7 +1875,7 @@ mod tests {
             .collect();
         assert!(!expected.is_empty(), "the dimension explodes into no lines");
 
-        let mut turned = EntityType::Dimension(flat);
+        let mut turned = EntityType::Dimension(Box::new(flat));
         crate::scene::view::dispatch::apply_transform(
             &mut turned,
             &EntityTransform::Rotate {
@@ -1911,7 +1911,7 @@ mod tests {
         );
         d.definition_point = Vector3::new(5.0, 5.0, 0.0); // arc location
         let handle = doc
-            .add_entity(EntityType::Dimension(Dimension::Angular3Pt(d)))
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Angular3Pt(d))))
             .unwrap();
         bake_dimension_blocks(&mut doc);
         let name = match doc.get_entity(handle) {
@@ -1940,7 +1940,7 @@ mod tests {
         let mut d = DimensionDiameter::new(edge, far);
         d.base.text_middle_point = Vector3::new(3.0, 9.0, 0.0);
         let handle = doc
-            .add_entity(EntityType::Dimension(Dimension::Diameter(d)))
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Diameter(d))))
             .unwrap();
         bake_dimension_blocks(&mut doc);
         let name = match doc.get_entity(handle) {
@@ -1971,7 +1971,7 @@ mod tests {
         d.rotation = std::f64::consts::FRAC_PI_2; // 90°, vertical dimension line
         d.definition_point = Vector3::new(8.0, 0.0, 0.0);
         let handle = doc
-            .add_entity(EntityType::Dimension(Dimension::Linear(d)))
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Linear(d))))
             .unwrap();
         bake_dimension_blocks(&mut doc);
         let name = match doc.get_entity(handle) {
@@ -2064,7 +2064,7 @@ mod tests {
                 DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0));
             d.definition_point = Vector3::new(0.0, 5.0, 0.0);
             d.base.text_middle_point = Vector3::new(5.0, 5.0, 0.0);
-            doc.add_entity(EntityType::Dimension(Dimension::Linear(d)))
+            doc.add_entity(EntityType::Dimension(Box::new(Dimension::Linear(d))))
                 .unwrap();
 
             let path =
@@ -2171,7 +2171,7 @@ mod tests {
         d.base.text_middle_point = Vector3::new(5.0, 5.0, 0.0);
         d.base.common.xdictionary_handle = Some(dict_handle);
         let dim_handle = doc
-            .add_entity(EntityType::Dimension(Dimension::Linear(d)))
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Linear(d))))
             .unwrap();
 
         bake_dimension_blocks(&mut doc);

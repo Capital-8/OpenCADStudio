@@ -676,7 +676,9 @@ pub fn adapt_mtext_paragraphs(
                                 ATab::Left(_) => TabKind::Left,
                                 ATab::Center(_) => TabKind::Center,
                                 ATab::Right(_) => TabKind::Right,
-                                ATab::Decimal(..) => TabKind::Decimal,
+                                ATab::Decimal(..) | ATab::DecimalWithCharacter { .. } => {
+                                    TabKind::Decimal
+                                }
                             };
                             TabStop {
                                 position: ts.position() as f32 * entity_height,

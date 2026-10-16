@@ -479,7 +479,7 @@ impl Scene {
                 self.previous_view = Some(ViewSnapshot::Floating {
                     layout,
                     handle,
-                    viewport: Box::new(viewport.clone()),
+                    viewport: viewport.clone(),
                 });
                 return;
             }
@@ -538,7 +538,7 @@ impl Scene {
                     });
                     return false;
                 }
-                let current = Box::new(current.clone());
+                let current = current.clone();
                 if let Some(EntityType::Viewport(destination)) =
                     self.document.get_entity_mut(handle)
                 {

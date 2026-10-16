@@ -462,7 +462,7 @@ fn mtext_of_text(geom: &DgnGeom, color: u16) -> Option<EntityType> {
     m.rectangle_width = 0.0;
     m.drawing_direction = DrawingDirection::ByStyle;
     m.style = "Standard".to_string();
-    Some(EntityType::MText(m))
+    Some(EntityType::MText(Box::new(m)))
 }
 
 /// A text node as one MTEXT, a paragraph a line, attached at the node's
@@ -515,7 +515,7 @@ fn mtext_of_node(
     m.rectangle_width = 0.0;
     m.drawing_direction = DrawingDirection::ByStyle;
     m.style = style;
-    Some(EntityType::MText(m))
+    Some(EntityType::MText(Box::new(m)))
 }
 
 /// An arc, circle or ellipse in its own plane.

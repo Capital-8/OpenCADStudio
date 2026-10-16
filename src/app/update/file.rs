@@ -2053,34 +2053,13 @@ impl OpenCADStudio {
             .xrefs
             .iter()
             .any(|item| item.status == crate::io::xref::XrefStatus::Failed);
-        let document_repaired = parser_errors_recovered
-            || reference_recovered
-            || caches.corrupt_dropped > 0
-            || caches.xref_dropped > 0;
+        let document_repaired = parser_errors_recovered || reference_recovered;
         let recovery_needed = document_repaired || reference_failed;
         let total_ms = open_started
             .map(|started| started.elapsed().as_millis() as u32)
             .unwrap_or(0);
         self.command_line
             .push_output(crate::tf!("Opened \"{name}\" — {entity_count} entities").as_ref());
-        if caches.corrupt_dropped > 0 {
-            self.command_line.push_error(
-                crate::tf!(
-                    "Warning: {} corrupt entities dropped (parser junk — bad normals / counts)",
-                    caches.corrupt_dropped
-                )
-                .as_ref(),
-            );
-        }
-        if caches.xref_dropped > 0 {
-            self.command_line.push_error(
-                crate::tf!(
-                    "Warning: {} corrupt xref entities dropped",
-                    caches.xref_dropped
-                )
-                .as_ref(),
-            );
-        }
         for info in &caches.xrefs {
             match info.status {
                 crate::io::xref::XrefStatus::Loaded => {
@@ -2180,9 +2159,7 @@ impl OpenCADStudio {
                 size_bytes,
                 caches.source_sha256.clone(),
                 caches.read_stats.clone(),
-                entity_count.saturating_add(caches.corrupt_dropped),
-                caches.corrupt_dropped,
-                caches.xref_dropped,
+                entity_count,
                 &caches.xrefs,
                 &doc.notifications,
                 document_repaired,
