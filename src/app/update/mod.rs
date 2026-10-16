@@ -1,6 +1,6 @@
-use crate::io::plot_style::PlotStyleTableExt as _;
 use super::{ArrowKey, Message, OpenCADStudio, TextEntryMode};
 use crate::command::CadCommand;
+use crate::io::plot_style::PlotStyleTableExt as _;
 use crate::scene::VIEWCUBE_DRAW_PX;
 use crate::ui::PropertiesPanel;
 use iced::time::Instant;
@@ -110,6 +110,9 @@ pub(in crate::app) use file::background_task;
 #[cfg(not(target_arch = "wasm32"))]
 pub(in crate::app) use file::native_paths_match;
 mod page_setup_import;
+mod plugin_grips;
+#[cfg(test)]
+mod plugin_grips_tests;
 mod qselect;
 mod style;
 pub(in crate::app) mod util;
@@ -976,6 +979,10 @@ impl OpenCADStudio {
                         mgr.drain_requests(&mut host, &mut |_| {});
                     });
                 }
+                // Custom grips live exactly as long as their declaring
+                // plugin: reap the sets of dead/unloaded plugins (and cancel
+                // a drag or hover the dying plugin owned).
+                self.reap_plugin_grips();
                 crate::plugin::external::with_manager(|mgr| {
                     for line in mgr.drain_io() {
                         if line.text.starts_with("[runner]")
@@ -2663,6 +2670,11 @@ impl OpenCADStudio {
                 self.hovered_doc_tab = None;
                 Task::none()
             }
+
+            // API v11: keep the active custom-grip drag's coalesced move
+            // channel flowing without ever blocking the app loop on plugin
+            // latency.
+            Message::PluginGripPump => self.pump_plugin_grips(),
 
             Message::TabClose(tab_id) => {
                 self.hovered_doc_tab = None;
@@ -4559,7 +4571,9 @@ impl OpenCADStudio {
 
             // CATIA navigation: the left button pressed during a middle drag
             // turns the drag into an orbit instead of starting a pick.
-            Message::ViewportLeftPressAt(_) | Message::ViewportLeftPress | Message::PanePress(_)
+            Message::ViewportLeftPressAt(_)
+            | Message::ViewportLeftPress
+            | Message::PanePress(_)
                 if self.navigation_style == crate::app::settings::NavigationStyle::Catia
                     && self.tabs[self.active_tab]
                         .scene
@@ -9376,12 +9390,14 @@ impl OpenCADStudio {
 
             Message::ToggleDynamicUcs => {
                 self.dynamic_ucs = !self.dynamic_ucs;
-                self.command_line.push_output(if self.dynamic_ucs {
-                    crate::t!("Dynamic UCS: on")
-                } else {
-                    crate::t!("Dynamic UCS: off")
-                }
-                .as_ref());
+                self.command_line.push_output(
+                    if self.dynamic_ucs {
+                        crate::t!("Dynamic UCS: on")
+                    } else {
+                        crate::t!("Dynamic UCS: off")
+                    }
+                    .as_ref(),
+                );
                 self.persist_settings_if_changed();
                 Task::none()
             }
@@ -9758,9 +9774,7 @@ impl OpenCADStudio {
                 // Closing the attribute manager is its Cancel: live changes
                 // are taken back.
                 if self.active_modal == Some(super::ModalKind::AttMan) {
-                    return self.on_attman(
-                        crate::ui::window::attman_dialog::AttManMsg::Cancel,
-                    );
+                    return self.on_attman(crate::ui::window::attman_dialog::AttManMsg::Cancel);
                 }
                 if matches!(
                     self.active_modal,
