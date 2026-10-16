@@ -1919,10 +1919,26 @@ impl canvas::Program<Message> for SelectionCanvas {
                         // toward the snap point, so the guide line and the three
                         // dots follow the actual extension path (#238).
                         let dir = self.snap_ext_base.and_then(|base| {
+                            // Reuse the acquired tracking ray when its origin
+                            // matches this Extension base. Deriving a new ray
+                            // from the moving snap marker makes the short OSNAP
+                            // guide rotate even while OTRACK stays stable.
+                            let acquired = self.otrack_lines.iter().find_map(|&(origin, tip)| {
+                                let offset = (origin.x - base.x).hypot(origin.y - base.y);
+                                if offset > 2.0 {
+                                    return None;
+                                }
+                                let dx = tip.x - origin.x;
+                                let dy = tip.y - origin.y;
+                                let len = dx.hypot(dy);
+                                (len > 1e-3).then_some(Point::new(dx / len, dy / len))
+                            });
                             let dx = sp.x - base.x;
                             let dy = sp.y - base.y;
-                            let len = (dx * dx + dy * dy).sqrt();
-                            (len > 1e-3).then(|| (base, Point::new(dx / len, dy / len)))
+                            let len = dx.hypot(dy);
+                            acquired
+                                .or_else(|| (len > 1e-3).then(|| Point::new(dx / len, dy / len)))
+                                .map(|u| (base, u))
                         });
                         // Dashed guide line from that endpoint, through the snap
                         // point and a little beyond, so the extension path is
@@ -1935,7 +1951,11 @@ impl canvas::Program<Message> for SelectionCanvas {
                                 },
                                 ..canvas::Stroke::default().with_color(marker).with_width(1.0)
                             };
-                            let tip = Point::new(sp.x + u.x * 18.0, sp.y + u.y * 18.0);
+                            let along = (sp.x - base.x) * u.x + (sp.y - base.y) * u.y;
+                            let tip = Point::new(
+                                base.x + u.x * (along + 18.0),
+                                base.y + u.y * (along + 18.0),
+                            );
                             // `base` is a projected entity endpoint: clip before
                             // stroking (see `clip_seg`).
                             if let Some((a, b)) = clip_seg(base, tip, bounds) {
