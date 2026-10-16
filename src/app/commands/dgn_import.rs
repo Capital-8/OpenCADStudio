@@ -715,7 +715,15 @@ fn place_converted(
         if scene.document.block_records.get(target).is_some() {
             continue;
         }
-        let entities = entities.into_iter().map(&fix).collect();
+        let entities: Vec<codec::EntityType> = entities.into_iter().map(&fix).collect();
+        if entities.is_empty() {
+            // A cell that draws nothing still names a block.
+            let mut record = codec::tables::block_record::BlockRecord::new(target);
+            record.handle = scene.document.allocate_handle();
+            let _ = scene.document.block_records.add(record);
+            crate::io::xref::ensure_block_entities(&mut scene.document, target);
+            continue;
+        }
         let _ = scene.define_block_from_owned_entities(entities, target, glam::DVec3::ZERO);
     }
     for entity in converted.entities {
