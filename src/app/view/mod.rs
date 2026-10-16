@@ -1119,6 +1119,31 @@ bg={bg_ms:.1}ms n={view_count}"
                             )
                         }),
                     )
+                    .chain(
+                        crate::scene::block_basepoint::parameter(
+                            &tab.scene.document,
+                            session.br_handle,
+                        )
+                        .map(|(_, p)| {
+                            let mut g = crate::scene::block_distance_parameter::Graphic::default();
+                            g.base_grips.push(p.parameter.definition_point);
+                            (g, p.parameter.definition_point)
+                        }),
+                    )
+                    .chain(
+                        crate::scene::block_lookup::parameters(
+                            &tab.scene.document,
+                            session.br_handle,
+                        )
+                        .into_iter()
+                        .map(|(_, p)| {
+                            let mut g = crate::scene::block_distance_parameter::Graphic::default();
+                            g.lookup_grips.push(p.parameter.definition_point);
+                            g.labels
+                                .push((p.parameter.definition_point, p.lookup_name.clone()));
+                            (g, p.parameter.definition_point)
+                        }),
+                    )
                     .filter_map(|(graphic, marker_tail)| {
                         let project = |p: codec::types::Vector3| {
                             let p = tab
@@ -1155,6 +1180,16 @@ bg={bg_ms:.1}ms n={view_count}"
                             .collect::<Option<Vec<_>>>()?;
                         Some(crate::ui::overlay::AuthoringDimension {
                             lines,
+                            base_grips: graphic
+                                .base_grips
+                                .into_iter()
+                                .map(project)
+                                .collect::<Option<Vec<_>>>()?,
+                            lookup_grips: graphic
+                                .lookup_grips
+                                .into_iter()
+                                .map(project)
+                                .collect::<Option<Vec<_>>>()?,
                             round_grips: graphic
                                 .round_grips
                                 .into_iter()

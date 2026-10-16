@@ -13,6 +13,7 @@ mod block_editor;
 mod block_editor_tests;
 mod block_save_as;
 mod block_visibility;
+mod block_lookup;
 mod block_properties;
 #[cfg(test)]
 mod block_properties_tests;
@@ -593,6 +594,7 @@ pub(super) struct OpenCADStudio {
     block_edit_picker: Option<crate::ui::window::block_edit_picker::State>,
     block_save_as: Option<crate::ui::window::block_save_as::State>,
     block_visibility: Option<crate::ui::window::block_visibility::State>,
+    block_lookup: Option<crate::ui::window::block_lookup::State>,
     block_visibility_mode: bool,
     /// PDF dialogs' working copies; `None` while closed.
     pdf_attach: Option<crate::ui::window::pdf_dialogs::PdfAttachState>,
@@ -2295,6 +2297,7 @@ pub enum ModalKind {
     BlockEditPicker,
     BlockSaveAs,
     BlockVisibility,
+    BlockLookup,
     SaveDialog,
     Recovery,
     /// Fonts referenced by the drawing are missing on this machine.
@@ -2947,6 +2950,7 @@ pub enum Message {
     BlockSaveAsName(String),
     BlockSaveAsApply,
     BlockVisibility(crate::ui::window::block_visibility::Action),
+    BlockLookup(crate::ui::window::block_lookup::Action),
     BlockEditPickerName(String),
     BlockEditPickerSelect(String),
     BlockEditPickerApply,
@@ -4730,6 +4734,7 @@ impl OpenCADStudio {
             block_edit_picker: None,
             block_save_as: None,
             block_visibility: None,
+            block_lookup: None,
             block_visibility_mode: false,
             pdf_attach: None,
             point_cloud_attach: None,

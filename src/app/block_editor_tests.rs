@@ -99,6 +99,201 @@ fn orientation_parameter_count(app: &OpenCADStudio) -> usize {
 }
 
 #[test]
+fn lookup_basepoint_placement_history_test_block_and_saved_parent_undo() {
+    use crate::scene::{block_basepoint, block_lookup, render_graph};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let members_before = members(&app);
+    let _ = app.run_command_line("BPARAMETER BASEPOINT 3,4");
+    let (handle, p) = block_basepoint::parameter(&app.tabs[i].scene.document, definition).unwrap();
+    assert_eq!(p.point, Vector3::new(3.0, 4.0, 0.0));
+    let depth = app.tabs[i].history.undo_stack.len();
+    assert_eq!(depth, 1);
+    let _ = app.run_command_line("BPARAMETER BASEPOINT 3,4");
+    assert_eq!(
+        app.tabs[i].history.undo_stack.len(),
+        depth,
+        "same anchor is a no-op"
+    );
+    let _ = app.run_command_line("BPARAMETER BASEPOINT 5,6");
+    assert_eq!(
+        block_basepoint::parameter(&app.tabs[i].scene.document, definition)
+            .unwrap()
+            .0,
+        handle
+    );
+    app.undo_steps(1);
+    assert_eq!(
+        block_basepoint::parameter(&app.tabs[i].scene.document, definition)
+            .unwrap()
+            .1
+            .point,
+        Vector3::new(3.0, 4.0, 0.0)
+    );
+    app.redo_steps(1);
+    let _ = app.dispatch_command("BPARAMETER");
+    feed(&mut app, "K");
+    feed(&mut app, "2,2");
+    assert_eq!(
+        block_lookup::parameters(&app.tabs[i].scene.document, definition).len(),
+        1
+    );
+    assert_eq!(
+        members(&app),
+        members_before,
+        "authoring objects are not drawing entities"
+    );
+    let before_test = app.tabs[i].scene.document.clone();
+    let _ = app.dispatch_command("BTESTBLOCK");
+    let doc = &app.tabs[app.active_tab].scene.document;
+    let insert = doc
+        .entities()
+        .find_map(|e| match e {
+            EntityType::Insert(i) => Some(i),
+            _ => None,
+        })
+        .unwrap();
+    assert!(
+        (render_graph::insert_transform(doc, insert).apply(Vector3::new(5.0, 6.0, 0.0))
+            - insert.insert_point)
+            .length()
+            < 1e-9
+    );
+    let _ = app.dispatch_command("BCLOSETESTBLOCK");
+    assert_eq!(app.tabs[i].scene.document, before_test);
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    assert!(block_basepoint::parameter(&app.tabs[i].scene.document, definition).is_some());
+    app.undo_steps(1);
+    assert!(block_basepoint::parameter(&app.tabs[i].scene.document, definition).is_none());
+    app.redo_steps(1);
+    assert!(block_basepoint::parameter(&app.tabs[i].scene.document, definition).is_some());
+}
+
+fn lookup_editor_fixture() -> (OpenCADStudio, Handle, Handle) {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 2,0 0,1");
+    let _ = app.run_command_line("BPARAMETER LOOKUP 1,1");
+    let i = app.active_tab;
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter =
+        crate::scene::block_lookup::parameters(&app.tabs[i].scene.document, definition)[0].0;
+    (app, definition, parameter)
+}
+fn edit_lookup(app: &mut OpenCADStudio) {
+    use crate::ui::window::block_lookup::Action as A;
+    let _ = app.update(Message::BlockLookup(A::Property(0)));
+    let _ = app.update(Message::BlockLookup(A::AddProperty));
+    let _ = app.update(Message::BlockLookup(A::AddRow));
+    let _ = app.update(Message::BlockLookup(A::Cell(0, 1, "Small".into())));
+}
+#[test]
+fn lookup_editor_cancel_apply_one_undo_and_stale_guard() {
+    use crate::ui::window::block_lookup::Action as A;
+    use crate::scene::block_lookup;
+    let (mut app, definition, parameter) = lookup_editor_fixture();
+    let i = app.active_tab;
+    let before = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    for cancel in [Message::CloseModal, Message::CommandEscape] {
+        let _ = app.dispatch_command("BLOOKUPTABLE");
+        edit_lookup(&mut app);
+        assert_eq!(app.tabs[i].scene.document, before, "draft is isolated");
+        let _ = app.update(cancel);
+        assert!(app.block_lookup.is_none());
+        assert_eq!(app.tabs[i].scene.document, before);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    }
+    let _ = app.dispatch_command("BLOOKUPTABLE");
+    let _ = app.update(Message::BlockLookup(A::Apply));
+    assert_eq!(
+        app.tabs[i].history.undo_stack.len(),
+        depth,
+        "unchanged OK is a no-op"
+    );
+    let _ = app.dispatch_command("BLOOKUPTABLE");
+    edit_lookup(&mut app);
+    let _ = app.update(Message::BlockLookup(A::Audit));
+    assert!(app.block_lookup.as_ref().unwrap().error.is_none());
+    let _ = app.update(Message::BlockLookup(A::Apply));
+    assert!(app.block_lookup.is_none());
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    assert_eq!(
+        block_lookup::table(&app.tabs[i].scene.document, definition, parameter)
+            .unwrap()
+            .unwrap()
+            .1
+            .expressions,
+        vec!["2", "Small"]
+    );
+    let saved = app.tabs[i].scene.document.clone();
+    app.undo_steps(1);
+    assert_eq!(app.tabs[i].scene.document, before);
+    app.redo_steps(1);
+    assert_eq!(app.tabs[i].scene.document, saved);
+    let _ = app.dispatch_command("BLOOKUPTABLE Lookup1");
+    let _ = app.update(Message::BlockLookup(A::Cell(0, 1, "Changed".into())));
+    app.tabs[i].scene.bump_geometry();
+    let _ = app.update(Message::BlockLookup(A::Apply));
+    assert!(app
+        .block_lookup
+        .as_ref()
+        .unwrap()
+        .error
+        .as_ref()
+        .unwrap()
+        .contains("changed"));
+    assert_eq!(app.tabs[i].scene.document, saved);
+    let _ = app.update(Message::CloseModal);
+}
+
+#[test]
+fn lookup_editor_multiple_tables_apply_atomically_and_parameter_cancel_is_clean() {
+    use crate::ui::window::block_lookup::Action as A;
+    let (mut app, definition, _) = lookup_editor_fixture();
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LOOKUP 3,3");
+    let before = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    for kind in ["BASEPOINT", "LOOKUP"] {
+        let _ = app.dispatch_command(&format!("BPARAMETER {kind}"));
+        let _ = app.update(Message::CommandEscape);
+        assert_eq!(app.tabs[i].scene.document, before);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    }
+    let _ = app.dispatch_command("BLOOKUPTABLE");
+    edit_lookup(&mut app);
+    let _ = app.update(Message::BlockLookup(A::Select(1)));
+    edit_lookup(&mut app);
+    let _ = app.update(Message::BlockLookup(A::Cell(0, 0, "NaN".into())));
+    let _ = app.update(Message::BlockLookup(A::Apply));
+    assert!(app.block_lookup.as_ref().unwrap().error.is_some());
+    assert_eq!(app.tabs[i].scene.document, before);
+    let _ = app.update(Message::BlockLookup(A::Cell(0, 0, "5".into())));
+    let _ = app.update(Message::BlockLookup(A::Apply));
+    assert!(app.block_lookup.is_none());
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    for (h, _) in crate::scene::block_lookup::parameters(&app.tabs[i].scene.document, definition) {
+        assert!(
+            crate::scene::block_lookup::table(&app.tabs[i].scene.document, definition, h)
+                .unwrap()
+                .is_some()
+        );
+    }
+    app.undo_steps(1);
+    assert_eq!(app.tabs[i].scene.document, before);
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    let _ = app.dispatch_command("LINE");
+    for cmd in ["BPARAMETER BASEPOINT", "BPARAMETER LOOKUP", "BLOOKUPTABLE"] {
+        let _ = app.dispatch_command(cmd);
+        assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+    }
+}
+
+#[test]
 fn orientation_parameter_batch_numeric_rotation_local_history_save_and_parent_undo() {
     let (mut app, reference) = fixture();
     begin(&mut app, reference);

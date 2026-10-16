@@ -575,6 +575,9 @@ impl OpenCADStudio {
                     return task;
                 }
             }
+            result @ CmdResult::PlaceBlockSingleParameter { .. } => {
+                return self.handle_place_block_single_parameter(result);
+            }
             result @ CmdResult::PlaceBlockOrientationParameter { .. } => {
                 return self.handle_place_block_orientation_parameter(result);
             }

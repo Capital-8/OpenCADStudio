@@ -11,6 +11,8 @@ pub(crate) mod block_metadata;
 pub mod block_service;
 pub mod block_visibility;
 pub(crate) mod block_authoring;
+pub(crate) mod block_basepoint;
+pub(crate) mod block_lookup;
 pub(crate) mod block_point_parameter;
 pub(crate) mod block_distance_parameter;
 pub(crate) mod block_orientation_parameter;

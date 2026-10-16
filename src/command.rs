@@ -1514,6 +1514,13 @@ impl DimensionPreview {
 /// Returned by every `CadCommand` method to tell main.rs what to do.
 #[allow(dead_code)]
 pub enum CmdResult {
+    /// Place or relocate a Basepoint, or place a Lookup parameter.
+    PlaceBlockSingleParameter {
+        document_id: u64,
+        definition: Handle,
+        kind: crate::modules::block_editor::single_parameter::Kind,
+        location: DVec3,
+    },
     /// Place a native Rotation, Alignment or Flip parameter.
     PlaceBlockOrientationParameter {
         document_id: u64,

@@ -5,6 +5,17 @@ use crate::app::{Message, OpenCADStudio};
 fn fresh() -> OpenCADStudio {
     let mut app = OpenCADStudio::new_for_test();
     app.automation_op(r#"{"op":"new"}"#);
+    // These tests drive dock controls, not the hardware warning dialog.
+    // Software snapshots intentionally have no scene GPU adapter.
+    app.gpu_warning_silenced = crate::scene::pipeline::gpu_status()
+        .identity()
+        .or_else(|| crate::scene::pipeline::GpuStatus::NoRenderer.identity())
+        .unwrap();
+    app.pending_startup_modals
+        .retain(|modal| *modal != crate::app::ModalKind::GpuWarning);
+    if app.active_modal == Some(crate::app::ModalKind::GpuWarning) {
+        app.active_modal = None;
+    }
     app
 }
 
@@ -1096,6 +1107,65 @@ fn authoring_app() -> OpenCADStudio {
 }
 
 #[test]
+fn lookup_basepoint_palette_and_table_dialog_real_controls() {
+    with_stack(|| {
+        use crate::ui::window::{authoring_palettes::Tab, block_lookup::Action as A};
+        let mut app = authoring_app();
+        let _ = app.dispatch_command("BAUTHORPALETTE");
+        for (id, point_text) in [
+            ("authoring-tool-basepoint", "0.2,0.1"),
+            ("authoring-tool-lookup", "0.5,0.2"),
+        ] {
+            let point = authoring_control(&app, id);
+            authoring_click(&mut app, point);
+            assert_eq!(
+                app.tabs[app.active_tab].active_cmd.as_ref().unwrap().name(),
+                "BPARAMETER"
+            );
+            let _ = app.update(Message::CommandInput(point_text.into()));
+            let _ = app.update(Message::CommandSubmit);
+        }
+        let _ = app.run_command_line("BPARAMETER LINEAR 0,0 1,0 0,0.3");
+        authoring_capture(&app, "lookup-basepoint-placed");
+        let point = authoring_control(&app, Tab::Actions.widget_id());
+        authoring_click(&mut app, point);
+        let point = authoring_control(&app, "authoring-tool-lookup-table");
+        authoring_click(&mut app, point);
+        assert_eq!(app.active_modal, Some(crate::app::ModalKind::BlockLookup));
+        let _ = app.update(Message::BlockLookup(A::Property(0)));
+        let point = find_in_view(&app, "Add Property");
+        authoring_click(&mut app, point);
+        let point = find_in_view(&app, "Add Row");
+        authoring_click(&mut app, point);
+        assert_eq!(
+            app.block_lookup.as_ref().unwrap().drafts[0]
+                .edited
+                .row_count,
+            1
+        );
+        let _ = app.update(Message::BlockLookup(A::Cell(0, 1, "Small".into())));
+        let point = find_in_view(&app, "Audit");
+        authoring_click(&mut app, point);
+        assert!(app.block_lookup.as_ref().unwrap().notice.is_some());
+        authoring_capture(&app, "lookup-property-table");
+        let point = find_in_view(&app, "OK");
+        authoring_click(&mut app, point);
+        assert!(app.block_lookup.is_none());
+        let i = app.active_tab;
+        let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+        let parameter =
+            crate::scene::block_lookup::parameters(&app.tabs[i].scene.document, definition)[0].0;
+        assert!(crate::scene::block_lookup::table(
+            &app.tabs[i].scene.document,
+            definition,
+            parameter
+        )
+        .unwrap()
+        .is_some());
+    });
+}
+
+#[test]
 fn authoring_palettes_ribbon_toggle_and_dock_close_leave_document_and_history_unchanged() {
     use crate::ui::dock::{DockMsg, PanelId};
     let mut app = authoring_app();
@@ -1166,11 +1236,12 @@ fn authoring_palettes_toggle_keeps_the_running_drawing_command() {
 }
 
 #[test]
-fn authoring_palettes_catalog_in_real_view_has_no_parameter_placement_action() {
+fn authoring_palettes_unwired_move_action_does_not_start_a_command() {
     with_stack(|| {
         let mut app = authoring_app();
         let _ = app.dispatch_command("BAUTHORPALETTE");
-        let point = find_in_view(&app, "Basepoint");
+        app.authoring_palette_tab = crate::ui::window::authoring_palettes::Tab::Actions;
+        let point = find_in_view(&app, "Move");
         let before = app.tabs[app.active_tab].scene.document.clone();
         drive_view(
             &mut app,
@@ -1262,7 +1333,11 @@ fn authoring_palettes_real_tabs_switch_catalogs_and_unavailable_rows_stay_inert(
                     .active_cmd
                     .as_ref()
                     .map(|command| command.name()),
-                Some("LINE")
+                Some(if tab == Tab::Parameters {
+                    "BPARAMETER"
+                } else {
+                    "LINE"
+                })
             );
         }
         assert_eq!(app.tabs[i].scene.document, before);

@@ -507,9 +507,14 @@ impl Scene {
             }
         }
 
+        let old_base = crate::scene::render_graph::block_base_point(&self.document, &block_name);
+        let basepoint_changes =
+            super::block_basepoint::reframe(&mut self.document, block_record, local_from_old);
         // ATTRIBs live inline on each INSERT in that reference's owner space.
         // Conjugate the block-local reframe through the INSERT transform:
-        // owner' = M · local_from_old · M⁻¹ · owner. M is the block-local →
+        // owner' = M_new · local_from_old · M_old⁻¹ · owner. A native
+        // Basepoint follows the frame too, so the two maps can differ.
+        // M is the block-local →
         // world map the render path uses (`insert_transform`), because that is
         // the map the attribute positions on the INSERT were placed through;
         // the codec's base-ignoring transform would conjugate them through a
@@ -523,9 +528,11 @@ impl Scene {
                         && !reference.attributes.is_empty()
                         && !owned.contains(&reference.common.handle) =>
                 {
+                    let old_insertion =
+                        crate::scene::render_graph::insert_transform_with_base(reference, old_base);
                     let insertion =
                         crate::scene::render_graph::insert_transform(&self.document, reference);
-                    let inverse = inverse_affine(&insertion)?;
+                    let inverse = inverse_affine(&old_insertion)?;
                     Some((
                         reference.common.handle,
                         codec::types::Transform::from_matrix(
@@ -571,6 +578,9 @@ impl Scene {
                 block_record,
                 local_from_old,
             );
+        let parameter_changes = parameter_changes
+            + basepoint_changes
+            + super::block_lookup::reframe(&mut self.document, block_record, local_from_old);
         if !changed.is_empty() || parameter_changes > 0 {
             self.rebuild_derived_caches();
         }

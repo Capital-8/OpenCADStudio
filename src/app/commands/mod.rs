@@ -182,6 +182,12 @@ impl OpenCADStudio {
                 return Task::none();
             }
         }
+        if cmd == "BLOOKUPTABLE" || cmd.starts_with("BLOOKUPTABLE ") {
+            if let Some(error) = self.lookup_table_error() {
+                self.command_line.push_error(crate::t!(error).as_ref());
+                return Task::none();
+            }
+        }
         if self.tabs[i].block_test.is_some() {
             let name = cmd.split([' ', ':']).next().unwrap_or(cmd);
             if matches!(

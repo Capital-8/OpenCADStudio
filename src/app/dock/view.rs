@@ -410,6 +410,7 @@ impl OpenCADStudio {
                     self.visibility_placement_error(),
                     self.point_parameter_placement_error(),
                     self.parameter_placement_error("FLIP"),
+                    self.lookup_table_error(),
                 )
             }
             crate::ui::dock::PanelId::BlockPalette => {

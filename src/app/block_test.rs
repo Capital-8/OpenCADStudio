@@ -67,8 +67,7 @@ impl OpenCADStudio {
         }
         document.header.show_model_space = true;
         crate::scene::block_visibility::finish_editing(&mut document, definition);
-        let record = document.block_records.get(&name).unwrap();
-        let base = record.base_point;
+        let base = crate::scene::render_graph::block_base_point(&document, &name);
         let mut insert = Insert::new(&name, codec::types::Vector3::ZERO);
         insert.common.layer = self.tabs[i].active_layer.clone();
         insert.common.handle = document.allocate_handle();
