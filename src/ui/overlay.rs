@@ -2002,6 +2002,25 @@ impl canvas::Program<Message> for SelectionCanvas {
                                 frame.stroke(&canvas::Path::line(a, b), dash);
                             }
                         }
+                        // Diagnostic only: green dot = the actual guide
+                        // origin given to the canvas; magenta = complete solid
+                        // ray. This distinguishes a moving base from a dashed
+                        // stroke/rendering issue without changing normal mode.
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if std::env::var_os("OCS_EXT_DIAG").is_some() {
+                            if let Some((base, _, tip)) = dir {
+                                frame.stroke(
+                                    &canvas::Path::line(base, tip),
+                                    canvas::Stroke::default()
+                                        .with_color(Color::from_rgb(1.0, 0.0, 1.0))
+                                        .with_width(1.0),
+                                );
+                                frame.fill(
+                                    &canvas::Path::circle(base, 5.0),
+                                    Color::from_rgb(0.0, 1.0, 0.0),
+                                );
+                            }
+                        }
                         // Three dots stay aligned with the *same* acquired ray
                         // used by the dashed guide (rather than cursor jitter).
                         let u = dir.map(|(_, u, _)| u).unwrap_or(Point::new(1.0, 0.0));
