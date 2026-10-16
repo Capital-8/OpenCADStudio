@@ -854,6 +854,8 @@ fn now_unix_secs() -> u64 {
 fn write_startup_lock_at(directory: &Path, pid: u64, started: u64) -> Result<(), String> {
     let text = serde_json::to_string(&json!({"pid": pid, "started": started}))
         .map_err(|error| error.to_string())?;
+    // On a profile that never ran the editor nothing has made the folder yet.
+    std::fs::create_dir_all(directory).map_err(|error| error.to_string())?;
     std::fs::write(startup_lock_path_for(directory), text).map_err(|error| error.to_string())
 }
 
