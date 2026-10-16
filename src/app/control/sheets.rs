@@ -434,7 +434,7 @@ impl OpenCADStudio {
     /// `new` with `"template"` — the web build reads no files from a path, so
     /// a template is refused there rather than silently ignored.
     #[cfg(target_arch = "wasm32")]
-    pub(in crate::app) fn apply_template(&mut self, _template: &str) -> Result<usize, Value> {
+    pub(in crate::app) fn apply_template(&mut self, _template: &str) -> Result<(), Value> {
         Err(failure(
             "invalid_request",
             "starting from a template needs the desktop build",
@@ -445,7 +445,7 @@ impl OpenCADStudio {
     /// file. Tables and styles come from the template; the document keeps no
     /// source path.
     #[cfg(not(target_arch = "wasm32"))]
-    pub(in crate::app) fn apply_template(&mut self, template: &str) -> Result<usize, Value> {
+    pub(in crate::app) fn apply_template(&mut self, template: &str) -> Result<(), Value> {
         let path = std::path::PathBuf::from(template);
         let bytes = self
             .read_drawing(&path)
@@ -461,7 +461,7 @@ impl OpenCADStudio {
         } else {
             path.clone()
         };
-        let (mut document, purged) = crate::io::load_bytes_finalized(&load_path, bytes)
+        let mut document = crate::io::load_bytes_finalized(&load_path, bytes)
             .map_err(|e| failure("template_failed", e))?;
         document.source_path = Some(path.to_string_lossy().into_owned());
         let i = self.active_tab;
@@ -482,7 +482,7 @@ impl OpenCADStudio {
         // A whole document just became resident in the tab (API v9): the
         // boundary announces `DocumentOpened` once.
         self.tabs[i].note_document_loaded();
-        Ok(purged)
+        Ok(())
     }
 
     /// `file_identity` — stable per-document GUID (the drawing's SPMDOCUNIQUE value,

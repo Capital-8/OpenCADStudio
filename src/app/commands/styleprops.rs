@@ -3635,53 +3635,62 @@ impl OpenCADStudio {
                         .push_error(crate::tf!("COMPARE: {error}").as_ref()),
                 }
             }
+            // AUDIT runs the codec's audit; `AUDIT Yes` also applies its
+            // repair, undoable as one step.
             "AUDIT" => {
-                use std::collections::BTreeSet;
-                let mut undefined_layers: BTreeSet<String> = BTreeSet::new();
-                let mut undefined_blocks: BTreeSet<String> = BTreeSet::new();
-                let mut total = 0usize;
-                {
+                use crate::command::KeywordCommand;
+                let c = KeywordCommand::new(
+                    "AUDIT",
+                    "AUDIT  Fix any errors detected? [Yes / No] <No>:",
+                    vec![("Yes", "YES", None), ("No", "NO", None)],
+                )
+                .with_default("NO");
+                self.command_line.push_info(&c.prompt());
+                self.tabs[i].active_cmd = Some(Box::new(c));
+            }
+            cmd if cmd.starts_with("AUDIT ") => {
+                let fix = cmd[6..].trim().to_uppercase().starts_with('Y');
+                let report = self.tabs[i].scene.document.audit();
+                let total = {
                     let doc = &self.tabs[i].scene.document;
-                    for e in doc.entities() {
-                        total += 1;
-                        let layer = &e.common().layer;
-                        if !layer.is_empty() && doc.layers.get(layer).is_none() {
-                            undefined_layers.insert(layer.clone());
-                        }
-                        if let codec::EntityType::Insert(ins) = e {
-                            if doc.block_records.get(&ins.block_name).is_none() {
-                                undefined_blocks.insert(ins.block_name.clone());
-                            }
-                        }
-                    }
-                }
+                    doc.entities().count() + doc.objects.len()
+                };
                 self.command_line
                     .push_output(crate::tf!("AUDIT: scanned {total} object(s).").as_ref());
-                if undefined_layers.is_empty() && undefined_blocks.is_empty() {
+                if report.is_clean() {
                     self.command_line
                         .push_output(crate::t!("AUDIT: no issues found.").as_ref());
-                } else {
-                    if !undefined_layers.is_empty() {
-                        self.command_line.push_error(
-                            crate::tf!(
-                                "AUDIT: reference(s) to undefined layer(s): {}",
-                                undefined_layers.into_iter().collect::<Vec<_>>().join(", ")
-                            )
-                            .as_ref(),
-                        );
-                    }
-                    if !undefined_blocks.is_empty() {
-                        self.command_line.push_error(
-                            crate::tf!(
-                                "AUDIT: reference(s) to undefined block(s): {}",
-                                undefined_blocks.into_iter().collect::<Vec<_>>().join(", ")
-                            )
-                            .as_ref(),
-                        );
-                    }
-                    self.command_line.push_info(
-                        crate::t!("AUDIT: report only — no automatic repair performed.").as_ref(),
+                    return Some(Task::none());
+                }
+                self.command_line.push_error(
+                    crate::tf!(
+                        "AUDIT: {} error(s), {} warning(s) found.",
+                        report.error_count(),
+                        report.warning_count()
+                    )
+                    .as_ref(),
+                );
+                // ponytail: first 50 issues only; the counts above cover the rest.
+                for issue in report.issues.iter().take(50) {
+                    self.command_line
+                        .push_info(&format!("  {:?}: {}", issue.code, issue.message));
+                }
+                if fix {
+                    self.push_undo_snapshot(i, "AUDIT");
+                    let repair = self.tabs[i].scene.document.repair();
+                    self.command_line.push_output(
+                        crate::tf!(
+                            "AUDIT: {} repair(s) applied, {} issue(s) left unresolved.",
+                            repair.actions.len(),
+                            repair.unresolved.len()
+                        )
+                        .as_ref(),
                     );
+                    if !repair.actions.is_empty() {
+                        self.tabs[i].dirty = true;
+                        self.tabs[i].scene.rebuild_derived_caches();
+                        self.refresh_layer_panel();
+                    }
                 }
             }
 
