@@ -1,6 +1,6 @@
+use super::*;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::io::plot_style::PlotStyleTableExt as _;
-use super::*;
 use crate::scene::model::object::PropValue;
 
 fn control_color(value: &Value) -> Result<codec::types::Color, Value> {
@@ -846,8 +846,9 @@ impl OpenCADStudio {
         json!({"ok":true,"sections":self.tabs[self.active_tab].properties.sections.iter().map(|s|json!({"title":s.title,"properties":s.props.iter().map(property_json).collect::<Vec<_>>()})).collect::<Vec<_>>()})
     }
     /// The grips of the current selection, as the viewport shows them.
-    pub(super) fn control_grips(&self) -> Value {
-        let tab = &self.tabs[self.active_tab];
+    pub(super) fn control_grips(&mut self) -> Value {
+        let i = self.active_tab;
+        let tab = &self.tabs[i];
         let grips = tab
             .selected_grip_handles
             .iter()
@@ -863,7 +864,28 @@ impl OpenCADStudio {
                 })
             })
             .collect::<Vec<_>>();
-        json!({"ok": true, "grips": grips})
+        // API v11: plugin-declared custom grips of the active tab, each marked
+        // with its owning plugin. `moves_entity` is false by construction —
+        // the host never moves anything for a custom grip; any edit is the
+        // plugin's own, at settle.
+        let visible = crate::plugin::grip_points::visibility(&self.disabled_plugins);
+        let plugin_grips = tab
+            .plugin_grips
+            .query_all(&visible)
+            .iter()
+            .map(|grip| {
+                json!({
+                    "plugin": grip.plugin,
+                    "grip_id": grip.grip_id,
+                    "handle": grip.anchor.map(|handle| format!("{:X}", handle.value())),
+                    "point": [grip.point.x, grip.point.y, grip.point.z],
+                    "shape": format!("{:?}", grip.shape),
+                    "moves_entity": false,
+                    "axis": grip.axis.map(|a| [a.x, a.y, a.z]),
+                })
+            })
+            .collect::<Vec<_>>();
+        json!({"ok": true, "grips": grips, "plugin_grips": plugin_grips})
     }
 
     /// Drag one grip of an entity to a world point through the viewport's
@@ -872,12 +894,83 @@ impl OpenCADStudio {
     /// the grip lands on `point`.
     pub(super) fn control_grip_drag(&mut self, req: &Value) -> Result<Task<Message>, Value> {
         let i = self.active_tab;
+        // API v11: a `plugin` names the owner of a custom grip — the drag
+        // routes to the plugin through the same live machinery the viewport
+        // uses (begin → move → settle; preview frames flow; the settle is
+        // the plugin's own one-undo-step write).
+        if let Some(plugin) = req["plugin"].as_str() {
+            let grip_id = req["grip_id"]
+                .as_u64()
+                .ok_or_else(|| failure("invalid_request", "Missing grip_id"))?;
+            let to = point(req)?;
+            return self.control_plugin_grip_drag(i, plugin, grip_id, to.to_array());
+        }
         let target = handle(req)?;
         let grip_id = req["grip_id"]
             .as_u64()
             .ok_or_else(|| failure("invalid_request", "Missing grip_id"))?
             as usize;
         let to = point(req)?;
+        self.perform_grip_drag(i, target, grip_id, to.to_array())
+            .map_err(|(code, message)| failure(code, message))
+    }
+
+    /// The MCP/automation entry for a custom-grip drag (API v11): drive
+    /// begin → move → settle through the same lifecycle the viewport runs, so
+    /// end-to-end tests exercise exactly one pipeline. Move delivery parks and
+    /// pumps synchronously here (an automation op may wait); the settle is
+    /// the plugin's own one-undo-step write window, and cancel paths are
+    /// identical to interactive drags.
+    pub(super) fn control_plugin_grip_drag(
+        &mut self,
+        i: usize,
+        plugin: &str,
+        grip_id: u64,
+        to: [f64; 3],
+    ) -> Result<Task<Message>, Value> {
+        let candidate = {
+            let visible = crate::plugin::grip_points::visibility(&self.disabled_plugins);
+            self.tabs[i]
+                .plugin_grips
+                .find(plugin, grip_id, &visible)
+                .ok_or_else(|| {
+                    failure(
+                        "unknown_grip",
+                        "Read plugin_grips for the declaring plugin's grip ids",
+                    )
+                })?
+        };
+        // begin → move → settle; the pump tasks the first two schedule are
+        // moot once the settle ends the drag (they no-op).
+        let _ = self.begin_plugin_grip_drag(i, &candidate);
+        let _ = self.move_plugin_grip_drag(i, glam::DVec3::new(to[0], to[1], to[2]));
+        let _ = self.pump_plugin_grips();
+        Ok(self.settle_plugin_grip_drag())
+    }
+
+    /// The shared programmatic grip-drag core — one pipeline, three
+    /// consumers: the interactive viewport itself (the same
+    /// `grip_edit_for_hit` / `on_viewport_move` / `commit_active_grip_edit`
+    /// machinery), the MCP `grip_drag` op, and the HostApi `grip_drag`
+    /// (API v11). Selects `handle`, engages its grip `grip_id`, moves to
+    /// `to` with snaps / ortho / polar / tracking off, and commits: exactly
+    /// one undo step labeled like the interactive grip step, byte-exact
+    /// restore on undo. Refusal parity with the interactive path: unknown
+    /// entity, reference-only designation (gripless), locked layer, unknown
+    /// grip id, point out of view.
+    pub(in crate::app) fn perform_grip_drag(
+        &mut self,
+        i: usize,
+        target: codec::Handle,
+        grip_id: usize,
+        to: [f64; 3],
+    ) -> Result<Task<Message>, (&'static str, &'static str)> {
+        if self.tabs.len() <= i {
+            return Err(("invalid_request", "Tab does not exist"));
+        }
+        if self.tabs[i].scene.document.get_entity(target).is_none() {
+            return Err(("entity_absent", "No entity with that handle"));
+        }
         self.tabs[i].scene.deselect_all();
         self.tabs[i].scene.select_entity(target, false);
         self.refresh_properties();
@@ -887,7 +980,15 @@ impl OpenCADStudio {
             .zip(&self.tabs[i].selected_grips)
             .find(|(owner, grip)| **owner == target && grip.id == grip_id)
             .map(|(_, grip)| (grip.world, grip.is_midpoint))
-            .ok_or_else(|| failure("unknown_grip", "Read grips for the entity's grip ids"))?;
+            .ok_or_else(|| {
+                if self.tabs[i].scene.is_reference_only(target) {
+                    ("reference_only", "The entity is reference-only")
+                } else if self.tabs[i].scene.is_layer_locked(target) {
+                    ("layer_locked", "The entity's layer is locked")
+                } else {
+                    ("unknown_grip", "Read grips for the entity's grip ids")
+                }
+            })?;
         let edit = self.grip_edit_for_hit(i, target, grip_id, moves_entity, world);
         self.tabs[i].active_grip = Some(edit);
 
@@ -898,9 +999,14 @@ impl OpenCADStudio {
             height: tile.height,
             ..iced::Rectangle::default()
         };
-        let Some(screen) = self.tabs[i].scene.camera.borrow().project(to, local) else {
+        let Some(screen) = self.tabs[i]
+            .scene
+            .camera
+            .borrow()
+            .project(glam::DVec3::new(to[0], to[1], to[2]), local)
+        else {
             self.cancel_active_grip_edit();
-            return Err(failure("invalid_point", "The point is not in view"));
+            return Err(("invalid_point", "The point is not in view"));
         };
         let saved = (
             self.snapper.snap_enabled,
@@ -1515,7 +1621,10 @@ impl OpenCADStudio {
             // `select_objects`.
             "block_def_dialog" => {
                 if self.block_definition.is_none() {
-                    return Err(failure("no_dialog", "The Block Definition dialog is not open"));
+                    return Err(failure(
+                        "no_dialog",
+                        "The Block Definition dialog is not open",
+                    ));
                 }
                 let value = string(req, "value")?;
                 let (key, v) = value.split_once('=').unwrap_or((value, ""));

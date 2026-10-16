@@ -30,9 +30,11 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 /// changes, so schema drift (new params, renamed tools) is always a conscious,
 /// reviewed edit — and clients can detect a stale bridge by comparing digests.
 ///
-/// `block_delete` gained its optional `force` parameter.
+/// `block_delete` gained its optional `force` parameter. With API v11
+/// `grip_drag` became optional-`handle` (built-in entity grips) plus optional
+/// `plugin` (dragging a plugin-declared custom grip, routed to its owner).
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "153b5104c95b564c1b956cb41febce2dc8ff767bcdc5b30371f9a7ccd72524f7";
+const TOOL_SCHEMA_DIGEST: &str = "f1675df3864886ca32384043ff1f5369cfd622229809e5053fe732b0ec01a13c";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
