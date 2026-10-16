@@ -5030,15 +5030,26 @@ impl OpenCADStudio {
             crate::io::paper_catalog::PaperUnits::Inches => PlotPaperUnits::Inches,
             crate::io::paper_catalog::PaperUnits::Millimeters => PlotPaperUnits::Millimeters,
         };
-        if d.fit_to_paper && !layout_area {
+        if layout_area {
+            // Paper layouts use physical paper-space coordinates, independently
+            // of INSUNITS and the model's scale family. One unit in a metric
+            // paper layout is 1 mm; on an inch plotter, 1 inch is 25.4 such
+            // units. Using dialog_plot_scale_ratio() here incorrectly brings
+            // the model unit conversion (1000 for metres) into the paper
+            // sheet: A3 then appears as 0.420 x 0.297 instead of 420 x 297.
+            let page_unit_mm = plot_paper_unit_mm(ps.paper_units);
+            ps.scale_type = ScaledType::OneToOne;
+            ps.flags.use_standard_scale = false;
+            ps.scale_numerator = 1.0;
+            ps.scale_denominator = page_unit_mm;
+            ps.standard_scale_factor =
+                stored_scale_factor(1.0 / page_unit_mm, ps.paper_units);
+        } else if d.fit_to_paper {
             ps.set_scale_to_fit();
             // The commercial application marks fitted plots with the
             // "standard scale" bit and leaves the ratio it computed.
             ps.flags.use_standard_scale = true;
         } else {
-            // A layout plot goes through the same path as the other areas:
-            // the dialog holds it at 1:1, which the unit conversion turns
-            // into whatever keeps the paper space's unit intact.
             let ((numerator, denominator), standard) = self.dialog_plot_scale_ratio();
             // The commercial application leaves the "standard scale" bit
             // clear even for a standard code and keeps the ratio in the
@@ -7725,6 +7736,56 @@ mod plot_paper_tests {
         assert!((ps.standard_scale_factor - 254.0).abs() < 1e-9);
         let _ = app.on_plot_dialog_open();
         assert_eq!(app.plot_dialog.scale, "1:100");
+    }
+
+    #[test]
+    fn metre_model_a3_layout_uses_millimetre_paper_space() {
+        use codec::objects::{PlotPaperUnits, PlotType, ScaledType};
+
+        let mut app = app_with_printer_named_sheet();
+        let i = app.active_tab;
+        app.tabs[i].scene.document.header.insertion_units = 6; // Metres.
+        let _ = app.on_plot_dialog_open();
+        let _ = app.on_plot_dlg(PlotDlgMsg::Paper("ISO_A3_(297.00_x_420.00_MM)".into()));
+        let _ = app.on_plot_dlg(PlotDlgMsg::Orientation("Landscape".into()));
+        let _ = app.on_plot_dlg(PlotDlgMsg::Area("Layout".into()));
+        let _ = app.on_plot_dlg(PlotDlgMsg::SetCurrent);
+
+        let ps = layout_settings(&app);
+        assert_eq!(ps.plot_type, PlotType::Layout);
+        assert_eq!(ps.paper_units, PlotPaperUnits::Millimeters);
+        assert_eq!(ps.scale_type, ScaledType::OneToOne);
+        assert_eq!((ps.scale_numerator, ps.scale_denominator), (1.0, 1.0));
+        assert!((app.tabs[i].scene.paper_space_unit_factor() - 1.0).abs() < 1e-12);
+
+        let ((x0, y0), (x1, y1)) = app.tabs[i].scene.paper_limits().unwrap();
+        assert!(((x1 - x0) - 420.0).abs() < 1e-9);
+        assert!(((y1 - y0) - 297.0).abs() < 1e-9);
+        assert_eq!(app.tabs[i].scene.document.header.insertion_units, 6);
+    }
+
+    #[test]
+    fn metre_model_inch_page_still_uses_millimetre_paper_space() {
+        use codec::objects::{PlotPaperUnits, PlotType};
+
+        let mut app = app_with_printer_named_sheet();
+        let i = app.active_tab;
+        app.tabs[i].scene.document.header.insertion_units = 6; // Metres.
+        let _ = app.on_plot_dialog_open();
+        let _ = app.on_plot_dlg(PlotDlgMsg::PaperUnits("Inches".into()));
+        let _ = app.on_plot_dlg(PlotDlgMsg::Area("Layout".into()));
+        let _ = app.on_plot_dlg(PlotDlgMsg::SetCurrent);
+
+        let ps = layout_settings(&app);
+        assert_eq!(ps.plot_type, PlotType::Layout);
+        assert_eq!(ps.paper_units, PlotPaperUnits::Inches);
+        assert!((ps.scale_numerator - 1.0).abs() < 1e-12);
+        assert!((ps.scale_denominator - 25.4).abs() < 1e-12);
+        assert!((app.tabs[i].scene.paper_space_unit_factor() - 1.0).abs() < 1e-12);
+        let ((x0, y0), (x1, y1)) = app.tabs[i].scene.paper_limits().unwrap();
+        assert!(((x1 - x0) - 297.0).abs() < 1e-9);
+        assert!(((y1 - y0) - 210.0).abs() < 1e-9);
+        assert_eq!(app.tabs[i].scene.document.header.insertion_units, 6);
     }
 
     #[test]
