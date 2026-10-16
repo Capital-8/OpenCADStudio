@@ -1778,6 +1778,21 @@ impl Scene {
                 fold!(Some((lo.min(hi), lo.max(hi))));
             }
         }
+        // Solids inside blocks draw as one mesh instance per insert, placed
+        // where the insert puts them: that is the content the skipped insert
+        // marker stands for.
+        for set in self.instanced_block_meshes(
+            block,
+            None,
+            scale,
+            self.annotation_all_visible(),
+            None,
+            None,
+        ) {
+            if let Some([x0, y0, z0, x1, y1, z1]) = set.instance_aabb {
+                fold!(Some((glam::DVec3::new(x0, y0, z0), glam::DVec3::new(x1, y1, z1))));
+            }
+        }
 
         // Raster images, OLE frames and underlays draw as GPU quads; with
         // their frames hidden they carry no wire outline at all.
