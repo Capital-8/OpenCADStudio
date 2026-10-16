@@ -3555,14 +3555,14 @@ mod tests {
             // Deterministically simulate an intentional hold-to-lasso.
             // A fast click+move must no longer activate a lasso just
             // because the cursor crossed the old 24 px shortcut.
+            let held_since =
+                iced::time::Instant::now() - std::time::Duration::from_millis(260);
             app.tabs[i]
                 .scene
                 .selection
                 .borrow_mut()
                 .input
-                .left_press_time = Some(
-                iced::time::Instant::now() - std::time::Duration::from_millis(260),
-            );
+                .left_press_time = Some(held_since);
             for &(x, y) in &path {
                 let _ = app.update(Message::ViewportMove(iced::Point::new(x, y)));
             }
