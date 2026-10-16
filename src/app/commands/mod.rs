@@ -860,6 +860,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "SELECTIONCYCLING",
         "UCSDETECT",
         "SURFACEASSOCIATIVITY",
+        "DGNIMPORTMODE",
         "LAYOUTCREATEVIEWPORT",
         "TXT2MTXTCOMBINEMTEXT",
         "TXT2MTXTTEXTORDER",
