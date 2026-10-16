@@ -201,7 +201,8 @@ pub struct PdfFileImport {
 impl PdfFileImport {
     /// Where the page's content goes: one drawing unit per page inch times
     /// the scale, or, on a page with a viewport measure (a plot), its
-    /// measured units (a 1:1 millimetre plot comes in at its millimetres).
+    /// measured units (a 1:1 millimetre plot comes in at its millimetres);
+    /// a page's user unit multiplies either.
     pub fn placement(&self) -> Underlay {
         let mut u = Underlay::pdf();
         u.insertion_point = Vector3::new(self.insertion.x, self.insertion.y, self.insertion.z);
@@ -254,6 +255,25 @@ enum Step {
     Insertion,
     Scale,
     Rotation,
+}
+
+/// What a file name that is no readable PDF (damaged, empty, not a PDF)
+/// prints before the name is asked for again.
+const UNREADABLE_FILE: &str = "This file cannot be opened.\n\
+The problem can be caused by several things:\n\
+- The data in the file is corrupted\n\
+- The file is an earlier format that is no longer used\n\
+- The file format is not supported\n\
+Try to obtain a better copy of the file, recreate the file using different settings, \
+or convert the file to a supported file format.";
+
+/// A typed page number: digits only (no sign, decimals or ranges); one too
+/// large for a 32-bit count is the largest one.
+fn page_number(token: &str) -> Option<usize> {
+    if token.is_empty() || !token.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(token.parse::<u64>().map_or(i32::MAX as u64, |n| n.min(i32::MAX as u64)) as usize)
 }
 
 pub struct PdfImportCommand {
@@ -331,10 +351,24 @@ impl PdfImportCommand {
         let Ok(bytes) = std::fs::read(&path) else {
             return CmdResult::ReportError(format!("File {shown} does not exist."));
         };
+        // A damaged file is repaired only when it still has its trailer (the
+        // `trailer` dictionary or a cross-reference stream); a cut-off one
+        // cannot be opened.
+        // ponytail: byte search; a compressed stream holding these bytes
+        // would pass the test.
+        let has = |key: &[u8]| bytes.windows(key.len()).any(|w| w == key);
+        if !has(b"trailer") && !has(b"/XRef") {
+            return CmdResult::ReportError(UNREADABLE_FILE.to_string());
+        }
         crate::scene::model::pdf_raster::register_source(&path, std::sync::Arc::new(bytes));
-        let Some(pages) = crate::scene::model::pdf_raster::page_count(&path) else {
-            // ponytail: wording for an unreadable PDF not measured.
-            return CmdResult::ReportError(format!("{shown} is not a valid PDF file."));
+        // An encrypted file is asked for again without a message.
+        if crate::scene::model::pdf_raster::is_encrypted(&path) {
+            return CmdResult::NeedPoint;
+        }
+        let Some(pages) =
+            crate::scene::model::pdf_raster::page_count(&path).filter(|&pages| pages > 0)
+        else {
+            return CmdResult::ReportError(UNREADABLE_FILE.to_string());
         };
         self.pages = pages;
         self.file.path = path;
@@ -351,18 +385,18 @@ impl PdfImportCommand {
         let page = if token.is_empty() {
             1
         } else {
-            match token.parse::<i64>() {
-                Ok(n) if n > 0 => n as usize,
+            match page_number(token) {
                 // Zero is asked again without a message.
-                Ok(0) => return CmdResult::NeedPoint,
-                _ => {
+                Some(0) => return CmdResult::NeedPoint,
+                Some(n) => n,
+                None => {
                     return CmdResult::ReportError("Please enter page number or '?'.".to_string())
                 }
             }
         };
-        // A page past the last one is asked again without a message.
         if page > self.pages {
-            return CmdResult::NeedPoint;
+            let shown = crate::entities::underlay::display_path(&self.file.path);
+            return CmdResult::ReportError(format!("There is no {page} in {shown}."));
         }
         self.file.page = page.to_string();
         self.step = Step::Insertion;
@@ -371,16 +405,23 @@ impl PdfImportCommand {
 
     fn page_list(&mut self, text: &str) -> CmdResult {
         let token = text.trim();
-        self.step = Step::Page;
         if token.is_empty() || token == "*" {
+            self.step = Step::Page;
             let all: Vec<String> = (1..=self.pages).map(|n| n.to_string()).collect();
             return CmdResult::ReportMeasurement(all.join("\n"));
         }
-        match token.parse::<usize>() {
-            Ok(n) if (1..=self.pages).contains(&n) => {
-                CmdResult::ReportMeasurement(format!("Found page {n}."))
+        match page_number(token) {
+            // Zero, or anything but a page number, is asked again.
+            Some(0) => CmdResult::NeedPoint,
+            None => CmdResult::ReportError("Please enter page number or *.".to_string()),
+            Some(n) => {
+                self.step = Step::Page;
+                CmdResult::ReportMeasurement(if n <= self.pages {
+                    format!("Found page {n}.")
+                } else {
+                    "No matching page found.".to_string()
+                })
             }
-            _ => CmdResult::ReportMeasurement("No matching page found.".to_string()),
         }
     }
 
@@ -576,7 +617,6 @@ impl CadCommand for PdfImportCommand {
             Step::Scale => match token.parse::<f64>() {
                 Ok(v) => self.scale(v),
                 Err(_) if token.is_empty() => self.scale(1.0),
-                // ponytail: wording for a non-number scale not measured.
                 Err(_) => CmdResult::ReportError(
                     "Requires numeric distance or second point.".to_string(),
                 ),
