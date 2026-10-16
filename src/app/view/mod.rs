@@ -935,11 +935,17 @@ bg={bg_ms:.1}ms n={view_count}"
             // both are drawn — one guide alone hides what the point is (#1313).
             let otrack_lines: Vec<(iced::Point, iced::Point)> = match otrack_proj {
                 Some((view_rot, eye, ob)) => {
-                    let a = ost_project(tab.last_cursor_world, view_rot, eye, ob);
                     self.otrack_active
                         .into_iter()
                         .chain(self.otrack_cross)
-                        .filter_map(|(base, _dir)| {
+                        .filter_map(|(base, dir)| {
+                            // Draw the acquired geometrical ray, not the line
+                            // from its origin to the moving cursor. The latter
+                            // rotates slightly as the pointer moves away from
+                            // the exact ray, making the Extension guide appear
+                            // to slide across its acquired endpoint.
+                            let direction = dir.try_normalize()?;
+                            let a = ost_project(base + direction, view_rot, eye, ob);
                             let b = ost_project(base, view_rot, eye, ob);
                             (b.x.is_finite()
                                 && b.y.is_finite()
