@@ -125,14 +125,17 @@ fn piece<'a>(handle: Handle, entity: &'a EntityType, doc: &CadDocument) -> Optio
     match entity {
         EntityType::Text(t) => {
             let p = crate::entities::text::text_run_placement_at_scale(t, doc, 1.0);
-            let advance = text_local_bounds(
+            // The text runs to its last inked stroke, not to the pen's end
+            // (measured: "Second line" in txt at 2.5 spans 23.75, the
+            // advance less the last glyph's gap).
+            let right = text_local_bounds(
                 &p.font,
                 &resolve_dxf_special_chars(&t.value),
                 p.height,
                 p.width_factor,
                 p.oblique_angle,
             )
-            .map_or(0.0, |b| b.advance.abs() as f64);
+            .map_or(0.0, |b| b.ink_max[0] as f64);
             Some(Piece {
                 handle,
                 entity,
@@ -140,7 +143,7 @@ fn piece<'a>(handle: Handle, entity: &'a EntityType, doc: &CadDocument) -> Optio
                 height: p.height as f64,
                 origin: p.origin,
                 rotation: p.rotation as f64,
-                rect: [0.0, advance, 0.0, p.height as f64],
+                rect: [0.0, right, 0.0, p.height as f64],
             })
         }
         EntityType::MText(m) => {

@@ -823,6 +823,8 @@ pub const DASH_LINETYPE: &str = "PDF_IMPORT";
 /// as dashes. `bulges[i]` bends the segment from point i to the next (the
 /// closing one on a closed stroke; 0 after an open stroke's last point).
 struct Stroke {
+    /// Drawing position: the objects are created in drawing order.
+    order: usize,
     layer: String,
     color: Color,
     weight: LineWeight,
@@ -1245,6 +1247,8 @@ fn join_strokes(strokes: Vec<Stroke>, join: bool) -> Vec<Stroke> {
         }
         out.push(chain);
     }
+    // A chain takes the place of its first stroke.
+    out.sort_by_key(|s| s.order);
     out
 }
 
@@ -1252,6 +1256,7 @@ fn join_strokes(strokes: Vec<Stroke>, join: bool) -> Vec<Stroke> {
 fn split_at_arcs(stroke: Stroke) -> Vec<Stroke> {
     let mut out = Vec::new();
     let piece = |points: Vec<[f64; 2]>, bulges: Vec<f64>| Stroke {
+        order: stroke.order,
         layer: stroke.layer.clone(),
         color: stroke.color,
         weight: stroke.weight,
@@ -1404,7 +1409,8 @@ pub fn convert(
     };
     let fill_transparency = codec::types::Transparency::from_alpha_value(0x0200_007F);
     let mut strokes: Vec<Stroke> = Vec::new();
-    let mut curves: Vec<EntityType> = Vec::new();
+    // Circles and splines, by drawing position like the strokes.
+    let mut curves: Vec<(usize, EntityType)> = Vec::new();
 
     for (pdf_layer, page) in content {
         let pdf_layer = pdf_layer.as_deref();
@@ -1423,6 +1429,7 @@ pub fn convert(
                             LineWeight::ByLayer
                         };
                         for sp in &path.subpaths {
+                            let order = strokes.len() + curves.len();
                             if let Some((c, r)) = as_circle(sp) {
                                 let w = world(c);
                                 let mut circle = EntityType::Circle(Circle::from_center_radius(
@@ -1432,7 +1439,7 @@ pub fn convert(
                                 let common = circle.common_mut();
                                 (common.layer, common.color, common.line_weight) =
                                     (layer.clone(), color, weight);
-                                curves.push(circle);
+                                curves.push((order, circle));
                             } else {
                                 // Straight and circular runs become polylines;
                                 // each other curve its own one-span SPLINE.
@@ -1441,6 +1448,7 @@ pub fn convert(
                                     match piece {
                                         Piece::Run(points, bulges, closed) => {
                                             let stroke = Stroke {
+                                                order,
                                                 layer: layer.clone(),
                                                 color,
                                                 weight,
@@ -1467,7 +1475,7 @@ pub fn convert(
                                             let common = spline.common_mut();
                                             (common.layer, common.color, common.line_weight) =
                                                 (layer.clone(), color, weight);
-                                            curves.push(spline);
+                                            curves.push((order, spline));
                                         }
                                     }
                                 }
@@ -1582,7 +1590,7 @@ pub fn convert(
                     let common = curve.common_mut();
                     (common.layer, common.color, common.line_weight) =
                         (stroke.layer, stroke.color, stroke.weight);
-                    result.entities.push(curve);
+                    curves.push((stroke.order, curve));
                     None
                 }
                 None => Some(stroke),
@@ -1616,7 +1624,7 @@ pub fn convert(
                 );
                 (arc.common.layer, arc.common.color, arc.common.line_weight) =
                     (stroke.layer, stroke.color, stroke.weight);
-                result.entities.push(EntityType::Arc(arc));
+                curves.push((stroke.order, EntityType::Arc(arc)));
                 continue;
             }
         }
@@ -1633,9 +1641,11 @@ pub fn convert(
             pl.common.linetype_scale = dash * scale;
             result.dashed = true;
         }
-        result.entities.push(EntityType::LwPolyline(pl));
+        curves.push((stroke.order, EntityType::LwPolyline(pl)));
     }
-    result.entities.extend(curves);
+    // In drawing order (the sort is stable: a subpath's pieces keep theirs).
+    curves.sort_by_key(|(order, _)| *order);
+    result.entities.extend(curves.into_iter().map(|(_, entity)| entity));
     result.layers = layer_colors;
     for image in &result.images {
         if !result.layers.iter().any(|(n, _)| *n == image.layer) {
