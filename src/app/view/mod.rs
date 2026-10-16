@@ -914,6 +914,45 @@ bg={bg_ms:.1}ms n={view_count}"
                         ob.y + (1.0 - ndc.y) * 0.5 * ob.height,
                     )
                 };
+            // Project a *ray* using a screen-space baseline long enough to
+            // survive f32 pixel rounding. Projecting base + one world unit can
+            // produce a subpixel delta at low zoom: normalizing that delta in
+            // the overlay magnifies the rounding error into a visibly wandering
+            // guide, even when the acquired world-space ray is fixed.
+            let ost_project_ray = |origin: glam::DVec3,
+                                   dir: glam::DVec3,
+                                   view_rot: glam::Mat4,
+                                   eye: glam::DVec3,
+                                   ob: iced::Rectangle|
+             -> Option<(iced::Point, iced::Point)> {
+                let b = ost_project(origin, view_rot, eye, ob);
+                if !b.x.is_finite() || !b.y.is_finite() {
+                    return None;
+                }
+                let unit = dir.try_normalize()?;
+                let mut distance = 1.0_f64;
+                for _ in 0..24 {
+                    let tip = ost_project(origin + unit * distance, view_rot, eye, ob);
+                    let length = (tip.x - b.x).hypot(tip.y - b.y);
+                    if length.is_finite() && length >= 64.0 {
+                        return Some((b, tip));
+                    }
+                    distance *= 2.0;
+                }
+                None
+            };
+            // OSNAP Extension is also active with F11 / OTRACK turned off.
+            // Give its marker the actual acquired geometric direction instead
+            // of reconstructing a new ray from the moving snap cursor.
+            let snap_ext_dir: Option<iced::Point> = tab
+                .snap_result
+                .filter(|hit| hit.snap_type == crate::snap::SnapType::Extension)
+                .and_then(|hit| hit.extension_origin.zip(hit.extension_dir))
+                .and_then(|(origin, dir)| {
+                    let (rot, eye, rect) = otrack_proj?;
+                    let (base, tip) = ost_project_ray(origin, dir, rot, eye, rect)?;
+                    Some(iced::Point::new(tip.x - base.x, tip.y - base.y))
+                });
             let ost_points: Vec<crate::ui::overlay::OstTrackPoint> =
                 if let Some((view_rot, eye, ob)) = otrack_proj {
                     self.snapper
@@ -944,14 +983,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             // rotates slightly as the pointer moves away from
                             // the exact ray, making the Extension guide appear
                             // to slide across its acquired endpoint.
-                            let direction = dir.try_normalize()?;
-                            let a = ost_project(base + direction, view_rot, eye, ob);
-                            let b = ost_project(base, view_rot, eye, ob);
-                            (b.x.is_finite()
-                                && b.y.is_finite()
-                                && a.x.is_finite()
-                                && a.y.is_finite())
-                            .then_some((b, a))
+                            ost_project_ray(base, dir, view_rot, eye, ob)
                         })
                         .collect()
                 }
@@ -1184,6 +1216,7 @@ bg={bg_ms:.1}ms n={view_count}"
                 snap_info,
                 snap_ext_base,
                 snap_ext_base2,
+                snap_ext_dir,
                 grips,
                 control_polygon,
                 grip_clip,
