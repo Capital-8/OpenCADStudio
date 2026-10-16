@@ -4406,7 +4406,7 @@ dependencies = [
 [[package]]
 name = "opencadgraph"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencadgraph.git?rev=a4bd351#a4bd351b4a11e6072bd3269b7936da716a782577"
+source = "git+https://github.com/HakanSeven12/opencadgraph.git?rev=5d4e713#5d4e713968bd515be15302079d9edc1fd3df4df0"
 dependencies = [
  "opencadkernel",
  "serde_json",

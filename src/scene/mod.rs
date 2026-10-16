@@ -1221,12 +1221,6 @@ pub struct DerivedCaches {
     /// Prepared during file open so entity selection/deselection never scans
     /// the complete object store on the UI thread.
     pub object_data: crate::entities::object_data::ObjectDataCache,
-    /// Number of entities removed by the corrupt-entity guard during load.
-    /// Reported back to the UI so the user knows when a file had parser-junk
-    /// entities silently dropped.
-    pub corrupt_dropped: usize,
-    /// Corrupt entities dropped while resolving referenced drawings.
-    pub xref_dropped: usize,
     /// XREF resolution results produced by the loader worker. Keeping these in
     /// the open bundle prevents parsing and merging references on the UI thread.
     pub xrefs: Vec<crate::io::xref::XrefInfo>,
@@ -1523,8 +1517,6 @@ fn build_derived_caches_impl(
         meshes,
         block_meshes,
         object_data,
-        corrupt_dropped: 0,
-        xref_dropped: 0,
         xrefs: Vec::new(),
         prepared_geometry: None,
         timings: OpenTimings::default(),

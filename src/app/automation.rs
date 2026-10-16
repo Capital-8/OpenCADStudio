@@ -762,7 +762,7 @@ impl OpenCADStudio {
                     Err(e) => return err(format!("open: {e}")),
                 };
                 match crate::io::load_bytes_finalized(&path_buf, bytes) {
-                    Ok((doc, dropped)) => {
+                    Ok(doc) => {
                         let i = self.active_tab;
                         self.tabs[i].scene.clear();
                         self.tabs[i].scene.document = doc;
@@ -784,13 +784,7 @@ impl OpenCADStudio {
                         // The opened document settled (API v9): the post-op
                         // boundary announces `DocumentOpened` once for this load.
                         self.tabs[i].note_document_loaded();
-                        let mut summary = self.entity_summary();
-                        if dropped > 0 {
-                            if let Some(obj) = summary.as_object_mut() {
-                                obj.insert("purged".to_string(), json!(dropped));
-                            }
-                        }
-                        summary
+                        self.entity_summary()
                     }
                     Err(e) => err(format!("open: {e}")),
                 }
@@ -1903,8 +1897,7 @@ mod tests {
             fingerprint: None,
         });
         let bytes = std::fs::read(&path).expect("read the fixture back");
-        let (document, _dropped) =
-            crate::io::load_bytes_finalized(&path, bytes).expect("reparse the fixture");
+        let document = crate::io::load_bytes_finalized(&path, bytes).expect("reparse the fixture");
         let caches = crate::scene::build_derived_caches_with_progress(&document, &|_| {}, None);
         let _ = plugin_dispatch_log();
         let _ = app.update(crate::app::Message::FileOpened(
@@ -3839,7 +3832,7 @@ mod tests {
     }
 
     #[test]
-    fn open_finalizes_and_purges_like_the_ui_open_path() {
+    fn open_finalizes_like_the_ui_open_path() {
         let mut app = OpenCADStudio::new_for_test();
         let stale = codec::Handle::from(9999);
         app.tabs[app.active_tab].scene.solid_models.insert(
@@ -3857,26 +3850,13 @@ mod tests {
         good.center = codec::types::Vector3::new(5.0, 5.0, 0.0);
         good.radius = 2.0;
         doc.add_entity(codec::EntityType::Circle(good)).unwrap();
-        let mut corrupt = codec::entities::Circle::new();
-        corrupt.center = codec::types::Vector3::new(1.0, 1.0, 0.0);
-        // An absurd radius is rejected; a zero radius is valid.
-        corrupt.radius = 1.0e11;
-        doc.add_entity(codec::EntityType::Circle(corrupt)).unwrap();
-        let bytes = crate::io::save_to_bytes(&doc, "dxf", doc.version)
-            .expect("save a document containing a corrupt entity");
+        let bytes = crate::io::save_to_bytes(&doc, "dxf", doc.version).expect("save the fixture");
         std::fs::write(&path, bytes).unwrap();
 
         let p = path.to_string_lossy().replace('\\', "\\\\");
         let result = app.automation_op(&format!(r#"{{"op":"open","path":"{p}"}}"#));
         assert_eq!(result["ok"], true, "{}", result["error"]);
-        assert_eq!(
-            result["total"], 1,
-            "the corrupt circle must not survive the open"
-        );
-        assert_eq!(
-            result["purged"], 1,
-            "the purge count must be reported, matching the UI open path's diagnostics"
-        );
+        assert_eq!(result["total"], 1);
 
         let i = app.active_tab;
         assert!(!app.tabs[i].scene.solid_models.contains_key(&stale));
