@@ -362,10 +362,20 @@ fn color_code(color: By<crate::scene::model::underlay_vector::DgnColor>) -> u16 
     }
 }
 
-/// The text style of a line of text (V7: one per font number, "dgnNNN"),
-/// added to `styles` with its font file the first time.
-fn text_style(geom: &DgnGeom, styles: &mut Vec<(String, String)>) -> String {
+/// The text style of a line of text (V7: one per font number, "dgnNNN";
+/// V8: the style the text names), added to `styles` with its font file
+/// the first time.
+fn text_style(geom: &DgnGeom, import: &DgnImport, styles: &mut Vec<(String, String)>) -> String {
     match geom {
+        DgnGeom::Text { style: Some(id), .. } => match import.text_styles.iter().find(|(i, _)| i == id) {
+            Some((_, name)) if !name.eq_ignore_ascii_case("Standard") => {
+                if !styles.iter().any(|s| s.0 == *name) {
+                    styles.push((name.clone(), "txt.shx".to_string()));
+                }
+                name.clone()
+            }
+            _ => "Standard".to_string(),
+        },
         DgnGeom::Text {
             font: Some(font), ..
         } => {
@@ -435,7 +445,7 @@ fn text_line(g: &DgnGeom) -> Option<(&str, P3, f64, f64, f64)> {
 /// attached at its bottom left a third of the height below the baseline
 /// (exact line spacing 0.8), any other at its justification point; its
 /// contents carry its colour (and width factor).
-fn mtext_of_text(geom: &DgnGeom, color: u16) -> Option<EntityType> {
+fn mtext_of_text(geom: &DgnGeom, color: u16, style: &str) -> Option<EntityType> {
     let DgnGeom::Text {
         text,
         origin,
@@ -477,7 +487,7 @@ fn mtext_of_text(geom: &DgnGeom, color: u16) -> Option<EntityType> {
     m.rotation = rotation.rem_euclid(std::f64::consts::TAU);
     m.rectangle_width = 0.0;
     m.drawing_direction = DrawingDirection::ByStyle;
-    m.style = "Standard".to_string();
+    m.style = style.to_string();
     Some(EntityType::MText(Box::new(m)))
 }
 
@@ -768,12 +778,15 @@ impl<'a> Converter<'a> {
             }
             // V7 text is TEXT, V8 text an MTEXT.
             DgnGeom::Text { font: Some(_), .. } => {
-                let style = text_style(geom, &mut self.out.styles);
+                let style = text_style(geom, self.import, &mut self.out.styles);
                 text_entity(geom, &style).into_iter().collect()
             }
-            DgnGeom::Text { .. } => mtext_of_text(geom, color_code(element.color))
-                .into_iter()
-                .collect(),
+            DgnGeom::Text { .. } => {
+                let style = text_style(geom, self.import, &mut self.out.styles);
+                mtext_of_text(geom, color_code(element.color), &style)
+                    .into_iter()
+                    .collect()
+            }
             // Exploded, each line converts as a text element of its own.
             DgnGeom::TextNode { lines, .. } if self.explode_text_nodes => lines
                 .iter()
@@ -788,7 +801,7 @@ impl<'a> Converter<'a> {
                 let Some(first) = lines.first() else {
                     return Vec::new();
                 };
-                let style = text_style(first, &mut self.out.styles);
+                let style = text_style(first, self.import, &mut self.out.styles);
                 let color = (!self.import.v7).then(|| color_code(element.color));
                 mtext_of_node(lines, *origin, *just, *line_spacing, style, color)
                     .into_iter()
@@ -903,6 +916,12 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
                 filled: false,
             };
             c.layer(&element, false);
+        }
+    }
+    // Every text style of the file's table comes in, used or not.
+    for (_, name) in &import.text_styles {
+        if !name.eq_ignore_ascii_case("Standard") && !c.out.styles.iter().any(|s| s.0 == *name) {
+            c.out.styles.push((name.clone(), "txt.shx".to_string()));
         }
     }
     c.in_definition = true;

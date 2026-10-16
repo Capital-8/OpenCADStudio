@@ -615,6 +615,8 @@ pub enum DgnGeom {
         just: u8,
         /// Font number (V7); `None` when the file's font is not read.
         font: Option<u32>,
+        /// Text style id (V8), an entry of [`DgnImport::text_styles`].
+        style: Option<u32>,
     },
     /// A text node: its lines, its origin (the justification point, when
     /// read), its justification and (V7) the space between its lines.
@@ -698,6 +700,7 @@ impl DgnGeom {
                 rotation,
                 just,
                 font,
+                style,
             } => DgnGeom::Text {
                 text: text.clone(),
                 origin: p(*origin),
@@ -707,6 +710,7 @@ impl DgnGeom {
                 rotation: *rotation,
                 just: *just,
                 font: *font,
+                style: *style,
             },
             DgnGeom::Cell {
                 name,
@@ -786,6 +790,8 @@ pub struct DgnImport {
     pub v7: bool,
     /// The model's reference attachments.
     pub references: Vec<DgnReference>,
+    /// The text style table (V8): each style's id and name.
+    pub text_styles: Vec<(u32, String)>,
 }
 
 /// A reference attachment of a DGN model: the file and model it shows and

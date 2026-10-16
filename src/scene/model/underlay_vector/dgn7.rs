@@ -533,6 +533,7 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool) -> Raw {
                     rotation: text.rotation,
                     just: e[37],
                     font: Some(e[36] as u32),
+                    style: None,
                 }));
                 raw.texts.push(text);
             }

@@ -279,6 +279,34 @@ fn f64_at(e: &[u8], at: usize) -> Option<f64> {
 }
 
 /// A string stored after the "ff fe 01 00" marker, when the element has one.
+/// The text style a text element uses: the id in its text style linkage
+/// (the four bytes after `04 20 e6 04 00 00`).
+fn text_style_id(e: &[u8]) -> Option<u32> {
+    let at = e.windows(6).position(|w| w == [0x04, 0x20, 0xe6, 0x04, 0x00, 0x00])? + 6;
+    u32_at(e, at)
+}
+
+/// The text style table (the table entries after a header of table 3):
+/// each style's id and name.
+fn text_style_table(nm: &[&[u8]]) -> Vec<(u32, String)> {
+    let mut out = Vec::new();
+    let mut table = 0;
+    for e in nm {
+        match kind(e) {
+            96 => table = u32_at(e, 12).unwrap_or(0),
+            95 if table == 3 => {
+                if let (Some(id), Some(name)) = (u32_at(e, 32), marked_string(e, 32)) {
+                    if !out.iter().any(|(i, _)| *i == id) {
+                        out.push((id, name));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 fn marked_string(e: &[u8], from: usize) -> Option<String> {
     let i = e
         .get(from..)?
@@ -861,7 +889,8 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
             }
             17 => {
                 // 3D: width 112, height 120, quaternion 144, origin 176, the
-                // characters after the string marker. 2D: angle 144, origin
+                // characters after the string marker, as many as the byte
+                // count at 110 holds. 2D: angle 144, origin
                 // 152, a byte count (with its 4-byte marker) at 110 and the
                 // characters from 174.
                 let placed = if d3 {
@@ -871,7 +900,12 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                             f64_at(e, 120)?,
                             quat_axes(e, 144)?,
                             p3(176)?,
-                            marked_string(e, 200)?,
+                            // The byte count at 110 (with the 4-byte marker)
+                            // ends the characters.
+                            {
+                                let count = u16::from_le_bytes(e.get(110..112)?.try_into().ok()?) as usize;
+                                marked_string(e, 200)?.chars().take(count.saturating_sub(4)).collect()
+                            },
                         ))
                     })()
                 } else {
@@ -921,6 +955,7 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     rotation: pu[1].atan2(pu[0]),
                     just,
                     font: None,
+                    style: text_style_id(e),
                 }));
                 raw.texts.push(Text {
                     text,
@@ -1524,6 +1559,7 @@ pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
         unit_names: (metres(4180), metres(4196)),
         v7: false,
         references,
+        text_styles: text_style_table(&nm),
     })
 }
 
