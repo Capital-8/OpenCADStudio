@@ -65,6 +65,7 @@ enum Route {
     Dgn,
     Model(ModelFormat),
     Wmf,
+    Tds,
 }
 
 /// The importer for `path` chosen as `format` (an index of [`FORMATS`]; `None`
@@ -91,6 +92,7 @@ fn route(path: &str, format: Option<usize>) -> Result<Route, String> {
         Some("STEP") => return Ok(Route::Model(ModelFormat::Step)),
         Some("IGES") => return Ok(Route::Model(ModelFormat::Iges)),
         Some("Metafile") => return Ok(Route::Wmf),
+        Some("3D Studio") => return Ok(Route::Tds),
         _ => {}
     }
     let pdf = if by_extension { ext == "pdf" } else { f.is_some_and(|f| f.name == "PDF Files") };
@@ -245,6 +247,14 @@ impl OpenCADStudio {
                 let i = self.active_tab;
                 self.import_wmf(i, path, false)
             }
+            // The options window opens whatever FILEDIA is.
+            Ok(Route::Tds) => {
+                self.remember_import(path);
+                if let Err(error) = self.open_tds_import_dialog(path) {
+                    self.command_line.push_error(&error);
+                }
+                Task::none()
+            }
             Err(error) => {
                 self.command_line.push_error(&error);
                 Task::none()
@@ -260,6 +270,7 @@ impl OpenCADStudio {
                     "dgn" => crate::t!(
                         "Imports a DGN model as drawing objects: levels as layers, cells as blocks."
                     ),
+                    "3ds" => std::borrow::Cow::Owned(crate::tr!("import-3ds", "help")),
                     _ => crate::t!(
                         "Imports a file of the chosen format with the format's importer."
                     ),
@@ -362,7 +373,70 @@ impl OpenCADStudio {
                         self.close_active_modal();
                         return self.import_wmf(i, &path, false);
                     }
+                    Ok(Route::Tds) => {
+                        self.remember_import(&path);
+                        self.close_active_modal();
+                        if let Err(error) = self.open_tds_import_dialog(&path) {
+                            self.command_line.push_error(&error);
+                        }
+                    }
                 }
+            }
+            // ── 3D Studio Import ─────────────────────────────────────────
+            ImportDialogMsg::TdsChange => {
+                let title = crate::t!("Import File").into_owned();
+                let filters = vec![("3D Studio (*.3ds)".to_string(), vec!["3ds".to_string()])];
+                return Task::perform(pick(title, filters), |path| {
+                    Message::ImportDialog(ImportDialogMsg::TdsPicked(path))
+                });
+            }
+            ImportDialogMsg::TdsPicked(Some(path)) => {
+                if let Err(error) = self.open_tds_import_dialog(&path) {
+                    self.command_line.push_error(&error);
+                }
+            }
+            ImportDialogMsg::TdsPicked(None) => {}
+            ImportDialogMsg::TdsCheck(k, on) => {
+                if let Some(c) = self.import_dialogs.tds.as_mut().and_then(|s| s.checked.get_mut(k)) {
+                    *c = on;
+                }
+            }
+            ImportDialogMsg::TdsAll | ImportDialogMsg::TdsClear => {
+                let on = matches!(message, ImportDialogMsg::TdsAll);
+                if let Some(s) = self.import_dialogs.tds.as_mut() {
+                    s.checked.iter_mut().for_each(|c| *c = on);
+                }
+            }
+            ImportDialogMsg::TdsFilter(k) => {
+                if let Some(s) = self.import_dialogs.tds.as_mut() {
+                    s.filter = k.min(4);
+                }
+            }
+            ImportDialogMsg::TdsSearch(text) => {
+                if let Some(s) = self.import_dialogs.tds.as_mut() {
+                    s.search = text;
+                }
+            }
+            ImportDialogMsg::TdsLayers(k) => {
+                if let Some(s) = self.import_dialogs.tds.as_mut() {
+                    s.layers = k.min(3);
+                }
+            }
+            ImportDialogMsg::TdsMulti(k) => {
+                if let Some(s) = self.import_dialogs.tds.as_mut() {
+                    s.multi = k.min(3);
+                }
+            }
+            ImportDialogMsg::TdsOk => {
+                let Some(state) = self.import_dialogs.tds.take() else {
+                    return Task::none();
+                };
+                if !state.checked.iter().any(|c| *c) {
+                    self.import_dialogs.tds = Some(state);
+                    return Task::none();
+                }
+                self.close_active_modal();
+                return self.start_tds_import(i, state);
             }
             // ── DGN Import ───────────────────────────────────────────────
             ImportDialogMsg::DgnChange => return self.pick_dgn_file(),

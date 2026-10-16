@@ -654,6 +654,11 @@ impl OpenCADStudio {
                 self.tabs[i].snap_result = None;
                 return self.run_dgn_import(i, request);
             }
+            CmdResult::TdsImport(request) => {
+                self.tabs[i].active_cmd = None;
+                self.tabs[i].snap_result = None;
+                self.run_tds_import(i, request);
+            }
             CmdResult::PdfImportFile(import) => {
                 self.tabs[i].scene.clear_preview_wire();
                 self.tabs[i].active_cmd = None;
