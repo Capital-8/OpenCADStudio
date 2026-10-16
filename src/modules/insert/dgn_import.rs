@@ -12,7 +12,7 @@
 // B-spline curves, complex chains and shapes (polylines with arcs), text,
 // text nodes and shared cells (blocks) are converted.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use codec::entities::{
     Arc, AttachmentPoint, Circle, DrawingDirection, Ellipse, Insert, Line, LineSpacingStyle,
@@ -114,7 +114,7 @@ pub fn unit_display(short: &str) -> String {
 pub fn symbol_name(name: &str) -> String {
     name.chars()
         .map(|c| {
-            if c.is_control() || "<>/\\\":;?*|,=`".contains(c) {
+            if c.is_control() || "<>/\\\":;?*|=`".contains(c) {
                 '_'
             } else {
                 c
@@ -221,9 +221,8 @@ fn flat(points: &[P3]) -> bool {
 /// (with the bulges), else a 3D polyline (no bulges).
 fn polyline(points: &[P3], bulges: &[f64]) -> EntityType {
     if !flat(points) {
-        return EntityType::Polyline3D(Polyline3D::from_points(
-            points.iter().map(|p| v3(*p)).collect(),
-        ));
+        let points: Vec<Vector3> = points.iter().map(|p| v3(*p)).collect();
+        return EntityType::Polyline3D(Polyline3D::from_points(points));
     }
     let mut pl = LwPolyline::new();
     pl.plinegen = true;
@@ -253,7 +252,8 @@ fn solid_hatch(points: &[P3], bulges: &[f64]) -> Option<EntityType> {
     }
     let mut edge = PolylineEdge::new(Vec::new(), true);
     for (k, p) in points[..n].iter().enumerate() {
-        edge.add_vertex(Vector2::new(p[0], p[1]), bulges.get(k).copied().unwrap_or(0.0));
+        let bulge = bulges.get(k).copied().unwrap_or(0.0);
+        edge.add_vertex(Vector2::new(p[0], p[1]), bulge);
     }
     let mut hatch = Hatch::solid();
     let mut boundary = BoundaryPath::external();
@@ -281,7 +281,9 @@ fn chain_points(parts: &[DgnGeom], use_bulges: bool) -> (Vec<P3>, Vec<f64>) {
     let mut points: Vec<P3> = Vec::new();
     let mut bulges: Vec<f64> = Vec::new();
     let mut add = |p: P3, bulge_before: Option<f64>| {
-        let same = points.last().is_some_and(|q| (0..3).all(|c| (q[c] - p[c]).abs() < 1e-9));
+        let same = points
+            .last()
+            .is_some_and(|q| (0..3).all(|c| (q[c] - p[c]).abs() < 1e-9));
         if let (Some(b), Some(last)) = (bulge_before, bulges.last_mut()) {
             *last = b;
         }
@@ -377,6 +379,14 @@ fn attachment(just: u8) -> AttachmentPoint {
         (2, _) => A::BottomRight,
         _ => A::BottomLeft,
     }
+}
+
+/// Text as MTEXT contents: backslashes and braces stay characters instead
+/// of becoming formatting codes.
+fn mtext_escape(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace('{', "\\{")
+        .replace('}', "\\}")
 }
 
 /// A number with six significant digits, trailing zeros dropped.
@@ -510,7 +520,7 @@ fn mtext_of_text(geom: &DgnGeom, color: u16, style: &str) -> Option<EntityType> 
     } else {
         String::new()
     };
-    m.value = format!("{{{width}\\C{color};{text}}}");
+    m.value = format!("{{{width}\\C{color};{}}}", mtext_escape(text));
     if *just == 2 {
         let up = -0.33 * height;
         m.insertion_point = Vector3::new(
@@ -549,7 +559,11 @@ fn mtext_of_node(
     color: Option<u16>,
 ) -> Option<EntityType> {
     let (_, first, height, rotation, _) = lines.iter().find_map(text_line)?;
-    let texts: Vec<&str> = lines.iter().filter_map(text_line).map(|l| l.0).collect();
+    let texts: Vec<String> = lines
+        .iter()
+        .filter_map(text_line)
+        .map(|l| mtext_escape(l.0))
+        .collect();
     let mut m = MText::new();
     let joined = texts.join("\\P");
     m.value = match color {
@@ -783,8 +797,11 @@ impl<'a> Converter<'a> {
             DgnGeom::Line(a, b) => vec![EntityType::Line(Line::from_points(v3(*a), v3(*b)))],
             // A filled shape is its outline and a solid hatch inside it.
             DgnGeom::Points(pts) if pts.len() >= 2 => {
-                let fill = element.filled.then(|| solid_hatch(pts, &[])).flatten();
-                std::iter::once(polyline(pts, &[])).chain(fill).collect()
+                let mut out = vec![polyline(pts, &[])];
+                if element.filled {
+                    out.extend(solid_hatch(pts, &[]));
+                }
+                out
             }
             DgnGeom::Points(_) => Vec::new(),
             DgnGeom::Arc {
@@ -816,8 +833,11 @@ impl<'a> Converter<'a> {
                 if points.len() < 2 {
                     return Vec::new();
                 }
-                let fill = element.filled.then(|| solid_hatch(&points, &bulges)).flatten();
-                std::iter::once(polyline(&points, &bulges)).chain(fill).collect()
+                let mut out = vec![polyline(&points, &bulges)];
+                if element.filled {
+                    out.extend(solid_hatch(&points, &bulges));
+                }
+                out
             }
             // V7 text is TEXT, V8 text an MTEXT.
             DgnGeom::Text { font: Some(_), .. } => {
@@ -980,8 +1000,8 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
     c.out.entities = entities;
     // A cell left without a block (the point display cell, an empty or
     // missing definition) places nothing: its instances are dropped.
-    let defined: std::collections::HashSet<String> =
-        c.out.blocks.iter().map(|b| b.0.to_ascii_uppercase()).collect();
+    let blocks = &c.out.blocks;
+    let defined: HashSet<String> = blocks.iter().map(|b| b.0.to_ascii_uppercase()).collect();
     let placed = |e: &EntityType| match e {
         EntityType::Insert(i) => defined.contains(&i.block_name.to_ascii_uppercase()),
         _ => true,

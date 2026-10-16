@@ -293,7 +293,8 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
             // covers; they are already placed, so the cell keeps them as
             // they are. Nesting past `MAX_CELL_DEPTH` is left out.
             2 => {
-                let mut left = (38 + uint16(e, 36).unwrap_or(0) as usize * 2).saturating_sub(e.len());
+                let total = 38 + uint16(e, 36).unwrap_or(0) as usize * 2;
+                let mut left = total.saturating_sub(e.len());
                 let start = index;
                 while left > 0 && index < run.len() && run[index][0] & 0x80 != 0 {
                     left = left.saturating_sub(run[index].len());

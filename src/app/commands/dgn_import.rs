@@ -458,7 +458,8 @@ impl OpenCADStudio {
                 .file_stem()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            Naming::Prefix(dgn_import::symbol_name(&format!("{stem} - {}$0$", request.model)))
+            let prefix = format!("{stem} - {}$0$", request.model);
+            Naming::Prefix(dgn_import::symbol_name(&prefix))
         } else {
             Naming::Keep
         };

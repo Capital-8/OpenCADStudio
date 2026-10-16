@@ -284,7 +284,6 @@ fn f64_at(e: &[u8], at: usize) -> Option<f64> {
     Some(f64::from_le_bytes(e.get(at..at + 8)?.try_into().ok()?))
 }
 
-/// A string stored after the "ff fe 01 00" marker, when the element has one.
 /// The text style a text element uses: the id in its text style linkage
 /// (the four bytes after `04 20 e6 04 00 00`).
 fn text_style_id(e: &[u8]) -> Option<u32> {
@@ -313,6 +312,7 @@ fn text_style_table(nm: &[&[u8]]) -> Vec<(u32, String)> {
     out
 }
 
+/// A string stored after the "ff fe 01 00" marker, when the element has one.
 fn marked_string(e: &[u8], from: usize) -> Option<String> {
     let i = e
         .get(from..)?
@@ -446,8 +446,7 @@ impl Styles {
 /// A B-spline curve from its order and poles, with uniform knots. A closed
 /// curve (its last pole repeating the first) is periodic: its distinct
 /// poles wrap around with knots (i + 1) / (count + 1), and the curve is
-/// clamped at both ends of its domain by knot insertion, as the reference
-/// converts it.
+/// clamped at both ends of its domain by knot insertion.
 fn bspline_geom(order: usize, poles: Vec<[f64; 3]>, closed: bool) -> DgnGeom {
     let degree = order - 1;
     let distinct = poles.len() - usize::from(closed && poles.first() == poles.last());
@@ -914,8 +913,14 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                             // The byte count at 110 (with the 4-byte marker)
                             // ends the characters.
                             {
-                                let count = u16::from_le_bytes(e.get(110..112)?.try_into().ok()?) as usize;
-                                marked_string(e, 200)?.chars().take(count.saturating_sub(4)).collect()
+                                let count =
+                                    u16::from_le_bytes(e.get(110..112)?.try_into().ok()?) as usize;
+                                let mark = e
+                                    .get(200..)?
+                                    .windows(4)
+                                    .position(|w| w == [0xff, 0xfe, 0x01, 0x00])?
+                                    + 200;
+                                marked_string(&e[..(mark + count.max(4)).min(e.len())], mark)?
                             },
                         ))
                     })()
@@ -1405,9 +1410,6 @@ fn unit_name(metres: f64) -> String {
         .unwrap_or_default()
 }
 
-/// The named model element by element (DGNIMPORT): in master units with
-/// the global origin at 0,0, shared cell definitions in master units, and
-/// every level by id with its own name and colour.
 /// A design model (not a sheet): the model type byte of its header (4105)
 /// is 2 for a sheet.
 fn is_design(header: &[u8]) -> bool {
@@ -1503,6 +1505,9 @@ fn references(control: &[u8]) -> Vec<DgnReference> {
         .collect()
 }
 
+/// The named model element by element (DGNIMPORT): in master units with
+/// the global origin at 0,0, shared cell definitions in master units, and
+/// every level by id with its own name and colour.
 pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
     let cfb = Cfb::open(bytes)?;
     let all = models(&cfb);
@@ -1546,8 +1551,8 @@ pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
             while j < nm.len() && is_component(nm[j]) {
                 j += 1;
             }
-            // The cell that draws points is the writer's own; the reference
-            // leaves it out of the drawing.
+            // The cell that draws points belongs to the writing program,
+            // not to the drawing: it is left out.
             if !cell.eq_ignore_ascii_case("POINT_DISPLAY") {
                 let def = read_run(&nm[i + 1..j], &styles, &IDENTITY).elements;
                 cells.push((cell, scaled_elements(&def, s, [0.0, 0.0])));
