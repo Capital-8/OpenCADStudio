@@ -2201,6 +2201,7 @@ impl OpenCADStudio {
             // The DGN Import window, one field per call: "path=<file>" (as
             // Change… picks it), "model=<n>", "target=new|current",
             // "conflict=prefix|ignore", "units=master|sub", "explode=on|off",
+            // "references=translate|ignore|underlay", "existing=prompt|overwrite|keep",
             // "mapping=layer|linetype|lineweight|color", "ok" or "cancel".
             "dgn_import_dialog" => {
                 use crate::ui::window::import_dialogs::ImportDialogMsg as I;
@@ -2238,6 +2239,18 @@ impl OpenCADStudio {
                         _ => return Err(bad()),
                     }),
                     "explode" => I::DgnExplode(on(value)?),
+                    "references" => I::DgnReferences(match value {
+                        "translate" => crate::modules::insert::dgn_import::ReferenceMode::Translate,
+                        "ignore" => crate::modules::insert::dgn_import::ReferenceMode::Ignore,
+                        "underlay" => crate::modules::insert::dgn_import::ReferenceMode::Underlay,
+                        _ => return Err(bad()),
+                    }),
+                    "existing" => I::DgnExisting(match value {
+                        "prompt" => crate::modules::insert::dgn_import::ExistingReference::Prompt,
+                        "overwrite" => crate::modules::insert::dgn_import::ExistingReference::Overwrite,
+                        "keep" => crate::modules::insert::dgn_import::ExistingReference::Keep,
+                        _ => return Err(bad()),
+                    }),
                     "mapping" => I::DgnMappingTab(match value {
                         "layer" => 0,
                         "linetype" => 1,

@@ -1223,6 +1223,7 @@ impl OpenCADStudio {
                     | "SELECTIONCYCLING"
                     | "UCSDETECT"
                     | "SURFACEASSOCIATIVITY"
+                    | "DGNIMPORTMODE"
                     | "UCSORTHO"
                     | "UCSVIEW"
                     | "LAYOUTCREATEVIEWPORT"
@@ -1616,6 +1617,41 @@ impl OpenCADStudio {
                             None => {
                                 self.command_line.push_output(&format!(
                                     "Enter new value for {name} <{current}>:"
+                                ));
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    if name == "DGNIMPORTMODE" {
+                        // Where DGNIMPORT puts the model: 0 a new drawing, 1 the
+                        // current one keeping its definitions, 2 the current one
+                        // with prefixed names.
+                        use crate::modules::insert::dgn_import::{set_settings, settings};
+                        let mut s = settings();
+                        let current = s.mode;
+                        match value
+                            .as_deref()
+                            .map(|v| v.trim().parse::<u8>().ok().filter(|v| *v <= 2))
+                        {
+                            Some(Some(mode)) => {
+                                if current != mode {
+                                    s.mode = mode;
+                                    set_settings(s);
+                                    self.save_config();
+                                }
+                            }
+                            Some(None) => {
+                                self.command_line
+                                    .push_error("Requires an integer between 0 and 2.");
+                                self.command_line.push_output(&format!(
+                                    "Enter new value for DGNIMPORTMODE <{current}>:"
+                                ));
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&format!(
+                                    "Enter new value for DGNIMPORTMODE <{current}>:"
                                 ));
                                 self.pending_setvar = Some(name.clone());
                             }
