@@ -8,7 +8,7 @@ use crate::app::helpers::{
     polar_constrain_if_near, polar_constrain_near, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis,
     CoordKind,
 };
-use crate::app::{Message, OpenCADStudio, DRAG_START_FAST_PX2, POLY_START_DELAY_MS};
+use crate::app::{Message, OpenCADStudio, POLY_START_DELAY_MS};
 use crate::modules::ModuleEvent;
 use crate::scene::model::object::GripApply;
 use crate::scene::pick::grip::{
@@ -1323,12 +1323,17 @@ impl OpenCADStudio {
                 .left_press_time
                 .map(|t| Instant::now().duration_since(t).as_millis())
                 .unwrap_or(u128::MAX);
-            // The delay keeps a click made while the mouse is still moving
-            // from turning into a drag; a press that has already travelled
-            // well past click jitter is a drag at once, or a fast flick
-            // released inside the delay read as a click. (#1808)
-            let dragged =
-                dist2 > 9.0 && (elapsed_ms >= POLY_START_DELAY_MS || dist2 > DRAG_START_FAST_PX2);
+            // Selection gestures need a wider dead zone than ordinary
+            // pointer clicks. In particular, a quick press/release with
+            // residual mouse motion must not start a freeform lasso.
+            // Keep the existing delay and reserve immediate dragging for
+            // an unmistakable movement (24 px); after the delay, require
+            // at least 12 px. Grip editing follows its separate path.
+            const SELECTION_DRAG_MIN_PX2: f32 = 12.0 * 12.0;
+            const SELECTION_DRAG_FAST_PX2: f32 = 24.0 * 24.0;
+            let dragged = dist2 > SELECTION_DRAG_MIN_PX2
+                && (elapsed_ms >= POLY_START_DELAY_MS
+                    || dist2 > SELECTION_DRAG_FAST_PX2);
             if !sel.input.left_dragging && dragged {
                 sel.input.left_dragging = true;
                 if self.pick_drag_rect {
@@ -1846,7 +1851,12 @@ impl OpenCADStudio {
 
             if axis_lock.is_none()
                 && otrack_hit.is_none()
-                && !snap_hit.is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid)
+                && !snap_hit.is_some_and(|s| {
+                        !matches!(
+                            s.snap_type,
+                            crate::snap::SnapType::Grid | crate::snap::SnapType::Extension
+                        )
+                    })
             {
                 let base = grip.origin_world;
                 let ucs_xf = self.tabs[i].ucs_xform();
@@ -2678,13 +2688,16 @@ impl OpenCADStudio {
                             .unwrap_or(cursor_world);
                         axis_lock_apply(point, base, dir)
                     } else if let Some(h) = otrack_hit.filter(|_| {
-                        // A real object snap must win over tracking alignment.
-                        // Otherwise the endpoint glyph can appear at the
-                        // corner while the preview/accepted point follows the
-                        // tracking line instead.
-                        !self.tabs[i]
-                            .snap_result
-                            .is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid)
+                        // Exact object snaps win over tracking alignment, but
+                        // Extension is a construction guide and must remain
+                        // eligible for OTRACK intersections.
+                        !self.tabs[i].snap_result.is_some_and(|s| {
+                            !matches!(
+                                s.snap_type,
+                                crate::snap::SnapType::Grid
+                                    | crate::snap::SnapType::Extension
+                            )
+                        })
                     }) {
                         h.aligned
                     } else {
@@ -4551,10 +4564,17 @@ impl OpenCADStudio {
                     None
                 };
                 if let Some(h) = otrack.filter(|_| {
-                    // Match the hover path: never override a genuine OSNAP
-                    // endpoint/intersection with a tracking projection.
-                    !snap_hit.is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid)
+                    // Match the hover path: preserve exact object snaps, but
+                    // allow Extension to resolve a crossing with OTRACK.
+                    !snap_hit.is_some_and(|s| {
+                        !matches!(
+                            s.snap_type,
+                            crate::snap::SnapType::Grid | crate::snap::SnapType::Extension
+                        )
+                    })
                 }) {
+                    // Commit the actual OTRACK intersection, not the cursor
+                    // projection onto Extension.
                     pt = h.aligned;
                     if clamp_world_xy {
                         pt.z = 0.0;
