@@ -575,6 +575,9 @@ impl OpenCADStudio {
                     return task;
                 }
             }
+            result @ CmdResult::EditBlockAuthoring { .. } => {
+                return self.handle_authoring_edit(result);
+            }
             result @ (CmdResult::PlaceBlockAction { .. }
             | CmdResult::EvaluateBlockParameter { .. }) => {
                 return self.handle_block_action_result(result);

@@ -60,6 +60,179 @@ fn feed(app: &mut OpenCADStudio, text: &str) {
 }
 
 #[test]
+fn authoring_edit_basepoint_attribute_relocation_undo_and_cancel() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER BASEPOINT 2,3");
+    let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let handle = crate::scene::block_basepoint::parameter(&app.tabs[i].scene.document, def)
+        .unwrap()
+        .0;
+    let mut attribute = codec::entities::AttributeEntity::new("TAG".into(), "value".into());
+    attribute.insertion_point = Vector3::new(7., 8., 0.);
+    let EntityType::Insert(insert) = app.tabs[i]
+        .scene
+        .document
+        .get_entity_mut(reference)
+        .unwrap()
+    else {
+        panic!()
+    };
+    insert.attributes.push(attribute);
+    let before = app.tabs[i].scene.document.clone();
+    let result = crate::command::CmdResult::EditBlockAuthoring {
+        document: app.tabs[i].id,
+        definition: def,
+        handle,
+        part: crate::scene::block_authoring::edit::Part::Point,
+        position: glam::DVec3::new(4., 6., 0.),
+    };
+    let _ = app.handle_authoring_edit(result);
+    assert_ne!(
+        app.tabs[i].scene.document.get_entity(reference),
+        before.get_entity(reference)
+    );
+    app.undo_steps(1);
+    assert_eq!(app.tabs[i].scene.document, before);
+    app.redo_steps(1);
+    assert_ne!(
+        app.tabs[i].scene.document.get_entity(reference),
+        before.get_entity(reference)
+    );
+    app.tabs[i].selected_authoring = Some(handle);
+    app.refresh_properties();
+    let id = app.tabs[i].selected_grips[0].id;
+    assert!(app.start_authoring_grip(handle, id));
+    let after = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let _ = app.update(Message::CommandEscape);
+    assert_eq!(app.tabs[i].scene.document, after);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    let _ = app.update(Message::CommandEscape);
+    assert_eq!(app.tabs[i].selected_authoring, None);
+}
+
+#[test]
+fn authoring_edit_mouse_selection_endpoint_label_marker_history_and_reopen() {
+    use crate::scene::block_authoring::edit::{self, Part};
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 2,2 6,2 4,3");
+    let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let p = actions::parameters(&app.tabs[i].scene.document, def, Kind::Move)[0].clone();
+    let targets = members(&app);
+    let a = actions::create(
+        &mut app.tabs[i].scene.document,
+        def,
+        Kind::Move,
+        p.handle,
+        &targets,
+        glam::DVec3::new(5., 5., 0.),
+    )
+    .unwrap();
+    app.tabs[i].scene.selection.borrow_mut().view.vp_size = (1600., 900.);
+    app.tabs[i].scene.camera.borrow_mut().fit_to_bounds_f64(
+        glam::DVec3::new(-1., -1., 0.),
+        glam::DVec3::new(10., 7., 0.),
+        1600. / 900.,
+    );
+    let click = |app: &mut OpenCADStudio, point: Vector3| {
+        let scene = &app.tabs[app.active_tab].scene;
+        let (w, h) = scene.selection.borrow().view.vp_size;
+        let b = scene.active_model_tile_bounds(w, h);
+        let s = scene
+            .camera
+            .borrow()
+            .project(
+                glam::DVec3::new(point.x, point.y, point.z),
+                iced::Rectangle {
+                    x: 0.,
+                    y: 0.,
+                    width: b.width,
+                    height: b.height,
+                },
+            )
+            .unwrap();
+        let _ = app.update(Message::ViewportLeftPressAt(iced::Point::new(
+            s.x + b.x,
+            s.y + b.y,
+        )));
+        let _ = app.update(Message::ViewportLeftRelease);
+    };
+    click(&mut app, Vector3::new(4., 3., 0.));
+    assert_eq!(app.tabs[i].selected_authoring, Some(p.handle));
+    assert_eq!(app.tabs[i].selected_grips.len(), 3);
+    let before = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    click(&mut app, Vector3::new(6., 2., 0.));
+    assert_eq!(
+        app.tabs[i].active_cmd.as_ref().map(|c| c.name()),
+        Some("BEDITGRIP")
+    );
+    feed(&mut app, "8,2");
+    assert!(app.tabs[i].active_cmd.is_none());
+    assert_eq!(
+        actions::parameters(&app.tabs[i].scene.document, def, Kind::Move)[0].end,
+        glam::DVec3::new(8., 2., 0.)
+    );
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    app.undo_steps(1);
+    assert_eq!(app.tabs[i].scene.document, before);
+    app.redo_steps(1);
+    let label = edit::items(&app.tabs[i].scene.document, def)
+        .into_iter()
+        .find(|i| i.handle == p.handle)
+        .unwrap()
+        .grips
+        .into_iter()
+        .find(|(p, _)| *p == Part::Label(0))
+        .unwrap()
+        .1;
+    click(&mut app, label);
+    feed(&mut app, "5,4");
+    let graphic = edit::items(&app.tabs[i].scene.document, def)
+        .into_iter()
+        .find(|i| i.handle == p.handle)
+        .unwrap();
+    assert_eq!(graphic.graphic.labels[0].0, Vector3::new(5., 4., 0.));
+    let _ = app.update(Message::CommandEscape);
+    click(&mut app, Vector3::new(5., 5., 0.));
+    assert_eq!(app.tabs[i].selected_authoring, Some(a));
+    click(&mut app, Vector3::new(5., 5., 0.));
+    feed(&mut app, "7,5");
+    let action = actions::actions(&app.tabs[i].scene.document, def);
+    assert_eq!(action[0].1.display_location, Vector3::new(7., 5., 0.));
+    assert_eq!(action[0].1.dependencies, targets);
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    assert!(app.tabs[i]
+        .selected_grips
+        .iter()
+        .all(|g| !super::block_authoring_edit::is_editor_grip(g.id)));
+    // Persisted native coordinates, rather than session-only display positions.
+    use std::io::Cursor;
+    let bytes = codec::DwgWriter::write_to_vec(&app.tabs[i].scene.document).unwrap();
+    let loaded = codec::DwgReader::from_stream(Cursor::new(bytes))
+        .read()
+        .unwrap();
+    assert_eq!(
+        actions::parameters(&loaded, def, Kind::Move)[0].end,
+        glam::DVec3::new(8., 2., 0.)
+    );
+    assert_eq!(
+        actions::actions(&loaded, def)[0].1.display_location,
+        Vector3::new(7., 5., 0.)
+    );
+    app.tabs[i].scene.document = loaded;
+    begin(&mut app, reference);
+    click(&mut app, Vector3::new(8., 2., 0.));
+    assert_eq!(app.tabs[i].selected_authoring, Some(p.handle));
+}
+
+#[test]
 fn block_actions_mouse_selection_waits_for_enter_for_move_and_scale() {
     use crate::scene::block_actions::{self as actions, Kind};
     for (kind, command) in [(Kind::Move, "BACTION MOVE"), (Kind::Scale, "BACTION SCALE")] {
