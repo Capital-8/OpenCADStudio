@@ -30,19 +30,14 @@ fn ratio(file_mm: f64, drawing_mm: Option<f64>) -> f64 {
 /// A block name from a product's, with the characters names cannot hold
 /// replaced.
 fn block_name(name: &str) -> String {
-    let name: String = name
-        .trim()
-        .chars()
-        .map(|c| if "<>/\\\":;?*|,=`".contains(c) { '_' } else { c })
-        .collect();
-    if name.is_empty() { "Part".to_string() } else { name }
+    crate::scene::sanitized_table_name(name, "Part")
 }
 
 /// A STEP presentation colour as the drawing colour it imports as: the
 /// standard index colour it is close to — red, yellow, green, cyan, blue,
 /// magenta, white, or the dark grey 250 (which black also becomes) — and
 /// otherwise the true colour.
-// ponytail: the closeness bands are fitted to measured imports (saturation
+// ponytail: the closeness bands are fitted to sample files (saturation
 // at least 0.75, value at least 0.825 and hue within 7.5 degrees for the six
 // hues; greys from 0.16 to 0.39 for 250 and from 0.935 for white); refit
 // them if a colour on a band edge comes out differently.
@@ -114,22 +109,43 @@ fn step_blocks(model: crate::io::step_import::StepModel, scale: f64) -> Imported
         }
         names.push(name);
     }
-    // Children before parents.
+    // Children before parents. A link that closes a loop in the file's
+    // assembly (a product that would contain itself) is dropped, so no
+    // block ends up inserting itself.
     let mut order = Vec::new();
+    let mut dropped: std::collections::HashSet<(usize, usize)> = Default::default();
     let mut state = vec![0u8; model.products.len()];
-    fn visit(k: usize, model: &crate::io::step_import::StepModel, state: &mut [u8], order: &mut Vec<usize>) {
-        if state[k] != 0 {
-            return;
-        }
-        state[k] = 1;
-        for (child, _) in &model.products[k].children {
-            visit(*child, model, state, order);
-        }
-        state[k] = 2;
-        order.push(k);
-    }
     for &root in &model.roots {
-        visit(root, &model, &mut state, &mut order);
+        if state[root] != 0 {
+            continue;
+        }
+        state[root] = 1;
+        // Each product being walked and the next of its children to visit.
+        let mut stack = vec![(root, 0usize)];
+        while let Some((k, next)) = stack.last_mut() {
+            let k = *k;
+            match model.products[k].children.get(*next) {
+                Some(&(child, _)) => {
+                    let link = (k, *next);
+                    *next += 1;
+                    match state[child] {
+                        0 => {
+                            state[child] = 1;
+                            stack.push((child, 0));
+                        }
+                        1 => {
+                            dropped.insert(link);
+                        }
+                        _ => {}
+                    }
+                }
+                None => {
+                    state[k] = 2;
+                    order.push(k);
+                    stack.pop();
+                }
+            }
+        }
     }
     let blocks = order
         .iter()
@@ -147,7 +163,9 @@ fn step_blocks(model: crate::io::step_import::StepModel, scale: f64) -> Imported
                 product
                     .children
                     .iter()
-                    .map(|(child, placement)| {
+                    .enumerate()
+                    .filter(|(n, _)| !dropped.contains(&(k, *n)))
+                    .map(|(_, (child, placement))| {
                         let mut insert = placed_insert(&names[*child], placement);
                         insert.common_mut().color = Color::ByBlock;
                         insert

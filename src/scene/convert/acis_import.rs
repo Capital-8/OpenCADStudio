@@ -1,8 +1,7 @@
 //! ACIS text (SAT) files and kernel bodies as drawing objects.
 //!
 //! Each body of a file becomes one object: a closed solid a 3DSOLID, a sheet
-//! whose faces all lie on planes a REGION, any other sheet a SURFACE — the
-//! classes the ACIS import of the reference application produces.
+//! whose faces all lie on planes a REGION, any other sheet a SURFACE.
 
 use codec::entities::acis::{SatDocument, SatFace, Sidedness};
 use codec::entities::{AcisData, Region, Solid3D, Surface, SurfaceKind};
@@ -82,14 +81,19 @@ fn attribute_index(color: codec::types::Color) -> i64 {
     }
 }
 
+/// A true colour packed as a 32-bit colour value: the true-colour flag
+/// byte, then red, green and blue.
+pub(crate) fn packed_true_colour(r: u8, g: u8, b: u8) -> i32 {
+    ((0xC2u32 << 24) | (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)) as i32
+}
+
 /// Hangs colour attributes on a record: a true colour first, then its
 /// index, as imported models carry them.
 fn paint_record(document: &mut codec::entities::acis::SatDocument, owner: usize, color: codec::types::Color) {
     use codec::entities::acis::{SatPointer, SatRecord, SatToken};
     let mut chain: Vec<(&str, i64)> = Vec::new();
     if let codec::types::Color::Rgb { r, g, b } = color {
-        let packed = (0xC2u32 << 24) | (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b);
-        chain.push(("truecolor-adesk-attrib", i64::from(packed as i32)));
+        chain.push(("truecolor-adesk-attrib", i64::from(packed_true_colour(r, g, b))));
     }
     chain.push(("color-adesk-attrib", attribute_index(color)));
     let Some(existing) = document.record(owner).map(|record| record.attribute) else {
@@ -116,9 +120,9 @@ fn paint_record(document: &mut codec::entities::acis::SatDocument, owner: usize,
 }
 
 /// A kernel body as its drawing object in `colour` (by block when `None`),
-/// with the faces given a colour of their own carrying it — and the edges
-/// bounding them too, as the reference modeler stores them. A `sheet` is a
-/// SURFACE however flat it is.
+/// with the faces given a colour of their own carrying it, and the edges
+/// bounding those faces carrying it too. A `sheet` is a SURFACE however
+/// flat it is.
 pub fn painted_body_entity(
     body: &kernel::brep::Body,
     colour: Option<codec::types::Color>,

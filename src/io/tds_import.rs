@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use codec::entities::{PolyfaceFace, PolyfaceMesh, PolyfaceVertex};
 use codec::types::Vector3;
 
+use crate::scene::sanitized_table_name;
+
 pub struct TdsMaterial {
     pub name: String,
     pub ambient: Option<[u8; 3]>,
@@ -258,6 +260,8 @@ pub struct TdsOptions {
     /// they first use them — as they do when the import splits by
     /// material or asks — rather than the file's vertex list.
     pub compact: bool,
+    /// The layer every mesh goes on with [`LayerMode::Single`].
+    pub single_layer: String,
 }
 
 /// One imported mesh.
@@ -284,14 +288,24 @@ pub struct TdsImport {
     pub messages: Vec<String>,
 }
 
-/// A polyface mesh of `faces` of `mesh`: its vertices in file order, or
+/// Polyface meshes of `faces` of `mesh`: its vertices in file order, or
 /// (`compact`) only those the faces use, in the order they first use them.
-fn polyface(mesh: &TdsMesh, faces: &[usize], compact: bool) -> PolyfaceMesh {
-    let mut out = PolyfaceMesh::new();
+/// A polyface mesh numbers its vertices in 16 bits, so a mesh with more
+/// vertices than that is always compact, and the faces that need further
+/// vertices go on further meshes.
+fn polyfaces(mesh: &TdsMesh, faces: &[usize], compact: bool) -> Vec<PolyfaceMesh> {
+    const MAX_VERTICES: usize = i16::MAX as usize;
+    let compact = compact || mesh.vertices.len() > MAX_VERTICES;
+    let vertex = |v: usize| {
+        let p = mesh.vertices[v];
+        PolyfaceVertex::new(Vector3::new(p[0], p[1], p[2]))
+    };
+    let mut out = Vec::new();
+    let mut current = PolyfaceMesh::new();
     let mut index: HashMap<usize, i16> = HashMap::new();
     if !compact {
-        for (k, v) in mesh.vertices.iter().enumerate() {
-            index.insert(k, out.add_vertex(PolyfaceVertex::new(Vector3::new(v[0], v[1], v[2]))));
+        for k in 0..mesh.vertices.len() {
+            index.insert(k, current.add_vertex(vertex(k)));
         }
     }
     for &f in faces {
@@ -299,14 +313,15 @@ fn polyface(mesh: &TdsMesh, faces: &[usize], compact: bool) -> PolyfaceMesh {
         if face.iter().any(|v| *v >= mesh.vertices.len()) {
             continue;
         }
-        let ids = face.map(|v| {
-            *index.entry(v).or_insert_with(|| {
-                let p = mesh.vertices[v];
-                out.add_vertex(PolyfaceVertex::new(Vector3::new(p[0], p[1], p[2])))
-            })
-        });
-        out.add_face(PolyfaceFace::triangle(ids[0], ids[1], ids[2]));
+        let new = face.iter().filter(|v| !index.contains_key(v)).count();
+        if current.vertices.len() + new > MAX_VERTICES {
+            out.push(std::mem::replace(&mut current, PolyfaceMesh::new()));
+            index.clear();
+        }
+        let ids = face.map(|v| *index.entry(v).or_insert_with(|| current.add_vertex(vertex(v))));
+        current.add_face(PolyfaceFace::triangle(ids[0], ids[1], ids[2]));
     }
+    out.push(current);
     out
 }
 
@@ -365,24 +380,30 @@ pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
                             out.materials.push(m.clone());
                         }
                     }
+                    // Object and material names come from the file, so they
+                    // are made fit to name a layer.
                     let layer = match options.layers {
-                        LayerMode::ByObject => name.to_uppercase(),
-                        LayerMode::ByMaterial => material.as_deref().unwrap_or("0").to_uppercase(),
+                        LayerMode::ByObject => sanitized_table_name(&name.to_uppercase(), "0"),
+                        LayerMode::ByMaterial => {
+                            sanitized_table_name(&material.as_deref().unwrap_or("0").to_uppercase(), "0")
+                        }
                         LayerMode::ByObjectColor => match mesh.color {
                             Some(c) => format!("COLOR{c:02}"),
                             None => "COLORNONE".to_string(),
                         },
-                        LayerMode::Single => "AVLAYER".to_string(),
+                        LayerMode::Single => options.single_layer.clone(),
                     };
-                    out.parts.push(TdsPart {
-                        layer,
-                        material,
-                        mesh: polyface(mesh, &faces, compact),
-                    });
+                    for polyface in polyfaces(mesh, &faces, compact) {
+                        out.parts.push(TdsPart {
+                            layer: layer.clone(),
+                            material: material.clone(),
+                            mesh: polyface,
+                        });
+                    }
                 }
             }
             TdsObject::Camera(camera) => {
-                let name = name.to_uppercase();
+                let name = sanitized_table_name(&name.to_uppercase(), "CAMERA");
                 out.messages.push(format!("Creating camera {name}"));
                 let direction = [0, 1, 2].map(|k| camera.position[k] - camera.target[k]);
                 let distance = direction.iter().map(|d| d * d).sum::<f64>().sqrt();

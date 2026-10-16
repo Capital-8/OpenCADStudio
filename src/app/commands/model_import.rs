@@ -3,6 +3,8 @@
 //! as one undo step.
 
 use super::*;
+use std::collections::HashMap;
+
 use crate::io::model_import::{self, ModelFormat};
 
 impl OpenCADStudio {
@@ -36,9 +38,8 @@ impl OpenCADStudio {
                     let here = std::env::current_dir()
                         .map(|d| d.display().to_string())
                         .unwrap_or_default();
-                    self.command_line.push_error(&format!(
-                        "\"{name}\": Can't find file in search path:\n  {here}\\ (current directory)"
-                    ));
+                    self.command_line
+                        .push_error(&format!("\"{name}\": file not found in the current directory, {here}"));
                     return Some(Task::none());
                 }
                 Some(self.import_model(i, rest, ModelFormat::Sat))
@@ -82,40 +83,48 @@ impl OpenCADStudio {
                 .push_error(&format!("File {path} does not exist."));
             return Task::none();
         };
-        // The translated formats report the job as they run.
         let translated = format != ModelFormat::Sat;
-        if translated {
-            self.command_line
-                .push_output("Import job in progress.  Press Esc key to cancel.");
-        }
         let drawing_mm = crate::app::properties::insunits_to_mm(
             self.tabs[i].scene.document.header.insertion_units,
         );
         let Some(imported) = model_import::read(format, &bytes, drawing_mm) else {
-            let shown = path.replace('/', "\\");
-            match format {
-                ModelFormat::Sat => {
-                    self.command_line.push_error("Modeling Operation Error:");
-                    self.command_line.push_error("Error Code Number is 58000");
-                    self.command_line
-                        .push_error(&format!("Unable to read the ACIS file {shown}."));
-                }
-                _ => self
-                    .command_line
-                    .push_error(&format!("Import failed: {shown} has no model the importer reads.")),
-            }
+            self.command_line
+                .push_error(&format!("Import failed: {path} has no model the importer reads."));
             return Task::none();
         };
         self.push_undo_snapshot(i, "IMPORT");
         let scene = &mut self.tabs[i].scene;
-        // A block the drawing already has keeps its definition and is
-        // inserted as it is.
+        // Each block goes under a name the drawing does not use yet (a
+        // product named like a block already there gets a new name, not the
+        // old definition), and the inserts are pointed at the names the
+        // blocks got. An insert of a block that could not be made is left
+        // out.
+        fn retarget(entities: Vec<codec::EntityType>, defined: &HashMap<String, String>) -> Vec<codec::EntityType> {
+            entities
+                .into_iter()
+                .filter_map(|entity| match entity {
+                    codec::EntityType::Insert(mut insert) => {
+                        insert.block_name = defined.get(&insert.block_name)?.clone();
+                        Some(codec::EntityType::Insert(insert))
+                    }
+                    other => Some(other),
+                })
+                .collect()
+        }
+        let mut taken: Vec<String> = scene.document.block_records.iter().map(|b| b.name.clone()).collect();
+        let mut defined: HashMap<String, String> = HashMap::new();
         for (name, entities) in imported.blocks {
-            if scene.document.block_records.get(&name).is_none() {
-                let _ = scene.define_block_from_owned_entities(entities, &name, glam::DVec3::ZERO);
+            let unique = crate::modules::insert::xattach::unique_block_name(&name, &taken);
+            let entities = retarget(entities, &defined);
+            match scene.define_block_from_owned_entities(entities, &unique, glam::DVec3::ZERO) {
+                Ok(_) => {
+                    taken.push(unique.clone());
+                    defined.insert(name, unique);
+                }
+                Err(error) => self.command_line.push_error(&format!("{name}: {error}")),
             }
         }
-        for entity in imported.entities {
+        for entity in retarget(imported.entities, &defined) {
             scene.add_entity(entity);
         }
         self.tabs[i].dirty = true;
@@ -140,7 +149,7 @@ impl OpenCADStudio {
             crate::io::wmf_import::read(&bytes, [0.5 * size[0], 0.5 * size[1]])
         else {
             self.command_line
-                .push_error(&format!("{} is not a valid Windows metafile.", path.replace('/', "\\")));
+                .push_error(&format!("{path} is not a valid Windows metafile."));
             return Task::none();
         };
         self.push_undo_snapshot(i, if prompt { "WMFIN" } else { "IMPORT" });
@@ -152,7 +161,8 @@ impl OpenCADStudio {
         let mut styles: Vec<String> = Vec::new();
         for (k, face) in picture.fonts.iter().enumerate() {
             let n = picture.fonts[..k].iter().filter(|f| f.name == face.name).count();
-            let name = format!("WMF-{}{n}", face.name);
+            // The face name comes from the file.
+            let name = crate::scene::sanitized_table_name(&format!("WMF-{}{n}", face.name), "WMF");
             if !scene.document.text_styles.contains(&name) {
                 let mut style = codec::tables::TextStyle::new(name.as_str());
                 style.handle = scene.document.allocate_handle();
@@ -210,7 +220,7 @@ impl OpenCADStudio {
     pub(in crate::app) fn open_tds_import_dialog(&mut self, path: &str) -> Result<(), String> {
         let scene = crate::scene::model::pdf_raster::source_bytes(path)
             .and_then(|bytes| crate::io::tds_import::read(&bytes))
-            .ok_or_else(|| format!("{} is not a valid 3D Studio file.", path.replace('/', "\\")))?;
+            .ok_or_else(|| format!("{path} is not a valid 3D Studio file."))?;
         let mut objects: Vec<(String, &'static str, usize)> = scene
             .objects
             .iter()
@@ -322,10 +332,8 @@ impl OpenCADStudio {
         let Some(scene) = crate::scene::model::pdf_raster::source_bytes(&request.path)
             .and_then(|bytes| crate::io::tds_import::read(&bytes))
         else {
-            self.command_line.push_error(&format!(
-                "{} is not a valid 3D Studio file.",
-                request.path.replace('/', "\\")
-            ));
+            self.command_line
+                .push_error(&format!("{} is not a valid 3D Studio file.", request.path));
             return;
         };
         let import = crate::io::tds_import::convert(
@@ -335,10 +343,18 @@ impl OpenCADStudio {
                 layers: request.layers,
                 multi: request.multi.clone(),
                 compact: request.compact,
+                single_layer: self.tabs[i].scene.document.header.current_layer_name.clone(),
             },
         );
+        // Named views take the current view's proportions.
+        let (_, size, _) = self.tabs[i].scene.view_window();
+        let aspect = if size[0] > 0.0 && size[1] > 0.0 { size[0] / size[1] } else { 1.0 };
         self.push_undo_snapshot(i, "IMPORT");
         let document = &mut self.tabs[i].scene.document;
+        // Materials live in the material dictionary; a drawing without one
+        // imports the meshes without materials.
+        let dictionary = document.header.acad_material_dict_handle;
+        let has_dictionary = matches!(document.objects.get(&dictionary), Some(ObjectType::Dictionary(_)));
         // Materials by name: the drawing's own when it has one, else one
         // made from the file's colours.
         let mut materials: std::collections::HashMap<String, codec::Handle> = Default::default();
@@ -349,20 +365,18 @@ impl OpenCADStudio {
             });
             let handle = match existing {
                 Some(h) => h,
+                None if !has_dictionary => continue,
                 None => {
                     let source = scene.materials.iter().find(|m| m.name == *name);
                     let mut material = codec::objects::Material::new();
                     material.handle = document.allocate_handle();
-                    material.owner = document.header.acad_material_dict_handle;
+                    material.owner = dictionary;
                     material.name = name.clone();
                     let color = |rgb: Option<[u8; 3]>| match rgb {
                         Some([r, g, b]) => codec::objects::MaterialColor {
                             flag: 1,
                             factor: 1.0,
-                            rgb: Some(
-                                ((0xC2u32 << 24) | (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b))
-                                    as i32,
-                            ),
+                            rgb: Some(crate::scene::convert::acis_import::packed_true_colour(r, g, b)),
                         },
                         None => codec::objects::MaterialColor::default(),
                     };
@@ -370,7 +384,6 @@ impl OpenCADStudio {
                     material.diffuse_color = color(source.and_then(|m| m.diffuse));
                     material.specular_color = color(source.and_then(|m| m.specular));
                     let handle = material.handle;
-                    let dictionary = document.header.acad_material_dict_handle;
                     if let Some(ObjectType::Dictionary(dictionary)) = document.objects.get_mut(&dictionary) {
                         dictionary.add_entry(name.clone(), handle);
                     }
@@ -393,8 +406,9 @@ impl OpenCADStudio {
             named.direction =
                 codec::types::Vector3::new(view.direction[0], view.direction[1], view.direction[2]);
             named.height = view.height;
-            named.width = view.height;
+            named.width = view.height * aspect;
             named.lens_length = view.lens;
+            named.perspective = true;
             named.handle = match document.views.get(&view.name) {
                 Some(old) => old.handle,
                 None => document.allocate_handle(),
