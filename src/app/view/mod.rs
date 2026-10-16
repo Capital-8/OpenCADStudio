@@ -968,6 +968,30 @@ bg={bg_ms:.1}ms n={view_count}"
                     let (base, tip) = ost_project_ray(origin, dir, rot, eye, rect)?;
                     Some(iced::Point::new(tip.x - base.x, tip.y - base.y))
                 });
+            // Temporary visual diagnostic for the Extension-origin drift.
+            // Enable explicitly with OCS_EXT_DIAG=1; normal rendering is unchanged.
+            #[cfg(not(target_arch = "wasm32"))]
+            if std::env::var_os("OCS_EXT_DIAG").is_some() {
+                static SAMPLES: std::sync::atomic::AtomicUsize =
+                    std::sync::atomic::AtomicUsize::new(0);
+                if let Some(hit) = tab
+                    .snap_result
+                    .filter(|hit| hit.snap_type == crate::snap::SnapType::Extension)
+                {
+                    if SAMPLES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 12 == 0 {
+                        eprintln!(
+                            "[EXTDIAG] screen={:?} engine_base={:?} drawn_base={:?}                              origin_world={:?} snap_world={:?} dir_world={:?}                              captured_points={:?}",
+                            hit.screen,
+                            hit.extension_base,
+                            snap_ext_base,
+                            hit.extension_origin,
+                            hit.world,
+                            hit.extension_dir,
+                            self.snapper.tracking_points
+                        );
+                    }
+                }
+            }
             let ost_points: Vec<crate::ui::overlay::OstTrackPoint> =
                 if let Some((view_rot, eye, ob)) = otrack_proj {
                     self.snapper
