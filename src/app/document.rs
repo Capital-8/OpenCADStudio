@@ -173,6 +173,12 @@ pub(super) struct DocumentTab {
     pub(super) selected_grips: Vec<GripDef>,
     /// Entity handle for each entry in `selected_grips`.
     pub(super) selected_grip_handles: Vec<Handle>,
+    /// Plugin-declared custom grip points for this tab (API v11): session
+    /// display state only — never persisted, never host-interpreted.
+    pub(super) plugin_grips: crate::plugin::grip_points::PluginGripStore,
+    /// The active custom-grip drag, if any (at most one; rides the same
+    /// drag/active-command lifecycle as built-in grip drags).
+    pub(super) active_plugin_grip: Option<crate::plugin::grip_points::ActivePluginGrip>,
     /// Shift-selected grips, keyed by entity and object-local grip id.
     pub(super) hot_grips: rustc_hash::FxHashSet<(Handle, usize)>,
     /// Grip-mode "Copy" toggle (context menu): each grip placement leaves the
@@ -653,6 +659,8 @@ impl DocumentTab {
             active_grip: None,
             selected_grips: vec![],
             selected_grip_handles: vec![],
+            plugin_grips: Default::default(),
+            active_plugin_grip: None,
             hot_grips: rustc_hash::FxHashSet::default(),
             grip_copy: false,
             grip_base_pending: false,
