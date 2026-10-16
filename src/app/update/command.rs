@@ -2913,9 +2913,12 @@ impl OpenCADStudio {
                             &value,
                         );
                         if applied && field == "dim_text_inside" {
-                            if let Some(codec::EntityType::Dimension(
-                                codec::entities::Dimension::LargeRadial(dimension),
-                            )) = app.tabs[i].scene.document.get_entity_mut(handle)
+                            let radial = app.tabs[i]
+                                .scene
+                                .document
+                                .get_entity_mut(handle)
+                                .and_then(crate::entities::dimension::as_dimension_mut);
+                            if let Some(codec::entities::Dimension::LargeRadial(dimension)) = radial
                             {
                                 dimension.base.text_user_positioned = false;
                             }
@@ -4182,9 +4185,13 @@ impl OpenCADStudio {
                                         &val,
                                     );
                                     if applied && field == "dim_text_inside" {
-                                        if let Some(codec::EntityType::Dimension(
-                                            codec::entities::Dimension::LargeRadial(dimension),
-                                        )) = self.tabs[i].scene.document.get_entity_mut(handle)
+                                        if let Some(codec::entities::Dimension::LargeRadial(
+                                            dimension,
+                                        )) = self.tabs[i]
+                                            .scene
+                                            .document
+                                            .get_entity_mut(handle)
+                                            .and_then(crate::entities::dimension::as_dimension_mut)
                                         {
                                             dimension.base.text_user_positioned = false;
                                         }

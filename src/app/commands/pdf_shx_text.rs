@@ -294,7 +294,7 @@ impl OpenCADStudio {
             } else {
                 line.layer
             };
-            scene.add_entity(codec::EntityType::MText(mtext));
+            scene.add_entity(codec::EntityType::MText(Box::new(mtext)));
             erase.extend(line.handles);
         }
         erase.sort();

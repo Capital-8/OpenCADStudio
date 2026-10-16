@@ -1405,7 +1405,7 @@ mod paste_entities_kernel_tests {
     fn remaps_leader_annotation_link_to_pasted_handles() {
         let mut seed = codec::CadDocument::new();
         let note = seed
-            .add_entity(codec::EntityType::MText(codec::entities::MText::new()))
+            .add_entity(codec::EntityType::MText(Box::new(codec::entities::MText::new())))
             .unwrap();
         let mut leader = codec::entities::Leader::default();
         leader.annotation_handle = note;

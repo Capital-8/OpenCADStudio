@@ -463,7 +463,7 @@ impl OpenCADStudio {
                             false
                         }
                     };
-                    match dim {
+                    match &mut **dim {
                         Dimension::Linear(d) => {
                             stretched |= mv(&mut d.first_point);
                             stretched |= mv(&mut d.second_point);

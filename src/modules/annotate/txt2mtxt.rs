@@ -222,7 +222,7 @@ fn separate(p: &Piece, doc: &CadDocument) -> Vec<EntityType> {
             let at = p.point(p.rect[0] + x * (p.rect[1] - p.rect[0]), p.rect[3]);
             let mut m = mtext_from(p.entity, p.content.clone(), at, p.height, p.rotation);
             m.attachment_point = attachment;
-            vec![EntityType::MText(m)]
+            vec![EntityType::MText(Box::new(m))]
         }
         EntityType::MText(m) => {
             // The drawn words, grouped into lines by their baseline.
@@ -261,7 +261,8 @@ fn separate(p: &Piece, doc: &CadDocument) -> Vec<EntityType> {
                         .collect::<Vec<_>>()
                         .join(" ");
                     let at = p.point(line[0].0 - origin_along, p.rect[3] - k as f64 * step);
-                    EntityType::MText(mtext_from(p.entity, value, at, line[0].1.height, m.rotation))
+                    let height = line[0].1.height;
+                    EntityType::MText(Box::new(mtext_from(p.entity, value, at, height, m.rotation)))
                 })
                 .collect()
         }
@@ -352,7 +353,7 @@ pub fn plan(
     }
     Some(Txt2MtxtPlan {
         erase: pieces.iter().map(|p| p.handle).collect(),
-        add: vec![EntityType::MText(m)],
+        add: vec![EntityType::MText(Box::new(m))],
     })
 }
 

@@ -1482,7 +1482,7 @@ pub fn convert(
                 let layer = naming.layer(pdf_layer, Kind::Text);
                 mtext.common.color = color_on(&layer, color_of(text.color));
                 mtext.common.layer = layer;
-                result.entities.push(EntityType::MText(mtext));
+                result.entities.push(EntityType::MText(Box::new(mtext)));
             }
         }
 
@@ -1712,7 +1712,7 @@ fn fill_entities(
         return Vec::new();
     }
     hatch.elevation = z;
-    vec![EntityType::Hatch(hatch)]
+    vec![EntityType::Hatch(Box::new(hatch))]
 }
 
 inventory::submit!(crate::command::CommandRegistration {

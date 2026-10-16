@@ -4956,7 +4956,7 @@ impl Scene {
         fit_sheet_viewport(&mut vp, min_lim, max_lim);
         if let Ok(handle) = self
             .document
-            .add_entity_to_layout(EntityType::Viewport(vp), layout_name)
+            .add_entity_to_layout(EntityType::Viewport(Box::new(vp)), layout_name)
         {
             if let Some(ObjectType::Layout(l)) = self.document.objects.get_mut(&layout_handle) {
                 l.viewports.retain(|candidate| *candidate != handle);
@@ -5027,7 +5027,7 @@ impl Scene {
         viewport.status = codec::entities::ViewportStatusFlags::default_on();
         if let Ok(handle) = self
             .document
-            .add_entity_to_layout(EntityType::Viewport(viewport), layout_name)
+            .add_entity_to_layout(EntityType::Viewport(Box::new(viewport)), layout_name)
         {
             // The reference zooms the new viewport to the model's extents
             // with a margin of under one percent.
@@ -13802,7 +13802,7 @@ mod journal_tests {
         let mut annotative = MText::new();
         annotative.value = "annotative".to_string();
         annotative.is_annotative = true;
-        let annotative = s.add_entity(EntityType::MText(annotative));
+        let annotative = s.add_entity(EntityType::MText(Box::new(annotative)));
 
         let before_points = s.geometry_epoch;
         s.invalidate_point_dependencies();
@@ -14117,7 +14117,7 @@ mod journal_tests {
         scene.document.layers.add_or_replace(Layer::new("Shadows"));
         let mut hatch = Hatch::new();
         hatch.common.layer = "Shadows".to_string();
-        let handle = scene.add_entity(EntityType::Hatch(hatch));
+        let handle = scene.add_entity(EntityType::Hatch(Box::new(hatch)));
         let model = scene.model_space_block_handle();
         assert_eq!(
             scene
@@ -15447,7 +15447,7 @@ mod layout_cache_tests {
         vp.height = 100.0;
         let handle = scene
             .document
-            .add_entity_to_layout(codec::EntityType::Viewport(vp), "P1")
+            .add_entity_to_layout(codec::EntityType::Viewport(Box::new(vp)), "P1")
             .unwrap();
         assert!(scene.set_viewport_scale_named_for(handle, "1:50").is_some());
         assert!(scene.active_viewport.is_none());

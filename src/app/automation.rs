@@ -2129,7 +2129,7 @@ mod tests {
         dimension.definition_point = Vector3::new(0.0, 5.0, 0.0);
         dimension.base.text_middle_point = Vector3::new(5.0, 5.0, 0.0);
         document
-            .add_entity(EntityType::Dimension(Dimension::Linear(dimension)))
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Linear(dimension))))
             .unwrap();
         crate::modules::draw::modify::explode::bake_dimension_blocks(&mut document);
 
@@ -2152,7 +2152,7 @@ mod tests {
         dimension.base.text_middle_point = Vector3::new(5.0, 5.0, 0.0);
         app.tabs[app.active_tab]
             .scene
-            .add_entity(EntityType::Dimension(Dimension::Linear(dimension)));
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Linear(dimension))));
         let path = std::env::temp_dir().join(format!(
             "ocs_verified_dimension_{}_{}.dwg",
             std::process::id(),
@@ -2190,7 +2190,7 @@ mod tests {
         let i = app.active_tab;
         app.tabs[i]
             .scene
-            .add_entity(EntityType::Dimension(Dimension::Linear(dimension)));
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Linear(dimension))));
         let path = std::env::temp_dir().join(format!(
             "ocs_verified_dimension_follow_up_{}_{}.dwg",
             std::process::id(),
@@ -2240,7 +2240,7 @@ mod tests {
         app.tabs[i]
             .scene
             .document
-            .add_entity(EntityType::Dimension(Dimension::Linear(d)))
+            .add_entity(EntityType::Dimension(Box::new(Dimension::Linear(d))))
             .unwrap();
         let path = std::env::temp_dir().join(format!(
             "ocs_verified_dim_{}_{}.dwg",
@@ -2330,7 +2330,7 @@ mod tests {
         viewport.width = 100.0;
         viewport.height = 50.0;
         viewport.turn_on();
-        scene.add_entity(codec::EntityType::Viewport(viewport));
+        scene.add_entity(codec::EntityType::Viewport(Box::new(viewport)));
         for entity in scene.document.entities_mut() {
             if let codec::EntityType::Viewport(viewport) = entity {
                 viewport.status.grid_on = true;
@@ -2774,7 +2774,7 @@ mod tests {
             codec::MText::with_value("\\A1;10.5000", codec::types::Vector3::new(10.0, 20.0, 0.0));
         app.tabs[i]
             .scene
-            .add_entity(codec::EntityType::MText(mtext));
+            .add_entity(codec::EntityType::MText(Box::new(mtext)));
 
         let q = app.automation_op(
             r#"{"op":"query","type":"MTEXT","detail":"full","fields":["value","text","height","bounds"]}"#,
@@ -3642,7 +3642,7 @@ mod tests {
         let mut dst_mtext = MText::new();
         dst_mtext.value = "DSTM".into();
         dst_mtext.height = 2.0;
-        let dst_mtext_h = app.tabs[i].scene.add_entity(EntityType::MText(dst_mtext));
+        let dst_mtext_h = app.tabs[i].scene.add_entity(EntityType::MText(Box::new(dst_mtext)));
 
         // Drive the interactive command exactly as the viewport does:
         // phase 1 source pick, phase 2 destination selection.

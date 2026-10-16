@@ -3206,7 +3206,7 @@ impl Scene {
         if let Some(origin) = model.pattern_origin {
             dxf.record_pattern_origin(Vector2::new(origin[0], origin[1]));
         }
-        let mut entity = EntityType::Hatch(dxf);
+        let mut entity = EntityType::Hatch(Box::new(dxf));
 
         if let Some(layer) = layer {
             entity.as_entity_mut().set_layer(layer.to_string());

@@ -2969,7 +2969,7 @@ mod dimension_arrow_save_tests {
         dimension.definition_point = Vector3::new(0.0, 20.0, 0.0);
         dimension.base.definition_point = dimension.definition_point;
         dimension.base.text_middle_point = Vector3::new(50.0, 20.0, 0.0);
-        doc.add_entity(EntityType::Dimension(Dimension::Linear(dimension)))
+        doc.add_entity(EntityType::Dimension(Box::new(Dimension::Linear(dimension))))
             .unwrap();
         doc
     }
@@ -3545,11 +3545,12 @@ mod prepare_save_tests {
         dim.base.definition_point = Vector3::ZERO;
         dim.base.common.handle = doc.allocate_handle();
         let handle = dim.base.common.handle;
-        doc.add_entity(EntityType::Dimension(Dimension::Linear(dim)))
+        doc.add_entity(EntityType::Dimension(Box::new(Dimension::Linear(dim))))
             .unwrap();
 
         let prepared = prepare_document_for_save(doc.clone(), doc.version);
-        let EntityType::Dimension(Dimension::Linear(linear)) = prepared.get_entity(handle).unwrap()
+        let Some(Dimension::Linear(linear)) =
+            crate::entities::dimension::as_dimension(prepared.get_entity(handle).unwrap())
         else {
             panic!("dimension missing from prepared clone");
         };
@@ -3565,7 +3566,9 @@ mod prepare_save_tests {
         assert_eq!(linear.base.definition_point, linear.definition_point);
 
         // The live document is untouched: no block name, stale group-10.
-        let EntityType::Dimension(Dimension::Linear(live)) = doc.get_entity(handle).unwrap() else {
+        let Some(Dimension::Linear(live)) =
+            crate::entities::dimension::as_dimension(doc.get_entity(handle).unwrap())
+        else {
             panic!("dimension missing from live document");
         };
         assert!(live.base.block_name.is_empty());
@@ -3582,7 +3585,7 @@ mod prepare_save_tests {
         let mut dim =
             DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0));
         dim.base.common.handle = doc.allocate_handle();
-        doc.add_entity(EntityType::Dimension(Dimension::Linear(dim)))
+        doc.add_entity(EntityType::Dimension(Box::new(Dimension::Linear(dim))))
             .unwrap();
         for ext in ["dwg", "dxf"] {
             let inline = save_to_bytes(&doc, ext, codec::DxfVersion::AC1032).expect("inline");

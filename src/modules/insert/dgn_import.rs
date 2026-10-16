@@ -262,7 +262,7 @@ fn mtext(lines: &[DgnGeom], style: String, node: bool) -> Option<EntityType> {
     m.rotation = *rotation;
     m.rectangle_width = 0.0;
     m.style = style;
-    Some(EntityType::MText(m))
+    Some(EntityType::MText(Box::new(m)))
 }
 
 /// The object(s) one element converts to.
