@@ -686,6 +686,11 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
     // An open B-spline curve: order, pole count, closure and its header.
     let mut spline: Option<(usize, usize, bool, DgnElement)> = None;
     for (index, e) in run.iter().enumerate() {
+        // An element that is no component ends the complex elements still
+        // open.
+        if !is_component(e) {
+            collect.close();
+        }
         if e.len() < 104 || styles.hidden.contains(&u32_at(e, 12).unwrap_or(0)) {
             continue;
         }
@@ -1007,12 +1012,17 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     continue;
                 };
                 let flags = u16::from_le_bytes([lo, hi]);
-                spline = Some((
+                // A curve before it that never got its poles still takes
+                // its place in an open cell.
+                let unread = spline.replace((
                     ((flags & 0x0f) + 2) as usize,
                     u32_at(e, 112).unwrap_or(0) as usize,
                     flags & 0x0180 != 0,
                     element(DgnGeom::Chain(Vec::new())),
                 ));
+                if unread.is_some() {
+                    collect.skip();
+                }
             }
             21 => {
                 let n = u32_at(e, 104).unwrap_or(0) as usize;
@@ -1042,6 +1052,8 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                             );
                         }
                         collect.push(DgnElement { geom, ..header });
+                    } else {
+                        collect.skip();
                     }
                 }
             }

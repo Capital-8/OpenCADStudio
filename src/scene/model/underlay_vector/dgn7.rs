@@ -254,6 +254,11 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
         if e[1] & 0x80 != 0 || e.len() < 36 {
             continue;
         }
+        // An element that is no component ends the complex elements still
+        // open.
+        if e[0] & 0x80 == 0 {
+            collect.close();
+        }
         let symbology = uint16(e, 34).unwrap_or(0);
         let color = colors[(symbology >> 8) as usize];
         let element = |geom: DgnGeom| DgnElement {

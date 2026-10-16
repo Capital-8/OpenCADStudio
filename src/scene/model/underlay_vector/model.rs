@@ -728,26 +728,33 @@ impl DgnGeom {
 }
 
 /// Collects elements in file order, gathering the components of a complex
-/// chain, shape or text node into their header's element.
+/// chain, shape, text node or cell into their header's element.
 #[derive(Default)]
 pub struct DgnCollector {
     pub elements: Vec<DgnElement>,
-    /// The open complex element and how many components it still takes.
-    open: Option<(usize, DgnElement)>,
+    /// The open complex elements, innermost last, each with how many
+    /// components it still takes. A complex element inside another is one
+    /// component of it once it is complete.
+    open: Vec<(usize, DgnElement)>,
 }
 
 impl DgnCollector {
-    /// A complex chain or shape (or a text node) header with `count`
+    /// A complex chain or shape, a text node or a cell header with `count`
     /// components.
     pub fn open(&mut self, count: usize, header: DgnElement) {
-        self.close();
         if count > 0 {
-            self.open = Some((count, header));
+            self.open.push((count, header));
+        } else {
+            self.skip();
         }
     }
 
-    pub fn push(&mut self, element: DgnElement) {
-        if let Some((left, header)) = self.open.as_mut() {
+    pub fn push(&mut self, mut element: DgnElement) {
+        loop {
+            let Some((left, header)) = self.open.last_mut() else {
+                self.elements.push(element);
+                return;
+            };
             match &mut header.geom {
                 DgnGeom::Chain(parts) | DgnGeom::TextNode { lines: parts, .. } => {
                     parts.push(element.geom)
@@ -756,18 +763,34 @@ impl DgnCollector {
                 _ => {}
             }
             *left -= 1;
-            if *left == 0 {
-                self.close();
+            if *left > 0 {
+                return;
             }
-            return;
+            let Some((_, done)) = self.open.pop() else {
+                return;
+            };
+            element = done;
         }
-        self.elements.push(element);
     }
 
-    /// Ends a complex element cut short with the components it has.
+    /// A component that converts to nothing (a curve that could not be
+    /// read) still takes its place in the open complex element.
+    pub fn skip(&mut self) {
+        if let Some((left, _)) = self.open.last_mut() {
+            *left -= 1;
+            if *left == 0 {
+                if let Some((_, done)) = self.open.pop() {
+                    self.push(done);
+                }
+            }
+        }
+    }
+
+    /// Ends the complex elements cut short with the components they have
+    /// (an element that is no component ends them all).
     pub fn close(&mut self) {
-        if let Some((_, header)) = self.open.take() {
-            self.elements.push(header);
+        while let Some((_, header)) = self.open.pop() {
+            self.push(header);
         }
     }
 }
