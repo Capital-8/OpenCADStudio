@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = Νέο σχέδιο
+    .new-from-template = Από πρότυπο…
     .open-file = Άνοιγμα αρχείου…
     .donate = Δωρεά
     .send-feedback = Αποστολή σχολίων

@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = Nový výkres
+    .new-from-template = Ze šablony…
     .open-file = Otevřít soubor…
     .donate = Přispět
     .send-feedback = Odeslat zpětnou vazbu

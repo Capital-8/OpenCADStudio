@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = 新しい図面
+    .new-from-template = テンプレートから…
     .open-file = ファイルを開く…
     .donate = 寄付
     .send-feedback = フィードバックを送信

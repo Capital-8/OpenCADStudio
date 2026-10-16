@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = ຮູບແຕ້ມໃໝ່
+    .new-from-template = ຈາກແມ່ແບບ…
     .open-file = ເປີດໄຟລ໌…
     .donate = ບໍລິຈາກ
     .send-feedback = ສົ່ງຄຳຕິຊົມ

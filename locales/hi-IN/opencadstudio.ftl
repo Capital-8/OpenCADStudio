@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = नई ड्रॉइंग
+    .new-from-template = टेम्पलेट से…
     .open-file = फ़ाइल खोलें…
     .donate = दान करें
     .send-feedback = प्रतिक्रिया भेजें

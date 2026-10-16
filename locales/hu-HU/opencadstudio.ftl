@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = Új rajz
+    .new-from-template = Sablonból…
     .open-file = Fájl megnyitása…
     .donate = Adományozás
     .send-feedback = Visszajelzés küldése

@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = Neue Zeichnung
+    .new-from-template = Aus Vorlage…
     .open-file = Datei öffnen…
     .donate = Spenden
     .send-feedback = Rückmeldung senden

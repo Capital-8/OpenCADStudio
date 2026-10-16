@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = 새 도면
+    .new-from-template = 템플릿에서…
     .open-file = 파일 열기…
     .donate = 기부
     .send-feedback = 의견 보내기

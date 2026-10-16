@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = Yeni Çizim
+    .new-from-template = Şablondan…
     .open-file = Dosya Aç…
     .donate = Bağış Yap
     .send-feedback = Geri Bildirim Gönder

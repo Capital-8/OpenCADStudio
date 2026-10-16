@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = Nuovo disegno
+    .new-from-template = Da modello…
     .open-file = Apri file…
     .donate = Dona
     .send-feedback = Invia feedback

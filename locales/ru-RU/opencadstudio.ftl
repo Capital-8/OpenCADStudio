@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = Новый чертёж
+    .new-from-template = Из шаблона…
     .open-file = Открыть файл…
     .donate = Поддержать
     .send-feedback = Отправить отзыв

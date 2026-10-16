@@ -3620,6 +3620,15 @@ fn start_page_content<'a>(
 
     let primary_row = WrapFlow::new(vec![
         outline_btn(crate::tr!("start", "new-drawing"), Message::TabNew).into(),
+        // NEW asks which template to start from (.dwt, .dwg or .dxf).
+        outline_btn(
+            crate::tr!("start", "new-from-template"),
+            Message::RibbonToolClick {
+                tool_id: "NEW".to_string(),
+                event: crate::modules::ModuleEvent::Command("NEW".to_string()),
+            },
+        )
+        .into(),
         outline_btn(crate::tr!("start", "open-file"), Message::OpenFile).into(),
         donate_btn.into(),
     ])

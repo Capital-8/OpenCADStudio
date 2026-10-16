@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = 新建图形
+    .new-from-template = 从模板…
     .open-file = 打开文件…
     .donate = 捐赠
     .send-feedback = 发送反馈

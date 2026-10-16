@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = Uusi piirustus
+    .new-from-template = Mallipohjasta…
     .open-file = Avaa tiedosto…
     .donate = Lahjoita
     .send-feedback = Lähetä palautetta

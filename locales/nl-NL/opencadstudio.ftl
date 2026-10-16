@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = Nieuwe tekening
+    .new-from-template = Vanuit sjabloon…
     .open-file = Bestand openen…
     .donate = Doneren
     .send-feedback = Feedback verzenden

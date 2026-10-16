@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = رسم جديد
+    .new-from-template = من قالب…
     .open-file = فتح ملف…
     .donate = تبرع
     .send-feedback = إرسال ملاحظات

@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = Nouveau dessin
+    .new-from-template = À partir d'un gabarit…
     .open-file = Ouvrir un fichier…
     .donate = Faire un don
     .send-feedback = Envoyer des commentaires

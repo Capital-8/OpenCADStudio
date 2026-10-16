@@ -77,6 +77,7 @@ command-line =
 
 start =
     .new-drawing = Nowy rysunek
+    .new-from-template = Z szablonu…
     .open-file = Otwórz plik…
     .donate = Wpłać darowiznę
     .send-feedback = Wyślij opinię
