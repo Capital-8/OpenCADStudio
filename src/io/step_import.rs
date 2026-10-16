@@ -61,6 +61,8 @@ type Instance = Vec<(String, Vec<P>)>;
 struct Cursor<'a> {
     s: &'a [u8],
     i: usize,
+    /// How many parameter lists deep the cursor is.
+    depth: usize,
 }
 
 impl Cursor<'_> {
@@ -69,7 +71,7 @@ impl Cursor<'_> {
             while self.s.get(self.i).is_some_and(|c| c.is_ascii_whitespace()) {
                 self.i += 1;
             }
-            if self.s[self.i..].starts_with(b"/*") {
+            if self.s.get(self.i..).is_some_and(|rest| rest.starts_with(b"/*")) {
                 match self.s[self.i + 2..].windows(2).position(|w| w == b"*/") {
                     Some(end) => self.i += end + 4,
                     None => self.i = self.s.len(),
@@ -152,7 +154,18 @@ impl Cursor<'_> {
             }
         })
     }
+    /// A parameter list; lists nested past any real file's depth are
+    /// refused rather than read on until the stack runs out.
     fn params(&mut self) -> Option<Vec<P>> {
+        if self.depth >= 64 {
+            return None;
+        }
+        self.depth += 1;
+        let items = self.list();
+        self.depth -= 1;
+        items
+    }
+    fn list(&mut self) -> Option<Vec<P>> {
         self.eat(b'(')?;
         let mut items = Vec::new();
         if self.eat(b')').is_some() {
@@ -302,11 +315,12 @@ impl Doc {
         Plane::orthonormal(origin, x, z)
     }
 
-    /// Knots expanded by their multiplicities.
-    fn knots(mults: &P, knots: &P) -> Option<Vec<f64>> {
+    /// Knots expanded by their multiplicities. No knot repeats more than
+    /// `degree + 1` times, so a bogus multiplicity cannot blow up the list.
+    fn knots(mults: &P, knots: &P, degree: usize) -> Option<Vec<f64>> {
         let mut out = Vec::new();
         for (m, k) in mults.list().iter().zip(knots.list()) {
-            for _ in 0..m.num()? as usize {
+            for _ in 0..(m.num()? as usize).min(degree.saturating_add(1)) {
                 out.push(k.num()?);
             }
         }
@@ -314,7 +328,20 @@ impl Doc {
     }
 
     fn curve(&self, p: &P) -> Option<Curve3> {
-        let id = p.reference()?;
+        let mut id = p.reference()?;
+        // Curves that wrap a basis curve are followed to it; the hop limit
+        // stops curves that wrap each other in a loop.
+        let mut hops = 0;
+        while matches!(
+            self.kind(id),
+            "SURFACE_CURVE" | "SEAM_CURVE" | "INTERSECTION_CURVE" | "TRIMMED_CURVE"
+        ) {
+            hops += 1;
+            if hops > 32 {
+                return None;
+            }
+            id = self.simple(id)?.1.get(1)?.reference()?;
+        }
         let kind = self.kind(id);
         if kind == "B_SPLINE_CURVE_WITH_KNOTS" || self.part(id, "B_SPLINE_CURVE").is_some() {
             return self.spline_curve(id).map(Curve3::Nurbs);
@@ -340,9 +367,6 @@ impl Doc {
                 major_radius: params.get(2)?.num()?,
                 minor_radius: params.get(3)?.num()?,
             }),
-            "SURFACE_CURVE" | "SEAM_CURVE" | "INTERSECTION_CURVE" | "TRIMMED_CURVE" => {
-                self.curve(params.get(1)?)?
-            }
             "POLYLINE" => {
                 let points: Option<Vec<_>> =
                     params.get(1)?.list().iter().map(|q| self.point(q)).collect();
@@ -362,13 +386,13 @@ impl Doc {
                 let base = self.part(id, "B_SPLINE_CURVE")?;
                 let with = self.part(id, "B_SPLINE_CURVE_WITH_KNOTS")?;
                 let weights = self.part(id, "RATIONAL_B_SPLINE_CURVE").and_then(|w| w.first());
-                (&base[0], &base[1], &with[0], &with[1], weights)
+                (base.first()?, base.get(1)?, with.first()?, with.get(1)?, weights)
             };
         let points: Option<Vec<_>> = points.list().iter().map(|q| self.point(q)).collect();
         let weights: Option<Vec<f64>> = weights.map(|w| w.list().iter().filter_map(P::num).collect());
         let degree = degree.num()? as usize;
         let points = points?;
-        let knots = Self::knots(mults, knots)?;
+        let knots = Self::knots(mults, knots, degree)?;
         match &weights {
             Some(w) => NurbsCurve3::new_strict(degree, points.clone(), knots.clone(), w.clone())
                 .or_else(|| NurbsCurve3::new(degree, points, knots, weights.clone())),
@@ -420,7 +444,16 @@ impl Doc {
             let base = self.part(id, "B_SPLINE_SURFACE")?;
             let with = self.part(id, "B_SPLINE_SURFACE_WITH_KNOTS")?;
             let weights = self.part(id, "RATIONAL_B_SPLINE_SURFACE").and_then(|w| w.first());
-            (&base[0], &base[1], &base[2], &with[0], &with[1], &with[2], &with[3], weights)
+            (
+                base.first()?,
+                base.get(1)?,
+                base.get(2)?,
+                with.first()?,
+                with.get(1)?,
+                with.get(2)?,
+                with.get(3)?,
+                weights,
+            )
         };
         let rows: Option<Vec<Vec<[f64; 3]>>> = points
             .list()
@@ -433,14 +466,8 @@ impl Doc {
                 .map(|row| row.list().iter().filter_map(P::num).collect())
                 .collect()
         });
-        NurbsSurface3::new(
-            ud.num()? as usize,
-            vd.num()? as usize,
-            rows?,
-            Self::knots(um, uk)?,
-            Self::knots(vm, vk)?,
-            weights,
-        )
+        let (ud, vd) = (ud.num()? as usize, vd.num()? as usize);
+        NurbsSurface3::new(ud, vd, rows?, Self::knots(um, uk, ud)?, Self::knots(vm, vk, vd)?, weights)
     }
 }
 
@@ -595,8 +622,18 @@ pub struct StepModel {
 }
 
 /// A named unit's size: millimetres for a length, radians for an angle.
-fn unit_size(doc: &Doc, id: u64) -> Option<f64> {
-    if let Some(si) = doc.part(id, "SI_UNIT") {
+/// A conversion-based unit is a multiple of another unit; the hop limit
+/// stops units defined in terms of each other.
+fn unit_size(doc: &Doc, mut id: u64) -> Option<f64> {
+    let mut factor = 1.0;
+    for _ in 0..16 {
+        let Some(si) = doc.part(id, "SI_UNIT") else {
+            let conversion = doc.part(id, "CONVERSION_BASED_UNIT")?;
+            let (_, measure) = doc.simple(conversion.get(1)?.reference()?)?;
+            factor *= measure.first()?.num()?;
+            id = measure.get(1)?.reference()?;
+            continue;
+        };
         let prefix = match si.first() {
             Some(P::Enum(prefix)) => match prefix.as_str() {
                 "MILLI" => 1e-3,
@@ -608,14 +645,15 @@ fn unit_size(doc: &Doc, id: u64) -> Option<f64> {
             },
             _ => 1.0,
         };
-        return Some(match si.get(1) {
-            Some(P::Enum(name)) if name == "METRE" => prefix * 1000.0,
-            _ => prefix,
-        });
+        return Some(
+            factor
+                * match si.get(1) {
+                    Some(P::Enum(name)) if name == "METRE" => prefix * 1000.0,
+                    _ => prefix,
+                },
+        );
     }
-    let conversion = doc.part(id, "CONVERSION_BASED_UNIT")?;
-    let (_, measure) = doc.simple(conversion.get(1)?.reference()?)?;
-    Some(measure.first()?.num()? * unit_size(doc, measure.get(1)?.reference()?)?)
+    None
 }
 
 /// The bodies of one B-rep item: a solid, a solid with voids, or each shell
@@ -680,7 +718,7 @@ impl Doc {
 }
 
 /// `a·b`.
-fn compose(a: &Placement, b: &Placement) -> Placement {
+pub(super) fn compose(a: &Placement, b: &Placement) -> Placement {
     let mut out = [[0.0; 4]; 3];
     for r in 0..3 {
         for c in 0..4 {
@@ -711,6 +749,7 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
     let mut cursor = Cursor {
         s: &text.as_bytes()[data..],
         i: 0,
+        depth: 0,
     };
     let mut instances = HashMap::new();
     while cursor.peek() == Some(b'#') {
@@ -723,7 +762,8 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
                 while cursor.s.get(cursor.i).is_some_and(|c| *c != b';') {
                     cursor.i += 1;
                 }
-                cursor.i += 1;
+                // Past the `;`, or at the end of a truncated file.
+                cursor.i = (cursor.i + 1).min(cursor.s.len());
             }
         }
     }

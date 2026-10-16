@@ -209,8 +209,8 @@ fn radial_angle(bounds: [f64; 4], x: f64, y: f64) -> Option<f64> {
     Some(if degrees == 0.0 { 360.0 } else { degrees })
 }
 
-/// An arc as the reference reader plays it: points round the ellipse's
-/// whole-unit centre and radii at whole multiples of 1/99 turn, rounded
+/// An arc's points: round the ellipse's whole-unit centre and radii at
+/// whole multiples of 1/99 turn, rounded
 /// down to whole units, from the start angle up to the end angle — past
 /// 360 degrees back from zero when the end comes first. A start inside the
 /// ellipse starts at zero; an end inside it runs on to a whole turn; with
@@ -305,9 +305,11 @@ pub fn read(bytes: &[u8], fit: [f64; 2]) -> Option<Picture> {
         if function == 0 || size < 3 {
             break;
         }
-        let params: Vec<u16> = (0..size - 3).filter_map(|k| word(at + 6 + 2 * k)).collect();
+        // A record claims no more words than the file has left.
+        let words = (size - 3).min((bytes.len() - (at + 6)) / 2);
+        let params: Vec<u16> = (0..words).filter_map(|k| word(at + 6 + 2 * k)).collect();
         records.push((function, params));
-        at += 2 * size;
+        at = at.saturating_add(size.saturating_mul(2));
     }
 
     // The window first: where the picture is and how big.

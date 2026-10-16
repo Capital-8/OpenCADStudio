@@ -10,6 +10,7 @@ use kernel::brep::{Circle3, Curve3, EdgeKey, Line3, Surface, VertexKey};
 use kernel::space::{NurbsCurve3, NurbsSurface3, Plane};
 
 use super::brep_build::{Builder, FaceSpec};
+use super::step_import::compose;
 
 /// One parameter: a number, or a Hollerith string.
 #[derive(Debug, Clone)]
@@ -44,7 +45,7 @@ fn parameters(text: &str, delimiter: char, terminator: char) -> Vec<P> {
         if i > start && matches!(chars.get(i), Some('H' | 'h')) {
             let count: usize = chars[start..i].iter().collect::<String>().parse().unwrap_or(0);
             let body: String = chars.iter().skip(i + 1).take(count).collect();
-            i += 1 + count;
+            i = i.saturating_add(1).saturating_add(count);
             out.push(P::Str(body));
         } else {
             i = start;
@@ -87,7 +88,13 @@ struct Doc {
 }
 
 /// A 3×4 matrix applied as `R·p + T`.
-type Matrix = [[f64; 4]; 3];
+type Matrix = super::step_import::Placement;
+
+/// A transformation matrix entity's (124) matrix.
+fn matrix_of(entity: &Entity) -> Matrix {
+    let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+    [[v(1), v(2), v(3), v(4)], [v(5), v(6), v(7), v(8)], [v(9), v(10), v(11), v(12)]]
+}
 
 impl Doc {
     fn get(&self, pointer: f64) -> Option<&Entity> {
@@ -99,7 +106,8 @@ impl Doc {
     fn color(&self, number: i64) -> codec::types::Color {
         use codec::types::Color;
         let rgb = match number {
-            1 => [0, 0, 0],
+            // Black draws as colour 7, so it shows on a dark background too.
+            1 => return Color::Index(7),
             2 => [255, 0, 0],
             3 => [0, 255, 0],
             4 => [0, 0, 255],
@@ -127,20 +135,22 @@ impl Doc {
         }
     }
 
+    /// A transformation matrix, with the matrices it chains through its own
+    /// transformation pointer applied after it. The chain is cut after a
+    /// few links, so matrices that point at each other cannot loop.
     fn matrix(&self, pointer: usize) -> Option<Matrix> {
-        let entity = self.entities.get(&pointer).filter(|e| e.kind == 124)?;
-        let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
-        let mut m = [[v(1), v(2), v(3), v(4)], [v(5), v(6), v(7), v(8)], [v(9), v(10), v(11), v(12)]];
-        // Matrices chain through their own transformation pointer.
-        if let Some(outer) = (entity.transform != 0).then(|| self.matrix(entity.transform)).flatten() {
-            let mut product = [[0.0; 4]; 3];
-            for r in 0..3 {
-                for c in 0..4 {
-                    product[r][c] = (0..3).map(|k| outer[r][k] * m[k][c]).sum::<f64>()
-                        + if c == 3 { outer[r][3] } else { 0.0 };
-                }
-            }
-            m = product;
+        let mut entity = self.entities.get(&pointer).filter(|e| e.kind == 124)?;
+        let mut m = matrix_of(entity);
+        for _ in 0..16 {
+            let Some(outer) = (entity.transform != 0)
+                .then(|| self.entities.get(&entity.transform))
+                .flatten()
+                .filter(|e| e.kind == 124)
+            else {
+                break;
+            };
+            m = compose(&matrix_of(outer), &m);
+            entity = outer;
         }
         Some(m)
     }
@@ -194,12 +204,17 @@ impl Doc {
                 })
             }
             126 => {
+                // The sizes come from the file: refuse ones its parameters
+                // cannot hold.
                 let k = v(1) as usize;
                 let degree = v(2) as usize;
-                let knots = (0..k + degree + 2).map(|n| v(7 + n)).collect();
-                let w0 = 7 + k + degree + 2;
+                let w0 = k.checked_add(degree)?.checked_add(9)?;
+                let c0 = w0.checked_add(k)?.checked_add(1)?;
+                if c0.checked_add(k.checked_add(1)?.checked_mul(3)?)? > p.len() {
+                    return None;
+                }
+                let knots = (7..w0).map(v).collect();
                 let weights = (0..=k).map(|n| v(w0 + n)).collect();
-                let c0 = w0 + k + 1;
                 let points = (0..=k)
                     .map(|n| place([v(c0 + 3 * n), v(c0 + 3 * n + 1), v(c0 + 3 * n + 2)]))
                     .collect();
@@ -211,13 +226,22 @@ impl Doc {
 
     /// A boundary curve as its pieces — each a curve and the points it runs
     /// from and to — composite curves taken apart.
+    /// Composite curves nest only a few deep, so a deeper (or circular) one
+    /// is refused.
     fn pieces(&self, pointer: f64) -> Option<Vec<(Curve3, [f64; 3], [f64; 3])>> {
+        self.pieces_at(pointer, 0)
+    }
+
+    fn pieces_at(&self, pointer: f64, depth: usize) -> Option<Vec<(Curve3, [f64; 3], [f64; 3])>> {
         let entity = self.get(pointer)?;
         if entity.kind == 102 {
+            if depth >= 8 {
+                return None;
+            }
             let count = entity.params.get(1).map_or(0.0, P::num) as usize;
             let mut out = Vec::new();
             for k in 0..count {
-                out.extend(self.pieces(entity.params.get(2 + k)?.num())?);
+                out.extend(self.pieces_at(entity.params.get(2 + k)?.num(), depth + 1)?);
             }
             return Some(out);
         }
@@ -245,8 +269,8 @@ impl Doc {
             142 => self.pieces(v(4)),
             141 => {
                 let mut out = Vec::new();
-                let mut at = 5;
-                for _ in 0..v(4) as usize {
+                let mut at: usize = 5;
+                for _ in 0..(v(4) as usize).min(entity.params.len()) {
                     let mut pieces = self.pieces(v(at))?;
                     if v(at + 1) == 2.0 {
                         pieces.reverse();
@@ -255,7 +279,7 @@ impl Doc {
                         }
                     }
                     out.extend(pieces);
-                    at += 3 + v(at + 2) as usize;
+                    at = at.saturating_add(3).saturating_add(v(at + 2) as usize);
                 }
                 Some(out)
             }
@@ -271,10 +295,16 @@ impl Doc {
         let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
         let place = self.place(entity);
         let (k1, k2, m1, m2) = (v(1) as usize, v(2) as usize, v(3) as usize, v(4) as usize);
+        // The sizes come from the file: refuse ones its parameters cannot
+        // hold.
         let s0 = 10;
-        let t0 = s0 + k1 + m1 + 2;
-        let w0 = t0 + k2 + m2 + 2;
-        let c0 = w0 + (k1 + 1) * (k2 + 1);
+        let t0 = k1.checked_add(m1)?.checked_add(s0 + 2)?;
+        let w0 = t0.checked_add(k2)?.checked_add(m2)?.checked_add(2)?;
+        let count = k1.checked_add(1)?.checked_mul(k2.checked_add(1)?)?;
+        let c0 = w0.checked_add(count)?;
+        if c0.checked_add(count.checked_mul(3)?)? > entity.params.len() {
+            return None;
+        }
         let u_knots = (s0..t0).map(v).collect();
         let v_knots = (t0..w0).map(v).collect();
         // Points run with the first index fastest.
@@ -316,7 +346,7 @@ impl Assembly<'_> {
             return Some(v);
         }
         let entity = self.doc.get(list).filter(|e| e.kind == 502)?;
-        let n = 2 + 3 * (key.1.checked_sub(1)?);
+        let n = key.1.checked_sub(1)?.checked_mul(3)?.checked_add(2)?.min(entity.params.len());
         let p = |k: usize| entity.params.get(k).map(P::num);
         let point = self.doc.place(entity)([p(n)?, p(n + 1)?, p(n + 2)?]);
         let v = self.build.vertex(point);
@@ -330,7 +360,7 @@ impl Assembly<'_> {
             return Some(e);
         }
         let entity = self.doc.get(list).filter(|e| e.kind == 504)?;
-        let n = 2 + 5 * key.1.checked_sub(1)?;
+        let n = key.1.checked_sub(1)?.checked_mul(5)?.checked_add(2)?.min(entity.params.len());
         let p = |k: usize| entity.params.get(k).map(P::num);
         let curve = self.doc.curve(p(n)?)?;
         let start = self.vertex(p(n + 1)?, p(n + 2)?)?;
@@ -417,16 +447,11 @@ impl Assembly<'_> {
     /// A trimmed (144) or bounded (143) surface as a one-face sheet.
     fn sheet(&mut self, entity: &Entity) -> Option<()> {
         let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+        // A count can be no more than the parameters there are.
+        let count = (v(3) as usize).min(entity.params.len());
         let (surface_at, outer, holes): (f64, Option<f64>, Vec<f64>) = match entity.kind {
-            144 => (
-                v(1),
-                (v(2) != 0.0).then(|| v(4)),
-                (0..v(3) as usize).map(|k| v(5 + k)).collect(),
-            ),
-            143 => {
-                let count = v(3) as usize;
-                (v(2), (count > 0).then(|| v(4)), (1..count).map(|k| v(4 + k)).collect())
-            }
+            144 => (v(1), (v(2) != 0.0).then(|| v(4)), (0..count).map(|k| v(5 + k)).collect()),
+            143 => (v(2), (count > 0).then(|| v(4)), (1..count).map(|k| v(4 + k)).collect()),
             _ => return None,
         };
         let Surface::Nurbs(nurbs) = self.doc.surface(surface_at)? else { return None };
@@ -463,7 +488,7 @@ impl Assembly<'_> {
             if kind == 0.0 {
                 ring.push((self.edge(list, index)?, agrees != 0.0));
             }
-            at += 5 + 2 * pcurves as usize;
+            at = at.saturating_add(5).saturating_add((pcurves as usize).saturating_mul(2));
         }
         Some(ring)
     }
@@ -579,9 +604,10 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
         let Some(number) = first.get(73..).and_then(|n| n.trim().parse::<usize>().ok()) else {
             continue;
         };
-        let start = field(first, 1) as usize;
-        let count = field(second, 3).max(1) as usize;
-        let data: String = (start..start + count)
+        // An entry spans at most every parameter line there is.
+        let start = field(first, 1).max(0) as usize;
+        let count = (field(second, 3).max(1) as usize).min(parameter_lines.len());
+        let data: String = (start..start.saturating_add(count))
             .filter_map(|n| parameter_lines.get(&n))
             .filter_map(|l| l.get(..64))
             .collect();
@@ -635,7 +661,7 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
             }
         }
     }
-    // The solids come in last first, as the reference reader places them.
+    // The solids are listed last first.
     bodies.reverse();
     let mut numbers: Vec<usize> = doc
         .entities
