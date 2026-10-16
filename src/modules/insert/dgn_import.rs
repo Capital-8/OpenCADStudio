@@ -50,8 +50,8 @@ pub struct DgnImportRequest {
 /// as external references, left out, or attached as DGN underlays.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ReferenceMode {
-    #[default]
     Translate,
+    #[default]
     Ignore,
     Underlay,
 }
@@ -109,11 +109,25 @@ pub fn unit_display(short: &str) -> String {
     .to_string()
 }
 
+/// A name read from a DGN file as a symbol (layer, block, text style) or
+/// file name: the characters those cannot hold become `_`.
+pub fn symbol_name(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_control() || "<>/\\\":;?*|,=`".contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 fn layer_name(import: &DgnImport, level: u32) -> String {
     import
         .levels
         .get(&level)
-        .map(|l| l.0.clone())
+        .map(|l| symbol_name(&l.0))
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| level.to_string())
 }
@@ -121,7 +135,7 @@ fn layer_name(import: &DgnImport, level: u32) -> String {
 /// A cell's name as a block name: a leading `*` (an anonymous block
 /// written out) is dropped.
 pub fn block_name(cell: &str) -> String {
-    cell.trim_start_matches('*').to_string()
+    symbol_name(cell.trim_start_matches('*'))
 }
 
 fn v3(p: P3) -> Vector3 {
@@ -305,7 +319,7 @@ fn just_point(origin: P3, rotation: f64, length: f64, height: f64, just: u8) -> 
     let (h, v) = just_parts(just);
     let along = length * h as f64 / 2.0;
     let up = match v {
-        // Centre top is placed half a height up, as the reference places it.
+        // Centre top is placed half a height up.
         0 if just == 6 => height / 2.0,
         0 => height,
         1 => height / 2.0,
@@ -369,10 +383,11 @@ fn text_style(geom: &DgnGeom, import: &DgnImport, styles: &mut Vec<(String, Stri
     match geom {
         DgnGeom::Text { style: Some(id), .. } => match import.text_styles.iter().find(|(i, _)| i == id) {
             Some((_, name)) if !name.eq_ignore_ascii_case("Standard") => {
-                if !styles.iter().any(|s| s.0 == *name) {
+                let name = symbol_name(name);
+                if !styles.iter().any(|s| s.0 == name) {
                     styles.push((name.clone(), "txt.shx".to_string()));
                 }
-                name.clone()
+                name
             }
             _ => "Standard".to_string(),
         },
@@ -441,7 +456,7 @@ fn text_line(g: &DgnGeom) -> Option<(&str, P3, f64, f64, f64)> {
     }
 }
 
-/// A V8 text as MTEXT, as the reference converts it: a bottom left text
+/// A V8 text as MTEXT: a bottom left text
 /// attached at its bottom left a third of the height below the baseline
 /// (exact line spacing 0.8), any other at its justification point; its
 /// contents carry its colour (and width factor).
@@ -602,8 +617,7 @@ fn arc_entity(center: P3, u: P3, v: P3, start: f64, sweep: f64) -> Vec<EntityTyp
 }
 
 /// A shared cell instance as an INSERT: a mirrored placement looks along
-/// -z (x negated in its entity coordinates, z scale negated), as the
-/// reference places it.
+/// -z (x negated in its entity coordinates, z scale negated).
 fn insert_entity(block: String, m: [f64; 4], origin: P3, z_scale: f64) -> EntityType {
     let det = m[0] * m[3] - m[1] * m[2];
     let mirrored = det < 0.0;
@@ -704,8 +718,7 @@ impl<'a> Converter<'a> {
     }
 
     fn layer(&mut self, element: &DgnElement, in_cell: bool) -> String {
-        // A cell's objects are on layer 0, as the reference defines the
-        // block.
+        // A cell's objects are on layer 0 of its block.
         let layer = if in_cell {
             "0".to_string()
         } else {
@@ -920,8 +933,9 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
     }
     // Every text style of the file's table comes in, used or not.
     for (_, name) in &import.text_styles {
-        if !name.eq_ignore_ascii_case("Standard") && !c.out.styles.iter().any(|s| s.0 == *name) {
-            c.out.styles.push((name.clone(), "txt.shx".to_string()));
+        let name = symbol_name(name);
+        if !name.eq_ignore_ascii_case("Standard") && !c.out.styles.iter().any(|s| s.0 == name) {
+            c.out.styles.push((name, "txt.shx".to_string()));
         }
     }
     c.in_definition = true;
@@ -934,6 +948,18 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
     c.in_definition = false;
     let entities = c.elements(&top, false, CellCopy::default(), 0);
     c.out.entities = entities;
+    // A cell left without a block (the point display cell, an empty or
+    // missing definition) places nothing: its instances are dropped.
+    let defined: std::collections::HashSet<String> =
+        c.out.blocks.iter().map(|b| b.0.to_ascii_uppercase()).collect();
+    let placed = |e: &EntityType| match e {
+        EntityType::Insert(i) => defined.contains(&i.block_name.to_ascii_uppercase()),
+        _ => true,
+    };
+    c.out.entities.retain(placed);
+    for (_, entities) in &mut c.out.blocks {
+        entities.retain(placed);
+    }
     c.out
 }
 

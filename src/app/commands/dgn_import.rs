@@ -458,7 +458,7 @@ impl OpenCADStudio {
                 .file_stem()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            Naming::Prefix(format!("{stem} - {}$0$", request.model))
+            Naming::Prefix(dgn_import::symbol_name(&format!("{stem} - {}$0$", request.model)))
         } else {
             Naming::Keep
         };
@@ -469,7 +469,7 @@ impl OpenCADStudio {
             let layer = import
                 .levels
                 .get(&64)
-                .map(|l| l.0.clone())
+                .map(|l| dgn_import::symbol_name(&l.0))
                 .unwrap_or_else(|| "0".to_string());
             let layer = layers.get(&layer).cloned().unwrap_or(layer);
             for reference in &import.references {
@@ -502,9 +502,12 @@ impl OpenCADStudio {
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_default();
+        // A relative name is beside the host file; failing that, the file
+        // of that name in the host's folder.
         let named = std::path::Path::new(&reference.file.replace('\\', "/")).to_path_buf();
-        let file = if named.is_file() {
-            named
+        let joined = host_dir.join(&named);
+        let file = if joined.is_file() {
+            joined
         } else {
             host_dir.join(named.file_name().unwrap_or_default())
         };
@@ -519,13 +522,15 @@ impl OpenCADStudio {
         }) else {
             return;
         };
+        // Sub units scale the placement and the size alike.
         let origin = glam::DVec3::from_array(reference.origin) * units;
+        let scale = reference.scale * units;
         if request.references == ReferenceMode::Underlay {
             let mut placed = crate::modules::insert::pdf_attach::underlays_for_pages(
                 codec::entities::UnderlayType::Dgn,
                 std::slice::from_ref(&model),
                 origin,
-                reference.scale,
+                scale,
                 reference.rotation,
             );
             let scene = &mut self.tabs[i].scene;
@@ -548,9 +553,12 @@ impl OpenCADStudio {
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let target = file.with_file_name(format!("{stem}-{model}.dwg"));
-        // ponytail: "Prompt to overwrite" keeps the existing drawing, as the
-        // reference does when it cannot ask; ask here if a window is wanted.
+        // The model name comes from the file: made a plain file name so the
+        // drawing is written in the reference's folder.
+        let model_name = dgn_import::symbol_name(&model);
+        let target = file.with_file_name(format!("{stem}-{model_name}.dwg"));
+        // ponytail: "Prompt to overwrite" asks nothing and keeps the existing
+        // drawing, like "Do not overwrite"; add a confirmation if wanted.
         let write = !target.is_file() || request.existing_reference == ExistingReference::Overwrite;
         if write {
             let Some(source) = dgn_import(&path, &model) else {
@@ -569,7 +577,7 @@ impl OpenCADStudio {
             overlay: false,
             path_type: crate::io::xref_model::Pathtype::Relative,
         };
-        let name = format!("{stem} - {model}");
+        let name = dgn_import::symbol_name(&format!("{stem} - {model}"));
         let full = crate::modules::insert::xattach::resolve_xref_store_path(&xref.path, None);
         self.command_line
             .push_output(&format!("Attach Xref \"{name}\": {full}"));
@@ -589,7 +597,7 @@ impl OpenCADStudio {
             block,
             codec::types::Vector3::new(origin.x, origin.y, origin.z),
         )
-        .with_scale(reference.scale, reference.scale, reference.scale)
+        .with_scale(scale, scale, scale)
         .with_rotation(reference.rotation);
         insert.common.layer = layer.to_string();
         insert.common.linetype = "Continuous".to_string();
