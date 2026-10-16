@@ -42,7 +42,11 @@ fn class(document: &SatDocument) -> Option<Class> {
 
 /// One body's document as its drawing object.
 fn entity(document: &SatDocument) -> Option<EntityType> {
-    Some(match class(document)? {
+    entity_as(document, class(document)?)
+}
+
+fn entity_as(document: &SatDocument, class: Class) -> Option<EntityType> {
+    Some(match class {
         Class::Solid => {
             let mut solid = Solid3D::new();
             solid.set_sat_document(document);
@@ -68,8 +72,93 @@ pub fn sat_entities(text: &str) -> Option<Vec<EntityType>> {
     Some(document.split_bodies().iter().filter_map(entity).collect())
 }
 
-/// A kernel body as its drawing object, written as exact ACIS.
-pub fn body_entity(body: &kernel::brep::Body) -> Option<EntityType> {
-    let document = super::acis_export::solid_to_sat(body)?;
-    entity(&document)
+/// The value of an ACIS colour attribute: the index (0 by block), or the
+/// index nearest a true colour.
+fn attribute_index(color: codec::types::Color) -> i64 {
+    match color {
+        codec::types::Color::Index(index) => i64::from(index),
+        codec::types::Color::Rgb { r, g, b } => i64::from(codec::types::nearest_aci(r, g, b)),
+        _ => 0,
+    }
+}
+
+/// Hangs colour attributes on a record: a true colour first, then its
+/// index, as imported models carry them.
+fn paint_record(document: &mut codec::entities::acis::SatDocument, owner: usize, color: codec::types::Color) {
+    use codec::entities::acis::{SatPointer, SatRecord, SatToken};
+    let mut chain: Vec<(&str, i64)> = Vec::new();
+    if let codec::types::Color::Rgb { r, g, b } = color {
+        let packed = (0xC2u32 << 24) | (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b);
+        chain.push(("truecolor-adesk-attrib", i64::from(packed as i32)));
+    }
+    chain.push(("color-adesk-attrib", attribute_index(color)));
+    let Some(existing) = document.record(owner).map(|record| record.attribute) else {
+        return;
+    };
+    let first = document.record_count() as i32;
+    let count = chain.len() as i32;
+    for (k, (kind, value)) in chain.into_iter().enumerate() {
+        let at = first + k as i32;
+        let next = if k as i32 + 1 < count { SatPointer::new(at + 1) } else { existing };
+        let previous = if k == 0 { SatPointer::NULL } else { SatPointer::new(at - 1) };
+        let mut record = SatRecord::new(-1, kind);
+        record.tokens = vec![
+            SatToken::Pointer(next),
+            SatToken::Pointer(previous),
+            SatToken::Pointer(SatPointer::new(owner as i32)),
+            SatToken::Integer(value),
+        ];
+        document.add_record(record);
+    }
+    if let Some(record) = document.record_mut(owner) {
+        record.attribute = SatPointer::new(first);
+    }
+}
+
+/// A kernel body as its drawing object in `colour` (by block when `None`),
+/// with the faces given a colour of their own carrying it — and the edges
+/// bounding them too, as the reference modeler stores them. A `sheet` is a
+/// SURFACE however flat it is.
+pub fn painted_body_entity(
+    body: &kernel::brep::Body,
+    colour: Option<codec::types::Color>,
+    faces: &[Option<codec::types::Color>],
+    sheet: bool,
+) -> Option<EntityType> {
+    let mut document = super::acis_export::solid_to_sat(body)?;
+    let base = colour.unwrap_or(codec::types::Color::ByBlock);
+    let own: std::collections::HashMap<kernel::brep::FaceKey, codec::types::Color> = body
+        .faces
+        .keys()
+        .zip(faces)
+        .filter_map(|(key, color)| Some((key, (*color)?)))
+        .collect();
+    // The writer puts faces and edges in the body's own order.
+    let face_records: Vec<usize> = (0..document.record_count())
+        .filter(|&at| document.record(at).is_some_and(|r| r.entity_type == "face"))
+        .collect();
+    let edge_records: Vec<usize> = (0..document.record_count())
+        .filter(|&at| document.record(at).is_some_and(|r| r.entity_type == "edge"))
+        .collect();
+    for (key, at) in body.faces.keys().zip(face_records) {
+        if let Some(color) = own.get(&key) {
+            paint_record(&mut document, at, *color);
+        }
+    }
+    for ((_, edge), at) in body.edges.iter().zip(edge_records) {
+        let bounding = edge.coedges.iter().find_map(|coedge| {
+            let ring = body.coedges.get(*coedge)?.owner;
+            own.get(&body.loops.get(ring)?.owner).copied()
+        });
+        if let Some(color) = bounding {
+            paint_record(&mut document, at, color);
+        }
+    }
+    let mut entity = if sheet {
+        entity_as(&document, Class::Surface)?
+    } else {
+        entity(&document)?
+    };
+    entity.common_mut().color = base;
+    Some(entity)
 }

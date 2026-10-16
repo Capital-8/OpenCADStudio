@@ -224,7 +224,7 @@ name = "integration"
 path = "tests/integration.rs"
 
 [patch."https://github.com/HakanSeven12/opencadcodec.git"]
-opencadcodec = { git = "https://github.com/ramox81/cadcodec.git", rev = "6c33e24" }
+opencadcodec = { git = "https://github.com/ramox81/cadcodec.git", rev = "58fac2c" }
 
 [patch."https://github.com/HakanSeven12/opencadkernel.git"]
 opencadkernel = { git = "https://github.com/ramox81/cadkernel.git", rev = "9490fb8" }

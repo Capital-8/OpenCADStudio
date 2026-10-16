@@ -4382,7 +4382,7 @@ dependencies = [
 [[package]]
 name = "opencadcodec"
 version = "0.6.0"
-source = "git+https://github.com/ramox81/cadcodec.git?rev=6c33e24#6c33e24dc3c72034afec8333f0554541f01cc508"
+source = "git+https://github.com/ramox81/cadcodec.git?rev=58fac2c#58fac2c067cbd1346c08f371aaf92b0807a07f66"
 dependencies = [
  "anyhow",
  "bitflags 2.13.1",

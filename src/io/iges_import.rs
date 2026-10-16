@@ -1,6 +1,8 @@
 //! IGES reading: the manifold solids (type 186) of a file, their shells,
-//! faces, loops and edges (514/510/508/504/502) over spline surfaces and
-//! curves (128/126), lines and arcs (110/100), as kernel bodies.
+//! faces, loops and edges (514/510/508/504/502), and its trimmed and bounded
+//! surfaces (144/142 and 143/141), over spline surfaces and curves
+//! (128/126), lines and arcs (110/100) and composite curves (102), as
+//! kernel bodies.
 
 use std::collections::HashMap;
 
@@ -80,6 +82,8 @@ struct Doc {
     entities: HashMap<usize, Entity>,
     /// File units to drawing units.
     scale: f64,
+    /// Points closer than this are one point, in drawing units.
+    resolution: f64,
 }
 
 /// A 3×4 matrix applied as `R·p + T`.
@@ -205,6 +209,60 @@ impl Doc {
         })
     }
 
+    /// A boundary curve as its pieces — each a curve and the points it runs
+    /// from and to — composite curves taken apart.
+    fn pieces(&self, pointer: f64) -> Option<Vec<(Curve3, [f64; 3], [f64; 3])>> {
+        let entity = self.get(pointer)?;
+        if entity.kind == 102 {
+            let count = entity.params.get(1).map_or(0.0, P::num) as usize;
+            let mut out = Vec::new();
+            for k in 0..count {
+                out.extend(self.pieces(entity.params.get(2 + k)?.num())?);
+            }
+            return Some(out);
+        }
+        let curve = self.curve(pointer)?;
+        let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+        let place = self.place(entity);
+        let (from, to) = match (&curve, entity.kind) {
+            (_, 110) => (place([v(1), v(2), v(3)]), place([v(4), v(5), v(6)])),
+            (_, 100) => (place([v(4), v(5), v(1)]), place([v(6), v(7), v(1)])),
+            (Curve3::Nurbs(nurbs), _) => {
+                let (t0, t1) = nurbs.domain();
+                (nurbs.point_at_knot(t0), nurbs.point_at_knot(t1))
+            }
+            _ => return None,
+        };
+        Some(vec![(curve, from, to)])
+    }
+
+    /// The model-space pieces of a curve on a surface (142) or a boundary
+    /// (141), each of the latter's curves in the sense it is run.
+    fn boundary(&self, pointer: f64) -> Option<Vec<(Curve3, [f64; 3], [f64; 3])>> {
+        let entity = self.get(pointer)?;
+        let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+        match entity.kind {
+            142 => self.pieces(v(4)),
+            141 => {
+                let mut out = Vec::new();
+                let mut at = 5;
+                for _ in 0..v(4) as usize {
+                    let mut pieces = self.pieces(v(at))?;
+                    if v(at + 1) == 2.0 {
+                        pieces.reverse();
+                        for piece in &mut pieces {
+                            std::mem::swap(&mut piece.1, &mut piece.2);
+                        }
+                    }
+                    out.extend(pieces);
+                    at += 3 + v(at + 2) as usize;
+                }
+                Some(out)
+            }
+            _ => self.pieces(pointer),
+        }
+    }
+
     fn surface(&self, pointer: f64) -> Option<Surface> {
         let entity = self.get(pointer)?;
         if entity.kind != 128 {
@@ -243,6 +301,12 @@ struct Assembly<'a> {
     build: Builder,
     vertices: HashMap<(usize, usize), VertexKey>,
     edges: HashMap<(usize, usize), EdgeKey>,
+    /// Vertices made where boundary curves meet, by position.
+    corners: Vec<([f64; 3], VertexKey)>,
+}
+
+fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
+    (0..3).map(|k| (a[k] - b[k]).powi(2)).sum::<f64>().sqrt()
 }
 
 impl Assembly<'_> {
@@ -274,6 +338,119 @@ impl Assembly<'_> {
         let e = self.build.edge(curve, start, end)?;
         self.edges.insert(key, e);
         Some(e)
+    }
+
+    /// The vertex at a point, shared with one already there.
+    fn corner(&mut self, point: [f64; 3]) -> VertexKey {
+        let tolerance = self.doc.resolution;
+        if let Some((_, v)) = self.corners.iter().find(|(p, _)| distance(*p, point) <= tolerance) {
+            return *v;
+        }
+        let v = self.build.vertex(point);
+        self.corners.push((point, v));
+        v
+    }
+
+    /// A loop along curve pieces, in their order.
+    fn curve_ring(&mut self, pieces: Vec<(Curve3, [f64; 3], [f64; 3])>) -> Option<Vec<(EdgeKey, bool)>> {
+        let mut ring = Vec::new();
+        for (curve, from, to) in pieces {
+            if distance(from, to) <= self.doc.resolution && matches!(curve, Curve3::Line(_)) {
+                continue;
+            }
+            let (a, b) = (self.corner(from), self.corner(to));
+            ring.push((self.build.edge(curve, a, b)?, true));
+        }
+        (!ring.is_empty()).then_some(ring)
+    }
+
+    /// A loop round the edge of a spline surface's parameter domain; sides
+    /// that close up to a point (a pole) are left out.
+    fn domain_ring(&mut self, surface: &NurbsSurface3) -> Option<Vec<(EdgeKey, bool)>> {
+        let ((u0, u1), (v0, v1)) = surface.domain();
+        let corners = [(u0, v0), (u1, v0), (u1, v1), (u0, v1)];
+        let sides = [(1, v0), (0, u1), (1, v1), (0, u0)];
+        let mut pieces = Vec::new();
+        for (k, (axis, at)) in sides.into_iter().enumerate() {
+            let (a, b) = (corners[k], corners[(k + 1) % 4]);
+            let (from, to) = (surface.point_at_knot(a.0, a.1), surface.point_at_knot(b.0, b.1));
+            let middle = surface.point_at_knot(0.5 * (a.0 + b.0), 0.5 * (a.1 + b.1));
+            if distance(from, middle) <= self.doc.resolution && distance(to, middle) <= self.doc.resolution {
+                continue;
+            }
+            pieces.push((Curve3::Nurbs(surface.isocurve(axis, at)?), from, to));
+        }
+        self.curve_ring(pieces)
+    }
+
+    /// Turns a loop to run counter-clockwise round the surface's normal (an
+    /// outer one) or clockwise (a hole), judged by the area it encloses in
+    /// the surface's parameters.
+    fn orient(&self, surface: &Surface, ring: &mut [(EdgeKey, bool)], outer: bool) {
+        let mut uv = Vec::new();
+        for (edge, forward) in ring.iter() {
+            let Some(edge) = self.build.body.edges.get(*edge) else { return };
+            let Some(curve) = self.build.body.curves.get(edge.curve) else { return };
+            let (t0, t1) = (edge.start_parameter, edge.end_parameter);
+            for k in 0..8 {
+                let s = k as f64 / 8.0;
+                let s = if *forward { s } else { 1.0 - s };
+                if let Some(p) = surface.parameters_at(curve.point_at(t0 + (t1 - t0) * s)) {
+                    uv.push(p);
+                }
+            }
+        }
+        let area: f64 = (0..uv.len())
+            .map(|k| {
+                let (a, b) = (uv[k], uv[(k + 1) % uv.len()]);
+                a.0 * b.1 - b.0 * a.1
+            })
+            .sum();
+        if (area > 0.0) != outer {
+            ring.reverse();
+            for (_, forward) in ring.iter_mut() {
+                *forward = !*forward;
+            }
+        }
+    }
+
+    /// A trimmed (144) or bounded (143) surface as a one-face sheet.
+    fn sheet(&mut self, entity: &Entity) -> Option<()> {
+        let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+        let (surface_at, outer, holes): (f64, Option<f64>, Vec<f64>) = match entity.kind {
+            144 => (
+                v(1),
+                (v(2) != 0.0).then(|| v(4)),
+                (0..v(3) as usize).map(|k| v(5 + k)).collect(),
+            ),
+            143 => {
+                let count = v(3) as usize;
+                (v(2), (count > 0).then(|| v(4)), (1..count).map(|k| v(4 + k)).collect())
+            }
+            _ => return None,
+        };
+        let Surface::Nurbs(nurbs) = self.doc.surface(surface_at)? else { return None };
+        let surface = Surface::Nurbs(nurbs.clone());
+        let mut first = match outer {
+            Some(boundary) => {
+                let pieces = self.doc.boundary(boundary)?;
+                self.curve_ring(pieces)?
+            }
+            None => self.domain_ring(&nurbs)?,
+        };
+        self.orient(&surface, &mut first, true);
+        let mut loops = vec![first];
+        for hole in holes {
+            let pieces = self.doc.boundary(hole)?;
+            let mut ring = self.curve_ring(pieces)?;
+            self.orient(&surface, &mut ring, false);
+            loops.push(ring);
+        }
+        self.build.lump(vec![vec![FaceSpec {
+            surface,
+            forward: true,
+            loops,
+        }]])
     }
 
     fn ring(&mut self, pointer: f64) -> Option<Vec<(EdgeKey, bool)>> {
@@ -330,6 +507,8 @@ impl Assembly<'_> {
 pub struct IgesModel {
     /// Each solid, scaled to the drawing, with its colour.
     pub bodies: Vec<(kernel::brep::Body, codec::types::Color)>,
+    /// Each trimmed or bounded surface, a one-face sheet, with its colour.
+    pub sheets: Vec<(kernel::brep::Body, codec::types::Color)>,
 }
 
 /// `drawing_mm`: millimetres per drawing unit, `None` for a unitless drawing.
@@ -417,7 +596,12 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
         );
     }
     let scale = drawing_mm.filter(|mm| *mm > 0.0).map_or(1.0, |mm| unit_mm / mm);
-    let doc = Doc { entities, scale };
+    let resolution = globals.get(18).map(P::num).filter(|r| *r > 0.0).unwrap_or(1e-6) * scale;
+    let doc = Doc {
+        entities,
+        scale,
+        resolution,
+    };
 
     let mut solids: Vec<usize> = doc
         .entities
@@ -436,6 +620,7 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
             build: Builder::new(),
             vertices: HashMap::new(),
             edges: HashMap::new(),
+            corners: Vec::new(),
         };
         let mut shells = Vec::new();
         let outer = assembly.shell(shell, agrees != 0.0);
@@ -450,5 +635,28 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
             }
         }
     }
-    Some(IgesModel { bodies })
+    // The solids come in last first, as the reference reader places them.
+    bodies.reverse();
+    let mut numbers: Vec<usize> = doc
+        .entities
+        .iter()
+        .filter(|(_, e)| matches!(e.kind, 143 | 144))
+        .map(|(n, _)| *n)
+        .collect();
+    numbers.sort_unstable();
+    let mut sheets = Vec::new();
+    for number in numbers {
+        let entity = &doc.entities[&number];
+        let mut assembly = Assembly {
+            doc: &doc,
+            build: Builder::new(),
+            vertices: HashMap::new(),
+            edges: HashMap::new(),
+            corners: Vec::new(),
+        };
+        if assembly.sheet(entity).is_some() {
+            sheets.push((assembly.build.body, doc.color(entity.color)));
+        }
+    }
+    Some(IgesModel { bodies, sheets })
 }

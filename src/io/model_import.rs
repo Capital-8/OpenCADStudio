@@ -5,7 +5,7 @@ use codec::entities::{Entity as _, Insert};
 use codec::types::{Color, Matrix4, Transform, Vector3};
 use codec::EntityType;
 
-use crate::scene::convert::acis_import::{body_entity, sat_entities};
+use crate::scene::convert::acis_import::{painted_body_entity, sat_entities};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelFormat {
@@ -36,6 +36,55 @@ fn block_name(name: &str) -> String {
         .map(|c| if "<>/\\\":;?*|,=`".contains(c) { '_' } else { c })
         .collect();
     if name.is_empty() { "Part".to_string() } else { name }
+}
+
+/// A STEP presentation colour as the drawing colour it imports as: the
+/// standard index colour it is close to — red, yellow, green, cyan, blue,
+/// magenta, white, or the dark grey 250 (which black also becomes) — and
+/// otherwise the true colour.
+// ponytail: the closeness bands are fitted to measured imports (saturation
+// at least 0.75, value at least 0.825 and hue within 7.5 degrees for the six
+// hues; greys from 0.16 to 0.39 for 250 and from 0.935 for white); refit
+// them if a colour on a band edge comes out differently.
+pub fn step_colour(rgb: crate::io::step_import::Rgb) -> Color {
+    let [r, g, b] = rgb.map(|c| c.clamp(0.0, 1.0));
+    let true_colour = Color::Rgb {
+        r: (r * 255.0).round() as u8,
+        g: (g * 255.0).round() as u8,
+        b: (b * 255.0).round() as u8,
+    };
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    if max == 0.0 {
+        return Color::Index(250);
+    }
+    let saturation = (max - min) / max;
+    if saturation <= 0.1 {
+        return if max >= 0.935 {
+            Color::Index(7)
+        } else if (0.16..0.395).contains(&max) {
+            Color::Index(250)
+        } else {
+            true_colour
+        };
+    }
+    if saturation < 0.75 || max < 0.825 {
+        return true_colour;
+    }
+    let delta = max - min;
+    let hue = if max == r {
+        60.0 * ((g - b) / delta).rem_euclid(6.0)
+    } else if max == g {
+        60.0 * ((b - r) / delta + 2.0)
+    } else {
+        60.0 * ((r - g) / delta + 4.0)
+    };
+    let sector = (hue / 60.0).round();
+    if (hue - 60.0 * sector).abs() > 7.5 {
+        return true_colour;
+    }
+    // Red, yellow, green, cyan, blue, magenta.
+    Color::Index([1, 2, 3, 4, 5, 6][sector as usize % 6])
 }
 
 /// An insert of `block` placed by `placement` (columns: axes, origin).
@@ -89,10 +138,9 @@ fn step_blocks(model: crate::io::step_import::StepModel, scale: f64) -> Imported
             let mut entities: Vec<EntityType> = product
                 .bodies
                 .iter()
-                .filter_map(body_entity)
-                .map(|mut entity| {
-                    entity.common_mut().color = Color::ByBlock;
-                    entity
+                .filter_map(|body| {
+                    let faces: Vec<Option<Color>> = body.faces.iter().map(|c| c.map(step_colour)).collect();
+                    painted_body_entity(&body.body, body.colour.map(step_colour), &faces, false)
                 })
                 .collect();
             entities.extend(
@@ -131,18 +179,20 @@ pub fn read(format: ModelFormat, bytes: &[u8], drawing_mm: Option<f64>) -> Optio
             let scale = ratio(model.unit_mm, drawing_mm);
             step_blocks(model, scale)
         }
-        ModelFormat::Iges => Imported {
-            blocks: Vec::new(),
-            entities: crate::io::iges_import::read(bytes, drawing_mm)?
-                .bodies
-                .iter()
-                .filter_map(|(body, color)| {
-                    let mut entity = body_entity(body)?;
-                    entity.common_mut().color = *color;
-                    Some(entity)
-                })
-                .collect(),
-        },
+        ModelFormat::Iges => {
+            // Solids, then the surfaces as surfaces however flat; faces and
+            // edges carry the object's colour.
+            let model = crate::io::iges_import::read(bytes, drawing_mm)?;
+            let solids = model.bodies.iter().map(|body| (body, false));
+            let sheets = model.sheets.iter().map(|body| (body, true));
+            Imported {
+                blocks: Vec::new(),
+                entities: solids
+                    .chain(sheets)
+                    .filter_map(|((body, color), sheet)| painted_body_entity(body, Some(*color), &[], sheet))
+                    .collect(),
+            }
+        }
     };
     let solids = imported
         .blocks

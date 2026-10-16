@@ -197,9 +197,68 @@ struct Doc {
     instances: HashMap<u64, Instance>,
     /// Plane-angle unit in radians.
     angle: f64,
+    /// The colour each styled item (a solid, a shell or a face) is shown
+    /// in, as 0–1 RGB.
+    styles: HashMap<u64, [f64; 3]>,
 }
 
+/// An RGB colour as 0–1 values.
+pub type Rgb = [f64; 3];
+
 impl Doc {
+    /// A presentation colour: an RGB one or a predefined one.
+    fn colour(&self, p: &P) -> Option<Rgb> {
+        let (kind, params) = self.simple(p.reference()?)?;
+        match kind {
+            "COLOUR_RGB" => Some([params.get(1)?.num()?, params.get(2)?.num()?, params.get(3)?.num()?]),
+            "DRAUGHTING_PRE_DEFINED_COLOUR" => Some(match params.first()?.text()? {
+                "red" => [1.0, 0.0, 0.0],
+                "green" => [0.0, 1.0, 0.0],
+                "blue" => [0.0, 0.0, 1.0],
+                "yellow" => [1.0, 1.0, 0.0],
+                "magenta" => [1.0, 0.0, 1.0],
+                "cyan" => [0.0, 1.0, 1.0],
+                "black" => [0.0, 0.0, 0.0],
+                "white" => [1.0, 1.0, 1.0],
+                _ => return None,
+            }),
+            _ => None,
+        }
+    }
+
+    /// The colour a styled item's presentation styles give it: its surface
+    /// fill (or rendering) colour, or failing that its curve colour.
+    fn style_colour(&self, styles: &P) -> Option<Rgb> {
+        let mut stack: Vec<&P> = vec![styles];
+        let mut seen = Vec::new();
+        let mut curve = None;
+        while let Some(p) = stack.pop() {
+            match p {
+                P::List(items) | P::Typed(items) => stack.extend(items.iter().rev()),
+                P::Ref(id) if !seen.contains(id) => {
+                    seen.push(*id);
+                    let Some((kind, params)) = self.simple(*id) else { continue };
+                    match kind {
+                        "FILL_AREA_STYLE_COLOUR" => {
+                            if let Some(c) = params.get(1).and_then(|c| self.colour(c)) {
+                                return Some(c);
+                            }
+                        }
+                        "SURFACE_STYLE_RENDERING" | "SURFACE_STYLE_RENDERING_WITH_PROPERTIES" => {
+                            if let Some(c) = params.get(1).and_then(|c| self.colour(c)) {
+                                return Some(c);
+                            }
+                        }
+                        "CURVE_STYLE" => curve = curve.or_else(|| params.get(3).and_then(|c| self.colour(c))),
+                        _ => stack.extend(params.iter().rev()),
+                    }
+                }
+                _ => {}
+            }
+        }
+        curve
+    }
+
     fn parts(&self, id: u64) -> Option<&Instance> {
         self.instances.get(&id)
     }
@@ -392,6 +451,8 @@ struct Assembly<'a> {
     vertices: HashMap<u64, VertexKey>,
     /// Each edge, and whether it runs from the file's edge end to its start.
     edges: HashMap<u64, (EdgeKey, bool)>,
+    /// The file's face of each face built, in build order.
+    faces: Vec<u64>,
 }
 
 impl Assembly<'_> {
@@ -450,6 +511,7 @@ impl Assembly<'_> {
 
     fn face(&mut self, p: &P, flip: bool) -> Option<FaceSpec> {
         let id = p.reference()?;
+        self.faces.push(id);
         let (_, params) = self.doc.simple(id)?;
         let surface = self.doc.surface(params.get(2)?)?;
         let mut outer = Vec::new();
@@ -505,10 +567,19 @@ pub type Placement = [[f64; 4]; 3];
 
 const IDENTITY: Placement = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]];
 
+/// A body with the colours the file shows it in.
+pub struct StepBody {
+    pub body: kernel::brep::Body,
+    /// The colour of the solid (or shell model) as a whole.
+    pub colour: Option<Rgb>,
+    /// Each face's own colour, in the body's face order.
+    pub faces: Vec<Option<Rgb>>,
+}
+
 /// One product: its own bodies and where each of its components sits.
 pub struct StepProduct {
     pub name: String,
-    pub bodies: Vec<kernel::brep::Body>,
+    pub bodies: Vec<StepBody>,
     /// Components: the product (an index into [`StepModel::products`]) and
     /// its placement in this one.
     pub children: Vec<(usize, Placement)>,
@@ -549,7 +620,7 @@ fn unit_size(doc: &Doc, id: u64) -> Option<f64> {
 
 /// The bodies of one B-rep item: a solid, a solid with voids, or each shell
 /// of a shell model.
-fn item_bodies(doc: &Doc, id: u64) -> Vec<kernel::brep::Body> {
+fn item_bodies(doc: &Doc, id: u64) -> Vec<StepBody> {
     let Some((kind, params)) = doc.simple(id) else {
         return Vec::new();
     };
@@ -576,11 +647,22 @@ fn item_bodies(doc: &Doc, id: u64) -> Vec<kernel::brep::Body> {
             build: Builder::new(),
             vertices: HashMap::new(),
             edges: HashMap::new(),
+            faces: Vec::new(),
         };
         let faces: Option<Vec<_>> = lump.iter().map(|shell| assembly.shell(shell)).collect();
         if let Some(faces) = faces {
             if assembly.build.lump(faces).is_some() {
-                bodies.push(assembly.build.body);
+                // The item's own style, or its (first) shell's.
+                let colour = doc.styles.get(&id).copied().or_else(|| {
+                    lump.iter()
+                        .filter_map(|shell| shell.reference())
+                        .find_map(|shell| doc.styles.get(&shell).copied())
+                });
+                bodies.push(StepBody {
+                    body: assembly.build.body,
+                    colour,
+                    faces: assembly.faces.iter().map(|face| doc.styles.get(face).copied()).collect(),
+                });
             }
         }
     }
@@ -648,6 +730,7 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
     let mut doc = Doc {
         instances,
         angle: 1.0,
+        styles: HashMap::new(),
     };
 
     let mut unit_mm = 1.0;
@@ -669,6 +752,23 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
         break;
     }
     doc.angle = angle;
+    // Styled items: plain ones first, so an overriding style wins.
+    let mut styled = Vec::new();
+    for kind in ["STYLED_ITEM", "OVER_RIDING_STYLED_ITEM"] {
+        for &id in &ids {
+            if doc.kind(id) != kind {
+                continue;
+            }
+            let Some((_, params)) = doc.simple(id) else { continue };
+            let (Some(styles), Some(item)) = (params.get(1), params.get(2).and_then(P::reference)) else {
+                continue;
+            };
+            if let Some(colour) = doc.style_colour(styles) {
+                styled.push((item, colour));
+            }
+        }
+    }
+    doc.styles.extend(styled);
     let doc = doc;
 
     // What each instance id is, by kind.
