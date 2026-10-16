@@ -135,6 +135,11 @@ pub trait BuiltinPlugin: Send + Sync {
     fn dispatch(&self, host: &mut dyn HostApi, cmd: &str) -> bool;
     fn on_load(&mut self, host: &mut dyn HostApi) {}
     fn entity_classes(&self) -> Option<&'static EntityClasses> {} // API v10
+    fn on_custom_grip_event(                                           // API v11
+        &mut self,
+        host: &mut dyn HostApi,
+        event: CustomGripEvent,
+    ) -> CustomGripResponse {}
 }
 ```
 
@@ -347,6 +352,90 @@ missing from the table, or mapped to an empty label falls back to the native
 type. Because labels are display text resolved from the loaded plugin, they
 are plugin-localizable and fixable without rewriting drawings — and
 `plugin.toml` (the pre-load discovery file) deliberately does not carry them.
+
+### Plugin grip surface (API v11)
+
+Three additive surfaces, one rule: **plugin DECLARED, plugin OWNED**. The host
+renders, hit-tests and drags plugin-declared grip points, but it never
+interprets them — no entity change, constraint or record of its own ever
+follows from a custom grip. All semantics live in the declaring plugin.
+
+**1. Reading built-in grips.** `HostApi::entity_grips(handle)` enumerates an
+entity's grips with full viewport parity — the same per-entity enumeration the
+selection cache is built from (`shape` and field semantics match the
+automation `grips` read; `moves_entity` is the translate-grip flag). It is
+generic over every entity type: an arc answers its center / endpoints / its
+mid-arc radius grip, a spline its control points, and so on. Reference-only
+entities and locked layers answer an empty list — the same answer the
+viewport gives.
+
+**2. Programmatic grip edit.** `HostApi::grip_drag(handle, grip_id, to)`
+performs the same edit an interactive drag performs: the entity-typed grip
+modes, snaps/ortho/polar off for the move, exactly one undo step labeled like
+the interactive grip step ("GRIP"), byte-exact restore on undo, and the
+interactive path's refusals (unknown entity/grip, reference-only, locked
+layer, point out of view). The viewport, the automation `grip_drag` op and
+this method all drive ONE shared pipeline.
+
+**3. Plugin-declared custom grip points.**
+`HostApi::set_plugin_grips(plugin_id, grips)` declares (or, with an empty
+batch, clears) the calling plugin's grips: `grip_id` (a plugin-chosen stable
+id), `anchor` (any live entity handle — ownership scoping and hit-test
+legibility only), `point` (**absolute world** — the host never moves, offsets
+or auto-follows it when the anchor entity moves), `axis` (an optional
+hard-constrained drag direction), and `shape`. The declaration lifecycle:
+
+- **Session-only display state.** Nothing of a custom grip is persisted in
+  the drawing file; the plugin re-declares after its own notification
+  boundaries (the pull model — `on_notification` marks the safe refresh
+  points). Whole batches REPLACE the plugin's previous set, applied as a
+  diff keyed by `grip_id`: an unchanged re-declare costs nothing.
+- **The one-undo-step contract.** Drags ride the viewport's existing grip
+  drag lifecycle: press engages, the cursor streams move events, mouse-up
+  settles, Esc cancels. Move events are coalesced (at most one in flight,
+  superseded positions dropped); the plugin answers each with a
+  `CustomGripResponse` whose `preview` REPLACES its live preview wires — the
+  only feedback the host shows (no host ghost; the anchor entity never
+  moves by host action mid-drag). The settle event carries the final point
+  and gives the plugin its ONLY write window: from inside
+  `on_custom_grip_event` the plugin can read the document and write —
+  including opening its own `push_undo` scope — and a settled drag totals
+  exactly the plugin's one labeled undo step. The host records nothing of
+  its own; cancel means zero writes, zero undo steps, byte-identical
+  drawing. Every callback is panic-guarded: a buggy handler is contained and
+  reported, never fatal.
+- **Reference-only and locking.** Custom grips never render on reference-only
+  designated entities, never mutate entities through built-in paths, and
+  never bypass layer locks — the plugin's own settle writes go through the
+  same HostApi as any other plugin write. A grip coincident with
+  click-through (reference-only) geometry stays fully hittable and wins the
+  hit, because grips are tested before any wire pick.
+- **Visibility.** Always visible while the declaring plugin is loaded, alive
+  and not disabled (the same live-manager gating as the entity-class
+  labels), with hover highlighting through the same overlay the built-in
+  grips use, in a distinct accent. Death/unload removes the grip — and
+  nothing else. Hit-testing scales through a per-tab spatial grid with
+  viewport culling (never a linear scan per cursor move); per-plugin and
+  per-tab caps (4 096 / 16 384) keep the budget machinery honest — custom
+  grips are not subject to the selection grip budget.
+- **Ownership.** Over the plugin IPC the host attaches the speaking
+  process's own manifest id and refuses mismatches, so a plugin cannot
+  declare grips in another plugin's name — and only the declaring plugin
+  ever receives its grips' events. The declaration requires the V4
+  transport (the settle's nested writes ride the multiplexed link).
+
+**MCP parity.** Plugin-declared grips appear in the automation `grips` read
+(each entry marked with its owning `plugin`), and `grip_drag` takes a `plugin`
+parameter to drag one: `{"op":"grip_drag","plugin":"opencad.civil_ifc",
+"grip_id":7,"point":[10,0,0]}` routes through the same live machinery — the
+consumer can drive declare → read → drag → settle end-to-end. MCP stays a
+thin view over the same internals; plugins themselves speak HostApi and IPC
+frames only, never the automation bridge.
+
+**Custom grips never carry host-side semantics.** The host stores a point, a
+shape and an axis — nothing else. What a grip *means* (an alignment's implied
+PI, a pipe endpoint, a widening handle) is entirely the declaring plugin's,
+resolved in its own `on_custom_grip_event` from the event's grip id and point.
 
 ---
 
