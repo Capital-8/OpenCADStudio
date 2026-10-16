@@ -1630,6 +1630,87 @@ mod tests {
         assert!(explode_entity(&EntityType::Insert(insert), &doc).is_empty());
     }
 
+    /// EXPLODE resolves ByBlock transparency and linetype on the children it
+    /// produces, the same way the render path does, so an exploded entity does
+    /// not keep a ByBlock sentinel that nothing downstream resolves.
+    #[test]
+    fn explode_resolves_byblock_transparency_and_linetype() {
+        let mut doc = CadDocument::new();
+
+        let mut block = BlockRecord::new("BYBLOCK_STYLE");
+        block.handle = doc.allocate_handle();
+
+        let mut child = codec::entities::Line::from_points(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(10.0, 0.0, 0.0),
+        );
+        child.common.color = codec::types::Color::ByBlock;
+        child.common.transparency = codec::types::Transparency::ByBlock;
+        child.common.linetype = "ByBlock".to_string();
+        let child_handle = doc.add_entity(EntityType::Line(child)).unwrap();
+        block.entity_handles.push(child_handle);
+        doc.block_records.add(block).unwrap();
+
+        let mut insert = codec::entities::Insert::new("BYBLOCK_STYLE", Vector3::new(0.0, 0.0, 0.0));
+        insert.common.color = codec::types::Color::from_index(1);
+        insert.common.transparency = codec::types::Transparency::new(96);
+        insert.common.linetype = "DASHED".to_string();
+
+        let out = explode_entity(&EntityType::Insert(insert), &doc);
+        assert_eq!(out.len(), 1, "the block's one child should come out");
+
+        let c = out[0].common();
+        assert_eq!(c.color, codec::types::Color::from_index(1));
+        assert_eq!(
+            c.transparency,
+            codec::types::Transparency::new(96),
+            "ByBlock transparency should take the insert's value"
+        );
+        assert_eq!(
+            c.linetype, "DASHED",
+            "ByBlock linetype should take the insert's linetype"
+        );
+    }
+
+    /// A child that already names its own transparency/linetype keeps them;
+    /// only the ByBlock sentinel is replaced.
+    #[test]
+    fn explode_keeps_explicit_child_transparency_and_linetype() {
+        let mut doc = CadDocument::new();
+
+        let mut block = BlockRecord::new("EXPLICIT_STYLE");
+        block.handle = doc.allocate_handle();
+
+        let mut child = codec::entities::Line::from_points(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(10.0, 0.0, 0.0),
+        );
+        child.common.transparency = codec::types::Transparency::new(25);
+        child.common.linetype = "CONTINUOUS".to_string();
+        let child_handle = doc.add_entity(EntityType::Line(child)).unwrap();
+        block.entity_handles.push(child_handle);
+        doc.block_records.add(block).unwrap();
+
+        let mut insert =
+            codec::entities::Insert::new("EXPLICIT_STYLE", Vector3::new(0.0, 0.0, 0.0));
+        insert.common.transparency = codec::types::Transparency::new(96);
+        insert.common.linetype = "DASHED".to_string();
+
+        let out = explode_entity(&EntityType::Insert(insert), &doc);
+        assert_eq!(out.len(), 1);
+
+        let c = out[0].common();
+        assert_eq!(
+            c.transparency,
+            codec::types::Transparency::new(25),
+            "an explicit child transparency must survive"
+        );
+        assert_eq!(
+            c.linetype, "CONTINUOUS",
+            "an explicit child linetype must survive"
+        );
+    }
+
     #[test]
     fn unexplodable_block_is_not_exploded() {
         let mut doc = CadDocument::new();
