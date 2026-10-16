@@ -109,6 +109,8 @@ pub(super) const NAMES: &[&str] = &[
     "view_background",
     "image_adjust",
     "import_file_dialog",
+    "pdf_import_pick",
+    "pdf_import_dialog",
     "dgn_import_dialog",
     "refedit_dialog",
     "pdf_shx_settings",
@@ -2163,6 +2165,40 @@ impl OpenCADStudio {
                     "reset" => Message::PdfDialog(P::BgReset),
                     _ => return Err(bad()),
                 }
+            }
+            // The file the next PDF import picker returns, without showing
+            // it (value: the path).
+            "pdf_import_pick" => {
+                crate::sys::set_pdf_import_pick(string(req, "value")?.into());
+                return Ok(Task::none());
+            }
+            // The Import PDF window, one field per call: "page=<n>" (1-based),
+            // "on_screen=0|1" (insertion point asked after OK), "scale=<value>",
+            // "rotation=0|90|180|270", "ok" or "cancel".
+            "pdf_import_dialog" => {
+                use crate::ui::window::pdf_dialogs::{PdfDialogMsg as P, RotationChoice};
+                if self.active_modal != Some(crate::app::ModalKind::PdfImportFile) {
+                    return Err(failure("no_dialog", "The Import PDF window is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                if key == "cancel" {
+                    return Ok(Task::done(Message::CloseModal));
+                }
+                Message::PdfDialog(match key {
+                    "ok" => P::ImportOk,
+                    "page" => P::ImportPageText(value.to_string()),
+                    "on_screen" => P::ImportInsertOnScreen(value == "1"),
+                    "scale" => P::ImportScale(value.to_string()),
+                    "rotation" => P::ImportRotation(
+                        RotationChoice::ALL
+                            .into_iter()
+                            .find(|r| value.trim().parse() == Ok(r.0))
+                            .ok_or_else(bad)?,
+                    ),
+                    _ => return Err(bad()),
+                })
             }
             // The Import File window, one field per call: "path=<file>",
             // "format=<index or name>", "search=<text>", "filter=all|supported",
