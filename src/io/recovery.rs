@@ -561,7 +561,7 @@ fn structured_diagnostic_line(diagnostic: &codec::ReadDiagnostic) -> String {
 fn reader_revision() -> String {
     include_str!("../../Cargo.toml")
         .lines()
-        .find(|line| line.trim_start().starts_with("opencadcodec = { git ="))
+        .find(|line| line.trim_start().starts_with("codec = ") && line.contains("opencadcodec.git"))
         .and_then(|line| line.split("rev = \"").nth(1))
         .and_then(|value| value.split('"').next())
         .filter(|value| !value.is_empty())
