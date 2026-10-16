@@ -2340,6 +2340,8 @@ pub enum ModalKind {
     ImportFile,
     /// DGNIMPORT's DGN Import window.
     DgnImport,
+    /// IMPORT's 3D Studio Import window.
+    TdsImport,
     /// Web: a crash-recovery autosave snapshot newer than the drawing's last
     /// save awaits a restore/discard decision. Distinct from the corrupt-file
     /// `RecoveryPrompt` — nothing is wrong with the drawing itself.

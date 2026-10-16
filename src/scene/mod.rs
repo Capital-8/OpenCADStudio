@@ -1208,6 +1208,20 @@ pub(crate) fn valid_block_name(name: &str) -> bool {
         })
 }
 
+/// `raw` made fit to name a table entry (a block, layer, style or view):
+/// characters [`valid_block_name`] refuses become `_`, the name is cut to
+/// 255 characters, and `fallback` stands in when nothing is left. For names
+/// that come from outside files.
+pub(crate) fn sanitized_table_name(raw: &str, fallback: &str) -> String {
+    let name: String = raw
+        .trim()
+        .chars()
+        .map(|c| if valid_block_name(c.encode_utf8(&mut [0; 4])) { c } else { '_' })
+        .take(255)
+        .collect();
+    block_service::validate_block_name(&name).unwrap_or_else(|_| fallback.to_string())
+}
+
 /// Pre-built entity caches returned by [`build_derived_caches`].
 /// Produced in the file-load background task so the UI thread only assigns.
 #[derive(Debug, Clone)]
