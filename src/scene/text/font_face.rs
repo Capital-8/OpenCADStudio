@@ -147,6 +147,17 @@ impl Face {
         }
     }
 
+    /// `ch`'s glyph from this face itself, without the TrueType fallback
+    /// [`glyph`](Self::glyph) reaches for when the face lacks it.
+    pub fn own_glyph(&self, ch: char) -> Option<GlyphRef<'_>> {
+        match self {
+            Face::Lff(f) => f.glyph(ch).map(GlyphRef::Borrowed),
+            Face::Ttf { family, .. } => ttf_glyph::glyph(family, ch).map(GlyphRef::Owned),
+            Face::Shx { path, .. } => shx::font_glyph(path, ch as u16).map(GlyphRef::Owned),
+            Face::WithBig { primary, .. } => primary.own_glyph(ch),
+        }
+    }
+
     /// The TrueType face [`glyph`](Self::glyph) takes `ch`'s outline from, or
     /// `None` when that glyph is a stroke (LFF / SHX / big-font) glyph. Follows
     /// the exact dispatch of `glyph` so an exporter that embeds the face draws
