@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use codec::entities::{
     Arc, AttachmentPoint, Circle, DrawingDirection, Ellipse, Insert, Line, LineSpacingStyle,
-    LwPolyline, LwVertex, MText, Point, Spline, Text, TextHorizontalAlignment,
+    LwPolyline, LwVertex, MText, Point, Polyline3D, Spline, Text, TextHorizontalAlignment,
     TextVerticalAlignment,
 };
 use codec::types::{Color, LineWeight, Vector2, Vector3};
@@ -211,7 +211,20 @@ fn to_ocs(normal: P3, p: P3) -> Vector3 {
     codec::types::Matrix3::arbitrary_axis(v3(normal)).transpose() * v3(p)
 }
 
+/// True when every point is at the first one's z.
+fn flat(points: &[P3]) -> bool {
+    let z = points.first().map_or(0.0, |p| p[2]);
+    points.iter().all(|p| (p[2] - z).abs() <= 1e-9 * z.abs().max(1.0))
+}
+
+/// The points as a polyline: at one z a 2D polyline at that elevation
+/// (with the bulges), else a 3D polyline (no bulges).
 fn polyline(points: &[P3], bulges: &[f64]) -> EntityType {
+    if !flat(points) {
+        return EntityType::Polyline3D(Polyline3D::from_points(
+            points.iter().map(|p| v3(*p)).collect(),
+        ));
+    }
     let mut pl = LwPolyline::new();
     pl.plinegen = true;
     pl.elevation = points.first().map_or(0.0, |p| p[2]);
@@ -227,31 +240,48 @@ fn polyline(points: &[P3], bulges: &[f64]) -> EntityType {
     EntityType::LwPolyline(pl)
 }
 
-/// A solid hatch filling a closed outline, in its plane.
-fn solid_hatch(points: &[P3]) -> EntityType {
+/// A solid hatch filling a closed outline (with its bulges) at the
+/// outline's elevation; `None` when the outline is not at one z.
+fn solid_hatch(points: &[P3], bulges: &[f64]) -> Option<EntityType> {
     use codec::entities::{BoundaryEdge, BoundaryPath, Hatch, PolylineEdge};
-    let mut ring: Vec<Vector2> = points.iter().map(|p| Vector2::new(p[0], p[1])).collect();
-    if ring.len() > 1 && ring.first() == ring.last() {
-        ring.pop();
+    if points.len() < 3 || !flat(points) {
+        return None;
+    }
+    let mut n = points.len();
+    if points[0][0] == points[n - 1][0] && points[0][1] == points[n - 1][1] {
+        n -= 1;
+    }
+    let mut edge = PolylineEdge::new(Vec::new(), true);
+    for (k, p) in points[..n].iter().enumerate() {
+        edge.add_vertex(Vector2::new(p[0], p[1]), bulges.get(k).copied().unwrap_or(0.0));
     }
     let mut hatch = Hatch::solid();
     let mut boundary = BoundaryPath::external();
     boundary.flags.set_polyline(true);
-    boundary.edges.push(BoundaryEdge::Polyline(PolylineEdge::new(ring, true)));
+    boundary.edges.push(BoundaryEdge::Polyline(edge));
     hatch.add_path(boundary);
-    hatch.elevation = points.first().map_or(0.0, |p| p[2]);
-    EntityType::Hatch(Box::new(hatch))
+    hatch.elevation = points[0][2];
+    Some(EntityType::Hatch(Box::new(hatch)))
 }
 
 /// A complex chain's vertices and bulges: lines and line strings add their
-/// points, circular arcs a bulge, other arcs their points.
+/// points, circular arcs in the drawing plane a bulge, other arcs their
+/// points. A chain whose vertices are not at one z comes out as points
+/// only (a 3D polyline has no bulges).
 fn chain(parts: &[DgnGeom]) -> (Vec<P3>, Vec<f64>) {
+    let (points, bulges) = chain_points(parts, true);
+    if flat(&points) {
+        (points, bulges)
+    } else {
+        chain_points(parts, false)
+    }
+}
+
+fn chain_points(parts: &[DgnGeom], use_bulges: bool) -> (Vec<P3>, Vec<f64>) {
     let mut points: Vec<P3> = Vec::new();
     let mut bulges: Vec<f64> = Vec::new();
     let mut add = |p: P3, bulge_before: Option<f64>| {
-        let same = points
-            .last()
-            .is_some_and(|q| (q[0] - p[0]).abs() < 1e-9 && (q[1] - p[1]).abs() < 1e-9);
+        let same = points.last().is_some_and(|q| (0..3).all(|c| (q[c] - p[c]).abs() < 1e-9));
         if let (Some(b), Some(last)) = (bulge_before, bulges.last_mut()) {
             *last = b;
         }
@@ -273,7 +303,7 @@ fn chain(parts: &[DgnGeom]) -> (Vec<P3>, Vec<f64>) {
                 v,
                 start,
                 sweep,
-            } if circular(*u, *v) => {
+            } if use_bulges && circular(*u, *v) && arc_plane(*u, *v).0[2] > 1.0 - 1e-9 => {
                 let at = |t: f64| -> P3 {
                     std::array::from_fn(|c| center[c] + t.cos() * u[c] + t.sin() * v[c])
                 };
@@ -752,10 +782,10 @@ impl<'a> Converter<'a> {
             }
             DgnGeom::Line(a, b) => vec![EntityType::Line(Line::from_points(v3(*a), v3(*b)))],
             // A filled shape is its outline and a solid hatch inside it.
-            DgnGeom::Points(pts) if pts.len() >= 3 && element.filled => {
-                vec![polyline(pts, &[]), solid_hatch(pts)]
+            DgnGeom::Points(pts) if pts.len() >= 2 => {
+                let fill = element.filled.then(|| solid_hatch(pts, &[])).flatten();
+                std::iter::once(polyline(pts, &[])).chain(fill).collect()
             }
-            DgnGeom::Points(pts) if pts.len() >= 2 => vec![polyline(pts, &[])],
             DgnGeom::Points(_) => Vec::new(),
             DgnGeom::Arc {
                 center,
@@ -783,11 +813,11 @@ impl<'a> Converter<'a> {
             }
             DgnGeom::Chain(parts) => {
                 let (points, bulges) = chain(parts);
-                if points.len() >= 2 {
-                    vec![polyline(&points, &bulges)]
-                } else {
-                    Vec::new()
+                if points.len() < 2 {
+                    return Vec::new();
                 }
+                let fill = element.filled.then(|| solid_hatch(&points, &bulges)).flatten();
+                std::iter::once(polyline(&points, &bulges)).chain(fill).collect()
             }
             // V7 text is TEXT, V8 text an MTEXT.
             DgnGeom::Text { font: Some(_), .. } => {
