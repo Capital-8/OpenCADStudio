@@ -1514,6 +1514,34 @@ impl DimensionPreview {
 /// Returned by every `CadCommand` method to tell main.rs what to do.
 #[allow(dead_code)]
 pub enum CmdResult {
+    EditBlockAuthoring {
+        document: u64,
+        definition: Handle,
+        handle: Handle,
+        part: crate::scene::block_authoring::edit::Part,
+        position: DVec3,
+    },
+    PlaceBlockAction {
+        document: u64,
+        definition: Handle,
+        kind: crate::scene::block_actions::Kind,
+        parameter: Handle,
+        targets: Vec<Handle>,
+        location: DVec3,
+    },
+    EvaluateBlockParameter {
+        document: u64,
+        definition: Handle,
+        parameter: Handle,
+        position: DVec3,
+    },
+    /// Place or relocate a Basepoint, or place a Lookup parameter.
+    PlaceBlockSingleParameter {
+        document_id: u64,
+        definition: Handle,
+        kind: crate::modules::block_editor::single_parameter::Kind,
+        location: DVec3,
+    },
     /// Place a native Rotation, Alignment or Flip parameter.
     PlaceBlockOrientationParameter {
         document_id: u64,

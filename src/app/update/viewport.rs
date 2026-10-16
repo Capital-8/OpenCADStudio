@@ -829,7 +829,11 @@ impl OpenCADStudio {
                 .copied()
                 .zip(self.tabs[i].selected_grips.iter())
                 .filter(|(owner, grip)| self.tabs[i].hot_grips.contains(&(*owner, grip.id)))
-                .filter(|(_, grip)| grip.id != crate::app::visibility::VIS_GRIP_ID)
+                .filter(|(_, grip)| {
+                    grip.id != crate::app::visibility::VIS_GRIP_ID
+                        && !crate::app::block_actions::is_test_grip(grip.id)
+                        && !crate::app::block_authoring_edit::is_editor_grip(grip.id)
+                })
                 .map(|(owner, grip)| GripTarget {
                     handle: owner,
                     grip_id: grip.id,
@@ -851,7 +855,11 @@ impl OpenCADStudio {
                 .iter()
                 .copied()
                 .zip(self.tabs[i].selected_grips.iter())
-                .filter(|(_, grip)| grip.id != crate::app::visibility::VIS_GRIP_ID)
+                .filter(|(_, grip)| {
+                    grip.id != crate::app::visibility::VIS_GRIP_ID
+                        && !crate::app::block_actions::is_test_grip(grip.id)
+                        && !crate::app::block_authoring_edit::is_editor_grip(grip.id)
+                })
                 .filter(|(_, grip)| (grip.world - world).length_squared() <= epsilon_sq)
                 .map(|(owner, grip)| GripTarget {
                     handle: owner,
@@ -993,6 +1001,8 @@ impl OpenCADStudio {
                 // hover grip-menu.
                 if self.grip_popup.is_none()
                     && grip_id != crate::app::visibility::VIS_GRIP_ID
+                    && !crate::app::block_actions::is_test_grip(grip_id)
+                    && !crate::app::block_authoring_edit::is_editor_grip(grip_id)
                     && self
                         .grip_hover
                         .as_ref()
@@ -3993,6 +4003,12 @@ impl OpenCADStudio {
                         self.grip_popup = None;
                         return Task::none();
                     }
+                    if self.start_test_action_grip(handle, grip_id) {
+                        return Task::none();
+                    }
+                    if self.start_authoring_grip(handle, grip_id) {
+                        return Task::none();
+                    }
                     if self.shift_down {
                         let key = (handle, grip_id);
                         if !self.tabs[i].hot_grips.remove(&key) {
@@ -4109,6 +4125,10 @@ impl OpenCADStudio {
                 self.refresh_properties();
                 return Task::none();
             }
+        }
+
+        if edit_cam.is_none() && self.pick_authoring_object(p, bounds) {
+            return Task::none();
         }
 
         // Ctrl+click on a composite solid picks the solid of it under the
