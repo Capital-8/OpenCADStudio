@@ -179,6 +179,28 @@ impl PluginManager {
             .collect()
     }
 
+    /// Ids of loaded plugins whose processes are currently alive (API v11).
+    pub fn alive_ids(&self) -> Vec<String> {
+        self.plugins
+            .iter()
+            .filter(|p| p.process.is_alive())
+            .map(|p| p.process.id().to_string())
+            .collect()
+    }
+
+    /// Live endpoint of one loaded plugin for custom-grip event routing (API
+    /// v11): its process handle, its declared API version, and whether the
+    /// process is alive. `None` when no plugin with that id is loaded.
+    pub fn grip_endpoint(&self, id: &str) -> Option<(Arc<PluginProcess>, u32, bool)> {
+        self.plugins.iter().find(|p| p.process.id() == id).map(|p| {
+            (
+                Arc::clone(&p.process),
+                p.process.manifest().api_version,
+                p.process.is_alive(),
+            )
+        })
+    }
+
     /// Command names advertised by every alive, non-disabled plugin: each
     /// ribbon tool's command id plus the manifest's `command_prefixes`. The
     /// host merges these into command-line autocomplete so plugin commands are

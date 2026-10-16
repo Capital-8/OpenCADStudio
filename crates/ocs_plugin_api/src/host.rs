@@ -674,6 +674,33 @@ pub trait BuiltinPlugin: Send + Sync {
     fn entity_classes(&self) -> Option<&'static EntityClasses> {
         None
     }
+
+    /// A drag event for one of this plugin's declared custom grips (API v11).
+    ///
+    /// The host calls this for the begin/move/settle/cancel phases of a drag
+    /// on a grip this plugin declared — and only for this plugin. `host` is a
+    /// full [`HostApi`] session: from inside the settle callback the plugin
+    /// can read the document/records and write — including opening its own
+    /// [`HostApi::push_undo`] scope — as the settle's only write window.
+    /// The settled drag totals exactly the plugin's one labeled undo step;
+    /// the host records none of its own.
+    ///
+    /// The returned [`CustomGripResponse::preview`] replaces the plugin's
+    /// live preview wire set; it is the only feedback the host shows during
+    /// the drag — the host draws no ghost and moves nothing. Cancel means
+    /// drop preview state with zero writes.
+    ///
+    /// The host guards this call: a panicking handler is contained and
+    /// reported, never fatal. The runner only calls this for plugins whose
+    /// exported `ocs_plugin_api_version` symbol reports API major 11 or
+    /// newer, so older cdylibs are never touched past their vtable.
+    fn on_custom_grip_event(
+        &mut self,
+        _host: &mut dyn HostApi,
+        _event: CustomGripEvent,
+    ) -> CustomGripResponse {
+        CustomGripResponse::default()
+    }
 }
 
 /// A point-driven interactive command a plugin starts via
@@ -805,6 +832,112 @@ impl From<Vec<[f64; 3]>> for PreviewWire {
     fn from(points: Vec<[f64; 3]>) -> Self {
         Self::new(points)
     }
+}
+
+// ── Plugin grip surface (API v11, additive) ────────────────────────────────
+//
+// Three surfaces, one rule: plugin DECLARED, plugin OWNED. The host renders,
+// hit-tests and drags custom grips, but it never interprets them — every
+// semantic decision lives in the declaring plugin. The host applies no entity
+// mutation, constraint or record of its own when a custom grip settles; the
+// plugin learns of the drag through live [`CustomGripEvent`] frames, shows a
+// preview through the existing [`PreviewWire`] channel, and applies the settle
+// with its own HostApi writes inside its own [`HostApi::push_undo`] scope.
+
+/// One built-in grip of an entity as enumerated by
+/// [`HostApi::entity_grips`](HostApi::entity_grips) (API v11).
+///
+/// The shape and field semantics mirror the automation `grips` read: `grip_id`
+/// ist the entity-local grip index, `point` the grip's world position, and
+/// `moves_entity` true for translate grips (the same flag the interactive
+/// viewport uses to whole-entity moves).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GripInfo {
+    pub grip_id: usize,
+    pub point: [f64; 3],
+    #[serde(default)]
+    pub moves_entity: bool,
+    /// Debug name of the grip shape (e.g. `"Square"`).
+    pub shape: String,
+    /// Drag constraint direction, when the built-in grip declares one.
+    #[serde(default)]
+    pub axis: Option<[f64; 3]>,
+}
+
+/// Marker shape a plugin requests for a custom grip point (API v11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PluginGripShape {
+    #[default]
+    Square,
+    Circle,
+    Triangle,
+}
+
+/// A plugin-declared custom grip point (API v11).
+///
+/// The whole batch passed to
+/// [`set_plugin_grips`](HostApi::set_plugin_grips) REPLACES the declaring
+/// plugin's previous set; an empty batch clears it. Declaration is
+/// session-only display state: it is never written to the drawing file, and
+/// the plugin re-declares after its own notification boundaries
+/// (pull model — [`on_notification`](BuiltinPlugin::on_notification)).
+///
+/// `point` is an ABSOLUTE world point. The host never moves, offsets or
+/// auto-follows it when the `anchor` entity moves; an anchor exists for
+/// ownership scoping and hit-test legibility only. `axis`, when present,
+/// hard-constrains interactive drags to that direction line through the
+/// point; the drag events carry the projected point on the line.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginGrip {
+    pub grip_id: u64,
+    #[serde(default)]
+    pub anchor: Option<Handle>,
+    pub point: [f64; 3],
+    #[serde(default)]
+    pub axis: Option<[f64; 3]>,
+    #[serde(default)]
+    pub shape: PluginGripShape,
+}
+
+/// Drag phase of a [`CustomGripEvent`] (API v11).
+///
+/// Move events are coalesced (at most one is in flight to the plugin;
+/// superseded cursor positions are dropped); the settle and cancel phases
+/// are never coalesced or dropped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CustomGripPhase {
+    Begin,
+    Move,
+    Settle,
+    Cancel,
+}
+
+/// One drag event delivered to the owning plugin (API v11).
+///
+/// `point` is the CURRENT drag point: the projected cursor point with a
+/// hard-constrained axis, the point on the constraint line. The settle event
+/// carries the final point; cancel lets the plugin drop preview state with
+/// zero writes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CustomGripEvent {
+    pub grip_id: u64,
+    pub phase: CustomGripPhase,
+    pub point: [f64; 3],
+    #[serde(default)]
+    pub anchor: Option<Handle>,
+}
+
+/// The plugin's answer to a [`CustomGripEvent`] (API v11).
+///
+/// `preview` REPLACES the plugin's live preview wire set; analytical arcs
+/// and circles render GPU-smooth. The plugin's preview is the only live
+/// feedback — the host draws no ghost of its own and moves nothing during
+/// the drag. All mutation happens at settle, from the plugin, in its own
+/// undo scope.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct CustomGripResponse {
+    #[serde(default)]
+    pub preview: Vec<PreviewWire>,
 }
 
 /// The outcome of an [`InteractiveCommand`] step.
@@ -1244,6 +1377,57 @@ pub trait HostApi {
     /// of its own. Refusals record no undo step.
     fn set_reference_only(&mut self, _handle: Handle, _reference_only: bool) -> Result<(), String> {
         Err("The reference-only designation is not supported by this host".to_owned())
+    }
+
+    // ── Plugin grip surface (added in API v11; appended at the end to keep
+    // vtable indices stable for older plugins) ─────────────────────────────
+
+    /// Enumerate an entity's built-in grips (API v11, additive).
+    ///
+    /// Generic over every entity type: the answer is whatever the entity's
+    /// own grip producers define (an arc answers center / endpoints / its
+    /// mid-arc radius grip, a spline its control points, and so on), with
+    /// the same shape and field semantics the automation `grips` read and
+    /// the interactive viewport expose. Reference-only entities and entities
+    /// on locked layers answer an empty list — the same answer the viewport
+    /// would give. Fails when the handle does not address an entity.
+    fn entity_grips(&self, _handle: Handle) -> Result<Vec<GripInfo>, String> {
+        Err("Grip reads are not supported by this host".to_owned())
+    }
+
+    /// Perform the grip edit an interactive drag would perform (API v11,
+    /// additive).
+    ///
+    /// Drives exactly the machinery of the viewport drag: the entity-typed
+    /// grip modes, snaps and ortho/polar off for the move, one undo step
+    /// labeled like the interactive grip step, byte-exact restore on undo.
+    /// Refusal parity: fails for unknown handles/grip ids, reference-only
+    /// entities and locked layers.
+    fn grip_drag(&mut self, _handle: Handle, _grip_id: usize, _to: [f64; 3]) -> Result<(), String> {
+        Err("Programmatic grip drags are not supported by this host".to_owned())
+    }
+
+    /// Declare (or clear) the calling plugin's custom grip points (API v11,
+    /// additive, V4 transport only).
+    ///
+    /// The batch REPLACES the plugin's previous set; an empty batch clears
+    /// it. The host renders the points, hit-tests them with priority over
+    /// click-through (reference-only) geometry, and routes drags on them
+    /// back to the plugin as [`CustomGripEvent`]s — the host interprets
+    /// nothing. Declaration is session display state: nothing of it is
+    /// persisted in the drawing file, and the set dies with the plugin's
+    /// process. Only the declaring plugin ever receives its grips' events.
+    ///
+    /// `plugin_id` is fixed by the host transport: over the plugin IPC the
+    /// host attaches the serving process's own manifest id and refuses
+    /// mismatches, so a plugin cannot declare grips in another plugin's
+    /// name.
+    fn set_plugin_grips(
+        &mut self,
+        _plugin_id: &str,
+        _grips: Vec<PluginGrip>,
+    ) -> Result<(), String> {
+        Err("Plugin grip points are not supported by this host".to_owned())
     }
 }
 

@@ -17,7 +17,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::host::{CommandSource, CommandStep, HostSettingValue};
+use crate::host::{
+    CommandSource, CommandStep, CustomGripEvent, CustomGripResponse, GripInfo, HostSettingValue,
+    PluginGrip,
+};
 use crate::manifest::ApiVersion;
 use crate::ribbon::owned::{OwnedEntityClasses, OwnedPluginManifest, OwnedRibbonGroup};
 
@@ -94,6 +97,14 @@ pub enum HostRequest {
         command_id: u64,
         pt: [f64; 3],
     },
+    /// V11: one drag event for a plugin-declared custom grip, delivered to
+    /// the owning plugin only. The runner passes the plugin a full HostApi
+    /// proxy, so the settle phase can perform writes (possibly nested, over
+    /// the multiplexed link) inside the plugin's own undo scope.
+    CustomGripEvent {
+        tab_index: usize,
+        event: CustomGripEvent,
+    },
 }
 
 /// Responses the plugin runner sends back for `HostRequest`.
@@ -107,6 +118,9 @@ pub enum HostResponse {
     Error(String),
     CodeExecutionResult(crate::host::ExecutionResult),
     PreviewWires(Vec<PreviewWire>),
+    /// V11: the owning plugin's answer to a custom-grip drag event: the
+    /// preview wire set that replaces its previous live preview.
+    CustomGrip(CustomGripResponse),
 }
 
 /// Requests the plugin runner sends to the host.
@@ -231,6 +245,24 @@ pub enum PluginRequest {
         handle: Handle,
         reference_only: bool,
     },
+    /// V11 (additive): enumerate an entity's built-in grips with viewport
+    /// parity.
+    EntityGrips {
+        handle: Handle,
+    },
+    /// V11 (additive): perform the one-undo-step grip edit an interactive
+    /// drag performs.
+    GripDrag {
+        handle: Handle,
+        grip_id: usize,
+        to: [f64; 3],
+    },
+    /// V11 (additive): declare (or clear) the calling plugin's custom grip
+    /// points. The declaring plugin's identity is attached by the host from
+    /// the serving process's own manifest, never from the frame.
+    SetPluginGrips {
+        grips: Vec<PluginGrip>,
+    },
 }
 
 /// Responses the host sends back for `PluginRequest`.
@@ -279,6 +311,12 @@ pub enum PluginResponse {
     XRecordNames(Result<Vec<String>, String>),
     /// V9 (additive): outcome of the reference-only designation.
     SetReferenceOnlyResult(Result<(), String>),
+    /// V11 (additive): an entity's built-in grip list.
+    EntityGripsResult(Result<Vec<GripInfo>, String>),
+    /// V11 (additive): outcome of a programmatic grip drag.
+    GripDragResult(Result<(), String>),
+    /// V11 (additive): outcome of a custom-grip declaration.
+    SetPluginGripsResult(Result<(), String>),
 }
 
 /// Messages sent from the host to the plugin runner.

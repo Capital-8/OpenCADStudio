@@ -26,11 +26,17 @@ fn addressable_document_snapshot(host: &dyn HostApi) -> codec::CadDocument {
 
 /// Apply one plugin request to the host's `HostApi` implementation.
 ///
+/// `plugin_id` is the identity of the process the request came from — fixed
+/// by the transport (the serving process's own manifest id), never carried on
+/// the wire: the grip declaration stores the calling plugin's true id, so a
+/// plugin cannot declare grips in another plugin's name.
+///
 /// `on_start_interactive` is called when the plugin starts an interactive
 /// command; the host should install an adapter that sends
 /// `HostRequest::InteractiveEvent` back to the plugin process.
 pub fn handle_plugin_request(
     host: &mut dyn HostApi,
+    plugin_id: &str,
     req: PluginRequest,
     on_start_interactive: &mut dyn FnMut(u64),
 ) -> PluginResponse {
@@ -156,6 +162,15 @@ pub fn handle_plugin_request(
             reference_only,
         } => {
             PluginResponse::SetReferenceOnlyResult(host.set_reference_only(handle, reference_only))
+        }
+        EntityGrips { handle } => PluginResponse::EntityGripsResult(host.entity_grips(handle)),
+        GripDrag {
+            handle,
+            grip_id,
+            to,
+        } => PluginResponse::GripDragResult(host.grip_drag(handle, grip_id, to)),
+        SetPluginGrips { grips } => {
+            PluginResponse::SetPluginGripsResult(host.set_plugin_grips(plugin_id, grips))
         }
     }
 }

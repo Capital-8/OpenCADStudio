@@ -1004,6 +1004,44 @@ impl HostApi for V4PluginHostApi {
             Err(error) => Err(error.to_string()),
         }
     }
+
+    fn entity_grips(&self, handle: Handle) -> Result<Vec<crate::host::GripInfo>, String> {
+        match self.request(PluginRequest::EntityGrips { handle }) {
+            Ok(PluginResponse::EntityGripsResult(result)) => result,
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected entity-grips response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn grip_drag(&mut self, handle: Handle, grip_id: usize, to: [f64; 3]) -> Result<(), String> {
+        match self.request(PluginRequest::GripDrag {
+            handle,
+            grip_id,
+            to,
+        }) {
+            Ok(PluginResponse::GripDragResult(result)) => result,
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected grip-drag response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn set_plugin_grips(
+        &mut self,
+        _plugin_id: &str,
+        grips: Vec<crate::host::PluginGrip>,
+    ) -> Result<(), String> {
+        // The plugin id never crosses the wire: the host attaches the serving
+        // process's own manifest id, so a plugin cannot declare grips in
+        // another plugin's name.
+        match self.request(PluginRequest::SetPluginGrips { grips }) {
+            Ok(PluginResponse::SetPluginGripsResult(result)) => result,
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected plugin-grips response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
 }
 
 #[cfg(test)]

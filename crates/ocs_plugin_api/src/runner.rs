@@ -268,6 +268,9 @@ fn handle_host_request(
         HostRequest::ExecuteCode { .. } => {
             HostResponse::Error("ExecuteCode requires V4 protocol".to_string())
         }
+        HostRequest::CustomGripEvent { .. } => {
+            HostResponse::Error("custom grips require the V4 protocol".to_string())
+        }
         HostRequest::Shutdown => {
             // Return a positive Ack so the host knows we received the request.
             // run_v3 will then observe the closed stream, break its loop, and
@@ -457,6 +460,28 @@ fn handle_host_request_v4(
                 )),
                 Err(_) => Some(HostResponse::Error(
                     "plugin start_execute_code panicked".to_string(),
+                )),
+            }
+        }
+        HostRequest::CustomGripEvent { tab_index, event } => {
+            // API v11 gate: a cdylib compiled against API v10 or older has a
+            // BuiltinPlugin vtable without this slot — never call it (same
+            // rule as entity_classes). The grip was declared by this plugin,
+            // so the empty response simply keeps its preview as-is.
+            if api_version < 11 {
+                return Some(HostResponse::CustomGrip(Default::default()));
+            }
+            // A full HostApi proxy: the settle phase may write (possibly
+            // nested requests, served inline by the host) inside the
+            // plugin's own undo scope.
+            let mut proxy = client.plugin_host_api(tab_index, interactive.clone());
+            let guarded = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                plugin.on_custom_grip_event(&mut proxy, event)
+            }));
+            match guarded {
+                Ok(resp) => Some(HostResponse::CustomGrip(resp)),
+                Err(_) => Some(HostResponse::Error(
+                    "plugin on_custom_grip_event panicked".to_string(),
                 )),
             }
         }

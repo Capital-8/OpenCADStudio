@@ -31,7 +31,13 @@
 /// XDATA class-identity display labels, folded into the registered manifest.
 /// Display-only; the host consults the declaration only while the declaring
 /// plugin is loaded, and entities without one keep their native type names.
-pub const API_VERSION: u32 = 10;
+/// v11 appends the plugin grip surface: `HostApi::entity_grips` (built-in
+/// grip enumeration with viewport parity), `HostApi::grip_drag` (the same
+/// one-undo-step edit the interactive viewport performs), and
+/// `HostApi::set_plugin_grips` plus `BuiltinPlugin::on_custom_grip_event`
+/// (plugin-declared, plugin-owned custom grip points: session display state
+/// the host renders, hit-tests and drags but never interprets).
+pub const API_VERSION: u32 = 11;
 
 /// Oldest plugin API major the current host still loads. This keeps previously
 /// compiled cdylibs usable as long as their vtable layout is a prefix of the

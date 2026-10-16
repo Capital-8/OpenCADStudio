@@ -223,9 +223,10 @@ fn base_max_floor(base: Duration, kind: &'static str) -> Duration {
     }
     let floor = match kind {
         "GetManifest" | "GetRibbon" => Duration::from_secs(5),
-        "Dispatch" => Duration::from_secs(10),
-        "InteractiveEvent" | "GetPrompt" | "NeedsEntityPick" => Duration::from_secs(2),
-        "CursorMove" => Duration::from_millis(500),
+        "Dispatch" | "CustomGripSettle" => Duration::from_secs(10),
+        "InteractiveEvent" | "GetPrompt" | "NeedsEntityPick" | "CustomGripBegin"
+        | "CustomGripCancel" => Duration::from_secs(2),
+        "CursorMove" | "CustomGripMove" => Duration::from_millis(500),
         "ExecuteCode" => execute_code_timeout(),
         _ => Duration::from_secs(1),
     };
@@ -243,6 +244,12 @@ pub(crate) fn request_kind(req: &HostRequest) -> &'static str {
         HostRequest::ExecuteCode { .. } => "ExecuteCode",
         HostRequest::DropInteractive { .. } => "DropInteractive",
         HostRequest::CursorMove { .. } => "CursorMove",
+        HostRequest::CustomGripEvent { event, .. } => match event.phase {
+            crate::host::CustomGripPhase::Begin => "CustomGripBegin",
+            crate::host::CustomGripPhase::Move => "CustomGripMove",
+            crate::host::CustomGripPhase::Settle => "CustomGripSettle",
+            crate::host::CustomGripPhase::Cancel => "CustomGripCancel",
+        },
         HostRequest::Shutdown => "Shutdown",
     }
 }
@@ -444,6 +451,7 @@ impl PluginProcess {
             *plugin_id_placeholder
                 .lock()
                 .unwrap_or_else(|e| e.into_inner()) = manifest.id.clone();
+            v4_conn.attach_plugin_id(&manifest.id);
             ribbon = match v4_conn.call(host, HostRequest::GetRibbon, no_op)? {
                 HostResponse::Ribbon(r) => r,
                 other => return Err(PluginError::UnexpectedResponse(Box::new(other))),
@@ -452,11 +460,14 @@ impl PluginProcess {
         } else {
             // The runner first answers GetManifest and GetRibbon so the host can
             // build the UI without keeping the plugin object alive.
-            manifest = match call(&stream, &child, host, HostRequest::GetManifest, no_op)? {
+            // The manifest id is unknown until GetManifest returns, so nested
+            // requests during the handshake serve with an empty identity — no
+            // grip declaration can exist in that window.
+            manifest = match call(&stream, &child, host, "", HostRequest::GetManifest, no_op)? {
                 HostResponse::Manifest(m) => m,
                 other => return Err(PluginError::UnexpectedResponse(Box::new(other))),
             };
-            ribbon = match call(&stream, &child, host, HostRequest::GetRibbon, no_op)? {
+            ribbon = match call(&stream, &child, host, "", HostRequest::GetRibbon, no_op)? {
                 HostResponse::Ribbon(r) => r,
                 other => return Err(PluginError::UnexpectedResponse(Box::new(other))),
             };
@@ -535,6 +546,7 @@ impl PluginProcess {
                 &self.stream,
                 &self.child,
                 host,
+                &self.id,
                 HostRequest::Dispatch {
                     cmd: cmd.to_string(),
                 },
@@ -546,6 +558,80 @@ impl PluginProcess {
         };
         vlog!("[plugin] dispatch {cmd} result: {result:?}");
         result
+    }
+
+    /// Deliver a custom-grip drag event to this plugin's runner (API v11).
+    ///
+    /// The runner hands the event to the plugin's
+    /// `BuiltinPlugin::on_custom_grip_event` with a full HostApi proxy, so a
+    /// settle can write — issuing nested plugin requests that this same `call`
+    /// serves inline — inside the plugin's own undo scope. V4 transport only:
+    /// V3 connections refuse (no multiplexed link, no nested writes).
+    #[allow(clippy::result_large_err)]
+    pub fn custom_grip_event(
+        &self,
+        host: &mut dyn HostApi,
+        tab_index: usize,
+        event: crate::host::CustomGripEvent,
+    ) -> Result<crate::host::CustomGripResponse, PluginError> {
+        let Some(v4) = &self.v4 else {
+            return Err(PluginError::Runner(
+                "custom grips require the V4 protocol".into(),
+            ));
+        };
+        match v4.call(
+            host,
+            HostRequest::CustomGripEvent { tab_index, event },
+            &mut |_| {},
+        )? {
+            HostResponse::CustomGrip(resp) => Ok(resp),
+            other => Err(PluginError::UnexpectedResponse(Box::new(other))),
+        }
+    }
+
+    /// Issue a coalesced custom-grip move without waiting (API v11): the
+    /// app keeps at most one move in flight and drops superseded cursor
+    /// points. V4 transport only.
+    #[allow(clippy::result_large_err)]
+    pub fn custom_grip_move_send(
+        &self,
+        tab_index: usize,
+        event: crate::host::CustomGripEvent,
+    ) -> Result<(), PluginError> {
+        let Some(v4) = &self.v4 else {
+            return Err(PluginError::Runner(
+                "custom grips require the V4 protocol".into(),
+            ));
+        };
+        v4.send_grip_move(tab_index, event)
+    }
+
+    /// Poll for the answer to the outstanding custom-grip move, serving any
+    /// nested plugin requests with `host` on the way. `Ok(None)`: not
+    /// answered yet.
+    #[allow(clippy::result_large_err)]
+    pub fn custom_grip_move_poll(
+        &self,
+        host: &mut dyn HostApi,
+        wait: std::time::Duration,
+    ) -> Result<Option<crate::host::CustomGripResponse>, PluginError> {
+        let Some(v4) = &self.v4 else {
+            return Err(PluginError::Runner(
+                "custom grips require the V4 protocol".into(),
+            ));
+        };
+        match v4.poll_grip_move(host, wait)? {
+            Some(HostResponse::CustomGrip(resp)) => Ok(Some(resp)),
+            Some(other) => Err(PluginError::UnexpectedResponse(Box::new(other))),
+            None => Ok(None),
+        }
+    }
+
+    /// Whether a coalesced custom-grip move is still unanswered.
+    pub fn custom_grip_move_in_flight(&self) -> bool {
+        self.v4
+            .as_ref()
+            .is_some_and(|v4| v4.has_grip_move_in_flight())
     }
 
     /// Execute a REPL code snippet on a V4 plugin. The session is tied to the
@@ -995,11 +1081,14 @@ fn recv_with_deadline<T: DeserializeOwned + Send + 'static>(
 }
 
 /// Send a host request and wait for the response, handling any nested plugin
-/// requests inline using the supplied `HostApi`.
+/// requests inline using the supplied `HostApi`. `plugin_id` identifies the
+/// process whose requests are served (attached to grip declarations; before
+/// the manifest is read it is empty, where no grip traffic can exist).
 fn call(
     stream: &Mutex<Option<Stream>>,
     child: &Mutex<Option<Child>>,
     host: &mut dyn HostApi,
+    plugin_id: &str,
     req: HostRequest,
     on_start_interactive: &mut dyn FnMut(u64),
 ) -> Result<HostResponse, PluginError> {
@@ -1018,7 +1107,8 @@ fn call(
         match msg {
             PluginToHost::Response(resp) => return Ok(resp),
             PluginToHost::Request(plugin_req) => {
-                let resp = handle_plugin_request(host, *plugin_req, on_start_interactive);
+                let resp =
+                    handle_plugin_request(host, plugin_id, *plugin_req, on_start_interactive);
                 vlog!("[plugin] host -> runner response: {resp:?}");
                 let mut guard = stream.lock().unwrap_or_else(|e| e.into_inner());
                 let stream = guard.as_mut().ok_or_else(shutdown_error)?;
