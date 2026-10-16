@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::*;
+use crate::io::model_import::ModelFormat;
 use crate::modules::insert::dgn_import::{self, DgnImportCommand, DgnImportRequest};
 use crate::ui::window::import_dialogs::{
     unsupported_reason, DgnImportState, ImportDialogMsg, ImportFileState, Support, FORMATS,
@@ -18,7 +19,7 @@ const RECENT: usize = 5;
 
 /// Picks a file and registers its bytes (the web build reads them only
 /// here); `None` when the picker is cancelled.
-async fn pick(title: String, filters: Vec<(String, Vec<String>)>) -> Option<String> {
+pub(super) async fn pick(title: String, filters: Vec<(String, Vec<String>)>) -> Option<String> {
     let mut dialog = crate::sys::file_dialog().set_title(title.as_str());
     for (name, extensions) in &filters {
         let extensions: Vec<&str> = extensions.iter().map(String::as_str).collect();
@@ -62,6 +63,8 @@ fn is_dgn(path: &str) -> bool {
 enum Route {
     Pdf,
     Dgn,
+    Model(ModelFormat),
+    Wmf,
 }
 
 /// The importer for `path` chosen as `format` (an index of [`FORMATS`]; `None`
@@ -75,6 +78,21 @@ fn route(path: &str, format: Option<usize>) -> Result<Route, String> {
     }
     let ext = extension(path);
     let by_extension = f.is_none_or(|f| f.support == Support::ByExtension);
+    // The chosen format, or the one whose patterns name the extension.
+    let named = if by_extension {
+        FORMATS
+            .iter()
+            .find(|f| f.extensions.iter().any(|e| e.eq_ignore_ascii_case(&ext)))
+    } else {
+        f
+    };
+    match named.map(|f| f.name) {
+        Some("ACIS") => return Ok(Route::Model(ModelFormat::Sat)),
+        Some("STEP") => return Ok(Route::Model(ModelFormat::Step)),
+        Some("IGES") => return Ok(Route::Model(ModelFormat::Iges)),
+        Some("Metafile") => return Ok(Route::Wmf),
+        _ => {}
+    }
     let pdf = if by_extension { ext == "pdf" } else { f.is_some_and(|f| f.name == "PDF Files") };
     if pdf {
         return Ok(Route::Pdf);
@@ -111,8 +129,8 @@ impl OpenCADStudio {
                 Some(Task::none())
             }
             ("IMPORT", true) => {
-                use crate::command::{CadCommand, ValuePromptCommand};
-                let command = ValuePromptCommand::new("_IMPORTFILE", "Enter import file name:");
+                use crate::command::{CadCommand, FreeTextValuePromptCommand};
+                let command = FreeTextValuePromptCommand::new("_IMPORTFILE", "Enter import file name:");
                 self.command_line.push_info(&command.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(command));
                 Some(Task::none())
@@ -216,6 +234,16 @@ impl OpenCADStudio {
                     return Task::none();
                 }
                 self.dispatch_command(&format!("-DGNIMPORT {path}"))
+            }
+            Ok(Route::Model(format)) => {
+                self.remember_import(path);
+                let i = self.active_tab;
+                self.import_model(i, path, format)
+            }
+            Ok(Route::Wmf) => {
+                self.remember_import(path);
+                let i = self.active_tab;
+                self.import_wmf(i, path, false)
             }
             Err(error) => {
                 self.command_line.push_error(&error);
@@ -323,6 +351,16 @@ impl OpenCADStudio {
                         if let Err(error) = self.open_dgn_import_dialog(&path) {
                             self.command_line.push_error(&error);
                         }
+                    }
+                    Ok(Route::Model(kind)) => {
+                        self.remember_import(&path);
+                        self.close_active_modal();
+                        return self.import_model(i, &path, kind);
+                    }
+                    Ok(Route::Wmf) => {
+                        self.remember_import(&path);
+                        self.close_active_modal();
+                        return self.import_wmf(i, &path, false);
                     }
                 }
             }

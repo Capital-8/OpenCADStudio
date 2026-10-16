@@ -50,10 +50,6 @@ pub enum Support {
     Yes,
     /// Any file: the importer follows the file's extension.
     ByExtension,
-    /// SAT: ACIS bodies are read only inside drawings.
-    AcisSolverOnly,
-    /// STEP: written by STEPOUT, not read.
-    ExportOnly,
     No,
 }
 
@@ -87,9 +83,9 @@ pub const FORMATS: [ImportFormat; 21] = [
     format("PDF Files", "*.pdf", &["pdf"], 0, Support::Yes),
     format("MicroStation DGN", "*.dgn", &["dgn"], 0, Support::Yes),
     format("All DGN Files", "*.*", &["*"], 0, Support::Yes),
-    format("Metafile", "*.wmf", &["wmf"], 0, Support::No),
+    format("Metafile", "*.wmf", &["wmf"], 0, Support::Yes),
     format("3D Studio", "*.3ds", &["3ds"], 1, Support::No),
-    format("ACIS", "*.sat", &["sat"], 1, Support::AcisSolverOnly),
+    format("ACIS", "*.sat", &["sat"], 1, Support::Yes),
     format(
         "CATIA V4",
         "*.model; *.session; *.exp; *.dlv3",
@@ -104,7 +100,7 @@ pub const FORMATS: [ImportFormat; 21] = [
         1,
         Support::No,
     ),
-    format("IGES", "*.igs; *.iges", &["igs", "iges"], 1, Support::No),
+    format("IGES", "*.igs; *.iges", &["igs", "iges"], 1, Support::Yes),
     format("Inventor", "*.ipt; *.iam", &["ipt", "iam"], 1, Support::No),
     format("JT", "*.jt", &["jt"], 1, Support::No),
     format("NX", "*.prt", &["prt"], 1, Support::No),
@@ -121,7 +117,7 @@ pub const FORMATS: [ImportFormat; 21] = [
         1,
         Support::No,
     ),
-    format("STEP", "*.ste; *.stp; *.step", &["ste", "stp", "step"], 1, Support::ExportOnly),
+    format("STEP", "*.ste; *.stp; *.step", &["ste", "stp", "step"], 1, Support::Yes),
     format("All Files", "*.*", &["*"], 2, Support::ByExtension),
 ];
 
@@ -178,13 +174,10 @@ fn badge<'a>(support: Support) -> Element<'a, Message> {
     let (label, tone) = match support {
         Support::Yes => (t!("Supported"), 0),
         Support::ByExtension => (t!("By extension"), 2),
-        Support::AcisSolverOnly => (t!("ACIS solver available"), 1),
-        Support::ExportOnly => (t!("Export only"), 1),
         Support::No => (t!("None"), 2),
     };
     let color = move |theme: &Theme| match tone {
         0 => theme.palette().success.base.color,
-        1 => AMBER,
         _ => theme.palette().background.base.text.scale_alpha(0.55),
     };
     container(
@@ -210,10 +203,6 @@ fn badge<'a>(support: Support) -> Element<'a, Message> {
 pub fn unsupported_reason(support: Support) -> Option<std::borrow::Cow<'static, str>> {
     match support {
         Support::Yes | Support::ByExtension => None,
-        Support::AcisSolverOnly => Some(t!(
-            "ACIS bodies are read only inside drawings; SAT files cannot be imported."
-        )),
-        Support::ExportOnly => Some(t!("STEP files are only written (STEPOUT), not read.")),
         Support::No => Some(t!("OpenCAD Studio has no importer for this format.")),
     }
 }

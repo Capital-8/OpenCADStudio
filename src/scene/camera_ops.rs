@@ -615,6 +615,17 @@ impl Scene {
         true
     }
 
+    /// The plan view's window: its centre and its width and height in world
+    /// units, and the world size of one screen pixel (zero before the first
+    /// frame).
+    pub fn view_window(&self) -> ([f64; 2], [f64; 2], f64) {
+        let aspect = f64::from(self.active_camera_aspect());
+        let camera = self.camera.borrow();
+        let height = 2.0 * f64::from(camera.ortho_size());
+        let pixel = self.world_per_pixel().map_or(0.0, f64::from);
+        ([camera.target.x, camera.target.y], [height * aspect, height], pixel)
+    }
+
     /// Aspect ratio of the active camera's actual render rectangle. Model
     /// panes are separate shader widgets, so the full-canvas render aspect is
     /// wrong whenever a tiled viewport is active.

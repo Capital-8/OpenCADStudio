@@ -8,12 +8,15 @@ pub mod edit_lock;
 // Same split as web_session/web_autosave: the save-routing decision (and
 // its tests) is pure and compiles everywhere; the showSaveFilePicker half
 // inside is wasm-only.
+pub mod brep_build;
 pub mod fbx;
 pub mod file_association;
 pub mod font_repo;
 pub(crate) mod fs_access;
+pub mod iges_import;
 pub mod line_read;
 pub mod linetypes;
+pub mod model_import;
 pub mod obj;
 pub mod ole_embed;
 pub mod paper_catalog;
@@ -27,11 +30,13 @@ pub mod recovery;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod single_instance;
 pub mod step;
+pub mod step_import;
 pub mod stl;
 pub mod svg_export;
 pub mod thumbnail;
 pub mod update_check;
 pub mod visual_styles;
+pub mod wmf_import;
 #[cfg(target_arch = "wasm32")]
 pub(crate) mod web_recent;
 // Registered on every target so the pure helpers (and their tests) compile on
