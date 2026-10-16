@@ -2861,8 +2861,14 @@ impl OpenCADStudio {
         } else {
             Subscription::none()
         };
+        // A compositor that delivers no frame (an occluded or throttled
+        // window) must not hold the save: a timer goes ahead without it.
         let thumbnail_capture = if self.thumbnail_capture_clean {
-            window::frames().map(|_| Message::ThumbnailCaptureFrame)
+            Subscription::batch([
+                window::frames().map(|_| Message::ThumbnailCaptureFrame),
+                iced::time::every(std::time::Duration::from_millis(300))
+                    .map(|_| Message::ThumbnailCaptureFrame),
+            ])
         } else {
             Subscription::none()
         };

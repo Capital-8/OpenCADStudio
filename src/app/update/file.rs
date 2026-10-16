@@ -3578,14 +3578,39 @@ impl OpenCADStudio {
             )
         };
         match capture_window {
-            Some(window) => iced::window::screenshot(window)
-                .map(Some)
-                .then(move |screenshot| {
-                    Task::batch([
-                        Task::done(Message::ThumbnailCaptureFinished),
-                        run_save(screenshot),
-                    ])
-                }),
+            // The screenshot may never come back (a window the compositor
+            // does not draw), so it races a short timeout: whichever answers
+            // first runs the save, with or without the picture.
+            Some(window) => {
+                fn finish<F>(
+                    slot: &std::sync::Mutex<Option<F>>,
+                    screenshot: Option<iced::window::Screenshot>,
+                ) -> Task<Message>
+                where
+                    F: FnMut(Option<iced::window::Screenshot>) -> Task<Message>,
+                {
+                    match slot.lock().ok().and_then(|mut run| run.take()) {
+                        Some(mut run_save) => Task::batch([
+                            Task::done(Message::ThumbnailCaptureFinished),
+                            run_save(screenshot),
+                        ]),
+                        None => Task::none(),
+                    }
+                }
+                let slot = std::sync::Arc::new(std::sync::Mutex::new(Some(run_save)));
+                let (shot_slot, timeout_slot) = (slot.clone(), slot);
+                let (tx, rx) = iced::futures::channel::oneshot::channel::<()>();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    let _ = tx.send(());
+                });
+                Task::batch([
+                    iced::window::screenshot(window)
+                        .map(Some)
+                        .then(move |screenshot| finish(&shot_slot, screenshot)),
+                    Task::perform(rx, |_| ()).then(move |_| finish(&timeout_slot, None)),
+                ])
+            }
             None => {
                 self.thumbnail_capture_clean = false;
                 run_save(None)
