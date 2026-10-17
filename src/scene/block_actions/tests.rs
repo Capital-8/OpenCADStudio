@@ -1361,3 +1361,387 @@ fn block_actions_topology_nested_insert_attribute_handles_remain_independent() {
     assert_eq!(copied.attributes[0].common.owner_handle, member);
     assert_ne!(copied.seqend_handle, original.seqend_handle);
 }
+
+#[test]
+fn block_actions_array_native_creation_and_dwg_dxf_roundtrip() {
+    for kind in [distance::Kind::Linear, distance::Kind::Polar, distance::Kind::XY] {
+        let (mut doc, def, targets) = fixture();
+        let end_pt = if kind == distance::Kind::XY {
+            Vector3::new(10., 10., 0.)
+        } else {
+            Vector3::new(10., 0., 0.)
+        };
+        let p = distance::create(
+            &mut doc,
+            def,
+            kind,
+            Vector3::ZERO,
+            end_pt,
+            Vector3::new(5., 2., 0.),
+        )
+        .unwrap();
+        let column_offset = 2.5;
+        let row_offset = if kind == distance::Kind::XY { 3.5 } else { 1.0 };
+        let action = create_array(
+            &mut doc,
+            def,
+            p,
+            &[targets[0]],
+            DVec3::new(5., 5., 0.),
+            column_offset,
+            row_offset,
+        )
+        .unwrap();
+
+        let ObjectType::DynamicBlock(o) = doc.objects.get(&action).unwrap() else {
+            panic!()
+        };
+        let DynamicBlockData::ArrayAction(arr) = &o.data else {
+            panic!()
+        };
+        assert_eq!(arr.column_offset, column_offset);
+        assert_eq!(arr.row_offset, row_offset);
+        assert_eq!(arr.action.dependencies, vec![targets[0]]);
+        assert_eq!(arr.connections.len(), 4);
+        let param_id = parameters(&doc, def, Kind::Array)[0].id;
+        assert_eq!(
+            arr.connections,
+            [
+                BlockConnection {
+                    code: param_id,
+                    name: "Base".into(),
+                },
+                BlockConnection {
+                    code: param_id,
+                    name: "End".into(),
+                },
+                BlockConnection {
+                    code: param_id,
+                    name: "UpdatedBase".into(),
+                },
+                BlockConnection {
+                    code: param_id,
+                    name: "UpdatedEnd".into(),
+                },
+            ]
+        );
+
+        // DWG roundtrip
+        let dwg_bytes = DwgWriter::write_to_vec(&doc).unwrap();
+        let dwg_doc = DwgReader::from_stream(Cursor::new(dwg_bytes)).read().unwrap();
+        let ObjectType::DynamicBlock(dwg_o) = dwg_doc.objects.get(&action).unwrap() else {
+            panic!()
+        };
+        let DynamicBlockData::ArrayAction(dwg_arr) = &dwg_o.data else {
+            panic!()
+        };
+        assert_eq!(dwg_arr.column_offset, column_offset);
+        assert_eq!(dwg_arr.row_offset, row_offset);
+        assert_eq!(dwg_arr.action.dependencies, vec![targets[0]]);
+        assert_eq!(dwg_arr.connections, arr.connections);
+
+        // DXF roundtrip
+        let dxf_bytes = DxfWriter::new(&doc).write_to_vec().unwrap();
+        let dxf_doc = DxfReader::from_reader(Cursor::new(dxf_bytes)).unwrap().read().unwrap();
+        let ObjectType::DynamicBlock(dxf_o) = dxf_doc.objects.get(&action).unwrap() else {
+            panic!()
+        };
+        let DynamicBlockData::ArrayAction(dxf_arr) = &dxf_o.data else {
+            panic!()
+        };
+        assert_eq!(dxf_arr.column_offset, column_offset);
+        assert_eq!(dxf_arr.row_offset, row_offset);
+        assert_eq!(dxf_arr.action.dependencies, vec![targets[0]]);
+        assert_eq!(dxf_arr.connections, arr.connections);
+    }
+}
+
+#[test]
+fn block_actions_array_linear_and_polar_dynamic_evaluation() {
+    let (mut doc, def, targets) = fixture();
+    let p = distance::create(
+        &mut doc,
+        def,
+        distance::Kind::Linear,
+        Vector3::ZERO,
+        Vector3::new(10., 0., 0.),
+        Vector3::new(5., 2., 0.),
+    )
+    .unwrap();
+    create_array(
+        &mut doc,
+        def,
+        p,
+        &[targets[0]],
+        DVec3::ZERO,
+        2.0,
+        1.0,
+    )
+    .unwrap();
+
+    let baseline = doc.clone();
+
+    // At distance 1.0 (< column_offset 2.0), only base item exists
+    evaluate(&mut doc, &baseline, def, p, DVec3::new(1.0, 0.0, 0.0)).unwrap();
+    let members = authoring::members(&doc, def);
+    assert_eq!(members.len(), 2); // original line + circle
+
+    // At distance 2.0 (>= 2.0), 1 clone is added -> 3 members total
+    evaluate(&mut doc, &baseline, def, p, DVec3::new(2.0, 0.0, 0.0)).unwrap();
+    let members = authoring::members(&doc, def);
+    assert_eq!(members.len(), 3);
+    let lines: Vec<_> = members
+        .iter()
+        .filter_map(|&h| match doc.get_entity(h) {
+            Some(EntityType::Line(l)) => Some((h, l.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lines.len(), 2);
+    // Original line was from (1,0,0) to (2,0,0). Clone should be translated by (2,0,0): from (3,0,0) to (4,0,0)
+    assert!(lines.iter().any(|(_, l)| (l.start - Vector3::new(3., 0., 0.)).length() < 1e-8));
+
+    // At distance 6.5, items count = floor(6.5/2.0)+1 = 4 -> 3 clones + 1 base = 4 lines + 1 circle = 5 members
+    evaluate(&mut doc, &baseline, def, p, DVec3::new(6.5, 0.0, 0.0)).unwrap();
+    let members = authoring::members(&doc, def);
+    assert_eq!(members.len(), 5);
+
+    // Shrink back to 0.5: clones are removed, reverting to original 2 members
+    evaluate(&mut doc, &baseline, def, p, DVec3::new(0.5, 0.0, 0.0)).unwrap();
+    let members = authoring::members(&doc, def);
+    assert_eq!(members.len(), 2);
+
+    // Polar parameter at angle 45 deg
+    let (mut doc, def, targets) = fixture();
+    let p_polar = distance::create(
+        &mut doc,
+        def,
+        distance::Kind::Polar,
+        Vector3::ZERO,
+        Vector3::new(10., 0., 0.),
+        Vector3::new(5., 2., 0.),
+    )
+    .unwrap();
+    create_array(
+        &mut doc,
+        def,
+        p_polar,
+        &[targets[0]],
+        DVec3::ZERO,
+        2.0,
+        1.0,
+    )
+    .unwrap();
+    let baseline = doc.clone();
+    // Grip moved to (3.0, 4.0, 0) -> distance 5.0, axis (0.6, 0.8, 0)
+    // n = floor(5.0/2.0) + 1 = 3 items (1 base + 2 clones)
+    evaluate(&mut doc, &baseline, def, p_polar, DVec3::new(3.0, 4.0, 0.0)).unwrap();
+    let members = authoring::members(&doc, def);
+    assert_eq!(members.len(), 4); // 3 lines + 1 circle
+    let lines: Vec<_> = members
+        .iter()
+        .filter_map(|&h| match doc.get_entity(h) {
+            Some(EntityType::Line(l)) => Some((h, l.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lines.len(), 3);
+    assert!(lines.iter().any(|(_, l)| (l.start - Vector3::new(1.0 + 1.2, 1.6, 0.)).length() < 1e-8));
+    assert!(lines.iter().any(|(_, l)| (l.start - Vector3::new(1.0 + 2.4, 3.2, 0.)).length() < 1e-8));
+}
+
+#[test]
+fn block_actions_array_xy_grid_evaluation() {
+    let (mut doc, def, targets) = fixture();
+    let p_xy = distance::create(
+        &mut doc,
+        def,
+        distance::Kind::XY,
+        Vector3::ZERO,
+        Vector3::new(10., 10., 0.),
+        Vector3::new(5., 5., 0.),
+    )
+    .unwrap();
+    create_array(
+        &mut doc,
+        def,
+        p_xy,
+        &[targets[0]],
+        DVec3::ZERO,
+        3.0,
+        4.0,
+    )
+    .unwrap();
+    let baseline = doc.clone();
+
+    // Move XY grip to (6.0, 8.0, 0.0)
+    // nx = floor(6/3)+1 = 3 (cols 0, 3, 6)
+    // ny = floor(8/4)+1 = 3 (rows 0, 4, 8)
+    // total items: 3 * 3 = 9 (1 base + 8 clones)
+    evaluate(&mut doc, &baseline, def, p_xy, DVec3::new(6.0, 8.0, 0.0)).unwrap();
+    let members = authoring::members(&doc, def);
+    assert_eq!(members.len(), 10); // 9 lines + 1 circle
+
+    let lines: Vec<_> = members
+        .iter()
+        .filter_map(|&h| match doc.get_entity(h) {
+            Some(EntityType::Line(l)) => Some(l.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lines.len(), 9);
+
+    // Verify all 9 grid positions exist: (col*3, row*4) + base (1, 0, 0)
+    for col in 0..3 {
+        for row in 0..3 {
+            let expected_start = Vector3::new(1.0 + (col as f64) * 3.0, (row as f64) * 4.0, 0.0);
+            assert!(
+                lines.iter().any(|l| (l.start - expected_start).length() < 1e-8),
+                "Missing line at col {col}, row {row}"
+            );
+        }
+    }
+}
+
+#[test]
+fn block_actions_array_saved_references_independent_copy_and_roundtrip() {
+    let (mut doc, def, targets) = fixture();
+    let p = distance::create(
+        &mut doc,
+        def,
+        distance::Kind::Linear,
+        Vector3::ZERO,
+        Vector3::new(10., 0., 0.),
+        Vector3::new(5., 2., 0.),
+    )
+    .unwrap();
+    create_array(
+        &mut doc,
+        def,
+        p,
+        &[targets[0]],
+        DVec3::ZERO,
+        2.0,
+        1.0,
+    )
+    .unwrap();
+
+    let a = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    let b = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::new(100., 0., 0.),
+        )))
+        .unwrap();
+
+    // Evaluate A at distance 6.0 (3 clones + 1 base = 4 lines)
+    let doc = instance::evaluate(&doc, a, p, DVec3::new(6.0, 0.0, 0.0))
+        .unwrap()
+        .unwrap();
+    // Evaluate B at distance 2.0 (1 clone + 1 base = 2 lines)
+    let mut doc = instance::evaluate(&doc, b, p, DVec3::new(2.0, 0.0, 0.0))
+        .unwrap()
+        .unwrap();
+
+    let EntityType::Insert(ref_a) = doc.get_entity(a).unwrap() else {
+        panic!()
+    };
+    let EntityType::Insert(ref_b) = doc.get_entity(b).unwrap() else {
+        panic!()
+    };
+    assert_ne!(ref_a.block_name, ref_b.block_name);
+    let block_a = doc.block_records.get(&ref_a.block_name).unwrap();
+    let block_b = doc.block_records.get(&ref_b.block_name).unwrap();
+    let a_lines = block_a
+        .entity_handles
+        .iter()
+        .filter(|&&h| matches!(doc.get_entity(h), Some(EntityType::Line(_))))
+        .count();
+    let b_lines = block_b
+        .entity_handles
+        .iter()
+        .filter(|&&h| matches!(doc.get_entity(h), Some(EntityType::Line(_))))
+        .count();
+    assert_eq!(a_lines, 4);
+    assert_eq!(b_lines, 2);
+
+    // Copy reference A -> C
+    let mut insert_c = ref_a.clone();
+    let c = doc.allocate_handle();
+    insert_c.common.handle = c;
+    insert_c.insert_point = Vector3::new(200., 0., 0.);
+    doc.add_entity(EntityType::Insert(insert_c)).unwrap();
+
+    // Roundtrip to DWG
+    let reopened = DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+        .read()
+        .unwrap();
+    let EntityType::Insert(reopened_a) = reopened.get_entity(a).unwrap() else {
+        panic!()
+    };
+    let EntityType::Insert(reopened_b) = reopened.get_entity(b).unwrap() else {
+        panic!()
+    };
+    let EntityType::Insert(reopened_c) = reopened.get_entity(c).unwrap() else {
+        panic!()
+    };
+    let rec_a = reopened.block_records.get(&reopened_a.block_name).unwrap();
+    let rec_b = reopened.block_records.get(&reopened_b.block_name).unwrap();
+    let rec_c = reopened.block_records.get(&reopened_c.block_name).unwrap();
+    assert_eq!(
+        rec_a
+            .entity_handles
+            .iter()
+            .filter(|&&h| matches!(reopened.get_entity(h), Some(EntityType::Line(_))))
+            .count(),
+        4
+    );
+    assert_eq!(
+        rec_b
+            .entity_handles
+            .iter()
+            .filter(|&&h| matches!(reopened.get_entity(h), Some(EntityType::Line(_))))
+            .count(),
+        2
+    );
+    assert_eq!(
+        rec_c
+            .entity_handles
+            .iter()
+            .filter(|&&h| matches!(reopened.get_entity(h), Some(EntityType::Line(_))))
+            .count(),
+        4
+    );
+}
+
+#[test]
+fn block_actions_array_rejections() {
+    let (mut doc, def, targets) = fixture();
+    let p_point = point::create(&mut doc, def, Vector3::ZERO, Vector3::new(5., 5., 0.)).unwrap();
+    assert!(create_array(&mut doc, def, p_point, &targets, DVec3::ZERO, 2.0, 1.0).is_err());
+
+    let p_rot = orientation(
+        &mut doc,
+        def,
+        super::super::block_orientation_parameter::Kind::Rotation,
+    );
+    assert!(create_array(&mut doc, def, p_rot, &targets, DVec3::ZERO, 2.0, 1.0).is_err());
+
+    let p_lin = distance::create(
+        &mut doc,
+        def,
+        distance::Kind::Linear,
+        Vector3::ZERO,
+        Vector3::new(10., 0., 0.),
+        Vector3::new(5., 2., 0.),
+    )
+    .unwrap();
+    assert!(create_array(&mut doc, def, p_lin, &targets, DVec3::ZERO, 0.0, 1.0).is_err());
+    assert!(create_array(&mut doc, def, p_lin, &targets, DVec3::ZERO, -2.0, 1.0).is_err());
+}
+

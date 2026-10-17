@@ -5267,7 +5267,7 @@ mod tablestyle_buffer_tests {
         let mut app = OpenCADStudio::new_for_test();
         app.automation_op(r#"{"op":"new"}"#);
         app.ts_cell_textstyle[0] = "STALE_SENTINEL".to_string();
-        app.style_new(StyleKind::Table);
+        let _ = app.style_new(StyleKind::Table);
         assert_ne!(
             app.ts_cell_textstyle[0], "STALE_SENTINEL",
             "buffers must reload from the fresh style"

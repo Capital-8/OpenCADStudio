@@ -287,7 +287,12 @@ pub fn move_part(
                         p.definition_label_point = at
                     }
                 }
-                DynamicBlockData::MoveAction(p) => p.action.display_location = at,
+                DynamicBlockData::MoveAction(p) => {
+                    p.action.display_location = at
+                }
+                DynamicBlockData::ArrayAction(p) => {
+                    p.action.display_location = at
+                }
                 DynamicBlockData::StretchAction(p) => p.action.display_location = at,
                 DynamicBlockData::FlipAction(p) => p.action.display_location = at,
                 DynamicBlockData::ScaleAction(p) | DynamicBlockData::RotateAction(p) => {

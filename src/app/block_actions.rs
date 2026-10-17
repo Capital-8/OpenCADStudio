@@ -95,7 +95,7 @@ impl OpenCADStudio {
         };
         if !args.is_empty() && kind.is_none() {
             self.command_line.push_error(
-                crate::t!("Supported actions: Move, Scale, Stretch, Rotate, Flip. Other action types are not wired yet.")
+                crate::t!("Supported actions: Move, Scale, Stretch, Rotate, Flip, Array. Other action types are not wired yet.")
                     .as_ref(),
             );
             return Task::none();
@@ -181,6 +181,7 @@ impl OpenCADStudio {
                 targets,
                 location,
                 frame,
+                array_offsets,
             } => {
                 if self.tabs[i].id != document
                     || self.tabs[i]
@@ -195,7 +196,7 @@ impl OpenCADStudio {
                     return Task::none();
                 }
                 let mut staged = self.tabs[i].scene.document.clone();
-                match actions::create_with_frame(
+                match actions::create_with_options(
                     &mut staged,
                     definition,
                     kind,
@@ -203,6 +204,7 @@ impl OpenCADStudio {
                     &targets,
                     location,
                     frame,
+                    array_offsets,
                 ) {
                     Ok(_) => {
                         self.push_undo_snapshot(i, &format!("{} action", kind.name()));

@@ -5,7 +5,7 @@ use codec::Handle;
 use glam::DVec3;
 
 inventory::submit!(crate::command::CommandRegistration {
-    names: &["BACTION", "BACTIONTOOL"]
+    names: &["BACTION", "BACTIONTOOL", "BARRAY"]
 });
 
 pub(crate) struct ActionCommand {
@@ -17,6 +17,8 @@ pub(crate) struct ActionCommand {
     targets: Vec<Handle>,
     selecting: bool,
     frame: Vec<DVec3>,
+    column_offset: Option<f64>,
+    row_offset: Option<f64>,
     context: Option<PointPickContext>,
 }
 impl ActionCommand {
@@ -35,6 +37,8 @@ impl ActionCommand {
             targets: vec![],
             selecting: false,
             frame: vec![],
+            column_offset: None,
+            row_offset: None,
             context: None,
         }
     }
@@ -55,6 +59,16 @@ impl CadCommand for ActionCommand {
     }
     fn input_kind(&self) -> crate::command::InputKind {
         if self.parameter.is_some() {
+            if self.kind == Some(Kind::Array) && !self.selecting {
+                let is_xy = self
+                    .candidates
+                    .iter()
+                    .find(|p| Some(p.handle) == self.parameter)
+                    .is_some_and(|p| p.xy);
+                if self.column_offset.is_none() || (is_xy && self.row_offset.is_none()) {
+                    return crate::command::InputKind::SingleToken;
+                }
+            }
             crate::command::InputKind::Point
         } else if self.kind.is_some() {
             crate::command::InputKind::FreeText
@@ -64,7 +78,7 @@ impl CadCommand for ActionCommand {
     }
     fn prompt(&self) -> String {
         if self.kind.is_none() {
-            return crate::t!("BACTION  Enter action type [Move/Scale/Stretch/Rotate/Flip]:")
+            return crate::t!("BACTION  Enter action type [Move/Scale/Stretch/Rotate/Flip/Array]:")
                 .into_owned();
         }
         if self.parameter.is_none() {
@@ -74,18 +88,33 @@ impl CadCommand for ActionCommand {
             )
             .into_owned();
         }
-        crate::t!(
-            if self.kind == Some(Kind::Stretch) && self.frame.is_empty() {
-                "BACTION  Specify first corner of stretch frame:"
-            } else if self.kind == Some(Kind::Stretch) && self.frame.len() == 1 {
-                "BACTION  Specify opposite corner of stretch frame:"
-            } else if self.selecting {
-                "BACTION  Select objects for the action, then press Enter:"
-            } else {
-                "BACTION  Specify action marker location:"
+        if self.kind == Some(Kind::Stretch) && self.frame.is_empty() {
+            return crate::t!("BACTION  Specify first corner of stretch frame:").into_owned();
+        }
+        if self.kind == Some(Kind::Stretch) && self.frame.len() == 1 {
+            return crate::t!("BACTION  Specify opposite corner of stretch frame:").into_owned();
+        }
+        if self.selecting {
+            return crate::t!("BACTION  Select objects for the action, then press Enter:")
+                .into_owned();
+        }
+        if self.kind == Some(Kind::Array) {
+            let is_xy = self
+                .candidates
+                .iter()
+                .find(|p| Some(p.handle) == self.parameter)
+                .is_some_and(|p| p.xy);
+            if self.column_offset.is_none() {
+                return crate::t!(
+                    "BACTION  Specify distance between columns (or distance between items):"
+                )
+                .into_owned();
             }
-        )
-        .into_owned()
+            if is_xy && self.row_offset.is_none() {
+                return crate::t!("BACTION  Specify distance between rows:").into_owned();
+            }
+        }
+        crate::t!("BACTION  Specify action marker location:").into_owned()
     }
     fn options(&self) -> Vec<CmdOption> {
         if self.kind.is_none() {
@@ -95,6 +124,7 @@ impl CadCommand for ActionCommand {
                 CmdOption::new("Stretch", "Stretch"),
                 CmdOption::new("Rotate", "Rotate"),
                 CmdOption::new("Flip", "Flip"),
+                CmdOption::new("Array", "Array"),
             ]
         } else {
             vec![]
@@ -107,7 +137,7 @@ impl CadCommand for ActionCommand {
                 CmdResult::NeedPoint
             } else {
                 CmdResult::ReportError(
-                    crate::t!("Choose Move, Scale, Stretch, Rotate or Flip.").into_owned(),
+                    crate::t!("Choose Move, Scale, Stretch, Rotate, Flip or Array.").into_owned(),
                 )
             });
         }
@@ -128,6 +158,41 @@ impl CadCommand for ActionCommand {
                         .into_owned(),
                 )
             });
+        }
+        if self.kind == Some(Kind::Array) && !self.selecting {
+            let is_xy = self
+                .candidates
+                .iter()
+                .find(|p| Some(p.handle) == self.parameter)
+                .is_some_and(|p| p.xy);
+            if self.column_offset.is_none() {
+                let Ok(dist) = s.trim().parse::<f64>() else {
+                    return Some(CmdResult::ReportError(
+                        crate::t!("Specify a positive distance.").into_owned(),
+                    ));
+                };
+                if dist <= 1e-6 || !dist.is_finite() {
+                    return Some(CmdResult::ReportError(
+                        crate::t!("Specify a positive distance.").into_owned(),
+                    ));
+                }
+                self.column_offset = Some(dist);
+                return Some(CmdResult::NeedPoint);
+            }
+            if is_xy && self.row_offset.is_none() {
+                let Ok(dist) = s.trim().parse::<f64>() else {
+                    return Some(CmdResult::ReportError(
+                        crate::t!("Specify a positive distance.").into_owned(),
+                    ));
+                };
+                if dist <= 1e-6 || !dist.is_finite() {
+                    return Some(CmdResult::ReportError(
+                        crate::t!("Specify a positive distance.").into_owned(),
+                    ));
+                }
+                self.row_offset = Some(dist);
+                return Some(CmdResult::NeedPoint);
+            }
         }
         None
     }
@@ -188,6 +253,33 @@ impl CadCommand for ActionCommand {
             }
             return CmdResult::NeedPoint;
         }
+        if self.kind == Some(Kind::Array) && !self.selecting {
+            let p = self
+                .candidates
+                .iter()
+                .find(|p| Some(p.handle) == self.parameter)
+                .unwrap();
+            if self.column_offset.is_none() {
+                let dist = point.distance(p.base);
+                if dist <= 1e-6 || !dist.is_finite() {
+                    return CmdResult::ReportError(
+                        crate::t!("Specify a positive distance.").into_owned(),
+                    );
+                }
+                self.column_offset = Some(dist);
+                return CmdResult::NeedPoint;
+            }
+            if p.xy && self.row_offset.is_none() {
+                let dist = (point.y - p.base.y).abs().max(point.distance(p.base));
+                if dist <= 1e-6 || !dist.is_finite() {
+                    return CmdResult::ReportError(
+                        crate::t!("Specify a positive distance.").into_owned(),
+                    );
+                }
+                self.row_offset = Some(dist);
+                return CmdResult::NeedPoint;
+            }
+        }
         if self.selecting {
             return CmdResult::NeedPoint;
         }
@@ -196,6 +288,13 @@ impl CadCommand for ActionCommand {
                 crate::t!("Specify a finite action location.").into_owned(),
             );
         }
+        let array_offsets = if self.kind == Some(Kind::Array) {
+            let col = self.column_offset.unwrap_or(1.0);
+            let row = self.row_offset.unwrap_or(1.0);
+            Some((col, row))
+        } else {
+            None
+        };
         CmdResult::PlaceBlockAction {
             document: self.document,
             definition: self.definition,
@@ -204,8 +303,10 @@ impl CadCommand for ActionCommand {
             targets: self.targets.clone(),
             location: point,
             frame: (self.frame.len() == 2).then(|| [self.frame[0], self.frame[1]]),
+            array_offsets,
         }
     }
+
     fn on_preview_wires(&mut self, point: DVec3) -> Vec<crate::scene::WireModel> {
         frame_preview(&self.frame, point)
     }

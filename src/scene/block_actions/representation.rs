@@ -16,7 +16,7 @@ pub(super) fn reconcile(
         .get(name)
         .ok_or("Missing representation.")?
         .handle;
-    let sources = authoring::members(&scene.document, def);
+    let sources = authoring::members(evaluated, def);
     let old = scene
         .document
         .entities()
@@ -41,8 +41,7 @@ pub(super) fn reconcile(
     let mut mapping = FxHashMap::default();
     let mut pairs = vec![];
     for &from in &sources {
-        let source = scene
-            .document
+        let source = evaluated
             .get_entity(from)
             .ok_or("Missing definition member.")?;
         let id =

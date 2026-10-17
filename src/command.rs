@@ -1537,6 +1537,7 @@ pub enum CmdResult {
         targets: Vec<Handle>,
         location: DVec3,
         frame: Option<[DVec3; 2]>,
+        array_offsets: Option<(f64, f64)>,
     },
     EvaluateBlockParameter {
         insert: Option<Handle>,

@@ -1575,6 +1575,7 @@ fn block_actions_rejected_outside_editor_preserve_running_command_and_stale_resu
         targets: members(&app),
         location: glam::DVec3::ZERO,
         frame: None,
+        array_offsets: None,
     });
     assert_eq!(app.tabs[i].scene.document, before);
     let _ = app.dispatch_command("LINE");

@@ -395,11 +395,17 @@ impl OpenCADStudio {
             cmd if cmd == "BACTION"
                 || cmd.starts_with("BACTION ")
                 || cmd == "BACTIONTOOL"
-                || cmd.starts_with("BACTIONTOOL ") =>
+                || cmd.starts_with("BACTIONTOOL ")
+                || cmd == "BARRAY"
+                || cmd.starts_with("BARRAY ") =>
             {
                 Some(
                     self.start_block_action(
-                        cmd.split_once(' ').map_or("", |(_, args)| args.trim()),
+                        if cmd == "BARRAY" || cmd.starts_with("BARRAY ") {
+                            "ARRAY"
+                        } else {
+                            cmd.split_once(' ').map_or("", |(_, args)| args.trim())
+                        },
                     ),
                 )
             }
