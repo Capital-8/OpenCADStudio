@@ -3408,6 +3408,32 @@ impl OpenCADStudio {
                         self.apply_visibility_state(handle, state);
                     }
                 }
+            } else if field == "dyn_lookup" {
+                self.tabs[i].properties.edit_choice_open = false;
+                let mut changed = false;
+                for &handle in &handles {
+                    if self.tabs[i].scene.is_layer_locked(handle) {
+                        continue;
+                    }
+                    let result = crate::scene::block_lookup::evaluate_reference_choice(
+                        &self.tabs[i].scene.document,
+                        handle,
+                        &value,
+                    );
+                    match result {
+                        Ok(Some(staged)) => {
+                            self.apply_action_document(i, staged);
+                            self.tabs[i].scene.bump_geometry();
+                            self.tabs[i].dirty = true;
+                            changed = true;
+                        }
+                        Ok(None) => {}
+                        Err(error) => self.command_line.push_error(crate::t!(error).as_ref()),
+                    }
+                }
+                if changed {
+                    self.finish_pending_history(i);
+                }
             } else if field == "block" {
                 // Name dropdown on a block reference: re-point the
                 // selected inserts to the picked definition. A stale

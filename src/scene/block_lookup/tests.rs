@@ -228,6 +228,72 @@ fn lookup_malformed_dependencies_are_rejected_without_mutation() {
 }
 
 #[test]
+fn lookup_reverse_selection_evaluates_saved_reference_geometry() {
+    let (mut document, definition) = fixture();
+    let line = document.block_records.get("LOOKUP").unwrap().entity_handles[0];
+    let distance = distance::create(
+        &mut document,
+        definition,
+        distance::Kind::Linear,
+        Vector3::ZERO,
+        Vector3::new(2., 0., 0.),
+        Vector3::UNIT_Y,
+    )
+    .unwrap();
+    crate::scene::block_actions::create(
+        &mut document,
+        definition,
+        crate::scene::block_actions::Kind::Move,
+        distance,
+        &[line],
+        glam::DVec3::ZERO,
+    )
+    .unwrap();
+    let lookup = create(&mut document, definition, Vector3::ZERO).unwrap();
+    let lookup_table = draft(&document, definition, lookup);
+    apply_table(&mut document, definition, lookup, lookup_table).unwrap();
+    let original_line = document.get_entity(line).unwrap().clone();
+    let insert = document
+        .add_entity(EntityType::Insert(Insert::new("LOOKUP", Vector3::ZERO)))
+        .unwrap();
+
+    let initial = reference_property(&document, insert).unwrap();
+    let crate::scene::model::object::PropValue::Choice { selected, options } = initial.value else {
+        panic!("Lookup property should be a choice.")
+    };
+    assert_eq!(selected, "Small");
+    assert_eq!(options, vec!["Small", "Large"]);
+
+    let evaluated = evaluate_reference_choice(&document, insert, "Large")
+        .unwrap()
+        .unwrap();
+    assert_eq!(document.get_entity(line), Some(&original_line));
+    let EntityType::Insert(reference) = evaluated.get_entity(insert).unwrap() else {
+        panic!()
+    };
+    let member = evaluated
+        .block_records
+        .get(&reference.block_name)
+        .unwrap()
+        .entity_handles[0];
+    let EntityType::Line(line) = evaluated.get_entity(member).unwrap() else {
+        panic!()
+    };
+    assert_eq!(line.start, Vector3::new(2., 0., 0.));
+    assert_eq!(line.end, Vector3::new(3., 0., 0.));
+    let selected = reference_property(&evaluated, insert).unwrap();
+    let crate::scene::model::object::PropValue::Choice { selected, .. } = selected.value else {
+        panic!()
+    };
+    assert_eq!(selected, "Large");
+    assert!(
+        evaluate_reference_value(&evaluated, insert, lookup, "Large")
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
 fn lookup_existing_expressions_survive_row_reordering_and_output_edits() {
     let (mut document, definition) = fixture();
     add_distance(&mut document, definition);

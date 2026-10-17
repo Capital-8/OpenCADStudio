@@ -148,7 +148,7 @@ fn ensure_dictionary(
     Ok(h)
 }
 
-fn save(
+pub(crate) fn save(
     doc: &mut CadDocument,
     insert: Handle,
     p: &Parameter,
@@ -352,7 +352,7 @@ pub(crate) fn refresh_after_edit(
     Ok(staged)
 }
 
-fn materialize(
+pub(crate) fn materialize(
     doc: &CadDocument,
     insert: Handle,
     def: Handle,
