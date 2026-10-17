@@ -706,7 +706,7 @@ fn explode_region_acis_with_body_transform() {
     let mut sat = SatDocument::new();
     kernel::acis::append(&body, &mut sat).expect("sat append");
 
-    // AutoCAD writes a body transform record for placed regions.
+    // A placed region carries a body transform record.
     // Translate by [50.0, 100.0, 0.0].
     sat.set_placement(
         [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
