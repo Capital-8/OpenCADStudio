@@ -291,6 +291,14 @@ fn lookup_reverse_selection_evaluates_saved_reference_geometry() {
             .unwrap()
             .is_none()
     );
+
+    let mut unsupported = document.clone();
+    let (_, mut malformed) = table(&unsupported, definition, lookup).unwrap().unwrap();
+    malformed.columns[0].connection_name = "UpdatedAngle".into();
+    apply_table(&mut unsupported, definition, lookup, malformed).unwrap();
+    let before = unsupported.clone();
+    assert!(evaluate_reference_choice(&unsupported, insert, "Large").is_err());
+    assert_eq!(unsupported, before);
 }
 
 #[test]

@@ -226,6 +226,13 @@ fn reference_row(
             if property.lookup_property {
                 return true;
             }
+            if property.value_type != 40
+                || !property
+                    .connection_name
+                    .eq_ignore_ascii_case("UpdatedDistance")
+            {
+                return false;
+            }
             let Some(parameter) = params.iter().find(|p| p.id == property.node_id) else {
                 return false;
             };
@@ -330,6 +337,13 @@ pub(crate) fn evaluate_reference_value(
     for (column, property) in table.columns.iter().enumerate() {
         if property.lookup_property {
             continue;
+        }
+        if property.value_type != 40
+            || !property
+                .connection_name
+                .eq_ignore_ascii_case("UpdatedDistance")
+        {
+            return Err("This Lookup input property is unsupported.");
         }
         let parameter = parameters
             .iter()
