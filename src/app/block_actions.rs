@@ -242,12 +242,12 @@ impl OpenCADStudio {
                 id: TEST_GRIP_START + index,
                 world,
                 is_midpoint: false,
-                shape: if p.flip {
-                    crate::scene::model::object::GripShape::Square
-                } else {
-                    crate::scene::model::object::GripShape::Triangle
-                },
-                dir: None,
+                shape: crate::scene::model::object::GripShape::Triangle,
+                dir: actions::grip_direction(&p, value).and_then(|direction| {
+                    (actions::v(transform.apply(actions::native(direction)))
+                        - actions::v(transform.apply(codec::types::Vector3::ZERO)))
+                    .try_normalize()
+                }),
                 axis: None,
             });
         }
@@ -336,12 +336,12 @@ impl OpenCADStudio {
                 id: TEST_GRIP_START + index,
                 world,
                 is_midpoint: false,
-                shape: if p.flip {
-                    crate::scene::model::object::GripShape::Square
-                } else {
-                    crate::scene::model::object::GripShape::Triangle
-                },
-                dir: None,
+                shape: crate::scene::model::object::GripShape::Triangle,
+                dir: actions::grip_direction(&p, value).and_then(|direction| {
+                    (actions::v(transform.apply(actions::native(direction)))
+                        - actions::v(transform.apply(codec::types::Vector3::ZERO)))
+                    .try_normalize()
+                }),
                 axis: None,
             });
         }

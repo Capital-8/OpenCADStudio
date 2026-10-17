@@ -172,6 +172,15 @@ pub(crate) fn grip_position(p: &Parameter, value: Value) -> DVec3 {
     }
 }
 
+/// A Flip arrow points across its reflection line and reverses with its state.
+pub(crate) fn grip_direction(p: &Parameter, value: Value) -> Option<DVec3> {
+    let Value::Flip(flipped) = value else {
+        return None;
+    };
+    let across = DVec3::Z.cross(p.end - p.base).try_normalize()?;
+    Some(if flipped { -across } else { across })
+}
+
 pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> Vec<Parameter> {
     let Ok(Some(graph)) = authoring::graph(doc, definition) else {
         return vec![];

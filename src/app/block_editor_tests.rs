@@ -270,12 +270,34 @@ fn block_actions_rotate_flip_mouse_grips_authoring_history_and_reopen() {
         app.tabs[i].scene.selected.insert(insert);
         app.refresh_properties();
         let depth = app.tabs[i].history.undo_stack.len();
+        let flip_grip = app.tabs[i]
+            .selected_grips
+            .iter()
+            .find(|g| {
+                super::block_actions::is_test_grip(g.id) && g.world.distance(flip.reference) < 1e-5
+            })
+            .unwrap();
+        assert_eq!(
+            flip_grip.shape,
+            crate::scene::model::object::GripShape::Triangle
+        );
+        assert!(flip_grip.dir.unwrap().distance(glam::DVec3::Y) < 1e-5);
         click(&mut app, flip.reference);
         assert!(
             app.tabs[i].active_cmd.is_none(),
             "Flip toggles immediately without point input"
         );
         check(&app, insert, -Vector3::UNIT_Y);
+        app.tabs[i].scene.selected.insert(insert);
+        app.refresh_properties();
+        let flip_grip = app.tabs[i]
+            .selected_grips
+            .iter()
+            .find(|g| {
+                super::block_actions::is_test_grip(g.id) && g.world.distance(flip.reference) < 1e-5
+            })
+            .unwrap();
+        assert!(flip_grip.dir.unwrap().distance(-glam::DVec3::Y) < 1e-5);
         assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
         app.undo_steps(1);
         check(&app, insert, Vector3::UNIT_Y);
