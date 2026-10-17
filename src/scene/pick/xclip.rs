@@ -48,12 +48,20 @@ fn resolve_extension_dictionary(doc: &CadDocument, owner: Handle) -> Option<Hand
         })
 }
 
-/// The INSERT's extension dictionary through its own link. Render walks ask
-/// this for every INSERT, so it must not fall back to a scan of every object:
-/// [`CadDocument::extension_dictionary_handle`] scans for an entity without
-/// a linked dictionary. Readers and `ensure_extension_dictionary` set the link.
-fn linked_extension_dictionary(ins: &Insert) -> Option<Handle> {
-    ins.common.xdictionary_handle.filter(|h| !h.is_null())
+/// The INSERT's extension dictionary through its own link, or the stored
+/// INSERT's when `ins` is a copy taken before the link was made. Render walks
+/// ask this for every INSERT, so it must not fall back to a scan of every
+/// object: [`CadDocument::extension_dictionary_handle`] scans for an entity
+/// without a linked dictionary. Readers and `ensure_extension_dictionary`
+/// set the link.
+fn linked_extension_dictionary(doc: &CadDocument, ins: &Insert) -> Option<Handle> {
+    ins.common
+        .xdictionary_handle
+        .or_else(|| {
+            doc.get_entity(ins.common.handle)
+                .and_then(|stored| stored.common().xdictionary_handle)
+        })
+        .filter(|h| !h.is_null())
 }
 
 /// Resolve the enabled XCLIP spatial filter for `ins`, if any.
@@ -63,7 +71,7 @@ fn linked_extension_dictionary(ins: &Insert) -> Option<Handle> {
 /// filter, it is disabled (code 71 = 0), or it has fewer than two boundary
 /// points.
 pub fn insert_spatial_filter<'a>(doc: &'a CadDocument, ins: &Insert) -> Option<&'a SpatialFilter> {
-    let xdict = linked_extension_dictionary(ins)?;
+    let xdict = linked_extension_dictionary(doc, ins)?;
     let acad_filter = dict_entry(doc, xdict, "ACAD_FILTER")?;
     let spatial = dict_entry(doc, acad_filter, "SPATIAL")?;
     match doc.objects.get(&spatial)? {
@@ -81,7 +89,7 @@ pub fn filter_handle(doc: &CadDocument, insert: Handle) -> Option<Handle> {
     let Some(codec::EntityType::Insert(ins)) = doc.get_entity(insert) else {
         return None;
     };
-    let xdict = linked_extension_dictionary(ins)?;
+    let xdict = linked_extension_dictionary(doc, ins)?;
     let acad_filter = dict_entry(doc, xdict, "ACAD_FILTER")?;
     let spatial = dict_entry(doc, acad_filter, "SPATIAL")?;
     matches!(
