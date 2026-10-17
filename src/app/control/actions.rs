@@ -915,12 +915,14 @@ impl OpenCADStudio {
             .map_err(|(code, message)| failure(code, message))
     }
 
-    /// The MCP/automation entry for a custom-grip drag (API v11): drive
-    /// begin → move → settle through the same lifecycle the viewport runs, so
-    /// end-to-end tests exercise exactly one pipeline. Move delivery parks and
-    /// pumps synchronously here (an automation op may wait); the settle is
-    /// the plugin's own one-undo-step write window, and cancel paths are
-    /// identical to interactive drags.
+    /// The MCP/automation entry for a custom-grip drag (API v11/v12): drive
+    /// begin → move → settle through the same lifecycle the viewport runs,
+    /// so end-to-end tests exercise exactly one pipeline — including the
+    /// v11.1 hardening (deliveries never inline command frames; the settle
+    /// is issued without waiting; the watchdog bounds a plugin that never
+    /// answers). The op waits, bounded by the settle floor, for the final
+    /// result: the settle is the plugin's own one-undo-step write window,
+    /// and cancel paths are identical to interactive drags.
     pub(super) fn control_plugin_grip_drag(
         &mut self,
         i: usize,
@@ -940,12 +942,21 @@ impl OpenCADStudio {
                     )
                 })?
         };
-        // begin → move → settle; the pump tasks the first two schedule are
-        // moot once the settle ends the drag (they no-op).
+        // begin → move → settle(issued) → drive pump ticks until the settle
+        // finalizes (or the watchdog abandons it). Bounded — the UI route
+        // never waits, this automation route may.
         let _ = self.begin_plugin_grip_drag(i, &candidate);
         let _ = self.move_plugin_grip_drag(i, glam::DVec3::new(to[0], to[1], to[2]));
-        let _ = self.pump_plugin_grips();
-        Ok(self.settle_plugin_grip_drag())
+        let _ = self.settle_plugin_grip_drag();
+        let completed =
+            self.drive_plugin_grip_settle_to_completion(std::time::Duration::from_secs(12));
+        if !completed {
+            return Err(failure(
+                "plugin_settle_timeout",
+                "The plugin did not settle its grip drag in time; the delivery was abandoned",
+            ));
+        }
+        Ok(iced::Task::none())
     }
 
     /// The shared programmatic grip-drag core — one pipeline, three

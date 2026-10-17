@@ -3262,6 +3262,23 @@ impl<'a> HostSession<'a> {
         Ok(())
     }
 
+    /// Read specific entities by handle (API v12) — the live document's
+    /// current entity per handle, `None` for an unknown handle. The cheap
+    /// refresh-pass path: a plugin that writes and re-reads never needs the
+    /// invalidated full-document snapshot (the v11.1 per-boundary cost).
+    pub fn entities_batch(
+        &self,
+        handles: &[Handle],
+    ) -> Result<Vec<Option<codec::EntityType>>, String> {
+        if self.app.tabs.len() <= self.tab {
+            return Err(format!("tab {} does not exist", self.tab));
+        }
+        Ok(handles
+            .iter()
+            .map(|handle| self.document().get_entity(*handle).cloned())
+            .collect())
+    }
+
     /// Declare (or clear) the calling plugin's custom grip points (API v11).
     /// The whole batch REPLACES the plugin's previous set; the host applies
     /// it as a diff keyed by grip id so an unchanged re-declare is near-free
@@ -3719,6 +3736,9 @@ impl HostApi for HostSession<'_> {
         grips: Vec<ocs_plugin_api::host::PluginGrip>,
     ) -> Result<(), String> {
         self.set_plugin_grips(plugin_id, grips)
+    }
+    fn entities_batch(&self, handles: &[Handle]) -> Result<Vec<Option<codec::EntityType>>, String> {
+        self.entities_batch(handles)
     }
 }
 

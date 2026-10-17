@@ -184,6 +184,9 @@ struct SinkState {
     settle_write: Rc<RefCell<Option<(Handle, f64)>>>,
     /// Preview wire returned for begin/move.
     preview: Rc<RefCell<Option<PreviewWire>>>,
+    /// Live-geometry entities returned for begin/move (API v12): the
+    /// plugin-directed visual phase.
+    live_geom: Rc<RefCell<Vec<(Handle, EntityType)>>>,
     /// Panic on the settle phase (panic-containment test).
     panic_on_settle: Rc<RefCell<bool>>,
 }
@@ -193,17 +196,20 @@ fn install_sink(plugin: &str) -> SinkState {
         events: Rc::new(RefCell::new(Vec::new())),
         settle_write: Rc::new(RefCell::new(None)),
         preview: Rc::new(RefCell::new(None)),
+        live_geom: Rc::new(RefCell::new(Vec::new())),
         panic_on_settle: Rc::new(RefCell::new(false)),
     };
     let events = Rc::clone(&state.events);
     let settle_write = Rc::clone(&state.settle_write);
     let preview = Rc::clone(&state.preview);
+    let live_geom = Rc::clone(&state.live_geom);
     let panic_on_settle = Rc::clone(&state.panic_on_settle);
     grip_points::install_in_process_sink(plugin, move |host, event| {
         events.borrow_mut().push(event.clone());
         match event.phase {
             CustomGripPhase::Begin | CustomGripPhase::Move => CustomGripResponse {
                 preview: preview.borrow().clone().into_iter().collect(),
+                live_entities: live_geom.borrow().clone(),
             },
             CustomGripPhase::Settle => {
                 if *panic_on_settle.borrow() {
@@ -978,6 +984,177 @@ fn hover_hits_through_two_thousand_declared_grips() {
         "hover stays interactive at 2 000 grips: {per_hover:?}"
     );
     grip_points::remove_in_process_sink(TEST_PLUGIN);
+}
+
+fn live_arc(anchor: Handle, radius: f64, app: &OpenCADStudio) -> codec::EntityType {
+    match app.tabs[tab(app)]
+        .scene
+        .document
+        .get_entity(anchor)
+        .expect("anchor exists")
+    {
+        EntityType::Arc(arc) => {
+            let mut live = arc.clone();
+            live.radius = radius;
+            EntityType::Arc(live)
+        }
+        other => panic!("not an arc: {other:?}"),
+    }
+}
+
+#[test]
+fn live_geometry_moves_elements_during_the_drag() {
+    // v11.2 acceptance: the plugin's move answers carry live entity
+    // geometry — the drag shows the true final state at every instant
+    // through the plugin's returned geometry only (visual parity with the
+    // built-in radius grip), ZERO history steps mid-drag, the originals
+    // restored before the settle, and the plugin's one labeled step at
+    // mouse-up with byte-exact undo.
+    let mut app = app();
+    let anchor = add(
+        &mut app,
+        arc([10.0, 10.0, 0.0], 8.0, 0.0, std::f64::consts::FRAC_PI_2),
+    );
+    let before = serialized(&app, anchor);
+    let before_undo = undo_entry_count(&app);
+    let state = install_sink(TEST_PLUGIN);
+    declare(
+        &mut app,
+        TEST_PLUGIN,
+        vec![PluginGrip {
+            grip_id: 42,
+            anchor: Some(anchor),
+            point: [12.0, 10.0, 0.0],
+            axis: None,
+            shape: PluginGripShape::Square,
+        }],
+    );
+    *state.settle_write.borrow_mut() = Some((anchor, 5.0));
+    *state.preview.borrow_mut() = Some(PreviewWire::circle(
+        [10.0, 10.0, 0.0],
+        12.0,
+        Some([1.0, 0.5, 0.0, 1.0]),
+    ));
+    // The plugin's live answer: the arc's candidate geometry for the move.
+    *state.live_geom.borrow_mut() = vec![(anchor, live_arc(anchor, 6.25, &app))];
+
+    let i = tab(&app);
+    let screen = screen_of(&app, [12.0, 10.0, 0.0]);
+    let candidate = app.hit_plugin_grip(i, screen).expect("hittable");
+    let _ = app.begin_plugin_grip_drag(i, &candidate);
+    let _ = app.pump_plugin_grips();
+    assert!(
+        (radius_of(&app, anchor) - 6.25).abs() < 1e-9,
+        "the begin answer's live geometry already moves the element"
+    );
+    assert_eq!(undo_entry_count(&app), before_undo, "zero steps mid-drag");
+    let _ = app.move_plugin_grip_drag(i, glam::DVec3::new(14.0, 10.0, 0.0));
+    assert!(
+        (radius_of(&app, anchor) - 6.25).abs() < 1e-9,
+        "the move answer's live geometry is applied live"
+    );
+    assert_eq!(app.tabs[i].scene.preview_wires.len(), 1);
+    assert_eq!(
+        undo_entry_count(&app),
+        before_undo,
+        "still zero steps mid-drag"
+    );
+
+    // Mouse-up: the visual phase is restored BEFORE the settle, the plugin
+    // writes its authoritative edit inside its scope — exactly ONE step.
+    let _ = app.settle_plugin_grip_drag();
+    assert!((radius_of(&app, anchor) - 5.0).abs() < 1e-12);
+    assert_eq!(undo_entry_count(&app), before_undo + 1);
+    assert_eq!(last_undo_label(&app).as_deref(), Some("CVI: PI radius"));
+    let _ = app.update(Message::Undo);
+    assert_eq!(serialized(&app, anchor), before, "undo restores byte-exact");
+    grip_points::remove_in_process_sink(TEST_PLUGIN);
+}
+
+#[test]
+fn live_geometry_esc_discards_the_visual_state_byte_identically() {
+    let mut app = app();
+    let anchor = add(&mut app, arc([0.0, 0.0, 0.0], 5.0, 0.0, 1.0));
+    let before = serialized(&app, anchor);
+    let before_undo = undo_entry_count(&app);
+    let state = install_sink(TEST_PLUGIN);
+    declare(&mut app, TEST_PLUGIN, vec![declared(3, [3.0, 0.0, 0.0])]);
+    *state.live_geom.borrow_mut() = vec![(anchor, live_arc(anchor, 9.0, &app))];
+    let i = tab(&app);
+    let screen = screen_of(&app, [3.0, 0.0, 0.0]);
+    let candidate = app.hit_plugin_grip(i, screen).expect("hittable");
+    let _ = app.begin_plugin_grip_drag(i, &candidate);
+    let _ = app.pump_plugin_grips();
+    assert!((radius_of(&app, anchor) - 9.0).abs() < 1e-12, "live moved");
+    assert!(app.cancel_active_grip_edit());
+    assert_eq!(
+        serialized(&app, anchor),
+        before,
+        "Esc restores the visual-only state byte-identically"
+    );
+    assert_eq!(undo_entry_count(&app), before_undo, "cancel writes nothing");
+    grip_points::remove_in_process_sink(TEST_PLUGIN);
+}
+
+#[test]
+fn live_geometry_caps_are_refused_with_an_honest_headline() {
+    let mut app = app();
+    let anchor = add(&mut app, arc([0.0, 0.0, 0.0], 5.0, 0.0, 1.0));
+    let state = install_sink(TEST_PLUGIN);
+    declare(&mut app, TEST_PLUGIN, vec![declared(1, [3.0, 0.0, 0.0])]);
+    let overflow = ocs_plugin_api::host::MAX_PLUGIN_LIVE_ENTITIES + 1;
+    let way_too_big: Vec<(codec::Handle, codec::EntityType)> = (0..overflow)
+        .map(|k| (anchor, live_arc(anchor, 5.0 + k as f64, &app)))
+        .collect();
+    *state.live_geom.borrow_mut() = way_too_big;
+    let i = tab(&app);
+    let screen = screen_of(&app, [3.0, 0.0, 0.0]);
+    let candidate = app.hit_plugin_grip(i, screen).expect("hittable");
+    let _ = app.begin_plugin_grip_drag(i, &candidate);
+    let _ = app.pump_plugin_grips();
+    assert!(
+        (radius_of(&app, anchor) - 5.0).abs() < 1e-12,
+        "a too-large live payload applies nothing"
+    );
+    let errors = crate::plugin::drain_errors();
+    assert!(
+        errors
+            .iter()
+            .any(|line| line.contains("exceeds the per-response cap")),
+        "the refusal names the cap: {errors:?}"
+    );
+    let _ = app.cancel_plugin_grip_drag();
+    grip_points::remove_in_process_sink(TEST_PLUGIN);
+}
+
+#[test]
+fn entities_batch_reads_live_handles_without_snapshot_clones() {
+    // v11.1 defect 3: per-entity reads are the refresh-pass path — the
+    // answers mirror the live document exactly, unknown handles answer
+    // None, and no snapshot is involved.
+    let mut app = app();
+    let first = add(&mut app, arc([0.0, 0.0, 0.0], 5.0, 0.0, 1.0));
+    let second = add(&mut app, line([0.0, 0.0, 0.0], [9.0, 0.0, 0.0]));
+    let i = tab(&app);
+    let batch = {
+        let host = crate::app::plugin_host::HostSession::new(&mut app, i);
+        host.entities_batch(&[first, second, Handle::from(0xFEED_F00Du64)])
+            .expect("batch read")
+    };
+    assert_eq!(batch.len(), 3);
+    let first_read = batch[0]
+        .as_ref()
+        .map(|entity| bincode::serialize(entity).unwrap());
+    assert_eq!(
+        first_read,
+        Some(serialized(&app, first)),
+        "the first handle reads byte-equal"
+    );
+    assert!(
+        matches!(&batch[1], Some(EntityType::Line(_))),
+        "the second handle reads by kind"
+    );
+    assert!(batch[2].is_none(), "an unknown handle answers None");
 }
 
 #[test]

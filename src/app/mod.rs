@@ -895,9 +895,15 @@ pub(super) struct OpenCADStudio {
     /// Plugin-declared custom grip the cursor hovers (API v11); drives the
     /// same hover highlight overlay the built-in grip hover uses.
     plugin_grip_hover: Option<crate::plugin::grip_points::PluginGripHover>,
-    /// Coalescing channel for the active custom-grip drag's move events
-    /// (API v11): at most one move in flight, superseded points dropped.
-    plugin_grip_moves: crate::plugin::grip_points::PluginGripMoveChannel,
+    /// Delivery bookkeeping for the active custom-grip drag (API v12):
+    /// every out-of-process phase is issued without waiting and collected
+    /// at pump ticks — the UI loop never blocks on plugin answers.
+    plugin_grip_deliveries: crate::plugin::grip_points::PluginGripDeliveries,
+    /// The visual-only live-geometry phase of the active custom-grip drag
+    /// (API v12): stashed originals of the entities the plugin's move
+    /// answers are swapping in; restored byte-identically before the settle
+    /// (and on cancel), never a history step of their own.
+    plugin_grip_live_originals: Vec<(codec::Handle, codec::EntityType)>,
     /// Open multi-functional grip popup. Persists across mouse moves
     /// until dismissed (click outside, ESC, cursor leaves the grip).
     grip_popup: Option<GripPopup>,
@@ -4879,7 +4885,8 @@ impl OpenCADStudio {
             dyn_coord_absolute: false,
             grip_hover: None,
             plugin_grip_hover: None,
-            plugin_grip_moves: Default::default(),
+            plugin_grip_deliveries: Default::default(),
+            plugin_grip_live_originals: Vec::new(),
             grip_popup: None,
             grip_pending: None,
             visibility_popup: None,

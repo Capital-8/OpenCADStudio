@@ -28,6 +28,8 @@ use glam::DVec3;
 use ocs_plugin_api::host::{
     CustomGripEvent, CustomGripPhase, CustomGripResponse, PluginGrip, PluginGripShape,
 };
+use std::collections::VecDeque;
+
 use rustc_hash::FxHashMap;
 
 use codec::Handle;
@@ -414,45 +416,50 @@ fn live_endpoint(
     })
 }
 
-/// Issue one coalesced move without waiting (out-of-process path, API v11).
-/// `false`: no live endpoint or the send failed (the pump reschedules; the
-/// drag degrades gracefully).
-pub(crate) fn send_grip_move(
+/// Issue one grip delivery WITHOUT waiting (out-of-process path, API v12):
+/// begin/move/settle/cancel alike. `None`: no live endpoint (the pump
+/// reschedules; the drag degrades gracefully, never a freeze).
+pub(crate) fn send_grip_event(
     app: &mut crate::app::OpenCADStudio,
     tab: usize,
     plugin_id: &str,
     event: CustomGripEvent,
-) -> bool {
+) -> Option<u64> {
     let _ = app;
-    let Some(process) = live_endpoint(plugin_id) else {
-        return false;
-    };
-    process.custom_grip_move_send(tab, event).is_ok()
+    let process = live_endpoint(plugin_id)?;
+    process.custom_grip_event_send(tab, event).ok()
 }
 
 /// Poll (bounded, never blocking the app loop longer than `wait`) for the
-/// outstanding move's answer, serving any nested plugin requests through a
-/// fresh host session on the way.
-pub(crate) fn poll_grip_move(
+/// next outstanding grip answer, serving nested plugin requests through a
+/// fresh host session on the way (command frames refused in this context).
+pub(crate) fn poll_grip_event(
     app: &mut crate::app::OpenCADStudio,
     tab: usize,
     plugin_id: &str,
     wait: std::time::Duration,
-) -> Option<CustomGripResponse> {
+) -> Option<(u64, CustomGripResponse)> {
     let process = live_endpoint(plugin_id)?;
     let mut host = crate::app::plugin_host::HostSession::new(app, tab);
-    match process.custom_grip_move_poll(&mut host, wait) {
-        Ok(Some(resp)) => Some(resp),
-        Ok(None) => None,
+    match process.custom_grip_poll(&mut host, wait) {
+        Ok(landed) => landed,
         Err(_) => None,
     }
 }
 
-/// Whether a coalesced move is still unanswered on the plugin's connection.
+/// Whether a grip delivery is still unanswered on the plugin's connection.
 pub(crate) fn grip_move_in_flight(plugin_id: &str) -> bool {
     live_endpoint(plugin_id)
         .map(|process| process.custom_grip_move_in_flight())
         .unwrap_or(false)
+}
+
+/// The watchdog (API v12): tear the plugin's connection down after a grip
+/// delivery outlived its deadline. The UI loop recovers; the runner reaps.
+pub(crate) fn abandon_grip_delivery(plugin_id: &str) {
+    if let Some(process) = live_endpoint(plugin_id) {
+        process.custom_grip_abandon();
+    }
 }
 
 /// The currently hovered plugin-declared grip (drives hover highlighting
@@ -493,90 +500,151 @@ impl ActivePluginGrip {
     }
 }
 
-/// Coalescing move channel for one active drag (requirement 8): at most one
-/// move event is in flight to the plugin; superseded cursor positions are
-/// DROPPED (the newest parks); the settle and cancel phases are never
-/// coalesced or dropped.
+/// Delivery bookkeeping for the active custom-grip drag (requirements 8 and
+/// the v11.1 hardening): out-of-process deliveries never block the UI loop —
+/// every phase is issued without waiting, answers land here in send order,
+/// and the pump processes them at message ticks.
+///
+/// Coalescing: at most one move is in flight (`pending_move` keeps only the
+/// newest cursor point; superseded points are DROPPED). The begin, settle and
+/// cancel phases are never coalesced or dropped. The watchdog deadline
+/// guards the settle: a plugin that never answers has its delivery abandoned
+/// and its connection torn down — the drag ends as a cancel, never a freeze.
 #[derive(Default)]
-pub(crate) struct PluginGripMoveChannel {
-    pending: Option<DVec3>,
-    in_flight: bool,
+pub(crate) struct PluginGripDeliveries {
+    /// Newest cursor point not yet sent (coalescing park).
+    pending_move: Option<DVec3>,
+    /// Request id of the move currently in flight.
+    in_flight_move: Option<u64>,
+    /// Outstanding deliveries in send order: (request id, phase). Answers
+    /// arrive in the same order (the runner is serial).
+    outstanding: VecDeque<(u64, CustomGripPhase)>,
+    /// Landed answers awaiting the pump, in order.
+    landed: VecDeque<(CustomGripPhase, CustomGripResponse)>,
+    /// Watchdog: set when the settle was issued; the drag must be finalized
+    /// by this deadline or the delivery is abandoned.
+    settle_deadline: Option<std::time::Instant>,
+    /// The drag's settle phase has been issued (in-process deliveries: this
+    /// is normally cleared within the same call; out-of-process it stays set
+    /// until the pump collects the settle answer).
+    settling: bool,
 }
 
-impl PluginGripMoveChannel {
+impl PluginGripDeliveries {
     /// Park the newest cursor point; drops whatever was parked before.
-    pub(crate) fn park(&mut self, point: DVec3) {
-        self.pending = Some(point);
+    pub(crate) fn park_move(&mut self, point: DVec3) {
+        self.pending_move = Some(point);
     }
 
-    /// The next point to send, if the channel is free.
-    pub(crate) fn take_sendable(&mut self) -> Option<DVec3> {
-        if self.in_flight {
+    /// The next parked move to send, if the move slot is free.
+    pub(crate) fn take_sendable_move(&mut self) -> Option<DVec3> {
+        if self.in_flight_move.is_some() {
             None
         } else {
-            self.pending.take()
+            self.pending_move.take()
         }
     }
 
-    /// Called after a move was issued to the plugin.
-    pub(crate) fn mark_in_flight(&mut self) {
-        self.in_flight = true;
+    /// Map a poll's answer id to its phase (removing it from the outstanding
+    /// queue). `None`: not a tracked grip delivery.
+    pub(crate) fn resolve(&mut self, id: u64) -> Option<CustomGripPhase> {
+        if self.in_flight_move == Some(id) {
+            self.in_flight_move = None;
+        }
+        let position = self.outstanding.iter().position(|(rid, _)| *rid == id)?;
+        let (_, phase) = self.outstanding.remove(position)?;
+        Some(phase)
     }
 
-    /// Called when the in-flight move's response arrived.
-    pub(crate) fn mark_resolved(&mut self) {
-        self.in_flight = false;
+    pub(crate) fn track(&mut self, id: u64, phase: CustomGripPhase) {
+        if phase == CustomGripPhase::Move {
+            self.in_flight_move = Some(id);
+        }
+        self.outstanding.push_back((id, phase));
     }
 
-    pub(crate) fn is_in_flight(&self) -> bool {
-        self.in_flight
+    pub(crate) fn is_move_in_flight(&self) -> bool {
+        self.in_flight_move.is_some()
     }
 
-    /// Drain: everything must be resolved before settle/cancel, which are
-    /// real (blocking) calls and can never be dropped.
     #[cfg(test)]
     pub(crate) fn is_settle_ready(&self) -> bool {
-        !self.in_flight && self.pending.is_none()
+        !self.settling
+            && self.in_flight_move.is_none()
+            && self.pending_move.is_none()
+            && self
+                .outstanding
+                .iter()
+                .all(|(_, phase)| !matches!(phase, CustomGripPhase::Move))
+    }
+
+    pub(crate) fn has_landed(&self) -> bool {
+        !self.landed.is_empty()
+    }
+
+    pub(crate) fn push_landed(&mut self, phase: CustomGripPhase, response: CustomGripResponse) {
+        self.landed.push_back((phase, response));
+    }
+
+    pub(crate) fn pop_landed(&mut self) -> Option<(CustomGripPhase, CustomGripResponse)> {
+        self.landed.pop_front()
+    }
+
+    /// Watchdog state: the settle was issued at `now` with the settle floor.
+    pub(crate) fn begin_settle_watch(
+        &mut self,
+        floor: std::time::Duration,
+        now: std::time::Instant,
+    ) {
+        self.settling = true;
+        self.settle_deadline = Some(now + floor);
+    }
+
+    pub(crate) fn settle_landed(&mut self) {
+        self.settling = false;
+        self.settle_deadline = None;
+    }
+
+    pub(crate) fn is_settling(&self) -> bool {
+        self.settling
+    }
+
+    /// The watchdog fires when the settle is outstanding past its deadline.
+    pub(crate) fn settle_timed_out(&self, now: std::time::Instant) -> bool {
+        self.settling && self.settle_deadline.is_some_and(|deadline| now >= deadline)
+    }
+
+    pub(crate) fn is_busy(&self) -> bool {
+        self.settling
+            || self.in_flight_move.is_some()
+            || self.pending_move.is_some()
+            || !self.outstanding.is_empty()
+            || !self.landed.is_empty()
     }
 }
 
 /// Route one custom-grip event to its owning plugin and return its response.
 ///
 /// Delivery order: in-process test sinks first (they drive the acceptance
-/// tests inside the host binary), then the live out-of-process registry. The
-/// panic guard applies to in-process handlers; out-of-process handlers are
-/// guarded by the runner. Returns `None` when the owner is gone (dead,
-/// unloaded or unknown): the drag then degrades to a no-op, never an error
-/// loop.
+/// tests inside the host binary). The panic guard applies to in-process
+/// handlers. Out-of-process owners are served by the ASYNC delivery path
+/// (`send_grip_event` + pump collection — the v11.1 hardening: no delivery
+/// ever blocks the UI loop); this synchronous entry is the in-process test
+/// surface. Returns `None` when the owner has no in-process sink: the drag
+/// machinery then uses the async route (never an error loop).
 pub(crate) fn dispatch_grip_event(
     app: &mut crate::app::OpenCADStudio,
     tab: usize,
     plugin_id: &str,
     event: CustomGripEvent,
 ) -> Option<CustomGripResponse> {
-    if let Some(sink) = take_in_process_sink(plugin_id) {
-        let mut host = crate::app::plugin_host::HostSession::new(app, tab);
-        return crate::plugin::guard("on_custom_grip_event", move || sink(&mut host, event));
-    }
-    let process = crate::plugin::external::with_manager(|manager| {
-        manager
-            .grip_endpoint(plugin_id)
-            .filter(|(_, _, alive)| *alive)
-            .map(|(process, _, _)| process)
-    })?;
+    let sink = take_in_process_sink(plugin_id)?;
     let mut host = crate::app::plugin_host::HostSession::new(app, tab);
-    match process.custom_grip_event(&mut host, tab, event) {
-        Ok(resp) => Some(resp),
-        Err(e) => {
-            crate::plugin::push_guard_error(format!(
-                "custom grip event delivery to {plugin_id} failed: {e}"
-            ));
-            None
-        }
-    }
+    crate::plugin::guard("on_custom_grip_event", move || sink(&mut host, event))
 }
 
 // ── In-process sinks (test-only) ──────────────────────────────────────────
+#[cfg(test)]
 type GripEventSink = std::rc::Rc<
     dyn for<'a> Fn(
         &mut crate::app::plugin_host::HostSession<'a>,
@@ -736,27 +804,42 @@ mod tests {
 
     #[test]
     fn move_channel_coalesces_latest_wins() {
-        let mut channel = PluginGripMoveChannel::default();
+        let mut channel = PluginGripDeliveries::default();
         for i in 0..1000 {
-            channel.park(DVec3::new(i as f64, 0.0, 0.0));
+            channel.park_move(DVec3::new(i as f64, 0.0, 0.0));
         }
-        let first = channel.take_sendable().expect("one sendable move");
+        let first = channel.take_sendable_move().expect("one sendable move");
         assert_eq!(first.x, 999.0, "superseded points are dropped, latest wins");
-        assert!(channel.take_sendable().is_none(), "only one move in flight");
-        channel.mark_in_flight();
-        assert!(channel.take_sendable().is_none());
-        assert!(!channel.is_settle_ready());
-        channel.park(DVec3::new(1000.0, 0.0, 0.0));
+        // Coalescing: the slot is busy while a move is in flight.
+        channel.track(7, CustomGripPhase::Move);
+        assert!(
+            channel.take_sendable_move().is_none(),
+            "only one move in flight"
+        );
+        channel.park_move(DVec3::new(1000.0, 0.0, 0.0));
         assert!(
             !channel.is_settle_ready(),
-            "settle must wait for the channel"
+            "the settle must wait for the channel"
         );
-        channel.mark_resolved();
-        assert!(!channel.is_settle_ready());
-        let second = channel.take_sendable().expect("drains the newest next");
+        // The answer lands and maps back to its phase.
+        assert_eq!(channel.resolve(7), Some(CustomGripPhase::Move));
+        assert!(channel.is_move_in_flight() == false);
+        let second = channel
+            .take_sendable_move()
+            .expect("drains the newest next");
         assert_eq!(second.x, 1000.0);
-        channel.mark_in_flight();
-        channel.mark_resolved();
+        channel.track(8, CustomGripPhase::Move);
+        assert!(!channel.is_settle_ready());
+        assert_eq!(channel.resolve(8), Some(CustomGripPhase::Move));
         assert!(channel.is_settle_ready());
+        // Watchdog: the settle is issued, the plugin never answers.
+        channel.track(9, CustomGripPhase::Settle);
+        let now = std::time::Instant::now();
+        channel.begin_settle_watch(std::time::Duration::from_secs(10), now);
+        assert!(!channel.settle_timed_out(now));
+        assert!(!channel.is_settle_ready());
+        assert!(channel.settle_timed_out(now + std::time::Duration::from_secs(11)));
+        channel.settle_landed();
+        assert!(!channel.settle_timed_out(now + std::time::Duration::from_secs(11)));
     }
 }
