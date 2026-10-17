@@ -78,7 +78,10 @@ pub(crate) fn bind_existing(
         crossing
     };
     let mut bindings = vec![];
-    for &handle in targets {
+    let mut unique = targets.to_vec();
+    unique.sort();
+    unique.dedup();
+    for handle in unique {
         let points = control_points(
             doc.get_entity(handle)
                 .ok_or("A Stretch target is unavailable.")?,

@@ -1054,3 +1054,28 @@ fn block_actions_retarget_stretch_can_remove_stale_binding_or_replace_it() {
     };
     assert_eq!(action.handles[0].indexes, vec![1]);
 }
+
+#[test]
+fn block_actions_stretch_duplicate_target_picks_create_one_binding() {
+    let (mut doc, def, targets, p, _) = stretch_fixture();
+    let a = create_with_frame(
+        &mut doc,
+        def,
+        Kind::Stretch,
+        p,
+        &[targets[0], targets[0]],
+        DVec3::ZERO,
+        Some([DVec3::new(9., -1., 0.), DVec3::new(11., 4., 0.)]),
+    )
+    .unwrap();
+    let ObjectType::DynamicBlock(o) = &doc.objects[&a] else {
+        panic!()
+    };
+    let DynamicBlockData::StretchAction(action) = &o.data else {
+        panic!()
+    };
+    assert_eq!(action.action.dependencies, vec![targets[0]]);
+    assert_eq!(action.handles.len(), 1);
+    let baseline = doc.clone();
+    assert!(evaluate(&mut doc, &baseline, def, p, DVec3::new(12., 0., 0.)).unwrap());
+}
