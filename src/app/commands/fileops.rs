@@ -9,9 +9,20 @@ impl OpenCADStudio {
             // asks which template to start from (#1635).
             "QNEW" => return Some(Task::done(Message::TabNew)),
             "NEW" => {
+                // Open where the default template lives, so its neighbours in
+                // a template folder are one click away (#1836).
+                let template_dir = std::path::Path::new(self.qnew_template.trim())
+                    .parent()
+                    .filter(|dir| dir.is_dir())
+                    .map(std::path::Path::to_path_buf);
                 return Some(Task::perform(
-                    async {
-                        crate::sys::file_dialog()
+                    async move {
+                        let dialog = crate::sys::file_dialog();
+                        let dialog = match template_dir {
+                            Some(dir) => dialog.set_directory(dir),
+                            None => dialog,
+                        };
+                        dialog
                             .set_title(crate::t!("Select Template").as_ref())
                             .add_filter(
                                 crate::t!("Drawing Template (*.dwt)").as_ref(),
