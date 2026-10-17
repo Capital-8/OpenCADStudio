@@ -536,7 +536,17 @@ impl OpenCADStudio {
                         return Some(Task::none());
                     }
                     match self.tabs[i].scene.document.get_entity(insert_handle) {
-                        Some(codec::EntityType::Insert(ins)) => ins.block_name.clone(),
+                        Some(codec::EntityType::Insert(ins)) => {
+                            // Evaluated INSERTs point at anonymous geometry variants.
+                            // Their authoring graph belongs to the original definition.
+                            let doc = &self.tabs[i].scene.document;
+                            doc.dynamic_definition_for_insert(insert_handle)
+                                .and_then(|definition| {
+                                    doc.block_records.iter().find(|br| br.handle == definition)
+                                })
+                                .map(|br| br.name.clone())
+                                .unwrap_or_else(|| ins.block_name.clone())
+                        }
                         _ => {
                             self.command_line.push_error(
                                 crate::t!("BEDIT: selected object is not a block reference.")

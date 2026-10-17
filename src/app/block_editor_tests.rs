@@ -60,6 +60,117 @@ fn feed(app: &mut OpenCADStudio, text: &str) {
 }
 
 #[test]
+fn block_parameters_rotation_only_save_close_reopen_then_flip() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    for save_command in ["BEDIT_SAVE", "BSAVE"] {
+        let (mut app, reference) = fixture();
+        begin(&mut app, reference);
+        let i = app.active_tab;
+        let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+        let _ = app.run_command_line("BPARAMETER ROTATION 0,0 10 0");
+        assert_eq!(
+            actions::parameters(&app.tabs[i].scene.document, def, Kind::Rotate).len(),
+            1
+        );
+        let _ = app.dispatch_command(save_command);
+        if save_command == "BSAVE" {
+            let _ = app.dispatch_command("BCLOSE");
+        }
+        assert!(app.tabs[i].active_block_edit.is_none());
+        begin(&mut app, reference);
+        assert_eq!(
+            actions::parameters(&app.tabs[i].scene.document, def, Kind::Rotate).len(),
+            1,
+            "{save_command}"
+        );
+        let _ = app.run_command_line("BPARAMETER FLIP 0,0 10,0 -2,2");
+        assert_eq!(
+            actions::parameters(&app.tabs[i].scene.document, def, Kind::Flip).len(),
+            1
+        );
+        let _ = app.dispatch_command("BEDIT_SAVE");
+        begin(&mut app, reference);
+        assert_eq!(
+            actions::parameters(&app.tabs[i].scene.document, def, Kind::Rotate).len(),
+            1
+        );
+        assert_eq!(
+            actions::parameters(&app.tabs[i].scene.document, def, Kind::Flip).len(),
+            1
+        );
+    }
+}
+
+#[test]
+fn block_actions_save_close_and_reedit_evaluated_reference() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let p = actions::parameters(&app.tabs[i].scene.document, def, Kind::Move)[0].clone();
+    let targets = members(&app);
+    actions::create(
+        &mut app.tabs[i].scene.document,
+        def,
+        Kind::Move,
+        p.handle,
+        &targets,
+        glam::DVec3::ZERO,
+    )
+    .unwrap();
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BCLOSE");
+    assert!(app.tabs[i].active_block_edit.is_none());
+    assert_eq!(
+        actions::parameters(&app.tabs[i].scene.document, def, Kind::Move).len(),
+        1
+    );
+    assert_eq!(actions::actions(&app.tabs[i].scene.document, def).len(), 1);
+    app.tabs[i].scene.selected.insert(reference);
+    app.refresh_properties();
+    let grip = app.tabs[i]
+        .selected_grips
+        .iter()
+        .find(|g| super::block_actions::is_test_grip(g.id))
+        .unwrap()
+        .id;
+    assert!(app.start_test_action_grip(reference, grip));
+    feed(&mut app, "12,0");
+    let EntityType::Insert(insert) = app.tabs[i].scene.document.get_entity(reference).unwrap()
+    else {
+        panic!()
+    };
+    assert_ne!(insert.block_name, "EDIT_ME");
+    // Native save/reload must preserve the link from the evaluated variant to
+    // the definition that owns the parameters and actions.
+    let bytes = codec::DwgWriter::write_to_vec(&app.tabs[i].scene.document).unwrap();
+    app.tabs[i].scene.document = codec::DwgReader::from_stream(std::io::Cursor::new(bytes))
+        .read()
+        .unwrap();
+    app.tabs[i].scene.selected.insert(reference);
+    let _ = app.dispatch_command("BEDIT");
+    assert_eq!(
+        app.tabs[i].active_block_edit_session().unwrap().br_handle,
+        def
+    );
+    assert_eq!(
+        actions::parameters(&app.tabs[i].scene.document, def, Kind::Move).len(),
+        1
+    );
+    assert_eq!(actions::actions(&app.tabs[i].scene.document, def).len(), 1);
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BCLOSE");
+    app.tabs[i].scene.selected.insert(reference);
+    app.refresh_properties();
+    assert!(app.tabs[i]
+        .selected_grips
+        .iter()
+        .any(|g| super::block_actions::is_test_grip(g.id)));
+}
+
+#[test]
 fn block_actions_rotate_flip_mouse_grips_authoring_history_and_reopen() {
     use crate::scene::block_actions::{self as actions, Kind};
     let (mut app, reference) = fixture();
