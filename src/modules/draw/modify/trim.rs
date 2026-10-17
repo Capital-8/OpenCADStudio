@@ -2734,10 +2734,13 @@ impl TrimCommand {
         self.geos = if self.edge_set.is_empty() {
             build_geos(&self.all_entities)
         } else {
+            // A set, not the Vec: every trim rebuilds this, and a selection
+            // of thousands of edges made it edges × objects per click (#1867).
+            let edges: std::collections::HashSet<Handle> = self.edge_set.iter().copied().collect();
             let picked: Vec<EntityType> = self
                 .all_entities
                 .iter()
-                .filter(|e| self.edge_set.contains(&e.common().handle))
+                .filter(|e| edges.contains(&e.common().handle))
                 .cloned()
                 .collect();
             build_geos(&picked)
@@ -3005,15 +3008,11 @@ impl CadCommand for TrimCommand {
                 let mut out: Vec<WireModel> = self
                     .edge_set
                     .iter()
-                    .filter_map(|h| self.all_entities.iter().find(|e| e.common().handle == *h))
+                    .filter_map(|h| self.entity_index.get(&self.all_entities, *h))
                     .map(|e| WireModel::solid("edge_sel".into(), entity_pts(e), OPT_YELLOW, false))
                     .collect();
                 if !handle.is_null() && !self.edge_set.contains(&handle) {
-                    if let Some(e) = self
-                        .all_entities
-                        .iter()
-                        .find(|e| e.common().handle == handle)
-                    {
+                    if let Some(e) = self.entity_index.get(&self.all_entities, handle) {
                         let mut c = OPT_YELLOW;
                         c[3] = 0.45;
                         out.push(WireModel::solid(
@@ -3480,10 +3479,13 @@ impl ExtendCommand {
         self.geos = if self.edge_set.is_empty() {
             build_geos(&self.all_entities)
         } else {
+            // A set, not the Vec: every trim rebuilds this, and a selection
+            // of thousands of edges made it edges × objects per click (#1867).
+            let edges: std::collections::HashSet<Handle> = self.edge_set.iter().copied().collect();
             let picked: Vec<EntityType> = self
                 .all_entities
                 .iter()
-                .filter(|e| self.edge_set.contains(&e.common().handle))
+                .filter(|e| edges.contains(&e.common().handle))
                 .cloned()
                 .collect();
             build_geos(&picked)
