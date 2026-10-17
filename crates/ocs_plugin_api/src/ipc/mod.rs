@@ -258,6 +258,7 @@ mod tests {
         assert_eq!(
             discriminant(&HostResponse::CustomGrip(crate::host::CustomGripResponse {
                 preview: Vec::new(),
+                live_entities: Default::default(),
             })),
             8
         );
@@ -272,6 +273,19 @@ mod tests {
                 Ok(())
             )),
             28
+        );
+        // API v12 additions stay at the ends (cheaper per-entity reads).
+        assert_eq!(
+            discriminant(&crate::ipc::protocol::PluginRequest::GetEntitiesBatch {
+                handles: Vec::new(),
+            }),
+            40
+        );
+        assert_eq!(
+            discriminant(
+                &crate::ipc::protocol::PluginResponse::GetEntitiesBatchResult(Ok(Vec::new()))
+            ),
+            29
         );
     }
 
@@ -323,11 +337,47 @@ mod tests {
                 5.0,
                 Some([0.0, 1.0, 2.0, 3.5]),
             )],
+            // API v12: the live-geometry channel rides the same response;
+            // an old (v11) answer without it decodes default-empty above.
+            live_entities: vec![(
+                codec::Handle::from(2),
+                codec::EntityType::Line(codec::entities::Line::from_points(
+                    codec::types::Vector3::new(0.0, 0.0, 0.0),
+                    codec::types::Vector3::new(3.0, 0.0, 0.0),
+                )),
+            )],
         });
         let bytes = bincode::serialize(&answer).unwrap();
         let got: HostResponse = bincode::deserialize(&bytes).unwrap();
         match got {
-            HostResponse::CustomGrip(resp) => assert_eq!(resp.preview.len(), 1),
+            HostResponse::CustomGrip(resp) => {
+                assert_eq!(resp.preview.len(), 1);
+                assert_eq!(resp.live_entities.len(), 1);
+                assert_eq!(resp.live_entities[0].0, codec::Handle::from(2));
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // And a v11-shaped answer (no live_entities) still decodes.
+        let old = HostResponse::CustomGrip(crate::host::CustomGripResponse {
+            preview: Vec::new(),
+            live_entities: Default::default(),
+        });
+        let bytes = bincode::serialize(&old).unwrap();
+        let got: HostResponse = bincode::deserialize(&bytes).unwrap();
+        match got {
+            HostResponse::CustomGrip(resp) => assert!(resp.live_entities.is_empty()),
+            other => panic!("unexpected: {other:?}"),
+        }
+        // The per-entity read frames round-trip too (API v12).
+        let req = crate::ipc::protocol::PluginRequest::GetEntitiesBatch {
+            handles: vec![codec::Handle::from(1), codec::Handle::from(2)],
+        };
+        let bytes = bincode::serialize(&req).unwrap();
+        let got: crate::ipc::protocol::PluginRequest = bincode::deserialize(&bytes).unwrap();
+        match got {
+            crate::ipc::protocol::PluginRequest::GetEntitiesBatch { handles } => {
+                assert_eq!(handles.len(), 2);
+            }
             other => panic!("unexpected: {other:?}"),
         }
     }

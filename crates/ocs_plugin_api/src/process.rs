@@ -560,78 +560,69 @@ impl PluginProcess {
         result
     }
 
-    /// Deliver a custom-grip drag event to this plugin's runner (API v11).
-    ///
-    /// The runner hands the event to the plugin's
-    /// `BuiltinPlugin::on_custom_grip_event` with a full HostApi proxy, so a
-    /// settle can write — issuing nested plugin requests that this same `call`
-    /// serves inline — inside the plugin's own undo scope. V4 transport only:
-    /// V3 connections refuse (no multiplexed link, no nested writes).
+    /// Issue a custom-grip drag event WITHOUT waiting (API v12; begin, move,
+    /// settle and cancel alike). The app parks move points and keeps at most
+    /// one move in flight, drops superseded cursor points, and never blocks
+    /// the UI loop on plugin latency — [`Self::custom_grip_poll`] collects the
+    /// answers at pump ticks, and [`Self::custom_grip_abandon`] is the
+    /// watchdog for plugins that never answer. Nested command frames
+    /// (`run_command`/`execute_command`) are REFUSED in this serving context:
+    /// their execution would need the host message loop the grip delivery
+    /// cannot pump (the v11.1 UI-freeze wedge); every other nested request —
+    /// including `push_undo` and direct writes — is served inline, so the
+    /// settle callback keeps its full HostApi write window. V4 transport
+    /// only; V3 connections refuse (no multiplexed link, no nested writes).
     #[allow(clippy::result_large_err)]
-    pub fn custom_grip_event(
+    pub fn custom_grip_event_send(
         &self,
-        host: &mut dyn HostApi,
         tab_index: usize,
         event: crate::host::CustomGripEvent,
-    ) -> Result<crate::host::CustomGripResponse, PluginError> {
+    ) -> Result<u64, PluginError> {
         let Some(v4) = &self.v4 else {
             return Err(PluginError::Runner(
                 "custom grips require the V4 protocol".into(),
             ));
         };
-        match v4.call(
-            host,
-            HostRequest::CustomGripEvent { tab_index, event },
-            &mut |_| {},
-        )? {
-            HostResponse::CustomGrip(resp) => Ok(resp),
-            other => Err(PluginError::UnexpectedResponse(Box::new(other))),
-        }
+        v4.send_grip_event(tab_index, event)
     }
 
-    /// Issue a coalesced custom-grip move without waiting (API v11): the
-    /// app keeps at most one move in flight and drops superseded cursor
-    /// points. V4 transport only.
+    /// Poll (bounded) for the next outstanding custom-grip answer, serving
+    /// nested plugin requests inline on the way. `Ok(None)`: not answered
+    /// yet. The poll never marks the connection dead.
     #[allow(clippy::result_large_err)]
-    pub fn custom_grip_move_send(
-        &self,
-        tab_index: usize,
-        event: crate::host::CustomGripEvent,
-    ) -> Result<(), PluginError> {
-        let Some(v4) = &self.v4 else {
-            return Err(PluginError::Runner(
-                "custom grips require the V4 protocol".into(),
-            ));
-        };
-        v4.send_grip_move(tab_index, event)
-    }
-
-    /// Poll for the answer to the outstanding custom-grip move, serving any
-    /// nested plugin requests with `host` on the way. `Ok(None)`: not
-    /// answered yet.
-    #[allow(clippy::result_large_err)]
-    pub fn custom_grip_move_poll(
+    pub fn custom_grip_poll(
         &self,
         host: &mut dyn HostApi,
         wait: std::time::Duration,
-    ) -> Result<Option<crate::host::CustomGripResponse>, PluginError> {
+    ) -> Result<Option<(u64, crate::host::CustomGripResponse)>, PluginError> {
         let Some(v4) = &self.v4 else {
             return Err(PluginError::Runner(
                 "custom grips require the V4 protocol".into(),
             ));
         };
-        match v4.poll_grip_move(host, wait)? {
-            Some(HostResponse::CustomGrip(resp)) => Ok(Some(resp)),
-            Some(other) => Err(PluginError::UnexpectedResponse(Box::new(other))),
+        match v4.poll_grip(host, wait)? {
+            Some((id, HostResponse::CustomGrip(resp))) => Ok(Some((id, resp))),
+            Some((_, other)) => Err(PluginError::UnexpectedResponse(Box::new(other))),
             None => Ok(None),
         }
     }
 
-    /// Whether a coalesced custom-grip move is still unanswered.
+    /// Whether a custom-grip delivery is still unanswered.
     pub fn custom_grip_move_in_flight(&self) -> bool {
         self.v4
             .as_ref()
             .is_some_and(|v4| v4.has_grip_move_in_flight())
+    }
+
+    /// The watchdog (API v12): abandon a grip delivery that outlived its
+    /// deadline by tearing the plugin's connection down. The UI loop
+    /// recovers, the drag ends as a cancel, an error line names the plugin;
+    /// the runner reaps the dead connection. The plugin process is the
+    /// untrusted side — never waited on.
+    pub fn custom_grip_abandon(&self) {
+        if let Some(v4) = &self.v4 {
+            v4.abandon("grip-event delivery deadline exceeded");
+        }
     }
 
     /// Execute a REPL code snippet on a V4 plugin. The session is tied to the
@@ -1108,7 +1099,7 @@ fn call(
             PluginToHost::Response(resp) => return Ok(resp),
             PluginToHost::Request(plugin_req) => {
                 let resp =
-                    handle_plugin_request(host, plugin_id, *plugin_req, on_start_interactive);
+                    handle_plugin_request(host, plugin_id, *plugin_req, on_start_interactive, true);
                 vlog!("[plugin] host -> runner response: {resp:?}");
                 let mut guard = stream.lock().unwrap_or_else(|e| e.into_inner());
                 let stream = guard.as_mut().ok_or_else(shutdown_error)?;

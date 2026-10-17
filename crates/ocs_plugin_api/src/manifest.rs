@@ -36,8 +36,17 @@
 /// one-undo-step edit the interactive viewport performs), and
 /// `HostApi::set_plugin_grips` plus `BuiltinPlugin::on_custom_grip_event`
 /// (plugin-declared, plugin-owned custom grip points: session display state
-/// the host renders, hit-tests and drags but never interprets).
-pub const API_VERSION: u32 = 11;
+/// the host renders, hit-tests and drags but never interprets). v12 lands
+/// the consumer-validation hardening: the plugin-directed LIVE-GEOMETRY
+/// channel (CustomGripResponse::live_entities, capped), grip deliveries
+/// that never block the UI loop (bounded polls plus the settle watchdog
+/// that tears a silent plugin connection down), nested COMMAND frames
+/// refused inside grip deliveries (their execution would need the message
+/// loop the blocked delivery cannot pump — the UI-freeze wedge), cheap
+/// per-entity reads (HostApi::entities_batch) so refresh passes never
+/// re-clone invalidated document snapshots, and the deterministic-boot
+/// retry for plugin command dispatch.
+pub const API_VERSION: u32 = 12;
 
 /// Oldest plugin API major the current host still loads. This keeps previously
 /// compiled cdylibs usable as long as their vtable layout is a prefix of the

@@ -927,18 +927,40 @@ pub struct CustomGripEvent {
     pub anchor: Option<Handle>,
 }
 
-/// The plugin's answer to a [`CustomGripEvent`] (API v11).
+/// The plugin's answer to a [`CustomGripEvent`] (API v11, additive).
 ///
 /// `preview` REPLACES the plugin's live preview wire set; analytical arcs
-/// and circles render GPU-smooth. The plugin's preview is the only live
-/// feedback — the host draws no ghost of its own and moves nothing during
-/// the drag. All mutation happens at settle, from the plugin, in its own
-/// undo scope.
+/// and circles render GPU-smooth. The plugin's preview is the only
+/// host-invented live feedback — the host draws no ghost of its own and
+/// moves nothing on its own during the drag.
+///
+/// `live_entities` (API v12, additive) is the plugin-directed LIVE-GEOMETRY
+/// channel — the plugin-owned twin of what a built-in grip drag shows: the
+/// CURRENT geometry of every affected entity (`(handle, entity)` pairs,
+/// computed by the plugin from the drag point, exactly what the settle will
+/// commit). The host applies them during the drag through the same
+/// visual-only dynamic phase its own grip drags use — the elements visibly
+/// move, ZERO history steps are recorded mid-drag, the whole visual state is
+/// discarded byte-identically on cancel, and the settle RESTORES the
+/// originals before the plugin's authoritative writes land in its own one
+/// undo scope. The host still interprets nothing: the plugin computes and
+/// returns every affected entity's live geometry per move. A response
+/// carrying only `preview` behaves exactly as before — the drawing stays
+/// static except for the preview wires. The payload is capped at
+/// [`MAX_PLUGIN_LIVE_ENTITIES`] per response; a larger set answers with a
+/// refused delivery (headline in the error queue), never a freeze.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CustomGripResponse {
     #[serde(default)]
     pub preview: Vec<PreviewWire>,
+    #[serde(default)]
+    pub live_entities: Vec<(Handle, EntityType)>,
 }
+
+/// Per-response cap on live-geometry entities (API v12): the drag stays
+/// rubber-band smooth; wider chains should batch by kind (the plugin decides
+/// what must move) or co-design a lighter frame with the host.
+pub const MAX_PLUGIN_LIVE_ENTITIES: usize = 256;
 
 /// The outcome of an [`InteractiveCommand`] step.
 #[derive(Debug)]
@@ -1428,6 +1450,18 @@ pub trait HostApi {
         _grips: Vec<PluginGrip>,
     ) -> Result<(), String> {
         Err("Plugin grip points are not supported by this host".to_owned())
+    }
+
+    /// Read specific entities by handle (API v12, additive).
+    ///
+    /// Cheap per-entity reads for refresh passes — the answer is the LIVE
+    /// document's current entity per handle (`None` for an unknown handle).
+    /// Use these instead of re-taking a document snapshot after writes: the
+    /// session snapshot is invalidated by every write, so read-after-write
+    /// loops through it re-clone the full document each time (the per-boundary
+    /// quadratic). Fails only when the tab does not exist.
+    fn entities_batch(&self, _handles: &[Handle]) -> Result<Vec<Option<EntityType>>, String> {
+        Err("Per-entity batch reads are not supported by this host".to_owned())
     }
 }
 

@@ -1042,6 +1042,22 @@ impl HostApi for V4PluginHostApi {
             Err(error) => Err(error.to_string()),
         }
     }
+
+    fn entities_batch(
+        &self,
+        handles: &[codec::Handle],
+    ) -> Result<Vec<Option<codec::EntityType>>, String> {
+        // API v12: per-entity reads — refresh passes never need to re-clone
+        // the invalidated document snapshot after writes.
+        match self.request(PluginRequest::GetEntitiesBatch {
+            handles: handles.to_vec(),
+        }) {
+            Ok(PluginResponse::GetEntitiesBatchResult(result)) => result,
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected entities-batch response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
 }
 
 #[cfg(test)]

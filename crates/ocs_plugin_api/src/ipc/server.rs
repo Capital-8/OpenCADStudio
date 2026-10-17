@@ -34,11 +34,19 @@ fn addressable_document_snapshot(host: &dyn HostApi) -> codec::CadDocument {
 /// `on_start_interactive` is called when the plugin starts an interactive
 /// command; the host should install an adapter that sends
 /// `HostRequest::InteractiveEvent` back to the plugin process.
+///
+/// `serve_commands` selects the serve context (API v12): in a GRIP-EVENT
+/// delivery (the coalesced pump) nested command frames are refused — their
+/// execution needs the host's message loop, which a UI-thread grip delivery
+/// cannot pump (the v11.1 UI-freeze wedge). The plugin receives an honest
+/// `Err` naming the constraint, so its settle callback proceeds data-plane
+/// (push_undo + direct writes work inline as ever) or reports the boundary.
 pub fn handle_plugin_request(
     host: &mut dyn HostApi,
     plugin_id: &str,
     req: PluginRequest,
     on_start_interactive: &mut dyn FnMut(u64),
+    serve_commands: bool,
 ) -> PluginResponse {
     use PluginRequest::*;
     match req {
@@ -106,7 +114,21 @@ pub fn handle_plugin_request(
         ),
         AddLayer(config) => PluginResponse::OptHandle(host.add_layer(config)),
         ModifyLayer(config) => PluginResponse::Bool(host.modify_layer(config)),
-        ExecuteCommand(cmd) => PluginResponse::Bool(host.execute_command(&cmd)),
+        ExecuteCommand(cmd) => {
+            if !serve_commands {
+                // API v12: a grip-event delivery refuses nested command
+                // frames — their execution would need the host message loop
+                // the blocked delivery cannot pump (UI-freeze wedge).
+                PluginResponse::Error(format!(
+                    "execute_command({cmd:?}) refused during a custom-grip drag: the host \
+                     message loop cannot pump nested commands from a grip delivery; apply \
+                     the edits directly in the settle callback (push_undo + update/add \
+                     entities), or replay commands at your own boundary"
+                ))
+            } else {
+                PluginResponse::Bool(host.execute_command(&cmd))
+            }
+        }
         GetSystemVariable { name } => PluginResponse::SystemVariable(host.system_variable(&name)),
         SetSystemVariable { name, value } => {
             PluginResponse::SystemVariableResult(host.set_system_variable(&name, value))
@@ -122,7 +144,21 @@ pub fn handle_plugin_request(
         TableOperation { operation } => {
             PluginResponse::TableResult(host.table_operation(operation))
         }
-        RunCommand { request } => PluginResponse::CommandResult(host.run_command(request)),
+        RunCommand { request } => {
+            if !serve_commands {
+                // API v12: same grip-event refusal as execute_command — a
+                // nested run_command needs the iced loop; the plugin gets
+                // the honest Err, not a hang.
+                PluginResponse::CommandResult(Err(format!(
+                    "run_command refused during a custom-grip drag: the host message loop \
+                     cannot pump nested commands from a grip delivery; apply the edits \
+                     directly in the settle callback (push_undo + update/add entities), \
+                     or replay commands at your own boundary"
+                )))
+            } else {
+                PluginResponse::CommandResult(host.run_command(request))
+            }
+        }
         CreateXRecord {
             dictionary_path,
             name,
@@ -171,6 +207,9 @@ pub fn handle_plugin_request(
         } => PluginResponse::GripDragResult(host.grip_drag(handle, grip_id, to)),
         SetPluginGrips { grips } => {
             PluginResponse::SetPluginGripsResult(host.set_plugin_grips(plugin_id, grips))
+        }
+        GetEntitiesBatch { handles } => {
+            PluginResponse::GetEntitiesBatchResult(host.entities_batch(&handles))
         }
     }
 }

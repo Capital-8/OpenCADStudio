@@ -263,6 +263,13 @@ pub enum PluginRequest {
     SetPluginGrips {
         grips: Vec<PluginGrip>,
     },
+    /// V12 (additive): read specific entities by handle — cheap per-entity
+    /// reads for refresh passes, so a plugin that writes and re-reads never
+    /// re-clones the full document snapshot (the v11.1 per-boundary cost:
+    /// every write invalidated the session snapshot).
+    GetEntitiesBatch {
+        handles: Vec<Handle>,
+    },
 }
 
 /// Responses the host sends back for `PluginRequest`.
@@ -317,6 +324,8 @@ pub enum PluginResponse {
     GripDragResult(Result<(), String>),
     /// V11 (additive): outcome of a custom-grip declaration.
     SetPluginGripsResult(Result<(), String>),
+    /// V12 (additive): per-entity reads by handle (None per unknown handle).
+    GetEntitiesBatchResult(Result<Vec<Option<EntityType>>, String>),
 }
 
 /// Messages sent from the host to the plugin runner.
