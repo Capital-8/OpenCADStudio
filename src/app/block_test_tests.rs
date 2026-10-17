@@ -303,6 +303,109 @@ fn block_test_unsaved_visibility_states_work_without_changing_the_editor() {
 }
 
 #[test]
+fn block_test_lookup_choice_evaluates_temporary_reference_only() {
+    use crate::scene::model::object::PropValue;
+    use crate::scene::{block_actions, block_distance_parameter as distance, block_lookup};
+    use codec::objects::BlockLookupAction;
+
+    let (mut app, source, _) = fixture();
+    let definition = app.tabs[source]
+        .active_block_edit_session()
+        .unwrap()
+        .br_handle;
+    let line = app.tabs[source]
+        .scene
+        .document
+        .block_records
+        .get("SAMPLE")
+        .unwrap()
+        .entity_handles[0];
+    let doc = &mut app.tabs[source].scene.document;
+    let parameter = distance::create(
+        doc,
+        definition,
+        distance::Kind::Linear,
+        Vector3::new(10.0, 20.0, 0.0),
+        Vector3::new(12.0, 20.0, 0.0),
+        Vector3::new(10.0, 21.0, 0.0),
+    )
+    .unwrap();
+    block_actions::create(
+        doc,
+        definition,
+        block_actions::Kind::Move,
+        parameter,
+        &[line],
+        glam::DVec3::new(10.0, 20.0, 0.0),
+    )
+    .unwrap();
+    let lookup_parameter =
+        block_lookup::create(doc, definition, Vector3::new(11.0, 21.0, 0.0)).unwrap();
+    let mut table = block_lookup::empty_table(
+        block_lookup::parameters(doc, definition)
+            .into_iter()
+            .find(|(handle, _)| *handle == lookup_parameter)
+            .unwrap()
+            .1,
+    );
+    table.columns.insert(
+        0,
+        block_lookup::properties(doc, definition)[0].column.clone(),
+    );
+    table.column_count = 2;
+    table.row_count = 2;
+    table.expressions = vec!["2".into(), "Small".into(), "4".into(), "Large".into()];
+    block_lookup::apply_table(doc, definition, lookup_parameter, table).unwrap();
+
+    let source_before = app.tabs[source].scene.document.clone();
+    let _ = app.open_block_test(source);
+    let test = app.active_tab;
+    let insert = app.tabs[test].block_test.as_ref().unwrap().insert;
+    app.tabs[test].scene.selected.insert(insert);
+    app.tabs[test].selected_handle = Some(insert);
+    app.refresh_properties();
+    let lookup_property = app.tabs[test]
+        .properties
+        .sections
+        .iter()
+        .flat_map(|section| &section.props)
+        .find(|property| property.field == "dyn_lookup")
+        .expect("Test Block should expose the Lookup table choice");
+    let PropValue::Choice { selected, options } = &lookup_property.value else {
+        panic!("Lookup table property should be a choice")
+    };
+    assert_eq!(selected, "Small");
+    assert_eq!(options, &["Small", "Large"]);
+
+    let _ = app.update(super::Message::PropGeomChoiceChanged {
+        field: "dyn_lookup",
+        value: "Large".into(),
+    });
+    let EntityType::Insert(evaluated) = app.tabs[test].scene.document.get_entity(insert).unwrap()
+    else {
+        panic!("expected the temporary Test Block reference")
+    };
+    assert_ne!(evaluated.block_name, "SAMPLE");
+    let member = app.tabs[test]
+        .scene
+        .document
+        .block_records
+        .get(&evaluated.block_name)
+        .unwrap()
+        .entity_handles[0];
+    let EntityType::Line(line) = app.tabs[test].scene.document.get_entity(member).unwrap() else {
+        panic!("expected the materialized line")
+    };
+    assert_eq!(line.start, Vector3::new(12.0, 20.0, 0.0));
+    assert_eq!(line.end, Vector3::new(17.0, 20.0, 0.0));
+    assert_eq!(app.tabs[source].scene.document, source_before);
+    assert!(matches!(
+        block_lookup::table(&app.tabs[test].scene.document, definition, lookup_parameter).unwrap(),
+        Some((_, BlockLookupAction { row_count: 2, .. }))
+    ));
+}
+
+#[test]
 fn block_test_attributes_use_defaults_and_the_stored_base_point() {
     use codec::entities::AttributeDefinition;
     let (mut app, source, _) = fixture();
