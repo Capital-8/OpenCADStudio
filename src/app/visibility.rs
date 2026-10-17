@@ -117,6 +117,34 @@ impl OpenCADStudio {
         })
     }
 
+    /// The visibility parameter of a dynamic-block reference as a Properties
+    /// row: the parameter's name, its states, and the one shown now.
+    pub(super) fn visibility_property(
+        doc: &codec::CadDocument,
+        handle: Handle,
+    ) -> Option<crate::scene::model::object::Property> {
+        let Some(EntityType::Insert(ins)) = doc.get_entity(handle) else {
+            return None;
+        };
+        let (def_block, param) = doc.dynamic_visibility_for_insert(handle)?;
+        let options: Vec<String> = param.states.iter().map(|s| s.name.clone()).collect();
+        let current = Self::current_visibility_state(doc, def_block, &ins.block_name, param);
+        // An unnamed parameter takes the name a new one gets in the file.
+        let label = if param.element_name.trim().is_empty() {
+            "Visibility1".to_string()
+        } else {
+            param.element_name.clone()
+        };
+        Some(crate::scene::model::object::Property {
+            label,
+            field: "dyn_visibility",
+            value: crate::scene::model::object::PropValue::Choice {
+                selected: current.and_then(|c| options.get(c).cloned()).unwrap_or_default(),
+                options,
+            },
+        })
+    }
+
     /// Recompute the visibility grip for the active tab's single selection and
     /// append it (as a Triangle grip) to `selected_grips`. Clears it when the
     /// selection is not a dynamic-block reference. `wo` is the world offset

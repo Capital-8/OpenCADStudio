@@ -3394,6 +3394,20 @@ impl OpenCADStudio {
                         _ => {}
                     }
                 }
+            } else if field == "dyn_visibility" {
+                // A visibility state picked in Properties, applied like a
+                // pick from the reference's visibility grip.
+                self.tabs[i].properties.edit_choice_open = false;
+                for &handle in &handles {
+                    let state = self.tabs[i]
+                        .scene
+                        .document
+                        .dynamic_visibility_for_insert(handle)
+                        .and_then(|(_, param)| param.states.iter().position(|s| s.name == value));
+                    if let Some(state) = state {
+                        self.apply_visibility_state(handle, state);
+                    }
+                }
             } else if field == "block" {
                 // Name dropdown on a block reference: re-point the
                 // selected inserts to the picked definition. A stale

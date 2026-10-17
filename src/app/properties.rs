@@ -914,6 +914,13 @@ impl OpenCADStudio {
                         crate::io::xref::layer_overrides(doc, &br.name, &br.xref_path, &base_dir);
                     xref_rows(&mut sections, ins, &br.xref_path, factor, overrides);
                 }
+                // A dynamic block's visibility states, picked like its grip.
+                if let Some(row) = Self::visibility_property(doc, handle) {
+                    sections.push(crate::scene::model::object::PropSection {
+                        title: t!("Custom").into_owned(),
+                        props: vec![row],
+                    });
+                }
                 // An associative array's counts and spacings.
                 if let Some(array) = crate::scene::assoc_array::array_of_insert(doc, handle) {
                     sections.push(crate::scene::assoc_array::property_section(doc, &array));
