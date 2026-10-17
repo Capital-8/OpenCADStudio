@@ -49,7 +49,7 @@ impl ActionCommand {
             );
         }
         self.parameter = Some(p.handle);
-        self.selecting = self.kind != Some(Kind::Stretch);
+        self.selecting = !self.kind.is_some_and(actions::needs_frame);
         CmdResult::DeselectAndContinue
     }
 }
@@ -78,8 +78,10 @@ impl CadCommand for ActionCommand {
     }
     fn prompt(&self) -> String {
         if self.kind.is_none() {
-            return crate::t!("BACTION  Enter action type [Move/Scale/Stretch/Rotate/Flip/Array]:")
-                .into_owned();
+            return crate::t!(
+                "BACTION  Enter action type [Move/Scale/Stretch/Polar Stretch/Rotate/Flip/Array]:"
+            )
+            .into_owned();
         }
         if self.parameter.is_none() {
             return crate::tf!(
@@ -88,11 +90,11 @@ impl CadCommand for ActionCommand {
             )
             .into_owned();
         }
-        if self.kind == Some(Kind::Stretch) && self.frame.is_empty() {
-            return crate::t!("BACTION  Specify first corner of stretch frame:").into_owned();
+        if self.kind.is_some_and(actions::needs_frame) && self.frame.is_empty() {
+            return crate::t!("BACTION  Specify first corner of action frame:").into_owned();
         }
-        if self.kind == Some(Kind::Stretch) && self.frame.len() == 1 {
-            return crate::t!("BACTION  Specify opposite corner of stretch frame:").into_owned();
+        if self.kind.is_some_and(actions::needs_frame) && self.frame.len() == 1 {
+            return crate::t!("BACTION  Specify opposite corner of action frame:").into_owned();
         }
         if self.selecting {
             return crate::t!("BACTION  Select objects for the action, then press Enter:")
@@ -122,6 +124,7 @@ impl CadCommand for ActionCommand {
                 CmdOption::new("Move", "Move"),
                 CmdOption::new("Scale", "Scale"),
                 CmdOption::new("Stretch", "Stretch"),
+                CmdOption::new("Polar Stretch", "Polar Stretch"),
                 CmdOption::new("Rotate", "Rotate"),
                 CmdOption::new("Flip", "Flip"),
                 CmdOption::new("Array", "Array"),
@@ -137,7 +140,8 @@ impl CadCommand for ActionCommand {
                 CmdResult::NeedPoint
             } else {
                 CmdResult::ReportError(
-                    crate::t!("Choose Move, Scale, Stretch, Rotate, Flip or Array.").into_owned(),
+                    crate::t!("Choose Move, Scale, Stretch, Polar Stretch, Rotate, Flip or Array.")
+                        .into_owned(),
                 )
             });
         }
@@ -224,7 +228,7 @@ impl CadCommand for ActionCommand {
                 )
             });
         }
-        if self.kind == Some(Kind::Stretch) && self.frame.len() < 2 {
+        if self.kind.is_some_and(actions::needs_frame) && self.frame.len() < 2 {
             let plane = self
                 .candidates
                 .iter()

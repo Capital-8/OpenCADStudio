@@ -95,7 +95,7 @@ impl OpenCADStudio {
         };
         if !args.is_empty() && kind.is_none() {
             self.command_line.push_error(
-                crate::t!("Supported actions: Move, Scale, Stretch, Rotate, Flip, Array. Other action types are not wired yet.")
+                crate::t!("Supported actions: Move, Scale, Stretch, Polar Stretch, Rotate, Flip, Array. Other action types are not wired yet.")
                     .as_ref(),
             );
             return Task::none();

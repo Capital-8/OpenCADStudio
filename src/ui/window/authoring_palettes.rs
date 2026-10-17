@@ -6,7 +6,7 @@ use crate::ui::dock::{self, Chrome, PanelId, VerticalLabel};
 use crate::ui::icons;
 use crate::ui::ribbon::{tooltip_content, tooltip_style};
 use iced::widget::{
-    button, canvas, column, container, rule, row, scrollable, stack, text, tooltip, Space,
+    button, canvas, column, container, row, rule, scrollable, stack, text, tooltip, Space,
 };
 use iced::{Background, Border, Element, Fill, Theme};
 
@@ -199,6 +199,7 @@ fn catalog(
     rotate_error: Option<&'static str>,
     flip_action_error: Option<&'static str>,
     stretch_action_error: Option<&'static str>,
+    polar_stretch_action_error: Option<&'static str>,
     array_action_error: Option<&'static str>,
 ) -> Element<'static, Message> {
     let (entries, unavailable) = match tab {
@@ -221,8 +222,8 @@ fn catalog(
         let orientation_error = if *label=="Flip" {flip_error} else {point_error};
         let single=tab==Tab::Parameters&&matches!(*label,"Lookup"|"Basepoint");
         let lookup_action=tab==Tab::Actions&&*label=="Lookup";
-        let geometry_action=tab==Tab::Actions&&matches!(*label,"Move"|"Scale"|"Stretch"|"Rotate"|"Flip"|"Array");
-        let action_error=match *label {"Scale"=>scale_error,"Stretch"=>stretch_action_error,"Rotate"=>rotate_error,"Flip"=>flip_action_error,"Array"=>array_action_error,_=>move_error};
+        let geometry_action=tab==Tab::Actions&&matches!(*label,"Move"|"Scale"|"Stretch"|"Polar Stretch"|"Rotate"|"Flip"|"Array");
+        let action_error=match *label {"Scale"=>scale_error,"Stretch"=>stretch_action_error,"Polar Stretch"=>polar_stretch_action_error,"Rotate"=>rotate_error,"Flip"=>flip_action_error,"Array"=>array_action_error,_=>move_error};
         let enabled = (geometry_action&&action_error.is_none())||(single&&point_error.is_none())||(lookup_action&&lookup_error.is_none())||(orientation && orientation_error.is_none()) || (visibility && visibility_error.is_none()) || ((point || distance) && point_error.is_none());
         let base = if enabled {
             icons::semantic(icon, 28.0)
@@ -408,6 +409,7 @@ pub fn view(
     rotate_error: Option<&'static str>,
     flip_action_error: Option<&'static str>,
     stretch_action_error: Option<&'static str>,
+    polar_stretch_action_error: Option<&'static str>,
     array_action_error: Option<&'static str>,
 ) -> Element<'static, Message> {
     let tabs = column(Tab::ALL.into_iter().map(|category| {
@@ -469,6 +471,7 @@ pub fn view(
                 rotate_error,
                 flip_action_error,
                 stretch_action_error,
+                polar_stretch_action_error,
                 array_action_error,
             ))
             .width(Fill)

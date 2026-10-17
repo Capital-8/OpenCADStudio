@@ -1,6 +1,6 @@
 //! A native Stretch action freezes its vertex membership at authoring time.
 use super::*;
-use codec::objects::{BlockStretchAction, BlockStretchHandle};
+use codec::objects::{BlockPolarStretchAction, BlockStretchAction, BlockStretchHandle};
 use codec::types::Vector2;
 
 pub(crate) fn control_points(e: &EntityType) -> Result<Vec<DVec3>, &'static str> {
@@ -160,6 +160,75 @@ pub(crate) fn validate(doc: &CadDocument, a: &BlockStretchAction) -> Result<(), 
     Ok(())
 }
 
+pub(crate) fn validate_polar(
+    doc: &CadDocument,
+    a: &BlockPolarStretchAction,
+) -> Result<(), &'static str> {
+    let connection_code = a.connections[0].code;
+    let connections = [
+        "BaseXDelta",
+        "BaseYDelta",
+        "Base",
+        "End",
+        "UpdatedBase",
+        "UpdatedEnd",
+    ]
+    .map(|name| codec::objects::BlockConnection {
+        code: connection_code,
+        name: name.into(),
+    });
+    if a.distance_multiplier != 1.
+        || a.angle_offset != 0.
+        || a.connections != connections
+        || !a.codes.is_empty()
+        || !a.extra.is_empty()
+        || !a.action.action_ids.is_empty()
+        || a.points.len() < 2
+        || a.points
+            .iter()
+            .any(|p| !p.x.is_finite() || !p.y.is_finite())
+    {
+        return Err("This Polar Stretch action uses options not supported yet.");
+    }
+    let mut handles = a.handles.clone();
+    handles.sort();
+    handles.dedup();
+    if handles != a.handles || handles.iter().any(|h| !a.action.dependencies.contains(h)) {
+        return Err("The Polar Stretch action has invalid target bindings.");
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for binding in &a.bindings {
+        if !a.action.dependencies.contains(&binding.handle) || !seen.insert(binding.handle) {
+            return Err("The Polar Stretch action has invalid vertex bindings.");
+        }
+        let count = control_points(
+            doc.get_entity(binding.handle)
+                .ok_or("A Polar Stretch target is unavailable.")?,
+        )?
+        .len();
+        let unique = binding
+            .indexes
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        if unique.len() != binding.indexes.len()
+            || binding
+                .indexes
+                .iter()
+                .any(|i| *i < 0 || *i as usize >= count)
+        {
+            return Err("A Polar Stretch vertex binding no longer matches its object.");
+        }
+    }
+    for h in &a.action.dependencies {
+        control_points(
+            doc.get_entity(*h)
+                .ok_or("A Polar Stretch target is unavailable.")?,
+        )?;
+    }
+    Ok(())
+}
+
 pub(crate) fn apply(
     e: &mut EntityType,
     a: &BlockStretchAction,
@@ -222,6 +291,26 @@ pub(crate) fn apply(
         _ => return Err("Unsupported Stretch target."),
     }
     Ok(())
+}
+
+/// Apply the authored polar displacement to only the vertices frozen in the
+/// Polar Stretch bindings; targets without a partial binding move as a whole.
+pub(crate) fn apply_polar(
+    e: &mut EntityType,
+    bindings: &[BlockStretchHandle],
+    base: DVec3,
+    old_end: DVec3,
+    new_end: DVec3,
+) -> Result<(), &'static str> {
+    let (old_vec, new_vec) = (old_end - base, new_end - base);
+    if old_vec.length() <= 1e-9 || new_vec.length() <= 1e-9 {
+        return Err("The Polar parameter needs a nonzero distance.");
+    }
+    let action = BlockStretchAction {
+        handles: bindings.to_vec(),
+        ..Default::default()
+    };
+    apply(e, &action, new_end - old_end)
 }
 
 pub(crate) fn outline(points: &[Vector2], z: f64) -> Vec<Vector3> {

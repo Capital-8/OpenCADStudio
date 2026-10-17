@@ -1,6 +1,6 @@
 //! Edit native action selections without replacing their graph nodes.
 use crate::command::{CadCommand, CmdOption, CmdResult, InputKind, PointPickContext};
-use crate::scene::block_actions::{self as actions, Kind};
+use crate::scene::block_actions as actions;
 use codec::objects::ObjectType;
 use codec::{CadDocument, Handle};
 use glam::DVec3;
@@ -48,7 +48,7 @@ impl ActionSetCommand {
                 name: a.element.name.clone(),
                 at: actions::v(a.display_location),
                 targets: a.dependencies.clone(),
-                stretch: kind == Kind::Stretch,
+                stretch: actions::needs_frame(kind),
                 expected: doc.objects[&handle].clone(),
             })
             .collect::<Vec<_>>();
@@ -108,9 +108,9 @@ impl CadCommand for ActionSetCommand {
         } else if self.mode.is_none() {
             "BACTIONSET  [New/Add/Remove] <New>:"
         } else if matches!(self.mode, Some(Mode::Frame)) && self.frame.is_empty() {
-            "BACTIONSET  Specify first corner of replacement stretch frame:"
+            "BACTIONSET  Specify first corner of replacement action frame:"
         } else if matches!(self.mode, Some(Mode::Frame)) {
-            "BACTIONSET  Specify opposite corner of replacement stretch frame:"
+            "BACTIONSET  Specify opposite corner of replacement action frame:"
         } else {
             "BACTIONSET  Select objects, then press Enter:"
         })

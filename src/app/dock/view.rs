@@ -416,6 +416,7 @@ impl OpenCADStudio {
                     self.action_error(Some(crate::scene::block_actions::Kind::Rotate)),
                     self.action_error(Some(crate::scene::block_actions::Kind::Flip)),
                     self.action_error(Some(crate::scene::block_actions::Kind::Stretch)),
+                    self.action_error(Some(crate::scene::block_actions::Kind::PolarStretch)),
                     self.action_error(Some(crate::scene::block_actions::Kind::Array)),
                 )
             }

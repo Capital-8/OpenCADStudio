@@ -3,14 +3,14 @@ use super::block_authoring::{self as authoring, *};
 use codec::objects::{
     BlockAction, BlockActionOffsets, BlockActionWithBasePoint, BlockArrayAction,
     BlockBasePointAction, BlockConnection, BlockElement, BlockEvalValue, BlockFlipAction,
-    BlockMoveAction, BlockStretchAction, DynamicBlockData, ObjectType,
+    BlockMoveAction, BlockPolarStretchAction, BlockStretchAction, DynamicBlockData, ObjectType,
 };
 use codec::types::{Transform, Vector3};
 use codec::{CadDocument, EntityType, Handle};
 use glam::DVec3;
 pub(crate) mod instance;
-mod stretch;
 mod representation;
+mod stretch;
 #[cfg(test)]
 mod tests;
 
@@ -21,16 +21,18 @@ pub enum Kind {
     Rotate,
     Flip,
     Stretch,
+    PolarStretch,
     Array,
 }
 impl Kind {
     pub(crate) fn parse(s: &str) -> Option<Self> {
-        match s.to_ascii_uppercase().as_str() {
+        match s.trim().to_ascii_uppercase().as_str() {
             "MOVE" | "M" => Some(Self::Move),
             "SCALE" | "S" => Some(Self::Scale),
             "ROTATE" | "R" => Some(Self::Rotate),
             "FLIP" | "F" => Some(Self::Flip),
             "STRETCH" | "ST" => Some(Self::Stretch),
+            "POLARSTRETCH" | "POLAR STRETCH" | "PS" => Some(Self::PolarStretch),
             "ARRAY" | "A" => Some(Self::Array),
             _ => None,
         }
@@ -42,9 +44,15 @@ impl Kind {
             Self::Rotate => "Rotate",
             Self::Flip => "Flip",
             Self::Stretch => "Stretch",
+            Self::PolarStretch => "Polar Stretch",
             Self::Array => "Array",
         }
     }
+}
+
+/// Actions that author a rectangular frame before selecting objects.
+pub(crate) fn needs_frame(kind: Kind) -> bool {
+    matches!(kind, Kind::Stretch | Kind::PolarStretch)
 }
 
 #[derive(Clone, Debug)]
@@ -58,6 +66,7 @@ pub(crate) struct Parameter {
     pub linear: bool,
     pub point: bool,
     pub xy: bool,
+    pub polar: bool,
     pub rotation: bool,
     pub flip: bool,
     pub reference: DVec3,
@@ -87,6 +96,7 @@ pub(crate) fn compatible(p: &Parameter, kind: Kind) -> bool {
     match kind {
         Kind::Move => !p.rotation && !p.flip,
         Kind::Stretch => !p.rotation && !p.flip && !p.point,
+        Kind::PolarStretch => p.polar,
         Kind::Scale => !p.rotation && !p.flip && !p.point && !p.xy,
         Kind::Rotate => p.rotation,
         Kind::Flip => p.flip,
@@ -208,6 +218,7 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
                 linear: false,
                 point: true,
                 xy: false,
+                polar: false,
                 rotation: false,
                 flip: false,
                 reference: DVec3::ZERO,
@@ -218,8 +229,12 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
         if matches!(kind, Kind::Rotate | Kind::Flip) {
             continue;
         }
+        let polar = p.kind == super::block_distance_parameter::Kind::Polar;
         let xy = p.kind == super::block_distance_parameter::Kind::XY;
         if kind == Kind::Scale && xy {
+            continue;
+        }
+        if kind == Kind::PolarStretch && !polar {
             continue;
         }
         result.push(Parameter {
@@ -232,6 +247,7 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
             linear: p.kind == super::block_distance_parameter::Kind::Linear,
             point: false,
             xy,
+            polar,
             rotation: false,
             flip: false,
             reference: DVec3::ZERO,
@@ -255,6 +271,7 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
             linear: false,
             point: false,
             xy: false,
+            polar: false,
             rotation: kind == Kind::Rotate,
             flip: kind == Kind::Flip,
             reference: v(p.reference),
@@ -361,7 +378,9 @@ pub(crate) fn create(
     targets: &[Handle],
     location: DVec3,
 ) -> Result<Handle, &'static str> {
-    create_with_options(doc, definition, kind, parameter, targets, location, None, None)
+    create_with_options(
+        doc, definition, kind, parameter, targets, location, None, None,
+    )
 }
 
 #[cfg(test)]
@@ -396,7 +415,9 @@ pub(crate) fn create_with_frame(
     location: DVec3,
     frame: Option<[DVec3; 2]>,
 ) -> Result<Handle, &'static str> {
-    create_with_options(doc, definition, kind, parameter, targets, location, frame, None)
+    create_with_options(
+        doc, definition, kind, parameter, targets, location, frame, None,
+    )
 }
 
 pub(crate) fn create_with_options(
@@ -458,6 +479,19 @@ pub(crate) fn create_with_options(
     } else {
         None
     };
+    let polar_binding = if kind == Kind::PolarStretch {
+        if (location.z - p.end.z).abs() > 1e-8 {
+            return Err("Place the Polar Stretch marker in the parameter's XY plane.");
+        }
+        Some(stretch::bind(
+            doc,
+            targets,
+            frame.ok_or("Specify a Polar Stretch frame before selecting objects.")?,
+            p.end.z,
+        )?)
+    } else {
+        None
+    };
     let mut staged = doc.clone();
     let (graph, slots) = authoring::prepare(&mut staged, definition)?;
     let (dxf, cpp) = match kind {
@@ -466,6 +500,7 @@ pub(crate) fn create_with_options(
         Kind::Rotate => ("BLOCKROTATEACTION", "AcDbBlockRotationAction"),
         Kind::Flip => ("BLOCKFLIPACTION", "AcDbBlockFlipAction"),
         Kind::Stretch => ("BLOCKSTRETCHACTION", "AcDbBlockStretchAction"),
+        Kind::PolarStretch => ("BLOCKPOLARSTRETCHACTION", "AcDbBlockPolarStretchAction"),
         Kind::Array => ("BLOCKARRAYACTION", "AcDbBlockArrayAction"),
     };
     register_classes(&mut staged, &[(dxf, cpp, 55)]);
@@ -482,7 +517,7 @@ pub(crate) fn create_with_options(
             eed_1071: 0,
         },
         display_location: native(location),
-        dependencies,
+        dependencies: dependencies.clone(),
         action_ids: vec![],
     };
     let connection = |name: &str| BlockConnection {
@@ -514,6 +549,31 @@ pub(crate) fn create_with_options(
                     angle_offset: 0.,
                     flags: 0,
                 },
+            })
+        }
+        Kind::PolarStretch => {
+            let (points, bindings) = polar_binding.unwrap();
+            DynamicBlockData::PolarStretchAction(BlockPolarStretchAction {
+                action,
+                connections: std::array::from_fn(|i| BlockConnection {
+                    code: p.id,
+                    name: [
+                        "BaseXDelta",
+                        "BaseYDelta",
+                        "Base",
+                        "End",
+                        "UpdatedBase",
+                        "UpdatedEnd",
+                    ][i]
+                        .into(),
+                }),
+                points,
+                handles: vec![],
+                bindings,
+                codes: vec![],
+                distance_multiplier: 1.,
+                angle_offset: 0.,
+                extra: vec![],
             })
         }
         Kind::Move => DynamicBlockData::MoveAction(BlockMoveAction {
@@ -574,7 +634,6 @@ pub(crate) fn create_with_options(
     *doc = staged;
     Ok(handle)
 }
-
 
 /// Retarget an existing native action, retaining identity, graph and options.
 pub(crate) fn retarget(
@@ -642,6 +701,33 @@ pub(crate) fn retarget(
             }
             a.action.dependencies = targets;
         }
+        DynamicBlockData::PolarStretchAction(a) => {
+            stretch::validate_polar(doc, a)?;
+            let plane = parameters(doc, definition, Kind::PolarStretch)
+                .into_iter()
+                .find(|p| p.id == id)
+                .ok_or("The Polar Stretch parameter is unavailable.")?
+                .end
+                .z;
+            if let Some(corners) = frame {
+                let (points, bindings) = stretch::bind(doc, &targets, corners, plane)?;
+                a.points = points;
+                a.bindings = bindings;
+            } else {
+                a.bindings.retain(|b| targets.contains(&b.handle));
+                let added = targets
+                    .iter()
+                    .copied()
+                    .filter(|h| !old_targets.contains(h))
+                    .collect::<Vec<_>>();
+                let frame = a.points.clone();
+                a.bindings
+                    .extend(stretch::bind_existing(doc, &added, &frame, plane)?);
+                a.bindings.sort_by_key(|b| b.handle);
+            }
+            a.handles.retain(|h| targets.contains(h));
+            a.action.dependencies = targets;
+        }
         DynamicBlockData::MoveAction(a) => a.action.dependencies = targets,
         DynamicBlockData::FlipAction(a) => a.action.dependencies = targets,
         DynamicBlockData::ScaleAction(a) | DynamicBlockData::RotateAction(a) => {
@@ -650,8 +736,8 @@ pub(crate) fn retarget(
         DynamicBlockData::ArrayAction(a) => a.action.dependencies = targets,
         _ => return Err("This action's selection cannot be edited yet."),
     }
-    if frame.is_some() && kind != Kind::Stretch {
-        return Err("Only Stretch actions have a stretch frame.");
+    if frame.is_some() && !needs_frame(kind) {
+        return Err("Only Stretch actions have an action frame.");
     }
     if staged == *doc {
         return Ok(false);
@@ -689,6 +775,12 @@ pub(crate) fn actions(
                 DynamicBlockData::StretchAction(a) => {
                     Some((o.handle, &a.action, Kind::Stretch, a.connections[0].code))
                 }
+                DynamicBlockData::PolarStretchAction(a) => Some((
+                    o.handle,
+                    &a.action,
+                    Kind::PolarStretch,
+                    a.connections[0].code,
+                )),
                 DynamicBlockData::FlipAction(a) => {
                     Some((o.handle, &a.action, Kind::Flip, a.connections[0].code))
                 }
@@ -730,6 +822,11 @@ pub(crate) fn prune_erased_targets(doc: &mut CadDocument, definition: Handle) {
                 a.handles.retain(|b| live.contains(&b.handle));
                 &mut a.action
             }
+            DynamicBlockData::PolarStretchAction(a) => {
+                a.handles.retain(|h| live.contains(h));
+                a.bindings.retain(|b| live.contains(&b.handle));
+                &mut a.action
+            }
             DynamicBlockData::ScaleAction(a) | DynamicBlockData::RotateAction(a) => {
                 &mut a.action.action
             }
@@ -744,6 +841,9 @@ pub(crate) fn frame_outline(doc: &CadDocument, handle: Handle) -> Vec<Vector3> {
         return vec![];
     };
     let DynamicBlockData::StretchAction(a) = &o.data else {
+        if let DynamicBlockData::PolarStretchAction(a) = &o.data {
+            return stretch::outline(&a.points, a.action.display_location.z);
+        }
         return vec![];
     };
     stretch::outline(&a.points, a.action.display_location.z)
@@ -766,6 +866,17 @@ pub(crate) fn reframe(doc: &mut CadDocument, definition: Handle, t: &Transform) 
                 a.action.display_location = t.apply(a.action.display_location)
             }
             DynamicBlockData::StretchAction(a) => {
+                let plane = a.action.display_location.z;
+                a.action.display_location = t.apply(a.action.display_location);
+                a.points = stretch::outline(&a.points, plane)
+                    .into_iter()
+                    .map(|p| {
+                        let p = t.apply(p);
+                        codec::types::Vector2::new(p.x, p.y)
+                    })
+                    .collect();
+            }
+            DynamicBlockData::PolarStretchAction(a) => {
                 let plane = a.action.display_location.z;
                 a.action.display_location = t.apply(a.action.display_location);
                 a.points = stretch::outline(&a.points, plane)
@@ -966,7 +1077,11 @@ fn evaluate_impl(
     for h in extra_handles {
         staged.remove_entity(h);
     }
-    if let Some(record) = staged.block_records.iter_mut().find(|b| b.handle == definition) {
+    if let Some(record) = staged
+        .block_records
+        .iter_mut()
+        .find(|b| b.handle == definition)
+    {
         record.entity_handles.retain(|h| {
             baseline_members.contains(h)
                 || *h == record.block_entity_handle
@@ -984,6 +1099,14 @@ fn evaluate_impl(
                 unreachable!()
             };
             stretch::validate(baseline, s)?;
+        } else if *kind == Kind::PolarStretch {
+            let ObjectType::DynamicBlock(o) = &baseline.objects[h] else {
+                unreachable!()
+            };
+            let DynamicBlockData::PolarStretchAction(s) = &o.data else {
+                unreachable!()
+            };
+            stretch::validate_polar(baseline, s)?;
         }
         affected.extend(a.dependencies.iter().copied());
     }
@@ -1012,7 +1135,7 @@ fn evaluate_impl(
             }
             let end = current(&staged, &q);
             let transform = match kind {
-                Kind::Move | Kind::Stretch => {
+                Kind::Move | Kind::Stretch | Kind::PolarStretch => {
                     crate::command::EntityTransform::Translate(end - q.end)
                 }
                 Kind::Rotate => {
@@ -1134,6 +1257,15 @@ fn evaluate_impl(
             }
             if let DynamicBlockData::StretchAction(s) = &o.data {
                 stretch::apply(&mut entity, s, end - q.end)?;
+            } else if let DynamicBlockData::PolarStretchAction(s) = &o.data {
+                if s.connections.iter().any(|c| c.code != q.id) {
+                    return Err("This Polar Stretch action uses a different parameter binding.");
+                }
+                let direction = q.end - q.base;
+                if direction.length() <= 1e-9 {
+                    return Err("The Polar parameter needs a nonzero distance.");
+                }
+                stretch::apply_polar(&mut entity, &s.bindings, q.base, q.end, end)?;
             } else {
                 super::view::dispatch::apply_transform(&mut entity, &transform);
             }
@@ -1261,7 +1393,6 @@ fn evaluate_impl(
     *doc = staged;
     Ok(true)
 }
-
 
 fn supported_parameter(doc: &CadDocument, handle: Handle) -> bool {
     let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&handle) else {

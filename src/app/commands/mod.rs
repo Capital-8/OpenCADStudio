@@ -181,7 +181,10 @@ impl OpenCADStudio {
                 return Task::none();
             }
         }
-        if matches!(cmd.split(' ').next(), Some("BACTION" | "BACTIONTOOL" | "BARRAY")) {
+        if matches!(
+            cmd.split(' ').next(),
+            Some("BACTION" | "BACTIONTOOL" | "BARRAY")
+        ) {
             let args = if cmd == "BARRAY" || cmd.starts_with("BARRAY ") {
                 "ARRAY"
             } else {
@@ -190,7 +193,7 @@ impl OpenCADStudio {
             if !args.is_empty() && crate::scene::block_actions::Kind::parse(args).is_none() {
                 self.command_line.push_error(
                     crate::t!(
-                        "Supported actions: Move, Scale, Stretch, Rotate, Flip, Array. Other action types are not wired yet."
+                        "Supported actions: Move, Scale, Stretch, Polar Stretch, Rotate, Flip, Array. Other action types are not wired yet."
                     )
                     .as_ref(),
                 );
