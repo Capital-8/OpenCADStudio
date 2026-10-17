@@ -413,6 +413,8 @@ impl OpenCADStudio {
                     self.lookup_table_error(),
                     self.action_error(Some(crate::scene::block_actions::Kind::Move)),
                     self.action_error(Some(crate::scene::block_actions::Kind::Scale)),
+                    self.action_error(Some(crate::scene::block_actions::Kind::Rotate)),
+                    self.action_error(Some(crate::scene::block_actions::Kind::Flip)),
                 )
             }
             crate::ui::dock::PanelId::BlockPalette => {

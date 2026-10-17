@@ -1,6 +1,6 @@
 //! Reuse the command host's point picking and object-set selection.
 use crate::command::{CadCommand, CmdOption, CmdResult, PointPickContext};
-use crate::scene::block_actions::{Kind, Parameter};
+use crate::scene::block_actions::{self as actions, Kind, Parameter};
 use codec::Handle;
 use glam::DVec3;
 
@@ -37,9 +37,9 @@ impl ActionCommand {
         }
     }
     fn choose(&mut self, p: Parameter) -> CmdResult {
-        if self.kind == Some(Kind::Scale) && (p.point || p.xy) {
+        if self.kind.is_some_and(|kind| !actions::compatible(&p, kind)) {
             return CmdResult::ReportError(
-                crate::t!("Scale requires a Linear or Polar parameter.").into_owned(),
+                crate::t!("Select a compatible parameter for this action.").into_owned(),
             );
         }
         self.parameter = Some(p.handle);
@@ -51,12 +51,18 @@ impl CadCommand for ActionCommand {
     fn name(&self) -> &'static str {
         "BACTION"
     }
-    fn wants_text_input(&self) -> bool {
-        self.parameter.is_none()
+    fn input_kind(&self) -> crate::command::InputKind {
+        if self.parameter.is_some() {
+            crate::command::InputKind::Point
+        } else if self.kind.is_some() {
+            crate::command::InputKind::FreeText
+        } else {
+            crate::command::InputKind::SingleToken
+        }
     }
     fn prompt(&self) -> String {
         if self.kind.is_none() {
-            return crate::t!("BACTION  Enter action type [Move/Scale]:").into_owned();
+            return crate::t!("BACTION  Enter action type [Move/Scale/Rotate/Flip]:").into_owned();
         }
         if self.parameter.is_none() {
             return crate::tf!(
@@ -77,6 +83,8 @@ impl CadCommand for ActionCommand {
             vec![
                 CmdOption::new("Move", "Move"),
                 CmdOption::new("Scale", "Scale"),
+                CmdOption::new("Rotate", "Rotate"),
+                CmdOption::new("Flip", "Flip"),
             ]
         } else {
             vec![]
@@ -88,14 +96,18 @@ impl CadCommand for ActionCommand {
                 self.kind = Some(k);
                 CmdResult::NeedPoint
             } else {
-                CmdResult::ReportError(crate::t!("Choose Move or Scale.").into_owned())
+                CmdResult::ReportError(
+                    crate::t!("Choose Move, Scale, Rotate or Flip.").into_owned(),
+                )
             });
         }
         if self.parameter.is_none() {
             let matches = self
                 .candidates
                 .iter()
-                .filter(|p| p.name.eq_ignore_ascii_case(s))
+                .filter(|p| {
+                    p.name.eq_ignore_ascii_case(s) && actions::compatible(p, self.kind.unwrap())
+                })
                 .cloned()
                 .collect::<Vec<_>>();
             return Some(if matches.len() == 1 {
@@ -126,7 +138,7 @@ impl CadCommand for ActionCommand {
             let candidate = self
                 .candidates
                 .iter()
-                .filter(|p| self.kind != Some(Kind::Scale) || (!p.point && !p.xy))
+                .filter(|p| actions::compatible(p, self.kind.unwrap()))
                 .map(|p| (screen(p.end).distance(click), p))
                 .filter(|(d, _)| d.is_finite() && *d <= c.aperture_px.max(10.))
                 .min_by(|a, b| a.0.total_cmp(&b.0))
@@ -200,7 +212,7 @@ impl CadCommand for TestParameterCommand {
             document: self.document,
             definition: self.definition,
             parameter: self.parameter,
-            position,
+            value: actions::Value::Point(position),
         }
     }
     fn on_enter(&mut self) -> CmdResult {

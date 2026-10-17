@@ -23,6 +23,207 @@ fn fixture() -> (CadDocument, Handle, Vec<Handle>) {
     let (definition, handles) = (block.handle, block.entity_handles.clone());
     (scene.document, definition, handles)
 }
+
+fn orientation(
+    doc: &mut CadDocument,
+    def: Handle,
+    kind: super::super::block_orientation_parameter::Kind,
+) -> Handle {
+    super::super::block_orientation_parameter::create(
+        doc,
+        def,
+        kind,
+        Vector3::ZERO,
+        Vector3::new(10., 0., 0.),
+        if kind == super::super::block_orientation_parameter::Kind::Rotation {
+            Vector3::new(10., 0., 0.)
+        } else {
+            Vector3::new(-2., 2., 0.)
+        },
+    )
+    .unwrap()
+}
+
+#[test]
+fn block_actions_rotate_flip_native_bindings_and_marker_edits_roundtrip() {
+    use super::super::block_orientation_parameter::Kind as O;
+    let (mut doc, def, targets) = fixture();
+    let r = orientation(&mut doc, def, O::Rotation);
+    let f = orientation(&mut doc, def, O::Flip);
+    assert!(parameters(&doc, def, Kind::Move).is_empty());
+    assert!(parameters(&doc, def, Kind::Scale).is_empty());
+    assert_eq!(all_parameters(&doc, def).len(), 2);
+    let rotate = create(
+        &mut doc,
+        def,
+        Kind::Rotate,
+        r,
+        &targets,
+        DVec3::new(3., 4., 0.),
+    )
+    .unwrap();
+    let flip = create(
+        &mut doc,
+        def,
+        Kind::Flip,
+        f,
+        &targets,
+        DVec3::new(5., 6., 0.),
+    )
+    .unwrap();
+    assert!(create(&mut doc, def, Kind::Rotate, f, &targets, DVec3::ZERO).is_err());
+    for handle in [rotate, flip] {
+        super::super::block_authoring::edit::move_part(
+            &mut doc,
+            def,
+            handle,
+            super::super::block_authoring::edit::Part::Point,
+            Vector3::new(7., 8., 0.),
+        )
+        .unwrap();
+    }
+    for saved in [
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+            .read()
+            .unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap()))
+            .unwrap()
+            .read()
+            .unwrap(),
+    ] {
+        assert_eq!(actions(&saved, def).len(), 2);
+        for handle in [rotate, flip] {
+            assert_eq!(saved.objects[&handle], doc.objects[&handle]);
+        }
+        for (_, action, _, _) in actions(&saved, def) {
+            assert_eq!(action.display_location, Vector3::new(7., 8., 0.));
+            assert_eq!(action.dependencies, targets);
+        }
+    }
+}
+
+#[test]
+fn block_actions_rotate_flip_saved_values_compose_copy_and_roundtrip() {
+    use super::super::block_orientation_parameter::Kind as O;
+    let (mut doc, def, targets) = fixture();
+    let r = orientation(&mut doc, def, O::Rotation);
+    let f = orientation(&mut doc, def, O::Flip);
+    create(&mut doc, def, Kind::Rotate, r, &[targets[0]], DVec3::ZERO).unwrap();
+    create(&mut doc, def, Kind::Flip, f, &[targets[0]], DVec3::ZERO).unwrap();
+    let a = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    let b = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::new(30., 0., 0.),
+        )))
+        .unwrap();
+    let baseline = doc.clone();
+    doc = instance::evaluate(&doc, a, r, DVec3::new(0., 50., 0.))
+        .unwrap()
+        .unwrap();
+    assert!(instance_line(&doc, a).distance(&Vector3::UNIT_Y) < 1e-8);
+    doc = instance::evaluate_value(&doc, a, f, Value::Flip(true))
+        .unwrap()
+        .unwrap();
+    assert!(instance_line(&doc, a).distance(&-Vector3::UNIT_Y) < 1e-8);
+    assert!(instance::evaluate_value(&doc, a, f, Value::Flip(true))
+        .unwrap()
+        .is_none());
+    let props = doc.dynamic_block_properties(def, Some(a)).unwrap();
+    assert!(props
+        .iter()
+        .any(|p| p.parameter_handle == f && p.value == BlockEvalValue::Short(1)));
+    assert!(props.iter().any(|p|p.parameter_handle==r&&matches!(p.value,BlockEvalValue::Real(v) if (v-std::f64::consts::FRAC_PI_2).abs()<1e-8)));
+    let variants = [
+        doc.clone(),
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+            .read()
+            .unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap()))
+            .unwrap()
+            .read()
+            .unwrap(),
+    ];
+    for saved in variants {
+        let mut next = instance::evaluate(&saved, a, r, DVec3::new(0., -50., 0.))
+            .unwrap()
+            .unwrap();
+        assert!(instance_line(&next, a).distance(&Vector3::UNIT_Y) < 1e-8);
+        for _ in 0..6 {
+            next = instance::evaluate_value(&next, a, f, Value::Flip(false))
+                .unwrap()
+                .unwrap();
+            assert!(instance_line(&next, a).distance(&-Vector3::UNIT_Y) < 1e-8);
+            next = instance::evaluate_value(&next, a, f, Value::Flip(true))
+                .unwrap()
+                .unwrap();
+            assert!(instance_line(&next, a).distance(&Vector3::UNIT_Y) < 1e-8);
+        }
+        assert_eq!(instance_line(&next, b), Vector3::UNIT_X);
+        assert_eq!(start(&next, targets[0]), start(&baseline, targets[0]));
+        let mut scene = Scene::new();
+        scene.document = next;
+        let c = scene.copy_entities(
+            &[a],
+            &crate::command::EntityTransform::Translate(DVec3::new(40., 0., 0.)),
+        )[0];
+        let next = instance::evaluate_value(&scene.document, c, f, Value::Flip(false))
+            .unwrap()
+            .unwrap();
+        assert!(instance_line(&next, c).distance(&-Vector3::UNIT_Y) < 1e-8);
+        assert!(instance_line(&next, a).distance(&Vector3::UNIT_Y) < 1e-8);
+        let resaved = DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&next).unwrap()))
+            .read()
+            .unwrap();
+        assert!(instance_line(&resaved, c).distance(&-Vector3::UNIT_Y) < 1e-8);
+        let fp = parameters(&resaved, def, Kind::Flip).remove(0);
+        assert_eq!(
+            instance::value(&resaved, c, &fp).unwrap(),
+            Value::Flip(false)
+        );
+        assert_eq!(
+            instance::value(&resaved, a, &fp).unwrap(),
+            Value::Flip(true)
+        );
+    }
+}
+
+#[test]
+fn block_actions_rotate_flip_test_baseline_reversible_and_invalid_atomic() {
+    use super::super::block_orientation_parameter::Kind as O;
+    let (mut doc, def, targets) = fixture();
+    let r = orientation(&mut doc, def, O::Rotation);
+    let f = orientation(&mut doc, def, O::Flip);
+    let action = create(&mut doc, def, Kind::Rotate, r, &targets, DVec3::ZERO).unwrap();
+    create(&mut doc, def, Kind::Flip, f, &targets, DVec3::ZERO).unwrap();
+    let baseline = doc.clone();
+    assert!(evaluate(&mut doc, &baseline, def, r, DVec3::ZERO).is_err());
+    assert_eq!(doc, baseline);
+    assert!(evaluate_value(&mut doc, &baseline, def, r, Value::Flip(true)).is_err());
+    assert!(evaluate_value(&mut doc, &baseline, def, f, Value::Point(DVec3::ONE)).is_err());
+    assert_eq!(doc, baseline);
+    evaluate(&mut doc, &baseline, def, r, DVec3::new(0., 10., 0.)).unwrap();
+    evaluate_value(&mut doc, &baseline, def, f, Value::Flip(true)).unwrap();
+    assert!(start(&doc, targets[0]).distance(&-Vector3::UNIT_Y) < 1e-8);
+    evaluate_value(&mut doc, &baseline, def, f, Value::Flip(false)).unwrap();
+    evaluate(&mut doc, &baseline, def, r, DVec3::new(10., 0., 0.)).unwrap();
+    assert!(start(&doc, targets[0]).distance(&Vector3::UNIT_X) < 1e-8);
+    let ObjectType::DynamicBlock(o) = doc.objects.get_mut(&action).unwrap() else {
+        panic!()
+    };
+    let DynamicBlockData::RotateAction(a) = &mut o.data else {
+        panic!()
+    };
+    a.action.dependent = false;
+    let unsupported = doc.clone();
+    assert!(evaluate(&mut doc, &unsupported, def, r, DVec3::new(0., 10., 0.)).is_err());
+    assert_eq!(doc, unsupported);
+}
 fn linear(doc: &mut CadDocument, def: Handle) -> Handle {
     distance::create(
         doc,

@@ -1534,7 +1534,7 @@ pub enum CmdResult {
         document: u64,
         definition: Handle,
         parameter: Handle,
-        position: DVec3,
+        value: crate::scene::block_actions::Value,
     },
     /// Place or relocate a Basepoint, or place a Lookup parameter.
     PlaceBlockSingleParameter {

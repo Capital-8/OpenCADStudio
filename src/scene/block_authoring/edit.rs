@@ -277,7 +277,10 @@ pub fn move_part(
                     }
                 }
                 DynamicBlockData::MoveAction(p) => p.action.display_location = at,
-                DynamicBlockData::ScaleAction(p) => p.action.action.display_location = at,
+                DynamicBlockData::FlipAction(p) => p.action.display_location = at,
+                DynamicBlockData::ScaleAction(p) | DynamicBlockData::RotateAction(p) => {
+                    p.action.action.display_location = at
+                }
                 DynamicBlockData::AlignmentParameter(_) => {}
                 _ => return Err("This authoring object cannot be edited yet."),
             }

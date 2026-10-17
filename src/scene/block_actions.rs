@@ -1,8 +1,9 @@
-//! Native Move/Scale authoring and deterministic dynamic-block evaluation.
+//! Native Move/Scale/Rotate/Flip authoring and deterministic block evaluation.
 use super::block_authoring::{self as authoring, *};
 use codec::objects::{
     BlockAction, BlockActionOffsets, BlockActionWithBasePoint, BlockBasePointAction,
-    BlockConnection, BlockElement, BlockEvalValue, BlockMoveAction, DynamicBlockData, ObjectType,
+    BlockConnection, BlockElement, BlockEvalValue, BlockMoveAction, BlockFlipAction,
+    DynamicBlockData, ObjectType,
 };
 use codec::types::{Transform, Vector3};
 use codec::{CadDocument, EntityType, Handle};
@@ -15,12 +16,16 @@ mod tests;
 pub enum Kind {
     Move,
     Scale,
+    Rotate,
+    Flip,
 }
 impl Kind {
     pub(crate) fn parse(s: &str) -> Option<Self> {
         match s.to_ascii_uppercase().as_str() {
             "MOVE" | "M" => Some(Self::Move),
             "SCALE" | "S" => Some(Self::Scale),
+            "ROTATE" | "R" => Some(Self::Rotate),
+            "FLIP" | "F" => Some(Self::Flip),
             _ => None,
         }
     }
@@ -28,6 +33,8 @@ impl Kind {
         match self {
             Self::Move => "Move",
             Self::Scale => "Scale",
+            Self::Rotate => "Rotate",
+            Self::Flip => "Flip",
         }
     }
 }
@@ -43,12 +50,126 @@ pub(crate) struct Parameter {
     pub linear: bool,
     pub point: bool,
     pub xy: bool,
+    pub rotation: bool,
+    pub flip: bool,
+    pub reference: DVec3,
 }
 pub(crate) fn v(p: Vector3) -> DVec3 {
     DVec3::new(p.x, p.y, p.z)
 }
 pub(crate) fn native(p: DVec3) -> Vector3 {
     Vector3::new(p.x, p.y, p.z)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Value {
+    Point(DVec3),
+    Flip(bool),
+}
+
+pub(crate) fn all_parameters(doc: &CadDocument, definition: Handle) -> Vec<Parameter> {
+    let mut result = parameters(doc, definition, Kind::Move);
+    result.extend(parameters(doc, definition, Kind::Rotate));
+    result.extend(parameters(doc, definition, Kind::Flip));
+    result.sort_by_key(|p| p.id);
+    result
+}
+
+pub(crate) fn compatible(p: &Parameter, kind: Kind) -> bool {
+    match kind {
+        Kind::Move => !p.rotation && !p.flip,
+        Kind::Scale => !p.rotation && !p.flip && !p.point && !p.xy,
+        Kind::Rotate => p.rotation,
+        Kind::Flip => p.flip,
+    }
+}
+
+fn flip_component(doc: &CadDocument, p: &Parameter) -> Result<Handle, &'static str> {
+    let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&p.grip) else {
+        return Err("Missing Flip grip.");
+    };
+    let DynamicBlockData::FlipGrip(g) = &o.data else {
+        return Err("Missing Flip grip.");
+    };
+    let candidates = doc
+        .objects
+        .iter()
+        .filter_map(|(h, x)| match x {
+            ObjectType::DynamicBlock(x) if x.owner == o.owner => match &x.data {
+                DynamicBlockData::GripLocationComponent(c)
+                    if c.eval.node_id == g.combined_state && c.expression == "UpdatedFlip" =>
+                {
+                    Some(*h)
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if candidates.len() != 1 {
+        return Err("The Flip state binding is unavailable.");
+    }
+    Ok(candidates[0])
+}
+
+pub(crate) fn value(doc: &CadDocument, p: &Parameter) -> Result<Value, &'static str> {
+    if !p.flip {
+        return Ok(Value::Point(current(doc, p)));
+    }
+    let h = flip_component(doc, p)?;
+    let ObjectType::DynamicBlock(o) = &doc.objects[&h] else {
+        unreachable!()
+    };
+    let DynamicBlockData::GripLocationComponent(c) = &o.data else {
+        unreachable!()
+    };
+    match c.eval.value {
+        BlockEvalValue::Short(0) => Ok(Value::Flip(false)),
+        BlockEvalValue::Short(1) => Ok(Value::Flip(true)),
+        _ => Err("The Flip state is not zero or one."),
+    }
+}
+
+pub(crate) fn set_value(
+    doc: &mut CadDocument,
+    p: &Parameter,
+    value: Value,
+) -> Result<(), &'static str> {
+    if let Value::Flip(state) = value {
+        if !p.flip {
+            return Err("Select a Flip parameter.");
+        }
+        let h = flip_component(doc, p)?;
+        let Some(ObjectType::DynamicBlock(o)) = doc.objects.get_mut(&h) else {
+            unreachable!()
+        };
+        let DynamicBlockData::GripLocationComponent(c) = &mut o.data else {
+            unreachable!()
+        };
+        c.eval.value = BlockEvalValue::Short(i16::from(state));
+        return Ok(());
+    }
+    let Value::Point(position) = value else {
+        unreachable!()
+    };
+    let Some(ObjectType::DynamicBlock(o)) = doc.objects.get_mut(&p.grip) else {
+        return Err("Missing parameter grip.");
+    };
+    match &mut o.data {
+        DynamicBlockData::XYGrip(g)
+        | DynamicBlockData::PolarGrip(g)
+        | DynamicBlockData::RotationGrip(g) => g.location = native(position),
+        DynamicBlockData::LinearGrip(g) => g.grip.location = native(position),
+        _ => return Err("Unsupported parameter grip."),
+    }
+    Ok(())
+}
+
+pub(crate) fn grip_position(p: &Parameter, value: Value) -> DVec3 {
+    match value {
+        Value::Point(at) => at,
+        Value::Flip(_) => p.reference,
+    }
 }
 
 pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> Vec<Parameter> {
@@ -68,10 +189,16 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
                 linear: false,
                 point: true,
                 xy: false,
+                rotation: false,
+                flip: false,
+                reference: DVec3::ZERO,
             });
         }
     }
     for p in super::block_distance_parameter::parameters(doc, definition) {
+        if matches!(kind, Kind::Rotate | Kind::Flip) {
+            continue;
+        }
         let xy = p.kind == super::block_distance_parameter::Kind::XY;
         if kind == Kind::Scale && xy {
             continue;
@@ -86,11 +213,46 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
             linear: p.kind == super::block_distance_parameter::Kind::Linear,
             point: false,
             xy,
+            rotation: false,
+            flip: false,
+            reference: DVec3::ZERO,
+        });
+    }
+    for p in super::block_orientation_parameter::parameters(doc, definition) {
+        use super::block_orientation_parameter::Kind as O;
+        if !matches!(
+            (kind, p.kind),
+            (Kind::Rotate, O::Rotation) | (Kind::Flip, O::Flip)
+        ) {
+            continue;
+        }
+        result.push(Parameter {
+            handle: p.handle,
+            id: p.native.parameter.element.eval.node_id,
+            grip: Handle::NULL,
+            name: p.label,
+            base: v(p.native.definition_base_point),
+            end: v(p.native.definition_end_point),
+            linear: false,
+            point: false,
+            xy: false,
+            rotation: kind == Kind::Rotate,
+            flip: kind == Kind::Flip,
+            reference: v(p.reference),
         });
     }
     // Resolve the actual linked grip, rather than assuming expression IDs are contiguous.
     result.retain_mut(|p| {
-        let grip_id = if p.point {
+        let grip_id = if p.rotation || p.flip {
+            let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&p.handle) else {
+                return false;
+            };
+            match &o.data {
+                DynamicBlockData::RotationParameter(p) => p.parameter.property_states[1],
+                DynamicBlockData::FlipParameter(p) => p.flags_96,
+                _ => return false,
+            }
+        } else if p.point {
             super::block_point_parameter::parameters(doc, definition)
                 .into_iter()
                 .find(|(h, _)| *h == p.handle)
@@ -121,7 +283,10 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
                     return None;
                 }
                 let grip = match &o.data {
-                    DynamicBlockData::XYGrip(g) | DynamicBlockData::PolarGrip(g) => g,
+                    DynamicBlockData::XYGrip(g)
+                    | DynamicBlockData::PolarGrip(g)
+                    | DynamicBlockData::RotationGrip(g) => g,
+                    DynamicBlockData::FlipGrip(g) => &g.grip,
                     DynamicBlockData::LinearGrip(g) => &g.grip,
                     _ => return None,
                 };
@@ -136,6 +301,19 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
             return false;
         }
         p.grip = grips[0];
+        if p.flip {
+            if let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&p.grip) {
+                if let DynamicBlockData::FlipGrip(g) = &o.data {
+                    let at = v(g.grip.location);
+                    if at.distance(p.base) > 1e-8 {
+                        p.reference = at;
+                    }
+                }
+            }
+            if p.reference.distance(p.base) < 1e-8 {
+                p.reference = p.end;
+            }
+        }
         true
     });
     result.sort_by_key(|p| p.id);
@@ -192,6 +370,8 @@ pub(crate) fn create(
     let (dxf, cpp) = match kind {
         Kind::Move => ("BLOCKMOVEACTION", "AcDbBlockMoveAction"),
         Kind::Scale => ("BLOCKSCALEACTION", "AcDbBlockScaleAction"),
+        Kind::Rotate => ("BLOCKROTATEACTION", "AcDbBlockRotationAction"),
+        Kind::Flip => ("BLOCKFLIPACTION", "AcDbBlockFlipAction"),
     };
     register_classes(&mut staged, &[(dxf, cpp, 55)]);
     let handle = staged.allocate_handle();
@@ -227,6 +407,26 @@ pub(crate) fn create(
                 angle_offset: 0.,
                 flags: 0,
             },
+        }),
+        Kind::Flip => DynamicBlockData::FlipAction(BlockFlipAction {
+            action,
+            connections: [
+                connection("Flip"),
+                connection("UpdatedFlip"),
+                connection("UpdatedBase"),
+                connection("UpdatedEnd"),
+            ],
+        }),
+        Kind::Rotate => DynamicBlockData::RotateAction(BlockBasePointAction {
+            action: BlockActionWithBasePoint {
+                action,
+                offset: Vector3::ZERO,
+                connections: vec![connection("UpdatedBaseX"), connection("UpdatedBaseY")],
+                dependent: true,
+                base_point: Vector3::ZERO,
+            },
+            connections: vec![connection("AngleDelta")],
+            dwg_tail_byte: 0,
         }),
         Kind::Scale => DynamicBlockData::ScaleAction(BlockBasePointAction {
             action: BlockActionWithBasePoint {
@@ -280,6 +480,13 @@ pub(crate) fn actions(
                 DynamicBlockData::MoveAction(a) => {
                     Some((o.handle, &a.action, Kind::Move, a.connections[0].code))
                 }
+                DynamicBlockData::FlipAction(a) => {
+                    Some((o.handle, &a.action, Kind::Flip, a.connections[0].code))
+                }
+                DynamicBlockData::RotateAction(a) => a
+                    .connections
+                    .first()
+                    .map(|c| (o.handle, &a.action.action, Kind::Rotate, c.code)),
                 DynamicBlockData::ScaleAction(a) => a
                     .connections
                     .first()
@@ -302,7 +509,10 @@ pub(crate) fn reframe(doc: &mut CadDocument, definition: Handle, t: &Transform) 
             DynamicBlockData::MoveAction(a) => {
                 a.action.display_location = t.apply(a.action.display_location)
             }
-            DynamicBlockData::ScaleAction(a) => {
+            DynamicBlockData::FlipAction(a) => {
+                a.action.display_location = t.apply(a.action.display_location)
+            }
+            DynamicBlockData::ScaleAction(a) | DynamicBlockData::RotateAction(a) => {
                 a.action.action.display_location = t.apply(a.action.action.display_location);
                 a.action.base_point = t.apply(a.action.base_point);
                 a.action.offset = t.apply_rotation(a.action.offset);
@@ -318,7 +528,9 @@ pub(crate) fn current(doc: &CadDocument, p: &Parameter) -> DVec3 {
         return p.end;
     };
     match &o.data {
-        DynamicBlockData::XYGrip(g) | DynamicBlockData::PolarGrip(g) => v(g.location),
+        DynamicBlockData::XYGrip(g)
+        | DynamicBlockData::PolarGrip(g)
+        | DynamicBlockData::RotationGrip(g) => v(g.location),
         DynamicBlockData::LinearGrip(g) => v(g.grip.location),
         _ => p.end,
     }
@@ -372,6 +584,7 @@ pub(crate) fn sync_representation(
 
 /// Re-evaluate from the scratch document's immutable starting geometry. This
 /// avoids incremental drift and makes repeated changes/order independent.
+#[cfg(test)]
 pub(crate) fn evaluate(
     doc: &mut CadDocument,
     baseline: &CadDocument,
@@ -379,47 +592,63 @@ pub(crate) fn evaluate(
     parameter: Handle,
     position: DVec3,
 ) -> Result<bool, &'static str> {
+    evaluate_value(doc, baseline, definition, parameter, Value::Point(position))
+}
+
+pub(crate) fn evaluate_value(
+    doc: &mut CadDocument,
+    baseline: &CadDocument,
+    definition: Handle,
+    parameter: Handle,
+    input: Value,
+) -> Result<bool, &'static str> {
     let graph = authoring::graph(baseline, definition)?
         .ok_or("The block authoring graph is unavailable.")?;
     if baseline.objects.values().any(|o|matches!(o,ObjectType::DynamicBlock(o) if o.owner==graph && matches!(&o.data,
-        DynamicBlockData::StretchAction(_)|DynamicBlockData::PolarStretchAction(_)|DynamicBlockData::RotateAction(_)|DynamicBlockData::FlipAction(_)|DynamicBlockData::ArrayAction(_)))) {
+        DynamicBlockData::StretchAction(_)|DynamicBlockData::PolarStretchAction(_)|DynamicBlockData::ArrayAction(_)))) {
         return Err("This block contains action types not supported yet.");
     }
-    let p = parameters(baseline, definition, Kind::Move)
+    let p = all_parameters(baseline, definition)
         .into_iter()
         .find(|p| p.handle == parameter)
         .ok_or("The block parameter is unavailable.")?;
-    if !position.is_finite() {
-        return Err("Specify a finite parameter position.");
-    }
-    let mut position = position;
-    position.z = p.end.z;
-    if p.linear {
-        let axis = (p.end - p.base).normalize();
-        let length = (position - p.base).dot(axis);
-        if length < 1e-9 {
-            return Err("Specify a positive parameter length.");
+    let input = match input {
+        Value::Flip(_) if !p.flip => return Err("Select a Flip parameter."),
+        Value::Point(_) if p.flip => return Err("Use the Flip grip to toggle its state."),
+        Value::Point(mut position) => {
+            if !position.is_finite() {
+                return Err("Specify a finite parameter position.");
+            }
+            position.z = p.end.z;
+            if p.linear {
+                let axis = (p.end - p.base).normalize();
+                let length = (position - p.base).dot(axis);
+                if length < 1e-9 {
+                    return Err("Specify a positive parameter length.");
+                }
+                position = p.base + axis * length;
+            }
+            if p.rotation {
+                let delta = position - p.base;
+                if delta.length() < 1e-9 {
+                    return Err("Specify a rotation direction away from the parameter base.");
+                }
+                position = p.base + delta.normalize() * p.end.distance(p.base);
+            }
+            Value::Point(position)
         }
-        position = p.base + axis * length;
-    }
-    if current(doc, &p).distance(position) < 1e-10 {
+        value => value,
+    };
+    let previous = value(doc, &p)?;
+    if match (previous, input) {
+        (Value::Flip(a), Value::Flip(b)) => a == b,
+        (Value::Point(a), Value::Point(b)) => a.distance(b) < 1e-10,
+        _ => false,
+    } {
         return Ok(false);
     }
     let mut staged = doc.clone();
-    let ObjectType::DynamicBlock(o) = staged
-        .objects
-        .get_mut(&p.grip)
-        .ok_or("The parameter grip is unavailable.")?
-    else {
-        return Err("The parameter grip is unavailable.");
-    };
-    match &mut o.data {
-        DynamicBlockData::XYGrip(g) | DynamicBlockData::PolarGrip(g) => {
-            g.location = native(position)
-        }
-        DynamicBlockData::LinearGrip(g) => g.grip.location = native(position),
-        _ => return Err("The parameter grip is unavailable."),
-    }
+    set_value(&mut staged, &p, input)?;
     let all = actions(baseline, definition);
     let mut affected = std::collections::BTreeSet::new();
     for (_, a, _, _) in &all {
@@ -445,12 +674,32 @@ pub(crate) fn evaluate(
                 .into_iter()
                 .find(|p| p.id == *id)
                 .ok_or("An action has an unsupported parameter binding.")?;
-            if !test_parameter_supported(baseline, q.handle) {
+            if !supported_parameter(baseline, q.handle) {
                 return Err("This parameter uses value constraints or chaining not supported yet.");
             }
             let end = current(&staged, &q);
             let transform = match kind {
                 Kind::Move => crate::command::EntityTransform::Translate(end - q.end),
+                Kind::Rotate => {
+                    let a = end - q.base;
+                    let b = q.end - q.base;
+                    crate::command::EntityTransform::Rotate {
+                        center: q.base,
+                        axis: DVec3::Z,
+                        angle_rad: a.y.atan2(a.x) - b.y.atan2(b.x),
+                    }
+                }
+                Kind::Flip => {
+                    if value(&staged, &q)? == Value::Flip(false) {
+                        crate::command::EntityTransform::Translate(DVec3::ZERO)
+                    } else {
+                        crate::command::EntityTransform::Mirror {
+                            p1: q.base,
+                            p2: q.end,
+                            working_normal: DVec3::Z,
+                        }
+                    }
+                }
                 Kind::Scale => {
                     let factor = end.distance(q.base) / q.end.distance(q.base);
                     if !factor.is_finite() || factor < 1e-9 {
@@ -502,6 +751,33 @@ pub(crate) fn evaluate(
                 {
                     return Err("This Move action uses options not supported yet.")
                 }
+                DynamicBlockData::FlipAction(f)
+                    if f.connections
+                        != ["Flip", "UpdatedFlip", "UpdatedBase", "UpdatedEnd"].map(|name| {
+                            BlockConnection {
+                                code: q.id,
+                                name: name.into(),
+                            }
+                        }) =>
+                {
+                    return Err("This Flip action uses options not supported yet.")
+                }
+                DynamicBlockData::RotateAction(r)
+                    if !r.action.dependent
+                        || r.action.offset != Vector3::ZERO
+                        || r.connections
+                            != vec![BlockConnection {
+                                code: q.id,
+                                name: "AngleDelta".into(),
+                            }]
+                        || r.action.connections
+                            != ["UpdatedBaseX", "UpdatedBaseY"].map(|name| BlockConnection {
+                                code: q.id,
+                                name: name.into(),
+                            }) =>
+                {
+                    return Err("This Rotate action uses options not supported yet.")
+                }
                 DynamicBlockData::ScaleAction(s)
                     if !s.action.dependent
                         || s.action.offset != Vector3::ZERO
@@ -534,7 +810,7 @@ pub(crate) fn evaluate(
     Ok(true)
 }
 
-fn test_parameter_supported(doc: &CadDocument, handle: Handle) -> bool {
+fn supported_parameter(doc: &CadDocument, handle: Handle) -> bool {
     let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&handle) else {
         return false;
     };
@@ -546,6 +822,15 @@ fn test_parameter_supported(doc: &CadDocument, handle: Handle) -> bool {
             && s.values.is_empty()
     };
     match &o.data {
+        DynamicBlockData::FlipParameter(p) => !p.parameter.parameter.chain_actions,
+        DynamicBlockData::RotationParameter(p) => {
+            !p.parameter.parameter.chain_actions
+                && p.value_set.flags == 3
+                && p.value_set.minimum == 0.
+                && p.value_set.maximum == std::f64::consts::TAU
+                && p.value_set.increment == 0.
+                && p.value_set.values.is_empty()
+        }
         DynamicBlockData::PointParameter(p) => !p.parameter.parameter.chain_actions,
         DynamicBlockData::LinearParameter(p) => {
             !p.parameter.parameter.chain_actions && distance(&p.value_set)

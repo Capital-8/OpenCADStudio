@@ -1245,6 +1245,44 @@ fn block_actions_palette_controls_require_compatible_parameters_and_start_comman
 }
 
 #[test]
+fn block_actions_rotate_flip_palette_requires_matching_parameters() {
+    with_stack(|| {
+        use crate::ui::window::authoring_palettes::Tab;
+        let mut app = authoring_app();
+        let _ = app.dispatch_command("BAUTHORPALETTE");
+        let point = authoring_control(&app, Tab::Actions.widget_id());
+        authoring_click(&mut app, point);
+        for id in ["authoring-tool-rotate-action", "authoring-tool-flip-action"] {
+            let point = authoring_control(&app, id);
+            authoring_click(&mut app, point);
+            assert!(app.tabs[app.active_tab].active_cmd.is_none());
+        }
+        let _ = app.run_command_line("BPARAMETER ROTATION 0,0 2 0");
+        let point = authoring_control(&app, "authoring-tool-flip-action");
+        authoring_click(&mut app, point);
+        assert!(app.tabs[app.active_tab].active_cmd.is_none());
+        let point = authoring_control(&app, "authoring-tool-rotate-action");
+        authoring_click(&mut app, point);
+        assert!(app.tabs[app.active_tab]
+            .active_cmd
+            .as_ref()
+            .unwrap()
+            .prompt()
+            .contains("Rotate"));
+        let _ = app.update(Message::CommandEscape);
+        let _ = app.run_command_line("BPARAMETER FLIP 0,0 2,0 -1,1");
+        let point = authoring_control(&app, "authoring-tool-flip-action");
+        authoring_click(&mut app, point);
+        assert!(app.tabs[app.active_tab]
+            .active_cmd
+            .as_ref()
+            .unwrap()
+            .prompt()
+            .contains("Flip"));
+    });
+}
+
+#[test]
 fn lookup_basepoint_palette_and_table_dialog_real_controls() {
     with_stack(|| {
         use crate::ui::window::{authoring_palettes::Tab, block_lookup::Action as A};

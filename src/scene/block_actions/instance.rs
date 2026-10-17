@@ -50,6 +50,13 @@ pub(crate) fn current(
         .filter_map(|e| e.value.as_point3d())
         .map(|(x, y, z)| DVec3::new(x, y, z))
         .collect::<Vec<_>>();
+    if p.rotation
+        && points
+            .get(3)
+            .is_none_or(|r| !r.is_finite() || r.distance(p.reference) > 1e-8)
+    {
+        return Err("The rotation reference point is unavailable or has been relocated.");
+    }
     if p.xy {
         let (Some(a), Some(b)) = (points.first(), points.get(1)) else {
             return Err("The XY parameter cache has no finite endpoint.");
@@ -74,6 +81,48 @@ pub(crate) fn current(
         .copied()
         .filter(|v| v.is_finite())
         .ok_or("The reference parameter cache has no finite endpoint.")
+}
+
+pub(crate) fn value(
+    doc: &CadDocument,
+    insert: Handle,
+    p: &Parameter,
+) -> Result<Value, &'static str> {
+    if !p.flip {
+        return current(doc, insert, p).map(Value::Point);
+    }
+    let Some(h) = cache(doc, insert, p.id)? else {
+        return Ok(Value::Flip(false));
+    };
+    let Some(ObjectType::XRecord(r)) = doc.objects.get(&h) else {
+        return Err("Invalid Flip parameter record.");
+    };
+    if !r.entries_complete {
+        return Err("The Flip parameter cache is incomplete.");
+    }
+    let points = r
+        .entries
+        .iter()
+        .filter_map(|e| e.value.as_point3d())
+        .map(|(x, y, z)| DVec3::new(x, y, z))
+        .collect::<Vec<_>>();
+    if points.len() < 2
+        || !points[0].is_finite()
+        || !points[1].is_finite()
+        || points[0].distance(p.base) > 1e-8
+        || points[1].distance(p.end) > 1e-8
+    {
+        return Err("This reference uses an unsupported Flip reflection line.");
+    }
+    let state = r.entries.iter().skip(4).rev().find_map(|e| match e.value {
+        XRecordValue::Int16(s) => Some(s),
+        _ => None,
+    });
+    match state {
+        Some(0) => Ok(Value::Flip(false)),
+        Some(1) => Ok(Value::Flip(true)),
+        _ => Err("The Flip state is not zero or one."),
+    }
 }
 
 fn ensure_dictionary(
@@ -103,7 +152,7 @@ fn save(
     doc: &mut CadDocument,
     insert: Handle,
     p: &Parameter,
-    position: DVec3,
+    value: Value,
 ) -> Result<(), &'static str> {
     let mut owner = doc.ensure_extension_dictionary(insert);
     for key in [
@@ -137,7 +186,9 @@ fn save(
                 DVec3::new(p.end.x, p.base.y, p.end.z),
                 -DVec3::Z,
             ]
-        } else if !p.linear {
+        } else if p.rotation {
+            vec![p.base, p.end, -DVec3::Z, p.reference]
+        } else if !p.linear && !p.flip {
             vec![p.base, p.end, -DVec3::Z, p.end]
         } else {
             vec![p.base, p.end, -DVec3::Z]
@@ -145,6 +196,9 @@ fn save(
         for v in points {
             r.entries
                 .push(XRecordEntry::new(10, XRecordValue::Point3D(v.x, v.y, v.z)));
+        }
+        if p.flip {
+            r.entries.push(XRecordEntry::int16(70, 0));
         }
         doc.objects.insert(h, ObjectType::XRecord(r));
         if let Some(ObjectType::Dictionary(d)) = doc.objects.get_mut(&owner) {
@@ -154,6 +208,22 @@ fn save(
     };
     let Some(ObjectType::XRecord(r)) = doc.objects.get_mut(&h) else {
         return Err("Invalid parameter record.");
+    };
+    if let Value::Flip(state) = value {
+        let entry = r
+            .entries
+            .iter_mut()
+            .skip(4)
+            .rev()
+            .find(|e| matches!(e.value, XRecordValue::Int16(_)))
+            .ok_or("The Flip cache has no state.")?;
+        entry.value = XRecordValue::Int16(i16::from(state));
+        r.raw_data.clear();
+        r.raw_dwg_data = None;
+        return Ok(());
+    }
+    let Value::Point(position) = value else {
+        unreachable!()
     };
     if p.xy {
         let mut points = r
@@ -199,37 +269,38 @@ pub(crate) fn definition(doc: &CadDocument, insert: Handle) -> Option<Handle> {
 }
 
 /// Stage and validate completely before exposing any changes to the drawing.
+#[cfg(test)]
 pub(crate) fn evaluate(
     doc: &CadDocument,
     insert: Handle,
     parameter: Handle,
     local: DVec3,
 ) -> Result<Option<CadDocument>, &'static str> {
+    evaluate_value(doc, insert, parameter, Value::Point(local))
+}
+
+pub(crate) fn evaluate_value(
+    doc: &CadDocument,
+    insert: Handle,
+    parameter: Handle,
+    input: Value,
+) -> Result<Option<CadDocument>, &'static str> {
     let def =
         definition(doc, insert).ok_or("Select a uniformly scaled dynamic block reference.")?;
-    let parameters = parameters(doc, def, Kind::Move);
+    let parameters = all_parameters(doc, def);
     let selected = parameters
         .iter()
         .find(|p| p.handle == parameter)
         .ok_or("The reference parameter is unavailable.")?;
     let mut evaluated = doc.clone();
     for p in &parameters {
-        let value = current(doc, insert, p)?;
-        let Some(ObjectType::DynamicBlock(o)) = evaluated.objects.get_mut(&p.grip) else {
-            return Err("Missing parameter grip.");
-        };
-        match &mut o.data {
-            DynamicBlockData::XYGrip(g) | DynamicBlockData::PolarGrip(g) => {
-                g.location = native(value)
-            }
-            DynamicBlockData::LinearGrip(g) => g.grip.location = native(value),
-            _ => return Err("Unsupported parameter grip."),
-        }
+        let value = value(doc, insert, p)?;
+        super::set_value(&mut evaluated, p, value)?;
     }
-    if !super::evaluate(&mut evaluated, doc, def, parameter, local)? {
+    if !super::evaluate_value(&mut evaluated, doc, def, parameter, input)? {
         return Ok(None);
     }
-    let value = super::current(&evaluated, selected);
+    let value = super::value(&evaluated, selected)?;
     let mut scene = crate::scene::Scene::new();
     scene.document = doc.clone();
     scene.dynamic_representation(insert);

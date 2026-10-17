@@ -60,6 +60,139 @@ fn feed(app: &mut OpenCADStudio, text: &str) {
 }
 
 #[test]
+fn block_actions_rotate_flip_mouse_grips_authoring_history_and_reopen() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let source = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER ROTATION 0,0 10 0");
+    let _ = app.run_command_line("BPARAMETER FLIP 0,0 10,0 -2,2");
+    let def = app.tabs[source]
+        .active_block_edit_session()
+        .unwrap()
+        .br_handle;
+    let rotate =
+        actions::parameters(&app.tabs[source].scene.document, def, Kind::Rotate)[0].clone();
+    let flip = actions::parameters(&app.tabs[source].scene.document, def, Kind::Flip)[0].clone();
+    let targets = members(&app);
+    for (kind, p) in [("Rotate", &rotate), ("Flip", &flip)] {
+        let depth = app.tabs[source].history.undo_stack.len();
+        let _ = app.dispatch_command(&format!("BACTION {kind}"));
+        feed(&mut app, &p.name);
+        let _ = app.feed_command(crate::command::StepInput::SelectionComplete(
+            targets.clone(),
+        ));
+        let _ = app.feed_command(crate::command::StepInput::Enter);
+        feed(&mut app, "3,4");
+        assert!(app.tabs[source].active_cmd.is_none());
+        assert_eq!(app.tabs[source].history.undo_stack.len(), depth + 1);
+    }
+    let baseline = app.tabs[source].scene.document.clone();
+    let click = |app: &mut OpenCADStudio, world: glam::DVec3| {
+        let scene = &app.tabs[app.active_tab].scene;
+        let (w, h) = scene.selection.borrow().view.vp_size;
+        let tile = scene.active_model_tile_bounds(w, h);
+        let at = scene
+            .camera
+            .borrow()
+            .project(
+                world,
+                iced::Rectangle {
+                    x: 0.,
+                    y: 0.,
+                    width: tile.width,
+                    height: tile.height,
+                },
+            )
+            .unwrap();
+        let _ = app.update(Message::ViewportLeftPressAt(iced::Point::new(
+            at.x + tile.x,
+            at.y + tile.y,
+        )));
+        let _ = app.update(Message::ViewportLeftRelease);
+    };
+    let check = |app: &OpenCADStudio, insert: Handle, expected: Vector3| {
+        let doc = &app.tabs[app.active_tab].scene.document;
+        let EntityType::Insert(ins) = doc.get_entity(insert).unwrap() else {
+            panic!()
+        };
+        let h = doc
+            .block_records
+            .get(&ins.block_name)
+            .unwrap()
+            .entity_handles[0];
+        let EntityType::Line(line) = doc.get_entity(h).unwrap() else {
+            panic!()
+        };
+        assert!(
+            line.end.distance(&expected) < 1e-5,
+            "{:?} != {expected:?}",
+            line.end
+        );
+    };
+    // Exercise the exact viewport grip press/release path in both contexts.
+    for test in [true, false] {
+        let insert = if test {
+            let _ = app.dispatch_command("BTESTBLOCK");
+            app.tabs[app.active_tab].block_test.as_ref().unwrap().insert
+        } else {
+            app.active_tab = source;
+            let _ = app.dispatch_command("BSAVE");
+            let _ = app.dispatch_command("BEDIT_DISCARD");
+            reference
+        };
+        let i = app.active_tab;
+        app.tabs[i].scene.selection.borrow_mut().view.vp_size = (1600., 900.);
+        app.tabs[i].scene.camera.borrow_mut().fit_to_bounds_f64(
+            glam::DVec3::new(-4., -3., 0.),
+            glam::DVec3::new(13., 13., 0.),
+            1600. / 900.,
+        );
+        app.tabs[i].scene.selected.insert(insert);
+        app.refresh_properties();
+        click(&mut app, rotate.end);
+        assert!(app.tabs[i].active_cmd.is_some());
+        let depth = app.tabs[i].history.undo_stack.len();
+        click(&mut app, glam::DVec3::new(0., 10., 0.));
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+        check(&app, insert, Vector3::UNIT_Y);
+        app.tabs[i].scene.selected.insert(insert);
+        app.refresh_properties();
+        let depth = app.tabs[i].history.undo_stack.len();
+        click(&mut app, flip.reference);
+        assert!(
+            app.tabs[i].active_cmd.is_none(),
+            "Flip toggles immediately without point input"
+        );
+        check(&app, insert, -Vector3::UNIT_Y);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+        app.undo_steps(1);
+        check(&app, insert, Vector3::UNIT_Y);
+        app.redo_steps(1);
+        check(&app, insert, -Vector3::UNIT_Y);
+        if test {
+            assert_eq!(app.tabs[source].scene.document, baseline);
+            let _ = app.dispatch_command("BCLOSETESTBLOCK");
+        } else {
+            let bytes = codec::DwgWriter::write_to_vec(&app.tabs[i].scene.document).unwrap();
+            app.tabs[i].scene.document = codec::DwgReader::from_stream(std::io::Cursor::new(bytes))
+                .read()
+                .unwrap();
+            app.tabs[i].scene.selected.insert(insert);
+            app.refresh_properties();
+            click(&mut app, flip.reference);
+            check(&app, insert, Vector3::UNIT_Y);
+            let EntityType::Line(original) =
+                app.tabs[i].scene.document.get_entity(targets[0]).unwrap()
+            else {
+                panic!()
+            };
+            assert_eq!(original.end, Vector3::UNIT_X);
+        }
+    }
+}
+
+#[test]
 fn block_actions_drawing_grips_history_cancel_transform_and_reopen() {
     use crate::scene::block_actions::{self as actions, Kind};
     let (mut app, reference) = fixture();
@@ -601,7 +734,7 @@ fn block_actions_command_selection_cancel_undo_and_test_block_isolation() {
         document: id,
         definition,
         parameter: p.handle,
-        position: glam::DVec3::new(30., 0., 0.),
+        value: crate::scene::block_actions::Value::Point(glam::DVec3::new(30., 0., 0.)),
     });
     assert_eq!(
         app.tabs[test].scene.document, shared_before,
@@ -682,7 +815,7 @@ fn block_actions_test_reference_transform_visibility_and_noop_history() {
         document: id,
         definition,
         parameter: p.handle,
-        position: current_world,
+        value: crate::scene::block_actions::Value::Point(current_world),
     });
     assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
     // Existing visibility UI creates a per-reference anonymous definition.
@@ -721,7 +854,7 @@ fn block_actions_test_reference_transform_visibility_and_noop_history() {
         document: id,
         definition,
         parameter: p.handle,
-        position: world,
+        value: crate::scene::block_actions::Value::Point(world),
     });
     let anon = app.tabs[i]
         .scene
