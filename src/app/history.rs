@@ -962,6 +962,143 @@ impl OpenCADStudio {
         self.push_undo_entry(i, HistorySnapshot::Delta(Box::new(delta)));
     }
 
+    fn apply_structure_state(&mut self, i: usize, structure: &mut StructureSnapshot, undo: bool) {
+        match structure {
+            StructureSnapshot::Combined(parts) => {
+                if undo {
+                    for part in parts {
+                        self.apply_structure_state(i, part, undo);
+                    }
+                } else {
+                    for part in parts.iter_mut().rev() {
+                        self.apply_structure_state(i, part, undo);
+                    }
+                }
+            }
+            StructureSnapshot::Full(stored) => {
+                let inverse = self.tabs[i]
+                    .scene
+                    .document
+                    .swap_structure(std::mem::replace(stored, codec::CadDocument::new()));
+                *stored = inverse;
+                self.tabs[i].scene.invalidate_dependency_index();
+                self.tabs[i].scene.bump_layout_epoch();
+                self.tabs[i].scene.bump_scale_epoch();
+                self.tabs[i].scene.bump_ucs_epoch();
+            }
+            StructureSnapshot::Layers(entries) => {
+                let names: Vec<String> = entries.iter().map(|entry| entry.name.clone()).collect();
+                for entry in entries {
+                    let value = if undo {
+                        entry.before.clone()
+                    } else {
+                        entry.after.clone()
+                    };
+                    if let Some(layer) = value {
+                        self.tabs[i].scene.document.layers.add_or_replace(layer);
+                    } else {
+                        self.tabs[i].scene.document.layers.remove(&entry.name);
+                    }
+                }
+                self.tabs[i].scene.invalidate_layer_dependencies(&names);
+            }
+            StructureSnapshot::TextStyles(entries) => {
+                let names: Vec<String> = entries.iter().map(|entry| entry.name.clone()).collect();
+                for entry in entries {
+                    let value = if undo {
+                        entry.before.clone()
+                    } else {
+                        entry.after.clone()
+                    };
+                    if let Some(style) = value {
+                        self.tabs[i]
+                            .scene
+                            .document
+                            .text_styles
+                            .add_or_replace(style);
+                    } else {
+                        self.tabs[i].scene.document.text_styles.remove(&entry.name);
+                    }
+                }
+                for name in names {
+                    self.tabs[i].scene.invalidate_text_style_dependencies(&name);
+                }
+            }
+            StructureSnapshot::DimStyles(entries) => {
+                let names: Vec<String> = entries.iter().map(|entry| entry.name.clone()).collect();
+                for entry in entries {
+                    let value = if undo {
+                        entry.before.clone()
+                    } else {
+                        entry.after.clone()
+                    };
+                    if let Some(style) = value {
+                        self.tabs[i].scene.document.dim_styles.add_or_replace(style);
+                    } else {
+                        self.tabs[i].scene.document.dim_styles.remove(&entry.name);
+                    }
+                }
+                for name in names {
+                    self.tabs[i].scene.invalidate_dim_style_dependencies(&name);
+                }
+            }
+            StructureSnapshot::Objects(entries) => {
+                let mut layout_touched = false;
+                let mut scale_touched = false;
+                for entry in entries {
+                    let value = if undo {
+                        entry.before.clone()
+                    } else {
+                        entry.after.clone()
+                    };
+                    // Either direction can add/remove a layout: undoing
+                    // an insert removes it (`before` is `None`), redoing
+                    // re-inserts it — so both sides must be inspected.
+                    layout_touched |=
+                        matches!(entry.before, Some(codec::objects::ObjectType::Layout(_)))
+                            || matches!(entry.after, Some(codec::objects::ObjectType::Layout(_)));
+                    scale_touched |=
+                        matches!(entry.before, Some(codec::objects::ObjectType::Scale(_)))
+                            || matches!(entry.after, Some(codec::objects::ObjectType::Scale(_)));
+                    if let Some(object) = value {
+                        self.tabs[i]
+                            .scene
+                            .document
+                            .objects
+                            .insert(entry.handle, object);
+                    } else {
+                        self.tabs[i].scene.document.objects.remove(&entry.handle);
+                    }
+                }
+                if layout_touched {
+                    self.tabs[i].scene.bump_layout_epoch();
+                }
+                if scale_touched {
+                    self.tabs[i].scene.bump_scale_epoch();
+                }
+            }
+            StructureSnapshot::Styles {
+                before,
+                after,
+                text_names,
+                dim_names,
+                object_handles,
+            } => {
+                let snapshot = if undo { before } else { after };
+                self.restore_style_state(i, snapshot);
+                self.tabs[i]
+                    .scene
+                    .invalidate_text_style_dependencies_many(text_names);
+                self.tabs[i]
+                    .scene
+                    .invalidate_dim_style_dependencies_many(dim_names);
+                self.tabs[i]
+                    .scene
+                    .invalidate_object_style_dependencies(object_handles);
+            }
+        }
+    }
+
     /// Apply one side of a delta entry in place: `undo` restores each entity's
     /// before-image, `!undo` (redo) its after-image. `None` on the chosen side
     /// means the entity is absent there (erase it). Reports the exact touched
@@ -977,138 +1114,7 @@ impl OpenCADStudio {
         // and UI invalidation are deferred until every requested undo/redo step
         // has been applied.
         if let Some(structure) = d.structure.as_mut() {
-            match structure {
-                StructureSnapshot::Full(stored) => {
-                    let inverse = self.tabs[i]
-                        .scene
-                        .document
-                        .swap_structure(std::mem::replace(stored, codec::CadDocument::new()));
-                    *stored = inverse;
-                    self.tabs[i].scene.invalidate_dependency_index();
-                    self.tabs[i].scene.bump_layout_epoch();
-                    self.tabs[i].scene.bump_scale_epoch();
-                    self.tabs[i].scene.bump_ucs_epoch();
-                }
-                StructureSnapshot::Layers(entries) => {
-                    let names: Vec<String> =
-                        entries.iter().map(|entry| entry.name.clone()).collect();
-                    for entry in entries {
-                        let value = if undo {
-                            entry.before.clone()
-                        } else {
-                            entry.after.clone()
-                        };
-                        if let Some(layer) = value {
-                            self.tabs[i].scene.document.layers.add_or_replace(layer);
-                        } else {
-                            self.tabs[i].scene.document.layers.remove(&entry.name);
-                        }
-                    }
-                    self.tabs[i].scene.invalidate_layer_dependencies(&names);
-                }
-                StructureSnapshot::TextStyles(entries) => {
-                    let names: Vec<String> =
-                        entries.iter().map(|entry| entry.name.clone()).collect();
-                    for entry in entries {
-                        let value = if undo {
-                            entry.before.clone()
-                        } else {
-                            entry.after.clone()
-                        };
-                        if let Some(style) = value {
-                            self.tabs[i]
-                                .scene
-                                .document
-                                .text_styles
-                                .add_or_replace(style);
-                        } else {
-                            self.tabs[i].scene.document.text_styles.remove(&entry.name);
-                        }
-                    }
-                    for name in names {
-                        self.tabs[i].scene.invalidate_text_style_dependencies(&name);
-                    }
-                }
-                StructureSnapshot::DimStyles(entries) => {
-                    let names: Vec<String> =
-                        entries.iter().map(|entry| entry.name.clone()).collect();
-                    for entry in entries {
-                        let value = if undo {
-                            entry.before.clone()
-                        } else {
-                            entry.after.clone()
-                        };
-                        if let Some(style) = value {
-                            self.tabs[i].scene.document.dim_styles.add_or_replace(style);
-                        } else {
-                            self.tabs[i].scene.document.dim_styles.remove(&entry.name);
-                        }
-                    }
-                    for name in names {
-                        self.tabs[i].scene.invalidate_dim_style_dependencies(&name);
-                    }
-                }
-                StructureSnapshot::Objects(entries) => {
-                    let mut layout_touched = false;
-                    let mut scale_touched = false;
-                    for entry in entries {
-                        let value = if undo {
-                            entry.before.clone()
-                        } else {
-                            entry.after.clone()
-                        };
-                        // Either direction can add/remove a layout: undoing
-                        // an insert removes it (`before` is `None`), redoing
-                        // re-inserts it — so both sides must be inspected.
-                        layout_touched |=
-                            matches!(entry.before, Some(codec::objects::ObjectType::Layout(_)))
-                                || matches!(
-                                    entry.after,
-                                    Some(codec::objects::ObjectType::Layout(_))
-                                );
-                        scale_touched |=
-                            matches!(entry.before, Some(codec::objects::ObjectType::Scale(_)))
-                                || matches!(
-                                    entry.after,
-                                    Some(codec::objects::ObjectType::Scale(_))
-                                );
-                        if let Some(object) = value {
-                            self.tabs[i]
-                                .scene
-                                .document
-                                .objects
-                                .insert(entry.handle, object);
-                        } else {
-                            self.tabs[i].scene.document.objects.remove(&entry.handle);
-                        }
-                    }
-                    if layout_touched {
-                        self.tabs[i].scene.bump_layout_epoch();
-                    }
-                    if scale_touched {
-                        self.tabs[i].scene.bump_scale_epoch();
-                    }
-                }
-                StructureSnapshot::Styles {
-                    before,
-                    after,
-                    text_names,
-                    dim_names,
-                    object_handles,
-                } => {
-                    let snapshot = if undo { before } else { after };
-                    self.restore_style_state(i, snapshot);
-                    self.tabs[i]
-                        .scene
-                        .invalidate_text_style_dependencies_many(text_names);
-                    self.tabs[i]
-                        .scene
-                        .invalidate_dim_style_dependencies_many(dim_names);
-                    self.tabs[i]
-                        .scene
-                        .invalidate_object_style_dependencies(object_handles);
-                }
-            }
+            self.apply_structure_state(i, structure, undo);
         }
         let mut changes = self.tabs[i].scene.apply_entity_delta(&d.entities, undo);
         let scene = &mut self.tabs[i].scene;
@@ -1341,8 +1347,8 @@ impl OpenCADStudio {
                     layer_panel_changed |= d.structure.as_ref().is_some_and(|structure| {
                         matches!(
                             structure,
-                            StructureSnapshot::Full(_) | StructureSnapshot::Layers(_)
-                        )
+                            StructureSnapshot::Layers(_)
+                        ) || structure.is_full()
                     }) || d.active_layer.is_some()
                         || d.entities.iter().any(|(_, before, after)| {
                             before
@@ -1411,8 +1417,8 @@ impl OpenCADStudio {
                     layer_panel_changed |= d.structure.as_ref().is_some_and(|structure| {
                         matches!(
                             structure,
-                            StructureSnapshot::Full(_) | StructureSnapshot::Layers(_)
-                        )
+                            StructureSnapshot::Layers(_)
+                        ) || structure.is_full()
                     }) || d.active_layer.is_some()
                         || d.entities.iter().any(|(_, before, after)| {
                             before

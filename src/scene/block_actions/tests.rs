@@ -1079,3 +1079,285 @@ fn block_actions_stretch_duplicate_target_picks_create_one_binding() {
     let baseline = doc.clone();
     assert!(evaluate(&mut doc, &baseline, def, p, DVec3::new(12., 0., 0.)).unwrap());
 }
+
+#[test]
+fn block_actions_topology_identity_reorder_add_delete_type_and_native_roundtrip() {
+    let (mut doc, def, targets) = fixture();
+    let p = linear(&mut doc, def);
+    create(&mut doc, def, Kind::Move, p, &targets[..1], DVec3::ZERO).unwrap();
+    let insert = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    doc = instance::evaluate(&doc, insert, p, DVec3::new(12., 0., 0.))
+        .unwrap()
+        .unwrap();
+    let before = doc.clone();
+    let EntityType::Insert(i) = doc.get_entity(insert).unwrap() else {
+        panic!()
+    };
+    let old = doc
+        .block_records
+        .get(&i.block_name)
+        .unwrap()
+        .entity_handles
+        .clone();
+    let old_id = authoring::element_id(doc.get_entity(targets[1]).unwrap()).unwrap();
+    doc.remove_entity(targets[1]);
+    doc.block_records
+        .get_mut("ACTIONS")
+        .unwrap()
+        .entity_handles
+        .retain(|h| *h != targets[1]);
+    let mut line =
+        codec::entities::Line::from_points(Vector3::new(20., 0., 0.), Vector3::new(21., 0., 0.));
+    line.common.owner_handle = def;
+    let new = doc.add_entity(EntityType::Line(line)).unwrap();
+    authoring::tag_members(&mut doc, def);
+    assert!(authoring::element_id(doc.get_entity(new).unwrap()).unwrap() > old_id);
+    doc.block_records
+        .get_mut("ACTIONS")
+        .unwrap()
+        .entity_handles
+        .reverse();
+    let doc = instance::refresh_after_edit(&doc, &before, def).unwrap();
+    let EntityType::Insert(i) = doc.get_entity(insert).unwrap() else {
+        panic!()
+    };
+    let members = &doc.block_records.get(&i.block_name).unwrap().entity_handles;
+    assert_eq!(
+        members[1], old[0],
+        "surviving member keeps identity despite reordering"
+    );
+    assert_eq!(start(&doc, members[0]), Vector3::new(20., 0., 0.));
+    assert_eq!(start(&doc, members[1]), Vector3::new(3., 0., 0.));
+    assert!(doc.get_entity(old[1]).is_none());
+    let mut changed = doc.clone();
+    let mut circle = codec::entities::Circle::from_center_radius(Vector3::new(6., 6., 0.), 1.);
+    circle.common = changed.get_entity(new).unwrap().common().clone();
+    *changed.get_entity_mut(new).unwrap() = EntityType::Circle(circle);
+    let changed = instance::refresh_after_edit(&changed, &doc, def).unwrap();
+    for saved in [
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&changed).unwrap()))
+            .read()
+            .unwrap(),
+        DxfReader::from_reader(Cursor::new(
+            DxfWriter::new(&changed).write_to_vec().unwrap(),
+        ))
+        .unwrap()
+        .read()
+        .unwrap(),
+    ] {
+        let EntityType::Insert(i) = saved.get_entity(insert).unwrap() else {
+            panic!()
+        };
+        let members = &saved
+            .block_records
+            .get(&i.block_name)
+            .unwrap()
+            .entity_handles;
+        assert!(matches!(
+            saved.get_entity(members[0]),
+            Some(EntityType::Circle(_))
+        ));
+        assert_eq!(start(&saved, members[1]), Vector3::new(3., 0., 0.));
+    }
+}
+
+#[test]
+fn block_actions_topology_copy_tags_and_extension_dictionary_do_not_share() {
+    use codec::objects::XRecord;
+    let (mut doc, def, targets) = fixture();
+    let p = linear(&mut doc, def);
+    create(&mut doc, def, Kind::Move, p, &targets[..1], DVec3::ZERO).unwrap();
+    let insert = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    doc = instance::evaluate(&doc, insert, p, DVec3::new(12., 0., 0.))
+        .unwrap()
+        .unwrap();
+    let mut duplicate = doc.get_entity(targets[0]).unwrap().clone();
+    duplicate.common_mut().handle = Handle::NULL;
+    let new = doc.add_entity(duplicate).unwrap();
+    let original_id = authoring::element_id(doc.get_entity(targets[0]).unwrap());
+    doc.block_records
+        .get_mut("ACTIONS")
+        .unwrap()
+        .entity_handles
+        .rotate_right(1);
+    authoring::tag_members(&mut doc, def);
+    assert_eq!(
+        authoring::element_id(doc.get_entity(targets[0]).unwrap()),
+        original_id
+    );
+    assert_ne!(
+        authoring::element_id(doc.get_entity(new).unwrap()),
+        authoring::element_id(doc.get_entity(targets[0]).unwrap())
+    );
+    let root = doc.ensure_extension_dictionary(new);
+    let handle = doc.allocate_handle();
+    let mut record = XRecord::default();
+    record.handle = handle;
+    record.owner = root;
+    doc.objects.insert(handle, ObjectType::XRecord(record));
+    let ObjectType::Dictionary(d) = doc.objects.get_mut(&root).unwrap() else {
+        panic!()
+    };
+    d.add_entry("DATA", handle);
+    let before = doc.clone();
+    let refreshed = instance::refresh_after_edit(&doc, &before, def).unwrap();
+    let EntityType::Insert(i) = refreshed.get_entity(insert).unwrap() else {
+        panic!()
+    };
+    let new_id = authoring::element_id(refreshed.get_entity(new).unwrap());
+    let target = *refreshed
+        .block_records
+        .get(&i.block_name)
+        .unwrap()
+        .entity_handles
+        .iter()
+        .find(|h| authoring::element_id(refreshed.get_entity(**h).unwrap()) == new_id)
+        .unwrap();
+    let cloned = refreshed
+        .get_entity(target)
+        .unwrap()
+        .common()
+        .xdictionary_handle
+        .unwrap();
+    assert_ne!(cloned, root);
+    let ObjectType::Dictionary(d) = &refreshed.objects[&cloned] else {
+        panic!()
+    };
+    assert_ne!(d.get("DATA"), Some(handle));
+}
+
+#[test]
+fn block_actions_topology_preserves_visibility_choice_after_discriminator_deleted() {
+    use crate::scene::block_visibility as visibility;
+    let (mut doc, def, targets) = fixture();
+    let p = linear(&mut doc, def);
+    create(&mut doc, def, Kind::Move, p, &targets[..1], DVec3::ZERO).unwrap();
+    let visibility = visibility::create(&mut doc, def, Vector3::ZERO).unwrap();
+    visibility::add_state(&mut doc, visibility, "Alternate", 0).unwrap();
+    visibility::set_visible(&mut doc, visibility, 1, &targets[1..], false);
+    visibility::finish_editing(&mut doc, def);
+    let first = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    let second = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::new(40., 0., 0.),
+        )))
+        .unwrap();
+    doc = instance::evaluate(&doc, first, p, DVec3::new(18., 0., 0.))
+        .unwrap()
+        .unwrap();
+    doc = instance::evaluate(&doc, second, p, DVec3::new(12., 0., 0.))
+        .unwrap()
+        .unwrap();
+    representation::apply_visibility(&mut doc, def, second, 1).unwrap();
+    let before = doc.clone();
+    doc.remove_entity(targets[1]);
+    doc.block_records
+        .get_mut("ACTIONS")
+        .unwrap()
+        .entity_handles
+        .retain(|h| *h != targets[1]);
+    let mut entity =
+        codec::entities::Line::from_points(Vector3::new(20., 0., 0.), Vector3::new(21., 0., 0.));
+    entity.common.owner_handle = def;
+    let new = doc.add_entity(EntityType::Line(entity)).unwrap();
+    visibility::set_visible(&mut doc, visibility, 0, &[new], false);
+    visibility::finish_editing(&mut doc, def);
+    let refreshed = instance::refresh_after_edit(&doc, &before, def).unwrap();
+    for (insert, hidden, start_x) in [(first, true, 9.), (second, false, 3.)] {
+        let EntityType::Insert(i) = refreshed.get_entity(insert).unwrap() else {
+            panic!()
+        };
+        let members = &refreshed
+            .block_records
+            .get(&i.block_name)
+            .unwrap()
+            .entity_handles;
+        assert_eq!(members.len(), 2);
+        assert_eq!(start(&refreshed, members[0]).x, start_x);
+        assert_eq!(
+            refreshed.get_entity(members[1]).unwrap().common().invisible,
+            hidden
+        );
+    }
+}
+
+#[test]
+fn block_actions_topology_nested_insert_attribute_handles_remain_independent() {
+    let (mut doc, def, targets) = fixture();
+    let p = linear(&mut doc, def);
+    create(&mut doc, def, Kind::Move, p, &targets[..1], DVec3::ZERO).unwrap();
+    let insert = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    doc = instance::evaluate(&doc, insert, p, DVec3::new(12., 0., 0.))
+        .unwrap()
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.document = doc;
+    scene.define_block_raw(
+        "CHILD",
+        Vector3::ZERO,
+        vec![EntityType::Line(codec::entities::Line::from_points(
+            Vector3::ZERO,
+            Vector3::UNIT_Y,
+        ))],
+    );
+    let mut child = codec::entities::Insert::new("CHILD", Vector3::new(20., 0., 0.));
+    child.common.owner_handle = def;
+    let mut attribute = codec::entities::AttributeEntity::new("TAG".into(), "value".into());
+    attribute.common.handle = scene.document.allocate_handle();
+    child.attributes.push(attribute);
+    child.seqend_handle = Some(scene.document.allocate_handle());
+    let source = scene
+        .document
+        .add_entity(EntityType::Insert(child))
+        .unwrap();
+    let before = scene.document.clone();
+    let doc = instance::refresh_after_edit(&before, &before, def).unwrap();
+    let doc = instance::refresh_after_edit(&doc, &doc, def).unwrap();
+    let reopened = DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+        .read()
+        .unwrap();
+    let EntityType::Insert(parent) = reopened.get_entity(insert).unwrap() else {
+        panic!()
+    };
+    let member = *reopened
+        .block_records
+        .get(&parent.block_name)
+        .unwrap()
+        .entity_handles
+        .last()
+        .unwrap();
+    let EntityType::Insert(copied) = reopened.get_entity(member).unwrap() else {
+        panic!()
+    };
+    let EntityType::Insert(original) = reopened.get_entity(source).unwrap() else {
+        panic!()
+    };
+    assert_eq!(copied.attributes[0].value, "value");
+    assert_ne!(
+        copied.attributes[0].common.handle,
+        original.attributes[0].common.handle
+    );
+    assert_eq!(copied.attributes[0].common.owner_handle, member);
+    assert_ne!(copied.seqend_handle, original.seqend_handle);
+}

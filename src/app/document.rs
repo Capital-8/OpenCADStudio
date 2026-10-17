@@ -876,6 +876,8 @@ pub(super) struct DeltaSnapshot {
 
 #[derive(Clone)]
 pub(super) enum StructureSnapshot {
+    /// A broad save-time synchronization followed by a command's bounded edits.
+    Combined(Vec<StructureSnapshot>),
     /// Compatibility fallback for genuinely broad structural commands.
     Full(CadDocument),
     /// Exact layer-table entries touched by one command.
@@ -901,6 +903,7 @@ pub(super) enum StructureSnapshot {
 impl StructureSnapshot {
     pub(super) fn estimated_bytes(&self) -> usize {
         match self {
+            Self::Combined(parts) => parts.iter().map(Self::estimated_bytes).sum(),
             Self::Full(doc) => doc.objects.len().saturating_mul(192),
             Self::Layers(entries) => entries.len().saturating_mul(256),
             Self::TextStyles(entries) => entries.len().saturating_mul(320),
@@ -914,6 +917,7 @@ impl StructureSnapshot {
 
     pub(super) fn is_full(&self) -> bool {
         matches!(self, Self::Full(_))
+            || matches!(self,Self::Combined(parts) if parts.iter().any(Self::is_full))
     }
 }
 

@@ -308,7 +308,19 @@ pub(crate) fn evaluate_value(
 
 /// Refresh existing evaluated references after an authoring change.
 pub(crate) fn refresh(doc: &CadDocument, def: Handle) -> Result<CadDocument, &'static str> {
+    refresh_after_edit(doc, doc, def)
+}
+
+pub(crate) fn refresh_after_edit(
+    doc: &CadDocument,
+    before: &CadDocument,
+    def: Handle,
+) -> Result<CadDocument, &'static str> {
+    if authoring::graph(doc, def)?.is_none() {
+        return Ok(doc.clone());
+    }
     let mut staged = doc.clone();
+    authoring::tag_members(&mut staged, def);
     let inserts = doc
         .entities()
         .filter_map(|e| match e {
@@ -331,7 +343,11 @@ pub(crate) fn refresh(doc: &CadDocument, def: Handle) -> Result<CadDocument, &'s
             super::set_value(&mut evaluated, &p, v)?;
         }
         super::rebuild(&mut evaluated, &staged, def)?;
+        let state = super::representation::visibility_state(&staged, before, def, insert);
         staged = materialize(&staged, insert, def, &evaluated)?;
+        if let Some(state) = state {
+            super::representation::apply_visibility(&mut staged, def, insert, state)?;
+        }
     }
     Ok(staged)
 }
@@ -344,6 +360,7 @@ fn materialize(
 ) -> Result<CadDocument, &'static str> {
     let mut scene = crate::scene::Scene::new();
     scene.document = doc.clone();
+    authoring::tag_members(&mut scene.document, def);
     scene.dynamic_representation(insert);
     let Some(EntityType::Insert(reference)) = scene.document.get_entity(insert) else {
         return Err("Missing block reference.");
@@ -357,37 +374,6 @@ fn materialize(
     {
         return Err("Could not isolate the dynamic block reference.");
     }
-    // Rebuild all members so removed targets lose their old action effects.
-    // Preserve each representation member's identity and visibility.
-    let source = doc
-        .block_records
-        .iter()
-        .find(|b| b.handle == def)
-        .ok_or("Missing definition.")?;
-    let target = scene.document.block_records.get(&name).unwrap();
-    if source.entity_handles.len() != target.entity_handles.len() {
-        return Err("The reference topology no longer matches its definition.");
-    }
-    let pairs = source
-        .entity_handles
-        .iter()
-        .copied()
-        .zip(target.entity_handles.iter().copied())
-        .collect::<Vec<_>>();
-    for (from, to) in pairs {
-        let mut e = evaluated
-            .get_entity(from)
-            .cloned()
-            .ok_or("Missing action target.")?;
-        let target = scene
-            .document
-            .get_entity_mut(to)
-            .ok_or("Missing representation target.")?;
-        if std::mem::discriminant(&e) != std::mem::discriminant(target) {
-            return Err("The reference topology no longer matches its definition.");
-        }
-        *e.common_mut() = target.common().clone();
-        *target = e;
-    }
+    super::representation::reconcile(&mut scene, def, &name, evaluated)?;
     Ok(scene.document)
 }

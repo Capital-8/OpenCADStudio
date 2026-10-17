@@ -10,6 +10,7 @@ use codec::{CadDocument, EntityType, Handle};
 use glam::DVec3;
 pub(crate) mod instance;
 mod stretch;
+mod representation;
 #[cfg(test)]
 mod tests;
 
@@ -638,6 +639,35 @@ pub(crate) fn actions(
         })
         .collect()
 }
+/// Drop erased objects from action targets without replacing graph nodes.
+pub(crate) fn prune_erased_targets(doc: &mut CadDocument, definition: Handle) {
+    let live = authoring::members(doc, definition)
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let handles = actions(doc, definition)
+        .into_iter()
+        .map(|(h, _, _, _)| h)
+        .collect::<Vec<_>>();
+    for h in handles {
+        let Some(ObjectType::DynamicBlock(o)) = doc.objects.get_mut(&h) else {
+            continue;
+        };
+        let action = match &mut o.data {
+            DynamicBlockData::MoveAction(a) => &mut a.action,
+            DynamicBlockData::FlipAction(a) => &mut a.action,
+            DynamicBlockData::StretchAction(a) => {
+                a.handles.retain(|b| live.contains(&b.handle));
+                &mut a.action
+            }
+            DynamicBlockData::ScaleAction(a) | DynamicBlockData::RotateAction(a) => {
+                &mut a.action.action
+            }
+            _ => continue,
+        };
+        action.dependencies.retain(|h| live.contains(h));
+    }
+}
+
 pub(crate) fn frame_outline(doc: &CadDocument, handle: Handle) -> Vec<Vector3> {
     let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&handle) else {
         return vec![];

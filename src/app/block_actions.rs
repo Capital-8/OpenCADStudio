@@ -62,14 +62,22 @@ impl OpenCADStudio {
         self.tabs[self.active_tab].active_cmd = Some(Box::new(command));
         Task::none()
     }
-    fn apply_action_document(&mut self, i: usize, mut staged: codec::CadDocument) {
+    pub(super) fn apply_action_document(&mut self, i: usize, mut staged: codec::CadDocument) {
         let doc = &mut self.tabs[i].scene.document;
         let changes = staged
             .entities()
             .filter(|e| doc.get_entity(e.common().handle) != Some(*e))
             .cloned()
             .collect::<Vec<_>>();
+        let removed = doc
+            .entities()
+            .map(|e| e.common().handle)
+            .filter(|h| staged.get_entity(*h).is_none())
+            .collect::<Vec<_>>();
         doc.swap_structure(staged.snapshot_structure());
+        for handle in removed {
+            doc.remove_entity_arc(handle);
+        }
         for entity in changes {
             let handle = entity.common().handle;
             if let Some(current) = doc.get_entity_mut(handle) {
