@@ -742,6 +742,78 @@ fn polar_stretch_evaluates_test_block_and_saved_reference() {
 }
 
 #[test]
+fn polar_stretch_retarget_rebinds_vertices_and_roundtrips() {
+    let mut scene = Scene::new();
+    scene.define_block_raw(
+        "POLAR_RETARGET",
+        Vector3::ZERO,
+        vec![
+            EntityType::Line(codec::entities::Line::from_points(
+                Vector3::UNIT_X,
+                Vector3::new(2., 0., 0.),
+            )),
+            EntityType::Line(codec::entities::Line::from_points(
+                Vector3::new(4., 0., 0.),
+                Vector3::new(5., 0., 0.),
+            )),
+        ],
+    );
+    let record = scene.document.block_records.get("POLAR_RETARGET").unwrap();
+    let (definition, targets) = (record.handle, record.entity_handles.clone());
+    let mut doc = scene.document;
+    let parameter = distance::create(
+        &mut doc,
+        definition,
+        distance::Kind::Polar,
+        Vector3::ZERO,
+        Vector3::new(10., 0., 0.),
+        Vector3::new(5., 2., 0.),
+    )
+    .unwrap();
+    let action = create_with_frame(
+        &mut doc,
+        definition,
+        Kind::PolarStretch,
+        parameter,
+        &targets[..1],
+        DVec3::ZERO,
+        Some([DVec3::new(0.5, -0.5, 0.), DVec3::new(1.5, 0.5, 0.)]),
+    )
+    .unwrap();
+
+    assert!(retarget(
+        &mut doc,
+        definition,
+        action,
+        &targets[1..],
+        Some([DVec3::new(3.5, -0.5, 0.), DVec3::new(5.5, 0.5, 0.)]),
+    )
+    .unwrap());
+    let ObjectType::DynamicBlock(object) = &doc.objects[&action] else {
+        panic!()
+    };
+    let DynamicBlockData::PolarStretchAction(action_data) = &object.data else {
+        panic!()
+    };
+    assert_eq!(action_data.action.dependencies, vec![targets[1]]);
+    assert_eq!(action_data.bindings.len(), 1);
+    assert_eq!(action_data.bindings[0].handle, targets[1]);
+    assert_eq!(action_data.points.len(), 2);
+
+    for saved in [
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+            .read()
+            .unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap()))
+            .unwrap()
+            .read()
+            .unwrap(),
+    ] {
+        assert_eq!(saved.objects[&action], doc.objects[&action]);
+    }
+}
+
+#[test]
 fn block_actions_stretch_frozen_vertices_polyline_and_whole_objects_roundtrip() {
     let (doc, def, handles, p, action) = stretch_fixture();
     let ObjectType::DynamicBlock(o) = &doc.objects[&action] else {
