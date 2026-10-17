@@ -1,0 +1,195 @@
+//! A native Stretch action freezes its vertex membership at authoring time.
+use super::*;
+use codec::objects::{BlockStretchAction, BlockStretchHandle};
+use codec::types::Vector2;
+
+pub(crate) fn control_points(e: &EntityType) -> Result<Vec<DVec3>, &'static str> {
+    let points = match e {
+        EntityType::Line(l) => vec![v(l.start), v(l.end)],
+        EntityType::LwPolyline(p) => {
+            let p = crate::entities::curve::lwpolyline_world_xy(p)
+                .ok_or("Stretch requires a planar XY lightweight polyline.")?;
+            p.vertices
+                .iter()
+                .map(|v| DVec3::new(v.location.x, v.location.y, p.elevation))
+                .collect()
+        }
+        _ => return Err("Stretch currently supports lines and planar lightweight polylines."),
+    };
+    if points.is_empty() || points.iter().any(|p| !p.is_finite()) {
+        return Err("Stretch targets need finite vertices.");
+    }
+    Ok(points)
+}
+
+pub(crate) fn bind(
+    doc: &CadDocument,
+    targets: &[Handle],
+    corners: [DVec3; 2],
+    plane: f64,
+) -> Result<(Vec<Vector2>, Vec<BlockStretchHandle>), &'static str> {
+    if corners
+        .iter()
+        .any(|p| !p.is_finite() || (p.z - plane).abs() > 1e-8)
+    {
+        return Err("Specify finite stretch-frame corners in the parameter's XY plane.");
+    }
+    let low = corners[0].min(corners[1]);
+    let high = corners[0].max(corners[1]);
+    if high.x - low.x < 1e-9 || high.y - low.y < 1e-9 {
+        return Err("The stretch frame needs a nonzero width and height.");
+    }
+    let mut bindings = vec![];
+    let mut unique = targets.to_vec();
+    unique.sort();
+    unique.dedup();
+    for handle in unique {
+        let entity = doc
+            .get_entity(handle)
+            .ok_or("A Stretch target is unavailable.")?;
+        let points = control_points(entity)?;
+        if points.iter().any(|p| (p.z - plane).abs() > 1e-8) {
+            return Err("Stretch targets must lie in the parameter's XY plane.");
+        }
+        let indexes = points
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.x >= low.x && p.x <= high.x && p.y >= low.y && p.y <= high.y)
+            .map(|(i, _)| i as i32)
+            .collect::<Vec<_>>();
+        if !indexes.is_empty() {
+            bindings.push(BlockStretchHandle { handle, indexes });
+        }
+    }
+    Ok((
+        vec![Vector2::new(low.x, low.y), Vector2::new(high.x, high.y)],
+        bindings,
+    ))
+}
+
+pub(crate) fn validate(doc: &CadDocument, a: &BlockStretchAction) -> Result<(), &'static str> {
+    if a.points.len() < 2
+        || a.points
+            .iter()
+            .any(|p| !p.x.is_finite() || !p.y.is_finite())
+        || a.offsets.distance_multiplier != 1.
+        || a.offsets.angle_offset != 0.
+        || a.offsets.flags != 0
+        || !a.codes.is_empty()
+        || !a.action.action_ids.is_empty()
+        || a.connections[0].code != a.connections[1].code
+        || a.connections[0].name != "EndXDelta"
+        || a.connections[1].name != "EndYDelta"
+    {
+        return Err("This Stretch action uses options or parameter bindings not supported yet.");
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for binding in &a.handles {
+        if !a.action.dependencies.contains(&binding.handle) || !seen.insert(binding.handle) {
+            return Err("The Stretch action has invalid target bindings.");
+        }
+        let count = control_points(
+            doc.get_entity(binding.handle)
+                .ok_or("A Stretch target is unavailable.")?,
+        )?
+        .len();
+        let unique = binding
+            .indexes
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        if unique.len() != binding.indexes.len()
+            || binding
+                .indexes
+                .iter()
+                .any(|i| *i < 0 || *i as usize >= count)
+        {
+            return Err("A Stretch vertex binding no longer matches its object.");
+        }
+    }
+    // Selected objects without a partial vertex binding move as a whole.
+    for h in &a.action.dependencies {
+        control_points(
+            doc.get_entity(*h)
+                .ok_or("A Stretch target is unavailable.")?,
+        )?;
+    }
+    Ok(())
+}
+
+pub(crate) fn apply(
+    e: &mut EntityType,
+    a: &BlockStretchAction,
+    delta: DVec3,
+) -> Result<(), &'static str> {
+    let Some(binding) = a
+        .handles
+        .iter()
+        .find(|b| b.handle == e.common().handle && !b.indexes.is_empty())
+    else {
+        crate::scene::view::dispatch::apply_transform(
+            e,
+            &crate::command::EntityTransform::Translate(delta),
+        );
+        return Ok(());
+    };
+    match e {
+        EntityType::Line(l) => {
+            for index in &binding.indexes {
+                let at = match index {
+                    0 => &mut l.start,
+                    1 => &mut l.end,
+                    _ => return Err("Invalid Stretch line endpoint."),
+                };
+                *at = *at + native(delta);
+            }
+        }
+        EntityType::LwPolyline(p) => {
+            let mut world = crate::entities::curve::lwpolyline_world_xy(p)
+                .ok_or("Stretch requires a planar XY lightweight polyline.")?;
+            let before = world
+                .vertices
+                .iter()
+                .map(|v| [v.location.x, v.location.y])
+                .collect::<Vec<_>>();
+            for index in &binding.indexes {
+                let v = world
+                    .vertices
+                    .get_mut(*index as usize)
+                    .ok_or("Invalid Stretch polyline vertex.")?;
+                v.location.x += delta.x;
+                v.location.y += delta.y;
+            }
+            let after = world
+                .vertices
+                .iter()
+                .map(|v| [v.location.x, v.location.y])
+                .collect::<Vec<_>>();
+            for (i, v) in world.vertices.iter_mut().enumerate() {
+                v.bulge = crate::modules::draw::modify::stretch::held_bulge(
+                    v.bulge,
+                    &before,
+                    &after,
+                    i,
+                    world.is_closed,
+                );
+            }
+            *p = world;
+        }
+        _ => return Err("Unsupported Stretch target."),
+    }
+    Ok(())
+}
+
+pub(crate) fn outline(points: &[Vector2], z: f64) -> Vec<Vector3> {
+    let points = if points.len() == 2 {
+        let (a, b) = (points[0], points[1]);
+        vec![a, Vector2::new(b.x, a.y), b, Vector2::new(a.x, b.y)]
+    } else {
+        points.to_vec()
+    };
+    points
+        .into_iter()
+        .map(|p| Vector3::new(p.x, p.y, z))
+        .collect()
+}

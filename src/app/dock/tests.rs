@@ -1245,6 +1245,27 @@ fn block_actions_palette_controls_require_compatible_parameters_and_start_comman
 }
 
 #[test]
+fn block_actions_stretch_palette_requires_distance_parameter() {
+    with_stack(|| {
+        let mut app = authoring_app();
+        let _ = app.dispatch_command("BAUTHORPALETTE");
+        app.authoring_palette_tab = crate::ui::window::authoring_palettes::Tab::Actions;
+        let point = authoring_control(&app, "authoring-tool-stretch-action");
+        authoring_click(&mut app, point);
+        assert!(app.tabs[app.active_tab].active_cmd.is_none());
+        let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+        let point = authoring_control(&app, "authoring-tool-stretch-action");
+        authoring_click(&mut app, point);
+        assert!(app.tabs[app.active_tab]
+            .active_cmd
+            .as_ref()
+            .unwrap()
+            .prompt()
+            .contains("Stretch"));
+    });
+}
+
+#[test]
 fn block_actions_rotate_flip_palette_requires_matching_parameters() {
     with_stack(|| {
         use crate::ui::window::authoring_palettes::Tab;

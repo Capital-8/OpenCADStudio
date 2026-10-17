@@ -104,7 +104,18 @@ pub fn items(doc: &CadDocument, definition: Handle) -> Vec<Item> {
         result.push(single(p.handle, p.name.clone(), p.def_point));
     }
     for (handle, p, _, _) in crate::scene::block_actions::actions(doc, definition) {
-        result.push(single(handle, p.element.name.clone(), p.display_location));
+        let mut item = single(handle, p.element.name.clone(), p.display_location);
+        let frame = crate::scene::block_actions::frame_outline(doc, handle);
+        if !frame.is_empty() {
+            item.graphic.lines.extend(
+                frame
+                    .iter()
+                    .zip(frame.iter().cycle().skip(1))
+                    .take(frame.len())
+                    .map(|(a, b)| [*a, *b]),
+            );
+        }
+        result.push(item);
     }
     result
 }
@@ -277,6 +288,7 @@ pub fn move_part(
                     }
                 }
                 DynamicBlockData::MoveAction(p) => p.action.display_location = at,
+                DynamicBlockData::StretchAction(p) => p.action.display_location = at,
                 DynamicBlockData::FlipAction(p) => p.action.display_location = at,
                 DynamicBlockData::ScaleAction(p) | DynamicBlockData::RotateAction(p) => {
                     p.action.action.display_location = at

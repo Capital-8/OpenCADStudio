@@ -415,6 +415,7 @@ impl OpenCADStudio {
                     self.action_error(Some(crate::scene::block_actions::Kind::Scale)),
                     self.action_error(Some(crate::scene::block_actions::Kind::Rotate)),
                     self.action_error(Some(crate::scene::block_actions::Kind::Flip)),
+                    self.action_error(Some(crate::scene::block_actions::Kind::Stretch)),
                 )
             }
             crate::ui::dock::PanelId::BlockPalette => {

@@ -1,14 +1,15 @@
-//! Native Move/Scale/Rotate/Flip authoring and deterministic block evaluation.
+//! Native Move/Scale/Stretch/Rotate/Flip authoring and deterministic block evaluation.
 use super::block_authoring::{self as authoring, *};
 use codec::objects::{
     BlockAction, BlockActionOffsets, BlockActionWithBasePoint, BlockBasePointAction,
     BlockConnection, BlockElement, BlockEvalValue, BlockMoveAction, BlockFlipAction,
-    DynamicBlockData, ObjectType,
+    BlockStretchAction, DynamicBlockData, ObjectType,
 };
 use codec::types::{Transform, Vector3};
 use codec::{CadDocument, EntityType, Handle};
 use glam::DVec3;
 pub(crate) mod instance;
+mod stretch;
 #[cfg(test)]
 mod tests;
 
@@ -18,6 +19,7 @@ pub enum Kind {
     Scale,
     Rotate,
     Flip,
+    Stretch,
 }
 impl Kind {
     pub(crate) fn parse(s: &str) -> Option<Self> {
@@ -26,6 +28,7 @@ impl Kind {
             "SCALE" | "S" => Some(Self::Scale),
             "ROTATE" | "R" => Some(Self::Rotate),
             "FLIP" | "F" => Some(Self::Flip),
+            "STRETCH" | "ST" => Some(Self::Stretch),
             _ => None,
         }
     }
@@ -35,6 +38,7 @@ impl Kind {
             Self::Scale => "Scale",
             Self::Rotate => "Rotate",
             Self::Flip => "Flip",
+            Self::Stretch => "Stretch",
         }
     }
 }
@@ -78,6 +82,7 @@ pub(crate) fn all_parameters(doc: &CadDocument, definition: Handle) -> Vec<Param
 pub(crate) fn compatible(p: &Parameter, kind: Kind) -> bool {
     match kind {
         Kind::Move => !p.rotation && !p.flip,
+        Kind::Stretch => !p.rotation && !p.flip && !p.point,
         Kind::Scale => !p.rotation && !p.flip && !p.point && !p.xy,
         Kind::Rotate => p.rotation,
         Kind::Flip => p.flip,
@@ -342,6 +347,7 @@ pub(crate) fn supported(e: &EntityType) -> bool {
             | EntityType::MText(_)
     )
 }
+#[cfg(test)]
 pub(crate) fn create(
     doc: &mut CadDocument,
     definition: Handle,
@@ -349,6 +355,18 @@ pub(crate) fn create(
     parameter: Handle,
     targets: &[Handle],
     location: DVec3,
+) -> Result<Handle, &'static str> {
+    create_with_frame(doc, definition, kind, parameter, targets, location, None)
+}
+
+pub(crate) fn create_with_frame(
+    doc: &mut CadDocument,
+    definition: Handle,
+    kind: Kind,
+    parameter: Handle,
+    targets: &[Handle],
+    location: DVec3,
+    frame: Option<[DVec3; 2]>,
 ) -> Result<Handle, &'static str> {
     if !location.is_finite() {
         return Err("Specify a finite action location.");
@@ -374,6 +392,19 @@ pub(crate) fn create(
     }) {
         return Err("This milestone supports lines, polylines, arcs, circles, ellipses, points and text belonging to this block.");
     }
+    let stretch_binding = if kind == Kind::Stretch {
+        if (location.z - p.end.z).abs() > 1e-8 {
+            return Err("Place the Stretch marker in the parameter's XY plane.");
+        }
+        Some(stretch::bind(
+            doc,
+            targets,
+            frame.ok_or("Specify a stretch frame before selecting objects.")?,
+            p.end.z,
+        )?)
+    } else {
+        None
+    };
     let mut staged = doc.clone();
     let (graph, slots) = authoring::prepare(&mut staged, definition)?;
     let (dxf, cpp) = match kind {
@@ -381,6 +412,7 @@ pub(crate) fn create(
         Kind::Scale => ("BLOCKSCALEACTION", "AcDbBlockScaleAction"),
         Kind::Rotate => ("BLOCKROTATEACTION", "AcDbBlockRotationAction"),
         Kind::Flip => ("BLOCKFLIPACTION", "AcDbBlockFlipAction"),
+        Kind::Stretch => ("BLOCKSTRETCHACTION", "AcDbBlockStretchAction"),
     };
     register_classes(&mut staged, &[(dxf, cpp, 55)]);
     let handle = staged.allocate_handle();
@@ -404,6 +436,21 @@ pub(crate) fn create(
         name: name.into(),
     };
     let data = match kind {
+        Kind::Stretch => {
+            let (points, handles) = stretch_binding.unwrap();
+            DynamicBlockData::StretchAction(BlockStretchAction {
+                action,
+                connections: [connection("EndXDelta"), connection("EndYDelta")],
+                points,
+                handles,
+                codes: vec![],
+                offsets: BlockActionOffsets {
+                    distance_multiplier: 1.,
+                    angle_offset: 0.,
+                    flags: 0,
+                },
+            })
+        }
         Kind::Move => DynamicBlockData::MoveAction(BlockMoveAction {
             action,
             connections: if p.point {
@@ -489,6 +536,9 @@ pub(crate) fn actions(
                 DynamicBlockData::MoveAction(a) => {
                     Some((o.handle, &a.action, Kind::Move, a.connections[0].code))
                 }
+                DynamicBlockData::StretchAction(a) => {
+                    Some((o.handle, &a.action, Kind::Stretch, a.connections[0].code))
+                }
                 DynamicBlockData::FlipAction(a) => {
                     Some((o.handle, &a.action, Kind::Flip, a.connections[0].code))
                 }
@@ -505,6 +555,16 @@ pub(crate) fn actions(
         })
         .collect()
 }
+pub(crate) fn frame_outline(doc: &CadDocument, handle: Handle) -> Vec<Vector3> {
+    let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&handle) else {
+        return vec![];
+    };
+    let DynamicBlockData::StretchAction(a) = &o.data else {
+        return vec![];
+    };
+    stretch::outline(&a.points, a.action.display_location.z)
+}
+
 pub(crate) fn reframe(doc: &mut CadDocument, definition: Handle, t: &Transform) -> usize {
     let handles = actions(doc, definition)
         .iter()
@@ -517,6 +577,17 @@ pub(crate) fn reframe(doc: &mut CadDocument, definition: Handle, t: &Transform) 
         match &mut o.data {
             DynamicBlockData::MoveAction(a) => {
                 a.action.display_location = t.apply(a.action.display_location)
+            }
+            DynamicBlockData::StretchAction(a) => {
+                let plane = a.action.display_location.z;
+                a.action.display_location = t.apply(a.action.display_location);
+                a.points = stretch::outline(&a.points, plane)
+                    .into_iter()
+                    .map(|p| {
+                        let p = t.apply(p);
+                        codec::types::Vector2::new(p.x, p.y)
+                    })
+                    .collect();
             }
             DynamicBlockData::FlipAction(a) => {
                 a.action.display_location = t.apply(a.action.display_location)
@@ -613,8 +684,10 @@ pub(crate) fn evaluate_value(
 ) -> Result<bool, &'static str> {
     let graph = authoring::graph(baseline, definition)?
         .ok_or("The block authoring graph is unavailable.")?;
-    if baseline.objects.values().any(|o|matches!(o,ObjectType::DynamicBlock(o) if o.owner==graph && matches!(&o.data,
-        DynamicBlockData::StretchAction(_)|DynamicBlockData::PolarStretchAction(_)|DynamicBlockData::ArrayAction(_)))) {
+    if baseline.objects.values().any(|o| {
+        matches!(o,ObjectType::DynamicBlock(o) if o.owner==graph && matches!(&o.data,
+        DynamicBlockData::PolarStretchAction(_)|DynamicBlockData::ArrayAction(_)))
+    }) {
         return Err("This block contains action types not supported yet.");
     }
     let p = all_parameters(baseline, definition)
@@ -660,7 +733,16 @@ pub(crate) fn evaluate_value(
     set_value(&mut staged, &p, input)?;
     let all = actions(baseline, definition);
     let mut affected = std::collections::BTreeSet::new();
-    for (_, a, _, _) in &all {
+    for (h, a, kind, _) in &all {
+        if *kind == Kind::Stretch {
+            let ObjectType::DynamicBlock(o) = &baseline.objects[h] else {
+                unreachable!()
+            };
+            let DynamicBlockData::StretchAction(s) = &o.data else {
+                unreachable!()
+            };
+            stretch::validate(baseline, s)?;
+        }
         affected.extend(a.dependencies.iter().copied());
     }
     for h in affected {
@@ -688,7 +770,9 @@ pub(crate) fn evaluate_value(
             }
             let end = current(&staged, &q);
             let transform = match kind {
-                Kind::Move => crate::command::EntityTransform::Translate(end - q.end),
+                Kind::Move | Kind::Stretch => {
+                    crate::command::EntityTransform::Translate(end - q.end)
+                }
                 Kind::Rotate => {
                     let a = end - q.base;
                     let b = q.end - q.base;
@@ -805,7 +889,11 @@ pub(crate) fn evaluate_value(
                 }
                 _ => {}
             }
-            super::view::dispatch::apply_transform(&mut entity, &transform);
+            if let DynamicBlockData::StretchAction(s) = &o.data {
+                stretch::apply(&mut entity, s, end - q.end)?;
+            } else {
+                super::view::dispatch::apply_transform(&mut entity, &transform);
+            }
             let bounds = entity.as_entity().bounding_box();
             if !v(bounds.min).is_finite() || !v(bounds.max).is_finite() {
                 return Err("The parameter value produces non-finite geometry.");

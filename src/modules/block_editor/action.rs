@@ -16,6 +16,7 @@ pub(crate) struct ActionCommand {
     parameter: Option<Handle>,
     targets: Vec<Handle>,
     selecting: bool,
+    frame: Vec<DVec3>,
     context: Option<PointPickContext>,
 }
 impl ActionCommand {
@@ -33,6 +34,7 @@ impl ActionCommand {
             parameter: None,
             targets: vec![],
             selecting: false,
+            frame: vec![],
             context: None,
         }
     }
@@ -43,7 +45,7 @@ impl ActionCommand {
             );
         }
         self.parameter = Some(p.handle);
-        self.selecting = true;
+        self.selecting = self.kind != Some(Kind::Stretch);
         CmdResult::DeselectAndContinue
     }
 }
@@ -62,7 +64,8 @@ impl CadCommand for ActionCommand {
     }
     fn prompt(&self) -> String {
         if self.kind.is_none() {
-            return crate::t!("BACTION  Enter action type [Move/Scale/Rotate/Flip]:").into_owned();
+            return crate::t!("BACTION  Enter action type [Move/Scale/Stretch/Rotate/Flip]:")
+                .into_owned();
         }
         if self.parameter.is_none() {
             return crate::tf!(
@@ -71,11 +74,17 @@ impl CadCommand for ActionCommand {
             )
             .into_owned();
         }
-        crate::t!(if self.selecting {
-            "BACTION  Select objects for the action, then press Enter:"
-        } else {
-            "BACTION  Specify action marker location:"
-        })
+        crate::t!(
+            if self.kind == Some(Kind::Stretch) && self.frame.is_empty() {
+                "BACTION  Specify first corner of stretch frame:"
+            } else if self.kind == Some(Kind::Stretch) && self.frame.len() == 1 {
+                "BACTION  Specify opposite corner of stretch frame:"
+            } else if self.selecting {
+                "BACTION  Select objects for the action, then press Enter:"
+            } else {
+                "BACTION  Specify action marker location:"
+            }
+        )
         .into_owned()
     }
     fn options(&self) -> Vec<CmdOption> {
@@ -83,6 +92,7 @@ impl CadCommand for ActionCommand {
             vec![
                 CmdOption::new("Move", "Move"),
                 CmdOption::new("Scale", "Scale"),
+                CmdOption::new("Stretch", "Stretch"),
                 CmdOption::new("Rotate", "Rotate"),
                 CmdOption::new("Flip", "Flip"),
             ]
@@ -97,7 +107,7 @@ impl CadCommand for ActionCommand {
                 CmdResult::NeedPoint
             } else {
                 CmdResult::ReportError(
-                    crate::t!("Choose Move, Scale, Rotate or Flip.").into_owned(),
+                    crate::t!("Choose Move, Scale, Stretch, Rotate or Flip.").into_owned(),
                 )
             });
         }
@@ -149,6 +159,35 @@ impl CadCommand for ActionCommand {
                 )
             });
         }
+        if self.kind == Some(Kind::Stretch) && self.frame.len() < 2 {
+            let plane = self
+                .candidates
+                .iter()
+                .find(|p| Some(p.handle) == self.parameter)
+                .unwrap()
+                .end
+                .z;
+            if !point.is_finite() || (point.z - plane).abs() > 1e-8 {
+                return CmdResult::ReportError(
+                    crate::t!("Specify a finite corner in the parameter's XY plane.").into_owned(),
+                );
+            }
+            if self
+                .frame
+                .first()
+                .is_some_and(|a| (point.x - a.x).abs() < 1e-9 || (point.y - a.y).abs() < 1e-9)
+            {
+                return CmdResult::ReportError(
+                    crate::t!("The stretch frame needs a nonzero width and height.").into_owned(),
+                );
+            }
+            self.frame.push(point);
+            if self.frame.len() == 2 {
+                self.selecting = true;
+                return CmdResult::DeselectAndContinue;
+            }
+            return CmdResult::NeedPoint;
+        }
         if self.selecting {
             return CmdResult::NeedPoint;
         }
@@ -164,7 +203,25 @@ impl CadCommand for ActionCommand {
             parameter: self.parameter.unwrap(),
             targets: self.targets.clone(),
             location: point,
+            frame: (self.frame.len() == 2).then(|| [self.frame[0], self.frame[1]]),
         }
+    }
+    fn on_preview_wires(&mut self, point: DVec3) -> Vec<crate::scene::WireModel> {
+        let Some(a) = self.frame.first().filter(|_| point.is_finite()) else {
+            return vec![];
+        };
+        let b = self.frame.get(1).copied().unwrap_or(point);
+        vec![crate::scene::WireModel::solid_f64(
+            "preview_stretch_frame".into(),
+            vec![
+                a.to_array(),
+                [b.x, a.y, a.z],
+                [b.x, b.y, a.z],
+                [a.x, b.y, a.z],
+            ],
+            crate::scene::WireModel::CYAN,
+            true,
+        )]
     }
     fn is_selection_gathering(&self) -> bool {
         self.selecting

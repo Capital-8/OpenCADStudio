@@ -1725,7 +1725,10 @@ impl Scene {
                 .chain(
                     super::block_actions::actions(&self.document, block)
                         .into_iter()
-                        .map(|(_, a, _, _)| a.display_location),
+                        .flat_map(|(handle, a, _, _)| {
+                            std::iter::once(a.display_location)
+                                .chain(super::block_actions::frame_outline(&self.document, handle))
+                        }),
                 );
             for point in locations {
                 let point = glam::DVec3::new(point.x, point.y, point.z);

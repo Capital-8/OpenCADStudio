@@ -1203,8 +1203,19 @@ bg={bg_ms:.1}ms n={view_count}"
                             session.br_handle,
                         )
                         .into_iter()
-                        .map(|(_, action, _, _)| {
+                        .map(|(handle, action, _, _)| {
                             let mut g = crate::scene::block_distance_parameter::Graphic::default();
+                            let frame = crate::scene::block_actions::frame_outline(
+                                &tab.scene.document,
+                                handle,
+                            );
+                            g.lines.extend(
+                                frame
+                                    .iter()
+                                    .zip(frame.iter().cycle().skip(1))
+                                    .take(frame.len())
+                                    .map(|(a, b)| [*a, *b]),
+                            );
                             g.grips.push((action.display_location, false));
                             g.labels
                                 .push((action.display_location, action.element.name.clone()));

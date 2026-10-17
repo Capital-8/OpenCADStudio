@@ -277,7 +277,13 @@ pub fn stretch_entity(
 
 /// The bulge of the segment from vertex `k` once its ends moved from
 /// `before` to `after`: the arc keeps its height, bulge · chord / 2.
-fn held_bulge(bulge: f64, before: &[[f64; 2]], after: &[[f64; 2]], k: usize, closed: bool) -> f64 {
+pub(crate) fn held_bulge(
+    bulge: f64,
+    before: &[[f64; 2]],
+    after: &[[f64; 2]],
+    k: usize,
+    closed: bool,
+) -> f64 {
     let next = if k + 1 < before.len() {
         k + 1
     } else if closed {

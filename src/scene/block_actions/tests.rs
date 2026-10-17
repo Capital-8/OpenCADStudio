@@ -605,3 +605,264 @@ fn block_actions_reframe_moves_markers_and_retains_targets_and_connections() {
     assert_eq!(s.action.action.dependencies, b.action.action.dependencies);
     assert_eq!(s.connections, b.connections);
 }
+
+fn stretch_fixture() -> (CadDocument, Handle, Vec<Handle>, Handle, Handle) {
+    let mut scene = Scene::new();
+    let mut poly = codec::entities::LwPolyline::from_points(vec![
+        codec::types::Vector2::new(0., 1.),
+        codec::types::Vector2::new(10., 1.),
+        codec::types::Vector2::new(10., 3.),
+        codec::types::Vector2::new(0., 3.),
+    ]);
+    poly.is_closed = true;
+    poly.vertices[0].bulge = 0.2;
+    scene.define_block_raw(
+        "STRETCH",
+        Vector3::ZERO,
+        vec![
+            EntityType::Line(codec::entities::Line::from_points(
+                Vector3::ZERO,
+                Vector3::new(10., 0., 0.),
+            )),
+            EntityType::LwPolyline(poly),
+            EntityType::Line(codec::entities::Line::from_points(
+                Vector3::new(20., 0., 0.),
+                Vector3::new(21., 0., 0.),
+            )),
+        ],
+    );
+    let br = scene.document.block_records.get("STRETCH").unwrap();
+    let (def, handles) = (br.handle, br.entity_handles.clone());
+    let mut doc = scene.document;
+    let p = linear(&mut doc, def);
+    let action = create_with_frame(
+        &mut doc,
+        def,
+        Kind::Stretch,
+        p,
+        &handles,
+        DVec3::new(5., 4., 0.),
+        Some([DVec3::new(9., -1., 0.), DVec3::new(11., 4., 0.)]),
+    )
+    .unwrap();
+    (doc, def, handles, p, action)
+}
+
+#[test]
+fn block_actions_stretch_frozen_vertices_polyline_and_whole_objects_roundtrip() {
+    let (doc, def, handles, p, action) = stretch_fixture();
+    let ObjectType::DynamicBlock(o) = &doc.objects[&action] else {
+        panic!()
+    };
+    let DynamicBlockData::StretchAction(a) = &o.data else {
+        panic!()
+    };
+    assert_eq!(a.handles[0].indexes, vec![1]);
+    assert_eq!(a.handles[1].indexes, vec![1, 2]);
+    assert_eq!(a.action.dependencies, handles);
+    let mut evaluated = doc.clone();
+    for x in [20., 30., 12.] {
+        evaluate(&mut evaluated, &doc, def, p, DVec3::new(x, 0., 0.)).unwrap();
+        let EntityType::Line(line) = evaluated.get_entity(handles[0]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(line.start, Vector3::ZERO);
+        assert_eq!(line.end, Vector3::new(x, 0., 0.));
+        // Entirely outside the frame but explicitly in the action selection.
+        assert_eq!(start(&evaluated, handles[2]), Vector3::new(x + 10., 0., 0.));
+        let EntityType::LwPolyline(poly) = evaluated.get_entity(handles[1]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(poly.vertices[0].location.x, 0.);
+        assert_eq!(poly.vertices[1].location.x, x);
+        assert_eq!(poly.vertices[2].location.x, x);
+        assert_eq!(poly.vertices[3].location.x, 0.);
+        // Preserve the curved segment's sagitta when its chord changes.
+        assert!((poly.vertices[0].bulge * x / 2. - 1.).abs() < 1e-8);
+    }
+    for reopened in [
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+            .read()
+            .unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap()))
+            .unwrap()
+            .read()
+            .unwrap(),
+    ] {
+        assert_eq!(reopened.objects[&action], doc.objects[&action]);
+        let mut changed = reopened.clone();
+        evaluate(&mut changed, &reopened, def, p, DVec3::new(14., 0., 0.)).unwrap();
+        let EntityType::Line(line) = changed.get_entity(handles[0]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(line.end, Vector3::new(14., 0., 0.));
+    }
+}
+
+#[test]
+fn block_actions_stretch_saved_reference_independence_copy_and_reopen() {
+    let (mut doc, def, handles, p, _) = stretch_fixture();
+    let a = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "STRETCH",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    let b = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "STRETCH",
+            Vector3::new(40., 0., 0.),
+        )))
+        .unwrap();
+    let original = doc.clone();
+    doc = instance::evaluate(&doc, a, p, DVec3::new(18., 0., 0.))
+        .unwrap()
+        .unwrap();
+    assert_eq!(doc.get_entity(handles[0]), original.get_entity(handles[0]));
+    assert_eq!(doc.get_entity(b), original.get_entity(b));
+    let mut scene = Scene::new();
+    scene.document = doc;
+    let c = scene.copy_entities(
+        &[a],
+        &crate::command::EntityTransform::Translate(DVec3::new(60., 0., 0.)),
+    )[0];
+    let mut doc = scene.document;
+    let EntityType::Insert(ins) = doc.get_entity(a).unwrap() else {
+        panic!()
+    };
+    let a_member = doc
+        .block_records
+        .get(&ins.block_name)
+        .unwrap()
+        .entity_handles[0];
+    doc = instance::evaluate(&doc, c, p, DVec3::new(22., 0., 0.))
+        .unwrap()
+        .unwrap();
+    let EntityType::Line(line) = doc.get_entity(a_member).unwrap() else {
+        panic!()
+    };
+    assert_eq!(line.end, Vector3::new(18., 0., 0.));
+    let reopened = DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+        .read()
+        .unwrap();
+    let parameter = parameters(&reopened, def, Kind::Stretch)[0].clone();
+    assert_eq!(
+        instance::current(&reopened, c, &parameter).unwrap(),
+        DVec3::new(22., 0., 0.)
+    );
+    let changed = instance::evaluate(&reopened, c, p, DVec3::new(13., 0., 0.))
+        .unwrap()
+        .unwrap();
+    let EntityType::Insert(ins) = changed.get_entity(c).unwrap() else {
+        panic!()
+    };
+    let EntityType::Line(line) = changed
+        .get_entity(
+            changed
+                .block_records
+                .get(&ins.block_name)
+                .unwrap()
+                .entity_handles[0],
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(line.end, Vector3::new(13., 0., 0.));
+}
+
+#[test]
+fn block_actions_stretch_invalid_frame_binding_and_options_are_atomic() {
+    let (mut doc, def, handles, p, action) = stretch_fixture();
+    let before = doc.clone();
+    for frame in [
+        None,
+        Some([DVec3::ZERO, DVec3::X]),
+        Some([DVec3::ZERO, DVec3::splat(f64::NAN)]),
+    ] {
+        assert!(create_with_frame(
+            &mut doc,
+            def,
+            Kind::Stretch,
+            p,
+            &handles,
+            DVec3::ZERO,
+            frame
+        )
+        .is_err());
+        assert_eq!(doc, before);
+    }
+    for corrupt in [0, 1, 2] {
+        let mut invalid = doc.clone();
+        let ObjectType::DynamicBlock(o) = invalid.objects.get_mut(&action).unwrap() else {
+            panic!()
+        };
+        let DynamicBlockData::StretchAction(a) = &mut o.data else {
+            panic!()
+        };
+        match corrupt {
+            0 => a.handles[0].indexes = vec![99],
+            1 => a.offsets.distance_multiplier = 2.,
+            _ => a.connections[0].name = "BaseXDelta".into(),
+        }
+        let baseline = invalid.clone();
+        assert!(evaluate(&mut invalid, &baseline, def, p, DVec3::new(12., 0., 0.)).is_err());
+        assert_eq!(invalid, baseline);
+    }
+}
+
+#[test]
+fn block_actions_stretch_polar_xy_and_reframed_marker_keep_native_bindings() {
+    for kind in [distance::Kind::Polar, distance::Kind::XY] {
+        let (mut doc, def, targets) = fixture();
+        let p = distance::create(
+            &mut doc,
+            def,
+            kind,
+            Vector3::ZERO,
+            Vector3::new(10., 1., 0.),
+            Vector3::new(5., 2., 0.),
+        )
+        .unwrap();
+        let action = create_with_frame(
+            &mut doc,
+            def,
+            Kind::Stretch,
+            p,
+            &targets[..1],
+            DVec3::new(3., 4., 0.),
+            Some([DVec3::new(1.5, -1., 0.), DVec3::new(2.5, 1., 0.)]),
+        )
+        .unwrap();
+        let baseline = doc.clone();
+        evaluate(&mut doc, &baseline, def, p, DVec3::new(12., 4., 0.)).unwrap();
+        let EntityType::Line(line) = doc.get_entity(targets[0]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(line.start, Vector3::UNIT_X);
+        assert!(line.end.distance(&Vector3::new(4., 3., 0.)) < 1e-8);
+        super::super::block_authoring::edit::move_part(
+            &mut doc,
+            def,
+            action,
+            super::super::block_authoring::edit::Part::Point,
+            Vector3::new(6., 7., 0.),
+        )
+        .unwrap();
+        let frame = frame_outline(&doc, action);
+        assert_eq!(frame[0], Vector3::new(1.5, -1., 0.));
+        reframe(
+            &mut doc,
+            def,
+            &Transform::from_translation(Vector3::new(-2., -3., 0.)),
+        );
+        assert_eq!(frame_outline(&doc, action)[0], Vector3::new(-0.5, -4., 0.));
+        let ObjectType::DynamicBlock(o) = &doc.objects[&action] else {
+            panic!()
+        };
+        let DynamicBlockData::StretchAction(a) = &o.data else {
+            panic!()
+        };
+        assert_eq!(a.handles[0].indexes, vec![1]);
+    }
+}
