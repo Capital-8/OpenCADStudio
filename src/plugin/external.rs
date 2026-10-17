@@ -901,4 +901,51 @@ acadrust_source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=0908
         assert!(handled, "plugin should handle MP_HELLO");
         assert!(!started, "MP_HELLO is not interactive");
     }
+
+    /// Deterministic boot (API v12 hardening): plugin commands must dispatch
+    /// on N consecutive FRESH spawns — the consumer's real-host validation
+    /// saw a boot-dependent "unknown command" flake where both plugins were
+    /// listed as loaded yet dispatch answered unhandled. Each iteration is a
+    /// full fresh boot: a new app, a new runner process, a fresh handshake.
+    #[test]
+    fn plugin_dispatch_is_deterministic_across_consecutive_fresh_spawns() {
+        let path = match std::env::var_os("OCS_TEST_PLUGIN") {
+            Some(p) => std::path::PathBuf::from(p),
+            None => return,
+        };
+        if !path.exists() {
+            eprintln!("OCS_TEST_PLUGIN does not exist: {}", path.display());
+            return;
+        }
+        let host_exe = std::path::PathBuf::from(
+            std::env::var_os("OCS_PLUGIN_RUNNER_EXE")
+                .unwrap_or_else(|| std::env::current_exe().unwrap().into_os_string()),
+        );
+        assert!(
+            host_exe.exists(),
+            "host exe not found: {}",
+            host_exe.display()
+        );
+        std::env::set_var("OCS_PLUGIN_RUNNER_EXE", &host_exe);
+
+        const FRESH_BOOTS: usize = 3;
+        for boot in 1..=FRESH_BOOTS {
+            let mut app = crate::app::OpenCADStudio::new_for_test();
+            let mut host = crate::app::plugin_host::HostSession::new(&mut app, 0);
+            let process = ocs_plugin_api::process::PluginProcess::spawn(
+                &path,
+                &mut host,
+                v4_support::notification_handler(),
+            )
+            .unwrap_or_else(|e| panic!("fresh boot {boot}: spawn failed: {e}"));
+            let handled = process
+                .dispatch(&mut host, "MP_HELLO", &mut |_| {})
+                .unwrap_or_else(|e| panic!("fresh boot {boot}: dispatch failed: {e}"));
+            assert!(
+                handled,
+                "fresh boot {boot}/{FRESH_BOOTS}: MP_HELLO must dispatch — a boot-dependent                  dispatch flake is a release blocker"
+            );
+            process.shutdown();
+        }
+    }
 }
