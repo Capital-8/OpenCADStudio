@@ -1013,13 +1013,8 @@ fn evaluate_impl(
     input: Value,
     force: bool,
 ) -> Result<bool, &'static str> {
-    let graph = authoring::graph(baseline, definition)?
-        .ok_or("The block authoring graph is unavailable.")?;
-    if baseline.objects.values().any(|o| {
-        matches!(o, ObjectType::DynamicBlock(o) if o.owner == graph && matches!(&o.data,
-            DynamicBlockData::PolarStretchAction(_)))
-    }) {
-        return Err("This block contains action types not supported yet.");
+    if authoring::graph(baseline, definition)?.is_none() {
+        return Err("The block authoring graph is unavailable.");
     }
     let p = all_parameters(baseline, definition)
         .into_iter()

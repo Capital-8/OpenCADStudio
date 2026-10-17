@@ -648,6 +648,99 @@ fn stretch_fixture() -> (CadDocument, Handle, Vec<Handle>, Handle, Handle) {
     (doc, def, handles, p, action)
 }
 
+fn polar_stretch_fixture() -> (CadDocument, Handle, Vec<Handle>, Handle, Handle) {
+    let mut scene = Scene::new();
+    scene.define_block_raw(
+        "POLAR_STRETCH",
+        Vector3::ZERO,
+        vec![EntityType::Line(codec::entities::Line::from_points(
+            Vector3::UNIT_X,
+            Vector3::new(2., 0., 0.),
+        ))],
+    );
+    let record = scene.document.block_records.get("POLAR_STRETCH").unwrap();
+    let (definition, targets) = (record.handle, record.entity_handles.clone());
+    let mut doc = scene.document;
+    let parameter = distance::create(
+        &mut doc,
+        definition,
+        distance::Kind::Polar,
+        Vector3::ZERO,
+        Vector3::new(10., 0., 0.),
+        Vector3::new(5., 2., 0.),
+    )
+    .unwrap();
+    let action = create_with_frame(
+        &mut doc,
+        definition,
+        Kind::PolarStretch,
+        parameter,
+        &[targets[0]],
+        DVec3::ZERO,
+        Some([DVec3::new(0.5, -0.5, 0.), DVec3::new(1.5, 0.5, 0.)]),
+    )
+    .unwrap();
+    (doc, definition, targets, parameter, action)
+}
+
+#[test]
+fn polar_stretch_evaluates_test_block_and_saved_reference() {
+    let (mut doc, definition, targets, parameter, action) = polar_stretch_fixture();
+    let ObjectType::DynamicBlock(object) = &doc.objects[&action] else {
+        panic!()
+    };
+    let DynamicBlockData::PolarStretchAction(action) = &object.data else {
+        panic!()
+    };
+    assert_eq!(action.bindings.len(), 1);
+    assert_eq!(action.bindings[0].indexes, vec![0]);
+
+    let baseline = doc.clone();
+    evaluate(
+        &mut doc,
+        &baseline,
+        definition,
+        parameter,
+        DVec3::new(0., 10., 0.),
+    )
+    .unwrap();
+    let EntityType::Line(line) = doc.get_entity(targets[0]).unwrap() else {
+        panic!()
+    };
+    assert_eq!(line.start, Vector3::new(-9., 10., 0.));
+    assert_eq!(line.end, Vector3::new(2., 0., 0.));
+
+    let mut source = baseline.clone();
+    let insert = source
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "POLAR_STRETCH",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    let changed = instance::evaluate(
+        &source,
+        insert,
+        parameter,
+        DVec3::new(0., 10., 0.),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(source.get_entity(targets[0]), baseline.get_entity(targets[0]));
+    let EntityType::Insert(reference) = changed.get_entity(insert).unwrap() else {
+        panic!()
+    };
+    let evaluated_member = changed
+        .block_records
+        .get(&reference.block_name)
+        .unwrap()
+        .entity_handles[0];
+    let EntityType::Line(line) = changed.get_entity(evaluated_member).unwrap() else {
+        panic!()
+    };
+    assert_eq!(line.start, Vector3::new(-9., 10., 0.));
+    assert_eq!(line.end, Vector3::new(2., 0., 0.));
+}
+
 #[test]
 fn block_actions_stretch_frozen_vertices_polyline_and_whole_objects_roundtrip() {
     let (doc, def, handles, p, action) = stretch_fixture();
