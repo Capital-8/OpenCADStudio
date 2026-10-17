@@ -1245,6 +1245,75 @@ fn block_actions_palette_controls_require_compatible_parameters_and_start_comman
 }
 
 #[test]
+fn block_actions_set_ribbon_flyout_starts_action_selection_and_uses_preselected_marker() {
+    with_stack(|| {
+        use crate::scene::block_actions::{self as actions, Kind};
+        let mut app = authoring_app();
+        let i = app.active_tab;
+        let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+        let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+        let p = actions::parameters(&app.tabs[i].scene.document, def, Kind::Move)[0].handle;
+        let targets = app.tabs[i]
+            .scene
+            .document
+            .block_records
+            .get("AUTHOR")
+            .unwrap()
+            .entity_handles
+            .clone();
+        let a = actions::create(
+            &mut app.tabs[i].scene.document,
+            def,
+            Kind::Move,
+            p,
+            &targets,
+            glam::DVec3::new(3., 4., 0.),
+        )
+        .unwrap();
+        app.tabs[i].selected_authoring = Some(a);
+        app.ribbon
+            .set_collapse_mode(crate::ui::ribbon::CollapseMode::Collapsed);
+        // The top-level Manage tab has the same label as this panel opener.
+        // Open the existing panel, then click the new command in its real flyout.
+        let _ = app.update(Message::ToggleRibbonPanel("Manage".into()));
+        assert_eq!(app.ribbon.collapsed_open.as_deref(), Some("Manage"));
+        let messages = {
+            let mut simulator = iced_test::Simulator::with_size(
+                iced::Settings::default(),
+                VIEW_SIZE,
+                app.view_main(),
+            );
+            simulator
+                .click("Action Selection")
+                .expect("action selection in Manage flyout");
+            simulator.into_messages().collect::<Vec<_>>()
+        };
+        for message in messages {
+            let _ = app.update(message);
+        }
+        assert_eq!(
+            app.tabs[i].active_cmd.as_ref().unwrap().name(),
+            "BACTIONSET"
+        );
+        assert!(app.tabs[i]
+            .active_cmd
+            .as_ref()
+            .unwrap()
+            .prompt()
+            .contains("New/Add/Remove"));
+        let _ = app.feed_command(crate::command::StepInput::Enter);
+        assert!(app.tabs[i]
+            .active_cmd
+            .as_ref()
+            .unwrap()
+            .is_selection_gathering());
+        let before = app.tabs[i].scene.document.clone();
+        let _ = app.update(Message::CommandEscape);
+        assert_eq!(app.tabs[i].scene.document, before);
+    });
+}
+
+#[test]
 fn block_actions_stretch_palette_requires_distance_parameter() {
     with_stack(|| {
         let mut app = authoring_app();

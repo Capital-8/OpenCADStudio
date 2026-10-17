@@ -391,6 +391,7 @@ impl OpenCADStudio {
             return Some(Task::none());
         }
         match cmd {
+            "BACTIONSET" => Some(self.start_block_action_set()),
             cmd if cmd == "BACTION"
                 || cmd.starts_with("BACTION ")
                 || cmd == "BACTIONTOOL"

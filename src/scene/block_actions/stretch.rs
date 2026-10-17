@@ -39,40 +39,68 @@ pub(crate) fn bind(
     if high.x - low.x < 1e-9 || high.y - low.y < 1e-9 {
         return Err("The stretch frame needs a nonzero width and height.");
     }
+    let points = vec![Vector2::new(low.x, low.y), Vector2::new(high.x, high.y)];
+    let bindings = bind_existing(doc, targets, &points, plane)?;
+    Ok((points, bindings))
+}
+
+pub(crate) fn bind_existing(
+    doc: &CadDocument,
+    targets: &[Handle],
+    frame: &[Vector2],
+    plane: f64,
+) -> Result<Vec<BlockStretchHandle>, &'static str> {
+    let polygon = outline(frame, plane);
+    if polygon.len() < 3 || polygon.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
+        return Err("The Stretch frame is invalid.");
+    }
+    let inside = |p: DVec3| {
+        let mut crossing = false;
+        for (a, b) in polygon
+            .iter()
+            .zip(polygon.iter().cycle().skip(1))
+            .take(polygon.len())
+        {
+            let (dx, dy) = (b.x - a.x, b.y - a.y);
+            let cross = (p.x - a.x) * dy - (p.y - a.y) * dx;
+            if cross.abs() < 1e-8
+                && p.x >= a.x.min(b.x) - 1e-8
+                && p.x <= a.x.max(b.x) + 1e-8
+                && p.y >= a.y.min(b.y) - 1e-8
+                && p.y <= a.y.max(b.y) + 1e-8
+            {
+                return true;
+            }
+            if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
+                crossing = !crossing;
+            }
+        }
+        crossing
+    };
     let mut bindings = vec![];
-    let mut unique = targets.to_vec();
-    unique.sort();
-    unique.dedup();
-    for handle in unique {
-        let entity = doc
-            .get_entity(handle)
-            .ok_or("A Stretch target is unavailable.")?;
-        let points = control_points(entity)?;
+    for &handle in targets {
+        let points = control_points(
+            doc.get_entity(handle)
+                .ok_or("A Stretch target is unavailable.")?,
+        )?;
         if points.iter().any(|p| (p.z - plane).abs() > 1e-8) {
             return Err("Stretch targets must lie in the parameter's XY plane.");
         }
         let indexes = points
-            .iter()
+            .into_iter()
             .enumerate()
-            .filter(|(_, p)| p.x >= low.x && p.x <= high.x && p.y >= low.y && p.y <= high.y)
+            .filter(|(_, p)| inside(*p))
             .map(|(i, _)| i as i32)
             .collect::<Vec<_>>();
         if !indexes.is_empty() {
             bindings.push(BlockStretchHandle { handle, indexes });
         }
     }
-    Ok((
-        vec![Vector2::new(low.x, low.y), Vector2::new(high.x, high.y)],
-        bindings,
-    ))
+    Ok(bindings)
 }
 
-pub(crate) fn validate(doc: &CadDocument, a: &BlockStretchAction) -> Result<(), &'static str> {
-    if a.points.len() < 2
-        || a.points
-            .iter()
-            .any(|p| !p.x.is_finite() || !p.y.is_finite())
-        || a.offsets.distance_multiplier != 1.
+pub(crate) fn validate_options(a: &BlockStretchAction) -> Result<(), &'static str> {
+    if a.offsets.distance_multiplier != 1.
         || a.offsets.angle_offset != 0.
         || a.offsets.flags != 0
         || !a.codes.is_empty()
@@ -82,6 +110,18 @@ pub(crate) fn validate(doc: &CadDocument, a: &BlockStretchAction) -> Result<(), 
         || a.connections[1].name != "EndYDelta"
     {
         return Err("This Stretch action uses options or parameter bindings not supported yet.");
+    }
+    Ok(())
+}
+
+pub(crate) fn validate(doc: &CadDocument, a: &BlockStretchAction) -> Result<(), &'static str> {
+    validate_options(a)?;
+    if a.points.len() < 2
+        || a.points
+            .iter()
+            .any(|p| !p.x.is_finite() || !p.y.is_finite())
+    {
+        return Err("The Stretch frame is invalid.");
     }
     let mut seen = std::collections::BTreeSet::new();
     for binding in &a.handles {

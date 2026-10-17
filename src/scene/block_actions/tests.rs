@@ -866,3 +866,191 @@ fn block_actions_stretch_polar_xy_and_reframed_marker_keep_native_bindings() {
         assert_eq!(a.handles[0].indexes, vec![1]);
     }
 }
+
+#[test]
+fn block_actions_retarget_preserves_identity_and_native_roundtrip() {
+    for kind in [Kind::Move, Kind::Scale, Kind::Rotate, Kind::Flip] {
+        let (mut doc, def, targets) = fixture();
+        let p = match kind {
+            Kind::Rotate => orientation(
+                &mut doc,
+                def,
+                super::super::block_orientation_parameter::Kind::Rotation,
+            ),
+            Kind::Flip => orientation(
+                &mut doc,
+                def,
+                super::super::block_orientation_parameter::Kind::Flip,
+            ),
+            _ => linear(&mut doc, def),
+        };
+        let a = create(
+            &mut doc,
+            def,
+            kind,
+            p,
+            &targets[..1],
+            DVec3::new(3., 4., 0.),
+        )
+        .unwrap();
+        let graph = authoring::graph(&doc, def).unwrap().unwrap();
+        let graph_before = doc.objects[&graph].clone();
+        assert!(retarget(&mut doc, def, a, &targets[1..], None).unwrap());
+        assert_eq!(doc.objects[&graph], graph_before);
+        let (_, action, k, _) = actions(&doc, def)
+            .into_iter()
+            .find(|(h, _, _, _)| *h == a)
+            .unwrap();
+        assert_eq!(k, kind);
+        assert_eq!(action.dependencies, targets[1..]);
+        assert_eq!(action.display_location, Vector3::new(3., 4., 0.));
+        assert!(!retarget(&mut doc, def, a, &targets[1..], None).unwrap());
+        let before = doc.clone();
+        assert!(retarget(&mut doc, def, a, &[], None).is_err());
+        assert!(retarget(&mut doc, def, a, &[Handle::new(999999)], None).is_err());
+        assert_eq!(doc, before);
+        for saved in [
+            DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+                .read()
+                .unwrap(),
+            DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap()))
+                .unwrap()
+                .read()
+                .unwrap(),
+        ] {
+            assert_eq!(saved.objects[&a], doc.objects[&a]);
+        }
+    }
+}
+
+#[test]
+fn block_actions_retarget_stretch_retains_vertices_and_replaces_frame() {
+    let (mut doc, def, targets, p, a) = stretch_fixture();
+    // Removing members must retain the old vertex bindings of retained members.
+    retarget(&mut doc, def, a, &targets[..1], None).unwrap();
+    let EntityType::Line(line) = doc.get_entity_mut(targets[0]).unwrap() else {
+        panic!()
+    };
+    line.end.x = 20.; // Now outside the old frame; retained binding must not change.
+    retarget(&mut doc, def, a, &targets[..2], None).unwrap();
+    let baseline = doc.clone();
+    evaluate(&mut doc, &baseline, def, p, DVec3::new(12., 0., 0.)).unwrap();
+    let EntityType::Line(line) = doc.get_entity(targets[0]).unwrap() else {
+        panic!()
+    };
+    assert_eq!(line.start, Vector3::ZERO);
+    assert_eq!(line.end.x, 22.);
+    let mut doc = baseline;
+    retarget(
+        &mut doc,
+        def,
+        a,
+        &targets[..2],
+        Some([DVec3::new(-1., -1., 0.), DVec3::new(1., 4., 0.)]),
+    )
+    .unwrap();
+    let baseline = doc.clone();
+    evaluate(&mut doc, &baseline, def, p, DVec3::new(12., 0., 0.)).unwrap();
+    let EntityType::Line(line) = doc.get_entity(targets[0]).unwrap() else {
+        panic!()
+    };
+    assert_eq!(line.start.x, 2.);
+    assert_eq!(line.end.x, 20.);
+    let saved = DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&baseline).unwrap()))
+        .read()
+        .unwrap();
+    assert_eq!(saved.objects[&a], baseline.objects[&a]);
+    let mut polygon = baseline.clone();
+    reframe(
+        &mut polygon,
+        def,
+        &Transform::from_translation(Vector3::ZERO),
+    );
+    retarget(&mut polygon, def, a, &targets, None).unwrap();
+    assert_eq!(frame_outline(&polygon, a).len(), 4);
+}
+
+#[test]
+fn block_actions_retarget_refresh_resets_old_targets_and_keeps_each_reference_value() {
+    let (mut doc, def, targets) = fixture();
+    let p = linear(&mut doc, def);
+    let a = create(&mut doc, def, Kind::Move, p, &targets[..1], DVec3::ZERO).unwrap();
+    let first = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    let second = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::new(40., 0., 0.),
+        )))
+        .unwrap();
+    doc = instance::evaluate(&doc, first, p, DVec3::new(18., 0., 0.))
+        .unwrap()
+        .unwrap();
+    doc = instance::evaluate(&doc, second, p, DVec3::new(22., 0., 0.))
+        .unwrap()
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.document = doc;
+    let copied = scene.copy_entities(
+        &[first],
+        &crate::command::EntityTransform::Translate(DVec3::new(80., 0., 0.)),
+    )[0];
+    let mut doc = scene.document;
+    let original_line = doc.get_entity(targets[0]).unwrap().clone();
+    retarget(&mut doc, def, a, &targets[1..], None).unwrap();
+    let doc = instance::refresh(&doc, def).unwrap();
+    for (reference, delta) in [(first, 8.), (second, 12.), (copied, 8.)] {
+        let EntityType::Insert(i) = doc.get_entity(reference).unwrap() else {
+            panic!()
+        };
+        let members = &doc.block_records.get(&i.block_name).unwrap().entity_handles;
+        assert_eq!(start(&doc, members[0]), Vector3::UNIT_X);
+        let EntityType::Circle(circle) = doc.get_entity(members[1]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(circle.center, Vector3::new(4. + delta, 3., 0.));
+        assert_eq!(
+            instance::current(&doc, reference, &parameters(&doc, def, Kind::Move)[0]).unwrap(),
+            DVec3::new(10. + delta, 0., 0.)
+        );
+    }
+    assert_eq!(doc.get_entity(targets[0]).unwrap(), &original_line);
+    // Re-evaluating a reference at a different value also resets removed targets.
+    let changed = instance::evaluate(&doc, first, p, DVec3::new(14., 0., 0.))
+        .unwrap()
+        .unwrap();
+    assert_eq!(instance_line(&changed, first), Vector3::UNIT_X);
+}
+
+#[test]
+fn block_actions_retarget_stretch_can_remove_stale_binding_or_replace_it() {
+    let (mut doc, def, targets, _, a) = stretch_fixture();
+    let ObjectType::DynamicBlock(o) = doc.objects.get_mut(&a).unwrap() else {
+        panic!()
+    };
+    let DynamicBlockData::StretchAction(action) = &mut o.data else {
+        panic!()
+    };
+    action.handles[0].indexes = vec![99];
+    let mut replace = doc.clone();
+    retarget(&mut doc, def, a, &targets[1..], None).unwrap();
+    retarget(
+        &mut replace,
+        def,
+        a,
+        &targets,
+        Some([DVec3::new(9., -1., 0.), DVec3::new(11., 4., 0.)]),
+    )
+    .unwrap();
+    let ObjectType::DynamicBlock(o) = &replace.objects[&a] else {
+        panic!()
+    };
+    let DynamicBlockData::StretchAction(action) = &o.data else {
+        panic!()
+    };
+    assert_eq!(action.handles[0].indexes, vec![1]);
+}

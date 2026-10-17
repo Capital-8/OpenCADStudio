@@ -59,6 +59,213 @@ fn feed(app: &mut OpenCADStudio, text: &str) {
     let _ = app.update(Message::CommandSubmit);
 }
 
+fn edit_action_set(app: &mut OpenCADStudio, action: Handle, mode: &str, targets: Vec<Handle>) {
+    app.tabs[app.active_tab].selected_authoring = Some(action);
+    let _ = app.dispatch_command("BACTIONSET");
+    feed(app, mode);
+    let _ = app.feed_command(crate::command::StepInput::SelectionComplete(targets));
+    let _ = app.feed_command(crate::command::StepInput::Enter);
+    assert!(app.tabs[app.active_tab].active_cmd.is_none());
+}
+
+#[test]
+fn block_actions_set_edit_refresh_local_history_discard_save_and_drawing_history() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    circle(&mut app, 3.);
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let p = actions::parameters(&app.tabs[i].scene.document, def, Kind::Move)[0].clone();
+    let targets = members(&app);
+    let action = actions::create(
+        &mut app.tabs[i].scene.document,
+        def,
+        Kind::Move,
+        p.handle,
+        &targets[..1],
+        glam::DVec3::new(3., 4., 0.),
+    )
+    .unwrap();
+    edit_action_set(&mut app, action, "Add", targets[1..].to_vec());
+    assert_eq!(
+        actions::actions(&app.tabs[i].scene.document, def)[0]
+            .1
+            .dependencies,
+        targets
+    );
+    app.undo_steps(1);
+    assert_eq!(
+        actions::actions(&app.tabs[i].scene.document, def)[0]
+            .1
+            .dependencies,
+        targets[..1]
+    );
+    app.redo_steps(1);
+    edit_action_set(&mut app, action, "Remove", targets[..1].to_vec());
+    assert_eq!(
+        actions::actions(&app.tabs[i].scene.document, def)[0]
+            .1
+            .dependencies,
+        targets[1..]
+    );
+    edit_action_set(&mut app, action, "New", targets[..1].to_vec());
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BCLOSE");
+    app.tabs[i].scene.selected.insert(reference);
+    app.refresh_properties();
+    let grip = app.tabs[i]
+        .selected_grips
+        .iter()
+        .find(|g| super::block_actions::is_test_grip(g.id))
+        .unwrap()
+        .id;
+    assert!(app.start_test_action_grip(reference, grip));
+    feed(&mut app, "12,0");
+    let check = |app: &OpenCADStudio, start: f64, center: f64| {
+        let doc = &app.tabs[app.active_tab].scene.document;
+        let EntityType::Insert(ins) = doc.get_entity(reference).unwrap() else {
+            panic!()
+        };
+        let members = &doc
+            .block_records
+            .get(&ins.block_name)
+            .unwrap()
+            .entity_handles;
+        let EntityType::Line(line) = doc.get_entity(members[0]).unwrap() else {
+            panic!()
+        };
+        let EntityType::Circle(circle) = doc.get_entity(members[1]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(line.start.x, start);
+        assert_eq!(circle.center.x, center);
+    };
+    check(&app, 2., 3.);
+    begin(&mut app, reference);
+    let depth = app.tabs[i].history.undo_stack.len();
+    edit_action_set(&mut app, action, "New", targets[1..].to_vec());
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    check(&app, 0., 5.);
+    app.undo_steps(1);
+    check(&app, 2., 3.);
+    app.redo_steps(1);
+    check(&app, 0., 5.);
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    check(&app, 2., 3.);
+    begin(&mut app, reference);
+    edit_action_set(&mut app, action, "New", targets[1..].to_vec());
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BCLOSE");
+    check(&app, 0., 5.);
+    app.undo_steps(1);
+    check(&app, 2., 3.);
+    assert_eq!(
+        actions::actions(&app.tabs[i].scene.document, def)[0]
+            .1
+            .dependencies,
+        targets[..1]
+    );
+    app.redo_steps(1);
+    check(&app, 0., 5.);
+    let bytes = codec::DwgWriter::write_to_vec(&app.tabs[i].scene.document).unwrap();
+    app.tabs[i].scene.document = codec::DwgReader::from_stream(std::io::Cursor::new(bytes))
+        .read()
+        .unwrap();
+    check(&app, 0., 5.);
+    assert_eq!(
+        actions::actions(&app.tabs[i].scene.document, def)[0]
+            .1
+            .dependencies,
+        targets[1..]
+    );
+}
+
+#[test]
+fn block_actions_set_frame_cancel_stale_and_context_guards() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    let _ = app.dispatch_command("LINE");
+    let _ = app.dispatch_command("BACTIONSET");
+    assert_eq!(
+        app.tabs[app.active_tab].active_cmd.as_ref().unwrap().name(),
+        "LINE"
+    );
+    let _ = app.update(Message::CommandEscape);
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let p = actions::parameters(&app.tabs[i].scene.document, def, Kind::Stretch)[0].handle;
+    let targets = members(&app);
+    let action = actions::create_with_frame(
+        &mut app.tabs[i].scene.document,
+        def,
+        Kind::Stretch,
+        p,
+        &targets,
+        glam::DVec3::new(3., 4., 0.),
+        Some([glam::DVec3::new(0.5, -1., 0.), glam::DVec3::new(2., 1., 0.)]),
+    )
+    .unwrap();
+    let original = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let _ = app.dispatch_command("BACTIONSET");
+    let name = actions::actions(&original, def)[0].1.element.name.clone();
+    feed(&mut app, &name);
+    feed(&mut app, "Frame");
+    feed(&mut app, "-1,-1");
+    let _ = app.update(Message::CommandEscape);
+    assert_eq!(app.tabs[i].scene.document, original);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    app.tabs[i].selected_authoring = Some(action);
+    let _ = app.dispatch_command("BACTIONSET");
+    feed(&mut app, "Frame");
+    feed(&mut app, "-1,-1");
+    feed(&mut app, "-1,1");
+    assert_eq!(app.tabs[i].scene.document, original);
+    feed(&mut app, "0.5,1");
+    assert!(app.tabs[i].active_cmd.is_none());
+    assert_eq!(
+        actions::frame_outline(&app.tabs[i].scene.document, action)[0],
+        Vector3::new(-1., -1., 0.)
+    );
+    app.undo_steps(1);
+    assert_eq!(
+        app.tabs[i].scene.document.objects[&action],
+        original.objects[&action]
+    );
+    let expected = Box::new(original.objects[&action].clone());
+    let _ = app.handle_block_action_result(crate::command::CmdResult::EditBlockActionSet {
+        document: app.tabs[i].id + 1,
+        definition: def,
+        action,
+        expected: expected.clone(),
+        targets: targets.clone(),
+        frame: None,
+    });
+    assert_eq!(app.tabs[i].scene.document, original);
+    crate::scene::block_authoring::edit::move_part(
+        &mut app.tabs[i].scene.document,
+        def,
+        action,
+        crate::scene::block_authoring::edit::Part::Point,
+        Vector3::new(8., 8., 0.),
+    )
+    .unwrap();
+    let stale = app.tabs[i].scene.document.clone();
+    let _ = app.handle_block_action_result(crate::command::CmdResult::EditBlockActionSet {
+        document: app.tabs[i].id,
+        definition: def,
+        action,
+        expected,
+        targets,
+        frame: None,
+    });
+    assert_eq!(app.tabs[i].scene.document, stale);
+}
+
 #[test]
 fn block_actions_stretch_frame_selection_history_test_and_saved_grip() {
     use crate::scene::block_actions::{self as actions, Kind};

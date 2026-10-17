@@ -207,22 +207,9 @@ impl CadCommand for ActionCommand {
         }
     }
     fn on_preview_wires(&mut self, point: DVec3) -> Vec<crate::scene::WireModel> {
-        let Some(a) = self.frame.first().filter(|_| point.is_finite()) else {
-            return vec![];
-        };
-        let b = self.frame.get(1).copied().unwrap_or(point);
-        vec![crate::scene::WireModel::solid_f64(
-            "preview_stretch_frame".into(),
-            vec![
-                a.to_array(),
-                [b.x, a.y, a.z],
-                [b.x, b.y, a.z],
-                [a.x, b.y, a.z],
-            ],
-            crate::scene::WireModel::CYAN,
-            true,
-        )]
+        frame_preview(&self.frame, point)
     }
+
     fn is_selection_gathering(&self) -> bool {
         self.selecting
     }
@@ -275,4 +262,23 @@ impl CadCommand for TestParameterCommand {
     fn on_enter(&mut self) -> CmdResult {
         CmdResult::Cancel
     }
+}
+
+/// Shared rectangular frame preview for authoring and reauthoring.
+pub(super) fn frame_preview(frame: &[DVec3], point: DVec3) -> Vec<crate::scene::WireModel> {
+    let Some(a) = frame.first().filter(|_| point.is_finite()) else {
+        return vec![];
+    };
+    let b = frame.get(1).copied().unwrap_or(point);
+    vec![crate::scene::WireModel::solid_f64(
+        "preview_stretch_frame".into(),
+        vec![
+            a.to_array(),
+            [b.x, a.y, a.z],
+            [b.x, b.y, a.z],
+            [a.x, b.y, a.z],
+        ],
+        crate::scene::WireModel::CYAN,
+        true,
+    )]
 }

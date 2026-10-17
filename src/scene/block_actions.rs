@@ -510,6 +510,89 @@ pub(crate) fn create_with_frame(
     Ok(handle)
 }
 
+/// Retarget an existing native action, retaining identity, graph and options.
+pub(crate) fn retarget(
+    doc: &mut CadDocument,
+    definition: Handle,
+    handle: Handle,
+    targets: &[Handle],
+    frame: Option<[DVec3; 2]>,
+) -> Result<bool, &'static str> {
+    let (_, action, kind, id) = actions(doc, definition)
+        .into_iter()
+        .find(|(h, _, _, _)| *h == handle)
+        .ok_or("Select an action belonging to this block.")?;
+    let mut targets = targets.to_vec();
+    targets.sort();
+    targets.dedup();
+    if targets.is_empty() {
+        return Err("An action needs at least one object.");
+    }
+    let members = &doc
+        .block_records
+        .iter()
+        .find(|b| b.handle == definition)
+        .ok_or("The definition is unavailable.")?
+        .entity_handles;
+    if targets.iter().any(|h| {
+        !members.contains(h)
+            || doc
+                .get_entity(*h)
+                .is_none_or(|e| e.common().owner_handle != definition || !supported(e))
+    }) {
+        return Err("Select supported drawing objects belonging to this block.");
+    }
+    let old_targets = action.dependencies.clone();
+    let mut staged = doc.clone();
+    let ObjectType::DynamicBlock(o) = staged.objects.get_mut(&handle).unwrap() else {
+        unreachable!()
+    };
+    match &mut o.data {
+        DynamicBlockData::StretchAction(a) => {
+            let plane = parameters(doc, definition, Kind::Stretch)
+                .into_iter()
+                .find(|p| p.id == id)
+                .ok_or("The Stretch parameter is unavailable.")?
+                .end
+                .z;
+            stretch::validate_options(a)?;
+            if let Some(corners) = frame {
+                let (points, handles) = stretch::bind(doc, &targets, corners, plane)?;
+                a.points = points;
+                a.handles = handles;
+            } else {
+                a.handles.retain(|h| targets.contains(&h.handle));
+                let mut retained = a.clone();
+                retained.action.dependencies.retain(|h| targets.contains(h));
+                stretch::validate(doc, &retained)?;
+                let added = targets
+                    .iter()
+                    .copied()
+                    .filter(|h| !old_targets.contains(h))
+                    .collect::<Vec<_>>();
+                a.handles
+                    .extend(stretch::bind_existing(doc, &added, &a.points, plane)?);
+                a.handles.sort_by_key(|h| h.handle);
+            }
+            a.action.dependencies = targets;
+        }
+        DynamicBlockData::MoveAction(a) => a.action.dependencies = targets,
+        DynamicBlockData::FlipAction(a) => a.action.dependencies = targets,
+        DynamicBlockData::ScaleAction(a) | DynamicBlockData::RotateAction(a) => {
+            a.action.action.dependencies = targets
+        }
+        _ => return Err("This action's selection cannot be edited yet."),
+    }
+    if frame.is_some() && kind != Kind::Stretch {
+        return Err("Only Stretch actions have a stretch frame.");
+    }
+    if staged == *doc {
+        return Ok(false);
+    }
+    *doc = staged;
+    Ok(true)
+}
+
 pub(crate) fn actions(
     doc: &CadDocument,
     definition: Handle,
@@ -682,6 +765,30 @@ pub(crate) fn evaluate_value(
     parameter: Handle,
     input: Value,
 ) -> Result<bool, &'static str> {
+    evaluate_impl(doc, baseline, definition, parameter, input, false)
+}
+
+pub(crate) fn rebuild(
+    doc: &mut CadDocument,
+    baseline: &CadDocument,
+    definition: Handle,
+) -> Result<(), &'static str> {
+    let Some(p) = all_parameters(baseline, definition).into_iter().next() else {
+        return Ok(());
+    };
+    let input = value(doc, &p)?;
+    evaluate_impl(doc, baseline, definition, p.handle, input, true)?;
+    Ok(())
+}
+
+fn evaluate_impl(
+    doc: &mut CadDocument,
+    baseline: &CadDocument,
+    definition: Handle,
+    parameter: Handle,
+    input: Value,
+    force: bool,
+) -> Result<bool, &'static str> {
     let graph = authoring::graph(baseline, definition)?
         .ok_or("The block authoring graph is unavailable.")?;
     if baseline.objects.values().any(|o| {
@@ -722,11 +829,13 @@ pub(crate) fn evaluate_value(
         value => value,
     };
     let previous = value(doc, &p)?;
-    if match (previous, input) {
-        (Value::Flip(a), Value::Flip(b)) => a == b,
-        (Value::Point(a), Value::Point(b)) => a.distance(b) < 1e-10,
-        _ => false,
-    } {
+    if !force
+        && match (previous, input) {
+            (Value::Flip(a), Value::Flip(b)) => a == b,
+            (Value::Point(a), Value::Point(b)) => a.distance(b) < 1e-10,
+            _ => false,
+        }
+    {
         return Ok(false);
     }
     let mut staged = doc.clone();

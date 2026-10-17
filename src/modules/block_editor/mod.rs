@@ -7,6 +7,7 @@ use crate::modules::{CadModule, IconKind, ModuleEvent, RibbonGroup, RibbonItem, 
 
 pub mod visibility_parameter;
 pub mod action;
+pub mod action_set;
 pub mod point_parameter;
 pub mod single_parameter;
 pub mod distance_parameter;
@@ -90,6 +91,11 @@ impl CadModule for BlockEditorModule {
             // parameters as the Parametric tab.
             groups.extend(ParametricModule.ribbon_groups().iter().cloned());
             if let Some(manage) = groups.iter_mut().find(|group| group.title == "Manage") {
+                manage.tools.push(command(
+                    "BACTIONSET",
+                    "Action Selection",
+                    include_bytes!("../../../assets/icons/blocks/select_objects.svg"),
+                ));
                 manage.tools.insert(
                     0,
                     command(

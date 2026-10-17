@@ -150,6 +150,22 @@ impl OpenCADStudio {
                 candidate_handles.insert(record.block_end_handle);
             }
         }
+        // Action-set edits can rebuild anonymous references outside the editor
+        // definition. Include their entities in the single drawing save delta.
+        for document in [before_doc, &tab.scene.document] {
+            for entity in document.entities() {
+                if let EntityType::Insert(insert) = entity {
+                    if document.dynamic_definition_for_insert(insert.common.handle)
+                        == Some(session.br_handle)
+                    {
+                        candidate_handles.insert(insert.common.handle);
+                        if let Some(record) = document.block_records.get(&insert.block_name) {
+                            candidate_handles.extend(record.entity_handles.iter().copied());
+                        }
+                    }
+                }
+            }
+        }
         let mut sub_handles = Vec::new();
         for &h in &candidate_handles {
             let entity_opt = before_doc

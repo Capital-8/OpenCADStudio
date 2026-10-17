@@ -30,6 +30,55 @@ impl OpenCADStudio {
         }
         None
     }
+    pub(in crate::app) fn action_set_error(&self) -> Option<&'static str> {
+        let tab = &self.tabs[self.active_tab];
+        let Some(session) = tab.active_block_edit_session() else {
+            return Some("BACTIONSET is only available in the Block Editor.");
+        };
+        if let Some(e) = crate::scene::block_point_parameter::placement_error(
+            &tab.scene.document,
+            session.br_handle,
+        ) {
+            return Some(e);
+        }
+        actions::actions(&tab.scene.document, session.br_handle)
+            .is_empty()
+            .then_some("This block has no supported actions to edit.")
+    }
+    pub(in crate::app) fn start_block_action_set(&mut self) -> Task<Message> {
+        if let Some(e) = self.action_set_error() {
+            self.command_line.push_error(crate::t!(e).as_ref());
+            return Task::none();
+        }
+        let tab = &self.tabs[self.active_tab];
+        let command = crate::modules::block_editor::action_set::ActionSetCommand::new(
+            tab.id,
+            tab.active_block_edit_session().unwrap().br_handle,
+            &tab.scene.document,
+            tab.selected_authoring,
+        );
+        self.command_line.push_info(&command.prompt());
+        self.command_line.set_step_options(command.options());
+        self.tabs[self.active_tab].active_cmd = Some(Box::new(command));
+        Task::none()
+    }
+    fn apply_action_document(&mut self, i: usize, mut staged: codec::CadDocument) {
+        let doc = &mut self.tabs[i].scene.document;
+        let changes = staged
+            .entities()
+            .filter(|e| doc.get_entity(e.common().handle) != Some(*e))
+            .cloned()
+            .collect::<Vec<_>>();
+        doc.swap_structure(staged.snapshot_structure());
+        for entity in changes {
+            let handle = entity.common().handle;
+            if let Some(current) = doc.get_entity_mut(handle) {
+                *current = entity;
+            } else {
+                doc.restore_entity_arc(std::sync::Arc::new(entity));
+            }
+        }
+    }
     pub(in crate::app) fn start_block_action(&mut self, args: &str) -> Task<Message> {
         let kind = if args.is_empty() {
             None
@@ -69,6 +118,53 @@ impl OpenCADStudio {
     ) -> Task<Message> {
         let i = self.active_tab;
         match result {
+            crate::command::CmdResult::EditBlockActionSet {
+                document,
+                definition,
+                action,
+                expected,
+                targets,
+                frame,
+            } => {
+                let tab = &self.tabs[i];
+                if tab.id != document
+                    || tab.active_block_edit_session().map(|s| s.br_handle) != Some(definition)
+                    || tab.scene.document.objects.get(&action) != Some(expected.as_ref())
+                {
+                    self.command_line.push_error(
+                        crate::t!(
+                            "The action or its Block Editor session changed; restart BACTIONSET."
+                        )
+                        .as_ref(),
+                    );
+                    return Task::none();
+                }
+                let mut staged = tab.scene.document.clone();
+                let result = actions::retarget(&mut staged, definition, action, &targets, frame)
+                    .and_then(|changed| {
+                        if changed {
+                            staged = actions::instance::refresh(&staged, definition)?;
+                        }
+                        Ok(changed)
+                    });
+                match result {
+                    Ok(changed) => {
+                        if changed {
+                            self.push_undo_snapshot(i, "Action selection set");
+                            self.apply_action_document(i, staged);
+                            self.tabs[i].scene.bump_geometry();
+                            self.tabs[i].dirty = true;
+                            self.finish_pending_history(i);
+                        }
+                        self.tabs[i].active_cmd = None;
+                        self.tabs[i].scene.clear_preview_wire();
+                        self.refresh_properties();
+                        self.command_line
+                            .push_output(crate::t!("Action selection updated.").as_ref());
+                    }
+                    Err(e) => self.command_line.push_error(crate::t!(e).as_ref()),
+                }
+            }
             crate::command::CmdResult::PlaceBlockAction {
                 document,
                 definition,
@@ -427,24 +523,9 @@ impl OpenCADStudio {
         };
         match actions::instance::evaluate_value(&tab.scene.document, handle, parameter, local) {
             Ok(staged) => {
-                if let Some(mut staged) = staged {
+                if let Some(staged) = staged {
                     self.push_undo_snapshot(i, "Block reference parameter");
-                    let doc = &mut self.tabs[i].scene.document;
-                    let changes = staged
-                        .entities()
-                        .filter(|e| doc.get_entity(e.common().handle) != Some(*e))
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    // Structure swapping retains the live store and its transaction recorder.
-                    doc.swap_structure(staged.snapshot_structure());
-                    for entity in changes {
-                        let h = entity.common().handle;
-                        if let Some(current) = doc.get_entity_mut(h) {
-                            *current = entity
-                        } else {
-                            doc.restore_entity_arc(std::sync::Arc::new(entity));
-                        }
-                    }
+                    self.apply_action_document(i, staged);
                     self.tabs[i].scene.bump_geometry();
                     self.tabs[i].dirty = true;
                     self.finish_pending_history(i);

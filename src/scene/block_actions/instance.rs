@@ -301,6 +301,47 @@ pub(crate) fn evaluate_value(
         return Ok(None);
     }
     let value = super::value(&evaluated, selected)?;
+    let mut result = materialize(doc, insert, def, &evaluated)?;
+    save(&mut result, insert, selected, value)?;
+    Ok(Some(result))
+}
+
+/// Refresh existing evaluated references after an authoring change.
+pub(crate) fn refresh(doc: &CadDocument, def: Handle) -> Result<CadDocument, &'static str> {
+    let mut staged = doc.clone();
+    let inserts = doc
+        .entities()
+        .filter_map(|e| match e {
+            EntityType::Insert(i)
+                if doc.dynamic_definition_for_insert(i.common.handle) == Some(def)
+                    && doc
+                        .block_records
+                        .get(&i.block_name)
+                        .is_some_and(|b| b.handle != def) =>
+            {
+                Some(i.common.handle)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    for insert in inserts {
+        let mut evaluated = staged.clone();
+        for p in all_parameters(&staged, def) {
+            let v = value(&staged, insert, &p)?;
+            super::set_value(&mut evaluated, &p, v)?;
+        }
+        super::rebuild(&mut evaluated, &staged, def)?;
+        staged = materialize(&staged, insert, def, &evaluated)?;
+    }
+    Ok(staged)
+}
+
+fn materialize(
+    doc: &CadDocument,
+    insert: Handle,
+    def: Handle,
+    evaluated: &CadDocument,
+) -> Result<CadDocument, &'static str> {
     let mut scene = crate::scene::Scene::new();
     scene.document = doc.clone();
     scene.dynamic_representation(insert);
@@ -316,8 +357,8 @@ pub(crate) fn evaluate_value(
     {
         return Err("Could not isolate the dynamic block reference.");
     }
-    // Evaluate only temporary definition members, then copy the affected geometry
-    // into this reference's representation, preserving identity and visibility.
+    // Rebuild all members so removed targets lose their old action effects.
+    // Preserve each representation member's identity and visibility.
     let source = doc
         .block_records
         .iter()
@@ -327,10 +368,6 @@ pub(crate) fn evaluate_value(
     if source.entity_handles.len() != target.entity_handles.len() {
         return Err("The reference topology no longer matches its definition.");
     }
-    let affected = actions(doc, def)
-        .iter()
-        .flat_map(|(_, a, _, _)| a.dependencies.iter().copied())
-        .collect::<std::collections::BTreeSet<_>>();
     let pairs = source
         .entity_handles
         .iter()
@@ -338,9 +375,6 @@ pub(crate) fn evaluate_value(
         .zip(target.entity_handles.iter().copied())
         .collect::<Vec<_>>();
     for (from, to) in pairs {
-        if !affected.contains(&from) {
-            continue;
-        }
         let mut e = evaluated
             .get_entity(from)
             .cloned()
@@ -355,6 +389,5 @@ pub(crate) fn evaluate_value(
         *e.common_mut() = target.common().clone();
         *target = e;
     }
-    save(&mut scene.document, insert, selected, value)?;
-    Ok(Some(scene.document))
+    Ok(scene.document)
 }

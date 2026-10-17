@@ -1514,6 +1514,14 @@ impl DimensionPreview {
 /// Returned by every `CadCommand` method to tell main.rs what to do.
 #[allow(dead_code)]
 pub enum CmdResult {
+    EditBlockActionSet {
+        document: u64,
+        definition: Handle,
+        action: Handle,
+        expected: Box<codec::objects::ObjectType>,
+        targets: Vec<Handle>,
+        frame: Option<[DVec3; 2]>,
+    },
     EditBlockAuthoring {
         document: u64,
         definition: Handle,
