@@ -31,6 +31,65 @@ const UCS_ICON_PICK_PX: f32 = 10.0;
 /// Pixel half-width for clicking an icon arm (line segment).
 const UCS_ICON_ARM_PX: f32 = 6.0;
 
+/// Decide whether a selection press has become a drag. A fast mouse
+/// movement alone must not turn the first click of a click-click rectangle
+/// into a lasso. Hold-to-lasso gets the normal dwell; PICKDRAG=1 keeps its
+/// deliberate immediate rectangular-drag shortcut.
+fn selection_drag_should_start(dist2: f32, held_ms: u128, pick_drag_rect: bool) -> bool {
+    const MIN_DIST2: f32 = 12.0 * 12.0;
+    const RECT_FAST_DIST2: f32 = 24.0 * 24.0;
+    dist2 > MIN_DIST2
+        && (held_ms >= POLY_START_DELAY_MS || (pick_drag_rect && dist2 > RECT_FAST_DIST2))
+}
+
+/// For a short selection click, use the actual mouse-down position even if
+/// the user starts moving immediately. Commands and active drag gestures
+/// continue using the live cursor position.
+fn selection_click_position(
+    last: Point,
+    pressed: Option<Point>,
+    is_click: bool,
+    no_command: bool,
+) -> Point {
+    if is_click && no_command {
+        pressed.unwrap_or(last)
+    } else {
+        last
+    }
+}
+
+#[cfg(test)]
+mod selection_gesture_priority_tests {
+    use super::*;
+
+    #[test]
+    fn fast_first_click_never_becomes_a_lasso_solely_from_cursor_speed() {
+        assert!(!selection_drag_should_start(25.0 * 25.0, 20, false));
+        assert!(!selection_drag_should_start(120.0 * 120.0, 80, false));
+        assert!(!selection_drag_should_start(500.0 * 500.0, POLY_START_DELAY_MS - 1, false));
+        assert!(selection_drag_should_start(25.0 * 25.0, POLY_START_DELAY_MS, false));
+        assert!(!selection_drag_should_start(11.0 * 11.0, POLY_START_DELAY_MS + 500, false));
+    }
+
+    #[test]
+    fn pickdrag_rectangle_keeps_its_fast_drag_shortcut() {
+        assert!(selection_drag_should_start(25.0 * 25.0, 20, true));
+        assert!(!selection_drag_should_start(23.0 * 23.0, 20, true));
+        assert!(selection_drag_should_start(13.0 * 13.0, POLY_START_DELAY_MS, true));
+    }
+
+    #[test]
+    fn quick_selection_click_anchors_where_the_button_went_down() {
+        let start = Point::new(100.0, 100.0);
+        let moved = Point::new(190.0, 135.0);
+        assert_eq!(selection_click_position(moved, Some(start), true, true), start);
+        // During a command or a genuine press-drag, use the moving cursor.
+        assert_eq!(selection_click_position(moved, Some(start), true, false), moved);
+        assert_eq!(selection_click_position(moved, Some(start), false, true), moved);
+        assert_eq!(selection_click_position(moved, None, true, true), moved);
+    }
+}
+
 /// Snapper coordinates are local to the active pane, while the overlay
 /// consumes canvas coordinates. Apply the same translation to the visible
 /// snap glyph and both Extension guide origins.
@@ -1383,17 +1442,12 @@ impl OpenCADStudio {
                 .left_press_time
                 .map(|t| Instant::now().duration_since(t).as_millis())
                 .unwrap_or(u128::MAX);
-            // Selection gestures need a wider dead zone than ordinary
-            // pointer clicks. In particular, a quick press/release with
-            // residual mouse motion must not start a freeform lasso.
-            // Keep the existing delay and reserve immediate dragging for
-            // an unmistakable movement (24 px); after the delay, require
-            // at least 12 px. Grip editing follows its separate path.
-            const SELECTION_DRAG_MIN_PX2: f32 = 12.0 * 12.0;
-            const SELECTION_DRAG_FAST_PX2: f32 = 24.0 * 24.0;
-            let dragged = dist2 > SELECTION_DRAG_MIN_PX2
-                && (elapsed_ms >= POLY_START_DELAY_MS
-                    || dist2 > SELECTION_DRAG_FAST_PX2);
+            // In default PICKDRAG=0, cursor speed must never promote a
+            // quick click into a lasso. The 250 ms press dwell distinguishes
+            // an intentional hold-drag from a fast click-move-click box.
+            // PICKDRAG=1 retains fast press-drag rectangular selection;
+            // grip dragging is handled separately.
+            let dragged = selection_drag_should_start(dist2, elapsed_ms, self.pick_drag_rect);
             if !sel.input.left_dragging && dragged {
                 sel.input.left_dragging = true;
                 if self.pick_drag_rect {
@@ -4303,11 +4357,18 @@ impl OpenCADStudio {
 
         let (p, is_click, is_down) = {
             let sel = self.tabs[i].scene.selection.borrow();
-            let p = match sel.input.last_move_pos {
+            let last = match sel.input.last_move_pos {
                 Some(p) => p,
                 None => return Task::none(),
             };
-            (p, !sel.input.left_dragging, sel.input.left_down)
+            let is_click = !sel.input.left_dragging;
+            let p = selection_click_position(
+                last,
+                sel.input.left_press_pos,
+                is_click,
+                self.tabs[i].active_cmd.is_none(),
+            );
+            (p, is_click, sel.input.left_down)
         };
 
         // Grip editing: click-move-click (plus legacy press-drag).
