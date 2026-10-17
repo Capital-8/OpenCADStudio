@@ -1530,6 +1530,7 @@ pub enum CmdResult {
         location: DVec3,
     },
     EvaluateBlockParameter {
+        insert: Option<Handle>,
         document: u64,
         definition: Handle,
         parameter: Handle,

@@ -40,6 +40,198 @@ fn start(doc: &CadDocument, h: Handle) -> Vector3 {
     };
     l.start
 }
+
+fn instance_line(doc: &CadDocument, insert: Handle) -> Vector3 {
+    let EntityType::Insert(i) = doc.get_entity(insert).unwrap() else {
+        panic!()
+    };
+    start(
+        doc,
+        doc.block_records.get(&i.block_name).unwrap().entity_handles[0],
+    )
+}
+
+#[test]
+fn block_actions_saved_xy_polar_cache_metadata_and_rejections() {
+    for kind in [distance::Kind::XY, distance::Kind::Polar] {
+        let (mut doc, def, handles) = fixture();
+        let p = distance::create(
+            &mut doc,
+            def,
+            kind,
+            Vector3::new(2., 3., 0.),
+            Vector3::new(12., 13., 0.),
+            Vector3::new(5., 6., 0.),
+        )
+        .unwrap();
+        create(&mut doc, def, Kind::Move, p, &[handles[0]], DVec3::ZERO).unwrap();
+        let a = doc
+            .add_entity(EntityType::Insert(codec::entities::Insert::new(
+                "ACTIONS",
+                Vector3::ZERO,
+            )))
+            .unwrap();
+        let original = doc.clone();
+        let mut doc = instance::evaluate(&doc, a, p, DVec3::new(20., 18., 0.))
+            .unwrap()
+            .unwrap();
+        assert_eq!(instance_line(&doc, a), Vector3::new(9., 5., 0.));
+        let parameter = parameters(&doc, def, Kind::Move).remove(0);
+        assert_eq!(
+            instance::current(&doc, a, &parameter).unwrap(),
+            DVec3::new(20., 18., 0.)
+        );
+        let r = doc
+            .objects
+            .values_mut()
+            .find_map(|o| match o {
+                ObjectType::XRecord(r) => Some(r),
+                _ => None,
+            })
+            .unwrap();
+        r.entries.push(codec::objects::XRecordEntry::string(
+            1,
+            "retain opaque metadata",
+        ));
+        doc = instance::evaluate(&doc, a, p, DVec3::new(22., 21., 0.))
+            .unwrap()
+            .unwrap();
+        assert!(doc.objects.values().any(|o|matches!(o,ObjectType::XRecord(r) if r.entries.iter().any(|e|e.value.as_string()==Some("retain opaque metadata")))));
+        let reopened = DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+            .read()
+            .unwrap();
+        assert_eq!(
+            instance::current(&reopened, a, &parameter).unwrap(),
+            DVec3::new(22., 21., 0.)
+        );
+        assert_eq!(start(&reopened,handles[0]),start(&original,handles[0]));
+        assert!(instance::evaluate(&doc, a, p, DVec3::splat(f64::NAN)).is_err());
+        let mut invalid = doc.clone();
+        let EntityType::Insert(i) = invalid.get_entity_mut(a).unwrap() else {
+            panic!()
+        };
+        i.set_x_scale(2.);
+        assert!(instance::definition(&invalid, a).is_none());
+        assert!(instance::evaluate(&invalid, a, p, DVec3::ONE).is_err());
+    }
+}
+
+#[test]
+fn block_actions_saved_references_independent_absolute_and_roundtrip() {
+    let (mut doc, def, handles) = fixture();
+    let p = linear(&mut doc, def);
+    let q = point::create(&mut doc, def, Vector3::ZERO, Vector3::UNIT_Y).unwrap();
+    create(&mut doc, def, Kind::Scale, p, &[handles[1]], DVec3::ZERO).unwrap();
+    create(&mut doc, def, Kind::Move, q, &[handles[0]], DVec3::ZERO).unwrap();
+    let a = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    let b = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::new(30., 0., 0.),
+        )))
+        .unwrap();
+    let original = doc.clone();
+    doc = instance::evaluate(&doc, a, q, DVec3::new(3., 4., 0.))
+        .unwrap()
+        .unwrap();
+    doc = instance::evaluate(&doc, a, p, DVec3::new(20., 7., 0.))
+        .unwrap()
+        .unwrap();
+    assert_eq!(instance_line(&doc, a), Vector3::new(4., 4., 0.));
+    assert_eq!(instance_line(&doc, b), Vector3::UNIT_X);
+    for h in &handles {
+        assert_eq!(doc.get_entity(*h), original.get_entity(*h));
+    }
+    for (h, o) in &original.objects {
+        assert_eq!(doc.objects.get(h), Some(o));
+    }
+    let mut saved = vec![doc.clone()];
+    saved.push(
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+            .read()
+            .unwrap(),
+    );
+    saved.push(
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap()))
+            .unwrap()
+            .read()
+            .unwrap(),
+    );
+    for doc in saved {
+        let parameter = parameters(&doc, def, Kind::Move)
+            .into_iter()
+            .find(|x| x.handle == p)
+            .unwrap();
+        assert_eq!(
+            instance::current(&doc, a, &parameter).unwrap(),
+            DVec3::new(20., 0., 0.)
+        );
+        let props = doc.dynamic_block_properties(def, Some(a)).unwrap();
+        assert!(props
+            .iter()
+            .any(|x| x.parameter_handle == p && x.value == BlockEvalValue::Real(20.)));
+        assert!(instance::evaluate(&doc, a, p, DVec3::new(20., 0., 0.))
+            .unwrap()
+            .is_none());
+        let next = instance::evaluate(&doc, a, q, DVec3::new(-2., 1., 0.))
+            .unwrap()
+            .unwrap();
+        assert_eq!(instance_line(&next, a), Vector3::new(-1., 1., 0.));
+        let EntityType::Insert(i) = next.get_entity(a).unwrap() else {
+            panic!()
+        };
+        let EntityType::Circle(c) = next
+            .get_entity(
+                next.block_records
+                    .get(&i.block_name)
+                    .unwrap()
+                    .entity_handles[1],
+            )
+            .unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(c.radius, 4.);
+        assert_eq!(instance_line(&next, b), Vector3::UNIT_X);
+        let resaved = DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&next).unwrap()))
+            .read()
+            .unwrap();
+        assert_eq!(instance_line(&resaved, a), Vector3::new(-1., 1., 0.));
+        let point = parameters(&resaved, def, Kind::Move)
+            .into_iter()
+            .find(|x| x.handle == q)
+            .unwrap();
+        assert_eq!(
+            instance::current(&resaved, a, &point).unwrap(),
+            DVec3::new(-2., 1., 0.)
+        );
+        // A copied reference may share its evaluated block, but must isolate on edit.
+        let mut scene = Scene::new();
+        scene.document = next.clone();
+        let c = scene.copy_entities(
+            &[a],
+            &crate::command::EntityTransform::Translate(DVec3::new(40., 0., 0.)),
+        )[0];
+        let copy = instance::evaluate(&scene.document, c, q, DVec3::new(7., 8., 0.))
+            .unwrap()
+            .unwrap();
+        assert_eq!(instance_line(&copy, c), Vector3::new(8., 8., 0.));
+        assert_eq!(instance_line(&copy, a), Vector3::new(-1., 1., 0.));
+        assert_eq!(
+            instance::current(&copy, c, &parameter).unwrap(),
+            DVec3::new(20., 0., 0.)
+        );
+        let reset = instance::evaluate(&next, a, q, DVec3::ZERO)
+            .unwrap()
+            .unwrap();
+        assert_eq!(instance_line(&reset, a), Vector3::UNIT_X);
+    }
+}
 #[test]
 fn block_actions_native_bindings_roundtrip_and_append_preserves_neighbors() {
     let (mut doc, def, handles) = fixture();

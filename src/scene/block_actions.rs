@@ -1,4 +1,4 @@
-//! Native Move/Scale authoring and deterministic evaluation in Test Block.
+//! Native Move/Scale authoring and deterministic dynamic-block evaluation.
 use super::block_authoring::{self as authoring, *};
 use codec::objects::{
     BlockAction, BlockActionOffsets, BlockActionWithBasePoint, BlockBasePointAction,
@@ -7,6 +7,7 @@ use codec::objects::{
 use codec::types::{Transform, Vector3};
 use codec::{CadDocument, EntityType, Handle};
 use glam::DVec3;
+pub(crate) mod instance;
 #[cfg(test)]
 mod tests;
 
@@ -379,15 +380,15 @@ pub(crate) fn evaluate(
     position: DVec3,
 ) -> Result<bool, &'static str> {
     let graph = authoring::graph(baseline, definition)?
-        .ok_or("The test authoring graph is unavailable.")?;
+        .ok_or("The block authoring graph is unavailable.")?;
     if baseline.objects.values().any(|o|matches!(o,ObjectType::DynamicBlock(o) if o.owner==graph && matches!(&o.data,
         DynamicBlockData::StretchAction(_)|DynamicBlockData::PolarStretchAction(_)|DynamicBlockData::RotateAction(_)|DynamicBlockData::FlipAction(_)|DynamicBlockData::ArrayAction(_)))) {
-        return Err("This block contains action types not supported in Test Block yet.");
+        return Err("This block contains action types not supported yet.");
     }
     let p = parameters(baseline, definition, Kind::Move)
         .into_iter()
         .find(|p| p.handle == parameter)
-        .ok_or("The test parameter is unavailable.")?;
+        .ok_or("The block parameter is unavailable.")?;
     if !position.is_finite() {
         return Err("Specify a finite parameter position.");
     }
@@ -408,16 +409,16 @@ pub(crate) fn evaluate(
     let ObjectType::DynamicBlock(o) = staged
         .objects
         .get_mut(&p.grip)
-        .ok_or("The test grip is unavailable.")?
+        .ok_or("The parameter grip is unavailable.")?
     else {
-        return Err("The test grip is unavailable.");
+        return Err("The parameter grip is unavailable.");
     };
     match &mut o.data {
         DynamicBlockData::XYGrip(g) | DynamicBlockData::PolarGrip(g) => {
             g.location = native(position)
         }
         DynamicBlockData::LinearGrip(g) => g.grip.location = native(position),
-        _ => return Err("The test grip is unavailable."),
+        _ => return Err("The parameter grip is unavailable."),
     }
     let all = actions(baseline, definition);
     let mut affected = std::collections::BTreeSet::new();
@@ -445,7 +446,7 @@ pub(crate) fn evaluate(
                 .find(|p| p.id == *id)
                 .ok_or("An action has an unsupported parameter binding.")?;
             if !test_parameter_supported(baseline, q.handle) {
-                return Err("This parameter uses value constraints or chaining not supported in Test Block yet.");
+                return Err("This parameter uses value constraints or chaining not supported yet.");
             }
             let end = current(&staged, &q);
             let transform = match kind {
@@ -464,7 +465,7 @@ pub(crate) fn evaluate(
             // Imported actions with custom multipliers/offsets/chaining must
             // not silently behave like the simple actions authored here.
             if !a.action_ids.is_empty() {
-                return Err("Chained actions are not supported in Test Block yet.");
+                return Err("Chained actions are not supported yet.");
             }
             let ObjectType::DynamicBlock(o) = &baseline.objects[action_handle] else {
                 unreachable!()
@@ -499,7 +500,7 @@ pub(crate) fn evaluate(
                                 ]
                             } =>
                 {
-                    return Err("This Move action uses options not supported in Test Block yet.")
+                    return Err("This Move action uses options not supported yet.")
                 }
                 DynamicBlockData::ScaleAction(s)
                     if !s.action.dependent
@@ -515,7 +516,7 @@ pub(crate) fn evaluate(
                                 name: name.into(),
                             }) =>
                 {
-                    return Err("This Scale action uses options not supported in Test Block yet.")
+                    return Err("This Scale action uses options not supported yet.")
                 }
                 _ => {}
             }

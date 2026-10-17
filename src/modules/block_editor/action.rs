@@ -178,19 +178,25 @@ impl CadCommand for ActionCommand {
 }
 
 pub(crate) struct TestParameterCommand {
+    pub insert: Option<Handle>,
     pub document: u64,
     pub definition: Handle,
     pub parameter: Handle,
 }
 impl CadCommand for TestParameterCommand {
     fn name(&self) -> &'static str {
-        "BTESTBLOCK"
+        if self.insert.is_some() {
+            "BLOCKPARAMETERGRIP"
+        } else {
+            "BTESTBLOCK"
+        }
     }
     fn prompt(&self) -> String {
-        crate::t!("Test Block  Specify the new parameter endpoint (Escape cancels):").into_owned()
+        crate::t!("Specify the new block parameter endpoint (Escape cancels):").into_owned()
     }
     fn on_point(&mut self, position: DVec3) -> CmdResult {
         CmdResult::EvaluateBlockParameter {
+            insert: self.insert,
             document: self.document,
             definition: self.definition,
             parameter: self.parameter,

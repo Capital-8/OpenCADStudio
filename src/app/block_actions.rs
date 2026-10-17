@@ -102,6 +102,7 @@ impl OpenCADStudio {
                 }
             }
             crate::command::CmdResult::EvaluateBlockParameter {
+                insert,
                 document,
                 definition,
                 parameter,
@@ -109,6 +110,10 @@ impl OpenCADStudio {
             } => {
                 if self.tabs[i].id != document {
                     return Task::none();
+                }
+                if let Some(insert) = insert {
+                    return self
+                        .evaluate_reference_parameter(insert, definition, parameter, position);
                 }
                 let Some(test) = self.tabs[i].block_test.as_ref() else {
                     return Task::none();
@@ -193,6 +198,7 @@ impl OpenCADStudio {
         let i = self.active_tab;
         let tab = &self.tabs[i];
         let Some(test) = tab.block_test.as_ref() else {
+            self.refresh_reference_action_grips(wo);
             return;
         };
         if tab.selected_handle != Some(test.insert) {
@@ -237,7 +243,7 @@ impl OpenCADStudio {
         let i = self.active_tab;
         let tab = &self.tabs[i];
         let Some(test) = tab.block_test.as_ref() else {
-            return false;
+            return self.start_reference_action_grip(handle, id);
         };
         if handle != test.insert {
             return false;
@@ -252,6 +258,7 @@ impl OpenCADStudio {
             return false;
         };
         let command = crate::modules::block_editor::action::TestParameterCommand {
+            insert: None,
             document: tab.id,
             definition: test.definition,
             parameter: p.handle,
@@ -261,5 +268,142 @@ impl OpenCADStudio {
         self.grip_hover = None;
         self.grip_popup = None;
         true
+    }
+}
+
+impl OpenCADStudio {
+    fn refresh_reference_action_grips(&mut self, wo: [f64; 3]) {
+        let i = self.active_tab;
+        let tab = &self.tabs[i];
+        if tab.active_block_edit_session().is_some() || tab.scene.selected.len() != 1 {
+            return;
+        }
+        let Some(handle) = tab.selected_handle else {
+            return;
+        };
+        let Some(def) = actions::instance::definition(&tab.scene.document, handle) else {
+            return;
+        };
+        let Some(EntityType::Insert(reference)) = tab.scene.document.get_entity(handle) else {
+            return;
+        };
+        let transform =
+            crate::scene::render_graph::insert_transform(&tab.scene.document, reference);
+        let all = actions::actions(&tab.scene.document, def);
+        let mut grips = vec![];
+        for (index, p) in actions::parameters(&tab.scene.document, def, Kind::Move)
+            .into_iter()
+            .enumerate()
+        {
+            if !all.iter().any(|(_, _, _, id)| *id == p.id) {
+                continue;
+            }
+            let Ok(local) = actions::instance::current(&tab.scene.document, handle, &p) else {
+                continue;
+            };
+            let world =
+                actions::v(transform.apply(actions::native(local))) - glam::DVec3::from_array(wo);
+            grips.push(crate::scene::model::object::GripDef {
+                id: TEST_GRIP_START + index,
+                world,
+                is_midpoint: false,
+                shape: crate::scene::model::object::GripShape::Triangle,
+                dir: None,
+                axis: None,
+            });
+        }
+        for grip in grips {
+            self.tabs[i].selected_grips.push(grip);
+            self.tabs[i].selected_grip_handles.push(handle);
+        }
+    }
+    fn start_reference_action_grip(&mut self, handle: Handle, id: usize) -> bool {
+        let i = self.active_tab;
+        let tab = &self.tabs[i];
+        if tab.active_block_edit_session().is_some() || tab.selected_handle != Some(handle) {
+            return false;
+        }
+        let Some(def) = actions::instance::definition(&tab.scene.document, handle) else {
+            return false;
+        };
+        if tab.scene.is_layer_locked(handle) {
+            return true;
+        }
+        let Some(p) = actions::parameters(&tab.scene.document, def, Kind::Move)
+            .get(id - TEST_GRIP_START)
+            .cloned()
+        else {
+            return false;
+        };
+        let command = crate::modules::block_editor::action::TestParameterCommand {
+            insert: Some(handle),
+            document: tab.id,
+            definition: def,
+            parameter: p.handle,
+        };
+        self.command_line.push_info(&command.prompt());
+        self.tabs[i].active_cmd = Some(Box::new(command));
+        self.grip_hover = None;
+        self.grip_popup = None;
+        true
+    }
+    fn evaluate_reference_parameter(
+        &mut self,
+        handle: Handle,
+        definition: Handle,
+        parameter: Handle,
+        position: glam::DVec3,
+    ) -> Task<Message> {
+        let i = self.active_tab;
+        let tab = &self.tabs[i];
+        if tab.active_block_edit_session().is_some()
+            || tab.block_test.is_some()
+            || actions::instance::definition(&tab.scene.document, handle) != Some(definition)
+        {
+            return Task::none();
+        }
+        if tab.scene.is_layer_locked(handle) {
+            return Task::none();
+        }
+        let Some(EntityType::Insert(reference)) = tab.scene.document.get_entity(handle) else {
+            return Task::none();
+        };
+        let Some(inverse) = crate::scene::inverse_affine(
+            &crate::scene::render_graph::insert_transform(&tab.scene.document, reference),
+        ) else {
+            return Task::none();
+        };
+        let local = actions::v(inverse.apply(actions::native(position)));
+        match actions::instance::evaluate(&tab.scene.document, handle, parameter, local) {
+            Ok(staged) => {
+                if let Some(mut staged) = staged {
+                    self.push_undo_snapshot(i, "Block reference parameter");
+                    let doc = &mut self.tabs[i].scene.document;
+                    let changes = staged
+                        .entities()
+                        .filter(|e| doc.get_entity(e.common().handle) != Some(*e))
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    // Structure swapping retains the live store and its transaction recorder.
+                    doc.swap_structure(staged.snapshot_structure());
+                    for entity in changes {
+                        let h = entity.common().handle;
+                        if let Some(current) = doc.get_entity_mut(h) {
+                            *current = entity
+                        } else {
+                            doc.restore_entity_arc(std::sync::Arc::new(entity));
+                        }
+                    }
+                    self.tabs[i].scene.bump_geometry();
+                    self.tabs[i].dirty = true;
+                    self.finish_pending_history(i);
+                }
+                self.tabs[i].active_cmd = None;
+                self.tabs[i].scene.clear_preview_wire();
+                self.refresh_properties();
+            }
+            Err(e) => self.command_line.push_error(crate::t!(e).as_ref()),
+        }
+        Task::none()
     }
 }

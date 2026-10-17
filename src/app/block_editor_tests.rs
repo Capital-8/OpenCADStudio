@@ -60,6 +60,125 @@ fn feed(app: &mut OpenCADStudio, text: &str) {
 }
 
 #[test]
+fn block_actions_drawing_grips_history_cancel_transform_and_reopen() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let p = actions::parameters(&app.tabs[i].scene.document, def, Kind::Move)[0].clone();
+    let targets = members(&app);
+    actions::create(
+        &mut app.tabs[i].scene.document,
+        def,
+        Kind::Move,
+        p.handle,
+        &targets,
+        glam::DVec3::ZERO,
+    )
+    .unwrap();
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    let sibling = app.tabs[i]
+        .scene
+        .document
+        .add_entity(EntityType::Insert(Insert::new(
+            "EDIT_ME",
+            Vector3::new(40., 0., 0.),
+        )))
+        .unwrap();
+    let EntityType::Insert(ins) = app.tabs[i]
+        .scene
+        .document
+        .get_entity_mut(reference)
+        .unwrap()
+    else {
+        panic!()
+    };
+    ins.insert_point = Vector3::new(20., 30., 0.);
+    ins.rotation = std::f64::consts::FRAC_PI_2;
+    ins.set_x_scale(2.);
+    ins.set_y_scale(2.);
+    ins.set_z_scale(2.);
+    let original = app.tabs[i].scene.document.clone();
+    app.tabs[i].scene.selected.insert(reference);
+    app.tabs[i].selected_handle = Some(reference);
+    app.refresh_properties();
+    let grip = app.tabs[i]
+        .selected_grips
+        .iter()
+        .find(|g| super::block_actions::is_test_grip(g.id))
+        .unwrap()
+        .clone();
+    assert!(grip.world.distance(glam::DVec3::new(20., 50., 0.)) < 1e-8);
+    let depth = app.tabs[i].history.undo_stack.len();
+    assert!(app.start_test_action_grip(reference, grip.id));
+    let _ = app.update(Message::CommandEscape);
+    assert_eq!(app.tabs[i].scene.document, original);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    // Escape also clears the ordinary drawing selection.
+    app.tabs[i].scene.selected.insert(reference);
+    app.refresh_properties();
+    assert!(app.start_test_action_grip(reference, grip.id));
+    feed(&mut app, "20,70");
+    assert!(app.tabs[i].active_cmd.is_none());
+    let changed = app.tabs[i].scene.document.clone();
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    let EntityType::Insert(ins) = changed.get_entity(reference).unwrap() else {
+        panic!()
+    };
+    assert_ne!(ins.block_name, "EDIT_ME");
+    let member = changed
+        .block_records
+        .get(&ins.block_name)
+        .unwrap()
+        .entity_handles[0];
+    let EntityType::Line(line) = changed.get_entity(member).unwrap() else {
+        panic!()
+    };
+    assert!((line.start.x - 10.).abs() < 1e-8);
+    assert_eq!(
+        changed.get_entity(targets[0]),
+        original.get_entity(targets[0])
+    );
+    assert_eq!(changed.get_entity(sibling), original.get_entity(sibling));
+    app.undo_steps(1);
+    assert_eq!(
+        app.tabs[i].scene.document.get_entity(reference),
+        original.get_entity(reference)
+    );
+    assert!(app.tabs[i].scene.document.get_entity(member).is_none());
+    app.redo_steps(1);
+    assert_eq!(
+        app.tabs[i].scene.document.get_entity(member),
+        changed.get_entity(member)
+    );
+    assert_eq!(
+        app.tabs[i].scene.document.get_entity(reference),
+        changed.get_entity(reference)
+    );
+    let bytes = codec::DwgWriter::write_to_vec(&app.tabs[i].scene.document).unwrap();
+    app.tabs[i].scene.document = codec::DwgReader::from_stream(std::io::Cursor::new(bytes))
+        .read()
+        .unwrap();
+    app.refresh_properties();
+    let grip = app.tabs[i]
+        .selected_grips
+        .iter()
+        .find(|g| super::block_actions::is_test_grip(g.id))
+        .unwrap();
+    assert!(grip.world.distance(glam::DVec3::new(20., 70., 0.)) < 1e-8);
+    let id = grip.id;
+    assert!(app.start_test_action_grip(reference, id));
+    feed(&mut app, "20,50");
+    let EntityType::Line(line) = app.tabs[i].scene.document.get_entity(member).unwrap() else {
+        panic!()
+    };
+    assert!(line.start.x.abs() < 1e-8);
+}
+
+#[test]
 fn authoring_edit_basepoint_attribute_relocation_undo_and_cancel() {
     let (mut app, reference) = fixture();
     begin(&mut app, reference);
@@ -478,6 +597,7 @@ fn block_actions_command_selection_cancel_undo_and_test_block_isolation() {
     let shared_before = app.tabs[test].scene.document.clone();
     let id = app.tabs[test].id;
     let _ = app.handle_block_action_result(crate::command::CmdResult::EvaluateBlockParameter {
+        insert: None,
         document: id,
         definition,
         parameter: p.handle,
@@ -558,6 +678,7 @@ fn block_actions_test_reference_transform_visibility_and_noop_history() {
             .apply(actions::native(p.end)),
     );
     let _ = app.handle_block_action_result(crate::command::CmdResult::EvaluateBlockParameter {
+        insert: None,
         document: id,
         definition,
         parameter: p.handle,
@@ -596,6 +717,7 @@ fn block_actions_test_reference_transform_visibility_and_noop_history() {
     );
     let before = app.tabs[i].scene.document.clone();
     let _ = app.handle_block_action_result(crate::command::CmdResult::EvaluateBlockParameter {
+        insert: None,
         document: id,
         definition,
         parameter: p.handle,
