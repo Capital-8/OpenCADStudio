@@ -302,6 +302,76 @@ fn lookup_reverse_selection_evaluates_saved_reference_geometry() {
 }
 
 #[test]
+fn lookup_updated_angle_rotates_polar_parameter_and_materializes_action_geometry() {
+    let (mut document, definition) = fixture();
+    let line = document.block_records.get("LOOKUP").unwrap().entity_handles[0];
+    let parameter = distance::create(
+        &mut document,
+        definition,
+        distance::Kind::Polar,
+        Vector3::ZERO,
+        Vector3::new(2.0, 0.0, 0.0),
+        Vector3::UNIT_Y,
+    )
+    .unwrap();
+    crate::scene::block_actions::create(
+        &mut document,
+        definition,
+        crate::scene::block_actions::Kind::Move,
+        parameter,
+        &[line],
+        glam::DVec3::ZERO,
+    )
+    .unwrap();
+    let lookup = create(&mut document, definition, Vector3::ZERO).unwrap();
+    let lookup_parameter = parameters(&document, definition)
+        .into_iter()
+        .find(|(handle, _)| *handle == lookup)
+        .unwrap()
+        .1;
+    let polar_properties = properties(&document, definition);
+    assert_eq!(polar_properties.len(), 2);
+    assert_eq!(polar_properties[1].column.connection_name, "UpdatedAngle");
+    let mut table = empty_table(lookup_parameter);
+    table.columns.insert(0, polar_properties[0].column.clone());
+    table.columns.insert(1, polar_properties[1].column.clone());
+    table.column_count = 3;
+    table.row_count = 2;
+    table.expressions = vec![
+        "2".into(),
+        "0".into(),
+        "Small".into(),
+        "4".into(),
+        std::f64::consts::FRAC_PI_2.to_string(),
+        "Large".into(),
+    ];
+    apply_table(&mut document, definition, lookup, table).unwrap();
+    let insert = document
+        .add_entity(EntityType::Insert(Insert::new("LOOKUP", Vector3::ZERO)))
+        .unwrap();
+
+    let evaluated = evaluate_reference_choice(&document, insert, "Large")
+        .unwrap()
+        .unwrap();
+    let EntityType::Insert(reference) = evaluated.get_entity(insert).unwrap() else {
+        panic!()
+    };
+    let member = evaluated
+        .block_records
+        .get(&reference.block_name)
+        .unwrap()
+        .entity_handles[0];
+    let EntityType::Line(line) = evaluated.get_entity(member).unwrap() else {
+        panic!()
+    };
+    assert!((line.start - Vector3::new(-2.0, 4.0, 0.0)).length() < 1e-9);
+    assert!((line.end - Vector3::new(-1.0, 4.0, 0.0)).length() < 1e-9);
+    assert!(evaluate_reference_choice(&evaluated, insert, "Large")
+        .unwrap()
+        .is_none());
+}
+
+#[test]
 fn lookup_existing_expressions_survive_row_reordering_and_output_edits() {
     let (mut document, definition) = fixture();
     add_distance(&mut document, definition);

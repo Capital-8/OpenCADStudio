@@ -154,30 +154,44 @@ pub(crate) struct Property {
     pub column: BlockLookupColumn,
     pub value: String,
 }
-/// These distance bindings are verified against the supplied native tables.
+/// These distance and angle bindings match the native Lookup connection names.
 pub(crate) fn properties(document: &CadDocument, definition: Handle) -> Vec<Property> {
     super::block_distance_parameter::parameters(document, definition)
         .iter()
-        .filter(|p| {
-            matches!(
-                p.kind,
-                super::block_distance_parameter::Kind::Linear
-                    | super::block_distance_parameter::Kind::Polar
-            )
-        })
-        .map(|p| Property {
-            label: p.labels[0].clone(),
-            column: BlockLookupColumn {
-                node_id: p.native.parameter.element.eval.node_id,
-                value_type: 40,
-                property_type: 2,
-                connection_name: "UpdatedDistance".into(),
-                unmatched_name: "Custom".into(),
-                ..Default::default()
-            },
-            value: (p.native.definition_end_point - p.native.definition_base_point)
+        .flat_map(|p| {
+            let node_id = p.native.parameter.element.eval.node_id;
+            let distance = (p.native.definition_end_point - p.native.definition_base_point)
                 .length()
-                .to_string(),
+                .to_string();
+            let mut properties = vec![Property {
+                label: p.labels[0].clone(),
+                column: BlockLookupColumn {
+                    node_id,
+                    value_type: 40,
+                    property_type: 2,
+                    connection_name: "UpdatedDistance".into(),
+                    unmatched_name: "Custom".into(),
+                    ..Default::default()
+                },
+                value: distance,
+            }];
+            if p.kind == super::block_distance_parameter::Kind::Polar {
+                let delta = p.native.definition_end_point - p.native.definition_base_point;
+                let angle = delta.y.atan2(delta.x).rem_euclid(std::f64::consts::TAU);
+                properties.push(Property {
+                    label: p.labels[1].clone(),
+                    column: BlockLookupColumn {
+                        node_id,
+                        value_type: 40,
+                        property_type: 2,
+                        connection_name: "UpdatedAngle".into(),
+                        unmatched_name: "Custom".into(),
+                        ..Default::default()
+                    },
+                    value: angle.to_string(),
+                });
+            }
+            properties
         })
         .collect()
 }
@@ -226,17 +240,21 @@ fn reference_row(
             if property.lookup_property {
                 return true;
             }
-            if property.value_type != 40
-                || !property
-                    .connection_name
-                    .eq_ignore_ascii_case("UpdatedDistance")
-            {
+            if property.value_type != 40 {
                 return false;
             }
             let Some(parameter) = params.iter().find(|p| p.id == property.node_id) else {
                 return false;
             };
-            if !(parameter.linear || parameter.polar) {
+            let is_distance = property
+                .connection_name
+                .eq_ignore_ascii_case("UpdatedDistance");
+            let is_angle = property
+                .connection_name
+                .eq_ignore_ascii_case("UpdatedAngle");
+            if !(is_distance && (parameter.linear || parameter.polar)
+                || is_angle && parameter.polar)
+            {
                 return false;
             }
             let Ok(endpoint) = super::block_actions::instance::current(document, insert, parameter)
@@ -250,10 +268,22 @@ fn reference_row(
             else {
                 return false;
             };
-            let actual = endpoint.distance(parameter.base);
+            let actual = if is_angle {
+                (endpoint.y - parameter.base.y)
+                    .atan2(endpoint.x - parameter.base.x)
+                    .rem_euclid(std::f64::consts::TAU)
+            } else {
+                endpoint.distance(parameter.base)
+            };
+            let difference = if is_angle {
+                (actual - expected + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
+                    - std::f64::consts::PI
+            } else {
+                actual - expected
+            };
             actual.is_finite()
                 && expected.is_finite()
-                && (actual - expected).abs() <= 1e-8 * actual.abs().max(expected.abs()).max(1.0)
+                && difference.abs() <= 1e-8 * actual.abs().max(expected.abs()).max(1.0)
         })
     })
 }
@@ -334,41 +364,62 @@ pub(crate) fn evaluate_reference_value(
 
     let parameters = super::block_actions::all_parameters(document, definition);
     let mut evaluated = document.clone();
+    let mut endpoints = std::collections::BTreeMap::new();
     for (column, property) in table.columns.iter().enumerate() {
         if property.lookup_property {
             continue;
         }
-        if property.value_type != 40
-            || !property
-                .connection_name
-                .eq_ignore_ascii_case("UpdatedDistance")
-        {
+        if property.value_type != 40 {
             return Err("This Lookup input property is unsupported.");
         }
         let parameter = parameters
             .iter()
             .find(|parameter| parameter.id == property.node_id)
             .ok_or("A Lookup input property is unavailable.")?;
-        if !(parameter.linear || parameter.polar) {
+        let is_distance = property
+            .connection_name
+            .eq_ignore_ascii_case("UpdatedDistance");
+        let is_angle = property
+            .connection_name
+            .eq_ignore_ascii_case("UpdatedAngle");
+        if !(is_distance && (parameter.linear || parameter.polar) || is_angle && parameter.polar) {
             return Err("This Lookup input property is unsupported.");
         }
-        let distance = table
+        let value = table
             .expressions
             .get(row * columns + column)
             .ok_or("The selected Lookup row is incomplete.")?
             .trim()
             .parse::<f64>()
             .ok()
-            .filter(|value| value.is_finite() && *value > 1e-9)
-            .ok_or("The selected Lookup row has an invalid distance.")?;
-        let axis = (parameter.end - parameter.base)
-            .try_normalize()
-            .ok_or("A Lookup input parameter has no direction.")?;
-        super::block_actions::set_value(
-            &mut evaluated,
-            parameter,
-            super::block_actions::Value::Point(parameter.base + axis * distance),
-        )?;
+            .filter(|value| value.is_finite() && (!is_distance || *value > 1e-9))
+            .ok_or("The selected Lookup row has an invalid parameter value.")?;
+        let endpoint = if let Some(endpoint) = endpoints.get_mut(&parameter.id) {
+            endpoint
+        } else {
+            let current = super::block_actions::instance::current(document, insert, parameter)?;
+            endpoints.entry(parameter.id).or_insert(current)
+        };
+        let delta = *endpoint - parameter.base;
+        if is_distance {
+            let axis = delta
+                .try_normalize()
+                .or_else(|| (parameter.end - parameter.base).try_normalize())
+                .ok_or("A Lookup input parameter has no direction.")?;
+            *endpoint = parameter.base + axis * value;
+        } else {
+            let radius = delta.length();
+            *endpoint = parameter.base + glam::DVec3::new(value.cos(), value.sin(), 0.0) * radius;
+        }
+    }
+    for parameter in &parameters {
+        if let Some(endpoint) = endpoints.get(&parameter.id) {
+            super::block_actions::set_value(
+                &mut evaluated,
+                parameter,
+                super::block_actions::Value::Point(*endpoint),
+            )?;
+        }
     }
     super::block_actions::rebuild(&mut evaluated, document, definition)?;
     let mut result =
