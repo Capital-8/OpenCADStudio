@@ -353,7 +353,7 @@ type. Because labels are display text resolved from the loaded plugin, they
 are plugin-localizable and fixable without rewriting drawings — and
 `plugin.toml` (the pre-load discovery file) deliberately does not carry them.
 
-### Plugin grip surface (API v11)
+### Plugin grip surface (API v11, hardened in v12)
 
 Three additive surfaces, one rule: **plugin DECLARED, plugin OWNED**. The host
 renders, hit-tests and drags plugin-declared grip points, but it never
@@ -423,6 +423,34 @@ hard-constrained drag direction), and `shape`. The declaration lifecycle:
   declare grips in another plugin's name — and only the declaring plugin
   ever receives its grips' events. The declaration requires the V4
   transport (the settle's nested writes ride the multiplexed link).
+- **Live geometry (v11.2).** A begin/move answer may also carry
+  `live_entities: Vec<(handle, entity)>` — the plugin-directed visual
+  channel, computed by the plugin exactly as the settle will commit it.
+  The host swaps those entities in through the same visual-only semantics
+  its own grip drags show: the elements visibly move, ZERO history steps
+  mid-drag, the originals are restored byte-identically before the settle,
+  and a cancel discards the phase untouched. The payload is capped at 256
+  entities per response (a larger set is refused with an error line); a
+  response carrying only `preview` behaves exactly as before.
+- **A plugin can never freeze the host (v11.1).** Every delivery — begin,
+  move, settle, cancel — is issued WITHOUT waiting and collected at pump
+  ticks (coalescing unchanged: at most one move in flight, newest point
+  delivered next). Nested COMMAND frames (`run_command` /
+  `execute_command`) are REFUSED inside grip deliveries with an honest
+  `Err`: their execution would need the host's message loop, which a
+  delivery on the UI thread cannot pump — the freeze the consumer's
+  settle-replay wedge exhibited. Every other nested request (reads,
+  `push_undo`, direct writes, `entities_batch`) keeps its full inline
+  serving, so the settle callback stays the plugin's complete write
+  window. A delivery that outlives its settle deadline is abandoned: the
+  plugin's connection is torn down, any partially-open scope is closed
+  (no dangling history), the drag ends as a cancel, and an error line
+  names the plugin. The UI loop keeps painting throughout — it never
+  waits on plugin answers.
+- **Cheap refresh reads (v11.1).** `entities_batch(&[handle])` answers
+  live per-entity reads so a write-then-reread refresh pass never re-clones
+  the invalidated full-document snapshot (the per-boundary quadratic the
+  consumer's live PI-marker pass hit). Prefer it in every refresh path.
 
 **MCP parity.** Plugin-declared grips appear in the automation `grips` read
 (each entry marked with its owning `plugin`), and `grip_drag` takes a `plugin`
