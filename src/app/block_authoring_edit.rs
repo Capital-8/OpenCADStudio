@@ -14,6 +14,7 @@ struct EditCommand {
     definition: Handle,
     handle: Handle,
     part: Part,
+    document_snapshot: codec::CadDocument,
 }
 impl CadCommand for EditCommand {
     fn name(&self) -> &'static str {
@@ -32,11 +33,160 @@ impl CadCommand for EditCommand {
             position,
         }
     }
+    fn on_preview_wires(&mut self, position: DVec3) -> Vec<crate::scene::WireModel> {
+        let mut staged = self.document_snapshot.clone();
+        let at = codec::types::Vector3::new(position.x, position.y, 0.0);
+        if edit::move_part(&mut staged, self.definition, self.handle, self.part, at).is_err() {
+            return Vec::new();
+        }
+        let Some(item) = edit::items(&staged, self.definition)
+            .into_iter()
+            .find(|item| item.handle == self.handle)
+        else {
+            return Vec::new();
+        };
+        item.graphic
+            .lines
+            .into_iter()
+            .map(|[a, b]| {
+                crate::scene::WireModel::solid_f64(
+                    format!("authoring-preview-{}", self.handle.value()),
+                    vec![[a.x, a.y, a.z], [b.x, b.y, b.z]],
+                    crate::scene::WireModel::CYAN,
+                    false,
+                )
+            })
+            .collect()
+    }
     fn on_enter(&mut self) -> CmdResult {
         CmdResult::Cancel
     }
 }
 impl OpenCADStudio {
+    pub(super) fn commit_authoring_name(&mut self) -> Task<Message> {
+        let i = self.active_tab;
+        let key = crate::ui::properties::FieldKey::Geom("authoring_name");
+        let Some(name) = self.tabs[i]
+            .properties
+            .edit_buf
+            .remove(&key)
+            .map(|s| s.trim().to_owned())
+        else {
+            return Task::none();
+        };
+        if name.is_empty() {
+            self.command_line
+                .push_error(crate::t!("Parameter name cannot be empty.").as_ref());
+            return Task::none();
+        }
+        let Some(handle) = self.tabs[i].selected_authoring else {
+            return Task::none();
+        };
+        let Some(session) = self.tabs[i].active_block_edit_session() else {
+            return Task::none();
+        };
+        let definition = session.br_handle;
+        let doc = &self.tabs[i].scene.document;
+        if edit::items(doc, definition)
+            .iter()
+            .any(|item| item.handle != handle && item.name.eq_ignore_ascii_case(&name))
+        {
+            self.command_line
+                .push_error(crate::t!("Parameter names must be unique.").as_ref());
+            return Task::none();
+        }
+        let mut staged = doc.clone();
+        let Some(codec::objects::ObjectType::DynamicBlock(object)) =
+            staged.objects.get_mut(&handle)
+        else {
+            return Task::none();
+        };
+        let changed = match &mut object.data {
+            codec::objects::DynamicBlockData::PointParameter(p) => {
+                p.position_name = name;
+                true
+            }
+            codec::objects::DynamicBlockData::LinearParameter(p) => {
+                p.distance_name = name;
+                true
+            }
+            codec::objects::DynamicBlockData::PolarParameter(p) => {
+                p.distance_name = name;
+                true
+            }
+            codec::objects::DynamicBlockData::XYParameter(p) => {
+                p.x_label = name;
+                true
+            }
+            codec::objects::DynamicBlockData::RotationParameter(p) => {
+                p.angle_name = name;
+                true
+            }
+            codec::objects::DynamicBlockData::LookupParameter(p) => {
+                p.lookup_name = name;
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            self.push_undo_snapshot(i, "Rename block parameter");
+            self.tabs[i].scene.document = staged;
+            self.tabs[i].dirty = true;
+            self.tabs[i].scene.bump_geometry();
+            self.finish_pending_history(i);
+            self.refresh_properties();
+        }
+        Task::none()
+    }
+    pub(super) fn pick_authoring_box(&mut self, a: Point, b: Point, crossing: bool) -> bool {
+        let i = self.active_tab;
+        let Some(session) = self.tabs[i].active_block_edit_session() else {
+            return false;
+        };
+        let items = edit::items(&self.tabs[i].scene.document, session.br_handle);
+        let bounds = iced::Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: self.tabs[i].scene.selection.borrow().view.vp_size.0,
+            height: self.tabs[i].scene.selection.borrow().view.vp_size.1,
+        };
+        let camera = self.tabs[i].scene.camera.borrow();
+        let min = Point::new(a.x.min(b.x), a.y.min(b.y));
+        let max = Point::new(a.x.max(b.x), a.y.max(b.y));
+        let hit = items
+            .into_iter()
+            .filter_map(|item| {
+                let mut projected = Vec::new();
+                for (_, p) in &item.grips {
+                    if let Some(p) = camera.project(DVec3::new(p.x, p.y, p.z), bounds) {
+                        projected.push(Point::new(p.x, p.y));
+                    }
+                }
+                for p in item.graphic.lines.iter().flat_map(|line| line.iter()) {
+                    if let Some(p) = camera.project(DVec3::new(p.x, p.y, p.z), bounds) {
+                        projected.push(Point::new(p.x, p.y));
+                    }
+                }
+                let any = projected
+                    .iter()
+                    .any(|p| p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y);
+                let all = !projected.is_empty()
+                    && projected
+                        .iter()
+                        .all(|p| p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y);
+                (if crossing { any } else { all }).then_some(item.handle)
+            })
+            .next();
+        drop(camera);
+        if let Some(handle) = hit {
+            self.tabs[i].selected_authoring = Some(handle);
+            self.tabs[i].scene.deselect_all();
+            self.refresh_properties();
+            true
+        } else {
+            false
+        }
+    }
     pub(super) fn pick_authoring_object(&mut self, p: Point, bounds: Rectangle) -> bool {
         let i = self.active_tab;
         let tab = &self.tabs[i];
@@ -87,8 +237,12 @@ impl OpenCADStudio {
             .min_by(|a, b| a.0.total_cmp(&b.0));
         drop(camera);
         if let Some((_, handle, name)) = hit {
+            if self.shift_down && self.tabs[i].selected_authoring == Some(handle) {
+                self.tabs[i].selected_authoring = None;
+            } else {
+                self.tabs[i].selected_authoring = Some(handle);
+            }
             self.tabs[i].scene.deselect_all();
-            self.tabs[i].selected_authoring = (!self.shift_down).then_some(handle);
             self.tabs[i]
                 .scene
                 .selection
@@ -102,9 +256,6 @@ impl OpenCADStudio {
             ));
             true
         } else {
-            if self.tabs[i].selected_authoring.take().is_some() {
-                self.refresh_properties();
-            }
             false
         }
     }
@@ -156,6 +307,7 @@ impl OpenCADStudio {
             definition: session.br_handle,
             handle,
             part,
+            document_snapshot: self.tabs[i].scene.document.clone(),
         };
         self.command_line.push_info(&command.prompt());
         self.tabs[i].active_cmd = Some(Box::new(command));
