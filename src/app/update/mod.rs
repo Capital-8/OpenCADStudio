@@ -1,6 +1,6 @@
-use crate::io::plot_style::PlotStyleTableExt as _;
 use super::{ArrowKey, Message, OpenCADStudio, TextEntryMode};
 use crate::command::CadCommand;
+use crate::io::plot_style::PlotStyleTableExt as _;
 use crate::scene::VIEWCUBE_DRAW_PX;
 use crate::ui::PropertiesPanel;
 use iced::time::Instant;
@@ -51,9 +51,10 @@ fn is_modal_blocked_key_msg(msg: &Message) -> bool {
 
 fn perf_message_label(msg: &Message) -> &'static str {
     match msg {
-        Message::ViewportLeftPressAt(_) | Message::ViewportLeftPress | Message::PanePress(_) => {
-            "pointer-down"
-        }
+        Message::ViewportLeftPressAt(_)
+        | Message::ViewportLeftPress
+        | Message::PanePress(_)
+        | Message::PanePressAt(..) => "pointer-down",
         Message::ViewportLeftRelease | Message::PaneRelease(_) => "pointer-up",
         Message::ViewportMove(_) | Message::PaneMove(_, _) => "pointer-move",
         Message::CommandFinalize => "command-finalize",
@@ -62,6 +63,7 @@ fn perf_message_label(msg: &Message) -> &'static str {
         Message::Redo | Message::RedoMany(_) => "redo",
         Message::DeleteSelected => "delete",
         Message::HoverDwellTick => "hover-dwell",
+        Message::SnapDwellTick => "snap-dwell",
         Message::InteractionIndexReady { .. } => "interaction-index-ready",
         _ => "other",
     }
@@ -4559,6 +4561,7 @@ impl OpenCADStudio {
             | Message::ViewportLeftRelease
             | Message::PaneMove(..)
             | Message::PanePress(_)
+            | Message::PanePressAt(..)
             | Message::PaneRelease(_)
                 if self.touch.active() =>
             {
@@ -4567,7 +4570,10 @@ impl OpenCADStudio {
 
             // CATIA navigation: the left button pressed during a middle drag
             // turns the drag into an orbit instead of starting a pick.
-            Message::ViewportLeftPressAt(_) | Message::ViewportLeftPress | Message::PanePress(_)
+            Message::ViewportLeftPressAt(_)
+            | Message::ViewportLeftPress
+            | Message::PanePress(_)
+            | Message::PanePressAt(..)
                 if self.navigation_style == crate::app::settings::NavigationStyle::Catia
                     && self.tabs[self.active_tab]
                         .scene
@@ -4616,6 +4622,12 @@ impl OpenCADStudio {
                 self.pane_move_from = Some(self.tabs[i].scene.active_model_tile.get());
                 Task::none()
             }
+            Message::PanePressAt(idx, local) => {
+                self.pane_move_from = None;
+                self.focus_model_pane(idx);
+                let position = self.pane_canvas_point(idx, local);
+                self.update(Message::ViewportLeftPressAt(position))
+            }
             Message::PanePress(idx) => {
                 // A click-away into the drawing area re-syncs the active-row
                 // highlight against real focus before the pick runs.
@@ -4662,8 +4674,25 @@ impl OpenCADStudio {
                 // Use the pointer location captured by the actual button
                 // event. The last hover can lag behind fast cursor motion,
                 // particularly while expensive OSNAP/OTRACK previews run.
-                // Refresh the snap and world point before accepting the pick.
-                let moved = self.on_viewport_move(position);
+                self.snap_dwell = None;
+                let tab = &self.tabs[self.active_tab];
+                // A point command resolves snapping and Dynamic UCS from this
+                // exact press in on_viewport_left_release. Running a full move
+                // pass first would repeat the dense-scene snap before the click.
+                let moved = if self.command_picks_on_press()
+                    && tab.active_cmd.as_ref().is_some_and(|command| {
+                        !command.needs_entity_pick() && !command.needs_structure_point_pick()
+                    })
+                    && tab.active_grip.is_none()
+                    && !tab.orbit_mode
+                    && !tab.pan_mode
+                    && !tab.zoom_dynamic_mode
+                {
+                    self.set_cursor_for_press(position);
+                    Task::none()
+                } else {
+                    self.on_viewport_move(position)
+                };
                 self.graphic_attributes.open_menu = None;
                 let sweep = self.sync_active_field_if_any();
                 Task::batch(vec![moved, sweep, self.on_viewport_left_press()])
@@ -4921,6 +4950,8 @@ impl OpenCADStudio {
             }
 
             Message::HoverDwellTick => self.on_hover_dwell_tick(),
+
+            Message::SnapDwellTick => self.on_snap_dwell_tick(),
 
             Message::InteractionIndexReady {
                 tab_id,
@@ -9384,12 +9415,14 @@ impl OpenCADStudio {
 
             Message::ToggleDynamicUcs => {
                 self.dynamic_ucs = !self.dynamic_ucs;
-                self.command_line.push_output(if self.dynamic_ucs {
-                    crate::t!("Dynamic UCS: on")
-                } else {
-                    crate::t!("Dynamic UCS: off")
-                }
-                .as_ref());
+                self.command_line.push_output(
+                    if self.dynamic_ucs {
+                        crate::t!("Dynamic UCS: on")
+                    } else {
+                        crate::t!("Dynamic UCS: off")
+                    }
+                    .as_ref(),
+                );
                 self.persist_settings_if_changed();
                 Task::none()
             }
@@ -9769,9 +9802,7 @@ impl OpenCADStudio {
                 // Closing the attribute manager is its Cancel: live changes
                 // are taken back.
                 if self.active_modal == Some(super::ModalKind::AttMan) {
-                    return self.on_attman(
-                        crate::ui::window::attman_dialog::AttManMsg::Cancel,
-                    );
+                    return self.on_attman(crate::ui::window::attman_dialog::AttManMsg::Cancel);
                 }
                 if matches!(
                     self.active_modal,

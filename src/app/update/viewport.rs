@@ -1360,13 +1360,21 @@ impl OpenCADStudio {
             return Task::batch([task, self.on_viewport_move(p)]);
         }
         self.constraint_glyph_tooltip = None;
-        let constraint_hover = self
-            .constraint_glyph_under(i, p)
-            .map(|(_, references)| references)
-            .unwrap_or_default();
-        self.tabs[i]
-            .scene
-            .set_constraint_hover_highlights(&constraint_hover);
+        if self.tabs[i].active_cmd.is_none() {
+            let constraint_hover = self
+                .constraint_glyph_under(i, p)
+                .map(|(_, references)| references)
+                .unwrap_or_default();
+            self.tabs[i]
+                .scene
+                .set_constraint_hover_highlights(&constraint_hover);
+        } else {
+            // Constraint pills are not command targets: command clicks resolve
+            // through the command's own picker. Avoid rebuilding the glyph
+            // placement cache key (which scans selection/visibility sets) on
+            // every pointer event while drawing, and clear any idle hover once.
+            self.tabs[i].scene.set_constraint_hover_highlights(&[]);
+        }
         // Modifier-driven selection must be known before cursor_plane/axis and
         // drafting constraints are read, not merely before the final callback.
         if let Some(command) = self.tabs[i].active_cmd.as_mut() {
@@ -1926,6 +1934,7 @@ impl OpenCADStudio {
 
             let dwell_hit = normal_tracking_hit.or(reference_snap_hit);
 
+            let tracking_started = perf_move.then(Instant::now);
             self.snapper.update_otrack_dwell(
                 dwell_hit,
                 &tracking_candidates,
@@ -1940,6 +1949,13 @@ impl OpenCADStudio {
             } else {
                 None
             };
+            let tracking_ms = crate::perf::elapsed_ms(tracking_started);
+            if perf_move && tracking_ms >= 1.0 {
+                crate::perf_record!(
+                    "[perf] grip-snap-tracking {tracking_ms:.2}ms candidates={}",
+                    snap_candidates.len()
+                );
+            }
             // If OTRACK has no acquired-object hit, expose the current polar/ortho
             // construction ray through the same visual guide.
             let drafting_guide = construction_ray.and_then(|(base, target)| {
@@ -2483,6 +2499,144 @@ impl OpenCADStudio {
             self.hover_dwell = None;
         }
 
+        // Throttle: while a command is active and the cursor is still
+        // settling, defer continuous / pairwise snap modes to SnapDwellTick.
+        // Keep discrete feature snaps (Endpoint, Node, Midpoint, etc.) live so
+        // the marker and rubber-band can still attach to geometry while moving.
+        if self.tabs[i].active_cmd.is_some() && self.snap_dwell.is_some() {
+            let throttle_started = crate::perf::enabled().then(Instant::now);
+            let (vw, vh) = vp_size;
+            let bounds = iced::Rectangle {
+                x: 0.0,
+                y: 0.0,
+                width: vw,
+                height: vh,
+            };
+            let cursor_world = self.cursor_model_point(i, &edit_cam, p, bounds);
+            let (view_rot, eye) = match &edit_cam {
+                Some(cam) => (cam.view_proj_rte(bounds), cam.eye()),
+                None => {
+                    let camera = self.tabs[i].scene.camera.borrow();
+                    (camera.view_proj_rte(bounds), camera.eye())
+                }
+            };
+            let point_preview = self.tabs[i].active_cmd.as_ref().is_some_and(|command| {
+                !command.needs_entity_pick()
+                    && !command.needs_structure_point_pick()
+                    && !command.needs_tangent_pick()
+                    && !command.is_selection_gathering()
+            });
+            // Large drawings can spend more time finding discrete snap
+            // candidates than updating the cursor. Keep the crosshair and
+            // rubber-band current for every event, but cap this expensive
+            // preview pass at 60 Hz. Click and settled-dwell paths still run
+            // the authoritative full snap at the exact pointer position.
+            let discrete_preview_enabled =
+                point_preview && self.snapper.has_discrete_preview_enabled();
+            let run_discrete_preview = discrete_preview_enabled
+                && self
+                    .snap_dwell
+                    .as_ref()
+                    .is_some_and(|dwell| dwell.discrete_preview_due_at(Instant::now()));
+            // F3 off (or only continuous modes configured) means this live
+            // pass cannot produce a snap. Avoid even querying the large scene
+            // index; the full settled/click pass remains authoritative.
+            let snap = if run_discrete_preview {
+                let all_wires = if let (Some(_), Some(handle)) =
+                    (&edit_cam, self.tabs[i].scene.active_viewport)
+                {
+                    self.tabs[i]
+                        .scene
+                        .model_wires_for_viewport_arc(handle, bounds.height)
+                } else {
+                    self.tabs[i].scene.hit_test_wires()
+                };
+                let candidate_started = crate::perf::enabled().then(Instant::now);
+                let snap_candidates = self.tabs[i].scene.interaction_snap_preview_candidates_near(
+                    all_wires,
+                    cursor_world,
+                    view_rot,
+                    eye,
+                    bounds,
+                    self.snapper.osnap_radius_px,
+                );
+                let candidate_ms = crate::perf::elapsed_ms(candidate_started);
+                let evaluation_started = crate::perf::enabled().then(Instant::now);
+                let snap =
+                    self.snapper
+                        .snap_discrete_preview(p, &snap_candidates, view_rot, eye, bounds);
+                if crate::perf::enabled() {
+                    let evaluation_ms = crate::perf::elapsed_ms(evaluation_started);
+                    let feature_count = snap_candidates
+                        .snap_points()
+                        .map_or(0, |items| items.len())
+                        .saturating_add(
+                            snap_candidates
+                                .key_vertices()
+                                .map_or(0, |items| items.len()),
+                        )
+                        .saturating_add(
+                            snap_candidates
+                                .key_segments()
+                                .map_or(0, |items| items.len()),
+                        );
+                    let snap_preview_ms = candidate_ms + evaluation_ms;
+                    if snap_preview_ms >= 1.0 {
+                        crate::perf_record!(
+                            "[perf] snap-preview {snap_preview_ms:.2}ms query={candidate_ms:.2}ms evaluate={evaluation_ms:.2}ms wires={} features={feature_count}",
+                            snap_candidates.len(),
+                        );
+                    }
+                }
+                snap
+            } else if discrete_preview_enabled {
+                // Keep the previous marker only while it is still inside the
+                // current aperture. This avoids flicker between throttled
+                // samples without showing a snap that is no longer nearby.
+                self.tabs[i].snap_result.filter(|hit| {
+                    let dx = hit.screen.x - p_full.x;
+                    let dy = hit.screen.y - p_full.y;
+                    dx * dx + dy * dy <= self.snapper.osnap_radius_px.powi(2)
+                })
+            } else {
+                None
+            };
+            let world = snap.map_or(cursor_world, |hit| hit.world);
+            self.tabs[i].last_cursor_world = world;
+            self.tabs[i].last_cursor_screen = p_full;
+            if point_preview {
+                let mut snap = snap;
+                if let Some(hit) = snap.as_mut() {
+                    hit.screen.x += tile_b.x;
+                    hit.screen.y += tile_b.y;
+                }
+                self.tabs[i].snap_result = snap;
+            }
+            // Re-arm the dwell — tick fires SNAP_DWELL_MS after the last move.
+            if let Some(dwell) = self.snap_dwell.as_mut() {
+                dwell.last_move_at = Instant::now();
+                dwell.point = p_full;
+                dwell.tab = i;
+                dwell.preview_dirty = true;
+                dwell.snap_resolved = false;
+                if run_discrete_preview {
+                    dwell.last_preview_snap_at = Instant::now();
+                }
+            }
+            let throttle_ms = crate::perf::elapsed_ms(throttle_started);
+            if throttle_ms >= 1.0 {
+                crate::perf_record!(
+                    "[perf] pointer-move mode=command phase=discrete-snap {throttle_ms:.2}ms"
+                );
+            }
+            return Task::none();
+        }
+        // Command finished between the last move and now — clear any stale
+        // deferred snap so the next command starts with a clean slate.
+        if self.tabs[i].active_cmd.is_none() {
+            self.snap_dwell = None;
+        }
+
         if self.tabs[i].active_cmd.is_some() {
             let (vw, vh) = vp_size;
             let bounds = iced::Rectangle {
@@ -2525,6 +2679,7 @@ impl OpenCADStudio {
             // Cursor and wires are model-space; the snap result is model.
             let snap_cursor = cursor_world;
 
+            let hit_test_started = perf_move.then(Instant::now);
             let all_wires =
                 if let (Some(_), Some(h)) = (&edit_cam, self.tabs[i].scene.active_viewport) {
                     self.tabs[i]
@@ -2533,6 +2688,9 @@ impl OpenCADStudio {
                 } else {
                     self.tabs[i].scene.hit_test_wires()
                 };
+            let hit_test_ms = crate::perf::elapsed_ms(hit_test_started);
+            let all_wire_count = all_wires.len();
+            let candidate_started = perf_move.then(Instant::now);
             let snap_candidates = self.tabs[i].scene.interaction_candidates_near(
                 all_wires,
                 snap_cursor,
@@ -2541,6 +2699,14 @@ impl OpenCADStudio {
                 bounds,
                 self.snapper.osnap_radius_px,
             );
+            let candidate_ms = crate::perf::elapsed_ms(candidate_started);
+            if perf_move && (hit_test_ms >= 1.0 || candidate_ms >= 1.0) {
+                crate::perf_record!(
+                    "[perf] snap-candidates hit-test={hit_test_ms:.2}ms query={candidate_ms:.2}ms wires={} candidates={}",
+                    all_wire_count,
+                    snap_candidates.len(),
+                );
+            }
             let needs_entity = self.tabs[i]
                 .active_cmd
                 .as_ref()
@@ -2578,6 +2744,42 @@ impl OpenCADStudio {
                     .active_cmd
                     .as_ref()
                     .is_some_and(|command| command.entity_pick_accepts_points());
+            let wants_point = self.tabs[i].active_cmd.as_ref().is_some_and(|command| {
+                !command.needs_entity_pick()
+                    && !command.needs_tangent_pick()
+                    && !command.is_selection_gathering()
+            });
+            let uses_command_cursor_plane = self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .and_then(|command| command.cursor_plane())
+                .is_some();
+            let axis_lock = if let Some(base) = self.last_point {
+                self.active_axis_lock(
+                    i,
+                    cursor_world,
+                    base,
+                    wants_point && !is_window_corner && !uses_command_cursor_plane,
+                )
+            } else {
+                self.axis_lock_dir = None;
+                None
+            };
+            let tracking_probe = (axis_lock.is_none() && !is_window_corner)
+                .then(|| {
+                    self.active_otrack_hit(
+                        i,
+                        cursor_world,
+                        None,
+                        self.last_point,
+                        true,
+                        view_rot,
+                        eye,
+                        bounds,
+                    )
+                })
+                .flatten();
+            let snap_started = perf_move.then(Instant::now);
             self.tabs[i].snap_result = if (needs_entity && !entity_pick_takes_points)
                 || is_gathering
                 || needs_structure
@@ -2605,8 +2807,10 @@ impl OpenCADStudio {
                         self.active_construction_ray(i, snap_cursor, base, view_rot, eye, bounds)
                     })
                 };
+                let additional_rays =
+                    tracking_probe.map(|track| [(track.base, track.base + track.dir)]);
 
-                self.snapper.snap(
+                self.snapper.snap_with_additional_construction_rays(
                     snap_cursor,
                     p,
                     &snap_candidates,
@@ -2616,8 +2820,16 @@ impl OpenCADStudio {
                     go,
                     gr,
                     construction_ray,
+                    additional_rays.as_ref().map_or(&[], |rays| rays.as_slice()),
                 )
             };
+            let snap_ms = crate::perf::elapsed_ms(snap_started);
+            if perf_move && snap_ms >= 1.0 {
+                crate::perf_record!(
+                    "[perf] snap-evaluate {snap_ms:.2}ms candidates={}",
+                    snap_candidates.len()
+                );
+            }
 
             // Paper-space snapping through layout viewports. `edit_cam`
             // is None here, so `cursor_world` is the paper point and the sheet
@@ -2675,70 +2887,10 @@ impl OpenCADStudio {
                 }
             }
 
-            let wants_point = self.tabs[i].active_cmd.as_ref().is_some_and(|command| {
-                !command.needs_entity_pick()
-                    && !command.needs_tangent_pick()
-                    && !command.is_selection_gathering()
-            });
-            let uses_command_cursor_plane = self.tabs[i]
-                .active_cmd
-                .as_ref()
-                .and_then(|command| command.cursor_plane())
-                .is_some();
-            let axis_lock = if let Some(base) = self.last_point {
-                self.active_axis_lock(
-                    i,
-                    cursor_world,
-                    base,
-                    wants_point && !is_window_corner && !uses_command_cursor_plane,
-                )
-            } else {
-                self.axis_lock_dir = None;
-                None
-            };
-            // An acquired OTRACK ray can cross real drawing geometry even before the
-            // command has a first point. Probe the active tracking ray and let the normal
-            // snap engine evaluate that ray against nearby geometry as a construction ray.
-            //
-            // This makes OTRACK × entity crossings real Intersection snaps, so the normal
-            // dwell acquisition can subsequently turn the crossing into a tracking point.
-            if axis_lock.is_none() && !is_window_corner {
-                let tracking_probe = self.active_otrack_hit(
-                    i,
-                    cursor_world,
-                    None,
-                    self.last_point,
-                    true,
-                    view_rot,
-                    eye,
-                    bounds,
-                );
-
-                if let Some(track) = tracking_probe {
-                    let (go, gr) = self.drafting_grid_basis(i);
-
-                    let tracked_snap = self.snapper.snap(
-                        snap_cursor,
-                        p,
-                        &snap_candidates,
-                        view_rot,
-                        eye,
-                        bounds,
-                        go,
-                        gr,
-                        Some((track.base, track.base + track.dir)),
-                    );
-
-                    // The second pass exists only to discover a crossing between the
-                    // active OTRACK ray and real geometry. Keep the original snap result
-                    // for every other kind of snap.
-                    if tracked_snap
-                        .is_some_and(|hit| hit.snap_type == crate::snap::SnapType::Intersection)
-                    {
-                        self.tabs[i].snap_result = tracked_snap;
-                    }
-                }
-            }
+            // OTRACK's construction ray was included in the primary snap pass,
+            // so discovering its intersection does not evaluate every snap mode
+            // over this candidate set a second time.
+            let snap_tracking_started = perf_move.then(Instant::now);
             self.snapper.update_otrack_dwell(
                 self.tabs[i].snap_result,
                 &snap_candidates,
@@ -2790,6 +2942,13 @@ impl OpenCADStudio {
                     }
                     self.tabs[i].snap_result = Some(par);
                 }
+            }
+            let snap_tracking_ms = crate::perf::elapsed_ms(snap_tracking_started);
+            if perf_move && snap_tracking_ms >= 1.0 {
+                crate::perf_record!(
+                    "[perf] snap-tracking {snap_tracking_ms:.2}ms candidates={}",
+                    snap_candidates.len()
+                );
             }
 
             let effective = {
@@ -3015,6 +3174,7 @@ impl OpenCADStudio {
             // commit).
             self.push_ucs_to_cmd(i);
             self.push_ctrl_to_cmd(i);
+            let preview_started = perf_move.then(Instant::now);
             let mut previews = if needs_structure {
                 let mut p = self.tabs[i]
                     .active_cmd
@@ -3277,6 +3437,24 @@ impl OpenCADStudio {
                 .scene
                 .set_command_preview_hidden(&preview_hidden);
             self.tabs[i].scene.set_preview_wires(previews);
+            let preview_ms = crate::perf::elapsed_ms(preview_started);
+            if perf_move && preview_ms >= 1.0 {
+                crate::perf_record!(
+                    "[perf] command-preview-compute {preview_ms:.2}ms wires={}",
+                    self.tabs[i].scene.preview_wires.len(),
+                );
+            }
+            // Keep the throttle gate armed. The current position has already
+            // completed the full snap pass; a later pointer move will defer
+            // snapping until its own dwell expires.
+            self.snap_dwell = Some(crate::app::SnapDwell {
+                last_move_at: Instant::now(),
+                last_preview_snap_at: Instant::now(),
+                point: p_full,
+                tab: i,
+                preview_dirty: false,
+                snap_resolved: true,
+            });
         } else if !self.client_pick_pending(i) {
             // Idle (no command, no pending client pick): the snap marker is
             // command-only, so clear it — a pending client pick keeps the
@@ -3316,6 +3494,7 @@ impl OpenCADStudio {
         let i = self.active_tab;
         self.tabs[i].measurement.live_visible = false;
         self.hover_dwell = None;
+        self.snap_dwell = None;
         if self.tabs[i]
             .active_cmd
             .as_ref()
@@ -3813,6 +3992,42 @@ impl OpenCADStudio {
         ]))
     }
 
+    pub(super) fn command_picks_on_press(&self) -> bool {
+        let tab = &self.tabs[self.active_tab];
+        tab.active_cmd.as_ref().is_some_and(|command| {
+            !command.is_selection_gathering() && !command.accepts_drag_selection()
+        }) && tab.scene.selection.borrow().gesture.box_anchor.is_none()
+    }
+
+    /// Capture the button event without doing the expensive hover/snap pass.
+    /// Point commands immediately invoke the release path, which resolves
+    /// snapping once using this exact screen position.
+    pub(super) fn set_cursor_for_press(&mut self, position: Point) {
+        let i = self.active_tab;
+        if let Some(command) = self.tabs[i].active_cmd.as_mut() {
+            command.set_ctrl(self.ctrl_down);
+            command.set_shift(self.shift_down);
+        }
+        let canvas_size = self.tabs[i].scene.selection.borrow().view.vp_size;
+        let frame = self.tabs[i].scene.viewport_edit_frame(canvas_size);
+        let tile = frame.as_ref().map(|(_, rect)| *rect).unwrap_or_else(|| {
+            self.tabs[i]
+                .scene
+                .active_model_tile_bounds(canvas_size.0, canvas_size.1)
+        });
+        let camera = frame.map(|(camera, _)| camera);
+        let local = Point::new(position.x - tile.x, position.y - tile.y);
+        let bounds = iced::Rectangle::with_size(iced::Size::new(tile.width, tile.height));
+        self.tabs[i].last_cursor_world = self.cursor_model_point(i, &camera, local, bounds);
+        self.tabs[i].last_cursor_screen = position;
+        self.tabs[i]
+            .scene
+            .selection
+            .borrow_mut()
+            .input
+            .last_move_pos = Some(position);
+    }
+
     pub(super) fn on_viewport_left_press(&mut self) -> Task<Message> {
         let i = self.active_tab;
         self.tabs[i].measurement.dismiss_result();
@@ -4261,15 +4476,7 @@ impl OpenCADStudio {
         // A command step that takes a point or a pick commits on the press,
         // so the cursor moving before the button comes up cannot move it.
         // Selection steps and drag-fence picks still wait for the release.
-        let picks_on_press = self.tabs[i].active_cmd.as_ref().is_some_and(|command| {
-            !command.is_selection_gathering() && !command.accepts_drag_selection()
-        }) && self.tabs[i]
-            .scene
-            .selection
-            .borrow()
-            .gesture
-            .box_anchor
-            .is_none();
+        let picks_on_press = self.command_picks_on_press();
         // A press on a selected object may become a drag of the selection.
         self.drag_move = (self.tabs[i].active_cmd.is_none()
             && !self.shift_down
@@ -4295,6 +4502,9 @@ impl OpenCADStudio {
 
     pub(super) fn on_viewport_left_release(&mut self) -> Task<Message> {
         let i = self.active_tab;
+        // A click fires after the cursor has settled — clear any pending
+        // deferred snap so the release's own snap runs at full fidelity.
+        self.snap_dwell = None;
         // A block dragged from the Blocks palette lands here.
         if let Some(item) = self.take_block_drop() {
             return self.drop_block(item);
@@ -4465,9 +4675,12 @@ impl OpenCADStudio {
                 height: vh,
             };
 
-            let snap_taken = self.tabs[i].snap_result.take();
-            let snapped = snap_taken.is_some();
-            let tangent_obj_at_click = snap_taken.and_then(|s| s.tangent_obj);
+            // Hover may still describe an earlier pointer position while
+            // snap is deferred. Only the snap computed for this click may
+            // supply tangent metadata or decide whether DUCS applies.
+            self.tabs[i].snap_result = None;
+            let snapped;
+            let tangent_obj_at_click;
 
             let world_pt = {
                 // Cursor → model point (viewport camera inside a viewport,
@@ -4481,6 +4694,7 @@ impl OpenCADStudio {
                     }
                 };
                 let snap_cursor = raw;
+                let click_source_started = crate::perf::enabled().then(Instant::now);
                 let all_wires =
                     if let (Some(_), Some(h)) = (&edit_cam, self.tabs[i].scene.active_viewport) {
                         self.tabs[i]
@@ -4489,6 +4703,9 @@ impl OpenCADStudio {
                     } else {
                         self.tabs[i].scene.hit_test_wires()
                     };
+                let click_source_ms = crate::perf::elapsed_ms(click_source_started);
+                let click_wire_count = all_wires.len();
+                let click_query_started = crate::perf::enabled().then(Instant::now);
                 let snap_candidates = self.tabs[i].scene.interaction_candidates_near(
                     all_wires,
                     snap_cursor,
@@ -4497,6 +4714,8 @@ impl OpenCADStudio {
                     bounds,
                     self.snapper.osnap_radius_px,
                 );
+                let click_query_ms = crate::perf::elapsed_ms(click_query_started);
+                let click_evaluate_started = crate::perf::enabled().then(Instant::now);
                 let needs_tan = self.tabs[i]
                     .active_cmd
                     .as_ref()
@@ -4512,6 +4731,22 @@ impl OpenCADStudio {
                         .active_cmd
                         .as_ref()
                         .is_some_and(|command| command.entity_pick_accepts_points());
+                // Probe the active OTRACK ray before snapping so its geometry
+                // intersection can be tested in the same candidate pass.
+                let tracking_probe = if !needs_entity_click && !needs_tan && !is_window_corner {
+                    self.active_otrack_hit(
+                        i,
+                        raw,
+                        None,
+                        self.last_point,
+                        true,
+                        view_rot,
+                        eye,
+                        bounds,
+                    )
+                } else {
+                    None
+                };
                 let mut snap_hit = if needs_entity_click && !entity_click_takes_points {
                     None
                 } else if needs_tan {
@@ -4541,8 +4776,10 @@ impl OpenCADStudio {
                             )
                         })
                     };
+                    let additional_rays =
+                        tracking_probe.map(|track| [(track.base, track.base + track.dir)]);
 
-                    self.snapper.snap(
+                    self.snapper.snap_with_additional_construction_rays(
                         snap_cursor,
                         p,
                         &snap_candidates,
@@ -4552,45 +4789,9 @@ impl OpenCADStudio {
                         go,
                         gr,
                         construction_ray,
+                        additional_rays.as_ref().map_or(&[], |rays| rays.as_slice()),
                     )
                 };
-                // Mirror the cursor-move OTRACK × geometry intersection pass when the
-                // point is actually clicked. The move path may already display the
-                // Intersection marker, but click handling recomputes snapping from scratch.
-                if !needs_entity_click && !needs_tan && !is_window_corner {
-                    let tracking_probe = self.active_otrack_hit(
-                        i,
-                        raw,
-                        None,
-                        self.last_point,
-                        true,
-                        view_rot,
-                        eye,
-                        bounds,
-                    );
-
-                    if let Some(track) = tracking_probe {
-                        let (go, gr) = self.drafting_grid_basis(i);
-
-                        let tracked_snap = self.snapper.snap(
-                            snap_cursor,
-                            p,
-                            &snap_candidates,
-                            view_rot,
-                            eye,
-                            bounds,
-                            go,
-                            gr,
-                            Some((track.base, track.base + track.dir)),
-                        );
-
-                        if tracked_snap
-                            .is_some_and(|hit| hit.snap_type == crate::snap::SnapType::Intersection)
-                        {
-                            snap_hit = tracked_snap;
-                        }
-                    }
-                }
                 // Paper-space snapping through layout viewports. Mirrors
                 // the cursor-move pass: the click recomputes snapping from
                 // scratch, so the viewport query has to run here too. The hit
@@ -4633,7 +4834,20 @@ impl OpenCADStudio {
                         snap_hit = crate::snap::merge_snap(snap_hit, face_hit, p);
                     }
                 }
+                let click_evaluate_ms = crate::perf::elapsed_ms(click_evaluate_started);
+                if crate::perf::enabled()
+                    && click_source_ms + click_query_ms + click_evaluate_ms >= 1.0
+                {
+                    crate::perf_record!(
+                        "[perf] snap-click source={click_source_ms:.2}ms query={click_query_ms:.2}ms evaluate={click_evaluate_ms:.2}ms input_wires={click_wire_count} candidates={} snap_on={} snap3d_on={} tangent={needs_tan}",
+                        snap_candidates.len(),
+                        self.snapper.snap_enabled,
+                        self.snapper.snap3d_enabled,
+                    );
+                }
                 self.pending_click_snap = snap_hit.map(|hit| (hit, click_frame));
+                snapped = snap_hit.is_some();
+                tangent_obj_at_click = snap_hit.and_then(|hit| hit.tangent_obj);
                 // Snap runs in model space; the result is already model.
                 let mut pt = snap_hit.map(|s| s.world).unwrap_or(raw);
                 // When no UCS is active clamp to world XY; with a UCS the point is
@@ -5223,6 +5437,8 @@ impl OpenCADStudio {
                 sel.input.left_press_pos = None;
                 sel.input.left_press_time = None;
                 sel.input.left_dragging = false;
+                drop(sel);
+                self.arm_resolved_command_snap_dwell(i, p_full);
                 return task;
             }
             let mut sel = self.tabs[i].scene.selection.borrow_mut();
@@ -5230,6 +5446,8 @@ impl OpenCADStudio {
             sel.input.left_press_pos = None;
             sel.input.left_press_time = None;
             sel.input.left_dragging = false;
+            drop(sel);
+            self.arm_resolved_command_snap_dwell(i, p_full);
             return Task::none();
         }
 
@@ -6068,6 +6286,7 @@ properties={:.1}ms picked={}",
         }
         self.tabs[i].scene.set_hover_highlight(None);
         self.hover_dwell = None;
+        self.snap_dwell = None;
         self.constraint_glyph_tooltip = None;
         self.grip_hover = None;
         self.ucs_icon_hover = false;
@@ -6076,6 +6295,27 @@ properties={:.1}ms picked={}",
     /// Queue a fresh rollover pick at the stationary cursor after camera motion
     /// ends. Repeated wheel events replace this timestamp, so the pick runs only
     /// after the final zoom step settles.
+    /// Keep the command-move snap throttle armed after a point click has
+    /// already resolved the exact snap at that button position.
+    fn arm_resolved_command_snap_dwell(&mut self, i: usize, point: iced::Point) {
+        let point_pick_pending = self.tabs[i].active_cmd.as_ref().is_some_and(|command| {
+            !command.needs_entity_pick()
+                && !command.needs_structure_point_pick()
+                && !command.needs_tangent_pick()
+                && !command.is_selection_gathering()
+        });
+        if point_pick_pending {
+            self.snap_dwell = Some(crate::app::SnapDwell {
+                last_move_at: Instant::now(),
+                last_preview_snap_at: Instant::now(),
+                point,
+                tab: i,
+                preview_dirty: false,
+                snap_resolved: true,
+            });
+        }
+    }
+
     pub(in crate::app) fn arm_hover_after_navigation(&mut self, i: usize) {
         if i >= self.tabs.len()
             || self.tabs[i]
@@ -6732,6 +6972,45 @@ properties={:.1}ms picked={}",
         Task::none()
     }
 
+    /// Runs when the cursor has been still for `SNAP_DWELL_MS` while a
+    /// command is active. Clears the deferred-snap gate so the next
+    /// pointer position runs the full snap pipeline. Preview work is limited
+    /// to one rebuild per frame while the pointer is still moving.
+    pub(super) fn on_snap_dwell_tick(&mut self) -> Task<Message> {
+        let Some(dwell) = self.snap_dwell.clone() else {
+            return Task::none();
+        };
+        if dwell.snap_resolved && !dwell.preview_dirty {
+            return Task::none();
+        }
+        // Re-check the gate — command may have ended or the tab changed
+        // between the move that armed the dwell and this tick.
+        let i = dwell.tab;
+        if i >= self.tabs.len() || i != self.active_tab || self.tabs[i].active_cmd.is_none() {
+            self.snap_dwell = None;
+            return Task::none();
+        }
+        if Instant::now()
+            .duration_since(dwell.last_move_at)
+            .as_millis()
+            < crate::app::SNAP_DWELL_MS
+        {
+            if dwell.preview_dirty {
+                self.refresh_active_cmd_preview(i);
+                if let Some(pending) = self.snap_dwell.as_mut() {
+                    pending.preview_dirty = false;
+                }
+            }
+            return Task::none();
+        }
+        // Resolve synchronously. Queuing ViewportMove here can replay this
+        // old position AFTER a newer move/press and send the cursor backwards.
+        self.snap_dwell = None;
+        // on_viewport_move re-arms the throttle with `snap_resolved = true`.
+        // Leave it armed so the next move doesn't immediately repeat this
+        // dense-scene snap synchronously.
+        self.on_viewport_move(dwell.point)
+    }
     pub(in crate::app) fn prepare_interaction_index_task(
         &mut self,
         i: usize,
@@ -7414,6 +7693,157 @@ mod scroll_intent_tests {
                 "m = {magnification} left distance at {}",
                 camera.distance
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod rapid_drawing_tests {
+    use super::*;
+
+    #[test]
+    fn discrete_snap_preview_is_rate_limited_to_60_hz() {
+        let last = Instant::now();
+        let dwell = crate::app::SnapDwell {
+            last_move_at: last,
+            last_preview_snap_at: last,
+            point: Point::new(0.0, 0.0),
+            tab: 0,
+            preview_dirty: false,
+            snap_resolved: false,
+        };
+        assert!(!dwell.discrete_preview_due_at(last + std::time::Duration::from_millis(15)));
+        assert!(dwell.discrete_preview_due_at(last + std::time::Duration::from_millis(16)));
+    }
+
+    fn drawing_app(command: &str) -> OpenCADStudio {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        app.tabs[app.active_tab]
+            .scene
+            .selection
+            .borrow_mut()
+            .view
+            .vp_size = (800.0, 600.0);
+        app.snapper.snap_enabled = false;
+        app.snapper.snap3d_enabled = false;
+        app.snapper.grid_snap_on = false;
+        app.snapper.otrack_enabled = false;
+        app.ortho_mode = false;
+        app.polar_mode = false;
+        app.dynamic_ucs = false;
+        let _ = app.run_command_line(command);
+        assert!(app.tabs[app.active_tab].active_cmd.is_some(), "{command}");
+        app
+    }
+
+    fn screen(app: &OpenCADStudio, point: glam::DVec3) -> Point {
+        let p = app.tabs[app.active_tab]
+            .scene
+            .camera
+            .borrow()
+            .project(
+                point,
+                iced::Rectangle::with_size(iced::Size::new(800.0, 600.0)),
+            )
+            .unwrap();
+        Point::new(p.x, p.y)
+    }
+
+    #[test]
+    fn dynamic_ucs_point_command_uses_the_exact_button_position() {
+        let mut app = drawing_app("LINE");
+        app.dynamic_ucs = true;
+        let target = glam::DVec3::new(40.0, 30.0, 0.0);
+        let at = screen(&app, target);
+
+        let _ = app.update(Message::ViewportLeftPressAt(at));
+
+        assert!((app.last_point.unwrap() - target).length() < 0.001);
+        assert!(app.dynamic_ucs);
+        assert!(app.tabs[app.active_tab].active_cmd.is_some());
+    }
+
+    #[test]
+    fn rapid_drawing_zigzag_uses_button_positions_without_hover_or_duplicate_release() {
+        for command in ["LINE", "PLINE"] {
+            for pane in [false, true] {
+                let mut app = drawing_app(command);
+                for (x, y) in [(40.0, 30.0), (80.0, 60.0), (120.0, 30.0), (160.0, 60.0)] {
+                    let target = glam::DVec3::new(x, y, 0.0);
+                    let old = screen(&app, target + glam::DVec3::new(-15.0, 10.0, 0.0));
+                    let _ = app.update(Message::ViewportMove(old));
+                    let at = screen(&app, target);
+                    let _ = app.update(if pane {
+                        Message::PanePressAt(0, at)
+                    } else {
+                        Message::ViewportLeftPressAt(at)
+                    });
+                    assert!(
+                        (app.last_point.unwrap() - target).length() < 0.001,
+                        "{command} pane={pane}: {:?} != {target:?}",
+                        app.last_point
+                    );
+                    assert!(
+                        app.snap_dwell
+                            .as_ref()
+                            .is_some_and(|dwell| dwell.snap_resolved),
+                        "{command} pane={pane}: accepted click should leave the snap gate resolved"
+                    );
+                    let after_press = app.last_point;
+                    let _ = app.update(Message::ViewportMove(old));
+                    let _ = app.update(Message::ViewportLeftRelease);
+                    assert_eq!(app.last_point, after_press);
+                }
+                let _ = app.feed_command(crate::command::StepInput::Enter);
+                let entities: Vec<_> = app.tabs[app.active_tab].scene.document.entities().collect();
+                assert_eq!(entities.len(), if command == "LINE" { 3 } else { 1 });
+            }
+        }
+    }
+
+    #[test]
+    fn rapid_drawing_preview_coalesces_moves_and_flushes_latest_position() {
+        for command in ["LINE", "PLINE", "RECTANG", "CIRCLE"] {
+            let mut app = drawing_app(command);
+            let at = screen(&app, glam::DVec3::new(40.0, 30.0, 0.0));
+            let _ = app.update(Message::ViewportLeftPressAt(at));
+            let at = screen(&app, glam::DVec3::new(50.0, 40.0, 0.0));
+            let _ = app.update(Message::ViewportMove(at));
+            let i = app.active_tab;
+            app.snap_dwell.as_mut().unwrap().last_move_at = Instant::now();
+            let _ = app.on_snap_dwell_tick();
+            assert!(!app.tabs[i].scene.preview_wires.is_empty(), "{command}");
+            let before = app.tabs[i].scene.preview_wires[0].points.clone();
+            for x in 60..90 {
+                let at = screen(&app, glam::DVec3::new(f64::from(x), 55.0, 0.0));
+                let _ = app.update(Message::ViewportMove(at));
+            }
+            assert_eq!(
+                app.tabs[i].scene.preview_wires[0].points, before,
+                "{command}"
+            );
+            assert!(app.snap_dwell.as_ref().unwrap().preview_dirty);
+            let latest = app.tabs[i].last_cursor_world;
+            app.snap_dwell.as_mut().unwrap().last_move_at = Instant::now();
+            let _ = app.on_snap_dwell_tick();
+            assert!(!app.snap_dwell.as_ref().unwrap().preview_dirty);
+            assert_ne!(
+                app.tabs[i].scene.preview_wires[0].points, before,
+                "{command}"
+            );
+            assert_eq!(app.tabs[i].last_cursor_world, latest);
+            // Expire without sleeping: the full pass must finish in this
+            // update, not emit an old ViewportMove for the daemon to replay.
+            app.snap_dwell.as_mut().unwrap().last_move_at =
+                Instant::now() - std::time::Duration::from_millis(100);
+            let _ = app.on_snap_dwell_tick();
+            assert!(app.snap_dwell.as_ref().unwrap().snap_resolved);
+            assert!((app.tabs[i].last_cursor_world - latest).length() < 0.001);
+            let resolved_point = app.tabs[i].last_cursor_world;
+            let _ = app.on_snap_dwell_tick();
+            assert!(app.snap_dwell.as_ref().unwrap().snap_resolved);
+            assert_eq!(app.tabs[i].last_cursor_world, resolved_point);
         }
     }
 }

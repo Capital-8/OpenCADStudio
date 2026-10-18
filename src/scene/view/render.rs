@@ -24,6 +24,19 @@ use crate::scene::{
 const DISPLAY_STYLE_CACHE_LIMIT: usize = if cfg!(target_arch = "wasm32") { 4 } else { 24 };
 const MM_TO_PX: f32 = 96.0 / 25.4;
 
+fn cached_weak_source_changed<T>(
+    cached: Option<&std::sync::Weak<T>>,
+    current: &Arc<T>,
+    patch_proves_unchanged: bool,
+) -> bool {
+    if patch_proves_unchanged {
+        return false;
+    }
+    cached
+        .and_then(std::sync::Weak::upgrade)
+        .map_or(true, |source| !Arc::ptr_eq(&source, current))
+}
+
 // ── Camera hover state (shader::Program::State) ───────────────────────────
 
 #[derive(Clone, Default)]
@@ -376,8 +389,8 @@ impl shader::Primitive for Primitive {
     ) {
         let nav_prepare_started = iced::time::Instant::now();
         if let Some(gap_ms) = crate::perf::take_view_to_prepare_ms() {
-            if gap_ms >= 1.0 {
-                crate::perf_record!("[perf] layout-draw {:>7.1}ms", gap_ms);
+            if gap_ms >= 1.0 && crate::perf::has_pending_pointer_moves() {
+                crate::perf_record!("[perf] view-to-prepare {:>7.1}ms", gap_ms);
             }
         }
         let errors_at_entry = crate::scene::pipeline::gpu_errors_seen();
@@ -455,7 +468,37 @@ impl shader::Primitive for Primitive {
             // drawing size. The ViewCube is excluded from the signature and
             // keeps updating in its own always-on pass, so cube hover still
             // tracks while the scene is cached.
-            let sig = render_signature(vp, &placement);
+            // Upload simple wire previews before checking the base-scene cache.
+            // Their dedicated overlay pass can then follow a cached resolve
+            // without making the resident geometry dirty on every cursor move.
+            let preview_wires_preuploaded = !vp.preview_wires.is_empty()
+                && vp.preview_hatches.is_empty()
+                && vp.preview_text_verts.is_empty()
+                && vp.clip_boundary_ndc.is_empty();
+            if preview_wires_preuploaded {
+                let Some(draw_depths) = vp.draw_depths.upgrade() else {
+                    inner.render_sig = u64::MAX;
+                    inner.skip_geometry = true;
+                    continue;
+                };
+                inner.upload_preview_wires(device, queue, &vp.preview_wires[..], &draw_depths);
+                inner.preview_overlay_direct = inner
+                    .gpu_preview_circles
+                    .iter()
+                    .all(|circle| circle.instance_count == 0)
+                    && inner
+                        .gpu_preview_ellipses
+                        .iter()
+                        .all(|ellipse| ellipse.instance_count == 0)
+                    && inner.text_preview_gpu.is_empty()
+                    && inner
+                        .gpu_preview_wires
+                        .iter()
+                        .any(|wire| wire.instance_count > 0);
+            } else {
+                inner.preview_overlay_direct = false;
+            }
+            let sig = render_signature(vp, &placement, inner.preview_overlay_direct);
             // REDRAW bypass: pin render_sig to force a full pass this frame
             // even if the signature is otherwise unchanged. The request is
             // one-shot per viewport (consumed by the builder that produced
@@ -466,6 +509,13 @@ impl shader::Primitive for Primitive {
             let skip = inner.render_sig != u64::MAX && sig == inner.render_sig;
             inner.render_sig = sig;
             inner.skip_geometry = skip;
+            if !skip && !vp.preview_wires.is_empty() && crate::perf::enabled() {
+                crate::perf_record!(
+                    "[perf] preview-render full-scene=1 direct-overlay={} wires={}",
+                    inner.preview_overlay_direct,
+                    vp.preview_wires.len(),
+                );
+            }
             // Interaction LOD: skip the hatch draw this frame while navigating.
             inner.skip_hatch_frame = vp.skip_hatch;
             inner.skip_background = vp.skip_background;
@@ -571,12 +621,16 @@ impl shader::Primitive for Primitive {
                 inner.cached_point_cloud_source = Some(Arc::clone(&vp.point_clouds));
             }
             inner.set_point_cloud_view(queue, vp.point_cloud_light);
-            if inner
+            let text_source_changed = inner
                 .cached_text_source
                 .as_ref()
-                .map_or(true, |source| !Arc::ptr_eq(source, &vp.text_verts))
-                || vp.wire_content_id != inner.cached_wire_id
-            {
+                .map_or(true, |source| !Arc::ptr_eq(source, &vp.text_verts));
+            let text_wire_changed = vp.wire_content_id != inner.cached_wire_id
+                && vp
+                    .wire_patch
+                    .as_ref()
+                    .map_or(true, |(_, patch)| patch.text_pass_changed);
+            if text_source_changed || text_wire_changed {
                 inner.upload_text(
                     device,
                     queue,
@@ -584,8 +638,10 @@ impl shader::Primitive for Primitive {
                     &vp_wires[..],
                     &draw_depths,
                 );
-                inner.cached_text_source = Some(Arc::clone(&vp.text_verts));
             }
+            // Advance the source key even when an ordinary wire patch leaves
+            // both document text and block-instance text unchanged.
+            inner.cached_text_source = Some(Arc::clone(&vp.text_verts));
             inner.cached_fill_mode = fill_mode;
             inner.cached_epoch = cur_key;
             // Face3D edge/fill buffers are world-space and selection-independent
@@ -599,21 +655,41 @@ impl shader::Primitive for Primitive {
                 .wire_patch
                 .as_ref()
                 .is_some_and(|(_, patch)| !patch.face_pass_changed);
-            let face3d_changed = inner
-                .cached_face3d_source
-                .as_ref()
-                .map_or(true, |source| !Arc::ptr_eq(source, &vp.face3d_wires))
-                || inner
-                    .cached_face3d_depth_source
-                    .as_ref()
-                    .and_then(std::sync::Weak::upgrade)
-                    .map_or(true, |source| !Arc::ptr_eq(&source, &draw_depths))
-                || (inner.cached_face3d_key.0 != vp.wire_content_id && !face_pass_unchanged);
-            if face3d_changed
-                || face3d_fill_active != inner.cached_face3d_key.1
-                || solid_fill_active != inner.cached_face3d_key.2
-                || solid_visibility_key != inner.cached_face3d_key.3
+            let face_source_changed = inner.cached_face3d_source.as_ref().map_or(true, |source| {
+                !Arc::ptr_eq(source, &vp.face3d_wires) && !face_pass_unchanged
+            });
+            let face_depth_changed = cached_weak_source_changed(
+                inner.cached_face3d_depth_source.as_ref(),
+                &draw_depths,
+                face_pass_unchanged,
+            );
+            let face_wire_changed =
+                inner.cached_face3d_key.0 != vp.wire_content_id && !face_pass_unchanged;
+            let face_fill_mode_changed = face3d_fill_active != inner.cached_face3d_key.1;
+            let solid_fill_mode_changed = solid_fill_active != inner.cached_face3d_key.2;
+            let solid_visibility_changed = solid_visibility_key != inner.cached_face3d_key.3;
+            if face_source_changed
+                || face_depth_changed
+                || face_wire_changed
+                || face_fill_mode_changed
+                || solid_fill_mode_changed
+                || solid_visibility_changed
             {
+                if crate::perf::enabled() {
+                    crate::perf_record!(
+                        "[perf] face3d-upload-gate patch_present={} face_pass_changed={} source_changed={} depth_changed={} wire_id_changed={} fill_mode_changed={} solid_mode_changed={} visibility_changed={}",
+                        vp.wire_patch.is_some(),
+                        vp.wire_patch
+                            .as_ref()
+                            .map_or(true, |(_, patch)| patch.face_pass_changed),
+                        face_source_changed,
+                        face_depth_changed,
+                        face_wire_changed,
+                        face_fill_mode_changed,
+                        solid_fill_mode_changed,
+                        solid_visibility_changed,
+                    );
+                }
                 inner.upload_face3d(
                     device,
                     queue,
@@ -624,9 +700,11 @@ impl shader::Primitive for Primitive {
                     vp.view_dir,
                     &draw_depths,
                 );
-                inner.cached_face3d_source = Some(Arc::clone(&vp.face3d_wires));
-                inner.cached_face3d_depth_source = Some(Arc::downgrade(&draw_depths));
             }
+            // Preserve these keys across patches proven not to touch Face3D or
+            // fill data, avoiding a full pass scan for every appended line.
+            inner.cached_face3d_source = Some(Arc::clone(&vp.face3d_wires));
+            inner.cached_face3d_depth_source = Some(Arc::downgrade(&draw_depths));
             inner.cached_face3d_key = (
                 vp.wire_content_id,
                 face3d_fill_active,
@@ -1137,8 +1215,10 @@ retained_contributors={}",
             // Live overlay (command preview / interim / grip drag) — small and
             // refreshed every frame it's present, so a drag never re-uploads
             // the resident base wire buffer.
-            inner.upload_preview_wires(device, queue, &vp.preview_wires[..], &draw_depths);
-            inner.upload_preview_text(device, queue, &vp.preview_text_verts[..]);
+            if !preview_wires_preuploaded {
+                inner.upload_preview_wires(device, queue, &vp.preview_wires[..], &draw_depths);
+                inner.upload_preview_text(device, queue, &vp.preview_text_verts[..]);
+            }
             // Cull / scissor / LOD project AABBs relative-to-eye (matching the
             // GPU's RTE path) so the math stays precise at UTM-scale coords.
             let view_rot = vp.uniforms.view_rot;
@@ -1383,11 +1463,14 @@ retained_contributors={}",
 /// scene-render cache in `Primitive::prepare` / `Pipeline::render`).
 ///
 /// Deliberately EXCLUDES `hover_region` — the ViewCube highlight renders in its
-/// own always-on pass, so cube hover must not force a full scene re-render. The
-/// live preview IS included (its coordinates), so a rubber-band tracking the
-/// cursor still renders, and the frame where the preview clears erases it
-/// instead of freezing the last overlay on screen.
-fn render_signature(vp: &ViewportData, placement: &PhysicalViewport) -> u64 {
+/// own always-on pass, so cube hover must not force a full scene re-render. Most
+/// live previews remain in the signature; simple unclipped wires use a separate
+/// surface overlay and do not dirty the cached resident scene.
+fn render_signature(
+    vp: &ViewportData,
+    placement: &PhysicalViewport,
+    direct_wire_preview: bool,
+) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = rustc_hash::FxHasher::default();
     // Camera + per-view shading flags all live in the uniforms (view_rot, eye
@@ -1452,13 +1535,8 @@ fn render_signature(vp: &ViewportData, placement: &PhysicalViewport) -> u64 {
     // Live overlay (command preview / interim / grip drag). Small — a handful
     // of wires — so hashing its coordinates is cheap and catches the endpoint
     // moving with the cursor as well as the preview appearing / clearing.
-    for w in vp.preview_wires.iter() {
-        w.points.len().hash(&mut h);
-        for p in &w.points {
-            p[0].to_bits().hash(&mut h);
-            p[1].to_bits().hash(&mut h);
-            p[2].to_bits().hash(&mut h);
-        }
+    if !direct_wire_preview && !vp.preview_wires.is_empty() {
+        hash_preview_wires(&vp.preview_wires, &mut h);
     }
     // Live hatch preview. Pattern-origin grip drags keep the boundary fixed and
     // move only the family anchors, so hash both geometry and pattern data.
@@ -1529,6 +1607,113 @@ fn render_signature(vp: &ViewportData, placement: &PhysicalViewport) -> u64 {
     h.finish()
 }
 
+/// The overlay Vec is rebuilt by build_primitive even on unrelated UI events.
+/// Hash rendered content, never its allocation address. Include low residuals
+/// (UTM-scale motion), style and analytical curves as well as high coordinates.
+fn hash_preview_wires(wires: &[WireModel], h: &mut impl std::hash::Hasher) {
+    use crate::scene::model::wire_model::TangentGeom;
+    use std::hash::Hash;
+    wires.len().hash(h);
+    for w in wires {
+        w.name.hash(h);
+        for data in [&w.points, &w.points_low, &w.fill_tris, &w.fill_tris_low] {
+            bytemuck::cast_slice::<_, u8>(data).hash(h);
+        }
+        for data in [
+            &w.taper_widths[..],
+            &w.pattern_stations,
+            &w.color,
+            &w.pattern,
+        ] {
+            bytemuck::cast_slice::<_, u8>(data).hash(h);
+        }
+        for value in [w.pattern_length, w.line_weight_px, w.world_width] {
+            value.to_bits().hash(h);
+        }
+        w.depth_override.map(f32::to_bits).hash(h);
+        w.dash_align_end.map(f32::to_bits).hash(h);
+        w.plinegen.hash(h);
+        w.dash_from_start.hash(h);
+        w.display_visible.hash(h);
+        w.fill_is_3d.hash(h);
+        w.fill_is_2d_solid.hash(h);
+        bytemuck::cast_slice::<_, u8>(&w.text_verts).hash(h);
+        w.point_marker.is_some().hash(h);
+        if let Some(marker) = w.point_marker {
+            for v in [marker.origin, marker.normal, marker.axis_x, marker.axis_y] {
+                v.to_array().map(f64::to_bits).hash(h);
+            }
+            marker.viewport_percent.to_bits().hash(h);
+        }
+        w.tangent_geoms.len().hash(h);
+        for geometry in &w.tangent_geoms {
+            std::mem::discriminant(geometry).hash(h);
+            match geometry {
+                TangentGeom::Line { p1, p2 } => {
+                    p1.map(f32::to_bits).hash(h);
+                    p2.map(f32::to_bits).hash(h);
+                }
+                TangentGeom::Circle { center, radius } => {
+                    center.map(f32::to_bits).hash(h);
+                    radius.to_bits().hash(h);
+                }
+                TangentGeom::PlanarCircle {
+                    center,
+                    axis_x,
+                    axis_y,
+                    radius,
+                } => {
+                    for v in [center, axis_x, axis_y] {
+                        v.map(f64::to_bits).hash(h);
+                    }
+                    radius.to_bits().hash(h);
+                }
+                TangentGeom::Arc {
+                    center,
+                    axis_x,
+                    axis_y,
+                    radius,
+                    start_angle,
+                    end_angle,
+                } => {
+                    for v in [center, axis_x, axis_y] {
+                        v.map(f64::to_bits).hash(h);
+                    }
+                    for v in [radius, start_angle, end_angle] {
+                        v.to_bits().hash(h);
+                    }
+                }
+                TangentGeom::PlanarEllipse {
+                    center,
+                    major_axis,
+                    normal,
+                    minor_axis_ratio,
+                    start_param,
+                    end_param,
+                } => {
+                    for v in [center, major_axis, normal] {
+                        v.map(f64::to_bits).hash(h);
+                    }
+                    for v in [minor_axis_ratio, start_param, end_param] {
+                        v.to_bits().hash(h);
+                    }
+                }
+            }
+        }
+        w.render_instance.is_some().hash(h);
+        if let Some(instance) = w.render_instance {
+            instance.source_id.hash(h);
+            instance.translation.map(f64::to_bits).hash(h);
+        }
+        w.stub.is_some().hash(h);
+        if let Some(stub) = &w.stub {
+            Arc::as_ptr(&stub.prototype).hash(h);
+            stub.delta.map(f64::to_bits).hash(h);
+            stub.depth_delta.to_bits().hash(h);
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(in crate::scene) struct PhysicalViewport {
     size: Size<u32>,
@@ -1565,6 +1750,38 @@ fn physical_viewport(rect: Rectangle, window: Size<u32>) -> PhysicalViewport {
         },
         uv_offset: [(left - x) / width, (top - y) / height],
         uv_scale: [visible_w / width, visible_h / height],
+    }
+}
+
+#[cfg(test)]
+mod preview_signature_tests {
+    use super::*;
+    use std::hash::Hasher;
+
+    fn signature(wires: &[WireModel]) -> u64 {
+        let mut h = rustc_hash::FxHasher::default();
+        hash_preview_wires(wires, &mut h);
+        h.finish()
+    }
+
+    #[test]
+    fn preview_signature_tracks_content_instead_of_allocations() {
+        let wires = Arc::new(vec![WireModel::solid_f64(
+            "rubber_band".into(),
+            vec![[6_000_000.0, 0.0, 0.0], [6_000_010.0, 1.0, 0.0]],
+            WireModel::CYAN,
+            false,
+        )]);
+        let mut rebuilt = Arc::new(wires.as_ref().clone());
+        assert!(!Arc::ptr_eq(&wires, &rebuilt));
+        assert_eq!(signature(&wires), signature(&rebuilt));
+        // Sub-f32 motion must still invalidate at large world coordinates.
+        Arc::make_mut(&mut rebuilt)[0].points_low[1][0] += 0.001;
+        assert_ne!(signature(&wires), signature(&rebuilt));
+        let mut style = wires.as_ref().clone();
+        style[0].color = WireModel::WHITE;
+        assert_ne!(signature(&wires), signature(&style));
+        assert_ne!(signature(&wires), signature(&[]));
     }
 }
 
@@ -5147,6 +5364,34 @@ fn split_face3d_wires_with_handles(
         }
     }
     (face3d, others)
+}
+
+#[cfg(test)]
+mod face3d_cache_tests {
+    use super::cached_weak_source_changed;
+    use std::sync::Arc;
+
+    #[test]
+    fn expired_depth_source_does_not_invalidate_a_proven_unchanged_face_pass() {
+        let expired = {
+            let source = Arc::new(());
+            Arc::downgrade(&source)
+        };
+        let current = Arc::new(());
+
+        assert!(!cached_weak_source_changed(Some(&expired), &current, true,));
+        assert!(cached_weak_source_changed(Some(&expired), &current, false,));
+    }
+
+    #[test]
+    fn live_depth_source_still_invalidates_when_it_changes() {
+        let cached = Arc::new(());
+        let weak = Arc::downgrade(&cached);
+        let current = Arc::new(());
+
+        assert!(cached_weak_source_changed(Some(&weak), &current, false));
+        assert!(!cached_weak_source_changed(Some(&weak), &cached, false));
+    }
 }
 
 // ── Layer-0 block inheritance (#221) ──────────────────────────────────────
