@@ -211,5 +211,16 @@ pub fn handle_plugin_request(
         GetEntitiesBatch { handles } => {
             PluginResponse::GetEntitiesBatchResult(host.entities_batch(&handles))
         }
+        CreateConstraint { constraint } => {
+            PluginResponse::CreateConstraintResult(host.constraint_create(constraint))
+        }
+        ReadXRecords { reads } => PluginResponse::ReadXRecordsResult(host.read_xrecords(&reads)),
+        UpdateXRecords { updates } => {
+            PluginResponse::UpdateXRecordsResult(host.update_xrecords(&updates))
+        }
+        ListXRecordsWithEntries { dictionary_path } => {
+            let path: Vec<&str> = dictionary_path.iter().map(|s| s.as_str()).collect();
+            PluginResponse::ListXRecordsWithEntriesResult(host.list_xrecords_with_entries(&path))
+        }
     }
 }

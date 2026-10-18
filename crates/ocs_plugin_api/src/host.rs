@@ -107,6 +107,39 @@ pub enum SolidBoolean {
     Intersect,
 }
 
+/// One pick of a [`PluginConstraint`]: the entity (or the point, for a
+/// free pick), the world point near the pick, and whether the whole curve
+/// (not a specific point on it) is meant. Resolution follows the interactive
+/// COINCIDENT/TANGENT pick logic (API v13, additive).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginConstraintPick {
+    #[serde(default)]
+    pub handle: Option<Handle>,
+    pub point: [f64; 3],
+    #[serde(default)]
+    pub whole_curve: bool,
+}
+
+/// A parametric constraint created through [`HostApi::constraint_create`]
+/// (API v13, additive): the same constraint machinery the interactive
+/// COINCIDENT (`GCCOINCIDENT`) and TANGENT (`TCONSTRAINT`) commands drive,
+/// reached directly — no command line, no prompt echo, one undo step under
+/// the entity-write contract (inside a plugin-opened `push_undo` scope the
+/// constraint joins that scope).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PluginConstraint {
+    /// A coincident constraint between the two picks.
+    Coincident {
+        first: PluginConstraintPick,
+        second: PluginConstraintPick,
+    },
+    /// A tangency constraint between the two picks.
+    Tangent {
+        first: PluginConstraintPick,
+        second: PluginConstraintPick,
+    },
+}
+
 /// One step of driving an OCS command from a script (API v7, additive). The
 /// host runs the real command, so every tool behaves exactly as at the command
 /// line, and answers with where the command stands.
@@ -131,6 +164,13 @@ pub enum CommandRequest {
     Enter,
     /// Cancel the running command and close anything it left open.
     Cancel,
+    /// API v13 (additive): run a whole command line like [`Run`](Self::Run),
+    /// but with the COMMAND-LINE ECHO SUPPRESSED for the machine replay — no
+    /// prompts, no echo of internal machinery ("COINCIDENT Select first
+    /// point...", "SETVAR Bezeichnung der Variablen:"...). For plugin re-bond
+    /// and rebuild replays whose noise the user must not see; errors still
+    /// surface. The replay's undo composition is unchanged.
+    RunQuiet { line: String },
 }
 
 /// Where a command stands after a [`CommandRequest`].
@@ -405,6 +445,18 @@ pub enum HostNotification {
     DocumentOpened {
         tab_id: u64,
     },
+    /// V13 a document boundary settled, carrying the DIRTY REGION — the
+    /// identity set of what changed since the previous boundary: the touched
+    /// entity handles, and the (entity, app-name) pairs of touched XRecords.
+    /// Sent alongside [`HostNotification::DocumentChanged`] at every boundary;
+    /// boundary work can then be O(changed) instead of O(store). Older
+    /// plugins decode it through the `Unknown` passthrough. Discriminant 11.
+    DocumentChangedRegions {
+        tab_id: u64,
+        version: u64,
+        entities: Vec<Handle>,
+        records: Vec<(Handle, String)>,
+    },
     /// Fallback for notification variants added in future minor revisions.
     /// Carries the raw bincode payload so an older peer can ignore it without
     /// failing deserialization.
@@ -460,6 +512,18 @@ impl Serialize for HostNotification {
                 bytes.push(10);
                 bincode::serialize_into(&mut bytes, tab_id).map_err(serde::ser::Error::custom)?;
             }
+            HostNotification::DocumentChangedRegions {
+                tab_id,
+                version,
+                entities,
+                records,
+            } => {
+                bytes.push(11);
+                bincode::serialize_into(&mut bytes, tab_id).map_err(serde::ser::Error::custom)?;
+                bincode::serialize_into(&mut bytes, version).map_err(serde::ser::Error::custom)?;
+                bincode::serialize_into(&mut bytes, entities).map_err(serde::ser::Error::custom)?;
+                bincode::serialize_into(&mut bytes, records).map_err(serde::ser::Error::custom)?;
+            }
             HostNotification::Unknown(raw) => bytes.extend_from_slice(raw),
         }
         bytes.serialize(serializer)
@@ -506,6 +570,20 @@ impl<'de> Deserialize<'de> for HostNotification {
             10 => bincode::deserialize(rest)
                 .map(|tab_id| HostNotification::DocumentOpened { tab_id })
                 .map_err(serde::de::Error::custom),
+            11 => {
+                let (tab_id, version, entities, records): (
+                    u64,
+                    u64,
+                    Vec<Handle>,
+                    Vec<(Handle, String)>,
+                ) = bincode::deserialize(rest).map_err(serde::de::Error::custom)?;
+                Ok(HostNotification::DocumentChangedRegions {
+                    tab_id,
+                    version,
+                    entities,
+                    records,
+                })
+            }
             _ => Ok(HostNotification::Unknown(bytes)),
         }
     }
@@ -538,6 +616,14 @@ pub enum PluginNotification {
         status: String,
         message: String,
     },
+    /// V13 the runner's notification subscription is live: its main loop
+    /// entered and is draining host notifications. The host defers
+    /// boot-window broadcasts per process until this ack arrives (and flushes
+    /// them then), so a fresh boot's notifications can never race the
+    /// runner's startup — the notification-attach determinism the dispatch
+    /// table already has. Older hosts decode it through the `Unknown`
+    /// passthrough. Discriminant 7.
+    ChannelReady,
     /// Fallback for notification variants added in future minor revisions.
     /// Carries the raw bincode payload so an older peer can ignore it without
     /// failing deserialization.
@@ -578,6 +664,7 @@ impl Serialize for PluginNotification {
                 bincode::serialize_into(&mut bytes, status).map_err(serde::ser::Error::custom)?;
                 bincode::serialize_into(&mut bytes, message).map_err(serde::ser::Error::custom)?;
             }
+            PluginNotification::ChannelReady => bytes.push(7),
             PluginNotification::Unknown(raw) => bytes.extend_from_slice(raw),
         }
         bytes.serialize(serializer)
@@ -616,6 +703,7 @@ impl<'de> Deserialize<'de> for PluginNotification {
             6 => bincode::deserialize(rest)
                 .map(|(status, message)| PluginNotification::ReplStatus { status, message })
                 .map_err(serde::de::Error::custom),
+            7 => Ok(PluginNotification::ChannelReady),
             _ => Ok(PluginNotification::Unknown(bytes)),
         }
     }
@@ -1463,6 +1551,70 @@ pub trait HostApi {
     fn entities_batch(&self, _handles: &[Handle]) -> Result<Vec<Option<EntityType>>, String> {
         Err("Per-entity batch reads are not supported by this host".to_owned())
     }
+
+    /// Create a parametric constraint directly (API v13, additive).
+    ///
+    /// The same constraint machinery the interactive COINCIDENT/TANGENT
+    /// commands drive, reached without the command line: no prompts, no echo,
+    /// the solver runs exactly as interactively. Undo composition follows the
+    /// entity-write contract — inside a plugin-opened `push_undo` scope the
+    /// constraint joins that scope (a re-bond composed of writes + constraints
+    /// is the plugin's single labeled step); with no scope open it is one
+    /// step of its own. A refusal records no undo step.
+    fn constraint_create(&mut self, _constraint: PluginConstraint) -> Result<(), String> {
+        Err("Constraint creation is not supported by this host".to_owned())
+    }
+
+    /// Read several XRecords in ONE round trip (API v13, additive).
+    ///
+    /// The batched twin of [`read_xrecord`](Self::read_xrecord): one frame
+    /// answers every entry (`Err` per missing path/name instead of failing
+    /// the whole batch). The consumer's store walk collapses from
+    /// list + one-read-per-record to one frame.
+    fn read_xrecords(
+        &self,
+        _reads: &[XRecordRead],
+    ) -> Result<Vec<Result<Vec<XRecordEntry>, String>>, String> {
+        Err("Batched XRecord reads are not supported by this host".to_owned())
+    }
+
+    /// Atomically replace the entries of several XRecords in ONE round trip
+    /// (API v13, additive). Each entry applies the single-update contract
+    /// (identity kept, verbatim raw payloads dropped, refusals change
+    /// nothing); the whole batch shares the entity-write undo contract —
+    /// inside a plugin-opened `push_undo` scope the batch joins that scope as
+    /// the plugin's single labeled step.
+    fn update_xrecords(
+        &mut self,
+        _updates: &[XRecordUpdate],
+    ) -> Result<Vec<Result<Handle, String>>, String> {
+        Err("Batched XRecord updates are not supported by this host".to_owned())
+    }
+
+    /// List the XRecord names under a dictionary path WITH their entries in
+    /// ONE answer (API v13, additive): most consumers' whole discovery walk
+    /// (list, then one read per record) becomes a single frame.
+    fn list_xrecords_with_entries(
+        &self,
+        _dictionary_path: &[&str],
+    ) -> Result<Vec<(String, Vec<XRecordEntry>)>, String> {
+        Err("XRecord listing with entries is not supported by this host".to_owned())
+    }
+}
+
+/// One XRecord addressed by dictionary path + name (API v13, additive).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct XRecordRead {
+    pub dictionary_path: Vec<String>,
+    pub name: String,
+}
+
+/// One XRecord update in a batch (API v13, additive).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct XRecordUpdate {
+    pub dictionary_path: Vec<String>,
+    pub name: String,
+    pub entries: Vec<XRecordEntry>,
 }
 
 /// Configuration properties for creating or modifying a layer.

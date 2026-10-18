@@ -1058,6 +1058,65 @@ impl HostApi for V4PluginHostApi {
             Err(error) => Err(error.to_string()),
         }
     }
+
+    fn constraint_create(
+        &mut self,
+        constraint: crate::host::PluginConstraint,
+    ) -> Result<(), String> {
+        // API v13: the interactive constraint machinery, no command line.
+        match self.request(PluginRequest::CreateConstraint { constraint }) {
+            Ok(PluginResponse::CreateConstraintResult(result)) => result,
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected constraint response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn read_xrecords(
+        &self,
+        reads: &[crate::host::XRecordRead],
+    ) -> Result<Vec<Result<Vec<crate::host::XRecordEntry>, String>>, String> {
+        // API v13: one frame answers the whole store walk.
+        match self.request(PluginRequest::ReadXRecords {
+            reads: reads.to_vec(),
+        }) {
+            Ok(PluginResponse::ReadXRecordsResult(result)) => result,
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected xrecords-batch response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn update_xrecords(
+        &mut self,
+        updates: &[crate::host::XRecordUpdate],
+    ) -> Result<Vec<Result<codec::Handle, String>>, String> {
+        // API v13: one frame (one undo composition) replaces the whole
+        // per-record write loop.
+        match self.request(PluginRequest::UpdateXRecords {
+            updates: updates.to_vec(),
+        }) {
+            Ok(PluginResponse::UpdateXRecordsResult(result)) => result,
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected xrecords-update response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn list_xrecords_with_entries(
+        &self,
+        dictionary_path: &[&str],
+    ) -> Result<Vec<(String, Vec<crate::host::XRecordEntry>)>, String> {
+        // API v13: discovery and content in one answer.
+        match self.request(PluginRequest::ListXRecordsWithEntries {
+            dictionary_path: dictionary_path.iter().map(|s| s.to_string()).collect(),
+        }) {
+            Ok(PluginResponse::ListXRecordsWithEntriesResult(result)) => result,
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected xrecords-list response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
 }
 
 #[cfg(test)]

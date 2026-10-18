@@ -357,6 +357,37 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+        use crate::host::HostNotification;
+        // API v13: the attach ack round-trips (a plugin->host notification).
+        let ack = crate::host::PluginNotification::ChannelReady;
+        let bytes = bincode::serialize(&ack).unwrap();
+        let got: crate::host::PluginNotification = bincode::deserialize(&bytes).unwrap();
+        assert_eq!(got, crate::host::PluginNotification::ChannelReady);
+        // And the dirty-region payload (a host->plugin notification).
+        let regions = HostNotification::DocumentChangedRegions {
+            tab_id: 12,
+            version: 93,
+            entities: vec![codec::Handle::from(0x2A)],
+            records: vec![(codec::Handle::from(0x8A), "CVIFC".to_string())],
+        };
+        let bytes = bincode::serialize(&regions).unwrap();
+        let got: HostNotification = bincode::deserialize(&bytes).unwrap();
+        match got {
+            HostNotification::DocumentChangedRegions {
+                tab_id,
+                version,
+                entities,
+                records,
+            } => {
+                assert_eq!((tab_id, version), (12, 93));
+                assert_eq!(entities, vec![codec::Handle::from(0x2A)]);
+                assert_eq!(
+                    records,
+                    vec![(codec::Handle::from(0x8A), "CVIFC".to_string())]
+                );
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
         // And a v11-shaped answer (no live_entities) still decodes.
         let old = HostResponse::CustomGrip(crate::host::CustomGripResponse {
             preview: Vec::new(),

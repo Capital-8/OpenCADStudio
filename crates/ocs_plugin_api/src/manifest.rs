@@ -45,8 +45,21 @@
 /// loop the blocked delivery cannot pump — the UI-freeze wedge), cheap
 /// per-entity reads (HostApi::entities_batch) so refresh passes never
 /// re-clone invalidated document snapshots, and the deterministic-boot
-/// retry for plugin command dispatch.
-pub const API_VERSION: u32 = 12;
+/// retry for plugin command dispatch. v13 closes the consumer's validation
+/// round: live geometry is VISUAL-ONLY against the parametric solver too
+/// (the restyled bump policy — bonded partners no longer move by host
+/// action mid-drag), constraint creation is a first-class HostApi write
+/// (`HostApi::constraint_create`, joining the caller's open scope like
+/// every other write; the driver's `begin_undo` joins plugin scopes
+/// instead of closing them — a re-bond composed of writes + constraints +
+/// replays is ONE plugin-labeled step), `CommandRequest::RunQuiet` replays
+/// commands with the command-line echo suppressed, the notification channel
+/// attaches deterministically (`PluginNotification::ChannelReady` ack;
+/// boot-window broadcasts defer then flush), boundary notifications carry
+/// DIRTY REGIONS (`DocumentChangedRegions`: touched entities + record
+/// pairs), and record walks batch (`read_xrecords` / `update_xrecords` /
+/// `list_xrecords_with_entries` — one frame per pass, not per record).
+pub const API_VERSION: u32 = 13;
 
 /// Oldest plugin API major the current host still loads. This keeps previously
 /// compiled cdylibs usable as long as their vtable layout is a prefix of the
