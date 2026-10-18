@@ -1477,7 +1477,8 @@ impl OpenCADStudio {
                     }
                 };
                 let ds_sel = doc.dim_styles.get(&self.dimstyle_selected);
-                let read_only = false;
+                let read_only =
+                    ds_sel.is_none_or(|style| style.xref_dependent || style.name.contains('|'));
                 let in_use = doc.entities().any(|entity| {
                     matches!(entity, codec::EntityType::Dimension(dimension)
                     if dimension.base().style_name.eq_ignore_ascii_case(&self.dimstyle_selected))
