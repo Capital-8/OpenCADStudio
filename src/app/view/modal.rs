@@ -132,35 +132,10 @@ impl OpenCADStudio {
                 // Keys claimed by two rows — the cells turn red and a
                 // persistent warning names the command already using each
                 // key; the last row wins in the binding map on Apply.
-                let mut key_rows: std::collections::BTreeMap<String, Vec<&(String, String)>> =
-                    std::collections::BTreeMap::new();
-                for row in &self.shortcut_editor_rows {
-                    let key = crate::app::shortcuts::normalize_key(&row.0);
-                    if !key.is_empty() {
-                        key_rows.entry(key).or_default().push(row);
-                    }
-                }
-                let duplicate_keys: Vec<String> = key_rows
-                    .iter()
-                    .filter(|(_, rows)| rows.len() > 1)
-                    .map(|(key, _)| key.clone())
-                    .collect();
-                let duplicate_conflicts: Vec<(String, String)> = key_rows
-                    .iter()
-                    .filter(|(_, rows)| rows.len() > 1)
-                    .map(|(key, rows)| {
-                        // Name the established binding: the first row with
-                        // this key that actually has a command.
-                        let command = rows
-                            .iter()
-                            .find(|(_, command)| !command.is_empty())
-                            .map(|(_, command)| command.clone())
-                            .unwrap_or_default();
-                        (key.clone(), command)
-                    })
-                    .collect();
-                let duplicate_set: rustc_hash::FxHashSet<String> =
-                    duplicate_keys.into_iter().collect();
+                let (duplicate_set, duplicate_conflicts) = duplicate_rows(
+                    &self.shortcut_editor_rows,
+                    crate::app::shortcuts::normalize_key,
+                );
                 // Commands the dispatcher can't run: not a registered
                 // command, plugin command, alias, or input action.
                 let valid: rustc_hash::FxHashSet<String> =
@@ -209,33 +184,10 @@ impl OpenCADStudio {
                 // Aliases claimed by two rows — the cells turn red and a
                 // persistent warning names the command already using each
                 // alias; the last row wins in the alias map on Apply.
-                let mut alias_rows: std::collections::BTreeMap<String, Vec<&(String, String)>> =
-                    std::collections::BTreeMap::new();
-                for row in &self.alias_editor_rows {
-                    let alias = row.0.trim().to_uppercase();
-                    if !alias.is_empty() {
-                        alias_rows.entry(alias).or_default().push(row);
-                    }
-                }
-                let duplicate_aliases: Vec<String> = alias_rows
-                    .iter()
-                    .filter(|(_, rows)| rows.len() > 1)
-                    .map(|(alias, _)| alias.clone())
-                    .collect();
-                let duplicate_conflicts: Vec<(String, String)> = alias_rows
-                    .iter()
-                    .filter(|(_, rows)| rows.len() > 1)
-                    .map(|(alias, rows)| {
-                        let command = rows
-                            .iter()
-                            .find(|(_, command)| !command.is_empty())
-                            .map(|(_, command)| command.clone())
-                            .unwrap_or_default();
-                        (alias.clone(), command)
-                    })
-                    .collect();
-                let duplicate_set: rustc_hash::FxHashSet<String> =
-                    duplicate_aliases.into_iter().collect();
+                let (duplicate_set, duplicate_conflicts) = duplicate_rows(
+                    &self.alias_editor_rows,
+                    |alias| alias.trim().to_uppercase(),
+                );
                 // Commands the dispatcher can't run: not a registered
                 // command, plugin command, or input action.
                 let valid: rustc_hash::FxHashSet<String> =
@@ -1949,6 +1901,40 @@ impl OpenCADStudio {
             }
         })
     }
+}
+
+fn duplicate_rows(
+    rows: &[(String, String)],
+    normalize: impl Fn(&str) -> String,
+) -> (
+    rustc_hash::FxHashSet<String>,
+    Vec<(String, String)>,
+) {
+    let mut grouped: std::collections::BTreeMap<String, Vec<&(String, String)>> =
+        std::collections::BTreeMap::new();
+    for row in rows {
+        let key = normalize(&row.0);
+        if !key.is_empty() {
+            grouped.entry(key).or_default().push(row);
+        }
+    }
+
+    let duplicates: Vec<_> = grouped
+        .into_iter()
+        .filter(|(_, rows)| rows.len() > 1)
+        .map(|(key, rows)| {
+            // Report the established binding: the first duplicate row with a
+            // non-empty command, matching both editors' previous behavior.
+            let command = rows
+                .iter()
+                .find(|(_, command)| !command.is_empty())
+                .map(|(_, command)| command.clone())
+                .unwrap_or_default();
+            (key, command)
+        })
+        .collect();
+    let duplicate_set = duplicates.iter().map(|(key, _)| key.clone()).collect();
+    (duplicate_set, duplicates)
 }
 
 fn sized_flow<'a>(
