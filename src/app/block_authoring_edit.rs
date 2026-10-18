@@ -266,6 +266,9 @@ impl OpenCADStudio {
             ));
             true
         } else {
+            if self.tabs[i].selected_authoring.take().is_some() {
+                self.refresh_properties();
+            }
             false
         }
     }

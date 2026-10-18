@@ -1289,6 +1289,25 @@ fn authoring_edit_mouse_selection_endpoint_label_marker_history_and_reopen() {
 }
 
 #[test]
+fn blank_pick_clears_block_authoring_selection() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 4,0 2,1");
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter = actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0].handle;
+    app.tabs[i].selected_authoring = Some(parameter);
+    app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800., 600.);
+
+    assert!(!app.pick_authoring_object(
+        iced::Point::new(-1000., -1000.),
+        iced::Rectangle { x: 0., y: 0., width: 800., height: 600. },
+    ));
+    assert_eq!(app.tabs[i].selected_authoring, None);
+}
+
+#[test]
 fn block_actions_mouse_selection_waits_for_enter_for_move_and_scale() {
     use crate::scene::block_actions::{self as actions, Kind};
     for (kind, command) in [(Kind::Move, "BACTION MOVE"), (Kind::Scale, "BACTION SCALE")] {
