@@ -15,6 +15,7 @@ pub enum Action {
     AddRow,
     DeleteRow(usize),
     Apply,
+    MustMatch(bool),
 }
 
 pub(crate) struct State {
@@ -22,6 +23,7 @@ pub(crate) struct State {
     pub definition: Handle,
     pub epoch: u64,
     pub original: Option<TableView>,
+    pub must_match: bool,
     pub columns: Vec<Column>,
     pub properties: Vec<Column>,
     pub selected_property: Option<usize>,
@@ -72,13 +74,16 @@ impl State {
                 }
             }
             Action::Cell(row, col, value)
-                if row < self.rows.len() && col < self.columns.len() && col < self.rows[row].len() =>
+                if row < self.rows.len()
+                    && col < self.columns.len()
+                    && col < self.rows[row].len() =>
             {
                 self.rows[row][col] = value;
             }
             Action::AddRow if !self.columns.is_empty() && self.rows.len() < 1000 => {
                 self.rows.push(vec!["0".into(); self.columns.len()]);
             }
+            Action::MustMatch(value) => self.must_match = value,
             Action::DeleteRow(row) if row < self.rows.len() => {
                 self.rows.remove(row);
             }
@@ -93,7 +98,7 @@ pub(crate) fn view(state: &State, sizing: crate::ui::modal::ModalSizing) -> Elem
     let rows = state.rows.len();
     let mut headings = row![text(" ").width(28)].spacing(6);
     for (index, column_binding) in state.columns.iter().enumerate() {
-        let mut header = column![text(column_binding.connection_name.clone()).size(13)];
+        let mut header = column![text(column_binding.display_name.clone()).size(13)];
         if state.original.is_none() {
             header = header.push(
                 button(text(crate::t!("Remove").into_owned()).size(11))
@@ -136,7 +141,7 @@ pub(crate) fn view(state: &State, sizing: crate::ui::modal::ModalSizing) -> Elem
             row![
                 pick_list(state.selected_property, available, |i: &usize| state
                     .properties[*i]
-                    .connection_name
+                    .display_name
                     .clone())
                 .on_select(move |i| send(Action::Property(i)))
                 .placeholder(crate::t!("Choose input property").into_owned())
@@ -158,12 +163,14 @@ pub(crate) fn view(state: &State, sizing: crate::ui::modal::ModalSizing) -> Elem
                 .height(Fill)
                 .width(Fill),
             row![
-                button(text(crate::t!("Add Row").into_owned())).on_press_maybe(
-                    (cols > 0 && rows < 1000).then_some(send(Action::AddRow))
-                ),
+                button(text(crate::t!("Add Row").into_owned()))
+                    .on_press_maybe((cols > 0 && rows < 1000).then_some(send(Action::AddRow))),
                 Space::new().width(Fill)
             ]
             .spacing(8),
+            iced::widget::checkbox(state.must_match)
+                .label(crate::t!("Block properties must match a row in the table").into_owned())
+                .on_toggle(move |value| send(Action::MustMatch(value))),
             text(state.error.clone().unwrap_or_default())
                 .size(12)
                 .style(text::danger),

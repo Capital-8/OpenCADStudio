@@ -452,7 +452,9 @@ pub(crate) fn create_with_options(
                 .get_entity(*h)
                 .is_none_or(|e| !supported(e) || e.common().owner_handle != definition)
     }) {
-        return Err("This milestone supports lines, polylines, arcs, circles, ellipses, points and text belonging to this block.");
+        return Err(
+            "This milestone supports lines, polylines, arcs, circles, ellipses, points and text belonging to this block.",
+        );
     }
     let (column_offset, row_offset) = if kind == Kind::Array {
         let (col, row) = array_offsets.unwrap_or((1.0, 1.0));
@@ -1034,14 +1036,81 @@ fn evaluate_impl(
                 if length < 1e-9 {
                     return Err("Specify a positive parameter length.");
                 }
-                position = p.base + axis * length;
+                let mut snapped_length = length;
+                if !force {
+                    if let Some(table) = super::block_properties_table::table(baseline, definition)?
+                    {
+                        if table.must_match
+                            && table.columns.iter().any(|column| {
+                                column.handle == p.handle
+                                    && column
+                                        .connection_name
+                                        .eq_ignore_ascii_case("UpdatedDistance")
+                            })
+                        {
+                            let values = table
+                                .columns
+                                .iter()
+                                .position(|column| {
+                                    column.handle == p.handle
+                                        && column
+                                            .connection_name
+                                            .eq_ignore_ascii_case("UpdatedDistance")
+                                })
+                                .map(|i| {
+                                    table
+                                        .rows
+                                        .iter()
+                                        .filter_map(|r| r.get(i).copied())
+                                        .collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default();
+                            if let Some(nearest) = values.iter().copied().min_by(|a, b| {
+                                (a - length)
+                                    .abs()
+                                    .total_cmp(&(b - length).abs())
+                                    .then_with(|| a.total_cmp(b))
+                            }) {
+                                snapped_length = nearest;
+                            }
+                        }
+                    }
+                }
+                position = p.base + axis * snapped_length;
             }
             if p.rotation {
                 let delta = position - p.base;
                 if delta.length() < 1e-9 {
                     return Err("Specify a rotation direction away from the parameter base.");
                 }
-                position = p.base + delta.normalize() * p.end.distance(p.base);
+                let mut angle = delta.y.atan2(delta.x);
+                if !force {
+                    if let Some(table) = super::block_properties_table::table(baseline, definition)?
+                    {
+                        if table.must_match {
+                            if let Some(col) = table.columns.iter().position(|column| {
+                                column.handle == p.handle
+                                    && column.connection_name.eq_ignore_ascii_case("UpdatedAngle")
+                            }) {
+                                if let Some(nearest) = table
+                                    .rows
+                                    .iter()
+                                    .filter_map(|row| row.get(col).copied())
+                                    .min_by(|a, b| {
+                                        (a - angle)
+                                            .abs()
+                                            .total_cmp(&(b - angle).abs())
+                                            .then_with(|| a.total_cmp(b))
+                                    })
+                                {
+                                    angle = nearest;
+                                }
+                            }
+                        }
+                    }
+                }
+                position =
+                    p.base + DVec3::new(angle.cos(), angle.sin(), 0.0) * p.end.distance(p.base);
             }
             Value::Point(position)
         }
@@ -1203,7 +1272,7 @@ fn evaluate_impl(
                                 ]
                             } =>
                 {
-                    return Err("This Move action uses options not supported yet.")
+                    return Err("This Move action uses options not supported yet.");
                 }
                 DynamicBlockData::FlipAction(f)
                     if f.connections
@@ -1214,7 +1283,7 @@ fn evaluate_impl(
                             }
                         }) =>
                 {
-                    return Err("This Flip action uses options not supported yet.")
+                    return Err("This Flip action uses options not supported yet.");
                 }
                 DynamicBlockData::RotateAction(r)
                     if !r.action.dependent
@@ -1230,7 +1299,7 @@ fn evaluate_impl(
                                 name: name.into(),
                             }) =>
                 {
-                    return Err("This Rotate action uses options not supported yet.")
+                    return Err("This Rotate action uses options not supported yet.");
                 }
                 DynamicBlockData::ScaleAction(s)
                     if !s.action.dependent
@@ -1246,7 +1315,7 @@ fn evaluate_impl(
                                 name: name.into(),
                             }) =>
                 {
-                    return Err("This Scale action uses options not supported yet.")
+                    return Err("This Scale action uses options not supported yet.");
                 }
                 _ => {}
             }
