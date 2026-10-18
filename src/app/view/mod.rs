@@ -1318,6 +1318,14 @@ bg={bg_ms:.1}ms n={view_count}"
                     iso_plane: self.iso_plane,
                     snap_angle_deg: self.snap_angle_deg,
                     pick_pending: self.pending_pick_label().is_some(),
+                    matchprop_source_pick: tab
+                        .active_cmd
+                        .as_ref()
+                        .is_some_and(|c| c.name() == "MATCHPROP" && c.needs_entity_pick()),
+                    matchprop_pickbox: tab
+                        .active_cmd
+                        .as_ref()
+                        .is_some_and(|c| c.name() == "MATCHPROP"),
                     // An infinite-line preview runs along the arms; drop them
                     // so the preview stays visible (#1437). A command asking
                     // for objects shows the pickbox alone, so picking reads

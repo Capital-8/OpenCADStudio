@@ -3706,6 +3706,54 @@ mod tests {
     }
 
     #[test]
+    fn matchprop_source_glow_survives_preview_refresh_and_destination_apply() {
+        use crate::command::StepInput;
+        use codec::{entities::Line, types::Vector3, EntityType};
+
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+
+        let mut source = Line::new();
+        source.start = Vector3::new(0.0, 0.0, 0.0);
+        source.end = Vector3::new(20.0, 10.0, 0.0);
+        let source_h = app.tabs[i].scene.add_entity(EntityType::Line(source));
+
+        let mut destination = Line::new();
+        destination.start = Vector3::new(30.0, 0.0, 0.0);
+        destination.end = Vector3::new(40.0, 10.0, 0.0);
+        let destination_h = app
+            .tabs[i]
+            .scene
+            .add_entity(EntityType::Line(destination));
+
+        let _ = app.run_command_line("MATCHPROP");
+        let _ = app.feed_command(StepInput::EntityPick(source_h, glam::DVec3::ZERO));
+
+        app.refresh_active_cmd_preview(i);
+        assert!(
+            !app.tabs[i].scene.preview_wires.is_empty(),
+            "a generic preview refresh must seed the selected source glow"
+        );
+
+        let _ = app.feed_command(StepInput::SelectionComplete(vec![destination_h]));
+        assert!(
+            app.tabs[i].active_cmd.is_some(),
+            "MATCHPROP should remain active for additional destinations"
+        );
+        assert!(
+            !app.tabs[i].scene.preview_wires.is_empty(),
+            "applying one destination must immediately restore the source glow"
+        );
+
+        app.refresh_active_cmd_preview(i);
+        assert!(
+            !app.tabs[i].scene.preview_wires.is_empty(),
+            "later generic refreshes must not erase the source glow"
+        );
+    }
+
+    #[test]
     fn handing_over_an_already_open_drawing_switches_to_its_tab() {
         // Double-clicking a drawing that is already open should land on the tab
         // showing it, not load a second copy of the same file.

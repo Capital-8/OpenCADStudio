@@ -3093,6 +3093,14 @@ impl OpenCADStudio {
                 // Moving the cursor clears that outline without rebuilding it.
                 Vec::new()
             } else if needs_entity {
+                let matchprop_source_pick = self.tabs[i]
+                    .active_cmd
+                    .as_ref()
+                    .is_some_and(|command| command.name() == "MATCHPROP");
+                let pick_aperture = crate::ui::overlay::entity_pick_aperture_px(
+                    self.pick_box,
+                    matchprop_source_pick,
+                );
                 let include_fills = self.tabs[i]
                     .active_cmd
                     .as_ref()
@@ -3112,7 +3120,7 @@ impl OpenCADStudio {
                     eye,
                     bounds,
                     self.tabs[i].scene.document.header.lineweight_display,
-                    crate::ui::overlay::pick_box_aperture_px(self.pick_box),
+                    pick_aperture,
                     &self.tabs[i].scene.draw_depth_map(),
                 )
                 .and_then(|s| Scene::handle_from_wire_name(s))
@@ -3155,12 +3163,11 @@ impl OpenCADStudio {
                     })?
                 });
                 let preview_in_command = (self.model_space.selection_preview & 2) != 0;
-                let highlights_hover = preview_in_command
-                    && self.tabs[i]
-                        .active_cmd
-                        .as_ref()
-                        .map(|c| c.entity_pick_highlights_hover())
-                        .unwrap_or(false);
+                let highlights_hover = self.tabs[i].active_cmd.as_ref().is_some_and(|command| {
+                    command.entity_pick_highlights_hover()
+                        && command.name() != "MATCHPROP"
+                        && preview_in_command
+                });
                 if highlights_hover {
                     self.tabs[i].scene.set_hover_highlight(hovered);
                 } else {
@@ -3219,6 +3226,76 @@ impl OpenCADStudio {
                     }
                 }
                 p
+            } else if is_gathering
+                && self.tabs[i]
+                    .active_cmd
+                    .as_ref()
+                    .is_some_and(|command| command.selection_hover_preview_enabled())
+            {
+                let candidate_handles = self
+                    .tabs[i]
+                    .scene
+                    .interaction_candidate_handles(&snap_candidates);
+                let hovered = if dragging {
+                    None
+                } else {
+                    scene::pick::hit_test::click_hit(
+                        p,
+                        &snap_candidates,
+                        view_rot,
+                        eye,
+                        bounds,
+                        self.tabs[i].scene.document.header.lineweight_display,
+                        crate::ui::overlay::entity_pick_aperture_px(self.pick_box, true),
+                        &self.tabs[i].scene.draw_depth_map(),
+                    )
+                    .and_then(Scene::handle_from_wire_name)
+                    .or_else(|| {
+                        scene::pick::hit_test::click_hit_hatch(
+                            p,
+                            &self.tabs[i]
+                                .scene
+                                .visible_hatches_for_click(candidate_handles.as_ref()),
+                            view_rot,
+                            eye,
+                            bounds,
+                            candidate_handles.as_ref(),
+                        )
+                    })
+                    .or_else(|| {
+                        scene::pick::hit_test::click_hit_insert_hatch(
+                            p,
+                            self.tabs[i].scene.insert_hatches_for_click().as_ref(),
+                            view_rot,
+                            eye,
+                            bounds,
+                            candidate_handles.as_ref(),
+                        )
+                    })
+                    .or_else(|| {
+                        self.tabs[i].scene.solid_hover_hit(
+                            p,
+                            view_rot,
+                            eye,
+                            bounds,
+                            candidate_handles.as_ref(),
+                        )
+                    })
+                };
+                let preview = self.tabs[i]
+                    .active_cmd
+                    .as_ref()
+                    .and_then(|command| {
+                        command.selection_hover_preview(&self.tabs[i].scene, hovered)
+                    });
+                if let Some(preview) = preview {
+                    self.tabs[i]
+                        .scene
+                        .set_command_preview_hatches(preview.hatches);
+                    preview.wires
+                } else {
+                    Vec::new()
+                }
             } else if let Some(wires) = self.dimension_preview_wires(i, effective) {
                 wires
             } else {
@@ -4873,6 +4950,14 @@ impl OpenCADStudio {
                 .map(|c| c.needs_entity_pick())
                 .unwrap_or(false)
             {
+                let matchprop_source_pick = self.tabs[i]
+                    .active_cmd
+                    .as_ref()
+                    .is_some_and(|command| command.name() == "MATCHPROP");
+                let pick_aperture = crate::ui::overlay::entity_pick_aperture_px(
+                    self.pick_box,
+                    matchprop_source_pick,
+                );
                 let (view_rot2, eye2, all_wires2) = self.pick_view(i, &edit_cam, bounds);
                 let click_candidates = self.tabs[i].scene.interaction_pick_candidates_near(
                     all_wires2,
@@ -4880,7 +4965,7 @@ impl OpenCADStudio {
                     view_rot2,
                     eye2,
                     bounds,
-                    crate::ui::overlay::pick_box_aperture_px(self.pick_box) * 2.0,
+                    pick_aperture * 2.0,
                 );
                 let include_fills = self.tabs[i]
                     .active_cmd
@@ -4901,7 +4986,7 @@ impl OpenCADStudio {
                     eye2,
                     bounds,
                     self.tabs[i].scene.document.header.lineweight_display,
-                    crate::ui::overlay::pick_box_aperture_px(self.pick_box),
+                    pick_aperture,
                     &self.tabs[i].scene.draw_depth_map(),
                 )
                 .and_then(|s| Scene::handle_from_wire_name(s))
@@ -5532,13 +5617,21 @@ properties={:.1}ms picked={}",
                         let click_world = self.cursor_model_point(i, &edit_cam, p, bounds);
                         let t_arm = crate::perf::enabled().then(Instant::now);
                         let prior_selection = self.tabs[i].scene.selected.len();
+                        let matchprop_pick = self.tabs[i]
+                            .active_cmd
+                            .as_ref()
+                            .is_some_and(|command| command.name() == "MATCHPROP");
+                        let pick_aperture = crate::ui::overlay::entity_pick_aperture_px(
+                            self.pick_box,
+                            matchprop_pick,
+                        );
                         let click_candidates = self.tabs[i].scene.interaction_pick_candidates_near(
                             all_wires,
                             click_world,
                             view_rot,
                             eye,
                             bounds,
-                            crate::ui::overlay::pick_box_aperture_px(self.pick_box) * 2.0,
+                            pick_aperture * 2.0,
                         );
                         let candidate_handles = self.tabs[i]
                             .scene
@@ -5558,7 +5651,7 @@ properties={:.1}ms picked={}",
                                 eye,
                                 bounds,
                                 self.tabs[i].scene.document.header.lineweight_display,
-                                crate::ui::overlay::pick_box_aperture_px(self.pick_box),
+                                pick_aperture,
                             )
                             .into_iter()
                             .filter_map(|s| Scene::handle_from_wire_name(s))
@@ -5580,7 +5673,7 @@ properties={:.1}ms picked={}",
                                 eye,
                                 bounds,
                                 self.tabs[i].scene.document.header.lineweight_display,
-                                crate::ui::overlay::pick_box_aperture_px(self.pick_box),
+                                pick_aperture,
                                 &self.tabs[i].scene.draw_depth_map(),
                             )
                             .and_then(|s| Scene::handle_from_wire_name(s))
@@ -5617,7 +5710,7 @@ properties={:.1}ms picked={}",
                                     eye,
                                     bounds,
                                     candidate_handles.as_ref(),
-                                    crate::ui::overlay::pick_box_aperture_px(self.pick_box),
+                                    pick_aperture,
                                 )
                             });
                             // Selection filter: drop a pick whose type is excluded.

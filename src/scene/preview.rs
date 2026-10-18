@@ -414,6 +414,108 @@ impl Scene {
         wires
     }
 
+    /// Highlight a MATCHPROP source while the command gathers its first target.
+    pub fn matchprop_source_highlight_wires(&self, handle: Handle) -> Vec<WireModel> {
+        let Some(entity) = self.document.get_entity(handle).cloned() else {
+            return Vec::new();
+        };
+        let mut wires = self.wires_for_entities(&[entity]);
+        // Hatch fills and nested insert fills have no resident outline wire,
+        // so include their transient boundary geometry as well.
+        wires.extend(self.fill_hover_preview_wires(handle));
+        Self::matchprop_glow_with_layers(&wires, [(10.0, 0.11), (6.0, 0.22), (2.5, 0.48)])
+    }
+
+    /// Add a faint aura behind the property preview, leaving its matched style
+    /// easy to read. The original wires should be appended after these layers.
+    pub fn matchprop_target_glow_wires(&self, wires: &[WireModel]) -> Vec<WireModel> {
+        Self::matchprop_glow_with_layers(wires, [(8.0, 0.035), (5.0, 0.065), (2.5, 0.11)])
+    }
+
+    fn matchprop_glow_with_layers(
+        wires: &[WireModel],
+        layers: [(f32, f32); 3],
+    ) -> Vec<WireModel> {
+        let mut glow = Vec::with_capacity(wires.len() * 3);
+        for wire in wires {
+            // Layer translucent, widened copies over the resident entity. Its
+            // original color remains visible through the blue hover aura.
+            for (width, alpha) in layers {
+                let mut layer = wire.clone();
+                layer.color = [0.22, 0.60, 1.0, alpha];
+                layer.line_weight_px = layer.line_weight_px.max(width);
+                layer.selected = false;
+                glow.push(layer);
+            }
+        }
+        glow
+    }
+
+    /// Build a non-mutating MATCHPROP target preview using the same property
+    /// kernel as the eventual apply, including the fill style for hatches.
+    pub fn matchprop_target_preview(
+        &self,
+        source: Handle,
+        target: Handle,
+    ) -> Option<(Vec<WireModel>, Vec<HatchModel>)> {
+        let source_entity = self.document.get_entity(source)?.clone();
+        let mut target_entity = self.document.get_entity(target)?.clone();
+        crate::entities::match_props::match_properties_kernel(
+            &source_entity,
+            &mut target_entity,
+            &crate::entities::match_props::MatchOpts::all(),
+        );
+
+        // The interactive handler also transfers this hatch-specific xdata
+        // outside the shared entity kernel. Mirror it on the preview clone so
+        // the fill reflects the same background that a click will apply.
+        if let (EntityType::Hatch(source_hatch), EntityType::Hatch(target_hatch)) =
+            (&source_entity, &mut target_entity)
+        {
+            const BACKGROUND_APP: &str = "HATCHBACKGROUNDCOLOR";
+            let record = source_hatch
+                .common
+                .extended_data
+                .get_record(BACKGROUND_APP)
+                .cloned();
+            use codec::xdata::ExtendedDataRecord;
+            let retained = target_hatch
+                .common
+                .extended_data
+                .records()
+                .iter()
+                .filter(|record| record.application_name != BACKGROUND_APP)
+                .cloned()
+                .collect::<Vec<ExtendedDataRecord>>();
+            target_hatch.common.extended_data.clear();
+            for record in retained {
+                target_hatch.common.extended_data.add_record(record);
+            }
+            if let Some(record) = record {
+                target_hatch.common.extended_data.add_record(record);
+            }
+        }
+
+        let mut wires = self.wires_for_entities(std::slice::from_ref(&target_entity));
+        for wire in &mut wires {
+            wire.selected = false;
+        }
+
+        let color = self.render_style(&target_entity).0;
+        let hatch = match &target_entity {
+            EntityType::Hatch(dxf) => Self::hatch_model_from_dxf(dxf, color),
+            EntityType::Solid(solid) => Some(Self::solid_hatch_model(solid, color)),
+            _ => None,
+        };
+        let hatches = hatch.into_iter().collect::<Vec<_>>();
+        for model in &hatches {
+            if let Some(outline) = Self::hatch_model_outline_wire(target, model) {
+                wires.push(outline);
+            }
+        }
+        Some((wires, hatches))
+    }
+
     /// Build wire models for an arbitrary slice of entities (e.g. clipboard contents).
     /// Entities need not be in the document — they are tessellated directly.
     pub fn wires_for_entities(&self, entities: &[codec::EntityType]) -> Vec<WireModel> {
