@@ -24,10 +24,25 @@ use crate::app::Message;
 /// One panel in its four density renderings. `tight` is the collapsed button
 /// with a small representative icon instead of the large one — the last step
 /// before the buttons are squeezed together. An open flyout draws the panel's
-/// own `full` rendering; see `FlyoutOverlay`. `elements` is indexed by `Level`.
+/// own `full` rendering; see `FlyoutOverlay`. Elements are built lazily and
+/// indexed by `Level`.
 pub(crate) struct Panel<'a> {
     pub(crate) id: String,
-    pub(crate) elements: [Element<'a, Message>; 4],
+    elements: [Option<Element<'a, Message>>; SLOTS],
+    build: Box<dyn Fn(Level) -> Element<'a, Message> + 'a>,
+}
+
+impl<'a> Panel<'a> {
+    pub(crate) fn deferred(
+        id: impl Into<String>,
+        build: impl Fn(Level) -> Element<'a, Message> + 'a,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            elements: std::array::from_fn(|_| None),
+            build: Box::new(build),
+        }
+    }
 }
 
 // Number of tree slots per panel: [full, compact, button, tight].
@@ -236,11 +251,24 @@ impl<'a> CollapsePanels<'a> {
     /// The shown element of panel `i` at `level` — an index into its `elements`
     /// array, which the tree slots mirror (`slot(i, level)`).
     fn shown(&self, i: usize, level: Level) -> &Element<'a, Message> {
-        &self.panels[i].elements[level as usize]
+        self.panels[i].elements[level as usize]
+            .as_ref()
+            .expect("selected ribbon density is built during layout")
     }
 
     fn shown_mut(&mut self, i: usize, level: Level) -> &mut Element<'a, Message> {
-        &mut self.panels[i].elements[level as usize]
+        self.panels[i].elements[level as usize]
+            .as_mut()
+            .expect("selected ribbon density is built during layout")
+    }
+
+    fn ensure_element(&mut self, tree: &mut widget::Tree, i: usize, level: Level) {
+        let index = level as usize;
+        if self.panels[i].elements[index].is_none() {
+            let mut element = (self.panels[i].build)(level);
+            tree.children[slot(i, level)].diff(element.as_widget_mut());
+            self.panels[i].elements[index] = Some(element);
+        }
     }
 
     fn levels_snapshot(&self, n: usize) -> Vec<Level> {
@@ -260,11 +288,16 @@ impl<'a> Widget<Message, Theme, Renderer> for CollapsePanels<'a> {
     }
 
     fn diff(&mut self, tree: &mut widget::Tree) {
-        let mut refs = Vec::with_capacity(self.panels.len() * SLOTS);
-        for p in &mut self.panels {
-            refs.extend(p.elements.iter_mut());
+        let child_count = self.panels.len() * SLOTS;
+        tree.children.truncate(child_count);
+        tree.children.resize_with(child_count, widget::Tree::empty);
+        for (panel_index, panel) in self.panels.iter_mut().enumerate() {
+            for level in [Level::Full, Level::Compact, Level::Collapsed, Level::Tight] {
+                if let Some(element) = panel.elements[level as usize].as_mut() {
+                    tree.children[slot(panel_index, level)].diff(element.as_widget_mut());
+                }
+            }
         }
-        tree.diff_children(&mut refs);
     }
 
     fn size(&self) -> Size<Length> {
@@ -294,11 +327,17 @@ impl<'a> Widget<Message, Theme, Renderer> for CollapsePanels<'a> {
                 heights.clone_from(&cache.heights);
             } else {
                 for i in 0..n {
+                    self.ensure_element(tree, i, Level::Full);
                     let f = self.panels[i].elements[Level::Full as usize]
+                        .as_mut()
+                        .unwrap()
                         .as_widget_mut()
                         .layout(&mut tree.children[slot(i, Level::Full)], renderer, &natural)
                         .size();
+                    self.ensure_element(tree, i, Level::Compact);
                     let c = self.panels[i].elements[Level::Compact as usize]
+                        .as_mut()
+                        .unwrap()
                         .as_widget_mut()
                         .layout(
                             &mut tree.children[slot(i, Level::Compact)],
@@ -306,7 +345,10 @@ impl<'a> Widget<Message, Theme, Renderer> for CollapsePanels<'a> {
                             &natural,
                         )
                         .size();
+                    self.ensure_element(tree, i, Level::Collapsed);
                     let b = self.panels[i].elements[Level::Collapsed as usize]
+                        .as_mut()
+                        .unwrap()
                         .as_widget_mut()
                         .layout(
                             &mut tree.children[slot(i, Level::Collapsed)],
@@ -314,7 +356,10 @@ impl<'a> Widget<Message, Theme, Renderer> for CollapsePanels<'a> {
                             &natural,
                         )
                         .size();
+                    self.ensure_element(tree, i, Level::Tight);
                     let t = self.panels[i].elements[Level::Tight as usize]
+                        .as_mut()
+                        .unwrap()
                         .as_widget_mut()
                         .layout(
                             &mut tree.children[slot(i, Level::Tight)],
@@ -341,6 +386,18 @@ impl<'a> Widget<Message, Theme, Renderer> for CollapsePanels<'a> {
         } else {
             decide_levels(self.mode, &widths, max_w)
         };
+
+        // Measurements let Auto choose a density without building all variants
+        // again. On a cache hit only the selected element is built. If a
+        // collapsed panel is open, its Full element is also needed by the flyout.
+        for (i, &level) in levels.iter().enumerate() {
+            self.ensure_element(tree, i, level);
+            if matches!(level, Level::Collapsed | Level::Tight)
+                && self.open.as_deref() == Some(self.panels[i].id.as_str())
+            {
+                self.ensure_element(tree, i, Level::Full);
+            }
+        }
 
         // The row is "tight" once any panel has dropped to its small icon — the
         // last, most cramped state. The tab bar hides its mode selector then.
@@ -572,7 +629,9 @@ impl<'a> Widget<Message, Theme, Renderer> for CollapsePanels<'a> {
                     // never shows slot 0 while the panel is button-form, so it
                     // is free to double as the overlay content).
                     return Some(overlay::Element::new(Box::new(FlyoutOverlay {
-                        content: &mut self.panels[p].elements[Level::Full as usize],
+                        content: self.panels[p].elements[Level::Full as usize]
+                            .as_mut()
+                            .expect("open collapsed flyout has full panel content"),
                         tree: &mut tree.children[slot(p, Level::Full)],
                         anchor,
                     })));
@@ -595,7 +654,9 @@ impl<'a> Widget<Message, Theme, Renderer> for CollapsePanels<'a> {
             let (chunk, rest) = tree_rest.split_at_mut(SLOTS);
             tree_rest = rest;
             let level = levels.get(i).copied().unwrap_or(Level::Full);
-            let child = &mut panel.elements[level as usize];
+            let Some(child) = panel.elements[level as usize].as_mut() else {
+                continue;
+            };
             if let Some(o) = child.as_widget_mut().overlay(
                 &mut chunk[level as usize],
                 child_layout,
@@ -751,6 +812,76 @@ mod tests {
         assert!(cache.matches(17, 2));
         assert!(!cache.matches(18, 2));
         assert!(!cache.matches(17, 1));
+    }
+
+    #[test]
+    fn auto_builds_all_densities_once_then_only_the_selected_density() {
+        use iced_test::runtime::user_interface::{Cache, UserInterface};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        fn view(counter: Arc<AtomicUsize>, open: Option<String>) -> Element<'static, Message> {
+            let panel = Panel::deferred("test", move |level| {
+                counter.fetch_add(1, Ordering::Relaxed);
+                let (width, height) = match level {
+                    Level::Full => (200.0, 80.0),
+                    Level::Compact => (150.0, 70.0),
+                    Level::Collapsed => (100.0, 50.0),
+                    Level::Tight => (50.0, 30.0),
+                };
+                iced::widget::container(iced::widget::text("panel"))
+                    .width(Length::Fixed(width))
+                    .height(Length::Fixed(height))
+                    .into()
+            });
+            CollapsePanels::new(vec![panel], open, 80.0)
+                .measure_key(17)
+                .into()
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut renderer = iced_test::futures::futures::executor::block_on(
+            <Renderer as iced_test::core::renderer::Headless>::new(
+                iced_test::core::renderer::Settings::default(),
+                None,
+            ),
+        )
+        .expect("headless renderer");
+
+        let ui = UserInterface::build(
+            view(count.clone(), None),
+            Size::new(1000.0, 100.0),
+            Cache::default(),
+            &mut renderer,
+        );
+        assert_eq!(count.load(Ordering::Relaxed), 4);
+
+        let ui = UserInterface::build(
+            view(count.clone(), None),
+            Size::new(1000.0, 100.0),
+            ui.into_cache(),
+            &mut renderer,
+        );
+        assert_eq!(count.load(Ordering::Relaxed), 5, "only Full is rebuilt");
+
+        let ui = UserInterface::build(
+            view(count.clone(), None),
+            Size::new(170.0, 100.0),
+            ui.into_cache(),
+            &mut renderer,
+        );
+        assert_eq!(count.load(Ordering::Relaxed), 6, "resize builds Compact");
+
+        let _ui = UserInterface::build(
+            view(count.clone(), Some("test".to_string())),
+            Size::new(20.0, 100.0),
+            ui.into_cache(),
+            &mut renderer,
+        );
+        assert_eq!(
+            count.load(Ordering::Relaxed),
+            8,
+            "tight selection builds Tight and Full for the open flyout"
+        );
     }
 
     fn w(full: f32, compact: f32, button: f32, tight: f32) -> Widths {

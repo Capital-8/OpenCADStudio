@@ -632,16 +632,13 @@ impl Ribbon {
         &'a self,
         g: &'a RibbonGroup,
         ts: widgets::ToggleState,
-        style_ctx: &StyleContext<'_>,
-        lead: &dyn Fn(bool) -> Vec<Element<'a, Message>>,
-        mode: CollapseMode,
-        flyout_open: bool,
+        style_ctx: StyleContext<'a>,
     ) -> Panel<'a> {
-        let group = |compact: bool| {
+        let group = move |compact: bool| {
             render_group(
                 compact,
                 g,
-                lead(compact),
+                Vec::new(),
                 &self.active_tool,
                 &self.open_dropdown,
                 &self.last_cmd,
@@ -651,10 +648,10 @@ impl Ribbon {
                 self.active_color,
                 &self.active_linetype,
                 self.active_lineweight,
-                style_ctx,
+                &style_ctx,
             )
         };
-        let button = |tight: bool| {
+        let button = move |tight: bool| {
             collapse_button(
                 g,
                 self.last_panel_tool.get(g.title).copied(),
@@ -667,26 +664,16 @@ impl Ribbon {
                 self.active_color,
                 &self.active_linetype,
                 self.active_lineweight,
-                style_ctx,
+                &style_ctx,
                 tight,
             )
         };
-        let empty = || text("").into();
-        let elements = match mode {
-            CollapseMode::Auto => [group(false), group(true), button(false), button(true)],
-            CollapseMode::Full => [group(false), empty(), empty(), empty()],
-            CollapseMode::Compact => [empty(), group(true), empty(), empty()],
-            CollapseMode::Collapsed => [
-                if flyout_open { group(false) } else { empty() },
-                empty(),
-                button(false),
-                empty(),
-            ],
-        };
-        Panel {
-            id: g.title.to_string(),
-            elements,
-        }
+        Panel::deferred(g.title, move |level| match level {
+            collapse::Level::Full => group(false),
+            collapse::Level::Compact => group(true),
+            collapse::Level::Collapsed => button(false),
+            collapse::Level::Tight => button(true),
+        })
     }
 
     pub fn toggle_dropdown(&mut self, id: &str) {
@@ -981,13 +968,17 @@ impl Ribbon {
             // shrink to compact icon columns, then it collapses to a ▾ flyout
             // button. See `CollapsePanels`.
             let ts = self.toggle_state(show_block_palette);
-            let measure_key = panel_measure_key(
-                &groups,
-                &self.last_cmd,
-                &self.last_panel_tool,
-                &style_ctx,
-                visibility.as_ref(),
-            );
+            let measure_key = if self.collapse_mode == CollapseMode::Auto {
+                panel_measure_key(
+                    &groups,
+                    &self.last_cmd,
+                    &self.last_panel_tool,
+                    &style_ctx,
+                    visibility.as_ref(),
+                )
+            } else {
+                0
+            };
             let panels: Vec<Panel<'_>> = groups
                 .into_iter()
                 .map(|g| {
@@ -996,14 +987,7 @@ impl Ribbon {
                     {
                         visibility_panel::panel(visibility.clone())
                     } else {
-                        self.panel(
-                            g,
-                            ts,
-                            &style_ctx,
-                            &|_| Vec::new(),
-                            self.collapse_mode,
-                            self.collapsed_open.as_deref() == Some(g.title),
-                        )
+                        self.panel(g, ts, style_ctx)
                     }
                 })
                 .collect();

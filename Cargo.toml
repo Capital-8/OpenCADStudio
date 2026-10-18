@@ -216,6 +216,10 @@ name = "performance_benchmarks"
 harness = false
 
 [[bench]]
+name = "ribbon_layout_benchmark"
+harness = false
+
+[[bench]]
 name = "command_benchmarks"
 harness = false
 
