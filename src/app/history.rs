@@ -465,6 +465,25 @@ impl OpenCADStudio {
         _touched: usize,
         delta_safe: bool,
     ) -> Option<PendingDelta> {
+        // The entity-write composition contract: while a plugin-opened
+        // `push_undo` scope is pending, JOIN it — do not close it, do not
+        // open a second step. The command's edits land in the plugin's
+        // single labeled scope (a re-bond composed of writes + constraints
+        // + replays is ONE plugin-labeled step, exactly like the entity
+        // writes). The returned delta never commits: no scene recording
+        // was begun, so `commit_undo_delta` no-ops.
+        if self.tabs[i].history.pending.is_some() {
+            let label = label.into();
+            let structure_before = (!delta_safe || self.tabs[i].active_block_edit.is_some())
+                .then(|| self.tabs[i].scene.document.snapshot_structure());
+            return Some(PendingDelta {
+                label,
+                current_layout: self.tabs[i].scene.current_layout.clone(),
+                selected_before: self.tabs[i].scene.selected.iter().copied().collect(),
+                dirty_before: self.tabs[i].dirty,
+                structure_before,
+            });
+        }
         self.finish_pending_history(i);
         let label = label.into();
         let structure_before = (!delta_safe || self.tabs[i].active_block_edit.is_some())

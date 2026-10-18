@@ -140,7 +140,8 @@ impl<'a> HostSession<'a> {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let key = (self.tab_id(), self.app.tabs[self.tab].scene.geometry_epoch);
-            if self.app.last_plugin_document != Some(key) {
+            let key_changed = self.app.last_plugin_document != Some(key);
+            if key_changed {
                 v4_support::publish_drawing_changed(key.0, key.1);
                 // The plain `DocumentChanged` follows the same immediate
                 // publish contract (API v9): a plugin-initiated write settles
@@ -149,9 +150,35 @@ impl<'a> HostSession<'a> {
                 v4_support::publish_document_changed(key.1);
             }
             v4_support::publish_document_view_v4(self.tab_id(), doc);
+            if key_changed {
+                // API v13 dirty regions: the plugin-write boundary carries
+                // the touched identity set, so consumers visit only what
+                // changed (empty sets mean "walk everything").
+                self.publish_plugin_dirty_regions();
+            }
             self.app.last_plugin_document =
                 Some((self.tab_id(), self.app.tabs[self.tab].scene.geometry_epoch));
         }
+    }
+
+    /// Take this tab's accumulated dirty-region set and broadcast it as
+    /// `DocumentChangedRegions` (API v13). The plugin-write path's twin of
+    /// the message-boundary publisher in `update::mod`.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn publish_plugin_dirty_regions(&mut self) {
+        let tab = &mut self.app.tabs[self.tab];
+        let (entities, records) = if tab.plugin_dirty_overflow {
+            (Vec::new(), Vec::new())
+        } else {
+            (
+                std::mem::take(&mut tab.plugin_dirty_entities),
+                std::mem::take(&mut tab.plugin_dirty_records),
+            )
+        };
+        tab.plugin_dirty_overflow = false;
+        let tab_id = self.tab_id();
+        let version = self.app.tabs[self.tab].scene.geometry_epoch;
+        v4_support::publish_document_changed_regions(tab_id, version, entities, records);
     }
 
     /// Plugin-driven edits refresh the app-side selection caches exactly
@@ -352,6 +379,10 @@ impl<'a> HostSession<'a> {
     }
 
     pub fn add_entity(&mut self, mut entity: EntityType) -> Handle {
+        self.add_entity_inner(entity)
+    }
+
+    fn add_entity_inner(&mut self, mut entity: EntityType) -> Handle {
         if self.prepare_scripted_raster_image(&mut entity).is_err() {
             return Handle::NULL;
         }
@@ -382,16 +413,22 @@ impl<'a> HostSession<'a> {
             {
                 return Handle::NULL;
             }
+            self.app.tabs[self.tab].mark_plugin_entity_dirty(handle);
             self.publish_document_view();
             return handle;
         }
         let handle = self.app.tabs[self.tab].scene.add_entity(entity);
         self.app.sync_registered_layers(self.tab);
+        self.app.tabs[self.tab].mark_plugin_entity_dirty(handle);
         self.publish_document_view();
         handle
     }
 
     pub fn add_entities(&mut self, mut entities: Vec<EntityType>) -> Vec<Handle> {
+        self.add_entities_inner(entities)
+    }
+
+    fn add_entities_inner(&mut self, mut entities: Vec<EntityType>) -> Vec<Handle> {
         for entity in &mut entities {
             let _ = self.prepare_scripted_raster_image(entity);
             // Creation input was validated by the caller; a degenerate MLine
@@ -400,6 +437,9 @@ impl<'a> HostSession<'a> {
         }
         let handles = self.app.tabs[self.tab].scene.add_entities(entities);
         self.app.sync_registered_layers(self.tab);
+        for handle in &handles {
+            self.app.tabs[self.tab].mark_plugin_entity_dirty(*handle);
+        }
         self.publish_document_view();
         handles
     }
@@ -411,6 +451,15 @@ impl<'a> HostSession<'a> {
     /// Replace the entity carrying `entity`'s handle in place, refreshing the
     /// scene's derived caches. Returns `false` when no entity has that handle.
     pub fn update_entity(&mut self, mut entity: EntityType) -> bool {
+        let result_handle = entity.common().handle;
+        // API v13 dirty regions: mark BEFORE the write's boundary publish
+        // (the inner publishes immediately) so the region set is complete
+        // when the notification rides.
+        self.app.tabs[self.tab].mark_plugin_entity_dirty(result_handle);
+        self.update_entity_inner(entity)
+    }
+
+    fn update_entity_inner(&mut self, mut entity: EntityType) -> bool {
         let old = self.document().get_entity(entity.common().handle).cloned();
         if self
             .normalize_scripted_entity(old.as_ref(), &mut entity)
@@ -550,6 +599,13 @@ impl<'a> HostSession<'a> {
     /// sync. Returns `false` when the entity is absent or on a locked layer
     /// (which `erase_entities` refuses to remove).
     pub fn remove_entity(&mut self, handle: Handle) -> bool {
+        // API v13 dirty regions: mark before the boundary publish; a removed
+        // handle still rides the set (consumers detect its absence).
+        self.app.tabs[self.tab].mark_plugin_entity_dirty(handle);
+        self.remove_entity_inner(handle)
+    }
+
+    fn remove_entity_inner(&mut self, handle: Handle) -> bool {
         if self.document().get_entity(handle).is_none() {
             let Some(EntityType::AttributeEntity(attribute)) = self.nested_attribute(handle) else {
                 return false;
@@ -647,6 +703,9 @@ impl<'a> HostSession<'a> {
         }
         self.bump_geometry();
         self.set_dirty();
+        // API v13 dirty regions: the touched (entity, app) pair rides the
+        // boundary notification — marked BEFORE the publish that carries it.
+        self.app.tabs[self.tab].mark_plugin_record_dirty(handle, app);
         self.publish_document_view();
         true
     }
@@ -1550,6 +1609,27 @@ impl<'a> HostSession<'a> {
                 self.app.suppress_plugin_dispatch = false;
                 task
             }
+            R::RunQuiet { line } => {
+                // API v13: the same machinery as `Run`, with the
+                // command-line echo suppressed — machine replays (a re-bond's
+                // COINCIDENT/TCONSTRAINT/SETVAR sequence) leave none of their
+                // internal prompt noise ("COINCIDENT Select first point...",
+                // "SETVAR Bezeichnung der Variablen:"...) in the user-visible
+                // history. Errors still surface.
+                if line.trim().is_empty() {
+                    return Err("a command line is empty".to_owned());
+                }
+                self.script_command_allowed(&line)?;
+                if active {
+                    return Err("a command is already active; cancel it first".to_owned());
+                }
+                self.app.suppress_plugin_dispatch = true;
+                self.app.command_line.begin_quiet_replay();
+                let task = self.app.run_command_line(&line);
+                self.app.command_line.end_quiet_replay();
+                self.app.suppress_plugin_dispatch = false;
+                task
+            }
             R::Start { name } => {
                 if name.trim().is_empty() || name.split_whitespace().count() != 1 {
                     return Err("a command name is one word".to_owned());
@@ -1618,7 +1698,9 @@ impl<'a> HostSession<'a> {
                         self.app.tabs[tab].scene.selected_handles_in_order(),
                     ),
                     R::Enter => StepInput::Enter,
-                    R::Run { .. } | R::Start { .. } | R::Cancel => unreachable!(),
+                    R::Run { .. } | R::Start { .. } | R::RunQuiet { .. } | R::Cancel => {
+                        unreachable!()
+                    }
                 };
                 self.app.feed_command(input)
             }
@@ -3088,6 +3170,8 @@ impl<'a> HostSession<'a> {
         record.raw_dwg_handle_bits = 0;
         record.raw_dwg_version = None;
         self.set_dirty();
+        // API v13 dirty regions — before the publish that carries them.
+        self.app.tabs[self.tab].mark_plugin_record_dirty(handle, "NOD".to_string());
         self.publish_document_view();
         if own_scope {
             self.app.finish_pending_history(self.tab);
@@ -3276,6 +3360,138 @@ impl<'a> HostSession<'a> {
         Ok(handles
             .iter()
             .map(|handle| self.document().get_entity(*handle).cloned())
+            .collect())
+    }
+
+    /// Create a parametric constraint directly (API v13): the SAME constraint
+    /// machinery the interactive COINCIDENT (`GCCOINCIDENT`) and TANGENT
+    /// (`TCONSTRAINT`) commands drive, reached without the command line — no
+    /// prompts, no echo — through the command driver's own apply path, so
+    /// validation, initial solve and undo composition behave identically.
+    /// Inside a plugin-opened `push_undo` scope the constraint joins that
+    /// scope (the entity-write contract); the re-bond a plugin composes of
+    /// writes + constraints is its single labeled step.
+    pub fn constraint_create(
+        &mut self,
+        constraint: ocs_plugin_api::host::PluginConstraint,
+    ) -> Result<(), String> {
+        if self.tab != self.app.active_tab {
+            return Err("constraints act on the active document; switch to it first".to_owned());
+        }
+        let tab = self.tab;
+        let to_pick =
+            |pick: &ocs_plugin_api::host::PluginConstraintPick| crate::command::CoincidentPick {
+                handle: pick.handle,
+                point: glam::DVec3::new(pick.point[0], pick.point[1], pick.point[2]),
+                whole_curve: pick.whole_curve,
+            };
+        let result = match constraint {
+            ocs_plugin_api::host::PluginConstraint::Coincident { first, second } => {
+                crate::command::CmdResult::AddCoincidentConstraint {
+                    first: to_pick(&first),
+                    second: to_pick(&second),
+                    multiple: false,
+                    label: "Coincident constraint",
+                }
+            }
+            ocs_plugin_api::host::PluginConstraint::Tangent { first, second } => {
+                // Resolve the picks the way the interactive TANGENT command
+                // does, against the live document and the tab's scope.
+                let scope = self.app.tabs[tab].current_parametric_scope();
+                let document = &self.app.tabs[tab].scene.document;
+                let resolve = |pick: &ocs_plugin_api::host::PluginConstraintPick,
+                               exclude: Option<Handle>| {
+                    let point =
+                        codec::types::Vector3::new(pick.point[0], pick.point[1], pick.point[2]);
+                    if pick.whole_curve {
+                        pick.handle.and_then(|handle| {
+                            crate::scene::parametric_constraints::parametric_curve_ref_for_pick(
+                                document, scope, handle, point,
+                            )
+                        })
+                    } else if let Some(handle) = pick.handle {
+                        crate::scene::parametric_constraints::nearest_parametric_point_on_entity(
+                            document, scope, handle, point,
+                        )
+                    } else {
+                        crate::scene::parametric_constraints::nearest_parametric_point(
+                            document, scope, point, exclude,
+                        )
+                    }
+                };
+                let first_ref = resolve(&first, None);
+                let second_ref = first_ref.and_then(|r| resolve(&second, Some(r.entity)));
+                let (Some(first), Some(second)) = (first_ref, second_ref) else {
+                    return Err(
+                        "tangent picks did not resolve to parametric references on the live \
+                         document; pick concrete points/curves of existing entities"
+                            .to_owned(),
+                    );
+                };
+                crate::command::CmdResult::AddTangentConstraint {
+                    first,
+                    second,
+                    label: "Tangent constraint",
+                }
+            }
+        };
+        // The driver's success feedback ("Coincident constraint applied") is
+        // interactive echo — the direct API path is quiet by contract
+        // (errors still surface; the gate is the same one RunQuiet uses).
+        self.app.command_line.begin_quiet_replay();
+        let task = self.app.apply_cmd_result(result);
+        self.app.command_line.end_quiet_replay();
+        self.app.drive_headless_task(task)
+    }
+
+    /// Read several XRecords in one call (API v13): per-entry results, `Err`
+    /// per missing path/name instead of failing the whole batch.
+    pub fn read_xrecords(
+        &self,
+        reads: &[ocs_plugin_api::host::XRecordRead],
+    ) -> Result<Vec<Result<Vec<ocs_plugin_api::host::XRecordEntry>, String>>, String> {
+        Ok(reads
+            .iter()
+            .map(|read| {
+                let path: Vec<&str> = read.dictionary_path.iter().map(|s| s.as_str()).collect();
+                self.read_xrecord(&path, &read.name)
+            })
+            .collect())
+    }
+
+    /// Replace the entries of several XRecords in one call (API v13): each
+    /// entry applies the single-update contract; the batch shares the
+    /// entity-write undo composition (inside a plugin-opened `push_undo`
+    /// scope it joins that scope).
+    pub fn update_xrecords(
+        &mut self,
+        updates: &[ocs_plugin_api::host::XRecordUpdate],
+    ) -> Result<Vec<Result<Handle, String>>, String> {
+        Ok(updates
+            .iter()
+            .map(|update| {
+                let path: Vec<&str> = update.dictionary_path.iter().map(|s| s.as_str()).collect();
+                self.update_xrecord(&path, &update.name, update.entries.clone())
+            })
+            .collect())
+    }
+
+    /// List a dictionary's XRecords WITH their entries in one call (API v13):
+    /// the discovery walk (list, then one read per record) collapses to a
+    /// single frame.
+    pub fn list_xrecords_with_entries(
+        &self,
+        dictionary_path: &[&str],
+    ) -> Result<Vec<(String, Vec<ocs_plugin_api::host::XRecordEntry>)>, String> {
+        let names = self.list_xrecords(dictionary_path)?;
+        Ok(names
+            .into_iter()
+            .map(|name| {
+                let entries = self
+                    .read_xrecord(dictionary_path, &name)
+                    .unwrap_or_default();
+                (name, entries)
+            })
             .collect())
     }
 
@@ -3739,6 +3955,30 @@ impl HostApi for HostSession<'_> {
     }
     fn entities_batch(&self, handles: &[Handle]) -> Result<Vec<Option<codec::EntityType>>, String> {
         self.entities_batch(handles)
+    }
+    fn constraint_create(
+        &mut self,
+        constraint: ocs_plugin_api::host::PluginConstraint,
+    ) -> Result<(), String> {
+        self.constraint_create(constraint)
+    }
+    fn read_xrecords(
+        &self,
+        reads: &[ocs_plugin_api::host::XRecordRead],
+    ) -> Result<Vec<Result<Vec<ocs_plugin_api::host::XRecordEntry>, String>>, String> {
+        self.read_xrecords(reads)
+    }
+    fn update_xrecords(
+        &mut self,
+        updates: &[ocs_plugin_api::host::XRecordUpdate],
+    ) -> Result<Vec<Result<Handle, String>>, String> {
+        self.update_xrecords(updates)
+    }
+    fn list_xrecords_with_entries(
+        &self,
+        dictionary_path: &[&str],
+    ) -> Result<Vec<(String, Vec<ocs_plugin_api::host::XRecordEntry>)>, String> {
+        self.list_xrecords_with_entries(dictionary_path)
     }
 }
 

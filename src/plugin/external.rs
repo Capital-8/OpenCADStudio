@@ -394,6 +394,9 @@ pub(crate) use loader::{load_at_startup, loaded_ids};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use loader::remove_plugin;
+pub(crate) use loader::PROCESS_TESTS_LOCK;
+pub(crate) use loader::{app_created, app_dropped};
+pub(crate) use loader::{remove_plugin_for_tests, spawn_into_manager_for_tests};
 
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg_attr(test, allow(dead_code))]
@@ -401,14 +404,15 @@ mod loader {
     use super::lib_extension;
     use crate::plugin::v4_support;
     use ocs_plugin_api::process::PluginManager;
-    use std::cell::RefCell;
     use std::path::{Path, PathBuf};
 
     // Process-wide plugin manager. Drop kills every runner process asynchronously
-    // so host shutdown is never delayed by a plugin.
-    thread_local! {
-        static MANAGER: RefCell<Option<PluginManager>> = const { RefCell::new(None) };
-    }
+    // so host shutdown is never delayed by a plugin. GLOBAL (process-wide, not
+    // thread-local): the V4 reader threads that surface plugin notifications —
+    // including the API v13 `ChannelReady` attach ack — must reach the LOADED
+    // manager; with the old thread-local storage a reader thread could never
+    // see it at all.
+    static MANAGER: std::sync::Mutex<Option<PluginManager>> = std::sync::Mutex::new(None);
 
     /// Discover packages and spawn every API-compatible one as a separate
     /// process. Call once at startup. Returns per-id results so the host can
@@ -477,52 +481,113 @@ mod loader {
                 Err(e) => out.push((d.id.clone(), Err(e.to_string()))),
             }
         }
-        MANAGER.with(|m| *m.borrow_mut() = Some(manager));
+        *MANAGER.lock().unwrap_or_else(|e| e.into_inner()) = Some(manager);
         out
     }
 
     /// Ids of the plugins currently loaded in the process store.
     pub fn loaded_ids() -> Vec<String> {
-        MANAGER.with(|m| m.borrow().as_ref().map(|mgr| mgr.ids()).unwrap_or_default())
+        let guard = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
+        guard.as_ref().map(|mgr| mgr.ids()).unwrap_or_default()
     }
 
     /// Run `f` with a reference to the loaded plugin manager.
     pub fn with_manager<R>(f: impl FnOnce(&PluginManager) -> R) -> R {
-        MANAGER.with(|m| {
-            let guard = m.borrow();
-            if let Some(manager) = guard.as_ref() {
-                return f(manager);
-            }
-            drop(guard);
-            let empty = PluginManager::new();
-            f(&empty)
-        })
+        let guard = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(manager) = guard.as_ref() {
+            return f(manager);
+        }
+        let empty = PluginManager::new();
+        f(&empty)
+    }
+
+    /// Serializes the process-spawning tests (spawn/dispatch/notification-attach)
+    /// against each other: they share the process-global manager, the ChannelReady
+    /// attach queue and runner bookkeeping; concurrent boots would.authenticate
+    /// interference, not determinism. Grab at the top of each such test.
+    pub(crate) static PROCESS_TESTS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Spawn one plugin and insert it into the process-wide manager — the
+    /// single-plugin twin of the boot-time load path, so tests exercise the
+    /// SAME live machinery a real boot uses (broadcasts, dispatches, the API
+    /// v13 notification attach). The caller owns cleanup: `remove_plugin(id)`
+    /// after the assertions.
+    pub(crate) fn spawn_into_manager_for_tests(
+        cdylib_path: &std::path::Path,
+        host: &mut dyn ocs_plugin_api::host::HostApi,
+        handler: ocs_plugin_api::process::NotificationHandler,
+    ) -> Result<
+        (
+            String,
+            std::sync::Arc<ocs_plugin_api::process::PluginProcess>,
+        ),
+        String,
+    > {
+        let mut guard = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
+        let mut manager = guard.take().unwrap_or_default();
+        manager.set_notification_handler(handler);
+        let result = manager
+            .load(cdylib_path, host)
+            .map(|id| {
+                let process = manager
+                    .grip_endpoint(&id)
+                    .map(|(process, _, _)| process)
+                    .expect("just loaded");
+                (id, process)
+            })
+            .map_err(|e| e.to_string());
+        *guard = Some(manager);
+        result
+    }
+
+    /// Remove a loaded plugin from the process-wide manager (test cleanup
+    /// after [`spawn_into_manager_for_tests`]); its process shuts down first.
+    pub(crate) fn remove_plugin_for_tests(id: &str) -> bool {
+        remove_plugin(id)
     }
 
     /// Eagerly shut down all plugin runner processes.
     pub fn shutdown_plugins() {
-        MANAGER.with(|m| {
-            if let Some(mut manager) = m.borrow_mut().take() {
-                manager.shutdown_all();
-            }
-        });
+        if let Some(mut manager) = MANAGER.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            manager.shutdown_all();
+        }
+    }
+
+    /// Live `OpenCADStudio` instances (API v13 global-manager era): the
+    /// manager is PROCESS-GLOBAL now (the V4 reader threads that surface
+    /// plugin notifications must reach the LOADED manager), so an app's Drop
+    /// can no longer assume it owns the only plugins — a test suite drops
+    /// thousands of apps. Plugin shutdown happens when the LAST app leaves.
+    static LIVE_APPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    /// Register a live `OpenCADStudio` instance (call from every constructor).
+    pub(crate) fn app_created() {
+        LIVE_APPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Unregister a dropped `OpenCADStudio` instance; the LAST one out shuts
+    /// the plugin runners down (the old every-Drop shutdown would have killed
+    /// the shared manager's plugins mid-test in any multi-app process).
+    pub(crate) fn app_dropped() {
+        if LIVE_APPS.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) == 1 {
+            shutdown_plugins();
+        }
     }
 
     /// Shut down the loaded plugin with `id` and remove it from the manager so
     /// its files can be deleted on Windows. Returns true if the plugin was
     /// loaded and has been removed.
     pub fn remove_plugin(id: &str) -> bool {
-        MANAGER.with(|m| {
-            if let Some(manager) = m.borrow_mut().as_mut() {
-                if manager.ids().iter().any(|loaded| loaded == id) {
-                    manager.remove(id)
-                } else {
-                    true
-                }
+        let mut guard = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(manager) = guard.as_mut() {
+            if manager.ids().iter().any(|loaded| loaded == id) {
+                manager.remove(id)
             } else {
                 true
             }
-        })
+        } else {
+            true
+        }
     }
 
     /// Path to the native library beside `plugin.toml`, if any.
@@ -864,6 +929,10 @@ acadrust_source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=0908
     /// `OpenCADStudio` binary is built; the test uses it as the runner host.
     #[test]
     fn spawn_and_dispatch_test_plugin() {
+        let _guard = PROCESS_TESTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Process-spawning tests tolerate a busy machine: raise the plugin
+        // call timeout for the whole test binary (never lowers any floor).
+        std::env::set_var("OCS_PLUGIN_CALL_TIMEOUT_SECS", "10");
         let path = match std::env::var_os("OCS_TEST_PLUGIN") {
             Some(p) => std::path::PathBuf::from(p),
             None => return,
@@ -909,6 +978,10 @@ acadrust_source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=0908
     /// full fresh boot: a new app, a new runner process, a fresh handshake.
     #[test]
     fn plugin_dispatch_is_deterministic_across_consecutive_fresh_spawns() {
+        let _guard = PROCESS_TESTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Process-spawning tests tolerate a busy machine: raise the plugin
+        // call timeout for the whole test binary (never lowers any floor).
+        std::env::set_var("OCS_PLUGIN_CALL_TIMEOUT_SECS", "10");
         let path = match std::env::var_os("OCS_TEST_PLUGIN") {
             Some(p) => std::path::PathBuf::from(p),
             None => return,

@@ -4672,6 +4672,8 @@ impl OpenCADStudio {
     }
 
     pub(crate) fn new() -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
+        crate::plugin::external::app_created();
         let config = config::AppConfig::load();
         if let Err(error) = crate::i18n::set_language(config.settings.language) {
             eprintln!("Unable to apply saved UI language: {error}");
@@ -5333,6 +5335,8 @@ impl OpenCADStudio {
 
     #[cfg(test)]
     pub(crate) fn new_for_test() -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
+        crate::plugin::external::app_created();
         let mut app = Self::new();
         // `new` loads the real settings file, so without this every test runs
         // against whatever the developer last set in the application — a suite
@@ -5674,7 +5678,7 @@ impl Drop for OpenCADStudio {
         // dropped, instead of waiting for the thread-local manager destructor.
         // This makes host shutdown deterministic and fast on every exit path.
         #[cfg(not(target_arch = "wasm32"))]
-        crate::plugin::external::shutdown_plugins();
+        crate::plugin::external::app_dropped();
     }
 }
 

@@ -536,7 +536,7 @@ impl OpenCADStudio {
             }
             self.tabs[tab]
                 .scene
-                .bump_entities(&[(*handle, crate::scene::ChangeKind::Modified)]);
+                .bump_entities_restyled(&[(*handle, crate::scene::ChangeKind::Modified)]);
         }
     }
 
@@ -552,7 +552,7 @@ impl OpenCADStudio {
             }
             self.tabs[tab]
                 .scene
-                .bump_entities(&[(handle, crate::scene::ChangeKind::Modified)]);
+                .bump_entities_restyled(&[(handle, crate::scene::ChangeKind::Modified)]);
         }
         self.tabs[tab].dirty = true;
     }
