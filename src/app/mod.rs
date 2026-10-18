@@ -22,6 +22,7 @@ mod block_properties_tests;
 mod block_test;
 #[cfg(test)]
 mod block_test_tests;
+pub(crate) mod calc;
 mod command_driver;
 pub(crate) use command_driver::{
     copy_to_clipboard_kernel, define_block_raw_doc, paste_entities_kernel, PasteSpace,
@@ -1515,6 +1516,10 @@ pub(super) struct OpenCADStudio {
     /// it on Apply (`apply_named_parameter_editor_rows`,
     /// `src/app/named_parameters.rs`).
     named_parameter_editor_rows: Vec<crate::ui::window::named_parameters::ParamEditorRow>,
+
+    // ── CAL ───────────────────────────────────────────────────────────────
+    /// Variables and `ans` kept between CAL evaluations for this session.
+    cal_context: calc::CalcContext,
 
     // ── Layout Manager Panel ──────────────────────────────────────────────
     layout_manager_selected: String,
@@ -5126,6 +5131,7 @@ impl OpenCADStudio {
             alias_close_confirm: false,
             alias_import_report: String::new(),
             named_parameter_editor_rows: Vec::new(),
+            cal_context: calc::CalcContext::default(),
             // Layout Manager
             layout_manager_selected: "Model".to_string(),
             layer_state_selected: None,
