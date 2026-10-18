@@ -1358,6 +1358,48 @@ fn block_parameter_leader_and_crossing_box_select_then_delete() {
 }
 
 #[test]
+fn authoring_parameter_grip_drag_shows_preview_before_commit() {
+    use crate::scene::block_authoring::edit::{self, Part};
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 6,0 3,2");
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter = actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0].handle;
+    app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800., 600.);
+    app.tabs[i].scene.camera.borrow_mut().fit_to_bounds_f64(
+        glam::DVec3::new(-1., -2., 0.),
+        glam::DVec3::new(7., 4., 0.),
+        800. / 600.,
+    );
+    let item = edit::items(&app.tabs[i].scene.document, definition)
+        .into_iter()
+        .find(|item| item.handle == parameter)
+        .unwrap();
+    let grip_index = item.grips
+        .iter()
+        .position(|(part, _)| *part == Part::End)
+        .unwrap();
+    app.tabs[i].selected_authoring = Some(parameter);
+    app.refresh_properties();
+    let grip_id = app.tabs[i].selected_grips[grip_index].id;
+    assert!(app.start_authoring_grip(parameter, grip_id));
+
+    let bounds = iced::Rectangle { x: 0., y: 0., width: 800., height: 600. };
+    let cursor = app.tabs[i].scene.camera.borrow().project(
+        glam::DVec3::new(7., 2., 0.),
+        bounds,
+    ).unwrap();
+    let _ = app.update(Message::ViewportMove(iced::Point::new(cursor.x, cursor.y)));
+
+    assert!(!app.tabs[i].scene.preview_wires.is_empty());
+    assert_eq!(actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0].end,
+        glam::DVec3::new(6., 0., 0.));
+    assert!(app.tabs[i].active_cmd.is_some());
+}
+
+#[test]
 fn block_actions_mouse_selection_waits_for_enter_for_move_and_scale() {
     use crate::scene::block_actions::{self as actions, Kind};
     for (kind, command) in [(Kind::Move, "BACTION MOVE"), (Kind::Scale, "BACTION SCALE")] {
