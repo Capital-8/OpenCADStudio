@@ -1430,6 +1430,16 @@ mod tests {
     }
 
     #[test]
+    fn submit_uppercases_only_the_command_verb() {
+        let mut line = CommandLine::new();
+        line.input = "open /home/u/My.dwg --PluginArg".to_string();
+        assert_eq!(
+            line.submit().as_deref(),
+            Some("OPEN /home/u/My.dwg --PluginArg")
+        );
+    }
+
+    #[test]
     fn aliases_are_hidden_but_their_command_survives() {
         // The alias `L` is dropped from suggestions while `LINE` (its target)
         // still appears. (#288)

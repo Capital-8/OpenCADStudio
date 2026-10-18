@@ -1450,6 +1450,7 @@ mod ds_set_handle_tests {
             .get(&old_name)
             .unwrap()
             .clone();
+        style.dimdle = 7.0;
         let before = style.dimdle;
         app.tabs[i].scene.document.dim_styles.remove(&old_name);
         style.name = "ARCH|Imported".to_string();
@@ -1459,7 +1460,7 @@ mod ds_set_handle_tests {
         assert!(app.selected_dimstyle_is_read_only());
         app.ds_dimdle = "456".to_string();
         app.apply_dimstyle_bufs(i);
-        assert_ne!(
+        assert_eq!(
             app.tabs[i]
                 .scene
                 .document

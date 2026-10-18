@@ -2796,16 +2796,16 @@ impl OpenCADStudio {
                 // string, a path, `UCS Z 90` as one line) can be typed; the `>`
                 // is stripped on submit. (Unfocused Space repeats the last
                 // command via CommandSpace.)
-                // Command-line entry is shown uppercase — except while the
-                // active command collects free-form text (cell text, TEXT /
-                // MTEXT bodies), where the typed case is the content and
-                // Space must stay in the buffer.
+                // Preserve command-entry input exactly. Active single-token
+                // prompt keywords keep their established uppercase behavior;
+                // `CommandLine::submit` uppercases only the command verb.
                 let text_with_spaces = self.is_free_text_active();
+                let active_prompt = self.tabs[self.active_tab].active_cmd.is_some();
                 let literal = self.command_line.literal_spaces || s.starts_with('>');
-                let s = if text_with_spaces || literal {
-                    s
-                } else {
+                let s = if active_prompt && !text_with_spaces && !literal {
                     s.to_uppercase()
+                } else {
+                    s
                 };
                 // A space submits (acts like Enter). The whole value is handed to
                 // the submit path, which tokenises multi-token lines — so a typed
@@ -12849,19 +12849,27 @@ mod free_text_entry_tests {
     }
 
     #[test]
-    fn normal_commands_still_uppercase_and_submit_on_space() {
+    fn command_input_preserves_case_and_submits_multi_token_lines() {
         let mut app = OpenCADStudio::new_for_test();
         app.automation_op(r#"{"op":"new"}"#);
-        // No free-text command active: entry is uppercased…
+        // Ordinary command entry now retains its typed case…
         let _ = app.update(Message::CommandInput("lin".into()));
-        assert_eq!(app.command_line.input, "LIN");
-        // …and a pasted multi-token line runs as a command, not as text.
+        assert_eq!(app.command_line.input, "lin");
+        // …and a pasted multi-token line still submits as a command.
         let _ = app.update(Message::CommandInput("LINE 0,0 10,10".into()));
         assert!(
             app.command_line.input.is_empty(),
             "Space submitted the line"
         );
         assert_eq!(app.text_entry_mode(), TextEntryMode::Command);
+    }
+
+    #[test]
+    fn typed_command_characters_preserve_case() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let _ = app.update(Message::CommandAppendChar("MyPath".into()));
+        assert_eq!(app.command_line.input, "MyPath");
     }
 
     #[test]
