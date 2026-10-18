@@ -498,6 +498,56 @@ shape and an axis — nothing else. What a grip *means* (an alignment's implied
 PI, a pipe endpoint, a widening handle) is entirely the declaring plugin's,
 resolved in its own `on_custom_grip_event` from the event's grip id and point.
 
+## HostApi vs MCP — the two surfaces
+
+The host exposes exactly two programmatic surfaces, and they are separate
+protocols over one shared pipeline: plugins speak **HostApi** (in-process or
+over the plugin IPC frames) and **never** the automation bridge; automation
+clients speak **MCP** (sessions, `session_id`, `request_id`) and never the
+plugin transport. Where both touch the same machinery — grip enumeration, the
+drag apply, hit-testing, the preview channel — they call the same internals,
+so their answers agree structurally (a drift test pins the grip read).
+
+Which surface carries what:
+
+| Capability | MCP op | HostApi |
+|---|---|---|
+| Built-in grip read / drag | `grips` / `grip_drag{handle,…}` | `entity_grips` / `grip_drag` |
+| Custom grip read / drag | `grips` → `plugin_grips` / `grip_drag{plugin,…}` | via `set_plugin_grips` + `on_custom_grip_event` |
+| Custom grip declaration | — (a view; only the owner declares) | `set_plugin_grips` |
+| Entity CRUD, blocks, text | `entities_*`, `block_*`, `text_replace` | `add/update/remove_entity`, `solid/table_operation` |
+| Selection | `select` (handles **and** type/vertex modes), selection sets | `selection` / `set_selection` (explicit handles) |
+| Undo | `undo`, `redo` — drives the user's stack | `push_undo` scopes, `update_entities_transaction` |
+| Commands | `run`, `start`, `input`, `cancel` | `run_command` (incl. the echo-free `RunQuiet`) |
+| Constraints | only command replays (with echo) | `constraint_create` (no command line, joins the caller's scope) |
+| Entity XDATA | `xdata_get` / `xdata_set` | `read_record` / `write_record` / `remove_record` |
+| NOD XRecords | — | `create/read/update/delete/list_xrecord` + the v13 batches |
+| Bulk data | `batch` (batched **ops**) | `entities_batch`, record batches (batched **data**) |
+| Notifications | `events` (the session journal) | `on_notification` (`DocumentChanged`, `DocumentChangedRegions`, …) |
+| Viewport automation | `click`, `pointer`, `getpoint`, `user_select`, `view_focus`, `capture` | — (a plugin's grip events are its gestures) |
+| Reference-only designation | — | `set_reference_only` |
+| Files | `new/open/save/save_verified/wblock/plot` | `document_path`, tab lifecycle |
+
+Semantic traps worth knowing before writing a consumer on either side:
+
+- **MCP `records` is not records.** It is the automation session's operation
+  journal; entity data lives in `entities`/`query`/`properties`/`xdata_get`.
+  A plugin's NOD XRecords (its real carrier) are HostApi-only — automation
+  must assert them through undo/audit/file, not direct reads.
+- **Undo is deliberately asymmetric.** Automation drives the user's stack
+  (`undo`/`redo`); plugins compose labeled `push_undo` scopes. A settled
+  custom-grip drag totals exactly the plugin's one labeled step, and a later
+  MCP `undo` pops it like any user step.
+- **`grip_id` namespaces differ but are labeled.** Built-ins are entity-local
+  indices; custom grips are plugin-chosen ids routed by `(plugin, id)`. The
+  MCP payload marks the owner so the two can never be confused.
+- **Selection scoping differs.** The MCP `grips` read reflects the current
+  selection's cached grips; `entity_grips` answers per handle, generically
+  over every entity type (boxed variants included), no selection needed.
+- **The never-interpret rule holds on both surfaces.** Even where MCP touches
+  custom grips it only routes; the sole writer of meaning is the owning
+  plugin, at settle, in its own scope.
+
 ---
 
 ## Building & distribution
