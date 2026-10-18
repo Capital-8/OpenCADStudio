@@ -387,15 +387,17 @@ fn parse_string_array(s: &str) -> Vec<String> {
 // ── Runtime loading (desktop only) ──────────────────────────────────────────
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) use loader::{shutdown_plugins, with_manager};
+pub(crate) use loader::with_manager;
+#[cfg(test)]
+pub(crate) use loader::PROCESS_TESTS_LOCK;
 
 #[cfg(all(not(target_arch = "wasm32"), not(test)))]
 pub(crate) use loader::{load_at_startup, loaded_ids};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use loader::remove_plugin;
-pub(crate) use loader::PROCESS_TESTS_LOCK;
 pub(crate) use loader::{app_created, app_dropped};
+#[cfg(test)]
 pub(crate) use loader::{remove_plugin_for_tests, spawn_into_manager_for_tests};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -406,13 +408,24 @@ mod loader {
     use ocs_plugin_api::process::PluginManager;
     use std::path::{Path, PathBuf};
 
-    // Process-wide plugin manager. Drop kills every runner process asynchronously
-    // so host shutdown is never delayed by a plugin. GLOBAL (process-wide, not
-    // thread-local): the V4 reader threads that surface plugin notifications —
-    // including the API v13 `ChannelReady` attach ack — must reach the LOADED
-    // manager; with the old thread-local storage a reader thread could never
-    // see it at all.
-    static MANAGER: std::sync::Mutex<Option<PluginManager>> = std::sync::Mutex::new(None);
+    // Plugin manager. THREAD-LOCAL and REENTRANT (RefCell immutable borrows
+    // nest): every with_manager caller runs on the app's thread — dispatch
+    // (whose nested inline serving of plugin write frames re-enters with_manager
+    // through the boundary broadcasts), the drains, the grips pump. The V4
+    // reader threads that surface plugin notifications never touch the manager:
+    // the API v13 `ChannelReady` attach ack goes through the QUEUE and is
+    // processed by the app thread at its next message boundary (v4_support::
+    // drain_channel_ready_acks) — which is what the queue exists for. A
+    // process-GLOBAL Mutex here was tried in v13 and SELF-DEADLOCKED the first
+    // plugin-write boundary (AppHangB1, the consumer's CVI_ALIGN_BYPI repro):
+    // the outer with_manager(manager.dispatch) held the mutex while the
+    // plugin's nested write frames were served inline, and the boundary
+    // publish re-entered with_manager on the same thread — a non-reentrant
+    // lock waiting on itself. RefCell borrows are the never-freeze shape here.
+    thread_local! {
+        static MANAGER: std::cell::RefCell<Option<PluginManager>> =
+            const { std::cell::RefCell::new(None) };
+    }
 
     /// Discover packages and spawn every API-compatible one as a separate
     /// process. Call once at startup. Returns per-id results so the host can
@@ -426,6 +439,21 @@ mod loader {
         let mut out = Vec::new();
         for d in &discovered {
             if !d.api_compatible() {
+                // LOUD (v13.1): an API-skipped plugin used to vanish silently —
+                // the machine then answered every one of its commands with
+                // "unknown command" and nothing named the cause. The plugin is
+                // still in the plugin manager UI's list of packages; this line
+                // is the only place the reason reaches the user.
+                out.push((
+                    d.id.clone(),
+                    Err(format!(
+                        "plugin declares api_version {}, host accepts {}..{}; \
+                         update the plugin (pins the matching host rev)",
+                        d.api_version,
+                        ocs_plugin_api::manifest::API_VERSION_MIN_SUPPORTED,
+                        ocs_plugin_api::manifest::API_VERSION
+                    )),
+                ));
                 continue;
             }
             if !d.lib_present {
@@ -481,29 +509,35 @@ mod loader {
                 Err(e) => out.push((d.id.clone(), Err(e.to_string()))),
             }
         }
-        *MANAGER.lock().unwrap_or_else(|e| e.into_inner()) = Some(manager);
+        MANAGER.with(|m| *m.borrow_mut() = Some(manager));
         out
     }
 
     /// Ids of the plugins currently loaded in the process store.
     pub fn loaded_ids() -> Vec<String> {
-        let guard = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
-        guard.as_ref().map(|mgr| mgr.ids()).unwrap_or_default()
+        MANAGER.with(|m| m.borrow().as_ref().map(|mgr| mgr.ids()).unwrap_or_default())
     }
 
     /// Run `f` with a reference to the loaded plugin manager.
+    /// Run `f` with a reference to the loaded plugin manager. REENTRANT
+    /// while holding an immutable borrow: the dispatch path re-enters
+    /// (nested inline serving → boundary broadcasts); nested immutable
+    /// borrows of the RefCell are exactly what makes that safe.
     pub fn with_manager<R>(f: impl FnOnce(&PluginManager) -> R) -> R {
-        let guard = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(manager) = guard.as_ref() {
-            return f(manager);
-        }
-        let empty = PluginManager::new();
-        f(&empty)
+        MANAGER.with(|m| {
+            let guard = m.borrow();
+            if let Some(manager) = guard.as_ref() {
+                return f(manager);
+            }
+            drop(guard);
+            let empty = PluginManager::new();
+            f(&empty)
+        })
     }
 
     /// Serializes the process-spawning tests (spawn/dispatch/notification-attach)
-    /// against each other: they share the process-global manager, the ChannelReady
-    /// attach queue and runner bookkeeping; concurrent boots would.authenticate
+    /// against each other: they share the process-global ChannelReady attach
+    /// queue and runner bookkeeping; concurrent boots would.authenticate
     /// interference, not determinism. Grab at the top of each such test.
     pub(crate) static PROCESS_TESTS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -523,21 +557,23 @@ mod loader {
         ),
         String,
     > {
-        let mut guard = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
-        let mut manager = guard.take().unwrap_or_default();
-        manager.set_notification_handler(handler);
-        let result = manager
-            .load(cdylib_path, host)
-            .map(|id| {
-                let process = manager
-                    .grip_endpoint(&id)
-                    .map(|(process, _, _)| process)
-                    .expect("just loaded");
-                (id, process)
-            })
-            .map_err(|e| e.to_string());
-        *guard = Some(manager);
-        result
+        MANAGER.with(|m| {
+            let mut guard = m.borrow_mut();
+            let mut manager = guard.take().unwrap_or_default();
+            manager.set_notification_handler(handler);
+            let result = manager
+                .load(cdylib_path, host)
+                .map(|id| {
+                    let process = manager
+                        .grip_endpoint(&id)
+                        .map(|(process, _, _)| process)
+                        .expect("just loaded");
+                    (id, process)
+                })
+                .map_err(|e| e.to_string());
+            *guard = Some(manager);
+            result
+        })
     }
 
     /// Remove a loaded plugin from the process-wide manager (test cleanup
@@ -548,7 +584,7 @@ mod loader {
 
     /// Eagerly shut down all plugin runner processes.
     pub fn shutdown_plugins() {
-        if let Some(mut manager) = MANAGER.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        if let Some(mut manager) = MANAGER.with(|m| m.borrow_mut().take()) {
             manager.shutdown_all();
         }
     }
@@ -578,16 +614,18 @@ mod loader {
     /// its files can be deleted on Windows. Returns true if the plugin was
     /// loaded and has been removed.
     pub fn remove_plugin(id: &str) -> bool {
-        let mut guard = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(manager) = guard.as_mut() {
-            if manager.ids().iter().any(|loaded| loaded == id) {
-                manager.remove(id)
+        MANAGER.with(|m| {
+            let mut guard = m.borrow_mut();
+            if let Some(manager) = guard.as_mut() {
+                if manager.ids().iter().any(|loaded| loaded == id) {
+                    manager.remove(id)
+                } else {
+                    true
+                }
             } else {
                 true
             }
-        } else {
-            true
-        }
+        })
     }
 
     /// Path to the native library beside `plugin.toml`, if any.
@@ -928,6 +966,47 @@ acadrust_source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=0908
     /// Set `OCS_TEST_PLUGIN` to the built cdylib path and make sure the
     /// `OpenCADStudio` binary is built; the test uses it as the runner host.
     #[test]
+    fn with_manager_reentry_survives_the_first_write_boundary() {
+        // The FIRST-WRITE-BOUNDARY hang class (v13 AppHangB1, the consumer's
+        // CVI_ALIGN_BYPI repro): the dispatch path holds the manager access
+        // for the whole call, and the plugin's inline-served write frames
+        // re-enter `with_manager` at their boundary broadcasts. This guards
+        // the REENTRANCY directly; a watchdog thread turns a regression
+        // into a bounded failure instead of another AppHangB1 (the suite
+        // must never hang).
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&done);
+        let worker = std::thread::spawn(move || {
+            // The dispatch shape: an outer with_manager whose closure —
+            // while the manager access is held — triggers the boundary
+            // broadcasts that themselves go through with_manager, exactly
+            // what a plugin's inline-served add_entity does.
+            with_manager(|manager| {
+                let _ = manager.ids();
+                crate::plugin::v4_support::publish_document_changed(93);
+                crate::plugin::v4_support::publish_document_changed_regions(
+                    1,
+                    93,
+                    Vec::new(),
+                    Vec::new(),
+                );
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            });
+        });
+        for _ in 0..100 {
+            if done.load(std::sync::atomic::Ordering::SeqCst) {
+                worker.join().expect("worker");
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        panic!(
+            "with_manager self-deadlocked on re-entry — the first-write-boundary \
+             AppHangB1 class is back (a non-reentrant manager access)"
+        );
+    }
+
+    #[test]
     fn spawn_and_dispatch_test_plugin() {
         let _guard = PROCESS_TESTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // Process-spawning tests tolerate a busy machine: raise the plugin
@@ -969,6 +1048,22 @@ acadrust_source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=0908
             .expect("dispatch MP_HELLO");
         assert!(handled, "plugin should handle MP_HELLO");
         assert!(!started, "MP_HELLO is not interactive");
+
+        // The FIRST-WRITE-BOUNDARY shape (the v13 AppHangB1 class): the
+        // nested write frames of a dispatched command are served inline
+        // under the manager access the dispatch holds; the boundary publish
+        // must re-enter cleanly. Bounded: the call's own timeout would fire
+        // on a regression, never a hang.
+        let start = std::time::Instant::now();
+        let wrote = process
+            .dispatch(&mut host, "MP_WRITE", &mut |_| {})
+            .unwrap_or_else(|e| panic!("MP_WRITE failed: {e}"));
+        assert!(wrote, "MP_WRITE must dispatch");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(5),
+            "the first write boundary spent {:?} — regression shape",
+            start.elapsed()
+        );
     }
 
     /// Deterministic boot (API v12 hardening): plugin commands must dispatch

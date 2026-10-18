@@ -1548,7 +1548,6 @@ fn live_geometry_does_not_trigger_the_constraint_solver() {
     let a = add(&mut app, line([0.0, 0.0, 0.0], [10.0, 0.0, 0.0]));
     let b = add(&mut app, line([10.0, 0.5, 0.0], [20.0, 0.5, 0.0]));
     let before_a = serialized(&app, a);
-    let before_b = serialized(&app, b);
     let before_undo = undo_entry_count(&app);
 
     // Bond the endpoints (coincident) through the new API — the chain whose

@@ -6,6 +6,8 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use acadrust::entities::Point;
+use acadrust::xdata::{ExtendedDataRecord, XDataValue};
 use ocs_plugin_api::host::{BuiltinPlugin, HostApi, HostNotification};
 use ocs_plugin_api::manifest::{ApiVersion, PluginManifest};
 use ocs_plugin_api::ribbon::{CadModule, IconKind, ModuleEvent, RibbonGroup, RibbonItem, ToolDef};
@@ -74,6 +76,26 @@ impl BuiltinPlugin for MyPlugin {
             "MP_LAST_NOTIF" => {
                 let version = LAST_DOC_VERSION.load(Ordering::SeqCst);
                 host.push_info(&format!("LAST_NOTIF {version}"));
+                true
+            }
+            // Test hook (API v13.1): the FIRST-WRITE-BOUNDARY shape — a
+            // dispatch whose nested write frames are served INLINE under the
+            // manager borrow held by the dispatch path (the boundary publish
+            // re-enters with_manager). The v13 AppHangB1 hang the consumer
+            // captured on CVI_ALIGN_BYPI was exactly this call.
+            "MP_WRITE" => {
+                let point = Point::from_coords(1.0, 2.0, 0.0);
+                let handle = host.add_entity(acadrust::EntityType::Point(point));
+                if !handle.is_null() {
+                    let _ = host.write_record(
+                        handle,
+                        ExtendedDataRecord {
+                            application_name: "MYPLUG".to_string(),
+                            values: vec![XDataValue::String("mp-write".to_string())],
+                        },
+                    );
+                }
+                host.push_info("MP_WRITE done");
                 true
             }
             _ => false,

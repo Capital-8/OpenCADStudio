@@ -300,7 +300,7 @@ impl OpenCADStudio {
                 .begin_settle_watch(SETTLE_WATCHDOG, std::time::Instant::now());
         } else {
             // The owner vanished mid-drag: end as a cancel.
-            self.cancel_plugin_grip_drag();
+            let _ = self.cancel_plugin_grip_drag();
         }
         self.pump_plugin_grips()
     }
