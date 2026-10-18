@@ -292,7 +292,7 @@ fn catalog(
         } else if single {
             container(entry).id(if *label=="Lookup" {"authoring-tool-lookup"}else{"authoring-tool-basepoint"}).into()
         } else if geometry_action {
-            container(entry).id(match *label {"Move"=>"authoring-tool-move-action","Scale"=>"authoring-tool-scale-action","Rotate"=>"authoring-tool-rotate-action","Stretch"=>"authoring-tool-stretch-action","Array"=>"authoring-tool-array-action",_=>"authoring-tool-flip-action"}).into()
+            container(entry).id(match *label {"Move"=>"authoring-tool-move-action","Scale"=>"authoring-tool-scale-action","Rotate"=>"authoring-tool-rotate-action","Stretch"=>"authoring-tool-stretch-action","Polar Stretch"=>"authoring-tool-polar-stretch-action","Array"=>"authoring-tool-array-action",_=>"authoring-tool-flip-action"}).into()
         } else if lookup_action {
             container(entry).id("authoring-tool-lookup-table").into()
         } else if properties_table_action {
