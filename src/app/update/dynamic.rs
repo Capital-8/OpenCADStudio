@@ -802,26 +802,6 @@ impl OpenCADStudio {
         let cur = self.tabs[i].last_cursor_world;
         let compute_started = perf_preview.then(Instant::now);
         let tab = &mut self.tabs[i];
-        // Selection-hover previews are maintained by the viewport move path.
-        // A generic command refresh (for example SnapDwellTick) has no hovered
-        // entity and would replace MATCHPROP's persistent source glow with an
-        // empty rubber-band. Preserve the current overlay; seed the source glow
-        // only if phase 2 began before any move had produced one.
-        let selection_hover_preview = tab
-            .active_cmd
-            .as_ref()
-            .is_some_and(|command| command.selection_hover_preview_enabled());
-        if selection_hover_preview {
-            if tab.scene.preview_wires.is_empty() {
-                if let Some(preview) = tab.active_cmd.as_ref().and_then(|command| {
-                    command.selection_hover_preview(&tab.scene, None)
-                }) {
-                    tab.scene.set_command_preview_hatches(preview.hatches);
-                    tab.scene.set_preview_wires(preview.wires);
-                }
-            }
-            return;
-        }
         let previews = tab
             .active_cmd
             .as_mut()

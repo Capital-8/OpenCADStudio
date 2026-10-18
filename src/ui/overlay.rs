@@ -21,7 +21,6 @@ pub const CROSSHAIR_ARM: f32 = 60.0;
 const DEFAULT_CURSOR_SIZE: i32 = 5;
 const DEFAULT_PICK_BOX: i32 = 3;
 const DEFAULT_PICK_APERTURE: f32 = 8.0;
-pub(crate) const MATCHPROP_PICK_APERTURE_PX: f32 = 4.0;
 const CONSTRAINT_HOVER_MARKER_RADIUS: f32 = 7.0;
 
 use crate::scene::parametric_constraints::{
@@ -276,29 +275,6 @@ pub(crate) fn pick_box_aperture_px(value: i32) -> f32 {
     aperture.max(1.0)
 }
 
-/// MATCHPROP uses the smaller aperture shown at the brush tip in both pick
-/// phases; other entity picks continue to follow the user's PICKBOX setting.
-pub(crate) fn entity_pick_aperture_px(pick_box: i32, matchprop_pick: bool) -> f32 {
-    if matchprop_pick {
-        MATCHPROP_PICK_APERTURE_PX.min(pick_box_aperture_px(pick_box))
-    } else {
-        pick_box_aperture_px(pick_box)
-    }
-}
-
-#[cfg(test)]
-mod entity_pick_aperture_tests {
-    use super::*;
-
-    #[test]
-    fn matchprop_pick_uses_a_smaller_bounded_aperture() {
-        assert_eq!(entity_pick_aperture_px(DEFAULT_PICK_BOX, true), 4.0);
-        assert_eq!(entity_pick_aperture_px(0, true), 1.0);
-        assert_eq!(entity_pick_aperture_px(50, true), 4.0);
-        assert_eq!(entity_pick_aperture_px(DEFAULT_PICK_BOX, false), 8.0);
-    }
-}
-
 /// Which interactive navigation tool is armed. Each one owns the whole
 /// viewport and hides the CAD crosshair, but they do not share a cursor: the
 /// hand reads as "drag the sheet", which is wrong for a zoom or an orbit.
@@ -325,11 +301,6 @@ pub struct CrosshairOptions {
     /// the crosshair arms disappear and a blue pickbox remains — the
     /// screen-level "the client wants YOU to pick" signal.
     pub pick_pending: bool,
-    /// MATCHPROP is asking for its source object. The brush-tip box marks the
-    /// smaller screen-space aperture that the source click uses.
-    pub matchprop_source_pick: bool,
-    /// Keep the MATCHPROP pickbox visible while selecting destination objects.
-    pub matchprop_pickbox: bool,
     /// Draw only the pickbox: the active command previews a line that the
     /// full-length arms would cover.
     pub hide_arms: bool,
@@ -2184,23 +2155,9 @@ impl canvas::Program<Message> for SelectionCanvas {
                     },
                     |[r, g, b]| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 0.90],
                 );
-                let pickbox_half = if self.crosshair.matchprop_pickbox {
-                    entity_pick_aperture_px(self.crosshair.pick_box, true)
-                } else {
-                    0.0
-                };
-                // The brush points into the pickbox from its upper-right
-                // corner; its bristle width just meets the frame without
-                // covering the box or moving the actual click point.
-                let brush_gap = pickbox_half + 3.2 * std::f32::consts::FRAC_1_SQRT_2;
-                let brush_tip = if self.crosshair.matchprop_pickbox {
-                    Point::new(cp.x + brush_gap, cp.y - brush_gap)
-                } else {
-                    cp
-                };
                 draw_match_brush(
                     &mut frame,
-                    brush_tip,
+                    cp,
                     Color {
                         r: cr,
                         g: cg,
@@ -2208,32 +2165,6 @@ impl canvas::Program<Message> for SelectionCanvas {
                         a: ca,
                     },
                 );
-                if self.crosshair.matchprop_pickbox {
-                    let half = pickbox_half;
-                    let square = canvas::Path::rectangle(
-                        Point::new(cp.x - half, cp.y - half),
-                        Size::new(half * 2.0, half * 2.0),
-                    );
-                    if !self.crosshair.matchprop_source_pick {
-                        frame.fill(
-                            &square,
-                            Color {
-                                r: 0.24,
-                                g: 0.52,
-                                b: 0.98,
-                                a: 0.88,
-                            },
-                        );
-                    }
-                    frame.stroke(
-                        &square,
-                        canvas::Stroke {
-                            width: 1.25,
-                            style: canvas::Style::Solid(Color::from_rgb(0.30, 0.55, 0.98)),
-                            ..Default::default()
-                        },
-                    );
-                }
             }
         }
 
