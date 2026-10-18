@@ -194,7 +194,13 @@ pub fn view_window<'a>(
     ]
     .spacing(6);
 
-    let ok = dialog_button(t!("OK"), Message::PointStyleOk, true);
+    let actions = row![
+        Space::new().width(width),
+        dialog_button(t!("OK"), Message::PointStyleOk, true),
+        dialog_button(t!("Cancel"), Message::CloseModal, false),
+    ]
+    .spacing(8)
+    .align_y(iced::Center);
 
     container(
         column![
@@ -206,7 +212,7 @@ pub fn view_window<'a>(
             Space::new().height(8),
             radios,
             Space::new().height(12),
-            row![Space::new().width(width), ok].width(width),
+            actions.width(width),
         ]
         .spacing(4)
         .padding(20)

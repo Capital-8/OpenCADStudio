@@ -1847,11 +1847,13 @@ impl OpenCADStudio {
             }
             super::super::ModalKind::PointStyle => sized_flow(ex, 360, 470, |flow| {
                 crate::ui::style::point_style::view_window(
-                    self.tabs[self.active_tab]
-                        .scene
-                        .document
-                        .header
-                        .point_display_mode,
+                    self.point_mode_buf.unwrap_or_else(|| {
+                        self.tabs[self.active_tab]
+                            .scene
+                            .document
+                            .header
+                            .point_display_mode
+                    }),
                     self.point_size_relative,
                     &self.point_size_buf,
                     flow,

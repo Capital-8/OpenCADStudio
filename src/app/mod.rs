@@ -1247,6 +1247,12 @@ pub(super) struct OpenCADStudio {
     marketplace_status: String,
     /// PDSIZE text buffer for the Point Style (DDPTYPE) dialog.
     point_size_buf: String,
+    /// Tab that owns the staged Point Style edits, so OK cannot write to a
+    /// different document if the active tab changes while the dialog is open.
+    point_style_tab_id: Option<u64>,
+    /// Staged PDMODE selection; the document is changed only when the dialog
+    /// is accepted.
+    point_mode_buf: Option<i16>,
     /// Point Style size mode: `true` = relative to screen, `false` = absolute.
     /// Tracked separately from the PDSIZE sign so a size of 0 (sign-less) still
     /// remembers which radio is active.
@@ -5024,6 +5030,8 @@ impl OpenCADStudio {
             plugin_readme_loading: rustc_hash::FxHashSet::default(),
             marketplace_status: String::new(),
             point_size_buf: String::new(),
+            point_style_tab_id: None,
+            point_mode_buf: None,
             point_size_relative: true,
             default_assoc_prompted: false,
             check_missing_fonts: true,
