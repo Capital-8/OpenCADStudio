@@ -128,109 +128,8 @@ impl OpenCADStudio {
             super::super::ModalKind::XrefHelp => {
                 automatic_flow(ex, crate::ui::window::xref_help::view_window)
             }
-            super::super::ModalKind::Shortcuts => {
-                // Keys claimed by two rows — the cells turn red and a
-                // persistent warning names the command already using each
-                // key; the last row wins in the binding map on Apply.
-                let (duplicate_set, duplicate_conflicts) = duplicate_rows(
-                    &self.shortcut_editor_rows,
-                    crate::app::shortcuts::normalize_key,
-                );
-                // Commands the dispatcher can't run: not a registered
-                // command, plugin command, alias, or input action.
-                let valid: rustc_hash::FxHashSet<String> =
-                    crate::command::all_registered_command_names()
-                        .into_iter()
-                        .map(str::to_uppercase)
-                        .chain(
-                            self.command_line
-                                .dynamic_commands
-                                .iter()
-                                .map(|cmd| cmd.to_uppercase()),
-                        )
-                        .chain(self.command_aliases.keys().cloned())
-                        .chain(
-                            crate::app::shortcuts::INPUT_ACTIONS
-                                .iter()
-                                .map(|action| action.to_string()),
-                        )
-                        .collect();
-                let unknown_commands: Vec<String> = self
-                    .shortcut_editor_rows
-                    .iter()
-                    .filter_map(|(_, command)| {
-                        let command = command.trim();
-                        (!command.is_empty() && !valid.contains(command))
-                            .then(|| command.to_string())
-                    })
-                    .collect();
-                let unknown_set: rustc_hash::FxHashSet<String> =
-                    unknown_commands.into_iter().collect();
-                sized_flow(ex, 720, 520, |flow| {
-                    crate::ui::window::shortcuts::view_window(
-                        &self.shortcut_editor_rows,
-                        self.shortcut_capture_row,
-                        self.shortcut_pending_add,
-                        self.shortcut_reset_confirm,
-                        &duplicate_set,
-                        &duplicate_conflicts,
-                        &unknown_set,
-                        self.shortcut_close_confirm,
-                        flow,
-                    )
-                })
-            }
-            super::super::ModalKind::Aliases => {
-                // Aliases claimed by two rows — the cells turn red and a
-                // persistent warning names the command already using each
-                // alias; the last row wins in the alias map on Apply.
-                let (duplicate_set, duplicate_conflicts) = duplicate_rows(
-                    &self.alias_editor_rows,
-                    |alias| alias.trim().to_uppercase(),
-                );
-                // Commands the dispatcher can't run: not a registered
-                // command, plugin command, or input action.
-                let valid: rustc_hash::FxHashSet<String> =
-                    crate::command::all_registered_command_names()
-                        .into_iter()
-                        .map(str::to_uppercase)
-                        .chain(
-                            self.command_line
-                                .dynamic_commands
-                                .iter()
-                                .map(|cmd| cmd.to_uppercase()),
-                        )
-                        .chain(
-                            crate::app::shortcuts::INPUT_ACTIONS
-                                .iter()
-                                .map(|action| action.to_string()),
-                        )
-                        .collect();
-                let unknown_commands: Vec<String> = self
-                    .alias_editor_rows
-                    .iter()
-                    .filter_map(|(_, command)| {
-                        let command = command.trim();
-                        (!command.is_empty() && !valid.contains(command))
-                            .then(|| command.to_string())
-                    })
-                    .collect();
-                let unknown_set: rustc_hash::FxHashSet<String> =
-                    unknown_commands.into_iter().collect();
-                sized_flow(ex, 480, 520, |flow| {
-                    crate::ui::window::alias_editor::view_window(
-                        &self.alias_editor_rows,
-                        &self.alias_import_report,
-                        self.alias_pending_add,
-                        self.alias_reset_confirm,
-                        &duplicate_set,
-                        &duplicate_conflicts,
-                        &unknown_set,
-                        self.alias_close_confirm,
-                        flow,
-                    )
-                })
-            }
+            super::super::ModalKind::Shortcuts => self.shortcuts_modal_content(ex),
+            super::super::ModalKind::Aliases => self.aliases_modal_content(ex),
             super::super::ModalKind::NamedParameters => {
                 let scene = &self.tabs[self.active_tab].scene;
                 sized_flow(ex, 820, 520, |flow| {
@@ -1901,15 +1800,109 @@ impl OpenCADStudio {
             }
         })
     }
+
+    fn shortcuts_modal_content<'s>(&'s self, ex: iced::Vector) -> Element<'s, Message> {
+        // Keys claimed by two rows — the cells turn red and a persistent
+        // warning names the command already using each key.
+        let (duplicate_set, duplicate_conflicts) = duplicate_rows(
+            &self.shortcut_editor_rows,
+            crate::app::shortcuts::normalize_key,
+        );
+        // Commands the dispatcher can't run: not a registered command,
+        // plugin command, alias, or input action.
+        let valid: rustc_hash::FxHashSet<String> =
+            crate::command::all_registered_command_names()
+                .into_iter()
+                .map(str::to_uppercase)
+                .chain(
+                    self.command_line
+                        .dynamic_commands
+                        .iter()
+                        .map(|cmd| cmd.to_uppercase()),
+                )
+                .chain(self.command_aliases.keys().cloned())
+                .chain(
+                    crate::app::shortcuts::INPUT_ACTIONS
+                        .iter()
+                        .map(|action| action.to_string()),
+                )
+                .collect();
+        let unknown_set: rustc_hash::FxHashSet<String> = self
+            .shortcut_editor_rows
+            .iter()
+            .filter_map(|(_, command)| {
+                let command = command.trim();
+                (!command.is_empty() && !valid.contains(command)).then(|| command.to_string())
+            })
+            .collect();
+        sized_flow(ex, 720, 520, |flow| {
+            crate::ui::window::shortcuts::view_window(
+                &self.shortcut_editor_rows,
+                self.shortcut_capture_row,
+                self.shortcut_pending_add,
+                self.shortcut_reset_confirm,
+                &duplicate_set,
+                &duplicate_conflicts,
+                &unknown_set,
+                self.shortcut_close_confirm,
+                flow,
+            )
+        })
+    }
+
+    fn aliases_modal_content<'s>(&'s self, ex: iced::Vector) -> Element<'s, Message> {
+        // Aliases claimed by two rows — the cells turn red and a persistent
+        // warning names the command already using each alias.
+        let (duplicate_set, duplicate_conflicts) = duplicate_rows(
+            &self.alias_editor_rows,
+            |alias| alias.trim().to_uppercase(),
+        );
+        // Commands the dispatcher can't run: not a registered command,
+        // plugin command, or input action.
+        let valid: rustc_hash::FxHashSet<String> =
+            crate::command::all_registered_command_names()
+                .into_iter()
+                .map(str::to_uppercase)
+                .chain(
+                    self.command_line
+                        .dynamic_commands
+                        .iter()
+                        .map(|cmd| cmd.to_uppercase()),
+                )
+                .chain(
+                    crate::app::shortcuts::INPUT_ACTIONS
+                        .iter()
+                        .map(|action| action.to_string()),
+                )
+                .collect();
+        let unknown_set: rustc_hash::FxHashSet<String> = self
+            .alias_editor_rows
+            .iter()
+            .filter_map(|(_, command)| {
+                let command = command.trim();
+                (!command.is_empty() && !valid.contains(command)).then(|| command.to_string())
+            })
+            .collect();
+        sized_flow(ex, 480, 520, |flow| {
+            crate::ui::window::alias_editor::view_window(
+                &self.alias_editor_rows,
+                &self.alias_import_report,
+                self.alias_pending_add,
+                self.alias_reset_confirm,
+                &duplicate_set,
+                &duplicate_conflicts,
+                &unknown_set,
+                self.alias_close_confirm,
+                flow,
+            )
+        })
+    }
 }
 
 fn duplicate_rows(
     rows: &[(String, String)],
     normalize: impl Fn(&str) -> String,
-) -> (
-    rustc_hash::FxHashSet<String>,
-    Vec<(String, String)>,
-) {
+) -> (rustc_hash::FxHashSet<String>, Vec<(String, String)>) {
     let mut grouped: std::collections::BTreeMap<String, Vec<&(String, String)>> =
         std::collections::BTreeMap::new();
     for row in rows {
@@ -1937,6 +1930,9 @@ fn duplicate_rows(
     (duplicate_set, duplicates)
 }
 
+/// Build a dialog with an explicit initial size cap. Use this for dense forms
+/// and tables that contain their own scrollable regions; the cap keeps their
+/// intrinsic first layout bounded, while `extra` records user resizing.
 fn sized_flow<'a>(
     extra: iced::Vector,
     max_width: u16,
@@ -1951,6 +1947,8 @@ fn sized_flow<'a>(
     )
 }
 
+/// Build a dialog at its content's natural size. Use this for compact prompts
+/// and small forms whose contents should determine the initial frame.
 fn automatic_flow<'a>(
     extra: iced::Vector,
     mut build: impl FnMut(crate::ui::modal::ModalSizing) -> Element<'a, Message>,

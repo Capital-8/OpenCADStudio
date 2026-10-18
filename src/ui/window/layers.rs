@@ -119,8 +119,6 @@ impl Layer {
 #[derive(Clone)]
 pub struct LayerPanel {
     pub layers: Vec<Layer>,
-    #[allow(dead_code)]
-    pub visible: bool,
     /// Anchor row: the last row clicked. Drives the editable combos and the
     /// Shift-range origin. Its layer is always part of `selected_multi`.
     pub selected: Option<usize>,
@@ -152,7 +150,6 @@ pub struct LayerPanel {
 impl Default for LayerPanel {
     fn default() -> Self {
         Self {
-            visible: false,
             layers: vec![Layer::new("0", AcadColor::Index(7))],
             selected: None,
             selected_multi: Vec::new(),

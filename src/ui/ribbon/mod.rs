@@ -734,13 +734,17 @@ impl Ribbon {
         }
     }
 
-    /// Returns the index of the Layout module in the modules list.
-    #[allow(dead_code)] // layout-tab helpers; not yet wired
+    /// Returns the index of the Layout module in the modules list. Kept as a
+    /// routing helper for when the currently suppressed Layout ribbon tab is
+    /// enabled; it has no effect while that module is absent from the tabs.
+    #[allow(dead_code)]
     pub fn layout_module_index(&self) -> Option<usize> {
         self.modules.iter().position(|m| m.id() == "layout")
     }
 
-    /// Returns true if the currently active tab is the Layout module.
+    /// Returns true if the currently active tab is the Layout module. The
+    /// predicate remains useful to the future Layout tab, which is currently
+    /// suppressed by the view layer.
     #[allow(dead_code)]
     pub fn active_is_layout(&self) -> bool {
         self.modules
