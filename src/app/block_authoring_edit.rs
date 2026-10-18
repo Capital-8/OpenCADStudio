@@ -172,18 +172,71 @@ impl OpenCADStudio {
                         projected.push(Point::new(p.x, p.y));
                     }
                 }
-                for p in item.graphic.lines.iter().flat_map(|line| line.iter()) {
-                    if let Some(p) = camera.project(DVec3::new(p.x, p.y, p.z), bounds) {
-                        projected.push(Point::new(p.x, p.y));
-                    }
-                }
-                let any = projected
+                let segments = item
+                    .graphic
+                    .lines
                     .iter()
-                    .any(|p| p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y);
-                let all = !projected.is_empty()
-                    && projected
-                        .iter()
-                        .all(|p| p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y);
+                    .filter_map(|[a, b]| {
+                        let a = camera.project(DVec3::new(a.x, a.y, a.z), bounds)?;
+                        let b = camera.project(DVec3::new(b.x, b.y, b.z), bounds)?;
+                        let segment = [Point::new(a.x, a.y), Point::new(b.x, b.y)];
+                        projected.extend(segment);
+                        Some(segment)
+                    })
+                    .collect::<Vec<_>>();
+                let labels = item
+                    .graphic
+                    .labels
+                    .iter()
+                    .filter_map(|(point, label)| {
+                        let point =
+                            camera.project(DVec3::new(point.x, point.y, point.z), bounds)?;
+                        let point = Point::new(point.x, point.y);
+                        projected.push(point);
+                        Some((point, label.chars().count() as f32 * 7.0 + 20.0, 16.0))
+                    })
+                    .collect::<Vec<_>>();
+                let inside =
+                    |p: Point| p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y;
+                let crosses = |[a, b]: [Point; 2]| {
+                    if inside(a) || inside(b) {
+                        return true;
+                    }
+                    let (dx, dy) = (b.x - a.x, b.y - a.y);
+                    let (mut enter, mut leave) = (0.0_f32, 1.0_f32);
+                    for (p, q) in [
+                        (-dx, a.x - min.x),
+                        (dx, max.x - a.x),
+                        (-dy, a.y - min.y),
+                        (dy, max.y - a.y),
+                    ] {
+                        if p.abs() <= f32::EPSILON {
+                            if q < 0.0 {
+                                return false;
+                            }
+                            continue;
+                        }
+                        let t = q / p;
+                        if p < 0.0 {
+                            enter = enter.max(t);
+                        } else {
+                            leave = leave.min(t);
+                        }
+                        if enter > leave {
+                            return false;
+                        }
+                    }
+                    true
+                };
+                let any = projected.iter().any(|p| inside(*p))
+                    || segments.iter().copied().any(crosses)
+                    || labels.iter().any(|(p, width, height)| {
+                        p.x <= max.x
+                            && p.x + width >= min.x
+                            && p.y - height <= max.y
+                            && p.y >= min.y
+                    });
+                let all = !projected.is_empty() && projected.iter().all(|p| inside(*p));
                 (if crossing { any } else { all }).then_some(item.handle)
             })
             .next();

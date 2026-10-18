@@ -1308,6 +1308,56 @@ fn blank_pick_clears_block_authoring_selection() {
 }
 
 #[test]
+fn block_parameter_leader_and_crossing_box_select_then_delete() {
+    use crate::scene::block_authoring::edit;
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 6,0 3,2");
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let handle = actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0].handle;
+    let item = edit::items(&app.tabs[i].scene.document, definition)
+        .into_iter()
+        .find(|item| item.handle == handle)
+        .unwrap();
+    let [a, b] = item.graphic.lines[0];
+    app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800., 600.);
+    app.tabs[i].scene.camera.borrow_mut().fit_to_bounds_f64(
+        glam::DVec3::new(-1., -2., 0.),
+        glam::DVec3::new(7., 4., 0.),
+        800. / 600.,
+    );
+    let bounds = iced::Rectangle { x: 0., y: 0., width: 800., height: 600. };
+    let project = |point: Vector3| {
+        let p = app.tabs[i].scene.camera.borrow().project(
+            glam::DVec3::new(point.x, point.y, point.z), bounds,
+        ).unwrap();
+        iced::Point::new(p.x, p.y)
+    };
+    let (pa, pb) = (project(a), project(b));
+    let midpoint = iced::Point::new((pa.x + pb.x) * 0.5, (pa.y + pb.y) * 0.5);
+    assert!(app.pick_authoring_object(midpoint, bounds));
+    assert_eq!(app.tabs[i].selected_authoring, Some(handle));
+
+    app.tabs[i].selected_authoring = None;
+    let box_bounds = iced::Rectangle {
+        x: midpoint.x - 1., y: midpoint.y - 1., width: 2., height: 2.,
+    };
+    assert!(app.pick_authoring_box(
+        iced::Point::new(box_bounds.x, box_bounds.y),
+        iced::Point::new(box_bounds.x + box_bounds.width, box_bounds.y + box_bounds.height),
+        true,
+    ));
+    assert_eq!(app.tabs[i].selected_authoring, Some(handle));
+
+    let _ = app.update(Message::DeleteSelected);
+    assert!(edit::items(&app.tabs[i].scene.document, definition)
+        .iter()
+        .all(|item| item.handle != handle));
+}
+
+#[test]
 fn block_actions_mouse_selection_waits_for_enter_for_move_and_scale() {
     use crate::scene::block_actions::{self as actions, Kind};
     for (kind, command) in [(Kind::Move, "BACTION MOVE"), (Kind::Scale, "BACTION SCALE")] {
