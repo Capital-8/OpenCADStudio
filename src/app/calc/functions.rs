@@ -73,11 +73,11 @@ pub(super) fn call(
                 "acos" => x.acos(),
                 _ => x.atan(),
             };
-            Value::Number(mode.from_radians(a))
+            Value::Number(mode.radians_to_mode(a))
         }
         "atan2" => {
             arity(2..=2, "2")?;
-            Value::Number(mode.from_radians(num(0)?.atan2(num(1)?)))
+            Value::Number(mode.radians_to_mode(num(0)?.atan2(num(1)?)))
         }
         "sqrt" => unary(f64::sqrt)?,
         "abs" => unary(f64::abs)?,
@@ -125,7 +125,7 @@ pub(super) fn call(
             } else {
                 point(1)? - point(0)?
             };
-            Value::Number(mode.from_radians(v.y.atan2(v.x).rem_euclid(TAU)))
+            Value::Number(mode.radians_to_mode(v.y.atan2(v.x).rem_euclid(TAU)))
         }
         "mid" => {
             arity(2..=2, "2")?;

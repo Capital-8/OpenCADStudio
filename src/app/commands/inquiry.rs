@@ -1736,9 +1736,12 @@ mod find_replace_command_tests {
 mod cal_tests {
     use super::*;
 
+    /// A millimetre drawing, so length suffixes have a known target.
     fn app() -> OpenCADStudio {
         let mut app = OpenCADStudio::new_for_test();
         let _ = app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        app.tabs[i].scene.document.header.insertion_units = 4;
         app
     }
 
@@ -1760,6 +1763,10 @@ mod cal_tests {
         assert!(last_line(&app).ends_with("= 7380"), "{}", last_line(&app));
         let _ = app.dispatch_command("CAL dist([0,0],[3,4])");
         assert!(last_line(&app).ends_with("= 5"), "{}", last_line(&app));
+        // Lengths follow the drawing unit.
+        app.tabs[app.active_tab].scene.document.header.insertion_units = 6;
+        let _ = app.dispatch_command("CAL 1500mm");
+        assert!(last_line(&app).ends_with("= 1.5"), "{}", last_line(&app));
         let _ = app.dispatch_command("CAL 1/0");
         assert!(last_line(&app).contains("CAL:"), "{}", last_line(&app));
     }

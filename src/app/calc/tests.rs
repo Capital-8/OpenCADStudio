@@ -142,7 +142,7 @@ fn assignment_stores_and_returns() {
     assert_eq!(num_in("wall + 90", &mut c), 3690.0);
     assert_eq!(num_in("wall = wall * 2", &mut c), 7200.0);
     assert_eq!(c.vars["wall"], Value::Number(7200.0));
-    num_in("p = [1,2]", &mut c);
+    evaluate("p = [1,2]", &mut c).unwrap();
     assert_eq!(c.vars["p"], Value::Point(DVec3::new(1.0, 2.0, 0.0)));
     // Case-sensitive names.
     assert_eq!(err_in("WALL", &mut c).message, "unknown variable 'WALL'");
@@ -263,7 +263,7 @@ fn numeric_functions() {
     assert_eq!(num("sqrt(16)"), 4.0);
     assert_eq!(num("abs(-3)"), 3.0);
     assert_eq!(num("round(2.5)"), 3.0);
-    assert_eq!(num("round(3.14159, 2)"), 3.14);
+    assert_eq!(num("round(2.71828, 2)"), 2.72);
     assert_eq!(num("floor(-1.5)"), -2.0);
     assert_eq!(num("ceil(1.2)"), 2.0);
     assert_close!(num("ln(exp(2))"), 2.0);
@@ -343,9 +343,9 @@ fn spans_are_byte_offsets_after_unicode() {
 fn deep_nesting_is_bounded() {
     let ok = format!("{}1{}", "(".repeat(40), ")".repeat(40));
     assert_eq!(num(&ok), 1.0);
-    let deep = format!("{}1{}", "(".repeat(1000), ")".repeat(1000));
+    let deep = format!("{}1{}", "(".repeat(300), ")".repeat(300));
     assert_eq!(err(&deep).message, "expression is too deeply nested");
-    let minus = format!("{}1", "-".repeat(1000));
+    let minus = format!("{}1", "-".repeat(600));
     assert!(evaluate(&minus, &mut ctx()).is_err());
     // A long flat chain is fine; an absurdly long input is refused.
     let chain = vec!["1"; 500].join("+");

@@ -66,7 +66,7 @@ impl AngleMode {
         }
     }
 
-    pub(super) fn from_radians(self, a: f64) -> f64 {
+    pub(super) fn radians_to_mode(self, a: f64) -> f64 {
         match self {
             AngleMode::Degrees => a.to_degrees(),
             AngleMode::Radians => a,

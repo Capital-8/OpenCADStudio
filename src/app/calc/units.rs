@@ -36,6 +36,6 @@ pub(super) fn is_unit_name(name: &str) -> bool {
 pub(super) fn apply(value: f64, unit: Unit, base_unit: f64, mode: AngleMode) -> f64 {
     match unit {
         Unit::Length(mm) => value * mm / base_unit,
-        Unit::Angle(rad) => mode.from_radians(value * rad),
+        Unit::Angle(rad) => mode.radians_to_mode(value * rad),
     }
 }
