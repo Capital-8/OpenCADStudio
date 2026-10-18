@@ -3,6 +3,14 @@ use crate::scene::{block_distance_parameter as distance, block_point_parameter a
 use codec::{DwgReader, DwgWriter, DxfReader, DxfWriter};
 use std::io::Cursor;
 
+#[test]
+fn rotation_table_angles_match_across_pi_wrap() {
+    let near_positive_pi = std::f64::consts::PI - 0.01;
+    let near_negative_pi = -std::f64::consts::PI + 0.01;
+    assert!((super::angle_distance(near_positive_pi, near_negative_pi) - 0.02).abs() < 1e-12);
+    assert!(super::angle_distance(near_positive_pi, 0.0) > 3.0);
+}
+
 fn fixture() -> (CadDocument, Handle, Vec<Handle>) {
     let mut scene = Scene::new();
     scene.define_block_raw(

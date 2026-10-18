@@ -221,7 +221,21 @@ impl OpenCADStudio {
             .then(|| {
                 view.rows
                     .iter()
-                    .position(|r| r.iter().zip(&values).all(|(a, b)| (a - b).abs() <= 1e-9))
+                    .position(|row| {
+                        row.iter().zip(&values).zip(&view.columns).all(
+                            |((row_value, value), column)| {
+                                let difference = if column
+                                    .connection_name
+                                    .eq_ignore_ascii_case("UpdatedAngle")
+                                {
+                                    crate::scene::block_actions::angle_distance(*row_value, *value)
+                                } else {
+                                    (row_value - value).abs()
+                                };
+                                difference <= 1e-9
+                            },
+                        )
+                    })
             })
             .flatten();
         self.tabs[i].selected_grips.push(GripDef {

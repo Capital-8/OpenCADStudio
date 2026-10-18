@@ -11,6 +11,14 @@ use glam::DVec3;
 pub(crate) mod instance;
 mod representation;
 mod stretch;
+
+/// Smallest signed distance between two angles in radians, accounting for the
+/// wrap at ±π. Used for BPT rotation snapping and current-row detection.
+pub(crate) fn angle_distance(a: f64, b: f64) -> f64 {
+    ((a - b + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
+        - std::f64::consts::PI)
+        .abs()
+}
 #[cfg(test)]
 mod tests;
 
@@ -1097,9 +1105,8 @@ fn evaluate_impl(
                                     .iter()
                                     .filter_map(|row| row.get(col).copied())
                                     .min_by(|a, b| {
-                                        (a - angle)
-                                            .abs()
-                                            .total_cmp(&(b - angle).abs())
+                                        angle_distance(*a, angle)
+                                            .total_cmp(&angle_distance(*b, angle))
                                             .then_with(|| a.total_cmp(b))
                                     })
                                 {
