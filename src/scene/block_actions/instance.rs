@@ -306,6 +306,102 @@ pub(crate) fn evaluate_value(
     Ok(Some(result))
 }
 
+pub(crate) fn evaluate_table_row(
+    doc: &CadDocument,
+    insert: Handle,
+    columns: &[crate::scene::block_properties_table::Column],
+    row: usize,
+) -> Result<Option<CadDocument>, &'static str> {
+    let def =
+        definition(doc, insert).ok_or("Select a uniformly scaled dynamic block reference.")?;
+    let view = crate::scene::block_properties_table::table(doc, def)?
+        .ok_or("The Block Properties Table is unavailable.")?;
+    let values = view
+        .rows
+        .get(row)
+        .ok_or("The selected table row is unavailable.")?;
+    let mut staged = doc.clone();
+    for (column, value) in columns.iter().zip(values) {
+        let p = all_parameters(&staged, def)
+            .into_iter()
+            .find(|p| p.handle == column.handle)
+            .ok_or("The table parameter is unavailable.")?;
+        let input = if column.connection_name.eq_ignore_ascii_case("UpdatedAngle") {
+            Value::Point(
+                p.base + DVec3::new(value.cos(), value.sin(), 0.0) * p.end.distance(p.base),
+            )
+        } else {
+            let axis = (p.end - p.base).normalize();
+            Value::Point(p.base + axis * *value)
+        };
+        if let Some(next) = evaluate_value(&staged, insert, p.handle, input)? {
+            staged = next;
+        }
+    }
+    write_table_history(&mut staged, insert, &view, row)?;
+    Ok(Some(staged))
+}
+
+fn write_table_history(
+    doc: &mut CadDocument,
+    insert: Handle,
+    view: &crate::scene::block_properties_table::TableView,
+    row: usize,
+) -> Result<(), &'static str> {
+    let mut owner = doc.ensure_extension_dictionary(insert);
+    for key in ["AcDbBlockRepresentation", "AppDataCache"] {
+        owner = ensure_dictionary(doc, owner, key)?;
+    }
+    let def = doc
+        .dynamic_definition_for_insert(insert)
+        .ok_or("The block definition is unavailable.")?;
+    let table_eval = view.table.parameter.parameter.element.eval.node_id;
+    let mut entries = vec![
+        XRecordEntry::int16(1070, 3),
+        XRecordEntry::int32(1071, table_eval),
+        XRecordEntry::new(300, XRecordValue::String("Block Table1".into())),
+        XRecordEntry::int16(70, row as i16),
+        XRecordEntry::int16(1070, -1),
+    ];
+    let params = all_parameters(doc, def);
+    for (column, value) in view.columns.iter().zip(
+        view.rows
+            .get(row)
+            .ok_or("The selected table row is unavailable.")?,
+    ) {
+        let p = params
+            .iter()
+            .find(|p| p.handle == column.handle)
+            .ok_or("The table parameter is unavailable.")?;
+        entries.push(XRecordEntry::int32(1071, p.id));
+        entries.push(XRecordEntry::new(300, XRecordValue::String(p.name.clone())));
+        entries.push(XRecordEntry::double(40, *value));
+    }
+    entries.push(XRecordEntry::int16(1070, -2));
+    let h = if let Some(h) = entry(doc, owner, "ACAD_ENHANCEDBLOCKHISTORY")? {
+        h
+    } else {
+        doc.allocate_handle()
+    };
+    let mut rec = XRecord::named("ACAD_ENHANCEDBLOCKHISTORY");
+    rec.handle = h;
+    rec.owner = owner;
+    rec.reactors.push(owner);
+    rec.cloning_flags = codec::objects::DictionaryCloningFlags::KeepExisting;
+    rec.entries = entries;
+    doc.objects.insert(h, ObjectType::XRecord(rec));
+    if let Some(ObjectType::Dictionary(d)) = doc.objects.get_mut(&owner) {
+        if !d
+            .entries
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("ACAD_ENHANCEDBLOCKHISTORY"))
+        {
+            d.add_entry("ACAD_ENHANCEDBLOCKHISTORY", h);
+        }
+    }
+    Ok(())
+}
+
 /// Refresh existing evaluated references after an authoring change.
 pub(crate) fn refresh(doc: &CadDocument, def: Handle) -> Result<CadDocument, &'static str> {
     refresh_after_edit(doc, doc, def)

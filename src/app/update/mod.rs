@@ -1,6 +1,6 @@
-use crate::io::plot_style::PlotStyleTableExt as _;
 use super::{ArrowKey, Message, OpenCADStudio, TextEntryMode};
 use crate::command::CadCommand;
+use crate::io::plot_style::PlotStyleTableExt as _;
 use crate::scene::VIEWCUBE_DRAW_PX;
 use crate::ui::PropertiesPanel;
 use iced::time::Instant;
@@ -4575,7 +4575,9 @@ impl OpenCADStudio {
 
             // CATIA navigation: the left button pressed during a middle drag
             // turns the drag into an orbit instead of starting a pick.
-            Message::ViewportLeftPressAt(_) | Message::ViewportLeftPress | Message::PanePress(_)
+            Message::ViewportLeftPressAt(_)
+            | Message::ViewportLeftPress
+            | Message::PanePress(_)
                 if self.navigation_style == crate::app::settings::NavigationStyle::Catia
                     && self.tabs[self.active_tab]
                         .scene
@@ -4996,6 +4998,12 @@ impl OpenCADStudio {
             Message::VisibilityPick(idx) => {
                 if let Some(popup) = self.visibility_popup.take() {
                     self.apply_visibility_state(popup.insert_handle, idx);
+                }
+                Task::none()
+            }
+            Message::TableRowPick(idx) => {
+                if let Some(popup) = self.table_popup.take() {
+                    self.apply_table_row(popup.insert_handle, idx);
                 }
                 Task::none()
             }
@@ -6780,6 +6788,30 @@ impl OpenCADStudio {
                 // `Scene::selected_constraint`).
                 if let Some(id) = self.tabs[i].scene.selected_constraint {
                     self.delete_parametric_constraint(id);
+                    return Task::none();
+                }
+                if let (Some(handle), Some(session)) = (
+                    self.tabs[i].selected_authoring,
+                    self.tabs[i].active_block_edit_session(),
+                ) {
+                    let definition = session.br_handle;
+                    let mut staged = self.tabs[i].scene.document.clone();
+                    match crate::scene::block_authoring::edit::remove_parameter(
+                        &mut staged,
+                        definition,
+                        handle,
+                    ) {
+                        Ok(()) => {
+                            self.push_undo_snapshot(i, "Delete block parameter");
+                            self.tabs[i].scene.document = staged;
+                            self.tabs[i].selected_authoring = None;
+                            self.tabs[i].scene.bump_geometry();
+                            self.tabs[i].dirty = true;
+                            self.finish_pending_history(i);
+                            self.refresh_properties();
+                        }
+                        Err(message) => self.command_line.push_error(crate::t!(message).as_ref()),
+                    }
                     return Task::none();
                 }
                 let handles: Vec<_> = self.tabs[i].scene.selected.iter().cloned().collect();
@@ -9392,12 +9424,14 @@ impl OpenCADStudio {
 
             Message::ToggleDynamicUcs => {
                 self.dynamic_ucs = !self.dynamic_ucs;
-                self.command_line.push_output(if self.dynamic_ucs {
-                    crate::t!("Dynamic UCS: on")
-                } else {
-                    crate::t!("Dynamic UCS: off")
-                }
-                .as_ref());
+                self.command_line.push_output(
+                    if self.dynamic_ucs {
+                        crate::t!("Dynamic UCS: on")
+                    } else {
+                        crate::t!("Dynamic UCS: off")
+                    }
+                    .as_ref(),
+                );
                 self.persist_settings_if_changed();
                 Task::none()
             }
@@ -9780,9 +9814,7 @@ impl OpenCADStudio {
                 // Closing the attribute manager is its Cancel: live changes
                 // are taken back.
                 if self.active_modal == Some(super::ModalKind::AttMan) {
-                    return self.on_attman(
-                        crate::ui::window::attman_dialog::AttManMsg::Cancel,
-                    );
+                    return self.on_attman(crate::ui::window::attman_dialog::AttManMsg::Cancel);
                 }
                 if matches!(
                     self.active_modal,

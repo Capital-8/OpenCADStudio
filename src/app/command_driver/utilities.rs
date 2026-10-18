@@ -105,6 +105,7 @@ impl OpenCADStudio {
         self.grip_popup = None;
         self.grip_pending = None;
         self.visibility_popup = None;
+        self.table_popup = None;
         self.hover_dwell = None;
         self.ucs_grip_drag = None;
         self.ucs_icon_selected = false;
