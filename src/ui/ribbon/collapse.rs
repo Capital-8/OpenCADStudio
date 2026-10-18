@@ -8,12 +8,12 @@
 //! panel, so it shrinks as the panels do.
 
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use iced::advanced::layout::{self, Layout};
 use iced::advanced::widget::{self, Widget};
-use iced::advanced::{mouse, overlay, renderer, Renderer as _, Shell};
+use iced::advanced::{Renderer as _, Shell, mouse, overlay, renderer};
 use iced::{
     Background, Border, Element, Event, Length, Point, Rectangle, Renderer, Shadow, Size, Theme,
     Vector,
@@ -173,6 +173,23 @@ pub(crate) struct CollapsePanels<'a> {
     /// User-chosen density. `Auto` runs the width-based degradation; the others
     /// pin every panel to one level regardless of the window width.
     mode: CollapseMode,
+    /// Fingerprint of content that can affect natural panel dimensions.
+    measure_key: u64,
+}
+
+#[derive(Default)]
+struct MeasureCache {
+    key: Option<u64>,
+    widths: Vec<Widths>,
+    heights: Vec<[f32; 4]>,
+}
+
+impl MeasureCache {
+    fn matches(&self, key: u64, panel_count: usize) -> bool {
+        self.key == Some(key)
+            && self.widths.len() == panel_count
+            && self.heights.len() == panel_count
+    }
 }
 
 impl<'a> CollapsePanels<'a> {
@@ -186,7 +203,16 @@ impl<'a> CollapsePanels<'a> {
             height_out: None,
             tight_out: None,
             mode: CollapseMode::Auto,
+            measure_key: 0,
         }
+    }
+
+    /// Reuse natural measurements while the panel content and font metrics stay
+    /// unchanged. The available window width is intentionally not part of the
+    /// key: these measurements use unbounded natural limits.
+    pub fn measure_key(mut self, key: u64) -> Self {
+        self.measure_key = key;
+        self
     }
 
     /// Report the measured row height into `out` on every layout.
@@ -225,6 +251,14 @@ impl<'a> CollapsePanels<'a> {
 }
 
 impl<'a> Widget<Message, Theme, Renderer> for CollapsePanels<'a> {
+    fn tag(&self) -> widget::tree::Tag {
+        widget::tree::Tag::of::<MeasureCache>()
+    }
+
+    fn state(&self) -> widget::tree::State {
+        widget::tree::State::new(MeasureCache::default())
+    }
+
     fn diff(&mut self, tree: &mut widget::Tree) {
         let mut refs = Vec::with_capacity(self.panels.len() * SLOTS);
         for p in &mut self.panels {
@@ -254,42 +288,52 @@ impl<'a> Widget<Message, Theme, Renderer> for CollapsePanels<'a> {
         let mut heights = Vec::with_capacity(n);
         let auto = self.mode == CollapseMode::Auto;
         if auto {
-            for i in 0..n {
-                let f = self.panels[i].elements[Level::Full as usize]
-                    .as_widget_mut()
-                    .layout(&mut tree.children[slot(i, Level::Full)], renderer, &natural)
-                    .size();
-                let c = self.panels[i].elements[Level::Compact as usize]
-                    .as_widget_mut()
-                    .layout(
-                        &mut tree.children[slot(i, Level::Compact)],
-                        renderer,
-                        &natural,
-                    )
-                    .size();
-                let b = self.panels[i].elements[Level::Collapsed as usize]
-                    .as_widget_mut()
-                    .layout(
-                        &mut tree.children[slot(i, Level::Collapsed)],
-                        renderer,
-                        &natural,
-                    )
-                    .size();
-                let t = self.panels[i].elements[Level::Tight as usize]
-                    .as_widget_mut()
-                    .layout(
-                        &mut tree.children[slot(i, Level::Tight)],
-                        renderer,
-                        &natural,
-                    )
-                    .size();
-                widths.push(Widths {
-                    full: f.width,
-                    compact: c.width,
-                    button: b.width,
-                    tight: t.width,
-                });
-                heights.push([f.height, c.height, b.height, t.height]);
+            let cache = tree.state.downcast_ref::<MeasureCache>();
+            if cache.matches(self.measure_key, n) {
+                widths.clone_from(&cache.widths);
+                heights.clone_from(&cache.heights);
+            } else {
+                for i in 0..n {
+                    let f = self.panels[i].elements[Level::Full as usize]
+                        .as_widget_mut()
+                        .layout(&mut tree.children[slot(i, Level::Full)], renderer, &natural)
+                        .size();
+                    let c = self.panels[i].elements[Level::Compact as usize]
+                        .as_widget_mut()
+                        .layout(
+                            &mut tree.children[slot(i, Level::Compact)],
+                            renderer,
+                            &natural,
+                        )
+                        .size();
+                    let b = self.panels[i].elements[Level::Collapsed as usize]
+                        .as_widget_mut()
+                        .layout(
+                            &mut tree.children[slot(i, Level::Collapsed)],
+                            renderer,
+                            &natural,
+                        )
+                        .size();
+                    let t = self.panels[i].elements[Level::Tight as usize]
+                        .as_widget_mut()
+                        .layout(
+                            &mut tree.children[slot(i, Level::Tight)],
+                            renderer,
+                            &natural,
+                        )
+                        .size();
+                    widths.push(Widths {
+                        full: f.width,
+                        compact: c.width,
+                        button: b.width,
+                        tight: t.width,
+                    });
+                    heights.push([f.height, c.height, b.height, t.height]);
+                }
+                let cache = tree.state.downcast_mut::<MeasureCache>();
+                cache.key = Some(self.measure_key);
+                cache.widths.clone_from(&widths);
+                cache.heights.clone_from(&heights);
             }
         }
         let levels = if let Some(level) = self.mode.forced_level() {
@@ -695,6 +739,19 @@ impl overlay::Overlay<Message, Theme, Renderer> for FlyoutOverlay<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn natural_measurements_are_reused_only_for_the_same_key_and_panel_count() {
+        let cache = MeasureCache {
+            key: Some(17),
+            widths: vec![Widths::default(); 2],
+            heights: vec![[0.0; 4]; 2],
+        };
+
+        assert!(cache.matches(17, 2));
+        assert!(!cache.matches(18, 2));
+        assert!(!cache.matches(17, 1));
+    }
 
     fn w(full: f32, compact: f32, button: f32, tight: f32) -> Widths {
         Widths {

@@ -6,8 +6,10 @@
 //
 // Dropdown items within a group are collected into columns of 3 rows.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use rustc_hash::FxHashMap as HashMap;
 
@@ -16,9 +18,9 @@ use iced::widget::{button, column, container, mouse_area, row, scrollable, text}
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, Theme};
 
 use crate::app::Message;
-use crate::modules::{CadModule, IconKind, RibbonGroup, RibbonItem};
+use crate::modules::{CadModule, IconKind, RibbonGroup, RibbonItem, ToolDef};
 use crate::plugin::all_ribbon_modules;
-use crate::ui::properties::{linetype_display_name, lw_options, LinetypeItem};
+use crate::ui::properties::{LinetypeItem, linetype_display_name, lw_options};
 
 mod draw_panel;
 pub(crate) mod widgets;
@@ -27,9 +29,9 @@ mod color_dropdown;
 mod context_tools;
 mod modify_panel;
 mod visibility_panel;
-pub use context_tools::{pdf_underlay_tools, point_cloud_tools, xref_tools, UnderlayContext};
-use widgets::{StyleContext, *};
+pub use context_tools::{UnderlayContext, pdf_underlay_tools, point_cloud_tools, xref_tools};
 pub(crate) use widgets::{REDO_HISTORY_ID, UNDO_HISTORY_ID};
+use widgets::{StyleContext, *};
 mod collapse;
 mod keytips;
 mod locate;
@@ -38,9 +40,8 @@ use crate::ui::wrap_bar::{PosReport, WrapBar, WrapFlow};
 pub use collapse::CollapseMode;
 use collapse::{CollapsePanels, Panel};
 pub use keytips::{
-    active as keytips_active, key_pressed as keytip_key_pressed,
-    key_released as keytip_key_released, pointer_pressed as keytip_pointer_pressed, KeyTipInput,
-    KeyTipStep,
+    KeyTipInput, KeyTipStep, active as keytips_active, key_pressed as keytip_key_pressed,
+    key_released as keytip_key_released, pointer_pressed as keytip_pointer_pressed,
 };
 
 pub(crate) fn tooltip_content(text: String) -> Element<'static, Message> {
@@ -54,6 +55,144 @@ pub(crate) fn tooltip_style(theme: &Theme) -> container::Style {
 /// A line over the items of a split button whose face names the chosen item.
 fn dropdown_header(id: &str) -> Option<&'static str> {
     (id == "IMPORT_FILE").then_some("Import File — the face runs the last one chosen")
+}
+
+fn hash_tool_layout(tool: &ToolDef, hasher: &mut impl Hasher) {
+    tool.id.hash(hasher);
+    t!(tool.label).as_ref().hash(hasher);
+}
+
+fn hash_item_layout(item: &RibbonItem, hasher: &mut impl Hasher) {
+    match item {
+        RibbonItem::Tool(tool) => {
+            0u8.hash(hasher);
+            hash_tool_layout(tool, hasher);
+        }
+        RibbonItem::LabeledTool(tool) => {
+            1u8.hash(hasher);
+            hash_tool_layout(tool, hasher);
+        }
+        RibbonItem::LargeTool(tool) => {
+            2u8.hash(hasher);
+            hash_tool_layout(tool, hasher);
+        }
+        RibbonItem::Dropdown { id, items, .. } => {
+            3u8.hash(hasher);
+            id.hash(hasher);
+            items.len().hash(hasher);
+            for (command, label, _) in items {
+                command.hash(hasher);
+                t!(*label).as_ref().hash(hasher);
+            }
+        }
+        RibbonItem::LabeledDropdown {
+            id, label, items, ..
+        } => {
+            4u8.hash(hasher);
+            id.hash(hasher);
+            t!(*label).as_ref().hash(hasher);
+            items.len().hash(hasher);
+            for (command, item_label, _) in items {
+                command.hash(hasher);
+                t!(*item_label).as_ref().hash(hasher);
+            }
+        }
+        RibbonItem::LargeDropdown {
+            id, label, items, ..
+        } => {
+            5u8.hash(hasher);
+            id.hash(hasher);
+            t!(*label).as_ref().hash(hasher);
+            items.len().hash(hasher);
+            for (command, item_label, _) in items {
+                command.hash(hasher);
+                t!(*item_label).as_ref().hash(hasher);
+            }
+        }
+        RibbonItem::ToolGrid { columns } => {
+            6u8.hash(hasher);
+            columns.len().hash(hasher);
+            for column in columns {
+                column.len().hash(hasher);
+                for tool in column {
+                    hash_tool_layout(tool, hasher);
+                }
+            }
+        }
+        RibbonItem::LayerComboGroup { row2, row3 } => {
+            7u8.hash(hasher);
+            row2.len().hash(hasher);
+            row3.len().hash(hasher);
+            for tool in row2.iter().chain(row3) {
+                hash_tool_layout(tool, hasher);
+            }
+        }
+        RibbonItem::PropertiesGroup { match_prop } => {
+            8u8.hash(hasher);
+            hash_tool_layout(match_prop, hasher);
+        }
+        RibbonItem::StyleComboGroup {
+            style_key,
+            combo_id,
+            rows,
+            ..
+        } => {
+            9u8.hash(hasher);
+            format!("{style_key:?}").hash(hasher);
+            combo_id.hash(hasher);
+            for row in rows {
+                row.len().hash(hasher);
+                for tool in row {
+                    hash_tool_layout(tool, hasher);
+                }
+            }
+        }
+    }
+}
+
+fn panel_measure_key(
+    groups: &[&RibbonGroup],
+    last_cmd: &HashMap<&'static str, &'static str>,
+    last_panel_tool: &HashMap<&'static str, &'static str>,
+    style_ctx: &StyleContext<'_>,
+    visibility: Option<&crate::ui::window::block_visibility::RibbonContext>,
+) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    crate::sys::ui_font::generation().hash(&mut hasher);
+    groups.len().hash(&mut hasher);
+    for group in groups {
+        group.title.hash(&mut hasher);
+        group.tools.len().hash(&mut hasher);
+        for item in &group.tools {
+            hash_item_layout(item, &mut hasher);
+        }
+    }
+    let mut commands: Vec<_> = last_cmd.iter().collect();
+    commands.sort_unstable_by_key(|(id, _)| **id);
+    for (id, command) in commands {
+        id.hash(&mut hasher);
+        command.hash(&mut hasher);
+    }
+    let mut representatives: Vec<_> = last_panel_tool.iter().collect();
+    representatives.sort_unstable_by_key(|(title, _)| **title);
+    for (title, tool) in representatives {
+        title.hash(&mut hasher);
+        tool.hash(&mut hasher);
+    }
+    for (names, active) in [
+        (style_ctx.text_style_names, style_ctx.active_text_style),
+        (style_ctx.dim_style_names, style_ctx.active_dim_style),
+        (
+            style_ctx.mleader_style_names,
+            style_ctx.active_mleader_style,
+        ),
+        (style_ctx.table_style_names, style_ctx.active_table_style),
+    ] {
+        names.hash(&mut hasher);
+        active.hash(&mut hasher);
+    }
+    format!("{visibility:?}").hash(&mut hasher);
+    hasher.finish()
 }
 
 // ── Ribbon state ───────────────────────────────────────────────────────────
@@ -495,6 +634,8 @@ impl Ribbon {
         ts: widgets::ToggleState,
         style_ctx: &StyleContext<'_>,
         lead: &dyn Fn(bool) -> Vec<Element<'a, Message>>,
+        mode: CollapseMode,
+        flyout_open: bool,
     ) -> Panel<'a> {
         let group = |compact: bool| {
             render_group(
@@ -530,9 +671,21 @@ impl Ribbon {
                 tight,
             )
         };
+        let empty = || text("").into();
+        let elements = match mode {
+            CollapseMode::Auto => [group(false), group(true), button(false), button(true)],
+            CollapseMode::Full => [group(false), empty(), empty(), empty()],
+            CollapseMode::Compact => [empty(), group(true), empty(), empty()],
+            CollapseMode::Collapsed => [
+                if flyout_open { group(false) } else { empty() },
+                empty(),
+                button(false),
+                empty(),
+            ],
+        };
         Panel {
             id: g.title.to_string(),
-            elements: [group(false), group(true), button(false), button(true)],
+            elements,
         }
     }
 
@@ -773,12 +926,14 @@ impl Ribbon {
             .padding([2, 8]);
         let mode_dd = PosReport::new(COLLAPSE_MODE_ID, mode_btn);
 
-        let mut tab_row = row![container(
-            WrapBar::new(lead.into(), tabs.into())
-                .spacing(6.0)
-                .report_height(self.tab_bar_h.clone()),
-        )
-        .width(Length::Fill)]
+        let mut tab_row = row![
+            container(
+                WrapBar::new(lead.into(), tabs.into())
+                    .spacing(6.0)
+                    .report_height(self.tab_bar_h.clone()),
+            )
+            .width(Length::Fill)
+        ]
         .spacing(6.0)
         .align_y(iced::Center);
         if !self.collapse_tight.load(Ordering::Relaxed) {
@@ -809,7 +964,7 @@ impl Ribbon {
             self.active
         };
         let tool_area: Element<'_, Message> = if self.modules.get(effective_active).is_some() {
-            let groups = self.groups_for(effective_active);
+            let groups: Vec<_> = self.groups_for(effective_active).collect();
             let style_ctx = StyleContext {
                 text_style_names: &self.text_style_names,
                 active_text_style: &self.active_text_style,
@@ -826,18 +981,34 @@ impl Ribbon {
             // shrink to compact icon columns, then it collapses to a ▾ flyout
             // button. See `CollapsePanels`.
             let ts = self.toggle_state(show_block_palette);
+            let measure_key = panel_measure_key(
+                &groups,
+                &self.last_cmd,
+                &self.last_panel_tool,
+                &style_ctx,
+                visibility.as_ref(),
+            );
             let panels: Vec<Panel<'_>> = groups
+                .into_iter()
                 .map(|g| {
                     if self.modules[effective_active].id() == "block_editor"
                         && g.title == "Visibility"
                     {
                         visibility_panel::panel(visibility.clone())
                     } else {
-                        self.panel(g, ts, &style_ctx, &|_| Vec::new())
+                        self.panel(
+                            g,
+                            ts,
+                            &style_ctx,
+                            &|_| Vec::new(),
+                            self.collapse_mode,
+                            self.collapsed_open.as_deref() == Some(g.title),
+                        )
                     }
                 })
                 .collect();
             CollapsePanels::new(panels, self.collapsed_open.clone(), TOOL_BAR_H)
+                .measure_key(measure_key)
                 .report_height(self.tool_bar_h.clone())
                 .report_tight(self.collapse_tight.clone())
                 .mode(self.collapse_mode)
@@ -1780,7 +1951,69 @@ impl Default for Ribbon {
 #[cfg(test)]
 mod tests {
     use super::widgets::is_active_tool;
-    use super::Ribbon;
+    use super::{CollapseMode, Ribbon, StyleContext, panel_measure_key};
+    use crate::modules::{IconKind, ModuleEvent, RibbonGroup, RibbonItem, ToolDef};
+    use rustc_hash::FxHashMap;
+
+    fn measurement_key(tool_id: &'static str, selected_command: &'static str) -> u64 {
+        let groups = [RibbonGroup {
+            title: "Test",
+            tools: vec![RibbonItem::LargeTool(ToolDef {
+                id: tool_id,
+                label: "Test Tool",
+                icon: IconKind::Glyph("T"),
+                event: ModuleEvent::Command("TEST".to_string()),
+            })],
+        }];
+        let style_ctx = StyleContext {
+            text_style_names: &[],
+            active_text_style: "",
+            dim_style_names: &[],
+            active_dim_style: "",
+            mleader_style_names: &[],
+            active_mleader_style: "",
+            table_style_names: &[],
+            active_table_style: "",
+        };
+        let groups: Vec<_> = groups.iter().collect();
+        let mut last_cmd = FxHashMap::default();
+        last_cmd.insert("TEST_DROPDOWN", selected_command);
+        panel_measure_key(&groups, &last_cmd, &FxHashMap::default(), &style_ctx, None)
+    }
+
+    #[test]
+    fn panel_measure_fingerprint_is_stable_and_tracks_panel_structure() {
+        assert_eq!(
+            measurement_key("TEST", "TEST"),
+            measurement_key("TEST", "TEST")
+        );
+        assert_ne!(
+            measurement_key("TEST", "TEST"),
+            measurement_key("OTHER", "TEST")
+        );
+        assert_ne!(
+            measurement_key("TEST", "TEST"),
+            measurement_key("TEST", "OTHER")
+        );
+    }
+
+    #[test]
+    fn forced_density_views_build_and_keep_collapsed_flyout_content() {
+        let mut ribbon = Ribbon::default();
+        let first_panel = ribbon.groups_for(ribbon.active).next().unwrap().title;
+
+        for mode in [
+            CollapseMode::Full,
+            CollapseMode::Compact,
+            CollapseMode::Collapsed,
+        ] {
+            ribbon.set_collapse_mode(mode);
+            ribbon.collapsed_open =
+                (mode == CollapseMode::Collapsed).then(|| first_panel.to_string());
+            let view = ribbon.view(false, false, 0, 0, false, None);
+            std::hint::black_box(view);
+        }
+    }
 
     #[test]
     fn block_test_close_panel_extends_draw_only_while_testing() {
@@ -1790,10 +2023,12 @@ mod tests {
             .iter()
             .position(|module| module.id() == "draw")
             .unwrap();
-        assert!(!ribbon
-            .modules
-            .iter()
-            .any(|module| module.id() == "block_test"));
+        assert!(
+            !ribbon
+                .modules
+                .iter()
+                .any(|module| module.id() == "block_test")
+        );
         let ordinary: Vec<_> = ribbon.groups_for(draw).map(|group| group.title).collect();
         assert!(!ordinary.contains(&"Close"));
         ribbon.set_block_editing(true);
