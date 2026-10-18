@@ -1296,7 +1296,8 @@ fn blank_pick_clears_block_authoring_selection() {
     let i = app.active_tab;
     let _ = app.run_command_line("BPARAMETER LINEAR 0,0 4,0 2,1");
     let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
-    let parameter = actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0].handle;
+    let parameter = actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0]
+        .handle;
     app.tabs[i].selected_authoring = Some(parameter);
     app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800., 600.);
 
@@ -1397,6 +1398,133 @@ fn authoring_parameter_grip_drag_shows_preview_before_commit() {
     assert_eq!(actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0].end,
         glam::DVec3::new(6., 0., 0.));
     assert!(app.tabs[i].active_cmd.is_some());
+}
+
+#[test]
+fn block_editor_renames_orientation_basepoint_and_visibility_parameters() {
+    use crate::scene::block_authoring::edit;
+    use crate::scene::block_orientation_parameter::{self as orientation, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let rename = |app: &mut OpenCADStudio, handle: Handle, name: &str| {
+        app.tabs[i].selected_authoring = Some(handle);
+        let _ = app.update(Message::PropGeomInput {
+            field: "authoring_name",
+            value: name.to_string(),
+        });
+        let _ = app.update(Message::PropGeomCommit("authoring_name"));
+        assert_eq!(
+            edit::items(&app.tabs[i].scene.document, definition)
+                .into_iter()
+                .find(|item| item.handle == handle)
+                .unwrap()
+                .name,
+            name,
+        );
+    };
+
+    let alignment = orientation::create(
+        &mut app.tabs[i].scene.document,
+        definition,
+        Kind::Alignment,
+        Vector3::ZERO,
+        Vector3::new(4., 0., 0.),
+        Vector3::new(3., 1., 0.),
+    )
+    .unwrap();
+    rename(&mut app, alignment, "Align renamed");
+
+    let flip = orientation::create(
+        &mut app.tabs[i].scene.document,
+        definition,
+        Kind::Flip,
+        Vector3::ZERO,
+        Vector3::new(4., 0., 0.),
+        Vector3::new(3., 1., 0.),
+    )
+    .unwrap();
+    rename(&mut app, flip, "Mirror state");
+
+    let basepoint = crate::scene::block_basepoint::create(
+        &mut app.tabs[i].scene.document,
+        definition,
+        Vector3::new(1., 2., 0.),
+    )
+    .unwrap();
+    rename(&mut app, basepoint, "Origin marker");
+
+    let visibility = crate::scene::block_visibility::create(
+        &mut app.tabs[i].scene.document,
+        definition,
+        Vector3::new(2., 3., 0.),
+    )
+    .unwrap();
+    rename(&mut app, visibility, "Display state");
+    assert_eq!(
+        crate::scene::block_visibility::parameter(&app.tabs[i].scene.document, definition)
+            .unwrap()
+            .name,
+        "Display state",
+    );
+}
+
+#[test]
+fn double_clicking_block_parameter_label_starts_rename() {
+    use crate::scene::block_authoring::edit;
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 6,0 3,2");
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter = actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0].handle;
+    let item = edit::items(&app.tabs[i].scene.document, definition)
+        .into_iter()
+        .find(|item| item.handle == parameter)
+        .unwrap();
+    let label = item.graphic.labels[0].0;
+    app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800., 600.);
+    app.tabs[i].scene.camera.borrow_mut().fit_to_bounds_f64(
+        glam::DVec3::new(-1., -2., 0.),
+        glam::DVec3::new(7., 4., 0.),
+        800. / 600.,
+    );
+    let tile = app.tabs[i].scene.active_model_tile_bounds(800., 600.);
+    let bounds = iced::Rectangle {
+        x: 0.,
+        y: 0.,
+        width: tile.width,
+        height: tile.height,
+    };
+    let screen = app.tabs[i].scene.camera.borrow().project(
+        glam::DVec3::new(label.x, label.y, label.z),
+        bounds,
+    )
+    .unwrap();
+    let cursor_local = iced::Point::new(screen.x, screen.y);
+    let cursor = iced::Point::new(tile.x + screen.x, tile.y + screen.y);
+    assert_eq!(
+        app.authoring_label_at(cursor_local, bounds),
+        Some((parameter, item.name.clone()))
+    );
+    assert!(app.authoring_name_is_editable(parameter));
+    app.last_vp_click_time =
+        Some(std::time::Instant::now() - std::time::Duration::from_millis(100));
+    app.last_vp_click_pos = Some(cursor_local);
+    let _ = app.update(Message::ViewportMove(cursor));
+    let _ = app.update(Message::ViewportLeftPressAt(cursor));
+
+    assert_eq!(app.tabs[i].selected_authoring, Some(parameter));
+    assert_eq!(
+        app.tabs[i]
+            .properties
+            .edit_buf
+            .get(&crate::ui::properties::FieldKey::Geom("authoring_name"))
+            .map(String::as_str),
+        Some(item.name.as_str()),
+    );
 }
 
 #[test]

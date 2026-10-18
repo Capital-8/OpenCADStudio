@@ -4317,7 +4317,31 @@ impl OpenCADStudio {
             }
         }
 
+        let authoring_label = self.authoring_label_at(p, bounds);
         if self.pick_authoring_object(p, bounds) {
+            if let Some((handle, name)) = authoring_label
+                .filter(|(handle, _)| self.tabs[i].selected_authoring == Some(*handle))
+            {
+                let now = Instant::now();
+                let is_double = self.last_vp_click_time.is_some_and(|last| {
+                    now.duration_since(last).as_millis() < 400
+                        && self.last_vp_click_pos.is_some_and(|previous| {
+                            (p.x - previous.x).hypot(p.y - previous.y) < 8.0
+                        })
+                });
+                self.last_vp_click_time = Some(now);
+                self.last_vp_click_pos = Some(p);
+                if is_double && self.authoring_name_is_editable(handle) {
+                    let key = crate::ui::properties::FieldKey::Geom("authoring_name");
+                    self.tabs[i].properties.edit_buf.insert(key, name);
+                    self.tabs[i].properties.active_field = None;
+                    let id = crate::ui::properties::prop_geom_field_id("authoring_name");
+                    return Task::batch([
+                        iced::widget::operation::focus(id.clone()),
+                        iced::widget::operation::select_all(id),
+                    ]);
+                }
+            }
             return Task::none();
         }
 

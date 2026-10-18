@@ -106,39 +106,60 @@ impl OpenCADStudio {
             return Task::none();
         }
         let mut staged = doc.clone();
-        let Some(codec::objects::ObjectType::DynamicBlock(object)) =
-            staged.objects.get_mut(&handle)
-        else {
-            return Task::none();
-        };
-        let changed = match &mut object.data {
-            codec::objects::DynamicBlockData::PointParameter(p) => {
-                p.position_name = name;
+        let changed = match staged.objects.get_mut(&handle) {
+            Some(codec::objects::ObjectType::BlockVisibilityParameter(parameter)) => {
+                parameter.name = name;
                 true
             }
-            codec::objects::DynamicBlockData::LinearParameter(p) => {
-                p.distance_name = name;
-                true
-            }
-            codec::objects::DynamicBlockData::PolarParameter(p) => {
-                p.distance_name = name;
-                true
-            }
-            codec::objects::DynamicBlockData::XYParameter(p) => {
-                p.x_label = name;
-                true
-            }
-            codec::objects::DynamicBlockData::RotationParameter(p) => {
-                p.angle_name = name;
-                true
-            }
-            codec::objects::DynamicBlockData::LookupParameter(p) => {
-                p.lookup_name = name;
-                true
-            }
+            Some(codec::objects::ObjectType::DynamicBlock(object)) => match &mut object.data {
+                codec::objects::DynamicBlockData::PointParameter(p) => {
+                    p.position_name = name;
+                    true
+                }
+                codec::objects::DynamicBlockData::LinearParameter(p) => {
+                    p.distance_name = name;
+                    true
+                }
+                codec::objects::DynamicBlockData::PolarParameter(p) => {
+                    p.distance_name = name;
+                    true
+                }
+                codec::objects::DynamicBlockData::XYParameter(p) => {
+                    p.x_label = name;
+                    true
+                }
+                codec::objects::DynamicBlockData::RotationParameter(p) => {
+                    p.angle_name = name;
+                    true
+                }
+                codec::objects::DynamicBlockData::AlignmentParameter(p) => {
+                    p.parameter.parameter.element.name = name;
+                    true
+                }
+                codec::objects::DynamicBlockData::FlipParameter(p) => {
+                    p.flip_label = name;
+                    true
+                }
+                codec::objects::DynamicBlockData::BasePointParameter(p) => {
+                    p.parameter.parameter.element.name = name;
+                    true
+                }
+                codec::objects::DynamicBlockData::LookupParameter(p) => {
+                    p.lookup_name = name;
+                    true
+                }
+                _ => false,
+            },
             _ => false,
         };
         if changed {
+            if let Some(codec::objects::ObjectType::BlockVisibilityParameter(parameter)) =
+                staged.objects.get(&handle)
+            {
+                staged
+                    .block_visibility_params
+                    .insert(handle, parameter.clone());
+            }
             self.push_undo_snapshot(i, "Rename block parameter");
             self.tabs[i].scene.document = staged;
             self.tabs[i].dirty = true;
@@ -250,6 +271,54 @@ impl OpenCADStudio {
             false
         }
     }
+    pub(super) fn authoring_label_at(
+        &self,
+        p: Point,
+        bounds: Rectangle,
+    ) -> Option<(Handle, String)> {
+        let tab = &self.tabs[self.active_tab];
+        let session = tab.active_block_edit_session()?;
+        let camera = tab.scene.camera.borrow();
+        edit::items(&tab.scene.document, session.br_handle)
+            .into_iter()
+            .find_map(|item| {
+                item.graphic.labels.iter().find_map(|(point, label)| {
+                    let projected =
+                        camera.project(DVec3::new(point.x, point.y, point.z), bounds)?;
+                    let anchor = Point::new(projected.x, projected.y);
+                    let width = (label.chars().count() as f32 * 7.0).max(20.0);
+                    (p.x >= anchor.x - 8.0
+                        && p.x <= anchor.x + width + 12.0
+                        && (p.y - anchor.y).abs() < 16.0)
+                        .then(|| (item.handle, label.clone()))
+                })
+            })
+    }
+
+    pub(super) fn authoring_name_is_editable(&self, handle: Handle) -> bool {
+        match self.tabs[self.active_tab]
+            .scene
+            .document
+            .objects
+            .get(&handle)
+        {
+            Some(codec::objects::ObjectType::BlockVisibilityParameter(_)) => true,
+            Some(codec::objects::ObjectType::DynamicBlock(object)) => matches!(
+                object.data,
+                codec::objects::DynamicBlockData::PointParameter(_)
+                    | codec::objects::DynamicBlockData::LinearParameter(_)
+                    | codec::objects::DynamicBlockData::PolarParameter(_)
+                    | codec::objects::DynamicBlockData::XYParameter(_)
+                    | codec::objects::DynamicBlockData::RotationParameter(_)
+                    | codec::objects::DynamicBlockData::AlignmentParameter(_)
+                    | codec::objects::DynamicBlockData::FlipParameter(_)
+                    | codec::objects::DynamicBlockData::BasePointParameter(_)
+                    | codec::objects::DynamicBlockData::LookupParameter(_)
+            ),
+            _ => false,
+        }
+    }
+
     pub(super) fn pick_authoring_object(&mut self, p: Point, bounds: Rectangle) -> bool {
         let i = self.active_tab;
         let tab = &self.tabs[i];
@@ -462,7 +531,12 @@ mod tests {
                 codec::types::Vector3::new(1.0, 0.0, 0.0),
             ))],
         );
-        let definition = scene.document.block_records.get("PREVIEW_BASEPOINT").unwrap().handle;
+        let definition = scene
+            .document
+            .block_records
+            .get("PREVIEW_BASEPOINT")
+            .unwrap()
+            .handle;
         assert!(crate::scene::block_basepoint::parameter(&scene.document, definition).is_none());
         let mut command = EditCommand {
             document: 1,

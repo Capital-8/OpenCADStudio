@@ -94,7 +94,13 @@ pub fn items(doc: &CadDocument, definition: Handle) -> Vec<Item> {
         ));
     }
     let basepoint = crate::scene::block_basepoint::parameter(doc, definition)
-        .map(|(handle, p)| (handle, p.parameter.definition_point))
+        .map(|(handle, p)| {
+            (
+                handle,
+                p.parameter.definition_point,
+                p.parameter.parameter.element.name.clone(),
+            )
+        })
         .or_else(|| {
             let name = doc
                 .block_records
@@ -105,16 +111,17 @@ pub fn items(doc: &CadDocument, definition: Handle) -> Vec<Item> {
             Some((
                 definition,
                 crate::scene::render_graph::block_base_point(doc, name),
+                "Basepoint".to_string(),
             ))
         });
-    if let Some((handle, point)) = basepoint {
+    if let Some((handle, point, name)) = basepoint {
         let label = point + Vector3::new(0.25, 0.25, 0.0);
         let mut graphic = Graphic::default();
         graphic.lines.push([point, label]);
-        graphic.labels.push((label, "Basepoint".into()));
+        graphic.labels.push((label, name.clone()));
         result.push(Item {
             handle,
-            name: "Basepoint".into(),
+            name,
             graphic,
             grips: vec![(Part::Point, point)],
         });
