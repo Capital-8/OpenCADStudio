@@ -451,6 +451,39 @@ hard-constrained drag direction), and `shape`. The declaration lifecycle:
   live per-entity reads so a write-then-reread refresh pass never re-clones
   the invalidated full-document snapshot (the per-boundary quadratic the
   consumer's live PI-marker pass hit). Prefer it in every refresh path.
+- **Live geometry never re-solves constraints (v13).** The visual phase
+  swaps entities through the restyled bump policy: no parametric solve, no
+  associative re-resolve — the plugin returns every affected entity
+  (markers included) exactly as the settle will commit, and bonded
+  partners never move by host action mid-drag. The consumer's captured
+  defect (radius 15 → 14.39 mid-drag, then its own settle drift gate
+  refused) is structurally gone; the elements follow the drag again.
+- **Constraints as HostApi (v13).** `constraint_create(PluginConstraint)`
+  creates coincident/tangent constraints through the interactive commands'
+  own machinery — no command line, no prompt echo, the solver behaves
+  identically — and joins the caller's open `push_undo` scope like every
+  other write (the driver's `begin_undo` no longer closes a plugin scope:
+  a re-bond composed of writes + constraints + command replays is the
+  plugin's ONE labeled step). `CommandRequest::RunQuiet` is the interim
+  twin for command replays that must stay silent: the same machinery as
+  `Run`, with the command-line echo suppressed (errors still surface).
+- **Deterministic notification attach (v13).** The runner acks
+  `PluginNotification::ChannelReady` at main-loop entry; the host defers a
+  process's boot-window broadcasts until the ack and flushes them then
+  (a grace window covers older runners that never ack, logged once). A
+  fresh boot's `DocumentChanged` can no longer race the runner's startup
+  and vanish — the silent 4-in-5 attach flake is closed by the same
+  determinism the dispatch table already has.
+- **Dirty regions (v13).** `DocumentChangedRegions` rides every boundary
+  notification next to `DocumentChanged`: the touched entity handles and
+  (entity, app) record pairs since the previous boundary. Boundary work is
+  O(changed), not O(store); empty sets mean "too much changed / unknown —
+  walk everything" (an honest degradation, never a wrong claim).
+- **Batched record walks (v13).** `read_xrecords`, `update_xrecords` and
+  `list_xrecords_with_entries` collapse the list-then-read/write-per-record
+  store walk into one frame per pass — the record-carrier twin of
+  `entities_batch`. With dirty regions, a boundary pass is 2–3 frames
+  instead of dozens.
 
 **MCP parity.** Plugin-declared grips appear in the automation `grips` read
 (each entry marked with its owning `plugin`), and `grip_drag` takes a `plugin`

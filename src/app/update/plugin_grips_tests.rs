@@ -1258,3 +1258,357 @@ fn declaration_validates_anchors_and_caps() {
         .collect();
     assert!(host.set_plugin_grips(TEST_PLUGIN, huge).is_err());
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+mod notification_attach {
+    use super::*;
+
+    /// Deterministic NOTIFICATION attach (API v13 hardening, item 2): the
+    /// consumer's real-host validation saw ~4/5 fresh boots where COMMAND
+    /// dispatch worked but the notification channel never attached — the
+    /// plugin's boundary work never ran, total silence. The runner now acks
+    /// `ChannelReady` at main-loop entry and the host defers boot-window
+    /// broadcasts until the ack (flushing them then); this test asserts
+    /// DocumentChanged DELIVERY on N consecutive FRESH boots: a plugin
+    /// write's epoch must arrive at the plugin (observed through the
+    /// template's MP_LAST_NOTIF probe), with bounded retries for the
+    /// handshake. `OCS_TEST_PLUGIN`-gated like the spawn tests.
+    #[test]
+    fn plugin_notifications_attach_deterministically_across_fresh_spawns() {
+        // Serialized against the other process-spawning tests: they share the
+        // process-global manager and the ChannelReady attach queue.
+        let _guard = crate::plugin::external::PROCESS_TESTS_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // A busy machine must not cost a runner its liveness: raise the
+        // plugin call timeout (never lowers any floor).
+        std::env::set_var("OCS_PLUGIN_CALL_TIMEOUT_SECS", "10");
+        let path = match std::env::var_os("OCS_TEST_PLUGIN") {
+            Some(p) => std::path::PathBuf::from(p),
+            None => return,
+        };
+        if !path.exists() {
+            eprintln!("OCS_TEST_PLUGIN does not exist: {}", path.display());
+            return;
+        }
+        let host_exe = std::path::PathBuf::from(
+            std::env::var_os("OCS_PLUGIN_RUNNER_EXE")
+                .unwrap_or_else(|| std::env::current_exe().unwrap().into_os_string()),
+        );
+        assert!(
+            host_exe.exists(),
+            "host exe not found: {}",
+            host_exe.display()
+        );
+        std::env::set_var("OCS_PLUGIN_RUNNER_EXE", &host_exe);
+
+        const FRESH_BOOTS: usize = 3;
+        for boot in 1..=FRESH_BOOTS {
+            let mut app = OpenCADStudio::new_for_test();
+            let _ = app.automation_op(r#"{"op":"new"}"#);
+            let baseline_epoch = app.tabs[0].scene.geometry_epoch;
+            let mut host = crate::app::plugin_host::HostSession::new(&mut app, 0);
+            // Spawn THROUGH THE MANAGER (like a real boot): broadcasts and
+            // dispatches reach the plugin through the same live machinery the
+            // app uses.
+            let (id, process) = crate::plugin::external::spawn_into_manager_for_tests(
+                &path,
+                &mut host,
+                crate::plugin::v4_support::notification_handler(),
+            )
+            .unwrap_or_else(|e| panic!("fresh boot {boot}: spawn failed: {e}"));
+            // A plugin write bumps the epoch and broadcasts DocumentChanged
+            // (deferred until the runner acks ChannelReady, then flushed —
+            // the deferral is what makes this deterministic).
+            let handle =
+                host.add_entity(codec::EntityType::Line(codec::entities::Line::from_points(
+                    codec::types::Vector3::new(0.0, 0.0, 0.0),
+                    codec::types::Vector3::new(3.0, 0.0, 0.0),
+                )));
+            assert!(!handle.is_null());
+            drop(host);
+            let target_epoch = app.tabs[0].scene.geometry_epoch;
+            assert!(
+                target_epoch > baseline_epoch,
+                "fresh boot {boot}: the plugin write must bump the geometry epoch"
+            );
+            // Bounded polling: the notification must arrive — silence is the
+            // exact flake this test forbids.
+            let mut observed = None;
+            let mut transient = 0;
+            for _ in 0..40 {
+                // The boundary tick processes the ChannelReady queue (the
+                // reader thread only enqueues; the main thread attaches).
+                let _ = app.update(crate::app::Message::DrainPluginRequests);
+                // The probe goes through the process handle directly (the
+                // broadcast under test uses the manager; the probe is test
+                // instrumentation and keeps its load surface minimal).
+                let handled = process
+                    .dispatch(
+                        &mut crate::app::plugin_host::HostSession::new(&mut app, 0),
+                        "MP_LAST_NOTIF",
+                        &mut |_| {},
+                    )
+                    .unwrap_or_else(|e| panic!("fresh boot {boot}: dispatch failed: {e}"));
+                if !handled {
+                    transient += 1;
+                    assert!(
+                        transient < 10,
+                        "fresh boot {boot}: MP_LAST_NOTIF never dispatched healthily"
+                    );
+                }
+                // The command line prefixes Info entries with the ⓘ icon;
+                // match on the payload, not the prefix.
+                if let Some(version) = app.command_line.history.iter().rev().find_map(|entry| {
+                    entry
+                        .text
+                        .strip_prefix("ⓘ ")
+                        .unwrap_or(entry.text.as_str())
+                        .strip_prefix("LAST_NOTIF ")
+                        .and_then(|tail| tail.trim().parse::<u64>().ok())
+                }) {
+                    if version != u64::MAX {
+                        observed = Some(version);
+                        break;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            let observed = observed.unwrap_or_else(|| {
+                let tail: Vec<String> = app
+                    .command_line
+                    .history
+                    .iter()
+                    .rev()
+                    .take(8)
+                    .map(|entry| entry.text.clone())
+                    .collect();
+                panic!(
+                    "fresh boot {boot}/{FRESH_BOOTS}: DocumentChanged never reached the \
+                     plugin (expected epoch {target_epoch}) — the notification-attach \
+                     race is a release blocker. History tail: {tail:?}"
+                )
+            });
+            assert!(
+                observed >= target_epoch,
+                "fresh boot {boot}: stale epoch {observed} < {target_epoch}"
+            );
+            assert!(
+                crate::plugin::external::remove_plugin_for_tests(&id),
+                "fresh boot {boot}: cleanup must remove the spawned plugin"
+            );
+        }
+    }
+}
+
+// ── v13 hardening: RunQuiet, constraint_create, dirty regions, defect 5 ──
+
+#[test]
+fn run_quiet_suppresses_the_command_line_echo() {
+    let mut app = app();
+    let i = tab(&app);
+    // Baseline: a plain machine Run echoes the command into the history.
+    let before_plain = app.command_line.history.len();
+    {
+        let mut host = crate::app::plugin_host::HostSession::new(&mut app, i);
+        let outcome = host.run_command(ocs_plugin_api::host::CommandRequest::Run {
+            line: "CIRCLE 30,0 5".to_string(),
+        });
+        assert!(outcome.is_ok(), "{outcome:?}");
+    }
+    let after_plain = app.command_line.history.len();
+    assert!(
+        after_plain > before_plain,
+        "a plain Run echoes into the history (the contrast case)"
+    );
+
+    // The same command as a QUIET replay: same geometry, ZERO echo (errors
+    // would still surface — this command errors none).
+    let before_quiet = app.command_line.history.len();
+    {
+        let mut host = crate::app::plugin_host::HostSession::new(&mut app, i);
+        let outcome = host.run_command(ocs_plugin_api::host::CommandRequest::RunQuiet {
+            line: "CIRCLE 40,0 5".to_string(),
+        });
+        assert!(outcome.is_ok(), "{outcome:?}");
+    }
+    assert_eq!(
+        app.command_line.history.len(),
+        before_quiet,
+        "a quiet machine replay leaves no machinery echo in the history"
+    );
+    // And the command actually ran: a second circle exists.
+    let circles = app.tabs[i]
+        .scene
+        .document
+        .entities()
+        .filter(|entity| matches!(entity, EntityType::Circle(_)))
+        .count();
+    assert_eq!(
+        circles, 2,
+        "RunQuiet executes the command, it only hides the echo"
+    );
+}
+
+#[test]
+fn constraint_create_bonds_without_echo_in_one_plugin_step() {
+    let mut app = app();
+    let a = add(&mut app, line([0.0, 0.0, 0.0], [10.0, 0.0, 0.0]));
+    let b = add(&mut app, line([10.0, 0.5, 0.0], [20.0, 0.5, 0.0]));
+    let before_a = serialized(&app, a);
+    let before_b = serialized(&app, b);
+    let before_undo = undo_entry_count(&app);
+    let history_before = app.command_line.history.len();
+
+    let i = tab(&app);
+    let mut host = crate::app::plugin_host::HostSession::new(&mut app, i);
+    // The re-bond shape: the plugin opens its one scope, then composes the
+    // constraint directly — no COINCIDENT command replay, no prompt echo.
+    host.push_undo("CVI: re-bond");
+    host.constraint_create(ocs_plugin_api::host::PluginConstraint::Coincident {
+        first: ocs_plugin_api::host::PluginConstraintPick {
+            handle: Some(a),
+            point: [10.0, 0.0, 0.0],
+            whole_curve: false,
+        },
+        second: ocs_plugin_api::host::PluginConstraintPick {
+            handle: Some(b),
+            point: [10.0, 0.5, 0.0],
+            whole_curve: false,
+        },
+    })
+    .expect("constraint create bonds the endpoints");
+    drop(host);
+    app.finish_pending_history(i);
+
+    // ONE plugin-labeled undo step; zero command-line echo.
+    assert_eq!(undo_entry_count(&app), before_undo + 1);
+    assert_eq!(last_undo_label(&app).as_deref(), Some("CVI: re-bond"));
+    assert_eq!(
+        app.command_line.history.len(),
+        history_before,
+        "constraint_create never touches the command line"
+    );
+    // The constraint exists and references both entities.
+    let scope = app.tabs[i].current_parametric_scope();
+    let set = app.tabs[i]
+        .scene
+        .parametric_constraint_set(scope)
+        .expect("a constraint set exists");
+    assert_eq!(set.constraints.len(), 1);
+
+    // Undo removes the bond byte-exactly.
+    let _ = app.update(Message::Undo);
+    assert_eq!(serialized(&app, a), before_a);
+    assert_eq!(serialized(&app, b), before_b);
+}
+
+#[test]
+fn dirty_regions_ride_the_boundary_notification() {
+    let mut app = app();
+    let handle = add(&mut app, line([0.0, 0.0, 0.0], [7.0, 0.0, 0.0]));
+    // The plugin-write path marked the entity and published the region set
+    // at its immediate boundary; the recorded broadcast names the counts.
+    let log = crate::plugin::v4_support::take_test_dispatch_log();
+    assert!(
+        log.iter()
+            .any(|entry| { entry == "DocumentChangedRegions(1 entities, 0 records)" }),
+        "the touched entity rides the boundary: {log:?}"
+    );
+    // After the boundary the accumulation is empty again.
+    assert!(!crate::plugin::v4_support::take_test_dispatch_log()
+        .iter()
+        .any(|entry| entry.contains("DocumentChangedRegions")));
+    // And the write path recorded the record kind too when a record lands.
+    let i = tab(&app);
+    {
+        let mut host = crate::app::plugin_host::HostSession::new(&mut app, i);
+        assert!(host.write_record(
+            handle,
+            codec::xdata::ExtendedDataRecord {
+                application_name: "CVIFC".to_string(),
+                values: vec![codec::xdata::XDataValue::String("pi-grip".to_string())],
+            },
+        ));
+    }
+    let log = crate::plugin::v4_support::take_test_dispatch_log();
+    assert!(
+        log.iter()
+            .any(|entry| entry == "DocumentChangedRegions(0 entities, 1 records)"),
+        "the touched (entity, app) pair rides the boundary: {log:?}"
+    );
+}
+
+#[test]
+fn live_geometry_does_not_trigger_the_constraint_solver() {
+    // v12.1 defect 5, the regression the consumer captured: live geometry on
+    // a BONDED chain must stay visual-only — the solver must not run mid-
+    // drag (no partner movement, no history, byte-identical on Esc).
+    let mut app = app();
+    let a = add(&mut app, line([0.0, 0.0, 0.0], [10.0, 0.0, 0.0]));
+    let b = add(&mut app, line([10.0, 0.5, 0.0], [20.0, 0.5, 0.0]));
+    let before_a = serialized(&app, a);
+    let before_b = serialized(&app, b);
+    let before_undo = undo_entry_count(&app);
+
+    // Bond the endpoints (coincident) through the new API — the chain whose
+    // live drag previously dragged the solver in.
+    let i = tab(&app);
+    {
+        let mut host = crate::app::plugin_host::HostSession::new(&mut app, i);
+        host.constraint_create(ocs_plugin_api::host::PluginConstraint::Coincident {
+            first: ocs_plugin_api::host::PluginConstraintPick {
+                handle: Some(a),
+                point: [10.0, 0.0, 0.0],
+                whole_curve: false,
+            },
+            second: ocs_plugin_api::host::PluginConstraintPick {
+                handle: Some(b),
+                point: [10.0, 0.5, 0.0],
+                whole_curve: false,
+            },
+        })
+        .expect("bond");
+        app.finish_pending_history(i);
+    }
+    let bonded_b = serialized(&app, b);
+
+    // A drag whose live answer moves ONLY entity `a` (the plugin's choice —
+    // it returns exactly what its settle will commit).
+    let state = install_sink(TEST_PLUGIN);
+    declare(&mut app, TEST_PLUGIN, vec![declared(1, [5.0, 0.0, 0.0])]);
+    let moved_a = match app.tabs[i].scene.document.get_entity(a).cloned() {
+        Some(EntityType::Line(line)) => {
+            let mut moved = line.clone();
+            moved.start = codec::types::Vector3::new(2.0, 0.0, 0.0);
+            EntityType::Line(moved)
+        }
+        other => panic!("not a line: {other:?}"),
+    };
+    *state.live_geom.borrow_mut() = vec![(a, moved_a)];
+
+    let screen = screen_of(&app, [5.0, 0.0, 0.0]);
+    let candidate = app.hit_plugin_grip(i, screen).expect("hittable");
+    let _ = app.begin_plugin_grip_drag(i, &candidate);
+    let _ = app.pump_plugin_grips();
+
+    // Live geometry applied to `a` only; the coincident partner `b` stays
+    // byte-identical (the solver did NOT run); zero history mid-drag.
+    assert_ne!(serialized(&app, a), before_a, "the live geometry moved a");
+    assert_eq!(
+        serialized(&app, b),
+        bonded_b,
+        "the bonded partner must not move by host action mid-drag"
+    );
+    assert_eq!(
+        undo_entry_count(&app),
+        before_undo + 1,
+        "the bond's own step; the drag adds none"
+    );
+
+    // Esc discards the visual phase byte-identically.
+    assert!(app.cancel_active_grip_edit());
+    assert_eq!(serialized(&app, a), before_a);
+    assert_eq!(serialized(&app, b), bonded_b);
+    grip_points::remove_in_process_sink(TEST_PLUGIN);
+}
