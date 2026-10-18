@@ -193,6 +193,10 @@ fn generate_type_registry(out_dir: &Path) {
             "BlockEvalValue",
             trace_simple::<codec::objects::BlockEvalValue>,
         ),
+        (
+            "BlockPropertiesTableValue",
+            trace_simple::<codec::objects::BlockPropertiesTableValue>,
+        ),
         ("BorderType", trace_simple::<codec::entities::BorderType>),
         (
             "BoundaryEdge",
