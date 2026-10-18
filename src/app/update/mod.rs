@@ -238,6 +238,7 @@ impl OpenCADStudio {
             Some(BlockSaveAs) => self.block_save_as = None,
             Some(BlockVisibility) => self.block_visibility = None,
             Some(BlockLookup) => self.block_lookup = None,
+            Some(BlockPropertiesTable) => self.block_properties_table = None,
             Some(PdfAttach) => self.pdf_attach = None,
             Some(UnderlayLayers) => self.underlay_layers = None,
             Some(PdfImportSettings) => self.pdf_import_settings = None,
@@ -9739,6 +9740,9 @@ impl OpenCADStudio {
                 if self.active_modal == Some(super::ModalKind::BlockLookup) {
                     self.block_lookup = None;
                 }
+                if self.active_modal == Some(super::ModalKind::BlockPropertiesTable) {
+                    self.block_properties_table = None;
+                }
                 if self.active_modal == Some(super::ModalKind::BlockVisibility) {
                     self.block_visibility = None;
                 }
@@ -10764,6 +10768,7 @@ impl OpenCADStudio {
             Message::BlockSaveAsApply => self.apply_block_save_as_dialog(),
             Message::BlockVisibility(action) => self.handle_block_visibility(action),
             Message::BlockLookup(action) => self.handle_block_lookup(action),
+            Message::BlockPropertiesTable(action) => self.handle_block_properties_table(action),
             Message::BlockEditPickerName(name) => {
                 if let Some(state) = self.block_edit_picker.as_mut() {
                     state.name = name.clone();

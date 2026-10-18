@@ -90,6 +90,7 @@ impl OpenCADStudio {
             Some(K::BlockEditPicker) => crate::t!("Edit Block Definition").into_owned(),
             Some(K::BlockVisibility) => crate::t!("Visibility States").into_owned(),
             Some(K::BlockLookup) => crate::t!("Property Lookup Table").into_owned(),
+            Some(K::BlockPropertiesTable) => crate::t!("Block Properties Table").into_owned(),
             Some(K::BlockSaveAs) => crate::t!("Save Block As").into_owned(),
             Some(K::PointStyle) => crate::tr!("modal", "point-style"),
             Some(K::AttributeEditor) => crate::tr!("modal", "attribute-editor"),
@@ -528,6 +529,12 @@ impl OpenCADStudio {
                 let state = self.block_lookup.as_ref()?;
                 sized_flow(ex, 940, 600, |flow| {
                     crate::ui::window::block_lookup::view(state, flow)
+                })
+            }
+            super::super::ModalKind::BlockPropertiesTable => {
+                let state = self.block_properties_table.as_ref()?;
+                sized_flow(ex, 940, 600, |flow| {
+                    crate::ui::window::block_properties_table::view(state, flow)
                 })
             }
             super::super::ModalKind::BlockVisibility => {

@@ -12,6 +12,7 @@ pub mod block_palette;
 pub mod block_save_as;
 pub mod block_visibility;
 pub mod block_lookup;
+pub mod block_properties_table;
 pub mod browser;
 pub mod count_palette;
 pub mod drafting_settings;
