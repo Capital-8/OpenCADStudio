@@ -116,7 +116,10 @@ impl<'a> Parser<'a> {
     }
 
     fn unexpected(&self, t: &Token) -> CalcError {
-        CalcError::new(t.span.clone(), crate::tf!("unexpected '{}'", describe(&t.kind)))
+        CalcError::new(
+            t.span.clone(),
+            crate::tf!("unexpected '{}'", describe(&t.kind)),
+        )
     }
 
     fn deeper(&self, depth: usize) -> Result<usize, CalcError> {

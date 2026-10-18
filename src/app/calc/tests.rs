@@ -368,11 +368,16 @@ fn random_input_never_panics() {
     };
     for _ in 0..20_000 {
         let len = next() % 24;
-        let input: String = (0..len).map(|_| ALPHABET[next() % ALPHABET.len()]).collect();
+        let input: String = (0..len)
+            .map(|_| ALPHABET[next() % ALPHABET.len()])
+            .collect();
         let mut c = ctx();
         c.vars.insert("x".into(), Value::Number(2.0));
         if let Err(e) = evaluate(&input, &mut c) {
-            assert!(e.span.start <= e.span.end && e.span.end <= input.len(), "{input:?}");
+            assert!(
+                e.span.start <= e.span.end && e.span.end <= input.len(),
+                "{input:?}"
+            );
             assert!(input.is_char_boundary(e.span.start), "{input:?}");
             assert!(input.is_char_boundary(e.span.end), "{input:?}");
             assert!(!e.message.is_empty());

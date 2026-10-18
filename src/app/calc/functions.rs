@@ -108,7 +108,11 @@ pub(super) fn call(
             let mut best = num(0)?;
             for i in 1..values.len() {
                 let x = num(i)?;
-                best = if lower == "min" { best.min(x) } else { best.max(x) };
+                best = if lower == "min" {
+                    best.min(x)
+                } else {
+                    best.max(x)
+                };
             }
             Value::Number(best)
         }

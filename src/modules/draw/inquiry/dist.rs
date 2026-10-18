@@ -111,7 +111,8 @@ pub fn measure(plane: WorkingPlane, p1: DVec3, p2: DVec3) -> PointPair {
     let delta = plane.vector_to_local(p2 - p1);
     let ctx = unit_context();
     let sign = if ctx.angdir_cw { -1.0 } else { 1.0 };
-    let angle_xy = (sign * (delta.y.atan2(delta.x) - ctx.angbase)).rem_euclid(std::f64::consts::TAU);
+    let angle_xy =
+        (sign * (delta.y.atan2(delta.x) - ctx.angbase)).rem_euclid(std::f64::consts::TAU);
     let angle_z = delta.z.atan2(delta.x.hypot(delta.y));
     PointPair {
         delta,
@@ -125,44 +126,44 @@ pub fn measure(plane: WorkingPlane, p1: DVec3, p2: DVec3) -> PointPair {
 pub fn rubber_band(p1: DVec3, pt: DVec3) -> WireModel {
     // The preview wire is purely visual, so f32 vertices are fine here.
     WireModel {
-            bg_adapt: None,
-            point_marker: None,
-            taper_widths: Vec::new(),
-            pattern_stations: Vec::new(),
-            world_width: 0.0,
-            depth_override: None,
-            display_visible: true,
-            snap_only: false,
-            plot_visible: true,
-            fill_is_3d: false,
-            fill_is_2d_solid: false,
-            render_instance: None,
-            pick_tris: Vec::new(),
-            pick_tris_low: Vec::new(),
-            dash_from_start: false,
-            dash_align_end: None,
-            text_verts: Vec::new(),
-            name: "dist_preview".into(),
-            points: vec![
-                [p1.x as f32, p1.y as f32, p1.z as f32],
-                [pt.x as f32, pt.y as f32, pt.z as f32],
-            ],
-            points_low: Vec::new(),
-            color: WireModel::CYAN,
-            selected: false,
-            pattern_length: 0.0,
-            pattern: [0.0; 8],
-            line_weight_px: 1.0,
-            snap_pts: vec![],
-            tangent_geoms: vec![],
-            aci: 0,
-            key_vertices: vec![],
-            aabb: WireModel::UNBOUNDED_AABB,
-            plinegen: true,
-            fill_tris: vec![],
-            fill_tris_low: Vec::new(),
+        bg_adapt: None,
+        point_marker: None,
+        taper_widths: Vec::new(),
+        pattern_stations: Vec::new(),
+        world_width: 0.0,
+        depth_override: None,
+        display_visible: true,
+        snap_only: false,
+        plot_visible: true,
+        fill_is_3d: false,
+        fill_is_2d_solid: false,
+        render_instance: None,
+        pick_tris: Vec::new(),
+        pick_tris_low: Vec::new(),
+        dash_from_start: false,
+        dash_align_end: None,
+        text_verts: Vec::new(),
+        name: "dist_preview".into(),
+        points: vec![
+            [p1.x as f32, p1.y as f32, p1.z as f32],
+            [pt.x as f32, pt.y as f32, pt.z as f32],
+        ],
+        points_low: Vec::new(),
+        color: WireModel::CYAN,
+        selected: false,
+        pattern_length: 0.0,
+        pattern: [0.0; 8],
+        line_weight_px: 1.0,
+        snap_pts: vec![],
+        tangent_geoms: vec![],
+        aci: 0,
+        key_vertices: vec![],
+        aabb: WireModel::UNBOUNDED_AABB,
+        plinegen: true,
+        fill_tris: vec![],
+        fill_tris_low: Vec::new(),
 
-            ..Default::default()
+        ..Default::default()
     }
 }
 

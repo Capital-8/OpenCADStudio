@@ -37,10 +37,10 @@ fn submit_records_history_and_ans() {
 #[test]
 fn assignment_is_reported_and_stored() {
     let mut p = QuickCalcPalette::default();
-    let s = submit(&mut p, "floor = 2800").unwrap();
-    assert_eq!(s.assign.as_deref(), Some("floor"));
+    let s = submit(&mut p, "height = 2800").unwrap();
+    assert_eq!(s.assign.as_deref(), Some("height"));
     // A number goes to the drawing …
-    assert_eq!(p.store("floor", s.value), Some(2800.0));
+    assert_eq!(p.store("height", s.value), Some(2800.0));
     // … unless a constant has that name …
     p.constants.push(("brick".into(), 210.0));
     assert_eq!(p.store("brick", Value::Number(215.0)), None);
@@ -83,8 +83,10 @@ fn history_arrows() {
 
 #[test]
 fn wrap_keys_take_the_whole_input_or_ans() {
-    let mut p = QuickCalcPalette::default();
-    p.input = "wall + 90".into();
+    let mut p = QuickCalcPalette {
+        input: "wall + 90".into(),
+        ..Default::default()
+    };
     press(&mut p, Key::Sqrt);
     assert_eq!(p.input, "sqrt(wall + 90)");
     p.input = "wall".into();
@@ -133,8 +135,10 @@ fn memory_keys() {
 
 #[test]
 fn unit_converter() {
-    let mut p = QuickCalcPalette::default();
-    p.unit_value = "3600".into();
+    let mut p = QuickCalcPalette {
+        unit_value: "3600".into(),
+        ..Default::default()
+    };
     assert_eq!(p.converted(), Some(3.6));
     assert_eq!(p.converted_literal().as_deref(), Some("3.6m"));
     (p.unit_from, p.unit_to) = (p.unit_to, p.unit_from);
@@ -172,10 +176,7 @@ fn input_classification() {
 fn full_text_keeps_precision_and_reads_as_a_coordinate() {
     assert_eq!(full_text(&Value::Number(0.1 + 0.2)), "0.30000000000000004");
     assert_eq!(full_text(&Value::Point(DVec3::new(1.5, 2.0, 0.0))), "1.5,2");
-    assert_eq!(
-        full_text(&Value::Point(DVec3::new(1.0, 2.0, 3.0))),
-        "1,2,3"
-    );
+    assert_eq!(full_text(&Value::Point(DVec3::new(1.0, 2.0, 3.0))), "1,2,3");
 }
 
 #[test]

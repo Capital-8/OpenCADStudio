@@ -154,7 +154,9 @@ impl OpenCADStudio {
                     return Task::none();
                 };
                 let text = full_text(&value);
-                qc.set_flash(crate::tf!("Sent {} to the command line", value.display()).into_owned());
+                qc.set_flash(
+                    crate::tf!("Sent {} to the command line", value.display()).into_owned(),
+                );
                 qc.typing = false;
                 self.command_line.input.push_str(&text);
                 iced::widget::operation::focus(iced::widget::Id::new(
@@ -402,10 +404,17 @@ mod tests {
         let _ = app.on_quick_calc(QuickCalcMsg::Pick(PickKind::Distance));
         let i = app.active_tab;
         assert_eq!(
-            app.tabs[i].active_cmd.as_ref().and_then(|c| c.quick_calc_step()),
+            app.tabs[i]
+                .active_cmd
+                .as_ref()
+                .and_then(|c| c.quick_calc_step()),
             Some(1)
         );
-        let first = app.tabs[i].active_cmd.as_mut().unwrap().on_point(DVec3::ZERO);
+        let first = app.tabs[i]
+            .active_cmd
+            .as_mut()
+            .unwrap()
+            .on_point(DVec3::ZERO);
         assert!(matches!(first, crate::command::CmdResult::NeedPoint));
         let done = app.tabs[i]
             .active_cmd

@@ -85,9 +85,9 @@ pub(super) fn tokenize(input: &str) -> Result<Vec<Token>, CalcError> {
                 chars.next();
             }
             let text = &input[start..end];
-            let value = text.parse::<f64>().map_err(|_| {
-                CalcError::new(start..end, crate::tf!("invalid number '{}'", text))
-            })?;
+            let value = text
+                .parse::<f64>()
+                .map_err(|_| CalcError::new(start..end, crate::tf!("invalid number '{}'", text)))?;
             tokens.push(Token {
                 kind: TokKind::Number(value),
                 span: start..end,

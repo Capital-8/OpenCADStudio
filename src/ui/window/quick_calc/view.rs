@@ -8,7 +8,7 @@ use iced::widget::{
 use iced::{Background, Border, Color, Element, Fill, Font, Length, Theme};
 
 use super::{
-    continues_ans, has_length_suffix, assignment_target, Key, Preview, QuickCalcMsg,
+    assignment_target, continues_ans, has_length_suffix, Key, Preview, QuickCalcMsg,
     QuickCalcPalette, Section, UnitCat, VarScope, INPUT_ID,
 };
 use crate::app::calc::{AngleMode, Value};
@@ -24,8 +24,7 @@ const CLEAR: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/clear.sv
 const COPY: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/copy.svg");
 const SEND: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/send.svg");
 const CHEVRON_DOWN: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/chevron_down.svg");
-const CHEVRON_RIGHT: &[u8] =
-    include_bytes!("../../../../assets/icons/quickcalc/chevron_right.svg");
+const CHEVRON_RIGHT: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/chevron_right.svg");
 const SWAP: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/swap.svg");
 const DELETE: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/delete.svg");
 const PLUS: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/plus.svg");
@@ -130,41 +129,51 @@ fn mono<'a>(s: impl text::IntoFragment<'a>, size: f32) -> text::Text<'a, Theme> 
 }
 
 fn muted<'a>(s: impl text::IntoFragment<'a>, size: f32) -> text::Text<'a, Theme> {
-    text(s)
-        .size(size)
-        .style(|theme: &Theme| text::Style {
-            color: Some(tokens(theme).muted),
-        })
+    text(s).size(size).style(|theme: &Theme| text::Style {
+        color: Some(tokens(theme).muted),
+    })
 }
 
 // ── Buttons ─────────────────────────────────────────────────────────────
 
 /// A 28 px toolbar button; `on` highlights the running pick tool.
-fn tool<'a>(bytes: &'static [u8], label: String, msg: QuickCalcMsg, on: bool) -> Element<'a, Message> {
-    let b = button(container(icon(bytes, 18.0, if on { |t| t.accent } else { |t| t.muted })).center(Fill))
-        .width(28)
-        .height(28)
-        .padding(0)
-        .on_press(m(msg))
-        .style(move |theme: &Theme, status| {
-            let t = tokens(theme);
-            let background = if on {
-                Some(Background::Color(t.accent.scale_alpha(0.16)))
-            } else if matches!(status, button::Status::Hovered | button::Status::Pressed) {
-                Some(Background::Color(t.strong))
-            } else {
-                None
-            };
-            button::Style {
-                background,
-                border: Border {
-                    radius: 3.0.into(),
-                    ..Default::default()
-                },
-                text_color: t.text,
+fn tool<'a>(
+    bytes: &'static [u8],
+    label: String,
+    msg: QuickCalcMsg,
+    on: bool,
+) -> Element<'a, Message> {
+    let b = button(
+        container(icon(
+            bytes,
+            18.0,
+            if on { |t| t.accent } else { |t| t.muted },
+        ))
+        .center(Fill),
+    )
+    .width(28)
+    .height(28)
+    .padding(0)
+    .on_press(m(msg))
+    .style(move |theme: &Theme, status| {
+        let t = tokens(theme);
+        let background = if on {
+            Some(Background::Color(t.accent.scale_alpha(0.16)))
+        } else if matches!(status, button::Status::Hovered | button::Status::Pressed) {
+            Some(Background::Color(t.strong))
+        } else {
+            None
+        };
+        button::Style {
+            background,
+            border: Border {
+                radius: 3.0.into(),
                 ..Default::default()
-            }
-        });
+            },
+            text_color: t.text,
+            ..Default::default()
+        }
+    });
     tip(b, label)
 }
 
@@ -184,7 +193,10 @@ fn plain_button_style(theme: &Theme, status: button::Status) -> button::Style {
 }
 
 /// A bordered text button (Cancel, Insert, New variable).
-fn text_button<'a>(content: impl Into<Element<'a, Message>>, msg: QuickCalcMsg) -> Element<'a, Message> {
+fn text_button<'a>(
+    content: impl Into<Element<'a, Message>>,
+    msg: QuickCalcMsg,
+) -> Element<'a, Message> {
     button(content)
         .padding([4, 10])
         .on_press(m(msg))
@@ -262,12 +274,20 @@ fn key<'a>(label: &str, k: Key, look: Look, hint: Option<String>) -> Element<'a,
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
             let (fill, border, color) = match look {
                 Look::Digit => (
-                    if hovered { mix(t.digit, t.text, 0.08) } else { t.digit },
+                    if hovered {
+                        mix(t.digit, t.text, 0.08)
+                    } else {
+                        t.digit
+                    },
                     t.digit_line,
                     t.text,
                 ),
                 Look::Eq => (
-                    if hovered { mix(t.accent, Color::WHITE, 0.1) } else { t.accent },
+                    if hovered {
+                        mix(t.accent, Color::WHITE, 0.1)
+                    } else {
+                        t.accent
+                    },
                     t.accent,
                     t.on_accent,
                 ),
@@ -311,11 +331,8 @@ fn section_header<'a>(
     open: bool,
 ) -> Element<'a, Message> {
     let mut content = row![
-        icon(
-            if open { CHEVRON_DOWN } else { CHEVRON_RIGHT },
-            10.0,
-            |t| t.muted
-        ),
+        icon(if open { CHEVRON_DOWN } else { CHEVRON_RIGHT }, 10.0, |t| t
+            .muted),
         text(label).size(11).width(Fill),
     ]
     .spacing(6)
@@ -367,7 +384,12 @@ fn pad<'a>() -> Element<'a, Message> {
         op(")", ")"),
         key("pi", Text("pi"), Look::Plain, Some(t("Pi"))),
         key("√", Sqrt, Look::Plain, Some(t("Square root of the input"))),
-        key("1/x", Inverse, Look::Plain, Some(t("Reciprocal of the input"))),
+        key(
+            "1/x",
+            Inverse,
+            Look::Plain,
+            Some(t("Reciprocal of the input")),
+        ),
         d("7"),
         d("8"),
         d("9"),
@@ -393,7 +415,12 @@ fn pad<'a>() -> Element<'a, Message> {
 
 fn scientific<'a>() -> Element<'a, Message> {
     let f = |label: &'static str, ins: &'static str, hint: &str| {
-        key(label, Key::Text(ins), Look::Plain, Some(crate::t!(hint).into_owned()))
+        key(
+            label,
+            Key::Text(ins),
+            Look::Plain,
+            Some(crate::t!(hint).into_owned()),
+        )
     };
     grid(
         vec![
@@ -419,7 +446,12 @@ fn scientific<'a>() -> Element<'a, Message> {
 
 fn point_functions<'a>() -> Element<'a, Message> {
     let punct = |label: &'static str, ins: &'static str, hint: &str| {
-        key(label, Key::Text(ins), Look::Op, Some(crate::t!(hint).into_owned()))
+        key(
+            label,
+            Key::Text(ins),
+            Look::Op,
+            Some(crate::t!(hint).into_owned()),
+        )
     };
     let sig = |name: &'static str, ins: &'static str, signature: &'static str, hint: &str| {
         let b = button(
@@ -602,9 +634,12 @@ fn var_row<'a>(name: &str, value: &Value, scope: VarScope) -> Element<'a, Messag
     let name = name.to_string();
     let insert = button(
         row![
-            text(name.clone()).size(12).font(MONO).style(|theme: &Theme| text::Style {
-                color: Some(tokens(theme).accent),
-            }),
+            text(name.clone())
+                .size(12)
+                .font(MONO)
+                .style(|theme: &Theme| text::Style {
+                    color: Some(tokens(theme).accent),
+                }),
             Space::new().width(Fill),
             mono(value.display(), 12.0),
         ]
@@ -701,8 +736,11 @@ pub fn view<'a>(
     width: f32,
     chrome: Chrome,
 ) -> Element<'a, Message> {
-    let title_bar =
-        crate::ui::dock::title_bar(PanelId::QuickCalc, crate::t!("QuickCalc").into_owned(), chrome);
+    let title_bar = crate::ui::dock::title_bar(
+        PanelId::QuickCalc,
+        crate::t!("QuickCalc").into_owned(),
+        chrome,
+    );
     let ctx = p.context(inputs.drawing, inputs.base_unit);
     let preview = p.preview(&ctx);
     let picking = inputs.pick_step.zip(p.pick);
@@ -723,12 +761,11 @@ pub fn view<'a>(
             false,
         ),
     ]);
-    let divider = container(Space::new().width(1).height(16)).style(|theme: &Theme| {
-        container::Style {
+    let divider =
+        container(Space::new().width(1).height(16)).style(|theme: &Theme| container::Style {
             background: Some(Background::Color(tokens(theme).line)),
             ..Default::default()
-        }
-    });
+        });
     let toolbar = row![
         tool(
             POINT,
@@ -749,8 +786,18 @@ pub fn view<'a>(
             active(PickKind::Angle)
         ),
         container(divider).padding([0, 4]),
-        tool(CLEAR, crate::t!("Clear input").into_owned(), QuickCalcMsg::Clear, false),
-        tool(COPY, crate::t!("Copy result").into_owned(), QuickCalcMsg::Copy, false),
+        tool(
+            CLEAR,
+            crate::t!("Clear input").into_owned(),
+            QuickCalcMsg::Clear,
+            false
+        ),
+        tool(
+            COPY,
+            crate::t!("Copy result").into_owned(),
+            QuickCalcMsg::Copy,
+            false
+        ),
         tool(
             SEND,
             crate::t!("Paste to command line").into_owned(),
@@ -830,10 +877,7 @@ pub fn view<'a>(
             .padding([3, 4])
             .into()
         });
-        scrollable(column(rows))
-            .anchor_bottom()
-            .height(Fill)
-            .into()
+        scrollable(column(rows)).anchor_bottom().height(Fill).into()
     };
 
     // Input, with the pick banner above it and the preview or error below.
@@ -935,9 +979,11 @@ pub fn view<'a>(
                     echo,
                     row![
                         icon(ERROR, 13.0, |t| t.danger_text),
-                        text(e.message.clone()).size(11.5).style(|theme: &Theme| text::Style {
-                            color: Some(tokens(theme).danger_text),
-                        }),
+                        text(e.message.clone())
+                            .size(11.5)
+                            .style(|theme: &Theme| text::Style {
+                                color: Some(tokens(theme).danger_text),
+                            }),
                     ]
                     .spacing(6)
                     .align_y(iced::Center),
@@ -1006,7 +1052,10 @@ pub fn view<'a>(
         AngleMode::Radians => crate::t!("Radians"),
     };
     let mut left = row![
-        muted(crate::tf!("Units: {}", inputs.unit_label).into_owned(), 10.5),
+        muted(
+            crate::tf!("Units: {}", inputs.unit_label).into_owned(),
+            10.5
+        ),
         muted("·", 10.5),
         muted(mode_word.into_owned(), 10.5),
     ]
@@ -1029,7 +1078,10 @@ pub fn view<'a>(
     }
     let (status, flashing) = match &p.flash {
         Some((msg, _)) => (msg.clone(), true),
-        None => (crate::t!("Enter evaluates · ↑↓ history").into_owned(), false),
+        None => (
+            crate::t!("Enter evaluates · ↑↓ history").into_owned(),
+            false,
+        ),
     };
     let footer = container(
         row![

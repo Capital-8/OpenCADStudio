@@ -17,10 +17,7 @@ pub(super) fn eval(expr: &Expr, ctx: &CalcContext) -> Result<Value, CalcError> {
                 Value::Number(std::f64::consts::PI)
             } else {
                 *ctx.vars.get(name).ok_or_else(|| {
-                    CalcError::new(
-                        expr.span.clone(),
-                        crate::tf!("unknown variable '{}'", name),
-                    )
+                    CalcError::new(expr.span.clone(), crate::tf!("unknown variable '{}'", name))
                 })?
             }
         }
@@ -57,7 +54,10 @@ pub(super) fn eval(expr: &Expr, ctx: &CalcContext) -> Result<Value, CalcError> {
             let lhs = eval(a, ctx)?;
             let divisor = number(eval(b, ctx)?, b.span.clone())?;
             if divisor == 0.0 {
-                return Err(CalcError::new(b.span.clone(), crate::t!("division by zero")));
+                return Err(CalcError::new(
+                    b.span.clone(),
+                    crate::t!("division by zero"),
+                ));
             }
             match lhs {
                 Value::Number(x) => Value::Number(x / divisor),
@@ -108,7 +108,10 @@ pub(super) fn finite(value: Value, span: Range<usize>) -> Result<Value, CalcErro
     if ok {
         Ok(value)
     } else {
-        Err(CalcError::new(span, crate::t!("result is not a real number")))
+        Err(CalcError::new(
+            span,
+            crate::t!("result is not a real number"),
+        ))
     }
 }
 
