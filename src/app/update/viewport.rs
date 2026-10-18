@@ -3453,7 +3453,10 @@ impl OpenCADStudio {
         vw: f32,
         vh: f32,
     ) -> Option<crate::ui::overlay::UcsIconHit> {
-        if !self.show_ucs_icon || self.tabs[i].active_cmd.is_some() {
+        if !self.show_ucs_icon
+            || self.tabs[i].active_cmd.is_some()
+            || self.tabs[i].active_block_edit_session().is_some()
+        {
             return None;
         }
         let tab = &self.tabs[i];
@@ -4051,7 +4054,10 @@ impl OpenCADStudio {
         // UCS icon: click to select (grips appear), then drag a grip to
         // move/rotate. A click off the icon clears the selection. Works
         // in the corner too (parked icon), not just at the origin.
-        if self.show_ucs_icon && self.tabs[i].active_cmd.is_none() {
+        if self.show_ucs_icon
+            && self.tabs[i].active_cmd.is_none()
+            && self.tabs[i].active_block_edit_session().is_none()
+        {
             if let Some(hit) = self.ucs_icon_hit_info(i, vw, vh) {
                 // Already selected → a press on a grip starts the drag.
                 if self.ucs_icon_selected {

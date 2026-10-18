@@ -316,6 +316,7 @@ pub struct CrosshairOptions {
 pub struct GridStyle {
     pub opacity: u8,
     pub bg_luminance: f32,
+    pub color: [f32; 3],
     /// Draw the coloured X/Y axis lines through the grid origin.
     pub axes: bool,
 }
@@ -325,6 +326,7 @@ impl Default for GridStyle {
         Self {
             opacity: 18,
             bg_luminance: 0.15,
+            color: [0.80, 0.80, 0.80],
             axes: true,
         }
     }
@@ -2808,11 +2810,7 @@ fn draw_grid(
     // Major lines stay subtle: ~1.5x the minor alpha with a slightly heavier
     // stroke, matching the reference hierarchy without glaring.
     let major_alpha = (alpha * 1.5).clamp(0.03, 1.0);
-    let (r, g, b) = if style.bg_luminance > 0.5 {
-        (0.10, 0.10, 0.10)
-    } else {
-        (0.80, 0.80, 0.80)
-    };
+    let [r, g, b] = style.color;
     let minor_stroke = canvas::Stroke {
         width: 0.5,
         style: canvas::Style::Solid(Color { r, g, b, a: alpha }),

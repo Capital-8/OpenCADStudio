@@ -431,7 +431,12 @@ impl OpenCADStudio {
         mark("viewport_3d");
         let viewport_3d: Element<'_, Message> = if self.layout_settling && !tab.is_start {
             // Omit the shader and drafting overlays for the notice frame.
-            let bg = crosshair_background(tab, is_paper);
+            let in_block_editor = tab.active_block_edit_session().is_some();
+            let bg = if in_block_editor {
+                [0.62, 0.62, 0.62, 1.0]
+            } else {
+                crosshair_background(tab, is_paper)
+            };
             let lum = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2];
             let ink = if lum > 0.5 {
                 Color::from_rgba(0.0, 0.0, 0.0, 0.55)
@@ -631,7 +636,12 @@ impl OpenCADStudio {
                 .collect();
             let params_ms = crate::perf::elapsed_ms(t_params);
             let t_bg = crate::perf::enabled().then(iced::time::Instant::now);
-            let bg = crosshair_background(tab, is_paper);
+            let in_block_editor = tab.active_block_edit_session().is_some();
+            let bg = if in_block_editor {
+                [0.62, 0.62, 0.62, 1.0]
+            } else {
+                crosshair_background(tab, is_paper)
+            };
             let bg_ms = crate::perf::elapsed_ms(t_bg);
             if views_ms + params_ms + bg_ms >= 1.0 {
                 crate::perf_record!(
@@ -641,8 +651,9 @@ bg={bg_ms:.1}ms n={view_count}"
             }
             let bg_lum = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2];
             let grid_style = crate::ui::overlay::GridStyle {
-                opacity: self.model_space.grid_opacity,
+                opacity: if in_block_editor { 38 } else { self.model_space.grid_opacity },
                 bg_luminance: bg_lum,
+                color: if in_block_editor { [0.27, 0.48, 0.91] } else { [0.80, 0.80, 0.80] },
                 axes: self.grid_axes,
             };
             crate::ui::overlay::grid_overlay(grid, grid_style)
@@ -815,7 +826,9 @@ bg={bg_ms:.1}ms n={view_count}"
             // Rotation-only projection (view_proj_rte): the icon shows axis
             // DIRECTIONS only, so the full view_proj's huge UTM translation would
             // cancel catastrophically in f32 and make the tripod jitter.
-            let ucs_icons: Vec<crate::ui::overlay::UcsIconParams> = if !self.show_ucs_icon {
+            let ucs_icons: Vec<crate::ui::overlay::UcsIconParams> = if !self.show_ucs_icon
+                || tab.active_block_edit_session().is_some()
+            {
                 vec![]
             } else if let Some((vp_cam, full)) = tab.scene.viewport_edit_frame((vw, vh)) {
                 let (_, ux, uy, uz) = tab.ucs_xform().axes();
@@ -1413,7 +1426,9 @@ bg={bg_ms:.1}ms n={view_count}"
             b: desk_bg[2],
             a: desk_bg[3],
         };
-        let bg_color = if is_paper {
+        let bg_color = if tab.active_block_edit_session().is_some() {
+            Color { r: 0.62, g: 0.62, b: 0.62, a: 1.0 }
+        } else if is_paper {
             desk_color
         } else {
             let c = tab.scene.bg_color;
