@@ -1920,6 +1920,32 @@ impl Scene {
         self.camera_generation += 1;
     }
 
+    /// Fit model space while including transient locations that affect the
+    /// current interaction but are not part of rendered entity geometry.
+    pub(crate) fn fit_all_with_extra_points(&mut self, points: &[glam::DVec3]) {
+        if self.active_viewport.is_some() || self.current_layout != "Model" {
+            self.fit_all();
+            return;
+        }
+        let mut bounds = self.visible_block_bounds(self.current_layout_block_handle());
+        for point in points.iter().copied().filter(|point| point.is_finite()) {
+            bounds = Some(match bounds {
+                Some((min, max)) => (min.min(point), max.max(point)),
+                None => (point, point),
+            });
+        }
+        let Some((min, mut max)) = bounds else {
+            return;
+        };
+        if min == max {
+            max += glam::DVec3::splat(1.0);
+        }
+        let aspect = self.active_camera_aspect();
+        self.camera.borrow_mut().fit_to_bounds_f64(min, max, aspect);
+        self.projection_bounds_epoch.set(self.geometry_epoch);
+        self.camera_generation += 1;
+    }
+
     /// Fit every tiled Model viewport independently. The drawing bounds are
     /// shared, but each tile keeps its own orientation and uses its own screen
     /// aspect when calculating the required zoom.

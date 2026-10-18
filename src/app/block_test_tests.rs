@@ -103,6 +103,76 @@ fn block_test_uses_unsaved_definition_and_preserves_editor_history_and_view() {
 }
 
 #[test]
+fn block_test_initial_extents_include_dynamic_action_grips() {
+    use crate::scene::{block_actions, block_distance_parameter as distance};
+
+    let (mut app, source, _) = fixture();
+    let definition = app.tabs[source]
+        .active_block_edit_session()
+        .unwrap()
+        .br_handle;
+    let line = app.tabs[source]
+        .scene
+        .document
+        .block_records
+        .get("SAMPLE")
+        .unwrap()
+        .entity_handles[0];
+    let document = &mut app.tabs[source].scene.document;
+    let parameter_handle = distance::create(
+        document,
+        definition,
+        distance::Kind::Linear,
+        Vector3::new(10., 20., 0.),
+        Vector3::new(110., 20., 0.),
+        Vector3::new(10., 22., 0.),
+    )
+    .unwrap();
+    block_actions::create(
+        document,
+        definition,
+        block_actions::Kind::Move,
+        parameter_handle,
+        &[line],
+        glam::DVec3::new(10., 20., 0.),
+    )
+    .unwrap();
+
+    let _ = app.open_block_test(source);
+    let test = app.active_tab;
+    let session = app.tabs[test].block_test.as_ref().unwrap();
+    let EntityType::Insert(insert) = app.tabs[test]
+        .scene
+        .document
+        .get_entity(session.insert)
+        .unwrap()
+    else {
+        panic!("Test Block reference missing")
+    };
+    let transform =
+        crate::scene::render_graph::insert_transform(&app.tabs[test].scene.document, insert);
+    let p = block_actions::all_parameters(&app.tabs[test].scene.document, definition)
+        .into_iter()
+        .find(|parameter| parameter.handle == parameter_handle)
+        .expect("authored parameter missing");
+    let value = block_actions::value(&app.tabs[test].scene.document, &p).unwrap();
+    let grip = block_actions::v(transform.apply(block_actions::native(
+        block_actions::grip_position(&p, value),
+    )));
+    let bounds = iced::Rectangle::with_size(iced::Size::new(1600., 900.));
+    let projected = app.tabs[test]
+        .scene
+        .camera
+        .borrow()
+        .project(grip, bounds)
+        .expect("dynamic grip should project");
+    assert!(
+        (0.0..=bounds.width).contains(&projected.x) && (0.0..=bounds.height).contains(&projected.y),
+        "Test Block should initially frame the action grip: {projected:?}"
+    );
+}
+
+#[test]
 fn block_test_keytips_follow_context_and_offer_close() {
     let (mut app, source, _) = fixture();
     let tab_tip = |app: &OpenCADStudio, target: &str| {
