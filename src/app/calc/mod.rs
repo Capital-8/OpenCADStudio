@@ -17,7 +17,7 @@ mod tests;
 use std::borrow::Cow;
 use std::ops::Range;
 
-pub use value::{CalcContext, Value};
+pub use value::{AngleMode, CalcContext, Value};
 
 /// Longer input is refused outright. It keeps the syntax tree (whose depth
 /// a long `1+1+…` chain grows) far from the stack limit; nobody types an

@@ -944,6 +944,7 @@ impl OpenCADStudio {
             count_service: self.count_palette.service,
             count_invalid_area: self.count_palette.invalid_choice,
             sheet_set: self.sheet_set.settings,
+            quick_calc: self.quick_calc.settings(),
         }
     }
 
@@ -1132,6 +1133,7 @@ impl OpenCADStudio {
         self.count_palette.service = s.count_service;
         self.count_palette.invalid_choice = s.count_invalid_area.min(2);
         self.sheet_set.settings = s.sheet_set;
+        self.quick_calc.apply_settings(&s.quick_calc);
         self.block_palette.recent = s.block_recent.clone();
         self.block_palette.favorites = s.block_favorites.clone();
         self.block_palette.libraries = s.block_libraries.clone();

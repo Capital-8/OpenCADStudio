@@ -36,6 +36,7 @@ pub mod pdf_shx_dialog;
 pub mod plot;
 pub mod plugin_manager;
 pub mod print_all;
+pub mod quick_calc;
 pub mod recovery;
 pub mod refedit_dialog;
 pub mod sheet_set;

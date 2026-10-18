@@ -119,11 +119,13 @@ impl OpenCADStudio {
                 return Some(Task::done(Message::QSelectOpen));
             }
 
-            // CAL / QUICKCALC <expression> — evaluate an expression on the
+            // CAL <expression> — evaluate an expression on the
             //   shared calculator engine (`app::calc`): arithmetic, points,
             //   functions, unit suffixes, variables and `ans`. Free text, so
             //   spaces inside the expression don't end the input.
-            "CAL" | "QUICKCALC" | "QC" => {
+            // QUICKCALC / QC show or hide the QuickCalc pallet.
+            "QUICKCALC" | "QC" => return Some(self.toggle_quick_calc()),
+            "CAL" => {
                 use crate::command::FreeTextValuePromptCommand;
                 let c = FreeTextValuePromptCommand::new("CAL", "CAL  expression  (e.g. (2+3)*4):");
                 self.command_line.push_info(&c.prompt());

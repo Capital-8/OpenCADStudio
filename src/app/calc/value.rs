@@ -53,8 +53,6 @@ fn format_number(n: f64) -> String {
 pub enum AngleMode {
     #[default]
     Degrees,
-    /// Chosen by the QuickCalc pallet's DEG/RAD toggle.
-    #[allow(dead_code)]
     Radians,
 }
 
@@ -66,7 +64,7 @@ impl AngleMode {
         }
     }
 
-    pub(super) fn radians_to_mode(self, a: f64) -> f64 {
+    pub fn radians_to_mode(self, a: f64) -> f64 {
         match self {
             AngleMode::Degrees => a.to_degrees(),
             AngleMode::Radians => a,

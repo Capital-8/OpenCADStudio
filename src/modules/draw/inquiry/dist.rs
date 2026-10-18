@@ -54,23 +54,10 @@ impl CadCommand for DistCommand {
 
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
         if let Some(p1) = self.first {
-            let delta = self.plane.vector_to_local(pt - p1);
-            let dist = delta.length();
-            let dx = delta.x;
-            let dy = delta.y;
-            let dz = delta.z;
-
-            // Angle in XY plane — a direction, so counted from ANGBASE the
-            // way ANGDIR runs, like every other direction the drawing shows.
-            let ctx = unit_context();
-            let sign = if ctx.angdir_cw { -1.0 } else { 1.0 };
-            let turn = std::f64::consts::TAU;
-            let angle_xy = (sign * (dy.atan2(dx) - ctx.angbase))
-                .rem_euclid(turn)
-                .to_degrees();
-            // Angle from XY plane toward Z (elevation angle)
-            let dist_xy = dx.hypot(dy);
-            let angle_z = dz.atan2(dist_xy).to_degrees();
+            let m = measure(self.plane, p1, pt);
+            let (dist, dx, dy, dz) = (m.distance, m.delta.x, m.delta.y, m.delta.z);
+            let angle_xy = m.angle_xy.to_degrees();
+            let angle_z = m.angle_z.to_degrees();
 
             let aprec = unit_context().auprec.max(0) as usize;
             let dist_s = format_length(dist);
@@ -101,9 +88,43 @@ impl CadCommand for DistCommand {
     }
 
     fn on_mouse_move(&mut self, pt: DVec3) -> Option<WireModel> {
-        let p1 = self.first?;
-        // The preview wire is purely visual, so f32 vertices are fine here.
-        Some(WireModel {
+        Some(rubber_band(self.first?, pt))
+    }
+}
+
+/// What DIST reports for two picked points, worked out in the working plane.
+pub struct PointPair {
+    /// `p2 - p1` in working-plane coordinates.
+    pub delta: DVec3,
+    pub distance: f64,
+    /// Direction in the XY plane, radians in `[0, TAU)`: counted from
+    /// ANGBASE the way ANGDIR runs, like every other direction the drawing
+    /// shows.
+    pub angle_xy: f64,
+    /// Elevation from the XY plane toward Z, radians.
+    pub angle_z: f64,
+}
+
+/// The distance and angles between `p1` and `p2` (WCS points) as DIST
+/// measures them. Shared with QuickCalc's distance and angle picks.
+pub fn measure(plane: WorkingPlane, p1: DVec3, p2: DVec3) -> PointPair {
+    let delta = plane.vector_to_local(p2 - p1);
+    let ctx = unit_context();
+    let sign = if ctx.angdir_cw { -1.0 } else { 1.0 };
+    let angle_xy = (sign * (delta.y.atan2(delta.x) - ctx.angbase)).rem_euclid(std::f64::consts::TAU);
+    let angle_z = delta.z.atan2(delta.x.hypot(delta.y));
+    PointPair {
+        delta,
+        distance: delta.length(),
+        angle_xy,
+        angle_z,
+    }
+}
+
+/// The rubber band from the first picked point to the cursor.
+pub fn rubber_band(p1: DVec3, pt: DVec3) -> WireModel {
+    // The preview wire is purely visual, so f32 vertices are fine here.
+    WireModel {
             bg_adapt: None,
             point_marker: None,
             taper_widths: Vec::new(),
@@ -142,7 +163,6 @@ impl CadCommand for DistCommand {
             fill_tris_low: Vec::new(),
 
             ..Default::default()
-        })
     }
 }
 

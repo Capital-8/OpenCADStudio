@@ -1,6 +1,5 @@
 //! Calculator engine tests.
 
-use super::value::AngleMode;
 use super::*;
 use glam::DVec3;
 

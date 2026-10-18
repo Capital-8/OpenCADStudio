@@ -1590,6 +1590,9 @@ pub enum CmdResult {
         tab_id: u64,
         handle: Option<Handle>,
     },
+    /// A QuickCalc pick finished: the point, distance or angle it measured,
+    /// for the pallet's input.
+    QuickCalcPick(crate::app::calc::Value),
     /// Command is still waiting for the next point; show updated prompt.
     NeedPoint,
     /// Update the committed-segment wire (normal colour) and keep collecting points.
@@ -2953,6 +2956,11 @@ pub trait CadCommand: Send {
     }
 
     fn inject_hover_entity(&mut self, _handle: Handle, _entity: EntityType) {}
+
+    /// The step a QuickCalc pick is on (1-based), for the pallet's banner.
+    fn quick_calc_step(&self) -> Option<u8> {
+        None
+    }
 
     /// Opt in to transient measurement text; unrelated Measurement users keep
     /// their existing command-line-only behavior.
