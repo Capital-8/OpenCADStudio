@@ -3,6 +3,7 @@
 use crate::app::{LayerStateLayerFlag, LayerStateProperty, Message};
 use crate::t;
 use crate::ui::properties::{lw_options, LwItem};
+use crate::ui::style::form::{hdivider, LABEL_WIDTH};
 use codec::{LayerState, LayerStateMask};
 use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_input, Space};
 use iced::{Background, Border, Element, Fill, Length, Theme};
@@ -59,17 +60,6 @@ fn list_style(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Styl
             button::subtle(theme, status)
         }
     }
-}
-
-fn divider<'a>(width: Length) -> Element<'a, Message> {
-    container(Space::new().width(width).height(1))
-        .width(width)
-        .height(1)
-        .style(|theme: &Theme| container::Style {
-            background: Some(Background::Color(theme.palette().background.neutral.color)),
-            ..Default::default()
-        })
-        .into()
 }
 
 fn mask_summary(mask: LayerStateMask) -> String {
@@ -201,12 +191,12 @@ pub fn view_window<'a>(
         column![
             text(t!("Saved state details")).size(13),
             row![
-                text(t!("Layers")).size(10).style(muted).width(92),
+                text(t!("Layers")).size(10).style(muted).width(LABEL_WIDTH),
                 text(state.layers.len().to_string()).size(11),
             ]
             .spacing(8),
             row![
-                text(t!("Current layer")).size(10).style(muted).width(92),
+                text(t!("Current layer")).size(10).style(muted).width(LABEL_WIDTH),
                 text(if state.current_layer.is_empty() {
                     "—".to_string()
                 } else {
@@ -267,7 +257,7 @@ pub fn view_window<'a>(
             ]
             .spacing(6)
             .align_y(iced::Center),
-            divider(sizing.width),
+            hdivider(sizing.width),
             text(t!("Name")).size(10).style(muted),
             text_input(t!("Layer state name").as_ref(), name)
                 .on_input(Message::LayerStateManagerName)
@@ -586,7 +576,7 @@ pub fn view_editor<'a>(
             ]
             .spacing(8)
             .align_y(iced::Center),
-            divider(sizing.width),
+            hdivider(sizing.width),
             text(t!("Properties restored by this state"))
                 .size(10)
                 .style(muted),
