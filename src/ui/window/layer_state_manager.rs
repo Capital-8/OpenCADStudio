@@ -42,16 +42,6 @@ fn muted(theme: &Theme) -> iced::widget::text::Style {
     }
 }
 
-fn button_style(accent: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |theme, status| {
-        if accent {
-            button::primary(theme, status)
-        } else {
-            button::secondary(theme, status)
-        }
-    }
-}
-
 fn list_style(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme, status| {
         if selected {
@@ -196,7 +186,10 @@ pub fn view_window<'a>(
             ]
             .spacing(8),
             row![
-                text(t!("Current layer")).size(10).style(muted).width(LABEL_WIDTH),
+                text(t!("Current layer"))
+                    .size(10)
+                    .style(muted)
+                    .width(LABEL_WIDTH),
                 text(if state.current_layer.is_empty() {
                     "—".to_string()
                 } else {
@@ -224,9 +217,9 @@ pub fn view_window<'a>(
     let restore = if selected_state.is_some() {
         button(text(t!("Restore")).size(11))
             .on_press(Message::LayerStateManagerRestore)
-            .style(button_style(true))
+            .style(button::primary)
     } else {
-        button(text(t!("Restore")).size(11)).style(button_style(true))
+        button(text(t!("Restore")).size(11)).style(button::primary)
     };
     let delete = if selected_state.is_some() {
         button(text(t!("Delete")).size(11))
@@ -238,9 +231,9 @@ pub fn view_window<'a>(
     let edit = if selected_state.is_some() {
         button(text(t!("Edit")).size(11))
             .on_press(Message::LayerStateManagerEdit)
-            .style(button_style(false))
+            .style(button::secondary)
     } else {
-        button(text(t!("Edit")).size(11)).style(button_style(false))
+        button(text(t!("Edit")).size(11)).style(button::secondary)
     };
 
     let right = container(
@@ -248,7 +241,7 @@ pub fn view_window<'a>(
             row![
                 button(text(t!("New")).size(11))
                     .on_press(Message::LayerStateManagerNew)
-                    .style(button_style(false))
+                    .style(button::secondary)
                     .padding([5, 12]),
                 edit.padding([5, 12]),
                 Space::new().width(sizing.width),
@@ -282,7 +275,7 @@ pub fn view_window<'a>(
             })
             .size(11))
             .on_press(Message::LayerStateManagerSave)
-            .style(button_style(true))
+            .style(button::primary)
             .padding([6, 14]),
         ]
         .spacing(7)
@@ -614,11 +607,11 @@ pub fn view_editor<'a>(
                 Space::new().width(sizing.width),
                 button(text(t!("Cancel")).size(11))
                     .on_press(Message::LayerStateEditorCancel)
-                    .style(button_style(false))
+                    .style(button::secondary)
                     .padding([5, 12]),
                 button(text(t!("Save Changes")).size(11))
                     .on_press(Message::LayerStateEditorSave)
-                    .style(button_style(true))
+                    .style(button::primary)
                     .padding([5, 12]),
             ]
             .spacing(7)

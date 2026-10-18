@@ -4,6 +4,7 @@ use crate::app::Message;
 use crate::t;
 use crate::ui::properties::{lw_options, LinetypeItem, LwItem};
 use crate::ui::style::common::muted_style;
+use crate::ui::style::form::field_style_with_radius;
 use crate::ui::style::row_button::{cell_button_style, header_button_style};
 use crate::ui::ROW_H;
 use codec::tables::layer::Layer as DocLayer;
@@ -52,29 +53,6 @@ const LINETYPE_MENU_W: f32 = 220.0;
 /// Widget id for the layer-table scrollable, so a freshly created layer can be
 /// scrolled into view after it is added (#271).
 pub const LAYER_TABLE_SCROLL_ID: &str = "layer-manager-table-scroll";
-
-fn table_input_style(
-    theme: &Theme,
-    status: iced::widget::text_input::Status,
-) -> iced::widget::text_input::Style {
-    let palette = theme.palette();
-    let border = match status {
-        iced::widget::text_input::Status::Focused { .. } => palette.primary.base.color,
-        _ => palette.background.neutral.color,
-    };
-    iced::widget::text_input::Style {
-        background: Background::Color(palette.background.base.color),
-        border: Border {
-            color: border,
-            width: 1.0,
-            radius: 2.0.into(),
-        },
-        icon: palette.background.base.text,
-        placeholder: palette.background.base.text.scale_alpha(0.48),
-        value: palette.background.base.text,
-        selection: palette.primary.base.color.scale_alpha(0.5),
-    }
-}
 
 // ── Layer data ────────────────────────────────────────────────────────────
 
@@ -401,7 +379,7 @@ impl LayerPanel {
                     .size(FONT_SZ)
                     .padding([3, 6])
                     .width(Length::Fixed(180.0))
-                    .style(table_input_style),
+                    .style(|theme, status| field_style_with_radius(theme, status, 2.0)),
             ]
             .spacing(2)
             .align_y(iced::Center),
@@ -816,7 +794,7 @@ fn layer_row<'a>(
                 left: 4.0,
                 right: 4.0,
             })
-            .style(table_input_style)
+            .style(|theme, status| field_style_with_radius(theme, status, 2.0))
             .width(Length::Fixed(name_col_w))
             .into()
     } else {
@@ -892,7 +870,7 @@ fn layer_row<'a>(
                 right: 4.0,
             })
             .width(Length::Fixed(COL_LT))
-            .input_style(combo_input_style),
+            .input_style(|theme, status| field_style_with_radius(theme, status, 2.0)),
             LINETYPE_MENU_W,
         )
     } else {
@@ -920,7 +898,7 @@ fn layer_row<'a>(
             right: 4.0,
         })
         .width(Length::Fixed(COL_LW))
-        .input_style(combo_input_style)
+        .input_style(|theme, status| field_style_with_radius(theme, status, 2.0))
         .into()
     } else {
         text(cur_lw_item.to_string())
@@ -943,7 +921,7 @@ fn layer_row<'a>(
             right: 4.0,
         })
         .style(|theme: &Theme, status| {
-            let mut style = table_input_style(theme, status);
+            let mut style = field_style_with_radius(theme, status, 2.0);
             style.background = iced::Background::Color(Color::TRANSPARENT);
             style
         })
@@ -1019,15 +997,6 @@ fn layer_row<'a>(
     )
     .on_press(Message::LayerSelect(lname))
     .into()
-}
-
-// ── Combo style ────────────────────────────────────────────────────────────
-
-fn combo_input_style(
-    theme: &Theme,
-    status: iced::widget::text_input::Status,
-) -> iced::widget::text_input::Style {
-    table_input_style(theme, status)
 }
 
 // ── Display helpers ───────────────────────────────────────────────────────
