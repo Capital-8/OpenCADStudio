@@ -1457,6 +1457,83 @@ fn lookup_basepoint_palette_and_table_dialog_real_controls() {
 }
 
 #[test]
+fn block_properties_table_palette_dialog_authors_rows() {
+    with_stack(|| {
+        use crate::ui::window::{authoring_palettes::Tab, block_properties_table::Action as A};
+        let mut app = authoring_app();
+        let _ = app.dispatch_command("BAUTHORPALETTE");
+        let _ = app.run_command_line("BPARAMETER LINEAR 0,0 1,0 0,0.3");
+        let point = authoring_control(&app, Tab::Actions.widget_id());
+        authoring_click(&mut app, point);
+        let point = authoring_control(&app, "authoring-tool-properties-table");
+        authoring_click(&mut app, point);
+        assert_eq!(
+            app.active_modal,
+            Some(crate::app::ModalKind::BlockPropertiesTable)
+        );
+        let _ = app.update(Message::BlockPropertiesTable(A::Property(0)));
+        let point = find_in_view(&app, "Add Property");
+        authoring_click(&mut app, point);
+        let point = find_in_view(&app, "Add Row");
+        authoring_click(&mut app, point);
+        assert_eq!(
+            app.block_properties_table.as_ref().unwrap().rows.len(),
+            1
+        );
+        let _ = app.update(Message::BlockPropertiesTable(A::Cell(0, 0, "2.5".into())));
+        let point = find_in_view(&app, "OK");
+        authoring_click(&mut app, point);
+        assert!(app.block_properties_table.is_none());
+        assert!(app.active_modal.is_none());
+        let i = app.active_tab;
+        let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+        let view =
+            crate::scene::block_properties_table::table(&app.tabs[i].scene.document, definition)
+                .unwrap()
+                .expect("the table was written");
+        assert_eq!(view.columns.len(), 1);
+        assert_eq!(view.rows, vec![vec![2.5]]);
+    });
+}
+
+#[test]
+fn block_properties_table_apply_writes_undo_once_and_stale_edits_stay_open() {
+    with_stack(|| {
+        use crate::ui::window::block_properties_table::Action as A;
+        let mut app = authoring_app();
+        let _ = app.dispatch_command("BAUTHORPALETTE");
+        let _ = app.run_command_line("BPARAMETER LINEAR 0,0 1,0 0,0.3");
+        let i = app.active_tab;
+        let history = app.tabs[i].history.undo_stack.len();
+        let _ = app.dispatch_command("BPROPERTIESTABLE");
+        assert_eq!(
+            app.active_modal,
+            Some(crate::app::ModalKind::BlockPropertiesTable)
+        );
+        let _ = app.update(Message::BlockPropertiesTable(A::Property(0)));
+        let _ = app.update(Message::BlockPropertiesTable(A::AddProperty));
+        let _ = app.update(Message::BlockPropertiesTable(A::AddRow));
+        let _ = app.update(Message::BlockPropertiesTable(A::Apply));
+        assert!(app.block_properties_table.is_none());
+        assert_eq!(app.tabs[i].history.undo_stack.len(), history + 1);
+        let _ = app.dispatch_command("BPROPERTIESTABLE");
+        assert!(app.block_properties_table.is_some());
+        let _ = app.update(Message::BlockPropertiesTable(A::Apply));
+        assert!(app.block_properties_table.is_none());
+        assert_eq!(app.tabs[i].history.undo_stack.len(), history + 1);
+        let _ = app.dispatch_command("BPROPERTIESTABLE");
+        app.tabs[i].scene.bump_geometry();
+        let _ = app.update(Message::BlockPropertiesTable(A::AddRow));
+        let _ = app.update(Message::BlockPropertiesTable(A::Apply));
+        assert!(app.block_properties_table.is_some());
+        assert!(app.block_properties_table.as_ref().unwrap().error.is_some());
+        let _ = app.update(Message::CloseModal);
+        assert!(app.block_properties_table.is_none());
+        assert!(app.active_modal.is_none());
+    });
+}
+
+#[test]
 fn authoring_palettes_ribbon_toggle_and_dock_close_leave_document_and_history_unchanged() {
     use crate::ui::dock::{DockMsg, PanelId};
     let mut app = authoring_app();

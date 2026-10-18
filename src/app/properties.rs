@@ -13,6 +13,31 @@ use codec::{Entity, EntityType, Handle};
 /// shows a count-only summary instead. Bulk edits still go through the ribbon.
 const MAX_PROP_AGGREGATE: usize = 2_000;
 
+fn property_choice_combos(
+    sections: &[crate::scene::model::object::PropSection],
+) -> rustc_hash::FxHashMap<
+    String,
+    iced::widget::combo_box::State<ui::properties::LocalizedChoice>,
+> {
+    sections
+        .iter()
+        .flat_map(|section| section.props.iter())
+        .filter_map(|prop| match &prop.value {
+            PropValue::Choice { options, .. } => Some((
+                prop.field.to_string(),
+                iced::widget::combo_box::State::new(
+                    options
+                        .iter()
+                        .cloned()
+                        .map(ui::properties::LocalizedChoice::new)
+                        .collect(),
+                ),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Cap the total number of selection grips at
 /// [`crate::app::settings::MAX_SELECTED_GRIPS`], keeping entity order with
 /// non-midpoint (vertex/stretch) grips first. Below the cap both vecs are
@@ -2292,25 +2317,7 @@ impl OpenCADStudio {
                         block_definition: tab
                             .active_block_edit_session()
                             .map(|session| session.br_handle),
-                        choice_combos: sections
-                            .iter()
-                            .flat_map(|section| section.props.iter())
-                            .filter_map(|prop| match &prop.value {
-                                crate::scene::model::object::PropValue::Choice {
-                                    options, ..
-                                } => Some((
-                                    prop.field.to_string(),
-                                    iced::widget::combo_box::State::new(
-                                        options
-                                            .iter()
-                                            .cloned()
-                                            .map(ui::properties::LocalizedChoice::new)
-                                            .collect(),
-                                    ),
-                                )),
-                                _ => None,
-                            })
-                            .collect(),
+                        choice_combos: property_choice_combos(&sections),
                         sections,
                         layer_combo: iced::widget::combo_box::State::new(layer_names.clone()),
                         linetype_combo: iced::widget::combo_box::State::new(linetype_items.clone()),
@@ -2332,25 +2339,7 @@ impl OpenCADStudio {
                         prop_vertex,
                     );
                     ui::PropertiesPanel {
-                        choice_combos: sections
-                            .iter()
-                            .flat_map(|section| section.props.iter())
-                            .filter_map(|prop| match &prop.value {
-                                crate::scene::model::object::PropValue::Choice {
-                                    options, ..
-                                } => Some((
-                                    prop.field.to_string(),
-                                    iced::widget::combo_box::State::new(
-                                        options
-                                            .iter()
-                                            .cloned()
-                                            .map(ui::properties::LocalizedChoice::new)
-                                            .collect(),
-                                    ),
-                                )),
-                                _ => None,
-                            })
-                            .collect(),
+                        choice_combos: property_choice_combos(&sections),
                         sections,
                         title,
                         layer_combo: iced::widget::combo_box::State::new(layer_names.clone()),
@@ -2457,25 +2446,7 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                         retain_compact_solid_sections(&mut sections);
                     }
                     ui::PropertiesPanel {
-                        choice_combos: sections
-                            .iter()
-                            .flat_map(|section| section.props.iter())
-                            .filter_map(|prop| match &prop.value {
-                                crate::scene::model::object::PropValue::Choice {
-                                    options, ..
-                                } => Some((
-                                    prop.field.to_string(),
-                                    iced::widget::combo_box::State::new(
-                                        options
-                                            .iter()
-                                            .cloned()
-                                            .map(ui::properties::LocalizedChoice::new)
-                                            .collect(),
-                                    ),
-                                )),
-                                _ => None,
-                            })
-                            .collect(),
+                        choice_combos: property_choice_combos(&sections),
                         sections,
                         title: t!("%{count} objects selected", count = selected.len()).into_owned(),
                         selection_group_combo: iced::widget::combo_box::State::new(groups.clone()),
@@ -2948,23 +2919,36 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
     pub(super) fn property_target_handles(&self, i: usize) -> Vec<Handle> {
         // The node graph edits its own node's entity through the panel's
         // handlers, independent of the drawing selection.
-        if let Some(handle) = self.property_target_override {
-            return vec![handle];
-        }
-        let mut handles = self.tabs[i].properties.selected_handles();
-        if handles.is_empty() {
-            handles = self.tabs[i].properties.source_handles.clone();
-        }
-        if handles.is_empty() {
-            handles.extend(self.tabs[i].selected_handle);
-        }
-        handles.retain(|handle| !self.tabs[i].scene.is_layer_locked(*handle));
-        handles
+        self.resolve_property_targets(i, true, |scene, handle| {
+            !scene.is_layer_locked(handle)
+        })
     }
 
     /// The point clouds the Locked row applies to: locked ones too, unless
     /// their layer is locked.
     pub(super) fn point_cloud_lock_targets(&self, i: usize) -> Vec<Handle> {
+        self.resolve_property_targets(i, false, |scene, handle| {
+            scene.locked_layer_name(handle).is_none()
+        })
+    }
+
+    fn resolve_property_targets(
+        &self,
+        i: usize,
+        include_override: bool,
+        mut include: impl FnMut(&crate::scene::Scene, Handle) -> bool,
+    ) -> Vec<Handle> {
+        if include_override {
+            if let Some(handle) = self.property_target_override {
+                let scene = &self.tabs[i].scene;
+                return scene
+                    .document
+                    .get_entity(handle)
+                    .filter(|_| include(scene, handle))
+                    .map(|_| vec![handle])
+                    .unwrap_or_default();
+            }
+        }
         let mut handles = self.tabs[i].properties.selected_handles();
         if handles.is_empty() {
             handles = self.tabs[i].properties.source_handles.clone();
@@ -2972,7 +2956,10 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
         if handles.is_empty() {
             handles.extend(self.tabs[i].selected_handle);
         }
-        handles.retain(|handle| self.tabs[i].scene.locked_layer_name(*handle).is_none());
+        let scene = &self.tabs[i].scene;
+        handles.retain(|handle| {
+            scene.document.get_entity(*handle).is_some() && include(scene, *handle)
+        });
         handles
     }
 
@@ -4687,6 +4674,45 @@ mod chprop_integration_tests {
                 .color,
             Color::Index(5)
         );
+    }
+
+    #[test]
+    fn property_target_resolvers_discard_stale_handles() {
+        let mut app = OpenCADStudio::new_for_test();
+        let i = app.active_tab;
+        let existing = line_handle(&mut app);
+        let stale = app.tabs[i].scene.document.allocate_handle();
+        app.tabs[i].properties.source_handles = vec![existing, stale];
+
+        assert_eq!(app.property_target_handles(i), vec![existing]);
+        assert_eq!(app.point_cloud_lock_targets(i), vec![existing]);
+
+        app.tabs[i].properties.source_handles = vec![stale];
+        assert!(app.property_target_handles(i).is_empty());
+        assert!(app.point_cloud_lock_targets(i).is_empty());
+
+        app.finish_pending_history(i);
+        let undo_before = app.tabs[i].history.undo_stack.len();
+        let color_before = app.tabs[i]
+            .scene
+            .document
+            .header
+            .current_entity_color;
+        app.tabs[i].dirty = false;
+        let _ = app.update(crate::app::Message::PropColorChanged(
+            codec::types::Color::Index(9),
+        ));
+        app.finish_pending_history(i);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), undo_before);
+        assert_eq!(
+            app.tabs[i]
+                .scene
+                .document
+                .header
+                .current_entity_color,
+            color_before
+        );
+        assert!(!app.tabs[i].dirty);
     }
 
     /// Regression test for the CLI `CHPROP` command. Before Mission #15

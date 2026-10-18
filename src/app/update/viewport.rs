@@ -8,7 +8,7 @@ use crate::app::helpers::{
     polar_constrain_if_near, polar_constrain_near, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis,
     CoordKind,
 };
-use crate::app::{Message, OpenCADStudio, POLY_START_DELAY_MS};
+use crate::app::{Message, ModalKind, OpenCADStudio, POLY_START_DELAY_MS};
 use crate::modules::ModuleEvent;
 use crate::scene::model::object::GripApply;
 use crate::scene::pick::grip::{
@@ -548,49 +548,102 @@ impl OpenCADStudio {
         Some(hit)
     }
 
-    /// Write PDSIZE from the dialog buffer with the current relative/absolute
-    /// sign. A relative size is stored negative; absolute positive. Switching to
-    /// absolute with an empty/zero size seeds a positive value from the current
-    /// on-screen size so the point stays representable (PDSIZE 0 always reads as
-    /// relative, so absolute needs a non-zero magnitude).
-    pub(in crate::app) fn apply_point_size(&mut self) {
+    /// Begin a staged Point Style edit. The active drawing is untouched until
+    /// the user accepts the dialog.
+    pub(in crate::app) fn begin_point_style_dialog(&mut self) {
         let i = self.active_tab;
-        let mut mag = self
+        let header = &self.tabs[i].scene.document.header;
+        let mode = header.point_display_mode;
+        let size = header.point_display_size;
+        self.point_style_tab_id = Some(self.tabs[i].id);
+        self.point_mode_buf = Some(mode);
+        self.point_size_relative = size <= 0.0;
+        self.point_size_buf = format!("{}", size.abs());
+        self.active_modal = Some(ModalKind::PointStyle);
+    }
+
+    /// Parse and validate the dialog's magnitude without changing the drawing.
+    pub(in crate::app) fn validate_point_size_input(&mut self) -> bool {
+        let valid = self
             .point_size_buf
             .trim()
             .parse::<f64>()
-            .unwrap_or(0.0)
-            .abs();
-        if !self.point_size_relative && mag == 0.0 {
+            .is_ok_and(f64::is_finite);
+        if !valid {
+            self.command_line
+                .push_error(crate::t!("Point size must be a valid finite number.").as_ref());
+        }
+        valid
+    }
+
+    /// Commit the staged glyph and size together as one drawing undo step.
+    /// Returns false on invalid text so OK can leave the dialog open for repair.
+    pub(in crate::app) fn commit_point_style_dialog(&mut self) -> bool {
+        let Some(magnitude) = self
+            .point_size_buf
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
+            .map(f64::abs)
+        else {
+            self.command_line
+                .push_error(crate::t!("Point size must be a valid finite number.").as_ref());
+            return false;
+        };
+        let Some(tab_id) = self.point_style_tab_id else {
+            return false;
+        };
+        let Some(i) = self.tabs.iter().position(|tab| tab.id == tab_id) else {
+            self.command_line
+                .push_error(crate::t!("The drawing for Point Style is no longer open.").as_ref());
+            return false;
+        };
+
+        let mut magnitude = magnitude;
+        if !self.point_size_relative && magnitude == 0.0 {
             let wpp = self.tabs[i].scene.world_per_pixel().unwrap_or(0.0);
             let viewport_height = self.tabs[i].scene.selection.borrow().view.vp_size.1;
-            mag = if wpp > 0.0 {
+            magnitude = if wpp > 0.0 {
                 crate::entities::point::relative_world_size(0.0, wpp, viewport_height)
             } else {
                 1.0
             };
-            self.point_size_buf = format!("{mag:.4}");
+            self.point_size_buf = format!("{magnitude:.4}");
         }
-        let next = if self.point_size_relative { -mag } else { mag };
-        self.push_undo_snapshot(i, "PDSIZE");
-        self.tabs[i].scene.document.header.point_display_size = next;
+        let next_size = if self.point_size_relative {
+            -magnitude
+        } else {
+            magnitude
+        };
+        let next_mode = self
+            .point_mode_buf
+            .unwrap_or(self.tabs[i].scene.document.header.point_display_mode);
+        let header = &self.tabs[i].scene.document.header;
+        if header.point_display_mode == next_mode && header.point_display_size == next_size {
+            return true;
+        }
+
+        self.push_undo_snapshot(i, "DDPTYPE");
+        let header = &mut self.tabs[i].scene.document.header;
+        header.point_display_mode = next_mode;
+        header.point_display_size = next_size;
         self.tabs[i].scene.invalidate_point_dependencies();
         self.tabs[i].dirty = true;
+        true
     }
 
-    /// Replace the `mask` bits of PDMODE with `value`, rebuild the point glyphs
-    /// and mark the document dirty. Used by the Point Style (DDPTYPE) dialog.
+    /// Stage a replacement for the `mask` bits of PDMODE from the Point Style
+    /// (DDPTYPE) dialog. The drawing is changed only when OK commits the stage.
     pub(in crate::app) fn set_point_mode_bits(&mut self, mask: i16, value: i16) {
-        let i = self.active_tab;
-        let cur = self.tabs[i].scene.document.header.point_display_mode;
-        let next = (cur & !mask) | (value & mask);
-        if next == cur {
+        if self.point_style_tab_id.is_none() {
             return;
         }
-        self.push_undo_snapshot(i, "PDMODE");
-        self.tabs[i].scene.document.header.point_display_mode = next;
-        self.tabs[i].scene.invalidate_point_dependencies();
-        self.tabs[i].dirty = true;
+        let Some(cur) = self.point_mode_buf else {
+            return;
+        };
+        let next = (cur & !mask) | (value & mask);
+        self.point_mode_buf = Some(next);
     }
 
     /// Mirror the live grid display + grid-snap toggles onto tab `i`'s active

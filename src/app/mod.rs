@@ -14,6 +14,7 @@ mod block_editor_tests;
 mod block_save_as;
 mod block_visibility;
 mod block_lookup;
+mod block_properties_table;
 mod block_actions;
 mod block_authoring_edit;
 mod block_properties;
@@ -629,6 +630,7 @@ pub(super) struct OpenCADStudio {
     block_save_as: Option<crate::ui::window::block_save_as::State>,
     block_visibility: Option<crate::ui::window::block_visibility::State>,
     block_lookup: Option<crate::ui::window::block_lookup::State>,
+    block_properties_table: Option<crate::ui::window::block_properties_table::State>,
     block_visibility_mode: bool,
     /// PDF dialogs' working copies; `None` while closed.
     pdf_attach: Option<crate::ui::window::pdf_dialogs::PdfAttachState>,
@@ -1281,6 +1283,12 @@ pub(super) struct OpenCADStudio {
     marketplace_status: String,
     /// PDSIZE text buffer for the Point Style (DDPTYPE) dialog.
     point_size_buf: String,
+    /// Tab that owns the staged Point Style edits, so OK cannot write to a
+    /// different document if the active tab changes while the dialog is open.
+    point_style_tab_id: Option<u64>,
+    /// Staged PDMODE selection; the document is changed only when the dialog
+    /// is accepted.
+    point_mode_buf: Option<i16>,
     /// Point Style size mode: `true` = relative to screen, `false` = absolute.
     /// Tracked separately from the PDSIZE sign so a size of 0 (sign-less) still
     /// remembers which radio is active.
@@ -1398,6 +1406,9 @@ pub(super) struct OpenCADStudio {
     // ── Plot Style Table ──────────────────────────────────────────────────
     /// Currently loaded CTB/STB table (None = no override).
     active_plot_style: Option<crate::io::plot_style::PlotStyleTable>,
+    /// Table state at Plot Style editor open / last save. Edits preview live,
+    /// but closing the editor restores this baseline until Save succeeds.
+    pub(super) plotstyle_panel_baseline: Option<Option<crate::io::plot_style::PlotStyleTable>>,
 
     // ── MLineStyle Dialog ─────────────────────────────────────────────────
     mlstyle_selected: String,
@@ -2336,6 +2347,7 @@ pub enum ModalKind {
     BlockSaveAs,
     BlockVisibility,
     BlockLookup,
+    BlockPropertiesTable,
     SaveDialog,
     Recovery,
     /// Fonts referenced by the drawing are missing on this machine.
@@ -2991,6 +3003,7 @@ pub enum Message {
     BlockSaveAsApply,
     BlockVisibility(crate::ui::window::block_visibility::Action),
     BlockLookup(crate::ui::window::block_lookup::Action),
+    BlockPropertiesTable(crate::ui::window::block_properties_table::Action),
     BlockEditPickerName(String),
     BlockEditPickerSelect(String),
     BlockEditPickerApply,
@@ -4781,6 +4794,7 @@ impl OpenCADStudio {
             block_save_as: None,
             block_visibility: None,
             block_lookup: None,
+            block_properties_table: None,
             block_visibility_mode: false,
             pdf_attach: None,
             point_cloud_attach: None,
@@ -5059,6 +5073,8 @@ impl OpenCADStudio {
             plugin_readme_loading: rustc_hash::FxHashSet::default(),
             marketplace_status: String::new(),
             point_size_buf: String::new(),
+            point_style_tab_id: None,
+            point_mode_buf: None,
             point_size_relative: true,
             default_assoc_prompted: false,
             check_missing_fonts: true,
@@ -5145,6 +5161,7 @@ impl OpenCADStudio {
                 )
             })
             .ok(),
+            plotstyle_panel_baseline: None,
             // Color scheme (default: Oxocarbon)
             active_theme: Theme::Oxocarbon,
             ui_theme: config::UiThemeConfig::default(),

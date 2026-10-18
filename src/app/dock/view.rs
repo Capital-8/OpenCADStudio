@@ -411,6 +411,7 @@ impl OpenCADStudio {
                     self.point_parameter_placement_error(),
                     self.parameter_placement_error("FLIP"),
                     self.lookup_table_error(),
+                    self.properties_table_error(),
                     self.action_error(Some(crate::scene::block_actions::Kind::Move)),
                     self.action_error(Some(crate::scene::block_actions::Kind::Scale)),
                     self.action_error(Some(crate::scene::block_actions::Kind::Rotate)),

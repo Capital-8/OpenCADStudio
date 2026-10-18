@@ -161,6 +161,9 @@ impl OpenCADStudio {
             }
         }
         if self.active_modal == Some(Plotstyle) {
+            if let Some(baseline) = self.plotstyle_panel_baseline.take() {
+                self.active_plot_style = baseline;
+            }
             if let Some((plot_offset, plot_resize)) = self.plotstyle_parent_plot_geometry.take() {
                 self.active_modal = Some(Plot);
 
@@ -194,6 +197,10 @@ impl OpenCADStudio {
             Some(TextStyle | DimStyle | TableStyle | MLeaderStyle | MlStyle)
         ) {
             self.style_stage_discard();
+        }
+        if self.active_modal == Some(PointStyle) {
+            self.point_style_tab_id = None;
+            self.point_mode_buf = None;
         }
         if self.active_modal == Some(ScaleManager) {
             self.scale_stage_discard();
@@ -240,6 +247,7 @@ impl OpenCADStudio {
             Some(BlockSaveAs) => self.block_save_as = None,
             Some(BlockVisibility) => self.block_visibility = None,
             Some(BlockLookup) => self.block_lookup = None,
+            Some(BlockPropertiesTable) => self.block_properties_table = None,
             Some(PdfAttach) => self.pdf_attach = None,
             Some(UnderlayLayers) => self.underlay_layers = None,
             Some(PdfImportSettings) => self.pdf_import_settings = None,
@@ -2790,16 +2798,16 @@ impl OpenCADStudio {
                 // string, a path, `UCS Z 90` as one line) can be typed; the `>`
                 // is stripped on submit. (Unfocused Space repeats the last
                 // command via CommandSpace.)
-                // Command-line entry is shown uppercase — except while the
-                // active command collects free-form text (cell text, TEXT /
-                // MTEXT bodies), where the typed case is the content and
-                // Space must stay in the buffer.
+                // Preserve command-entry input exactly. Active single-token
+                // prompt keywords keep their established uppercase behavior;
+                // `CommandLine::submit` uppercases only the command verb.
                 let text_with_spaces = self.is_free_text_active();
+                let active_prompt = self.tabs[self.active_tab].active_cmd.is_some();
                 let literal = self.command_line.literal_spaces || s.starts_with('>');
-                let s = if text_with_spaces || literal {
-                    s
-                } else {
+                let s = if active_prompt && !text_with_spaces && !literal {
                     s.to_uppercase()
+                } else {
+                    s
                 };
                 // A space submits (acts like Enter). The whole value is handed to
                 // the submit path, which tokenises multi-token lines — so a typed
@@ -9772,6 +9780,9 @@ impl OpenCADStudio {
                 if self.active_modal == Some(super::ModalKind::BlockLookup) {
                     self.block_lookup = None;
                 }
+                if self.active_modal == Some(super::ModalKind::BlockPropertiesTable) {
+                    self.block_properties_table = None;
+                }
                 if self.active_modal == Some(super::ModalKind::BlockVisibility) {
                     self.block_visibility = None;
                 }
@@ -10612,7 +10623,6 @@ impl OpenCADStudio {
             }
             Message::PointStyleSizeRelative(relative) => {
                 self.point_size_relative = relative;
-                self.apply_point_size();
                 Task::none()
             }
             Message::PointStyleSizeInput(s) => {
@@ -10620,12 +10630,13 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::PointStyleApplySize => {
-                self.apply_point_size();
+                self.validate_point_size_input();
                 Task::none()
             }
             Message::PointStyleOk => {
-                self.apply_point_size();
-                self.close_active_modal();
+                if self.commit_point_style_dialog() {
+                    self.close_active_modal();
+                }
                 Task::none()
             }
 
@@ -10795,6 +10806,7 @@ impl OpenCADStudio {
             Message::BlockSaveAsApply => self.apply_block_save_as_dialog(),
             Message::BlockVisibility(action) => self.handle_block_visibility(action),
             Message::BlockLookup(action) => self.handle_block_lookup(action),
+            Message::BlockPropertiesTable(action) => self.handle_block_properties_table(action),
             Message::BlockEditPickerName(name) => {
                 if let Some(state) = self.block_edit_picker.as_mut() {
                     state.name = name.clone();
@@ -11271,6 +11283,9 @@ impl OpenCADStudio {
                     .as_ref(),
                 );
                 self.active_plot_style = Some(table);
+                if self.active_modal == Some(super::ModalKind::Plotstyle) {
+                    self.plotstyle_panel_baseline = Some(self.active_plot_style.clone());
+                }
                 self.plot_dialog.plot_styles = crate::io::plot_style::available_ctb_names();
                 Task::none()
             }
@@ -11287,6 +11302,7 @@ impl OpenCADStudio {
                 self.active_plot_style = None;
                 self.plot_dialog.style_name.clear();
                 self.plot_dialog.style_missing = false;
+                self.commit_plotstyle_panel_baseline();
                 self.command_line
                     .push_output(crate::t!("Plot style table cleared.").as_ref());
                 Task::none()
@@ -11355,6 +11371,7 @@ impl OpenCADStudio {
                 }
 
                 self.active_modal = Some(super::ModalKind::Plotstyle);
+                self.plotstyle_panel_baseline = Some(self.active_plot_style.clone());
                 Task::none()
             }
             Message::PlotStylePanelClose => {
@@ -11430,6 +11447,7 @@ impl OpenCADStudio {
                             self.tabs[self.active_tab]
                                 .scene
                                 .invalidate_display_plot_style();
+                            self.commit_plotstyle_panel_baseline();
 
                             self.command_line.push_output(
                                 crate::tf!("Plot style table saved to \"{}\".", path.display())
@@ -11481,6 +11499,7 @@ impl OpenCADStudio {
                             self.tabs[self.active_tab]
                                 .scene
                                 .invalidate_display_plot_style();
+                            self.commit_plotstyle_panel_baseline();
                             self.command_line.push_output(
                                 crate::tf!("Plot style table saved to \"{}\".", path.display())
                                     .as_ref(),
@@ -12062,7 +12081,9 @@ impl OpenCADStudio {
             Message::DimStyleDialogApply => {
                 let i = self.active_tab;
                 self.apply_dimstyle_bufs(i);
-                self.style_stage_commit();
+                if !self.selected_dimstyle_is_read_only() {
+                    self.style_stage_commit();
+                }
                 Task::none()
             }
             Message::DimStyleDialogSelect(name) => {
@@ -12085,6 +12106,9 @@ impl OpenCADStudio {
             Message::DimStyleDialogCopy => self.style_copy(crate::app::StyleKind::Dim),
             Message::DimStyleDialogSetCurrent => {
                 // Staged: persists on Apply.
+                if self.selected_dimstyle_is_read_only() {
+                    return Task::none();
+                }
                 let i = self.active_tab;
 
                 self.tabs[i].scene.document.header.current_dimstyle_name =
@@ -12105,6 +12129,9 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::DsToggle(field) => {
+                if self.selected_dimstyle_is_read_only() {
+                    return Task::none();
+                }
                 let separate_arrows = field == crate::app::DsField::Dimsah;
                 self.apply_ds_toggle(field);
                 if separate_arrows && self.ds_dimsah {
@@ -12126,6 +12153,9 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::DsToleranceMode(mode) => {
+                if self.selected_dimstyle_is_read_only() {
+                    return Task::none();
+                }
                 self.ds_dimlim = mode == "limits";
                 self.ds_dimtol = matches!(mode.as_str(), "symmetrical" | "deviation");
                 if mode == "symmetrical" {
@@ -12140,6 +12170,9 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::DsZeroBase(field, base) => {
+                if self.selected_dimstyle_is_read_only() {
+                    return Task::none();
+                }
                 let current = match &field {
                     crate::app::DsField::Dimzin => &self.ds_dimzin,
                     crate::app::DsField::Dimaltz => &self.ds_dimaltz,
@@ -12154,6 +12187,9 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::DsZeroFlag(field, bit) => {
+                if self.selected_dimstyle_is_read_only() {
+                    return Task::none();
+                }
                 let current = match &field {
                     crate::app::DsField::Dimzin => &self.ds_dimzin,
                     crate::app::DsField::Dimaltz => &self.ds_dimaltz,
@@ -12168,6 +12204,9 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::DsCenterMarkMode(mode) => {
+                if self.selected_dimstyle_is_read_only() {
+                    return Task::none();
+                }
                 let size = self.ds_dimcen.trim().parse::<f64>().unwrap_or(0.09).abs();
                 self.ds_dimcen = match mode.as_str() {
                     "mark" => size.max(f64::EPSILON).to_string(),
@@ -12177,6 +12216,9 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::DsColorMore(field) => {
+                if self.selected_dimstyle_is_read_only() {
+                    return Task::none();
+                }
                 self.ds_color_open = if self.ds_color_open.as_ref() == Some(&field) {
                     None
                 } else {
@@ -12838,19 +12880,27 @@ mod free_text_entry_tests {
     }
 
     #[test]
-    fn normal_commands_still_uppercase_and_submit_on_space() {
+    fn command_input_preserves_case_and_submits_multi_token_lines() {
         let mut app = OpenCADStudio::new_for_test();
         app.automation_op(r#"{"op":"new"}"#);
-        // No free-text command active: entry is uppercased…
+        // Ordinary command entry now retains its typed case…
         let _ = app.update(Message::CommandInput("lin".into()));
-        assert_eq!(app.command_line.input, "LIN");
-        // …and a pasted multi-token line runs as a command, not as text.
+        assert_eq!(app.command_line.input, "lin");
+        // …and a pasted multi-token line still submits as a command.
         let _ = app.update(Message::CommandInput("LINE 0,0 10,10".into()));
         assert!(
             app.command_line.input.is_empty(),
             "Space submitted the line"
         );
         assert_eq!(app.text_entry_mode(), TextEntryMode::Command);
+    }
+
+    #[test]
+    fn typed_command_characters_preserve_case() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let _ = app.update(Message::CommandAppendChar("MyPath".into()));
+        assert_eq!(app.command_line.input, "MyPath");
     }
 
     #[test]
@@ -12948,4 +12998,107 @@ fn web_autosave_due(savetime_min: i32) -> bool {
         }
         fire
     })
+}
+
+#[cfg(test)]
+mod point_style_dialog_tests {
+    use super::{Message, OpenCADStudio};
+    use crate::app::ModalKind;
+
+    fn open_with_values(mode: i16, size: f64) -> OpenCADStudio {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[app.active_tab]
+            .scene
+            .document
+            .header
+            .point_display_mode = mode;
+        app.tabs[app.active_tab]
+            .scene
+            .document
+            .header
+            .point_display_size = size;
+        app.begin_point_style_dialog();
+        app
+    }
+
+    #[test]
+    fn closing_point_style_discards_glyph_and_size_edits() {
+        let mut app = open_with_values(2, 3.0);
+
+        let _ = app.update(Message::PointStyleSetMode(3));
+        let _ = app.update(Message::PointStyleSizeInput("8".into()));
+        let _ = app.update(Message::PointStyleApplySize);
+        let _ = app.update(Message::CloseModal);
+
+        let header = &app.tabs[app.active_tab].scene.document.header;
+        assert_eq!(header.point_display_mode, 2);
+        assert_eq!(header.point_display_size, 3.0);
+    }
+
+    #[test]
+    fn invalid_point_size_is_reported_and_does_not_close_or_write() {
+        let mut app = open_with_values(2, 3.0);
+        let old_error_revision = app.command_line.error_revision;
+
+        let _ = app.update(Message::PointStyleSizeInput("abc".into()));
+        let _ = app.update(Message::PointStyleApplySize);
+
+        assert_eq!(
+            app.tabs[app.active_tab]
+                .scene
+                .document
+                .header
+                .point_display_size,
+            3.0
+        );
+        assert_eq!(app.active_modal, Some(ModalKind::PointStyle));
+        assert!(app.command_line.error_revision > old_error_revision);
+
+        let _ = app.update(Message::PointStyleOk);
+        assert_eq!(app.active_modal, Some(ModalKind::PointStyle));
+        assert_eq!(
+            app.tabs[app.active_tab]
+                .scene
+                .document
+                .header
+                .point_display_mode,
+            2
+        );
+    }
+
+    #[test]
+    fn accepting_point_style_commits_both_values_as_one_undo_step() {
+        let mut app = open_with_values(2, 3.0);
+        let i = app.active_tab;
+        let undo_depth = app.tabs[i].history.undo_stack.len();
+
+        let _ = app.update(Message::PointStyleSetMode(35));
+        let _ = app.update(Message::PointStyleSizeInput("8".into()));
+        let _ = app.update(Message::PointStyleOk);
+
+        let header = &app.tabs[i].scene.document.header;
+        assert_eq!(header.point_display_mode, 35);
+        assert_eq!(header.point_display_size, 8.0);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), undo_depth + 1);
+        assert!(app.tabs[i].dirty);
+        assert_eq!(app.active_modal, None);
+    }
+
+    #[test]
+    fn accepting_relative_point_size_preserves_the_relative_sign() {
+        let mut app = open_with_values(2, 3.0);
+
+        let _ = app.update(Message::PointStyleSizeRelative(true));
+        let _ = app.update(Message::PointStyleSizeInput("5".into()));
+        let _ = app.update(Message::PointStyleOk);
+
+        assert_eq!(
+            app.tabs[app.active_tab]
+                .scene
+                .document
+                .header
+                .point_display_size,
+            -5.0
+        );
+    }
 }

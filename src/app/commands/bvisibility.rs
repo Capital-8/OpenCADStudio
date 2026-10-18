@@ -412,6 +412,9 @@ impl OpenCADStudio {
             cmd if cmd == "BLOOKUPTABLE" || cmd.starts_with("BLOOKUPTABLE ") => {
                 Some(self.open_lookup_table(cmd.strip_prefix("BLOOKUPTABLE").unwrap().trim()))
             }
+            cmd if cmd == "BPROPERTIESTABLE" || cmd.starts_with("BPROPERTIESTABLE ") => {
+                Some(self.open_block_properties_table())
+            }
             cmd if cmd == "BPARAMETER" || cmd.starts_with("BPARAMETER ") => {
                 let Some(block) = self.visibility_block(i, "BPARAMETER") else {
                     return Some(Task::none());

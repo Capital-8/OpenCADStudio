@@ -4154,13 +4154,7 @@ impl OpenCADStudio {
                 }
             }
             cmd if cmd == "DDPTYPE" || cmd == "PTYPE" => {
-                // The dialog shows the magnitude; the sign (relative/absolute)
-                // is driven by the radio buttons. A positive PDSIZE is absolute;
-                // zero or negative is relative.
-                let pdsize = self.tabs[i].scene.document.header.point_display_size;
-                self.point_size_relative = pdsize <= 0.0;
-                self.point_size_buf = format!("{}", pdsize.abs());
-                self.active_modal = Some(super::super::ModalKind::PointStyle);
+                self.begin_point_style_dialog();
             }
             "LWDISPLAY" => {
                 use crate::command::ValuePromptCommand;

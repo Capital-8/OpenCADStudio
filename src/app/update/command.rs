@@ -369,10 +369,15 @@ impl OpenCADStudio {
                     self.command_line.input.push_str(&s);
                 }
             } else {
-                // Command-line entry is shown uppercase — except in
-                // free-form text prompts, where the typed case is the
-                // content (matches the CommandInput route).
-                if self.is_free_text_active() {
+                // Preserve case while entering a command or literal/free-text
+                // value. Active single-token prompt keywords keep their
+                // established uppercase normalization.
+                let preserve_case = self.tabs[i].active_cmd.is_none()
+                    || self.is_free_text_active()
+                    || self.command_line.literal_spaces
+                    || self.command_line.input.starts_with('>')
+                    || s.starts_with('>');
+                if preserve_case {
                     self.command_line.input.push_str(&s);
                 } else {
                     self.command_line.input.push_str(&s.to_uppercase());
