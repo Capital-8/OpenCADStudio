@@ -39,9 +39,19 @@ impl CadCommand for EditCommand {
         if edit::move_part(&mut staged, self.definition, self.handle, self.part, at).is_err() {
             return Vec::new();
         }
+        // A legacy block basepoint is represented by the definition handle.
+        // Moving it materializes a native BasePointParameter with its own
+        // handle, so resolve that replacement when producing the preview.
+        let preview_handle = if self.handle == self.definition {
+            crate::scene::block_basepoint::parameter(&staged, self.definition)
+                .map(|(handle, _)| handle)
+                .unwrap_or(self.handle)
+        } else {
+            self.handle
+        };
         let Some(item) = edit::items(&staged, self.definition)
             .into_iter()
-            .find(|item| item.handle == self.handle)
+            .find(|item| item.handle == preview_handle)
         else {
             return Vec::new();
         };
@@ -378,5 +388,36 @@ impl OpenCADStudio {
             Err(e) => self.command_line.push_error(crate::t!(e).as_ref()),
         }
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_basepoint_preview_follows_materialized_parameter() {
+        let mut scene = crate::scene::Scene::new();
+        scene.define_block_raw(
+            "PREVIEW_BASEPOINT",
+            codec::types::Vector3::new(2.0, 3.0, 0.0),
+            vec![codec::EntityType::Line(codec::entities::Line::from_points(
+                codec::types::Vector3::ZERO,
+                codec::types::Vector3::new(1.0, 0.0, 0.0),
+            ))],
+        );
+        let definition = scene.document.block_records.get("PREVIEW_BASEPOINT").unwrap().handle;
+        assert!(crate::scene::block_basepoint::parameter(&scene.document, definition).is_none());
+        let mut command = EditCommand {
+            document: 1,
+            definition,
+            handle: definition,
+            part: Part::Point,
+            document_snapshot: scene.document.clone(),
+        };
+
+        let preview = command.on_preview_wires(DVec3::new(4.0, 5.0, 0.0));
+
+        assert!(!preview.is_empty());
     }
 }
