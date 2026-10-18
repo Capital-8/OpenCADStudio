@@ -134,6 +134,7 @@ impl OpenCADStudio {
         tab.scene.set_current_layout("Model".into());
         self.discard_block_tests(source_id);
         self.visibility_popup = None;
+        self.table_popup = None;
         self.grip_popup = None;
         self.grip_hover = None;
         self.tabs.push(tab);

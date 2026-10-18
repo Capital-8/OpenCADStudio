@@ -66,26 +66,51 @@ mod selection_gesture_priority_tests {
     fn fast_first_click_never_becomes_a_lasso_solely_from_cursor_speed() {
         assert!(!selection_drag_should_start(25.0 * 25.0, 20, false));
         assert!(!selection_drag_should_start(120.0 * 120.0, 80, false));
-        assert!(!selection_drag_should_start(500.0 * 500.0, POLY_START_DELAY_MS - 1, false));
-        assert!(selection_drag_should_start(25.0 * 25.0, POLY_START_DELAY_MS, false));
-        assert!(!selection_drag_should_start(11.0 * 11.0, POLY_START_DELAY_MS + 500, false));
+        assert!(!selection_drag_should_start(
+            500.0 * 500.0,
+            POLY_START_DELAY_MS - 1,
+            false
+        ));
+        assert!(selection_drag_should_start(
+            25.0 * 25.0,
+            POLY_START_DELAY_MS,
+            false
+        ));
+        assert!(!selection_drag_should_start(
+            11.0 * 11.0,
+            POLY_START_DELAY_MS + 500,
+            false
+        ));
     }
 
     #[test]
     fn pickdrag_rectangle_keeps_its_fast_drag_shortcut() {
         assert!(selection_drag_should_start(25.0 * 25.0, 20, true));
         assert!(!selection_drag_should_start(23.0 * 23.0, 20, true));
-        assert!(selection_drag_should_start(13.0 * 13.0, POLY_START_DELAY_MS, true));
+        assert!(selection_drag_should_start(
+            13.0 * 13.0,
+            POLY_START_DELAY_MS,
+            true
+        ));
     }
 
     #[test]
     fn quick_selection_click_anchors_where_the_button_went_down() {
         let start = Point::new(100.0, 100.0);
         let moved = Point::new(190.0, 135.0);
-        assert_eq!(selection_click_position(moved, Some(start), true, true), start);
+        assert_eq!(
+            selection_click_position(moved, Some(start), true, true),
+            start
+        );
         // During a command or a genuine press-drag, use the moving cursor.
-        assert_eq!(selection_click_position(moved, Some(start), true, false), moved);
-        assert_eq!(selection_click_position(moved, Some(start), false, true), moved);
+        assert_eq!(
+            selection_click_position(moved, Some(start), true, false),
+            moved
+        );
+        assert_eq!(
+            selection_click_position(moved, Some(start), false, true),
+            moved
+        );
         assert_eq!(selection_click_position(moved, None, true, true), moved);
     }
 }
@@ -993,6 +1018,7 @@ impl OpenCADStudio {
                 .filter(|(owner, grip)| self.tabs[i].hot_grips.contains(&(*owner, grip.id)))
                 .filter(|(_, grip)| {
                     grip.id != crate::app::visibility::VIS_GRIP_ID
+                        && grip.id != crate::app::visibility::TABLE_GRIP_ID
                         && !crate::app::block_actions::is_test_grip(grip.id)
                         && !crate::app::block_authoring_edit::is_editor_grip(grip.id)
                 })
@@ -1019,6 +1045,7 @@ impl OpenCADStudio {
                 .zip(self.tabs[i].selected_grips.iter())
                 .filter(|(_, grip)| {
                     grip.id != crate::app::visibility::VIS_GRIP_ID
+                        && grip.id != crate::app::visibility::TABLE_GRIP_ID
                         && !crate::app::block_actions::is_test_grip(grip.id)
                         && !crate::app::block_authoring_edit::is_editor_grip(grip.id)
                 })
@@ -1163,6 +1190,7 @@ impl OpenCADStudio {
                 // hover grip-menu.
                 if self.grip_popup.is_none()
                     && grip_id != crate::app::visibility::VIS_GRIP_ID
+                    && grip_id != crate::app::visibility::TABLE_GRIP_ID
                     && !crate::app::block_actions::is_test_grip(grip_id)
                     && !crate::app::block_authoring_edit::is_editor_grip(grip_id)
                     && self
@@ -2018,11 +2046,11 @@ impl OpenCADStudio {
             if axis_lock.is_none()
                 && otrack_hit.is_none()
                 && !snap_hit.is_some_and(|s| {
-                        !matches!(
-                            s.snap_type,
-                            crate::snap::SnapType::Grid | crate::snap::SnapType::Extension
-                        )
-                    })
+                    !matches!(
+                        s.snap_type,
+                        crate::snap::SnapType::Grid | crate::snap::SnapType::Extension
+                    )
+                })
             {
                 let base = grip.origin_world;
                 let ucs_xf = self.tabs[i].ucs_xform();
@@ -2860,8 +2888,7 @@ impl OpenCADStudio {
                         !self.tabs[i].snap_result.is_some_and(|s| {
                             !matches!(
                                 s.snap_type,
-                                crate::snap::SnapType::Grid
-                                    | crate::snap::SnapType::Extension
+                                crate::snap::SnapType::Grid | crate::snap::SnapType::Extension
                             )
                         })
                     }) {
@@ -3982,6 +4009,9 @@ impl OpenCADStudio {
         if self.visibility_popup.take().is_some() {
             return Task::none();
         }
+        if self.table_popup.take().is_some() {
+            return Task::none();
+        }
         // Same dismiss-on-outside-click for the right-click
         // context menu: its panel is opaque, so a press that
         // reaches here is outside the menu.
@@ -4228,6 +4258,12 @@ impl OpenCADStudio {
                         self.grip_popup = None;
                         return Task::none();
                     }
+                    if grip_id == crate::app::visibility::TABLE_GRIP_ID {
+                        self.open_table_popup(p);
+                        self.grip_hover = None;
+                        self.grip_popup = None;
+                        return Task::none();
+                    }
                     if self.start_test_action_grip(handle, grip_id) {
                         return Task::none();
                     }
@@ -4352,7 +4388,7 @@ impl OpenCADStudio {
             }
         }
 
-        if edit_cam.is_none() && self.pick_authoring_object(p, bounds) {
+        if self.pick_authoring_object(p, bounds) {
             return Task::none();
         }
 
@@ -5519,6 +5555,7 @@ impl OpenCADStudio {
                             self.tabs[i].scene.select_entities(&handles);
                             self.tabs[i].scene.expand_selection_for_groups(&handles);
                         }
+                        self.pick_authoring_box(a, p, crossing);
                         let apply_ms = t_apply.map_or(0.0, |t| t.elapsed().as_secs_f64() * 1000.0);
                         let t_props = crate::perf::enabled().then(Instant::now);
                         self.refresh_properties();
@@ -5870,6 +5907,7 @@ was_selected={}",
                     }
                     let apply_ms = t_apply.map_or(0.0, |t| t.elapsed().as_secs_f64() * 1000.0);
                     let t_props = crate::perf::enabled().then(Instant::now);
+                    self.pick_authoring_box(a, p, crossing);
                     self.refresh_properties();
                     if crate::perf::enabled() {
                         crate::perf_record!(
@@ -6990,6 +7028,7 @@ properties={:.1}ms picked={}",
         self.grip_hover = None;
         self.grip_popup = None;
         self.visibility_popup = None;
+        self.table_popup = None;
         self.tabs[i].refresh_active_ucs();
         self.tabs[i].scene.bump_geometry_no_blocks();
         self.refresh_properties();

@@ -7,7 +7,9 @@ impl OpenCADStudio {
     pub(in crate::app) fn properties_table_error(&self) -> Option<&'static str> {
         let tab = &self.tabs[self.active_tab];
         let Some(session) = tab.active_block_edit_session() else {
-            return Some("Open a block in the Block Editor before editing its Block Properties Table.");
+            return Some(
+                "Open a block in the Block Editor before editing its Block Properties Table.",
+            );
         };
         let definition = session.br_handle;
         if table::columns(&tab.scene.document, definition).is_empty() {
@@ -39,11 +41,13 @@ impl OpenCADStudio {
                 return Task::none();
             }
         };
+        let must_match = original.as_ref().is_some_and(|view| view.must_match);
         self.block_properties_table = Some(State {
             document: tab.id,
             definition,
             epoch: tab.scene.geometry_epoch,
             original,
+            must_match,
             columns,
             properties: table::columns(&tab.scene.document, definition),
             selected_property: None,
@@ -71,9 +75,8 @@ impl OpenCADStudio {
                 match value.trim().parse::<f64>() {
                     Ok(value) if value.is_finite() => parsed.push(value),
                     _ => {
-                        self.block_properties_table.as_mut().unwrap().error = Some(
-                            crate::t!("Each cell must be a finite number.").into_owned(),
-                        );
+                        self.block_properties_table.as_mut().unwrap().error =
+                            Some(crate::t!("Each cell must be a finite number.").into_owned());
                         return Task::none();
                     }
                 }
@@ -100,6 +103,7 @@ impl OpenCADStudio {
         let unchanged = state.original.as_ref().is_some_and(|view| {
             view.columns == state.columns
                 && view.rows.iter().eq(cells.iter())
+                && view.must_match == state.must_match
         });
         if unchanged {
             self.block_properties_table = None;
@@ -107,9 +111,13 @@ impl OpenCADStudio {
             return Task::none();
         }
         let mut working = tab.scene.document.clone();
-        if let Err(error) =
-            table::apply(&mut working, state.definition, &state.columns, &cells)
-        {
+        if let Err(error) = table::apply(
+            &mut working,
+            state.definition,
+            &state.columns,
+            &cells,
+            state.must_match,
+        ) {
             self.block_properties_table.as_mut().unwrap().error =
                 Some(crate::t!(error).into_owned());
             return Task::none();

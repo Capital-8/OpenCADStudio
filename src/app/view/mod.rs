@@ -1114,8 +1114,14 @@ bg={bg_ms:.1}ms n={view_count}"
                 );
                 let point = tab.scene.camera.borrow().project(location, vp_bounds)?;
                 let point = iced::Point::new(vp_bounds.x + point.x, vp_bounds.y + point.y);
-                (point.x.is_finite() && point.y.is_finite())
-                    .then(|| (point, parameter.name.clone(), vp_bounds))
+                (point.x.is_finite() && point.y.is_finite()).then(|| {
+                    (
+                        point,
+                        parameter.name.clone(),
+                        vp_bounds,
+                        tab.selected_authoring == Some(parameter.handle),
+                    )
+                })
             });
             let authoring_points =
                 tab.active_block_edit_session()
@@ -1125,7 +1131,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             session.br_handle,
                         )
                         .into_iter()
-                        .filter_map(|(_, parameter)| {
+                        .filter_map(|(handle, parameter)| {
                             let project = |point: codec::types::Vector3| {
                                 let point = tab.scene.camera.borrow().project(
                                     glam::DVec3::new(point.x, point.y, point.z),
@@ -1140,6 +1146,7 @@ bg={bg_ms:.1}ms n={view_count}"
                                 project(parameter.definition_label_point)?,
                                 parameter.position_name.clone(),
                                 vp_bounds,
+                                tab.selected_authoring == Some(handle),
                             ))
                         })
                         .collect()
@@ -1153,8 +1160,9 @@ bg={bg_ms:.1}ms n={view_count}"
                         session.br_handle,
                     )
                     .iter()
-                    .map(|p| {
+                        .map(|p| {
                         (
+                                p.handle,
                             crate::scene::block_distance_parameter::graphic(p),
                             p.native.definition_base_point,
                         )
@@ -1167,6 +1175,7 @@ bg={bg_ms:.1}ms n={view_count}"
                         .iter()
                         .map(|p| {
                             (
+                                p.handle,
                                 crate::scene::block_orientation_parameter::graphic(p),
                                 crate::scene::block_orientation_parameter::marker_tail(p),
                             )
@@ -1177,10 +1186,29 @@ bg={bg_ms:.1}ms n={view_count}"
                             &tab.scene.document,
                             session.br_handle,
                         )
-                        .map(|(_, p)| {
+                        .map(|(handle, p)| (handle, p.parameter.definition_point))
+                        .or_else(|| {
+                            let name = tab
+                                .scene
+                                .document
+                                .block_records
+                                .iter()
+                                .find(|record| record.handle == session.br_handle)?
+                                .name
+                                .as_str();
+                            Some((
+                                session.br_handle,
+                                crate::scene::render_graph::block_base_point(
+                                    &tab.scene.document,
+                                    name,
+                                ),
+                            ))
+                        })
+                        .map(|(handle, point)| {
                             let mut g = crate::scene::block_distance_parameter::Graphic::default();
-                            g.base_grips.push(p.parameter.definition_point);
-                            (g, p.parameter.definition_point)
+                            g.base_grips.push(point);
+                            g.labels.push((point, "Basepoint".into()));
+                            (handle, g, point)
                         }),
                     )
                     .chain(
@@ -1189,12 +1217,12 @@ bg={bg_ms:.1}ms n={view_count}"
                             session.br_handle,
                         )
                         .into_iter()
-                        .map(|(_, p)| {
+                        .map(|(handle, p)| {
                             let mut g = crate::scene::block_distance_parameter::Graphic::default();
                             g.lookup_grips.push(p.parameter.definition_point);
                             g.labels
                                 .push((p.parameter.definition_point, p.lookup_name.clone()));
-                            (g, p.parameter.definition_point)
+                            (handle, g, p.parameter.definition_point)
                         }),
                     )
                     .chain(
@@ -1219,10 +1247,10 @@ bg={bg_ms:.1}ms n={view_count}"
                             g.grips.push((action.display_location, false));
                             g.labels
                                 .push((action.display_location, action.element.name.clone()));
-                            (g, action.display_location)
+                            (handle, g, action.display_location)
                         }),
                     )
-                    .filter_map(|(graphic, marker_tail)| {
+                    .filter_map(|(handle, graphic, marker_tail)| {
                         let project = |p: codec::types::Vector3| {
                             let p = tab
                                 .scene
@@ -1257,6 +1285,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             })
                             .collect::<Option<Vec<_>>>()?;
                         Some(crate::ui::overlay::AuthoringDimension {
+                            selected: tab.selected_authoring == Some(handle),
                             lines,
                             base_grips: graphic
                                 .base_grips
@@ -2055,6 +2084,34 @@ bg={bg_ms:.1}ms n={view_count}"
                                     ..Default::default()
                                 }
                             });
+                    let anchor = iced::Point::new(popup.anchor.x + 12.0, popup.anchor.y + 12.0);
+                    viewport_stack =
+                        viewport_stack.push(position_canvas_overlay(anchor, panel.into()));
+                }
+            }
+            if let Some(popup) = self.table_popup.as_ref() {
+                if !tab.is_start {
+                    let mut col = column![text(popup.header.clone()).size(12)].spacing(2);
+                    for (idx, name) in popup.rows.iter().enumerate() {
+                        let mark: Element<'_, Message> = if popup.current == Some(idx) {
+                            crate::ui::icons::themed_check_cell(true)
+                        } else {
+                            Space::new().width(11).into()
+                        };
+                        col = col.push(
+                            button(
+                                row![container(mark).width(16), text(name).size(12)]
+                                    .spacing(2)
+                                    .align_y(iced::Center),
+                            )
+                            .on_press(Message::TableRowPick(idx))
+                            .padding([3, 10])
+                            .width(Fill),
+                        );
+                    }
+                    let panel =
+                        container(iced::widget::scrollable(col).height(iced::Length::Shrink))
+                            .padding(2);
                     let anchor = iced::Point::new(popup.anchor.x + 12.0, popup.anchor.y + 12.0);
                     viewport_stack =
                         viewport_stack.push(position_canvas_overlay(anchor, panel.into()));

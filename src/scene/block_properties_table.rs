@@ -1,8 +1,9 @@
 //! Native Block Properties Table authoring.
 use super::block_authoring::{self as authoring, *};
 use codec::objects::{
-    BlockElement, BlockEvalValue, BlockOnePointParameter, BlockParameter, BlockPropertiesTable,
-    BlockPropertiesTableField, BlockPropertiesTableValue, DynamicBlockData, ObjectType,
+    BlockElement, BlockEvalValue, BlockGrip, BlockGripExpression, BlockOnePointParameter,
+    BlockParameter, BlockPropertiesTable, BlockPropertiesTableField, BlockPropertiesTableValue,
+    DynamicBlockData, ObjectType,
 };
 use codec::{CadDocument, Handle};
 
@@ -11,6 +12,7 @@ pub(crate) struct Column {
     pub handle: Handle,
     pub node_id: i32,
     pub connection_name: String,
+    pub display_name: String,
     pub type_code: i64,
 }
 
@@ -22,11 +24,12 @@ pub(crate) struct TableView {
     pub rows: Vec<Vec<f64>>,
     pub row_start: usize,
     pub trailer_start: usize,
+    pub must_match: bool,
 }
 
 pub(crate) type Grid = (Handle, Vec<Column>, Vec<Vec<String>>);
 
-fn graph_handle(document: &CadDocument, definition: Handle) -> Option<Handle> {
+pub(crate) fn graph_handle(document: &CadDocument, definition: Handle) -> Option<Handle> {
     let xdict = document.extension_dictionary_handle(definition)?;
     let ObjectType::Dictionary(dictionary) = document.objects.get(&xdict)? else {
         return None;
@@ -59,6 +62,20 @@ pub(crate) fn table(
             .find(|parameter| parameter.handle == column.handle)
             .map(|parameter| parameter.id)
             .unwrap_or(0);
+        if column.node_id != 0 {
+            column.type_code = i64::from(column.node_id);
+        }
+        column.display_name = super::block_lookup::properties(document, definition)
+            .into_iter()
+            .find(|property| {
+                property.column.node_id == column.node_id
+                    && property
+                        .column
+                        .connection_name
+                        .eq_ignore_ascii_case(&column.connection_name)
+            })
+            .map(|property| property.label)
+            .unwrap_or_else(|| column.connection_name.clone());
     }
     Ok(Some(view))
 }
@@ -90,9 +107,10 @@ fn parse(table_handle: Handle, table: BlockPropertiesTable) -> Result<TableView,
         .iter()
         .position(|field| field.code == 91)
         .ok_or("The Block Properties Table has no property columns.")?;
-    let column_count = usize::try_from(integer(&fields[column_count_index]).ok_or(
-        "The Block Properties Table column count is invalid.",
-    )?)
+    let column_count = usize::try_from(
+        integer(&fields[column_count_index])
+            .ok_or("The Block Properties Table column count is invalid.")?,
+    )
     .map_err(|_| "The Block Properties Table column count is invalid.")?;
     if column_count == 0 || column_count > 64 {
         return Err("The Block Properties Table column count is unsupported.");
@@ -135,7 +153,8 @@ fn parse(table_handle: Handle, table: BlockPropertiesTable) -> Result<TableView,
         columns.push(Column {
             handle: column_handle,
             node_id: 0,
-            connection_name: name,
+            connection_name: name.clone(),
+            display_name: name,
             type_code: property_id,
         });
         index = end + 1;
@@ -147,9 +166,10 @@ fn parse(table_handle: Handle, table: BlockPropertiesTable) -> Result<TableView,
         .find(|(_, field)| field.code == 92)
         .map(|(i, _)| i)
         .ok_or("The Block Properties Table row data is unavailable.")?;
-    let row_count = usize::try_from(integer(&fields[row_count_index]).ok_or(
-        "The Block Properties Table row count is invalid.",
-    )?)
+    let row_count = usize::try_from(
+        integer(&fields[row_count_index])
+            .ok_or("The Block Properties Table row count is invalid.")?,
+    )
     .map_err(|_| "The Block Properties Table row count is invalid.")?;
     if row_count == 0 || row_count > 1000 {
         return Err("The Block Properties Table row count is unsupported.");
@@ -195,6 +215,13 @@ fn parse(table_handle: Handle, table: BlockPropertiesTable) -> Result<TableView,
         .find(|(_, field)| field.code == 93)
         .map(|(i, _)| i)
         .ok_or("The Block Properties Table trailer is unavailable.")?;
+    let must_match = fields
+        .get(trailer_start + 1)
+        .and_then(|f| match f.value {
+            BlockPropertiesTableValue::Boolean(v) if f.code == 290 => Some(v),
+            _ => None,
+        })
+        .unwrap_or(false);
     Ok(TableView {
         handle: table_handle,
         table,
@@ -202,6 +229,7 @@ fn parse(table_handle: Handle, table: BlockPropertiesTable) -> Result<TableView,
         rows,
         row_start,
         trailer_start,
+        must_match,
     })
 }
 
@@ -210,29 +238,26 @@ pub(crate) fn columns(document: &CadDocument, definition: Handle) -> Vec<Column>
     super::block_lookup::properties(document, definition)
         .into_iter()
         .filter_map(|property| {
-            let parameter = parameters.iter().find(|parameter| {
-                parameter.id == property.column.node_id
-            })?;
-            let type_code = if property
+            let parameter = parameters
+                .iter()
+                .find(|parameter| parameter.id == property.column.node_id)?;
+            if !property
                 .column
                 .connection_name
                 .eq_ignore_ascii_case("UpdatedDistance")
+                && !property
+                    .column
+                    .connection_name
+                    .eq_ignore_ascii_case("UpdatedAngle")
             {
-                14
-            } else if property
-                .column
-                .connection_name
-                .eq_ignore_ascii_case("UpdatedAngle")
-            {
-                21
-            } else {
                 return None;
-            };
+            }
             Some(Column {
                 handle: parameter.handle,
                 node_id: parameter.id,
                 connection_name: property.column.connection_name,
-                type_code,
+                display_name: property.label,
+                type_code: i64::from(parameter.id),
             })
         })
         .collect()
@@ -258,24 +283,26 @@ pub(crate) fn apply(
     definition: Handle,
     columns: &[Column],
     rows: &[Vec<f64>],
+    must_match: bool,
 ) -> Result<Handle, &'static str> {
     if columns.is_empty() || columns.len() > 64 || rows.is_empty() || rows.len() > 1000 {
         return Err("Add at least one property and one complete row.");
     }
-    if rows.iter().any(|row| {
-        row.len() != columns.len() || row.iter().any(|value| !value.is_finite())
-    }) {
+    if rows
+        .iter()
+        .any(|row| row.len() != columns.len() || row.iter().any(|value| !value.is_finite()))
+    {
         return Err("Complete each numeric property cell with a finite value.");
     }
     let mut working = document.clone();
-    let graph = graph_handle(&working, definition).ok_or("The authoring graph is unavailable.")?;
+    graph_handle(&working, definition).ok_or("The authoring graph is unavailable.")?;
     let previous = table(&working, definition)?;
+    let mut new_table_eval = None;
     let handle = if let Some(view) = &previous {
         view.handle
     } else {
-        let (graph, slots) = authoring::prepare(&mut working, definition).map_err(|_| {
-            "The block authoring graph cannot accept a Block Properties Table."
-        })?;
+        let (graph, slots) = authoring::prepare(&mut working, definition)
+            .map_err(|_| "The block authoring graph cannot accept a Block Properties Table.")?;
         register_classes(
             &mut working,
             &[("BLOCKPROPERTIESTABLE", "AcDbBlockPropertiesTable", 1153)],
@@ -288,6 +315,7 @@ pub(crate) fn apply(
             minor: MINOR,
             eed_1071: 0,
         };
+        new_table_eval = Some(slots.eval);
         let parameter = BlockOnePointParameter {
             parameter: BlockParameter {
                 element,
@@ -315,7 +343,7 @@ pub(crate) fn apply(
         handle
     };
     let old_fields = previous.as_ref().map(|view| view.table.fields.as_slice());
-    let new_fields = encode_fields(columns, rows, old_fields)?;
+    let new_fields = encode_fields(columns, rows, old_fields, must_match)?;
     let Some(ObjectType::DynamicBlock(object)) = working.objects.get_mut(&handle) else {
         return Err("The Block Properties Table object is unavailable.");
     };
@@ -323,24 +351,123 @@ pub(crate) fn apply(
         return Err("The selected object is not a Block Properties Table.");
     };
     table.fields = new_fields;
+    if let Some(eval) = new_table_eval {
+        table.parameter.property_count = eval + 1;
+    }
+    let graph = graph_handle(&working, definition).ok_or("The authoring graph is unavailable.")?;
+    ensure_grip(&mut working, definition, graph, handle)?;
     let _ = graph;
     *document = working;
     Ok(handle)
+}
+
+fn ensure_grip(
+    document: &mut CadDocument,
+    definition: Handle,
+    graph: Handle,
+    table_handle: Handle,
+) -> Result<(), &'static str> {
+    let already = document.objects.values().any(|value| matches!(value, ObjectType::DynamicBlock(object) if object.owner == graph && matches!(&object.data, DynamicBlockData::PropertiesTableGrip(_))));
+    let Some(ObjectType::DynamicBlock(table_obj)) = document.objects.get(&table_handle) else {
+        return Err("The Block Properties Table object is unavailable.");
+    };
+    let DynamicBlockData::PropertiesTable(table_data) = &table_obj.data else {
+        return Err("The selected object is not a Block Properties Table.");
+    };
+    let location = table_data.parameter.definition_point;
+    let table_eval = table_data.parameter.parameter.element.eval.node_id;
+    if already {
+        let grip_eval = document.objects.values().find_map(|value| match value {
+            ObjectType::DynamicBlock(object) if object.owner == graph => match &object.data {
+                DynamicBlockData::PropertiesTableGrip(grip) => Some(grip.element.eval.node_id),
+                _ => None,
+            },
+            _ => None,
+        });
+        if let Some(grip_eval) = grip_eval {
+            if let Some(ObjectType::DynamicBlock(object)) = document.objects.get_mut(&table_handle)
+            {
+                if let DynamicBlockData::PropertiesTable(table) = &mut object.data {
+                    table.parameter.property_count = grip_eval;
+                }
+            }
+        }
+        return Ok(());
+    }
+    let (graph, slots) = authoring::prepare(document, definition)
+        .map_err(|_| "The block authoring graph cannot accept a table grip.")?;
+    authoring::register_classes(
+        document,
+        &[
+            ("BLOCKPROPERTIESTABLEGRIP", "AcDbBlockGrip", 55),
+            ("BLOCKGRIPLOCATIONCOMPONENT", "AcDbBlockGripExpr", 20),
+        ],
+    );
+    let grip = document.allocate_handle();
+    let x = document.allocate_handle();
+    let y = document.allocate_handle();
+    let grip_data = BlockGrip {
+        element: BlockElement {
+            eval: expression(slots.eval, NO_VALUE, BlockEvalValue::None),
+            name: "Grip".into(),
+            major: MAJOR,
+            minor: MINOR,
+            eed_1071: 0,
+        },
+        flags_91: slots.eval + 1,
+        flags_92: slots.eval + 2,
+        location,
+        insert_cycling: false,
+        insert_cycling_weight: -1,
+    };
+    document.objects.insert(
+        grip,
+        ObjectType::DynamicBlock(dynamic(
+            grip,
+            graph,
+            "BLOCKPROPERTIESTABLEGRIP",
+            "AcDbBlockGrip",
+            DynamicBlockData::PropertiesTableGrip(grip_data),
+        )),
+    );
+    for (handle, eval, axis) in [
+        (x, slots.eval + 1, "UpdatedX"),
+        (y, slots.eval + 2, "UpdatedY"),
+    ] {
+        document.objects.insert(
+            handle,
+            ObjectType::DynamicBlock(dynamic(
+                handle,
+                graph,
+                "BLOCKGRIPLOCATIONCOMPONENT",
+                "AcDbBlockGripExpr",
+                DynamicBlockData::GripLocationComponent(BlockGripExpression {
+                    eval: expression(eval, 40, BlockEvalValue::Real(0.0)),
+                    grip_type: table_eval,
+                    expression: axis.into(),
+                }),
+            )),
+        );
+    }
+    authoring::append_components(document, graph, slots, &[grip, x, y], &[1, 2]);
+    if let Some(ObjectType::DynamicBlock(object)) = document.objects.get_mut(&table_handle) {
+        if let DynamicBlockData::PropertiesTable(table) = &mut object.data {
+            table.parameter.property_count = slots.eval;
+        }
+    }
+    Ok(())
 }
 
 fn encode_fields(
     columns: &[Column],
     rows: &[Vec<f64>],
     old: Option<&[BlockPropertiesTableField]>,
+    must_match: bool,
 ) -> Result<Vec<BlockPropertiesTableField>, &'static str> {
     let mut fields = if let Some(fields) = old {
         fields.to_vec()
     } else {
-        vec![
-            int(90, 2),
-            text(300, "Block Properties Table"),
-            text(301, ""),
-        ]
+        vec![int(90, 2), text(300, "Block Table1"), text(301, "")]
     };
     if old.is_none() {
         fields.push(int(91, columns.len() as i64));
@@ -351,33 +478,55 @@ fn encode_fields(
                 int(171, -1),
                 text(300, ""),
                 text(301, &column.connection_name),
-                int(90, column.type_code),
+                int(90, column.node_id as i64),
                 int(170, -9999),
                 int(170, -9999),
                 boolean(290, false),
                 boolean(291, true),
                 boolean(292, true),
-                boolean(293, column.type_code == 21),
+                boolean(
+                    293,
+                    column.connection_name.eq_ignore_ascii_case("UpdatedAngle"),
+                ),
                 boolean(294, false),
                 text(302, ""),
                 handle_field(340, Handle::NULL),
             ]);
         }
     } else {
-        let view = parse(Handle::NULL, BlockPropertiesTable {
-            parameter: Default::default(),
-            fields: fields.clone(),
-        })?;
+        let view = parse(
+            Handle::NULL,
+            BlockPropertiesTable {
+                parameter: Default::default(),
+                fields: fields.clone(),
+            },
+        )?;
         if view.columns.len() != columns.len()
             || view.columns.iter().zip(columns).any(|(old, new)| {
                 old.handle != new.handle
                     || old.connection_name != new.connection_name
-                    || old.type_code != new.type_code
+                    || (old.type_code != new.type_code
+                        && old.node_id != 0
+                        && old.node_id != new.node_id)
             })
         {
-            return Err("Changing Block Properties Table columns is not supported for an existing table.");
+            return Err(
+                "Changing Block Properties Table columns is not supported for an existing table.",
+            );
         }
         fields.truncate(view.row_start - 1);
+        for column in columns {
+            if let Some(position) = fields.iter().enumerate().skip(4).find_map(|(i, f)|
+                (f.code == 340 && matches!(f.value, BlockPropertiesTableValue::Handle(h) if h == column.handle)).then_some(i)) {
+                let end = fields.iter().enumerate().skip(position + 1).find(|(_, f)| f.code == 340).map(|(i, _)| i).unwrap_or(fields.len());
+                if let Some(field) = fields.iter_mut().take(end).skip(position + 1).find(|f| f.code == 90) {
+                    field.value = BlockPropertiesTableValue::Integer(i64::from(column.node_id));
+                }
+                if let Some(field) = fields.iter_mut().take(end).skip(position + 1).find(|f| f.code == 293) {
+                    field.value = BlockPropertiesTableValue::Boolean(column.connection_name.eq_ignore_ascii_case("UpdatedAngle"));
+                }
+            }
+        }
     }
     fields.push(int(92, rows.len() as i64));
     for (row_index, row) in rows.iter().enumerate() {
@@ -389,7 +538,7 @@ fn encode_fields(
     }
     fields.push(int(93, rows.len() as i64));
     fields.extend([
-        boolean(290, false),
+        boolean(290, must_match),
         boolean(291, true),
         boolean(292, false),
     ]);

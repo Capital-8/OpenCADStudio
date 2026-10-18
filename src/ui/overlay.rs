@@ -1066,8 +1066,8 @@ pub(crate) fn selection_overlay<'a>(
     constraint_glyph_selected: Arc<[bool]>,
     constraint_glyph_tooltip: Option<String>,
     constraint_cursor_badge: Option<String>,
-    authoring_visibility: Option<(Point, String, iced::Rectangle)>,
-    authoring_points: Vec<(Point, Point, String, iced::Rectangle)>,
+    authoring_visibility: Option<(Point, String, iced::Rectangle, bool)>,
+    authoring_points: Vec<(Point, Point, String, iced::Rectangle, bool)>,
     authoring_dimensions: Vec<AuthoringDimension>,
 ) -> Element<'a, Message> {
     canvas(SelectionCanvas {
@@ -1108,6 +1108,7 @@ pub(crate) fn selection_overlay<'a>(
 }
 
 pub(crate) struct AuthoringDimension {
+    pub selected: bool,
     pub lines: Vec<[Point; 2]>,
     pub round_grips: Vec<Point>,
     pub base_grips: Vec<Point>,
@@ -1189,8 +1190,8 @@ struct SelectionCanvas {
     /// Symbol shown beside the cursor while it targets an entity that already
     /// participates in an enabled geometric constraint.
     constraint_cursor_badge: Option<String>,
-    authoring_visibility: Option<(Point, String, iced::Rectangle)>,
-    authoring_points: Vec<(Point, Point, String, iced::Rectangle)>,
+    authoring_visibility: Option<(Point, String, iced::Rectangle, bool)>,
+    authoring_points: Vec<(Point, Point, String, iced::Rectangle, bool)>,
     authoring_dimensions: Vec<AuthoringDimension>,
 }
 
@@ -2457,15 +2458,25 @@ impl canvas::Program<Message> for SelectionCanvas {
             frame.stroke(&b1, stroke.clone());
             frame.stroke(&b2, stroke);
         }
-        if let Some((point, label, clip)) = &self.authoring_visibility {
+        if let Some((point, label, clip, selected)) = &self.authoring_visibility {
             frame.with_clip(*clip, |frame| {
-                let color = theme.palette().primary.base.color;
+                let color = if *selected {
+                    theme.palette().primary.strong.color
+                } else {
+                    theme.palette().primary.base.color
+                };
                 let triangle = canvas::Path::new(|builder| {
                     builder.move_to(Point::new(point.x - 5.0, point.y - 3.0));
                     builder.line_to(Point::new(point.x + 5.0, point.y - 3.0));
                     builder.line_to(Point::new(point.x, point.y + 5.0));
                     builder.close();
                 });
+                if *selected {
+                    frame.stroke(
+                        &canvas::Path::circle(*point, 10.0),
+                        canvas::Stroke::default().with_color(color).with_width(2.0),
+                    );
+                }
                 frame.fill(&triangle, color);
                 frame.fill_text(canvas::Text {
                     content: label.clone(),
@@ -2476,9 +2487,19 @@ impl canvas::Program<Message> for SelectionCanvas {
                 });
             });
         }
-        for (point, label_point, label, clip) in &self.authoring_points {
+        for (point, label_point, label, clip, selected) in &self.authoring_points {
             frame.with_clip(*clip, |frame| {
-                let color = theme.palette().primary.base.color;
+                let color = if *selected {
+                    theme.palette().primary.strong.color
+                } else {
+                    theme.palette().primary.base.color
+                };
+                if *selected {
+                    frame.stroke(
+                        &canvas::Path::circle(*point, 10.0),
+                        canvas::Stroke::default().with_color(color).with_width(2.0),
+                    );
+                }
                 frame.stroke(
                     &canvas::Path::line(*point, *label_point),
                     canvas::Stroke::default().with_color(color),
@@ -2501,7 +2522,25 @@ impl canvas::Program<Message> for SelectionCanvas {
         }
         for dimension in &self.authoring_dimensions {
             frame.with_clip(dimension.clip, |frame| {
-                let color = theme.palette().primary.base.color;
+                let color = if dimension.selected {
+                    theme.palette().primary.strong.color
+                } else {
+                    theme.palette().primary.base.color
+                };
+                if dimension.selected {
+                    for point in dimension
+                        .base_grips
+                        .iter()
+                        .chain(dimension.lookup_grips.iter())
+                        .chain(dimension.round_grips.iter())
+                        .chain(dimension.grips.iter().map(|(point, _)| point))
+                    {
+                        frame.stroke(
+                            &canvas::Path::circle(*point, 10.0),
+                            canvas::Stroke::default().with_color(color).with_width(2.0),
+                        );
+                    }
+                }
                 for [a, b] in &dimension.lines {
                     frame.stroke(
                         &canvas::Path::line(*a, *b),

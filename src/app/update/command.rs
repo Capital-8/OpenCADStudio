@@ -194,6 +194,7 @@ impl OpenCADStudio {
                 self.cancel_active_grip_edit();
                 self.grip_pending = None;
                 self.visibility_popup = None;
+                self.table_popup = None;
                 self.grip_popup = None;
                 self.grip_hover = None;
             }
@@ -1354,7 +1355,11 @@ impl OpenCADStudio {
             self.grip_hover = None;
             return Task::none();
         }
+        if self.table_popup.take().is_some() {
+            return Task::none();
+        }
         if self.visibility_popup.take().is_some() {
+            self.table_popup = None;
             return Task::none();
         }
         if self.tabs[self.active_tab].active_grip.is_some() {
@@ -3939,6 +3944,9 @@ impl OpenCADStudio {
     }
 
     pub(super) fn on_prop_geom_commit(&mut self, field: &'static str) -> Task<Message> {
+        if field == "authoring_name" {
+            return self.commit_authoring_name();
+        }
         if field.starts_with("bedit_") {
             return self.commit_block_property(field);
         }

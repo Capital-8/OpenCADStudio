@@ -50,7 +50,7 @@ pub(crate) fn valid_lists(g: &BlockEvaluationGraph, node: i32) -> bool {
     true
 }
 
-fn remove(g: &mut BlockEvaluationGraph, id: i32) {
+pub(crate) fn remove(g: &mut BlockEvaluationGraph, id: i32) {
     let edge = g.edges.iter().find(|e| e.id == id).unwrap().clone();
     let [pi, ni, po, no, _] = edge.outgoing_edges;
     for (neighbor, field, value) in [(pi, 1, ni), (ni, 0, pi), (po, 3, no), (no, 2, po)] {

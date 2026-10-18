@@ -8,21 +8,21 @@ pub(crate) mod config;
 #[cfg(not(target_arch = "wasm32"))]
 pub use automation::{export_headless, serve};
 mod annotation_data;
+mod block_actions;
+mod block_authoring_edit;
 mod block_editor;
 #[cfg(test)]
 mod block_editor_tests;
-mod block_save_as;
-mod block_visibility;
 mod block_lookup;
-mod block_properties_table;
-mod block_actions;
-mod block_authoring_edit;
 mod block_properties;
+mod block_properties_table;
 #[cfg(test)]
 mod block_properties_tests;
+mod block_save_as;
 mod block_test;
 #[cfg(test)]
 mod block_test_tests;
+mod block_visibility;
 mod command_driver;
 pub(crate) use command_driver::{
     copy_to_clipboard_kernel, define_block_raw_doc, paste_entities_kernel, PasteSpace,
@@ -904,6 +904,7 @@ pub(super) struct OpenCADStudio {
     grip_pending: Option<GripPendingValue>,
     /// Open dynamic-block visibility-state dropdown.
     visibility_popup: Option<visibility::VisibilityPopup>,
+    table_popup: Option<visibility::TablePopup>,
     /// A leader line just added via the "Add Leader" grip menu whose arrow is
     /// being placed (follows the cursor). `(entity handle, new-arrow grip id)`.
     /// Esc before the placement click removes it again.
@@ -3376,6 +3377,7 @@ pub enum Message {
     /// User picked a dynamic-block visibility state — index into the
     /// visibility dropdown's items.
     VisibilityPick(usize),
+    TableRowPick(usize),
     /// Timer pulse while the cursor is dwelling on a grip; drives the
     /// dwell-to-popup transition without requiring further mouse motion.
     GripDwellTick,
@@ -4894,6 +4896,7 @@ impl OpenCADStudio {
             grip_popup: None,
             grip_pending: None,
             visibility_popup: None,
+            table_popup: None,
             grip_add_provisional: None,
             grip_preview_handles: Vec::new(),
             hover_dwell: None,

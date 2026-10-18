@@ -15,10 +15,8 @@ const MAX_PROP_AGGREGATE: usize = 2_000;
 
 fn property_choice_combos(
     sections: &[crate::scene::model::object::PropSection],
-) -> rustc_hash::FxHashMap<
-    String,
-    iced::widget::combo_box::State<ui::properties::LocalizedChoice>,
-> {
+) -> rustc_hash::FxHashMap<String, iced::widget::combo_box::State<ui::properties::LocalizedChoice>>
+{
     sections
         .iter()
         .flat_map(|section| section.props.iter())
@@ -2473,13 +2471,16 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                     .find(|item| item.handle == handle)
                 }) {
                     use crate::scene::model::object::{PropSection, PropValue, Property};
-                    panel.title = item.name;
+                    panel.title = item.name.clone();
                     panel.sections = vec![PropSection {
                         title: crate::t!("Geometry").into_owned(),
-                        props: item
-                            .grips
-                            .into_iter()
-                            .map(|(part, point)| Property {
+                        props: std::iter::once(Property {
+                            label: crate::t!("Parameter name").into_owned(),
+                            field: "authoring_name",
+                            value: PropValue::PlainText(item.name.clone()),
+                        })
+                        .chain(item.grips.into_iter().map(|(part, point)| {
+                            Property {
                                 label: crate::t!(match part {
                                     crate::scene::block_authoring::edit::Part::Point => "Position",
                                     crate::scene::block_authoring::edit::Part::Base => "Base point",
@@ -2496,8 +2497,9 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                                     "{:.4}, {:.4}, {:.4}",
                                     point.x, point.y, point.z
                                 )),
-                            })
-                            .collect(),
+                            }
+                        }))
+                        .collect(),
                     }];
                 }
             }
@@ -2912,6 +2914,7 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
         // Append the dynamic-block visibility (lookup) grip, if the lone
         // selection is a visibility-parametric block reference.
         self.refresh_visibility_grip(wo);
+        self.refresh_table_grip(wo);
         self.refresh_test_action_grips(wo);
         self.refresh_authoring_grips(wo);
     }
@@ -2919,9 +2922,7 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
     pub(super) fn property_target_handles(&self, i: usize) -> Vec<Handle> {
         // The node graph edits its own node's entity through the panel's
         // handlers, independent of the drawing selection.
-        self.resolve_property_targets(i, true, |scene, handle| {
-            !scene.is_layer_locked(handle)
-        })
+        self.resolve_property_targets(i, true, |scene, handle| !scene.is_layer_locked(handle))
     }
 
     /// The point clouds the Locked row applies to: locked ones too, unless
@@ -4693,11 +4694,7 @@ mod chprop_integration_tests {
 
         app.finish_pending_history(i);
         let undo_before = app.tabs[i].history.undo_stack.len();
-        let color_before = app.tabs[i]
-            .scene
-            .document
-            .header
-            .current_entity_color;
+        let color_before = app.tabs[i].scene.document.header.current_entity_color;
         app.tabs[i].dirty = false;
         let _ = app.update(crate::app::Message::PropColorChanged(
             codec::types::Color::Index(9),
@@ -4705,11 +4702,7 @@ mod chprop_integration_tests {
         app.finish_pending_history(i);
         assert_eq!(app.tabs[i].history.undo_stack.len(), undo_before);
         assert_eq!(
-            app.tabs[i]
-                .scene
-                .document
-                .header
-                .current_entity_color,
+            app.tabs[i].scene.document.header.current_entity_color,
             color_before
         );
         assert!(!app.tabs[i].dirty);

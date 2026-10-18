@@ -128,6 +128,7 @@ pub(super) struct DocumentTab {
     /// must never target a tab by its transient vector index.
     pub(super) id: u64,
     pub(super) scene: Scene,
+    pub(super) table_grip: Option<super::visibility::TableGrip>,
     pub(super) current_path: Option<PathBuf>,
     /// Persistent native edit lease for the drawing currently at
     /// `current_path`. The sidecar portion survives atomic file replacement.
@@ -660,6 +661,7 @@ impl DocumentTab {
             selected_handle: None,
             selected_authoring: None,
             visibility_grip: None,
+            table_grip: None,
             wireframe: false,
             render_mode: codec::entities::ViewportRenderMode::Wireframe2D,
             visual_style: "Wireframe 2D".into(),
