@@ -11,6 +11,8 @@ use codec::xdata::{ExtendedDataRecord, XDataValue};
 
 /// The layer and text style the records use.
 pub const LAYER: &str = "ASHADE";
+/// The font of the text style of the same name.
+pub const FONT: &str = "simplex";
 
 /// The render settings records, by insert colour.
 pub const RENDER_SETTINGS: [(u8, &str); 8] = [

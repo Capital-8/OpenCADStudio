@@ -295,6 +295,9 @@ pub struct TdsOptions {
     pub compact: bool,
     /// The layer every mesh goes on with [`LayerMode::Single`].
     pub single_layer: String,
+    /// The mesh whose material question was cancelled: the import stops
+    /// there, keeping what came before it.
+    pub stop_at: Option<String>,
 }
 
 /// One imported mesh.
@@ -414,6 +417,11 @@ pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
     for (name, object) in objects {
         if !chosen(name) {
             continue;
+        }
+        if options.stop_at.as_ref() == Some(name) {
+            out.messages.push(format!("Processing object {name}"));
+            out.messages.push("Render API error:".to_string());
+            return out;
         }
         match object {
             TdsObject::Mesh(mesh) => {

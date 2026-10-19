@@ -260,7 +260,7 @@ impl OpenCADStudio {
         state: crate::ui::window::import_dialogs::TdsImportState,
     ) -> Task<Message> {
         use crate::io::tds_import::{LayerMode, MultiMaterial, TdsObject};
-        use crate::modules::insert::tds_import::{TdsImportRequest, TdsMaterialCommand};
+        use crate::modules::insert::tds_import::TdsImportRequest;
         let Some(scene) = crate::scene::model::pdf_raster::source_bytes(&state.path)
             .and_then(|bytes| crate::io::tds_import::read(&bytes))
         else {
@@ -273,13 +273,20 @@ impl OpenCADStudio {
             .filter(|(_, on)| **on)
             .map(|((name, _, _), _)| name.clone())
             .collect();
-        let several: Vec<(String, Vec<String>)> = scene
-            .objects
+        // The import runs through the objects in the window's order; the
+        // window lists a mesh's materials last assigned first.
+        let several: Vec<(String, Vec<(String, Option<[u8; 3]>)>)> = selected
             .iter()
-            .filter(|(name, _)| selected.contains(name))
+            .filter_map(|name| scene.objects.iter().find(|(n, _)| n == name))
             .filter_map(|(name, object)| match object {
                 TdsObject::Mesh(mesh) => {
-                    let materials = scene.mesh_materials(mesh);
+                    let mut materials: Vec<(String, Option<[u8; 3]>)> = Vec::new();
+                    for (material, faces) in mesh.groups.iter().rev() {
+                        if !faces.is_empty() && !materials.iter().any(|(m, _)| m == material) {
+                            let diffuse = scene.materials.iter().find(|m| m.name == *material).and_then(|m| m.diffuse);
+                            materials.push((material.clone(), diffuse));
+                        }
+                    }
                     (materials.len() > 1).then(|| (name.clone(), materials))
                 }
                 _ => None,
@@ -303,6 +310,7 @@ impl OpenCADStudio {
             multi: Default::default(),
             compact: matches!(state.multi, 0 | 1),
             asked: false,
+            stop_at: None,
         };
         match choice {
             Some(choice) => {
@@ -311,17 +319,68 @@ impl OpenCADStudio {
                 }
             }
             None if !several.is_empty() => {
-                use crate::command::CadCommand;
                 request.asked = true;
-                let command = TdsMaterialCommand::new(request, several);
-                self.command_line.push_info(&command.prompt());
-                self.tabs[i].active_cmd = Some(Box::new(command));
+                self.import_dialogs.tds_material = Some(crate::ui::window::import_dialogs::TdsMaterialState {
+                    request,
+                    queue: several,
+                    choice: 0,
+                    material: 0,
+                    list_open: false,
+                    remember: false,
+                });
+                self.active_modal = Some(crate::app::ModalKind::TdsMaterial);
                 return Task::none();
             }
             None => {}
         }
         self.run_tds_import(i, request);
         Task::none()
+    }
+
+    /// The answer for the asked mesh (and, when the choice is kept, for the
+    /// rest); the import runs once no mesh is left to ask about.
+    pub(in crate::app) fn answer_tds_material(&mut self) {
+        use crate::io::tds_import::MultiMaterial;
+        let Some(mut state) = self.import_dialogs.tds_material.take() else {
+            return;
+        };
+        let choice = |state: &crate::ui::window::import_dialogs::TdsMaterialState,
+                      materials: &[(String, Option<[u8; 3]>)],
+                      chosen: Option<&str>| match state.choice {
+            0 => MultiMaterial::Split,
+            1 => MultiMaterial::First,
+            _ => MultiMaterial::Material(
+                chosen.and_then(|c| materials.iter().find(|(m, _)| m == c)).map(|(m, _)| m.clone()),
+            ),
+        };
+        let (name, materials) = state.queue.remove(0);
+        let chosen = state.material.checked_sub(1).and_then(|k| materials.get(k)).map(|(m, _)| m.clone());
+        let answer = choice(&state, &materials, chosen.as_deref());
+        state.request.multi.insert(name, answer);
+        if state.remember {
+            for (name, materials) in std::mem::take(&mut state.queue) {
+                let answer = choice(&state, &materials, chosen.as_deref());
+                state.request.multi.insert(name, answer);
+            }
+        }
+        if state.queue.is_empty() {
+            self.close_active_modal();
+            let i = self.active_tab;
+            self.run_tds_import(i, state.request);
+        } else {
+            // The next mesh is offered the same choice, without a material.
+            state.material = 0;
+            state.list_open = false;
+            self.import_dialogs.tds_material = Some(state);
+        }
+    }
+
+    /// Cancel: the import stops at the asked mesh; the objects before it
+    /// come in.
+    pub(in crate::app) fn stop_tds_import(&mut self, mut state: crate::ui::window::import_dialogs::TdsMaterialState) {
+        state.request.stop_at = state.queue.first().map(|(name, _)| name.clone());
+        let i = self.active_tab;
+        self.run_tds_import(i, state.request);
     }
 
     /// The import itself, one undo step: the meshes on their layers with
@@ -347,6 +406,7 @@ impl OpenCADStudio {
                 multi: request.multi.clone(),
                 compact: request.compact,
                 single_layer: self.tabs[i].scene.document.header.current_layer_name.clone(),
+                stop_at: request.stop_at.clone(),
             },
         );
         // Named views take the current view's proportions.
@@ -495,7 +555,7 @@ impl OpenCADStudio {
                     ));
                     first_material = false;
                     let values = crate::io::tds_legacy::material_values(&name, colours[1], linked);
-                    with_attributes(&mut insert, crate::io::tds_legacy::material_block(), |tag| {
+                    with_attributes(&mut insert, crate::io::tds_legacy::material_block(), "", |tag| {
                         values.iter().find(|(t, _)| *t == tag).map(|(_, v)| v.clone())
                     });
                     let record = scene.add_entity(codec::EntityType::Insert(insert));
@@ -534,7 +594,9 @@ impl OpenCADStudio {
                     }
                     insert.common.layer = current_layer.clone();
                     insert.common.extended_data.add_record(record);
-                    with_attributes(&mut insert, definitions, |tag| (tag == "SNAME").then(|| name.clone()));
+                    with_attributes(&mut insert, definitions, crate::io::tds_legacy::FONT, |tag| {
+                        (tag == "SNAME").then(|| name.clone())
+                    });
                     scene.add_entity(codec::EntityType::Insert(insert));
                 }
             }
@@ -593,6 +655,7 @@ fn aim_at(insert: &mut codec::entities::Insert, from: codec::types::Vector3, to:
 fn with_attributes(
     insert: &mut codec::entities::Insert,
     definitions: Vec<codec::EntityType>,
+    font: &str,
     value: impl Fn(&str) -> Option<String>,
 ) {
     let at = insert.insert_point;
@@ -603,6 +666,25 @@ fn with_attributes(
     for entity in definitions {
         let codec::EntityType::AttributeDefinition(def) = entity else { continue };
         let mut attribute = codec::entities::AttributeEntity::from_definition(&def, value(&def.tag));
+        // A centred or right-justified value starts its share of the drawn
+        // width (start to last ink) before the alignment point.
+        use codec::entities::HorizontalAlignment as H;
+        let share = match attribute.horizontal_alignment {
+            H::Center | H::Middle => 0.5,
+            H::Right => 1.0,
+            _ => 0.0,
+        };
+        if share > 0.0 {
+            if let Some(bounds) = crate::entities::text_support::text_local_bounds(
+                font,
+                &attribute.value,
+                attribute.height as f32,
+                attribute.width_factor as f32,
+                attribute.oblique_angle as f32,
+            ) {
+                attribute.insertion_point.x = attribute.alignment_point.x - share * f64::from(bounds.ink_max[0]);
+            }
+        }
         attribute.insertion_point = place(attribute.insertion_point);
         attribute.alignment_point = place(attribute.alignment_point);
         attribute.rotation += insert.rotation;
@@ -636,7 +718,7 @@ impl OpenCADStudio {
             style.handle = document.allocate_handle();
             style.height = 0.2;
             style.last_height = 2.5;
-            style.font_file = "simplex".into();
+            style.font_file = crate::io::tds_legacy::FONT.into();
             let _ = document.text_styles.add(style);
         }
         let mut blocks: Vec<(&str, Vec<codec::EntityType>, &str)> = Vec::new();
