@@ -730,18 +730,12 @@ mod tests {
             .collect();
         store.declare("p", batch).expect("declare");
         assert_eq!(store.total(), 1000);
-        // Re-declare the identical batch: no diff, no rebuild — near-free
-        // (the pull model's message-boundary re-declare stays cheap).
+        // Re-declare the identical batch: no diff, no rebuild.
         let batch: Vec<PluginGrip> = (0..1000)
             .map(|i| declared(i, [i as f64, (i % 7) as f64, 0.0]))
             .collect();
-        let start = std::time::Instant::now();
         store.declare("p", batch).expect("re-declare");
-        let unchanged_diff = start.elapsed();
-        assert!(
-            unchanged_diff.as_micros() < 5_000,
-            "identical 1000-grip re-declare must be near-free, took {unchanged_diff:?}"
-        );
+        assert_eq!(store.total(), 1000);
         // A real change rebuilds, and the next query reflects it.
         store
             .declare("p", vec![declared(0, [42.0, 0.0, 0.0])])

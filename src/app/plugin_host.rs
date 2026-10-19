@@ -18,6 +18,52 @@ pub(crate) struct HostSession<'a> {
     doc_store: Option<DocumentSnapshotStore<DocumentViewData>>,
 }
 
+/// A plugin request that drives commands: sets `plugin_request_active` (the
+/// driven commands join the plugin's open undo scope) and optionally
+/// suppresses the command-line echo. Both reset on drop, so a panicking
+/// command cannot leave the host quiet or the scope joined.
+struct PluginRequest<'s, 'a> {
+    session: &'s mut HostSession<'a>,
+    was_active: bool,
+    quiet: bool,
+}
+
+impl<'s, 'a> PluginRequest<'s, 'a> {
+    fn new(session: &'s mut HostSession<'a>, quiet: bool) -> Self {
+        let was_active = std::mem::replace(&mut session.app.plugin_request_active, true);
+        if quiet {
+            session.app.command_line.begin_quiet_replay();
+        }
+        Self {
+            session,
+            was_active,
+            quiet,
+        }
+    }
+}
+
+impl<'a> std::ops::Deref for PluginRequest<'_, 'a> {
+    type Target = HostSession<'a>;
+    fn deref(&self) -> &Self::Target {
+        self.session
+    }
+}
+
+impl std::ops::DerefMut for PluginRequest<'_, '_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.session
+    }
+}
+
+impl Drop for PluginRequest<'_, '_> {
+    fn drop(&mut self) {
+        if self.quiet {
+            self.session.app.command_line.end_quiet_replay();
+        }
+        self.session.app.plugin_request_active = self.was_active;
+    }
+}
+
 impl<'a> HostSession<'a> {
     pub(crate) fn new(app: &'a mut OpenCADStudio, tab: usize) -> Self {
         Self {
@@ -167,18 +213,17 @@ impl<'a> HostSession<'a> {
     #[cfg(not(target_arch = "wasm32"))]
     fn publish_plugin_dirty_regions(&mut self) {
         let tab = &mut self.app.tabs[self.tab];
-        let (entities, records) = if tab.plugin_dirty_overflow {
-            (Vec::new(), Vec::new())
-        } else {
-            (
-                std::mem::take(&mut tab.plugin_dirty_entities),
-                std::mem::take(&mut tab.plugin_dirty_records),
-            )
-        };
-        tab.plugin_dirty_overflow = false;
-        let tab_id = self.tab_id();
-        let version = self.app.tabs[self.tab].scene.geometry_epoch;
-        v4_support::publish_document_changed_regions(tab_id, version, entities, records);
+        let (entities, records) = tab.take_plugin_dirty();
+        v4_support::publish_document_changed_regions(
+            tab.id,
+            tab.scene.geometry_epoch,
+            entities,
+            records,
+        );
+    }
+
+    fn geometry_epoch(&self) -> u64 {
+        self.app.tabs[self.tab].scene.geometry_epoch
     }
 
     /// Plugin-driven edits refresh the app-side selection caches exactly
@@ -379,13 +424,10 @@ impl<'a> HostSession<'a> {
     }
 
     pub fn add_entity(&mut self, mut entity: EntityType) -> Handle {
-        self.add_entity_inner(entity)
-    }
-
-    fn add_entity_inner(&mut self, mut entity: EntityType) -> Handle {
         if self.prepare_scripted_raster_image(&mut entity).is_err() {
             return Handle::NULL;
         }
+        let epoch = self.geometry_epoch();
         if self.normalize_scripted_entity(None, &mut entity).is_err() {
             return Handle::NULL;
         }
@@ -413,32 +455,29 @@ impl<'a> HostSession<'a> {
             {
                 return Handle::NULL;
             }
-            self.app.tabs[self.tab].mark_plugin_entity_dirty(handle);
+            self.app.tabs[self.tab].mark_plugin_entity_dirty(handle, epoch);
             self.publish_document_view();
             return handle;
         }
         let handle = self.app.tabs[self.tab].scene.add_entity(entity);
         self.app.sync_registered_layers(self.tab);
-        self.app.tabs[self.tab].mark_plugin_entity_dirty(handle);
+        self.app.tabs[self.tab].mark_plugin_entity_dirty(handle, epoch);
         self.publish_document_view();
         handle
     }
 
     pub fn add_entities(&mut self, mut entities: Vec<EntityType>) -> Vec<Handle> {
-        self.add_entities_inner(entities)
-    }
-
-    fn add_entities_inner(&mut self, mut entities: Vec<EntityType>) -> Vec<Handle> {
         for entity in &mut entities {
             let _ = self.prepare_scripted_raster_image(entity);
             // Creation input was validated by the caller; a degenerate MLine
             // simply keeps its supplied (unnormalized) vertices.
             let _ = self.normalize_scripted_entity(None, entity);
         }
+        let epoch = self.geometry_epoch();
         let handles = self.app.tabs[self.tab].scene.add_entities(entities);
         self.app.sync_registered_layers(self.tab);
         for handle in &handles {
-            self.app.tabs[self.tab].mark_plugin_entity_dirty(*handle);
+            self.app.tabs[self.tab].mark_plugin_entity_dirty(*handle, epoch);
         }
         self.publish_document_view();
         handles
@@ -450,12 +489,13 @@ impl<'a> HostSession<'a> {
 
     /// Replace the entity carrying `entity`'s handle in place, refreshing the
     /// scene's derived caches. Returns `false` when no entity has that handle.
-    pub fn update_entity(&mut self, mut entity: EntityType) -> bool {
+    pub fn update_entity(&mut self, entity: EntityType) -> bool {
         let result_handle = entity.common().handle;
         // API v13 dirty regions: mark BEFORE the write's boundary publish
         // (the inner publishes immediately) so the region set is complete
         // when the notification rides.
-        self.app.tabs[self.tab].mark_plugin_entity_dirty(result_handle);
+        let epoch = self.geometry_epoch();
+        self.app.tabs[self.tab].mark_plugin_entity_dirty(result_handle, epoch);
         self.update_entity_inner(entity)
     }
 
@@ -524,8 +564,9 @@ impl<'a> HostSession<'a> {
         // API v13 dirty regions: mark every entity BEFORE the batch below
         // (the inner publishes immediately) so the region set is complete
         // when the notification rides.
+        let epoch = self.geometry_epoch();
         for entity in &entities {
-            self.app.tabs[self.tab].mark_plugin_entity_dirty(entity.common().handle);
+            self.app.tabs[self.tab].mark_plugin_entity_dirty(entity.common().handle, epoch);
         }
         self.push_undo(label);
         // The plain entities ride ONE batched scene write: a single
@@ -626,7 +667,8 @@ impl<'a> HostSession<'a> {
     pub fn remove_entity(&mut self, handle: Handle) -> bool {
         // API v13 dirty regions: mark before the boundary publish; a removed
         // handle still rides the set (consumers detect its absence).
-        self.app.tabs[self.tab].mark_plugin_entity_dirty(handle);
+        let epoch = self.geometry_epoch();
+        self.app.tabs[self.tab].mark_plugin_entity_dirty(handle, epoch);
         self.remove_entity_inner(handle)
     }
 
@@ -726,11 +768,12 @@ impl<'a> HostSession<'a> {
         if let Some(ah) = app_handle {
             xd.raw_dwg_eed.retain(|(a, _)| *a != ah);
         }
-        self.bump_geometry();
-        self.set_dirty();
         // API v13 dirty regions: the touched (entity, app) pair rides the
         // boundary notification — marked BEFORE the publish that carries it.
-        self.app.tabs[self.tab].mark_plugin_record_dirty(handle, app);
+        let epoch = self.geometry_epoch();
+        self.app.tabs[self.tab].mark_plugin_record_dirty(handle, app, epoch);
+        self.bump_geometry();
+        self.set_dirty();
         self.publish_document_view();
         true
     }
@@ -1257,6 +1300,9 @@ impl<'a> HostSession<'a> {
 
     pub fn push_undo(&mut self, label: &str) {
         self.app.push_undo_snapshot(self.tab, label);
+        if let Some(pending) = self.app.tabs[self.tab].history.pending.as_mut() {
+            pending.plugin_owned = true;
+        }
     }
 
     pub fn set_dirty(&mut self) {
@@ -1602,6 +1648,17 @@ impl<'a> HostSession<'a> {
         &mut self,
         request: ocs_plugin_api::host::CommandRequest,
     ) -> Result<ocs_plugin_api::host::CommandOutcome, String> {
+        let quiet = matches!(
+            request,
+            ocs_plugin_api::host::CommandRequest::RunQuiet { .. }
+        );
+        PluginRequest::new(self, quiet).run_command_inner(request)
+    }
+
+    fn run_command_inner(
+        &mut self,
+        request: ocs_plugin_api::host::CommandRequest,
+    ) -> Result<ocs_plugin_api::host::CommandOutcome, String> {
         use crate::command::StepInput;
         use ocs_plugin_api::host::CommandRequest as R;
         if self.tab != self.app.active_tab {
@@ -1621,7 +1678,10 @@ impl<'a> HostSession<'a> {
         let modal_before = self.app.active_modal.is_some();
         self.app.command_line.unconsumed.clear();
         let task = match request {
-            R::Run { line } => {
+            // API v13: `RunQuiet` is `Run` with the command-line echo
+            // suppressed for the whole request (see `run_command`); errors
+            // still surface.
+            R::Run { line } | R::RunQuiet { line } => {
                 if line.trim().is_empty() {
                     return Err("a command line is empty".to_owned());
                 }
@@ -1631,27 +1691,6 @@ impl<'a> HostSession<'a> {
                 }
                 self.app.suppress_plugin_dispatch = true;
                 let task = self.app.run_command_line(&line);
-                self.app.suppress_plugin_dispatch = false;
-                task
-            }
-            R::RunQuiet { line } => {
-                // API v13: the same machinery as `Run`, with the
-                // command-line echo suppressed — machine replays (a re-bond's
-                // COINCIDENT/TCONSTRAINT/SETVAR sequence) leave none of their
-                // internal prompt noise ("COINCIDENT Select first point...",
-                // "SETVAR Bezeichnung der Variablen:"...) in the user-visible
-                // history. Errors still surface.
-                if line.trim().is_empty() {
-                    return Err("a command line is empty".to_owned());
-                }
-                self.script_command_allowed(&line)?;
-                if active {
-                    return Err("a command is already active; cancel it first".to_owned());
-                }
-                self.app.suppress_plugin_dispatch = true;
-                self.app.command_line.begin_quiet_replay();
-                let task = self.app.run_command_line(&line);
-                self.app.command_line.end_quiet_replay();
                 self.app.suppress_plugin_dispatch = false;
                 task
             }
@@ -3196,7 +3235,8 @@ impl<'a> HostSession<'a> {
         record.raw_dwg_version = None;
         self.set_dirty();
         // API v13 dirty regions — before the publish that carries them.
-        self.app.tabs[self.tab].mark_plugin_record_dirty(handle, "NOD".to_string());
+        let epoch = self.geometry_epoch();
+        self.app.tabs[self.tab].mark_plugin_record_dirty(handle, "NOD".to_string(), epoch);
         self.publish_document_view();
         if own_scope {
             self.app.finish_pending_history(self.tab);
@@ -3463,10 +3503,9 @@ impl<'a> HostSession<'a> {
         // The driver's success feedback ("Coincident constraint applied") is
         // interactive echo — the direct API path is quiet by contract
         // (errors still surface; the gate is the same one RunQuiet uses).
-        self.app.command_line.begin_quiet_replay();
-        let task = self.app.apply_cmd_result(result);
-        self.app.command_line.end_quiet_replay();
-        self.app.drive_headless_task(task)
+        let mut request = PluginRequest::new(self, true);
+        let task = request.app.apply_cmd_result(result);
+        request.app.drive_headless_task(task)
     }
 
     /// Read several XRecords in one call (API v13): per-entry results, `Err`
@@ -3539,7 +3578,8 @@ impl<'a> HostSession<'a> {
         let known = crate::plugin::grip_points::visibility(&self.app.disabled_plugins)(plugin_id);
         if !known {
             return Err(format!(
-                "plugin {plugin_id:?} is not a loaded, alive plugin; custom grips must be declared by their owner"
+                "plugin {plugin_id:?} is not a loaded, alive plugin; custom grips must be \
+                 declared by their owner"
             ));
         }
         // Anchors accept ANY live entity handle — never a type restriction —

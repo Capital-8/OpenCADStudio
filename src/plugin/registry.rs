@@ -52,13 +52,11 @@ pub fn plugin_command_names(disabled: &rustc_hash::FxHashSet<String>) -> Vec<Str
 /// Dispatch `cmd` to a loaded external plugin (skipping disabled ones).
 /// Returns true if one handled it.
 ///
-/// Deterministic boot (API v12 hardening): the live command table is
-/// consulted whenever a dispatch answers unhandled — if the typed verb is a
-/// KNOWN plugin command (name or `PREFIX_` match) the dispatch is retried a
-/// bounded number of times with the reason logged once, healing spawn/
-/// handshake races at boot; a command its plugin still refuses after the
-/// retries gets a visible headline instead of the silent "unknown command"
-/// the consumer's boot flake showed.
+/// Deterministic boot (API v12 hardening): while a plugin runner is still in
+/// its boot window, an unhandled dispatch of a command a loaded plugin lists
+/// by exact name is retried a bounded number of times, healing spawn/
+/// handshake races; a command still refused after the retries gets a visible
+/// headline instead of a silent "unknown command".
 pub(crate) fn try_dispatch(app: &mut OpenCADStudio, tab: usize, cmd: &str) -> bool {
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -105,12 +103,11 @@ fn dispatch_once<'a>(
     (result.handled, result)
 }
 
-/// The boot-race retry: when the live command table lists the typed verb as
-/// a plugin command but the dispatch went unanswered with no error and no
-/// dead plugin, retry a bounded number of times with the reason logged —
-/// healing the spawn/handshake race the consumer saw as a boot-dependent
-/// "unknown command" flake — and give a persistent refusal a visible
-/// headline so the failure is never silent again.
+/// The boot-race retry: when a runner has not attached its notification
+/// channel yet, a loaded plugin lists the typed verb by exact name, and the
+/// dispatch went unanswered with no error and no dead plugin, retry a
+/// bounded number of times — and give a persistent refusal a visible
+/// headline so the failure is never silent.
 #[cfg(not(target_arch = "wasm32"))]
 fn dispatch_with_boot_retry(
     app: &mut OpenCADStudio,
@@ -122,19 +119,25 @@ fn dispatch_with_boot_retry(
     if handled || !result.errors.is_empty() || !result.dead_plugins.is_empty() {
         return (handled, result);
     }
-    let known = crate::plugin::external::with_manager(|manager| {
-        manager.command_names(|id| disabled.contains(id))
+    let booting_plugin_command = crate::plugin::external::with_manager(|manager| {
+        let booting = manager
+            .alive_ids()
+            .iter()
+            .any(|id| manager.notification_channel_attached(id) == Some(false));
+        booting
+            && manager
+                .command_names(|id| disabled.contains(id))
+                .iter()
+                .any(|name| name == cmd)
     });
-    let is_plugin_command = known
-        .iter()
-        .any(|name| cmd == name || (name.ends_with('_') && cmd.starts_with(name)));
-    if !is_plugin_command {
+    if !booting_plugin_command {
         return (handled, result);
     }
     const RETRIES: usize = 2;
     const RETRY_PAUSE: std::time::Duration = std::time::Duration::from_millis(120);
     app.push_plugin_error(&format!(
-        "'{cmd}' is listed by a loaded plugin but was not handled yet; retrying ({RETRIES}x,          {RETRY_PAUSE:?}) — a runner may still be finishing its boot handshake"
+        "'{cmd}' is listed by a loaded plugin but was not handled yet; retrying \
+         ({RETRIES}x, {RETRY_PAUSE:?}) — a runner may still be finishing its boot handshake"
     ));
     for _ in 0..RETRIES {
         std::thread::sleep(RETRY_PAUSE);
@@ -153,7 +156,8 @@ fn dispatch_with_boot_retry(
     }
     if !handled {
         app.push_plugin_error(&format!(
-            "plugin command '{cmd}' is listed by its (alive) plugin but the dispatch still              went unhandled; the runner may be wedged — this headline replaces the silent              'unknown command'"
+            "plugin command '{cmd}' is listed by its (alive) plugin but the dispatch still \
+             went unhandled; the runner may be wedged"
         ));
     }
     (handled, result)

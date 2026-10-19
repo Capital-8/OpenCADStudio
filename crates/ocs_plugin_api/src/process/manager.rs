@@ -219,24 +219,19 @@ impl PluginManager {
         // A handshake-window ack may reach the reader thread before the spawn
         // thread has pinned the manifest id (the empty placeholder id): the
         // ack itself is what proves the channel is live, so attach by
-        // elimination — the unattached candidate(s) in the boot window. With
-        // a named id, exactness applies as always.
-        let mut flushed_total = 0usize;
+        // elimination — but only when exactly one plugin waits. With several
+        // booting at once the ack is ambiguous; the boot grace covers them.
         if plugin_id.is_empty() {
-            let candidates: Vec<usize> = self
+            let mut waiting = self
                 .plugins
                 .iter()
                 .enumerate()
                 .filter(|(_, p)| !p.attach.lock().unwrap_or_else(|e| e.into_inner()).attached)
-                .map(|(index, _)| index)
-                .collect();
-            if candidates.is_empty() {
-                return Some(0);
-            }
-            for index in candidates {
-                flushed_total += self.attach_by_index(index);
-            }
-            return Some(flushed_total);
+                .map(|(index, _)| index);
+            return match (waiting.next(), waiting.next()) {
+                (Some(index), None) => Some(self.attach_by_index(index)),
+                _ => Some(0),
+            };
         }
         let index = self
             .plugins

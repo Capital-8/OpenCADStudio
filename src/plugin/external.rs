@@ -387,7 +387,7 @@ fn parse_string_array(s: &str) -> Vec<String> {
 // ── Runtime loading (desktop only) ──────────────────────────────────────────
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) use loader::with_manager;
+pub(crate) use loader::{shutdown_plugins, with_manager};
 #[cfg(test)]
 pub(crate) use loader::PROCESS_TESTS_LOCK;
 
@@ -396,7 +396,6 @@ pub(crate) use loader::{load_at_startup, loaded_ids};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use loader::remove_plugin;
-pub(crate) use loader::{app_created, app_dropped};
 #[cfg(test)]
 pub(crate) use loader::{remove_plugin_for_tests, spawn_into_manager_for_tests};
 
@@ -518,7 +517,6 @@ mod loader {
         MANAGER.with(|m| m.borrow().as_ref().map(|mgr| mgr.ids()).unwrap_or_default())
     }
 
-    /// Run `f` with a reference to the loaded plugin manager.
     /// Run `f` with a reference to the loaded plugin manager. REENTRANT
     /// while holding an immutable borrow: the dispatch path re-enters
     /// (nested inline serving → boundary broadcasts); nested immutable
@@ -537,8 +535,9 @@ mod loader {
 
     /// Serializes the process-spawning tests (spawn/dispatch/notification-attach)
     /// against each other: they share the process-global ChannelReady attach
-    /// queue and runner bookkeeping; concurrent boots would.authenticate
+    /// queue and runner bookkeeping; concurrent boots would test
     /// interference, not determinism. Grab at the top of each such test.
+    #[cfg(test)]
     pub(crate) static PROCESS_TESTS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// Spawn one plugin and insert it into the process-wide manager — the
@@ -546,6 +545,7 @@ mod loader {
     /// SAME live machinery a real boot uses (broadcasts, dispatches, the API
     /// v13 notification attach). The caller owns cleanup: `remove_plugin(id)`
     /// after the assertions.
+    #[cfg(test)]
     pub(crate) fn spawn_into_manager_for_tests(
         cdylib_path: &std::path::Path,
         host: &mut dyn ocs_plugin_api::host::HostApi,
@@ -578,6 +578,7 @@ mod loader {
 
     /// Remove a loaded plugin from the process-wide manager (test cleanup
     /// after [`spawn_into_manager_for_tests`]); its process shuts down first.
+    #[cfg(test)]
     pub(crate) fn remove_plugin_for_tests(id: &str) -> bool {
         remove_plugin(id)
     }
@@ -586,27 +587,6 @@ mod loader {
     pub fn shutdown_plugins() {
         if let Some(mut manager) = MANAGER.with(|m| m.borrow_mut().take()) {
             manager.shutdown_all();
-        }
-    }
-
-    /// Live `OpenCADStudio` instances (API v13 global-manager era): the
-    /// manager is PROCESS-GLOBAL now (the V4 reader threads that surface
-    /// plugin notifications must reach the LOADED manager), so an app's Drop
-    /// can no longer assume it owns the only plugins — a test suite drops
-    /// thousands of apps. Plugin shutdown happens when the LAST app leaves.
-    static LIVE_APPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-
-    /// Register a live `OpenCADStudio` instance (call from every constructor).
-    pub(crate) fn app_created() {
-        LIVE_APPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    }
-
-    /// Unregister a dropped `OpenCADStudio` instance; the LAST one out shuts
-    /// the plugin runners down (the old every-Drop shutdown would have killed
-    /// the shared manager's plugins mid-test in any multi-app process).
-    pub(crate) fn app_dropped() {
-        if LIVE_APPS.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) == 1 {
-            shutdown_plugins();
         }
     }
 
@@ -1111,7 +1091,8 @@ acadrust_source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=0908
                 .unwrap_or_else(|e| panic!("fresh boot {boot}: dispatch failed: {e}"));
             assert!(
                 handled,
-                "fresh boot {boot}/{FRESH_BOOTS}: MP_HELLO must dispatch — a boot-dependent                  dispatch flake is a release blocker"
+                "fresh boot {boot}/{FRESH_BOOTS}: MP_HELLO must dispatch — a boot-dependent \
+                 dispatch flake is a release blocker"
             );
             process.shutdown();
         }

@@ -121,6 +121,9 @@ fn run_v4(
         // state-only callback. Panics are caught so a bad callback does not
         // tear down the connection.
         while let Some((command_id, notification)) = client.try_recv_notification() {
+            if notification_api_version(&notification) > api_version {
+                continue;
+            }
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 plugin.on_notification(command_id, notification)
             }));
@@ -154,6 +157,22 @@ fn run_v4(
         }
     }
     Ok(())
+}
+
+/// The API version that added a notification variant. A cdylib built against
+/// an older API has no such variant in its enum, so handing it one would be
+/// undefined behaviour; the runner drops it instead.
+fn notification_api_version(notification: &crate::host::HostNotification) -> u32 {
+    use crate::host::HostNotification as N;
+    match notification {
+        N::DocumentChangedRegions { .. } => 13,
+        N::DocumentOpened { .. } => 9,
+        N::CommandStateChanged { .. } | N::DrawingChanged { .. } => 7,
+        N::DocumentChangedV4 { .. }
+        | N::DocumentTabClosed { .. }
+        | N::SelectionChangedV4 { .. } => 4,
+        _ => 0,
+    }
 }
 
 fn handle_host_request(
@@ -497,7 +516,14 @@ fn handle_host_request_v4(
                 plugin.on_custom_grip_event(&mut proxy, event)
             }));
             match guarded {
-                Ok(resp) => Some(HostResponse::CustomGrip(resp)),
+                Ok(mut resp) => {
+                    // A v11 cdylib's response has no `live_entities` slot:
+                    // what sits there is not a Vec, so never read or drop it.
+                    if api_version < 12 {
+                        std::mem::forget(std::mem::take(&mut resp.live_entities));
+                    }
+                    Some(HostResponse::CustomGrip(resp))
+                }
                 Err(_) => Some(HostResponse::Error(
                     "plugin on_custom_grip_event panicked".to_string(),
                 )),

@@ -202,11 +202,16 @@ impl OpenCADStudio {
         // byte-identical. While the drag's SETTLE is streaming (the plugin
         // write window), the watchdog owns the window instead: a cancel
         // would race the plugin's authoritative writes.
-        let had_plugin_grip = self.tabs[i].active_plugin_grip.is_some();
-        if had_plugin_grip && !self.is_plugin_grip_settling() {
-            let _ = self.cancel_plugin_grip_drag();
-        }
-        let had_plugin_grip = had_plugin_grip && !self.is_plugin_grip_settling();
+        #[cfg(not(target_arch = "wasm32"))]
+        let had_plugin_grip = {
+            let had_plugin_grip = self.tabs[i].active_plugin_grip.is_some();
+            if had_plugin_grip && !self.is_plugin_grip_settling() {
+                let _ = self.cancel_plugin_grip_drag();
+            }
+            had_plugin_grip && !self.is_plugin_grip_settling()
+        };
+        #[cfg(target_arch = "wasm32")]
+        let had_plugin_grip = false;
         // Grip-menu toggles live only as long as the gesture.
         self.tabs[i].grip_copy = false;
         self.tabs[i].grip_base_pending = false;

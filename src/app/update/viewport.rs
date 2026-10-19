@@ -1110,6 +1110,7 @@ impl OpenCADStudio {
         // same pipeline — and, per the always-visible policy, they hover
         // without any selection. No hover while any drag (built-in or
         // custom) or command runs.
+        #[cfg(not(target_arch = "wasm32"))]
         if self.tabs[i].active_plugin_grip.is_some()
             || self.tabs[i].active_grip.is_some()
             || self.tabs[i].active_cmd.is_some()
@@ -1748,6 +1749,7 @@ impl OpenCADStudio {
         // point is computed like a built-in drag's (drafting plane through
         // the grip's own elevation), never snapped (plugin semantics), and
         // the declared axis is a HARD constraint.
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(active) = self.tabs[i].active_plugin_grip.clone() {
             let (vw, vh) = vp_size;
             let bounds = iced::Rectangle {
@@ -4399,6 +4401,7 @@ impl OpenCADStudio {
         // before any wire pick, so a custom grip visually coincident with its
         // own reference-only marker — or any click-through geometry — stays
         // fully hittable and wins the hit.
+        #[cfg(not(target_arch = "wasm32"))]
         if self.tabs[i].active_cmd.is_none() && self.tabs[i].active_grip.is_none() {
             if let Some(candidate) = self.hit_plugin_grip(i, p) {
                 self.grip_hover = None;
@@ -4659,6 +4662,7 @@ impl OpenCADStudio {
         // nothing. A bare click (no move delivered) still settles: the
         // plugin decides what a no-move settle means (typically nothing,
         // zero writes, zero undo steps).
+        #[cfg(not(target_arch = "wasm32"))]
         if self.tabs[i].active_plugin_grip.is_some() {
             {
                 let mut sel = self.tabs[i].scene.selection.borrow_mut();

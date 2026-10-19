@@ -1,6 +1,6 @@
-use super::*;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::io::plot_style::PlotStyleTableExt as _;
+use super::*;
 use crate::scene::model::object::PropValue;
 
 fn control_color(value: &Value) -> Result<codec::types::Color, Value> {
@@ -849,9 +849,8 @@ impl OpenCADStudio {
         json!({"ok":true,"sections":self.tabs[self.active_tab].properties.sections.iter().map(|s|json!({"title":s.title,"properties":s.props.iter().map(property_json).collect::<Vec<_>>()})).collect::<Vec<_>>()})
     }
     /// The grips of the current selection, as the viewport shows them.
-    pub(super) fn control_grips(&mut self) -> Value {
-        let i = self.active_tab;
-        let tab = &self.tabs[i];
+    pub(super) fn control_grips(&self) -> Value {
+        let tab = &self.tabs[self.active_tab];
         let grips = tab
             .selected_grip_handles
             .iter()
@@ -871,7 +870,11 @@ impl OpenCADStudio {
         // with its owning plugin. `moves_entity` is false by construction —
         // the host never moves anything for a custom grip; any edit is the
         // plugin's own, at settle.
+        #[cfg(target_arch = "wasm32")]
+        let plugin_grips: Vec<Value> = Vec::new();
+        #[cfg(not(target_arch = "wasm32"))]
         let visible = crate::plugin::grip_points::visibility(&self.disabled_plugins);
+        #[cfg(not(target_arch = "wasm32"))]
         let plugin_grips = tab
             .plugin_grips
             .query_all(&visible)
@@ -901,6 +904,7 @@ impl OpenCADStudio {
         // routes to the plugin through the same live machinery the viewport
         // uses (begin → move → settle; preview frames flow; the settle is
         // the plugin's own one-undo-step write).
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(plugin) = req["plugin"].as_str() {
             let grip_id = req["grip_id"]
                 .as_u64()
@@ -926,6 +930,7 @@ impl OpenCADStudio {
     /// answers). The op waits, bounded by the settle floor, for the final
     /// result: the settle is the plugin's own one-undo-step write window,
     /// and cancel paths are identical to interactive drags.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn control_plugin_grip_drag(
         &mut self,
         i: usize,
@@ -1635,10 +1640,7 @@ impl OpenCADStudio {
             // `select_objects`.
             "block_def_dialog" => {
                 if self.block_definition.is_none() {
-                    return Err(failure(
-                        "no_dialog",
-                        "The Block Definition dialog is not open",
-                    ));
+                    return Err(failure("no_dialog", "The Block Definition dialog is not open"));
                 }
                 let value = string(req, "value")?;
                 let (key, v) = value.split_once('=').unwrap_or((value, ""));

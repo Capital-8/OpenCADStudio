@@ -467,11 +467,13 @@ impl CommandLine {
     /// suppressed until the matching [`Self::end_quiet_replay`]. Depth-
     /// counted so nested quiet replays unwind correctly; errors always
     /// surface through `push_error`.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) fn begin_quiet_replay(&mut self) {
         self.quiet_replay = self.quiet_replay.saturating_add(1);
     }
 
     /// Leave one quiet machine replay scope (API v13).
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) fn end_quiet_replay(&mut self) {
         self.quiet_replay = self.quiet_replay.saturating_sub(1);
     }

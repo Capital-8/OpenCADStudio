@@ -523,6 +523,18 @@ impl OpenCADStudio {
                 ));
                 continue;
             };
+            // Live geometry moves an existing editable entity; it never swaps
+            // in another handle or kind, nor edits a locked layer.
+            if live_entity.common().handle != *handle
+                || std::mem::discriminant(live_entity) != std::mem::discriminant(current)
+                || self.tabs[tab].scene.is_layer_locked(*handle)
+            {
+                crate::plugin::push_guard_error(format!(
+                    "custom-grip live geometry for {handle:?} refused: it must keep the \
+                     entity's handle and type on an unlocked layer"
+                ));
+                continue;
+            }
             if !self
                 .plugin_grip_live_originals
                 .iter()

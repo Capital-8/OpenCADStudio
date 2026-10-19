@@ -110,8 +110,9 @@ pub(in crate::app) use file::background_task;
 #[cfg(not(target_arch = "wasm32"))]
 pub(in crate::app) use file::native_paths_match;
 mod page_setup_import;
+#[cfg(not(target_arch = "wasm32"))]
 mod plugin_grips;
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod plugin_grips_tests;
 mod qselect;
 mod style;
@@ -372,27 +373,18 @@ impl OpenCADStudio {
         // `DocumentChanged` carries the settled geometry epoch to every
         // loaded native plugin through `BuiltinPlugin::on_notification`.
         crate::plugin::v4_support::publish_document_changed(tab.scene.geometry_epoch);
-        // API v13 dirty regions: the boundary's O(changed) payload rides next
-        // to the change event; empty sets mean "walk everything".
-        let (entities, records) = {
-            let tab = &mut self.tabs[self.active_tab];
-            if tab.plugin_dirty_overflow {
-                (Vec::new(), Vec::new())
-            } else {
-                (
-                    std::mem::take(&mut tab.plugin_dirty_entities),
-                    std::mem::take(&mut tab.plugin_dirty_records),
-                )
-            }
-        };
-        let tab = &self.tabs[self.active_tab];
+        // API v13 dirty regions: plugin writes publish their sets at their own
+        // boundary, so an epoch change reaching this one came from elsewhere
+        // and the sets say "walk everything" (empty).
+        let tab = &mut self.tabs[self.active_tab];
+        tab.plugin_dirty_overflow = true;
+        let (entities, records) = tab.take_plugin_dirty();
         crate::plugin::v4_support::publish_document_changed_regions(
             tab.id,
             tab.scene.geometry_epoch,
             entities,
             records,
         );
-        self.tabs[self.active_tab].plugin_dirty_overflow = false;
     }
 
     /// Announce that a whole document became resident in the active tab —
@@ -2715,6 +2707,7 @@ impl OpenCADStudio {
             // API v11: keep the active custom-grip drag's coalesced move
             // channel flowing without ever blocking the app loop on plugin
             // latency.
+            #[cfg(not(target_arch = "wasm32"))]
             Message::PluginGripPump => self.pump_plugin_grips(),
 
             Message::TabClose(tab_id) => {

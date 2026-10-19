@@ -4,6 +4,7 @@
 
 pub mod entity_labels;
 pub mod external;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod grip_points;
 pub mod host;
 pub mod marketplace;

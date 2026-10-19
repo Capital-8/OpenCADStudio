@@ -176,17 +176,27 @@ pub(super) struct DocumentTab {
     pub(super) selected_grip_handles: Vec<Handle>,
     /// Plugin-declared custom grip points for this tab (API v11): session
     /// display state only — never persisted, never host-interpreted.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(super) plugin_grips: crate::plugin::grip_points::PluginGripStore,
     /// DIRTY REGION accumulation (API v13): the identity set of what plugin
     /// and built-in paths changed since the previous boundary notification —
     /// `DocumentChangedRegions` carries it so boundary work is O(changed),
     /// not O(store). Cleared at each boundary; over the cap the sets
     /// degrade to empty (an honest full-walk signal).
-    pub(super) plugin_dirty_entities: Vec<codec::Handle>,
-    pub(super) plugin_dirty_records: Vec<(codec::Handle, String)>,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(super) plugin_dirty_entities: rustc_hash::FxHashSet<codec::Handle>,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(super) plugin_dirty_records: rustc_hash::FxHashSet<(codec::Handle, String)>,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(super) plugin_dirty_overflow: bool,
+    /// Geometry epoch the last region set was published at; a plugin write
+    /// starting from another epoch means something else changed the drawing
+    /// in between, so the sets degrade to empty.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(super) plugin_dirty_epoch: u64,
     /// The active custom-grip drag, if any (at most one; rides the same
     /// drag/active-command lifecycle as built-in grip drags).
+    #[cfg(not(target_arch = "wasm32"))]
     pub(super) active_plugin_grip: Option<crate::plugin::grip_points::ActivePluginGrip>,
     /// Shift-selected grips, keyed by entity and object-local grip id.
     pub(super) hot_grips: rustc_hash::FxHashSet<(Handle, usize)>,
@@ -338,45 +348,6 @@ impl DocumentTab {
     /// constraint should attach to right now — whatever's actually being
     /// edited: the open block definition if a BEDIT session is active, model
     /// space otherwise.
-    /// Record one entity as changed since the last boundary (API v13 dirty
-    /// regions; deduped; over the cap the sets degrade to empty).
-    pub(super) fn mark_plugin_entity_dirty(&mut self, handle: codec::Handle) {
-        const DIRTY_CAP: usize = 10_000;
-        if self.plugin_dirty_overflow {
-            return;
-        }
-        if self.plugin_dirty_entities.len() >= DIRTY_CAP {
-            self.plugin_dirty_overflow = true;
-            self.plugin_dirty_entities.clear();
-            self.plugin_dirty_records.clear();
-            return;
-        }
-        if !self.plugin_dirty_entities.contains(&handle) {
-            self.plugin_dirty_entities.push(handle);
-        }
-    }
-
-    /// Record one (entity, app) XDATA/XRecord touch as changed (API v13).
-    pub(super) fn mark_plugin_record_dirty(&mut self, handle: codec::Handle, app: String) {
-        const DIRTY_CAP: usize = 10_000;
-        if self.plugin_dirty_overflow {
-            return;
-        }
-        if self.plugin_dirty_records.len() >= DIRTY_CAP {
-            self.plugin_dirty_overflow = true;
-            self.plugin_dirty_entities.clear();
-            self.plugin_dirty_records.clear();
-            return;
-        }
-        if !self
-            .plugin_dirty_records
-            .iter()
-            .any(|(h, a)| *h == handle && *a == app)
-        {
-            self.plugin_dirty_records.push((handle, app));
-        }
-    }
-
     pub(super) fn current_parametric_scope(
         &self,
     ) -> crate::scene::parametric_constraints::ParametricScope {
@@ -385,6 +356,61 @@ impl DocumentTab {
                 crate::scene::parametric_constraints::ParametricScope::Block(session.br_handle)
             }
             None => crate::scene::parametric_constraints::ParametricScope::ModelSpace,
+        }
+    }
+
+    /// Record one entity a plugin write touched (API v13 dirty regions).
+    /// `epoch_before` is the geometry epoch before that write.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(super) fn mark_plugin_entity_dirty(&mut self, handle: codec::Handle, epoch_before: u64) {
+        if !self.plugin_dirty_degraded(epoch_before) {
+            self.plugin_dirty_entities.insert(handle);
+        }
+    }
+
+    /// Record one (entity, app) XDATA/XRecord touch (API v13 dirty regions).
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(super) fn mark_plugin_record_dirty(
+        &mut self,
+        handle: codec::Handle,
+        app: String,
+        epoch_before: u64,
+    ) {
+        if !self.plugin_dirty_degraded(epoch_before) {
+            self.plugin_dirty_records.insert((handle, app));
+        }
+    }
+
+    /// Degrade the sets to "walk everything" when they can no longer be
+    /// complete: over the cap, or when the drawing changed outside plugin
+    /// writes since the last publish.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    fn plugin_dirty_degraded(&mut self, epoch_before: u64) -> bool {
+        const DIRTY_CAP: usize = 10_000;
+        if epoch_before != self.plugin_dirty_epoch
+            || self.plugin_dirty_entities.len() + self.plugin_dirty_records.len() >= DIRTY_CAP
+        {
+            self.plugin_dirty_overflow = true;
+            self.plugin_dirty_entities.clear();
+            self.plugin_dirty_records.clear();
+        }
+        self.plugin_dirty_overflow
+    }
+
+    /// Take the region sets for a boundary publish at the current epoch;
+    /// empty sets ("walk everything") when degraded.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(super) fn take_plugin_dirty(
+        &mut self,
+    ) -> (Vec<codec::Handle>, Vec<(codec::Handle, String)>) {
+        let entities = std::mem::take(&mut self.plugin_dirty_entities);
+        let records = std::mem::take(&mut self.plugin_dirty_records);
+        let degraded = std::mem::replace(&mut self.plugin_dirty_overflow, false);
+        self.plugin_dirty_epoch = self.scene.geometry_epoch;
+        if degraded {
+            (Vec::new(), Vec::new())
+        } else {
+            (entities.into_iter().collect(), records.into_iter().collect())
         }
     }
 
@@ -708,10 +734,13 @@ impl DocumentTab {
             active_grip: None,
             selected_grips: vec![],
             selected_grip_handles: vec![],
+            #[cfg(not(target_arch = "wasm32"))]
             plugin_grips: Default::default(),
-            plugin_dirty_entities: Vec::new(),
-            plugin_dirty_records: Vec::new(),
+            plugin_dirty_entities: Default::default(),
+            plugin_dirty_records: Default::default(),
             plugin_dirty_overflow: false,
+            plugin_dirty_epoch: 0,
+            #[cfg(not(target_arch = "wasm32"))]
             active_plugin_grip: None,
             hot_grips: rustc_hash::FxHashSet::default(),
             grip_copy: false,
@@ -1037,6 +1066,14 @@ pub(super) struct PendingHistorySnapshot {
     /// set's current state as the after-image and keeping entries whose value
     /// actually flipped.
     pub(super) reference_designations_before: Vec<(Handle, bool)>,
+    /// Parametric constraint sets when the scope opened; the scope closes
+    /// with a before/after entry for every set that changed, so undo also
+    /// removes a constraint a plugin created inside its scope.
+    pub(super) parametric_constraints_before:
+        Vec<crate::scene::parametric_constraints::ParametricConstraintSet>,
+    /// Opened by a plugin's `push_undo`: while a plugin request runs, the
+    /// commands it drives join this scope instead of closing it.
+    pub(super) plugin_owned: bool,
     /// Kept as an undo step even when nothing changed.
     pub(super) keep_empty: bool,
 }
