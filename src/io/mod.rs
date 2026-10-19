@@ -34,6 +34,7 @@ pub mod step_import;
 pub mod stl;
 pub mod svg_export;
 pub mod tds_import;
+pub mod tds_legacy;
 pub mod thumbnail;
 pub mod update_check;
 pub mod visual_styles;

@@ -21,6 +21,10 @@ pub struct TdsImportRequest {
     /// Meshes keep only the vertices their faces use (the import splits or
     /// asks), else the file's vertex list.
     pub compact: bool,
+    /// The meshes with several materials were asked about one by one: the
+    /// materials then stay out of the objects and are linked through their
+    /// legacy render records only.
+    pub asked: bool,
 }
 
 pub struct TdsMaterialCommand {
