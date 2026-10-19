@@ -305,6 +305,10 @@ impl MeshMaterial {
     }
 
     pub fn apply_to(&self, set: &mut super::mesh_model::MeshLodSet) {
+        // The material colours the faces; the edges keep the object's colour.
+        if set.edge_color.is_none() {
+            set.edge_color = set.display_color();
+        }
         if set.instance_source.is_some() {
             set.instance_color = Some(self.diffuse);
         } else {
