@@ -438,31 +438,31 @@ pub fn move_part(
     Ok(true)
 }
 
-/// Remove an authoring parameter together with the graph expressions that it
-/// owns. Action bindings are reciprocal graph edges, so they are detached from
-/// both ends before the parameter nodes are removed.
+/// Remove an authoring parameter or action together with the graph
+/// expressions that it owns. Action bindings are reciprocal graph edges, so
+/// they are detached from both ends; actions left without any parameter can no
+/// longer drive anything and are removed with it.
 pub fn remove_parameter(
     doc: &mut CadDocument,
     definition: Handle,
     handle: Handle,
 ) -> Result<(), &'static str> {
-    let item = items(doc, definition)
-        .into_iter()
-        .find(|item| item.handle == handle)
-        .ok_or("The selected authoring parameter is no longer available.")?;
+    if !items(doc, definition).iter().any(|item| item.handle == handle) {
+        return Err("The selected authoring parameter is no longer available.");
+    }
     if handle == definition && crate::scene::block_basepoint::parameter(doc, definition).is_none() {
         return Err("The block basepoint cannot be deleted.");
     }
-    if matches!(
-        doc.objects.get(&handle),
-        Some(ObjectType::DynamicBlock(object))
-            if matches!(object.data, DynamicBlockData::MoveAction(_) | DynamicBlockData::ArrayAction(_) | DynamicBlockData::StretchAction(_) | DynamicBlockData::FlipAction(_) | DynamicBlockData::ScaleAction(_) | DynamicBlockData::RotateAction(_))
-    ) || matches!(
-        doc.objects.get(&handle),
-        Some(ObjectType::BlockVisibilityParameter(_))
-    ) {
-        return Err("Delete actions and visibility parameters from their dedicated editor.");
-    }
+    let actions = crate::scene::block_actions::actions(doc, definition)
+        .into_iter()
+        .map(|(action, ..)| action)
+        .collect::<Vec<_>>();
+    let is_action = actions.contains(&handle);
+    // Objects hidden by a visibility state would stay hidden with no state left.
+    let unhide = match doc.objects.get(&handle) {
+        Some(ObjectType::BlockVisibilityParameter(p)) => p.all_blocks.clone(),
+        _ => vec![],
+    };
     let graph_handle = graph(doc, definition)?.ok_or("The authoring graph is unavailable.")?;
     let ObjectType::DynamicBlock(graph_object) = doc.objects.get(&graph_handle).unwrap() else {
         unreachable!()
@@ -486,7 +486,11 @@ pub fn remove_parameter(
     // to two component edges (parameter -> grip location components). Classify
     // endpoint objects as well as edge direction so unrelated graph edges
     // cannot cause another parameter to be erased.
-    for edge in graph.edges.iter().filter(|edge| edge.next_id == 0) {
+    for edge in graph
+        .edges
+        .iter()
+        .filter(|edge| !is_action && edge.next_id == 0)
+    {
         if edge.destination_node == parameter_node
             && graph.nodes.iter().find(|node| node.id == edge.source_node).is_some_and(|node| {
                 matches!(doc.objects.get(&node.expression), Some(ObjectType::DynamicBlock(object)) if matches!(object.data, DynamicBlockData::LinearGrip(_) | DynamicBlockData::PolarGrip(_) | DynamicBlockData::XYGrip(_) | DynamicBlockData::RotationGrip(_) | DynamicBlockData::AlignmentGrip(_) | DynamicBlockData::FlipGrip(_) | DynamicBlockData::LookupGrip(_) | DynamicBlockData::VisibilityGrip(_)))
@@ -512,7 +516,7 @@ pub fn remove_parameter(
         .map(|edge| edge.id)
         .collect::<std::collections::BTreeSet<_>>();
     // Action relationships use reciprocal next_id=4 edges. Remove their
-    // inverse too, while leaving the action's graph node and object intact.
+    // inverse too; the action itself goes only once nothing else drives it.
     let selected_edges = edge_ids.iter().copied().collect::<Vec<_>>();
     for selected in selected_edges {
         let Some(edge) = graph.edges.iter().find(|edge| edge.id == selected) else {
@@ -534,8 +538,26 @@ pub fn remove_parameter(
             edge_ids.insert(inverse.id);
         }
     }
+    let bound = graph
+        .edges
+        .iter()
+        .filter(|edge| edge.next_id == 4 && edge.source_node == parameter_node)
+        .map(|edge| edge.destination_node)
+        .collect::<Vec<_>>();
     for edge in edge_ids {
         crate::scene::block_authoring::graph::remove(&mut graph, edge);
+    }
+    if !is_action {
+        owned_nodes.extend(bound.into_iter().filter(|node| {
+            graph
+                .nodes
+                .iter()
+                .any(|n| n.id == *node && actions.contains(&n.expression))
+                && !graph
+                    .edges
+                    .iter()
+                    .any(|edge| edge.source_node == *node || edge.destination_node == *node)
+        }));
     }
     let removed_handles = owned_nodes
         .iter()
@@ -564,7 +586,11 @@ pub fn remove_parameter(
         }
     }
     doc.block_visibility_params.remove(&handle);
-    let _ = item;
+    for member in unhide {
+        if let Some(entity) = doc.get_entity_mut(member) {
+            entity.common_mut().invisible = false;
+        }
+    }
     Ok(())
 }
 

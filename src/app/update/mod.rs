@@ -6803,6 +6803,11 @@ impl OpenCADStudio {
                     ) {
                         Ok(()) => {
                             self.push_undo_snapshot(i, "Delete block parameter");
+                            // Deleting a visibility parameter unhides objects.
+                            self.tabs[i]
+                                .scene
+                                .document
+                                .record_all_entities_for_transaction();
                             self.tabs[i].scene.document = staged;
                             self.tabs[i].selected_authoring = None;
                             self.tabs[i].scene.bump_geometry();

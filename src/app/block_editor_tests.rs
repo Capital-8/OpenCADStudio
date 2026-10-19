@@ -1359,6 +1359,36 @@ fn block_parameter_leader_and_crossing_box_select_then_delete() {
 }
 
 #[test]
+fn erase_removes_selected_action_and_parameter_takes_its_actions() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 6,0 3,2");
+    let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let p = actions::parameters(&app.tabs[i].scene.document, def, Kind::Move)[0].handle;
+    let targets = members(&app);
+    let mut action = || {
+        let doc = &mut app.tabs[i].scene.document;
+        actions::create(doc, def, Kind::Move, p, &targets, glam::DVec3::ZERO).unwrap()
+    };
+    let (first, second) = (action(), action());
+    let live = |app: &OpenCADStudio| {
+        let doc = &app.tabs[app.active_tab].scene.document;
+        actions::actions(doc, def).iter().map(|a| a.0).collect::<Vec<_>>()
+    };
+
+    app.tabs[i].selected_authoring = Some(first);
+    let _ = app.dispatch_command("ERASE");
+    assert_eq!(live(&app), vec![second]);
+
+    app.tabs[i].selected_authoring = Some(p);
+    let _ = app.update(Message::DeleteSelected);
+    assert!(live(&app).is_empty());
+    assert!(app.tabs[i].scene.document.objects.get(&second).is_none());
+}
+
+#[test]
 fn authoring_parameter_grip_drag_shows_preview_before_commit() {
     use crate::scene::block_authoring::edit::{self, Part};
     use crate::scene::block_actions::{self as actions, Kind};
