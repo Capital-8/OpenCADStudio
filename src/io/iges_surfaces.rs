@@ -108,7 +108,8 @@ pub fn ruled(first: &NurbsCurve3, second: &NurbsCurve3) -> Option<NurbsSurface3>
 /// A parametric spline surface (114) of `m × n` bicubic patches between the
 /// break points `tu` and `tv`, each patch's coefficients `[x, y, z][16]`
 /// (power `i` of u at index `i + 4·j`, `j` the power of v, measured from
-/// the patch's first break point) — as a spline of Bézier patches.
+/// the patch's first break point) — as a spline of Bézier patches. Where
+/// patches meet, the first one's edge stands.
 pub fn patches(tu: &[f64], tv: &[f64], coefficients: &[[[f64; 16]; 3]]) -> Option<NurbsSurface3> {
     let (m, n) = (tu.len().checked_sub(1)?, tv.len().checked_sub(1)?);
     if m == 0 || n == 0 || coefficients.len() < m * n {
@@ -128,6 +129,9 @@ pub fn patches(tu: &[f64], tv: &[f64], coefficients: &[[[f64; 16]; 3]]) -> Optio
             let (hu, hv) = (tu[i + 1] - tu[i], tv[j + 1] - tv[j]);
             for (k, row) in A.iter().enumerate() {
                 for (l, col) in A.iter().enumerate() {
+                    if (k == 0 && i > 0) || (l == 0 && j > 0) {
+                        continue;
+                    }
                     let mut p = [0.0; 3];
                     for (axis, coeffs) in c.iter().enumerate() {
                         for (a, ra) in row.iter().enumerate() {

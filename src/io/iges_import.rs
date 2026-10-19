@@ -280,7 +280,18 @@ impl Doc {
                 let mut out = Vec::new();
                 let mut at: usize = 5;
                 for _ in 0..(v(4) as usize).min(entity.params.len()) {
-                    let mut pieces = self.pieces(v(at))?;
+                    // A curve given only in the surface's parameters is
+                    // carried onto it.
+                    let mut pieces = if v(at) != 0.0 {
+                        self.pieces(v(at))?
+                    } else {
+                        let count = (v(at + 2) as usize).min(entity.params.len());
+                        let mut pieces = Vec::new();
+                        for k in 0..count {
+                            pieces.extend(self.parameter_pieces(v(at + 3 + k), v(3))?);
+                        }
+                        pieces
+                    };
                     if v(at + 1) == 2.0 {
                         pieces.reverse();
                         for piece in &mut pieces {
@@ -345,6 +356,39 @@ impl Doc {
                 _ => None,
             },
         }
+    }
+
+    /// The sphere or torus a circular arc (100) sweeps round an axis lying
+    /// in the arc's plane; `None` when the axis leaves that plane.
+    fn arc_revolution(&self, arc: f64, origin: [f64; 3], axis: [f64; 3]) -> Option<Surface> {
+        use kernel::space::Vec3;
+        let entity = self.get(arc).filter(|e| e.kind == 100)?;
+        let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+        let place = self.place(entity);
+        let centre = Vec3::from(place([v(2), v(3), v(1)]));
+        let normal = (Vec3::from(place([v(2), v(3), v(1) + 1.0])) - centre).normalize()?;
+        let k = Vec3::from(axis).normalize()?;
+        let o = Vec3::from(origin);
+        let tolerance = self.resolution;
+        // The axis must lie in the arc's plane.
+        if k.dot(normal).abs() > 1e-9 || (o - centre).dot(normal).abs() > tolerance {
+            return None;
+        }
+        let radius = (Vec3::from(place([v(4), v(5), v(1)])) - centre).length();
+        let foot = o + k * (centre - o).dot(k);
+        let out = centre - foot;
+        Some(if out.length() <= tolerance {
+            Surface::Sphere(kernel::brep::Sphere {
+                frame: Plane::orthonormal(centre.to_array(), super::iges_surfaces::any_perpendicular(k).to_array(), k.to_array())?,
+                radius,
+            })
+        } else {
+            Surface::Torus(kernel::brep::Torus {
+                frame: Plane::orthonormal(foot.to_array(), out.normalize()?.to_array(), k.to_array())?,
+                major_radius: out.length(),
+                minor_radius: radius,
+            })
+        })
     }
 
     /// The frame of an analytic surface (190–198): its location, its axis
@@ -415,9 +459,15 @@ impl Doc {
                 let dir = [e[0] - o[0], e[1] - o[1], e[2] - o[2]];
                 let generatrix = self.nurbs_curve(v(2))?;
                 let net = build::revolve(&generatrix, o, dir, v(3), v(4))?;
-                // A straight generatrix sweeps a cylinder or a cone.
+                // A straight generatrix sweeps a cylinder or a cone, a circular
+                // arc in a plane through the axis a sphere or a torus (part
+                // of a turn too).
                 match self.get(v(2)).map(|g| g.kind) {
                     Some(110) => Some((analytic_revolution(&net, o, dir, &generatrix)?, Some(net))),
+                    Some(100) => match self.arc_revolution(v(2), o, dir) {
+                        Some(surface) => Some((surface, Some(net))),
+                        None => spline(net),
+                    },
                     _ => spline(net),
                 }
             }
@@ -437,7 +487,9 @@ impl Doc {
             }
             114 => {
                 let (m, n) = (v(3) as usize, v(4) as usize);
-                if m == 0 || n == 0 || 7 + m + n + 48 * m * n > entity.params.len() {
+                // Patch (i, j) is the coefficient block i·(n+1) + j: the file
+                // keeps a block for each break point, the last ones unused.
+                if m == 0 || n == 0 || 7 + m + n + 48 * ((m - 1) * (n + 1) + n) > entity.params.len() {
                     return None;
                 }
                 let tu: Vec<f64> = (5..=5 + m).map(v).collect();
@@ -445,6 +497,7 @@ impl Doc {
                 let at = 7 + m + n;
                 let place = self.place(entity);
                 let coefficients: Vec<[[f64; 16]; 3]> = (0..m * n)
+                    .map(|k| (k / n) * (n + 1) + k % n)
                     .map(|k| [0, 1, 2].map(|axis| std::array::from_fn(|c| v(at + 48 * k + 16 * axis + c))))
                     .collect();
                 let raw = build::patches(&tu, &tv, &coefficients)?;
@@ -455,13 +508,41 @@ impl Doc {
                 spline(NurbsSurface3::new(du, dv, rows, uk.to_vec(), vk.to_vec(), None)?)
             }
             140 => {
-                // An offset of a plane; other offsets are not read.
-                let (_, Some(base)) = self.surface_spec(v(5))? else { return None };
-                let Some((Surface::Plane(plane), agrees)) = kernel::brep::analytic_surface(&base) else {
-                    return None;
+                // The base pushed along its own normal (u × v): a plane
+                // moves, a cylinder, sphere or torus keeps its axis and
+                // changes radius; any other base becomes a spline through
+                // offset points.
+                let (surface, Some(base)) = self.surface_spec(v(5))? else { return None };
+                let distance = v(4) * self.scale;
+                if let Some((Surface::Plane(plane), agrees)) = kernel::brep::analytic_surface(&base) {
+                    let n = kernel::space::Vec3::from(plane.normal()?) * (if agrees { 1.0 } else { -1.0 });
+                    return spline(build::translated(&base, (n * distance).to_array())?);
+                }
+                let net = kernel::acis::offset_surface(&base, distance)?;
+                // A point of the offset, to read the new radius off.
+                let ((u0, u1), (v0, v1)) = net.domain();
+                let p = kernel::space::Vec3::from(net.point_at_knot(0.5 * (u0 + u1), 0.5 * (v0 + v1)));
+                let around = |frame: &Plane| {
+                    let (o, k) = (kernel::space::Vec3::from(frame.origin), kernel::space::Vec3::from(frame.normal()?));
+                    let q = p - o;
+                    Some((q - k * q.dot(k)).length())
                 };
-                let n = kernel::space::Vec3::from(plane.normal()?) * (if agrees { 1.0 } else { -1.0 });
-                spline(build::translated(&base, (n * (v(4) * self.scale)).to_array())?)
+                let offset = match surface {
+                    Surface::Cylinder(c) => Surface::Cylinder(kernel::brep::Cylinder { radius: around(&c.base)?, ..c }),
+                    Surface::Sphere(s) => Surface::Sphere(kernel::brep::Sphere {
+                        radius: (p - kernel::space::Vec3::from(s.frame.origin)).length(),
+                        ..s
+                    }),
+                    Surface::Torus(t) => {
+                        let (o, k) = (kernel::space::Vec3::from(t.frame.origin), kernel::space::Vec3::from(t.frame.normal()?));
+                        let q = p - o;
+                        let radial = q - k * q.dot(k);
+                        let tube = o + radial.normalize()? * t.major_radius;
+                        Surface::Torus(kernel::brep::Torus { minor_radius: (p - tube).length(), ..t })
+                    }
+                    _ => return spline(net),
+                };
+                Some((offset, Some(net)))
             }
             _ => None,
         }
