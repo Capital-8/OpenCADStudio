@@ -936,6 +936,12 @@ impl OpenCADStudio {
             }
 
             "ERASE" => {
+                // A selected Block Editor parameter/action erases like Delete.
+                if self.tabs[i].selected_authoring.is_some()
+                    && self.tabs[i].scene.selected.is_empty()
+                {
+                    return Some(self.update(Message::DeleteSelected));
+                }
                 let handles: Vec<_> = self.tabs[i]
                     .scene
                     .selected_entities()
