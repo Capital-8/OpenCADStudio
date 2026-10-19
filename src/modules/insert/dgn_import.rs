@@ -240,7 +240,9 @@ fn polyline(points: &[P3], bulges: &[f64]) -> EntityType {
 }
 
 /// A solid hatch filling a closed outline (with its bulges) at the
-/// outline's elevation; `None` when the outline is not at one z.
+/// outline's elevation; `None` when the outline is not at one z. It is
+/// marked associative with no source yet: the outline converted just before
+/// it becomes its source once both are in the drawing.
 fn solid_hatch(points: &[P3], bulges: &[f64]) -> Option<EntityType> {
     use codec::entities::{BoundaryEdge, BoundaryPath, Hatch, PolylineEdge};
     if points.len() < 3 || !flat(points) {
@@ -256,6 +258,7 @@ fn solid_hatch(points: &[P3], bulges: &[f64]) -> Option<EntityType> {
         edge.add_vertex(Vector2::new(p[0], p[1]), bulge);
     }
     let mut hatch = Hatch::solid();
+    hatch.is_associative = true;
     let mut boundary = BoundaryPath::external();
     boundary.flags.set_polyline(true);
     boundary.edges.push(BoundaryEdge::Polyline(edge));
@@ -421,11 +424,11 @@ fn color_code(color: By<crate::scene::model::underlay_vector::DgnColor>) -> u16 
 /// the first time.
 fn text_style(geom: &DgnGeom, import: &DgnImport, styles: &mut Vec<(String, String)>) -> String {
     match geom {
-        DgnGeom::Text { style: Some(id), .. } => match import.text_styles.iter().find(|(i, _)| i == id) {
-            Some((_, name)) if !name.eq_ignore_ascii_case("Standard") => {
+        DgnGeom::Text { style: Some(id), .. } => match import.text_styles.iter().find(|(i, ..)| i == id) {
+            Some((_, name, font)) if !name.eq_ignore_ascii_case("Standard") => {
                 let name = symbol_name(name);
                 if !styles.iter().any(|s| s.0 == name) {
-                    styles.push((name.clone(), "txt.shx".to_string()));
+                    styles.push((name.clone(), font.clone()));
                 }
                 name
             }
@@ -982,10 +985,10 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
         }
     }
     // Every text style of the file's table comes in, used or not.
-    for (_, name) in &import.text_styles {
+    for (_, name, font) in &import.text_styles {
         let name = symbol_name(name);
         if !name.eq_ignore_ascii_case("Standard") && !c.out.styles.iter().any(|s| s.0 == name) {
-            c.out.styles.push((name, "txt.shx".to_string()));
+            c.out.styles.push((name, font.clone()));
         }
     }
     c.in_definition = true;
