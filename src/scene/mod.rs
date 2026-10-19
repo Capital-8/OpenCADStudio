@@ -1027,6 +1027,168 @@ pub(crate) struct WireGpuPatch {
     pub(crate) new_handles_are_suffix: bool,
     /// Whether Face3D / generic fill buffers can differ after this patch.
     pub(crate) face_pass_changed: bool,
+    /// Whether block-text GPU buffers can differ after this patch.
+    pub(crate) text_pass_changed: bool,
+}
+
+/// Combine consecutive resident edits when they happen before the renderer
+/// prepares a frame. A single point acceptance can add a line and then update
+/// it again while inferred constraints are applied; exposing only the final
+/// patch would leave the GPU arena one version behind and force a full rebuild.
+fn compose_wire_gpu_patches(first: &WireGpuPatch, second: WireGpuPatch) -> WireGpuPatch {
+    use std::collections::HashMap as StdHashMap;
+
+    let mut change_slots = StdHashMap::with_capacity(first.changes.len() + second.changes.len());
+    let mut changes = Vec::with_capacity(first.changes.len() + second.changes.len());
+    for &(handle, kind) in first.changes.iter() {
+        change_slots.insert(handle, changes.len());
+        changes.push((handle, kind));
+    }
+    for &(handle, next_kind) in second.changes.iter() {
+        if let Some(&slot) = change_slots.get(&handle) {
+            let prior_kind = changes[slot].1;
+            changes[slot].1 = match (prior_kind, next_kind) {
+                // The renderer's base set never contained this handle, so an
+                // add followed by a remove has no net geometry change.
+                (ChangeKind::Added, ChangeKind::Removed) => ChangeKind::Removed,
+                (ChangeKind::Added, _) => ChangeKind::Added,
+                (ChangeKind::Removed, ChangeKind::Removed) => ChangeKind::Removed,
+                (ChangeKind::Removed, _) => ChangeKind::Modified,
+                (ChangeKind::Modified, ChangeKind::Removed) => ChangeKind::Removed,
+                (ChangeKind::Modified, _) => ChangeKind::Modified,
+            };
+        } else {
+            change_slots.insert(handle, changes.len());
+            changes.push((handle, next_kind));
+        }
+    }
+
+    let mut runs = (*first.runs).clone();
+    for &(handle, kind) in second.changes.iter() {
+        if matches!(kind, ChangeKind::Removed) {
+            runs.remove(&handle);
+        } else if let Some(run) = second.runs.get(&handle) {
+            runs.insert(handle, Arc::clone(run));
+        } else {
+            runs.remove(&handle);
+        }
+    }
+
+    let mut index_slots =
+        StdHashMap::with_capacity(first.index_edits.len() + second.index_edits.len());
+    let mut index_edits = Vec::with_capacity(first.index_edits.len() + second.index_edits.len());
+    for &edit in first.index_edits.iter() {
+        index_slots.insert(edit.handle, index_edits.len());
+        index_edits.push(edit);
+    }
+    for &edit in second.index_edits.iter() {
+        if let Some(&slot) = index_slots.get(&edit.handle) {
+            index_edits[slot].new_len = edit.new_len;
+            index_edits[slot].visible = edit.visible;
+        } else {
+            index_slots.insert(edit.handle, index_edits.len());
+            index_edits.push(edit);
+        }
+    }
+
+    WireGpuPatch {
+        changes: Arc::new(changes),
+        runs: Arc::new(runs),
+        index_edits: Arc::new(index_edits),
+        new_handles_are_suffix: first.new_handles_are_suffix && second.new_handles_are_suffix,
+        face_pass_changed: first.face_pass_changed || second.face_pass_changed,
+        text_pass_changed: first.text_pass_changed || second.text_pass_changed,
+    }
+}
+
+#[cfg(test)]
+mod wire_gpu_patch_tests {
+    use super::{compose_wire_gpu_patches, ChangeKind, WireGpuPatch, WireIndexEdit};
+    use codec::Handle;
+    use std::sync::Arc;
+
+    fn patch(handle: Handle, kind: ChangeKind, edit: WireIndexEdit) -> WireGpuPatch {
+        WireGpuPatch {
+            changes: Arc::new(vec![(handle, kind)]),
+            runs: Arc::new(rustc_hash::FxHashMap::default()),
+            index_edits: Arc::new(vec![edit]),
+            new_handles_are_suffix: true,
+            face_pass_changed: false,
+            text_pass_changed: false,
+        }
+    }
+
+    #[test]
+    fn consecutive_add_then_constraint_edit_stays_one_added_handle() {
+        let handle = Handle::new(41);
+        let combined = compose_wire_gpu_patches(
+            &patch(
+                handle,
+                ChangeKind::Added,
+                WireIndexEdit {
+                    handle,
+                    start: 100,
+                    old_len: 0,
+                    new_len: 1,
+                    visible: true,
+                },
+            ),
+            patch(
+                handle,
+                ChangeKind::Modified,
+                WireIndexEdit {
+                    handle,
+                    start: 100,
+                    old_len: 1,
+                    new_len: 2,
+                    visible: true,
+                },
+            ),
+        );
+
+        assert_eq!(combined.changes.as_slice(), &[(handle, ChangeKind::Added)]);
+        assert_eq!(combined.index_edits[0].start, 100);
+        assert_eq!(combined.index_edits[0].old_len, 0);
+        assert_eq!(combined.index_edits[0].new_len, 2);
+        assert!(combined.index_edits[0].visible);
+    }
+
+    #[test]
+    fn consecutive_modification_then_removal_is_removed_from_base() {
+        let handle = Handle::new(52);
+        let combined = compose_wire_gpu_patches(
+            &patch(
+                handle,
+                ChangeKind::Modified,
+                WireIndexEdit {
+                    handle,
+                    start: 200,
+                    old_len: 2,
+                    new_len: 3,
+                    visible: true,
+                },
+            ),
+            patch(
+                handle,
+                ChangeKind::Removed,
+                WireIndexEdit {
+                    handle,
+                    start: 200,
+                    old_len: 3,
+                    new_len: 0,
+                    visible: false,
+                },
+            ),
+        );
+
+        assert_eq!(
+            combined.changes.as_slice(),
+            &[(handle, ChangeKind::Removed)]
+        );
+        assert_eq!(combined.index_edits[0].old_len, 2);
+        assert_eq!(combined.index_edits[0].new_len, 0);
+        assert!(!combined.index_edits[0].visible);
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2716,7 +2878,7 @@ pub struct Scene {
     /// those entities' instance slabs instead of re-uploading every wire. The
     /// render layer matches `new_gen` against the viewport's content id and
     /// `prev_gen` against what the GPU currently holds; a mismatch just rebuilds.
-    model_wire_gpu_patch: RefCell<Option<(u64, u64, Arc<WireGpuPatch>)>>,
+    model_wire_gpu_patch: RefCell<Option<(u64, u64, Arc<WireGpuPatch>, bool)>>,
     /// Active delta-undo recording, or `None` when no entity-only command is
     /// capturing. Populated by the five mutation primitives via
     /// [`Scene::record_undo_before`]; consumed by the app (`take_undo_recording`)
@@ -4187,6 +4349,29 @@ impl Scene {
         self.background_image_cache.borrow_mut().clear();
         self.has_face3d.set(None);
         self.invalidate_dependency_index();
+        self.push_geometry_delta(epoch, Vec::new(), true);
+    }
+
+    /// Invalidate caches affected by a rendering-property change (layer
+    /// properties, colors, linetypes, draw order) WITHOUT clearing the
+    /// per-entity tessellation memo. Tessellation depends only on geometry
+    /// shape, not on display properties, so the cached tess can be reused.
+    ///
+    /// Use when the entity set or their geometric definitions are unchanged.
+    /// For entity edits (vertex moves, add/remove entities), use [`bump_geometry`]
+    /// or [`bump_entities`] instead.
+    pub fn bump_geometry_keep_tess(&mut self) {
+        let epoch = GEOMETRY_EPOCH.fetch_add(1, Ordering::Relaxed);
+        self.geometry_epoch = epoch;
+        self.invalidate_projection_bounds();
+        self.lighting_cache.borrow_mut().clear();
+        *self.document_render_env_cache.borrow_mut() = None;
+        self.background_image_cache.borrow_mut().clear();
+        self.has_underlays.set(None);
+        self.has_face3d.set(None);
+        self.has_associative_centers.set(None);
+        self.invalidate_dependency_index();
+        // Keep tessellation memos intact — only display properties changed.
         self.push_geometry_delta(epoch, Vec::new(), true);
     }
 
@@ -6254,9 +6439,8 @@ impl Scene {
                 _ => None,
             })
             .unwrap_or(self.annotation_scale as f64);
-        let ratio =
-            crate::scene::annotative::text_context_ratio(&self.document, handle, scale)
-                .unwrap_or(1.0);
+        let ratio = crate::scene::annotative::text_context_ratio(&self.document, handle, scale)
+            .unwrap_or(1.0);
         Some(model_per_paper / ratio)
     }
 
@@ -7424,8 +7608,17 @@ impl Scene {
     /// Model tile applies the same patch; gen-matching keeps it from applying to
     /// a viewport that rebuilt independently.
     pub(crate) fn model_wire_patch_for(&self, gen: u64) -> Option<(u64, Arc<WireGpuPatch>)> {
-        match &*self.model_wire_gpu_patch.borrow() {
-            Some((prev, new, patch)) if *new == gen => Some((*prev, Arc::clone(patch))),
+        let mut pending = self.model_wire_gpu_patch.borrow_mut();
+        match pending.as_mut() {
+            Some((prev, new, patch, delivered)) if *new == gen => {
+                // Multiple viewport slots can request the same handoff while
+                // preparing one frame. Keep it available to all of them, but
+                // let the next geometry update know that the current version
+                // has already been exposed to the renderer and should start a
+                // fresh patch chain.
+                *delivered = true;
+                Some((*prev, Arc::clone(patch)))
+            }
             _ => None,
         }
     }
@@ -7771,6 +7964,14 @@ impl Scene {
                         .any(|wire| !wire.fill_tris.is_empty())
             })
         });
+        let old_text_pass_changed = deltas.iter().any(|(handle, _)| {
+            layout.ranges.get(handle).is_some_and(|&(start, len)| {
+                start + len <= layout.marker_start
+                    && owned[start..start + len]
+                        .iter()
+                        .any(|wire| !wire.text_verts.is_empty())
+            })
+        });
 
         // Keep the submission-order directory current. Adds are inserted by
         // the same effective SortEntitiesTable key used by the full builder;
@@ -7965,6 +8166,10 @@ impl Scene {
                     .get(&handle)
                     .is_some_and(|run| run.iter().any(|wire| !wire.fill_tris.is_empty()))
             });
+        let text_pass_changed = old_text_pass_changed
+            || gpu_runs
+                .values()
+                .any(|run| run.iter().any(|wire| !wire.text_verts.is_empty()));
 
         let arc = Arc::new(reclaim.wires.take().unwrap_or_default());
         self.last_tess_wires.set(arc.len());
@@ -7976,17 +8181,25 @@ impl Scene {
         // those entities' slabs. Only for the Model set (the arena is model-only);
         // the render layer verifies prev_gen against what the GPU actually holds.
         if wire_gpu_patch_enabled() && block == self.model_space_block_handle() {
-            *self.model_wire_gpu_patch.borrow_mut() = Some((
-                prev_gen,
-                gen,
-                Arc::new(WireGpuPatch {
-                    changes: Arc::new(deltas.clone()),
-                    runs: Arc::new(gpu_runs),
-                    index_edits: Arc::new(index_edits),
-                    new_handles_are_suffix,
-                    face_pass_changed,
-                }),
-            ));
+            let next_patch = WireGpuPatch {
+                changes: Arc::new(deltas.clone()),
+                runs: Arc::new(gpu_runs),
+                index_edits: Arc::new(index_edits),
+                new_handles_are_suffix,
+                face_pass_changed,
+                text_pass_changed,
+            };
+            let mut pending = self.model_wire_gpu_patch.borrow_mut();
+            let combined = match pending.take() {
+                Some((base, pending_gen, previous, false)) if pending_gen == prev_gen => Some((
+                    base,
+                    gen,
+                    Arc::new(compose_wire_gpu_patches(&previous, next_patch)),
+                    false,
+                )),
+                _ => Some((prev_gen, gen, Arc::new(next_patch), false)),
+            };
+            *pending = combined;
         }
         if shareable {
             self.bind_memo_to_set(&arc, &layout.ranges);
@@ -10425,6 +10638,23 @@ impl Scene {
         (changes.len() <= Self::INTERACTION_OVERLAY_MAX_HANDLES).then_some((epoch, index, changes))
     }
 
+    /// Recover the wire snapshot that was indexed by an immutable overlay
+    /// base. The weak source is kept in `interaction_index_cache` so using
+    /// the base index never pairs its wire ordinals with a newer snapshot.
+    fn interaction_source_for_index(
+        &self,
+        epoch: u64,
+        index: &Arc<crate::scene::pick::interaction_index::InteractionIndex>,
+    ) -> Option<Arc<Vec<WireModel>>> {
+        self.interaction_index_cache.borrow().iter().find_map(
+            |(cached_epoch, _, wires, cached_index)| {
+                (*cached_epoch == epoch && Arc::ptr_eq(cached_index, index))
+                    .then(|| wires.upgrade())
+                    .flatten()
+            },
+        )
+    }
+
     fn interaction_overlay_changed_index(
         &self,
         base_epoch: u64,
@@ -10486,6 +10716,7 @@ impl Scene {
     fn interaction_overlay_wires(
         &self,
         base_keys: impl IntoIterator<Item = (u64, u32)>,
+        changed_keys: impl IntoIterator<Item = (u64, u32)>,
         changes: &[(Handle, ChangeKind)],
         changed_wires: &[WireModel],
     ) -> (
@@ -10530,15 +10761,19 @@ impl Scene {
                 }
             }
         }
+        let changed_keys: HashSet<(u64, u32)> = changed_keys.into_iter().collect();
         let mut changed_slots = HashMap::default();
         let mut next_ordinal: HashMap<u64, u32> = HashMap::default();
         for wire in changed_wires {
             if let Some(handle) = pipeline::wire_gpu::fast_parse_u64(&wire.name) {
                 let ordinal = next_ordinal.entry(handle).or_default();
-                changed_slots.insert((handle, *ordinal), wires.len() as u32);
+                let key = (handle, *ordinal);
+                if changed_keys.contains(&key) {
+                    changed_slots.insert(key, wires.len() as u32);
+                    wires.push(wire.clone());
+                }
                 *ordinal += 1;
             }
-            wires.push(wire.clone());
         }
         (Arc::new(wires), base_slots, changed_slots)
     }
@@ -10570,9 +10805,14 @@ impl Scene {
             let (changed_wires, changed_index) =
                 self.interaction_overlay_changed_index(base_epoch, &changes);
             let changed_ms = t_changed.elapsed().as_secs_f64() * 1000.0;
+            let changed_keys = changed_index.query_wire_keys_xy(aabb);
             let t_local = iced::time::Instant::now();
-            let (local, base_slots, changed_slots) =
-                self.interaction_overlay_wires(keys.iter().copied(), &changes, &changed_wires);
+            let (local, base_slots, changed_slots) = self.interaction_overlay_wires(
+                keys.iter().copied(),
+                changed_keys,
+                &changes,
+                &changed_wires,
+            );
             let local_ms = t_local.elapsed().as_secs_f64() * 1000.0;
             let t_remap = iced::time::Instant::now();
             let mut result = if area_only {
@@ -10659,9 +10899,15 @@ impl Scene {
             let (changed_wires, changed_index) =
                 self.interaction_overlay_changed_index(base_epoch, &changes);
             let changed_ms = t_changed.elapsed().as_secs_f64() * 1000.0;
+            let changed_keys =
+                changed_index.query_wire_keys_screen(screen_rect, view_rot, eye, bounds);
             let t_local = iced::time::Instant::now();
-            let (local, base_slots, changed_slots) =
-                self.interaction_overlay_wires(keys.iter().copied(), &changes, &changed_wires);
+            let (local, base_slots, changed_slots) = self.interaction_overlay_wires(
+                keys.iter().copied(),
+                changed_keys,
+                &changes,
+                &changed_wires,
+            );
             let local_ms = t_local.elapsed().as_secs_f64() * 1000.0;
             let t_remap = iced::time::Instant::now();
             let mut result = base.query_remapped_screen(
@@ -10844,8 +11090,25 @@ impl Scene {
         bounds: iced::Rectangle,
         radius_px: f32,
     ) -> crate::scene::pick::interaction_index::InteractionCandidates {
-        self.interaction_candidates_near_impl(
-            wires, cursor, view_rot, eye, bounds, radius_px, false, false,
+        self.interaction_snap_candidates_near_impl(
+            wires, cursor, view_rot, eye, bounds, radius_px, false,
+        )
+    }
+
+    /// Fast cursor preview query. If the resident index is still being built,
+    /// return an empty indexed result instead of scanning the entire drawing;
+    /// the settled/click snap path continues to use the complete fallback.
+    pub fn interaction_snap_preview_candidates_near(
+        &self,
+        wires: Arc<Vec<WireModel>>,
+        cursor: glam::DVec3,
+        view_rot: glam::Mat4,
+        eye: glam::DVec3,
+        bounds: iced::Rectangle,
+        radius_px: f32,
+    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        self.interaction_snap_candidates_near_impl(
+            wires, cursor, view_rot, eye, bounds, radius_px, true,
         )
     }
 
@@ -10962,6 +11225,388 @@ impl Scene {
             cursor.y + radius,
         ];
         self.indexed_interaction_candidates_xy(wires, query, allow_pending_empty, false)
+    }
+
+    fn interaction_snap_candidates_near_impl(
+        &self,
+        wires: Arc<Vec<WireModel>>,
+        cursor: glam::DVec3,
+        view_rot: glam::Mat4,
+        eye: glam::DVec3,
+        bounds: iced::Rectangle,
+        radius_px: f32,
+        allow_pending_empty: bool,
+    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        use crate::scene::pick::interaction_index::InteractionCandidates;
+
+        if !self.interaction_source_is_resident(&wires, bounds.height)
+            || !self.interaction_index_worthwhile(&wires)
+        {
+            return InteractionCandidates::all(wires).materialize_stubs();
+        }
+        let flat_ortho = view_rot.z_axis.x.abs() < 1e-9
+            && view_rot.z_axis.y.abs() < 1e-9
+            && (view_rot.w_axis.w - 1.0).abs() < 1e-6;
+        if !flat_ortho {
+            let clip = view_rot * (cursor - eye).as_vec3().extend(1.0);
+            if !clip.is_finite() || clip.w <= 1e-6 {
+                return if allow_pending_empty && wires.len() > 512 {
+                    InteractionCandidates::pending(wires)
+                } else {
+                    InteractionCandidates::all(wires).materialize_stubs()
+                };
+            }
+            let ndc = clip.truncate() / clip.w;
+            let screen = iced::Point::new(
+                (ndc.x + 1.0) * 0.5 * bounds.width,
+                (1.0 - ndc.y) * 0.5 * bounds.height,
+            );
+            let radius = radius_px.max(0.0);
+            return self.indexed_snap_candidates_screen(
+                wires,
+                [
+                    screen.x - radius,
+                    screen.y - radius,
+                    screen.x + radius,
+                    screen.y + radius,
+                ],
+                view_rot,
+                eye,
+                bounds,
+                allow_pending_empty,
+            );
+        }
+
+        let world_x_px = ((view_rot.x_axis.x * bounds.width * 0.5).powi(2)
+            + (view_rot.x_axis.y * bounds.height * 0.5).powi(2))
+        .sqrt();
+        let world_y_px = ((view_rot.y_axis.x * bounds.width * 0.5).powi(2)
+            + (view_rot.y_axis.y * bounds.height * 0.5).powi(2))
+        .sqrt();
+        let scale = world_x_px.min(world_y_px);
+        if scale <= 1e-6 {
+            return if allow_pending_empty && wires.len() > 512 {
+                InteractionCandidates::pending(wires)
+            } else {
+                InteractionCandidates::all(wires).materialize_stubs()
+            };
+        }
+        let radius = radius_px.max(0.0) as f64 / scale as f64;
+        self.indexed_snap_candidates_xy(
+            wires,
+            [
+                cursor.x - radius,
+                cursor.y - radius,
+                cursor.x + radius,
+                cursor.y + radius,
+            ],
+            allow_pending_empty,
+        )
+    }
+
+    fn indexed_snap_candidates_xy(
+        &self,
+        wires: Arc<Vec<WireModel>>,
+        aabb: [f64; 4],
+        allow_pending_empty: bool,
+    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        use crate::scene::pick::interaction_index::InteractionCandidates;
+        use crate::scene::pick::interaction_index::SnapQueryCategory;
+        let query_started = crate::perf::enabled().then(iced::time::Instant::now);
+        let category = if allow_pending_empty {
+            SnapQueryCategory::DiscretePreview
+        } else {
+            SnapQueryCategory::Full
+        };
+
+        let overlay_lookup_started = crate::perf::enabled().then(iced::time::Instant::now);
+        let overlay = self.interaction_overlay_base();
+        let overlay_lookup_ms = crate::perf::elapsed_ms(overlay_lookup_started);
+        if let Some((base_epoch, base, changes)) = overlay {
+            if changes.is_empty() {
+                if let Some(source_wires) = self.interaction_source_for_index(base_epoch, &base) {
+                    let result = base.query_snap_xy_with_category(source_wires, aabb, category);
+                    return Self::finish_snap_query_candidates(
+                        result,
+                        query_started,
+                        "xy",
+                        allow_pending_empty,
+                        "overlay-base",
+                    );
+                }
+            }
+            let base_keys_started = crate::perf::enabled().then(iced::time::Instant::now);
+            let base_parts = base.snap_candidate_parts_xy_for_overlay(aabb, category);
+            let keys = base.snap_candidate_part_keys(&base_parts);
+            let base_keys_ms = crate::perf::elapsed_ms(base_keys_started);
+            let changed_index_started = crate::perf::enabled().then(iced::time::Instant::now);
+            let (changed_wires, changed_index) =
+                self.interaction_overlay_changed_index(base_epoch, &changes);
+            let changed_index_ms = crate::perf::elapsed_ms(changed_index_started);
+            let changed_keys_started = crate::perf::enabled().then(iced::time::Instant::now);
+            let changed_parts = changed_index.snap_candidate_parts_xy_for_overlay(aabb, category);
+            let changed_keys = changed_index.snap_candidate_part_keys(&changed_parts);
+            let changed_key_count = changed_keys.len();
+            let changed_keys_ms = crate::perf::elapsed_ms(changed_keys_started);
+            let local_started = crate::perf::enabled().then(iced::time::Instant::now);
+            let (local, base_slots, changed_slots) = self.interaction_overlay_wires(
+                keys.iter().copied(),
+                changed_keys,
+                &changes,
+                &changed_wires,
+            );
+            let local_ms = crate::perf::elapsed_ms(local_started);
+            let local_wire_count = local.len();
+            let remap_started = crate::perf::enabled().then(iced::time::Instant::now);
+            let mut result = base.query_remapped_snap_xy_from_parts_with_category(
+                Arc::clone(&local),
+                &base_slots,
+                base_parts,
+                aabb,
+                category,
+            );
+            result.extend_indexed(
+                changed_index.query_remapped_snap_xy_from_parts_with_category(
+                    local,
+                    &changed_slots,
+                    changed_parts,
+                    aabb,
+                    category,
+                ),
+            );
+            let remap_ms = crate::perf::elapsed_ms(remap_started);
+            if crate::perf::enabled() {
+                crate::perf_record!(
+                    "[perf] snap-overlay-detail path=xy lookup={overlay_lookup_ms:.2}ms base_keys={base_keys_ms:.2}ms changed_index={changed_index_ms:.2}ms changed_keys={changed_keys_ms:.2}ms local={local_ms:.2}ms remap={remap_ms:.2}ms changes={} base_candidates={} changed_source_wires={} changed_candidates={} local_wires={}",
+                    changes.len(),
+                    keys.len(),
+                    changed_wires.len(),
+                    changed_key_count,
+                    local_wire_count,
+                );
+            }
+            return Self::finish_snap_query_candidates(
+                result,
+                query_started,
+                "xy",
+                allow_pending_empty,
+                "overlay",
+            );
+        }
+        if let Some(index) = self.cached_interaction_index(&wires) {
+            let result = index.query_snap_xy_with_category(wires, aabb, category);
+            return Self::finish_snap_query_candidates(
+                result,
+                query_started,
+                "xy",
+                allow_pending_empty,
+                "cached-index",
+            );
+        }
+        let fallback_source = if allow_pending_empty && wires.len() > 512 {
+            "pending-empty"
+        } else {
+            "fallback-all"
+        };
+        let result = if allow_pending_empty && wires.len() > 512 {
+            InteractionCandidates::pending(wires)
+        } else {
+            InteractionCandidates::all(wires)
+        };
+        Self::finish_snap_query_candidates(
+            result,
+            query_started,
+            "xy",
+            allow_pending_empty,
+            fallback_source,
+        )
+    }
+
+    fn indexed_snap_candidates_screen(
+        &self,
+        wires: Arc<Vec<WireModel>>,
+        screen_rect: [f32; 4],
+        view_rot: glam::Mat4,
+        eye: glam::DVec3,
+        bounds: iced::Rectangle,
+        allow_pending_empty: bool,
+    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        use crate::scene::pick::interaction_index::InteractionCandidates;
+        use crate::scene::pick::interaction_index::SnapQueryCategory;
+        let query_started = crate::perf::enabled().then(iced::time::Instant::now);
+        let category = if allow_pending_empty {
+            SnapQueryCategory::DiscretePreview
+        } else {
+            SnapQueryCategory::Full
+        };
+
+        let overlay_lookup_started = crate::perf::enabled().then(iced::time::Instant::now);
+        let overlay = self.interaction_overlay_base();
+        let overlay_lookup_ms = crate::perf::elapsed_ms(overlay_lookup_started);
+        if let Some((base_epoch, base, changes)) = overlay {
+            if changes.is_empty() {
+                if let Some(source_wires) = self.interaction_source_for_index(base_epoch, &base) {
+                    let result = base.query_snap_screen_with_category(
+                        source_wires,
+                        screen_rect,
+                        view_rot,
+                        eye,
+                        bounds,
+                        category,
+                    );
+                    return Self::finish_snap_query_candidates(
+                        result,
+                        query_started,
+                        "screen",
+                        allow_pending_empty,
+                        "overlay-base",
+                    );
+                }
+            }
+            let base_keys_started = crate::perf::enabled().then(iced::time::Instant::now);
+            let base_parts = base.snap_candidate_parts_screen_for_overlay(
+                screen_rect,
+                view_rot,
+                eye,
+                bounds,
+                category,
+            );
+            let keys = base.snap_candidate_part_keys(&base_parts);
+            let base_keys_ms = crate::perf::elapsed_ms(base_keys_started);
+            let changed_index_started = crate::perf::enabled().then(iced::time::Instant::now);
+            let (changed_wires, changed_index) =
+                self.interaction_overlay_changed_index(base_epoch, &changes);
+            let changed_index_ms = crate::perf::elapsed_ms(changed_index_started);
+            let changed_keys_started = crate::perf::enabled().then(iced::time::Instant::now);
+            let changed_parts = changed_index.snap_candidate_parts_screen_for_overlay(
+                screen_rect,
+                view_rot,
+                eye,
+                bounds,
+                category,
+            );
+            let changed_keys = changed_index.snap_candidate_part_keys(&changed_parts);
+            let changed_key_count = changed_keys.len();
+            let changed_keys_ms = crate::perf::elapsed_ms(changed_keys_started);
+            let local_started = crate::perf::enabled().then(iced::time::Instant::now);
+            let (local, base_slots, changed_slots) = self.interaction_overlay_wires(
+                keys.iter().copied(),
+                changed_keys,
+                &changes,
+                &changed_wires,
+            );
+            let local_ms = crate::perf::elapsed_ms(local_started);
+            let local_wire_count = local.len();
+            let remap_started = crate::perf::enabled().then(iced::time::Instant::now);
+            let mut result = base.query_remapped_snap_screen_from_parts_with_category(
+                Arc::clone(&local),
+                &base_slots,
+                base_parts,
+                screen_rect,
+                view_rot,
+                eye,
+                bounds,
+                category,
+            );
+            result.extend_indexed(
+                changed_index.query_remapped_snap_screen_from_parts_with_category(
+                    local,
+                    &changed_slots,
+                    changed_parts,
+                    screen_rect,
+                    view_rot,
+                    eye,
+                    bounds,
+                    category,
+                ),
+            );
+            let remap_ms = crate::perf::elapsed_ms(remap_started);
+            if crate::perf::enabled() {
+                crate::perf_record!(
+                    "[perf] snap-overlay-detail path=screen lookup={overlay_lookup_ms:.2}ms base_keys={base_keys_ms:.2}ms changed_index={changed_index_ms:.2}ms changed_keys={changed_keys_ms:.2}ms local={local_ms:.2}ms remap={remap_ms:.2}ms changes={} base_candidates={} changed_source_wires={} changed_candidates={} local_wires={}",
+                    changes.len(),
+                    keys.len(),
+                    changed_wires.len(),
+                    changed_key_count,
+                    local_wire_count,
+                );
+            }
+            return Self::finish_snap_query_candidates(
+                result,
+                query_started,
+                "screen",
+                allow_pending_empty,
+                "overlay",
+            );
+        }
+        if let Some(index) = self.cached_interaction_index(&wires) {
+            let result = index.query_snap_screen_with_category(
+                wires,
+                screen_rect,
+                view_rot,
+                eye,
+                bounds,
+                category,
+            );
+            return Self::finish_snap_query_candidates(
+                result,
+                query_started,
+                "screen",
+                allow_pending_empty,
+                "cached-index",
+            );
+        }
+        let fallback_source = if allow_pending_empty && wires.len() > 512 {
+            "pending-empty"
+        } else {
+            "fallback-all"
+        };
+        let result = if allow_pending_empty && wires.len() > 512 {
+            InteractionCandidates::pending(wires)
+        } else {
+            InteractionCandidates::all(wires)
+        };
+        Self::finish_snap_query_candidates(
+            result,
+            query_started,
+            "screen",
+            allow_pending_empty,
+            fallback_source,
+        )
+    }
+
+    fn finish_snap_query_candidates(
+        candidates: crate::scene::pick::interaction_index::InteractionCandidates,
+        query_started: Option<iced::time::Instant>,
+        path: &'static str,
+        preview: bool,
+        source: &'static str,
+    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        let perf = query_started.is_some();
+        let query_ms = crate::perf::elapsed_ms(query_started);
+        let pre_wires = candidates.len();
+        let (stub_entries, segment_refs, snap_points, key_vertices, key_segments) = if perf {
+            (
+                Some(candidates.iter().filter(|wire| wire.stub.is_some()).count()),
+                candidates.segments().map_or(0, |items| items.len()),
+                candidates.snap_points().map_or(0, |items| items.len()),
+                candidates.key_vertices().map_or(0, |items| items.len()),
+                candidates.key_segments().map_or(0, |items| items.len()),
+            )
+        } else {
+            (None, 0, 0, 0, 0)
+        };
+        let materialize_started = perf.then(iced::time::Instant::now);
+        let candidates = candidates.materialize_stubs();
+        let materialize_ms = crate::perf::elapsed_ms(materialize_started);
+        let post_wires = candidates.len();
+        if perf && query_ms + materialize_ms >= 1.0 {
+            crate::perf_record!(
+                "[perf] snap-query-detail path={path} kind={} source={source} query={query_ms:.2}ms materialize={materialize_ms:.2}ms pre_wires={pre_wires} stub_entries={stub_entries:?} post_wires={post_wires} segments={segment_refs} snap_points={snap_points} key_vertices={key_vertices} key_segments={key_segments}",
+                if preview { "preview" } else { "full" },
+            );
+        }
+        candidates
     }
 
     /// Shared rectangular broad phase for box/lasso/fence and command windows.
@@ -14408,6 +15053,11 @@ mod journal_tests {
             s.model_wire_patch_for(erase_gen)
                 .is_some_and(|(_, patch)| !patch.face_pass_changed),
             "removing a plain line must keep the unrelated Face3D/fill pass warm"
+        );
+        assert!(
+            s.model_wire_patch_for(erase_gen)
+                .is_some_and(|(_, patch)| !patch.text_pass_changed),
+            "removing a plain line must keep the unrelated text pass warm"
         );
         assert!(
             s.resident_wire_sets.borrow().values().any(|set| {

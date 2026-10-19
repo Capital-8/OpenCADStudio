@@ -1285,6 +1285,8 @@ impl OpenCADStudio {
         // its menu (#337). Falls through — Esc keeps its usual effect.
         self.snap_override_popup = None;
         self.snapper.clear_override();
+        // Clear the deferred snap dwell — the command is being cancelled.
+        self.snap_dwell = None;
         // Open MText editor swallows Escape (cancel without committing).
         if self.mtext_editor.is_some() {
             self.mtext_cancel();
