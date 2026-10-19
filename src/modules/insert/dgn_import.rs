@@ -240,7 +240,9 @@ fn polyline(points: &[P3], bulges: &[f64]) -> EntityType {
 }
 
 /// A solid hatch filling a closed outline (with its bulges) at the
-/// outline's elevation; `None` when the outline is not at one z.
+/// outline's elevation; `None` when the outline is not at one z. It is
+/// marked associative with no source yet: the outline converted just before
+/// it becomes its source once both are in the drawing.
 fn solid_hatch(points: &[P3], bulges: &[f64]) -> Option<EntityType> {
     use codec::entities::{BoundaryEdge, BoundaryPath, Hatch, PolylineEdge};
     if points.len() < 3 || !flat(points) {
@@ -256,6 +258,7 @@ fn solid_hatch(points: &[P3], bulges: &[f64]) -> Option<EntityType> {
         edge.add_vertex(Vector2::new(p[0], p[1]), bulge);
     }
     let mut hatch = Hatch::solid();
+    hatch.is_associative = true;
     let mut boundary = BoundaryPath::external();
     boundary.flags.set_polyline(true);
     boundary.edges.push(BoundaryEdge::Polyline(edge));

@@ -837,10 +837,11 @@ fn place_converted(
             continue;
         }
         let entities = entities.into_iter().map(&fix).collect();
-        let _ = scene.define_block_from_owned_entities(entities, target, glam::DVec3::ZERO);
+        if let Ok(handles) = scene.define_block_from_owned_entities(entities, target, glam::DVec3::ZERO) {
+            scene.bind_outline_hatches(&handles);
+        }
     }
-    for entity in converted.entities {
-        scene.add_entity(fix(entity));
-    }
+    let handles: Vec<_> = converted.entities.into_iter().map(|entity| scene.add_entity(fix(entity))).collect();
+    scene.bind_outline_hatches(&handles);
     layers
 }
