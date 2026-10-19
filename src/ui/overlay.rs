@@ -301,6 +301,10 @@ pub struct CrosshairOptions {
     /// the crosshair arms disappear and a blue pickbox remains — the
     /// screen-level "the client wants YOU to pick" signal.
     pub pick_pending: bool,
+    /// MATCHPROP is asking for its source object (hollow pickbox).
+    pub matchprop_source_pick: bool,
+    /// Keep the MATCHPROP pickbox visible while selecting destination objects.
+    pub matchprop_pickbox: bool,
     /// Draw only the pickbox: the active command previews a line that the
     /// full-length arms would cover.
     pub hide_arms: bool,
@@ -2158,9 +2162,23 @@ impl canvas::Program<Message> for SelectionCanvas {
                     },
                     |[r, g, b]| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 0.90],
                 );
+                let pickbox_half = if self.crosshair.matchprop_pickbox {
+                    pick_box_aperture_px(self.crosshair.pick_box)
+                } else {
+                    0.0
+                };
+                // The brush points into the pickbox from its upper-right
+                // corner; its bristle width just meets the frame without
+                // covering the box or moving the actual click point.
+                let brush_gap = pickbox_half + 3.2 * std::f32::consts::FRAC_1_SQRT_2;
+                let brush_tip = if self.crosshair.matchprop_pickbox {
+                    Point::new(cp.x + brush_gap, cp.y - brush_gap)
+                } else {
+                    cp
+                };
                 draw_match_brush(
                     &mut frame,
-                    cp,
+                    brush_tip,
                     Color {
                         r: cr,
                         g: cg,
@@ -2168,6 +2186,32 @@ impl canvas::Program<Message> for SelectionCanvas {
                         a: ca,
                     },
                 );
+                if self.crosshair.matchprop_pickbox {
+                    let half = pickbox_half;
+                    let square = canvas::Path::rectangle(
+                        Point::new(cp.x - half, cp.y - half),
+                        Size::new(half * 2.0, half * 2.0),
+                    );
+                    if !self.crosshair.matchprop_source_pick {
+                        frame.fill(
+                            &square,
+                            Color {
+                                r: 0.24,
+                                g: 0.52,
+                                b: 0.98,
+                                a: 0.88,
+                            },
+                        );
+                    }
+                    frame.stroke(
+                        &square,
+                        canvas::Stroke {
+                            width: 1.25,
+                            style: canvas::Style::Solid(Color::from_rgb(0.30, 0.55, 0.98)),
+                            ..Default::default()
+                        },
+                    );
+                }
             }
         }
 

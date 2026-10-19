@@ -182,6 +182,13 @@ pub struct SelectionEntity {
     pub surface_area: Option<f64>,
 }
 
+/// Live preview shown while a selection-gathering command hovers a target.
+#[derive(Default)]
+pub struct SelectionHoverPreview {
+    pub wires: Vec<WireModel>,
+    pub hatches: Vec<HatchModel>,
+}
+
 /// Association source with an optional sub-entity marker.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DimensionAssociationSource {
@@ -3072,6 +3079,21 @@ pub trait CadCommand: Send {
 
     fn is_selection_gathering(&self) -> bool {
         false
+    }
+
+    /// Enable a lightweight hover pick while gathering entities. Commands can
+    /// return geometry restyled with their pending operation without changing
+    /// the document.
+    fn selection_hover_preview_enabled(&self) -> bool {
+        false
+    }
+
+    fn selection_hover_preview(
+        &self,
+        _scene: &Scene,
+        _hovered: Option<Handle>,
+    ) -> Option<SelectionHoverPreview> {
+        None
     }
 
     fn selection_forces_add(&self) -> bool {

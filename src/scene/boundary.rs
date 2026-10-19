@@ -752,6 +752,20 @@ pub(crate) fn remap_hatch_associations(
 }
 
 impl Scene {
+    /// Each associative hatch among `handles` that names no source yet
+    /// takes the object just before it (its outline) as its source.
+    pub(crate) fn bind_outline_hatches(&mut self, handles: &[Handle]) {
+        for pair in handles.windows(2) {
+            let Some(EntityType::Hatch(hatch)) = self.document.get_entity_mut(pair[1]) else {
+                continue;
+            };
+            if hatch.is_associative && hatch.paths.len() == 1 && hatch.paths[0].boundary_handles.is_empty() {
+                hatch.paths[0].boundary_handles = vec![pair[0]];
+                self.associative_hatch_source_cache.borrow_mut().take();
+            }
+        }
+    }
+
     pub(crate) fn replace_hatch_association(
         &mut self,
         handle: Handle,
