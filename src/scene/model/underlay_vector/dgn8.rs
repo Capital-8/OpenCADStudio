@@ -293,16 +293,21 @@ fn text_style_id(e: &[u8]) -> Option<u32> {
 
 /// The text style table (the table entries after a header of table 3):
 /// each style's id and name.
-fn text_style_table(nm: &[&[u8]]) -> Vec<(u32, String)> {
-    let mut out = Vec::new();
+fn text_style_table(nm: &[&[u8]]) -> Vec<(u32, String, String)> {
+    let fonts = font_table(nm);
+    let mut out: Vec<(u32, String, String)> = Vec::new();
     let mut table = 0;
     for e in nm {
         match kind(e) {
             96 => table = u32_at(e, 12).unwrap_or(0),
             95 if table == 3 => {
                 if let (Some(id), Some(name)) = (u32_at(e, 32), marked_string(e, 32)) {
-                    if !out.iter().any(|(i, _)| *i == id) {
-                        out.push((id, name));
+                    if !out.iter().any(|(i, ..)| *i == id) {
+                        // The style's font: its number and kind at byte 40.
+                        let font = e.get(40..42).and_then(|f| {
+                            fonts.iter().find(|(n, k, _)| [*n, *k] == [f[0], f[1]]).map(|(_, k, name)| (*k, name))
+                        });
+                        out.push((id, name, font_file(font)));
                     }
                 }
             }
@@ -310,6 +315,46 @@ fn text_style_table(nm: &[&[u8]]) -> Vec<(u32, String)> {
         }
     }
     out
+}
+
+/// The font table (table 2): each font's number, kind (2 SHX, 4 TrueType)
+/// and name.
+fn font_table(nm: &[&[u8]]) -> Vec<(u8, u8, String)> {
+    let mut out = Vec::new();
+    let mut table = 0;
+    for e in nm {
+        match kind(e) {
+            96 => table = u32_at(e, 12).unwrap_or(0),
+            95 if table == 2 => {
+                let (Some(&number), Some(&kind), Some(len)) =
+                    (e.get(40), e.get(41), e.get(44..46).map(|b| u16::from_le_bytes([b[0], b[1]])))
+                else {
+                    continue;
+                };
+                let units: Vec<u16> = e
+                    .get(46..46 + usize::from(len))
+                    .unwrap_or_default()
+                    .chunks_exact(2)
+                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                    .collect();
+                out.push((number, kind, String::from_utf16_lossy(&units).trim_end_matches(char::from(0)).to_string()));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The font file a text style imports with: an SHX font's own file, a
+/// TrueType family's installed file (else its name with `.ttf`), and the
+/// `txt.shx` default for any other font.
+fn font_file(font: Option<(u8, &String)>) -> String {
+    match font {
+        Some((2, name)) => format!("{name}.shx"),
+        Some((4, name)) => crate::scene::text::sysfont::face_file(name, false, false)
+            .unwrap_or_else(|| format!("{}.ttf", name.to_lowercase())),
+        _ => "txt.shx".to_string(),
+    }
 }
 
 /// A string stored after the "ff fe 01 00" marker, when the element has one.

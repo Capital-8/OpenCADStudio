@@ -813,8 +813,8 @@ pub struct DgnImport {
     pub v7: bool,
     /// The model's reference attachments.
     pub references: Vec<DgnReference>,
-    /// The text style table (V8): each style's id and name.
-    pub text_styles: Vec<(u32, String)>,
+    /// The text style table (V8): each style's id, name and font file.
+    pub text_styles: Vec<(u32, String, String)>,
 }
 
 /// A reference attachment of a DGN model: the file and model it shows and
