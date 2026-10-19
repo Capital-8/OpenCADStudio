@@ -781,6 +781,7 @@ fn append_pdf_page(
                             std::slice::from_ref(&wire.wire),
                             ox,
                             oy,
+                            scale,
                             clip,
                             plot_style,
                             options,
@@ -1871,6 +1872,7 @@ fn emit_searchable_text(
     wires: &[WireModel],
     ox: f64,
     oy: f64,
+    scale: f32,
     clip: Option<(f32, f32, f32, f32)>,
     plot_style: Option<&PlotStyleTable>,
     options: PdfPlotOptions,
@@ -1879,6 +1881,8 @@ fn emit_searchable_text(
     use crate::scene::model::wire_model::run_rect_overlap;
     /// Helvetica cap height ≈ 0.72 em.
     const HELVETICA_CAP_RATIO: f32 = 0.72;
+    // Sizes are in page user space (under the plot CTM): floor at 0.1 pt on paper.
+    let min_size = 0.1 / scale.max(1e-6);
     let mut emitted = 0;
     for wire in wires {
         if wire.searchable_text.is_empty() {
@@ -1941,7 +1945,7 @@ fn emit_searchable_text(
             // Tm x-basis (= Tz, the only horizontal scaling printpdf exposes).
             let (font_handle, size_pt, width_k) = match choice {
                 RunFont::Subset(sub) => {
-                    let size = (run.height * MM_TO_PT / sub.cap_ratio).max(0.1);
+                    let size = (run.height * MM_TO_PT / sub.cap_ratio).max(min_size);
                     (
                         PdfFontHandle::External(sub.font_id.clone()),
                         size,
@@ -1949,7 +1953,7 @@ fn emit_searchable_text(
                     )
                 }
                 RunFont::Helvetica => {
-                    let size = (run.height * MM_TO_PT / HELVETICA_CAP_RATIO).max(0.1);
+                    let size = (run.height * MM_TO_PT / HELVETICA_CAP_RATIO).max(min_size);
                     let handle = PdfFontHandle::Builtin(if run.bold {
                         BuiltinFont::HelveticaBold
                     } else {
@@ -1962,6 +1966,10 @@ fn emit_searchable_text(
                 continue;
             }
             let (sin_r, cos_r) = run.rotation.sin_cos();
+            // `Tr` and the fill colour are graphics state that `ET` keeps:
+            // without the save/restore, every embedded-font run drawn after
+            // this one would inherit the invisible mode.
+            ops.push(Op::SaveGraphicsState);
             ops.push(Op::StartTextSection);
             ops.push(Op::SetFont {
                 font: font_handle,
@@ -1992,6 +2000,7 @@ fn emit_searchable_text(
                 items: vec![TextItem::Text(run.text.clone())],
             });
             ops.push(Op::EndTextSection);
+            ops.push(Op::RestoreGraphicsState);
             emitted += 1;
         }
     }
@@ -2387,8 +2396,10 @@ fn emit_text(
                         let glyph_unit_mm = (((tl[0] - bl[0]).powi(2) + (tl[1] - bl[1]).powi(2))
                             .sqrt()
                             / sy.abs() as f64) as f32;
+                        // The pen is in page user space (under the plot CTM),
+                        // so the 0.1 pt physical floor is divided by the scale.
                         (2.0 * sdf_atlas::stroke_pen_half_units(ge.bold) * glyph_unit_mm * MM_TO_PT)
-                            .max(0.1)
+                            .max(0.1 / scale.max(1e-6))
                     };
                     ops.push(Op::SetOutlineThickness { pt: Pt(pen) });
                     for stroke in &ge.strokes {

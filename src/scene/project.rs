@@ -216,6 +216,33 @@ impl Scene {
                     .collect::<Vec<_>>()
                 };
 
+                // Fills (2-D solids, wide and thickened polyline bands, 3-D
+                // faces) project triangle by triangle and are clipped to the
+                // viewport; the clipped convex polygon is re-fanned.
+                let mut projected_fill: Vec<[f32; 3]> = Vec::new();
+                for (ti, tri) in wire.fill_tris.chunks_exact(3).enumerate() {
+                    let corner = |k: usize| {
+                        let low = wire.fill_tris_low.get(ti * 3 + k).copied();
+                        let low = low.unwrap_or([0.0; 3]);
+                        let p = proj_abs(
+                            tri[k][0] as f64 + low[0] as f64,
+                            tri[k][1] as f64 + low[1] as f64,
+                            tri[k][2] as f64 + low[2] as f64,
+                        );
+                        [p[0], p[1]]
+                    };
+                    let corners = [corner(0), corner(1), corner(2)];
+                    if corners.iter().any(|p| !p[0].is_finite() || !p[1].is_finite()) {
+                        continue;
+                    }
+                    let clipped = clip_polygon_to_rect(&corners, vp_x0, vp_y0, vp_x1, vp_y1);
+                    for k in 1..clipped.len().saturating_sub(1) {
+                        for p in [clipped[0], clipped[k], clipped[k + 1]] {
+                            projected_fill.push([p[0], p[1], pcz]);
+                        }
+                    }
+                }
+
                 // Fast AABB pre-reject.
                 let any_near = projected_pts.iter().any(|&[x, y, _]| {
                     x.is_finite()
@@ -242,7 +269,11 @@ impl Scene {
                 // A text-only wire (TEXT / MTEXT carry no stroke `points` since
                 // text went SDF-only) has nothing to pre-reject on, so gate both
                 // rejections on the glyphs too or it never reaches the sheet.
-                if !any_near && !aabb_hits && projected_text.is_empty() {
+                if !any_near
+                    && !aabb_hits
+                    && projected_text.is_empty()
+                    && projected_fill.is_empty()
+                {
                     continue;
                 }
 
@@ -257,7 +288,7 @@ impl Scene {
                     vp_y1,
                     pcz,
                 );
-                if clipped.is_empty() && projected_text.is_empty() {
+                if clipped.is_empty() && projected_text.is_empty() && projected_fill.is_empty() {
                     continue;
                 }
 
@@ -275,10 +306,12 @@ impl Scene {
                     pmxx = pmxx.max(x);
                     pmxy = pmxy.max(y);
                 }
-                // Glyphs count towards the paper AABB as well — a text-only wire
-                // would otherwise stay UNBOUNDED and never pick.
-                for v in &projected_text {
-                    let (x, y) = (v.pos[0] + v.pos_low[0], v.pos[1] + v.pos_low[1]);
+                // Glyphs and fills count towards the paper AABB as well — a
+                // text-only wire would otherwise stay UNBOUNDED and never pick.
+                let glyphs = projected_text
+                    .iter()
+                    .map(|v| (v.pos[0] + v.pos_low[0], v.pos[1] + v.pos_low[1]));
+                for (x, y) in glyphs.chain(projected_fill.iter().map(|p| (p[0], p[1]))) {
                     if x.is_finite() && y.is_finite() {
                         pmnx = pmnx.min(x);
                         pmny = pmny.min(y);
@@ -347,6 +380,8 @@ impl Scene {
                     out.pattern_stations.clear();
                 }
                 out.text_verts = projected_text;
+                out.fill_tris = projected_fill;
+                out.fill_tris_low = Vec::new();
                 // Searchable runs ride the same projection through the shared
                 // helper (origin map + height/advance scale), then cull by
                 // run-rect overlap — a run straddling the viewport edge is
