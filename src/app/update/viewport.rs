@@ -5523,7 +5523,7 @@ impl OpenCADStudio {
                     }
                     let result = self.tabs[i].active_cmd.as_mut().and_then(|command| {
                         command.set_shift(self.shift_down);
-                        command.on_drag_selection(&fence, window)
+                        command.on_drag_selection_with_direction(&fence, window, box_crossing)
                     });
                     if let Some(result) = result {
                         let mut selection = self.tabs[i].scene.selection.borrow_mut();
@@ -5868,7 +5868,11 @@ was_selected={}",
                     );
                     let command_result = self.tabs[i].active_cmd.as_mut().and_then(|command| {
                         command.set_shift(self.shift_down);
-                        command.on_drag_selection(&command_fence, Some((command_min, command_max)))
+                        command.on_drag_selection_with_direction(
+                            &command_fence,
+                            Some((command_min, command_max)),
+                            box_crossing,
+                        )
                     });
                     if let Some(result) = command_result {
                         let mut selection = self.tabs[i].scene.selection.borrow_mut();
