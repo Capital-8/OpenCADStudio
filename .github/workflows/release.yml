@@ -496,6 +496,12 @@ jobs:
           # forgot it failed the --locked build (v2026.42); follow the pin
           # here, which also lets an older tag be rebuilt.
           cargo update -p acadrust --manifest-path plugins/opencad-python/Cargo.toml
+          # Stage with this workflow's own copy of the staging script: a
+          # rebuilt older tag may carry one that no longer reads its lock
+          # (v2026.42 looked for the codec under its pre-rename name).
+          git fetch --no-tags --depth=1 origin ${{ github.workflow_sha }}
+          git show FETCH_HEAD:plugins/opencad-python/tools/stage-bundled.sh \
+            > plugins/opencad-python/tools/stage-bundled.sh
           bash plugins/opencad-python/tools/stage-bundled.sh \
             "$APP/Contents/Resources/plugins/opencad.python" \
             --target aarch64-apple-darwin
