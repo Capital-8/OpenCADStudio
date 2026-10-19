@@ -6755,4 +6755,11 @@ pdf-password =
     .remember = Onthouden voor deze sessie
     .remember-hint = Onthouden wachtwoorden worden eerst geprobeerd bij de andere PDF's die in deze sessie worden geopend.
     .open = Openen
-    .help = Versleutelde PDF's worden met eigenaarstoegang gekoppeld en geïmporteerd: het openwachtwoord leest het document, het machtigingswachtwoord heft de beperkingen op.
+    .help = Het openwachtwoord leest een versleutelde PDF, wat genoeg is om hem te koppelen; het importeren van de geometrie vereist ook het machtigingswachtwoord dat de beperkingen opheft.
+    .remembered =
+        Met wachtwoord beveiligd PDF-bestand: { $path }
+        Geopend met een eerder opgegeven wachtwoord.
+    .refused =
+        { $path }
+        Kan dit PDF-bestand niet openen.
+        Het is versleuteld en vereist een wachtwoord.

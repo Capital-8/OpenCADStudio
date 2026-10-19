@@ -2023,17 +2023,16 @@ impl OpenCADStudio {
                 })
             }
             "ribbon_dropdown" => Message::ToggleRibbonDropdown(string(req, "value")?.into()),
-            // The Edit Reference dialog, one field per call: "level=<n>" (0 =
-            // the picked reference), "nested=0|1" (pick the working set in the
-            // drawing), "attributes=0|1", "lock=0|1", "unique=0|1", "ok" or
-            // "cancel".
             // The Password Protected PDF window, one field per call:
             // "password=<text>", "show=0|1", "remember=0|1", "ok", "cancel" or
             // "help".
             "pdf_password_dialog" => {
                 use crate::ui::window::pdf_password_dialog::PdfPasswordMsg as P;
                 if self.active_modal != Some(crate::app::ModalKind::PdfPassword) {
-                    return Err(failure("no_dialog", "The Password Protected PDF window is not open"));
+                    return Err(failure(
+                        "no_dialog",
+                        "The Password Protected PDF window is not open",
+                    ));
                 }
                 let spec = string(req, "value")?;
                 let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
@@ -2051,10 +2050,19 @@ impl OpenCADStudio {
                         "remember" => P::Remember(flag()?),
                         "ok" => P::Ok,
                         "help" => P::Help,
-                        _ => return Err(failure("invalid_value", "Unknown Password Protected PDF field")),
+                        _ => {
+                            return Err(failure(
+                                "invalid_value",
+                                "Unknown Password Protected PDF field",
+                            ))
+                        }
                     })
                 }
             }
+            // The Edit Reference dialog, one field per call: "level=<n>" (0 =
+            // the picked reference), "nested=0|1" (pick the working set in the
+            // drawing), "attributes=0|1", "lock=0|1", "unique=0|1", "ok" or
+            // "cancel".
             "refedit_dialog" => {
                 use crate::ui::window::refedit_dialog::RefEditDialogMsg as R;
                 if self.active_modal != Some(crate::app::ModalKind::RefEdit) {

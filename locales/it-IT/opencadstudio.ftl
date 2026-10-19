@@ -6756,4 +6756,11 @@ pdf-password =
     .remember = Ricorda per questa sessione
     .remember-hint = Le password ricordate vengono provate per prime sugli altri PDF aperti in questa sessione.
     .open = Apri
-    .help = I PDF crittografati vengono allegati e importati con accesso proprietario: la password di apertura legge il documento, quella delle autorizzazioni rimuove le limitazioni.
+    .help = La password di apertura legge un PDF crittografato, il che basta per allegarlo; importarne la geometria richiede anche la password delle autorizzazioni che rimuove le limitazioni.
+    .remembered =
+        File PDF protetto da password: { $path }
+        Aperto con una password fornita in precedenza.
+    .refused =
+        { $path }
+        Impossibile aprire questo file PDF.
+        È crittografato e richiede una password.

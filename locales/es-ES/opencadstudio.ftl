@@ -6757,4 +6757,11 @@ pdf-password =
     .remember = Recordar en esta sesión
     .remember-hint = Las contraseñas recordadas se prueban primero en los demás PDF abiertos en esta sesión.
     .open = Abrir
-    .help = Los PDF cifrados se enlazan e importan con acceso de propietario: la contraseña de apertura lee el documento y la de permisos elimina sus restricciones.
+    .help = La contraseña de apertura lee un PDF cifrado, lo que basta para enlazarlo; importar su geometría también requiere la contraseña de permisos que elimina sus restricciones.
+    .remembered =
+        Archivo PDF protegido con contraseña: { $path }
+        Abierto con una contraseña indicada anteriormente.
+    .refused =
+        { $path }
+        No se puede abrir este archivo PDF.
+        Está cifrado y requiere una contraseña.

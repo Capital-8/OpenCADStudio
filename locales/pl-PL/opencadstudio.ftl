@@ -6756,4 +6756,11 @@ pdf-password =
     .remember = Zapamiętaj w tej sesji
     .remember-hint = Zapamiętane hasła są najpierw próbowane w innych plikach PDF otwieranych w tej sesji.
     .open = Otwórz
-    .help = Zaszyfrowane pliki PDF są dołączane i importowane z dostępem właściciela: hasło otwarcia odczytuje dokument, hasło uprawnień znosi ograniczenia.
+    .help = Hasło otwarcia odczytuje zaszyfrowany plik PDF, co wystarcza do jego dołączenia; import jego geometrii wymaga też hasła uprawnień, które znosi ograniczenia.
+    .remembered =
+        Plik PDF chroniony hasłem: { $path }
+        Otwarto wcześniej podanym hasłem.
+    .refused =
+        { $path }
+        Nie można otworzyć tego pliku PDF.
+        Jest zaszyfrowany i wymaga hasła.

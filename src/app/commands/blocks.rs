@@ -776,7 +776,7 @@ impl OpenCADStudio {
                             &path,
                             std::sync::Arc::new(bytes),
                         );
-                        self.open_pdf_import_file(&path);
+                        return Some(self.open_pdf_import_file(&path));
                     }
                     Err(_) => self.command_line.push_error(&format!("{path} not found.")),
                 }

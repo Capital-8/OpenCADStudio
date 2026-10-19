@@ -6678,4 +6678,11 @@ pdf-password =
     .remember = Bu oturumda hatırla
     .remember-hint = Hatırlanan parolalar aynı oturumda açılan diğer PDF'lerde önce denenir.
     .open = Aç
-    .help = Şifreli PDF'ler sahip erişimiyle bağlanır ve içe aktarılır: açma parolası belgeyi okur, izin parolası kısıtlamaları kaldırır.
+    .help = Açma parolası şifreli bir PDF'yi okur, bu onu bağlamak için yeterlidir; geometrisini içe aktarmak için kısıtlamaları kaldıran izin parolası da gerekir.
+    .remembered =
+        Parola korumalı PDF dosyası: { $path }
+        Daha önce girilen parolayla açıldı.
+    .refused =
+        { $path }
+        Bu PDF dosyası açılamıyor.
+        Dosya şifreli ve parola gerektiriyor.

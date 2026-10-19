@@ -6754,4 +6754,11 @@ pdf-password =
     .remember = Zapamatovat pro tuto relaci
     .remember-hint = Zapamatovaná hesla se nejprve zkoušejí u ostatních PDF otevřených v této relaci.
     .open = Otevřít
-    .help = Šifrované PDF se připojují a importují s přístupem vlastníka: heslo pro otevření čte dokument, heslo oprávnění odstraňuje omezení.
+    .help = Heslo pro otevření přečte šifrované PDF, což stačí k jeho připojení; import jeho geometrie vyžaduje také heslo oprávnění, které odstraní omezení.
+    .remembered =
+        Soubor PDF chráněný heslem: { $path }
+        Otevřeno dříve zadaným heslem.
+    .refused =
+        { $path }
+        Tento soubor PDF nelze otevřít.
+        Je šifrovaný a vyžaduje heslo.

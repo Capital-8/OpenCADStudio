@@ -28,13 +28,20 @@ fn msg(m: PdfPasswordMsg) -> Message {
 /// What runs once the file is unlocked.
 #[derive(Debug, Clone)]
 pub enum PdfPasswordThen {
-    /// The active command gets its file prompt's answer again; cancelling
-    /// prints that the file is encrypted when `refused_notice`.
-    Command { input: String, refused_notice: bool },
+    /// The active command gets its file prompt's answer again; `attach` as
+    /// in `CmdResult::PdfPassword`.
+    Command { input: String, attach: bool },
     /// The Attach PDF Underlay dialog opens on the file.
     Attach,
     /// The Import PDF dialog opens on the file.
     ImportFile,
+}
+
+impl PdfPasswordThen {
+    /// Attaching: document access is enough and cancelling says why.
+    pub fn attach(&self) -> bool {
+        matches!(self, Self::Attach | Self::Command { attach: true, .. })
+    }
 }
 
 pub struct PdfPasswordState {
@@ -78,14 +85,17 @@ fn icon<'a>(bytes: &'static [u8], size: f32, accent: bool) -> Element<'a, Messag
 
 /// The file the window is about: lock badge, name and the end of its path.
 fn file_card<'a>(path: &str) -> Element<'a, Message> {
-    let normal = path.replace('/', "\\");
-    let name = normal.rsplit('\\').next().unwrap_or(&normal).to_string();
+    let file = std::path::Path::new(path);
+    let name = file
+        .file_name()
+        .map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned());
     // A long path keeps its last folders, where the file is.
-    let parts: Vec<&str> = normal.split('\\').collect();
+    let parts: Vec<_> = file.components().collect();
     let shown = if parts.len() > 3 {
-        format!("...\\{}", parts[parts.len() - 3..].join("\\"))
+        let tail: std::path::PathBuf = parts[parts.len() - 3..].iter().collect();
+        format!("...{}{}", std::path::MAIN_SEPARATOR, tail.display())
     } else {
-        normal.clone()
+        path.to_string()
     };
     let badge = container(icon(crate::ui::icons::LOCK, 18.0, true))
         .center_x(Length::Fixed(34.0))
@@ -123,10 +133,15 @@ fn file_card<'a>(path: &str) -> Element<'a, Message> {
 
 /// The two steps; the open step ticked once it is passed.
 fn steps<'a>(stage: Stage) -> Element<'a, Message> {
-    let step = |label: String, on: bool| {
-        container(text(label).size(11).width(Fill).align_x(iced::Center))
+    let step = |label: String, on: bool, done: bool| {
+        // The tick is an SVG: the web build's font has no check-mark glyph.
+        let mut content = row![].spacing(4).align_y(iced::Center);
+        if done {
+            content = content.push(icon(crate::ui::icons::CHECK, 11.0, false));
+        }
+        container(content.push(text(label).size(11)))
             .padding([5, 6])
-            .width(Fill)
+            .center_x(Fill)
             .style(move |theme: &Theme| {
                 let style = button_style(on)(theme, button::Status::Active);
                 container::Style {
@@ -137,16 +152,18 @@ fn steps<'a>(stage: Stage) -> Element<'a, Message> {
                 }
             })
     };
+    let open = crate::tr!("pdf-password", "step-open");
     let first = match stage {
-        Stage::Document => format!("1 · {}", crate::tr!("pdf-password", "step-open")),
-        Stage::Permission => format!("✓ {}", crate::tr!("pdf-password", "step-open")),
+        Stage::Document => format!("1 · {open}"),
+        Stage::Permission => open,
     };
     container(
         row![
-            step(first, stage == Stage::Document),
+            step(first, stage == Stage::Document, stage == Stage::Permission),
             step(
                 format!("2 · {}", crate::tr!("pdf-password", "step-permission")),
-                stage == Stage::Permission
+                stage == Stage::Permission,
+                false
             ),
         ]
         .spacing(2),

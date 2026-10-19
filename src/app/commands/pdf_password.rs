@@ -31,19 +31,23 @@ impl OpenCADStudio {
         ))
     }
 
-    /// A PDF chosen in a file dialog: true when it can be read now, else the
-    /// window is open and `then` runs once it is unlocked.
-    pub(in crate::app) fn pdf_unlocked(&mut self, path: &str, then: PdfPasswordThen) -> bool {
-        match pdf_password::gate(path) {
-            Gate::Open => true,
+    /// A PDF chosen in a file dialog: `None` when it can be read now, else
+    /// the window is open (the task focuses its field) and `then` runs once
+    /// the file is unlocked.
+    pub(in crate::app) fn pdf_locked(
+        &mut self,
+        path: &str,
+        then: PdfPasswordThen,
+    ) -> Option<Task<Message>> {
+        match pdf_password::gate(path, !then.attach()) {
+            Gate::Open => None,
             Gate::Remembered => {
                 self.command_line
                     .push_output(&pdf_password::remembered_notice(path));
-                true
+                None
             }
             Gate::Ask { stage, remembered } => {
-                let _ = self.open_pdf_password(path, stage, remembered, then);
-                false
+                Some(self.open_pdf_password(path, stage, remembered, then))
             }
         }
     }
@@ -64,7 +68,9 @@ impl OpenCADStudio {
                 if state.input.is_empty() {
                     return Task::none();
                 }
-                match pdf_password::check(&state.path, state.stage, &state.input, state.remember) {
+                let owner = !state.then.attach();
+                let (path, stage, remember) = (&state.path, state.stage, state.remember);
+                match pdf_password::check(path, stage, &state.input, remember, owner) {
                     Check::Wrong => state.wrong = true,
                     Check::NeedPermission => {
                         state.stage = Stage::Permission;
@@ -100,14 +106,8 @@ impl OpenCADStudio {
                 }
                 Task::none()
             }
-            PdfPasswordThen::Attach => {
-                self.open_pdf_attach_dialog(&path);
-                Task::none()
-            }
-            PdfPasswordThen::ImportFile => {
-                self.open_pdf_import_file(&path);
-                Task::none()
-            }
+            PdfPasswordThen::Attach => self.open_pdf_attach_dialog(&path),
+            PdfPasswordThen::ImportFile => self.open_pdf_import_file(&path),
         }
     }
 
@@ -119,10 +119,7 @@ impl OpenCADStudio {
             return Task::none();
         };
         self.close_active_modal();
-        if matches!(
-            state.then,
-            PdfPasswordThen::Attach | PdfPasswordThen::Command { refused_notice: true, .. }
-        ) {
+        if state.then.attach() {
             self.command_line
                 .push_output(&pdf_password::refused_notice(&state.path));
         }

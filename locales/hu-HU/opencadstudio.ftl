@@ -6741,4 +6741,11 @@ pdf-password =
     .remember = Megjegyzés ebben a munkamenetben
     .remember-hint = A megjegyzett jelszavakat a munkamenetben megnyitott többi PDF-nél elsőként próbálja.
     .open = Megnyitás
-    .help = A titkosított PDF-ek tulajdonosi hozzáféréssel csatolhatók és importálhatók: a megnyitási jelszó olvassa a dokumentumot, az engedélyjelszó feloldja a korlátozásokat.
+    .help = A megnyitási jelszó olvassa a titkosított PDF-et, ez elég a csatolásához; a geometriájának importálásához a korlátozásokat feloldó engedélyjelszó is szükséges.
+    .remembered =
+        Jelszóval védett PDF-fájl: { $path }
+        Korábban megadott jelszóval megnyitva.
+    .refused =
+        { $path }
+        Ez a PDF-fájl nem nyitható meg.
+        Titkosított, és jelszót igényel.

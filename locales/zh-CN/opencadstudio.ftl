@@ -6740,4 +6740,11 @@ pdf-password =
     .remember = 在本会话中记住
     .remember-hint = 记住的密码会先用于本会话中打开的其他 PDF。
     .open = 打开
-    .help = 加密的 PDF 以所有者权限附着和导入：打开密码读取文档，权限密码解除其限制。
+    .help = 打开密码可读取加密的 PDF，足以附着它；导入其几何图形还需要解除限制的权限密码。
+    .remembered =
+        受密码保护的 PDF 文件：{ $path }
+        已使用先前提供的密码打开。
+    .refused =
+        { $path }
+        无法打开此 PDF 文件。
+        该文件已加密，需要密码。

@@ -6757,4 +6757,11 @@ pdf-password =
     .remember = Mémoriser pour cette session
     .remember-hint = Les mots de passe mémorisés sont essayés en premier sur les autres PDF ouverts dans cette session.
     .open = Ouvrir
-    .help = Les PDF chiffrés sont attachés et importés avec l'accès propriétaire : le mot de passe d'ouverture lit le document, le mot de passe des autorisations lève ses restrictions.
+    .help = Le mot de passe d'ouverture lit un PDF chiffré, ce qui suffit pour l'attacher ; importer sa géométrie nécessite aussi le mot de passe des autorisations qui lève ses restrictions.
+    .remembered =
+        Fichier PDF protégé par mot de passe : { $path }
+        Ouvert avec un mot de passe fourni précédemment.
+    .refused =
+        { $path }
+        Impossible d'ouvrir ce fichier PDF.
+        Il est chiffré et nécessite un mot de passe.

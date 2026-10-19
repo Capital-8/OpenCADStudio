@@ -664,18 +664,8 @@ impl OpenCADStudio {
                 input,
                 stage,
                 remembered,
-                refused_notice,
-            } => {
-                return self.open_pdf_password(
-                    &path,
-                    stage,
-                    remembered,
-                    crate::ui::window::pdf_password_dialog::PdfPasswordThen::Command {
-                        input,
-                        refused_notice,
-                    },
-                );
-            }
+                attach,
+            } => return self.handle_pdf_password(path, input, stage, remembered, attach),
             CmdResult::DgnImport(request) => {
                 self.tabs[i].scene.clear_preview_wire();
                 self.tabs[i].active_cmd = None;
@@ -1326,6 +1316,20 @@ impl OpenCADStudio {
             .map(|(h, _)| h)
             .collect();
         self.feed_command(StepInput::SelectionComplete(selected))
+    }
+
+    #[inline(never)]
+    fn handle_pdf_password(
+        &mut self,
+        path: String,
+        input: String,
+        stage: crate::scene::model::pdf_password::Stage,
+        remembered: bool,
+        attach: bool,
+    ) -> Task<Message> {
+        use crate::ui::window::pdf_password_dialog::PdfPasswordThen;
+        let then = PdfPasswordThen::Command { input, attach };
+        self.open_pdf_password(&path, stage, remembered, then)
     }
 
     fn handle_relaunch(&mut self, cmd: String, handles: Vec<Handle>) -> Task<Message> {

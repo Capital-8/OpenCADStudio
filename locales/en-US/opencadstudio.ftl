@@ -6756,4 +6756,11 @@ pdf-password =
     .remember = Remember for this session
     .remember-hint = Remembered passwords are tried first on the other PDFs opened in this session.
     .open = Open
-    .help = Encrypted PDFs are attached and imported with owner access: the open password reads the document, the permission password removes its restrictions.
+    .help = The open password reads an encrypted PDF, which is enough to attach it; importing its geometry also needs the permission password that removes its restrictions.
+    .remembered =
+        Password protected PDF file: { $path }
+        Opened with previously supplied password.
+    .refused =
+        { $path }
+        Unable to open this PDF file.
+        It is encrypted and requires a password.

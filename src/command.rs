@@ -1722,9 +1722,10 @@ pub enum CmdResult {
         /// A password supplied earlier opened the document but not its
         /// restrictions.
         remembered: bool,
-        /// Cancelling prints that the file is encrypted (attach) instead of
-        /// asking again silently (import).
-        refused_notice: bool,
+        /// Attaching: document access is enough and cancelling prints that
+        /// the file is encrypted. Importing needs owner access and asks
+        /// again silently.
+        attach: bool,
     },
     /// Import a page of a file (PDFIMPORT File); ends the command.
     PdfImportFile(crate::modules::insert::pdf_import::PdfFileImport),

@@ -6754,4 +6754,11 @@ pdf-password =
     .remember = Muista tämän istunnon ajan
     .remember-hint = Muistettuja salasanoja kokeillaan ensin muihin tässä istunnossa avattaviin PDF-tiedostoihin.
     .open = Avaa
-    .help = Salatut PDF-tiedostot liitetään ja tuodaan omistajan oikeuksin: avaussalasana lukee asiakirjan, käyttöoikeussalasana poistaa rajoitukset.
+    .help = Avaussalasana lukee salatun PDF-tiedoston, mikä riittää sen liittämiseen; sen geometrian tuonti vaatii lisäksi käyttöoikeussalasanan, joka poistaa rajoitukset.
+    .remembered =
+        Salasanalla suojattu PDF-tiedosto: { $path }
+        Avattu aiemmin annetulla salasanalla.
+    .refused =
+        { $path }
+        Tätä PDF-tiedostoa ei voi avata.
+        Se on salattu ja vaatii salasanan.

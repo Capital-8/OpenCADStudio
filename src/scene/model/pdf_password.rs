@@ -2,10 +2,11 @@
 //! permission (owner) password checks and the passwords supplied this
 //! session.
 //!
-//! A file is attached or imported only with owner access. The reader opens a
-//! file with its user password; for revisions 2–4 the owner password
-//! recovers the user password from the `/O` entry (it is not a user password
-//! itself), for revisions 5–6 the reader accepts either.
+//! A file is attached with document access and imported (its geometry
+//! extracted) only with owner access. The reader opens a file with its user
+//! password; for revisions 2–4 the owner password recovers the user password
+//! from the `/O` entry (it is not a user password itself), for revisions 5–6
+//! the reader accepts either.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -41,11 +42,19 @@ pub enum Gate {
 /// A password typed in the dialog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Check {
-    /// Owner access: the file opens.
+    /// The access asked for: the file opens.
     Unlocked,
     /// The document password: its restrictions still need the owner one.
     NeedPermission,
     Wrong,
+}
+
+/// A password that opened a file.
+struct Grant {
+    /// As supplied: the access checks run on it.
+    typed: String,
+    /// The user password the reader opens the file with.
+    reader: String,
 }
 
 #[derive(Default)]
@@ -54,7 +63,7 @@ struct Session {
     remembered: Vec<String>,
     /// The password that opened each file (also when not remembered for
     /// other files): the reader needs it again on every read.
-    granted: HashMap<String, String>,
+    granted: HashMap<String, Grant>,
     /// A file just unlocked in the dialog: its next check passes without the
     /// "previously supplied" message.
     fresh: Option<String>,
@@ -74,6 +83,15 @@ fn file_key(path: &str) -> &str {
     path.split_once("#layers-off=").map_or(path, |(file, _)| file)
 }
 
+/// Keep `typed` as the password that opened `path`.
+fn grant(path: &str, security: &Security, bytes: &Arc<Vec<u8>>, typed: &str) {
+    let reader = security
+        .user_password(bytes, typed)
+        .unwrap_or_else(|| typed.to_string());
+    let typed = typed.to_string();
+    lock().granted.insert(path.to_string(), Grant { typed, reader });
+}
+
 /// Open a PDF source, trying no password, then the one that unlocked it,
 /// then every password supplied this session.
 pub fn open(path: &str, bytes: Arc<Vec<u8>>) -> Result<Pdf, LoadPdfError> {
@@ -81,16 +99,23 @@ pub fn open(path: &str, bytes: Arc<Vec<u8>>) -> Result<Pdf, LoadPdfError> {
     if !matches!(first, Err(LoadPdfError::Decryption(_))) {
         return first;
     }
-    let candidates = {
+    let key = file_key(path);
+    let (reader, remembered) = {
         let session = lock();
-        let mut list: Vec<String> = session.granted.get(file_key(path)).cloned().into_iter().collect();
-        list.extend(session.remembered.iter().cloned());
-        list
+        let reader = session.granted.get(key).map(|g| g.reader.clone());
+        (reader, session.remembered.clone())
     };
-    let security = Security::read(&bytes);
-    for password in candidates {
-        if let Some(user) = security.as_ref().and_then(|s| s.user_password(&bytes, &password)) {
+    if let Some(Ok(pdf)) = reader.map(|user| Pdf::new_with_password(bytes.clone(), &user)) {
+        return Ok(pdf);
+    }
+    let Some(security) = Security::read(&bytes) else {
+        return first;
+    };
+    for password in remembered {
+        if let Some(user) = security.user_password(&bytes, &password) {
             if let Ok(pdf) = Pdf::new_with_password(bytes.clone(), &user) {
+                let grant = Grant { typed: password, reader: user };
+                lock().granted.insert(key.to_string(), grant);
                 return Ok(pdf);
             }
         }
@@ -101,24 +126,25 @@ pub fn open(path: &str, bytes: Arc<Vec<u8>>) -> Result<Pdf, LoadPdfError> {
 /// The lines a file prompt prints when a password supplied earlier
 /// unlocked the file.
 pub fn remembered_notice(path: &str) -> String {
-    format!("Password protected drawing: {path}\nOpened with previously supplied password.")
+    crate::tr!("pdf-password", "remembered", path = path)
 }
 
 /// The lines a file prompt prints when the password window is cancelled;
 /// the prompt is then asked again.
 pub fn refused_notice(path: &str) -> String {
-    format!("{path}\nUnable to open this drawing.\nIt is encrypted and requires a password.")
+    crate::tr!("pdf-password", "refused", path = path)
 }
 
 /// A file prompt's answer for `path` (typed as `input`): the password
-/// request, or the notice to print once the file is read. `refused_notice`:
-/// cancelling the window prints that the file is encrypted.
+/// request, or the notice to print once the file is read. `attach`: document
+/// access is enough and cancelling the window prints that the file is
+/// encrypted; otherwise owner access is needed.
 pub fn prompt_gate(
     path: &str,
     input: &str,
-    refused_notice: bool,
+    attach: bool,
 ) -> Result<Option<String>, crate::command::CmdResult> {
-    match gate(path) {
+    match gate(path, !attach) {
         Gate::Open => Ok(None),
         Gate::Remembered => Ok(Some(remembered_notice(path))),
         Gate::Ask { stage, remembered } => Err(crate::command::CmdResult::PdfPassword {
@@ -126,13 +152,14 @@ pub fn prompt_gate(
             input: input.to_string(),
             stage,
             remembered,
-            refused_notice,
+            attach,
         }),
     }
 }
 
-/// What attaching or importing `path` needs before its pages are read.
-pub fn gate(path: &str) -> Gate {
+/// What attaching (`owner` false) or importing (`owner` true) `path` needs
+/// before its pages are read.
+pub fn gate(path: &str, owner: bool) -> Gate {
     let Some(bytes) = super::pdf_raster::source_bytes(path) else {
         return Gate::Open;
     };
@@ -145,16 +172,23 @@ pub fn gate(path: &str) -> Gate {
             session.fresh = None;
             return Gate::Open;
         }
-        let mut list: Vec<String> = session.granted.get(path).cloned().into_iter().collect();
+        let granted = session.granted.get(path).map(|g| g.typed.clone());
+        let mut list: Vec<String> = granted.into_iter().collect();
         list.extend(session.remembered.iter().cloned());
         list
     };
-    if security.is_owner(&bytes, "") {
+    let access = |p: &str| {
+        security.is_owner(&bytes, p) || (!owner && security.is_user(&bytes, p))
+    };
+    if access("") {
         return Gate::Open;
     }
-    if let Some(password) = candidates.iter().find(|p| security.is_owner(&bytes, p)) {
-        lock().granted.insert(path.to_string(), password.clone());
+    if let Some(password) = candidates.iter().find(|p| access(p)) {
+        grant(path, &security, &bytes, password);
         return Gate::Remembered;
+    }
+    if !owner {
+        return Gate::Ask { stage: Stage::Document, remembered: false };
     }
     if security.is_user(&bytes, "") {
         return Gate::Ask { stage: Stage::Permission, remembered: false };
@@ -166,32 +200,32 @@ pub fn gate(path: &str) -> Gate {
     }
 }
 
-/// Check a password typed for `stage`. A document password is kept for the
-/// file (and for every file when `remember`); an owner password unlocks it.
-pub fn check(path: &str, stage: Stage, password: &str, remember: bool) -> Check {
+/// Check a password typed for `stage`; `owner` as in [`gate`]. A document
+/// password is kept for the file (and for every file when `remember`).
+pub fn check(path: &str, stage: Stage, password: &str, remember: bool, owner: bool) -> Check {
     let Some(bytes) = super::pdf_raster::source_bytes(path) else {
         return Check::Wrong;
     };
     let Some(security) = Security::read(&bytes) else {
         return Check::Unlocked;
     };
-    let keep = |session: &mut Session| {
-        session.granted.insert(path.to_string(), password.to_string());
+    let keep = || {
+        grant(path, &security, &bytes, password);
+        let mut session = lock();
         if remember && !session.remembered.iter().any(|p| p == password) {
             session.remembered.push(password.to_string());
         }
     };
-    if security.is_owner(&bytes, password) {
-        let mut session = lock();
-        keep(&mut session);
-        session.fresh = Some(path.to_string());
-        drop(session);
+    let user = security.is_user(&bytes, password);
+    if security.is_owner(&bytes, password) || (!owner && user) {
+        keep();
+        lock().fresh = Some(path.to_string());
         // Pages read while the file was locked are read again.
         super::pdf_raster::register_source(path, bytes);
         return Check::Unlocked;
     }
-    if stage == Stage::Document && security.is_user(&bytes, password) {
-        keep(&mut lock());
+    if stage == Stage::Document && user {
+        keep();
         return Check::NeedPermission;
     }
     Check::Wrong
@@ -237,7 +271,9 @@ impl Security {
         };
         let entries = parse_dict(dict)?;
         let get = |key: &str| entries.iter().find(|(k, _)| k == key).map(|(_, v)| v);
-        let int = |key: &str| get(key).and_then(|v| std::str::from_utf8(v).ok()?.trim().parse::<i64>().ok());
+        let int = |key: &str| {
+            get(key).and_then(|v| std::str::from_utf8(v).ok()?.trim().parse::<i64>().ok())
+        };
         if get("Filter").map(|v| v.as_slice()) != Some(&b"/Standard"[..]) {
             return None;
         }
@@ -511,7 +547,8 @@ fn value_end(data: &[u8], i: usize) -> Option<usize> {
                 j += 1;
             }
             let save = j;
-            if let Some((_, after)) = read_int(data, skip_ws(data, j)).filter(|_| data[i].is_ascii_digit()) {
+            let reference = read_int(data, skip_ws(data, j)).filter(|_| data[i].is_ascii_digit());
+            if let Some((_, after)) = reference {
                 let r = skip_ws(data, after);
                 if data.get(r) == Some(&b'R') {
                     return Some(r + 1);
@@ -594,8 +631,10 @@ mod tests {
         Security {
             revision: 2,
             key_len: 5,
-            owner: decode_string(b"<95fe1f4219662a774442fb072e3d9f19e9d130ec09a4d0061e78fe920f7ab62f>")
-                .unwrap(),
+            owner: decode_string(
+                b"<95fe1f4219662a774442fb072e3d9f19e9d130ec09a4d0061e78fe920f7ab62f>",
+            )
+            .unwrap(),
             user: Vec::new(),
         }
     }
@@ -608,7 +647,8 @@ mod tests {
 
     #[test]
     fn reads_encrypt_dictionary() {
-        let data = b"5 0 obj\n<< /Filter /Standard /V 1 /R 2 /O (a\\)b) /U <0102> /P -44 >>\nendobj\ntrailer\n<< /Root 1 0 R /Encrypt 5 0 R >>";
+        let data = b"5 0 obj\n<< /Filter /Standard /V 1 /R 2 /O (a\\)b) /U <0102> /P -44 >>\n\
+            endobj\ntrailer\n<< /Root 1 0 R /Encrypt 5 0 R >>";
         let s = Security::read(data).unwrap();
         assert_eq!((s.revision, s.key_len), (2, 5));
         assert_eq!(s.owner, b"a)b");

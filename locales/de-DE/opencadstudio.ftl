@@ -6755,4 +6755,11 @@ pdf-password =
     .remember = Für diese Sitzung merken
     .remember-hint = Gemerkte Kennwörter werden bei den anderen in dieser Sitzung geöffneten PDFs zuerst versucht.
     .open = Öffnen
-    .help = Verschlüsselte PDFs werden mit Besitzerzugriff angehängt und importiert: Das Öffnen-Kennwort liest das Dokument, das Berechtigungskennwort hebt die Einschränkungen auf.
+    .help = Das Öffnen-Kennwort liest eine verschlüsselte PDF, das reicht zum Anhängen; zum Importieren ihrer Geometrie ist zusätzlich das Berechtigungskennwort nötig, das die Einschränkungen aufhebt.
+    .remembered =
+        Kennwortgeschützte PDF-Datei: { $path }
+        Mit zuvor eingegebenem Kennwort geöffnet.
+    .refused =
+        { $path }
+        Diese PDF-Datei kann nicht geöffnet werden.
+        Sie ist verschlüsselt und erfordert ein Kennwort.
