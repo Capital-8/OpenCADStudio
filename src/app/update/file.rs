@@ -6610,6 +6610,11 @@ impl OpenCADStudio {
                 Task::done(Message::Command("PLOTWINDOW".into()))
             }
             M::SelectSetup(name) => {
+                // Leaving a row mid-rename commits it; otherwise the rename
+                // field would follow the selection onto every clicked row.
+                if self.plot_dialog.name_rename && self.plot_dialog.selected_setup != name {
+                    let _ = self.on_plot_dlg(M::NameCommit);
+                }
                 // Print All Options edits the page setups represented by the
                 // layout rows. With "Save changes to layout" enabled, preserve
                 // the setup we are leaving before another one is loaded.
@@ -6669,7 +6674,7 @@ impl OpenCADStudio {
                 self.refresh_page_setups();
                 self.plot_dialog.name_input = Some(name);
                 self.plot_dialog.name_rename = true;
-                Task::none()
+                iced::widget::operation::focus(crate::ui::window::plot::setup_rename_id())
             }
             M::CopySetup => {
                 if self.print_all_options {
@@ -6693,6 +6698,9 @@ impl OpenCADStudio {
                     self.refresh_page_setups();
                     self.plot_dialog.name_input = Some(name);
                     self.plot_dialog.name_rename = true;
+                    return iced::widget::operation::focus(
+                        crate::ui::window::plot::setup_rename_id(),
+                    );
                 }
                 Task::none()
             }
@@ -6710,7 +6718,7 @@ impl OpenCADStudio {
                 }
                 self.plot_dialog.name_input = Some(name);
                 self.plot_dialog.name_rename = true;
-                Task::none()
+                iced::widget::operation::focus(crate::ui::window::plot::setup_rename_id())
             }
             M::DeleteSetup => {
                 if self.print_all_options {
@@ -6721,6 +6729,8 @@ impl OpenCADStudio {
                     self.tabs[self.active_tab].scene.page_setup_delete(&sel);
                     self.tabs[self.active_tab].dirty = true;
                     self.plot_dialog.selected_setup.clear();
+                    self.plot_dialog.name_input = None;
+                    self.plot_dialog.name_rename = false;
                     self.refresh_page_setups();
                 }
                 Task::none()
