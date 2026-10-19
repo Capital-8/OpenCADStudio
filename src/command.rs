@@ -1705,6 +1705,20 @@ pub enum CmdResult {
     },
     /// Open the PDF Import Settings dialog; the command keeps its prompt.
     OpenPdfImportSettings,
+    /// Ask for the password of an encrypted PDF typed at a file prompt; the
+    /// command keeps its prompt and gets `input` again once the file is
+    /// unlocked.
+    PdfPassword {
+        path: String,
+        input: String,
+        stage: crate::scene::model::pdf_password::Stage,
+        /// A password supplied earlier opened the document but not its
+        /// restrictions.
+        remembered: bool,
+        /// Cancelling prints that the file is encrypted (attach) instead of
+        /// asking again silently (import).
+        refused_notice: bool,
+    },
     /// Import a page of a file (PDFIMPORT File); ends the command.
     PdfImportFile(crate::modules::insert::pdf_import::PdfFileImport),
     /// Attach a point cloud: the host creates or reuses its definition,

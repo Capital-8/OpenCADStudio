@@ -38,6 +38,7 @@ pub mod plot;
 pub mod plugin_manager;
 pub mod print_all;
 pub mod recovery;
+pub mod pdf_password_dialog;
 pub mod refedit_dialog;
 pub mod sheet_set;
 pub mod shortcuts;
