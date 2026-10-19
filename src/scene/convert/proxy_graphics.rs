@@ -26,7 +26,10 @@
 //!   (`u32 n` verts, then a face list of `[u32 count, u32 idx…]`); 32 a
 //!   normal-tagged poly-line (`u32 n`, `[f64;3]×n`, then a normal).
 //! * text — 38: position, normal, direction (its length is the glyph height),
-//!   then a UTF-16 content string and a UTF-16 font (`*.shx`).
+//!   then a UTF-16 content string and a UTF-16 font (`*.shx`); 10 / 36:
+//!   position, normal, direction, height, width factor, oblique, then a
+//!   NUL-terminated 8-bit (10) or UTF-16 (36) string. Placeholder previews
+//!   (a bounding box plus the class-name label) use these.
 //! * traits — 14 colour (plain ACI); 22 colour (encoded: 0xC2 RGB / 0xC3 ACI);
 //!   23 lineweight (0.01 mm); 29 a 4×4 transform whose local→world matrix
 //!   applies to every following primitive (identity by default).
@@ -82,6 +85,10 @@ const REC_COLOR_ENC: u32 = 22;
 const REC_LINEWEIGHT: u32 = 23;
 /// Trait: a 4×4 local→world transform for the following primitives.
 const REC_TRANSFORM: u32 = 29;
+/// A plain text label with an explicit height and an 8-bit string.
+const REC_TEXT_PLAIN: u32 = 10;
+/// The same label with a UTF-16 string.
+const REC_TEXT_UNICODE: u32 = 36;
 /// A normal-tagged poly-line (points then a trailing normal vector).
 const REC_LINE_N: u32 = 32;
 /// A text label (position/normal/direction, content string, font).
@@ -203,6 +210,14 @@ pub fn decode(blob: &[u8]) -> Decoded {
             REC_ARC | REC_ARC5 => {
                 if let Some(pts) = decode_arc(blob, pos) {
                     push_line(&mut out, pts, color, lineweight, &xform);
+                }
+            }
+            REC_TEXT_PLAIN | REC_TEXT_UNICODE => {
+                let unicode = rtype == REC_TEXT_UNICODE;
+                if let Some(mut t) = decode_simple_text(blob, pos, rsize, unicode) {
+                    t.position = apply(&xform, t.position);
+                    t.color = color;
+                    out.texts.push(t);
                 }
             }
             REC_TEXT => {
@@ -361,6 +376,42 @@ fn decode_text(blob: &[u8], pos: usize, rsize: usize) -> Option<ProxyText> {
     })
 }
 
+/// Decode a plain / unicode text record: position, normal, direction, then
+/// height, width factor, oblique, and a NUL-terminated string (local coords).
+fn decode_simple_text(
+    blob: &[u8],
+    pos: usize,
+    rsize: usize,
+    unicode: bool,
+) -> Option<ProxyText> {
+    let position = pt3_at(blob, pos + 8)?;
+    let dir = pt3_at(blob, pos + 8 + 48)?;
+    let height = f64_at(blob, pos + 8 + 72)?;
+    let raw = blob.get(pos + 8 + 96..pos + rsize)?;
+    let text = if unicode {
+        let units: Vec<u16> = raw
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .take_while(|&u| u != 0)
+            .collect();
+        String::from_utf16_lossy(&units)
+    } else {
+        let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+        String::from_utf8_lossy(&raw[..end]).into_owned()
+    };
+    if text.trim().is_empty() || !height.is_finite() || height <= 0.0 || height > 1e9 {
+        return None;
+    }
+    Some(ProxyText {
+        position,
+        height,
+        rotation: dir[1].atan2(dir[0]),
+        text,
+        font: String::new(),
+        color: ProxyColor::Inherit,
+    })
+}
+
 /// Pull the printable-ASCII UTF-16LE runs (≥ 2 chars) out of a byte slice.
 fn utf16_strings(data: &[u8]) -> Vec<String> {
     let mut out = Vec::new();
@@ -412,6 +463,29 @@ mod tests {
         assert_eq!(dec.polylines[0].points.len(), 5);
         assert!((dec.polylines[0].points[2][0] - 1192.1490).abs() < 1e-3);
         assert!((dec.polylines[0].points[2][1] - 877.8240).abs() < 1e-3);
+    }
+
+    /// A placeholder preview's class-name label (unicode text record 36).
+    #[test]
+    fn decodes_the_placeholder_label() {
+        let mut rec = Vec::new();
+        for v in [2.0, 3.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.05, 1.0, 0.0] {
+            rec.extend_from_slice(&f64::to_le_bytes(v));
+        }
+        for u in "AecDbWall".encode_utf16().chain([0, 0, 0]) {
+            rec.extend_from_slice(&u.to_le_bytes());
+        }
+        let size = (8 + rec.len()) as u32;
+        let mut blob = Vec::new();
+        for v in [8 + size, 1, size, REC_TEXT_UNICODE] {
+            blob.extend_from_slice(&v.to_le_bytes());
+        }
+        blob.extend_from_slice(&rec);
+        let dec = decode(&blob);
+        assert_eq!(dec.texts.len(), 1);
+        assert_eq!(dec.texts[0].text, "AecDbWall");
+        assert_eq!(dec.texts[0].position, [2.0, 3.0, 0.0]);
+        assert!((dec.texts[0].height - 0.05).abs() < 1e-12);
     }
 
     #[test]
