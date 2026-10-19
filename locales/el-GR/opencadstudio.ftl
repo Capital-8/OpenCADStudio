@@ -6760,3 +6760,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = PDF με προστασία κωδικού
+    .step-open = Κωδικός ανοίγματος
+    .step-permission = Κωδικός δικαιωμάτων
+    .open-password = Κωδικός ανοίγματος
+    .permission-password = Κωδικός δικαιωμάτων
+    .password = Κωδικός
+    .open-hint = Αυτό το έγγραφο ζητά κωδικό πριν ανοίξει. Ο κωδικός δεν αποθηκεύεται στο σχέδιο.
+    .permission-hint = Η χρήση του εγγράφου είναι περιορισμένη· για την εισαγωγή χρειάζεται ο κωδικός που αίρει τους περιορισμούς.
+    .wrong = Λάθος κωδικός. Πληκτρολογήστε τον ξανά και πατήστε Άνοιγμα.
+    .session = Περίοδος λειτουργίας
+    .remember = Απομνημόνευση για αυτή την περίοδο
+    .remember-hint = Οι απομνημονευμένοι κωδικοί δοκιμάζονται πρώτοι στα άλλα PDF που ανοίγουν σε αυτή την περίοδο.
+    .open = Άνοιγμα
+    .help = Ο κωδικός ανοίγματος διαβάζει ένα κρυπτογραφημένο PDF, κάτι που αρκεί για την επισύναψή του· η εισαγωγή της γεωμετρίας του χρειάζεται επίσης τον κωδικό δικαιωμάτων που αίρει τους περιορισμούς.
+    .remembered =
+        Αρχείο PDF με προστασία κωδικού: { $path }
+        Άνοιξε με κωδικό που δόθηκε προηγουμένως.
+    .refused =
+        { $path }
+        Δεν είναι δυνατό το άνοιγμα αυτού του αρχείου PDF.
+        Είναι κρυπτογραφημένο και απαιτεί κωδικό.

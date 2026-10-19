@@ -650,6 +650,8 @@ pub(super) struct OpenCADStudio {
     image_adjust: Option<crate::ui::window::pdf_dialogs::ImageAdjustState>,
     /// The Edit Reference dialog (REFEDIT).
     refedit_dialog: Option<crate::ui::window::refedit_dialog::RefEditDialogState>,
+    /// The Password Protected PDF window.
+    pdf_password: Option<crate::ui::window::pdf_password_dialog::PdfPasswordState>,
     pdf_shx_dialog: Option<crate::ui::window::pdf_shx_dialog::ShxSettingsState>,
     underlay_layers: Option<crate::ui::window::pdf_dialogs::UnderlayLayersState>,
     pdf_import_settings: Option<crate::modules::insert::pdf_import::PdfImportSettings>,
@@ -2315,6 +2317,7 @@ pub enum ModalKind {
     ViewBackground,
     ImageAdjust,
     RefEdit,
+    PdfPassword,
     PdfShxSettings,
     UnderlayLayers,
     PdfImportSettings,
@@ -4586,6 +4589,8 @@ pub enum Message {
     FieldDialog(crate::ui::window::field_dialog::FieldDialogMsg),
     /// An edit in the Edit Reference dialog.
     RefEditDialog(crate::ui::window::refedit_dialog::RefEditDialogMsg),
+    /// An edit in the Password Protected PDF window.
+    PdfPassword(crate::ui::window::pdf_password_dialog::PdfPasswordMsg),
     PdfShxDialog(crate::ui::window::pdf_shx_dialog::ShxDialogMsg),
     /// A click or search in the Point Cloud Manager.
     PcManager(crate::ui::window::pc_manager::PcManagerMsg),
@@ -4811,6 +4816,7 @@ impl OpenCADStudio {
             view_background: None,
             image_adjust: None,
             refedit_dialog: None,
+            pdf_password: None,
             pdf_shx_dialog: None,
             underlay_layers: None,
             pdf_import_settings: None,

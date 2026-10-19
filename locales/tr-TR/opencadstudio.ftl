@@ -6681,3 +6681,25 @@ pdf-shx =
     .defaults = Varsayılana dön
     .apply = Uygula
     .help = PDFSHXTEXT seçilen geometriyi açık yazı tipleriyle, en üsttekinden başlayarak karşılaştırır; bir grubu, tanınan oranı eşiğe ulaşan ilk yazı tipiyle ("En iyi eşleşen yazı tipini kullan" açıkken en iyisiyle) dönüştürür.
+pdf-password =
+    .title = Parola Korumalı PDF
+    .step-open = Açma parolası
+    .step-permission = İzin parolası
+    .open-password = Açma parolası
+    .permission-password = İzin parolası
+    .password = Parola
+    .open-hint = Bu belge açılmadan önce parola istiyor. Parola çizime kaydedilmez.
+    .permission-hint = Belgenin kullanımı kısıtlanmış; içe aktarmak için kısıtlamaları kaldıran parola gerekir.
+    .wrong = Parola yanlış. Yeniden yazıp Aç'a basın.
+    .session = Oturum
+    .remember = Bu oturumda hatırla
+    .remember-hint = Hatırlanan parolalar aynı oturumda açılan diğer PDF'lerde önce denenir.
+    .open = Aç
+    .help = Açma parolası şifreli bir PDF'yi okur, bu onu bağlamak için yeterlidir; geometrisini içe aktarmak için kısıtlamaları kaldıran izin parolası da gerekir.
+    .remembered =
+        Parola korumalı PDF dosyası: { $path }
+        Daha önce girilen parolayla açıldı.
+    .refused =
+        { $path }
+        Bu PDF dosyası açılamıyor.
+        Dosya şifreli ve parola gerektiriyor.

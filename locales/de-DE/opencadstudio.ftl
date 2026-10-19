@@ -6758,3 +6758,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = Kennwortgeschützte PDF
+    .step-open = Kennwort zum Öffnen
+    .step-permission = Berechtigungskennwort
+    .open-password = Kennwort zum Öffnen
+    .permission-password = Berechtigungskennwort
+    .password = Kennwort
+    .open-hint = Dieses Dokument verlangt vor dem Öffnen ein Kennwort. Das Kennwort wird nicht in der Zeichnung gespeichert.
+    .permission-hint = Die Nutzung des Dokuments ist eingeschränkt; zum Importieren ist das Kennwort nötig, das die Einschränkungen aufhebt.
+    .wrong = Falsches Kennwort. Erneut eingeben und Öffnen drücken.
+    .session = Sitzung
+    .remember = Für diese Sitzung merken
+    .remember-hint = Gemerkte Kennwörter werden bei den anderen in dieser Sitzung geöffneten PDFs zuerst versucht.
+    .open = Öffnen
+    .help = Das Öffnen-Kennwort liest eine verschlüsselte PDF, das reicht zum Anhängen; zum Importieren ihrer Geometrie ist zusätzlich das Berechtigungskennwort nötig, das die Einschränkungen aufhebt.
+    .remembered =
+        Kennwortgeschützte PDF-Datei: { $path }
+        Mit zuvor eingegebenem Kennwort geöffnet.
+    .refused =
+        { $path }
+        Diese PDF-Datei kann nicht geöffnet werden.
+        Sie ist verschlüsselt und erfordert ein Kennwort.

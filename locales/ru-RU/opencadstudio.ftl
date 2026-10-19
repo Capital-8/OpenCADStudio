@@ -6761,3 +6761,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = PDF, защищённый паролем
+    .step-open = Пароль открытия
+    .step-permission = Пароль разрешений
+    .open-password = Пароль открытия
+    .permission-password = Пароль разрешений
+    .password = Пароль
+    .open-hint = Этот документ запрашивает пароль перед открытием. Пароль не сохраняется в чертеже.
+    .permission-hint = Использование документа ограничено; для импорта нужен пароль, снимающий ограничения.
+    .wrong = Неверный пароль. Введите его снова и нажмите «Открыть».
+    .session = Сеанс
+    .remember = Запомнить на этот сеанс
+    .remember-hint = Запомненные пароли сначала пробуются для других PDF, открываемых в этом сеансе.
+    .open = Открыть
+    .help = Пароль открытия читает зашифрованный PDF, и этого достаточно для его подключения; для импорта его геометрии нужен ещё пароль разрешений, снимающий ограничения.
+    .remembered =
+        PDF-файл, защищённый паролем: { $path }
+        Открыт с ранее введённым паролем.
+    .refused =
+        { $path }
+        Не удаётся открыть этот PDF-файл.
+        Он зашифрован и требует пароль.

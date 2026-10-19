@@ -6759,3 +6759,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = 암호로 보호된 PDF
+    .step-open = 열기 암호
+    .step-permission = 권한 암호
+    .open-password = 열기 암호
+    .permission-password = 권한 암호
+    .password = 암호
+    .open-hint = 이 문서는 열기 전에 암호를 요구합니다. 암호는 도면에 저장되지 않습니다.
+    .permission-hint = 문서 사용이 제한되어 있습니다. 가져오려면 제한을 해제하는 암호가 필요합니다.
+    .wrong = 암호가 틀렸습니다. 다시 입력하고 열기를 누르십시오.
+    .session = 세션
+    .remember = 이 세션 동안 기억
+    .remember-hint = 기억된 암호는 이 세션에서 여는 다른 PDF에서 먼저 시도됩니다.
+    .open = 열기
+    .help = 열기 암호로 암호화된 PDF를 읽을 수 있으며 첨부에는 이것으로 충분합니다. 형상을 가져오려면 제한을 해제하는 권한 암호도 필요합니다.
+    .remembered =
+        암호로 보호된 PDF 파일: { $path }
+        이전에 입력한 암호로 열었습니다.
+    .refused =
+        { $path }
+        이 PDF 파일을 열 수 없습니다.
+        암호화되어 있어 암호가 필요합니다.

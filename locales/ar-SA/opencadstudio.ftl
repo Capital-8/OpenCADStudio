@@ -6772,3 +6772,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = ملف PDF محمي بكلمة مرور
+    .step-open = كلمة مرور الفتح
+    .step-permission = كلمة مرور الأذونات
+    .open-password = كلمة مرور الفتح
+    .permission-password = كلمة مرور الأذونات
+    .password = كلمة المرور
+    .open-hint = يطلب هذا المستند كلمة مرور قبل فتحه. لا تُحفظ كلمة المرور في الرسم.
+    .permission-hint = استخدام المستند مقيد؛ يتطلب استيراده كلمة المرور التي تزيل القيود.
+    .wrong = كلمة مرور خاطئة. اكتبها مرة أخرى واضغط فتح.
+    .session = الجلسة
+    .remember = تذكّر في هذه الجلسة
+    .remember-hint = تُجرَّب كلمات المرور المحفوظة أولاً على ملفات PDF الأخرى المفتوحة في هذه الجلسة.
+    .open = فتح
+    .help = كلمة مرور الفتح تقرأ ملف PDF المشفر، وهذا يكفي لإرفاقه؛ أما استيراد هندسته فيتطلب أيضًا كلمة مرور الأذونات التي تزيل قيوده.
+    .remembered =
+        ملف PDF محمي بكلمة مرور: { $path }
+        فُتح بكلمة مرور أُدخلت سابقًا.
+    .refused =
+        { $path }
+        تعذر فتح ملف PDF هذا.
+        إنه مشفر ويتطلب كلمة مرور.

@@ -6759,3 +6759,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = PDF chroniony hasłem
+    .step-open = Hasło otwarcia
+    .step-permission = Hasło uprawnień
+    .open-password = Hasło otwarcia
+    .permission-password = Hasło uprawnień
+    .password = Hasło
+    .open-hint = Ten dokument wymaga hasła przed otwarciem. Hasło nie jest zapisywane w rysunku.
+    .permission-hint = Użycie dokumentu jest ograniczone; import wymaga hasła, które znosi ograniczenia.
+    .wrong = Nieprawidłowe hasło. Wpisz je ponownie i kliknij Otwórz.
+    .session = Sesja
+    .remember = Zapamiętaj w tej sesji
+    .remember-hint = Zapamiętane hasła są najpierw próbowane w innych plikach PDF otwieranych w tej sesji.
+    .open = Otwórz
+    .help = Hasło otwarcia odczytuje zaszyfrowany plik PDF, co wystarcza do jego dołączenia; import jego geometrii wymaga też hasła uprawnień, które znosi ograniczenia.
+    .remembered =
+        Plik PDF chroniony hasłem: { $path }
+        Otwarto wcześniej podanym hasłem.
+    .refused =
+        { $path }
+        Nie można otworzyć tego pliku PDF.
+        Jest zaszyfrowany i wymaga hasła.

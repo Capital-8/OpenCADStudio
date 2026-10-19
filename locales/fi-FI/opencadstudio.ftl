@@ -6757,3 +6757,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = Salasanalla suojattu PDF
+    .step-open = Avaussalasana
+    .step-permission = Käyttöoikeussalasana
+    .open-password = Avaussalasana
+    .permission-password = Käyttöoikeussalasana
+    .password = Salasana
+    .open-hint = Tämä asiakirja pyytää salasanaa ennen avaamista. Salasanaa ei tallenneta piirustukseen.
+    .permission-hint = Asiakirjan käyttöä on rajoitettu; tuonti vaatii salasanan, joka poistaa rajoitukset.
+    .wrong = Väärä salasana. Kirjoita se uudelleen ja paina Avaa.
+    .session = Istunto
+    .remember = Muista tämän istunnon ajan
+    .remember-hint = Muistettuja salasanoja kokeillaan ensin muihin tässä istunnossa avattaviin PDF-tiedostoihin.
+    .open = Avaa
+    .help = Avaussalasana lukee salatun PDF-tiedoston, mikä riittää sen liittämiseen; sen geometrian tuonti vaatii lisäksi käyttöoikeussalasanan, joka poistaa rajoitukset.
+    .remembered =
+        Salasanalla suojattu PDF-tiedosto: { $path }
+        Avattu aiemmin annetulla salasanalla.
+    .refused =
+        { $path }
+        Tätä PDF-tiedostoa ei voi avata.
+        Se on salattu ja vaatii salasanan.

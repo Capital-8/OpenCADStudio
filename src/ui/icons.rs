@@ -100,6 +100,10 @@ pub static ARROW_LONG_RIGHT: &[u8] = include_bytes!("../../assets/icons/ui/arrow
 pub static MORE: &[u8] = include_bytes!("../../assets/icons/ui/more.svg");
 pub static INFO: &[u8] = include_bytes!("../../assets/icons/ui/info.svg");
 pub static MESH: &[u8] = include_bytes!("../../assets/icons/ui/mesh.svg");
+pub static ALERT: &[u8] = include_bytes!("../../assets/icons/ui/alert.svg");
+pub static LOCK: &[u8] = include_bytes!("../../assets/icons/ui/lock.svg");
+pub static EYE: &[u8] = include_bytes!("../../assets/icons/ui/eye.svg");
+pub static EYE_OFF: &[u8] = include_bytes!("../../assets/icons/ui/eye_off.svg");
 
 // ── Status-bar toggle icons (issue #216) ──────────────────────────────────
 pub static ST_ORTHO: &[u8] = include_bytes!("../../assets/icons/status/ortho.svg");

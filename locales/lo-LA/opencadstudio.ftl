@@ -6760,3 +6760,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = PDF ທີ່ປ້ອງກັນດ້ວຍລະຫັດຜ່ານ
+    .step-open = ລະຫັດເປີດ
+    .step-permission = ລະຫັດສິດ
+    .open-password = ລະຫັດເປີດ
+    .permission-password = ລະຫັດສິດ
+    .password = ລະຫັດຜ່ານ
+    .open-hint = ເອກະສານນີ້ຕ້ອງການລະຫັດຜ່ານກ່ອນເປີດ. ລະຫັດຜ່ານບໍ່ຖືກບັນທຶກໃນແບບແຕ້ມ.
+    .permission-hint = ການນຳໃຊ້ເອກະສານຖືກຈຳກັດ; ການນຳເຂົ້າຕ້ອງໃຊ້ລະຫັດທີ່ຍົກເລີກຂໍ້ຈຳກັດ.
+    .wrong = ລະຫັດຜ່ານຜິດ. ພິມໃໝ່ແລ້ວກົດເປີດ.
+    .session = ເຊດຊັນ
+    .remember = ຈື່ໄວ້ໃນເຊດຊັນນີ້
+    .remember-hint = ລະຫັດທີ່ຈື່ໄວ້ຈະຖືກລອງກ່ອນກັບ PDF ອື່ນທີ່ເປີດໃນເຊດຊັນນີ້.
+    .open = ເປີດ
+    .help = ລະຫັດເປີດອ່ານ PDF ທີ່ເຂົ້າລະຫັດໄດ້ ເຊິ່ງພຽງພໍສຳລັບການແນບ; ການນຳເຂົ້າເລຂາຄະນິດຂອງມັນຍັງຕ້ອງໃຊ້ລະຫັດສິດທີ່ຍົກເລີກຂໍ້ຈຳກັດ.
+    .remembered =
+        ໄຟລ໌ PDF ທີ່ປ້ອງກັນດ້ວຍລະຫັດຜ່ານ: { $path }
+        ເປີດດ້ວຍລະຫັດຜ່ານທີ່ໃສ່ໄວ້ກ່ອນໜ້ານີ້.
+    .refused =
+        { $path }
+        ບໍ່ສາມາດເປີດໄຟລ໌ PDF ນີ້ໄດ້.
+        ມັນຖືກເຂົ້າລະຫັດ ແລະ ຕ້ອງໃຊ້ລະຫັດຜ່ານ.

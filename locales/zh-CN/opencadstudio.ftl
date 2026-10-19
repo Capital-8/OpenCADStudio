@@ -6743,3 +6743,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = 受密码保护的 PDF
+    .step-open = 打开密码
+    .step-permission = 权限密码
+    .open-password = 打开密码
+    .permission-password = 权限密码
+    .password = 密码
+    .open-hint = 此文档在打开前需要密码。密码不会保存在图形中。
+    .permission-hint = 文档的使用受到限制；导入需要解除限制的密码。
+    .wrong = 密码错误。请重新输入并按“打开”。
+    .session = 会话
+    .remember = 在本会话中记住
+    .remember-hint = 记住的密码会先用于本会话中打开的其他 PDF。
+    .open = 打开
+    .help = 打开密码可读取加密的 PDF，足以附着它；导入其几何图形还需要解除限制的权限密码。
+    .remembered =
+        受密码保护的 PDF 文件：{ $path }
+        已使用先前提供的密码打开。
+    .refused =
+        { $path }
+        无法打开此 PDF 文件。
+        该文件已加密，需要密码。

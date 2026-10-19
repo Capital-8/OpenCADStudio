@@ -6748,3 +6748,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = パスワード保護された PDF
+    .step-open = 開くパスワード
+    .step-permission = 権限パスワード
+    .open-password = 開くパスワード
+    .permission-password = 権限パスワード
+    .password = パスワード
+    .open-hint = この文書は開く前にパスワードを求めます。パスワードは図面に保存されません。
+    .permission-hint = 文書の使用は制限されています。読み込むには制限を解除するパスワードが必要です。
+    .wrong = パスワードが違います。もう一度入力して [開く] を押してください。
+    .session = セッション
+    .remember = このセッション中は記憶する
+    .remember-hint = 記憶したパスワードは、このセッションで開く他の PDF で最初に試されます。
+    .open = 開く
+    .help = 開くパスワードで暗号化された PDF を読み取れ、アタッチにはそれで足ります。ジオメトリを読み込むには、制限を解除する権限パスワードも必要です。
+    .remembered =
+        パスワード保護された PDF ファイル: { $path }
+        以前に入力したパスワードで開きました。
+    .refused =
+        { $path }
+        この PDF ファイルを開けません。
+        暗号化されており、パスワードが必要です。

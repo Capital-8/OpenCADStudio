@@ -6758,3 +6758,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = Met wachtwoord beveiligde PDF
+    .step-open = Wachtwoord voor openen
+    .step-permission = Machtigingswachtwoord
+    .open-password = Wachtwoord voor openen
+    .permission-password = Machtigingswachtwoord
+    .password = Wachtwoord
+    .open-hint = Dit document vraagt een wachtwoord voordat het opent. Het wachtwoord wordt niet in de tekening opgeslagen.
+    .permission-hint = Het gebruik van het document is beperkt; importeren vereist het wachtwoord dat de beperkingen opheft.
+    .wrong = Onjuist wachtwoord. Typ het opnieuw en klik op Openen.
+    .session = Sessie
+    .remember = Onthouden voor deze sessie
+    .remember-hint = Onthouden wachtwoorden worden eerst geprobeerd bij de andere PDF's die in deze sessie worden geopend.
+    .open = Openen
+    .help = Het openwachtwoord leest een versleutelde PDF, wat genoeg is om hem te koppelen; het importeren van de geometrie vereist ook het machtigingswachtwoord dat de beperkingen opheft.
+    .remembered =
+        Met wachtwoord beveiligd PDF-bestand: { $path }
+        Geopend met een eerder opgegeven wachtwoord.
+    .refused =
+        { $path }
+        Kan dit PDF-bestand niet openen.
+        Het is versleuteld en vereist een wachtwoord.

@@ -6744,3 +6744,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = Jelszóval védett PDF
+    .step-open = Megnyitási jelszó
+    .step-permission = Engedélyjelszó
+    .open-password = Megnyitási jelszó
+    .permission-password = Engedélyjelszó
+    .password = Jelszó
+    .open-hint = A dokumentum megnyitás előtt jelszót kér. A jelszó nem kerül a rajzba.
+    .permission-hint = A dokumentum használata korlátozott; az importáláshoz a korlátozásokat feloldó jelszó szükséges.
+    .wrong = Hibás jelszó. Írja be újra, és nyomja meg a Megnyitás gombot.
+    .session = Munkamenet
+    .remember = Megjegyzés ebben a munkamenetben
+    .remember-hint = A megjegyzett jelszavakat a munkamenetben megnyitott többi PDF-nél elsőként próbálja.
+    .open = Megnyitás
+    .help = A megnyitási jelszó olvassa a titkosított PDF-et, ez elég a csatolásához; a geometriájának importálásához a korlátozásokat feloldó engedélyjelszó is szükséges.
+    .remembered =
+        Jelszóval védett PDF-fájl: { $path }
+        Korábban megadott jelszóval megnyitva.
+    .refused =
+        { $path }
+        Ez a PDF-fájl nem nyitható meg.
+        Titkosított, és jelszót igényel.

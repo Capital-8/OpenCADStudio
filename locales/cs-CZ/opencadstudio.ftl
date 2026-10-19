@@ -6757,3 +6757,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = PDF chráněné heslem
+    .step-open = Heslo pro otevření
+    .step-permission = Heslo oprávnění
+    .open-password = Heslo pro otevření
+    .permission-password = Heslo oprávnění
+    .password = Heslo
+    .open-hint = Tento dokument před otevřením vyžaduje heslo. Heslo se do výkresu neukládá.
+    .permission-hint = Použití dokumentu je omezeno; import vyžaduje heslo, které omezení odstraní.
+    .wrong = Nesprávné heslo. Zadejte ho znovu a stiskněte Otevřít.
+    .session = Relace
+    .remember = Zapamatovat pro tuto relaci
+    .remember-hint = Zapamatovaná hesla se nejprve zkoušejí u ostatních PDF otevřených v této relaci.
+    .open = Otevřít
+    .help = Heslo pro otevření přečte šifrované PDF, což stačí k jeho připojení; import jeho geometrie vyžaduje také heslo oprávnění, které odstraní omezení.
+    .remembered =
+        Soubor PDF chráněný heslem: { $path }
+        Otevřeno dříve zadaným heslem.
+    .refused =
+        { $path }
+        Tento soubor PDF nelze otevřít.
+        Je šifrovaný a vyžaduje heslo.

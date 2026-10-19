@@ -7,6 +7,7 @@ name = "OpenCADStudio"
 version = "2026.42.0"
 dependencies = [
  "acadrust",
+ "aes",
  "allsorts",
  "ashpd",
  "base64",
@@ -40,6 +41,7 @@ dependencies = [
  "libloading",
  "log",
  "lyon_tessellation",
+ "md-5",
  "meshopt",
  "naga 27.0.3",
  "objc2 0.5.2",

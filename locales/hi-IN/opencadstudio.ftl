@@ -6748,3 +6748,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = पासवर्ड से सुरक्षित PDF
+    .step-open = खोलने का पासवर्ड
+    .step-permission = अनुमति पासवर्ड
+    .open-password = खोलने का पासवर्ड
+    .permission-password = अनुमति पासवर्ड
+    .password = पासवर्ड
+    .open-hint = यह दस्तावेज़ खुलने से पहले पासवर्ड मांगता है। पासवर्ड ड्रॉइंग में सहेजा नहीं जाता।
+    .permission-hint = दस्तावेज़ का उपयोग प्रतिबंधित है; इसे आयात करने के लिए प्रतिबंध हटाने वाला पासवर्ड चाहिए।
+    .wrong = गलत पासवर्ड। इसे फिर से लिखें और खोलें दबाएँ।
+    .session = सत्र
+    .remember = इस सत्र के लिए याद रखें
+    .remember-hint = याद रखे गए पासवर्ड इस सत्र में खोली गई अन्य PDF फ़ाइलों पर पहले आज़माए जाते हैं।
+    .open = खोलें
+    .help = खोलने का पासवर्ड एन्क्रिप्टेड PDF पढ़ता है, जो उसे संलग्न करने के लिए पर्याप्त है; उसकी ज्यामिति आयात करने के लिए प्रतिबंध हटाने वाला अनुमति पासवर्ड भी चाहिए।
+    .remembered =
+        पासवर्ड से सुरक्षित PDF फ़ाइल: { $path }
+        पहले दिए गए पासवर्ड से खोली गई।
+    .refused =
+        { $path }
+        यह PDF फ़ाइल नहीं खोली जा सकी।
+        यह एन्क्रिप्टेड है और इसके लिए पासवर्ड चाहिए।

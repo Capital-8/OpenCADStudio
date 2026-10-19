@@ -6760,3 +6760,25 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = PDF protégé par mot de passe
+    .step-open = Mot de passe d'ouverture
+    .step-permission = Mot de passe des autorisations
+    .open-password = Mot de passe d'ouverture
+    .permission-password = Mot de passe des autorisations
+    .password = Mot de passe
+    .open-hint = Ce document demande un mot de passe avant de s'ouvrir. Le mot de passe n'est pas enregistré dans le dessin.
+    .permission-hint = L'utilisation du document est restreinte ; l'importer nécessite le mot de passe qui lève les restrictions.
+    .wrong = Mot de passe incorrect. Saisissez-le à nouveau et cliquez sur Ouvrir.
+    .session = Session
+    .remember = Mémoriser pour cette session
+    .remember-hint = Les mots de passe mémorisés sont essayés en premier sur les autres PDF ouverts dans cette session.
+    .open = Ouvrir
+    .help = Le mot de passe d'ouverture lit un PDF chiffré, ce qui suffit pour l'attacher ; importer sa géométrie nécessite aussi le mot de passe des autorisations qui lève ses restrictions.
+    .remembered =
+        Fichier PDF protégé par mot de passe : { $path }
+        Ouvert avec un mot de passe fourni précédemment.
+    .refused =
+        { $path }
+        Impossible d'ouvrir ce fichier PDF.
+        Il est chiffré et nécessite un mot de passe.
