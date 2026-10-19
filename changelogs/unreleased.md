@@ -13,6 +13,7 @@
 * **Native Block Properties Table Grips:** Author and edit table values through native grips, with must-match row behavior.
 * **Reference-Side Row Selection:** Select a Block Properties Table row from a dynamic block reference and see its authoring state in the Block Editor.
 * **Authoring Selection and Preview:** The Block Editor now presents table popup and selection state, edits and previews parameters, and manages parameter and base-point graph items more consistently.
+* **Plugin API v11–v13:** Plugins can read and drive entity grips, place their own grip points and react to dragging them, create constraints, and run commands quietly. Plugins now learn which entities changed instead of rescanning the whole drawing, read and write records in batches, and start up more reliably. *(Contributed by [@schoeller](https://github.com/schoeller))*
 
 ### 🐛 Bug Fixes
 

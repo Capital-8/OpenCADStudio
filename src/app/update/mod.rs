@@ -110,6 +110,9 @@ pub(in crate::app) use file::background_task;
 #[cfg(not(target_arch = "wasm32"))]
 pub(in crate::app) use file::native_paths_match;
 mod page_setup_import;
+mod plugin_grips;
+#[cfg(test)]
+mod plugin_grips_tests;
 mod qselect;
 mod style;
 pub(in crate::app) mod util;
@@ -369,6 +372,27 @@ impl OpenCADStudio {
         // `DocumentChanged` carries the settled geometry epoch to every
         // loaded native plugin through `BuiltinPlugin::on_notification`.
         crate::plugin::v4_support::publish_document_changed(tab.scene.geometry_epoch);
+        // API v13 dirty regions: the boundary's O(changed) payload rides next
+        // to the change event; empty sets mean "walk everything".
+        let (entities, records) = {
+            let tab = &mut self.tabs[self.active_tab];
+            if tab.plugin_dirty_overflow {
+                (Vec::new(), Vec::new())
+            } else {
+                (
+                    std::mem::take(&mut tab.plugin_dirty_entities),
+                    std::mem::take(&mut tab.plugin_dirty_records),
+                )
+            }
+        };
+        let tab = &self.tabs[self.active_tab];
+        crate::plugin::v4_support::publish_document_changed_regions(
+            tab.id,
+            tab.scene.geometry_epoch,
+            entities,
+            records,
+        );
+        self.tabs[self.active_tab].plugin_dirty_overflow = false;
     }
 
     /// Announce that a whole document became resident in the active tab —
@@ -986,6 +1010,14 @@ impl OpenCADStudio {
                         mgr.drain_requests(&mut host, &mut |_| {});
                     });
                 }
+                // API v13: process queued ChannelReady attach acks on the
+                // main thread — the manager lock is free here (the reader
+                // thread only enqueues), boot-window broadcasts flush.
+                crate::plugin::v4_support::drain_channel_ready_acks();
+                // Custom grips live exactly as long as their declaring
+                // plugin: reap the sets of dead/unloaded plugins (and cancel
+                // a drag or hover the dying plugin owned).
+                self.reap_plugin_grips();
                 crate::plugin::external::with_manager(|mgr| {
                     for line in mgr.drain_io() {
                         if line.text.starts_with("[runner]")
@@ -2679,6 +2711,11 @@ impl OpenCADStudio {
                 self.hovered_doc_tab = None;
                 Task::none()
             }
+
+            // API v11: keep the active custom-grip drag's coalesced move
+            // channel flowing without ever blocking the app loop on plugin
+            // latency.
+            Message::PluginGripPump => self.pump_plugin_grips(),
 
             Message::TabClose(tab_id) => {
                 self.hovered_doc_tab = None;

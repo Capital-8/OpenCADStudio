@@ -108,6 +108,14 @@ fn run_v4(
     client: V4Client,
     api_version: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // API v13: the ChannelReady attach ack is sent AFTER the first fully
+    // served request — at that point the manifest handshake is complete on
+    // the host side GetManifest is the first request served, so the host has
+    // pinned this process's real manifest id and the reader-thread ack
+    // attaches under the right name. A pre-handshake ack would arrive while
+    // the host still addresses the process by its empty placeholder id and
+    // be ignored.
+    let mut boot_acked = false;
     loop {
         // Drain any host notifications and dispatch them to the plugin's
         // state-only callback. Panics are caught so a bad callback does not
@@ -129,6 +137,16 @@ fn run_v4(
                     payload,
                 ) {
                     client.send_response(id, resp)?;
+                    // API v13: the notification subscription is verifiably
+                    // live — a request has been fully served, so the loop is
+                    // draining and the host knows this process's id. The host
+                    // defers a process's boot-window broadcasts until this
+                    // ack (and flushes them then): a fresh boot's
+                    // notifications can never race the runner's startup.
+                    if !boot_acked {
+                        boot_acked = true;
+                        client.notify_plugin(None, crate::host::PluginNotification::ChannelReady);
+                    }
                 }
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
@@ -267,6 +285,9 @@ fn handle_host_request(
         }
         HostRequest::ExecuteCode { .. } => {
             HostResponse::Error("ExecuteCode requires V4 protocol".to_string())
+        }
+        HostRequest::CustomGripEvent { .. } => {
+            HostResponse::Error("custom grips require the V4 protocol".to_string())
         }
         HostRequest::Shutdown => {
             // Return a positive Ack so the host knows we received the request.
@@ -457,6 +478,28 @@ fn handle_host_request_v4(
                 )),
                 Err(_) => Some(HostResponse::Error(
                     "plugin start_execute_code panicked".to_string(),
+                )),
+            }
+        }
+        HostRequest::CustomGripEvent { tab_index, event } => {
+            // API v11 gate: a cdylib compiled against API v10 or older has a
+            // BuiltinPlugin vtable without this slot — never call it (same
+            // rule as entity_classes). The grip was declared by this plugin,
+            // so the empty response simply keeps its preview as-is.
+            if api_version < 11 {
+                return Some(HostResponse::CustomGrip(Default::default()));
+            }
+            // A full HostApi proxy: the settle phase may write (possibly
+            // nested requests, served inline by the host) inside the
+            // plugin's own undo scope.
+            let mut proxy = client.plugin_host_api(tab_index, interactive.clone());
+            let guarded = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                plugin.on_custom_grip_event(&mut proxy, event)
+            }));
+            match guarded {
+                Ok(resp) => Some(HostResponse::CustomGrip(resp)),
+                Err(_) => Some(HostResponse::Error(
+                    "plugin on_custom_grip_event panicked".to_string(),
                 )),
             }
         }

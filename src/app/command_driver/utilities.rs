@@ -195,10 +195,23 @@ impl OpenCADStudio {
 
     pub(in crate::app) fn cancel_active_grip_edit(&mut self) -> bool {
         let i = self.active_tab;
+        // API v11/v12: a custom plugin-grip drag cancels through the same
+        // lifecycle exit every other interruption uses (Esc, another command
+        // starting, tab switches): the owning plugin gets the cancel phase
+        // and drops its preview state with zero writes — the drawing stays
+        // byte-identical. While the drag's SETTLE is streaming (the plugin
+        // write window), the watchdog owns the window instead: a cancel
+        // would race the plugin's authoritative writes.
+        let had_plugin_grip = self.tabs[i].active_plugin_grip.is_some();
+        if had_plugin_grip && !self.is_plugin_grip_settling() {
+            let _ = self.cancel_plugin_grip_drag();
+        }
+        let had_plugin_grip = had_plugin_grip && !self.is_plugin_grip_settling();
         // Grip-menu toggles live only as long as the gesture.
         self.tabs[i].grip_copy = false;
         self.tabs[i].grip_base_pending = false;
         let had_grip = self.tabs[i].active_grip.take().is_some()
+            || had_plugin_grip
             || self.grip_add_provisional.is_some()
             || !self.grip_preview_handles.is_empty()
             || !self.grip_history_originals.is_empty();
