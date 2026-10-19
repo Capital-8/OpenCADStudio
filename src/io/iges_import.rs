@@ -432,7 +432,9 @@ impl Doc {
                 Surface::Cone(kernel::brep::Cone {
                     base: self.frame(v(1), Some(v(2)), form1(5))?,
                     radius: v(3) * self.scale,
-                    half_angle: v(4).to_radians(),
+                    // The cone widens along its axis; the kernel's angle is
+                    // positive for one that narrows.
+                    half_angle: -v(4).to_radians(),
                 }),
                 None,
             )),
