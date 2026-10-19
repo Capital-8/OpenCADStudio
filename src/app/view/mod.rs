@@ -22,40 +22,90 @@ use iced_aw::ContextMenu;
 #[derive(Debug, Clone, Copy)]
 struct ViewportPickSurface;
 
+#[derive(Default)]
+struct ViewportPointerState {
+    middle_drag: bool,
+    position: Option<iced::Point>,
+}
+
+impl ViewportPointerState {
+    fn event_cursor(
+        &mut self,
+        event: &iced::mouse::Event,
+        fallback: iced::mouse::Cursor,
+    ) -> iced::mouse::Cursor {
+        // iced passes the final window cursor to every event in a batch.
+        // Preserve event order: a press must see the preceding CursorMoved,
+        // never the cursor from a later move in that same batch.
+        match event {
+            iced::mouse::Event::CursorMoved { position } => self.position = Some(*position),
+            iced::mouse::Event::CursorLeft => self.position = None,
+            _ => {}
+        }
+        // An overlay can deliberately hide/levitate the base cursor. Retain
+        // that ownership even though we know a historical pointer position.
+        if !matches!(fallback, iced::mouse::Cursor::Available(_)) {
+            return fallback;
+        }
+        self.position
+            .map(iced::mouse::Cursor::Available)
+            .unwrap_or(fallback)
+    }
+}
+
+/// Pane-local point of a lone finger driving the cursor. Touch events stay
+/// uncaptured: the gesture handler listens to them as well.
+fn touch_cursor_move(event: &iced::Event, bounds: iced::Rectangle) -> Option<iced::Point> {
+    use iced::touch::Event as Touch;
+    match event {
+        iced::Event::Touch(
+            Touch::FingerPressed { position, .. } | Touch::FingerMoved { position, .. },
+        ) if bounds.contains(*position) => {
+            Some(iced::Point::new(position.x - bounds.x, position.y - bounds.y))
+        }
+        _ => None,
+    }
+}
+
 impl iced::widget::canvas::Program<Message> for ViewportPickSurface {
-    /// Whether a middle-button drag began inside the viewport.
-    type State = bool;
+    type State = ViewportPointerState;
 
     fn update(
         &self,
-        middle_drag: &mut Self::State,
+        state: &mut Self::State,
         event: &iced::Event,
         bounds: iced::Rectangle,
         cursor: iced::mouse::Cursor,
     ) -> Option<iced::widget::canvas::Action<Message>> {
         use iced::mouse::{Button, Event as Mouse};
         use iced::widget::canvas::Action;
+        if let Some(local) = touch_cursor_move(event, bounds) {
+            return Some(Action::publish(Message::ViewportMove(local)));
+        }
         let iced::Event::Mouse(event) = event else {
             return None;
         };
+        let cursor = state.event_cursor(event, cursor);
         match event {
             Mouse::ButtonPressed(Button::Left) => cursor.position_in(bounds).map(|position| {
                 Action::publish(Message::ViewportLeftPressAt(position)).and_capture()
             }),
             Mouse::ButtonPressed(Button::Middle) => {
-                *middle_drag = cursor.is_over(bounds);
+                state.middle_drag = cursor.is_over(bounds);
                 None
             }
-            // A pan or orbit keeps following the pointer past the viewport
-            // edge; the mouse area only reports it inside.
-            Mouse::CursorMoved { position } if *middle_drag && !cursor.is_over(bounds) => Some(
-                Action::publish(Message::ViewportMove(iced::Point::new(
+            // Motion comes from the event, not the final batch cursor, so the
+            // MouseArea around this canvas reports no moves of its own. Left
+            // uncaptured so it still tracks hover for `on_exit`. A middle
+            // drag keeps following the pointer past the viewport edge.
+            Mouse::CursorMoved { position } if cursor.is_over(bounds) || state.middle_drag => {
+                Some(Action::publish(Message::ViewportMove(iced::Point::new(
                     position.x - bounds.x,
                     position.y - bounds.y,
-                ))),
-            ),
-            Mouse::ButtonReleased(Button::Middle) if *middle_drag => {
-                *middle_drag = false;
+                ))))
+            }
+            Mouse::ButtonReleased(Button::Middle) if state.middle_drag => {
+                state.middle_drag = false;
                 (!cursor.is_over(bounds)).then(|| Action::publish(Message::ViewportMiddleRelease))
             }
             _ => None,
@@ -79,32 +129,38 @@ impl iced::widget::canvas::Program<Message> for ViewportPickSurface {
 struct PaneDragSurface(usize);
 
 impl iced::widget::canvas::Program<Message> for PaneDragSurface {
-    /// Whether a middle-button drag began inside this pane.
-    type State = bool;
+    type State = ViewportPointerState;
 
     fn update(
         &self,
-        middle_drag: &mut Self::State,
+        state: &mut Self::State,
         event: &iced::Event,
         bounds: iced::Rectangle,
         cursor: iced::mouse::Cursor,
     ) -> Option<iced::widget::canvas::Action<Message>> {
         use iced::mouse::{Button, Event as Mouse};
         use iced::widget::canvas::Action;
+        if let Some(local) = touch_cursor_move(event, bounds) {
+            return Some(Action::publish(Message::PaneMove(self.0, local)));
+        }
         let iced::Event::Mouse(event) = event else {
             return None;
         };
+        let cursor = state.event_cursor(event, cursor);
         match event {
+            Mouse::ButtonPressed(Button::Left) => cursor.position_in(bounds).map(|position| {
+                Action::publish(Message::PanePressAt(self.0, position)).and_capture()
+            }),
             Mouse::ButtonPressed(Button::Middle) => {
-                *middle_drag = cursor.is_over(bounds);
+                state.middle_drag = cursor.is_over(bounds);
                 None
             }
-            Mouse::CursorMoved { position } if *middle_drag && !cursor.is_over(bounds) => {
+            Mouse::CursorMoved { position } if cursor.is_over(bounds) || state.middle_drag => {
                 let local = iced::Point::new(position.x - bounds.x, position.y - bounds.y);
                 Some(Action::publish(Message::PaneMove(self.0, local)))
             }
-            Mouse::ButtonReleased(Button::Middle) if *middle_drag => {
-                *middle_drag = false;
+            Mouse::ButtonReleased(Button::Middle) if state.middle_drag => {
+                state.middle_drag = false;
                 (!cursor.is_over(bounds))
                     .then(|| Action::publish(Message::PaneMiddleRelease(self.0)))
             }
@@ -1413,7 +1469,7 @@ bg={bg_ms:.1}ms n={view_count}"
                 .width(Fill)
                 .height(Fill),
         ))
-        .on_move(Message::ViewportMove)
+        // Moves come from the canvas (mouse and touch) in event order.
         // Left mouse presses are captured by the canvas with their exact
         // event-time position. MouseArea::on_press has no coordinate, so
         // queued cursor moves could otherwise make quick clicks use a stale
@@ -2933,6 +2989,15 @@ impl OpenCADStudio {
         } else {
             Subscription::none()
         };
+        let snap_dwell = if self
+            .snap_dwell
+            .as_ref()
+            .is_some_and(|dwell| !dwell.snap_resolved || dwell.preview_dirty)
+        {
+            window::frames().map(|_| Message::SnapDwellTick)
+        } else {
+            Subscription::none()
+        };
         // Interaction LOD: while the view is (or just was) navigating, keep
         // requesting frames a little past the settle point. Panning itself is
         // driven by input events, but once the cursor stops no event would fire
@@ -3263,6 +3328,7 @@ impl OpenCADStudio {
             layout_settle,
             grip_dwell,
             hover_dwell,
+            snap_dwell,
             nav_settle,
             gpu_probe,
             thumbnail_capture,
@@ -3606,7 +3672,6 @@ fn pane_mouse_area<'a>(idx: usize) -> Element<'a, Message> {
             .width(Fill)
             .height(Fill),
     ))
-        .on_move(move |p| Message::PaneMove(idx, p))
         .on_press(Message::PanePress(idx))
         .on_release(Message::PaneRelease(idx))
         .on_right_press(Message::PaneRightPress(idx))
@@ -4688,6 +4753,65 @@ pub(super) fn recent_files_panel<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rapid_drawing_batched_pointer_events_keep_the_position_before_each_press() {
+        use iced::mouse::{Button, Cursor, Event as Mouse};
+        use iced::widget::canvas::Program;
+        let bounds = iced::Rectangle {
+            x: 100.0,
+            y: 50.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        // iced supplies this final position for EVERY event in the batch.
+        let final_cursor = Cursor::Available(iced::Point::new(800.0, 500.0));
+        let mut viewport = ViewportPointerState::default();
+        let mut pane = ViewportPointerState::default();
+        for position in [
+            iced::Point::new(150.0, 100.0),
+            iced::Point::new(250.0, 200.0),
+        ] {
+            let event = iced::Event::Mouse(Mouse::CursorMoved { position });
+            let expected = iced::Point::new(position.x - bounds.x, position.y - bounds.y);
+            let (motion, _, _) = ViewportPickSurface
+                .update(&mut viewport, &event, bounds, final_cursor)
+                .unwrap()
+                .into_inner();
+            assert!(matches!(motion, Some(Message::ViewportMove(p)) if p == expected));
+            let (motion, _, _) = PaneDragSurface(2)
+                .update(&mut pane, &event, bounds, final_cursor)
+                .unwrap()
+                .into_inner();
+            assert!(matches!(motion, Some(Message::PaneMove(2, p)) if p == expected));
+            let press = iced::Event::Mouse(Mouse::ButtonPressed(Button::Left));
+            let (pick, _, status) = ViewportPickSurface
+                .update(&mut viewport, &press, bounds, final_cursor)
+                .unwrap()
+                .into_inner();
+            assert!(matches!(pick, Some(Message::ViewportLeftPressAt(p)) if p == expected));
+            assert_eq!(status, iced::event::Status::Captured);
+            let (pick, _, status) = PaneDragSurface(2)
+                .update(&mut pane, &press, bounds, final_cursor)
+                .unwrap()
+                .into_inner();
+            assert!(matches!(pick, Some(Message::PanePressAt(2, p)) if p == expected));
+            assert_eq!(status, iced::event::Status::Captured);
+        }
+        // Menus above the viewport must still suppress underlying picks.
+        let press = iced::Event::Mouse(Mouse::ButtonPressed(Button::Left));
+        for hidden in [
+            Cursor::Unavailable,
+            Cursor::Levitating(iced::Point::new(250.0, 200.0)),
+        ] {
+            assert!(ViewportPickSurface
+                .update(&mut viewport, &press, bounds, hidden)
+                .is_none());
+            assert!(PaneDragSurface(2)
+                .update(&mut pane, &press, bounds, hidden)
+                .is_none());
+        }
+    }
 
     #[test]
     fn test_crosshair_background_paper_space() {

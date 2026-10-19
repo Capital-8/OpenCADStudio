@@ -172,13 +172,13 @@ modal =
     .that-object = ese objeto
     .those-objects = esos objetos
 
-    .missing-fonts-downloading = Downloading...
-    .missing-fonts-download-available = Download available
-    .missing-fonts-skip = Skip
-    .missing-fonts-title = Missing fonts
-    .missing-fonts-description = This drawing uses fonts that are not installed on this machine. OpenCADStudio can download any redistributable fonts that exist in the selected repository; unavailable fonts will keep using a substitute.
-    .missing-fonts-source = Font source — leave empty for the community repository, or point at any folder (e.g. your company's font server):
-    .missing-fonts-source-placeholder = https://server/fonts or a GitHub raw folder
+    .missing-fonts-downloading = Descargando...
+    .missing-fonts-download-available = Descarga disponible
+    .missing-fonts-skip = Omitir
+    .missing-fonts-title = Fuentes faltantes
+    .missing-fonts-description = Este dibujo utiliza fuentes que no están instaladas en este equipo. OpenCADStudio puede descargar cualquier fuente redistribuible que exista en el repositorio seleccionado; las fuentes no disponibles seguirán utilizando una sustituta.
+    .missing-fonts-source = Origen de las fuentes: déjelo vacío para usar el repositorio comunitario o indique cualquier carpeta (p. ej., el servidor de fuentes de su empresa):
+    .missing-fonts-source-placeholder = https://servidor/fuentes o una carpeta raw de GitHub
 
 clipboard =
     .pasted-image = Imagen "{ $name }" pegada: { $width }×{ $height } px
