@@ -9062,6 +9062,10 @@ impl Scene {
                             self.current_bg(),
                         );
                     }
+                    // The edges carry their own colour now; fade them too.
+                    set.edge_color = set.edge_color.map(|color| {
+                        crate::scene::cache::block_cache::fade_toward_bg(color, self.current_bg())
+                    });
                 }
                 Some(set)
             })
@@ -9858,6 +9862,10 @@ impl Scene {
                         .unwrap_or([1.0; 4]);
                     let color = self.count_color(context.root_handle, own, self.current_bg());
                     transformed.instance_color = Some(color);
+                    // A material pinned the edges to the object's colour.
+                    if transformed.edge_color.is_some() {
+                        transformed.edge_color = Some(color);
+                    }
                     if let Some(material) = transformed.material.as_mut() {
                         material.diffuse = color;
                     }
