@@ -2595,6 +2595,7 @@ file =
     .cmd-cannot-create-folder-e = __ocs_fmt_0__:無法建立資料夾(__ocs_fmt_1__).
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: 無法打包圖面（__ocs_fmt_1__）。
     .cmd-packaged-copied-file-s-into = __ocs_fmt_0__:已將 __ocs_fmt_1__檔案打包入 __ocs_fmt_2__
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: 找不到 __ocs_fmt_1__ 個參考檔案: __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: 已跳過 __ocs_fmt_1__ 個本次工作階段中未載入的參考檔案: __ocs_fmt_2__
     .error-external-change-checks-remain-active = __ocs_fmt_0__. 對外變更檢查仍在進行中。
     .warning-external-change-checks-remain-active = __ocs_fmt_0__. 對外變更檢查仍在進行中。

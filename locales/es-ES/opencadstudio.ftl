@@ -2596,6 +2596,7 @@ file =
     .cmd-cannot-create-folder-e = __ocs_fmt_0__: no se puede crear la carpeta (__ocs_fmt_1__).
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: no se puede empaquetar el dibujo (__ocs_fmt_1__).
     .cmd-packaged-copied-file-s-into = __ocs_fmt_0__: se empaquetaron __ocs_fmt_1__ archivos en __ocs_fmt_2__
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: no se encontraron __ocs_fmt_1__ archivo(s) referenciado(s): __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: se omitieron __ocs_fmt_1__ archivo(s) referenciado(s) no cargado(s) en esta sesión: __ocs_fmt_2__
     .error-external-change-checks-remain-active = __ocs_fmt_0__. Las comprobaciones de cambios externos siguen activas.
     .warning-external-change-checks-remain-active = __ocs_fmt_0__. Las comprobaciones de cambios externos siguen activas.
