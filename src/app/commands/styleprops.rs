@@ -2415,7 +2415,11 @@ impl OpenCADStudio {
                                         self.zoom_factor = factor;
                                         Ok((format!("ZOOMFACTOR = {factor}"), true))
                                     }
-                                    _ => Err("SETVAR: integer from 3 to 500 required.".into()),
+                                    _ => Err(format!(
+                                        "SETVAR: integer from {} to {} required.",
+                                        crate::app::settings::ZOOM_FACTOR_MIN,
+                                        crate::app::settings::ZOOM_FACTOR_MAX
+                                    )),
                                 },
                                 None => Ok((format!("ZOOMFACTOR = {}", self.zoom_factor), false)),
                             },
@@ -4457,21 +4461,21 @@ mod tests {
     fn setvar_zoomfactor_keeps_the_range_of_the_system_variable() {
         let mut app = fresh_app();
 
-        let _ = app.run_command_line("SETVAR ZOOMFACTOR 500");
-        assert_eq!(app.zoom_factor, 500);
+        let _ = app.run_command_line("SETVAR ZOOMFACTOR 200");
+        assert_eq!(app.zoom_factor, 200);
 
-        let _ = app.run_command_line("SETVAR ZOOMFACTOR 501");
+        let _ = app.run_command_line("SETVAR ZOOMFACTOR 201");
         assert_eq!(
-            app.zoom_factor, 500,
-            "501 is not a value the variable takes"
+            app.zoom_factor, 200,
+            "201 is not a value the variable takes"
         );
 
         let _ = app.run_command_line("SETVAR ZOOMFACTOR 2");
-        assert_eq!(app.zoom_factor, 500, "and neither is 2");
+        assert_eq!(app.zoom_factor, 200, "and neither is 2");
 
         // What the Options field reached is still reported here.
-        let _ = app.update(crate::app::Message::ZoomFactorInputChanged("250".into()));
-        assert_eq!(app.zoom_factor, 250);
+        let _ = app.update(crate::app::Message::ZoomFactorInputChanged("150".into()));
+        assert_eq!(app.zoom_factor, 150);
         let _ = app.run_command_line("SETVAR ZOOMFACTOR 60");
         assert_eq!(app.zoom_factor, 60);
     }
