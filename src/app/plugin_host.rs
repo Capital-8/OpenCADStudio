@@ -521,15 +521,40 @@ impl<'a> HostSession<'a> {
                 return Err(format!("entity {handle:?} is on a locked layer"));
             }
         }
+        // API v13 dirty regions: mark every entity BEFORE the batch below
+        // (the inner publishes immediately) so the region set is complete
+        // when the notification rides.
+        for entity in &entities {
+            self.app.tabs[self.tab].mark_plugin_entity_dirty(entity.common().handle);
+        }
         self.push_undo(label);
+        // The plain entities ride ONE batched scene write: a single
+        // update_entities_plugin call publishes one geometry bump for the
+        // whole set, so the parametric constraint solver (which runs on the
+        // bump) sees the FINAL state of every entity at once. A per-entity
+        // loop here would solve over each half-updated intermediate and the
+        // constrained neighbors would drag the result off the written
+        // geometry (the plugin settle drift the consumer walk caught:
+        // bonded elements written one by one landed ~1e0 off the records).
+        // Nested attributes keep their special replace path (they are not
+        // scene-model entities).
+        let mut plain = Vec::with_capacity(entities.len());
         for entity in entities {
-            // Validation above makes this infallible while the session owns
-            // the document exclusively.
-            let updated = match entity {
-                EntityType::AttributeEntity(attribute) => self.replace_nested_attribute(attribute),
-                entity => self.app.tabs[self.tab].scene.update_entity_plugin(entity),
-            };
-            assert!(updated);
+            match entity {
+                EntityType::AttributeEntity(attribute) => {
+                    // Validation above makes this infallible while the
+                    // session owns the document exclusively.
+                    assert!(self.replace_nested_attribute(attribute));
+                }
+                entity => plain.push(entity),
+            }
+        }
+        if !plain.is_empty() {
+            let expected = plain.len();
+            let moved = self.app.tabs[self.tab].scene.update_entities_plugin(plain);
+            // Validation above makes the batch infallible while the session
+            // owns the document exclusively.
+            assert_eq!(moved, expected);
         }
         self.app.sync_registered_layers(self.tab);
         self.set_dirty();
