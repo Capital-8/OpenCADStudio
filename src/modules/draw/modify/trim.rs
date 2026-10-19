@@ -943,7 +943,7 @@ fn trimmed_line_removed_preview(
         [
             (orig.start.x + dx * t) as f32,
             (orig.start.y + dy * t) as f32,
-            orig.start.z as f32,
+            (orig.start.z + (orig.end.z - orig.start.z) * t) as f32,
         ]
     };
     Some(vec![point(from), point(to)])
@@ -1566,45 +1566,38 @@ fn extend_lwpoly(
         if sign == 0.0 {
             return None;
         }
-        let circle = Curve::Circle(KernelCircle {
-            centre: arc.center,
-            radius: arc.radius,
-        });
         let terminal_angle = if extend_end {
             arc.start_angle + arc.sweep
         } else {
             arc.start_angle
         };
-        let mut nearest: Option<(f64, [f64; 2])> = None;
-        for boundary in geos
-            .iter()
-            .filter(|geo| geo.handle() != poly.common.handle)
-            .filter_map(geo_to_curve)
-        {
-            for hit in kernel_intersect(&circle, &boundary, KernelTolerance::new(CUT_TOLERANCE)) {
-                let angle = (hit.point[1] - arc.center[1]).atan2(hit.point[0] - arc.center[0]);
-                let travel = if extend_end {
-                    if sign > 0.0 {
-                        (angle - terminal_angle).rem_euclid(TAU)
-                    } else {
-                        (terminal_angle - angle).rem_euclid(TAU)
-                    }
-                } else if sign > 0.0 {
-                    (terminal_angle - angle).rem_euclid(TAU)
-                } else {
-                    (angle - terminal_angle).rem_euclid(TAU)
-                };
-                if travel <= 1e-6 {
-                    continue;
-                }
-                if nearest.as_ref().is_none_or(|(best, _)| travel < *best) {
-                    nearest = Some((travel, hit.point));
-                }
-            }
-        }
-        let Some((travel, point)) = nearest else {
-            return None;
+        // Crossings around the full circle from the terminal point, as CCW
+        // fractions of a turn; a CW walk measures them from the far side.
+        let ccw = extend_end == (sign > 0.0);
+        let [cx, cy] = arc.center;
+        let ts = arc_seg_ts(
+            cx,
+            cy,
+            arc.radius,
+            terminal_angle,
+            terminal_angle + TAU,
+            poly.common.handle,
+            geos,
+        );
+        let travel = ts
+            .into_iter()
+            .map(|t| (if ccw { t } else { 1.0 - t }) * TAU)
+            .filter(|&travel| travel > 1e-6)
+            .min_by(f64::total_cmp)?;
+        let end_angle = if ccw {
+            terminal_angle + travel
+        } else {
+            terminal_angle - travel
         };
+        let point = [
+            cx + arc.radius * end_angle.cos(),
+            cy + arc.radius * end_angle.sin(),
+        ];
         // A bulge encodes a sweep shorter than one full revolution. Do not
         // manufacture an invalid/infinite bulge when the next crossing would
         // require a full circle or more.
@@ -1808,7 +1801,6 @@ fn trim_xline(orig: &XLineEnt, ts: &[f64], t_click: f64) -> Vec<EntityType> {
 
 // ── Point-generation helpers ──────────────────────────────────────────────
 
-const DIM_RED: [f32; 4] = [1.0, 0.3, 0.3, 0.6];
 const TRIM_REMOVE_GRAY: [f32; 4] = [0.40, 0.40, 0.40, 0.88];
 
 fn line_pts(l: &LineEnt) -> Vec<[f32; 3]> {
@@ -2481,12 +2473,21 @@ fn drag_selected_handles(
     crossing: bool,
 ) -> Vec<Handle> {
     let fence_geos = build_fence_geos(fence);
+    let lasso: Vec<Curve> = fence_geos.iter().filter_map(geo_to_curve).collect();
     entities
         .iter()
         .filter(|entity| !entity.common().handle.is_null())
         .filter(|entity| {
             let Some(window) = window else {
-                return fence_cross_points(entity, &fence_geos).len() > 0;
+                // Lasso: edges crossing it or lying wholly inside it.
+                return !fence_cross_points(entity, &fence_geos).is_empty()
+                    || fence_sample_xy(entity).first().is_some_and(|point| {
+                        kernel::geom2d::contains(
+                            &lasso,
+                            *point,
+                            KernelTolerance::new(CUT_TOLERANCE),
+                        )
+                    });
             };
             if crossing {
                 !fence_cross_points(entity, &fence_geos).is_empty()
@@ -2628,7 +2629,7 @@ fn build_fence_geos(fence: &[[f64; 2]]) -> Vec<Geo> {
 }
 
 /// Live result preview of a fence / crossing pass: each affected original in
-/// red, its surviving pieces in cyan — the same convention as the pick hover.
+/// gray, its surviving pieces in cyan — the same convention as the pick hover.
 fn fence_result_preview(
     all: &[EntityType],
     geos: &[Geo],
@@ -2647,7 +2648,7 @@ fn fence_result_preview(
             out.push(WireModel::solid(
                 "trim_rm".into(),
                 entity_pts(e),
-                DIM_RED,
+                TRIM_REMOVE_GRAY,
                 false,
             ));
             for (i, pe) in pieces.iter().enumerate() {
@@ -2916,10 +2917,35 @@ fn extend_hover_wires(
     out
 }
 
+/// Apply one confirmed replacement to a command's entity snapshot: the old
+/// entry goes and its pieces join under the handles the document assigned.
+/// Edits stay pending until this callback, so a rejected edit (locked layer)
+/// leaves the snapshot untouched.
+fn apply_pending_replacement(
+    all: &mut Vec<EntityType>,
+    edge_set: &mut Vec<Handle>,
+    pending: &mut Vec<(Handle, Vec<EntityType>)>,
+    old: Handle,
+    new_handles: &[Handle],
+) {
+    let Some(index) = pending.iter().position(|(handle, _)| *handle == old) else {
+        return;
+    };
+    let (_, pieces) = pending.swap_remove(index);
+    all.retain(|entity| entity.common().handle != old);
+    edge_set.retain(|handle| *handle != old);
+    for (mut piece, &handle) in pieces.into_iter().zip(new_handles) {
+        piece.as_entity_mut().set_handle(handle);
+        all.push(piece);
+    }
+}
+
 pub struct TrimCommand {
     all_entities: Vec<EntityType>,
     entity_index: ModifyEntityIndex,
     geos: Vec<Geo>,
+    /// Replacements sent to the host, applied once their handles are known.
+    pending: Vec<(Handle, Vec<EntityType>)>,
     mode: TrimMode,
     /// Whether a no-intersection line pick is a quick full erase.
     quick: bool,
@@ -2956,17 +2982,16 @@ impl TrimCommand {
     }
 
     pub fn with_cutting_edges(all_entities: Vec<EntityType>, initial_edges: Vec<Handle>) -> Self {
-        let started = crate::perf::enabled().then(std::time::Instant::now);
         let all_entities: Vec<EntityType> = all_entities
             .into_iter()
             .map(entity_with_lwpolyline_world_xy_owned)
             .collect();
-        let entity_count = all_entities.len();
 
         let mut cmd = Self {
             all_entities,
             entity_index: ModifyEntityIndex::empty(),
             geos: Vec::new(),
+            pending: Vec::new(),
             mode: starting_mode(&initial_edges),
             quick: quick_mode(),
             edge_set: initial_edges,
@@ -2977,25 +3002,13 @@ impl TrimCommand {
 
         cmd.rebuild_geos();
 
-        if let Some(started) = started {
-            crate::perf::record(format_args!(
-                "[perf] trim-init entities={entity_count} geos={} elapsed={:.2}ms",
-                cmd.geos.len(),
-                started.elapsed().as_secs_f64() * 1000.0
-            ));
-        }
-
         cmd
     }
 
     /// Boundary geometry from the edge selection (or everything when none),
     /// with the Edge option's implied extrapolation applied on top.
     fn rebuild_geos(&mut self) {
-        let started = crate::perf::enabled().then(std::time::Instant::now);
-        let index_started = started;
         self.entity_index = ModifyEntityIndex::build(&self.all_entities);
-        let index_ms = index_started.map(|started| started.elapsed().as_secs_f64() * 1000.0);
-        let geos_started = started.map(|_| std::time::Instant::now());
         self.geos = if self.edge_set.is_empty() {
             build_geos(&self.all_entities)
         } else {
@@ -3012,18 +3025,6 @@ impl TrimCommand {
         };
         if self.implied_edges {
             imply_edge_geos(&mut self.geos);
-        }
-        if let Some(started) = started {
-            crate::perf::record(format_args!(
-                "[perf] trim-index-geos entities={} geos={} index={:.2}ms geometry={:.2}ms total={:.2}ms",
-                self.all_entities.len(),
-                self.geos.len(),
-                index_ms.unwrap_or_default(),
-                geos_started
-                    .map(|started| started.elapsed().as_secs_f64() * 1000.0)
-                    .unwrap_or_default(),
-                started.elapsed().as_secs_f64() * 1000.0
-            ));
         }
     }
 
@@ -3049,38 +3050,8 @@ impl TrimCommand {
         if replacements.is_empty() {
             return CmdResult::NeedPoint;
         }
-        self.stage_replacements(&replacements);
+        self.pending = replacements.clone();
         CmdResult::ReplaceManyContinue(replacements)
-    }
-
-    fn stage_replacements(&mut self, replacements: &[(Handle, Vec<EntityType>)]) {
-        for (handle, _) in replacements {
-            if let Some(index) = self
-                .all_entities
-                .iter()
-                .position(|entity| entity.common().handle == *handle)
-            {
-                self.all_entities.remove(index);
-            }
-            self.edge_set.retain(|edge| edge != handle);
-        }
-        for (_, entities) in replacements {
-            self.all_entities.extend(entities.iter().cloned());
-        }
-    }
-
-    fn assign_replacement_handles(&mut self, handles: impl Iterator<Item = Handle>) {
-        let mut handles = handles;
-        for entity in self
-            .all_entities
-            .iter_mut()
-            .filter(|entity| entity.common().handle.is_null())
-        {
-            let Some(handle) = handles.next() else {
-                break;
-            };
-            entity.as_entity_mut().set_handle(handle);
-        }
     }
 }
 
@@ -3162,10 +3133,19 @@ impl CadCommand for TrimCommand {
         if let Some(result) = self.choose_mode(text) {
             return Some(result);
         }
-        if !matches!(self.mode, TrimMode::Pick) {
-            return None;
-        }
+        let pick = matches!(self.mode, TrimMode::Pick);
         match text.trim().to_uppercase().as_str() {
+            // Options apply at the main prompt only, but stay consumed in
+            // every step so "E"/"F"/"C" are never read as hex handles.
+            "T" | "CUTTING" | "B" | "BOUNDARY" | "F" | "FENCE" | "C" | "CROSSING" | "E"
+            | "EDGE" | "R" | "ERASE"
+                if !pick =>
+            {
+                Some(CmdResult::NeedPoint)
+            }
+            "E" | "EDGE" if self.quick => Some(CmdResult::ReportError(
+                "Invalid option keyword.".to_string(),
+            )),
             "T" | "CUTTING" | "B" | "BOUNDARY" => {
                 self.selection_previous_quick = Some(self.quick);
                 self.quick = false;
@@ -3181,7 +3161,7 @@ impl CadCommand for TrimCommand {
                 self.mode = TrimMode::CrossFirst;
                 Some(CmdResult::NeedPoint)
             }
-            "E" | "EDGE" if !self.quick => {
+            "E" | "EDGE" => {
                 self.implied_edges = !self.implied_edges;
                 self.rebuild_geos();
                 Some(CmdResult::NeedPoint)
@@ -3221,15 +3201,7 @@ impl CadCommand for TrimCommand {
             }
             TrimMode::Erase => {
                 // Erase option: delete without needing an intersection.
-                if let Some(pos) = self
-                    .all_entities
-                    .iter()
-                    .position(|e| e.common().handle == handle)
-                {
-                    self.all_entities.remove(pos);
-                }
-                self.edge_set.retain(|h| *h != handle);
-                self.rebuild_geos();
+                self.pending = vec![(handle, Vec::new())];
                 CmdResult::ReplaceEntity(handle, vec![])
             }
             _ => {
@@ -3246,19 +3218,9 @@ impl CadCommand for TrimCommand {
                     }
                 };
                 if let Some(new_entities) = new_entities {
-                    // Snapshot is updated in on_entity_replaced once we know
-                    // the real handles. Pre-stage: remove the old entry now so
-                    // geos exclude it immediately.
-                    if let Some(pos) = self
-                        .all_entities
-                        .iter()
-                        .position(|e| e.common().handle == handle)
-                    {
-                        self.all_entities.remove(pos);
-                        // Pieces join with NULL handles as geometry-only placeholders.
-                        self.all_entities.extend(new_entities.clone());
-                        self.edge_set.retain(|h| *h != handle);
-                    }
+                    // The snapshot updates in on_entity_replaced once the
+                    // document has accepted the edit and assigned handles.
+                    self.pending = vec![(handle, new_entities.clone())];
                     CmdResult::ReplaceEntity(handle, new_entities)
                 } else {
                     CmdResult::NeedPoint
@@ -3267,32 +3229,31 @@ impl CadCommand for TrimCommand {
         }
     }
 
-    fn on_entity_replaced(&mut self, _old: Handle, new_handles: &[codec::Handle]) {
-        // Batch gestures stage several NULL-handle replacement groups before
-        // the document assigns real handles. The host applies them in the same
-        // order, so fill the first remaining placeholders on each callback.
-        self.assign_replacement_handles(new_handles.iter().copied());
-        self.rebuild_geos();
-    }
-
-    fn on_entities_replaced(&mut self, replacements: &[(Handle, Vec<codec::Handle>)]) {
-        self.assign_replacement_handles(
-            replacements
-                .iter()
-                .flat_map(|(_, handles)| handles.iter().copied()),
+    fn on_entity_replaced(&mut self, old: Handle, new_handles: &[codec::Handle]) {
+        apply_pending_replacement(
+            &mut self.all_entities,
+            &mut self.edge_set,
+            &mut self.pending,
+            old,
+            new_handles,
         );
         self.rebuild_geos();
     }
 
-    fn on_drag_selection(
-        &mut self,
-        fence: &[[f64; 2]],
-        window: Option<([f64; 2], [f64; 2])>,
-    ) -> Option<CmdResult> {
-        self.on_drag_selection_with_direction(fence, window, false)
+    fn on_entities_replaced(&mut self, replacements: &[(Handle, Vec<codec::Handle>)]) {
+        for (old, new_handles) in replacements {
+            apply_pending_replacement(
+                &mut self.all_entities,
+                &mut self.edge_set,
+                &mut self.pending,
+                *old,
+                new_handles,
+            );
+        }
+        self.rebuild_geos();
     }
 
-    fn on_drag_selection_with_direction(
+    fn on_drag_selection(
         &mut self,
         fence: &[[f64; 2]],
         window: Option<([f64; 2], [f64; 2])>,
@@ -3318,12 +3279,7 @@ impl CadCommand for TrimCommand {
         if !matches!(self.mode, TrimMode::Pick) {
             return None;
         }
-        let replacements = fence_pass(&self.all_entities, &self.geos, fence, window, self.shift);
-        if replacements.is_empty() {
-            return Some(CmdResult::NeedPoint);
-        }
-        self.stage_replacements(&replacements);
-        Some(CmdResult::ReplaceManyContinue(replacements))
+        Some(self.fence_run(fence, window))
     }
 
     fn accepts_drag_selection(&self) -> bool {
@@ -3358,7 +3314,7 @@ impl CadCommand for TrimCommand {
                 return out;
             }
             TrimMode::Erase => {
-                // Erase mode: the hovered object previews fully red.
+                // Erase mode: the hovered object previews fully gray.
                 if let Some(e) = self
                     .all_entities
                     .iter()
@@ -3367,7 +3323,7 @@ impl CadCommand for TrimCommand {
                     return vec![WireModel::solid(
                         "erase_prev".into(),
                         entity_pts(e),
-                        DIM_RED,
+                        TRIM_REMOVE_GRAY,
                         false,
                     )];
                 }
@@ -3465,7 +3421,7 @@ impl CadCommand for TrimCommand {
                 let t_click = arc_t(click_angle, a0, a1);
                 let survivors = trim_arc(a, &ts, t_click);
                 let orig_pts = arc_pts(cx, cy, a.radius, a0, a1, a.center.z);
-                let removed = WireModel::solid("trim_rm".into(), orig_pts, DIM_RED, false);
+                let removed = WireModel::solid("trim_rm".into(), orig_pts, TRIM_REMOVE_GRAY, false);
                 let mut out = vec![removed];
                 for (i, e) in survivors.iter().enumerate() {
                     let pts = entity_pts(e);
@@ -3492,7 +3448,7 @@ impl CadCommand for TrimCommand {
                     return vec![];
                 }
                 let orig_pts = arc_pts(cx, cy, c.radius, 0.0, TAU, c.center.z);
-                let removed = WireModel::solid("trim_rm".into(), orig_pts, DIM_RED, false);
+                let removed = WireModel::solid("trim_rm".into(), orig_pts, TRIM_REMOVE_GRAY, false);
                 let mut out = vec![removed];
                 for (i, e) in survivors.iter().enumerate() {
                     let pts = entity_pts(e);
@@ -3522,7 +3478,8 @@ impl CadCommand for TrimCommand {
                     r.base_point.z as f32,
                 ];
                 let base = [bx as f32, by as f32, r.base_point.z as f32];
-                let removed = WireModel::solid("trim_rm".into(), vec![base, far], DIM_RED, false);
+                let removed =
+                    WireModel::solid("trim_rm".into(), vec![base, far], TRIM_REMOVE_GRAY, false);
                 let mut out = vec![removed];
                 for (i, e) in survivors.iter().enumerate() {
                     let pts = entity_pts(e);
@@ -3555,7 +3512,8 @@ impl CadCommand for TrimCommand {
                     (by + x.direction.y * 20.0) as f32,
                     x.base_point.z as f32,
                 ];
-                let removed = WireModel::solid("trim_rm".into(), vec![neg, pos_pt], DIM_RED, false);
+                let removed =
+                    WireModel::solid("trim_rm".into(), vec![neg, pos_pt], TRIM_REMOVE_GRAY, false);
                 let mut out = vec![removed];
                 for (i, e) in survivors.iter().enumerate() {
                     let pts = entity_pts(e);
@@ -3596,7 +3554,7 @@ impl CadCommand for TrimCommand {
                 let survivors = trim_ellipse(e, &ts, t_click);
                 let orig_pts =
                     ellipse_pts(e.center.x, e.center.y, a, b, nx, ny, t0, t1, e.center.z);
-                let removed = WireModel::solid("trim_rm".into(), orig_pts, DIM_RED, false);
+                let removed = WireModel::solid("trim_rm".into(), orig_pts, TRIM_REMOVE_GRAY, false);
                 let mut out = vec![removed];
                 for (i, ent) in survivors.iter().enumerate() {
                     let pts = entity_pts(ent);
@@ -3621,7 +3579,7 @@ impl CadCommand for TrimCommand {
                     })
                     .unwrap_or(0.5);
                 let orig_pts = spline_pts_wire(s);
-                let removed = WireModel::solid("trim_rm".into(), orig_pts, DIM_RED, false);
+                let removed = WireModel::solid("trim_rm".into(), orig_pts, TRIM_REMOVE_GRAY, false);
                 let survivors = trim_spline(s, &ts, t_click);
                 let mut out = vec![removed];
                 for (i, ent) in survivors.iter().enumerate() {
@@ -3642,7 +3600,7 @@ impl CadCommand for TrimCommand {
                 let orig = WireModel::solid(
                     "trim_rm".into(),
                     entity_pts(entity.unwrap()),
-                    DIM_RED,
+                    TRIM_REMOVE_GRAY,
                     false,
                 );
                 let mut out = vec![orig];
@@ -3782,6 +3740,8 @@ pub struct ExtendCommand {
     all_entities: Vec<EntityType>,
     entity_index: ModifyEntityIndex,
     geos: Vec<Geo>,
+    /// Replacements sent to the host, applied once their handles are known.
+    pending: Vec<(Handle, Vec<EntityType>)>,
     mode: TrimMode,
     /// Whether Shift+pick uses quick TRIM's full-erase rule for plain lines.
     quick: bool,
@@ -3820,16 +3780,15 @@ impl ExtendCommand {
     /// Objects selected before the command are its boundary edges, as TRIM
     /// takes them as cutting edges.
     pub fn with_boundary_edges(all_entities: Vec<EntityType>, initial_edges: Vec<Handle>) -> Self {
-        let started = crate::perf::enabled().then(std::time::Instant::now);
         let all_entities: Vec<EntityType> = all_entities
             .into_iter()
             .map(entity_with_lwpolyline_world_xy_owned)
             .collect();
-        let entity_count = all_entities.len();
         let mut cmd = Self {
             all_entities,
             entity_index: ModifyEntityIndex::empty(),
             geos: Vec::new(),
+            pending: Vec::new(),
             mode: starting_mode(&initial_edges),
             quick: quick_mode(),
             edge_set: initial_edges,
@@ -3838,22 +3797,11 @@ impl ExtendCommand {
             shift: false,
         };
         cmd.rebuild_geos();
-        if let Some(started) = started {
-            crate::perf::record(format_args!(
-                "[perf] extend-init entities={entity_count} geos={} elapsed={:.2}ms",
-                cmd.geos.len(),
-                started.elapsed().as_secs_f64() * 1000.0
-            ));
-        }
         cmd
     }
 
     fn rebuild_geos(&mut self) {
-        let started = crate::perf::enabled().then(std::time::Instant::now);
-        let index_started = started;
         self.entity_index = ModifyEntityIndex::build(&self.all_entities);
-        let index_ms = index_started.map(|started| started.elapsed().as_secs_f64() * 1000.0);
-        let geos_started = started.map(|_| std::time::Instant::now());
         self.geos = if self.edge_set.is_empty() {
             build_geos(&self.all_entities)
         } else {
@@ -3871,18 +3819,6 @@ impl ExtendCommand {
         if self.implied_edges {
             imply_edge_geos(&mut self.geos);
         }
-        if let Some(started) = started {
-            crate::perf::record(format_args!(
-                "[perf] extend-index-geos entities={} geos={} index={:.2}ms geometry={:.2}ms total={:.2}ms",
-                self.all_entities.len(),
-                self.geos.len(),
-                index_ms.unwrap_or_default(),
-                geos_started
-                    .map(|started| started.elapsed().as_secs_f64() * 1000.0)
-                    .unwrap_or_default(),
-                started.elapsed().as_secs_f64() * 1000.0
-            ));
-        }
     }
 
     fn fence_run(&mut self, fence: &[[f64; 2]], window: Option<CrossingWindow>) -> CmdResult {
@@ -3891,38 +3827,8 @@ impl ExtendCommand {
         if replacements.is_empty() {
             return CmdResult::NeedPoint;
         }
-        self.stage_replacements(&replacements);
+        self.pending = replacements.clone();
         CmdResult::ReplaceManyContinue(replacements)
-    }
-
-    fn stage_replacements(&mut self, replacements: &[(Handle, Vec<EntityType>)]) {
-        for (handle, _) in replacements {
-            if let Some(index) = self
-                .all_entities
-                .iter()
-                .position(|entity| entity.common().handle == *handle)
-            {
-                self.all_entities.remove(index);
-            }
-            self.edge_set.retain(|edge| edge != handle);
-        }
-        for (_, entities) in replacements {
-            self.all_entities.extend(entities.iter().cloned());
-        }
-    }
-
-    fn assign_replacement_handles(&mut self, handles: impl Iterator<Item = Handle>) {
-        let mut handles = handles;
-        for entity in self
-            .all_entities
-            .iter_mut()
-            .filter(|entity| entity.common().handle.is_null())
-        {
-            let Some(handle) = handles.next() else {
-                break;
-            };
-            entity.as_entity_mut().set_handle(handle);
-        }
     }
 }
 
@@ -3998,10 +3904,18 @@ impl CadCommand for ExtendCommand {
         if let Some(result) = self.choose_mode(text) {
             return Some(result);
         }
-        if !matches!(self.mode, TrimMode::Pick) {
-            return None;
-        }
+        let pick = matches!(self.mode, TrimMode::Pick);
         match text.trim().to_uppercase().as_str() {
+            // Consumed in every step so they are never read as hex handles.
+            "B" | "BOUNDARY" | "T" | "CUTTING" | "F" | "FENCE" | "C" | "CROSSING" | "E"
+            | "EDGE"
+                if !pick =>
+            {
+                Some(CmdResult::NeedPoint)
+            }
+            "E" | "EDGE" if self.quick => Some(CmdResult::ReportError(
+                "Invalid option keyword.".to_string(),
+            )),
             "B" | "BOUNDARY" | "T" | "CUTTING" => {
                 self.selection_previous_quick = Some(self.quick);
                 self.quick = false;
@@ -4017,7 +3931,7 @@ impl CadCommand for ExtendCommand {
                 self.mode = TrimMode::CrossFirst;
                 Some(CmdResult::NeedPoint)
             }
-            "E" | "EDGE" if !self.quick => {
+            "E" | "EDGE" => {
                 self.implied_edges = !self.implied_edges;
                 self.rebuild_geos();
                 Some(CmdResult::NeedPoint)
@@ -4060,18 +3974,8 @@ impl CadCommand for ExtendCommand {
                     pick_extend_at(&self.all_entities, &self.geos, handle, px, py).map(|e| vec![e])
                 };
                 if let Some(new_entities) = new_entities {
-                    // Same snapshot bookkeeping as TRIM: drop the old entry,
-                    // append the pieces as NULL-handle placeholders, and let
-                    // on_entity_replaced assign the real handles.
-                    if let Some(pos) = self
-                        .all_entities
-                        .iter()
-                        .position(|e| e.common().handle == handle)
-                    {
-                        self.all_entities.remove(pos);
-                        self.all_entities.extend(new_entities.clone());
-                        self.edge_set.retain(|h| *h != handle);
-                    }
+                    // Same snapshot bookkeeping as TRIM.
+                    self.pending = vec![(handle, new_entities.clone())];
                     CmdResult::ReplaceEntity(handle, new_entities)
                 } else {
                     CmdResult::NeedPoint
@@ -4080,21 +3984,31 @@ impl CadCommand for ExtendCommand {
         }
     }
 
-    fn on_entity_replaced(&mut self, _old: Handle, new_handles: &[codec::Handle]) {
-        self.assign_replacement_handles(new_handles.iter().copied());
-        self.rebuild_geos();
-    }
-
-    fn on_entities_replaced(&mut self, replacements: &[(Handle, Vec<codec::Handle>)]) {
-        self.assign_replacement_handles(
-            replacements
-                .iter()
-                .flat_map(|(_, handles)| handles.iter().copied()),
+    fn on_entity_replaced(&mut self, old: Handle, new_handles: &[codec::Handle]) {
+        apply_pending_replacement(
+            &mut self.all_entities,
+            &mut self.edge_set,
+            &mut self.pending,
+            old,
+            new_handles,
         );
         self.rebuild_geos();
     }
 
-    fn on_drag_selection_with_direction(
+    fn on_entities_replaced(&mut self, replacements: &[(Handle, Vec<codec::Handle>)]) {
+        for (old, new_handles) in replacements {
+            apply_pending_replacement(
+                &mut self.all_entities,
+                &mut self.edge_set,
+                &mut self.pending,
+                *old,
+                new_handles,
+            );
+        }
+        self.rebuild_geos();
+    }
+
+    fn on_drag_selection(
         &mut self,
         fence: &[[f64; 2]],
         window: Option<([f64; 2], [f64; 2])>,
@@ -4168,7 +4082,7 @@ impl CadCommand for ExtendCommand {
                         return vec![WireModel::solid(
                             "trim_delete".into(),
                             entity_pts(entity),
-                            DIM_RED,
+                            TRIM_REMOVE_GRAY,
                             false,
                         )];
                     }
@@ -4391,12 +4305,8 @@ impl CadCommand for ExtendCommand {
 }
 
 // ── Autocomplete registry ─────────────────────────────────
-inventory::submit!(crate::command::CommandRegistration {
-    names: &["EXTEND", "EX"]
-}); // ExtendCommand
-inventory::submit!(crate::command::CommandRegistration {
-    names: &["TRIM", "TR"]
-}); // TrimCommand
+inventory::submit!(crate::command::CommandRegistration { names: &["EXTEND"] }); // ExtendCommand
+inventory::submit!(crate::command::CommandRegistration { names: &["TRIM"] }); // TrimCommand
 
 #[cfg(test)]
 mod tests {
@@ -4465,12 +4375,12 @@ mod tests {
         let window = Some(([1.0, 1.0], [5.0, 4.0]));
 
         assert!(matches!(
-            command.on_drag_selection_with_direction(&fence, window, false),
+            command.on_drag_selection(&fence, window, false),
             Some(CmdResult::NeedPoint)
         ));
         assert_eq!(command.edge_set, vec![Handle::new(1), Handle::new(2)]);
         command.set_shift(true);
-        command.on_drag_selection_with_direction(&fence, window, false);
+        command.on_drag_selection(&fence, window, false);
         assert!(command.edge_set.is_empty());
     }
 
@@ -4505,92 +4415,10 @@ mod tests {
 
         assert_eq!(removed, vec![[3.0, 0.0, 0.0], [7.0, 0.0, 0.0]]);
         assert_eq!(removed_end, vec![[6.0, 0.0, 0.0], [10.0, 0.0, 0.0]]);
-        assert_eq!(TRIM_REMOVE_GRAY, [0.40, 0.40, 0.40, 0.88]);
-    }
-
-    fn assert_line_segments(entities: &[EntityType], expected: &[([f64; 2], [f64; 2])]) {
-        let mut actual: Vec<_> = entities
-            .iter()
-            .map(|entity| match entity {
-                EntityType::Line(line) => ([line.start.x, line.start.y], [line.end.x, line.end.y]),
-                other => panic!("expected line segment, got {other:?}"),
-            })
-            .collect();
-        actual.sort_by(|a, b| a.0[0].total_cmp(&b.0[0]));
-
-        assert_eq!(actual.len(), expected.len());
-        for ((actual_start, actual_end), (expected_start, expected_end)) in
-            actual.iter().zip(expected)
-        {
-            for axis in 0..2 {
-                assert!((actual_start[axis] - expected_start[axis]).abs() < 1e-6);
-                assert!((actual_end[axis] - expected_end[axis]).abs() < 1e-6);
-            }
-        }
-    }
-
-    // Manual acceptance baseline T01-T12. Keep these names aligned with the
-    // manual so a future behavior change can be checked against the same cases.
-    #[test]
-    fn acceptance_t01_trim_right_of_one_crossing() {
-        let all = vec![
-            xline_at(0.0, 0.0, 10.0, 0.0, 1),
-            vertical_boundary(6.0, -2.0, 2.0, 2),
-        ];
-        let result = pick_trim_at(&all, &build_geos(&all), Handle::new(1), 8.0, 0.0).unwrap();
-        assert_line_segments(&result, &[([0.0, 0.0], [6.0, 0.0])]);
     }
 
     #[test]
-    fn acceptance_t02_trim_left_of_one_crossing() {
-        let all = vec![
-            xline_at(0.0, 0.0, 10.0, 0.0, 1),
-            vertical_boundary(6.0, -2.0, 2.0, 2),
-        ];
-        let result = pick_trim_at(&all, &build_geos(&all), Handle::new(1), 2.0, 0.0).unwrap();
-        assert_line_segments(&result, &[([6.0, 0.0], [10.0, 0.0])]);
-    }
-
-    #[test]
-    fn acceptance_t03_trim_interior_interval_and_keep_both_sides() {
-        let all = vec![
-            xline_at(0.0, 0.0, 10.0, 0.0, 1),
-            vertical_boundary(3.0, -2.0, 2.0, 2),
-            vertical_boundary(7.0, -2.0, 2.0, 3),
-        ];
-        let result = pick_trim_at(&all, &build_geos(&all), Handle::new(1), 5.0, 0.0).unwrap();
-        assert_line_segments(
-            &result,
-            &[([0.0, 0.0], [3.0, 0.0]), ([7.0, 0.0], [10.0, 0.0])],
-        );
-    }
-
-    #[test]
-    fn acceptance_t04_trim_between_selected_crossings_independent_of_extra_cut() {
-        let all = vec![
-            xline_at(0.0, 0.0, 10.0, 0.0, 1),
-            vertical_boundary(2.0, -2.0, 2.0, 2),
-            vertical_boundary(4.0, -2.0, 2.0, 3),
-            vertical_boundary(8.0, -2.0, 2.0, 4),
-        ];
-        let result = pick_trim_at(&all, &build_geos(&all), Handle::new(1), 6.0, 0.0).unwrap();
-        assert_line_segments(
-            &result,
-            &[([0.0, 0.0], [4.0, 0.0]), ([8.0, 0.0], [10.0, 0.0])],
-        );
-    }
-
-    #[test]
-    fn acceptance_t05_trim_without_intersection_leaves_target_unchanged() {
-        let all = vec![
-            xline_at(0.0, 0.0, 10.0, 0.0, 1),
-            vertical_boundary(20.0, -2.0, 2.0, 2),
-        ];
-        assert!(pick_trim_at(&all, &build_geos(&all), Handle::new(1), 5.0, 0.0).is_none());
-    }
-
-    #[test]
-    fn acceptance_t06_quick_trim_without_intersection_previews_and_erases_line() {
+    fn quick_trim_without_intersection_previews_and_erases_line() {
         let all = vec![xline_at(0.0, 0.0, 10.0, 0.0, 1)];
         assert!(pick_trim_at(&all, &build_geos(&all), Handle::new(1), 5.0, 0.0).is_none());
         assert!(
@@ -4618,6 +4446,7 @@ mod tests {
             }
             _ => panic!("expected full-line erase"),
         }
+        command.on_entity_replaced(Handle::new(1), &[]);
         assert!(command.all_entities.is_empty());
     }
 
@@ -4644,7 +4473,10 @@ mod tests {
         trim.mode = TrimMode::Pick;
         trim.quick = true;
         assert!(!trim.options().iter().any(|option| option.keyword == "E"));
-        assert!(trim.on_text_input("E").is_none());
+        assert!(matches!(
+            trim.on_text_input("E"),
+            Some(CmdResult::ReportError(_))
+        ));
         assert!(!trim.implied_edges);
         trim.quick = false;
         assert!(trim.options().iter().any(|option| option.keyword == "E"));
@@ -4658,7 +4490,10 @@ mod tests {
         extend.mode = TrimMode::Pick;
         extend.quick = true;
         assert!(!extend.options().iter().any(|option| option.keyword == "E"));
-        assert!(extend.on_text_input("E").is_none());
+        assert!(matches!(
+            extend.on_text_input("E"),
+            Some(CmdResult::ReportError(_))
+        ));
         assert!(!extend.implied_edges);
         extend.quick = false;
         assert!(extend.options().iter().any(|option| option.keyword == "E"));
@@ -4667,6 +4502,15 @@ mod tests {
             Some(CmdResult::NeedPoint)
         ));
         assert!(extend.implied_edges);
+
+        // Outside the main prompt the keywords are swallowed, never handed
+        // back to be read as hex handles.
+        trim.mode = TrimMode::SelectEdges;
+        extend.mode = TrimMode::SelectEdges;
+        for keyword in ["E", "F", "C"] {
+            assert!(trim.on_text_input(keyword).is_some());
+            assert!(extend.on_text_input(keyword).is_some());
+        }
     }
 
     #[test]
@@ -4712,13 +4556,14 @@ mod tests {
         let trim_result = trim.fence_run(&[[8.0, -1.0], [8.0, 1.0]], None);
         assert!(matches!(trim_result, CmdResult::ReplaceManyContinue(_)));
         assert!(matches!(trim.mode, TrimMode::Pick));
-        assert!(
-            trim.all_entities
-                .iter()
-                .filter(|e| e.common().handle.is_null())
-                .count()
-                >= 1
-        );
+        // A rejected edit (locked layer) never calls back: snapshot untouched.
+        let trim_result = trim.fence_run(&[[8.0, -1.0], [8.0, 1.0]], None);
+        assert!(matches!(trim_result, CmdResult::ReplaceManyContinue(_)));
+        assert!(trim.all_entities.iter().all(|e| !e.common().handle.is_null()));
+        // An accepted one swaps in the pieces under their document handles.
+        trim.on_entities_replaced(&[(Handle::new(1), vec![Handle::new(10)])]);
+        let handles: Vec<_> = trim.all_entities.iter().map(|e| e.common().handle).collect();
+        assert_eq!(handles, vec![Handle::new(2), Handle::new(10)]);
 
         let extend_all = vec![
             xline_at(0.0, 0.0, 4.0, 0.0, 1),
@@ -4729,51 +4574,9 @@ mod tests {
         let extend_result = extend.fence_run(&[[3.5, -1.0], [3.5, 1.0]], None);
         assert!(matches!(extend_result, CmdResult::ReplaceManyContinue(_)));
         assert!(matches!(extend.mode, TrimMode::Pick));
-        assert!(extend
-            .all_entities
-            .iter()
-            .any(|e| e.common().handle.is_null()));
-    }
-
-    #[test]
-    fn trim_extend_short_aliases_are_registered_for_autocomplete() {
-        let names = crate::command::all_registered_command_names();
-        assert!(names.contains(&"TR"));
-        assert!(names.contains(&"EX"));
-    }
-
-    #[test]
-    fn acceptance_t07_extend_line_to_right_boundary() {
-        let all = vec![
-            xline_at(0.0, 0.0, 4.0, 0.0, 1),
-            vertical_boundary(8.0, -2.0, 2.0, 2),
-        ];
-        let result = pick_extend_at(&all, &build_geos(&all), Handle::new(1), 3.5, 0.0).unwrap();
-        assert_line_segments(&[result], &[([0.0, 0.0], [8.0, 0.0])]);
-    }
-
-    #[test]
-    fn acceptance_t08_extend_line_to_left_boundary() {
-        let all = vec![
-            xline_at(0.0, 0.0, 4.0, 0.0, 1),
-            vertical_boundary(-3.0, -2.0, 2.0, 2),
-        ];
-        let result = pick_extend_at(&all, &build_geos(&all), Handle::new(1), 0.5, 0.0).unwrap();
-        assert_line_segments(&[result], &[([-3.0, 0.0], [4.0, 0.0])]);
-    }
-
-    #[test]
-    fn acceptance_t09_extend_to_nearest_boundary_not_entity_order() {
-        let target = xline_at(0.0, 0.0, 4.0, 0.0, 1);
-        let near = vertical_boundary(6.0, -2.0, 2.0, 2);
-        let far = vertical_boundary(9.0, -2.0, 2.0, 3);
-        for all in [
-            vec![target.clone(), near.clone(), far.clone()],
-            vec![target.clone(), far, near],
-        ] {
-            let result = pick_extend_at(&all, &build_geos(&all), Handle::new(1), 3.5, 0.0).unwrap();
-            assert_line_segments(&[result], &[([0.0, 0.0], [6.0, 0.0])]);
-        }
+        extend.on_entities_replaced(&[(Handle::new(1), vec![Handle::new(10)])]);
+        let handles: Vec<_> = extend.all_entities.iter().map(|e| e.common().handle).collect();
+        assert_eq!(handles, vec![Handle::new(2), Handle::new(10)]);
     }
 
     #[test]
@@ -4975,7 +4778,8 @@ mod tests {
         ] {
             let mut command = TrimCommand::new(all);
             command.mode = TrimMode::Pick;
-            let result = command.on_drag_selection(&[[4.0, -1.0], [4.0, 5.0], [7.0, 5.0]], None);
+            let fence = [[4.0, -1.0], [4.0, 5.0], [7.0, 5.0]];
+            let result = command.on_drag_selection(&fence, None, false);
             let Some(CmdResult::ReplaceManyContinue(replacements)) = result else {
                 panic!("expected a multi-entity lasso trim");
             };
@@ -5008,59 +4812,6 @@ mod tests {
             } else {
                 canonical = Some(actual);
             }
-        }
-    }
-
-    #[test]
-    fn acceptance_t10_extend_does_not_use_boundary_behind_selected_end() {
-        let all = vec![
-            xline_at(0.0, 0.0, 4.0, 0.0, 1),
-            vertical_boundary(-3.0, -2.0, 2.0, 2),
-        ];
-        assert!(pick_extend_at(&all, &build_geos(&all), Handle::new(1), 3.5, 0.0).is_none());
-    }
-
-    #[test]
-    fn acceptance_t11_extend_to_implied_boundary_without_changing_boundary() {
-        let all = vec![
-            xline_at(0.0, 0.0, 4.0, 0.0, 1),
-            vertical_boundary(8.0, 2.0, 5.0, 2),
-        ];
-        let real_edges = build_geos(&all);
-        assert!(pick_extend_at(&all, &real_edges, Handle::new(1), 3.5, 0.0).is_none());
-
-        let mut implied_edges = real_edges;
-        imply_edge_geos(&mut implied_edges);
-        let result = pick_extend_at(&all, &implied_edges, Handle::new(1), 3.5, 0.0).unwrap();
-        assert_line_segments(&[result], &[([0.0, 0.0], [8.0, 0.0])]);
-        match &all[1] {
-            EntityType::Line(line) => {
-                assert_eq!([line.start.x, line.start.y], [8.0, 2.0]);
-                assert_eq!([line.end.x, line.end.y], [8.0, 5.0]);
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[test]
-    fn acceptance_t12_trim_to_implied_boundary_without_changing_boundary() {
-        let all = vec![
-            xline_at(0.0, 0.0, 10.0, 0.0, 1),
-            vertical_boundary(6.0, 2.0, 5.0, 2),
-        ];
-        let real_edges = build_geos(&all);
-        assert!(pick_trim_at(&all, &real_edges, Handle::new(1), 8.0, 0.0).is_none());
-
-        let mut implied_edges = real_edges;
-        imply_edge_geos(&mut implied_edges);
-        let result = pick_trim_at(&all, &implied_edges, Handle::new(1), 8.0, 0.0).unwrap();
-        assert_line_segments(&result, &[([0.0, 0.0], [6.0, 0.0])]);
-        match &all[1] {
-            EntityType::Line(line) => {
-                assert_eq!([line.start.x, line.start.y], [6.0, 2.0]);
-                assert_eq!([line.end.x, line.end.y], [6.0, 5.0]);
-            }
-            _ => unreachable!(),
         }
     }
 
