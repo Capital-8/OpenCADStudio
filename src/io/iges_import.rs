@@ -704,22 +704,42 @@ impl Assembly<'_> {
     }
 
     /// A loop round the edge of a spline surface's parameter domain; sides
-    /// that close up to a point (a pole) are left out.
-    fn domain_ring(&mut self, surface: &NurbsSurface3) -> Option<Vec<(EdgeKey, bool)>> {
+    /// that close up to a point (a pole) are left out, and a side that runs
+    /// back along the opposite one (the surface closes up there, a seam) is
+    /// that side's edge used the other way. Also whether every side closed
+    /// up so (the sheet bounds a volume).
+    fn domain_ring(&mut self, surface: &NurbsSurface3) -> Option<(Vec<(EdgeKey, bool)>, bool)> {
         let ((u0, u1), (v0, v1)) = surface.domain();
         let corners = [(u0, v0), (u1, v0), (u1, v1), (u0, v1)];
         let sides = [(1, v0), (0, u1), (1, v1), (0, u0)];
-        let mut pieces = Vec::new();
+        let tolerance = self.doc.resolution;
+        let mut traced: Vec<Option<([f64; 3], [f64; 3], [f64; 3], EdgeKey)>> = Vec::new();
+        let mut ring = Vec::new();
         for (k, (axis, at)) in sides.into_iter().enumerate() {
             let (a, b) = (corners[k], corners[(k + 1) % 4]);
             let (from, to) = (surface.point_at_knot(a.0, a.1), surface.point_at_knot(b.0, b.1));
             let middle = surface.point_at_knot(0.5 * (a.0 + b.0), 0.5 * (a.1 + b.1));
-            if distance(from, middle) <= self.doc.resolution && distance(to, middle) <= self.doc.resolution {
+            if distance(from, middle) <= tolerance && distance(to, middle) <= tolerance {
+                traced.push(None);
                 continue;
             }
-            pieces.push((Curve3::Nurbs(surface.isocurve(axis, at)?), from, to));
+            let seam = (k >= 2).then(|| traced[k - 2]).flatten().filter(|(f, t, m, _)| {
+                distance(*f, to) <= tolerance && distance(*t, from) <= tolerance && distance(*m, middle) <= tolerance
+            });
+            if let Some((.., edge)) = seam {
+                ring.push((edge, false));
+                traced[k - 2] = None;
+                traced.push(None);
+                continue;
+            }
+            let (p, q) = (self.corner(from), self.corner(to));
+            let edge = self.build.edge(Curve3::Nurbs(surface.isocurve(axis, at)?), p, q)?;
+            ring.push((edge, true));
+            traced.push(Some((from, to, middle, edge)));
         }
-        self.curve_ring(pieces)
+        // Closed when no side is left without its seam partner.
+        let closed = traced.iter().all(Option::is_none);
+        (!ring.is_empty()).then_some((ring, closed))
     }
 
     /// Turns a loop to run counter-clockwise round the surface's normal (an
@@ -769,7 +789,7 @@ impl Assembly<'_> {
                 let pieces = self.doc.boundary(boundary)?;
                 self.curve_ring(pieces)?
             }
-            None => self.domain_ring(net.as_ref()?)?,
+            None => self.domain_ring(net.as_ref()?)?.0,
         };
         self.orient(&surface, &mut first, true);
         let mut loops = vec![first];
@@ -802,16 +822,18 @@ impl Assembly<'_> {
     }
 
     /// An independent bounded surface as a one-face sheet over its whole
-    /// parameter domain.
-    fn whole(&mut self, pointer: f64) -> Option<()> {
+    /// parameter domain; `true` when the face closes up on itself all round
+    /// (a whole sphere or torus), a solid.
+    fn whole(&mut self, pointer: f64) -> Option<bool> {
         let (surface, net) = self.doc.surface_spec(pointer)?;
-        let mut ring = self.domain_ring(net.as_ref()?)?;
+        let (mut ring, closed) = self.domain_ring(net.as_ref()?)?;
         self.orient(&surface, &mut ring, true);
         self.build.lump(vec![vec![FaceSpec {
             surface,
             forward: true,
             loops: vec![ring],
-        }]])
+        }]])?;
+        Some(closed)
     }
 
     fn face(&mut self, pointer: f64, agrees: bool) -> Option<FaceSpec> {
@@ -1012,11 +1034,13 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
             corners: Vec::new(),
         };
         let made = match entity.kind {
-            143 | 144 => assembly.sheet(entity),
+            143 | 144 => assembly.sheet(entity).map(|_| false),
             _ => assembly.whole(number as f64),
         };
-        if made.is_some() {
-            sheets.push((assembly.build.body, doc.color(entity.color)));
+        match made {
+            Some(true) => bodies.push((assembly.build.body, doc.color(entity.color))),
+            Some(false) => sheets.push((assembly.build.body, doc.color(entity.color))),
+            None => {}
         }
     }
     Some(IgesModel { bodies, sheets })
