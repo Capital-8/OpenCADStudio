@@ -120,6 +120,41 @@ impl OpenCADStudio {
         self.tabs[self.active_tab].active_cmd = Some(Box::new(command));
         Task::none()
     }
+    pub(in crate::app) fn start_block_action_for_parameter(
+        &mut self,
+        args: &str,
+        parameter: codec::Handle,
+    ) -> Task<Message> {
+        let Some(kind) = Kind::parse(args) else {
+            self.command_line.push_error(
+                crate::t!("The Parameter Set's action type is not supported.").as_ref(),
+            );
+            return Task::none();
+        };
+        if let Some(error) = self.action_error(Some(kind)) {
+            self.command_line.push_error(crate::t!(error).as_ref());
+            return Task::none();
+        }
+        let tab = &self.tabs[self.active_tab];
+        let definition = tab.active_block_edit_session().unwrap().br_handle;
+        let candidates = actions::parameters(&tab.scene.document, definition, kind);
+        let Some(command) = crate::modules::block_editor::action::ActionCommand::for_parameter(
+            tab.id,
+            definition,
+            kind,
+            candidates,
+            parameter,
+        ) else {
+            self.command_line.push_error(
+                crate::t!("The placed parameter is incompatible with this action.").as_ref(),
+            );
+            return Task::none();
+        };
+        self.command_line.push_info(&command.prompt());
+        self.command_line.set_step_options(command.options());
+        self.tabs[self.active_tab].active_cmd = Some(Box::new(command));
+        Task::none()
+    }
     pub(in crate::app) fn handle_block_action_result(
         &mut self,
         result: crate::command::CmdResult,

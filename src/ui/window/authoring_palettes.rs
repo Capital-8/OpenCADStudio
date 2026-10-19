@@ -203,6 +203,7 @@ fn catalog(
     stretch_action_error: Option<&'static str>,
     polar_stretch_action_error: Option<&'static str>,
     array_action_error: Option<&'static str>,
+    parameter_set_error: Option<&'static str>,
 ) -> Element<'static, Message> {
     let (entries, unavailable) = match tab {
         Tab::Parameters => (
@@ -227,7 +228,13 @@ fn catalog(
         let properties_table_action=tab==Tab::Actions&&*label=="Block Properties Table";
         let geometry_action=tab==Tab::Actions&&matches!(*label,"Move"|"Scale"|"Stretch"|"Polar Stretch"|"Rotate"|"Flip"|"Array");
         let action_error=match *label {"Scale"=>scale_error,"Stretch"=>stretch_action_error,"Polar Stretch"=>polar_stretch_action_error,"Rotate"=>rotate_error,"Flip"=>flip_action_error,"Array"=>array_action_error,_=>move_error};
-        let enabled = (geometry_action&&action_error.is_none())||(single&&point_error.is_none())||(lookup_action&&lookup_error.is_none())||(properties_table_action&&properties_table_error.is_none())||(orientation && orientation_error.is_none()) || (visibility && visibility_error.is_none()) || ((point || distance) && point_error.is_none());
+        let parameter_set = (tab == Tab::ParameterSets)
+            .then(|| crate::modules::block_editor::parameter_set::get(label))
+            .flatten();
+        let parameter_set_unavailable = (tab == Tab::ParameterSets)
+            .then(|| crate::modules::block_editor::parameter_set::unavailable_reason(label))
+            .flatten();
+        let enabled = (geometry_action&&action_error.is_none())||(single&&point_error.is_none())||(lookup_action&&lookup_error.is_none())||(properties_table_action&&properties_table_error.is_none())||(orientation && orientation_error.is_none()) || (visibility && visibility_error.is_none()) || ((point || distance) && point_error.is_none()) || (parameter_set.is_some() && parameter_set_error.is_none());
         let base = if enabled {
             icons::semantic(icon, 28.0)
         } else {
@@ -251,8 +258,8 @@ fn catalog(
             base
         };
         let message = enabled.then(|| Message::RibbonToolClick {
-            tool_id: if geometry_action {format!("BACTION_{}",label.to_ascii_uppercase())}else if lookup_action {"BLOOKUPTABLE".into()}else if properties_table_action {"BPROPERTIESTABLE".into()}else{format!("BPARAMETER_{}", label.to_ascii_uppercase())},
-            event: crate::modules::ModuleEvent::Command(if geometry_action {format!("BACTION {}",label.to_ascii_uppercase())}else if lookup_action {"BLOOKUPTABLE".into()}else if properties_table_action {"BPROPERTIESTABLE".into()}else{format!("BPARAMETER {}", label.to_ascii_uppercase())}),
+            tool_id: if parameter_set.is_some() { format!("BPARAMETERSET_{}", label.to_ascii_uppercase().replace(' ', "_")) } else if geometry_action {format!("BACTION_{}",label.to_ascii_uppercase())}else if lookup_action {"BLOOKUPTABLE".into()}else if properties_table_action {"BPROPERTIESTABLE".into()}else{format!("BPARAMETER_{}", label.to_ascii_uppercase())},
+            event: crate::modules::ModuleEvent::Command(if parameter_set.is_some() { format!("BPARAMETERSET {label}") } else if geometry_action {format!("BACTION {}",label.to_ascii_uppercase())}else if lookup_action {"BLOOKUPTABLE".into()}else if properties_table_action {"BPROPERTIESTABLE".into()}else{format!("BPARAMETER {}", label.to_ascii_uppercase())}),
         });
         let description = if visibility {
             crate::t!(visibility_error
@@ -277,6 +284,10 @@ fn catalog(
             crate::t!(lookup_error.unwrap_or("Create or edit property Lookup tables for this block.")).into_owned()
         } else if properties_table_action {
             crate::t!(properties_table_error.unwrap_or("Create or edit this block's properties table; rows bind Linear and Polar parameters.")).into_owned()
+        } else if parameter_set_unavailable.is_some() {
+            crate::t!(parameter_set_unavailable.unwrap()).into_owned()
+        } else if parameter_set.is_some() {
+            crate::t!(parameter_set_error.unwrap_or("Place a parameter, then continue into its matching action or editor.")).into_owned()
         } else {
             unavailable.to_string()
         };
@@ -420,6 +431,7 @@ pub fn view(
     stretch_action_error: Option<&'static str>,
     polar_stretch_action_error: Option<&'static str>,
     array_action_error: Option<&'static str>,
+    parameter_set_error: Option<&'static str>,
 ) -> Element<'static, Message> {
     let tabs = column(Tab::ALL.into_iter().map(|category| {
         let label = category.label();
@@ -483,6 +495,7 @@ pub fn view(
                 stretch_action_error,
                 polar_stretch_action_error,
                 array_action_error,
+                parameter_set_error,
             ))
             .width(Fill)
             .height(Fill),

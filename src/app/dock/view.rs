@@ -419,6 +419,7 @@ impl OpenCADStudio {
                     self.action_error(Some(crate::scene::block_actions::Kind::Stretch)),
                     self.action_error(Some(crate::scene::block_actions::Kind::PolarStretch)),
                     self.action_error(Some(crate::scene::block_actions::Kind::Array)),
+                    self.parameter_placement_error("LINEAR"),
                 )
             }
             crate::ui::dock::PanelId::BlockPalette => {

@@ -42,6 +42,23 @@ impl ActionCommand {
             context: None,
         }
     }
+    pub(crate) fn for_parameter(
+        document: u64,
+        definition: Handle,
+        kind: Kind,
+        candidates: Vec<Parameter>,
+        parameter: Handle,
+    ) -> Option<Self> {
+        let mut command = Self::new(document, definition, Some(kind), candidates);
+        if !command.candidates.iter().any(|candidate| {
+            candidate.handle == parameter && actions::compatible(candidate, kind)
+        }) {
+            return None;
+        }
+        command.parameter = Some(parameter);
+        command.selecting = !actions::needs_frame(kind);
+        Some(command)
+    }
     fn choose(&mut self, p: Parameter) -> CmdResult {
         if self.kind.is_some_and(|kind| !actions::compatible(&p, kind)) {
             return CmdResult::ReportError(

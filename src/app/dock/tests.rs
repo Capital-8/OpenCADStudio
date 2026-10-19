@@ -1657,7 +1657,7 @@ fn authoring_click(app: &mut OpenCADStudio, point: iced::Point) {
 }
 
 #[test]
-fn authoring_palettes_real_tabs_switch_catalogs_and_unavailable_rows_stay_inert() {
+fn authoring_palettes_real_tabs_start_supported_rows_without_placing_until_picked() {
     with_stack(|| {
         use crate::ui::window::authoring_palettes::Tab;
         let mut app = authoring_app();
@@ -1701,7 +1701,7 @@ fn authoring_palettes_real_tabs_switch_catalogs_and_unavailable_rows_stay_inert(
                     .active_cmd
                     .as_ref()
                     .map(|command| command.name()),
-                Some(if tab == Tab::Parameters {
+                Some(if matches!(tab, Tab::Parameters | Tab::ParameterSets) {
                     "BPARAMETER"
                 } else {
                     "LINE"
