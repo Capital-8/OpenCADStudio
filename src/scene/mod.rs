@@ -530,6 +530,7 @@ impl Scene {
 /// Result of `Scene::entity_index()`. The wire path queries `tree` for
 /// view-rect candidates and also always emits `unbounded_handles`
 /// (entities with no usable bbox — legacy `UNBOUNDED_AABB` sentinel).
+#[derive(Clone)]
 pub(super) struct EntityIndex {
     pub tree: pick::quadtree::QuadTree,
     pub unbounded_handles: Vec<Handle>,
@@ -988,6 +989,8 @@ fn resident_memo_enabled() -> bool {
 pub struct PreparedOpenGeometry {
     pub wires: Arc<Vec<WireModel>>,
     pub interaction_index: Option<Arc<crate::scene::pick::interaction_index::InteractionIndex>>,
+    /// Loader-computed spatial entity index, re-stamped by the receiving scene.
+    pub(crate) entity_index: Option<EntityIndex>,
     /// Loader tessellations and their guard; a state mismatch clears the memo.
     pub(crate) tess_memo: HashMap<Handle, MemoRun>,
     pub(crate) tess_memo_backing: MemoBacking,
@@ -1564,6 +1567,14 @@ pub fn prepare_open_geometry(
     let t_wires = perf.then(iced::time::Instant::now);
     let wires = scene.model_tile_wires_arc(0, &camera, 1.0, 1.0);
     let wires_ms = crate::perf::elapsed_ms(t_wires);
+    // The temporary scene is discarded after this function. Keep its spatial
+    // entity index so opening a large drawing does not rebuild the same O(N)
+    // index synchronously on the UI thread during the 99.5% finalization step.
+    let t_entity_index = perf.then(iced::time::Instant::now);
+    let _ = scene.entity_index();
+    let entity_index =
+        std::mem::take(&mut *scene.entity_index_cache.borrow_mut()).map(|(_, index)| index);
+    let entity_index_ms = crate::perf::elapsed_ms(t_entity_index);
     let t_index = perf.then(iced::time::Instant::now);
     let interaction_index = if scene.interaction_index_worthwhile(&wires) {
         let index =
@@ -1584,9 +1595,10 @@ pub fn prepare_open_geometry(
     };
     if perf {
         crate::perf_record!(
-            "[perf] open-finalize wires={:.1}ms index={:.1}ms wire_models={}",
+            "[perf] open-finalize wires={:.1}ms index={:.1}ms entity_index={:.1}ms wire_models={}",
             wires_ms,
             crate::perf::elapsed_ms(t_index),
+            entity_index_ms,
             wires.len(),
         );
     }
@@ -1617,6 +1629,7 @@ pub fn prepare_open_geometry(
         PreparedOpenGeometry {
             wires,
             interaction_index,
+            entity_index,
             tess_memo,
             tess_memo_backing,
             tess_guard,
@@ -3175,6 +3188,9 @@ impl Scene {
         }
         if let Some(index) = prepared.interaction_index {
             self.cache_interaction_index(self.geometry_epoch, prepared.wires, index);
+        }
+        if let Some(index) = prepared.entity_index {
+            *self.entity_index_cache.borrow_mut() = Some((self.geometry_epoch, index));
         }
     }
 
@@ -14189,6 +14205,7 @@ mod journal_tests {
         scene.install_prepared_open_geometry(PreparedOpenGeometry {
             wires: Arc::new(Vec::new()),
             interaction_index: None,
+            entity_index: None,
             tess_memo: HashMap::default(),
             tess_memo_backing: MemoBacking::default(),
             tess_guard: 0,
@@ -14229,6 +14246,7 @@ mod journal_tests {
         let model_bg = [0.0, 0.0, 0.0, 1.0];
         let (document, prepared) = prepare_open_geometry(document, &caches, model_bg);
         assert!(prepared.resident_layout.is_some());
+        assert!(prepared.entity_index.is_some());
 
         let mut scene = Scene::new();
         scene.document = document;
@@ -14238,6 +14256,15 @@ mod journal_tests {
         scene.current_layout = "Model".to_string();
         scene.sync_annotation_scale_from_header();
         scene.install_prepared_open_geometry(prepared);
+        assert_eq!(
+            scene
+                .entity_index_cache
+                .borrow()
+                .as_ref()
+                .map(|(epoch, _)| *epoch),
+            Some(scene.geometry_epoch),
+            "the loader's entity index must be installed under the receiving scene epoch",
+        );
 
         let hits = scene.resident_patch_hits.get();
         scene.add_entity(line(1.0));
