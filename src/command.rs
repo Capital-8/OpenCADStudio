@@ -2925,17 +2925,28 @@ pub trait CadCommand: Send {
     /// their own results can be hovered and picked next. (#673)
     fn on_entities_committed(&mut self, _entities: &[codec::EntityType]) {}
 
+    /// Batch counterpart of `on_entity_replaced` for `ReplaceManyContinue`.
+    /// The default forwards each pair; commands with derived caches override
+    /// it to rebuild once per batch.
+    fn on_entities_replaced(&mut self, replacements: &[(Handle, Vec<Handle>)]) {
+        for (old, new_handles) in replacements {
+            self.on_entity_replaced(*old, new_handles);
+        }
+    }
+
     /// Called after a PEDIT operation changed its target.
     fn on_pedit_applied(&mut self) {}
 
     /// Consume a lasso or drag-box gesture while the command is active.
     /// `fence` is the gesture boundary in drawing coordinates; `window` is
-    /// present for rectangular gestures. Returning `Some` prevents the normal
+    /// present for rectangular gestures and `crossing` tells a right-to-left
+    /// box from a left-to-right window. Returning `Some` prevents the normal
     /// selection system from selecting the crossed entities.
     fn on_drag_selection(
         &mut self,
         _fence: &[[f64; 2]],
         _window: Option<([f64; 2], [f64; 2])>,
+        _crossing: bool,
     ) -> Option<CmdResult> {
         None
     }
@@ -2960,6 +2971,13 @@ pub trait CadCommand: Send {
     }
 
     fn inject_hover_entity(&mut self, _handle: Handle, _entity: EntityType) {}
+
+    /// Preview wires that must survive generic command-preview refreshes such
+    /// as snap-dwell ticks. Transient hover candidates remain supplied by
+    /// `on_hover_entity` on viewport moves.
+    fn persistent_preview_wires(&self) -> Vec<WireModel> {
+        vec![]
+    }
 
     /// Opt in to transient measurement text; unrelated Measurement users keep
     /// their existing command-line-only behavior.
