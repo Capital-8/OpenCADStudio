@@ -7593,6 +7593,54 @@ mod plot_paper_tests {
     use crate::app::{Message, OpenCADStudio};
     use crate::ui::window::plot::PlotDlgMsg;
 
+    /// Solids draw on screen as GPU meshes and a thickened wide polyline's band
+    /// is a fill: both must reach model and layout plots (#1904, #1882).
+    #[test]
+    fn solids_and_thick_band_fills_reach_model_and_layout_plots() {
+        use codec::entities::{LwPolyline, LwVertex, Solid3D};
+        use codec::types::Vector2;
+        use codec::EntityType;
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        let base = crate::scene::model::solid_model::box_solid([0.0, 0.0, 2.5], 10.0, 10.0, 5.0)
+            .expect("kernel box");
+        let sat = crate::scene::convert::acis_export::solid_to_sat(&base).expect("sat");
+        let mut solid = Solid3D::new();
+        solid.set_sat_document(&sat);
+        let solid = app.tabs[i].scene.add_entity(EntityType::Solid3D(solid));
+        let mut band = LwPolyline::new();
+        band.vertices = vec![
+            LwVertex::new(Vector2::new(-20.0, 0.0)),
+            LwVertex::new(Vector2::new(20.0, 0.0)),
+        ];
+        band.constant_width = 2.0;
+        band.thickness = 3.0;
+        let band = app.tabs[i].scene.add_entity(EntityType::LwPolyline(band));
+
+        let check = |app: &OpenCADStudio, space: &str| {
+            let page = app.layout_plot_page();
+            let named = |handle: codec::Handle| {
+                let name = handle.value().to_string();
+                page.content.wires.iter().filter(move |wire| wire.name == name)
+            };
+            assert!(
+                named(solid).any(|wire| wire.points.iter().any(|p| p[0].is_finite())),
+                "{space}: the solid plots no edges"
+            );
+            assert!(
+                named(band).any(|wire| !wire.fill_tris.is_empty()),
+                "{space}: the thickened band plots no fill"
+            );
+        };
+        check(&app, "model");
+        let _ = app.update(Message::LayoutSwitch("Layout1".into()));
+        let _ = app.run_command_line("MSPACE");
+        let _ = app.run_command_line("ZOOM EXTENTS");
+        let _ = app.run_command_line("PSPACE");
+        check(&app, "layout");
+    }
+
     /// A drawing on `Layout1` whose page setup names its sheet the way a
     /// Windows printer driver does — a bare `A4` with landscape dimensions.
     fn app_with_printer_named_sheet() -> OpenCADStudio {

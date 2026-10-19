@@ -404,6 +404,12 @@ impl Scene {
                 self.images.insert(handle, model);
             }
             if let Some(mut model) = mesh_seed {
+                // Tessellated before the document assigned the handle, so the
+                // mesh still carries handle 0 as its name — the entity key that
+                // picking and plotting read back through `entity_handle`.
+                for mesh in &mut model.lods {
+                    mesh.name = handle.value().to_string();
+                }
                 if let Some(entity) = self.document.get_entity(handle) {
                     let color = self.render_style(entity).0;
                     let material = crate::scene::model::material_model::resolve_material_with_base(

@@ -8280,7 +8280,7 @@ impl Scene {
         // This composite is the CPU pick/snap set; the projection follows the
         // paper camera, so the key keeps `camera_generation`.
         let mut wires = (*self.paper_sheet_wires_arc()).clone();
-        wires.extend(self.viewport_content_wires(layout_block, None, None));
+        wires.extend(self.viewport_content_wires(layout_block, None, None, false));
         let arc = Arc::new(wires);
         let gen = WIRE_CONTENT_GEN.fetch_add(1, Ordering::Relaxed);
         self.last_model_wire_gen.set(gen);
@@ -8325,6 +8325,8 @@ impl Scene {
             let mut wires =
                 crate::scene::model::instance_model::expand_stubs(&self.entity_wires_arc())
                     .into_owned();
+            // Model space plots in plan, so solids show their top view.
+            wires.extend(self.mesh_plot_wires(&self.meshes_arc(), [0.0, 0.0, 1.0], None));
             apply_mode(
                 &mut wires,
                 render_mode_override.unwrap_or_else(|| self.active_model_tile_render_mode()),
@@ -8342,7 +8344,7 @@ impl Scene {
                 continue;
             }
             let mode = render_mode_override.unwrap_or(viewport.render_mode);
-            let mut wires = self.viewport_content_wires(paper_block, Some(handle), None);
+            let mut wires = self.viewport_content_wires(paper_block, Some(handle), None, true);
             apply_mode(&mut wires, mode);
             model_wires.extend(wires);
         }
