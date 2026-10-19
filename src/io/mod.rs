@@ -14,6 +14,7 @@ pub mod file_association;
 pub mod font_repo;
 pub(crate) mod fs_access;
 pub mod iges_import;
+pub mod iges_surfaces;
 pub mod line_read;
 pub mod linetypes;
 pub mod model_import;
