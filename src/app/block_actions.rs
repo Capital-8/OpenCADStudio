@@ -178,6 +178,18 @@ impl OpenCADStudio {
         };
         self.start_block_action_for_parameter_at("MOVE", parameter, Some(key_point))
     }
+    pub(in crate::app) fn start_move_pair_action(
+        &mut self,
+        parameter: codec::Handle,
+        side: u8,
+    ) -> Task<Message> {
+        let key_point = match side {
+            0 => actions::XyKeyPoint::Base,
+            1 => actions::XyKeyPoint::End,
+            _ => return Task::none(),
+        };
+        self.start_block_action_for_parameter_at("MOVE", parameter, Some(key_point))
+    }
     pub(in crate::app) fn handle_block_action_result(
         &mut self,
         result: crate::command::CmdResult,
@@ -293,6 +305,21 @@ impl OpenCADStudio {
                                 return self.start_xy_move_box_set_action(parameter, next);
                             }
                             self.tabs[i].pending_xy_move_box_set = None;
+                        }
+                        if let Some((set_parameter, expected_side)) = self.tabs[i].pending_move_pair {
+                            let completed_side = match xy_key_point {
+                                Some(actions::XyKeyPoint::Base) => Some(0),
+                                Some(actions::XyKeyPoint::End) | None => Some(1),
+                                _ => None,
+                            };
+                            if set_parameter == parameter
+                                && completed_side == Some(expected_side)
+                                && expected_side == 0
+                            {
+                                self.tabs[i].pending_move_pair = Some((parameter, 1));
+                                return self.start_move_pair_action(parameter, 1);
+                            }
+                            self.tabs[i].pending_move_pair = None;
                         }
                     }
                     Err(e) => self.command_line.push_error(crate::t!(e).as_ref()),

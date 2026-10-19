@@ -123,9 +123,9 @@ impl CadCommand for ActionCommand {
                     XyKeyPoint::Base => "base",
                     XyKeyPoint::X => "X-axis",
                     XyKeyPoint::Y => "Y-axis",
-                    XyKeyPoint::End => "end",
+                    XyKeyPoint::End => "endpoint",
                 };
-                return crate::tf!("BACTION XY Move Box Set  Select objects for the {point} key point, then press Enter:").into_owned();
+                return crate::tf!("BACTION  Select objects associated with the parameter's {point} point, then press Enter:").into_owned();
             }
             return crate::t!("BACTION  Select objects for the action, then press Enter:")
                 .into_owned();

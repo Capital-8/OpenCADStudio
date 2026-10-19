@@ -455,8 +455,12 @@ pub(crate) fn create_with_options(
         .into_iter()
         .find(|p| p.handle == parameter)
         .ok_or("Select a compatible parameter belonging to this block.")?;
-    if xy_key_point.is_some() && (kind != Kind::Move || !p.xy) {
-        return Err("XY key points can only be used by Move actions on an XY parameter.");
+    if xy_key_point.is_some_and(|point| {
+        kind != Kind::Move
+            || (p.xy && !matches!(point, XyKeyPoint::Base | XyKeyPoint::X | XyKeyPoint::Y | XyKeyPoint::End))
+            || (!p.xy && !matches!(point, XyKeyPoint::Base | XyKeyPoint::End))
+    }) {
+        return Err("Move key points are not compatible with this parameter.");
     }
     if targets.is_empty() {
         return Err("Select at least one object for the action.");
@@ -657,7 +661,7 @@ pub(crate) fn create_with_options(
 fn move_connections(p: &Parameter, key_point: Option<XyKeyPoint>) -> [BlockConnection; 2] {
     let names = match (p.point, p.xy, key_point) {
         (true, _, _) => ["XDelta", "YDelta"],
-        (_, true, Some(XyKeyPoint::Base)) => ["BaseXDelta", "BaseYDelta"],
+        (_, _, Some(XyKeyPoint::Base)) => ["BaseXDelta", "BaseYDelta"],
         (_, true, Some(XyKeyPoint::X)) => ["EndXDelta", "BaseYDelta"],
         (_, true, Some(XyKeyPoint::Y)) => ["BaseXDelta", "EndYDelta"],
         (_, true, Some(XyKeyPoint::End) | None) | (_, false, _) => {
@@ -689,9 +693,11 @@ fn action_move_delta(
     if parameter.point && names == ["XDelta", "YDelta"] {
         return Some(delta);
     }
+    if names == ["BaseXDelta", "BaseYDelta"] {
+        return Some(DVec3::ZERO);
+    }
     if parameter.xy {
         return match names {
-            ["BaseXDelta", "BaseYDelta"] => Some(DVec3::ZERO),
             ["EndXDelta", "BaseYDelta"] => Some(DVec3::new(delta.x, 0.0, 0.0)),
             ["BaseXDelta", "EndYDelta"] => Some(DVec3::new(0.0, delta.y, 0.0)),
             ["EndXDelta", "EndYDelta"] => Some(delta),

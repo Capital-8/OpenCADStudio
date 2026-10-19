@@ -620,6 +620,10 @@ impl OpenCADStudio {
                 self.tabs[i].pending_xy_move_box_set = Some((parameter, 0));
                 self.start_xy_move_box_set_action(parameter, 0)
             }
+            Some("MOVE_PAIR") => {
+                self.tabs[i].pending_move_pair = Some((parameter, 0));
+                self.start_move_pair_action(parameter, 0)
+            }
             Some(command) if command.starts_with("BACTION ") => {
                 self.start_block_action_for_parameter(
                     command.trim_start_matches("BACTION "),

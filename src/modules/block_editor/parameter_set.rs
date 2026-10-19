@@ -18,6 +18,9 @@ pub(crate) fn get(label: &str) -> Option<ParameterSet> {
         "Polar Array" => ("POLAR", "BACTION ARRAY"),
         "XY Move" => ("XY", "BACTION MOVE"),
         "XY Move Box Set" => ("XY", "XY_MOVE_BOX_SET"),
+        "Linear Move Pair" => ("LINEAR", "MOVE_PAIR"),
+        "Polar Move Pair" => ("POLAR", "MOVE_PAIR"),
+        "XY Move Pair" => ("XY", "MOVE_PAIR"),
         "XY Stretch Box Set" => ("XY", "BACTION STRETCH"),
         "XY Array Box Set" => ("XY", "BACTION ARRAY"),
         "Rotation Set" => ("ROTATION", "BACTION ROTATE"),
@@ -34,11 +37,9 @@ pub(crate) fn get(label: &str) -> Option<ParameterSet> {
 
 pub(crate) fn unavailable_reason(label: &str) -> Option<&'static str> {
     match label {
-        "Linear Move Pair"
-        | "Linear Stretch Pair"
-        | "Polar Move Pair"
-        | "Polar Stretch Pair"
-        | "XY Move Pair" => Some("Paired parameter authoring is not available yet."),
+        "Linear Stretch Pair" | "Polar Stretch Pair" => {
+            Some("Paired parameter authoring is not available yet.")
+        }
         _ => None,
     }
 }
