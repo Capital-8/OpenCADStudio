@@ -99,6 +99,7 @@ pub static DIRTY_DOT: &[u8] = include_bytes!("../../assets/icons/ui/dirty_dot.sv
 pub static ARROW_LONG_RIGHT: &[u8] = include_bytes!("../../assets/icons/ui/arrow_long_right.svg");
 pub static MORE: &[u8] = include_bytes!("../../assets/icons/ui/more.svg");
 pub static INFO: &[u8] = include_bytes!("../../assets/icons/ui/info.svg");
+pub static MESH: &[u8] = include_bytes!("../../assets/icons/ui/mesh.svg");
 
 // ── Status-bar toggle icons (issue #216) ──────────────────────────────────
 pub static ST_ORTHO: &[u8] = include_bytes!("../../assets/icons/status/ortho.svg");

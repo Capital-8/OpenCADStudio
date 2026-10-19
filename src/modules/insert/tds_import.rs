@@ -16,9 +16,8 @@ pub struct TdsImportRequest {
     /// Meshes keep only the vertices their faces use (the import splits or
     /// asks), else the file's vertex list.
     pub compact: bool,
-    /// The meshes with several materials were asked about one by one: the
-    /// materials then stay out of the objects and are linked through their
-    /// legacy render records only.
+    /// The meshes with several materials were asked about one by one: each
+    /// mesh then also links to its material's legacy render record.
     pub asked: bool,
     /// The mesh whose question was cancelled: the import stops there.
     pub stop_at: Option<String>,

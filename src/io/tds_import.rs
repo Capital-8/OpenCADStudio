@@ -181,16 +181,20 @@ pub fn read(bytes: &[u8]) -> Option<TdsScene> {
                     let (name, body) = r.cstr(start, stop);
                     for (id, s, e) in r.chunks(body, stop) {
                         let object = match id {
-                            0x4100 => TdsObject::Mesh(read_mesh(&r, s, e)),
-                            0x4600 => TdsObject::Light(read_light(&r, s, e)?),
-                            0x4700 => TdsObject::Camera(TdsCamera {
-                                position: r.point(s)?,
-                                target: r.point(s + 12)?,
-                                lens: r.f32(s + 28).filter(|l| *l > 0.0).unwrap_or(50.0),
+                            0x4100 => Some(TdsObject::Mesh(read_mesh(&r, s, e))),
+                            0x4600 => read_light(&r, s, e).map(TdsObject::Light),
+                            0x4700 => r.point(s).zip(r.point(s + 12)).map(|(position, target)| {
+                                TdsObject::Camera(TdsCamera {
+                                    position,
+                                    target,
+                                    lens: r.f32(s + 28).filter(|l| *l > 0.0).unwrap_or(50.0),
+                                })
                             }),
                             _ => continue,
                         };
-                        scene.objects.push((name.clone(), object));
+                        // A short light or camera chunk drops that object,
+                        // not the file.
+                        scene.objects.extend(object.map(|object| (name.clone(), object)));
                         break;
                     }
                 }
@@ -419,8 +423,7 @@ pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
             continue;
         }
         if options.stop_at.as_ref() == Some(name) {
-            out.messages.push(format!("Processing object {name}"));
-            out.messages.push("Render API error:".to_string());
+            out.messages.push(format!("Import stopped at {name}"));
             return out;
         }
         match object {

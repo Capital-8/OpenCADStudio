@@ -12,7 +12,7 @@ use codec::xdata::{ExtendedDataRecord, XDataValue};
 /// The layer and text style the records use.
 pub const LAYER: &str = "ASHADE";
 /// The font of the text style of the same name.
-pub const FONT: &str = "simplex";
+pub const FONT: &str = "simplex.shx";
 
 /// The render settings records, by insert colour.
 pub const RENDER_SETTINGS: [(u8, &str); 8] = [
@@ -56,8 +56,14 @@ pub fn finish_xdata(material_record: codec::Handle) -> ExtendedDataRecord {
 
 /// Extended data for `app` from `code=value` items separated by `|`
 /// (points as `x,y,z`).
-// ponytail: a name holding `|` would split an item; 3D Studio names do not.
 pub fn xdata(app: &str, spec: &str) -> ExtendedDataRecord {
+    xdata_with(app, spec, &[])
+}
+
+/// [`xdata`] with each `1000=` item whose value is a placeholder of
+/// `strings` holding that string as it is: names never pass through the
+/// spec, so one holding `|` or `{A}` comes out unchanged.
+fn xdata_with(app: &str, spec: &str, strings: &[(&str, &str)]) -> ExtendedDataRecord {
     let mut record = ExtendedDataRecord::new(app);
     for item in spec.split('|') {
         let Some((code, value)) = item.split_once('=') else { continue };
@@ -71,7 +77,13 @@ pub fn xdata(app: &str, spec: &str) -> ExtendedDataRecord {
             )
         };
         record.add_value(match code {
-            "1000" => XDataValue::String(value.to_string()),
+            "1000" => XDataValue::String(
+                strings
+                    .iter()
+                    .find(|(key, _)| *key == value)
+                    .map_or(value, |(_, string)| *string)
+                    .to_string(),
+            ),
             "1002" => XDataValue::ControlString(value.to_string()),
             "1010" => XDataValue::Point3D(point()),
             "1011" => XDataValue::Position3D(point()),
@@ -104,20 +116,19 @@ pub fn material_xdata(
         ["1040=0.0"; 8].join("|")
     };
     let spec = MATERIAL
-        .replace("{N}", name)
         .replace("{A}", &triple(ambient))
         .replace("{D}", &triple(diffuse))
         .replace("{S}", &triple(specular))
-        .replace("{X}", &tail)
-        .replace("{H}", handle);
-    xdata("AVE_MATERIAL", &spec)
+        .replace("{X}", &tail);
+    xdata_with("AVE_MATERIAL", &spec, &[("{N}", name), ("{H}", handle)])
 }
 
 /// A light's record.
 pub fn light_xdata(name: &str, color: [f64; 3]) -> ExtendedDataRecord {
-    xdata(
+    xdata_with(
         "AVE_RENDER",
-        &LIGHT.replace("{N}", name).replace("{C}", &triple(color)),
+        &LIGHT.replace("{C}", &triple(color)),
+        &[("{N}", name)],
     )
 }
 
@@ -140,6 +151,7 @@ const MATERIAL_TAGS: [&str; 23] = [
     "DISP4",
     "DBOUND",
     "SMOOTH",
+    // The legacy tag is spelled so.
     "ATMOSHPERE",
     "ATMO1",
     "ATMO2",
@@ -163,14 +175,15 @@ pub fn material_block() -> Vec<EntityType> {
 }
 
 /// The material block's attribute values for a material whose diffuse
-/// colour is `diffuse` (0 to 1); `linked` when objects carry the material.
-pub fn material_values(name: &str, diffuse: [f64; 3], linked: bool) -> Vec<(&'static str, String)> {
+/// colour is `diffuse` (0 to 1); `asked` when the meshes also link to the
+/// record through their finish.
+pub fn material_values(name: &str, diffuse: [f64; 3], asked: bool) -> Vec<(&'static str, String)> {
     MATERIAL_TAGS
         .iter()
         .map(|tag| {
             let value = match *tag {
                 "NAME" => name.to_string(),
-                "ACADCOLOR" => if linked { String::new() } else { " ".into() },
+                "ACADCOLOR" => if asked { " ".into() } else { String::new() },
                 "COLOR" => format!("{:.4},{:.4},{:.4}", diffuse[0], diffuse[1], diffuse[2]),
                 "OPACITY" => "1.0,1.0,1.0".into(),
                 "SURFACE" => r#"("nullsurf" "")"#.into(),
@@ -277,14 +290,13 @@ pub fn light_block() -> Vec<EntityType> {
 /// falloff angles (degrees).
 pub fn spot_xdata(name: &str, target: [f64; 3], color: [f64; 3], hotspot: f64, falloff: f64) -> ExtendedDataRecord {
     let spec = LIGHT
-        .replace("{N}", name)
         .replace("{C}", &triple(color))
         .replace("1011=0.0,0.0,0.0", &format!("1011={}", triple(target)))
         .replace(
             "1040=0.0|1040=0.0|1040=0.0",
             &format!("1040={}|1040={}|1040=0.0", falloff / 2.0, (falloff - hotspot) / 2.0),
         );
-    xdata("AVE_RENDER", &spec)
+    xdata_with("AVE_RENDER", &spec, &[("{N}", name)])
 }
 
 /// The spotlight block: a lamp symbol aimed along its Y axis, its name

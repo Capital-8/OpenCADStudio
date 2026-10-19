@@ -192,6 +192,8 @@ pub struct TdsImportState {
 /// ask about, in the order the import processes them, and the answer being
 /// given for the first one.
 pub struct TdsMaterialState {
+    /// The tab the import was started in.
+    pub tab: usize,
     pub request: crate::modules::insert::tds_import::TdsImportRequest,
     /// Each mesh and its materials (with their diffuse colour), last
     /// assigned first.
@@ -701,32 +703,24 @@ pub fn view_tds_material<'a>(
     state: &'a TdsMaterialState,
     sizing: crate::ui::modal::ModalSizing,
 ) -> Element<'a, Message> {
-    const MESH: &str = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'>\
-        <path d='M9 2.5 15 6v6L9 15.5 3 12V6z' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'/>\
-        <path d='M3 6l6 3.5L15 6M9 9.5v6' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'/></svg>";
     let Some((name, materials)) = state.queue.first() else {
         return Space::new().into();
     };
-    let badge = container(
-        iced::widget::svg(iced::widget::svg::Handle::from_memory(MESH.as_bytes()))
-            .width(18)
-            .height(18)
-            .style(|theme: &Theme, _| iced::widget::svg::Style {
-                color: Some(theme.palette().primary.base.color),
-            }),
-    )
-    .width(34)
-    .height(34)
-    .center_x(34)
-    .center_y(34)
-    .style(|theme: &Theme| container::Style {
-        background: Some(Background::Color(theme.palette().primary.base.color.scale_alpha(0.13))),
-        border: Border {
-            radius: 17.0.into(),
+    let badge = container(crate::ui::icons::themed_primary(crate::ui::icons::MESH, 18.0))
+        .width(34)
+        .height(34)
+        .center_x(34)
+        .center_y(34)
+        .style(|theme: &Theme| container::Style {
+            background: Some(Background::Color(
+                theme.palette().primary.base.color.scale_alpha(0.13),
+            )),
+            border: Border {
+                radius: 17.0.into(),
+                ..Default::default()
+            },
             ..Default::default()
-        },
-        ..Default::default()
-    });
+        });
     let mut chips = row![text(crate::tr!("import-3ds", "materials", n = (materials.len() as i64)))
         .size(11)
         .style(muted_style)]
@@ -845,17 +839,18 @@ pub fn view_tds_material<'a>(
         ]
         .spacing(8),
     );
-    let remember_label = if state.remember {
-        format!("✓ {}", crate::tr!("import-3ds-alert", "remember"))
-    } else {
-        crate::tr!("import-3ds-alert", "remember")
-    };
-    let mut remaining = column![row![chip(
-        remember_label,
-        state.remember,
-        msg(ImportDialogMsg::TdsMatRemember(!state.remember))
-    )]]
-    .spacing(8);
+    let remember = button(
+        row![
+            crate::ui::icons::themed_check_cell(state.remember),
+            text(crate::tr!("import-3ds-alert", "remember")).size(11),
+        ]
+        .spacing(4)
+        .align_y(iced::Center),
+    )
+    .on_press(msg(ImportDialogMsg::TdsMatRemember(!state.remember)))
+    .style(button_style(state.remember))
+    .padding([4, 10]);
+    let mut remaining = column![row![remember]].spacing(8);
     if !state.remember {
         remaining = remaining.push(text(crate::tr!("import-3ds-alert", "remember-note")).size(11).style(muted_style));
     }

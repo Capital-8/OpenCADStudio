@@ -321,6 +321,7 @@ impl OpenCADStudio {
             None if !several.is_empty() => {
                 request.asked = true;
                 self.import_dialogs.tds_material = Some(crate::ui::window::import_dialogs::TdsMaterialState {
+                    tab: i,
                     request,
                     queue: several,
                     choice: 0,
@@ -365,8 +366,7 @@ impl OpenCADStudio {
         }
         if state.queue.is_empty() {
             self.close_active_modal();
-            let i = self.active_tab;
-            self.run_tds_import(i, state.request);
+            self.run_tds_import(state.tab, state.request);
         } else {
             // The next mesh is offered the same choice, without a material.
             state.material = 0;
@@ -379,8 +379,7 @@ impl OpenCADStudio {
     /// come in.
     pub(in crate::app) fn stop_tds_import(&mut self, mut state: crate::ui::window::import_dialogs::TdsMaterialState) {
         state.request.stop_at = state.queue.first().map(|(name, _)| name.clone());
-        let i = self.active_tab;
-        self.run_tds_import(i, state.request);
+        self.run_tds_import(state.tab, state.request);
     }
 
     /// The import itself, one undo step: the meshes on their layers with
@@ -498,9 +497,9 @@ impl OpenCADStudio {
         }
         let mut parts: Vec<Option<crate::io::tds_import::TdsPart>> = import.parts.into_iter().map(Some).collect();
         let mut first_material = true;
-        // Asked about meshes one by one, the materials stay out of the
-        // objects: each mesh links to its material record instead.
-        let linked = !request.asked;
+        // Asked about meshes one by one, each mesh also links to its
+        // material record.
+        let asked = request.asked;
         let mut records: HashMap<String, codec::Handle> = HashMap::new();
         let mut waiting: Vec<(String, codec::Handle)> = Vec::new();
         for step in import.steps {
@@ -512,14 +511,15 @@ impl OpenCADStudio {
                     if let Some(color) = part.color {
                         mesh.common.color = codec::types::Color::Index(color);
                     }
-                    if linked {
-                        mesh.common.material_handle =
-                            part.material.as_ref().and_then(|m| materials.get(m).copied());
-                        if mesh.common.material_handle.is_some() {
-                            mesh.common.material_flags = 0b11;
-                        }
-                    } else if let Some(record) = part.material.as_ref().and_then(|m| records.get(m)) {
-                        mesh.common.extended_data.add_record(crate::io::tds_legacy::finish_xdata(*record));
+                    mesh.common.material_handle =
+                        part.material.as_ref().and_then(|m| materials.get(m).copied());
+                    if mesh.common.material_handle.is_some() {
+                        mesh.common.material_flags = 0b11;
+                    }
+                    let record = part.material.as_ref().and_then(|m| records.get(m));
+                    if let Some(&record) = record.filter(|_| asked) {
+                        let finish = crate::io::tds_legacy::finish_xdata(record);
+                        mesh.common.extended_data.add_record(finish);
                     }
                     if legacy {
                         mesh.common.extended_data.add_record(crate::io::tds_legacy::xdata(
@@ -528,7 +528,7 @@ impl OpenCADStudio {
                         ));
                     }
                     let handle = scene.add_entity(codec::EntityType::PolyfaceMesh(mesh));
-                    if let Some(m) = part.material.filter(|m| !linked && !records.contains_key(m)) {
+                    if let Some(m) = part.material.filter(|m| asked && !records.contains_key(m)) {
                         waiting.push((m, handle));
                     }
                 }
@@ -540,11 +540,8 @@ impl OpenCADStudio {
                         unit(source.and_then(|m| m.diffuse)),
                         unit(source.and_then(|m| m.specular)),
                     ];
-                    let handle = materials
-                        .get(&name)
-                        .filter(|_| linked)
-                        .map(|h| format!("{:X}", h.value()))
-                        .unwrap_or_default();
+                    let handle = materials.get(&name);
+                    let handle = handle.map(|h| format!("{:X}", h.value())).unwrap_or_default();
                     let mut insert = codec::entities::Insert::new("RM_SDB", codec::types::Vector3::ZERO);
                     insert.common.layer = current_layer.clone();
                     insert.common.extended_data.add_record(crate::io::tds_legacy::material_xdata(
@@ -554,8 +551,8 @@ impl OpenCADStudio {
                         &handle,
                     ));
                     first_material = false;
-                    let values = crate::io::tds_legacy::material_values(&name, colours[1], linked);
-                    with_attributes(&mut insert, crate::io::tds_legacy::material_block(), "", |tag| {
+                    let values = crate::io::tds_legacy::material_values(&name, colours[1], asked);
+                    with_attributes(&mut insert, crate::io::tds_legacy::material_block(), |tag| {
                         values.iter().find(|(t, _)| *t == tag).map(|(_, v)| v.clone())
                     });
                     let record = scene.add_entity(codec::EntityType::Insert(insert));
@@ -594,16 +591,11 @@ impl OpenCADStudio {
                     }
                     insert.common.layer = current_layer.clone();
                     insert.common.extended_data.add_record(record);
-                    with_attributes(&mut insert, definitions, crate::io::tds_legacy::FONT, |tag| {
+                    with_attributes(&mut insert, definitions, |tag| {
                         (tag == "SNAME").then(|| name.clone())
                     });
                     scene.add_entity(codec::EntityType::Insert(insert));
                 }
-            }
-        }
-        if legacy {
-            if let Some(layer) = scene.document.layers.get_mut(crate::io::tds_legacy::LAYER) {
-                layer.flags.locked = true;
             }
         }
         for line in &import.messages {
@@ -650,19 +642,16 @@ fn aim_at(insert: &mut codec::entities::Insert, from: codec::types::Vector3, to:
     insert.insert_point = codec::types::Vector3::new(p.dot(ax), p.dot(ay), p.dot(n));
 }
 
-/// Gives an insert the attributes of a block's definitions, placed at the
-/// insert, with `value` for a tag (else the definition's default).
+/// Gives an insert the attributes of a block's definitions (the legacy
+/// blocks' base is the origin), with `value` for a tag (else the
+/// definition's default).
 fn with_attributes(
     insert: &mut codec::entities::Insert,
     definitions: Vec<codec::EntityType>,
-    font: &str,
     value: impl Fn(&str) -> Option<String>,
 ) {
-    let at = insert.insert_point;
-    let (sin, cos) = insert.rotation.sin_cos();
-    let place = |p: codec::types::Vector3| {
-        codec::types::Vector3::new(at.x + p.x * cos - p.y * sin, at.y + p.x * sin + p.y * cos, at.z + p.z)
-    };
+    let transform =
+        crate::scene::render_graph::insert_transform_with_base(insert, codec::types::Vector3::ZERO);
     for entity in definitions {
         let codec::EntityType::AttributeDefinition(def) = entity else { continue };
         let mut attribute = codec::entities::AttributeEntity::from_definition(&def, value(&def.tag));
@@ -676,19 +665,17 @@ fn with_attributes(
         };
         if share > 0.0 {
             if let Some(bounds) = crate::entities::text_support::text_local_bounds(
-                font,
+                crate::io::tds_legacy::FONT,
                 &attribute.value,
                 attribute.height as f32,
                 attribute.width_factor as f32,
                 attribute.oblique_angle as f32,
             ) {
-                attribute.insertion_point.x = attribute.alignment_point.x - share * f64::from(bounds.ink_max[0]);
+                attribute.insertion_point.x =
+                    attribute.alignment_point.x - share * f64::from(bounds.ink_max[0]);
             }
         }
-        attribute.insertion_point = place(attribute.insertion_point);
-        attribute.alignment_point = place(attribute.alignment_point);
-        attribute.rotation += insert.rotation;
-        attribute.normal = insert.normal;
+        codec::entities::Entity::apply_transform(&mut attribute, &transform);
         insert.attributes.push(attribute);
     }
 }
@@ -699,19 +686,16 @@ impl OpenCADStudio {
     fn define_tds_legacy(&mut self, i: usize, import: &crate::io::tds_import::TdsImport) {
         use crate::io::tds_legacy::{light_block, material_block, LAYER};
         let scene = &mut self.tabs[i].scene;
-        let document = &mut scene.document;
         for app in ["AVE_RENDER", "AVE_MATERIAL", "AVE_FINISH", "AVE_ENTITY_MATERIAL"] {
-            if !document.app_ids.contains(app) {
-                let mut id = codec::tables::AppId::new(app);
-                id.handle = document.allocate_handle();
-                let _ = document.app_ids.add(id);
-            }
+            scene.ensure_app_id(app);
         }
-        if !document.layers.contains(LAYER) {
-            let mut layer = codec::tables::Layer::new(LAYER);
-            layer.handle = document.allocate_handle();
-            let _ = document.layers.add(layer);
+        // The render layer is locked before the records go on it.
+        scene.ensure_layer(LAYER);
+        if let Some(layer) = scene.document.layers.get_mut(LAYER) {
+            layer.flags.locked = true;
         }
+        scene.layer_table_dirty = true;
+        let document = &mut scene.document;
         let lights = import.steps.iter().any(|s| matches!(s, TdsStep::Light { .. }));
         if lights && !document.text_styles.iter().any(|s| s.name.eq_ignore_ascii_case(LAYER)) {
             let mut style = codec::tables::TextStyle::new(LAYER);
