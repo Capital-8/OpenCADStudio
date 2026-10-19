@@ -113,6 +113,7 @@ pub(super) const NAMES: &[&str] = &[
     "pdf_import_dialog",
     "dgn_import_dialog",
     "tds_import_dialog",
+    "tds_material_dialog",
     "refedit_dialog",
     "pdf_shx_settings",
     "pdf_layer_toggle",
@@ -2271,6 +2272,46 @@ impl OpenCADStudio {
                     "layers" => I::TdsLayers(pick(&["object", "material", "color", "single"])?),
                     "multi" => I::TdsMulti(pick(&["ask", "split", "first", "none"])?),
                     "path" => I::TdsPicked(Some(value.to_string())),
+                    _ => return Err(bad()),
+                })
+            }
+            // The multiple-material mesh window of a 3D Studio import, one
+            // field per call: "split", "first", "select",
+            // "material=<name>" ("material=" for no material; selects the
+            // choice too), "remember=on|off", "apply" or "cancel".
+            "tds_material_dialog" => {
+                use crate::ui::window::import_dialogs::ImportDialogMsg as I;
+                if self.active_modal != Some(crate::app::ModalKind::TdsMaterial) {
+                    return Err(failure("no_dialog", "The multiple-material window is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                Message::ImportDialog(match key {
+                    "split" => I::TdsMatChoice(0),
+                    "first" => I::TdsMatChoice(1),
+                    "select" => I::TdsMatChoice(2),
+                    "material" => {
+                        let k = if value.is_empty() {
+                            0
+                        } else {
+                            self.import_dialogs
+                                .tds_material
+                                .as_ref()
+                                .and_then(|s| s.queue.first())
+                                .and_then(|(_, m)| m.iter().position(|(name, _)| name.eq_ignore_ascii_case(value)))
+                                .map(|k| k + 1)
+                                .ok_or_else(bad)?
+                        };
+                        I::TdsMatPick(k)
+                    }
+                    "remember" => I::TdsMatRemember(match value {
+                        "on" | "1" | "true" => true,
+                        "off" | "0" | "false" => false,
+                        _ => return Err(bad()),
+                    }),
+                    "apply" | "ok" => I::TdsMatApply,
+                    "cancel" => return Ok(Task::done(Message::CloseModal)),
                     _ => return Err(bad()),
                 })
             }
