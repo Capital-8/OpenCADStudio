@@ -7838,6 +7838,9 @@ impl OpenCADStudio {
             }
 
             Message::PropBoolToggle(field) => {
+                if field.starts_with("authoring_set_") && field.ends_with("_enabled") {
+                    return self.toggle_authoring_value_set_flag(field);
+                }
                 let i = self.active_tab;
                 let handles = self.property_target_handles(i);
                 if !handles.is_empty() {

@@ -1038,6 +1038,9 @@ fn evaluate_impl(
                 return Err("Specify a finite parameter position.");
             }
             position.z = p.end.z;
+            if !force {
+                position = constrain_parameter_position(baseline, &p, position)?;
+            }
             if p.linear {
                 let axis = (p.end - p.base).normalize();
                 let length = (position - p.base).dot(axis);
@@ -1469,41 +1472,111 @@ fn supported_parameter(doc: &CadDocument, handle: Handle) -> bool {
     let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&handle) else {
         return false;
     };
-    let distance = |s: &codec::objects::BlockParameterValueSet| {
-        s.flags == 1
-            && s.minimum == 0.
-            && s.maximum == 0.
-            && s.increment == 0.
-            && s.values.is_empty()
+    let valid_value_set = |s: &codec::objects::BlockParameterValueSet| {
+        s.flags & !0x0f == 0
+            && !(s.flags & 4 != 0 && s.flags & 8 != 0)
+            && s.minimum.is_finite()
+            && s.maximum.is_finite()
+            && s.increment.is_finite()
+            && (s.flags & 4 == 0 || s.increment > 0.)
+            && (s.flags & 8 == 0 || !s.values.is_empty())
+            && s.values.iter().all(|v| v.is_finite())
+            && !s.values.windows(2).any(|pair| pair[0] >= pair[1])
+            && !(s.flags & 3 == 3 && s.minimum > s.maximum)
     };
     match &o.data {
         DynamicBlockData::FlipParameter(p) => !p.parameter.parameter.chain_actions,
         DynamicBlockData::RotationParameter(p) => {
-            !p.parameter.parameter.chain_actions
-                && p.value_set.flags == 3
-                && p.value_set.minimum == 0.
-                && p.value_set.maximum == std::f64::consts::TAU
-                && p.value_set.increment == 0.
-                && p.value_set.values.is_empty()
+            !p.parameter.parameter.chain_actions && valid_value_set(&p.value_set)
         }
         DynamicBlockData::PointParameter(p) => !p.parameter.parameter.chain_actions,
         DynamicBlockData::LinearParameter(p) => {
-            !p.parameter.parameter.chain_actions && distance(&p.value_set)
+            !p.parameter.parameter.chain_actions && valid_value_set(&p.value_set)
         }
         DynamicBlockData::XYParameter(p) => {
             !p.parameter.parameter.chain_actions
-                && distance(&p.x_value_set)
-                && distance(&p.y_value_set)
+                && valid_value_set(&p.x_value_set)
+                && valid_value_set(&p.y_value_set)
         }
         DynamicBlockData::PolarParameter(p) => {
             !p.parameter.parameter.chain_actions
-                && distance(&p.distance_value_set)
-                && p.angle_value_set.flags == 3
-                && p.angle_value_set.minimum == 0.
-                && p.angle_value_set.maximum == std::f64::consts::TAU
-                && p.angle_value_set.increment == 0.
-                && p.angle_value_set.values.is_empty()
+                && valid_value_set(&p.distance_value_set)
+                && valid_value_set(&p.angle_value_set)
         }
         _ => false,
     }
+}
+
+fn constrain_value_set(value: f64, set: &codec::objects::BlockParameterValueSet) -> f64 {
+    let minimum = (set.flags & 1 != 0).then_some(set.minimum);
+    let maximum = (set.flags & 2 != 0).then_some(set.maximum);
+    let clamp = |value: f64| {
+        value
+            .max(minimum.unwrap_or(f64::NEG_INFINITY))
+            .min(maximum.unwrap_or(f64::INFINITY))
+    };
+    let value = clamp(value);
+    if set.flags & 8 != 0 {
+        return set
+            .values
+            .iter()
+            .copied()
+            .filter(|candidate| {
+                minimum.is_none_or(|min| *candidate >= min)
+                    && maximum.is_none_or(|max| *candidate <= max)
+            })
+            .min_by(|a, b| {
+                (a - value)
+                    .abs()
+                    .total_cmp(&(b - value).abs())
+                    .then_with(|| a.total_cmp(b))
+            })
+            .unwrap_or(value);
+    }
+    if set.flags & 4 != 0 {
+        let origin = minimum.unwrap_or(0.0);
+        let steps = ((value - origin) / set.increment).round().max(0.0);
+        return clamp(origin + steps * set.increment);
+    }
+    value
+}
+
+fn constrain_parameter_position(
+    doc: &CadDocument,
+    p: &Parameter,
+    mut position: DVec3,
+) -> Result<DVec3, &'static str> {
+    let Some(ObjectType::DynamicBlock(object)) = doc.objects.get(&p.handle) else {
+        return Ok(position);
+    };
+    match &object.data {
+        DynamicBlockData::LinearParameter(parameter) => {
+            let axis = (p.end - p.base).normalize();
+            let length = (position - p.base).dot(axis);
+            let length = constrain_value_set(length, &parameter.value_set);
+            position = p.base + axis * length;
+        }
+        DynamicBlockData::PolarParameter(parameter) => {
+            let delta = position - p.base;
+            let distance = constrain_value_set(delta.length(), &parameter.distance_value_set);
+            let angle = constrain_value_set(delta.y.atan2(delta.x), &parameter.angle_value_set);
+            position = p.base + DVec3::new(angle.cos(), angle.sin(), 0.0) * distance;
+        }
+        DynamicBlockData::XYParameter(parameter) => {
+            let delta = position - p.base;
+            position = p.base
+                + DVec3::new(
+                    constrain_value_set(delta.x, &parameter.x_value_set),
+                    constrain_value_set(delta.y, &parameter.y_value_set),
+                    delta.z,
+                );
+        }
+        DynamicBlockData::RotationParameter(parameter) => {
+            let delta = position - p.base;
+            let angle = constrain_value_set(delta.y.atan2(delta.x), &parameter.value_set);
+            position = p.base + DVec3::new(angle.cos(), angle.sin(), 0.0) * delta.length();
+        }
+        _ => {}
+    }
+    Ok(position)
 }

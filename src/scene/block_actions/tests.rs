@@ -243,6 +243,35 @@ fn linear(doc: &mut CadDocument, def: Handle) -> Handle {
     )
     .unwrap()
 }
+
+#[test]
+fn linear_value_set_snaps_interactive_edits_and_keeps_rebuild_values() {
+    let (mut doc, def, targets) = fixture();
+    let parameter = linear(&mut doc, def);
+    create(&mut doc, def, Kind::Move, parameter, &targets, DVec3::ZERO).unwrap();
+    let ObjectType::DynamicBlock(object) = doc.objects.get_mut(&parameter).unwrap() else {
+        panic!()
+    };
+    let DynamicBlockData::LinearParameter(linear) = &mut object.data else {
+        panic!()
+    };
+    linear.value_set.flags = 7;
+    linear.value_set.minimum = 2.0;
+    linear.value_set.maximum = 8.0;
+    linear.value_set.increment = 1.0;
+    let baseline = doc.clone();
+
+    evaluate(&mut doc, &baseline, def, parameter, DVec3::new(4.7, 0.0, 0.0)).unwrap();
+    assert!((current(&doc, &parameters(&doc, def, Kind::Move)[0]).x - 5.0).abs() < 1e-9);
+    evaluate(&mut doc, &baseline, def, parameter, DVec3::new(1.0, 0.0, 0.0)).unwrap();
+    assert!((current(&doc, &parameters(&doc, def, Kind::Move)[0]).x - 2.0).abs() < 1e-9);
+
+    let p = parameters(&doc, def, Kind::Move).remove(0);
+    set_value(&mut doc, &p, Value::Point(DVec3::new(1.0, 0.0, 0.0))).unwrap();
+    rebuild(&mut doc, &baseline, def).unwrap();
+    assert!((current(&doc, &p).x - 1.0).abs() < 1e-9);
+}
+
 fn start(doc: &CadDocument, h: Handle) -> Vector3 {
     let EntityType::Line(l) = doc.get_entity(h).unwrap() else {
         panic!()

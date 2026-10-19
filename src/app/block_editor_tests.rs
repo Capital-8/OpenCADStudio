@@ -1558,6 +1558,57 @@ fn double_clicking_block_parameter_label_starts_rename() {
 }
 
 #[test]
+fn linear_parameter_value_set_is_editable_and_undoable_in_properties() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    use codec::objects::{DynamicBlockData, ObjectType};
+
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 6,0 3,2");
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter = actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0].handle;
+    app.tabs[i].selected_authoring = Some(parameter);
+    app.refresh_properties();
+
+    let fields = app.tabs[i]
+        .properties
+        .sections
+        .iter()
+        .flat_map(|section| section.props.iter())
+        .map(|property| property.field)
+        .collect::<Vec<_>>();
+    assert!(fields.contains(&"authoring_chain_actions_state"));
+    assert!(fields.contains(&"authoring_set_linear_distance_minimum"));
+    assert!(fields.contains(&"authoring_set_linear_distance_maximum"));
+    assert!(fields.contains(&"authoring_set_linear_distance_increment"));
+    assert!(fields.contains(&"authoring_set_linear_distance_values"));
+    let undo_depth = app.tabs[i].history.undo_stack.len();
+
+    for (field, value) in [
+        ("authoring_set_linear_distance_maximum", "20"),
+        ("authoring_set_linear_distance_minimum", "2"),
+        ("authoring_set_linear_distance_increment", "0.5"),
+        ("authoring_set_linear_distance_values", "2, 4, 8"),
+    ] {
+        let _ = app.update(Message::PropGeomInput { field, value: value.into() });
+        let _ = app.update(Message::PropGeomCommit(field));
+    }
+    let ObjectType::DynamicBlock(object) = &app.tabs[i].scene.document.objects[&parameter] else {
+        panic!("expected a dynamic parameter")
+    };
+    let DynamicBlockData::LinearParameter(parameter_data) = &object.data else {
+        panic!("expected a Linear parameter")
+    };
+    assert_eq!(parameter_data.value_set.minimum, 2.0);
+    assert_eq!(parameter_data.value_set.maximum, 20.0);
+    assert_eq!(parameter_data.value_set.increment, 0.5);
+    assert_eq!(parameter_data.value_set.values, vec![2.0, 4.0, 8.0]);
+    assert_eq!(parameter_data.value_set.flags, 11);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), undo_depth + 4);
+}
+
+#[test]
 fn block_actions_mouse_selection_waits_for_enter_for_move_and_scale() {
     use crate::scene::block_actions::{self as actions, Kind};
     for (kind, command) in [(Kind::Move, "BACTION MOVE"), (Kind::Scale, "BACTION SCALE")] {

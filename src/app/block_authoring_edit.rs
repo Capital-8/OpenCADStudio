@@ -73,6 +73,118 @@ impl CadCommand for EditCommand {
     }
 }
 impl OpenCADStudio {
+    pub(super) fn authoring_parameter_properties(
+        &self,
+        handle: Handle,
+    ) -> Option<(
+        bool,
+        Vec<(
+            &'static str,
+            &'static str,
+            &codec::objects::BlockParameterValueSet,
+        )>,
+    )> {
+        let Some(codec::objects::ObjectType::DynamicBlock(object)) = self.tabs[self.active_tab]
+            .scene
+            .document
+            .objects
+            .get(&handle)
+        else {
+            return None;
+        };
+        let (chain_actions, value_sets) = match &object.data {
+            codec::objects::DynamicBlockData::LinearParameter(parameter) => (
+                parameter.parameter.parameter.chain_actions,
+                vec![("linear_distance", "Distance", &parameter.value_set)],
+            ),
+            codec::objects::DynamicBlockData::PolarParameter(parameter) => (
+                parameter.parameter.parameter.chain_actions,
+                vec![
+                    ("polar_distance", "Distance", &parameter.distance_value_set),
+                    ("polar_angle", "Angle", &parameter.angle_value_set),
+                ],
+            ),
+            codec::objects::DynamicBlockData::XYParameter(parameter) => (
+                parameter.parameter.parameter.chain_actions,
+                vec![
+                    ("xy_x", "X Distance", &parameter.x_value_set),
+                    ("xy_y", "Y Distance", &parameter.y_value_set),
+                ],
+            ),
+            codec::objects::DynamicBlockData::RotationParameter(parameter) => (
+                parameter.parameter.parameter.chain_actions,
+                vec![("rotation_angle", "Angle", &parameter.value_set)],
+            ),
+            codec::objects::DynamicBlockData::PointParameter(parameter) => {
+                (parameter.parameter.parameter.chain_actions, vec![])
+            }
+            codec::objects::DynamicBlockData::AlignmentParameter(parameter) => {
+                (parameter.parameter.parameter.chain_actions, vec![])
+            }
+            codec::objects::DynamicBlockData::FlipParameter(parameter) => {
+                (parameter.parameter.parameter.chain_actions, vec![])
+            }
+            codec::objects::DynamicBlockData::BasePointParameter(parameter) => {
+                (parameter.parameter.parameter.chain_actions, vec![])
+            }
+            codec::objects::DynamicBlockData::LookupParameter(parameter) => {
+                (parameter.parameter.parameter.chain_actions, vec![])
+            }
+            codec::objects::DynamicBlockData::UserParameter(parameter) => {
+                (parameter.parameter.parameter.chain_actions, vec![])
+            }
+            _ => return None,
+        };
+        Some((chain_actions, value_sets))
+    }
+
+    pub(super) fn toggle_authoring_value_set_flag(&mut self, field: &'static str) -> Task<Message> {
+        let i = self.active_tab;
+        let Some(handle) = self.tabs[i].selected_authoring else {
+            return Task::none();
+        };
+        let mut document = self.tabs[i].scene.document.clone();
+        match toggle_authoring_value_set_flag(&mut document, handle, field) {
+            Ok(true) => {
+                self.push_undo_snapshot(i, "BEDIT Parameter value set");
+                self.tabs[i].scene.document = document;
+                self.tabs[i].scene.bump_geometry();
+                self.tabs[i].dirty = true;
+                self.refresh_properties();
+            }
+            Ok(false) => {}
+            Err(error) => self.command_line.push_error(crate::t!(error).as_ref()),
+        }
+        Task::none()
+    }
+
+    pub(super) fn commit_authoring_value_set(&mut self, field: &'static str) -> Task<Message> {
+        let i = self.active_tab;
+        let Some(handle) = self.tabs[i].selected_authoring else {
+            return Task::none();
+        };
+        let key = crate::ui::properties::FieldKey::Geom(field);
+        let Some(input) = self.tabs[i].properties.edit_buf.get(&key).cloned() else {
+            return Task::none();
+        };
+        let mut document = self.tabs[i].scene.document.clone();
+        match set_authoring_value_set_field(&mut document, handle, field, &input) {
+            Ok(true) => {
+                self.push_undo_snapshot(i, "BEDIT Parameter value set");
+                self.tabs[i].scene.document = document;
+                self.tabs[i].scene.bump_geometry();
+                self.tabs[i].dirty = true;
+                self.tabs[i].properties.edit_buf.remove(&key);
+                self.refresh_properties();
+            }
+            Ok(false) => {
+                self.tabs[i].properties.edit_buf.remove(&key);
+            }
+            Err(error) => self.command_line.push_error(crate::t!(error).as_ref()),
+        }
+        Task::none()
+    }
+
     pub(super) fn commit_authoring_name(&mut self) -> Task<Message> {
         let i = self.active_tab;
         let key = crate::ui::properties::FieldKey::Geom("authoring_name");
@@ -514,6 +626,165 @@ impl OpenCADStudio {
         }
         Task::none()
     }
+}
+
+fn authoring_value_set_mut<'a>(
+    data: &'a mut codec::objects::DynamicBlockData,
+    key: &str,
+) -> Option<&'a mut codec::objects::BlockParameterValueSet> {
+    use codec::objects::DynamicBlockData as Data;
+    match (data, key) {
+        (Data::LinearParameter(parameter), "linear_distance") => Some(&mut parameter.value_set),
+        (Data::PolarParameter(parameter), "polar_distance") => {
+            Some(&mut parameter.distance_value_set)
+        }
+        (Data::PolarParameter(parameter), "polar_angle") => Some(&mut parameter.angle_value_set),
+        (Data::XYParameter(parameter), "xy_x") => Some(&mut parameter.x_value_set),
+        (Data::XYParameter(parameter), "xy_y") => Some(&mut parameter.y_value_set),
+        (Data::RotationParameter(parameter), "rotation_angle") => Some(&mut parameter.value_set),
+        _ => None,
+    }
+}
+
+fn set_authoring_value_set_field(
+    document: &mut codec::CadDocument,
+    handle: Handle,
+    field: &str,
+    input: &str,
+) -> Result<bool, &'static str> {
+    let rest = field
+        .strip_prefix("authoring_set_")
+        .ok_or("Unknown parameter value-set field.")?;
+    let (set_key, member) = rest
+        .rsplit_once('_')
+        .ok_or("Unknown parameter value-set field.")?;
+    let Some(codec::objects::ObjectType::DynamicBlock(object)) = document.objects.get_mut(&handle)
+    else {
+        return Err("Select an authoring parameter.");
+    };
+    let Some(value_set) = authoring_value_set_mut(&mut object.data, set_key) else {
+        return Err("This parameter does not have that value set.");
+    };
+    let changed = match member {
+        "minimum" | "maximum" | "increment" => {
+            let value = input
+                .trim()
+                .parse::<f64>()
+                .map_err(|_| "Enter a finite number for the parameter value set.")?;
+            if !value.is_finite() {
+                return Err("Enter a finite number for the parameter value set.");
+            }
+            match member {
+                "minimum" if value != value_set.minimum => {
+                    value_set.minimum = value;
+                    value_set.flags |= 1;
+                }
+                "maximum" if value != value_set.maximum => {
+                    value_set.maximum = value;
+                    value_set.flags |= 2;
+                }
+                "increment" if value < 0.0 => {
+                    return Err("Parameter value-set increment cannot be negative.");
+                }
+                "increment" if value != value_set.increment => {
+                    value_set.increment = value;
+                    if value == 0.0 {
+                        value_set.flags &= !4;
+                    } else {
+                        value_set.flags = (value_set.flags | 4) & !8;
+                    }
+                }
+                _ => return Ok(false),
+            }
+            if value_set.flags & 3 == 3 && value_set.minimum > value_set.maximum {
+                return Err("Parameter value-set minimum cannot exceed its maximum.");
+            }
+            true
+        }
+        "values" => {
+            let values = if input.trim().is_empty() {
+                Vec::new()
+            } else {
+                input
+                    .split(',')
+                    .map(|item| {
+                        let value = item
+                            .trim()
+                            .parse::<f64>()
+                            .map_err(|_| "Enter allowed values as comma-separated numbers.")?;
+                        if !value.is_finite() {
+                            return Err("Allowed parameter values must be finite.");
+                        }
+                        Ok(value)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            if values.windows(2).any(|pair| pair[0] >= pair[1]) {
+                return Err("Allowed parameter values must be in strictly increasing order.");
+            }
+            if values == value_set.values {
+                return Ok(false);
+            }
+            value_set.values = values;
+            if value_set.values.is_empty() {
+                value_set.flags &= !8;
+            } else {
+                value_set.flags = (value_set.flags | 8) & !4;
+            }
+            true
+        }
+        _ => return Err("Unknown parameter value-set field."),
+    };
+    Ok(changed)
+}
+
+fn toggle_authoring_value_set_flag(
+    document: &mut codec::CadDocument,
+    handle: Handle,
+    field: &str,
+) -> Result<bool, &'static str> {
+    let rest = field
+        .strip_prefix("authoring_set_")
+        .and_then(|field| field.strip_suffix("_enabled"))
+        .ok_or("Unknown parameter value-set option.")?;
+    let (set_key, member) = rest
+        .rsplit_once('_')
+        .ok_or("Unknown parameter value-set option.")?;
+    let bit = match member {
+        "minimum" => 1,
+        "maximum" => 2,
+        "increment" => 4,
+        "values" => 8,
+        _ => return Err("Unknown parameter value-set option."),
+    };
+    let Some(codec::objects::ObjectType::DynamicBlock(object)) = document.objects.get_mut(&handle)
+    else {
+        return Err("Select an authoring parameter.");
+    };
+    let Some(value_set) = authoring_value_set_mut(&mut object.data, set_key) else {
+        return Err("This parameter does not have that value set.");
+    };
+    if bit == 8 && value_set.values.is_empty() {
+        return Err("Add at least one allowed value before enabling the value list.");
+    }
+    let enabled = value_set.flags & bit == 0;
+    if enabled && bit == 4 && value_set.increment <= 0.0 {
+        return Err("Enter a positive increment before enabling the increment.");
+    }
+    if enabled {
+        value_set.flags |= bit;
+        if bit == 4 {
+            value_set.flags &= !8;
+        } else if bit == 8 {
+            value_set.flags &= !4;
+        }
+    } else {
+        value_set.flags &= !bit;
+    }
+    if value_set.flags & 3 == 3 && value_set.minimum > value_set.maximum {
+        return Err("Parameter value-set minimum cannot exceed its maximum.");
+    }
+    Ok(true)
 }
 
 #[cfg(test)]

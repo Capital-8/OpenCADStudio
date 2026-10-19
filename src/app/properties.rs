@@ -2501,6 +2501,175 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                         }))
                         .collect(),
                     }];
+                    if let Some((chain_actions, value_sets)) =
+                        self.authoring_parameter_properties(item.handle)
+                    {
+                        panel.sections.push(PropSection {
+                            title: crate::t!("Behavior").into_owned(),
+                            props: vec![Property {
+                                label: crate::t!("Chain actions").into_owned(),
+                                field: "authoring_chain_actions_state",
+                                value: PropValue::ReadOnly(if chain_actions {
+                                    crate::t!("Enabled (unsupported)").into_owned()
+                                } else {
+                                    crate::t!("Disabled").into_owned()
+                                }),
+                            }],
+                        });
+                        if !value_sets.is_empty() {
+                            let mut props = Vec::new();
+                            for (key, label, value_set) in value_sets {
+                                let (
+                                    minimum_enabled,
+                                    maximum_enabled,
+                                    increment_enabled,
+                                    values_enabled,
+                                    minimum,
+                                    maximum,
+                                    increment,
+                                    values,
+                                ) = match key {
+                                    "linear_distance" => (
+                                        "authoring_set_linear_distance_minimum_enabled",
+                                        "authoring_set_linear_distance_maximum_enabled",
+                                        "authoring_set_linear_distance_increment_enabled",
+                                        "authoring_set_linear_distance_values_enabled",
+                                        "authoring_set_linear_distance_minimum",
+                                        "authoring_set_linear_distance_maximum",
+                                        "authoring_set_linear_distance_increment",
+                                        "authoring_set_linear_distance_values",
+                                    ),
+                                    "polar_distance" => (
+                                        "authoring_set_polar_distance_minimum_enabled",
+                                        "authoring_set_polar_distance_maximum_enabled",
+                                        "authoring_set_polar_distance_increment_enabled",
+                                        "authoring_set_polar_distance_values_enabled",
+                                        "authoring_set_polar_distance_minimum",
+                                        "authoring_set_polar_distance_maximum",
+                                        "authoring_set_polar_distance_increment",
+                                        "authoring_set_polar_distance_values",
+                                    ),
+                                    "polar_angle" => (
+                                        "authoring_set_polar_angle_minimum_enabled",
+                                        "authoring_set_polar_angle_maximum_enabled",
+                                        "authoring_set_polar_angle_increment_enabled",
+                                        "authoring_set_polar_angle_values_enabled",
+                                        "authoring_set_polar_angle_minimum",
+                                        "authoring_set_polar_angle_maximum",
+                                        "authoring_set_polar_angle_increment",
+                                        "authoring_set_polar_angle_values",
+                                    ),
+                                    "xy_x" => (
+                                        "authoring_set_xy_x_minimum_enabled",
+                                        "authoring_set_xy_x_maximum_enabled",
+                                        "authoring_set_xy_x_increment_enabled",
+                                        "authoring_set_xy_x_values_enabled",
+                                        "authoring_set_xy_x_minimum",
+                                        "authoring_set_xy_x_maximum",
+                                        "authoring_set_xy_x_increment",
+                                        "authoring_set_xy_x_values",
+                                    ),
+                                    "xy_y" => (
+                                        "authoring_set_xy_y_minimum_enabled",
+                                        "authoring_set_xy_y_maximum_enabled",
+                                        "authoring_set_xy_y_increment_enabled",
+                                        "authoring_set_xy_y_values_enabled",
+                                        "authoring_set_xy_y_minimum",
+                                        "authoring_set_xy_y_maximum",
+                                        "authoring_set_xy_y_increment",
+                                        "authoring_set_xy_y_values",
+                                    ),
+                                    "rotation_angle" => (
+                                        "authoring_set_rotation_angle_minimum_enabled",
+                                        "authoring_set_rotation_angle_maximum_enabled",
+                                        "authoring_set_rotation_angle_increment_enabled",
+                                        "authoring_set_rotation_angle_values_enabled",
+                                        "authoring_set_rotation_angle_minimum",
+                                        "authoring_set_rotation_angle_maximum",
+                                        "authoring_set_rotation_angle_increment",
+                                        "authoring_set_rotation_angle_values",
+                                    ),
+                                    _ => continue,
+                                };
+                                props.extend([
+                                    Property {
+                                        label: crate::tf!("Use {} minimum", crate::t!(label))
+                                            .into_owned(),
+                                        field: minimum_enabled,
+                                        value: PropValue::BoolToggle {
+                                            field: minimum_enabled,
+                                            value: value_set.flags & 1 != 0,
+                                        },
+                                    },
+                                    Property {
+                                        label: crate::tf!("Use {} maximum", crate::t!(label))
+                                            .into_owned(),
+                                        field: maximum_enabled,
+                                        value: PropValue::BoolToggle {
+                                            field: maximum_enabled,
+                                            value: value_set.flags & 2 != 0,
+                                        },
+                                    },
+                                    Property {
+                                        label: crate::tf!("Use {} increment", crate::t!(label))
+                                            .into_owned(),
+                                        field: increment_enabled,
+                                        value: PropValue::BoolToggle {
+                                            field: increment_enabled,
+                                            value: value_set.flags & 4 != 0,
+                                        },
+                                    },
+                                    Property {
+                                        label: crate::tf!(
+                                            "Use {} allowed-value list",
+                                            crate::t!(label)
+                                        )
+                                        .into_owned(),
+                                        field: values_enabled,
+                                        value: PropValue::BoolToggle {
+                                            field: values_enabled,
+                                            value: value_set.flags & 8 != 0,
+                                        },
+                                    },
+                                    Property {
+                                        label: crate::tf!("{} minimum", crate::t!(label))
+                                            .into_owned(),
+                                        field: minimum,
+                                        value: PropValue::EditText(value_set.minimum.to_string()),
+                                    },
+                                    Property {
+                                        label: crate::tf!("{} maximum", crate::t!(label))
+                                            .into_owned(),
+                                        field: maximum,
+                                        value: PropValue::EditText(value_set.maximum.to_string()),
+                                    },
+                                    Property {
+                                        label: crate::tf!("{} increment", crate::t!(label))
+                                            .into_owned(),
+                                        field: increment,
+                                        value: PropValue::EditText(value_set.increment.to_string()),
+                                    },
+                                    Property {
+                                        label: crate::tf!("{} allowed values", crate::t!(label))
+                                            .into_owned(),
+                                        field: values,
+                                        value: PropValue::EditText(
+                                            value_set
+                                                .values
+                                                .iter()
+                                                .map(ToString::to_string)
+                                                .collect::<Vec<_>>()
+                                                .join(", "),
+                                        ),
+                                    },
+                                ]);
+                            }
+                            panel.sections.push(PropSection {
+                                title: crate::t!("Value Set").into_owned(),
+                                props,
+                            });
+                        }
+                    }
                 }
             }
             // Precompute the focused-id → field-key map for O(1) lookups on

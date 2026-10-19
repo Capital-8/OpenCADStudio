@@ -3949,6 +3949,9 @@ impl OpenCADStudio {
         if field == "authoring_name" {
             return self.commit_authoring_name();
         }
+        if field.starts_with("authoring_set_") {
+            return self.commit_authoring_value_set(field);
+        }
         if field.starts_with("bedit_") {
             return self.commit_block_property(field);
         }
