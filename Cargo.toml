@@ -75,6 +75,9 @@ rust-embed = "8"
 inventory = "0.3"
 rustc-hash = "2"
 sha2 = "0.10"
+# Encrypted PDF owner-password checks (already in the tree through other crates).
+md-5 = "0.10"
+aes = "0.8"
 fontdb = "0.23"
 ttf-parser = "0.25"
 # TrueType interpreter for hint-reliant ("tricky") fonts such as DFKai-SB and

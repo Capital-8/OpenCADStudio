@@ -8,7 +8,6 @@
 use std::sync::Arc;
 
 use hayro::hayro_syntax::object::{Array, Dict, Name, ObjectIdentifier};
-use hayro::hayro_syntax::Pdf;
 
 use super::pdf_raster::{register_derived_source, source_bytes};
 
@@ -37,7 +36,7 @@ pub fn layers(path: &str) -> Vec<PdfLayer> {
     let Some(bytes) = source_bytes(path) else {
         return Vec::new();
     };
-    let Ok(pdf) = Pdf::new(bytes) else {
+    let Ok(pdf) = super::pdf_password::open(path, bytes) else {
         return Vec::new();
     };
     let xref = pdf.xref();
@@ -111,7 +110,7 @@ pub fn source_with_layers(path: &str, hidden: &[String]) -> String {
     if source_bytes(&key).is_some() {
         return key;
     }
-    let Some(updated) = source_bytes(path).and_then(|bytes| with_layer_config(&bytes, &all, &off))
+    let Some(updated) = source_bytes(path).and_then(|bytes| with_layer_config(path, &bytes, &all, &off))
     else {
         return path.to_string();
     };
@@ -121,8 +120,8 @@ pub fn source_with_layers(path: &str, hidden: &[String]) -> String {
 
 /// The bytes with an incremental update whose catalog lists `off` layers
 /// as off in the default configuration and all others on.
-fn with_layer_config(bytes: &[u8], all: &[PdfLayer], off: &[&PdfLayer]) -> Option<Vec<u8>> {
-    let pdf = Pdf::new(Arc::new(bytes.to_vec())).ok()?;
+fn with_layer_config(path: &str, bytes: &[u8], all: &[PdfLayer], off: &[&PdfLayer]) -> Option<Vec<u8>> {
+    let pdf = super::pdf_password::open(path, Arc::new(bytes.to_vec())).ok()?;
     let xref = pdf.xref();
     let root = xref.root_id();
     let catalog = xref.get::<Dict<'_>>(root)?;

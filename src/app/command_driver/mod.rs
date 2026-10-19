@@ -659,6 +659,23 @@ impl OpenCADStudio {
                 self.apply_xclip(i, inserts, action);
             }
             CmdResult::OpenPdfImportSettings => self.open_pdf_import_settings(),
+            CmdResult::PdfPassword {
+                path,
+                input,
+                stage,
+                remembered,
+                refused_notice,
+            } => {
+                return self.open_pdf_password(
+                    &path,
+                    stage,
+                    remembered,
+                    crate::ui::window::pdf_password_dialog::PdfPasswordThen::Command {
+                        input,
+                        refused_notice,
+                    },
+                );
+            }
             CmdResult::DgnImport(request) => {
                 self.tabs[i].scene.clear_preview_wire();
                 self.tabs[i].active_cmd = None;

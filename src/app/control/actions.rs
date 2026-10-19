@@ -114,6 +114,7 @@ pub(super) const NAMES: &[&str] = &[
     "dgn_import_dialog",
     "tds_import_dialog",
     "refedit_dialog",
+    "pdf_password_dialog",
     "pdf_shx_settings",
     "pdf_layer_toggle",
     "pc_manager_toggle",
@@ -2026,6 +2027,34 @@ impl OpenCADStudio {
             // the picked reference), "nested=0|1" (pick the working set in the
             // drawing), "attributes=0|1", "lock=0|1", "unique=0|1", "ok" or
             // "cancel".
+            // The Password Protected PDF window, one field per call:
+            // "password=<text>", "show=0|1", "remember=0|1", "ok", "cancel" or
+            // "help".
+            "pdf_password_dialog" => {
+                use crate::ui::window::pdf_password_dialog::PdfPasswordMsg as P;
+                if self.active_modal != Some(crate::app::ModalKind::PdfPassword) {
+                    return Err(failure("no_dialog", "The Password Protected PDF window is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let flag = || match value {
+                    "1" => Ok(true),
+                    "0" => Ok(false),
+                    _ => Err(failure("invalid_value", spec)),
+                };
+                if key == "cancel" {
+                    Message::CloseModal
+                } else {
+                    Message::PdfPassword(match key {
+                        "password" => P::Input(value.to_string()),
+                        "show" => P::Show(flag()?),
+                        "remember" => P::Remember(flag()?),
+                        "ok" => P::Ok,
+                        "help" => P::Help,
+                        _ => return Err(failure("invalid_value", "Unknown Password Protected PDF field")),
+                    })
+                }
+            }
             "refedit_dialog" => {
                 use crate::ui::window::refedit_dialog::RefEditDialogMsg as R;
                 if self.active_modal != Some(crate::app::ModalKind::RefEdit) {

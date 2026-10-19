@@ -77,6 +77,14 @@ impl OpenCADStudio {
         kind: codec::entities::UnderlayType,
         path: &str,
     ) {
+        if kind == codec::entities::UnderlayType::Pdf
+            && !self.pdf_unlocked(
+                path,
+                crate::ui::window::pdf_password_dialog::PdfPasswordThen::Attach,
+            )
+        {
+            return;
+        }
         let i = self.active_tab;
         let mut existing: Vec<(String, String)> = Vec::new();
         for object in self.tabs[i].scene.document.objects.values() {
@@ -356,6 +364,12 @@ impl OpenCADStudio {
 
     /// PDFIMPORT's File option after the file is chosen.
     pub(in crate::app) fn open_pdf_import_file(&mut self, path: &str) {
+        if !self.pdf_unlocked(
+            path,
+            crate::ui::window::pdf_password_dialog::PdfPasswordThen::ImportFile,
+        ) {
+            return;
+        }
         self.pdf_import_file = Some(PdfImportFileState {
             path: path.to_string(),
             pages: page_thumbs(path),

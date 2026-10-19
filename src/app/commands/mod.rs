@@ -25,6 +25,7 @@ mod pc_colormap;
 mod pc_extract;
 mod pdf_dialogs;
 pub(crate) mod pdf_import;
+mod pdf_password;
 mod pdf_shx_text;
 mod pdf_underlay;
 mod plotvars;
