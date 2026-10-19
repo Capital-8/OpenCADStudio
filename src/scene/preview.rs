@@ -472,27 +472,9 @@ impl Scene {
         if let (EntityType::Hatch(source_hatch), EntityType::Hatch(target_hatch)) =
             (&source_entity, &mut target_entity)
         {
-            const BACKGROUND_APP: &str = "HATCHBACKGROUNDCOLOR";
-            let record = source_hatch
-                .common
-                .extended_data
-                .get_record(BACKGROUND_APP)
-                .cloned();
-            use codec::xdata::ExtendedDataRecord;
-            let retained = target_hatch
-                .common
-                .extended_data
-                .records()
-                .iter()
-                .filter(|record| record.application_name != BACKGROUND_APP)
-                .cloned()
-                .collect::<Vec<ExtendedDataRecord>>();
-            target_hatch.common.extended_data.clear();
-            for record in retained {
-                target_hatch.common.extended_data.add_record(record);
-            }
-            if let Some(record) = record {
-                target_hatch.common.extended_data.add_record(record);
+            match crate::entities::hatch::background_color(source_hatch) {
+                Some(color) => crate::entities::hatch::set_background_color(target_hatch, &color),
+                None => crate::entities::hatch::clear_background_color(target_hatch),
             }
         }
 

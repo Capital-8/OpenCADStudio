@@ -3120,14 +3120,7 @@ impl OpenCADStudio {
                 // Moving the cursor clears that outline without rebuilding it.
                 Vec::new()
             } else if needs_entity {
-                let matchprop_source_pick = self.tabs[i]
-                    .active_cmd
-                    .as_ref()
-                    .is_some_and(|command| command.name() == "MATCHPROP");
-                let pick_aperture = crate::ui::overlay::entity_pick_aperture_px(
-                    self.pick_box,
-                    matchprop_source_pick,
-                );
+                let pick_aperture = crate::ui::overlay::pick_box_aperture_px(self.pick_box);
                 let include_fills = self.tabs[i]
                     .active_cmd
                     .as_ref()
@@ -3273,7 +3266,7 @@ impl OpenCADStudio {
                         eye,
                         bounds,
                         self.tabs[i].scene.document.header.lineweight_display,
-                        crate::ui::overlay::entity_pick_aperture_px(self.pick_box, true),
+                        crate::ui::overlay::pick_box_aperture_px(self.pick_box),
                         &self.tabs[i].scene.draw_depth_map(),
                     )
                     .and_then(Scene::handle_from_wire_name)
@@ -5016,14 +5009,7 @@ impl OpenCADStudio {
                 .map(|c| c.needs_entity_pick())
                 .unwrap_or(false)
             {
-                let matchprop_source_pick = self.tabs[i]
-                    .active_cmd
-                    .as_ref()
-                    .is_some_and(|command| command.name() == "MATCHPROP");
-                let pick_aperture = crate::ui::overlay::entity_pick_aperture_px(
-                    self.pick_box,
-                    matchprop_source_pick,
-                );
+                let pick_aperture = crate::ui::overlay::pick_box_aperture_px(self.pick_box);
                 let (view_rot2, eye2, all_wires2) = self.pick_view(i, &edit_cam, bounds);
                 let click_candidates = self.tabs[i].scene.interaction_pick_candidates_near(
                     all_wires2,
@@ -5684,14 +5670,7 @@ properties={:.1}ms picked={}",
                         let click_world = self.cursor_model_point(i, &edit_cam, p, bounds);
                         let t_arm = crate::perf::enabled().then(Instant::now);
                         let prior_selection = self.tabs[i].scene.selected.len();
-                        let matchprop_pick = self.tabs[i]
-                            .active_cmd
-                            .as_ref()
-                            .is_some_and(|command| command.name() == "MATCHPROP");
-                        let pick_aperture = crate::ui::overlay::entity_pick_aperture_px(
-                            self.pick_box,
-                            matchprop_pick,
-                        );
+                        let pick_aperture = crate::ui::overlay::pick_box_aperture_px(self.pick_box);
                         let click_candidates = self.tabs[i].scene.interaction_pick_candidates_near(
                             all_wires,
                             click_world,

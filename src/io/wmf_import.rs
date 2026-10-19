@@ -125,7 +125,7 @@ fn file_ascent(face: &ttf_parser::Face, height: f64) -> Option<f64> {
     }
     let fitting = sizes
         .iter()
-        .filter(|(_, max, min)| f64::from(max - min) <= height)
+        .filter(|(_, max, min)| f64::from(*max) - f64::from(*min) <= height)
         .max_by_key(|(p, ..)| *p);
     Some(match fitting {
         Some(&(_, max, _)) if !sizes.is_empty() => f64::from(max),
