@@ -1321,14 +1321,6 @@ impl Snapper {
 
         let mut try_pt =
             |world: DVec3, snap_type: SnapType, src: Option<DimensionAssociationSource>| {
-                let master_on = if snap_type.is_3d() {
-                    self.snap3d_enabled
-                } else {
-                    self.snap_enabled
-                };
-                if !master_on || !self.is_on(snap_type) {
-                    return;
-                }
                 let screen = world_to_screen(world, view_rot, eye, bounds);
                 if !in_bounds(screen) {
                     return;
@@ -1359,8 +1351,28 @@ impl Snapper {
                 }
             };
 
-        let hint_type = |hint: SnapHint| -> Option<SnapType> {
-            Some(match hint {
+        self.for_each_discrete_feature(wires, || wires.iter(), &mut try_pt);
+        best
+    }
+
+    /// Visit every enabled discrete feature of `wires`: pre-baked hints
+    /// (Center, Node, Quadrant, Insertion and the 3D features), Endpoint and
+    /// Midpoint. Indexed sources answer through their feature lists; otherwise
+    /// the wires from `fallback` are walked. Shared by the full snap and the
+    /// live discrete preview.
+    fn for_each_discrete_feature<'a, W, I>(
+        &self,
+        wires: &'a W,
+        fallback: impl Fn() -> I,
+        mut visit: impl FnMut(DVec3, SnapType, Option<DimensionAssociationSource>),
+    ) where
+        W: WireSource + ?Sized,
+        I: Iterator<Item = &'a WireModel>,
+    {
+        // 3D hints run on the separate 3D master + mode set; everything else
+        // stays on the 2D master + mode set.
+        let hint_on = |hint: SnapHint| {
+            let snap_type = match hint {
                 SnapHint::Center | SnapHint::ArcCenter => SnapType::Center,
                 SnapHint::GeometricCenter => SnapType::GeometricCenter,
                 SnapHint::Node => SnapType::Node,
@@ -1372,7 +1384,13 @@ impl Snapper {
                 SnapHint::EdgeMidpoint => SnapType::EdgeMidpoint,
                 SnapHint::FaceCenter => SnapType::FaceCenter,
                 SnapHint::Knot => SnapType::Knot,
-            })
+            };
+            let on = if snap_type.is_3d() {
+                self.is_on_3d(snap_type)
+            } else {
+                self.snap_enabled && self.is_on(snap_type)
+            };
+            on.then_some(snap_type)
         };
         if let Some(points) = wires.snap_points() {
             for point_ref in points {
@@ -1382,19 +1400,36 @@ impl Snapper {
                 let Some(&(world, hint)) = wire.snap_pts.get(point_ref.index as usize) else {
                     continue;
                 };
-                try_pt(world, hint_type(hint).unwrap(), wire_source(wire));
+                if let Some(snap_type) = hint_on(hint) {
+                    visit(world, snap_type, wire_source(wire));
+                }
             }
         } else {
-            for wire in wires.iter() {
+            for wire in fallback() {
                 let src = wire_source(wire);
                 for &(world, hint) in &wire.snap_pts {
-                    try_pt(world, hint_type(hint).unwrap(), src);
+                    if let Some(snap_type) = hint_on(hint) {
+                        visit(world, snap_type, src);
+                    }
                 }
             }
         }
 
-        if let Some(vertices) = wires.key_vertices() {
-            if self.is_on(SnapType::Endpoint) && self.snap_enabled {
+        // Closed tessellated curves (circles, full ellipses) have no ends.
+        let open_ends = |wire: &WireModel| {
+            !wire.is_node_marker()
+                && !wire
+                    .snap_pts
+                    .iter()
+                    .any(|(_, hint)| matches!(hint, SnapHint::Quadrant))
+        };
+        if self.snap_enabled && self.is_on(SnapType::Endpoint) {
+            fn ends(wire: &WireModel) -> impl Iterator<Item = DVec3> + '_ {
+                let last = wire.points.len().checked_sub(1).filter(|&last| last > 0);
+                let first = (!wire.points.is_empty()).then_some(0);
+                first.into_iter().chain(last).map(move |k| wp_f64(wire, k))
+            }
+            if let Some(vertices) = wires.key_vertices() {
                 for vertex_ref in vertices {
                     let Some(wire) = wires.source_wire(vertex_ref.wire) else {
                         continue;
@@ -1402,76 +1437,44 @@ impl Snapper {
                     let Some(&point) = wire.key_vertices.get(vertex_ref.index as usize) else {
                         continue;
                     };
-                    try_pt(
-                        DVec3::from_array(point),
-                        SnapType::Endpoint,
-                        wire_source(wire),
-                    );
+                    visit(DVec3::from_array(point), SnapType::Endpoint, wire_source(wire));
                 }
-            }
-            // Some imported curves have tessellated endpoints but no key
-            // vertex metadata. Preserve their endpoint snap without walking
-            // unrelated resident geometry.
-            if self.is_on(SnapType::Endpoint) && self.snap_enabled {
-                for wire in wires
-                    .iter()
-                    .filter(|wire| wire.key_vertices.is_empty() && !wire.is_node_marker())
-                {
-                    let closed = wire
-                        .snap_pts
-                        .iter()
-                        .any(|(_, hint)| matches!(hint, SnapHint::Quadrant));
-                    if closed {
-                        continue;
-                    }
-                    if !wire.points.is_empty() {
-                        try_pt(wp_f64(wire, 0), SnapType::Endpoint, wire_source(wire));
-                    }
-                    if wire.points.len() > 1 {
-                        try_pt(
-                            wp_f64(wire, wire.points.len() - 1),
-                            SnapType::Endpoint,
-                            wire_source(wire),
-                        );
+                // Tessellated open curves have no key-vertex set. Their only
+                // endpoints are first/last, so testing candidate wires remains
+                // O(local wires), independent of tessellation density.
+                for wire in wires.iter().filter(|wire| wire.key_vertices.is_empty()) {
+                    if open_ends(wire) {
+                        let src = wire_source(wire);
+                        for point in ends(wire) {
+                            visit(point, SnapType::Endpoint, src);
+                        }
                     }
                 }
-            }
-        } else {
-            for wire in wires.iter() {
-                let src = wire_source(wire);
-                if self.is_on(SnapType::Endpoint) && self.snap_enabled {
+            } else {
+                for wire in fallback() {
+                    let src = wire_source(wire);
                     if !wire.key_vertices.is_empty() {
                         for &point in &wire.key_vertices {
-                            try_pt(DVec3::from_array(point), SnapType::Endpoint, src);
+                            visit(DVec3::from_array(point), SnapType::Endpoint, src);
                         }
-                    } else if !wire.is_node_marker()
-                        && !wire
-                            .snap_pts
-                            .iter()
-                            .any(|(_, hint)| matches!(hint, SnapHint::Quadrant))
-                    {
-                        if !wire.points.is_empty() {
-                            try_pt(wp_f64(wire, 0), SnapType::Endpoint, src);
-                        }
-                        if wire.points.len() > 1 {
-                            try_pt(wp_f64(wire, wire.points.len() - 1), SnapType::Endpoint, src);
-                        }
-                    }
-                }
-                if self.is_on(SnapType::Midpoint) && self.snap_enabled {
-                    for segment in wire.key_vertices.windows(2) {
-                        let a = DVec3::from_array(segment[0]);
-                        let b = DVec3::from_array(segment[1]);
-                        if a.distance_squared(b) > 1e-12 {
-                            try_pt((a + b) * 0.5, SnapType::Midpoint, src);
+                    } else if open_ends(wire) {
+                        for point in ends(wire) {
+                            visit(point, SnapType::Endpoint, src);
                         }
                     }
                 }
             }
         }
 
-        if let Some(segments) = wires.key_segments() {
-            if self.is_on(SnapType::Midpoint) && self.snap_enabled {
+        // Tessellated curves contribute their pre-baked Midpoint above.
+        if self.snap_enabled && self.is_on(SnapType::Midpoint) {
+            let mut mid = |a: [f64; 3], b: [f64; 3], src| {
+                let (a, b) = (DVec3::from_array(a), DVec3::from_array(b));
+                if a.distance_squared(b) > 1e-12 {
+                    visit((a + b) * 0.5, SnapType::Midpoint, src);
+                }
+            };
+            if let Some(segments) = wires.key_segments() {
                 for segment_ref in segments {
                     let Some(wire) = wires.source_wire(segment_ref.wire) else {
                         continue;
@@ -1484,15 +1487,19 @@ impl Snapper {
                     else {
                         continue;
                     };
-                    let (a, b) = (DVec3::from_array(a), DVec3::from_array(b));
-                    if a.distance_squared(b) > 1e-12 {
-                        try_pt((a + b) * 0.5, SnapType::Midpoint, wire_source(wire));
+                    mid(a, b, wire_source(wire));
+                }
+            } else {
+                for wire in fallback() {
+                    let src = wire_source(wire);
+                    for segment in wire.key_vertices.windows(2) {
+                        mid(segment[0], segment[1], src);
                     }
                 }
             }
         }
-        best
     }
+
 
     /// Find the best snap candidate near the cursor.
     pub fn snap<W: WireSource + ?Sized>(
@@ -1783,166 +1790,12 @@ impl Snapper {
             }
         };
 
-        // ── Pre-baked snap points (Center, Node, Quadrant, Insertion) ──────
-        let mut try_snap_hint =
-            |world: DVec3, hint: SnapHint, src: Option<DimensionAssociationSource>| {
-                // 3D hints run on the separate 3D master + mode set; everything
-                // else stays on the 2D master + mode set.
-                let (snap_type, on) = match hint {
-                    SnapHint::Center | SnapHint::ArcCenter => {
-                        (SnapType::Center, self.is_on(SnapType::Center))
-                    }
-                    SnapHint::GeometricCenter => (
-                        SnapType::GeometricCenter,
-                        self.is_on(SnapType::GeometricCenter),
-                    ),
-                    SnapHint::Node => (SnapType::Node, self.is_on(SnapType::Node)),
-                    SnapHint::Quadrant => (SnapType::Quadrant, self.is_on(SnapType::Quadrant)),
-                    SnapHint::Insertion => (SnapType::Insertion, self.is_on(SnapType::Insertion)),
-                    SnapHint::Midpoint => (SnapType::Midpoint, self.is_on(SnapType::Midpoint)),
-                    SnapHint::Endpoint => (SnapType::Endpoint, self.is_on(SnapType::Endpoint)),
-                    SnapHint::Vertex => (SnapType::Vertex, self.is_on_3d(SnapType::Vertex)),
-                    SnapHint::EdgeMidpoint => (
-                        SnapType::EdgeMidpoint,
-                        self.is_on_3d(SnapType::EdgeMidpoint),
-                    ),
-                    SnapHint::FaceCenter => {
-                        (SnapType::FaceCenter, self.is_on_3d(SnapType::FaceCenter))
-                    }
-                    SnapHint::Knot => (SnapType::Knot, self.is_on_3d(SnapType::Knot)),
-                };
-                if on {
-                    try_pt(world, snap_type, src, None);
-                }
-            };
-        if let Some(points) = wires.snap_points() {
-            for point_ref in points {
-                let Some(wire) = wires.source_wire(point_ref.wire) else {
-                    continue;
-                };
-                let Some(&(world, hint)) = wire.snap_pts.get(point_ref.index as usize) else {
-                    continue;
-                };
-                try_snap_hint(world, hint, wire_source(wire));
-            }
-        } else {
-            for wire in in_range_wires.iter().chain(in_range_nodes.iter().copied()) {
-                let src = wire_source(wire);
-                for &(world, hint) in &wire.snap_pts {
-                    try_snap_hint(world, hint, src);
-                }
-            }
-        }
-        drop(try_snap_hint);
-
-        // ── Endpoint ───────────────────────────────────────────────────────
-        if self.is_on(SnapType::Endpoint) {
-            if let Some(vertices) = wires.key_vertices() {
-                for vertex_ref in vertices {
-                    let Some(wire) = wires.source_wire(vertex_ref.wire) else {
-                        continue;
-                    };
-                    let Some(&point) = wire.key_vertices.get(vertex_ref.index as usize) else {
-                        continue;
-                    };
-                    try_pt(
-                        DVec3::from_array(point),
-                        SnapType::Endpoint,
-                        wire_source(wire),
-                        None,
-                    );
-                }
-                // Tessellated open curves have no key-vertex set. Their only
-                // endpoints are first/last, so testing candidate wires remains
-                // O(local wires), independent of tessellation density.
-                for wire in wires
-                    .iter()
-                    .filter(|wire| wire.key_vertices.is_empty() && !wire.is_node_marker())
-                {
-                    let closed = wire
-                        .snap_pts
-                        .iter()
-                        .any(|(_, hint)| matches!(hint, SnapHint::Quadrant));
-                    if closed {
-                        continue;
-                    }
-                    if !wire.points.is_empty() {
-                        try_pt(wp_f64(wire, 0), SnapType::Endpoint, wire_source(wire), None);
-                    }
-                    if wire.points.len() > 1 {
-                        try_pt(
-                            wp_f64(wire, wire.points.len() - 1),
-                            SnapType::Endpoint,
-                            wire_source(wire),
-                            None,
-                        );
-                    }
-                }
-            } else {
-                for wire in in_range_wires.iter() {
-                    let src = wire_source(wire);
-                    if !wire.key_vertices.is_empty() {
-                        for &point in &wire.key_vertices {
-                            try_pt(DVec3::from_array(point), SnapType::Endpoint, src, None);
-                        }
-                    } else if !wire.is_node_marker() {
-                        let closed = wire
-                            .snap_pts
-                            .iter()
-                            .any(|(_, hint)| matches!(hint, SnapHint::Quadrant));
-                        if !closed {
-                            if !wire.points.is_empty() {
-                                try_pt(wp_f64(wire, 0), SnapType::Endpoint, src, None);
-                            }
-                            if wire.points.len() > 1 {
-                                try_pt(
-                                    wp_f64(wire, wire.points.len() - 1),
-                                    SnapType::Endpoint,
-                                    src,
-                                    None,
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── Midpoint ───────────────────────────────────────────────────────
-        // Tessellated curves contribute their pre-baked Midpoint above.
-        if self.is_on(SnapType::Midpoint) {
-            if let Some(segments) = wires.key_segments() {
-                for segment_ref in segments {
-                    let Some(wire) = wires.source_wire(segment_ref.wire) else {
-                        continue;
-                    };
-                    let start = segment_ref.start as usize;
-                    let Some((&a, &b)) = wire
-                        .key_vertices
-                        .get(start)
-                        .zip(wire.key_vertices.get(start + 1))
-                    else {
-                        continue;
-                    };
-                    let a = DVec3::from_array(a);
-                    let b = DVec3::from_array(b);
-                    if a.distance_squared(b) > 1e-12 {
-                        try_pt((a + b) * 0.5, SnapType::Midpoint, wire_source(wire), None);
-                    }
-                }
-            } else {
-                for wire in in_range_wires.iter() {
-                    let src = wire_source(wire);
-                    for segment in wire.key_vertices.windows(2) {
-                        let a = DVec3::from_array(segment[0]);
-                        let b = DVec3::from_array(segment[1]);
-                        if a.distance_squared(b) > 1e-12 {
-                            try_pt((a + b) * 0.5, SnapType::Midpoint, src, None);
-                        }
-                    }
-                }
-            }
-        }
+        // ── Pre-baked hints, Endpoint, Midpoint ────────────────────────────
+        self.for_each_discrete_feature(
+            wires,
+            || in_range_wires.iter().chain(in_range_nodes.iter().copied()),
+            |world, snap_type, src| try_pt(world, snap_type, src, None),
+        );
 
         // ── Nearest — closest point on any segment (clamped) ──────────────
         if self.is_on(SnapType::Nearest) {

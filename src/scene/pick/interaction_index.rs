@@ -1158,7 +1158,7 @@ impl InteractionIndex {
         )
     }
 
-    fn snap_candidate_parts_xy(
+    pub(crate) fn snap_candidate_parts_xy(
         &self,
         aabb: [f64; 4],
         category: SnapQueryCategory,
@@ -1197,7 +1197,7 @@ impl InteractionIndex {
         }
     }
 
-    fn snap_candidate_parts_screen(
+    pub(crate) fn snap_candidate_parts_screen(
         &self,
         screen_rect: [f32; 4],
         view_rot: Mat4,
@@ -1247,76 +1247,8 @@ impl InteractionIndex {
         }
     }
 
-    fn snap_candidate_keys(&self, parts: &SnapCandidateParts) -> Vec<(u64, u32)> {
+    pub(crate) fn snap_candidate_keys(&self, parts: &SnapCandidateParts) -> Vec<(u64, u32)> {
         self.queried_wire_keys(parts.wire_indices.clone(), false)
-    }
-
-    pub fn query_snap_wire_keys_xy(&self, aabb: [f64; 4]) -> Vec<(u64, u32)> {
-        self.query_snap_wire_keys_xy_with_category(aabb, SnapQueryCategory::Full)
-    }
-
-    pub(crate) fn query_snap_wire_keys_xy_with_category(
-        &self,
-        aabb: [f64; 4],
-        category: SnapQueryCategory,
-    ) -> Vec<(u64, u32)> {
-        self.snap_candidate_keys(&self.snap_candidate_parts_xy(aabb, category))
-    }
-
-    pub(crate) fn snap_candidate_parts_xy_for_overlay(
-        &self,
-        aabb: [f64; 4],
-        category: SnapQueryCategory,
-    ) -> SnapCandidateParts {
-        self.snap_candidate_parts_xy(aabb, category)
-    }
-
-    pub(crate) fn snap_candidate_parts_screen_for_overlay(
-        &self,
-        screen_rect: [f32; 4],
-        view_rot: Mat4,
-        eye: DVec3,
-        bounds: Rectangle,
-        category: SnapQueryCategory,
-    ) -> SnapCandidateParts {
-        self.snap_candidate_parts_screen(screen_rect, view_rot, eye, bounds, category)
-    }
-
-    pub(crate) fn snap_candidate_part_keys(&self, parts: &SnapCandidateParts) -> Vec<(u64, u32)> {
-        self.snap_candidate_keys(parts)
-    }
-
-    pub fn query_snap_wire_keys_screen(
-        &self,
-        screen_rect: [f32; 4],
-        view_rot: Mat4,
-        eye: DVec3,
-        bounds: Rectangle,
-    ) -> Vec<(u64, u32)> {
-        self.query_snap_wire_keys_screen_with_category(
-            screen_rect,
-            view_rot,
-            eye,
-            bounds,
-            SnapQueryCategory::Full,
-        )
-    }
-
-    pub(crate) fn query_snap_wire_keys_screen_with_category(
-        &self,
-        screen_rect: [f32; 4],
-        view_rot: Mat4,
-        eye: DVec3,
-        bounds: Rectangle,
-        category: SnapQueryCategory,
-    ) -> Vec<(u64, u32)> {
-        self.snap_candidate_keys(&self.snap_candidate_parts_screen(
-            screen_rect,
-            view_rot,
-            eye,
-            bounds,
-            category,
-        ))
     }
 
     fn snap_candidates_from_parts(
@@ -1341,14 +1273,6 @@ impl InteractionIndex {
         }
     }
 
-    pub fn query_snap_xy(
-        &self,
-        wires: Arc<Vec<WireModel>>,
-        aabb: [f64; 4],
-    ) -> InteractionCandidates {
-        self.query_snap_xy_with_category(wires, aabb, SnapQueryCategory::Full)
-    }
-
     pub(crate) fn query_snap_xy_with_category(
         &self,
         wires: Arc<Vec<WireModel>>,
@@ -1360,23 +1284,6 @@ impl InteractionIndex {
             self.snap_candidate_parts_xy(aabb, category),
             Some(aabb),
             None,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn query_remapped_snap_xy_with_category(
-        &self,
-        wires: Arc<Vec<WireModel>>,
-        slots: &rustc_hash::FxHashMap<(u64, u32), u32>,
-        aabb: [f64; 4],
-        category: SnapQueryCategory,
-    ) -> InteractionCandidates {
-        self.query_remapped_snap_xy_from_parts_with_category(
-            wires,
-            slots,
-            self.snap_candidate_parts_xy(aabb, category),
-            aabb,
-            category,
         )
     }
 
@@ -1423,24 +1330,6 @@ impl InteractionIndex {
         Self::snap_candidates_from_parts(wires, parts, Some(aabb), None)
     }
 
-    pub fn query_snap_screen(
-        &self,
-        wires: Arc<Vec<WireModel>>,
-        screen_rect: [f32; 4],
-        view_rot: Mat4,
-        eye: DVec3,
-        bounds: Rectangle,
-    ) -> InteractionCandidates {
-        self.query_snap_screen_with_category(
-            wires,
-            screen_rect,
-            view_rot,
-            eye,
-            bounds,
-            SnapQueryCategory::Full,
-        )
-    }
-
     pub(crate) fn query_snap_screen_with_category(
         &self,
         wires: Arc<Vec<WireModel>>,
@@ -1455,50 +1344,6 @@ impl InteractionIndex {
             self.snap_candidate_parts_screen(screen_rect, view_rot, eye, bounds, category),
             None,
             Some((screen_rect, view_rot, eye, bounds)),
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn query_remapped_snap_screen(
-        &self,
-        wires: Arc<Vec<WireModel>>,
-        slots: &rustc_hash::FxHashMap<(u64, u32), u32>,
-        screen_rect: [f32; 4],
-        view_rot: Mat4,
-        eye: DVec3,
-        bounds: Rectangle,
-    ) -> InteractionCandidates {
-        self.query_remapped_snap_screen_with_category(
-            wires,
-            slots,
-            screen_rect,
-            view_rot,
-            eye,
-            bounds,
-            SnapQueryCategory::Full,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn query_remapped_snap_screen_with_category(
-        &self,
-        wires: Arc<Vec<WireModel>>,
-        slots: &rustc_hash::FxHashMap<(u64, u32), u32>,
-        screen_rect: [f32; 4],
-        view_rot: Mat4,
-        eye: DVec3,
-        bounds: Rectangle,
-        category: SnapQueryCategory,
-    ) -> InteractionCandidates {
-        self.query_remapped_snap_screen_from_parts_with_category(
-            wires,
-            slots,
-            self.snap_candidate_parts_screen(screen_rect, view_rot, eye, bounds, category),
-            screen_rect,
-            view_rot,
-            eye,
-            bounds,
-            category,
         )
     }
 
@@ -2619,12 +2464,13 @@ mod area_query_tests {
             glam::DVec3::ZERO,
             bounds,
         );
-        let snap = index.query_snap_screen(
+        let snap = index.query_snap_screen_with_category(
             Arc::clone(&wires),
             screen_rect,
             glam::Mat4::IDENTITY,
             glam::DVec3::ZERO,
             bounds,
+            SnapQueryCategory::Full,
         );
 
         assert_eq!(full.len(), 2, "the general pick query includes markers");
@@ -2638,22 +2484,27 @@ mod area_query_tests {
             Some("9")
         );
 
-        let keys = index.query_snap_wire_keys_screen(
-            screen_rect,
-            glam::Mat4::IDENTITY,
-            glam::DVec3::ZERO,
-            bounds,
-        );
-        assert_eq!(keys, vec![(9, 0)]);
+        let parts = || {
+            index.snap_candidate_parts_screen(
+                screen_rect,
+                glam::Mat4::IDENTITY,
+                glam::DVec3::ZERO,
+                bounds,
+                SnapQueryCategory::Full,
+            )
+        };
+        assert_eq!(index.snap_candidate_keys(&parts()), vec![(9, 0)]);
         let local_wires = Arc::new(vec![wires[1].clone()]);
         let slots = rustc_hash::FxHashMap::from_iter([((9, 0), 0)]);
-        let remapped = index.query_remapped_snap_screen(
+        let remapped = index.query_remapped_snap_screen_from_parts_with_category(
             local_wires,
             &slots,
+            parts(),
             screen_rect,
             glam::Mat4::IDENTITY,
             glam::DVec3::ZERO,
             bounds,
+            SnapQueryCategory::Full,
         );
         assert_eq!(remapped.len(), 1);
         assert_eq!(
@@ -2782,21 +2633,20 @@ mod area_query_tests {
         let index = InteractionIndex::build(&base_wires);
         let aabb = [-0.1, -0.1, 0.1, 0.1];
 
-        let preview = index.query_remapped_snap_xy_with_category(
-            Arc::clone(&local_wires),
-            &slots,
-            aabb,
-            SnapQueryCategory::DiscretePreview,
-        );
+        let remapped = |wires, category| {
+            index.query_remapped_snap_xy_from_parts_with_category(
+                wires,
+                &slots,
+                index.snap_candidate_parts_xy(aabb, category),
+                aabb,
+                category,
+            )
+        };
+        let preview = remapped(Arc::clone(&local_wires), SnapQueryCategory::DiscretePreview);
         assert_eq!(preview.len(), 1);
         assert_eq!(preview.source_wire(0).unwrap().name, "21");
 
-        let full = index.query_remapped_snap_xy_with_category(
-            local_wires,
-            &slots,
-            aabb,
-            SnapQueryCategory::Full,
-        );
+        let full = remapped(local_wires, SnapQueryCategory::Full);
         assert_eq!(full.len(), 2, "full snap still includes unbounded wires");
     }
 

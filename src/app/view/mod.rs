@@ -53,6 +53,20 @@ impl ViewportPointerState {
     }
 }
 
+/// Pane-local point of a lone finger driving the cursor. Touch events stay
+/// uncaptured: the gesture handler listens to them as well.
+fn touch_cursor_move(event: &iced::Event, bounds: iced::Rectangle) -> Option<iced::Point> {
+    use iced::touch::Event as Touch;
+    match event {
+        iced::Event::Touch(
+            Touch::FingerPressed { position, .. } | Touch::FingerMoved { position, .. },
+        ) if bounds.contains(*position) => {
+            Some(iced::Point::new(position.x - bounds.x, position.y - bounds.y))
+        }
+        _ => None,
+    }
+}
+
 impl iced::widget::canvas::Program<Message> for ViewportPickSurface {
     type State = ViewportPointerState;
 
@@ -65,6 +79,9 @@ impl iced::widget::canvas::Program<Message> for ViewportPickSurface {
     ) -> Option<iced::widget::canvas::Action<Message>> {
         use iced::mouse::{Button, Event as Mouse};
         use iced::widget::canvas::Action;
+        if let Some(local) = touch_cursor_move(event, bounds) {
+            return Some(Action::publish(Message::ViewportMove(local)));
+        }
         let iced::Event::Mouse(event) = event else {
             return None;
         };
@@ -77,15 +94,16 @@ impl iced::widget::canvas::Program<Message> for ViewportPickSurface {
                 state.middle_drag = cursor.is_over(bounds);
                 None
             }
-            // Read motion from the event too; MouseArea also uses the final
-            // batch cursor. A middle drag continues outside the viewport.
-            Mouse::CursorMoved { position } if cursor.is_over(bounds) || state.middle_drag => Some(
-                Action::publish(Message::ViewportMove(iced::Point::new(
+            // Motion comes from the event, not the final batch cursor, so the
+            // MouseArea around this canvas reports no moves of its own. Left
+            // uncaptured so it still tracks hover for `on_exit`. A middle
+            // drag keeps following the pointer past the viewport edge.
+            Mouse::CursorMoved { position } if cursor.is_over(bounds) || state.middle_drag => {
+                Some(Action::publish(Message::ViewportMove(iced::Point::new(
                     position.x - bounds.x,
                     position.y - bounds.y,
-                )))
-                .and_capture(),
-            ),
+                ))))
+            }
             Mouse::ButtonReleased(Button::Middle) if state.middle_drag => {
                 state.middle_drag = false;
                 (!cursor.is_over(bounds)).then(|| Action::publish(Message::ViewportMiddleRelease))
@@ -122,6 +140,9 @@ impl iced::widget::canvas::Program<Message> for PaneDragSurface {
     ) -> Option<iced::widget::canvas::Action<Message>> {
         use iced::mouse::{Button, Event as Mouse};
         use iced::widget::canvas::Action;
+        if let Some(local) = touch_cursor_move(event, bounds) {
+            return Some(Action::publish(Message::PaneMove(self.0, local)));
+        }
         let iced::Event::Mouse(event) = event else {
             return None;
         };
@@ -136,7 +157,7 @@ impl iced::widget::canvas::Program<Message> for PaneDragSurface {
             }
             Mouse::CursorMoved { position } if cursor.is_over(bounds) || state.middle_drag => {
                 let local = iced::Point::new(position.x - bounds.x, position.y - bounds.y);
-                Some(Action::publish(Message::PaneMove(self.0, local)).and_capture())
+                Some(Action::publish(Message::PaneMove(self.0, local)))
             }
             Mouse::ButtonReleased(Button::Middle) if state.middle_drag => {
                 state.middle_drag = false;
@@ -1448,7 +1469,7 @@ bg={bg_ms:.1}ms n={view_count}"
                 .width(Fill)
                 .height(Fill),
         ))
-        .on_move(Message::ViewportMove)
+        // Moves come from the canvas (mouse and touch) in event order.
         // Left mouse presses are captured by the canvas with their exact
         // event-time position. MouseArea::on_press has no coordinate, so
         // queued cursor moves could otherwise make quick clicks use a stale
@@ -3651,16 +3672,15 @@ fn pane_mouse_area<'a>(idx: usize) -> Element<'a, Message> {
             .width(Fill)
             .height(Fill),
     ))
-    .on_move(move |p| Message::PaneMove(idx, p))
-    .on_press(Message::PanePress(idx))
-    .on_release(Message::PaneRelease(idx))
-    .on_right_press(Message::PaneRightPress(idx))
-    .on_right_release(Message::PaneRightRelease(idx))
-    .on_middle_press(Message::PaneMiddlePress(idx))
-    .on_middle_release(Message::PaneMiddleRelease(idx))
-    .on_scroll(move |d| Message::PaneScroll(idx, d))
-    .on_exit(Message::ViewportExit)
-    .into()
+        .on_press(Message::PanePress(idx))
+        .on_release(Message::PaneRelease(idx))
+        .on_right_press(Message::PaneRightPress(idx))
+        .on_right_release(Message::PaneRightRelease(idx))
+        .on_middle_press(Message::PaneMiddlePress(idx))
+        .on_middle_release(Message::PaneMiddleRelease(idx))
+        .on_scroll(move |d| Message::PaneScroll(idx, d))
+        .on_exit(Message::ViewportExit)
+        .into()
 }
 
 const START_ACTION_RADIUS: f32 = 6.0;

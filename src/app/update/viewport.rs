@@ -2580,11 +2580,24 @@ impl OpenCADStudio {
             self.hover_dwell = None;
         }
 
-        // Throttle: while a command is active and the cursor is still
+        // Throttle: while a plain point pick is active and the cursor is still
         // settling, defer continuous / pairwise snap modes to SnapDwellTick.
         // Keep discrete feature snaps (Endpoint, Node, Midpoint, etc.) live so
         // the marker and rubber-band can still attach to geometry while moving.
-        if self.tabs[i].active_cmd.is_some() && self.snap_dwell.is_some() {
+        // Entity/structure/tangent picks, selection windows and any drafting
+        // constraint (ortho, polar, grid snap, tracking, parallel) always take
+        // the full pass below — the fast path would silently drop them.
+        let fast_point = self.tabs[i].active_cmd.as_ref().is_some_and(|command| {
+            !command.needs_entity_pick()
+                && !command.needs_structure_point_pick()
+                && !command.needs_tangent_pick()
+                && !command.is_selection_gathering()
+                && !command.window_corner_pick()
+        }) && !(self.ortho_mode
+            || self.polar_mode
+            || self.snapper.grid_snap()
+            || self.snapper.alignment_active());
+        if fast_point && self.snap_dwell.is_some() {
             let throttle_started = crate::perf::enabled().then(Instant::now);
             let (vw, vh) = vp_size;
             let bounds = iced::Rectangle {
@@ -2601,19 +2614,12 @@ impl OpenCADStudio {
                     (camera.view_proj_rte(bounds), camera.eye())
                 }
             };
-            let point_preview = self.tabs[i].active_cmd.as_ref().is_some_and(|command| {
-                !command.needs_entity_pick()
-                    && !command.needs_structure_point_pick()
-                    && !command.needs_tangent_pick()
-                    && !command.is_selection_gathering()
-            });
             // Large drawings can spend more time finding discrete snap
             // candidates than updating the cursor. Keep the crosshair and
             // rubber-band current for every event, but cap this expensive
             // preview pass at 60 Hz. Click and settled-dwell paths still run
             // the authoritative full snap at the exact pointer position.
-            let discrete_preview_enabled =
-                point_preview && self.snapper.has_discrete_preview_enabled();
+            let discrete_preview_enabled = self.snapper.has_discrete_preview_enabled();
             let run_discrete_preview = discrete_preview_enabled
                 && self
                     .snap_dwell
@@ -2685,14 +2691,12 @@ impl OpenCADStudio {
             let world = snap.map_or(cursor_world, |hit| hit.world);
             self.tabs[i].last_cursor_world = world;
             self.tabs[i].last_cursor_screen = p_full;
-            if point_preview {
-                let mut snap = snap;
-                if let Some(hit) = snap.as_mut() {
-                    hit.screen.x += tile_b.x;
-                    hit.screen.y += tile_b.y;
-                }
-                self.tabs[i].snap_result = snap;
+            let mut snap = snap;
+            if let Some(hit) = snap.as_mut() {
+                hit.screen.x += tile_b.x;
+                hit.screen.y += tile_b.y;
             }
+            self.tabs[i].snap_result = snap;
             // Re-arm the dwell — tick fires SNAP_DWELL_MS after the last move.
             if let Some(dwell) = self.snap_dwell.as_mut() {
                 dwell.last_move_at = Instant::now();

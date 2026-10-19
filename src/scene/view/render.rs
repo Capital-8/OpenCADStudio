@@ -24,19 +24,6 @@ use crate::scene::{
 const DISPLAY_STYLE_CACHE_LIMIT: usize = if cfg!(target_arch = "wasm32") { 4 } else { 24 };
 const MM_TO_PX: f32 = 96.0 / 25.4;
 
-fn cached_weak_source_changed<T>(
-    cached: Option<&std::sync::Weak<T>>,
-    current: &Arc<T>,
-    patch_proves_unchanged: bool,
-) -> bool {
-    if patch_proves_unchanged {
-        return false;
-    }
-    cached
-        .and_then(std::sync::Weak::upgrade)
-        .map_or(true, |source| !Arc::ptr_eq(&source, current))
-}
-
 // ── Camera hover state (shader::Program::State) ───────────────────────────
 
 #[derive(Clone, Default)]
@@ -482,15 +469,20 @@ impl shader::Primitive for Primitive {
                     continue;
                 };
                 inner.upload_preview_wires(device, queue, &vp.preview_wires[..], &draw_depths);
-                inner.preview_overlay_direct = inner
-                    .gpu_preview_circles
-                    .iter()
-                    .all(|circle| circle.instance_count == 0)
+                // No preview text this frame; drop the last frame's glyphs.
+                inner.text_preview_gpu.clear();
+                // The direct pass draws straight into `surface_dest`, so it
+                // lines up with the cached scene only when that rectangle is
+                // the whole pixel-aligned raster (not cropped off the window).
+                inner.preview_overlay_direct = placement.surface_matches_raster()
+                    && inner
+                        .gpu_preview_circles
+                        .iter()
+                        .all(|circle| circle.instance_count == 0)
                     && inner
                         .gpu_preview_ellipses
                         .iter()
                         .all(|ellipse| ellipse.instance_count == 0)
-                    && inner.text_preview_gpu.is_empty()
                     && inner
                         .gpu_preview_wires
                         .iter()
@@ -625,11 +617,12 @@ impl shader::Primitive for Primitive {
                 .cached_text_source
                 .as_ref()
                 .map_or(true, |source| !Arc::ptr_eq(source, &vp.text_verts));
+            // A patch proves the text pass unchanged only when it applies to
+            // the wire set this slot last uploaded.
             let text_wire_changed = vp.wire_content_id != inner.cached_wire_id
-                && vp
-                    .wire_patch
-                    .as_ref()
-                    .map_or(true, |(_, patch)| patch.text_pass_changed);
+                && vp.wire_patch.as_ref().map_or(true, |(base, patch)| {
+                    *base != inner.cached_wire_id || patch.text_pass_changed
+                });
             if text_source_changed || text_wire_changed {
                 inner.upload_text(
                     device,
@@ -651,18 +644,18 @@ impl shader::Primitive for Primitive {
             // rebuilding it when another entity category alone changes. Never
             // retain `vp.wires` here: Scene needs unique ownership to splice a
             // one-entity edit into the resident set.
-            let face_pass_unchanged = vp
-                .wire_patch
-                .as_ref()
-                .is_some_and(|(_, patch)| !patch.face_pass_changed);
-            let face_source_changed = inner.cached_face3d_source.as_ref().map_or(true, |source| {
-                !Arc::ptr_eq(source, &vp.face3d_wires) && !face_pass_unchanged
+            let face_pass_unchanged = vp.wire_patch.as_ref().is_some_and(|(base, patch)| {
+                *base == inner.cached_face3d_key.0 && !patch.face_pass_changed
             });
-            let face_depth_changed = cached_weak_source_changed(
-                inner.cached_face3d_depth_source.as_ref(),
-                &draw_depths,
-                face_pass_unchanged,
-            );
+            let face_source_changed = inner
+                .cached_face3d_source
+                .as_ref()
+                .map_or(true, |source| !Arc::ptr_eq(source, &vp.face3d_wires));
+            let face_depth_changed = inner
+                .cached_face3d_depth_source
+                .as_ref()
+                .and_then(std::sync::Weak::upgrade)
+                .map_or(true, |source| !Arc::ptr_eq(&source, &draw_depths));
             let face_wire_changed =
                 inner.cached_face3d_key.0 != vp.wire_content_id && !face_pass_unchanged;
             let face_fill_mode_changed = face3d_fill_active != inner.cached_face3d_key.1;
@@ -700,11 +693,9 @@ impl shader::Primitive for Primitive {
                     vp.view_dir,
                     &draw_depths,
                 );
+                inner.cached_face3d_source = Some(Arc::clone(&vp.face3d_wires));
+                inner.cached_face3d_depth_source = Some(Arc::downgrade(&draw_depths));
             }
-            // Preserve these keys across patches proven not to touch Face3D or
-            // fill data, avoiding a full pass scan for every appended line.
-            inner.cached_face3d_source = Some(Arc::clone(&vp.face3d_wires));
-            inner.cached_face3d_depth_source = Some(Arc::downgrade(&draw_depths));
             inner.cached_face3d_key = (
                 vp.wire_content_id,
                 face3d_fill_active,
@@ -1721,6 +1712,18 @@ pub(in crate::scene) struct PhysicalViewport {
     surface: Rectangle<u32>,
     uv_offset: [f32; 2],
     uv_scale: [f32; 2],
+}
+
+impl PhysicalViewport {
+    /// The visible surface rectangle maps 1:1 onto the offscreen raster: the
+    /// viewport lies fully inside the window and on whole pixels.
+    fn surface_matches_raster(&self) -> bool {
+        self.uv_scale == [1.0, 1.0]
+            && self.raster.x == 0.0
+            && self.raster.y == 0.0
+            && self.raster.width == self.size.width as f32
+            && self.raster.height == self.size.height as f32
+    }
 }
 
 fn physical_viewport(rect: Rectangle, window: Size<u32>) -> PhysicalViewport {
@@ -5364,34 +5367,6 @@ fn split_face3d_wires_with_handles(
         }
     }
     (face3d, others)
-}
-
-#[cfg(test)]
-mod face3d_cache_tests {
-    use super::cached_weak_source_changed;
-    use std::sync::Arc;
-
-    #[test]
-    fn expired_depth_source_does_not_invalidate_a_proven_unchanged_face_pass() {
-        let expired = {
-            let source = Arc::new(());
-            Arc::downgrade(&source)
-        };
-        let current = Arc::new(());
-
-        assert!(!cached_weak_source_changed(Some(&expired), &current, true,));
-        assert!(cached_weak_source_changed(Some(&expired), &current, false,));
-    }
-
-    #[test]
-    fn live_depth_source_still_invalidates_when_it_changes() {
-        let cached = Arc::new(());
-        let weak = Arc::downgrade(&cached);
-        let current = Arc::new(());
-
-        assert!(cached_weak_source_changed(Some(&weak), &current, false));
-        assert!(!cached_weak_source_changed(Some(&weak), &cached, false));
-    }
 }
 
 // ── Layer-0 block inheritance (#221) ──────────────────────────────────────

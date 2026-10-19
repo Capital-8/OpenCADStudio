@@ -19,7 +19,9 @@
 * **Legacy Base-Point Preview:** Preserved the existing preview behavior for legacy block base points.
 * **Blank-Pick Selection:** Cleared the authoring selection when the user picks a blank area.
 * **Lookup Angle Wrap:** Compared rotation values consistently when equivalent angles straddle the wrap point.
+* **Rapid Drawing Responsiveness:** Point clicks snap once, at the button event's own position, so quick clicks no longer land on an earlier hover. While a plain point pick moves, discrete object snaps update at up to 60 Hz and the full snap pass runs once the cursor settles; Ortho, Polar, grid snap and tracking keep the full pass on every move. Simple line previews draw over the cached scene instead of re-rendering it. *(Contributed by [@Lukreynol01](https://github.com/Lukreynol01))*
 
 ### 👥 Contributors
 
 * **Karim Jerbi** ([@KarimJerbi](https://github.com/KarimJerbi)) — Block Properties Table authoring and grips, reference-side row selection, and Block Editor selection, parameter, preview, and rotation matching improvements.
+* **Luciano Naranjo Altunar** ([@Lukreynol01](https://github.com/Lukreynol01)) — Snap and preview work reduction during rapid drawing.

@@ -679,6 +679,7 @@ pub use pipeline::viewcube::{
     hit_test, hit_test_cardinal, hover_id, CubeRegion, NudgeDir, VIEWCUBE_DRAW_PX, VIEWCUBE_PAD,
     VIEWCUBE_PX, VIEWCUBE_REGION_PX, VIEWCUBE_RENDER_PX,
 };
+use pick::interaction_index::{InteractionCandidates, InteractionIndex, SnapQueryCategory};
 use view::camera::Camera;
 pub use view::camera::Projection;
 
@@ -4352,29 +4353,6 @@ impl Scene {
         self.push_geometry_delta(epoch, Vec::new(), true);
     }
 
-    /// Invalidate caches affected by a rendering-property change (layer
-    /// properties, colors, linetypes, draw order) WITHOUT clearing the
-    /// per-entity tessellation memo. Tessellation depends only on geometry
-    /// shape, not on display properties, so the cached tess can be reused.
-    ///
-    /// Use when the entity set or their geometric definitions are unchanged.
-    /// For entity edits (vertex moves, add/remove entities), use [`bump_geometry`]
-    /// or [`bump_entities`] instead.
-    pub fn bump_geometry_keep_tess(&mut self) {
-        let epoch = GEOMETRY_EPOCH.fetch_add(1, Ordering::Relaxed);
-        self.geometry_epoch = epoch;
-        self.invalidate_projection_bounds();
-        self.lighting_cache.borrow_mut().clear();
-        *self.document_render_env_cache.borrow_mut() = None;
-        self.background_image_cache.borrow_mut().clear();
-        self.has_underlays.set(None);
-        self.has_face3d.set(None);
-        self.has_associative_centers.set(None);
-        self.invalidate_dependency_index();
-        // Keep tessellation memos intact — only display properties changed.
-        self.push_geometry_delta(epoch, Vec::new(), true);
-    }
-
     /// Invalidate the cached document render environment (fog parameters and image).
     pub fn invalidate_render_environment_cache(&self) {
         *self.document_render_env_cache.borrow_mut() = None;
@@ -6439,8 +6417,9 @@ impl Scene {
                 _ => None,
             })
             .unwrap_or(self.annotation_scale as f64);
-        let ratio = crate::scene::annotative::text_context_ratio(&self.document, handle, scale)
-            .unwrap_or(1.0);
+        let ratio =
+            crate::scene::annotative::text_context_ratio(&self.document, handle, scale)
+                .unwrap_or(1.0);
         Some(model_per_paper / ratio)
     }
 
@@ -10483,7 +10462,7 @@ impl Scene {
             return crate::scene::pick::interaction_index::InteractionCandidates::all(wires)
                 .materialize_stubs();
         }
-        self.indexed_interaction_candidates_xy(wires, aabb, false, false)
+        self.indexed_interaction_candidates_xy(wires, aabb, false, false, None)
     }
 
     /// Small simple sets are cheaper to scan. Either many wires or substantial
@@ -10784,28 +10763,59 @@ impl Scene {
         aabb: [f64; 4],
         allow_pending_empty: bool,
         area_only: bool,
-    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
-        self.indexed_interaction_candidates_xy_stubbed(wires, aabb, allow_pending_empty, area_only)
-            .materialize_stubs()
+        snap: Option<SnapQueryCategory>,
+    ) -> InteractionCandidates {
+        self.indexed_interaction_candidates_xy_stubbed(
+            wires,
+            aabb,
+            allow_pending_empty,
+            area_only,
+            snap,
+        )
+        .materialize_stubs()
     }
 
+    /// `snap` narrows the query to the object-snap feature indexes (and,
+    /// for the live preview, to discrete features only).
     fn indexed_interaction_candidates_xy_stubbed(
         &self,
         wires: Arc<Vec<WireModel>>,
         aabb: [f64; 4],
         allow_pending_empty: bool,
         area_only: bool,
-    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        snap: Option<SnapQueryCategory>,
+    ) -> InteractionCandidates {
+        let direct = |index: &InteractionIndex, wires| match snap {
+            Some(category) => index.query_snap_xy_with_category(wires, aabb, category),
+            None if area_only => index.query_xy_area(wires, aabb),
+            None => index.query_xy(wires, aabb),
+        };
         if let Some((base_epoch, base, changes)) = self.interaction_overlay_base() {
+            // Nothing changed since the base was indexed: query its own
+            // snapshot instead of gathering an overlay copy.
+            if changes.is_empty() {
+                if let Some(source) = self.interaction_source_for_index(base_epoch, &base) {
+                    return direct(&base, source);
+                }
+            }
             let perf = crate::perf::enabled();
             let t0 = iced::time::Instant::now();
-            let keys = base.query_wire_keys_xy(aabb);
+            let base_parts = snap.map(|category| base.snap_candidate_parts_xy(aabb, category));
+            let keys = match &base_parts {
+                Some(parts) => base.snap_candidate_keys(parts),
+                None => base.query_wire_keys_xy(aabb),
+            };
             let key_ms = t0.elapsed().as_secs_f64() * 1000.0;
             let t_changed = iced::time::Instant::now();
             let (changed_wires, changed_index) =
                 self.interaction_overlay_changed_index(base_epoch, &changes);
             let changed_ms = t_changed.elapsed().as_secs_f64() * 1000.0;
-            let changed_keys = changed_index.query_wire_keys_xy(aabb);
+            let changed_parts =
+                snap.map(|category| changed_index.snap_candidate_parts_xy(aabb, category));
+            let changed_keys = match &changed_parts {
+                Some(parts) => changed_index.snap_candidate_keys(parts),
+                None => changed_index.query_wire_keys_xy(aabb),
+            };
             let t_local = iced::time::Instant::now();
             let (local, base_slots, changed_slots) = self.interaction_overlay_wires(
                 keys.iter().copied(),
@@ -10815,20 +10825,46 @@ impl Scene {
             );
             let local_ms = t_local.elapsed().as_secs_f64() * 1000.0;
             let t_remap = iced::time::Instant::now();
-            let mut result = if area_only {
-                base.query_remapped_xy_area(Arc::clone(&local), &base_slots, aabb)
-            } else {
-                base.query_remapped_xy(Arc::clone(&local), &base_slots, aabb)
+            let result = match (snap, base_parts, changed_parts) {
+                (Some(category), Some(base_parts), Some(changed_parts)) => {
+                    let mut result = base.query_remapped_snap_xy_from_parts_with_category(
+                        Arc::clone(&local),
+                        &base_slots,
+                        base_parts,
+                        aabb,
+                        category,
+                    );
+                    result.extend_indexed(
+                        changed_index.query_remapped_snap_xy_from_parts_with_category(
+                            local,
+                            &changed_slots,
+                            changed_parts,
+                            aabb,
+                            category,
+                        ),
+                    );
+                    result
+                }
+                _ if area_only => {
+                    let mut result =
+                        base.query_remapped_xy_area(Arc::clone(&local), &base_slots, aabb);
+                    result.extend_indexed_area(changed_index.query_remapped_xy_area(
+                        local,
+                        &changed_slots,
+                        aabb,
+                    ));
+                    result
+                }
+                _ => {
+                    let mut result = base.query_remapped_xy(Arc::clone(&local), &base_slots, aabb);
+                    result.extend_indexed(changed_index.query_remapped_xy(
+                        local,
+                        &changed_slots,
+                        aabb,
+                    ));
+                    result
+                }
             };
-            if area_only {
-                result.extend_indexed_area(changed_index.query_remapped_xy_area(
-                    local,
-                    &changed_slots,
-                    aabb,
-                ));
-            } else {
-                result.extend_indexed(changed_index.query_remapped_xy(local, &changed_slots, aabb));
-            }
             let remap_ms = t_remap.elapsed().as_secs_f64() * 1000.0;
             let total_ms = t0.elapsed().as_secs_f64() * 1000.0;
             if perf && total_ms >= 50.0 {
@@ -10846,18 +10882,29 @@ impl Scene {
             return result;
         }
         if let Some(index) = self.cached_interaction_index(&wires) {
-            if area_only {
-                index.query_xy_area(wires, aabb)
-            } else {
-                index.query_xy(wires, aabb)
-            }
-        } else if allow_pending_empty
-            && self.interaction_index_pending_key.get()
-                == Some((self.geometry_epoch, Arc::as_ptr(&wires) as usize))
-        {
-            crate::scene::pick::interaction_index::InteractionCandidates::pending(wires)
+            direct(&index, wires)
         } else {
-            crate::scene::pick::interaction_index::InteractionCandidates::all(wires)
+            self.unindexed_interaction_candidates(wires, allow_pending_empty, snap)
+        }
+    }
+
+    /// No index for `wires` yet. A pending-empty caller gets an empty result
+    /// while the index builds; the snap preview gets one for any large set,
+    /// so it never scans the whole drawing on a pointer move.
+    fn unindexed_interaction_candidates(
+        &self,
+        wires: Arc<Vec<WireModel>>,
+        allow_pending_empty: bool,
+        snap: Option<SnapQueryCategory>,
+    ) -> InteractionCandidates {
+        let pending = allow_pending_empty
+            && (snap.is_some() && wires.len() > 512
+                || self.interaction_index_pending_key.get()
+                    == Some((self.geometry_epoch, Arc::as_ptr(&wires) as usize)));
+        if pending {
+            InteractionCandidates::pending(wires)
+        } else {
+            InteractionCandidates::all(wires)
         }
     }
 
@@ -10869,7 +10916,8 @@ impl Scene {
         eye: glam::DVec3,
         bounds: iced::Rectangle,
         allow_pending_empty: bool,
-    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        snap: Option<SnapQueryCategory>,
+    ) -> InteractionCandidates {
         self.indexed_interaction_candidates_screen_stubbed(
             wires,
             screen_rect,
@@ -10877,6 +10925,7 @@ impl Scene {
             eye,
             bounds,
             allow_pending_empty,
+            snap,
         )
         .materialize_stubs()
     }
@@ -10889,18 +10938,52 @@ impl Scene {
         eye: glam::DVec3,
         bounds: iced::Rectangle,
         allow_pending_empty: bool,
-    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        snap: Option<SnapQueryCategory>,
+    ) -> InteractionCandidates {
+        let direct = |index: &InteractionIndex, wires| match snap {
+            Some(category) => index.query_snap_screen_with_category(
+                wires,
+                screen_rect,
+                view_rot,
+                eye,
+                bounds,
+                category,
+            ),
+            None => index.query_screen(wires, screen_rect, view_rot, eye, bounds),
+        };
         if let Some((base_epoch, base, changes)) = self.interaction_overlay_base() {
+            if changes.is_empty() {
+                if let Some(source) = self.interaction_source_for_index(base_epoch, &base) {
+                    return direct(&base, source);
+                }
+            }
             let perf = crate::perf::enabled();
             let t0 = iced::time::Instant::now();
-            let keys = base.query_wire_keys_screen(screen_rect, view_rot, eye, bounds);
+            let base_parts = snap.map(|category| {
+                base.snap_candidate_parts_screen(screen_rect, view_rot, eye, bounds, category)
+            });
+            let keys = match &base_parts {
+                Some(parts) => base.snap_candidate_keys(parts),
+                None => base.query_wire_keys_screen(screen_rect, view_rot, eye, bounds),
+            };
             let key_ms = t0.elapsed().as_secs_f64() * 1000.0;
             let t_changed = iced::time::Instant::now();
             let (changed_wires, changed_index) =
                 self.interaction_overlay_changed_index(base_epoch, &changes);
             let changed_ms = t_changed.elapsed().as_secs_f64() * 1000.0;
-            let changed_keys =
-                changed_index.query_wire_keys_screen(screen_rect, view_rot, eye, bounds);
+            let changed_parts = snap.map(|category| {
+                changed_index.snap_candidate_parts_screen(
+                    screen_rect,
+                    view_rot,
+                    eye,
+                    bounds,
+                    category,
+                )
+            });
+            let changed_keys = match &changed_parts {
+                Some(parts) => changed_index.snap_candidate_keys(parts),
+                None => changed_index.query_wire_keys_screen(screen_rect, view_rot, eye, bounds),
+            };
             let t_local = iced::time::Instant::now();
             let (local, base_slots, changed_slots) = self.interaction_overlay_wires(
                 keys.iter().copied(),
@@ -10910,22 +10993,52 @@ impl Scene {
             );
             let local_ms = t_local.elapsed().as_secs_f64() * 1000.0;
             let t_remap = iced::time::Instant::now();
-            let mut result = base.query_remapped_screen(
-                Arc::clone(&local),
-                &base_slots,
-                screen_rect,
-                view_rot,
-                eye,
-                bounds,
-            );
-            result.extend_indexed(changed_index.query_remapped_screen(
-                local,
-                &changed_slots,
-                screen_rect,
-                view_rot,
-                eye,
-                bounds,
-            ));
+            let result = match (snap, base_parts, changed_parts) {
+                (Some(category), Some(base_parts), Some(changed_parts)) => {
+                    let mut result = base.query_remapped_snap_screen_from_parts_with_category(
+                        Arc::clone(&local),
+                        &base_slots,
+                        base_parts,
+                        screen_rect,
+                        view_rot,
+                        eye,
+                        bounds,
+                        category,
+                    );
+                    result.extend_indexed(
+                        changed_index.query_remapped_snap_screen_from_parts_with_category(
+                            local,
+                            &changed_slots,
+                            changed_parts,
+                            screen_rect,
+                            view_rot,
+                            eye,
+                            bounds,
+                            category,
+                        ),
+                    );
+                    result
+                }
+                _ => {
+                    let mut result = base.query_remapped_screen(
+                        Arc::clone(&local),
+                        &base_slots,
+                        screen_rect,
+                        view_rot,
+                        eye,
+                        bounds,
+                    );
+                    result.extend_indexed(changed_index.query_remapped_screen(
+                        local,
+                        &changed_slots,
+                        screen_rect,
+                        view_rot,
+                        eye,
+                        bounds,
+                    ));
+                    result
+                }
+            };
             let remap_ms = t_remap.elapsed().as_secs_f64() * 1000.0;
             let total_ms = t0.elapsed().as_secs_f64() * 1000.0;
             if perf && total_ms >= 50.0 {
@@ -10943,14 +11056,9 @@ impl Scene {
             return result;
         }
         if let Some(index) = self.cached_interaction_index(&wires) {
-            index.query_screen(wires, screen_rect, view_rot, eye, bounds)
-        } else if allow_pending_empty
-            && self.interaction_index_pending_key.get()
-                == Some((self.geometry_epoch, Arc::as_ptr(&wires) as usize))
-        {
-            crate::scene::pick::interaction_index::InteractionCandidates::pending(wires)
+            direct(&index, wires)
         } else {
-            crate::scene::pick::interaction_index::InteractionCandidates::all(wires)
+            self.unindexed_interaction_candidates(wires, allow_pending_empty, snap)
         }
     }
 
@@ -11090,8 +11198,16 @@ impl Scene {
         bounds: iced::Rectangle,
         radius_px: f32,
     ) -> crate::scene::pick::interaction_index::InteractionCandidates {
-        self.interaction_snap_candidates_near_impl(
-            wires, cursor, view_rot, eye, bounds, radius_px, false,
+        self.interaction_candidates_near_impl(
+            wires,
+            cursor,
+            view_rot,
+            eye,
+            bounds,
+            radius_px,
+            false,
+            false,
+            Some(SnapQueryCategory::Full),
         )
     }
 
@@ -11107,8 +11223,16 @@ impl Scene {
         bounds: iced::Rectangle,
         radius_px: f32,
     ) -> crate::scene::pick::interaction_index::InteractionCandidates {
-        self.interaction_snap_candidates_near_impl(
-            wires, cursor, view_rot, eye, bounds, radius_px, true,
+        self.interaction_candidates_near_impl(
+            wires,
+            cursor,
+            view_rot,
+            eye,
+            bounds,
+            radius_px,
+            false,
+            true,
+            Some(SnapQueryCategory::DiscretePreview),
         )
     }
 
@@ -11130,6 +11254,7 @@ impl Scene {
             radius_px,
             self.document.header.lineweight_display,
             false,
+            None,
         )
     }
 
@@ -11151,6 +11276,7 @@ impl Scene {
             radius_px,
             self.document.header.lineweight_display,
             true,
+            None,
         )
     }
 
@@ -11164,26 +11290,33 @@ impl Scene {
         radius_px: f32,
         include_line_weight: bool,
         allow_pending_empty: bool,
-    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
+        snap: Option<SnapQueryCategory>,
+    ) -> InteractionCandidates {
         if !self.interaction_source_is_resident(&wires, bounds.height)
             || !self.interaction_index_worthwhile(&wires)
         {
-            return crate::scene::pick::interaction_index::InteractionCandidates::all(wires)
-                .materialize_stubs();
+            return InteractionCandidates::all(wires).materialize_stubs();
         }
-        let radius_px = self.indexed_interaction_pick_radius(
-            &wires,
-            radius_px,
-            bounds.height,
-            include_line_weight,
-        );
+        // Snap features are indexed at their own points; only picking grows
+        // the aperture to cover screen-sized markers and wide strokes.
+        let radius_px = if snap.is_some() {
+            radius_px
+        } else {
+            self.indexed_interaction_pick_radius(
+                &wires,
+                radius_px,
+                bounds.height,
+                include_line_weight,
+            )
+        };
         let flat_ortho = view_rot.z_axis.x.abs() < 1e-9
             && view_rot.z_axis.y.abs() < 1e-9
             && (view_rot.w_axis.w - 1.0).abs() < 1e-6;
         if !flat_ortho {
             let clip = view_rot * (cursor - eye).as_vec3().extend(1.0);
             if !clip.is_finite() || clip.w <= 1e-6 {
-                return crate::scene::pick::interaction_index::InteractionCandidates::all(wires)
+                return self
+                    .unindexed_interaction_candidates(wires, allow_pending_empty, snap)
                     .materialize_stubs();
             }
             let ndc = clip.truncate() / clip.w;
@@ -11204,6 +11337,7 @@ impl Scene {
                 eye,
                 bounds,
                 allow_pending_empty,
+                snap,
             );
         }
         let world_x_px = ((view_rot.x_axis.x * bounds.width * 0.5).powi(2)
@@ -11214,7 +11348,8 @@ impl Scene {
         .sqrt();
         let s = world_x_px.min(world_y_px);
         if s <= 1e-6 {
-            return crate::scene::pick::interaction_index::InteractionCandidates::all(wires)
+            return self
+                .unindexed_interaction_candidates(wires, allow_pending_empty, snap)
                 .materialize_stubs();
         }
         let radius = radius_px.max(0.0) as f64 / s as f64;
@@ -11224,389 +11359,7 @@ impl Scene {
             cursor.x + radius,
             cursor.y + radius,
         ];
-        self.indexed_interaction_candidates_xy(wires, query, allow_pending_empty, false)
-    }
-
-    fn interaction_snap_candidates_near_impl(
-        &self,
-        wires: Arc<Vec<WireModel>>,
-        cursor: glam::DVec3,
-        view_rot: glam::Mat4,
-        eye: glam::DVec3,
-        bounds: iced::Rectangle,
-        radius_px: f32,
-        allow_pending_empty: bool,
-    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
-        use crate::scene::pick::interaction_index::InteractionCandidates;
-
-        if !self.interaction_source_is_resident(&wires, bounds.height)
-            || !self.interaction_index_worthwhile(&wires)
-        {
-            return InteractionCandidates::all(wires).materialize_stubs();
-        }
-        let flat_ortho = view_rot.z_axis.x.abs() < 1e-9
-            && view_rot.z_axis.y.abs() < 1e-9
-            && (view_rot.w_axis.w - 1.0).abs() < 1e-6;
-        if !flat_ortho {
-            let clip = view_rot * (cursor - eye).as_vec3().extend(1.0);
-            if !clip.is_finite() || clip.w <= 1e-6 {
-                return if allow_pending_empty && wires.len() > 512 {
-                    InteractionCandidates::pending(wires)
-                } else {
-                    InteractionCandidates::all(wires).materialize_stubs()
-                };
-            }
-            let ndc = clip.truncate() / clip.w;
-            let screen = iced::Point::new(
-                (ndc.x + 1.0) * 0.5 * bounds.width,
-                (1.0 - ndc.y) * 0.5 * bounds.height,
-            );
-            let radius = radius_px.max(0.0);
-            return self.indexed_snap_candidates_screen(
-                wires,
-                [
-                    screen.x - radius,
-                    screen.y - radius,
-                    screen.x + radius,
-                    screen.y + radius,
-                ],
-                view_rot,
-                eye,
-                bounds,
-                allow_pending_empty,
-            );
-        }
-
-        let world_x_px = ((view_rot.x_axis.x * bounds.width * 0.5).powi(2)
-            + (view_rot.x_axis.y * bounds.height * 0.5).powi(2))
-        .sqrt();
-        let world_y_px = ((view_rot.y_axis.x * bounds.width * 0.5).powi(2)
-            + (view_rot.y_axis.y * bounds.height * 0.5).powi(2))
-        .sqrt();
-        let scale = world_x_px.min(world_y_px);
-        if scale <= 1e-6 {
-            return if allow_pending_empty && wires.len() > 512 {
-                InteractionCandidates::pending(wires)
-            } else {
-                InteractionCandidates::all(wires).materialize_stubs()
-            };
-        }
-        let radius = radius_px.max(0.0) as f64 / scale as f64;
-        self.indexed_snap_candidates_xy(
-            wires,
-            [
-                cursor.x - radius,
-                cursor.y - radius,
-                cursor.x + radius,
-                cursor.y + radius,
-            ],
-            allow_pending_empty,
-        )
-    }
-
-    fn indexed_snap_candidates_xy(
-        &self,
-        wires: Arc<Vec<WireModel>>,
-        aabb: [f64; 4],
-        allow_pending_empty: bool,
-    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
-        use crate::scene::pick::interaction_index::InteractionCandidates;
-        use crate::scene::pick::interaction_index::SnapQueryCategory;
-        let query_started = crate::perf::enabled().then(iced::time::Instant::now);
-        let category = if allow_pending_empty {
-            SnapQueryCategory::DiscretePreview
-        } else {
-            SnapQueryCategory::Full
-        };
-
-        let overlay_lookup_started = crate::perf::enabled().then(iced::time::Instant::now);
-        let overlay = self.interaction_overlay_base();
-        let overlay_lookup_ms = crate::perf::elapsed_ms(overlay_lookup_started);
-        if let Some((base_epoch, base, changes)) = overlay {
-            if changes.is_empty() {
-                if let Some(source_wires) = self.interaction_source_for_index(base_epoch, &base) {
-                    let result = base.query_snap_xy_with_category(source_wires, aabb, category);
-                    return Self::finish_snap_query_candidates(
-                        result,
-                        query_started,
-                        "xy",
-                        allow_pending_empty,
-                        "overlay-base",
-                    );
-                }
-            }
-            let base_keys_started = crate::perf::enabled().then(iced::time::Instant::now);
-            let base_parts = base.snap_candidate_parts_xy_for_overlay(aabb, category);
-            let keys = base.snap_candidate_part_keys(&base_parts);
-            let base_keys_ms = crate::perf::elapsed_ms(base_keys_started);
-            let changed_index_started = crate::perf::enabled().then(iced::time::Instant::now);
-            let (changed_wires, changed_index) =
-                self.interaction_overlay_changed_index(base_epoch, &changes);
-            let changed_index_ms = crate::perf::elapsed_ms(changed_index_started);
-            let changed_keys_started = crate::perf::enabled().then(iced::time::Instant::now);
-            let changed_parts = changed_index.snap_candidate_parts_xy_for_overlay(aabb, category);
-            let changed_keys = changed_index.snap_candidate_part_keys(&changed_parts);
-            let changed_key_count = changed_keys.len();
-            let changed_keys_ms = crate::perf::elapsed_ms(changed_keys_started);
-            let local_started = crate::perf::enabled().then(iced::time::Instant::now);
-            let (local, base_slots, changed_slots) = self.interaction_overlay_wires(
-                keys.iter().copied(),
-                changed_keys,
-                &changes,
-                &changed_wires,
-            );
-            let local_ms = crate::perf::elapsed_ms(local_started);
-            let local_wire_count = local.len();
-            let remap_started = crate::perf::enabled().then(iced::time::Instant::now);
-            let mut result = base.query_remapped_snap_xy_from_parts_with_category(
-                Arc::clone(&local),
-                &base_slots,
-                base_parts,
-                aabb,
-                category,
-            );
-            result.extend_indexed(
-                changed_index.query_remapped_snap_xy_from_parts_with_category(
-                    local,
-                    &changed_slots,
-                    changed_parts,
-                    aabb,
-                    category,
-                ),
-            );
-            let remap_ms = crate::perf::elapsed_ms(remap_started);
-            if crate::perf::enabled() {
-                crate::perf_record!(
-                    "[perf] snap-overlay-detail path=xy lookup={overlay_lookup_ms:.2}ms base_keys={base_keys_ms:.2}ms changed_index={changed_index_ms:.2}ms changed_keys={changed_keys_ms:.2}ms local={local_ms:.2}ms remap={remap_ms:.2}ms changes={} base_candidates={} changed_source_wires={} changed_candidates={} local_wires={}",
-                    changes.len(),
-                    keys.len(),
-                    changed_wires.len(),
-                    changed_key_count,
-                    local_wire_count,
-                );
-            }
-            return Self::finish_snap_query_candidates(
-                result,
-                query_started,
-                "xy",
-                allow_pending_empty,
-                "overlay",
-            );
-        }
-        if let Some(index) = self.cached_interaction_index(&wires) {
-            let result = index.query_snap_xy_with_category(wires, aabb, category);
-            return Self::finish_snap_query_candidates(
-                result,
-                query_started,
-                "xy",
-                allow_pending_empty,
-                "cached-index",
-            );
-        }
-        let fallback_source = if allow_pending_empty && wires.len() > 512 {
-            "pending-empty"
-        } else {
-            "fallback-all"
-        };
-        let result = if allow_pending_empty && wires.len() > 512 {
-            InteractionCandidates::pending(wires)
-        } else {
-            InteractionCandidates::all(wires)
-        };
-        Self::finish_snap_query_candidates(
-            result,
-            query_started,
-            "xy",
-            allow_pending_empty,
-            fallback_source,
-        )
-    }
-
-    fn indexed_snap_candidates_screen(
-        &self,
-        wires: Arc<Vec<WireModel>>,
-        screen_rect: [f32; 4],
-        view_rot: glam::Mat4,
-        eye: glam::DVec3,
-        bounds: iced::Rectangle,
-        allow_pending_empty: bool,
-    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
-        use crate::scene::pick::interaction_index::InteractionCandidates;
-        use crate::scene::pick::interaction_index::SnapQueryCategory;
-        let query_started = crate::perf::enabled().then(iced::time::Instant::now);
-        let category = if allow_pending_empty {
-            SnapQueryCategory::DiscretePreview
-        } else {
-            SnapQueryCategory::Full
-        };
-
-        let overlay_lookup_started = crate::perf::enabled().then(iced::time::Instant::now);
-        let overlay = self.interaction_overlay_base();
-        let overlay_lookup_ms = crate::perf::elapsed_ms(overlay_lookup_started);
-        if let Some((base_epoch, base, changes)) = overlay {
-            if changes.is_empty() {
-                if let Some(source_wires) = self.interaction_source_for_index(base_epoch, &base) {
-                    let result = base.query_snap_screen_with_category(
-                        source_wires,
-                        screen_rect,
-                        view_rot,
-                        eye,
-                        bounds,
-                        category,
-                    );
-                    return Self::finish_snap_query_candidates(
-                        result,
-                        query_started,
-                        "screen",
-                        allow_pending_empty,
-                        "overlay-base",
-                    );
-                }
-            }
-            let base_keys_started = crate::perf::enabled().then(iced::time::Instant::now);
-            let base_parts = base.snap_candidate_parts_screen_for_overlay(
-                screen_rect,
-                view_rot,
-                eye,
-                bounds,
-                category,
-            );
-            let keys = base.snap_candidate_part_keys(&base_parts);
-            let base_keys_ms = crate::perf::elapsed_ms(base_keys_started);
-            let changed_index_started = crate::perf::enabled().then(iced::time::Instant::now);
-            let (changed_wires, changed_index) =
-                self.interaction_overlay_changed_index(base_epoch, &changes);
-            let changed_index_ms = crate::perf::elapsed_ms(changed_index_started);
-            let changed_keys_started = crate::perf::enabled().then(iced::time::Instant::now);
-            let changed_parts = changed_index.snap_candidate_parts_screen_for_overlay(
-                screen_rect,
-                view_rot,
-                eye,
-                bounds,
-                category,
-            );
-            let changed_keys = changed_index.snap_candidate_part_keys(&changed_parts);
-            let changed_key_count = changed_keys.len();
-            let changed_keys_ms = crate::perf::elapsed_ms(changed_keys_started);
-            let local_started = crate::perf::enabled().then(iced::time::Instant::now);
-            let (local, base_slots, changed_slots) = self.interaction_overlay_wires(
-                keys.iter().copied(),
-                changed_keys,
-                &changes,
-                &changed_wires,
-            );
-            let local_ms = crate::perf::elapsed_ms(local_started);
-            let local_wire_count = local.len();
-            let remap_started = crate::perf::enabled().then(iced::time::Instant::now);
-            let mut result = base.query_remapped_snap_screen_from_parts_with_category(
-                Arc::clone(&local),
-                &base_slots,
-                base_parts,
-                screen_rect,
-                view_rot,
-                eye,
-                bounds,
-                category,
-            );
-            result.extend_indexed(
-                changed_index.query_remapped_snap_screen_from_parts_with_category(
-                    local,
-                    &changed_slots,
-                    changed_parts,
-                    screen_rect,
-                    view_rot,
-                    eye,
-                    bounds,
-                    category,
-                ),
-            );
-            let remap_ms = crate::perf::elapsed_ms(remap_started);
-            if crate::perf::enabled() {
-                crate::perf_record!(
-                    "[perf] snap-overlay-detail path=screen lookup={overlay_lookup_ms:.2}ms base_keys={base_keys_ms:.2}ms changed_index={changed_index_ms:.2}ms changed_keys={changed_keys_ms:.2}ms local={local_ms:.2}ms remap={remap_ms:.2}ms changes={} base_candidates={} changed_source_wires={} changed_candidates={} local_wires={}",
-                    changes.len(),
-                    keys.len(),
-                    changed_wires.len(),
-                    changed_key_count,
-                    local_wire_count,
-                );
-            }
-            return Self::finish_snap_query_candidates(
-                result,
-                query_started,
-                "screen",
-                allow_pending_empty,
-                "overlay",
-            );
-        }
-        if let Some(index) = self.cached_interaction_index(&wires) {
-            let result = index.query_snap_screen_with_category(
-                wires,
-                screen_rect,
-                view_rot,
-                eye,
-                bounds,
-                category,
-            );
-            return Self::finish_snap_query_candidates(
-                result,
-                query_started,
-                "screen",
-                allow_pending_empty,
-                "cached-index",
-            );
-        }
-        let fallback_source = if allow_pending_empty && wires.len() > 512 {
-            "pending-empty"
-        } else {
-            "fallback-all"
-        };
-        let result = if allow_pending_empty && wires.len() > 512 {
-            InteractionCandidates::pending(wires)
-        } else {
-            InteractionCandidates::all(wires)
-        };
-        Self::finish_snap_query_candidates(
-            result,
-            query_started,
-            "screen",
-            allow_pending_empty,
-            fallback_source,
-        )
-    }
-
-    fn finish_snap_query_candidates(
-        candidates: crate::scene::pick::interaction_index::InteractionCandidates,
-        query_started: Option<iced::time::Instant>,
-        path: &'static str,
-        preview: bool,
-        source: &'static str,
-    ) -> crate::scene::pick::interaction_index::InteractionCandidates {
-        let perf = query_started.is_some();
-        let query_ms = crate::perf::elapsed_ms(query_started);
-        let pre_wires = candidates.len();
-        let (stub_entries, segment_refs, snap_points, key_vertices, key_segments) = if perf {
-            (
-                Some(candidates.iter().filter(|wire| wire.stub.is_some()).count()),
-                candidates.segments().map_or(0, |items| items.len()),
-                candidates.snap_points().map_or(0, |items| items.len()),
-                candidates.key_vertices().map_or(0, |items| items.len()),
-                candidates.key_segments().map_or(0, |items| items.len()),
-            )
-        } else {
-            (None, 0, 0, 0, 0)
-        };
-        let materialize_started = perf.then(iced::time::Instant::now);
-        let candidates = candidates.materialize_stubs();
-        let materialize_ms = crate::perf::elapsed_ms(materialize_started);
-        let post_wires = candidates.len();
-        if perf && query_ms + materialize_ms >= 1.0 {
-            crate::perf_record!(
-                "[perf] snap-query-detail path={path} kind={} source={source} query={query_ms:.2}ms materialize={materialize_ms:.2}ms pre_wires={pre_wires} stub_entries={stub_entries:?} post_wires={post_wires} segments={segment_refs} snap_points={snap_points} key_vertices={key_vertices} key_segments={key_segments}",
-                if preview { "preview" } else { "full" },
-            );
-        }
-        candidates
+        self.indexed_interaction_candidates_xy(wires, query, allow_pending_empty, false, snap)
     }
 
     /// Shared rectangular broad phase for box/lasso/fence and command windows.
@@ -11655,6 +11408,7 @@ impl Scene {
                 [aabb[0] - pad, aabb[1] - pad, aabb[2] + pad, aabb[3] + pad],
                 false,
                 true,
+                None,
             )
         } else {
             self.indexed_interaction_candidates_screen(
@@ -11669,6 +11423,7 @@ impl Scene {
                 eye,
                 bounds,
                 false,
+                None,
             )
         }
     }
@@ -11725,7 +11480,7 @@ impl Scene {
 
     pub fn interaction_handles_in_world_aabb(&self, aabb: [f64; 4]) -> HashSet<Handle> {
         let wires = self.hit_test_wires();
-        let candidates = self.indexed_interaction_candidates_xy(wires, aabb, false, false);
+        let candidates = self.indexed_interaction_candidates_xy(wires, aabb, false, false, None);
         let mut handles: HashSet<Handle> = candidates
             .iter()
             .filter_map(|wire| Self::handle_from_wire_name(&wire.name))
