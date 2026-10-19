@@ -2724,7 +2724,6 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
         // as wire tessellation in wires_for_block). Only subtract in model space.
         let wo = if is_paper { [0.0f64; 3] } else { [0.0_f64; 3] };
         let (new_handle, new_grips, new_grip_handles) = {
-            let annotation_scale_handle = self.tabs[i].scene.displayed_annotation_scale_handle();
             let selected = self.tabs[i].scene.selected_entities();
             let single_handle = (selected.len() == 1
                 && !self.tabs[i].scene.is_layer_locked(selected[0].0)
@@ -2740,136 +2739,11 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
             } else {
                 selected
             };
-            for (handle, entity) in selected {
-                if self.tabs[i].scene.is_layer_locked(handle)
-                    || self.tabs[i].scene.is_reference_only(handle)
-                {
-                    continue;
-                }
-                let contextual = crate::scene::annotative::entity_for_annotation_context(
-                    &self.tabs[i].scene.document,
-                    entity,
-                    annotation_scale_handle,
-                );
-                let mut entity_grips = dispatch::grips(contextual.as_ref());
-                if let codec::EntityType::Insert(insert) = contextual.as_ref() {
-                    entity_grips = crate::entities::insert::visible_attribute_grips(
-                        &self.tabs[i].scene.document,
-                        insert,
-                        self.tabs[i].scene.annotation_scale,
-                    );
-                }
-                if crate::scene::model::solid_history::has_specialized_primitive_properties(
-                    &self.tabs[i].scene.document,
-                    handle,
-                ) {
-                    entity_grips.clear();
-                }
-                // Dimension::grips() cannot see the document, so an automatic dimension
-                // text grip cannot resolve its real DIMSTYLE/annotation-scaled position
-                // there. Correct it here, where both the document and displayed annotation
-                // scale are available.
-                if let codec::EntityType::Dimension(dim) = contextual.as_ref() {
-                    if matches!(
-                        &**dim,
-                        codec::entities::Dimension::Linear(_)
-                            | codec::entities::Dimension::Aligned(_)
-                    ) && !dim.base().text_user_positioned
-                    {
-                        let anno_scale = annotation_scale_handle
-                            .and_then(|handle| {
-                                match self.tabs[i].scene.document.objects.get(&handle) {
-                                    Some(codec::objects::ObjectType::Scale(scale)) => Some(
-                                        scale.inverse_factor()
-                                            / self.tabs[i].scene.annotation_scale_unit_factor(),
-                                    ),
-                                    _ => None,
-                                }
-                            })
-                            .unwrap_or(self.tabs[i].scene.annotation_scale as f64);
-
-                        if let Some(position) =
-                            crate::entities::dimension::dimension_text_grip_position(
-                                dim,
-                                &self.tabs[i].scene.document,
-                                anno_scale,
-                            )
-                        {
-                            // The text grip is the final native grip of Linear/Aligned dims.
-                            // While the text is still automatic, make this a point/stretch grip
-                            // rather than a midpoint-translate grip. That makes the first drag use
-                            // the displayed automatic position as its absolute starting point instead
-                            // of translating the stale DWG text_middle_point.
-                            if let Some(text_grip) = entity_grips.last_mut() {
-                                text_grip.world =
-                                    glam::DVec3::new(position.x, position.y, position.z);
-                                text_grip.is_midpoint = false;
-                            }
-                        }
-                    }
-                }
-                let contextual_dimension =
-                    crate::entities::dimension::as_dimension(contextual.as_ref());
-                let dynamic_angle = contextual_dimension
-                    .filter(|dim| {
-                        matches!(
-                            dim,
-                            codec::entities::Dimension::Angular2Ln(_)
-                                | codec::entities::Dimension::Angular3Pt(_)
-                        )
-                    })
-                    .filter(|_| self.tabs[i].scene.is_dynamic_dimension(handle));
-                if let Some(dim) = dynamic_angle {
-                    // A dynamic angle shows a triangle at each end of its arc
-                    // pointing away from it, and squares at the arc point and
-                    // the text — nothing on the sides.
-                    let (arc_id, text_id) =
-                        if matches!(dim, codec::entities::Dimension::Angular2Ln(_)) {
-                            (4, 5)
-                        } else {
-                            (3, 4)
-                        };
-                    if let Some(ends) = crate::entities::dimension::angular_arc_ends(dim) {
-                        entity_grips.retain(|grip| grip.id == arc_id || grip.id == text_id);
-                        for (point, away) in ends {
-                            entity_grips.insert(
-                                0,
-                                crate::entities::common::oriented_triangle_grip(
-                                    arc_id, point, away,
-                                ),
-                            );
-                        }
-                    }
-                } else if self.tabs[i].scene.is_dynamic_dimension(handle) {
-                    // A dynamic dimension shows the reference's grips: a
-                    // triangle at each constraint point aimed at the other
-                    // one, and the text square — no dimension line grip.
-                    let points: Vec<glam::DVec3> = entity_grips
-                        .iter()
-                        .filter(|grip| grip.id <= 1)
-                        .map(|grip| grip.world)
-                        .collect();
-                    entity_grips.retain(|grip| grip.id != 2);
-                    for grip in &mut entity_grips {
-                        if grip.id <= 1 {
-                            let other = points.get(1 - grip.id).copied().unwrap_or(grip.world);
-                            let dir = (other - grip.world).normalize_or(glam::DVec3::X);
-                            *grip = crate::entities::common::oriented_triangle_grip(
-                                grip.id, grip.world, dir,
-                            );
-                        }
-                    }
-                }
-                entity_grips.extend(crate::scene::model::solid_history::primitive_grips(
-                    &self.tabs[i].scene.document,
-                    handle,
-                ));
-                for mut grip in entity_grips {
-                    // Subtract in f64: at UTM magnitudes an f32 cast before
-                    // the offset costs ~1 unit and draws the grip off the wire.
-                    grip.world.x -= wo[0];
-                    grip.world.y -= wo[1];
-                    grip.world.z -= wo[2];
+            for (handle, _entity) in selected {
+                // entity_grips_for errs only for a missing tab/entity; inside
+                // the selection walk the entity exists, so a defensive empty
+                // keeps the cache build total.
+                for grip in self.entity_grips_for(i, handle).unwrap_or_default() {
                     handles.push(handle);
                     grips.push(grip);
                 }
@@ -2917,6 +2791,161 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
         self.refresh_table_grip(wo);
         self.refresh_test_action_grips(wo);
         self.refresh_authoring_grips(wo);
+    }
+
+    /// Enumerate one entity's built-in grips exactly as the selection cache
+    /// builder and the interactive viewport produce them for that entity —
+    /// the ONE shared core behind the viewport's selection cache, the
+    /// plugin grip read (API v11) and the automation `grips` op.
+    ///
+    /// Generic over every entity type: the answer is whatever the entity's
+    /// own grip producers declare. Reference-only entities and entities on
+    /// locked layers answer an empty list — the same answer the viewport
+    /// would give (grips exist only for selected, unlocked, editable
+    /// entities). The selection-scale grip budget does NOT apply here: it
+    /// bounds the on-screen total for multi-selections, not the per-entity
+    /// universe.
+    pub(super) fn entity_grips_for(
+        &self,
+        i: usize,
+        handle: Handle,
+    ) -> Result<Vec<GripDef>, String> {
+        if self.tabs.len() <= i {
+            return Err(format!("tab {i} does not exist"));
+        }
+        let Some(entity) = self.tabs[i].scene.document.get_entity(handle) else {
+            return Err(format!("entity {handle} does not exist"));
+        };
+        if self.tabs[i].scene.is_layer_locked(handle)
+            || self.tabs[i].scene.is_reference_only(handle)
+        {
+            return Ok(Vec::new());
+        }
+        let annotation_scale_handle = self.tabs[i].scene.displayed_annotation_scale_handle();
+        // Paper-space entity coordinates are NOT offset by world_offset (same
+        // rule as wire tessellation in wires_for_block). Only subtract in
+        // model space.
+        let is_paper = self.tabs[i].scene.current_layout != "Model";
+        let wo = if is_paper { [0.0f64; 3] } else { [0.0_f64; 3] };
+
+        let contextual = crate::scene::annotative::entity_for_annotation_context(
+            &self.tabs[i].scene.document,
+            entity,
+            annotation_scale_handle,
+        );
+        let mut entity_grips = dispatch::grips(contextual.as_ref());
+        if let codec::EntityType::Insert(insert) = contextual.as_ref() {
+            entity_grips = crate::entities::insert::visible_attribute_grips(
+                &self.tabs[i].scene.document,
+                insert,
+                self.tabs[i].scene.annotation_scale,
+            );
+        }
+        if crate::scene::model::solid_history::has_specialized_primitive_properties(
+            &self.tabs[i].scene.document,
+            handle,
+        ) {
+            entity_grips.clear();
+        }
+        // Dimension::grips() cannot see the document, so an automatic dimension
+        // text grip cannot resolve its real DIMSTYLE/annotation-scaled position
+        // there. Correct it here, where both the document and displayed annotation
+        // scale are available.
+        if let codec::EntityType::Dimension(dim) = contextual.as_ref() {
+            if matches!(
+                &**dim,
+                codec::entities::Dimension::Linear(_) | codec::entities::Dimension::Aligned(_)
+            ) && !dim.base().text_user_positioned
+            {
+                let anno_scale = annotation_scale_handle
+                    .and_then(
+                        |handle| match self.tabs[i].scene.document.objects.get(&handle) {
+                            Some(codec::objects::ObjectType::Scale(scale)) => Some(
+                                scale.inverse_factor()
+                                    / self.tabs[i].scene.annotation_scale_unit_factor(),
+                            ),
+                            _ => None,
+                        },
+                    )
+                    .unwrap_or(self.tabs[i].scene.annotation_scale as f64);
+
+                if let Some(position) = crate::entities::dimension::dimension_text_grip_position(
+                    dim,
+                    &self.tabs[i].scene.document,
+                    anno_scale,
+                ) {
+                    // The text grip is the final native grip of Linear/Aligned
+                    // dims. While the text is still automatic, make this a
+                    // point/stretch grip rather than a midpoint-translate
+                    // grip. That makes the first drag use the displayed
+                    // automatic position as its absolute starting point instead
+                    // of translating the stale DWG text_middle_point.
+                    if let Some(text_grip) = entity_grips.last_mut() {
+                        text_grip.world = glam::DVec3::new(position.x, position.y, position.z);
+                        text_grip.is_midpoint = false;
+                    }
+                }
+            }
+        }
+        let contextual_dimension = crate::entities::dimension::as_dimension(contextual.as_ref());
+        let dynamic_angle = contextual_dimension
+            .filter(|dim| {
+                matches!(
+                    dim,
+                    codec::entities::Dimension::Angular2Ln(_)
+                        | codec::entities::Dimension::Angular3Pt(_)
+                )
+            })
+            .filter(|_| self.tabs[i].scene.is_dynamic_dimension(handle));
+        if let Some(dim) = dynamic_angle {
+            // A dynamic angle shows a triangle at each end of its arc
+            // pointing away from it, and squares at the arc point and
+            // the text — nothing on the sides.
+            let (arc_id, text_id) = if matches!(dim, codec::entities::Dimension::Angular2Ln(_)) {
+                (4, 5)
+            } else {
+                (3, 4)
+            };
+            if let Some(ends) = crate::entities::dimension::angular_arc_ends(dim) {
+                entity_grips.retain(|grip| grip.id == arc_id || grip.id == text_id);
+                for (point, away) in ends {
+                    entity_grips.insert(
+                        0,
+                        crate::entities::common::oriented_triangle_grip(arc_id, point, away),
+                    );
+                }
+            }
+        } else if self.tabs[i].scene.is_dynamic_dimension(handle) {
+            // A dynamic dimension shows the reference's grips: a
+            // triangle at each constraint point aimed at the other
+            // one, and the text square — no dimension line grip.
+            let points: Vec<glam::DVec3> = entity_grips
+                .iter()
+                .filter(|grip| grip.id <= 1)
+                .map(|grip| grip.world)
+                .collect();
+            entity_grips.retain(|grip| grip.id != 2);
+            for grip in &mut entity_grips {
+                if grip.id <= 1 {
+                    let other = points.get(1 - grip.id).copied().unwrap_or(grip.world);
+                    let dir = (other - grip.world).normalize_or(glam::DVec3::X);
+                    *grip =
+                        crate::entities::common::oriented_triangle_grip(grip.id, grip.world, dir);
+                }
+            }
+        }
+        entity_grips.extend(crate::scene::model::solid_history::primitive_grips(
+            &self.tabs[i].scene.document,
+            handle,
+        ));
+        for grip in &mut entity_grips {
+            // Subtract in f64: at UTM magnitudes an f32 cast before
+            // the offset costs ~1 unit and draws the grip off the wire.
+            grip.world.x -= wo[0];
+            grip.world.y -= wo[1];
+            grip.world.z -= wo[2];
+        }
+        Ok(entity_grips)
     }
 
     pub(super) fn property_target_handles(&self, i: usize) -> Vec<Handle> {

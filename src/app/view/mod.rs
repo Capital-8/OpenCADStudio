@@ -828,11 +828,40 @@ bg={bg_ms:.1}ms n={view_count}"
                             is_hot,
                             is_hovered,
                             dir,
+                            is_plugin: false,
                         }
                     })
                     .collect()
             } else {
                 vec![]
+            };
+            // API v11: plugin-declared custom grips render in the same overlay
+            // layer with a distinct accent (always-visible display state of a
+            // live declaring plugin; hover highlighting through the same
+            // pipeline; the dragged grip is hot). Culling is the per-tab
+            // uniform grid's view-rect query, not a scan of every grip.
+            #[cfg(not(target_arch = "wasm32"))]
+            let grips = {
+                let mut grips = grips;
+                if !tab.plugin_grips.is_empty() {
+                    for (candidate, screen) in self.plugin_grips_in_view(i) {
+                        grips.push(crate::ui::overlay::GripMarker {
+                            pos: screen,
+                            shape: candidate.shape,
+                            is_hot: tab.active_plugin_grip.as_ref().is_some_and(|active| {
+                                active.plugin == candidate.plugin
+                                    && active.grip_id == candidate.grip_id
+                            }),
+                            is_hovered: self.plugin_grip_hover.as_ref().is_some_and(|hover| {
+                                hover.plugin == candidate.plugin
+                                    && hover.grip_id == candidate.grip_id
+                            }),
+                            dir: None,
+                            is_plugin: true,
+                        });
+                    }
+                }
+                grips
             };
             let control_polygon = tab.selected_handle.and_then(|handle| {
                 let spline = match tab.scene.document.get_entity(handle) {

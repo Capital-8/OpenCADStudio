@@ -1106,6 +1106,24 @@ impl OpenCADStudio {
     pub(in crate::app) fn update_grip_hover(&mut self, i: usize, p: iced::Point) {
         const HOVER_OPEN_MS: u128 = 1_000;
         const POPUP_DISMISS_PX: f32 = 80.0;
+        // API v11: plugin-declared custom grips hover-highlight through the
+        // same pipeline — and, per the always-visible policy, they hover
+        // without any selection. No hover while any drag (built-in or
+        // custom) or command runs.
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.tabs[i].active_plugin_grip.is_some()
+            || self.tabs[i].active_grip.is_some()
+            || self.tabs[i].active_cmd.is_some()
+        {
+            self.plugin_grip_hover = None;
+        } else {
+            self.plugin_grip_hover = self.hit_plugin_grip(i, p).map(|candidate| {
+                crate::plugin::grip_points::PluginGripHover {
+                    plugin: candidate.plugin,
+                    grip_id: candidate.grip_id,
+                }
+            });
+        }
         if self.tabs[i].active_cmd.is_some()
             || self.tabs[i].active_grip.is_some()
             || self.tabs[i].selected_grips.is_empty()
@@ -1732,6 +1750,66 @@ impl OpenCADStudio {
             y: p_full.y - tile_b.y,
         };
         let vp_size = (tile_b.width, tile_b.height);
+
+        // ── Custom plugin-grip drag (API v11) ────────────────────────────
+        // The plugin's preview is the only live feedback: no host ghost, no
+        // entity mutation, the anchor entity never moves by host action. The
+        // point is computed like a built-in drag's (drafting plane through
+        // the grip's own elevation), never snapped (plugin semantics), and
+        // the declared axis is a HARD constraint.
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(active) = self.tabs[i].active_plugin_grip.clone() {
+            let (vw, vh) = vp_size;
+            let bounds = iced::Rectangle {
+                x: 0.0,
+                y: 0.0,
+                width: vw,
+                height: vh,
+            };
+            let grip_plane = self.tabs[i].editing_model_space().then(|| {
+                let normal = self.tabs[i]
+                    .active_ucs
+                    .as_ref()
+                    .map_or(glam::DVec3::Z, ucs_z_axis);
+                (normal, active.origin_world)
+            });
+            let pick = |cam: &crate::scene::view::camera::Camera| match grip_plane {
+                Some((normal, origin))
+                    if (cam.rotation * glam::Vec3::NEG_Z)
+                        .as_dvec3()
+                        .dot(normal)
+                        .abs()
+                        > 0.05 =>
+                {
+                    cam.pick_on_plane(p, bounds, normal.as_vec3(), origin)
+                }
+                _ => cam.pick_on_target_plane(p, bounds),
+            };
+            let raw = match &edit_cam {
+                Some(cam) => pick(cam),
+                None => {
+                    let paper = pick(&self.tabs[i].scene.camera.borrow());
+                    self.tabs[i].scene.paper_to_model(paper)
+                }
+            };
+            let point = match active.axis {
+                Some(axis) => {
+                    let (view_rot, eye) = match &edit_cam {
+                        Some(cam) => (cam.view_proj_rte(bounds), cam.eye()),
+                        None => {
+                            let cam = self.tabs[i].scene.camera.borrow();
+                            (cam.view_proj_rte(bounds), cam.eye())
+                        }
+                    };
+                    cursor_on_projected_axis(p, bounds, view_rot, eye, active.origin_world, axis)
+                        .unwrap_or(raw)
+                }
+                None => raw,
+            };
+            self.tabs[i].last_cursor_world = point;
+            self.tabs[i].last_cursor_screen = p_full;
+            return self.move_plugin_grip_drag(i, point);
+        }
 
         // ── Grip drag ─────────────────────────────────────────────
         if let Some(grip) = self.tabs[i].active_grip.clone() {
@@ -4537,6 +4615,25 @@ impl OpenCADStudio {
             }
         }
 
+        // API v11: plugin-declared custom grips engage on press regardless of
+        // the selection (always-visible display state). Grips are tested
+        // before any wire pick, so a custom grip visually coincident with its
+        // own reference-only marker — or any click-through geometry — stays
+        // fully hittable and wins the hit.
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.tabs[i].active_cmd.is_none() && self.tabs[i].active_grip.is_none() {
+            if let Some(candidate) = self.hit_plugin_grip(i, p) {
+                self.grip_hover = None;
+                self.grip_popup = None;
+                self.tabs[i]
+                    .scene
+                    .selection
+                    .borrow_mut()
+                    .clear_left_selection_gesture();
+                return self.begin_plugin_grip_drag(i, &candidate);
+            }
+        }
+
         // Navigation, overlays and grips retain priority over document hyperlinks.
         if self.ctrl_down
             && self.tabs[i].active_cmd.is_none()
@@ -4773,6 +4870,20 @@ impl OpenCADStudio {
             );
             (p, is_click, sel.input.left_down)
         };
+
+        // Custom plugin-grip drag (API v11): mouse-up settles — the plugin
+        // applies its own edits inside its own undo scope; the host records
+        // nothing. A bare click (no move delivered) still settles: the
+        // plugin decides what a no-move settle means (typically nothing,
+        // zero writes, zero undo steps).
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.tabs[i].active_plugin_grip.is_some() {
+            {
+                let mut sel = self.tabs[i].scene.selection.borrow_mut();
+                sel.clear_left_selection_gesture();
+            }
+            return self.settle_plugin_grip_drag();
+        }
 
         // Grip editing: click-move-click (plus legacy press-drag).
         // The grip engages on press (active_grip set). This release
