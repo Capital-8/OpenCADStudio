@@ -9015,7 +9015,7 @@ impl Scene {
                     // lit. White edges on a white sheet hid a wireframe solid
                     // in a layout viewport. (#1446)
                     let edge = crate::scene::view::render::adapt_to_bg(style.0, self.current_bg());
-                    set.edge_color = (edge != style.0).then_some(edge);
+                    set.edge_color = Some(edge);
                     let attached_material = set
                         .material
                         .as_ref()
