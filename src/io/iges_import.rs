@@ -1,8 +1,11 @@
 //! IGES reading: the manifold solids (type 186) of a file, their shells,
-//! faces, loops and edges (514/510/508/504/502), and its trimmed and bounded
-//! surfaces (144/142 and 143/141), over spline surfaces and curves
-//! (128/126), lines and arcs (110/100) and composite curves (102), as
-//! kernel bodies.
+//! faces, loops and edges (514/510/508/504/502), its trimmed and bounded
+//! surfaces (144/142 and 143/141) and its independent bounded surfaces,
+//! over spline surfaces and curves (128/126), parametric spline surfaces
+//! (114), ruled surfaces (118), surfaces of revolution (120), tabulated
+//! cylinders (122), offsets of planes (140), planes, cylinders, cones,
+//! spheres and tori (190–198), lines and arcs (110/100) and composite curves
+//! (102), as kernel bodies.
 
 use std::collections::HashMap;
 
@@ -75,6 +78,8 @@ struct Entity {
     transform: usize,
     /// Colour number, or a negated pointer to a colour definition.
     color: i64,
+    /// Whether another entity uses it (the directory's subordinate switch).
+    subordinate: bool,
     params: Vec<P>,
 }
 
@@ -106,8 +111,8 @@ impl Doc {
     fn color(&self, number: i64) -> codec::types::Color {
         use codec::types::Color;
         let rgb = match number {
-            // Black draws as colour 7, so it shows on a dark background too.
-            1 => return Color::Index(7),
+            // Black becomes the dark grey 250.
+            1 => return Color::Index(250),
             2 => [255, 0, 0],
             3 => [0, 255, 0],
             4 => [0, 0, 255],
@@ -121,7 +126,9 @@ impl Doc {
                 }),
                 None => return Color::ByLayer,
             },
-            _ => return Color::ByLayer,
+            0 => return Color::ByLayer,
+            // A number past the eight standard colours.
+            _ => return Color::ByBlock,
         };
         match rgb {
             [255, 0, 0] => Color::Index(1),
@@ -266,7 +273,9 @@ impl Doc {
         let entity = self.get(pointer)?;
         let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
         match entity.kind {
-            142 => self.pieces(v(4)),
+            142 if v(4) != 0.0 => self.pieces(v(4)),
+            // Only a curve in the surface's parameters: carried onto it.
+            142 => self.parameter_pieces(v(3), v(2)),
             141 => {
                 let mut out = Vec::new();
                 let mut at: usize = 5;
@@ -285,6 +294,225 @@ impl Doc {
             }
             _ => self.pieces(pointer),
         }
+    }
+
+    /// A point entity (116), placed.
+    fn point_of(&self, pointer: f64) -> Option<[f64; 3]> {
+        let entity = self.get(pointer).filter(|e| e.kind == 116)?;
+        let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+        Some(self.place(entity)([v(1), v(2), v(3)]))
+    }
+
+    /// A direction entity (123), turned by its placement (not moved or
+    /// scaled).
+    fn direction_of(&self, pointer: f64) -> Option<[f64; 3]> {
+        let entity = self.get(pointer).filter(|e| e.kind == 123)?;
+        let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+        let d = [v(1), v(2), v(3)];
+        Some(match (entity.transform != 0).then(|| self.matrix(entity.transform)).flatten() {
+            Some(m) => [0, 1, 2].map(|r| m[r][0] * d[0] + m[r][1] * d[1] + m[r][2] * d[2]),
+            None => d,
+        })
+    }
+
+    /// A curve as a spline: a line, an arc between its ends, or a spline.
+    fn nurbs_curve(&self, pointer: f64) -> Option<NurbsCurve3> {
+        let entity = self.get(pointer)?;
+        let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+        let place = self.place(entity);
+        match entity.kind {
+            110 => super::iges_surfaces::line(place([v(1), v(2), v(3)]), place([v(4), v(5), v(6)])),
+            100 => {
+                let centre = place([v(2), v(3), v(1)]);
+                let x = place([v(2) + 1.0, v(3), v(1)]);
+                let y = place([v(2), v(3) + 1.0, v(1)]);
+                let unit = |p: [f64; 3]| {
+                    let d = [p[0] - centre[0], p[1] - centre[1], p[2] - centre[2]];
+                    let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                    d.map(|c| c / l)
+                };
+                let (ux, uy) = (unit(x), unit(y));
+                let radius = (v(4) - v(2)).hypot(v(5) - v(3)) * self.scale;
+                let a0 = (v(5) - v(3)).atan2(v(4) - v(2));
+                let mut a1 = (v(7) - v(3)).atan2(v(6) - v(2));
+                while a1 <= a0 + 1e-12 {
+                    a1 += std::f64::consts::TAU;
+                }
+                super::iges_surfaces::arc(centre, ux, uy, radius, a0, a1)
+            }
+            _ => match self.curve(pointer)? {
+                Curve3::Nurbs(nurbs) => Some(nurbs),
+                _ => None,
+            },
+        }
+    }
+
+    /// The frame of an analytic surface (190–198): its location, its axis
+    /// (or normal) and the reference direction of form 1 (else one square
+    /// to the axis).
+    fn frame(&self, at: f64, axis: Option<f64>, reference: Option<f64>) -> Option<Plane> {
+        let origin = self.point_of(at)?;
+        let axis = match axis {
+            Some(a) => self.direction_of(a)?,
+            None => [0.0, 0.0, 1.0],
+        };
+        let x = match reference.and_then(|r| self.direction_of(r)) {
+            Some(x) => x,
+            None => super::iges_surfaces::any_perpendicular(kernel::space::Vec3::from(axis)).to_array(),
+        };
+        Plane::orthonormal(origin, x, axis)
+    }
+
+    /// A surface, and the spline whose parameter domain bounds it when the
+    /// file trims it with nothing (none for the unbounded analytic ones).
+    fn surface_spec(&self, pointer: f64) -> Option<(Surface, Option<NurbsSurface3>)> {
+        use super::iges_surfaces as build;
+        let entity = self.get(pointer)?;
+        let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+        let form1 = |k: usize| (entity.params.len() > k).then(|| v(k));
+        let spline = |s: NurbsSurface3| Some((Surface::Nurbs(s.clone()), Some(s)));
+        match entity.kind {
+            128 => self.surface(pointer).and_then(|s| match s {
+                Surface::Nurbs(n) => spline(n),
+                _ => None,
+            }),
+            190 => Some((Surface::Plane(self.frame(v(1), Some(v(2)), form1(3))?), None)),
+            192 => Some((
+                Surface::Cylinder(kernel::brep::Cylinder {
+                    base: self.frame(v(1), Some(v(2)), form1(4))?,
+                    radius: v(3) * self.scale,
+                }),
+                None,
+            )),
+            194 => Some((
+                Surface::Cone(kernel::brep::Cone {
+                    base: self.frame(v(1), Some(v(2)), form1(5))?,
+                    radius: v(3) * self.scale,
+                    half_angle: v(4).to_radians(),
+                }),
+                None,
+            )),
+            196 => Some((
+                Surface::Sphere(kernel::brep::Sphere {
+                    frame: self.frame(v(1), form1(3), form1(4))?,
+                    radius: v(2) * self.scale,
+                }),
+                None,
+            )),
+            198 => Some((
+                Surface::Torus(kernel::brep::Torus {
+                    frame: self.frame(v(1), Some(v(2)), form1(5))?,
+                    major_radius: v(3) * self.scale,
+                    minor_radius: v(4) * self.scale,
+                }),
+                None,
+            )),
+            120 => {
+                let axis = self.get(v(1)).filter(|e| e.kind == 110)?;
+                let w = |k: usize| axis.params.get(k).map_or(0.0, P::num);
+                let place = self.place(axis);
+                let (o, e) = (place([w(1), w(2), w(3)]), place([w(4), w(5), w(6)]));
+                let dir = [e[0] - o[0], e[1] - o[1], e[2] - o[2]];
+                let generatrix = self.nurbs_curve(v(2))?;
+                let net = build::revolve(&generatrix, o, dir, v(3), v(4))?;
+                // A straight generatrix sweeps a cylinder or a cone.
+                match self.get(v(2)).map(|g| g.kind) {
+                    Some(110) => Some((analytic_revolution(&net, o, dir, &generatrix)?, Some(net))),
+                    _ => spline(net),
+                }
+            }
+            122 => {
+                let directrix = self.nurbs_curve(v(1))?;
+                let start = directrix.point_at_knot(directrix.domain().0);
+                let end = self.place(entity)([v(2), v(3), v(4)]);
+                spline(build::tabulate(&directrix, [end[0] - start[0], end[1] - start[1], end[2] - start[2]])?)
+            }
+            118 => {
+                let first = self.nurbs_curve(v(1))?;
+                let mut second = self.nurbs_curve(v(2))?;
+                if v(3) == 1.0 {
+                    second = second.reversed()?;
+                }
+                spline(build::ruled(&first, &second)?)
+            }
+            114 => {
+                let (m, n) = (v(3) as usize, v(4) as usize);
+                if m == 0 || n == 0 || 7 + m + n + 48 * m * n > entity.params.len() {
+                    return None;
+                }
+                let tu: Vec<f64> = (5..=5 + m).map(v).collect();
+                let tv: Vec<f64> = (6 + m..=6 + m + n).map(v).collect();
+                let at = 7 + m + n;
+                let place = self.place(entity);
+                let coefficients: Vec<[[f64; 16]; 3]> = (0..m * n)
+                    .map(|k| [0, 1, 2].map(|axis| std::array::from_fn(|c| v(at + 48 * k + 16 * axis + c))))
+                    .collect();
+                let raw = build::patches(&tu, &tv, &coefficients)?;
+                // The placement applies to the control points.
+                let (du, dv) = raw.degrees();
+                let (uk, vk) = raw.knots();
+                let rows = raw.control_points().iter().map(|row| row.iter().map(|p| place(*p)).collect()).collect();
+                spline(NurbsSurface3::new(du, dv, rows, uk.to_vec(), vk.to_vec(), None)?)
+            }
+            140 => {
+                // An offset of a plane; other offsets are not read.
+                let (_, Some(base)) = self.surface_spec(v(5))? else { return None };
+                let Some((Surface::Plane(plane), agrees)) = kernel::brep::analytic_surface(&base) else {
+                    return None;
+                };
+                let n = kernel::space::Vec3::from(plane.normal()?) * (if agrees { 1.0 } else { -1.0 });
+                spline(build::translated(&base, (n * (v(4) * self.scale)).to_array())?)
+            }
+            _ => None,
+        }
+    }
+
+    /// The model pieces of a curve given in a spline surface's parameters
+    /// (x as u, y as v): straight where the carried points stay on a line,
+    /// else a spline through them.
+    fn parameter_pieces(&self, curve: f64, surface: f64) -> Option<Vec<(Curve3, [f64; 3], [f64; 3])>> {
+        let (_, Some(net)) = self.surface_spec(surface)? else { return None };
+        let mut out = Vec::new();
+        for (piece, ..) in self.pieces_unplaced(curve)? {
+            let samples: Vec<[f64; 3]> = (0..=24)
+                .map(|k| {
+                    let p = piece_point(&piece, k as f64 / 24.0);
+                    net.point_at_knot(p[0], p[1])
+                })
+                .collect();
+            let (a, b) = (samples[0], samples[24]);
+            let straight = samples
+                .iter()
+                .all(|p| kernel::space::Vec3::from(*p).distance_to_segment(a.into(), b.into()) <= self.resolution);
+            let curve = if straight {
+                Curve3::Line(Line3 {
+                    origin: a,
+                    direction: [b[0] - a[0], b[1] - a[1], b[2] - a[2]],
+                })
+            } else {
+                Curve3::Nurbs(NurbsCurve3::interpolate_fit(
+                    &samples,
+                    None,
+                    None,
+                    kernel::space::Parameterization::Chord,
+                )?)
+            };
+            out.push((curve, a, b));
+        }
+        Some(out)
+    }
+
+    /// [`Doc::pieces`] without the drawing scale (parameter-space curves).
+    fn pieces_unplaced(&self, pointer: f64) -> Option<Vec<(Curve3, [f64; 3], [f64; 3])>> {
+        // ponytail: parameter curves are read through the scaled reader and
+        // the scale divided back out; matrices on them are not expected.
+        let scale = self.scale;
+        Some(
+            self.pieces(pointer)?
+                .into_iter()
+                .map(|(c, a, b)| (unscale(c, scale), a.map(|x| x / scale), b.map(|x| x / scale)))
+                .collect(),
+        )
     }
 
     fn surface(&self, pointer: f64) -> Option<Surface> {
@@ -454,14 +682,13 @@ impl Assembly<'_> {
             143 => (v(2), (count > 0).then(|| v(4)), (1..count).map(|k| v(4 + k)).collect()),
             _ => return None,
         };
-        let Surface::Nurbs(nurbs) = self.doc.surface(surface_at)? else { return None };
-        let surface = Surface::Nurbs(nurbs.clone());
+        let (surface, net) = self.doc.surface_spec(surface_at)?;
         let mut first = match outer {
             Some(boundary) => {
                 let pieces = self.doc.boundary(boundary)?;
                 self.curve_ring(pieces)?
             }
-            None => self.domain_ring(&nurbs)?,
+            None => self.domain_ring(net.as_ref()?)?,
         };
         self.orient(&surface, &mut first, true);
         let mut loops = vec![first];
@@ -493,10 +720,23 @@ impl Assembly<'_> {
         Some(ring)
     }
 
+    /// An independent bounded surface as a one-face sheet over its whole
+    /// parameter domain.
+    fn whole(&mut self, pointer: f64) -> Option<()> {
+        let (surface, net) = self.doc.surface_spec(pointer)?;
+        let mut ring = self.domain_ring(net.as_ref()?)?;
+        self.orient(&surface, &mut ring, true);
+        self.build.lump(vec![vec![FaceSpec {
+            surface,
+            forward: true,
+            loops: vec![ring],
+        }]])
+    }
+
     fn face(&mut self, pointer: f64, agrees: bool) -> Option<FaceSpec> {
         let entity = self.doc.get(pointer).filter(|e| e.kind == 510)?;
         let p = |k: usize| entity.params.get(k).map(P::num);
-        let surface = self.doc.surface(p(1)?)?;
+        let surface = self.doc.surface_spec(p(1)?)?.0;
         let loops = (0..p(2)? as usize)
             .map(|n| self.ring(p(4 + n)?))
             .collect::<Option<Vec<_>>>()?;
@@ -617,6 +857,7 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
                 kind: field(first, 0) as i32,
                 transform: field(first, 6).max(0) as usize,
                 color: field(second, 2),
+                subordinate: (field(first, 8) / 10_000) % 100 != 0,
                 params: parameters(&data, delimiter, terminator),
             },
         );
@@ -643,7 +884,10 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
         let Some((shell, agrees)) = v(1).zip(v(2)) else { continue };
         let mut assembly = Assembly {
             doc: &doc,
-            build: Builder::new(),
+            build: Builder {
+                closed_only: true,
+                ..Builder::new()
+            },
             vertices: HashMap::new(),
             edges: HashMap::new(),
             corners: Vec::new(),
@@ -666,7 +910,10 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
     let mut numbers: Vec<usize> = doc
         .entities
         .iter()
-        .filter(|(_, e)| matches!(e.kind, 143 | 144))
+        .filter(|(_, e)| {
+            matches!(e.kind, 143 | 144)
+                || (!e.subordinate && matches!(e.kind, 114 | 118 | 120 | 122 | 128 | 140))
+        })
         .map(|(n, _)| *n)
         .collect();
     numbers.sort_unstable();
@@ -675,14 +922,80 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
         let entity = &doc.entities[&number];
         let mut assembly = Assembly {
             doc: &doc,
-            build: Builder::new(),
+            build: Builder {
+                closed_only: true,
+                ..Builder::new()
+            },
             vertices: HashMap::new(),
             edges: HashMap::new(),
             corners: Vec::new(),
         };
-        if assembly.sheet(entity).is_some() {
+        let made = match entity.kind {
+            143 | 144 => assembly.sheet(entity),
+            _ => assembly.whole(number as f64),
+        };
+        if made.is_some() {
             sheets.push((assembly.build.body, doc.color(entity.color)));
         }
     }
     Some(IgesModel { bodies, sheets })
+}
+
+/// A point along a parameter-space curve piece at `t` in 0..=1.
+fn piece_point(piece: &Curve3, t: f64) -> [f64; 3] {
+    match piece {
+        Curve3::Line(l) => [0, 1, 2].map(|k| l.origin[k] + l.direction[k] * t),
+        Curve3::Nurbs(n) => {
+            let (a, b) = n.domain();
+            n.point_at_knot(a + (b - a) * t)
+        }
+        other => other.point_at(t),
+    }
+}
+
+/// A curve read with the drawing scale, back in file units.
+fn unscale(curve: Curve3, scale: f64) -> Curve3 {
+    match curve {
+        Curve3::Line(l) => Curve3::Line(Line3 {
+            origin: l.origin.map(|c| c / scale),
+            direction: l.direction.map(|c| c / scale),
+        }),
+        Curve3::Nurbs(n) => {
+            let points = n.control_points().iter().map(|p| p.map(|c| c / scale)).collect();
+            NurbsCurve3::new(n.degree(), points, n.knots().to_vec(), Some(n.weights().to_vec()))
+                .map(Curve3::Nurbs)
+                .unwrap_or(Curve3::Nurbs(n))
+        }
+        other => other,
+    }
+}
+
+/// The cylinder or cone a straight generatrix sweeps round an axis, framed
+/// at the generatrix's start so the spline's seam is the surface's.
+fn analytic_revolution(
+    net: &NurbsSurface3,
+    origin: [f64; 3],
+    axis: [f64; 3],
+    generatrix: &NurbsCurve3,
+) -> Option<Surface> {
+    use kernel::space::Vec3;
+    let k = Vec3::from(axis).normalize()?;
+    let (t0, t1) = generatrix.domain();
+    let (a, b) = (Vec3::from(generatrix.point_at_knot(t0)), Vec3::from(generatrix.point_at_knot(t1)));
+    let o = Vec3::from(origin);
+    let foot = |p: Vec3| o + k * (p - o).dot(k);
+    let (ra, rb) = ((a - foot(a)).length(), (b - foot(b)).length());
+    let along = (b - a).dot(k);
+    let x = (a - foot(a)).normalize().or_else(|| (b - foot(b)).normalize())?;
+    let base = Plane::orthonormal(foot(a).to_array(), x.to_array(), k.to_array())?;
+    let _ = net;
+    Some(if (ra - rb).abs() <= 1e-9 * (1.0 + ra) {
+        Surface::Cylinder(kernel::brep::Cylinder { base, radius: ra })
+    } else {
+        Surface::Cone(kernel::brep::Cone {
+            base,
+            radius: ra,
+            half_angle: ((ra - rb) / along).atan(),
+        })
+    })
 }
