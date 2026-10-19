@@ -804,6 +804,7 @@ impl OpenCADStudio {
             .as_mut()
             .map(|c| {
                 let mut wires = c.on_preview_wires(cur);
+                wires.extend(c.persistent_preview_wires());
                 let entities = c.preview_entities(&tab.scene.document, cur);
                 wires.extend(tab.scene.wires_for_entities(&entities));
                 wires

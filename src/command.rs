@@ -2919,6 +2919,15 @@ pub trait CadCommand: Send {
     fn on_entities_committed(&mut self, _entities: &[codec::EntityType]) {}
 
     /// Called after a PEDIT operation changed its target.
+    /// Batch counterpart for `ReplaceManyContinue`. The default preserves
+    /// per-entity behavior; commands with derived caches can override this to
+    /// update all identities and rebuild their cache once after the batch.
+    fn on_entities_replaced(&mut self, replacements: &[(Handle, Vec<Handle>)]) {
+        for (old, new_handles) in replacements {
+            self.on_entity_replaced(*old, new_handles);
+        }
+    }
+
     fn on_pedit_applied(&mut self) {}
 
     /// Consume a lasso or drag-box gesture while the command is active.
@@ -2940,6 +2949,18 @@ pub trait CadCommand: Send {
     }
 
     /// Called on every mouse-move when `needs_entity_pick()` is true.
+    /// Direction-aware drag callback. The default keeps existing command
+    /// implementations source-compatible while commands that distinguish
+    /// window and crossing selection can override this method.
+    fn on_drag_selection_with_direction(
+        &mut self,
+        fence: &[[f64; 2]],
+        window: Option<([f64; 2], [f64; 2])>,
+        _crossing: bool,
+    ) -> Option<CmdResult> {
+        self.on_drag_selection(fence, window)
+    }
+
     /// Return preview wires showing the operation result under the cursor.
     /// Default: empty (no preview).
     fn on_hover_entity(&mut self, _handle: Handle, _pt: DVec3) -> Vec<WireModel> {
@@ -2953,6 +2974,13 @@ pub trait CadCommand: Send {
     }
 
     fn inject_hover_entity(&mut self, _handle: Handle, _entity: EntityType) {}
+    /// Preview wires that must survive generic command-preview refreshes such
+    /// as snap-dwell ticks. Transient hover candidates remain supplied by
+    /// `on_hover_entity` on viewport moves.
+    fn persistent_preview_wires(&self) -> Vec<WireModel> {
+        vec![]
+    }
+
 
     /// Opt in to transient measurement text; unrelated Measurement users keep
     /// their existing command-line-only behavior.
