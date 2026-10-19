@@ -157,7 +157,8 @@ pub(crate) fn to_render_at_scale(
             origin: p.origin,
             color: None,
             fill_tris,
-            plane: None,
+            // Text out of the XY plane lies in its own object coordinate plane.
+            plane: crate::scene::convert::acad_to_render::ocs_text_plane(t.normal, p.origin, t.insertion_point.z),
             run: Some(GlyphRun {
                 text: value,
                 font: p.font.clone(),
