@@ -2595,6 +2595,7 @@ file =
     .cmd-cannot-create-folder-e = __ocs_fmt_0__: Nelze vytvořit složku (__ocs_fmt_1__).
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: výkres nelze zabalit (__ocs_fmt_1__).
     .cmd-packaged-copied-file-s-into = __ocs_fmt_0__: zabalené soubory __ocs_fmt_1__ do __ocs_fmt_2__
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: nenalezeno __ocs_fmt_1__ odkazovaných souborů: __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: přeskočeno __ocs_fmt_1__ odkazovaných souborů, které v této relaci nebyly načteny: __ocs_fmt_2__
     .error-external-change-checks-remain-active = __ocs_fmt_0__. Kontroly externí změny zůstávají aktivní.
     .warning-external-change-checks-remain-active = __ocs_fmt_0__. Kontroly externí změny zůstávají aktivní.

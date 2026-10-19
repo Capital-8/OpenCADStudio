@@ -201,7 +201,7 @@ pub fn clamp_right_click_hold_ms(v: i32) -> i32 {
 /// else's to read.
 pub const ZOOM_FACTOR_MIN: i32 = 3;
 pub const ZOOM_FACTOR_SYSVAR_MAX: i32 = 100;
-pub const ZOOM_FACTOR_MAX: i32 = 500;
+pub const ZOOM_FACTOR_MAX: i32 = 200;
 
 /// Hold a ZOOMFACTOR inside the range the application can store, wherever it
 /// arrives from — the slider, the Options field, or a configuration file
@@ -215,11 +215,11 @@ pub fn clamp_zoom_factor(v: i32) -> i32 {
     v.clamp(ZOOM_FACTOR_MIN, ZOOM_FACTOR_MAX)
 }
 
-/// The `Camera::zoom` step one wheel notch means at `factor`. The default 60
-/// is one whole step, which is what makes 60 the setting that leaves the
-/// camera's own `ZOOM_STEP` untouched.
+/// The `Camera::zoom` step one wheel notch means at `factor`. Every 24 is one
+/// camera step, so the default 60 brings the view about a quarter nearer a
+/// notch and the system variable's top, 100, about a third (#1397).
 pub fn zoom_notch_steps(factor: i32) -> f32 {
-    factor as f32 / 60.0
+    factor as f32 / 24.0
 }
 
 /// How much nearer one wheel notch brings the view at `factor`, as a
@@ -1086,12 +1086,13 @@ mod tests {
 
     /// The Options read-out has to say what a notch really does, or it is
     /// worse than no read-out. These are the percentages of the law in
-    /// `Camera::zoom`, which is where the number comes from: the default a
-    /// tenth of the distance, the top of the system variable's range a
-    /// sixth, and the top of the application's range a little over half.
+    /// `Camera::zoom`, which is where the number comes from: the default
+    /// close to a quarter of the distance, the top of the system variable's
+    /// range about a third, and the top of the application's range a little
+    /// over half.
     #[test]
     fn the_zoom_read_out_says_what_a_notch_does() {
-        for (factor, percent) in [(3, 0.53_f32), (60, 10.0), (100, 16.1), (500, 58.4)] {
+        for (factor, percent) in [(3, 1.31_f32), (60, 23.2), (100, 35.5), (200, 58.4)] {
             let shown = zoom_notch_percent(factor);
             assert!(
                 (shown - percent).abs() < 0.05,
@@ -1103,11 +1104,10 @@ mod tests {
         assert_eq!(zoom_notch_percent(0), zoom_notch_percent(ZOOM_FACTOR_MIN));
     }
 
-    /// The default is one whole step, which is the whole reason the camera's
-    /// base is the per-notch ratio and not something scaled.
+    /// The default stays 60, and 24 is one whole camera step.
     #[test]
     fn the_default_zoom_factor_is_one_step() {
-        assert_eq!(zoom_notch_steps(60), 1.0);
+        assert_eq!(zoom_notch_steps(24), 1.0);
         assert_eq!(UserSettings::default().zoom_factor, 60);
     }
 

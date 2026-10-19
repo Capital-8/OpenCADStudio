@@ -2595,6 +2595,7 @@ file =
     .cmd-cannot-create-folder-e = __ocs_fmt_0__: δεν είναι δυνατή η δημιουργία φακέλου (__ocs_fmt_1__).
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: δεν είναι δυνατή η συσκευασία του σχεδίου (__ocs_fmt_1__).
     .cmd-packaged-copied-file-s-into = __ocs_fmt_0__: συσκευάστηκαν __ocs_fmt_1__ αρχείο(α) στο __ocs_fmt_2__
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: δεν βρέθηκαν __ocs_fmt_1__ αναφερόμενα αρχεία: __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: παραλείφθηκαν __ocs_fmt_1__ αναφερόμενα αρχεία που δεν φορτώθηκαν σε αυτή τη συνεδρία: __ocs_fmt_2__
     .error-external-change-checks-remain-active = __ocs_fmt_0__. Οι έλεγχοι εξωτερικών αλλαγών παραμένουν ενεργοί.
     .warning-external-change-checks-remain-active = __ocs_fmt_0__. Οι έλεγχοι εξωτερικών αλλαγών παραμένουν ενεργοί.

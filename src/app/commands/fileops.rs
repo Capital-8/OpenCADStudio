@@ -208,32 +208,51 @@ impl OpenCADStudio {
                                         copied += 1;
                                     }
                                 }
-                                let mut deps: Vec<String> = Vec::new();
-                                for br in self.tabs[i].scene.document.block_records.iter() {
-                                    if !br.xref_path.trim().is_empty() {
-                                        deps.push(br.xref_path.clone());
+                                // Resolve every reference the way the loaders
+                                // did (stored path, relative to the drawing,
+                                // then the bare name next to it), so what
+                                // displays is what gets packaged.
+                                let doc = &self.tabs[i].scene.document;
+                                let mut found: Vec<PathBuf> = Vec::new();
+                                let mut missing: Vec<String> = Vec::new();
+                                let mut note = |raw: &str, hit: Option<PathBuf>| match hit {
+                                    Some(p) if !found.contains(&p) => found.push(p),
+                                    Some(_) => {}
+                                    None if !missing.iter().any(|m| m == raw) => {
+                                        missing.push(raw.to_string())
+                                    }
+                                    None => {}
+                                };
+                                for br in doc.block_records.iter() {
+                                    let raw = br.xref_path.trim();
+                                    if !raw.is_empty() {
+                                        note(raw, crate::io::xref::resolve_path(raw, &parent));
                                     }
                                 }
-                                for e in self.tabs[i].scene.document.entities() {
+                                let file = |raw: &str| {
+                                    crate::io::resolve_image_file(raw, Some(&parent))
+                                        .map(PathBuf::from)
+                                };
+                                for e in doc.entities() {
                                     if let codec::EntityType::RasterImage(img) = e {
-                                        if !img.file_path.trim().is_empty() {
-                                            deps.push(img.file_path.clone());
+                                        let raw = img.file_path.trim();
+                                        if !raw.is_empty() {
+                                            note(raw, file(raw));
                                         }
                                     }
                                 }
-                                for d in deps {
-                                    let dp = PathBuf::from(&d);
-                                    let resolved = if dp.is_absolute() {
-                                        dp
-                                    } else {
-                                        parent.join(&dp)
-                                    };
-                                    if resolved.exists() {
-                                        if let Some(fname) = resolved.file_name() {
-                                            if std::fs::copy(&resolved, folder.join(fname)).is_ok()
-                                            {
-                                                copied += 1;
-                                            }
+                                for o in doc.objects.values() {
+                                    if let codec::objects::ObjectType::UnderlayDefinition(d) = o {
+                                        let raw = d.file_path.trim();
+                                        if !raw.is_empty() {
+                                            note(raw, file(raw));
+                                        }
+                                    }
+                                }
+                                for resolved in &found {
+                                    if let Some(fname) = resolved.file_name() {
+                                        if std::fs::copy(resolved, folder.join(fname)).is_ok() {
+                                            copied += 1;
                                         }
                                     }
                                 }
@@ -244,6 +263,16 @@ impl OpenCADStudio {
                                     )
                                     .as_ref(),
                                 );
+                                if !missing.is_empty() {
+                                    let n = missing.len();
+                                    let names = missing.join(", ");
+                                    self.command_line.push_error(
+                                        crate::tf!(
+                                            "{cmd}: {n} referenced file(s) not found: {names}"
+                                        )
+                                        .as_ref(),
+                                    );
+                                }
                             }
                             Err(e) => self.command_line.push_error(
                                 crate::tf!("{cmd}: cannot create folder ({e}).").as_ref(),
