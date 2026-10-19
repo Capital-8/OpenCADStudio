@@ -9,8 +9,8 @@
 
 use std::collections::HashMap;
 
-use kernel::brep::{Circle3, Curve3, EdgeKey, Line3, Surface, VertexKey};
-use kernel::space::{NurbsCurve3, NurbsSurface3, Plane};
+use kernel::brep::{Body, Circle3, Curve3, EdgeKey, Line3, Surface, VertexKey};
+use kernel::space::{NurbsCurve3, NurbsSurface3, Plane, Vec3};
 
 use super::brep_build::{Builder, FaceSpec};
 use super::step_import::compose;
@@ -74,6 +74,8 @@ fn parameters(text: &str, delimiter: char, terminator: char) -> Vec<P> {
 /// A directory entry and its parameters.
 struct Entity {
     kind: i32,
+    /// The directory entry's form number.
+    form: i64,
     /// Pointer to a transformation matrix entity, or zero.
     transform: usize,
     /// Colour number, or a negated pointer to a colour definition.
@@ -126,9 +128,8 @@ impl Doc {
                 }),
                 None => return Color::ByLayer,
             },
-            0 => return Color::ByLayer,
-            // A number past the eight standard colours.
-            _ => return Color::ByBlock,
+            // None, or a number past the eight standard colours.
+            _ => return Color::ByLayer,
         };
         match rgb {
             [255, 0, 0] => Color::Index(1),
@@ -344,11 +345,7 @@ impl Doc {
                 };
                 let (ux, uy) = (unit(x), unit(y));
                 let radius = (v(4) - v(2)).hypot(v(5) - v(3)) * self.scale;
-                let a0 = (v(5) - v(3)).atan2(v(4) - v(2));
-                let mut a1 = (v(7) - v(3)).atan2(v(6) - v(2));
-                while a1 <= a0 + 1e-12 {
-                    a1 += std::f64::consts::TAU;
-                }
+                let (a0, a1) = arc_angles(entity);
                 super::iges_surfaces::arc(centre, ux, uy, radius, a0, a1)
             }
             _ => match self.curve(pointer)? {
@@ -359,9 +356,17 @@ impl Doc {
     }
 
     /// The sphere or torus a circular arc (100) sweeps round an axis lying
-    /// in the arc's plane; `None` when the axis leaves that plane.
-    fn arc_revolution(&self, arc: f64, origin: [f64; 3], axis: [f64; 3]) -> Option<Surface> {
-        use kernel::space::Vec3;
+    /// in the arc's plane from `start` radians, framed so its seam (u = 0) is
+    /// the spline's; `None` (the spline stands) when the axis leaves that
+    /// plane, a sphere's arc crosses the axis, or a torus's arc does not start
+    /// at its outermost point (where the torus's own seam runs).
+    fn arc_revolution(
+        &self,
+        arc: f64,
+        origin: [f64; 3],
+        axis: [f64; 3],
+        start: f64,
+    ) -> Option<Surface> {
         let entity = self.get(arc).filter(|e| e.kind == 100)?;
         let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
         let place = self.place(entity);
@@ -374,17 +379,33 @@ impl Doc {
         if k.dot(normal).abs() > 1e-9 || (o - centre).dot(normal).abs() > tolerance {
             return None;
         }
-        let radius = (Vec3::from(place([v(4), v(5), v(1)])) - centre).length();
+        let r = (v(4) - v(2)).hypot(v(5) - v(3));
+        let at = |a: f64| Vec3::from(place([v(2) + r * a.cos(), v(3) + r * a.sin(), v(1)]));
+        let radial = |p: Vec3| p - (o + k * (p - o).dot(k));
+        let (a0, a1) = arc_angles(entity);
+        let radius = (at(a0) - centre).length();
         let foot = o + k * (centre - o).dot(k);
         let out = centre - foot;
+        let frame = |at: Vec3, x: Vec3| {
+            Plane::orthonormal(at.to_array(), turned(x, k, start).to_array(), k.to_array())
+        };
         Some(if out.length() <= tolerance {
+            let x = radial(at(0.5 * (a0 + a1))).normalize()?;
+            if [a0, a1].into_iter().any(|a| radial(at(a)).dot(x) < -tolerance) {
+                return None;
+            }
             Surface::Sphere(kernel::brep::Sphere {
-                frame: Plane::orthonormal(centre.to_array(), super::iges_surfaces::any_perpendicular(k).to_array(), k.to_array())?,
+                frame: frame(centre, x)?,
                 radius,
             })
         } else {
+            let x = out.normalize()?;
+            let outermost = centre + x * radius;
+            if out.length() <= radius + tolerance || at(a0).distance(outermost) > tolerance {
+                return None;
+            }
             Surface::Torus(kernel::brep::Torus {
-                frame: Plane::orthonormal(foot.to_array(), out.normalize()?.to_array(), k.to_array())?,
+                frame: frame(foot, x)?,
                 major_radius: out.length(),
                 minor_radius: radius,
             })
@@ -410,10 +431,20 @@ impl Doc {
     /// A surface, and the spline whose parameter domain bounds it when the
     /// file trims it with nothing (none for the unbounded analytic ones).
     fn surface_spec(&self, pointer: f64) -> Option<(Surface, Option<NurbsSurface3>)> {
+        self.surface_spec_at(pointer, 0)
+    }
+
+    /// [`Doc::surface_spec`] with offsets (140) of offsets nested `depth`
+    /// deep; a deeper (or circular) chain is refused.
+    fn surface_spec_at(
+        &self,
+        pointer: f64,
+        depth: usize,
+    ) -> Option<(Surface, Option<NurbsSurface3>)> {
         use super::iges_surfaces as build;
         let entity = self.get(pointer)?;
         let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
-        let form1 = |k: usize| (entity.params.len() > k).then(|| v(k));
+        let form1 = |k: usize| (entity.form == 1).then(|| v(k));
         let spline = |s: NurbsSurface3| Some((Surface::Nurbs(s.clone()), Some(s)));
         match entity.kind {
             128 => self.surface(pointer).and_then(|s| match s {
@@ -432,7 +463,8 @@ impl Doc {
                 Surface::Cone(kernel::brep::Cone {
                     base: self.frame(v(1), Some(v(2)), form1(5))?,
                     radius: v(3) * self.scale,
-                    half_angle: v(4).to_radians(),
+                    // The file's cone widens along its axis.
+                    half_angle: -v(4).to_radians(),
                 }),
                 None,
             )),
@@ -452,23 +484,24 @@ impl Doc {
                 None,
             )),
             120 => {
-                let axis = self.get(v(1)).filter(|e| e.kind == 110)?;
-                let w = |k: usize| axis.params.get(k).map_or(0.0, P::num);
-                let place = self.place(axis);
-                let (o, e) = (place([w(1), w(2), w(3)]), place([w(4), w(5), w(6)]));
-                let dir = [e[0] - o[0], e[1] - o[1], e[2] - o[2]];
+                let (o, dir) = self.axis_of(v(1))?;
                 let generatrix = self.nurbs_curve(v(2))?;
                 let net = build::revolve(&generatrix, o, dir, v(3), v(4))?;
                 // A straight generatrix sweeps a cylinder or a cone, a circular
                 // arc in a plane through the axis a sphere or a torus (part
                 // of a turn too).
-                match self.get(v(2)).map(|g| g.kind) {
-                    Some(110) => Some((analytic_revolution(&net, o, dir, &generatrix)?, Some(net))),
-                    Some(100) => match self.arc_revolution(v(2), o, dir) {
-                        Some(surface) => Some((surface, Some(net))),
-                        None => spline(net),
-                    },
-                    _ => spline(net),
+                let analytic = match self.get(v(2)).map(|g| g.kind) {
+                    Some(110) => {
+                        let (t0, t1) = generatrix.domain();
+                        let (a, b) = (generatrix.point_at_knot(t0), generatrix.point_at_knot(t1));
+                        analytic_revolution(a, b, o, dir, v(3), self.resolution)
+                    }
+                    Some(100) => self.arc_revolution(v(2), o, dir, v(3)),
+                    _ => None,
+                };
+                match analytic {
+                    Some(surface) => Some((surface, Some(net))),
+                    None => spline(net),
                 }
             }
             122 => {
@@ -478,6 +511,9 @@ impl Doc {
                 spline(build::tabulate(&directrix, [end[0] - start[0], end[1] - start[1], end[2] - start[2]])?)
             }
             118 => {
+                // ponytail: the rulings join points at equal relative
+                // parameter values (form 1) for form 0 too, which pairs them
+                // by equal relative arc length.
                 let first = self.nurbs_curve(v(1))?;
                 let mut second = self.nurbs_curve(v(2))?;
                 if v(3) == 1.0 {
@@ -489,7 +525,11 @@ impl Doc {
                 let (m, n) = (v(3) as usize, v(4) as usize);
                 // Patch (i, j) is the coefficient block i·(n+1) + j: the file
                 // keeps a block for each break point, the last ones unused.
-                if m == 0 || n == 0 || 7 + m + n + 48 * ((m - 1) * (n + 1) + n) > entity.params.len() {
+                // The sizes come from the file: refuse ones its parameters
+                // cannot hold.
+                let blocks = m.checked_sub(1)?.checked_mul(n.checked_add(1)?)?.checked_add(n)?;
+                let end = m.checked_add(n)?.checked_add(7)?.checked_add(blocks.checked_mul(48)?)?;
+                if n == 0 || end > entity.params.len() {
                     return None;
                 }
                 let tu: Vec<f64> = (5..=5 + m).map(v).collect();
@@ -512,7 +552,12 @@ impl Doc {
                 // moves, a cylinder, sphere or torus keeps its axis and
                 // changes radius; any other base becomes a spline through
                 // offset points.
-                let (surface, Some(base)) = self.surface_spec(v(5))? else { return None };
+                if depth >= 8 {
+                    return None;
+                }
+                let (surface, Some(base)) = self.surface_spec_at(v(5), depth + 1)? else {
+                    return None;
+                };
                 let distance = v(4) * self.scale;
                 if let Some((Surface::Plane(plane), agrees)) = kernel::brep::analytic_surface(&base) {
                     let n = kernel::space::Vec3::from(plane.normal()?) * (if agrees { 1.0 } else { -1.0 });
@@ -548,19 +593,19 @@ impl Doc {
         }
     }
 
-    /// The model pieces of a curve given in a spline surface's parameters
-    /// (x as u, y as v): straight where the carried points stay on a line,
-    /// else a spline through them.
+    /// The model pieces of a curve given in a surface's parameters (x as u,
+    /// y as v): straight where the carried points stay on a line, else a
+    /// spline through them.
     fn parameter_pieces(&self, curve: f64, surface: f64) -> Option<Vec<(Curve3, [f64; 3], [f64; 3])>> {
-        let (_, Some(net)) = self.surface_spec(surface)? else { return None };
+        let surface_at = self.parameter_surface(surface)?;
         let mut out = Vec::new();
-        for (piece, ..) in self.pieces_unplaced(curve)? {
-            let samples: Vec<[f64; 3]> = (0..=24)
+        for piece in self.pieces_unplaced(curve)? {
+            let samples = (0..=24)
                 .map(|k| {
-                    let p = piece_point(&piece, k as f64 / 24.0);
-                    net.point_at_knot(p[0], p[1])
+                    let p = piece_point(&piece, k as f64 / 24.0)?;
+                    surface_at(p[0], p[1])
                 })
-                .collect();
+                .collect::<Option<Vec<[f64; 3]>>>()?;
             let (a, b) = (samples[0], samples[24]);
             let straight = samples
                 .iter()
@@ -581,6 +626,110 @@ impl Doc {
             out.push((curve, a, b));
         }
         Some(out)
+    }
+
+    /// A surface's point at the parameters the file gives curves on it in:
+    /// a spline's (128, 114, and offsets of those) are its knots; a
+    /// revolution's (120) the generatrix's own parameter and the angle round
+    /// the axis; a tabulated cylinder's (122) and a ruled surface's (118)
+    /// their curves' parameters run over 0..1, and 0..1 across.
+    fn parameter_surface(
+        &self,
+        pointer: f64,
+    ) -> Option<Box<dyn Fn(f64, f64) -> Option<[f64; 3]> + '_>> {
+        let entity = self.get(pointer)?;
+        let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+        let net = || match self.surface_spec(pointer)? {
+            (_, Some(net)) => Some(net),
+            _ => None,
+        };
+        Some(match entity.kind {
+            128 | 114 => {
+                let net = net()?;
+                Box::new(move |u, v| Some(net.point_at_knot(u, v)))
+            }
+            140 if matches!(self.get(v(5)).map(|e| e.kind), Some(128 | 114)) => {
+                let net = net()?;
+                Box::new(move |u, v| Some(net.point_at_knot(u, v)))
+            }
+            120 => {
+                let (o, k) = self.axis_of(v(1))?;
+                let (o, k) = (Vec3::from(o), Vec3::from(k).normalize()?);
+                let generatrix = v(2);
+                Box::new(move |u, angle| {
+                    let p = Vec3::from(self.curve_at(generatrix, u)?);
+                    let foot = o + k * (p - o).dot(k);
+                    Some((foot + turned(p - foot, k, angle)).to_array())
+                })
+            }
+            122 => {
+                let directrix = v(1);
+                let (t0, t1) = self.curve_range(directrix)?;
+                let start = Vec3::from(self.curve_at(directrix, t0)?);
+                let along = Vec3::from(self.place(entity)([v(2), v(3), v(4)])) - start;
+                Box::new(move |u, v| {
+                    let p = Vec3::from(self.curve_at(directrix, t0 + u * (t1 - t0))?);
+                    Some((p + along * v).to_array())
+                })
+            }
+            118 => {
+                let (first, second, reversed) = (v(1), v(2), v(3) == 1.0);
+                let (a0, a1) = self.curve_range(first)?;
+                let (b0, b1) = self.curve_range(second)?;
+                Box::new(move |u, v| {
+                    let w = if reversed { 1.0 - u } else { u };
+                    let p = Vec3::from(self.curve_at(first, a0 + u * (a1 - a0))?);
+                    let q = Vec3::from(self.curve_at(second, b0 + w * (b1 - b0))?);
+                    Some((p + (q - p) * v).to_array())
+                })
+            }
+            _ => return None,
+        })
+    }
+
+    /// A line's (110) start and its run to its end, placed.
+    fn axis_of(&self, pointer: f64) -> Option<([f64; 3], [f64; 3])> {
+        let axis = self.get(pointer).filter(|e| e.kind == 110)?;
+        let w = |k: usize| axis.params.get(k).map_or(0.0, P::num);
+        let place = self.place(axis);
+        let (o, e) = (place([w(1), w(2), w(3)]), place([w(4), w(5), w(6)]));
+        Some((o, [e[0] - o[0], e[1] - o[1], e[2] - o[2]]))
+    }
+
+    /// A curve's point at its parameter as the file defines it: a line's
+    /// 0..1, an arc's angle, a spline's knot.
+    fn curve_at(&self, pointer: f64, t: f64) -> Option<[f64; 3]> {
+        let entity = self.get(pointer)?;
+        let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+        let place = self.place(entity);
+        match entity.kind {
+            110 => Some(place([1, 2, 3].map(|k| v(k) + t * (v(k + 3) - v(k))))),
+            100 => {
+                let r = (v(4) - v(2)).hypot(v(5) - v(3));
+                Some(place([v(2) + r * t.cos(), v(3) + r * t.sin(), v(1)]))
+            }
+            126 => match self.curve(pointer)? {
+                Curve3::Nurbs(nurbs) => Some(nurbs.point_at_knot(t)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// The parameters a curve runs over, as [`Doc::curve_at`] reads them.
+    fn curve_range(&self, pointer: f64) -> Option<(f64, f64)> {
+        let entity = self.get(pointer)?;
+        match entity.kind {
+            110 => Some((0.0, 1.0)),
+            100 => Some(arc_angles(entity)),
+            // ponytail: a spline's whole knot range, not the start and end
+            // values the file may narrow it to.
+            126 => match self.curve(pointer)? {
+                Curve3::Nurbs(nurbs) => Some(nurbs.domain()),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     /// [`Doc::pieces`] without the drawing scale (parameter-space curves).
@@ -823,7 +972,7 @@ impl Assembly<'_> {
 
     /// An independent bounded surface as a one-face sheet over its whole
     /// parameter domain; `true` when the face closes up on itself all round
-    /// (a whole sphere or torus), a solid.
+    /// (a whole sphere or torus) into a sound solid, turned to face out.
     fn whole(&mut self, pointer: f64) -> Option<bool> {
         let (surface, net) = self.doc.surface_spec(pointer)?;
         let (mut ring, closed) = self.domain_ring(net.as_ref()?)?;
@@ -833,6 +982,19 @@ impl Assembly<'_> {
             forward: true,
             loops: vec![ring],
         }]])?;
+        let body = &mut self.build.body;
+        let closed = closed && body.validate().is_empty();
+        if closed && inside_out(body) {
+            for face in body.faces.values_mut() {
+                face.forward = !face.forward;
+            }
+            for ring in body.loops.values_mut() {
+                ring.coedges.reverse();
+            }
+            for coedge in body.coedges.values_mut() {
+                coedge.forward = !coedge.forward;
+            }
+        }
         Some(closed)
     }
 
@@ -958,6 +1120,7 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
             number,
             Entity {
                 kind: field(first, 0) as i32,
+                form: field(second, 4),
                 transform: field(first, 6).max(0) as usize,
                 color: field(second, 2),
                 subordinate: (field(first, 8) / 10_000) % 100 != 0,
@@ -1046,16 +1209,25 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
     Some(IgesModel { bodies, sheets })
 }
 
-/// A point along a parameter-space curve piece at `t` in 0..=1.
-fn piece_point(piece: &Curve3, t: f64) -> [f64; 3] {
-    match piece {
+/// A point along a parameter-space curve piece at `t` in 0..=1; an arc
+/// runs counter-clockwise from the piece's start to its end.
+fn piece_point((curve, from, to): &(Curve3, [f64; 3], [f64; 3]), t: f64) -> Option<[f64; 3]> {
+    Some(match curve {
         Curve3::Line(l) => [0, 1, 2].map(|k| l.origin[k] + l.direction[k] * t),
         Curve3::Nurbs(n) => {
             let (a, b) = n.domain();
             n.point_at_knot(a + (b - a) * t)
         }
-        other => other.point_at(t),
-    }
+        Curve3::Circle(c) => {
+            let angle = |p: [f64; 3]| c.plane.project(p).map(|[x, y]| y.atan2(x));
+            let (a0, mut a1) = (angle(*from)?, angle(*to)?);
+            while a1 <= a0 + 1e-12 {
+                a1 += std::f64::consts::TAU;
+            }
+            curve.point_at(a0 + (a1 - a0) * t)
+        }
+        _ => return None,
+    })
 }
 
 /// A curve read with the drawing scale, back in file units.
@@ -1071,36 +1243,86 @@ fn unscale(curve: Curve3, scale: f64) -> Curve3 {
                 .map(Curve3::Nurbs)
                 .unwrap_or(Curve3::Nurbs(n))
         }
+        Curve3::Circle(mut c) => {
+            c.plane.origin = c.plane.origin.map(|x| x / scale);
+            c.radius /= scale;
+            Curve3::Circle(c)
+        }
         other => other,
     }
 }
 
-/// The cylinder or cone a straight generatrix sweeps round an axis, framed
-/// at the generatrix's start so the spline's seam is the surface's.
+/// The cylinder or cone a straight generatrix from `a` to `b` sweeps round
+/// an axis from `start` radians, framed so its seam (u = 0) is the spline's;
+/// `None` (the spline stands) when the line misses the axis's plane, crosses
+/// the axis or runs square to it.
 fn analytic_revolution(
-    net: &NurbsSurface3,
+    a: [f64; 3],
+    b: [f64; 3],
     origin: [f64; 3],
     axis: [f64; 3],
-    generatrix: &NurbsCurve3,
+    start: f64,
+    tolerance: f64,
 ) -> Option<Surface> {
-    use kernel::space::Vec3;
     let k = Vec3::from(axis).normalize()?;
-    let (t0, t1) = generatrix.domain();
-    let (a, b) = (Vec3::from(generatrix.point_at_knot(t0)), Vec3::from(generatrix.point_at_knot(t1)));
-    let o = Vec3::from(origin);
+    let (a, b, o) = (Vec3::from(a), Vec3::from(b), Vec3::from(origin));
+    let skew = (b - a).cross(k);
+    if (a - o).dot(skew).abs() > tolerance * skew.length() {
+        return None;
+    }
     let foot = |p: Vec3| o + k * (p - o).dot(k);
-    let (ra, rb) = ((a - foot(a)).length(), (b - foot(b)).length());
-    let along = (b - a).dot(k);
-    let x = (a - foot(a)).normalize().or_else(|| (b - foot(b)).normalize())?;
-    let base = Plane::orthonormal(foot(a).to_array(), x.to_array(), k.to_array())?;
-    let _ = net;
-    Some(if (ra - rb).abs() <= 1e-9 * (1.0 + ra) {
-        Surface::Cylinder(kernel::brep::Cylinder { base, radius: ra })
+    // Framed at the end farther from the axis, whose side the line keeps to.
+    let a_is_far = (a - foot(a)).length() >= (b - foot(b)).length();
+    let (far, near) = if a_is_far { (a, b) } else { (b, a) };
+    let x = (far - foot(far)).normalize()?;
+    let (r_far, r_near) = ((far - foot(far)).length(), (near - foot(near)).dot(x));
+    let along = (near - far).dot(k);
+    if r_near < -tolerance || along.abs() <= tolerance {
+        return None;
+    }
+    let x_axis = turned(x, k, start).to_array();
+    let base = Plane::orthonormal(foot(far).to_array(), x_axis, k.to_array())?;
+    Some(if (r_far - r_near).abs() <= tolerance {
+        Surface::Cylinder(kernel::brep::Cylinder { base, radius: r_far })
     } else {
         Surface::Cone(kernel::brep::Cone {
             base,
-            radius: ra,
-            half_angle: ((ra - rb) / along).atan(),
+            radius: r_far,
+            half_angle: ((r_far - r_near) / along).atan(),
         })
     })
+}
+
+/// `x` turned by `angle` radians round the unit axis `k`.
+fn turned(x: Vec3, k: Vec3, angle: f64) -> Vec3 {
+    x * angle.cos() + k.cross(x) * angle.sin()
+}
+
+/// A circular arc's (100) start and end angles in its own plane, the end
+/// past the start (a whole turn when they meet).
+fn arc_angles(entity: &Entity) -> (f64, f64) {
+    let v = |k: usize| entity.params.get(k).map_or(0.0, P::num);
+    let a0 = (v(5) - v(3)).atan2(v(4) - v(2));
+    let mut a1 = (v(7) - v(3)).atan2(v(6) - v(2));
+    while a1 <= a0 + 1e-12 {
+        a1 += std::f64::consts::TAU;
+    }
+    (a0, a1)
+}
+
+/// Whether a closed body's faces point inward: the volume its mesh encloses
+/// comes out negative.
+fn inside_out(body: &Body) -> bool {
+    let Some(bounds) = kernel::brep::body_bounds(body) else { return false };
+    let size = Vec3::from(bounds.min).distance(Vec3::from(bounds.max));
+    let mesh = kernel::brep::mesh_body(body, 0.5, size * 1e-2);
+    let volume: f64 = mesh
+        .triangles
+        .iter()
+        .map(|t| {
+            let [a, b, c] = t.map(|i| Vec3::from(mesh.positions[i]));
+            a.dot(b.cross(c))
+        })
+        .sum();
+    volume < 0.0
 }
