@@ -9819,8 +9819,16 @@ impl Scene {
                         }
                     }
                 }
-                if let Some(material) = self.block_mesh_override_material(entity, inherit.as_ref())
+                if let Some(mut material) = self.block_mesh_override_material(entity, inherit.as_ref())
                 {
+                    // A material that takes the object's colour takes this
+                    // child's, not the insert's it was resolved with.
+                    if material.diffuse_by_object {
+                        if let Some(own) = transformed.instance_color.or(set.display_color()) {
+                            material.diffuse = [own[0], own[1], own[2], material.diffuse[3]];
+                            material.ambient = [own[0], own[1], own[2]];
+                        }
+                    }
                     material.apply_to_with_face_overrides(
                         &mut transformed,
                         &self.document,
