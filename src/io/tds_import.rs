@@ -32,9 +32,18 @@ pub struct TdsCamera {
     pub lens: f64,
 }
 
+pub struct TdsLight {
+    pub position: [f64; 3],
+    /// Red, green and blue from 0 to 1 (single precision, as the file
+    /// holds them); white when the file gives none.
+    pub color: [f64; 3],
+    /// A spotlight: its target and its hotspot and falloff angles.
+    pub spot: Option<([f64; 3], f64, f64)>,
+}
+
 pub enum TdsObject {
     Mesh(TdsMesh),
-    Light,
+    Light(TdsLight),
     Camera(TdsCamera),
 }
 
@@ -43,7 +52,7 @@ impl TdsObject {
     pub fn kind(&self) -> &'static str {
         match self {
             TdsObject::Mesh(_) => "Mesh",
-            TdsObject::Light => "Light",
+            TdsObject::Light(_) => "Light",
             TdsObject::Camera(_) => "Camera",
         }
     }
@@ -173,7 +182,7 @@ pub fn read(bytes: &[u8]) -> Option<TdsScene> {
                     for (id, s, e) in r.chunks(body, stop) {
                         let object = match id {
                             0x4100 => TdsObject::Mesh(read_mesh(&r, s, e)),
-                            0x4600 => TdsObject::Light,
+                            0x4600 => TdsObject::Light(read_light(&r, s, e)?),
                             0x4700 => TdsObject::Camera(TdsCamera {
                                 position: r.point(s)?,
                                 target: r.point(s + 12)?,
@@ -190,6 +199,30 @@ pub fn read(bytes: &[u8]) -> Option<TdsScene> {
         }
     }
     Some(scene)
+}
+
+fn read_light(r: &Reader<'_>, from: usize, to: usize) -> Option<TdsLight> {
+    let position = r.point(from)?;
+    let chunks = r.chunks(from + 12, to);
+    let color = chunks
+        .iter()
+        .find_map(|&(id, s, _)| match id {
+            0x0010 | 0x0013 => r.point(s).map(|c| c.map(|v| f64::from(v as f32))),
+            0x0011 | 0x0012 => {
+                let c = r.b.get(s..s + 3)?;
+                Some([c[0], c[1], c[2]].map(|v| f64::from(f32::from(v) / 255.0)))
+            }
+            _ => None,
+        })
+        .unwrap_or([1.0; 3]);
+    Some(TdsLight {
+        position,
+        color,
+        spot: chunks
+            .iter()
+            .find(|&&(id, ..)| id == 0x4610)
+            .and_then(|&(_, s, _)| Some((r.point(s)?, r.f32(s + 12)?, r.f32(s + 16)?))),
+    })
 }
 
 fn read_mesh(r: &Reader<'_>, from: usize, to: usize) -> TdsMesh {
@@ -262,13 +295,44 @@ pub struct TdsOptions {
     pub compact: bool,
     /// The layer every mesh goes on with [`LayerMode::Single`].
     pub single_layer: String,
+    /// The mesh whose material question was cancelled: the import stops
+    /// there, keeping what came before it.
+    pub stop_at: Option<String>,
 }
 
 /// One imported mesh.
 pub struct TdsPart {
     pub layer: String,
     pub material: Option<String>,
+    /// The index colour the object's colour imports as.
+    pub color: Option<u8>,
     pub mesh: PolyfaceMesh,
+}
+
+/// The index colour each 3D Studio object colour (0–63) imports as; a
+/// larger number leaves the colour by layer.
+const OBJECT_ACI: [u8; 64] = [
+    7, 251, 1, 3, 5, 2, 6, 4, 110, 120, 4, 140, 150, 150, 160, 5, //
+    180, 190, 190, 213, 6, 220, 223, 230, 242, 12, 22, 42, 52, 40, 52, 62, //
+    254, 254, 254, 254, 254, 254, 21, 31, 51, 71, 81, 111, 131, 151, 254, 191, //
+    211, 231, 254, 21, 31, 51, 71, 81, 91, 101, 111, 131, 151, 153, 171, 171,
+];
+
+/// What the import adds, in order.
+pub enum TdsStep {
+    /// The part at this index of [`TdsImport::parts`].
+    Part(usize),
+    /// The legacy render record of a material, after the first part that
+    /// uses it.
+    Material(String),
+    /// A light, as the legacy light block (a spotlight's with its target,
+    /// hotspot and falloff).
+    Light {
+        name: String,
+        position: [f64; 3],
+        color: [f64; 3],
+        spot: Option<([f64; 3], f64, f64)>,
+    },
 }
 
 pub struct TdsCameraView {
@@ -282,6 +346,11 @@ pub struct TdsCameraView {
 
 pub struct TdsImport {
     pub parts: Vec<TdsPart>,
+    /// The parts, materials and lights in the order they are added.
+    pub steps: Vec<TdsStep>,
+    /// The global settings were chosen: the legacy render settings blocks
+    /// come first.
+    pub globals: bool,
     /// The materials the parts use, in the order they were first used.
     pub materials: Vec<String>,
     pub views: Vec<TdsCameraView>,
@@ -335,6 +404,8 @@ fn view_height(distance: f64, lens: f64) -> f64 {
 pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
     let mut out = TdsImport {
         parts: Vec::new(),
+        steps: Vec::new(),
+        globals: options.selected.iter().any(|s| s == "Global Settings"),
         materials: Vec::new(),
         views: Vec::new(),
         messages: Vec::new(),
@@ -346,6 +417,11 @@ pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
     for (name, object) in objects {
         if !chosen(name) {
             continue;
+        }
+        if options.stop_at.as_ref() == Some(name) {
+            out.messages.push(format!("Processing object {name}"));
+            out.messages.push("Render API error:".to_string());
+            return out;
         }
         match object {
             TdsObject::Mesh(mesh) => {
@@ -374,10 +450,12 @@ pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
                 };
                 let compact = options.compact || pieces.len() > 1;
                 for (material, faces) in pieces {
+                    let mut first_use = None;
                     if let Some(m) = &material {
                         if !out.materials.contains(m) {
                             out.messages.push(format!("Converting material {m}"));
                             out.materials.push(m.clone());
+                            first_use = Some(m.clone());
                         }
                     }
                     // Object and material names come from the file, so they
@@ -394,12 +472,15 @@ pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
                         LayerMode::Single => options.single_layer.clone(),
                     };
                     for polyface in polyfaces(mesh, &faces, compact) {
+                        out.steps.push(TdsStep::Part(out.parts.len()));
                         out.parts.push(TdsPart {
                             layer: layer.clone(),
                             material: material.clone(),
+                            color: mesh.color.and_then(|c| OBJECT_ACI.get(usize::from(c)).copied()),
                             mesh: polyface,
                         });
                     }
+                    out.steps.extend(first_use.map(TdsStep::Material));
                 }
             }
             TdsObject::Camera(camera) => {
@@ -415,7 +496,12 @@ pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
                     lens: camera.lens,
                 });
             }
-            TdsObject::Light => {}
+            TdsObject::Light(light) => out.steps.push(TdsStep::Light {
+                name: name.to_uppercase(),
+                position: light.position,
+                color: light.color,
+                spot: light.spot,
+            }),
         }
     }
     out.messages.push("3D Studio file import completed".to_string());

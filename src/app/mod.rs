@@ -2355,6 +2355,8 @@ pub enum ModalKind {
     DgnImport,
     /// IMPORT's 3D Studio Import window.
     TdsImport,
+    /// A 3D Studio import set to ask: one mesh with several materials.
+    TdsMaterial,
     /// Web: a crash-recovery autosave snapshot newer than the drawing's last
     /// save awaits a restore/discard decision. Distinct from the corrupt-file
     /// `RecoveryPrompt` — nothing is wrong with the drawing itself.

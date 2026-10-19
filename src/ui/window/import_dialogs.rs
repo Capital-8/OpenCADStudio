@@ -49,6 +49,14 @@ pub enum ImportDialogMsg {
     TdsLayers(usize),
     TdsMulti(usize),
     TdsOk,
+    // A mesh with several materials, asked during a 3D Studio import
+    /// 0 split by material, 1 first material, 2 the material chosen below.
+    TdsMatChoice(usize),
+    TdsMatList(bool),
+    /// 0 no material, k the mesh's k-th material.
+    TdsMatPick(usize),
+    TdsMatRemember(bool),
+    TdsMatApply,
     Help(&'static str),
 }
 
@@ -180,12 +188,31 @@ pub struct TdsImportState {
     pub multi: usize,
 }
 
+/// A 3D Studio import set to ask: the meshes with several materials still to
+/// ask about, in the order the import processes them, and the answer being
+/// given for the first one.
+pub struct TdsMaterialState {
+    pub request: crate::modules::insert::tds_import::TdsImportRequest,
+    /// Each mesh and its materials (with their diffuse colour), last
+    /// assigned first.
+    pub queue: Vec<(String, Vec<(String, Option<[u8; 3]>)>)>,
+    /// 0 split by material, 1 first material, 2 a chosen one; the choice
+    /// made for one mesh is offered for the next.
+    pub choice: usize,
+    /// 0 no material, k the k-th of the mesh's materials.
+    pub material: usize,
+    pub list_open: bool,
+    /// The choice answers the remaining meshes too.
+    pub remember: bool,
+}
+
 /// The windows' working copies and the files imported this session.
 #[derive(Default)]
 pub struct ImportDialogs {
     pub file: Option<ImportFileState>,
     pub dgn: Option<DgnImportState>,
     pub tds: Option<TdsImportState>,
+    pub tds_material: Option<TdsMaterialState>,
     pub recent: Vec<String>,
 }
 
@@ -648,6 +675,199 @@ pub fn view_tds_import<'a>(
         ]
         .spacing(10),
         actions,
+    ]
+    .spacing(10)
+    .padding([10, 12])
+    .width(sizing.width)
+    .into()
+}
+
+fn material_swatch<'a>(color: Option<[u8; 3]>) -> Element<'a, Message> {
+    let [r, g, b] = color.unwrap_or([0x80; 3]);
+    container(Space::new().width(10).height(10))
+        .style(move |_: &Theme| container::Style {
+            background: Some(Background::Color(iced::Color::from_rgb8(r, g, b))),
+            border: Border {
+                radius: 2.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
+/// The mesh with several materials and what it becomes.
+pub fn view_tds_material<'a>(
+    state: &'a TdsMaterialState,
+    sizing: crate::ui::modal::ModalSizing,
+) -> Element<'a, Message> {
+    const MESH: &str = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'>\
+        <path d='M9 2.5 15 6v6L9 15.5 3 12V6z' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'/>\
+        <path d='M3 6l6 3.5L15 6M9 9.5v6' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'/></svg>";
+    let Some((name, materials)) = state.queue.first() else {
+        return Space::new().into();
+    };
+    let badge = container(
+        iced::widget::svg(iced::widget::svg::Handle::from_memory(MESH.as_bytes()))
+            .width(18)
+            .height(18)
+            .style(|theme: &Theme, _| iced::widget::svg::Style {
+                color: Some(theme.palette().primary.base.color),
+            }),
+    )
+    .width(34)
+    .height(34)
+    .center_x(34)
+    .center_y(34)
+    .style(|theme: &Theme| container::Style {
+        background: Some(Background::Color(theme.palette().primary.base.color.scale_alpha(0.13))),
+        border: Border {
+            radius: 17.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    let mut chips = row![text(crate::tr!("import-3ds", "materials", n = (materials.len() as i64)))
+        .size(11)
+        .style(muted_style)]
+    .spacing(6)
+    .align_y(iced::Center);
+    for (material, color) in materials {
+        chips = chips.push(
+            container(row![material_swatch(*color), text(material.as_str()).size(11)].spacing(4).align_y(iced::Center))
+                .padding([1, 7])
+                .style(|theme: &Theme| container::Style {
+                    background: Some(Background::Color(theme.palette().background.base.color)),
+                    border: Border {
+                        width: 1.0,
+                        radius: 9.0.into(),
+                        color: theme.palette().background.strong.color,
+                    },
+                    ..Default::default()
+                }),
+        );
+    }
+    let object = container(
+        row![
+            badge,
+            column![
+                text(name.as_str()).size(13).font(iced::Font {
+                    weight: iced::font::Weight::Bold,
+                    ..iced::Font::DEFAULT
+                }),
+                chips
+            ]
+            .spacing(3)
+        ]
+        .spacing(10)
+        .align_y(iced::Center),
+    )
+    .padding([10, 12])
+    .width(Fill)
+    .style(crate::ui::window::pdf_dialogs::card_style);
+
+    let choosing = state.choice == 2;
+    let chosen = state.material.checked_sub(1).and_then(|k| materials.get(k));
+    let head_label = |entry: Option<&(String, Option<[u8; 3]>)>| -> Element<'a, Message> {
+        match entry {
+            Some((material, color)) => row![material_swatch(*color), text(material.clone()).size(12)]
+                .spacing(6)
+                .align_y(iced::Center)
+                .into(),
+            None if choosing => text(crate::tr!("import-3ds-alert", "none")).size(12).into(),
+            None => text(crate::tr!("import-3ds-alert", "none")).size(12).style(muted_style).into(),
+        }
+    };
+    let head = button(
+        row![
+            head_label(if choosing { chosen } else { None }),
+            Space::new().width(Fill),
+            crate::ui::icons::themed_arrow_toggle(state.list_open, 9.0),
+        ]
+        .align_y(iced::Center),
+    )
+    .on_press_maybe(choosing.then(|| msg(ImportDialogMsg::TdsMatList(!state.list_open))))
+    .style(button_style(false))
+    .padding([4, 8])
+    .width(Fill);
+    let field: Element<'a, Message> = if choosing && state.list_open {
+        let mut list = column![].spacing(1);
+        for k in 0..=materials.len() {
+            list = list.push(
+                button(head_label(k.checked_sub(1).and_then(|j| materials.get(j))))
+                    .on_press(msg(ImportDialogMsg::TdsMatPick(k)))
+                    .style(crate::ui::color_select::list_row_style)
+                    .padding([4, 8])
+                    .width(Fill),
+            );
+        }
+        iced_aw::DropDown::new(
+            head,
+            container(list).style(crate::ui::color_select::popup_panel_style).padding(2),
+            true,
+        )
+        .alignment(iced_aw::drop_down::Alignment::Bottom)
+        .offset(2.0)
+        .on_dismiss(msg(ImportDialogMsg::TdsMatList(false)))
+        .into()
+    } else {
+        head.into()
+    };
+    let note = match state.choice {
+        0 => crate::tr!("import-3ds-alert", "note-split"),
+        1 => crate::tr!("import-3ds-alert", "note-first"),
+        _ => crate::tr!("import-3ds-alert", "note-select"),
+    };
+    let assignment = card(
+        crate::tr!("import-3ds-alert", "assignment"),
+        column![
+            segmented(
+                [
+                    crate::tr!("import-3ds-alert", "split"),
+                    crate::tr!("import-3ds-alert", "first"),
+                    crate::tr!("import-3ds-alert", "select"),
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(k, label)| (label, state.choice == k, Some(msg(ImportDialogMsg::TdsMatChoice(k)))))
+                .collect()
+            ),
+            row![
+                text(crate::tr!("import-3ds-alert", "material"))
+                    .size(11)
+                    .style(muted_style)
+                    .width(Length::Fixed(70.0)),
+                field,
+            ]
+            .spacing(6)
+            .align_y(iced::Center),
+            text(note).size(11).style(muted_style),
+        ]
+        .spacing(8),
+    );
+    let remember_label = if state.remember {
+        format!("✓ {}", crate::tr!("import-3ds-alert", "remember"))
+    } else {
+        crate::tr!("import-3ds-alert", "remember")
+    };
+    let mut remaining = column![row![chip(
+        remember_label,
+        state.remember,
+        msg(ImportDialogMsg::TdsMatRemember(!state.remember))
+    )]]
+    .spacing(8);
+    if !state.remember {
+        remaining = remaining.push(text(crate::tr!("import-3ds-alert", "remember-note")).size(11).style(muted_style));
+    }
+    column![
+        object,
+        assignment,
+        card(crate::tr!("import-3ds-alert", "remaining"), remaining),
+        footer(
+            "3ds-material",
+            std::borrow::Cow::Owned(crate::tr!("import-3ds-alert", "apply")),
+            Some(msg(ImportDialogMsg::TdsMatApply)),
+        ),
     ]
     .spacing(10)
     .padding([10, 12])

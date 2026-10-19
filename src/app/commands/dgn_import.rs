@@ -283,6 +283,7 @@ impl OpenCADStudio {
                         "Imports a DGN model as drawing objects: levels as layers, cells as blocks."
                     ),
                     "3ds" => std::borrow::Cow::Owned(crate::tr!("import-3ds", "help")),
+                    "3ds-material" => std::borrow::Cow::Owned(crate::tr!("import-3ds-alert", "help")),
                     _ => crate::t!(
                         "Imports a file of the chosen format with the format's importer."
                     ),
@@ -450,6 +451,32 @@ impl OpenCADStudio {
                 self.close_active_modal();
                 return self.start_tds_import(i, state);
             }
+            // ── Multiple-material mesh ──────────────────────────────────
+            ImportDialogMsg::TdsMatChoice(k) => {
+                if let Some(s) = self.import_dialogs.tds_material.as_mut() {
+                    s.choice = k.min(2);
+                    s.list_open = false;
+                }
+            }
+            ImportDialogMsg::TdsMatList(open) => {
+                if let Some(s) = self.import_dialogs.tds_material.as_mut() {
+                    s.list_open = open && s.choice == 2;
+                }
+            }
+            ImportDialogMsg::TdsMatPick(k) => {
+                if let Some(s) = self.import_dialogs.tds_material.as_mut() {
+                    let count = s.queue.first().map_or(0, |(_, m)| m.len());
+                    s.choice = 2;
+                    s.material = k.min(count);
+                    s.list_open = false;
+                }
+            }
+            ImportDialogMsg::TdsMatRemember(on) => {
+                if let Some(s) = self.import_dialogs.tds_material.as_mut() {
+                    s.remember = on;
+                }
+            }
+            ImportDialogMsg::TdsMatApply => self.answer_tds_material(),
             // ── DGN Import ───────────────────────────────────────────────
             ImportDialogMsg::DgnChange => return self.pick_dgn_file(),
             ImportDialogMsg::DgnPicked(Some(path)) => {
