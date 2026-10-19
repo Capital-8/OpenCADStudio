@@ -272,6 +272,123 @@ fn linear_value_set_snaps_interactive_edits_and_keeps_rebuild_values() {
     assert!((current(&doc, &p).x - 1.0).abs() < 1e-9);
 }
 
+#[test]
+fn xy_move_box_set_creates_four_key_point_bindings() {
+    let (mut doc, def, handles) = fixture();
+    let parameter = distance::create(
+        &mut doc,
+        def,
+        distance::Kind::XY,
+        Vector3::ZERO,
+        Vector3::new(10., 10., 0.),
+        Vector3::new(5., 5., 0.),
+    )
+    .unwrap();
+    let key_points = [
+        (XyKeyPoint::Base, ["BaseXDelta", "BaseYDelta"]),
+        (XyKeyPoint::X, ["EndXDelta", "BaseYDelta"]),
+        (XyKeyPoint::Y, ["BaseXDelta", "EndYDelta"]),
+        (XyKeyPoint::End, ["EndXDelta", "EndYDelta"]),
+    ];
+    for (index, (key_point, expected)) in key_points.iter().copied().enumerate() {
+        let action_handle = create_with_options(
+            &mut doc,
+            def,
+            Kind::Move,
+            parameter,
+            Some(key_point),
+            &[handles[index % handles.len()]],
+            DVec3::new(index as f64, 0., 0.),
+            None,
+            None,
+        )
+        .unwrap();
+        let ObjectType::DynamicBlock(action_object) = &doc.objects[&action_handle] else {
+            panic!()
+        };
+        let DynamicBlockData::MoveAction(action) = &action_object.data else {
+            panic!()
+        };
+        assert_eq!(
+            [
+                action.connections[0].name.as_str(),
+                action.connections[1].name.as_str(),
+            ],
+            expected
+        );
+    }
+    assert_eq!(
+        doc.objects
+            .values()
+            .filter(|object| matches!(object, ObjectType::DynamicBlock(object) if matches!(object.data, DynamicBlockData::MoveAction(_))))
+            .count(),
+        4
+    );
+    let roundtrips = [
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+            .read()
+            .unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap()))
+            .unwrap()
+            .read()
+            .unwrap(),
+    ];
+    for roundtrip in roundtrips {
+        for (_, expected) in key_points {
+            assert!(roundtrip.objects.values().any(|object| {
+                matches!(object, ObjectType::DynamicBlock(object) if matches!(&object.data, DynamicBlockData::MoveAction(action) if [action.connections[0].name.as_str(), action.connections[1].name.as_str()] == expected))
+            }));
+        }
+    }
+}
+
+#[test]
+fn xy_move_box_set_actions_apply_their_key_point_axis_deltas() {
+    for (key_point, expected_delta) in [
+        (XyKeyPoint::Base, DVec3::ZERO),
+        (XyKeyPoint::X, DVec3::new(3., 0., 0.)),
+        (XyKeyPoint::Y, DVec3::new(0., 5., 0.)),
+        (XyKeyPoint::End, DVec3::new(3., 5., 0.)),
+    ] {
+        let (mut doc, def, targets) = fixture();
+        let parameter = distance::create(
+            &mut doc,
+            def,
+            distance::Kind::XY,
+            Vector3::ZERO,
+            Vector3::new(10., 10., 0.),
+            Vector3::new(5., 5., 0.),
+        )
+        .unwrap();
+        create_with_options(
+            &mut doc,
+            def,
+            Kind::Move,
+            parameter,
+            Some(key_point),
+            &[targets[0]],
+            DVec3::ZERO,
+            None,
+            None,
+        )
+        .unwrap();
+        let baseline = doc.clone();
+        evaluate(
+            &mut doc,
+            &baseline,
+            def,
+            parameter,
+            DVec3::new(13., 15., 0.),
+        )
+        .unwrap();
+        assert_eq!(
+            start(&doc, targets[0]),
+            Vector3::new(1. + expected_delta.x, expected_delta.y, 0.),
+            "key point {key_point:?}"
+        );
+    }
+}
+
 fn start(doc: &CadDocument, h: Handle) -> Vector3 {
     let EntityType::Line(l) = doc.get_entity(h).unwrap() else {
         panic!()

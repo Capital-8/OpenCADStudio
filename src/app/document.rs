@@ -160,6 +160,7 @@ pub(super) struct DocumentTab {
     pub(super) active_cmd: Option<Box<dyn CadCommand>>,
     /// Follow-up command for a Parameter Set macro after parameter placement.
     pub(super) pending_parameter_set_follow_up: Option<&'static str>,
+    pub(super) pending_xy_move_box_set: Option<(codec::Handle, u8)>,
     pub(super) measurement: super::measurement::MeasurementDisplay,
     /// Remaining command tokens queued behind a PAUSE (or `\`) awaiting user interaction.
     pub(super) pending_pause_tokens: Option<Vec<String>>,
@@ -729,6 +730,7 @@ impl DocumentTab {
             layers: LayerPanel::default(),
             active_cmd: None,
             pending_parameter_set_follow_up: None,
+            pending_xy_move_box_set: None,
             measurement: super::measurement::MeasurementDisplay::default(),
             pending_pause_tokens: None,
             last_cmd: None,

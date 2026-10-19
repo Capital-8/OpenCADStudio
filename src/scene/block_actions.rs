@@ -32,6 +32,14 @@ pub enum Kind {
     PolarStretch,
     Array,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XyKeyPoint {
+    Base,
+    X,
+    Y,
+    End,
+}
 impl Kind {
     pub(crate) fn parse(s: &str) -> Option<Self> {
         match s.trim().to_ascii_uppercase().as_str() {
@@ -387,7 +395,7 @@ pub(crate) fn create(
     location: DVec3,
 ) -> Result<Handle, &'static str> {
     create_with_options(
-        doc, definition, kind, parameter, targets, location, None, None,
+        doc, definition, kind, parameter, None, targets, location, None, None,
     )
 }
 
@@ -406,6 +414,7 @@ pub(crate) fn create_array(
         definition,
         Kind::Array,
         parameter,
+        None,
         targets,
         location,
         None,
@@ -424,7 +433,7 @@ pub(crate) fn create_with_frame(
     frame: Option<[DVec3; 2]>,
 ) -> Result<Handle, &'static str> {
     create_with_options(
-        doc, definition, kind, parameter, targets, location, frame, None,
+        doc, definition, kind, parameter, None, targets, location, frame, None,
     )
 }
 
@@ -433,6 +442,7 @@ pub(crate) fn create_with_options(
     definition: Handle,
     kind: Kind,
     parameter: Handle,
+    xy_key_point: Option<XyKeyPoint>,
     targets: &[Handle],
     location: DVec3,
     frame: Option<[DVec3; 2]>,
@@ -445,6 +455,9 @@ pub(crate) fn create_with_options(
         .into_iter()
         .find(|p| p.handle == parameter)
         .ok_or("Select a compatible parameter belonging to this block.")?;
+    if xy_key_point.is_some() && (kind != Kind::Move || !p.xy) {
+        return Err("XY key points can only be used by Move actions on an XY parameter.");
+    }
     if targets.is_empty() {
         return Err("Select at least one object for the action.");
     }
@@ -588,11 +601,7 @@ pub(crate) fn create_with_options(
         }
         Kind::Move => DynamicBlockData::MoveAction(BlockMoveAction {
             action,
-            connections: if p.point {
-                [connection("XDelta"), connection("YDelta")]
-            } else {
-                [connection("EndXDelta"), connection("EndYDelta")]
-            },
+            connections: move_connections(&p, xy_key_point),
             offsets: BlockActionOffsets {
                 distance_multiplier: 1.,
                 angle_offset: 0.,
@@ -643,6 +652,53 @@ pub(crate) fn create_with_options(
     authoring::graph::bind_ids(&mut staged, graph, slots.eval, &[p.id])?;
     *doc = staged;
     Ok(handle)
+}
+
+fn move_connections(p: &Parameter, key_point: Option<XyKeyPoint>) -> [BlockConnection; 2] {
+    let names = match (p.point, p.xy, key_point) {
+        (true, _, _) => ["XDelta", "YDelta"],
+        (_, true, Some(XyKeyPoint::Base)) => ["BaseXDelta", "BaseYDelta"],
+        (_, true, Some(XyKeyPoint::X)) => ["EndXDelta", "BaseYDelta"],
+        (_, true, Some(XyKeyPoint::Y)) => ["BaseXDelta", "EndYDelta"],
+        (_, true, Some(XyKeyPoint::End) | None) | (_, false, _) => {
+            ["EndXDelta", "EndYDelta"]
+        }
+    };
+    names.map(|name| BlockConnection {
+        code: p.id,
+        name: name.into(),
+    })
+}
+
+fn action_move_delta(
+    parameter: &Parameter,
+    current_end: DVec3,
+    connections: &[BlockConnection; 2],
+) -> Option<DVec3> {
+    if connections
+        .iter()
+        .any(|connection| connection.code != parameter.id)
+    {
+        return None;
+    }
+    let delta = current_end - parameter.end;
+    let names = [
+        connections[0].name.as_str(),
+        connections[1].name.as_str(),
+    ];
+    if parameter.point && names == ["XDelta", "YDelta"] {
+        return Some(delta);
+    }
+    if parameter.xy {
+        return match names {
+            ["BaseXDelta", "BaseYDelta"] => Some(DVec3::ZERO),
+            ["EndXDelta", "BaseYDelta"] => Some(DVec3::new(delta.x, 0.0, 0.0)),
+            ["BaseXDelta", "EndYDelta"] => Some(DVec3::new(0.0, delta.y, 0.0)),
+            ["EndXDelta", "EndYDelta"] => Some(delta),
+            _ => None,
+        };
+    }
+    (names == ["EndXDelta", "EndYDelta"]).then_some(delta)
 }
 
 /// Retarget an existing native action, retaining identity, graph and options.
@@ -1208,8 +1264,22 @@ fn evaluate_impl(
                 return Err("This parameter uses value constraints or chaining not supported yet.");
             }
             let end = current(&staged, &q);
+            let ObjectType::DynamicBlock(action_object) = &baseline.objects[action_handle] else {
+                unreachable!()
+            };
+            let move_translation = match &action_object.data {
+                DynamicBlockData::MoveAction(move_action) => {
+                    Some(action_move_delta(&q, end, &move_action.connections))
+                }
+                _ => None,
+            };
             let transform = match kind {
-                Kind::Move | Kind::Stretch | Kind::PolarStretch => {
+                Kind::Move => crate::command::EntityTransform::Translate(
+                    move_translation
+                        .flatten()
+                        .ok_or("This Move action uses unsupported parameter connections.")?,
+                ),
+                Kind::Stretch | Kind::PolarStretch => {
                     crate::command::EntityTransform::Translate(end - q.end)
                 }
                 Kind::Rotate => {
@@ -1249,38 +1319,13 @@ fn evaluate_impl(
             if !a.action_ids.is_empty() {
                 return Err("Chained actions are not supported yet.");
             }
-            let ObjectType::DynamicBlock(o) = &baseline.objects[action_handle] else {
-                unreachable!()
-            };
+            let o = action_object;
             match &o.data {
                 DynamicBlockData::MoveAction(m)
                     if m.offsets.distance_multiplier != 1.
                         || m.offsets.angle_offset != 0.
                         || m.offsets.flags != 0
-                        || m.connections
-                            != if q.point {
-                                [
-                                    BlockConnection {
-                                        code: q.id,
-                                        name: "XDelta".into(),
-                                    },
-                                    BlockConnection {
-                                        code: q.id,
-                                        name: "YDelta".into(),
-                                    },
-                                ]
-                            } else {
-                                [
-                                    BlockConnection {
-                                        code: q.id,
-                                        name: "EndXDelta".into(),
-                                    },
-                                    BlockConnection {
-                                        code: q.id,
-                                        name: "EndYDelta".into(),
-                                    },
-                                ]
-                            } =>
+                        || action_move_delta(&q, end, &m.connections).is_none() =>
                 {
                     return Err("This Move action uses options not supported yet.");
                 }

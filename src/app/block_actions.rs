@@ -125,6 +125,14 @@ impl OpenCADStudio {
         args: &str,
         parameter: codec::Handle,
     ) -> Task<Message> {
+        self.start_block_action_for_parameter_at(args, parameter, None)
+    }
+    fn start_block_action_for_parameter_at(
+        &mut self,
+        args: &str,
+        parameter: codec::Handle,
+        xy_key_point: Option<actions::XyKeyPoint>,
+    ) -> Task<Message> {
         let Some(kind) = Kind::parse(args) else {
             self.command_line.push_error(
                 crate::t!("The Parameter Set's action type is not supported.").as_ref(),
@@ -144,6 +152,7 @@ impl OpenCADStudio {
             kind,
             candidates,
             parameter,
+            xy_key_point,
         ) else {
             self.command_line.push_error(
                 crate::t!("The placed parameter is incompatible with this action.").as_ref(),
@@ -154,6 +163,20 @@ impl OpenCADStudio {
         self.command_line.set_step_options(command.options());
         self.tabs[self.active_tab].active_cmd = Some(Box::new(command));
         Task::none()
+    }
+    pub(in crate::app) fn start_xy_move_box_set_action(
+        &mut self,
+        parameter: codec::Handle,
+        key_point: u8,
+    ) -> Task<Message> {
+        let key_point = match key_point {
+            0 => actions::XyKeyPoint::Base,
+            1 => actions::XyKeyPoint::X,
+            2 => actions::XyKeyPoint::Y,
+            3 => actions::XyKeyPoint::End,
+            _ => return Task::none(),
+        };
+        self.start_block_action_for_parameter_at("MOVE", parameter, Some(key_point))
     }
     pub(in crate::app) fn handle_block_action_result(
         &mut self,
@@ -213,6 +236,7 @@ impl OpenCADStudio {
                 definition,
                 kind,
                 parameter,
+                xy_key_point,
                 targets,
                 location,
                 frame,
@@ -236,6 +260,7 @@ impl OpenCADStudio {
                     definition,
                     kind,
                     parameter,
+                    xy_key_point,
                     &targets,
                     location,
                     frame,
@@ -251,6 +276,24 @@ impl OpenCADStudio {
                         self.finish_pending_history(i);
                         self.refresh_properties();
                         self.command_line.push_output(crate::tf!("{} action attached. Select the reference and use its parameter grip, or open Test Block.",crate::t!(kind.name())).as_ref());
+                        if let Some((set_parameter, next_key_point)) = self.tabs[i].pending_xy_move_box_set {
+                            let completed_key_point = match xy_key_point {
+                                Some(actions::XyKeyPoint::Base) => 0,
+                                Some(actions::XyKeyPoint::X) => 1,
+                                Some(actions::XyKeyPoint::Y) => 2,
+                                Some(actions::XyKeyPoint::End) => 3,
+                                None => 3,
+                            };
+                            if set_parameter == parameter
+                                && usize::from(next_key_point) == completed_key_point
+                                && next_key_point < 3
+                            {
+                                let next = next_key_point + 1;
+                                self.tabs[i].pending_xy_move_box_set = Some((parameter, next));
+                                return self.start_xy_move_box_set_action(parameter, next);
+                            }
+                            self.tabs[i].pending_xy_move_box_set = None;
+                        }
                     }
                     Err(e) => self.command_line.push_error(crate::t!(e).as_ref()),
                 }

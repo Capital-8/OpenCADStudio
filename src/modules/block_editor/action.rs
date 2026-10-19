@@ -1,6 +1,6 @@
 //! Reuse the command host's point picking and object-set selection.
 use crate::command::{CadCommand, CmdOption, CmdResult, PointPickContext};
-use crate::scene::block_actions::{self as actions, Kind, Parameter};
+use crate::scene::block_actions::{self as actions, Kind, Parameter, XyKeyPoint};
 use codec::Handle;
 use glam::DVec3;
 
@@ -14,6 +14,7 @@ pub(crate) struct ActionCommand {
     kind: Option<Kind>,
     candidates: Vec<Parameter>,
     parameter: Option<Handle>,
+    xy_key_point: Option<XyKeyPoint>,
     targets: Vec<Handle>,
     selecting: bool,
     frame: Vec<DVec3>,
@@ -34,6 +35,7 @@ impl ActionCommand {
             kind,
             candidates,
             parameter: None,
+            xy_key_point: None,
             targets: vec![],
             selecting: false,
             frame: vec![],
@@ -48,6 +50,7 @@ impl ActionCommand {
         kind: Kind,
         candidates: Vec<Parameter>,
         parameter: Handle,
+        xy_key_point: Option<XyKeyPoint>,
     ) -> Option<Self> {
         let mut command = Self::new(document, definition, Some(kind), candidates);
         if !command.candidates.iter().any(|candidate| {
@@ -56,6 +59,7 @@ impl ActionCommand {
             return None;
         }
         command.parameter = Some(parameter);
+        command.xy_key_point = xy_key_point;
         command.selecting = !actions::needs_frame(kind);
         Some(command)
     }
@@ -114,6 +118,15 @@ impl CadCommand for ActionCommand {
             return crate::t!("BACTION  Specify opposite corner of action frame:").into_owned();
         }
         if self.selecting {
+            if let Some(point) = self.xy_key_point {
+                let point = match point {
+                    XyKeyPoint::Base => "base",
+                    XyKeyPoint::X => "X-axis",
+                    XyKeyPoint::Y => "Y-axis",
+                    XyKeyPoint::End => "end",
+                };
+                return crate::tf!("BACTION XY Move Box Set  Select objects for the {point} key point, then press Enter:").into_owned();
+            }
             return crate::t!("BACTION  Select objects for the action, then press Enter:")
                 .into_owned();
         }
@@ -321,6 +334,7 @@ impl CadCommand for ActionCommand {
             definition: self.definition,
             kind: self.kind.unwrap(),
             parameter: self.parameter.unwrap(),
+            xy_key_point: self.xy_key_point,
             targets: self.targets.clone(),
             location: point,
             frame: (self.frame.len() == 2).then(|| [self.frame[0], self.frame[1]]),

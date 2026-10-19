@@ -1541,6 +1541,7 @@ pub enum CmdResult {
         definition: Handle,
         kind: crate::scene::block_actions::Kind,
         parameter: Handle,
+        xy_key_point: Option<crate::scene::block_actions::XyKeyPoint>,
         targets: Vec<Handle>,
         location: DVec3,
         frame: Option<[DVec3; 2]>,

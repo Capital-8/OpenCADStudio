@@ -1870,6 +1870,66 @@ fn block_actions_command_selection_cancel_undo_and_test_block_isolation() {
 }
 
 #[test]
+fn xy_move_box_set_guides_four_separate_action_selections() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    use crate::scene::block_distance_parameter as distance;
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter = distance::create(
+        &mut app.tabs[i].scene.document,
+        definition,
+        distance::Kind::XY,
+        Vector3::ZERO,
+        Vector3::new(10., 10., 0.),
+        Vector3::new(5., 5., 0.),
+    )
+    .unwrap();
+    app.tabs[i].pending_parameter_set_follow_up = Some("XY_MOVE_BOX_SET");
+    let _ = app.finish_parameter_set_placement(i, parameter);
+    let targets = members(&app);
+    for (key_point, expected_names) in [
+        ("base", ["BaseXDelta", "BaseYDelta"]),
+        ("X-axis", ["EndXDelta", "BaseYDelta"]),
+        ("Y-axis", ["BaseXDelta", "EndYDelta"]),
+        ("end", ["EndXDelta", "EndYDelta"]),
+    ] {
+        assert!(app.tabs[i]
+            .active_cmd
+            .as_ref()
+            .unwrap()
+            .prompt()
+            .contains(key_point));
+        let _ = app.feed_command(crate::command::StepInput::SelectionComplete(
+            targets.clone(),
+        ));
+        let _ = app.feed_command(crate::command::StepInput::Enter);
+        let _ = app.feed_command(crate::command::StepInput::Point(glam::DVec3::ZERO));
+        let authored = actions::actions(&app.tabs[i].scene.document, definition);
+        let action = authored.last().unwrap();
+        let codec::objects::ObjectType::DynamicBlock(object) =
+            &app.tabs[i].scene.document.objects[&action.0]
+        else {
+            panic!()
+        };
+        let codec::objects::DynamicBlockData::MoveAction(move_action) = &object.data else {
+            panic!()
+        };
+        assert_eq!(
+            [
+                move_action.connections[0].name.as_str(),
+                move_action.connections[1].name.as_str(),
+            ],
+            expected_names
+        );
+    }
+    assert_eq!(actions::actions(&app.tabs[i].scene.document, definition).len(), 4);
+    assert!(app.tabs[i].active_cmd.is_none());
+    assert_eq!(actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move).len(), 1);
+}
+
+#[test]
 fn block_actions_rejected_outside_editor_preserve_running_command_and_stale_results_are_inert() {
     use crate::scene::block_actions::Kind;
     let (mut app, reference) = fixture();
@@ -1892,6 +1952,7 @@ fn block_actions_rejected_outside_editor_preserve_running_command_and_stale_resu
         definition: def,
         kind: Kind::Move,
         parameter: p,
+        xy_key_point: None,
         targets: members(&app),
         location: glam::DVec3::ZERO,
         frame: None,

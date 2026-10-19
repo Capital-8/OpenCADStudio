@@ -616,6 +616,10 @@ impl OpenCADStudio {
         parameter: Handle,
     ) -> Task<Message> {
         match self.tabs[i].pending_parameter_set_follow_up.take() {
+            Some("XY_MOVE_BOX_SET") => {
+                self.tabs[i].pending_xy_move_box_set = Some((parameter, 0));
+                self.start_xy_move_box_set_action(parameter, 0)
+            }
             Some(command) if command.starts_with("BACTION ") => {
                 self.start_block_action_for_parameter(
                     command.trim_start_matches("BACTION "),
