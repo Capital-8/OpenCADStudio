@@ -324,11 +324,16 @@ fn arc_points(bounds: [f64; 4], start: [f64; 2], end: [f64; 2]) -> Vec<[f64; 2]>
     for k in 1..degrees.len() {
         degrees[k] = degrees[k - 1] + 360.0 / ARC_STEPS as f64;
     }
+    // Centre plus radius times cosine (sine) is worked out wider than a
+    // double and rounded to one once, then cut to whole units: a point
+    // that lands within rounding of a whole unit falls on the side the
+    // exact value lies.
     let point = |k: i64| {
         let a = degrees[k as usize] * (std::f64::consts::PI / 180.0);
+        let (cos, sin) = wide::cos_sin(a);
         [
-            (cx as f64 + rx as f64 * a.cos()).trunc(),
-            (cy as f64 + ry as f64 * -a.sin()).trunc(),
+            wide::add(wide::mul(cos, rx as f64), cx as f64).0.trunc(),
+            wide::add(wide::mul(sin, -(ry as f64)), cy as f64).0.trunc(),
         ]
     };
     let grid: Vec<[f64; 2]> = (0..ARC_STEPS).map(point).collect();
@@ -381,6 +386,74 @@ fn arc_points(bounds: [f64; 4], start: [f64; 2], end: [f64; 2]) -> Vec<[f64; 2]>
         }
     }
     steps.into_iter().map(point).collect()
+}
+
+/// Double-double arithmetic (a value as an unevaluated sum hi + lo), for
+/// the arc points' cosine and sine and the sums made with them.
+mod wide {
+    pub type Wide = (f64, f64);
+
+    fn two_sum(a: f64, b: f64) -> Wide {
+        let s = a + b;
+        let v = s - a;
+        (s, (a - (s - v)) + (b - v))
+    }
+
+    fn quick(hi: f64, lo: f64) -> Wide {
+        let s = hi + lo;
+        (s, lo - (s - hi))
+    }
+
+    pub fn add(a: Wide, b: f64) -> Wide {
+        let (s, e) = two_sum(a.0, b);
+        quick(s, e + a.1)
+    }
+
+    fn add_wide(a: Wide, b: Wide) -> Wide {
+        let (s, e) = two_sum(a.0, b.0);
+        quick(s, e + a.1 + b.1)
+    }
+
+    pub fn mul(a: Wide, b: f64) -> Wide {
+        let p = a.0 * b;
+        quick(p, a.0.mul_add(b, -p) + a.1 * b)
+    }
+
+    fn mul_wide(a: Wide, b: Wide) -> Wide {
+        let p = a.0 * b.0;
+        quick(p, a.0.mul_add(b.0, -p) + a.0 * b.1 + a.1 * b.0)
+    }
+
+    fn div(a: Wide, b: f64) -> Wide {
+        let q = a.0 / b;
+        let r = add_wide(a, mul((q, 0.0), -b));
+        quick(q, r.0 / b)
+    }
+
+    /// cos and sin of `a` (radians, the double taken as exact).
+    pub fn cos_sin(a: f64) -> (Wide, Wide) {
+        // Reduced by quarter turns to |r| <= pi/4.
+        const HALF_PI: Wide = (1.5707963267948966, 6.123233995736766e-17);
+        let n = (a / HALF_PI.0).round();
+        let r = add_wide((a, 0.0), mul(HALF_PI, -n));
+        let r2 = mul_wide(r, r);
+        let (mut c, mut s) = ((1.0, 0.0), r);
+        let (mut tc, mut ts) = ((1.0, 0.0), r);
+        for k in 1..20 {
+            let k = f64::from(k);
+            tc = div(mul_wide(tc, r2), -(2.0 * k - 1.0) * (2.0 * k));
+            ts = div(mul_wide(ts, r2), -(2.0 * k) * (2.0 * k + 1.0));
+            c = add_wide(c, tc);
+            s = add_wide(s, ts);
+        }
+        let neg = |w: Wide| (-w.0, -w.1);
+        match (n as i64).rem_euclid(4) {
+            0 => (c, s),
+            1 => (neg(s), c),
+            2 => (neg(c), neg(s)),
+            _ => (s, neg(c)),
+        }
+    }
 }
 
 /// Reads a metafile, scaled so the picture fits within `fit` (width and
