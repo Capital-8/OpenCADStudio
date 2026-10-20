@@ -3580,11 +3580,20 @@ impl OpenCADStudio {
                         None
                     }
                 });
-                self.tabs[i]
-                    .active_cmd
-                    .as_mut()
-                    .map(|c| c.on_preview_wires_with_tangent(effective, live_tangent))
-                    .unwrap_or_default()
+                let tab = &mut self.tabs[i];
+                if let Some(cmd) = tab.active_cmd.as_mut() {
+                    let mut wires = cmd.on_preview_wires_with_tangent(effective, live_tangent);
+                    // STRETCH replaces its source entities while the pointer moves.
+                    // Without the edited-entity overlay, its source hide-set makes
+                    // the selected lines disappear until the final click.
+                    if cmd.name() == "STRETCH" {
+                        let entities = cmd.preview_entities(&tab.scene.document, effective);
+                        wires.extend(tab.scene.wires_for_entities(&entities));
+                    }
+                    wires
+                } else {
+                    Vec::new()
+                }
             };
             // Polar tracking guide line: dotted line from last_point along
             // the snapped angle direction, extending across the drawing.
