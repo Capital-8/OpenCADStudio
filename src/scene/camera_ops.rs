@@ -648,6 +648,27 @@ impl Scene {
         self.last_render_aspect.get().max(0.01)
     }
 
+    /// Pixel size of the active camera's render rectangle: the active model
+    /// pane, or the whole canvas in a layout. `None` before the first frame.
+    pub(super) fn active_camera_pixels(&self) -> Option<(f32, f32)> {
+        let (canvas_w, canvas_h) = self.selection.borrow().view.vp_size;
+        let (width, height) = if self.current_layout == "Model" {
+            let tiles = self.model_tiles.borrow();
+            let active = self
+                .active_model_tile
+                .get()
+                .min(tiles.len().saturating_sub(1));
+            match tiles.get(active) {
+                Some(tile) => (tile.rect.width * canvas_w, tile.rect.height * canvas_h),
+                None => (canvas_w, canvas_h),
+            }
+        } else {
+            (canvas_w, canvas_h)
+        };
+        (width.is_finite() && height.is_finite() && width > 0.0 && height > 0.0)
+            .then_some((width, height))
+    }
+
     /// Fit the camera to a world-space bounding box (corners p1, p2).
     pub fn zoom_to_window(&mut self, p1: glam::Vec3, p2: glam::Vec3) {
         let min = p1.min(p2);
@@ -701,7 +722,10 @@ impl Scene {
             return self.fit_active_viewport_to_bounds(min, max);
         }
         let aspect = self.active_camera_aspect();
-        self.camera.borrow_mut().fit_to_bounds(min, max, aspect);
+        let pixels = self.active_camera_pixels();
+        self.camera
+            .borrow_mut()
+            .fit_to_bounds_bordered_f32(min, max, aspect, pixels);
         self.projection_bounds_epoch.set(self.geometry_epoch);
         self.camera_generation += 1;
         true
@@ -1643,7 +1667,12 @@ impl Scene {
         }
         self.camera
             .borrow_mut()
-            .fit_to_bounds(min, max, self.last_render_aspect.get().max(0.01));
+            .fit_to_bounds_bordered_f32(
+                min,
+                max,
+                self.last_render_aspect.get().max(0.01),
+                self.active_camera_pixels(),
+            );
         self.camera_generation += 1;
     }
 
@@ -1913,7 +1942,10 @@ impl Scene {
         // f64 all the way into the camera: a UTM-scale drawing loses whole
         // metres to an f32 round-trip, which shows up as a fit that sits
         // slightly off the geometry it was asked to frame.
-        self.camera.borrow_mut().fit_to_bounds_f64(min, max, aspect);
+        let pixels = self.active_camera_pixels();
+        self.camera
+            .borrow_mut()
+            .fit_to_bounds_bordered(min, max, aspect, pixels);
         self.projection_bounds_epoch.set(self.geometry_epoch);
         self.camera_generation += 1;
     }
@@ -1939,7 +1971,10 @@ impl Scene {
             max += glam::DVec3::splat(1.0);
         }
         let aspect = self.active_camera_aspect();
-        self.camera.borrow_mut().fit_to_bounds_f64(min, max, aspect);
+        let pixels = self.active_camera_pixels();
+        self.camera
+            .borrow_mut()
+            .fit_to_bounds_bordered(min, max, aspect, pixels);
         self.projection_bounds_epoch.set(self.geometry_epoch);
         self.camera_generation += 1;
     }
@@ -1988,7 +2023,9 @@ impl Scene {
             if index == active {
                 tile.camera = live_camera.clone();
             } else {
-                tile.camera.fit_to_bounds_f64(min, max, aspect);
+                let pixels = (tile.rect.width * canvas_w, tile.rect.height * canvas_h);
+                let pixels = (pixels.0 > 0.0 && pixels.1 > 0.0).then_some(pixels);
+                tile.camera.fit_to_bounds_bordered(min, max, aspect, pixels);
             }
         }
         if let Some(aspect) = aspects.get(active) {
