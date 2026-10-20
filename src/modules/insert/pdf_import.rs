@@ -853,6 +853,12 @@ impl Stroke {
 /// three-quarter points on the circle through its ends and midpoint), from
 /// its midpoint's height over the chord; positive counter-clockwise.
 fn arc_bulge(seg: &Segment) -> Option<f64> {
+    arc_bulge_within(seg, 2e-3)
+}
+
+/// [`arc_bulge`] with the curve allowed `tolerance` (a share of the
+/// radius) off the circle.
+fn arc_bulge_within(seg: &Segment, tolerance: f64) -> Option<f64> {
     let Segment::Cubic(p0, _, _, p3) = seg else {
         return None;
     };
@@ -868,7 +874,7 @@ fn arc_bulge(seg: &Segment) -> Option<f64> {
     let (a2, b2) = (ax * ax + ay * ay, bx * bx + by * by);
     let c = [(by * a2 - ay * b2) / d, (ax * b2 - bx * a2) / d];
     let r = c[0].hypot(c[1]);
-    let tol = r * 2e-3;
+    let tol = r * tolerance;
     let on = [0.25, 0.75].iter().all(|t| {
         let q = bezier(seg, *t);
         ((q[0] - p0[0] - c[0]).hypot(q[1] - p0[1] - c[1]) - r).abs() <= tol
@@ -1436,11 +1442,10 @@ pub fn convert(
                         }
                         let layer = naming.layer(pdf_layer, Kind::Geometry);
                         let color = color_on(&layer, color_of(stroke_rgb));
-                        for spline in loose {
-                            let mut spline = EntityType::Spline(spline);
-                            let common = spline.common_mut();
+                        for mut entity in loose {
+                            let common = entity.common_mut();
                             (common.layer, common.color, common.line_weight) = (layer.clone(), color, weight);
-                            curves.push((strokes.len() + curves.len(), spline));
+                            curves.push((strokes.len() + curves.len(), entity));
                         }
                     }
                     (Some((rgb, width)), _) => {
@@ -1519,11 +1524,10 @@ pub fn convert(
                         // colour.
                         let layer = naming.layer(pdf_layer, Kind::Geometry);
                         let color = color_on(&layer, color_of(rgb));
-                        for spline in loose {
-                            let mut spline = EntityType::Spline(spline);
-                            let common = spline.common_mut();
+                        for mut entity in loose {
+                            let common = entity.common_mut();
                             (common.layer, common.color) = (layer.clone(), color);
-                            curves.push((strokes.len() + curves.len(), spline));
+                            curves.push((strokes.len() + curves.len(), entity));
                         }
                     }
                     _ => {}
@@ -1766,32 +1770,45 @@ fn fill_entities(
     world2: &dyn Fn([f64; 2]) -> Vector2,
     world3: &dyn Fn([f64; 2]) -> Vector3,
     z: f64,
-) -> (Vec<EntityType>, Vec<Spline>) {
-    // Each subpath splits where a curve is not a circular arc: such a curve
-    // is its own spline (the reference cannot bound a fill with it), and
-    // each run of lines and arcs between them is one loop of the fill.
+) -> (Vec<EntityType>, Vec<EntityType>) {
+    // Each subpath splits where a curve is not a circular arc (within the
+    // error of the usual four-curve circle): such a curve is its own spline,
+    // a straight one a two-point polyline (the reference cannot bound a fill
+    // with them), and each run of lines and arcs between them is one loop
+    // of the fill.
+    let arc = |seg: &Segment| arc_bulge_within(seg, 5e-4);
     let mut loops: Vec<Vec<([f64; 2], f64)>> = Vec::new();
-    let mut curves: Vec<Spline> = Vec::new();
+    let mut curves: Vec<EntityType> = Vec::new();
     for sp in &path.subpaths {
         let mut run: Vec<([f64; 2], f64)> = Vec::new();
         let mut end: Option<[f64; 2]> = None;
         for seg in &sp.segments {
             match seg {
-                Segment::Cubic(..) if arc_bulge(seg).is_none() => {
+                Segment::Cubic(a, b, c, d) if arc(seg).is_none() => {
                     if let Some(e) = end.take() {
                         run.push((e, 0.0));
                     }
                     if !run.is_empty() {
                         loops.push(std::mem::take(&mut run));
                     }
-                    let one = SubPath {
-                        segments: vec![seg.clone()],
-                        closed: false,
+                    let off = |p: &[f64; 2]| {
+                        let (dx, dy) = (d[0] - a[0], d[1] - a[1]);
+                        ((p[0] - a[0]) * dy - (p[1] - a[1]) * dx).abs() / dx.hypot(dy).max(1e-12)
                     };
-                    curves.push(spline_of(&one, world3));
+                    if off(b) <= 1e-9 && off(c) <= 1e-9 {
+                        let mut line = LwPolyline::from_points(vec![world2(*a), world2(*d)]);
+                        line.elevation = z;
+                        curves.push(EntityType::LwPolyline(line));
+                    } else {
+                        let one = SubPath {
+                            segments: vec![seg.clone()],
+                            closed: false,
+                        };
+                        curves.push(EntityType::Spline(spline_of(&one, world3)));
+                    }
                 }
                 _ => {
-                    run.push((seg.start(), arc_bulge(seg).unwrap_or(0.0)));
+                    run.push((seg.start(), arc(seg).unwrap_or(0.0)));
                     end = Some(seg.end());
                 }
             }
