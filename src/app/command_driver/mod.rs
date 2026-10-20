@@ -1005,15 +1005,16 @@ impl OpenCADStudio {
                 self.handle_set_plot_window(p1, p2);
             }
             CmdResult::QuickPrint(handles) => return self.handle_quick_print(handles),
-            CmdResult::StretchWindow { handles, windows } => {
-                self.handle_stretch_window(handles, windows);
+            CmdResult::StretchWindow { handles, windows, excluded_points } => {
+                self.handle_stretch_window(handles, windows, excluded_points);
             }
             CmdResult::StretchEntities {
                 handles,
                 windows,
+                excluded_points,
                 delta,
             } => {
-                if let Some(task) = self.handle_stretch_entities(handles, windows, delta) {
+                if let Some(task) = self.handle_stretch_entities(handles, windows, excluded_points, delta) {
                     return task;
                 }
             }
