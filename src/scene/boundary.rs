@@ -118,6 +118,14 @@ fn source_segments_bounds(
     })
 }
 
+fn needs_scene_boundary_sources(entity: &EntityType, plane: WorkingPlane, tolerance: f64) -> bool {
+    let curves = entity_curves_on_plane(entity, plane, tolerance);
+    curves.is_empty()
+        || curves
+            .iter()
+            .any(|curve| matches!(curve, Curve::Ray(_) | Curve::XLine(_)))
+}
+
 /// Tessellate live curves to finite segments. Bounded curves tessellate as
 /// always; rays and infinite lines are clipped to `clip_bounds` instead —
 /// tessellating them raw yields a unit stub that can never close a face.
@@ -919,6 +927,8 @@ impl Scene {
         if changes.is_empty() {
             return Vec::new();
         }
+        let perf_refresh = crate::perf::enabled();
+        let refresh_started = perf_refresh.then(iced::time::Instant::now);
         let changed: rustc_hash::FxHashSet<_> = changes.iter().map(|(handle, _)| *handle).collect();
         let candidates: Vec<_> = self
             .associative_hatch_dependents(&changed)
@@ -934,101 +944,159 @@ impl Scene {
             })
             .collect();
 
+        // Hatches that share an OCS plane need the same scene-wide source map
+        // and clipping bounds. Building those inside the hatch loop rescans
+        // every resident wire once per affected hatch during a bulk MOVE.
+        let candidate_count = candidates.len();
+        let mut candidates_by_plane: rustc_hash::FxHashMap<[u64; 4], Vec<_>> =
+            rustc_hash::FxHashMap::default();
+        for candidate in candidates {
+            let hatch = &candidate.1;
+            let plane_key = [
+                hatch.normal.x.to_bits(),
+                hatch.normal.y.to_bits(),
+                hatch.normal.z.to_bits(),
+                hatch.elevation.to_bits(),
+            ];
+            candidates_by_plane
+                .entry(plane_key)
+                .or_default()
+                .push(candidate);
+        }
+        let plane_group_count = candidates_by_plane.len();
+        let mut source_scan_count = 0;
         let mut refreshed = Vec::new();
-        for (handle, mut hatch, seeds) in candidates {
-            let storage = crate::entities::curve::ocs_plane(hatch.normal, hatch.elevation);
+        for candidates in candidates_by_plane.into_values() {
+            let (_, sample_hatch, _) = candidates
+                .first()
+                .expect("plane group contains at least one hatch");
+            let storage =
+                crate::entities::curve::ocs_plane(sample_hatch.normal, sample_hatch.elevation);
             let plane = WorkingPlane::new(
                 glam::DVec3::from_array(storage.origin),
                 glam::DVec3::from_array(storage.x_axis),
                 glam::DVec3::from_array(storage.y_axis),
             );
-            let all_sources = self.boundary_sources_on_plane(plane, WELD_TOLERANCE);
-            let mut modified = false;
-            let mut association_changed = false;
-            for (index, path) in hatch.paths.iter_mut().enumerate() {
-                if !path
-                    .boundary_handles
+            // Native finite boundary curves can be refreshed directly from the
+            // associated entities. Scan the scene only when a changed path
+            // includes an unbounded or unsupported source that needs wire fallback.
+            let needs_scene_sources = candidates.iter().any(|(_, hatch, _)| {
+                hatch
+                    .paths
                     .iter()
-                    .any(|source| changed.contains(source))
-                {
-                    continue;
-                }
-                let old_count = path.boundary_handles.len();
-                path.boundary_handles
-                    .retain(|source| self.document.get_entity(*source).is_some());
-                if path.boundary_handles.is_empty() {
-                    path.flags.set_external(false);
-                }
-                association_changed |= path.boundary_handles.len() != old_count;
-                modified |= association_changed;
-                // Finite extents for clipping unbounded live sources (rays /
-                // construction lines) below. `all_sources` already went
-                // through the same clipping in `boundary_sources_on_plane`.
-                let clip_bounds = source_segments_bounds(&all_sources, WELD_TOLERANCE);
-                let sources: rustc_hash::FxHashMap<_, _> = path
-                    .boundary_handles
-                    .iter()
-                    .filter_map(|source| {
-                        // Associative boundaries are explicit document references.
-                        // During a grip drag their display wire can be preview-hidden,
-                        // so prefer the live entity geometry over the resident wire cache.
-                        let geometry = self
-                            .document
-                            .get_entity(*source)
-                            .and_then(|entity| {
-                                entity_boundary_source_on_plane(
-                                    entity,
-                                    plane,
-                                    WELD_TOLERANCE,
-                                    clip_bounds,
-                                )
-                            })
-                            .or_else(|| all_sources.get(source).cloned());
-
-                        geometry.map(|geometry| (*source, geometry))
+                    .filter(|path| {
+                        path.boundary_handles
+                            .iter()
+                            .any(|source| changed.contains(source))
                     })
-                    .collect();
-                let segments: Vec<_> = sources
-                    .values()
-                    .flat_map(|source| source.segments.iter().copied())
-                    .collect();
-                let faces = bounded_faces(&segments, Tolerance::new(WELD_TOLERANCE));
-                let Some(face) = matching_face(&faces, seeds.get(index).copied().flatten()) else {
-                    continue;
-                };
-                let exterior = [path.flags.is_outermost()];
-                if let Some(exact) = exact_hatch_paths(
-                    std::slice::from_ref(face),
-                    &exterior,
-                    &sources,
-                    WELD_TOLERANCE,
-                )
-                .into_iter()
-                .next()
-                {
-                    path.edges = exact.edges;
+                    .flat_map(|path| path.boundary_handles.iter())
+                    .filter_map(|source| self.document.get_entity(*source))
+                    .any(|entity| needs_scene_boundary_sources(entity, plane, WELD_TOLERANCE))
+            });
+            let all_sources = needs_scene_sources.then(|| {
+                source_scan_count += 1;
+                self.boundary_sources_on_plane(plane, WELD_TOLERANCE)
+            });
+            let clip_bounds = all_sources
+                .as_ref()
+                .and_then(|sources| source_segments_bounds(sources, WELD_TOLERANCE));
+            for (handle, mut hatch, seeds) in candidates {
+                let mut modified = false;
+                let mut association_changed = false;
+                for (index, path) in hatch.paths.iter_mut().enumerate() {
+                    if !path
+                        .boundary_handles
+                        .iter()
+                        .any(|source| changed.contains(source))
+                    {
+                        continue;
+                    }
+                    let old_count = path.boundary_handles.len();
+                    path.boundary_handles
+                        .retain(|source| self.document.get_entity(*source).is_some());
+                    if path.boundary_handles.is_empty() {
+                        path.flags.set_external(false);
+                    }
+                    association_changed |= path.boundary_handles.len() != old_count;
+                    modified |= association_changed;
+                    let sources: rustc_hash::FxHashMap<_, _> = path
+                        .boundary_handles
+                        .iter()
+                        .filter_map(|source| {
+                            // Associative boundaries are explicit document references.
+                            // During a grip drag their display wire can be preview-hidden,
+                            // so prefer the live entity geometry over the resident wire cache.
+                            let geometry = self
+                                .document
+                                .get_entity(*source)
+                                .and_then(|entity| {
+                                    entity_boundary_source_on_plane(
+                                        entity,
+                                        plane,
+                                        WELD_TOLERANCE,
+                                        clip_bounds,
+                                    )
+                                })
+                                .or_else(|| {
+                                    all_sources
+                                        .as_ref()
+                                        .and_then(|sources| sources.get(source).cloned())
+                                });
+
+                            geometry.map(|geometry| (*source, geometry))
+                        })
+                        .collect();
+                    let segments: Vec<_> = sources
+                        .values()
+                        .flat_map(|source| source.segments.iter().copied())
+                        .collect();
+                    let faces = bounded_faces(&segments, Tolerance::new(WELD_TOLERANCE));
+                    let Some(face) = matching_face(&faces, seeds.get(index).copied().flatten())
+                    else {
+                        continue;
+                    };
+                    let exterior = [path.flags.is_outermost()];
+                    if let Some(exact) = exact_hatch_paths(
+                        std::slice::from_ref(face),
+                        &exterior,
+                        &sources,
+                        WELD_TOLERANCE,
+                    )
+                    .into_iter()
+                    .next()
+                    {
+                        path.edges = exact.edges;
+                    }
+                    modified = true;
                 }
-                modified = true;
+                hatch.is_associative = hatch
+                    .paths
+                    .iter()
+                    .any(|path| !path.boundary_handles.is_empty());
+                if !modified {
+                    continue;
+                }
+                if association_changed {
+                    self.associative_hatch_source_cache.borrow_mut().take();
+                }
+                if self.is_recording_undo() {
+                    let before = self.document.get_entity_arc(handle);
+                    self.record_undo_before(handle, before);
+                }
+                if let Some(slot) = self.document.get_entity_mut(handle) {
+                    *slot = EntityType::Hatch(hatch);
+                    self.refresh_fill_model(handle);
+                    refreshed.push((handle, ChangeKind::Modified));
+                }
             }
-            hatch.is_associative = hatch
-                .paths
-                .iter()
-                .any(|path| !path.boundary_handles.is_empty());
-            if !modified {
-                continue;
-            }
-            if association_changed {
-                self.associative_hatch_source_cache.borrow_mut().take();
-            }
-            if self.is_recording_undo() {
-                let before = self.document.get_entity_arc(handle);
-                self.record_undo_before(handle, before);
-            }
-            if let Some(slot) = self.document.get_entity_mut(handle) {
-                *slot = EntityType::Hatch(hatch);
-                self.refresh_fill_model(handle);
-                refreshed.push((handle, ChangeKind::Modified));
-            }
+        }
+        let refresh_ms = crate::perf::elapsed_ms(refresh_started);
+        if perf_refresh && refresh_ms >= 1.0 {
+            crate::perf_record!(
+                "[perf] hatch-associative-refresh total={refresh_ms:.1}ms changed_sources={} candidate_hatches={candidate_count} planes={plane_group_count} source_scans={source_scan_count} refreshed={}",
+                changed.len(),
+                refreshed.len(),
+            );
         }
         refreshed
     }
@@ -1695,6 +1763,22 @@ mod boundary_xline_tests {
             "got {:?}",
             segment.end
         );
+    }
+
+    #[test]
+    fn finite_boundary_curves_skip_scene_scan_but_xlines_require_it() {
+        let plane = crate::command::WorkingPlane::default();
+        let line = EntityType::Line(codec::entities::Line::from_points(
+            codec::types::Vector3::new(0.0, 0.0, 0.0),
+            codec::types::Vector3::new(10.0, 0.0, 0.0),
+        ));
+        let xline = EntityType::XLine(codec::entities::XLine::new(
+            codec::types::Vector3::new(5.0, 0.0, 0.0),
+            codec::types::Vector3::new(0.0, 1.0, 0.0),
+        ));
+
+        assert!(!needs_scene_boundary_sources(&line, plane, WELD_TOLERANCE));
+        assert!(needs_scene_boundary_sources(&xline, plane, WELD_TOLERANCE));
     }
 
     #[test]
