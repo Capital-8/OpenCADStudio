@@ -822,15 +822,14 @@ fn place_converted(
         styles.insert(name.clone(), target);
     }
     let mut blocks: HashMap<String, String> = HashMap::new();
-    let mut claimed: Vec<String> = Vec::new();
+    // Names the drawing has or this import gave, upper-cased: one lookup
+    // each, however many blocks the file brings.
+    let mut claimed: std::collections::HashSet<String> =
+        scene.document.block_records.iter().map(|b| b.name.to_ascii_uppercase()).collect();
     for (name, _) in &converted.blocks {
-        let doc = &scene.document;
-        let taken = |n: &str| {
-            doc.block_records.iter().any(|b| b.name.eq_ignore_ascii_case(n))
-                || claimed.iter().any(|c| c.eq_ignore_ascii_case(n))
-        };
+        let taken = |n: &str| claimed.contains(&n.to_ascii_uppercase());
         let target = naming.name('b', name, &taken);
-        claimed.push(target.clone());
+        claimed.insert(target.to_ascii_uppercase());
         blocks.insert(name.clone(), target);
     }
     let fix = |mut entity: codec::EntityType| {
