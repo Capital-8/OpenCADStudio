@@ -748,7 +748,8 @@ impl<'a> Device<'a> for Collector {
         paint: &Paint<'a>,
         mode: &PathDrawMode,
     ) {
-        self.finish_text();
+        // Graphics drawn between glyphs do not end a text run: the next
+        // glyph still joins it when it follows on along the baseline.
         self.path_calls.push(None);
         let subpaths = subpaths(path, transform);
         if subpaths.is_empty() {
@@ -880,10 +881,7 @@ impl<'a> Device<'a> for Collector {
             });
         }
         if let Some(run) = self.current.as_mut() {
-            if gap.is_some_and(|g| g >= 0.15)
-                && !run.text.text.ends_with(' ')
-                && !text.starts_with(' ')
-            {
+            if gap.is_some_and(|g| g >= 0.15) && !run.text.text.ends_with(' ') {
                 run.text.text.push(' ');
             }
             run.text.text.push_str(&text);
