@@ -798,6 +798,9 @@ async fn load_web_bytes(
     fix_viewport_status_flags(&mut doc);
     fix_current_style_names(&mut doc);
     crate::entities::field::local_header_dates(&mut doc);
+    // Opening is a field evaluation event (FIELDEVAL bit 1), as on the
+    // native open: object-property fields show the drawing's own state.
+    crate::entities::field::update_fields(&mut doc, 1, None);
     progress.set(crate::app::OPEN_PHASE_CACHING, 7000, 0, 1);
     if recovery_mode {
         repair_drawing(&mut doc);
