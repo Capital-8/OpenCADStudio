@@ -318,22 +318,21 @@ fn arc_points(bounds: [f64; 4], start: [f64; 2], end: [f64; 2]) -> Vec<[f64; 2]>
     let [left, top, right, bottom] = bounds.map(|v| v as i64);
     let (cx, cy) = ((left + right).div_euclid(2), (top + bottom).div_euclid(2));
     let (rx, ry) = ((right - left).abs() / 2, (bottom - top).abs() / 2);
-    // The angles are stepped out from zero one step at a time in degrees,
-    // rounding and all, as the points come out.
-    let mut degrees = vec![0.0f64; ARC_STEPS as usize + 1];
-    for k in 1..degrees.len() {
-        degrees[k] = degrees[k - 1] + 360.0 / ARC_STEPS as f64;
+    // The unit vectors are stepped out from zero by turning the last one
+    // through 1/99 turn in plain doubles, rounding and all, so the error
+    // grows from step to step as the points come out.
+    const STEP_COS: f64 = 0.99798667647188444; // cos(2π/99)
+    const STEP_SIN: f64 = 0.063423919656564506; // sin(2π/99)
+    let mut turns = vec![(1.0f64, 0.0f64); ARC_STEPS as usize + 1];
+    for k in 1..turns.len() {
+        let (c, s) = turns[k - 1];
+        turns[k] = (c * STEP_COS - s * STEP_SIN, s * STEP_COS + c * STEP_SIN);
     }
-    // Centre plus radius times cosine (sine) is worked out wider than a
-    // double and rounded to one once, then cut to whole units: a point
-    // that lands within rounding of a whole unit falls on the side the
-    // exact value lies.
     let point = |k: i64| {
-        let a = degrees[k as usize] * (std::f64::consts::PI / 180.0);
-        let (cos, sin) = wide::cos_sin(a);
+        let (cos, sin) = turns[k as usize];
         [
-            wide::add(wide::mul(cos, rx as f64), cx as f64).0.trunc(),
-            wide::add(wide::mul(sin, -(ry as f64)), cy as f64).0.trunc(),
+            (cx as f64 + rx as f64 * cos).trunc(),
+            (cy as f64 - ry as f64 * sin).trunc(),
         ]
     };
     let grid: Vec<[f64; 2]> = (0..ARC_STEPS).map(point).collect();
@@ -386,74 +385,6 @@ fn arc_points(bounds: [f64; 4], start: [f64; 2], end: [f64; 2]) -> Vec<[f64; 2]>
         }
     }
     steps.into_iter().map(point).collect()
-}
-
-/// Double-double arithmetic (a value as an unevaluated sum hi + lo), for
-/// the arc points' cosine and sine and the sums made with them.
-mod wide {
-    pub type Wide = (f64, f64);
-
-    fn two_sum(a: f64, b: f64) -> Wide {
-        let s = a + b;
-        let v = s - a;
-        (s, (a - (s - v)) + (b - v))
-    }
-
-    fn quick(hi: f64, lo: f64) -> Wide {
-        let s = hi + lo;
-        (s, lo - (s - hi))
-    }
-
-    pub fn add(a: Wide, b: f64) -> Wide {
-        let (s, e) = two_sum(a.0, b);
-        quick(s, e + a.1)
-    }
-
-    fn add_wide(a: Wide, b: Wide) -> Wide {
-        let (s, e) = two_sum(a.0, b.0);
-        quick(s, e + a.1 + b.1)
-    }
-
-    pub fn mul(a: Wide, b: f64) -> Wide {
-        let p = a.0 * b;
-        quick(p, a.0.mul_add(b, -p) + a.1 * b)
-    }
-
-    fn mul_wide(a: Wide, b: Wide) -> Wide {
-        let p = a.0 * b.0;
-        quick(p, a.0.mul_add(b.0, -p) + a.0 * b.1 + a.1 * b.0)
-    }
-
-    fn div(a: Wide, b: f64) -> Wide {
-        let q = a.0 / b;
-        let r = add_wide(a, mul((q, 0.0), -b));
-        quick(q, r.0 / b)
-    }
-
-    /// cos and sin of `a` (radians, the double taken as exact).
-    pub fn cos_sin(a: f64) -> (Wide, Wide) {
-        // Reduced by quarter turns to |r| <= pi/4.
-        const HALF_PI: Wide = (1.5707963267948966, 6.123233995736766e-17);
-        let n = (a / HALF_PI.0).round();
-        let r = add_wide((a, 0.0), mul(HALF_PI, -n));
-        let r2 = mul_wide(r, r);
-        let (mut c, mut s) = ((1.0, 0.0), r);
-        let (mut tc, mut ts) = ((1.0, 0.0), r);
-        for k in 1..20 {
-            let k = f64::from(k);
-            tc = div(mul_wide(tc, r2), -(2.0 * k - 1.0) * (2.0 * k));
-            ts = div(mul_wide(ts, r2), -(2.0 * k) * (2.0 * k + 1.0));
-            c = add_wide(c, tc);
-            s = add_wide(s, ts);
-        }
-        let neg = |w: Wide| (-w.0, -w.1);
-        match (n as i64).rem_euclid(4) {
-            0 => (c, s),
-            1 => (neg(s), c),
-            2 => (neg(c), neg(s)),
-            _ => (s, neg(c)),
-        }
-    }
 }
 
 /// Reads a metafile, scaled so the picture fits within `fit` (width and
