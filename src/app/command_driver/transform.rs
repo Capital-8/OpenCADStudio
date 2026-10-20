@@ -149,6 +149,7 @@ impl OpenCADStudio {
         &mut self,
         mut handles: Vec<Handle>,
         windows: Vec<(glam::DVec3, glam::DVec3)>,
+        excluded_points: Vec<(Handle, glam::DVec3)>,
     ) {
         let i = self.active_tab;
         // Accumulate every entity touched by any crossing window. Keep STRETCH
@@ -241,7 +242,11 @@ impl OpenCADStudio {
                 .into_iter()
                 .zip(std::mem::take(&mut self.tabs[i].selected_grips))
             {
-                if !grip.is_midpoint && point_inside(grip.world) {
+                let removed = excluded_points.iter().any(|(owner, point)| {
+                    *owner == handle && (point.x - grip.world.x).abs() <= 1e-9
+                        && (point.y - grip.world.y).abs() <= 1e-9
+                });
+                if !grip.is_midpoint && point_inside(grip.world) && !removed {
                     stretch_grip_handles.push(handle);
                     stretch_grips.push(grip);
                 }
@@ -256,7 +261,7 @@ impl OpenCADStudio {
 
         let wires = self.tabs[i].scene.wire_models_for(&handles);
 
-        let cmd = StretchCommand::with_windows(handles, wires, windows);
+        let cmd = StretchCommand::with_windows(handles, wires, windows, excluded_points);
 
         self.command_line.push_info(&CadCommand::prompt(&cmd));
         self.tabs[i].active_cmd = Some(Box::new(cmd));
@@ -266,6 +271,7 @@ impl OpenCADStudio {
         &mut self,
         mut handles: Vec<Handle>,
         windows: Vec<(glam::DVec3, glam::DVec3)>,
+        excluded_points: Vec<(Handle, glam::DVec3)>,
         delta: glam::DVec3,
     ) -> Option<Task<Message>> {
         let i = self.active_tab;
@@ -285,18 +291,23 @@ impl OpenCADStudio {
         let mut changed_handles = Vec::new();
         let mut driven_refs = Vec::new();
 
-        // Helper: is DXF point (x, y) inside the world-space window?
-        // Drawing plane is world XY (= DXF XY).
-        let in_win = |x: f64, y: f64| -> bool {
-            windows.iter().any(|(win_min, win_max)| {
-                x >= win_min.x && x <= win_max.x && y >= win_min.y && y <= win_max.y
-            })
-        };
-
         // Dimensions whose points moved — their baked *D block is
         // stale afterwards and must be dropped (see #398 / #372).
         let mut stretched_dims: Vec<codec::Handle> = Vec::new();
         for handle in &handles {
+            // Subtract only this entity's explicitly removed vertices. The same
+            // predicate gates preview, geometry mutation and inferred constraints.
+            let excluded: Vec<_> = excluded_points.iter()
+                .filter(|(owner, _)| owner == handle)
+                .map(|(_, point)| *point)
+                .collect();
+            let in_win = |x: f64, y: f64| -> bool {
+                windows.iter().any(|(min, max)| {
+                    x >= min.x && x <= max.x && y >= min.y && y <= max.y
+                }) && !excluded.iter().any(|point| {
+                    (point.x - x).abs() <= 1e-9 && (point.y - y).abs() <= 1e-9
+                })
+            };
             let before = self.tabs[i].scene.document.get_entity_arc(*handle);
             if let Some(entity) = before.as_deref() {
                 use crate::scene::parametric_constraints::ParametricRef;
@@ -339,8 +350,9 @@ impl OpenCADStudio {
             let Some(entity) = self.tabs[i].scene.document.get_entity_mut(*handle) else {
                 continue;
             };
-            let stretched =
-                crate::modules::draw::modify::stretch::stretch_entity(entity, &windows, delta);
+            let stretched = crate::modules::draw::modify::stretch::stretch_entity_except(
+                entity, &windows, &excluded, delta,
+            );
             if stretched && matches!(entity, codec::EntityType::Dimension(_)) {
                 stretched_dims.push(*handle);
             }
