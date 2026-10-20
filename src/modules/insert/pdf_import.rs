@@ -1433,7 +1433,8 @@ pub fn convert(
                         } else {
                             LineWeight::ByLayer
                         };
-                        let (fills, loose) = fill_entities(path, settings.hatches, turn, &world2, &world3, z);
+                        let (fills, loose) =
+                            fill_entities(path, settings.hatches, turn, &world2, &world3, z);
                         for mut entity in fills {
                             let common = entity.common_mut();
                             (common.layer, common.color, common.transparency, common.line_weight) =
@@ -1444,7 +1445,8 @@ pub fn convert(
                         let color = color_on(&layer, color_of(stroke_rgb));
                         for mut entity in loose {
                             let common = entity.common_mut();
-                            (common.layer, common.color, common.line_weight) = (layer.clone(), color, weight);
+                            (common.layer, common.color, common.line_weight) =
+                                (layer.clone(), color, weight);
                             curves.push((strokes.len() + curves.len(), entity));
                         }
                     }
@@ -1513,7 +1515,8 @@ pub fn convert(
                     (None, Some(rgb)) if settings.fills => {
                         let layer = naming.layer(pdf_layer, Kind::Fill);
                         let color = color_on(&layer, color_of(rgb));
-                        let (fills, loose) = fill_entities(path, settings.hatches, turn, &world2, &world3, z);
+                        let (fills, loose) =
+                            fill_entities(path, settings.hatches, turn, &world2, &world3, z);
                         for mut entity in fills {
                             let common = entity.common_mut();
                             (common.layer, common.color, common.transparency) =
@@ -1777,23 +1780,53 @@ fn fill_entities(
     // with them), and each run of lines and arcs between them is one loop
     // of the fill.
     let arc = |seg: &Segment| arc_bulge_within(seg, 5e-4);
+    // A run that goes all round closes on its start; one cut by a curve
+    // ends at its last point. A loop that stays on one point (to the file's
+    // single precision) bounds nothing.
+    let finish = |mut run: Vec<([f64; 2], f64)>, end: Option<[f64; 2]>| {
+        if let Some(e) = end {
+            if !run.first().is_some_and(|(p, _)| same_point(*p, e)) {
+                run.push((e, 0.0));
+            }
+        }
+        run.dedup_by(|a, b| same_point(a.0, b.0) && a.1 == 0.0 && b.1 == 0.0);
+        if let [(first, _), .., (last, bulge)] = run.as_slice() {
+            if same_point(*first, *last) && *bulge == 0.0 {
+                run.pop();
+            }
+        }
+        let o = run.first().map_or([0.0; 2], |(p, _)| *p);
+        run.iter()
+            .any(|(p, _)| (p[0] - o[0]).hypot(p[1] - o[1]) > 1e-5)
+            .then_some(run)
+    };
     let mut loops: Vec<Vec<([f64; 2], f64)>> = Vec::new();
     let mut curves: Vec<EntityType> = Vec::new();
     for sp in &path.subpaths {
+        let mut segments = sp.segments.clone();
+        // A fill closes every subpath; the walk starts after its first
+        // curve that cannot bound the fill, so the run through the
+        // subpath's start stays one loop.
+        if let (Some(first), Some(last)) = (segments.first(), segments.last()) {
+            let (first, last) = (first.start(), last.end());
+            if !same_point(first, last) {
+                segments.push(Segment::Line(last, first));
+            }
+        }
+        let cut = |seg: &Segment| matches!(seg, Segment::Cubic(..)) && arc(seg).is_none();
+        if let Some(k) = segments.iter().position(cut) {
+            segments.rotate_left(k + 1);
+        }
         let mut run: Vec<([f64; 2], f64)> = Vec::new();
         let mut end: Option<[f64; 2]> = None;
-        for seg in &sp.segments {
+        for seg in &segments {
             match seg {
-                Segment::Cubic(a, b, c, d) if arc(seg).is_none() => {
-                    if let Some(e) = end.take() {
-                        run.push((e, 0.0));
-                    }
-                    if !run.is_empty() {
-                        loops.push(std::mem::take(&mut run));
-                    }
+                Segment::Cubic(a, b, c, d) if cut(seg) => {
+                    loops.extend(finish(std::mem::take(&mut run), end.take()));
                     let off = |p: &[f64; 2]| {
                         let (dx, dy) = (d[0] - a[0], d[1] - a[1]);
-                        ((p[0] - a[0]) * dy - (p[1] - a[1]) * dx).abs() / dx.hypot(dy).max(1e-12)
+                        let cross = (p[0] - a[0]) * dy - (p[1] - a[1]) * dx;
+                        cross.abs() / dx.hypot(dy).max(1e-12)
                     };
                     if off(b) <= 1e-9 && off(c) <= 1e-9 {
                         let mut line = LwPolyline::from_points(vec![world2(*a), world2(*d)]);
@@ -1813,23 +1846,7 @@ fn fill_entities(
                 }
             }
         }
-        // A run that goes all round closes on its start; one cut by a
-        // curve ends at its last point.
-        if let Some(e) = end {
-            if !run.first().is_some_and(|(p, _)| same_point(*p, e)) {
-                run.push((e, 0.0));
-            }
-        }
-        run.dedup_by(|a, b| same_point(a.0, b.0) && a.1 == 0.0 && b.1 == 0.0);
-        if run.len() > 1 && same_point(run[0].0, run[run.len() - 1].0) && run[run.len() - 1].1 == 0.0 {
-            run.pop();
-        }
-        // A loop that stays on one point (to the file's single precision)
-        // bounds nothing.
-        let o = run.first().map_or([0.0; 2], |(p, _)| *p);
-        if run.iter().any(|(p, _)| (p[0] - o[0]).hypot(p[1] - o[1]) > 1e-5) {
-            loops.push(run);
-        }
+        loops.extend(finish(run, end));
     }
     let straight = |l: &Vec<([f64; 2], f64)>| l.iter().all(|(_, b)| *b == 0.0);
     if let [only] = loops.as_slice() {

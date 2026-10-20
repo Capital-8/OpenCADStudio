@@ -160,51 +160,86 @@ pub fn page_content_by_layer(
     }
     let read = |off: &[String]| page_content(&source_with_layers(path, off), page);
     let shown = read(hidden)?;
-    // The reference puts an item on the layer whose section opened last
-    // before it (a section left keeps its layer current). When every
-    // section sits in the page's own content, that sequence is read
-    // directly; otherwise the layers are told apart by turning them off.
-    if let Some(sections) = oc_section_layers(path, page).filter(|s| s.len() == shown.oc_sections) {
+    let visible: Vec<&String> = names.iter().filter(|n| !hidden.contains(n)).collect();
+    // The group of each drawn item: 0 for no layer, else 1 + its index in
+    // `visible`. The reference puts an item on the layer whose section
+    // opened last before it (a section left keeps its layer current). When
+    // every section is read in order, that sequence decides; otherwise the
+    // layers are told apart by turning them off.
+    let sections = oc_section_layers(path, page).filter(|s| s.len() == shown.oc_sections);
+    let group_of: Vec<usize> = if let Some(sections) = sections {
         let mut current: Vec<Option<String>> = Vec::with_capacity(sections.len() + 1);
         current.push(None);
         for section in sections {
             let last = current.last().cloned().flatten();
             current.push(section.or(last));
         }
-        let visible: Vec<&String> = names.iter().filter(|n| !hidden.contains(n)).collect();
-        let mut groups: Vec<PageVectors> = (0..=visible.len()).map(|_| PageVectors::default()).collect();
-        for (k, drawn) in shown.order.iter().enumerate() {
-            let layer = shown.oc_marks.get(k).and_then(|m| current.get(*m)).cloned().flatten();
-            let g = layer
-                .and_then(|l| visible.iter().position(|n| **n == l))
-                .map_or(0, |n| n + 1);
-            let group = &mut groups[g];
-            match *drawn {
-                Drawn::Path(i) => {
-                    group.order.push(Drawn::Path(group.paths.len()));
-                    group.paths.push(shown.paths[i].clone());
-                }
-                Drawn::Text(i) => {
-                    group.order.push(Drawn::Text(group.texts.len()));
-                    group.texts.push(shown.texts[i].clone());
-                }
-                Drawn::Image(i) => {
-                    group.order.push(Drawn::Image(group.images.len()));
-                    group.images.push(shown.images[i].clone());
-                }
+        (0..shown.order.len())
+            .map(|k| {
+                let layer = shown.oc_marks.get(k).and_then(|m| current.get(*m)).cloned();
+                layer
+                    .flatten()
+                    .and_then(|l| visible.iter().position(|n| **n == l))
+                    .map_or(0, |n| n + 1)
+            })
+            .collect()
+    } else {
+        groups_by_removal(&shown, &names, &visible, hidden, &read)?
+    };
+    let mut groups: Vec<PageVectors> =
+        (0..=visible.len()).map(|_| PageVectors::default()).collect();
+    for (drawn, g) in shown.order.iter().zip(group_of) {
+        let group = &mut groups[g];
+        match *drawn {
+            Drawn::Path(i) => {
+                group.order.push(Drawn::Path(group.paths.len()));
+                group.paths.push(shown.paths[i].clone());
+            }
+            Drawn::Text(i) => {
+                group.order.push(Drawn::Text(group.texts.len()));
+                group.texts.push(shown.texts[i].clone());
+            }
+            Drawn::Image(i) => {
+                group.order.push(Drawn::Image(group.images.len()));
+                group.images.push(shown.images[i].clone());
             }
         }
-        let mut groups = groups.into_iter();
-        let base = groups.next().unwrap_or_default();
-        let mut out: Vec<(Option<String>, PageVectors)> =
-            visible.iter().map(|n| Some((*n).clone())).zip(groups).collect();
-        out.insert(0, (None, base));
-        return Some(out);
     }
+    let mut groups = groups.into_iter();
+    let base = groups.next().unwrap_or_default();
+    let mut out: Vec<(Option<String>, PageVectors)> = visible
+        .iter()
+        .map(|n| Some((*n).clone()))
+        .zip(groups)
+        .collect();
+    out.insert(0, (None, base));
+    Some(out)
+}
+
+/// The group of each item `shown` draws (as in [`page_content_by_layer`]),
+/// told apart by reading the page with layers turned off.
+fn groups_by_removal(
+    shown: &PageVectors,
+    names: &[String],
+    visible: &[&String],
+    hidden: &[String],
+    read: &dyn Fn(&[String]) -> Option<PageVectors>,
+) -> Option<Vec<usize>> {
     let key = |s: &dyn std::fmt::Debug| format!("{s:?}");
+    // A path filled and stroked by one operator is keyed by its fill: a
+    // read that hides some layer's paths does not merge such pairs (see
+    // `merge_fill_and_stroke`), and its fill half must still match.
+    let path_key = |p: &PdfPath| match p.fill {
+        Some(_) if p.stroke.is_some() => key(&PdfPath {
+            stroke: None,
+            ..p.clone()
+        }),
+        _ => key(p),
+    };
     let keys = |pv: &PageVectors| -> HashMap<String, usize> {
         let mut out: HashMap<String, usize> = HashMap::new();
-        for item in pv.paths.iter().map(|p| key(p)).chain(pv.texts.iter().map(|t| key(t))) {
+        let texts = pv.texts.iter().map(|t| key(t));
+        for item in pv.paths.iter().map(path_key).chain(texts) {
             *out.entry(item).or_default() += 1;
         }
         out
@@ -217,13 +252,12 @@ pub fn page_content_by_layer(
             })
             .collect::<HashMap<String, usize>>()
     };
-    let shown_keys = keys(&shown);
-    let none_on = read(&names)?;
+    let shown_keys = keys(shown);
+    let none_on = read(names)?;
     let mut unlayered = keys(&none_on);
-    let visible: Vec<&String> = names.iter().filter(|n| !hidden.contains(n)).collect();
     // What turning each layer off (as well) removes.
     let mut removed: Vec<(HashMap<String, usize>, Vec<PdfImage>, usize)> = Vec::new();
-    for name in &visible {
+    for name in visible {
         let mut off = hidden.to_vec();
         off.push((*name).clone());
         let (map, images) = match read(&off) {
@@ -242,7 +276,8 @@ pub fn page_content_by_layer(
         removed.push((map, images, size));
     }
     // What each layer's removal holds, kept whole for nesting tests.
-    let holds: Vec<HashMap<String, usize>> = removed.iter().map(|(map, _, _)| map.clone()).collect();
+    let holds: Vec<HashMap<String, usize>> =
+        removed.iter().map(|(map, _, _)| map.clone()).collect();
     let image_group: Vec<usize> = shown
         .images
         .iter()
@@ -278,9 +313,11 @@ pub fn page_content_by_layer(
         for (n, name) in visible.iter().enumerate().rev() {
             if alone[n].is_none() {
                 let others: Vec<String> = names.iter().filter(|m| m != name).cloned().collect();
-                alone[n] = Some(read(&others).map(|pv| less(&keys(&pv), &none_keys)).unwrap_or_default());
+                let only = read(&others).map(|pv| less(&keys(&pv), &none_keys));
+                alone[n] = Some(only.unwrap_or_default());
             }
-            if let Some(count) = alone[n].as_mut().and_then(|m| m.get_mut(&item)).filter(|c| **c > 0) {
+            let count = alone[n].as_mut().and_then(|m| m.get_mut(&item));
+            if let Some(count) = count.filter(|c| **c > 0) {
                 *count -= 1;
                 return Some(n);
             }
@@ -291,12 +328,13 @@ pub fn page_content_by_layer(
     // marked content: the layer last opened stays current. An item no layer
     // holds goes with the layer of the item drawn before it, and an item of
     // an outer layer drawn after an inner one closed stays on the inner one.
-    let mut groups: Vec<PageVectors> = (0..=visible.len()).map(|_| PageVectors::default()).collect();
     let mut last: Option<(usize, String)> = None;
     let mut place = |owner: Option<usize>, item: String| -> usize {
         let g = match (owner, &last) {
             (None, Some((m, _))) => Some(*m),
-            (Some(n), Some((m, previous))) if *m != n && holds[n].contains_key(previous) => Some(*m),
+            (Some(n), Some((m, previous))) if *m != n && holds[n].contains_key(previous) => {
+                Some(*m)
+            }
             (owner, _) => owner,
         };
         if let Some(g) = g {
@@ -304,39 +342,22 @@ pub fn page_content_by_layer(
         }
         g.map_or(0, |g| g + 1)
     };
-    for drawn in &shown.order {
-        match *drawn {
+    let group_of = shown
+        .order
+        .iter()
+        .map(|drawn| match *drawn {
             Drawn::Path(i) => {
-                let item = key(&shown.paths[i]);
-                let g = place(owner_of(item.clone()), item);
-                let group = &mut groups[g];
-                group.order.push(Drawn::Path(group.paths.len()));
-                group.paths.push(shown.paths[i].clone());
+                let item = path_key(&shown.paths[i]);
+                place(owner_of(item.clone()), item)
             }
             Drawn::Text(i) => {
                 let item = key(&shown.texts[i]);
-                let g = place(owner_of(item.clone()), item);
-                let group = &mut groups[g];
-                group.order.push(Drawn::Text(group.texts.len()));
-                group.texts.push(shown.texts[i].clone());
+                place(owner_of(item.clone()), item)
             }
-            Drawn::Image(i) => {
-                let g = place(image_group[i].checked_sub(1), format!("image {i}"));
-                let group = &mut groups[g];
-                group.order.push(Drawn::Image(group.images.len()));
-                group.images.push(shown.images[i].clone());
-            }
-        }
-    }
-    let mut groups = groups.into_iter();
-    let base = groups.next().unwrap_or_default();
-    let mut out: Vec<(Option<String>, PageVectors)> = visible
-        .iter()
-        .map(|n| Some((*n).clone()))
-        .zip(groups)
+            Drawn::Image(i) => place(image_group[i].checked_sub(1), format!("image {i}")),
+        })
         .collect();
-    out.insert(0, (None, base));
-    Some(out)
+    Some(group_of)
 }
 
 fn read_page(path: &str, page: &str) -> Option<PageVectors> {
@@ -427,8 +448,12 @@ fn read_page_with(path: &str, page: &str, images: bool) -> Option<PageVectors> {
 /// the stroke's weight). The interpreter draws such a path twice; the page's
 /// operators tell those pairs from a fill followed by a separate stroke of
 /// the same path. Nothing is merged when the drawn paths do not match the
-/// operators one for one (paths drawn by patterns or glyph procedures).
-fn merge_fill_and_stroke(page: &hayro::hayro_syntax::page::Page<'_>, device: &mut Collector) {
+/// operators one for one (paths drawn by patterns or glyph procedures, or
+/// left out by a hidden layer).
+fn merge_fill_and_stroke(
+    page: &hayro::hayro_syntax::page::Page<'_>,
+    device: &mut Collector,
+) {
     let mut calls: Vec<usize> = Vec::new();
     walk_operators(page, &mut |op, _| {
         calls.push(match op {
@@ -451,7 +476,8 @@ fn merge_fill_and_stroke(page: &hayro::hayro_syntax::page::Page<'_>, device: &mu
     let mut at = 0;
     for count in calls {
         if count == 2 {
-            if let (Some(Some(f)), Some(Some(s))) = (device.path_calls.get(at), device.path_calls.get(at + 1)) {
+            let pair = (device.path_calls.get(at), device.path_calls.get(at + 1));
+            if let (Some(Some(f)), Some(Some(s))) = pair {
                 let (f, s) = (*f, *s);
                 if device.paths[f].fill.is_some()
                     && device.paths[s].stroke.is_some()

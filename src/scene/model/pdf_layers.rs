@@ -28,7 +28,14 @@ pub(crate) fn text_string(bytes: &[u8]) -> String {
     let utf16 = |rest: &[u8], le: bool| {
         let units: Vec<u16> = rest
             .chunks_exact(2)
-            .map(|c| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) })
+            .map(|c| {
+                let pair = [c[0], c[1]];
+                if le {
+                    u16::from_le_bytes(pair)
+                } else {
+                    u16::from_be_bytes(pair)
+                }
+            })
             .collect();
         String::from_utf16_lossy(&units)
     };
