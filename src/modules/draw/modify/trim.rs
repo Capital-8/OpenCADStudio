@@ -4632,7 +4632,7 @@ mod tests {
     fn trim_hatch_removes_clicked_side_and_detaches_association() {
         let hatch = rect_hatch(1, true);
         let boundary = xline_at(5.0, -2.0, 5.0, 12.0, 50);
-        let all = vec![EntityType::Hatch(hatch.clone()), boundary];
+        let all = vec![EntityType::Hatch(Box::new(hatch.clone())), boundary];
         let mut cmd = TrimCommand::new(all);
         assert!(cmd.entity_pick_includes_fills());
         assert!(!cmd.on_hover_entity(Handle::new(1), DVec3::new(2.0, 5.0, 0.0)).is_empty());
