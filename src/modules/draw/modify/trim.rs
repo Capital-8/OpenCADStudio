@@ -4112,6 +4112,10 @@ impl CadCommand for ExtendCommand {
         self.rebuild_geos();
     }
 
+    fn drag_selection_preview_enabled(&self) -> bool {
+        matches!(self.mode, TrimMode::Pick) && !self.shift
+    }
+
     fn on_drag_selection_preview(
         &mut self,
         fence: &[[f64; 2]],
