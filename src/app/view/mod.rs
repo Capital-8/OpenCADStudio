@@ -221,6 +221,9 @@ fn ui_font_changes() -> Subscription<Message> {
 
 /// Background used by drafting overlays in model or paper space.
 fn crosshair_background(tab: &DocumentTab, is_paper: bool) -> [f32; 4] {
+    if tab.active_block_edit_session().is_some() {
+        return [0.62, 0.62, 0.62, 1.0];
+    }
     if !is_paper {
         return tab.scene.bg_color;
     }
@@ -831,6 +834,8 @@ bg={bg_ms:.1}ms n={view_count}"
                             dir,
                             is_plugin: false,
                             is_authoring: crate::app::block_authoring_edit::is_editor_grip(grip_id),
+                            is_dynamic: crate::app::block_actions::is_test_grip(grip_id)
+                                || grip_id == crate::app::visibility::VIS_GRIP_ID,
                         }
                     })
                     .collect()
@@ -861,6 +866,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             dir: None,
                             is_plugin: true,
                             is_authoring: false,
+                            is_dynamic: false,
                         });
                     }
                 }
@@ -1492,6 +1498,7 @@ bg={bg_ms:.1}ms n={view_count}"
                     grip_color: self.model_space.grip_color,
                     grip_hot: self.model_space.grip_hot,
                     grip_hover: self.model_space.grip_hover,
+                    grip_dynamic: self.block_editor_preferences.dynamic_grip_color,
                 },
                 constraint_glyphs,
                 constraint_glyph_selected,
@@ -1506,6 +1513,7 @@ bg={bg_ms:.1}ms n={view_count}"
                     &tab.scene.document,
                     crosshair_background(tab, is_paper),
                 ),
+                self.block_feedback(vp_bounds),
             )
         };
 
@@ -2074,6 +2082,14 @@ bg={bg_ms:.1}ms n={view_count}"
                 }
             }
 
+            if let Some(hover) = self.grip_hover.as_ref().filter(|hover|
+                hover.started.elapsed().as_millis() >= 500 && self.grip_popup.is_none()) {
+                if let Some(tip) = self.dynamic_grip_tip(hover.handle,hover.grip_id) {
+                    let panel = container(text(tip).size(12)).padding(6).style(container::bordered_box);
+                    viewport_stack = viewport_stack.push(position_canvas_overlay(
+                        iced::Point::new(hover.screen.x+12.0,hover.screen.y+16.0),panel.into()));
+                }
+            }
             if let Some(popup) = self.grip_popup.as_ref() {
                 if !tab.is_start {
                     let labels: Vec<String> = popup

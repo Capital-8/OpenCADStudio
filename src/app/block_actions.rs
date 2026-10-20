@@ -6,7 +6,7 @@ use iced::Task;
 
 // These grips start an ordinary point-input command, keeping snapping, typed
 // coordinates and Escape on the command driver's existing path.
-const TEST_GRIP_START: usize = usize::MAX / 2;
+pub(super) const TEST_GRIP_START: usize = usize::MAX / 2;
 pub(super) fn is_test_grip(id: usize) -> bool {
     (TEST_GRIP_START..usize::MAX).contains(&id)
 }

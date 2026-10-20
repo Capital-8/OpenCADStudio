@@ -350,6 +350,7 @@ pub struct SelectionVisualOptions {
     pub grip_color: u8,
     pub grip_hot: u8,
     pub grip_hover: u8,
+    pub grip_dynamic: u8,
 }
 
 impl Default for SelectionVisualOptions {
@@ -364,6 +365,7 @@ impl Default for SelectionVisualOptions {
             grip_color: 0,
             grip_hot: 0,
             grip_hover: 0,
+            grip_dynamic: 140,
         }
     }
 }
@@ -597,6 +599,7 @@ pub struct GripMarker {
     /// selection grips.
     pub is_plugin: bool,
     pub is_authoring: bool,
+    pub is_dynamic: bool,
 }
 
 // ── Grid display params ───────────────────────────────────────────────────
@@ -1048,6 +1051,7 @@ pub(crate) fn selection_overlay<'a>(
     authoring_points: Vec<(Point, Point, String, iced::Rectangle, bool)>,
     authoring_dimensions: Vec<AuthoringDimension>,
     authoring_visual: authoring::AuthoringVisualOptions,
+    authoring_feedback: authoring::AuthoringFeedback,
 ) -> Element<'a, Message> {
     canvas(SelectionCanvas {
         selection,
@@ -1081,6 +1085,7 @@ pub(crate) fn selection_overlay<'a>(
         authoring_points,
         authoring_dimensions,
         authoring_visual,
+        authoring_feedback,
     })
     .width(Length::Fill)
     .height(Length::Fill)
@@ -1175,6 +1180,7 @@ struct SelectionCanvas {
     authoring_points: Vec<(Point, Point, String, iced::Rectangle, bool)>,
     authoring_dimensions: Vec<AuthoringDimension>,
     authoring_visual: authoring::AuthoringVisualOptions,
+    authoring_feedback: authoring::AuthoringFeedback,
 }
 
 /// The move gizmo: an arrow per axis (X red, Y green, Z blue) from the
@@ -1365,6 +1371,9 @@ fn draw_grip_marker(
         let palette = theme.palette();
         let color = if grip.is_authoring {
             authoring.grip
+        } else if grip.is_dynamic {
+            codec::types::aci_table::aci_to_rgb(visual.grip_dynamic)
+                .map(|(r,g,b)| Color::from_rgb8(r,g,b)).unwrap_or(palette.primary.base.color)
         } else if grip.is_plugin {
             // Plugin-declared custom grip (API v11): a distinct accent so
             // it never reads as a built-in selection grip. Hot and hover
@@ -1379,7 +1388,7 @@ fn draw_grip_marker(
         } else {
             palette.primary.base.color
         };
-        let fill = if matches!(
+        let fill = if grip.is_dynamic || matches!(
             grip.shape,
             GripShape::Dropdown | GripShape::DropdownAdjacent
         ) {
@@ -1716,6 +1725,23 @@ impl canvas::Program<Message> for SelectionCanvas {
         }
 
         // ── Grip markers ──────────────────────────────────────────────────
+        frame.with_clip(self.authoring_feedback.clip, |frame| {
+            let color = self.authoring_visual.parameter;
+            for [a,b] in &self.authoring_feedback.dependencies {
+                let line = canvas::Path::line(*a,*b);
+                frame.stroke(&line,canvas::Stroke::default().with_color(color.scale_alpha(0.35)).with_width(7.0));
+                frame.stroke(&line,canvas::Stroke::default().with_color(color).with_width(1.0));
+            }
+            for point in &self.authoring_feedback.markers {
+                let marker = canvas::Path::new(|path| {
+                    path.move_to(Point::new(point.x-3.0,point.y));
+                    path.line_to(Point::new(point.x+3.0,point.y));
+                    path.move_to(Point::new(point.x,point.y-3.0));
+                    path.line_to(Point::new(point.x,point.y+3.0));
+                });
+                frame.stroke(&marker,canvas::Stroke::default().with_color(color).with_width(1.5));
+            }
+        });
         let grip_bounds = self.grip_clip.unwrap_or(bounds);
         let grip_x0 = grip_bounds.x.max(0.0);
         let grip_y0 = grip_bounds.y.max(0.0);

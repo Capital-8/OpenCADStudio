@@ -13,10 +13,16 @@ const NAMES: &[&str] = &[
     "BPARAMETERSIZE",
     "BPARAMETERFONT",
     "BPTEXTHORIZONTAL",
+    "BDEPENDENCYHIGHLIGHT",
+    "BTMARKDISPLAY",
+    "GRIPDYNCOLOR",
+    "GRIPTIPS",
 ];
 
 inventory::submit!(crate::command::CommandRegistration { names: NAMES });
-inventory::submit!(crate::command::CommandRegistration { names: &["BESETTINGS"] });
+inventory::submit!(crate::command::CommandRegistration {
+    names: &["BESETTINGS"]
+});
 
 pub(super) fn setvar_listing() -> String {
     format!("SETVAR (block editor): {}", NAMES.join(" "))
@@ -282,6 +288,10 @@ mod tests {
             ("BPARAMETERSIZE", "1", "1"),
             ("BPARAMETERFONT", "Arial Unicode MS", "Arial Unicode MS"),
             ("BPTEXTHORIZONTAL", "0", "0"),
+            ("BDEPENDENCYHIGHLIGHT", "0", "0"),
+            ("BTMARKDISPLAY", "0", "0"),
+            ("GRIPDYNCOLOR", "255", "255"),
+            ("GRIPTIPS", "0", "0"),
         ] {
             let _ = app.dispatch_command(&format!("SETVAR {name} {value}"));
             assert_eq!(
@@ -299,6 +309,11 @@ mod tests {
             "BACTIONCOLOR RGB:1,2,999",
             "BGRIPOBJCOLOR -1",
             "BPTEXTHORIZONTAL 2",
+            "BDEPENDENCYHIGHLIGHT 2",
+            "BTMARKDISPLAY -1",
+            "GRIPDYNCOLOR 0",
+            "GRIPDYNCOLOR 256",
+            "GRIPTIPS 5",
             "BPARAMETERFONT \"\"",
         ] {
             let _ = app.dispatch_command(command);

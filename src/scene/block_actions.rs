@@ -9,6 +9,7 @@ use codec::types::{Transform, Vector3};
 use codec::{CadDocument, EntityType, Handle};
 use glam::DVec3;
 pub(crate) mod instance;
+pub(crate) mod feedback;
 mod representation;
 mod stretch;
 

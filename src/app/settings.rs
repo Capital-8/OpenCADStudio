@@ -445,6 +445,10 @@ pub struct BlockEditorPreferences {
     pub parameter_size: u8,
     pub parameter_font: String,
     pub text_horizontal: bool,
+    pub dependency_highlight: bool,
+    pub value_markers: bool,
+    pub dynamic_grip_color: u8,
+    pub grip_tips: bool,
 }
 
 impl Default for BlockEditorPreferences {
@@ -458,6 +462,10 @@ impl Default for BlockEditorPreferences {
             parameter_size: 12,
             parameter_font: "Simplex.shx".into(),
             text_horizontal: true,
+            dependency_highlight: true,
+            value_markers: true,
+            dynamic_grip_color: 140,
+            grip_tips: true,
         }
     }
 }
@@ -470,6 +478,10 @@ pub const BLOCK_DISPLAY_VARIABLES: &[(&str, &str)] = &[
     ("BPARAMETERSIZE", "Parameter text size (pixels)"),
     ("BPARAMETERFONT", "Parameter font"),
     ("BPTEXTHORIZONTAL", "Keep parameter text horizontal"),
+    ("BDEPENDENCYHIGHLIGHT", "Highlight dependent geometry"),
+    ("BTMARKDISPLAY", "Show value-set markers"),
+    ("GRIPDYNCOLOR", "Dynamic grip color (index)"),
+    ("GRIPTIPS", "Show grip tips"),
 ];
 
 impl BlockEditorPreferences {
@@ -482,6 +494,10 @@ impl BlockEditorPreferences {
             "BPARAMETERSIZE" => self.parameter_size.to_string(),
             "BPARAMETERFONT" => self.parameter_font.clone(),
             "BPTEXTHORIZONTAL" => u8::from(self.text_horizontal).to_string(),
+            "BDEPENDENCYHIGHLIGHT" => u8::from(self.dependency_highlight).to_string(),
+            "BTMARKDISPLAY" => u8::from(self.value_markers).to_string(),
+            "GRIPDYNCOLOR" => self.dynamic_grip_color.to_string(),
+            "GRIPTIPS" => u8::from(self.grip_tips).to_string(),
             _ => return None,
         })
     }
@@ -501,13 +517,15 @@ impl BlockEditorPreferences {
                     _ => self.grip_color = value,
                 }
             }
-            "BGRIPOBJSIZE" | "BPARAMETERSIZE" => {
+            "BGRIPOBJSIZE" | "BPARAMETERSIZE" | "GRIPDYNCOLOR" => {
                 let value = value
                     .parse::<u8>()
                     .ok()
                     .filter(|v| *v > 0)
                     .ok_or("Enter an integer from 1 to 255.")?;
-                if name == "BGRIPOBJSIZE" {
+                if name == "GRIPDYNCOLOR" {
+                    self.dynamic_grip_color = value;
+                } else if name == "BGRIPOBJSIZE" {
                     self.grip_size = value;
                 } else {
                     self.parameter_size = value;
@@ -520,11 +538,19 @@ impl BlockEditorPreferences {
                 }
                 self.parameter_font = value.to_owned();
             }
-            "BPTEXTHORIZONTAL" => match value {
-                "0" => self.text_horizontal = false,
-                "1" => self.text_horizontal = true,
-                _ => return Err("Enter 0 or 1."),
-            },
+            "BPTEXTHORIZONTAL" | "BDEPENDENCYHIGHLIGHT" | "BTMARKDISPLAY" | "GRIPTIPS" => {
+                let value = match value {
+                    "0" => false,
+                    "1" => true,
+                    _ => return Err("Enter 0 or 1."),
+                };
+                match name {
+                    "BPTEXTHORIZONTAL" => self.text_horizontal = value,
+                    "BDEPENDENCYHIGHLIGHT" => self.dependency_highlight = value,
+                    "BTMARKDISPLAY" => self.value_markers = value,
+                    _ => self.grip_tips = value,
+                }
+            }
             _ => return Err("Unknown display variable."),
         }
         Ok(())

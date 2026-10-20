@@ -3109,6 +3109,12 @@ pub trait CadCommand: Send {
         false
     }
 
+    /// Native parameter being edited, for read-only grip feedback. A missing
+    /// reference denotes the editor's temporary Test Block reference.
+    fn block_parameter_target(&self) -> Option<(Option<codec::Handle>, codec::Handle)> {
+        None
+    }
+
     fn is_selection_gathering(&self) -> bool {
         false
     }

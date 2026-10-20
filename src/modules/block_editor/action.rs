@@ -387,6 +387,9 @@ pub(crate) struct TestParameterCommand {
     pub parameter: Handle,
 }
 impl CadCommand for TestParameterCommand {
+    fn block_parameter_target(&self) -> Option<(Option<Handle>, Handle)> {
+        Some((self.insert, self.parameter))
+    }
     fn name(&self) -> &'static str {
         if self.insert.is_some() {
             "BLOCKPARAMETERGRIP"
