@@ -6128,6 +6128,7 @@ ui =
     .viewport-annotation-scale-sync = Näkymän merkintämittakaavan synkronointi
     .viewport-count = Näkymien määrä
     .viewport-count-in-active-layout = Näkymäporttien määrä aktiivisessa asettelussa
+    .lock-unlock-viewport = Lukitse/avaa näkymä
     .what-s-new = Mitä uutta?
     .width-value = Leveys: __ocs_arg_value__
     .working = Työskentely…

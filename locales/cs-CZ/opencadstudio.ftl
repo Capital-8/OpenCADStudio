@@ -6128,6 +6128,7 @@ ui =
     .viewport-annotation-scale-sync = Viewport / Anotace Scale Sync
     .viewport-count = Počet výřezů
     .viewport-count-in-active-layout = Počet výřezů v aktivním rozložení
+    .lock-unlock-viewport = Zamknout/odemknout výřez
     .what-s-new = Co je nového
     .width-value = Šířka: __ocs_arg_value__
     .working = Práce…

@@ -6131,6 +6131,7 @@ ui =
     .viewport-annotation-scale-sync = Синхронизация на мащаб изглед/анотация
     .viewport-count = Брой изгледи
     .viewport-count-in-active-layout = Брой изгледи в активното оформление
+    .lock-unlock-viewport = Заключване/отключване на изгледа
     .what-s-new = Какво е новото
     .width-value = Ширина: __ocs_arg_value__
     .working = Обработка…

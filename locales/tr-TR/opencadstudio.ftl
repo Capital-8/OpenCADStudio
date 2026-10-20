@@ -6052,6 +6052,7 @@ ui =
     .viewport-annotation-scale-sync = Görünüm Alanı Açıklama Ölçeğini Eşitle
     .viewport-count = Görünüm Alanı Sayısı
     .viewport-count-in-active-layout = Etkin yerleşimdeki görünüm alanı sayısı
+    .lock-unlock-viewport = Görünüm Alanını Kilitle/Kilidi Aç
     .what-s-new = Yenilikler
     .width-value = Genişlik: __ocs_arg_value__
     .working = Çalışıyor…

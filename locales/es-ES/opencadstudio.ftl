@@ -6131,6 +6131,7 @@ ui =
     .viewport-annotation-scale-sync = Sincronización de ventana gráfica / escala de anotación
     .viewport-count = Número de ventanas gráficas
     .viewport-count-in-active-layout = Número de ventanas gráficas en la presentación activa
+    .lock-unlock-viewport = Bloquear/desbloquear ventana gráfica
     .what-s-new = Novedades
     .width-value = Anchura: __ocs_arg_value__
     .working = Procesando…

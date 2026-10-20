@@ -6155,6 +6155,7 @@ ui =
     .viewport-annotation-scale-sync = Nézetablak- és feliratozási lépték szinkronja
     .viewport-count = Nézetablakok száma
     .viewport-count-in-active-layout = Nézetablakok száma aktív elrendezésben
+    .lock-unlock-viewport = Nézetablak zárolása/feloldása
     .what-s-new = Újdonságok
     .width-value = Szélesség: __ocs_arg_value__
     .working = Dolgozik…

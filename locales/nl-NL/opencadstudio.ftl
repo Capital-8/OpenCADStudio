@@ -6129,6 +6129,7 @@ ui =
     .viewport-annotation-scale-sync = Weergavevenster-/annotatieschaal synchroniseren
     .viewport-count = Aantal weergavevensters
     .viewport-count-in-active-layout = Aantal weergavevensters in actieve indeling
+    .lock-unlock-viewport = Weergavevenster vergrendelen/ontgrendelen
     .what-s-new = Wat is er nieuw?
     .width-value = Breedte: __ocs_arg_value__
     .working = Werken...

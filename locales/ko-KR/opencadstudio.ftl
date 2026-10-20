@@ -6130,6 +6130,7 @@ ui =
     .viewport-annotation-scale-sync = 뷰포트/주석 축척 동기화
     .viewport-count = 뷰포트 수
     .viewport-count-in-active-layout = 활성 레이아웃의 뷰포트 수
+    .lock-unlock-viewport = 뷰포트 잠금/잠금 해제
     .what-s-new = 새로운 소식
     .width-value = 폭: __ocs_arg_value__
     .working = 일하는 중…

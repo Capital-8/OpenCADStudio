@@ -6131,6 +6131,7 @@ ui =
     .viewport-annotation-scale-sync = ການຊິ້ງຄ໌ມາດຕາສ່ວນ ຊ່ອງມຸມມອງ / ຄຳອະທິບາຍ
     .viewport-count = ຈຳນວນຊ່ອງມຸມມອງ
     .viewport-count-in-active-layout = ຈຳນວນຊ່ອງມຸມມອງໃນເລເອົາຕ໌ທີ່ໃຊ້ງານຢູ່
+    .lock-unlock-viewport = ລັອກ/ປົດລັອກ ຊ່ອງມຸມມອງ
     .what-s-new = ມີຫຍັງໃໝ່ແດ່
     .width-value = ຄວາມກວ້າງ: __ocs_arg_value__
     .working = ກຳລັງປະມວນຜົນ…

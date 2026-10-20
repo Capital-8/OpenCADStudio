@@ -2771,6 +2771,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             annotation_all_visible: tab.scene.annotation_all_visible(),
                             annotation_auto_add: self.annotation_auto_scale > 0,
                             viewport_scale_synced: tab.scene.viewport_annotation_scale_synced(),
+                            viewport_locked: tab.scene.viewports_display_locked(),
                             lineweight_display: tab.scene.document.header.lineweight_display,
                         },
                         crate::ui::statusbar::StatusBarModes {

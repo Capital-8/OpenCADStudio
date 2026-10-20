@@ -6130,6 +6130,7 @@ ui =
     .viewport-annotation-scale-sync = Viewport / Annotation Scale Sync
     .viewport-count = Viewport Count
     .viewport-count-in-active-layout = Viewport count in active layout
+    .lock-unlock-viewport = Lock/Unlock Viewport
     .what-s-new = What's new
     .width-value = Width: __ocs_arg_value__
     .working = Working…

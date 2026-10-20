@@ -6130,6 +6130,7 @@ ui =
     .viewport-annotation-scale-sync = Sincronizzazione scala vista/annotazione
     .viewport-count = Conteggio finestre
     .viewport-count-in-active-layout = Conteggio delle finestre nel layout attivo
+    .lock-unlock-viewport = Blocca/sblocca finestra
     .what-s-new = Cosa c'è di nuovo
     .width-value = Larghezza: __ocs_arg_value__
     .working = Lavorando…

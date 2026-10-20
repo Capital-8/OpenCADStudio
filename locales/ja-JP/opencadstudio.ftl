@@ -6119,6 +6119,7 @@ ui =
     .viewport-annotation-scale-sync = ビューポート / 注釈尺度の同期
     .viewport-count = ビューポート数
     .viewport-count-in-active-layout = アクティブなレイアウトのビューポート数
+    .lock-unlock-viewport = ビューポートのロック/ロック解除
     .what-s-new = 新機能
     .width-value = 幅: __ocs_arg_value__
     .working = 処理中…
