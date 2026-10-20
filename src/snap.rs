@@ -101,6 +101,38 @@ pub const ALL_SNAP_MODES: &[(SnapType, &str, &str)] = &[
     // grid point; it is toggled on its own and handled directly in `snap()`.
 ];
 
+/// Letter that picks a snap in the Shift+right-click override menu. That
+/// menu lists only [`ALL_SNAP_MODES`], so the 3D modes have no letter and
+/// can be given free ones later without clashing.
+pub fn override_menu_key(t: SnapType) -> Option<char> {
+    Some(match t {
+        SnapType::Endpoint => 'E',
+        SnapType::Midpoint => 'M',
+        SnapType::Center => 'C',
+        SnapType::GeometricCenter => 'G',
+        SnapType::Perpendicular => 'P',
+        SnapType::Parallel => 'L',
+        SnapType::Tangent => 'T',
+        SnapType::Quadrant => 'Q',
+        SnapType::Insertion => 'I',
+        SnapType::Node => 'O',
+        SnapType::Nearest => 'N',
+        SnapType::Intersection => 'R',
+        SnapType::ApparentIntersection => 'A',
+        SnapType::Extension => 'X',
+        _ => return None,
+    })
+}
+
+/// The override-menu snap a typed letter picks, case-insensitively.
+pub fn override_menu_snap(ch: char) -> Option<SnapType> {
+    let ch = ch.to_ascii_uppercase();
+    ALL_SNAP_MODES
+        .iter()
+        .map(|&(t, _, _)| t)
+        .find(|&t| override_menu_key(t) == Some(ch))
+}
+
 /// 3D object-snap modes: solid B-rep features with their own master toggle
 /// (`Snapper::snap3d_enabled`, F4) and mode set (`Snapper::enabled3d`),
 /// configured on the Drafting Settings "3D Object Snap" tab. Deliberately
