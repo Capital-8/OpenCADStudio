@@ -2409,6 +2409,30 @@ impl OpenCADStudio {
                         .collect();
                     let t_local = t_arm.map(|t| t.elapsed().as_secs_f64() * 1000.0);
                     let mut sections = aggregate_sections(&local_refs, &text_style_names);
+                    // A dimension's style groups (arrows, text, fit, units…)
+                    // come from the document-aware builder; the document-free
+                    // rows above would drop them all, so dimensions of one
+                    // style shared only the General rows. (#1917)
+                    if filtered
+                        .iter()
+                        .all(|(_, entity)| matches!(entity, EntityType::Dimension(_)))
+                    {
+                        sections = filtered
+                            .iter()
+                            .map(|(handle, entity)| {
+                                self.entity_property_sections(
+                                    i,
+                                    *handle,
+                                    entity,
+                                    &text_style_names,
+                                    annotation_scale_handle,
+                                    prop_vertex,
+                                )
+                                .0
+                            })
+                            .reduce(|merged, next| merge_sections(&merged, &next))
+                            .unwrap_or_default();
+                    }
                     if let (Some(t), Some(groups_ms), Some(filter_ms), Some(local_ms)) =
                         (t_arm, t_groups, t_filter, t_local)
                     {

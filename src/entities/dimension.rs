@@ -1756,7 +1756,16 @@ pub(crate) fn resolved_dimension_style(
         }
     }
 
-    // An annotative style sizes its features by the annotation scale; the
+    // The dimension's own annotation context decides whether it scales with
+    // the annotation scale; the style only seeds new dimensions. A dimension
+    // turned non-annotative under an annotative style uses its DIMSCALE.
+    // An arc length dimension carries no context, so its style decides.
+    // (#1917)
+    if !matches!(dimension, Dimension::Arc(_)) {
+        style.annotative =
+            crate::scene::annotative::object_is_annotative(document, &dimension.base().common);
+    }
+    // An annotative dimension sizes its features by the annotation scale; the
     // DIMSCALE it still stores is inert.
     if style.annotative {
         style.dimscale = 0.0;
@@ -1914,12 +1923,7 @@ pub fn style_sections(
     let dimaltz = int(ov::DIMALTZ, s.dimaltz);
     let dimtzin = int(ov::DIMTZIN, s.dimtzin);
     let dimalttz = int(ov::DIMALTTZ, s.dimalttz);
-    let annotative = s.annotative
-        || !crate::scene::annotative::object_scale_memberships(
-            document,
-            dimension.base().common.handle,
-        )
-        .is_empty();
+    let annotative = s.annotative;
 
     let overridden_text_style = ov::handle(data, ov::DIMTXSTY);
     let text_style_name = overridden_text_style
@@ -1979,18 +1983,16 @@ pub fn style_sections(
             ov::handle(data, ov::DIMLDRBLK).unwrap_or(s.dimldrblk),
             "Closed filled",
         )
+    } else if s.dimsah {
+        arrow_name(ov::DIMBLK1, s.dimblk1, &s.dimblk1_name)
     } else {
-        let inherited = if matches!(dimension, Dimension::Diameter(_)) && !s.dimsah {
-            (s.dimblk, s.dimblk_name.as_str())
-        } else {
-            (s.dimblk1, s.dimblk1_name.as_str())
-        };
-        arrow_name(ov::DIMBLK1, inherited.0, inherited.1)
+        // Separate arrows off: both ends draw DIMBLK, as the renderer does.
+        block_name(document, s.dimblk, &s.dimblk_name)
     };
-    let arrow_2 = if matches!(dimension, Dimension::Diameter(_)) && !s.dimsah {
-        arrow_name(ov::DIMBLK2, s.dimblk, &s.dimblk_name)
-    } else {
+    let arrow_2 = if s.dimsah {
         arrow_name(ov::DIMBLK2, s.dimblk2, &s.dimblk2_name)
+    } else {
+        block_name(document, s.dimblk, &s.dimblk_name)
     };
     // The standard arrowheads, then any user arrow block in use. (#1820)
     let arrow_options =

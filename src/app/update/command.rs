@@ -2700,18 +2700,11 @@ impl OpenCADStudio {
             let document = &self.tabs[i].scene.document;
             let (toggle, current) = match document.get_entity(handle) {
                 Some(codec::EntityType::MText(text)) => ("is_annotative", text.is_annotative),
+                // The same per-object state the row shows and the toggle
+                // flips; a dimension's style only seeds it. (#1917)
                 Some(entity) => (
                     "annotative_ctx",
-                    crate::scene::annotative::is_annotative(document, entity)
-                        || match entity {
-                            codec::EntityType::Dimension(dimension) => {
-                                crate::scene::annotative::dim_style_is_annotative(
-                                    document,
-                                    &dimension.base().style_name,
-                                )
-                            }
-                            _ => false,
-                        },
+                    crate::scene::annotative::is_annotative(document, entity),
                 ),
                 None => return Task::none(),
             };
@@ -3532,6 +3525,22 @@ impl OpenCADStudio {
                 let text_style = (field == "style")
                     .then(|| self.tabs[i].scene.document.text_styles.get(&value).cloned())
                     .flatten();
+                // A dimension taking a style takes its annotative state, as a
+                // new dimension would. (#1917)
+                let dim_style_annotative = (field == "style_name")
+                    .then(|| {
+                        self.tabs[i]
+                            .scene
+                            .document
+                            .dim_styles
+                            .iter()
+                            .find(|style| style.name.eq_ignore_ascii_case(&value))
+                            .map(|style| style.annotative)
+                    })
+                    .flatten();
+                let dim_scale = dim_style_annotative
+                    .filter(|annotative| *annotative)
+                    .and_then(|_| self.tabs[i].scene.creation_annotation_scale_handle());
                 for &handle in &handles {
                     let mline_style =
                         self.tabs[i]
@@ -3578,6 +3587,30 @@ impl OpenCADStudio {
                             {
                                 crate::modules::draw::draw::mline::sync_mline_element_parameters(
                                     mline, style,
+                                );
+                            }
+                        }
+                    }
+                    if let Some(annotative) = dim_style_annotative {
+                        let document = &mut self.tabs[i].scene.document;
+                        let current = match document.get_entity(handle) {
+                            Some(codec::EntityType::Dimension(dimension))
+                                if !matches!(**dimension, codec::entities::Dimension::Arc(_)) =>
+                            {
+                                crate::scene::annotative::object_is_annotative(
+                                    document,
+                                    &dimension.base().common,
+                                )
+                            }
+                            _ => continue,
+                        };
+                        if current != annotative {
+                            crate::scene::annotative::set_entity_annotative(
+                                document, handle, annotative,
+                            );
+                            if let Some(scale) = dim_scale {
+                                crate::scene::annotative::create_annotation_context(
+                                    document, handle, scale,
                                 );
                             }
                         }
