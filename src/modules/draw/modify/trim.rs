@@ -220,9 +220,28 @@ fn build_geos(entities: &[EntityType]) -> Vec<Geo> {
             | EntityType::Polyline(_)
             | EntityType::Polyline2D(_)
             | EntityType::Polyline3D(_) => {
+                let before = out.len();
                 for seg in crate::modules::draw::modify::explode::explode_polyline_segments(e) {
                     if let Some(g) = geo_from_entity(h, &seg) {
                         out.push(g);
+                    }
+                }
+                // EXPLODE's LWPOLYLINE helper only materializes polylines
+                // whose OCS plane is parallel to world XY. Imported files
+                // can carry a tilted extrusion normal even when the entity is
+                // intended to be used as a plan-view boundary. If that path
+                // yields no usable edges, fall back to the shared curve
+                // projection and use its tessellated segments as boundaries.
+                if out.len() == before {
+                    let points = projected_polyline_points_xy(e);
+                    for pair in points.windows(2) {
+                        if (pair[1][0] - pair[0][0]).hypot(pair[1][1] - pair[0][1]) > 1e-12 {
+                            out.push(Geo::Line {
+                                handle: h,
+                                p1: pair[0],
+                                p2: pair[1],
+                            });
+                        }
                     }
                 }
             }
@@ -1842,6 +1861,12 @@ fn entity_pts(e: &EntityType) -> Vec<[f32; 3]> {
             xy_pts
                 .into_iter()
                 .map(|pt| [pt[0] as f32, pt[1] as f32, elev])
+                .collect()
+        }
+        EntityType::Polyline(_) | EntityType::Polyline2D(_) | EntityType::Polyline3D(_) => {
+            preview_sample_xy(e)
+                .into_iter()
+                .map(|pt| [pt[0] as f32, pt[1] as f32, 0.0])
                 .collect()
         }
         // For preview, show a 20-unit section of semi-infinite results
@@ -4400,6 +4425,58 @@ mod tests {
     }
 
     #[test]
+    fn selected_legacy_polyline_boundary_has_visible_glow() {
+        use codec::entities::{Polyline2D, Vertex2D};
+
+        let mut boundary = Polyline2D::new();
+        boundary.vertices = vec![
+            Vertex2D::new(Vector3::new(2.0, -1.0, 0.0)),
+            Vertex2D::new(Vector3::new(2.0, 1.0, 0.0)),
+        ];
+        boundary.common.handle = Handle::new(2);
+        let mut command = TrimCommand::new(vec![EntityType::Polyline2D(boundary)]);
+        command.mode = TrimMode::SelectEdges;
+
+        assert!(matches!(
+            command.on_entity_pick(Handle::new(2), DVec3::new(2.0, 0.0, 0.0)),
+            CmdResult::NeedPoint
+        ));
+        let preview = command.persistent_preview_wires();
+        assert_eq!(preview.len(), 3);
+        assert!(preview.iter().all(|wire| wire.points.len() >= 2));
+    }
+
+    #[test]
+    fn trim_can_select_a_polyline2d_as_cutting_edge() {
+        use codec::entities::{Polyline2D, Vertex2D};
+
+        let target = xline_at(0.0, 0.0, 4.0, 0.0, 1);
+        let mut boundary = Polyline2D::new();
+        boundary.vertices = vec![
+            Vertex2D::new(Vector3::new(2.0, -1.0, 0.0)),
+            Vertex2D::new(Vector3::new(2.0, 1.0, 0.0)),
+        ];
+        boundary.common.handle = Handle::new(2);
+        let mut command = TrimCommand::new(vec![target, EntityType::Polyline2D(boundary)]);
+        command.quick = false;
+        command.mode = TrimMode::SelectEdges;
+
+        command.on_entity_pick(Handle::new(2), DVec3::new(2.0, 0.0, 0.0));
+        assert_eq!(command.persistent_preview_wires().len(), 3);
+        assert!(matches!(command.on_enter(), CmdResult::NeedPoint));
+        let result = command.on_entity_pick(Handle::new(1), DVec3::new(3.0, 0.0, 0.0));
+        let CmdResult::ReplaceEntity(handle, entities) = result else {
+            panic!("expected target line to trim against selected POLYLINE2D");
+        };
+        assert_eq!(handle, Handle::new(1));
+        let EntityType::Line(line) = &entities[0] else {
+            panic!("expected a line survivor");
+        };
+        assert!((line.start.x - 0.0).abs() < 1e-6);
+        assert!((line.end.x - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
     fn trim_line_removed_preview_marks_only_the_deleted_end_or_gap_in_gray() {
         let line = match xline_at(0.0, 0.0, 10.0, 0.0, 1) {
             EntityType::Line(line) => line,
@@ -4667,6 +4744,113 @@ mod tests {
         // removed and the left interval survives.
         assert!((line.start.x + 2.0).abs() < 1e-6);
         assert!((line.end.x - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn extend_line_reaches_polyline2d_boundary() {
+        use codec::entities::{Polyline2D, Vertex2D};
+
+        let target = xline_at(0.0, 0.0, 1.0, 0.0, 1);
+        let mut boundary = Polyline2D::new();
+        boundary.vertices = vec![
+            Vertex2D::new(Vector3::new(3.0, -1.0, 0.0)),
+            Vertex2D::new(Vector3::new(3.0, 1.0, 0.0)),
+        ];
+        boundary.common.handle = Handle::new(2);
+        let all = vec![target, EntityType::Polyline2D(boundary)];
+        let result = pick_extend_at(&all, &build_geos(&all), Handle::new(1), 0.9, 0.0)
+            .expect("the line should extend to the POLYLINE2D boundary");
+        let EntityType::Line(line) = result else {
+            panic!("expected an extended line");
+        };
+        assert!((line.end.x - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn trim_can_select_a_lightweight_polyline_as_cutting_edge() {
+        let target = xline_at(0.0, 0.0, 4.0, 0.0, 1);
+        let mut boundary = LwPolyline::new();
+        boundary.common.handle = Handle::new(2);
+        boundary.vertices = vec![
+            LwVertex::from_coords(2.0, -1.0),
+            LwVertex::from_coords(2.0, 1.0),
+        ];
+        let mut command = TrimCommand::with_cutting_edges(
+            vec![target, EntityType::LwPolyline(boundary)],
+            Vec::new(),
+        );
+        command.quick = false;
+        command.mode = TrimMode::SelectEdges;
+
+        assert!(matches!(
+            command.on_entity_pick(Handle::new(2), DVec3::new(2.0, 0.0, 0.0)),
+            CmdResult::NeedPoint
+        ));
+        assert_eq!(command.edge_set, vec![Handle::new(2)]);
+        assert!(matches!(command.on_enter(), CmdResult::NeedPoint));
+        let result = command.on_entity_pick(Handle::new(1), DVec3::new(3.0, 0.0, 0.0));
+        let CmdResult::ReplaceEntity(handle, entities) = result else {
+            panic!("expected target line to trim against selected polyline");
+        };
+        assert_eq!(handle, Handle::new(1));
+        assert_eq!(entities.len(), 1);
+        let EntityType::Line(line) = &entities[0] else {
+            panic!("expected a line survivor");
+        };
+        assert!((line.start.x - 0.0).abs() < 1e-6);
+        assert!((line.end.x - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn trim_uses_projected_fallback_for_imported_lwpolyline_with_tilted_ocs() {
+        let target = xline_at(-5.0, 0.0, 5.0, 0.0, 1);
+        let mut boundary = LwPolyline::new();
+        boundary.common.handle = Handle::new(2);
+        boundary.normal = Vector3::new(0.5, 0.0, 3.0_f64.sqrt() / 2.0);
+        boundary.is_closed = true;
+        boundary.vertices = vec![
+            LwVertex::from_coords(-1.0, -1.0),
+            LwVertex::from_coords(1.0, -1.0),
+            LwVertex::from_coords(1.0, 1.0),
+            LwVertex::from_coords(-1.0, 1.0),
+        ];
+        let boundary = EntityType::LwPolyline(boundary);
+
+        // This is the imported OCS case: the existing explode helper cannot
+        // materialize world-XY segments, but the shared curve projection can.
+        assert!(crate::modules::draw::modify::explode::explode_polyline_segments(&boundary).is_empty());
+        let mut command = TrimCommand::new(vec![target, boundary]);
+        command.quick = false;
+        command.mode = TrimMode::SelectEdges;
+        command.on_entity_pick(Handle::new(2), DVec3::ZERO);
+        assert_eq!(command.persistent_preview_wires().len(), 3);
+        assert!(matches!(command.on_enter(), CmdResult::NeedPoint));
+
+        let result = command.on_entity_pick(Handle::new(1), DVec3::ZERO);
+        let CmdResult::ReplaceEntity(handle, pieces) = result else {
+            panic!("expected the imported polyline boundary to trim the target");
+        };
+        assert_eq!(handle, Handle::new(1));
+        assert_eq!(pieces.len(), 2);
+    }
+
+    #[test]
+    fn extend_line_can_reach_a_lightweight_polyline_boundary() {
+        let target = xline_at(0.0, 0.0, 1.0, 0.0, 1);
+        let mut boundary = LwPolyline::new();
+        boundary.common.handle = Handle::new(2);
+        boundary.vertices = vec![
+            LwVertex::from_coords(3.0, -1.0),
+            LwVertex::from_coords(3.0, 1.0),
+        ];
+        let all = vec![target, EntityType::LwPolyline(boundary)];
+        let result = pick_extend_at(&all, &build_geos(&all), Handle::new(1), 0.9, 0.0)
+            .expect("the line should extend to the polyline boundary");
+        let EntityType::Line(line) = result else {
+            panic!("expected an extended line");
+        };
+        assert!((line.start.x - 0.0).abs() < 1e-6);
+        assert!((line.end.x - 3.0).abs() < 1e-6);
     }
 
     #[test]
@@ -6505,6 +6689,9 @@ fn sample_entity_xy(e: &EntityType) -> Vec<[f64; 2]> {
                 pts.extend(sp);
             }
         }
+        if pts.is_empty() {
+            return projected_polyline_points_xy(e);
+        }
         return pts;
     }
     let Some(curve) = entity_curve_xy(e) else {
@@ -6563,10 +6750,23 @@ fn preview_sample_xy(e: &EntityType) -> Vec<[f64; 2]> {
                     pts.extend(sp);
                 }
             }
+            if pts.is_empty() {
+                return projected_polyline_points_xy(e);
+            }
             pts
         }
         _ => sample_entity_xy(e),
     }
+}
+
+/// Project a planar polyline into the XY working plane and sample its curve.
+/// This covers imported OCS polylines whose extrusion normal prevents the
+/// older entity-explosion path from producing world-XY line/arc pieces.
+fn projected_polyline_points_xy(e: &EntityType) -> Vec<[f64; 2]> {
+    entity_curve_xy(e)
+        .filter(|curve| curve.extent() == KernelExtent::Bounded)
+        .map(|curve| curve.tessellate(SAMPLE_SEGMENTS_PER_RADIAN))
+        .unwrap_or_default()
 }
 
 /// Append the sub-runs of `pts` for which `take` holds to `out` as one wire's
