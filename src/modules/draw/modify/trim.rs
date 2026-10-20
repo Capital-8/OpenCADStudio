@@ -2162,6 +2162,227 @@ fn crossing_trim_lwpolyline(
     )
 }
 
+/// TRIM a planar hatch as a REGION, not as an individual hatch boundary edge.
+///
+/// The picked point chooses the half-plane to REMOVE. Only a finite straight
+/// cutting edge intersecting the outer ring exactly twice is supported here.
+/// Disconnected cuts, curved original edges, and cutters through holes are
+/// deliberately refused rather than damaging the hatch topology. An edited
+/// hatch is detached from its original associative source handles: these
+/// source curves have not changed to match the new boundary.
+fn trim_hatch_at(
+    hatch: &codec::entities::Hatch,
+    geos: &[Geo],
+    px: f64,
+    py: f64,
+) -> Option<codec::entities::Hatch> {
+    use codec::entities::{BoundaryEdge, BoundaryPath, BoundaryPathFlags, PolylineEdge};
+    use codec::types::Vector2;
+    // The working plane of TRIM is XY. Do not quietly clip a tilted OCS
+    // boundary using an unrelated XY cutting edge.
+    if hatch.normal.x.abs() > 1.0e-9
+        || hatch.normal.y.abs() > 1.0e-9
+        || (hatch.normal.z - 1.0).abs() > 1.0e-9
+        || hatch.paths.is_empty()
+    {
+        return None;
+    }
+    // Preserve analytic curves intact by refusing cuts that would require
+    // replacing arcs or splines with sampled chords.
+    let straight = |path: &BoundaryPath| {
+        !path.edges.is_empty()
+            && path.edges.iter().all(|edge| match edge {
+                BoundaryEdge::Line(_) => true,
+                BoundaryEdge::Polyline(poly) => {
+                    poly.is_closed
+                        && poly.vertices.len() >= 3
+                        && poly.vertices.iter().all(|v| v.z.abs() <= 1.0e-12)
+                }
+                _ => false,
+            })
+    };
+    if !hatch.paths.iter().all(straight) {
+        return None;
+    }
+    let rings: Vec<Vec<[f64; 2]>> = hatch
+        .paths
+        .iter()
+        .map(crate::scene::hatch_path_ring)
+        .collect::<Option<Vec<_>>>()?;
+    let depths = kernel::geom2d::ring_nesting_depths(&rings);
+    let outer: Vec<usize> = depths
+        .iter()
+        .enumerate()
+        .filter_map(|(index, depth)| (*depth == 0).then_some(index))
+        .collect();
+    // A single, connected outer ring can safely be clipped by one line.
+    if outer.len() != 1 {
+        return None;
+    }
+    let outer_index = outer[0];
+    let ring = &rings[outer_index];
+    const EPS: f64 = 1.0e-8;
+    let ring_area = |points: &[[f64; 2]]| -> f64 {
+        points
+            .iter()
+            .zip(points.iter().cycle().skip(1))
+            .take(points.len())
+            .map(|(a, b)| a[0] * b[1] - a[1] * b[0])
+            .sum::<f64>()
+            .abs() * 0.5
+    };
+    let old_area = ring_area(ring);
+    if !old_area.is_finite() || old_area <= EPS {
+        return None;
+    }
+    let mut best: Option<(f64, codec::entities::Hatch)> = None;
+    for geo in geos {
+        let Geo::Line { handle, p1, p2 } = geo else {
+            continue;
+        };
+        if *handle == hatch.common.handle {
+            continue;
+        }
+        let (dx, dy) = (p2[0] - p1[0], p2[1] - p1[1]);
+        let len2 = dx * dx + dy * dy;
+        if !len2.is_finite() || len2 < EPS * EPS {
+            continue;
+        }
+        let len = len2.sqrt();
+        let side = |p: [f64; 2]| (dx * (p[1] - p1[1]) - dy * (p[0] - p1[0])) / len;
+        let clicked_side = side([px, py]);
+        if clicked_side.abs() <= EPS {
+            continue;
+        }
+        let keep_sign = -clicked_side.signum();
+        let distances: Vec<_> = ring.iter().copied().map(side).collect();
+        // The original ring must cross the cutter at exactly two distinct
+        // points, both ON the finite cutting line (no implicit Edge: Extend).
+        let mut intersections: Vec<[f64; 2]> = Vec::new();
+        for j in 0..ring.len() {
+            let next = (j + 1) % ring.len();
+            let a = ring[j];
+            let b = ring[next];
+            let sa = distances[j];
+            let sb = distances[next];
+            let mut crossing = None;
+            if sa.abs() <= EPS {
+                crossing = Some(a);
+            } else if sa * sb < -EPS * EPS {
+                let t = sa / (sa - sb);
+                crossing = Some([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]);
+            }
+            if let Some(p) = crossing {
+                if !intersections
+                    .iter()
+                    .any(|prev| (prev[0] - p[0]).hypot(prev[1] - p[1]) <= EPS)
+                {
+                    intersections.push(p);
+                }
+            }
+        }
+        if intersections.len() != 2
+            || intersections.iter().any(|p| {
+                let t = ((p[0] - p1[0]) * dx + (p[1] - p1[1]) * dy) / len2;
+                t < -EPS || t > 1.0 + EPS
+            })
+        {
+            continue;
+        }
+        // Sutherland-Hodgman against the retained half-plane. Exactly two
+        // outer intersections ensure this creates one connected closed ring.
+        let inside = |p: [f64; 2]| keep_sign * side(p) >= -EPS;
+        let mut clipped = Vec::new();
+        for j in 0..ring.len() {
+            let next = (j + 1) % ring.len();
+            let (a, b) = (ring[j], ring[next]);
+            let (a_inside, b_inside) = (inside(a), inside(b));
+            if a_inside != b_inside {
+                let sa = side(a);
+                let sb = side(b);
+                if (sa - sb).abs() > EPS {
+                    let t = sa / (sa - sb);
+                    clipped.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]);
+                }
+            }
+            if b_inside {
+                clipped.push(b);
+            }
+        }
+        let mut cleaned: Vec<[f64; 2]> = Vec::new();
+        for p in clipped {
+            if cleaned.last().is_none_or(|prev| {
+                let prev: &[f64; 2] = prev;
+                (prev[0] - p[0]).hypot(prev[1] - p[1]) > EPS
+            }) {
+                cleaned.push(p);
+            }
+        }
+        if cleaned.len() > 1
+            && (cleaned[0][0] - cleaned[cleaned.len() - 1][0])
+                .hypot(cleaned[0][1] - cleaned[cleaned.len() - 1][1]) <= EPS
+        {
+            cleaned.pop();
+        }
+        let new_area = ring_area(&cleaned);
+        if cleaned.len() < 3 || !new_area.is_finite()
+            || new_area <= EPS || new_area >= old_area - EPS
+        {
+            continue;
+        }
+        let mut new_paths = Vec::with_capacity(hatch.paths.len());
+        let mut safe = true;
+        for (index, path) in hatch.paths.iter().enumerate() {
+            if index == outer_index {
+                let mut replacement = BoundaryPath::with_flags(BoundaryPathFlags::OUTERMOST);
+                replacement.add_edge(BoundaryEdge::Polyline(PolylineEdge::new(
+                    cleaned
+                        .iter()
+                        .map(|p| Vector2::new(p[0], p[1]))
+                        .collect(),
+                    true,
+                )));
+                new_paths.push(replacement);
+            } else {
+                // A hole entirely retained keeps its exact path; a hole
+                // entirely removed disappears. Straddling holes need a
+                // topological boolean operation, so do NOT modify the hatch.
+                let ring_sides: Vec<f64> = rings[index].iter().copied().map(side).collect();
+                let keeps = ring_sides.iter().all(|s| keep_sign * *s > EPS);
+                let removes = ring_sides.iter().all(|s| keep_sign * *s < -EPS);
+                if !keeps && !removes {
+                    safe = false;
+                    break;
+                }
+                if keeps {
+                    let mut path = path.clone();
+                    path.boundary_handles.clear();
+                    path.flags.set_external(false);
+                    new_paths.push(path);
+                }
+            }
+        }
+        if !safe {
+            continue;
+        }
+        let mut result = hatch.clone();
+        result.common.handle = Handle::NULL;
+        result.paths = new_paths;
+        result.is_associative = false;
+        // Clearing associations must apply to every path, not just the outer
+        // one, including inner holes inherited from the original hatch.
+        for path in &mut result.paths {
+            path.boundary_handles.clear();
+            path.flags.set_external(false);
+        }
+        let distance = clicked_side.abs();
+        if best.as_ref().is_none_or(|(d, _)| distance < *d) {
+            best = Some((distance, result));
+        }
+    }
+    best.map(|(_, result)| result)
+}
+
 /// Quick-mode trim at a click/crossing point: the surviving pieces, or `None`
 /// when the pick doesn't intersect any boundary (or the type is unsupported).
 fn pick_trim_at(
@@ -2280,6 +2501,8 @@ fn pick_trim_at(
             Some(trim_spline(s, &ts, t_click))
         }
         Some(EntityType::LwPolyline(p)) => trim_lwpolyline(p, px, py, geos),
+        Some(EntityType::Hatch(hatch)) => trim_hatch_at(hatch, geos, px, py)
+            .map(|result| vec![EntityType::Hatch(result)]),
         _ => None,
     };
     result
