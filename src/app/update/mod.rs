@@ -4732,7 +4732,7 @@ impl OpenCADStudio {
                 // A point command resolves snapping and Dynamic UCS from this
                 // exact press in on_viewport_left_release. Running a full move
                 // pass first would repeat the dense-scene snap before the click.
-                let press_move_started = crate::perf::enabled().then(std::time::Instant::now);
+                let press_move_started = crate::perf::enabled().then(Instant::now);
                 let (moved, cursor_path) = if plain_selection_press {
                     self.set_cursor_for_press(position);
                     (Task::none(), "selection-projection")

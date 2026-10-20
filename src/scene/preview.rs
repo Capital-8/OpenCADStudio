@@ -51,64 +51,47 @@ impl Scene {
         }
 
         let started = crate::perf::enabled().then(iced::time::Instant::now);
-        let mut models = Vec::new();
         let depth_map = self.draw_depth_map();
         let target_block = self.content_render_block_handle();
         let annotation_scale = self.displayed_annotation_scale_handle();
-        let all_annotations_visible = self.annotation_all_visible();
-        let mut selected_inserts = Vec::new();
-        for &handle in &self.selected {
-            if let (Some(entity), Some(mut model)) = (
-                self.document.get_entity(handle),
-                self.hatches.get(&handle).cloned(),
-            ) {
-                let common = entity.common();
-                let layer_hidden = self
-                    .document
-                    .layers
-                    .get(&common.layer)
-                    .is_some_and(|layer| layer.flags.off || layer.flags.frozen);
-                if common.invisible
-                    || self.display_entity_invisible(common)
-                    || self.entity_temporarily_hidden(handle)
-                    || self.object_isolation.hides(handle)
-                    || layer_hidden
-                    || crate::scene::annotative::annotative_offscale_for(
-                        &self.document,
-                        common,
-                        annotation_scale,
-                        all_annotations_visible,
-                    )
-                    || !self.belongs_to_visible_block(
-                        handle,
-                        common.owner_handle,
-                        target_block,
-                    )
-                {
-                    continue;
-                }
-                model.color = [0.15, 0.55, 1.0, model.color[3]];
-                model.draw_depth = depth_map.get(&handle.value()).map_or(0.0, |depth| depth[0]);
-                models.push(model);
-            } else if let Some(codec::EntityType::Insert(insert)) =
-                self.document.get_entity(handle)
-            {
+        let all_visible = self.annotation_all_visible();
+        // Same visibility and style sync as the resident set, so the tinted
+        // copy lands exactly on the fill it covers.
+        let mut models: Vec<HatchModel> = self
+            .selected
+            .iter()
+            .filter_map(|&handle| Some((handle, self.hatches.get(&handle)?)))
+            .filter(|&(handle, _)| {
+                self.hatch_fill_shown(handle, target_block, None, annotation_scale, all_visible)
+            })
+            .map(|(handle, model)| {
+                self.synced_hatch_model(
+                    handle,
+                    model,
+                    annotation_scale,
+                    None,
+                    self.bg_color,
+                    &depth_map,
+                    true,
+                )
+                .1
+            })
+            .collect();
+        let selected_inserts: Vec<Handle> = self
+            .selected
+            .iter()
+            .copied()
+            .filter(|&handle| {
+                let Some(codec::EntityType::Insert(insert)) = self.document.get_entity(handle)
+                else {
+                    return false;
+                };
                 let common = &insert.common;
-                let layer_hidden = self
-                    .document
-                    .layers
-                    .get(&common.layer)
-                    .is_some_and(|layer| layer.flags.off || layer.flags.frozen);
-                if !common.invisible
-                    && !self.display_entity_invisible(common)
+                !self.display_entity_invisible(common)
                     && !self.entity_temporarily_hidden(handle)
-                    && !self.object_isolation.hides(handle)
-                    && !layer_hidden
-                {
-                    selected_inserts.push(handle);
-                }
-            }
-        }
+                    && !self.layer_hidden(&common.layer)
+            })
+            .collect();
         models.extend(self.preview_insert_hatch_models(&selected_inserts));
         let models = std::sync::Arc::new(models);
         let elapsed_ms = crate::perf::elapsed_ms(started);

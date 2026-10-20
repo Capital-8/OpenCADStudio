@@ -1118,37 +1118,28 @@ impl Scene {
         };
         let wires = crate::scene::model::instance_model::expand_stubs(&wires);
         let wire_started = crate::perf::enabled().then(iced::time::Instant::now);
-        let mut sources: rustc_hash::FxHashMap<Handle, BoundarySource> = wires
+        // Clip in parallel, merge per handle in order. `filter_map` + `collect`
+        // also exist on the sequential wasm32 shim; `fold`/`reduce` do not.
+        let clipped: Vec<_> = wires
             .par_iter()
-            .fold(rustc_hash::FxHashMap::default, |mut sources, wire| {
-                let Some(handle) = Self::handle_from_wire_name(&wire.name) else {
-                    return sources;
-                };
+            .filter_map(|wire| {
+                let handle = Self::handle_from_wire_name(&wire.name)?;
                 let segments = wire_segments_on_plane(wire, plane, tolerance);
-                if !segments.is_empty() {
-                    sources
-                        .entry(handle)
-                        .or_insert_with(|| BoundarySource {
-                            segments: Vec::new(),
-                            curves: Vec::new(),
-                        })
-                        .segments
-                        .extend(segments);
-                }
-                sources
+                (!segments.is_empty()).then_some((handle, segments))
             })
-            .reduce(rustc_hash::FxHashMap::default, |mut left, mut right| {
-                for (handle, mut source) in right.drain() {
-                    left.entry(handle)
-                        .or_insert_with(|| BoundarySource {
-                            segments: Vec::new(),
-                            curves: Vec::new(),
-                        })
-                        .segments
-                        .append(&mut source.segments);
-                }
-                left
-            });
+            .collect();
+        let mut sources: rustc_hash::FxHashMap<Handle, BoundarySource> =
+            rustc_hash::FxHashMap::default();
+        for (handle, segments) in clipped {
+            sources
+                .entry(handle)
+                .or_insert_with(|| BoundarySource {
+                    segments: Vec::new(),
+                    curves: Vec::new(),
+                })
+                .segments
+                .extend(segments);
+        }
         let wire_ms = crate::perf::elapsed_ms(wire_started);
         // Objects on a layer that is turned off (not frozen) still bound a
         // hatch, as in the reference: drawings switch off the layers that
@@ -1347,60 +1338,84 @@ pub(crate) fn separated_hatch_path_groups(
     groups
 }
 
-/// Split disconnected segment networks before face solving. Bounds overlap is
-/// a conservative connectivity test: segments that cross or meet within the
-/// weld tolerance always remain in the same component.
-fn boundary_segment_components(segments: &[Line], tolerance: f64) -> (Vec<Vec<usize>>, usize) {
-    #[derive(Clone, Copy)]
-    struct Bounds {
-        min: [f64; 2],
-        max: [f64; 2],
-    }
-
+/// Group axis-aligned boxes `[min_x, min_y, max_x, max_y]` that overlap within
+/// `tolerance`, sweeping along `axis`. Overlap is a conservative connectivity
+/// test: geometry that crosses or meets within the weld tolerance always lands
+/// in one group, so faces never span two groups.
+fn overlapping_box_groups(boxes: &[[f64; 4]], axis: usize, tolerance: f64) -> Vec<Vec<usize>> {
     fn root(parents: &mut [usize], mut index: usize) -> usize {
         while parents[index] != index {
-            let parent = parents[index];
-            parents[index] = parents[parent];
+            parents[index] = parents[parents[index]];
             index = parents[index];
         }
         index
     }
 
-    fn union(parents: &mut [usize], left: usize, right: usize) {
-        let left = root(parents, left);
-        let right = root(parents, right);
-        if left != right {
-            parents[right] = left;
+    let other = 1 - axis;
+    let mut order: Vec<_> = (0..boxes.len()).collect();
+    order.sort_unstable_by(|&a, &b| boxes[a][axis].total_cmp(&boxes[b][axis]));
+    let mut parents: Vec<_> = (0..boxes.len()).collect();
+    let mut active: Vec<usize> = Vec::new();
+    for index in order {
+        let current = boxes[index];
+        active.retain(|&previous| boxes[previous][axis + 2] + tolerance >= current[axis]);
+        for &previous in &active {
+            let candidate = boxes[previous];
+            if candidate[other + 2] + tolerance >= current[other]
+                && current[other + 2] + tolerance >= candidate[other]
+            {
+                let (a, b) = (root(&mut parents, index), root(&mut parents, previous));
+                parents[b] = a;
+            }
+        }
+        active.push(index);
+    }
+    let mut groups: rustc_hash::FxHashMap<usize, Vec<usize>> = rustc_hash::FxHashMap::default();
+    for index in 0..boxes.len() {
+        groups.entry(root(&mut parents, index)).or_default().push(index);
+    }
+    let mut groups: Vec<_> = groups.into_values().collect();
+    groups.sort_unstable_by_key(|group| group[0]);
+    groups
+}
+
+fn segments_box(segments: &[Line]) -> [f64; 4] {
+    let mut bounds = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
+    for segment in segments {
+        for point in [segment.start, segment.end] {
+            bounds[0] = bounds[0].min(point[0]);
+            bounds[1] = bounds[1].min(point[1]);
+            bounds[2] = bounds[2].max(point[0]);
+            bounds[3] = bounds[3].max(point[1]);
         }
     }
+    bounds
+}
 
-    if segments.is_empty() {
-        return (Vec::new(), 0);
-    }
-    let bounds: Vec<_> = segments
+/// Split disconnected segment networks before face solving.
+fn boundary_segment_components(segments: &[Line], tolerance: f64) -> Vec<Vec<usize>> {
+    let boxes: Vec<_> = segments
         .iter()
-        .map(|segment| Bounds {
-            min: [
-                segment.start[0].min(segment.end[0]),
-                segment.start[1].min(segment.end[1]),
-            ],
-            max: [
-                segment.start[0].max(segment.end[0]),
-                segment.start[1].max(segment.end[1]),
-            ],
-        })
+        .map(|segment| segments_box(std::slice::from_ref(segment)))
         .collect();
     // Pick the sweep axis by estimating how many one-dimensional interval
     // pairs overlap. Extent divided by summed interval length is misleading
-    // for CAD drawings with many parallel segments: the thin axis can have a
-    // tiny congestion score even when every segment occupies the same slice,
-    // leaving an enormous active set. A bounded sample predicts the better
-    // axis without sorting multiple arrays containing millions of entries.
-    let sample_step = bounds.len().div_ceil(8192).max(1);
-    let sample: Vec<_> = bounds.iter().step_by(sample_step).copied().collect();
+    // for drawings with many parallel segments: the thin axis can look
+    // uncongested even when every segment occupies the same slice, leaving an
+    // enormous active set. A bounded sample predicts the better axis.
+    let sample_step = boxes.len().div_ceil(8192).max(1);
     let overlap_pairs = |axis: usize| {
-        let mut lows: Vec<_> = sample.iter().map(|bounds| bounds.min[axis]).collect();
-        let mut highs: Vec<_> = sample.iter().map(|bounds| bounds.max[axis]).collect();
+        let mut lows: Vec<_> = boxes.iter().step_by(sample_step).map(|b| b[axis]).collect();
+        let mut highs: Vec<_> = boxes
+            .iter()
+            .step_by(sample_step)
+            .map(|b| b[axis + 2])
+            .collect();
         lows.sort_unstable_by(f64::total_cmp);
         highs.sort_unstable_by(f64::total_cmp);
         lows.iter()
@@ -1411,34 +1426,8 @@ fn boundary_segment_components(segments: &[Line], tolerance: f64) -> (Vec<Vec<us
             })
             .sum::<u128>()
     };
-    let x_overlap_pairs = overlap_pairs(0);
-    let y_overlap_pairs = overlap_pairs(1);
-    let axis = usize::from(y_overlap_pairs < x_overlap_pairs);
-    let other_axis = 1 - axis;
-    let mut order: Vec<_> = (0..segments.len()).collect();
-    order.sort_unstable_by(|&a, &b| bounds[a].min[axis].total_cmp(&bounds[b].min[axis]));
-    let mut parents: Vec<_> = (0..segments.len()).collect();
-    let mut active: Vec<usize> = Vec::new();
-    for index in order {
-        let current = bounds[index];
-        active.retain(|&other| bounds[other].max[axis] + tolerance >= current.min[axis]);
-        for &other in &active {
-            let candidate = bounds[other];
-            if candidate.max[other_axis] + tolerance >= current.min[other_axis]
-                && current.max[other_axis] + tolerance >= candidate.min[other_axis]
-            {
-                union(&mut parents, index, other);
-            }
-        }
-        active.push(index);
-    }
-
-    let mut components: rustc_hash::FxHashMap<usize, Vec<usize>> = rustc_hash::FxHashMap::default();
-    for segment in 0..segments.len() {
-        let component = root(&mut parents, segment);
-        components.entry(component).or_default().push(segment);
-    }
-    (components.into_values().collect(), axis)
+    let axis = usize::from(overlap_pairs(1) < overlap_pairs(0));
+    overlapping_box_groups(&boxes, axis, tolerance)
 }
 
 #[derive(Clone)]
@@ -1448,6 +1437,11 @@ pub(crate) struct BoundaryFaceComponent {
 }
 
 impl BoundaryFaceComponent {
+    fn new(segments: Vec<Line>) -> Self {
+        let bounds = segments_box(&segments);
+        Self { segments, bounds }
+    }
+
     pub(crate) fn bounds(&self) -> [f64; 4] {
         self.bounds
     }
@@ -1457,187 +1451,60 @@ impl BoundaryFaceComponent {
     }
 }
 
-fn boundary_face_component(segments: Vec<Line>) -> BoundaryFaceComponent {
-    let mut bounds = [
-        f64::INFINITY,
-        f64::INFINITY,
-        f64::NEG_INFINITY,
-        f64::NEG_INFINITY,
-    ];
-    for segment in &segments {
-        bounds[0] = bounds[0].min(segment.start[0]).min(segment.end[0]);
-        bounds[1] = bounds[1].min(segment.start[1]).min(segment.end[1]);
-        bounds[2] = bounds[2].max(segment.start[0]).max(segment.end[0]);
-        bounds[3] = bounds[3].max(segment.start[1]).max(segment.end[1]);
-    }
-    BoundaryFaceComponent { segments, bounds }
-}
-
+/// Independent planar arrangements of `sources`: a face cannot cross between
+/// source sets whose expanded bounds are disjoint, so each component can be
+/// solved alone (and lazily, see HATCH). Source-level bounds keep this broad
+/// phase small; a huge merged component is split again per segment.
 pub(crate) fn boundary_face_components(
     sources: &rustc_hash::FxHashMap<Handle, BoundarySource>,
     tolerance: f64,
 ) -> Vec<BoundaryFaceComponent> {
-    #[derive(Clone, Copy)]
-    struct SourceBounds {
-        source: usize,
-        min_x: f64,
-        max_x: f64,
-        min_y: f64,
-        max_y: f64,
-    }
-
-    fn root(parents: &mut [usize], mut index: usize) -> usize {
-        while parents[index] != index {
-            let parent = parents[index];
-            parents[index] = parents[parent];
-            index = parents[index];
-        }
-        index
-    }
-
-    fn union(parents: &mut [usize], left: usize, right: usize) {
-        let left = root(parents, left);
-        let right = root(parents, right);
-        if left != right {
-            parents[right] = left;
-        }
-    }
-
-    let perf = crate::perf::enabled();
-    let started = perf.then(iced::time::Instant::now);
+    const SEGMENT_SPLIT_THRESHOLD: usize = 100_000;
+    let started = crate::perf::enabled().then(iced::time::Instant::now);
     let source_list: Vec<_> = sources
         .values()
         .filter(|source| !source.segments.is_empty())
         .collect();
-    if source_list.is_empty() {
-        return Vec::new();
-    }
-
-    // A face cannot cross between source sets whose expanded AABBs are
-    // disjoint. Group overlapping source bounds first, then solve each
-    // independent planar arrangement in parallel. Using source-level bounds
-    // is conservative (it may merge unrelated geometry owned by one entity),
-    // while keeping this broad phase small even for DWGs with millions of
-    // tessellated segments.
-    let mut bounds = Vec::with_capacity(source_list.len());
-    for (source, geometry) in source_list.iter().enumerate() {
-        let mut min = [f64::INFINITY; 2];
-        let mut max = [f64::NEG_INFINITY; 2];
-        for segment in &geometry.segments {
-            for point in [segment.start, segment.end] {
-                min[0] = min[0].min(point[0]);
-                min[1] = min[1].min(point[1]);
-                max[0] = max[0].max(point[0]);
-                max[1] = max[1].max(point[1]);
-            }
-        }
-        bounds.push(SourceBounds {
-            source,
-            min_x: min[0],
-            max_x: max[0],
-            min_y: min[1],
-            max_y: max[1],
-        });
-    }
-
     // Small boundary sets are cheaper to hand to the arrangement directly.
     if source_list.len() < 64 {
-        let segments: Vec<_> = source_list
+        if source_list.is_empty() {
+            return Vec::new();
+        }
+        let segments = source_list
             .iter()
             .flat_map(|source| source.segments.iter().copied())
             .collect();
-        return vec![boundary_face_component(segments)];
+        return vec![BoundaryFaceComponent::new(segments)];
     }
-
-    let mut order: Vec<_> = (0..bounds.len()).collect();
-    order.sort_unstable_by(|&a, &b| bounds[a].min_x.total_cmp(&bounds[b].min_x));
-    let mut parents: Vec<_> = (0..source_list.len()).collect();
-    let mut active: Vec<usize> = Vec::new();
-    for index in order {
-        let current = bounds[index];
-        active.retain(|&other| bounds[other].max_x + tolerance >= current.min_x);
-        for &other in &active {
-            let candidate = bounds[other];
-            if candidate.max_y + tolerance >= current.min_y
-                && current.max_y + tolerance >= candidate.min_y
-            {
-                union(&mut parents, current.source, candidate.source);
-            }
-        }
-        active.push(index);
-    }
-
-    let mut component_sources: rustc_hash::FxHashMap<usize, Vec<usize>> =
-        rustc_hash::FxHashMap::default();
-    for source in 0..source_list.len() {
-        let component = root(&mut parents, source);
-        component_sources.entry(component).or_default().push(source);
-    }
-    let mut components: Vec<Vec<usize>> = component_sources.into_values().collect();
-    components.sort_unstable_by_key(|component| component[0]);
-    let source_partition_ms = crate::perf::elapsed_ms(started);
-    let largest_source_count = components.iter().map(Vec::len).max().unwrap_or(0);
-    let largest_segment_count = components
+    let boxes: Vec<_> = source_list
         .iter()
-        .map(|component| {
-            component
-                .iter()
-                .map(|&source| source_list[source].segments.len())
-                .sum::<usize>()
-        })
-        .max()
-        .unwrap_or(0);
-
-    const SEGMENT_SPLIT_THRESHOLD: usize = 100_000;
-    let split_started = perf.then(iced::time::Instant::now);
-    let mut segment_group_count = 0usize;
-    let mut largest_segment_component = 0usize;
-    let mut segment_sweep_axes = [0usize; 2];
-    let work: Vec<_> = components
-        .iter()
-        .map(|component| {
-            let segments: Vec<_> = component
+        .map(|source| segments_box(&source.segments))
+        .collect();
+    let components: Vec<_> = overlapping_box_groups(&boxes, 0, tolerance)
+        .into_iter()
+        .flat_map(|group| {
+            let segments: Vec<_> = group
                 .iter()
                 .flat_map(|&source| source_list[source].segments.iter().copied())
                 .collect();
-            if segments.len() >= SEGMENT_SPLIT_THRESHOLD {
-                let (segment_components, sweep_axis) =
-                    boundary_segment_components(&segments, tolerance);
-                segment_sweep_axes[sweep_axis] += 1;
-                if segment_components.len() > 1 {
-                    segment_group_count += segment_components.len();
-                    largest_segment_component = largest_segment_component
-                        .max(segment_components.iter().map(Vec::len).max().unwrap_or(0));
-                    return segment_components
-                        .into_iter()
-                        .map(|component| {
-                            boundary_face_component(
-                                component.iter().map(|&index| segments[index]).collect(),
-                            )
-                        })
-                        .collect::<Vec<_>>();
-                }
+            if segments.len() < SEGMENT_SPLIT_THRESHOLD {
+                return vec![BoundaryFaceComponent::new(segments)];
             }
-            segment_group_count += 1;
-            largest_segment_component = largest_segment_component.max(segments.len());
-            vec![boundary_face_component(segments)]
+            boundary_segment_components(&segments, tolerance)
+                .into_iter()
+                .map(|part| BoundaryFaceComponent::new(part.iter().map(|&i| segments[i]).collect()))
+                .collect()
         })
-        .flatten()
         .collect();
-    let segment_partition_ms = crate::perf::elapsed_ms(split_started);
-    if perf {
+    if started.is_some() {
         crate::perf_record!(
-            "[perf] boundary-components groups={} face-components={} sources={} largest-group-sources={} largest-group-segments={} segment-groups={segment_group_count} largest-segment-component={largest_segment_component} segment-sweep-x={} segment-sweep-y={} source-partition={source_partition_ms:.1}ms segment-partition={segment_partition_ms:.1}ms",
-            components.len(),
-            work.len(),
+            "[perf] boundary-components sources={} face-components={} partition={:.1}ms",
             source_list.len(),
-            largest_source_count,
-            largest_segment_count,
-            segment_sweep_axes[0],
-            segment_sweep_axes[1],
+            components.len(),
+            crate::perf::elapsed_ms(started),
         );
     }
-    work
+    components
 }
 
 pub(crate) fn boundary_faces(
@@ -1895,7 +1762,7 @@ mod boundary_xline_tests {
             },
         ];
 
-        let (mut components, _) = boundary_segment_components(&segments, 1.0e-6);
+        let mut components = boundary_segment_components(&segments, 1.0e-6);
         components.sort_unstable_by_key(Vec::len);
         assert_eq!(components.iter().map(Vec::len).collect::<Vec<_>>(), [4, 5]);
         let faces: Vec<_> = components
