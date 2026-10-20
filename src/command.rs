@@ -3072,6 +3072,13 @@ pub trait CadCommand: Send {
         &[]
     }
 
+    /// Original, stationary wires available as discrete snap references while
+    /// a command shows replacement geometry. Never includes the moving preview.
+    /// The default leaves every other command's snapping unchanged.
+    fn preview_original_snap_wires(&self) -> &[WireModel] {
+        &[]
+    }
+
     /// What kind of input the current step expects from the command line.
     /// Default is [`InputKind::Point`].
     fn input_kind(&self) -> InputKind {
