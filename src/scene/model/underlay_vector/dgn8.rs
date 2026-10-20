@@ -803,8 +803,11 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                 if parts && n > 0 {
                     collect.open(
                         n,
+                        // The origin follows the transformation: 176
+                        // (232 in 3D).
                         element(DgnGeom::CellGroup {
                             name: marked_string(e, 104).unwrap_or_default(),
+                            origin: p3(if d3 { 232 } else { 176 }).map(at3).unwrap_or([0.0; 3]),
                             parts: Vec::new(),
                         }),
                     );
@@ -1600,7 +1603,7 @@ pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
             // not to the drawing: it is left out.
             if !cell.eq_ignore_ascii_case("POINT_DISPLAY") {
                 let def = read_run(&nm[i + 1..j], &styles, &IDENTITY).elements;
-                cells.push((cell, scaled_elements(&def, s, [0.0, 0.0])));
+                cells.push((cell, scaled_elements(&def, s, [0.0; 3])));
             }
             i = j;
         } else {
@@ -1628,7 +1631,7 @@ pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
         })
         .collect();
     Some(DgnImport {
-        elements: scaled_elements(&raw.elements, s, [-origin[0] * s, -origin[1] * s]),
+        elements: scaled_elements(&raw.elements, s, [-origin[0] * s, -origin[1] * s, 0.0]),
         cells,
         levels,
         level_order,

@@ -307,8 +307,11 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
                 raw.paths.extend(inner.paths);
                 raw.texts.extend(inner.texts);
                 raw.instances.extend(inner.instances);
+                // The origin: 84 (112 in 3D), after the range and the
+                // transformation.
                 collect.push(element(DgnGeom::CellGroup {
                     name: radix50(e, 38),
+                    origin: pt3(if d3 { 112 } else { 84 }).unwrap_or([0.0; 3]),
                     parts: inner.elements,
                 }));
             }
@@ -927,7 +930,7 @@ pub fn import(bytes: &[u8]) -> Option<DgnImport> {
                 j += 1;
             }
             let def = read_run(&all[i + 1..j], &colors, is_3d(bytes), 0).elements;
-            cells.push((name, scaled_elements(&def, s, [0.0, 0.0])));
+            cells.push((name, scaled_elements(&def, s, [0.0; 3])));
             i = j;
             continue;
         }
@@ -942,7 +945,7 @@ pub fn import(bytes: &[u8]) -> Option<DgnImport> {
         })
         .collect();
     Some(DgnImport {
-        elements: scaled_elements(&raw.elements, s, [-u.origin[0] * s, -u.origin[1] * s]),
+        elements: scaled_elements(&raw.elements, s, [-u.origin[0] * s, -u.origin[1] * s, 0.0]),
         cells,
         levels,
         sub_per_master: u.sub_per_master,

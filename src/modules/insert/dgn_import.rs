@@ -875,16 +875,22 @@ impl<'a> Converter<'a> {
             }
             // A cell that is not shared becomes a block of its own ("the
             // cell's name, else AnonymousCell" and a number) placed at the
-            // origin; its objects keep their layers.
+            // cell's origin: its objects move by the origin only (not turned
+            // or scaled back) and keep their layers.
             DgnGeom::CellGroup { parts, .. } if self.in_definition => {
                 self.elements(parts, true, copy, depth + 1)
             }
-            DgnGeom::CellGroup { name, parts } => {
+            DgnGeom::CellGroup { name, origin, parts } => {
                 let base = if name.is_empty() { "AnonymousCell" } else { name.as_str() };
                 let block = self.unique(&block_name(base));
-                let entities = self.elements(parts, false, copy, depth + 1);
+                let local = crate::scene::model::underlay_vector::scaled_elements(
+                    parts,
+                    1.0,
+                    origin.map(|c| -c),
+                );
+                let entities = self.elements(&local, false, copy, depth + 1);
                 self.out.blocks.push((block.clone(), entities));
-                vec![insert_entity(block, [1.0, 0.0, 0.0, 1.0], [0.0; 3], 1.0)]
+                vec![insert_entity(block, [1.0, 0.0, 0.0, 1.0], *origin, 1.0)]
             }
             DgnGeom::Cell {
                 name,
@@ -944,14 +950,24 @@ impl<'a> Converter<'a> {
     }
 }
 
+/// Sub units per drawing unit: a V7 file with 12 sub units to its master
+/// unit (feet and inches) comes in in sub units whichever is chosen.
+pub fn unit_scale(import: &DgnImport, sub_units: bool) -> f64 {
+    if sub_units || (import.v7 && import.sub_per_master == 12.0) {
+        import.sub_per_master
+    } else {
+        1.0
+    }
+}
+
 /// The import's objects, in sub units when `sub_units`. V7 cell
 /// definitions become blocks as drawn; each is placed through a copy (the
 /// definition's name and a number), made before the blocks that place it. V8 cells are blocks placed as they
 /// are. A V8 file's levels all become layers, in its level table's order.
 pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) -> Converted {
-    let k = if sub_units { import.sub_per_master } else { 1.0 };
+    let k = unit_scale(import, sub_units);
     let scale = |elements: &[DgnElement]| {
-        crate::scene::model::underlay_vector::scaled_elements(elements, k, [0.0, 0.0])
+        crate::scene::model::underlay_vector::scaled_elements(elements, k, [0.0; 3])
     };
     let cells: Vec<(String, Vec<DgnElement>)> = import
         .cells

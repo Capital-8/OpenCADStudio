@@ -626,10 +626,12 @@ pub enum DgnGeom {
         just: u8,
         line_spacing: Option<f64>,
     },
-    /// A cell that is not shared: its name (empty when anonymous) and its
-    /// components, each with its own level and symbology.
+    /// A cell that is not shared: its name (empty when anonymous), its
+    /// origin and its components (already placed), each with its own level
+    /// and symbology.
     CellGroup {
         name: String,
+        origin: P3,
         parts: Vec<DgnElement>,
     },
     /// A shared cell instance: x' = m[0]·x + m[1]·y + origin.x,
@@ -645,8 +647,8 @@ pub enum DgnGeom {
 
 impl DgnGeom {
     /// The geometry through x' = s·x + t (lengths scaled by `s`).
-    pub fn scaled(&self, s: f64, t: [f64; 2]) -> DgnGeom {
-        let p = |q: P3| [q[0] * s + t[0], q[1] * s + t[1], q[2] * s];
+    pub fn scaled(&self, s: f64, t: P3) -> DgnGeom {
+        let p = |q: P3| [q[0] * s + t[0], q[1] * s + t[1], q[2] * s + t[2]];
         let v = |q: P3| [q[0] * s, q[1] * s, q[2] * s];
         match self {
             DgnGeom::Line(a, b) => DgnGeom::Line(p(*a), p(*b)),
@@ -676,8 +678,9 @@ impl DgnGeom {
                 closed: *closed,
             },
             DgnGeom::Chain(parts) => DgnGeom::Chain(parts.iter().map(|g| g.scaled(s, t)).collect()),
-            DgnGeom::CellGroup { name, parts } => DgnGeom::CellGroup {
+            DgnGeom::CellGroup { name, origin, parts } => DgnGeom::CellGroup {
                 name: name.clone(),
+                origin: p(*origin),
                 parts: scaled_elements(parts, s, t),
             },
             DgnGeom::TextNode {
@@ -831,7 +834,7 @@ pub struct DgnReference {
 }
 
 /// The elements through x' = s·x + t.
-pub fn scaled_elements(elements: &[DgnElement], s: f64, t: [f64; 2]) -> Vec<DgnElement> {
+pub fn scaled_elements(elements: &[DgnElement], s: f64, t: P3) -> Vec<DgnElement> {
     elements
         .iter()
         .map(|e| DgnElement {

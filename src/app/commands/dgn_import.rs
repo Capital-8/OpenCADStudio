@@ -604,7 +604,7 @@ impl OpenCADStudio {
         };
         let layers = place_converted(&mut self.tabs[i].scene, converted, &naming);
         if request.references != ReferenceMode::Ignore {
-            let k = if request.sub_units { import.sub_per_master } else { 1.0 };
+            let k = dgn_import::unit_scale(&import, request.sub_units);
             // A reference is placed on the model's default level.
             let layer = import
                 .levels
