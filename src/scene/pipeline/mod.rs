@@ -3883,7 +3883,15 @@ analytic={:.1} regular={:.1} blocks={:.1}",
         queue: &wgpu::Queue,
         hatches: &[HatchModel],
     ) {
+        let perf_started = crate::perf::enabled().then(iced::time::Instant::now);
         self.hatch_gpu.upload_preview(device, queue, hatches);
+        let elapsed_ms = crate::perf::elapsed_ms(perf_started);
+        if elapsed_ms >= 1.0 {
+            crate::perf_record!(
+                "[perf] hatch-preview-upload {elapsed_ms:.1}ms models={}",
+                hatches.len(),
+            );
+        }
     }
 
     pub fn upload_wipeouts(

@@ -4838,7 +4838,7 @@ impl Scene {
             Arc::new(v)
         };
         let preview_hatches = if show_live_overlay {
-            Arc::clone(&self.preview_hatches)
+            self.render_preview_hatches()
         } else {
             Arc::new(Vec::new())
         };

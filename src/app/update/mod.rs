@@ -4719,10 +4719,24 @@ impl OpenCADStudio {
                 // particularly while expensive OSNAP/OTRACK previews run.
                 self.snap_dwell = None;
                 let tab = &self.tabs[self.active_tab];
+                // Ordinary selection does not consume a snapped point. Running
+                // ViewportMove here repeated the full snap/hover query at click
+                // time, even though the selection handlers pick from the exact
+                // screen position themselves. Keep command picks on the full
+                // path unless they use the existing lightweight point-pick path.
+                let plain_selection_press = tab.active_cmd.is_none()
+                    && tab.active_grip.is_none()
+                    && !tab.orbit_mode
+                    && !tab.pan_mode
+                    && !tab.zoom_dynamic_mode;
                 // A point command resolves snapping and Dynamic UCS from this
                 // exact press in on_viewport_left_release. Running a full move
                 // pass first would repeat the dense-scene snap before the click.
-                let moved = if self.command_picks_on_press()
+                let press_move_started = crate::perf::enabled().then(std::time::Instant::now);
+                let (moved, cursor_path) = if plain_selection_press {
+                    self.set_cursor_for_press(position);
+                    (Task::none(), "selection-projection")
+                } else if self.command_picks_on_press()
                     && tab.active_cmd.as_ref().is_some_and(|command| {
                         !command.needs_entity_pick() && !command.needs_structure_point_pick()
                     })
@@ -4732,10 +4746,16 @@ impl OpenCADStudio {
                     && !tab.zoom_dynamic_mode
                 {
                     self.set_cursor_for_press(position);
-                    Task::none()
+                    (Task::none(), "point-projection")
                 } else {
-                    self.on_viewport_move(position)
+                    (self.on_viewport_move(position), "full-move")
                 };
+                let press_move_ms = crate::perf::elapsed_ms(press_move_started);
+                if press_move_ms >= 1.0 {
+                    crate::perf_record!(
+                        "[perf] pointer-press-cursor path={cursor_path} total={press_move_ms:.1}ms"
+                    );
+                }
                 self.graphic_attributes.open_menu = None;
                 let sweep = self.sync_active_field_if_any();
                 Task::batch(vec![moved, sweep, self.on_viewport_left_press()])
