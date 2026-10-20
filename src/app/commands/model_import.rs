@@ -448,7 +448,9 @@ impl OpenCADStudio {
                     // Shininess is the gloss, transparency takes from the
                     // opacity, and a texture map is the diffuse map's file.
                     if let Some(shininess) = source.and_then(|m| m.shininess) {
-                        material.specular_gloss_factor = f64::from(shininess);
+                        // As the reference keeps it: one less the roughness,
+                        // in single precision.
+                        material.specular_gloss_factor = f64::from(1.0 - (1.0 - shininess));
                     }
                     if let Some(transparency) = source.and_then(|m| m.transparency) {
                         material.opacity_percent = f64::from(1.0 - transparency);
