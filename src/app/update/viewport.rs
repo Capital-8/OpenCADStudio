@@ -2715,6 +2715,18 @@ impl OpenCADStudio {
                     .snap_dwell
                     .as_ref()
                     .is_some_and(|dwell| dwell.discrete_preview_due_at(Instant::now()));
+            // STRETCH hides its resident sources, so unlike a point-only
+            // rubber band its edited geometry must keep updating during the
+            // lightweight mouse path. Cap it to the same 60 Hz preview budget
+            // rather than running full DWG snapping/tessellation each event.
+            let refresh_stretch_preview = self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .is_some_and(|cmd| cmd.name() == "STRETCH")
+                && (run_discrete_preview
+                    || self.snap_dwell.as_ref().is_some_and(|dwell| {
+                        dwell.discrete_preview_due_at(Instant::now())
+                    }));
             // F3 off (or only continuous modes configured) means this live
             // pass cannot produce a snap. Avoid even querying the large scene
             // index; the full settled/click pass remains authoritative.
@@ -2787,6 +2799,11 @@ impl OpenCADStudio {
                 hit.screen.y += tile_b.y;
             }
             self.tabs[i].snap_result = snap;
+            if refresh_stretch_preview {
+                // Rebuild only the command overlay, not the resident drawing;
+                // the full snap pass still waits for the normal dwell tick.
+                self.refresh_active_cmd_preview(i);
+            }
             // Re-arm the dwell — tick fires SNAP_DWELL_MS after the last move.
             if let Some(dwell) = self.snap_dwell.as_mut() {
                 dwell.last_move_at = Instant::now();
@@ -2794,7 +2811,7 @@ impl OpenCADStudio {
                 dwell.tab = i;
                 dwell.preview_dirty = true;
                 dwell.snap_resolved = false;
-                if run_discrete_preview {
+                if run_discrete_preview || refresh_stretch_preview {
                     dwell.last_preview_snap_at = Instant::now();
                 }
             }
