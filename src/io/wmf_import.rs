@@ -686,7 +686,8 @@ pub fn read(bytes: &[u8], fit: [f64; 2]) -> Option<Picture> {
                 }
                 raw.truncate(count);
                 let value: String = raw.iter().map(|b| char::from(*b)).collect();
-                if value.trim().is_empty() {
+                // A run of spaces is still a text object; only no text is none.
+                if value.is_empty() {
                     continue;
                 }
                 // The reference point is the cell's top; the baseline sits
