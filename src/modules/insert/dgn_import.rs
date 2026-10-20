@@ -820,6 +820,71 @@ fn dimension_entity(
     Some(entity)
 }
 
+/// A mesh's face loops (1-based point numbers, a negative one hiding the
+/// edge from it) as polyface meshes: a loop past four corners is fanned into
+/// triangles whose inner edges are hidden. A polyface numbers its vertices
+/// in 16 bits, so faces that need further vertices go on further meshes.
+fn polyfaces(points: &[P3], loops: &[Vec<i32>]) -> Vec<EntityType> {
+    use codec::entities::{PolyfaceFace, PolyfaceMesh, PolyfaceVertex};
+    const MAX_VERTICES: usize = i16::MAX as usize;
+    let mut out = Vec::new();
+    let mut mesh = PolyfaceMesh::new();
+    let mut ids: HashMap<usize, i16> = HashMap::new();
+    for face in loops {
+        // Each corner: its point and whether the edge from it shows.
+        let corners: Vec<(usize, bool)> = face
+            .iter()
+            .filter_map(|&k| {
+                let p = (k.unsigned_abs() as usize).checked_sub(1)?;
+                (p < points.len()).then_some((p, k > 0))
+            })
+            .collect();
+        let n = corners.len();
+        if n < 3 || n < face.len() {
+            continue;
+        }
+        let parts: Vec<Vec<(usize, bool)>> = if n <= 4 {
+            vec![corners]
+        } else {
+            (1..n - 1)
+                .map(|k| {
+                    let (first, last) = (corners[0], corners[k + 1]);
+                    vec![(first.0, first.1 && k == 1), corners[k], (last.0, last.1 && k == n - 2)]
+                })
+                .collect()
+        };
+        for part in parts {
+            let new = part.iter().filter(|c| !ids.contains_key(&c.0)).count();
+            if mesh.vertices.len() + new > MAX_VERTICES {
+                out.push(std::mem::replace(&mut mesh, PolyfaceMesh::new()));
+                ids.clear();
+            }
+            let mut index = Vec::with_capacity(4);
+            for (p, shown) in part {
+                let id = match ids.get(&p) {
+                    Some(id) => *id,
+                    None => {
+                        let id = mesh.add_vertex(PolyfaceVertex::new(v3(points[p])));
+                        ids.insert(p, id);
+                        id
+                    }
+                };
+                index.push(if shown { id } else { -id });
+            }
+            mesh.add_face(match index[..] {
+                [a, b, c] => PolyfaceFace::triangle(a, b, c),
+                [a, b, c, d] => PolyfaceFace::quad(a, b, c, d),
+                _ => continue,
+            });
+        }
+    }
+    out.push(mesh);
+    out.into_iter()
+        .filter(|m| !m.faces.is_empty())
+        .map(EntityType::PolyfaceMesh)
+        .collect()
+}
+
 /// A shared cell instance as an INSERT: a mirrored placement looks along
 /// -z (x negated in its entity coordinates, z scale negated).
 fn insert_entity(block: String, m: [f64; 4], origin: P3, z_scale: f64) -> EntityType {
@@ -977,6 +1042,7 @@ impl<'a> Converter<'a> {
                 let style = dim_style_name(self.import, *style);
                 dimension_entity(*kind, points, *offset, axes, &style).into_iter().collect()
             }
+            DgnGeom::Mesh { points, loops } => polyfaces(points, loops),
             DgnGeom::Leader { points, style } => {
                 let mut leader = codec::entities::Leader::new();
                 leader.vertices = points.iter().map(|p| v3(*p)).collect();

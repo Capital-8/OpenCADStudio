@@ -582,6 +582,14 @@ impl OpenCADStudio {
         };
         let converted =
             dgn_import::convert(&import, request.sub_units, request.explode_text_nodes);
+        let no_references =
+            request.references == ReferenceMode::Ignore || import.references.is_empty();
+        if converted.entities.is_empty() && no_references {
+            self.command_line.push_error(
+                crate::t!("The DGN model has nothing that can be imported.").as_ref(),
+            );
+            return Task::none();
+        }
         let mut task = Task::none();
         let i = if request.current_drawing {
             i

@@ -6681,6 +6681,7 @@ dgn-import =
     .help-import = Imports a file of the chosen format with the format's importer.
     .blank = Filename cannot be blank
     .invalid-dgn = Invalid or unsupported DGN file.
+    .nothing-to-import = The DGN model has nothing that can be imported.
 import-3ds =
     .title = 3D Studio Import
     .summary = { $objects } objects, { $materials } materials

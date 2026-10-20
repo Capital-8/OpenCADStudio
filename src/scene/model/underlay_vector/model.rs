@@ -648,6 +648,9 @@ pub enum DgnGeom {
     /// A note's leader (V8): its points, the arrow first, and its
     /// dimension style's id.
     Leader { points: Vec<P3>, style: u32 },
+    /// A mesh (V8): its points and its face loops, each corner a 1-based
+    /// point number, negative when the edge from it to the next is hidden.
+    Mesh { points: Vec<P3>, loops: Vec<Vec<i32>> },
     /// A shared cell instance: x' = m[0]·x + m[1]·y + origin.x,
     /// y' = m[2]·x + m[3]·y + origin.y.
     Cell {
@@ -683,6 +686,10 @@ impl DgnGeom {
             DgnGeom::Leader { points, style } => DgnGeom::Leader {
                 points: points.iter().map(|q| p(*q)).collect(),
                 style: *style,
+            },
+            DgnGeom::Mesh { points, loops } => DgnGeom::Mesh {
+                points: points.iter().map(|q| p(*q)).collect(),
+                loops: loops.clone(),
             },
             DgnGeom::Arc {
                 center,

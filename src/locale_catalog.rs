@@ -3509,6 +3509,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Imports a file of the chosen format with the format's importer." => Some(("dgn-import", "help-import")),
         "Filename cannot be blank" => Some(("dgn-import", "blank")),
         "Invalid or unsupported DGN file." => Some(("dgn-import", "invalid-dgn")),
+        "The DGN model has nothing that can be imported." => Some(("dgn-import", "nothing-to-import")),
         "PDF scale: {scale}:1" => Some(("insert", "pdfui-pdf-scale")),
         "Applied" => Some(("properties", "applied")),
         "No PDF underlays found." => Some(("insert", "pdfui-no-pdf-underlays")),

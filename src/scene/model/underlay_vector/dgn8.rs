@@ -1124,6 +1124,50 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     });
                 }
             }
+            // A mesh: its component count (104), its style (108, 1 face
+            // loops) and its matrices, each a header (101; what it holds at
+            // 116: 1 point numbers, 2 coordinates) and the data after it
+            // (102 integers, 103 doubles: the count at 104, the values from
+            // 120).
+            105 if u32_at(e, 108) == Some(1) => {
+                let n = u32_at(e, 104).unwrap_or(0) as usize;
+                let parts = &run[index + 1..(index + 1 + n).min(run.len())];
+                let data = |family: u32, data_kind: u8, size: usize| {
+                    let d = parts.windows(2).find(|w| {
+                        kind(w[0]) == 101
+                            && u32_at(w[0], 116) == Some(family)
+                            && kind(w[1]) == data_kind
+                    })?[1];
+                    let count = u32_at(d, 104)? as usize;
+                    Some(d.get(120..)?.chunks_exact(size).take(count).collect::<Vec<_>>())
+                };
+                let (Some(numbers), Some(coords)) = (data(1, 102, 4), data(2, 103, 8)) else {
+                    continue;
+                };
+                let coords: Vec<f64> = coords
+                    .iter()
+                    .map(|c| f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
+                    .collect();
+                let points: Vec<[f64; 3]> =
+                    coords.chunks_exact(3).map(|c| at3([c[0], c[1], c[2]])).collect();
+                let numbers: Vec<i32> = numbers
+                    .iter()
+                    .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect();
+                // A loop ends at a 0; one naming a point the mesh lacks is
+                // left out.
+                let loops: Vec<Vec<i32>> = numbers
+                    .split(|&k| k == 0)
+                    .filter(|l| {
+                        l.len() >= 3
+                            && l.iter().all(|k| (k.unsigned_abs() as usize) <= points.len())
+                    })
+                    .map(|l| l.to_vec())
+                    .collect();
+                if !loops.is_empty() {
+                    collect.push(element(DgnGeom::Mesh { points, loops }));
+                }
+            }
             35 => {
                 // Shared cell instance: a 3×3 matrix by rows from 160, the
                 // origin at 232 (z at 248 in 3D), the definition's name after
@@ -1968,5 +2012,74 @@ mod cfb_memory_tests {
         assert!(!out.is_empty(), "the first models still load");
         assert!(out.len() < 300, "models past the budget are dropped");
         assert!(model_names(&bytes).is_some());
+    }
+}
+
+#[cfg(test)]
+mod mesh_tests {
+    use super::*;
+
+    /// An element of `kind` and `len` bytes, a component when `part`.
+    fn element(kind: u8, len: usize, part: bool) -> Vec<u8> {
+        let mut e = vec![0u8; len];
+        e[0] = kind;
+        e[2..4].copy_from_slice(&(if part { 0x4000u16 } else { 0 }).to_le_bytes());
+        e[4..8].copy_from_slice(&(((len - 4) / 2) as u32).to_le_bytes());
+        e
+    }
+
+    fn put(e: &mut [u8], at: usize, v: u32) {
+        e[at..at + 4].copy_from_slice(&v.to_le_bytes());
+    }
+
+    /// A face-loop mesh: one loop with a hidden edge, one naming a point
+    /// the mesh lacks (left out).
+    #[test]
+    fn face_loop_mesh_reads_its_points_and_loops() {
+        let mut header = element(105, 116, false);
+        put(&mut header, 104, 4);
+        put(&mut header, 108, 1);
+        let matrix = |family: u32| {
+            let mut m = element(101, 132, true);
+            put(&mut m, 116, family);
+            m
+        };
+        let numbers = [1i32, 2, -3, 0, 2, 3, 9, 0];
+        let mut ints = element(102, 120 + 4 * numbers.len(), true);
+        put(&mut ints, 104, numbers.len() as u32);
+        for (k, n) in numbers.iter().enumerate() {
+            put(&mut ints, 120 + 4 * k, *n as u32);
+        }
+        let coords = [0.0f64, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 2.0];
+        let mut doubles = element(103, 120 + 8 * coords.len(), true);
+        put(&mut doubles, 104, coords.len() as u32);
+        for (k, c) in coords.iter().enumerate() {
+            doubles[120 + 8 * k..128 + 8 * k].copy_from_slice(&c.to_le_bytes());
+        }
+        let (m1, m2) = (matrix(1), matrix(2));
+        let run: Vec<&[u8]> = vec![&header, &m1, &ints, &m2, &doubles];
+        let styles = Styles {
+            colors: DGN_DEFAULT_COLORS.to_vec(),
+            levels: HashMap::new(),
+            hidden: Default::default(),
+            extended: Vec::new(),
+            cells: HashMap::new(),
+        };
+        let raw = read_run(&run, &styles, &IDENTITY);
+        let meshes: Vec<_> = raw
+            .elements
+            .iter()
+            .filter_map(|e| match &e.geom {
+                DgnGeom::Mesh { points, loops } => Some((points.clone(), loops.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            meshes,
+            vec![(
+                vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 2.0]],
+                vec![vec![1, 2, -3]]
+            )]
+        );
     }
 }
