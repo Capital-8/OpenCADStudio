@@ -3851,6 +3851,10 @@ pub struct ExtendCommand {
     implied_edges: bool,
     /// Live Shift state — Shift+click trims instead of extends (#336).
     shift: bool,
+    /// Cached live box preview; rebuilding extensions on every raw pointer
+    /// event can stall large drawings. Final commit always recalculates.
+    box_preview_wires: Vec<WireModel>,
+    box_preview_at: Option<std::time::Instant>,
 }
 
 impl ExtendCommand {
@@ -3893,6 +3897,8 @@ impl ExtendCommand {
             selection_previous_quick: None,
             implied_edges: false,
             shift: false,
+            box_preview_wires: Vec::new(),
+            box_preview_at: None,
         };
         cmd.rebuild_geos();
         cmd
@@ -4106,12 +4112,60 @@ impl CadCommand for ExtendCommand {
         self.rebuild_geos();
     }
 
+    fn on_drag_selection_preview(
+        &mut self,
+        fence: &[[f64; 2]],
+        window: Option<([f64; 2], [f64; 2])>,
+        crossing: bool,
+        candidate_handles: &[Handle],
+    ) -> Option<Vec<WireModel>> {
+        if !matches!(self.mode, TrimMode::Pick) || self.shift || fence.len() < 2 {
+            return None;
+        }
+        // A 20 Hz geometric update keeps the live box responsive without
+        // intersecting every visible edge on each raw mouse move.
+        if self.box_preview_at.is_some_and(|at| {
+            at.elapsed() < std::time::Duration::from_millis(50)
+        }) {
+            return Some(self.box_preview_wires.clone());
+        }
+        let window = window.map(|(min, max)| CrossingWindow { min, max });
+        // The scene's interaction index has already narrowed this list to
+        // the box. A bounded preview is important with survey-size DWGs;
+        // the final commit has no such limit and processes all targets.
+        let entities: Vec<EntityType> = candidate_handles
+            .iter()
+            .take(1_000)
+            .filter_map(|&handle| self.entity_index.get(&self.all_entities, handle).cloned())
+            .collect();
+        let replacements = extend_box_pass(
+            &entities, &self.geos, &self.edge_set, fence, window, crossing,
+        );
+        let mut preview = Vec::new();
+        for (handle, extended) in replacements {
+            let Some(original) = self.entity_index.get(&self.all_entities, handle) else {
+                continue;
+            };
+            for entity in extended {
+                preview.extend(extend_hover_wires(
+                    original, &entity, &self.all_entities, handle, self.implied_edges,
+                ));
+            }
+        }
+        self.box_preview_wires = preview;
+        self.box_preview_at = Some(std::time::Instant::now());
+        Some(self.box_preview_wires.clone())
+    }
+
     fn on_drag_selection(
         &mut self,
         fence: &[[f64; 2]],
         window: Option<([f64; 2], [f64; 2])>,
         crossing: bool,
     ) -> Option<CmdResult> {
+        // Never reuse throttled preview geometry for the final edit.
+        self.box_preview_wires.clear();
+        self.box_preview_at = None;
         if fence.len() < 2 {
             return None;
         }
