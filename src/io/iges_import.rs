@@ -846,12 +846,33 @@ impl Assembly<'_> {
 
     /// A loop along curve pieces, in their order.
     fn curve_ring(&mut self, pieces: Vec<(Curve3, [f64; 3], [f64; 3])>) -> Option<Vec<(EdgeKey, bool)>> {
+        // Pieces of one loop follow on from each other: a piece starts where
+        // the one before it ends (and the last runs back to the first) even
+        // when the file's points part by more than its resolution, up to a
+        // ten-thousandth of the loop's size.
+        let (lo, hi) = pieces.iter().flat_map(|(_, f, t)| [*f, *t]).fold(
+            ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]),
+            |(lo, hi), p| ([0, 1, 2].map(|k| lo[k].min(p[k])), [0, 1, 2].map(|k| hi[k].max(p[k]))),
+        );
+        let gap = (1e-4 * distance(lo, hi)).max(self.doc.resolution);
         let mut ring = Vec::new();
-        for (curve, from, to) in pieces {
+        let mut first: Option<([f64; 3], VertexKey)> = None;
+        let mut last: Option<([f64; 3], VertexKey)> = None;
+        let count = pieces.len();
+        for (k, (curve, from, to)) in pieces.into_iter().enumerate() {
             if distance(from, to) <= self.doc.resolution && matches!(curve, Curve3::Line(_)) {
                 continue;
             }
-            let (a, b) = (self.corner(from), self.corner(to));
+            let a = match last {
+                Some((point, v)) if distance(point, from) <= gap => v,
+                _ => self.corner(from),
+            };
+            let b = match first {
+                Some((point, v)) if k + 1 == count && distance(point, to) <= gap => v,
+                _ => self.corner(to),
+            };
+            first.get_or_insert((from, a));
+            last = Some((to, b));
             ring.push((self.build.edge(curve, a, b)?, true));
         }
         (!ring.is_empty()).then_some(ring)
