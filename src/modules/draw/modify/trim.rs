@@ -2162,6 +2162,22 @@ fn crossing_trim_lwpolyline(
     )
 }
 
+/// A detached circular fill is itself one complete closed TRIM fragment.
+/// Unlike a rectangular fill with a hole, it can be removed with a single
+/// click without selecting another cutting edge. Do not delete arbitrary
+/// multi-loop / polygonal hatches when a trim solver finds no intersection.
+fn hatch_is_standalone_circle(hatch: &codec::entities::Hatch) -> bool {
+    if hatch.paths.len() != 1 { return false; }
+    let edges = &hatch.paths[0].edges;
+    if edges.len() != 1 { return false; }
+    let codec::entities::BoundaryEdge::CircularArc(arc) = &edges[0] else {
+        return false;
+    };
+    arc.radius.is_finite()
+        && arc.radius > 0.0
+        && ((arc.end_angle - arc.start_angle) - std::f64::consts::TAU).abs() < 1.0e-6
+}
+
 /// Cut a polygonal HATCH with an exact CIRCLE: create an internal round
 /// opening, or replace part of its outer boundary with an analytic arc.
 /// Do not approximate the final arc with chords (DWG must retain a true arc).
@@ -3887,6 +3903,20 @@ impl CadCommand for TrimCommand {
                 CmdResult::ReplaceEntity(handle, vec![])
             }
             _ => {
+                // A detached, complete circular HATCH is a standalone fill
+                // fragment, not a hole in another hatch. TRIM removes it on
+                // a click as requested; no cutting line is necessary.
+                if !self.shift
+                    && self.entity_index.get(&self.all_entities, handle).is_some_and(
+                        |entity| matches!(
+                            entity,
+                            EntityType::Hatch(hatch) if hatch_is_standalone_circle(hatch)
+                        ),
+                    )
+                {
+                    self.pending = vec![(handle, Vec::new())];
+                    return CmdResult::ReplaceEntity(handle, Vec::new());
+                }
                 let (px, py) = (pt.x, pt.y);
                 let new_entities = if self.shift {
                     // Shift+click swaps to Extend for this pick (#336).
@@ -4276,6 +4306,18 @@ impl CadCommand for TrimCommand {
                 out
             }
             Some(EntityType::Hatch(hatch)) => {
+                if hatch_is_standalone_circle(hatch) {
+                    return hatch.paths.iter().enumerate().filter_map(|(index, path)| {
+                        let mut points = crate::scene::hatch_path_ring(path)?;
+                        points.push(*points.first()?);
+                        Some(WireModel::solid_f64(
+                            format!("trim_hatch_erase_{index}"),
+                            points.into_iter().map(|p| [p[0], p[1], hatch.elevation]).collect(),
+                            TRIM_REMOVE_GRAY,
+                            false,
+                        ))
+                    }).collect();
+                }
                 let Some(trimmed) = trim_hatch_at(hatch, geos, pt.x, pt.y) else {
                     return vec![];
                 };
