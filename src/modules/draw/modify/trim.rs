@@ -2630,6 +2630,20 @@ fn trim_hatch_at(
         return None;
     }
     let outer_index = outer[0];
+    // Only edit outer curves for which we can reconstruct exact HATCH edges.
+    // Never silently convert an imported SPLINE/ELLIPSE into a sampled
+    // polyline when TRIM is run a second time.
+    if !hatch.paths[outer_index].edges.iter().all(|edge| match edge {
+        BoundaryEdge::Line(_) | BoundaryEdge::CircularArc(_) => true,
+        BoundaryEdge::Polyline(poly) => {
+            poly.is_closed
+                && poly.vertices.len() >= 3
+                && poly.vertices.iter().all(|vertex| vertex.z.abs() <= 1.0e-12)
+        }
+        _ => false,
+    }) {
+        return None;
+    }
     // Preserve exact outer curves; the mixed-edge solver below handles
     // successive straight cuts even after a curved notch has been made.
     let ring = &rings[outer_index];
