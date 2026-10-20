@@ -550,8 +550,7 @@ impl Doc {
             140 => {
                 // The base pushed along its own normal (u × v): a plane
                 // moves, a cylinder, sphere or torus keeps its axis and
-                // changes radius; any other base becomes a spline through
-                // offset points.
+                // changes radius; any other base becomes an offset surface.
                 if depth >= 8 {
                     return None;
                 }
@@ -585,7 +584,18 @@ impl Doc {
                         let tube = o + radial.normalize()? * t.major_radius;
                         Surface::Torus(kernel::brep::Torus { minor_radius: (p - tube).length(), ..t })
                     }
-                    _ => return spline(net),
+                    // Any other base keeps the offset as such (base and
+                    // distance), drawn through its approximation.
+                    _ => {
+                        return Some((
+                            Surface::Offset(kernel::brep::OffsetSurface {
+                                base,
+                                distance,
+                                approximation: net.clone(),
+                            }),
+                            Some(net),
+                        ))
+                    }
                 };
                 Some((offset, Some(net)))
             }
