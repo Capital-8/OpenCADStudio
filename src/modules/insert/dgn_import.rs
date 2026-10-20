@@ -924,7 +924,10 @@ struct Converter<'a> {
     defs: HashMap<String, &'a [DgnElement]>,
     /// (cell, made inside a copy) → copy block name.
     copies: HashMap<(String, bool), String>,
-    names: Vec<String>,
+    /// Block names given so far, upper-cased.
+    names: std::collections::HashSet<String>,
+    /// For each name used as a base, the first number not yet tried.
+    next_number: HashMap<String, usize>,
     /// Converting a shared cell definition: the cells inside it are not
     /// blocks of their own, their objects are part of the definition.
     in_definition: bool,
@@ -933,16 +936,20 @@ struct Converter<'a> {
 impl<'a> Converter<'a> {
     /// `base`, or `base` and the first number that makes it a new name.
     fn unique(&mut self, base: &str) -> String {
-        let taken = |n: &str| self.names.iter().any(|t| t.eq_ignore_ascii_case(n));
-        let name = if taken(base) {
-            (1..)
-                .map(|k| format!("{base}{k}"))
-                .find(|n| !taken(n))
-                .unwrap_or_default()
+        let upper = base.to_ascii_uppercase();
+        let name = if self.names.contains(&upper) {
+            // Numbers below the last one given are all taken: carry on from
+            // there (a file can place one cell tens of thousands of times).
+            let mut k = self.next_number.get(&upper).copied().unwrap_or(1);
+            while self.names.contains(&format!("{upper}{k}")) {
+                k += 1;
+            }
+            self.next_number.insert(upper, k + 1);
+            format!("{base}{k}")
         } else {
             base.to_string()
         };
-        self.names.push(name.clone());
+        self.names.insert(name.to_ascii_uppercase());
         name
     }
 
@@ -1247,7 +1254,8 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
             .map(|(name, elements)| (name.to_ascii_uppercase(), elements.as_slice()))
             .collect(),
         copies: HashMap::new(),
-        names: cells.iter().map(|(name, _)| block_name(name)).collect(),
+        names: cells.iter().map(|(name, _)| block_name(name).to_ascii_uppercase()).collect(),
+        next_number: HashMap::new(),
         in_definition: false,
     };
     if !import.v7 {
