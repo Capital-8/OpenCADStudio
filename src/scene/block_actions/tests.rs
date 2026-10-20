@@ -3,6 +3,44 @@ use crate::scene::{block_distance_parameter as distance, block_point_parameter a
 use codec::{DwgReader, DwgWriter, DxfReader, DxfWriter};
 use std::io::Cursor;
 
+#[test]
+fn rotation_table_angles_match_across_pi_wrap() {
+    let near_positive_pi = std::f64::consts::PI - 0.01;
+    let near_negative_pi = -std::f64::consts::PI + 0.01;
+    assert!((super::angle_distance(near_positive_pi, near_negative_pi) - 0.02).abs() < 1e-12);
+    assert!(super::angle_distance(near_positive_pi, 0.0) > 3.0);
+}
+
+#[test]
+fn angular_value_sets_wrap_and_choose_the_nearest_periodic_value() {
+    use codec::objects::BlockParameterValueSet;
+    let quarter = std::f64::consts::FRAC_PI_2;
+    let mut set = BlockParameterValueSet {
+        flags: 3,
+        minimum: 0.0,
+        maximum: std::f64::consts::TAU,
+        ..Default::default()
+    };
+    assert!((constrain_angle(-quarter, &set) - 3.0 * quarter).abs() < 1e-12);
+    set.flags = 8;
+    set.values = vec![0.0, std::f64::consts::PI];
+    assert_eq!(constrain_angle(-0.01, &set), 0.0);
+    set.flags = 4;
+    set.increment = quarter;
+    assert!((constrain_angle(-quarter - 0.1, &set) - 3.0 * quarter).abs() < 1e-12);
+}
+
+#[test]
+fn signed_value_set_increments_preserve_negative_axis_values() {
+    let set = codec::objects::BlockParameterValueSet {
+        flags: 4,
+        increment: 2.0,
+        ..Default::default()
+    };
+    assert_eq!(constrain_value_set(-5.0, &set), -6.0);
+    assert_eq!(constrain_value_set(5.0, &set), 6.0);
+}
+
 fn fixture() -> (CadDocument, Handle, Vec<Handle>) {
     let mut scene = Scene::new();
     scene.define_block_raw(
@@ -235,6 +273,155 @@ fn linear(doc: &mut CadDocument, def: Handle) -> Handle {
     )
     .unwrap()
 }
+
+#[test]
+fn linear_value_set_snaps_interactive_edits_and_keeps_rebuild_values() {
+    let (mut doc, def, targets) = fixture();
+    let parameter = linear(&mut doc, def);
+    create(&mut doc, def, Kind::Move, parameter, &targets, DVec3::ZERO).unwrap();
+    let ObjectType::DynamicBlock(object) = doc.objects.get_mut(&parameter).unwrap() else {
+        panic!()
+    };
+    let DynamicBlockData::LinearParameter(linear) = &mut object.data else {
+        panic!()
+    };
+    linear.value_set.flags = 7;
+    linear.value_set.minimum = 2.0;
+    linear.value_set.maximum = 8.0;
+    linear.value_set.increment = 1.0;
+    let baseline = doc.clone();
+
+    evaluate(&mut doc, &baseline, def, parameter, DVec3::new(4.7, 0.0, 0.0)).unwrap();
+    assert!((current(&doc, &parameters(&doc, def, Kind::Move)[0]).x - 5.0).abs() < 1e-9);
+    evaluate(&mut doc, &baseline, def, parameter, DVec3::new(1.0, 0.0, 0.0)).unwrap();
+    assert!((current(&doc, &parameters(&doc, def, Kind::Move)[0]).x - 2.0).abs() < 1e-9);
+
+    let p = parameters(&doc, def, Kind::Move).remove(0);
+    set_value(&mut doc, &p, Value::Point(DVec3::new(1.0, 0.0, 0.0))).unwrap();
+    rebuild(&mut doc, &baseline, def).unwrap();
+    assert!((current(&doc, &p).x - 1.0).abs() < 1e-9);
+}
+
+#[test]
+fn xy_move_box_set_creates_four_key_point_bindings() {
+    let (mut doc, def, handles) = fixture();
+    let parameter = distance::create(
+        &mut doc,
+        def,
+        distance::Kind::XY,
+        Vector3::ZERO,
+        Vector3::new(10., 10., 0.),
+        Vector3::new(5., 5., 0.),
+    )
+    .unwrap();
+    let key_points = [
+        (XyKeyPoint::Base, ["BaseXDelta", "BaseYDelta"]),
+        (XyKeyPoint::X, ["EndXDelta", "BaseYDelta"]),
+        (XyKeyPoint::Y, ["BaseXDelta", "EndYDelta"]),
+        (XyKeyPoint::End, ["EndXDelta", "EndYDelta"]),
+    ];
+    for (index, (key_point, expected)) in key_points.iter().copied().enumerate() {
+        let action_handle = create_with_options(
+            &mut doc,
+            def,
+            Kind::Move,
+            parameter,
+            Some(key_point),
+            &[handles[index % handles.len()]],
+            DVec3::new(index as f64, 0., 0.),
+            None,
+            None,
+        )
+        .unwrap();
+        let ObjectType::DynamicBlock(action_object) = &doc.objects[&action_handle] else {
+            panic!()
+        };
+        let DynamicBlockData::MoveAction(action) = &action_object.data else {
+            panic!()
+        };
+        assert_eq!(
+            [
+                action.connections[0].name.as_str(),
+                action.connections[1].name.as_str(),
+            ],
+            expected
+        );
+    }
+    assert_eq!(
+        doc.objects
+            .values()
+            .filter(|object| matches!(object, ObjectType::DynamicBlock(object) if matches!(object.data, DynamicBlockData::MoveAction(_))))
+            .count(),
+        4
+    );
+    let roundtrips = [
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+            .read()
+            .unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap()))
+            .unwrap()
+            .read()
+            .unwrap(),
+    ];
+    for roundtrip in roundtrips {
+        for (_, expected) in key_points {
+            assert!(roundtrip.objects.values().any(|object| {
+                matches!(object, ObjectType::DynamicBlock(object) if matches!(&object.data, DynamicBlockData::MoveAction(action) if [action.connections[0].name.as_str(), action.connections[1].name.as_str()] == expected))
+            }));
+        }
+    }
+}
+
+#[test]
+fn xy_box_set_actions_apply_their_key_point_axis_deltas() {
+    for kind in [Kind::Move, Kind::Stretch] {
+        for (key_point, expected_delta) in [
+            (XyKeyPoint::Base, DVec3::ZERO),
+            (XyKeyPoint::X, DVec3::new(3., 0., 0.)),
+            (XyKeyPoint::Y, DVec3::new(0., 5., 0.)),
+            (XyKeyPoint::End, DVec3::new(3., 5., 0.)),
+        ] {
+            let (mut doc, def, targets) = fixture();
+            let parameter = distance::create(
+                &mut doc,
+                def,
+                distance::Kind::XY,
+                Vector3::ZERO,
+                Vector3::new(10., 10., 0.),
+                Vector3::new(5., 5., 0.),
+            )
+            .unwrap();
+            create_with_options(
+                &mut doc,
+                def,
+                kind,
+                parameter,
+                Some(key_point),
+                &[targets[0]],
+                DVec3::ZERO,
+                (kind == Kind::Stretch)
+                    .then_some([DVec3::new(0.5, -1., 0.), DVec3::new(2.5, 1., 0.)]),
+                None,
+            )
+            .unwrap();
+            let baseline = doc.clone();
+            evaluate(
+                &mut doc,
+                &baseline,
+                def,
+                parameter,
+                DVec3::new(13., 15., 0.),
+            )
+            .unwrap();
+            assert_eq!(
+                start(&doc, targets[0]),
+                Vector3::new(1. + expected_delta.x, expected_delta.y, 0.),
+                "key point {key_point:?}"
+            );
+        }
+    }
+}
+
 fn start(doc: &CadDocument, h: Handle) -> Vector3 {
     let EntityType::Line(l) = doc.get_entity(h).unwrap() else {
         panic!()
@@ -523,6 +710,79 @@ fn block_actions_scale_uses_distance_ratio_and_parameter_base() {
     assert_eq!(doc, before);
 }
 #[test]
+fn block_reset_restores_values_geometry_and_table_state_without_changing_other_references() {
+    let (mut doc, def, targets) = fixture();
+    let parameter = linear(&mut doc, def);
+    create(
+        &mut doc,
+        def,
+        Kind::Move,
+        parameter,
+        &targets[..1],
+        DVec3::ZERO,
+    )
+    .unwrap();
+    let columns = super::super::block_properties_table::columns(&doc, def);
+    super::super::block_properties_table::apply(
+        &mut doc,
+        def,
+        &columns,
+        &[vec![10.], vec![20.]],
+        false,
+    )
+    .unwrap();
+    let a = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    let b = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::new(30., 0., 0.),
+        )))
+        .unwrap();
+    assert!(instance::reset(&doc, a).unwrap().is_none());
+    let baseline = doc.clone();
+    doc = instance::evaluate_table_row(&doc, a, &columns, 1)
+        .unwrap()
+        .unwrap();
+    doc = instance::evaluate(&doc, b, parameter, DVec3::new(15., 0., 0.))
+        .unwrap()
+        .unwrap();
+    assert_eq!(instance_line(&doc, a), Vector3::new(11., 0., 0.));
+    let reset = instance::reset(&doc, a).unwrap().unwrap();
+    assert_eq!(instance_line(&reset, a), Vector3::UNIT_X);
+    assert_eq!(instance_line(&reset, b), Vector3::new(6., 0., 0.));
+    assert_eq!(
+        reset.get_entity(targets[0]),
+        baseline.get_entity(targets[0])
+    );
+    let p = parameters(&reset, def, Kind::Move).remove(0);
+    assert_eq!(instance::current(&reset, a, &p).unwrap(), p.end);
+    assert!(!reset
+        .objects
+        .values()
+        .any(|object| matches!(object, ObjectType::Dictionary(dictionary)
+        if dictionary.entries.iter().any(|(name, _)| name == "ACAD_ENHANCEDBLOCKHISTORY"))));
+    assert!(instance::reset(&reset, a).unwrap().is_none());
+    for saved in [
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&reset).unwrap()))
+            .read()
+            .unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&reset).write_to_vec().unwrap()))
+            .unwrap()
+            .read()
+            .unwrap(),
+    ] {
+        assert_eq!(instance_line(&saved, a), Vector3::UNIT_X);
+        assert_eq!(instance_line(&saved, b), Vector3::new(6., 0., 0.));
+        assert_eq!(instance::current(&saved, a, &p).unwrap(), p.end);
+    }
+}
+
+#[test]
 fn block_actions_reject_invalid_selection_binding_and_nonfinite_without_mutation() {
     let (mut doc, def, handles) = fixture();
     let p = linear(&mut doc, def);
@@ -557,18 +817,17 @@ fn block_actions_reject_invalid_selection_binding_and_nonfinite_without_mutation
         p,
         DVec3::new(20., 0., 0.)
     )
-    .is_err());
-    assert_eq!(
-        restricted, restricted_baseline,
-        "unsupported value constraints are not silently ignored"
-    );
+    .unwrap());
+    assert_eq!(start(&restricted, handles[0]), Vector3::new(6., 0., 0.));
+    let constrained = parameters(&restricted_baseline, def, Kind::Move).remove(0);
+    assert_eq!(current(&restricted, &constrained), DVec3::new(15., 0., 0.));
     let ObjectType::DynamicBlock(o) = doc.objects.get_mut(&action).unwrap() else {
         panic!()
     };
     let DynamicBlockData::MoveAction(m) = &mut o.data else {
         panic!()
     };
-    m.offsets.distance_multiplier = 0.5;
+    m.offsets.distance_multiplier = f64::INFINITY;
     let baseline = doc.clone();
     assert!(evaluate(&mut doc, &baseline, def, p, DVec3::new(15., 0., 0.)).is_err());
     assert_eq!(doc, baseline);
@@ -707,8 +966,8 @@ fn polar_stretch_evaluates_test_block_and_saved_reference() {
     let EntityType::Line(line) = doc.get_entity(targets[0]).unwrap() else {
         panic!()
     };
-    assert_eq!(line.start, Vector3::new(-9., 10., 0.));
-    assert_eq!(line.end, Vector3::new(2., 0., 0.));
+    assert!((line.start-Vector3::new(0.,1.,0.)).length()<1e-10);
+    assert!((line.end-Vector3::new(0.,2.,0.)).length()<1e-10);
 
     let mut source = baseline.clone();
     let insert = source
@@ -737,8 +996,8 @@ fn polar_stretch_evaluates_test_block_and_saved_reference() {
     let EntityType::Line(line) = changed.get_entity(evaluated_member).unwrap() else {
         panic!()
     };
-    assert_eq!(line.start, Vector3::new(-9., 10., 0.));
-    assert_eq!(line.end, Vector3::new(2., 0., 0.));
+    assert!((line.start-Vector3::new(0.,1.,0.)).length()<1e-10);
+    assert!((line.end-Vector3::new(0.,2.,0.)).length()<1e-10);
 }
 
 #[test]
@@ -937,6 +1196,81 @@ fn block_actions_stretch_saved_reference_independence_copy_and_reopen() {
 }
 
 #[test]
+fn stretch_pair_bindings_evaluate_and_roundtrip_for_linear_and_polar_parameters() {
+    for parameter_kind in [distance::Kind::Linear, distance::Kind::Polar] {
+        let (mut doc, def, targets) = fixture();
+        let parameter = distance::create(
+            &mut doc,
+            def,
+            parameter_kind,
+            Vector3::ZERO,
+            Vector3::new(10., 0., 0.),
+            Vector3::new(5., 2., 0.),
+        )
+        .unwrap();
+        for (key_point, frame) in [
+            (
+                XyKeyPoint::Base,
+                [DVec3::new(0.5, -1., 0.), DVec3::new(1.5, 1., 0.)],
+            ),
+            (
+                XyKeyPoint::End,
+                [DVec3::new(1.5, -1., 0.), DVec3::new(2.5, 1., 0.)],
+            ),
+        ] {
+            create_with_options(
+                &mut doc,
+                def,
+                Kind::Stretch,
+                parameter,
+                Some(key_point),
+                &targets[..1],
+                DVec3::ZERO,
+                Some(frame),
+                None,
+            )
+            .unwrap();
+        }
+        let roundtrips = [
+            doc.clone(),
+            DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+                .read()
+                .unwrap(),
+            DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap()))
+                .unwrap()
+                .read()
+                .unwrap(),
+        ];
+        for baseline in roundtrips {
+            let mut changed = baseline.clone();
+            for end in [DVec3::new(13., 0., 0.), DVec3::new(14., 0., 0.)] {
+                evaluate(&mut changed, &baseline, def, parameter, end).unwrap();
+                let EntityType::Line(line) = changed.get_entity(targets[0]).unwrap() else {
+                    panic!()
+                };
+                assert_eq!(line.start, Vector3::UNIT_X);
+                assert_eq!(line.end, Vector3::new(2. + end.x - 10., 0., 0.));
+            }
+            if parameter_kind == distance::Kind::Polar {
+                evaluate(
+                    &mut changed,
+                    &baseline,
+                    def,
+                    parameter,
+                    DVec3::new(0., 12., 0.),
+                )
+                .unwrap();
+                let EntityType::Line(line) = changed.get_entity(targets[0]).unwrap() else {
+                    panic!()
+                };
+                assert_eq!(line.start, Vector3::UNIT_X);
+                assert_eq!(line.end, Vector3::new(-8., 12., 0.));
+            }
+        }
+    }
+}
+
+#[test]
 fn block_actions_stretch_invalid_frame_binding_and_options_are_atomic() {
     let (mut doc, def, handles, p, action) = stretch_fixture();
     let before = doc.clone();
@@ -967,7 +1301,7 @@ fn block_actions_stretch_invalid_frame_binding_and_options_are_atomic() {
         };
         match corrupt {
             0 => a.handles[0].indexes = vec![99],
-            1 => a.offsets.distance_multiplier = 2.,
+            1 => a.offsets.distance_multiplier = f64::INFINITY,
             _ => a.connections[0].name = "BaseXDelta".into(),
         }
         let baseline = invalid.clone();
@@ -1910,3 +2244,241 @@ fn block_actions_array_rejections() {
     assert!(create_array(&mut doc, def, p_lin, &targets, DVec3::ZERO, -2.0, 1.0).is_err());
 }
 
+
+#[test]
+fn block_action_overrides_evaluate_and_roundtrip_without_accumulation() {
+    for stretch in [false, true] {
+        let (mut doc, def, targets, parameter, action) = if stretch {
+            stretch_fixture()
+        } else {
+            let (mut doc, def, targets) = fixture();
+            let parameter = linear(&mut doc, def);
+            let action = create(&mut doc, def, Kind::Move, parameter, &targets, DVec3::ZERO).unwrap();
+            (doc, def, targets, parameter, action)
+        };
+        assert!(options::set(&mut doc, def, action, 2., std::f64::consts::FRAC_PI_2).unwrap());
+        assert!(!options::set(&mut doc, def, action, 2., std::f64::consts::FRAC_PI_2).unwrap());
+        let before = doc.clone();
+        for (multiplier, angle) in [(f64::NAN,0.),(1.,f64::INFINITY)] {
+            assert!(options::set(&mut doc, def, action, multiplier, angle).is_err());
+            assert_eq!(doc, before);
+        }
+        let record = doc.objects[&action].clone();
+        let baseline = doc.clone();
+        for distance in [15.,12.,10.] {
+            evaluate(&mut doc, &baseline, def, parameter, DVec3::new(distance,0.,0.)).unwrap();
+            let EntityType::Line(line) = doc.get_entity(targets[0]).unwrap() else { panic!() };
+            let offset = (distance-10.)*2.;
+            let (expected_start, expected_end) = if stretch {
+                (Vector3::ZERO,Vector3::new(10.,offset,0.))
+            } else {
+                (Vector3::new(1.,offset,0.),Vector3::new(2.,offset,0.))
+            };
+            assert!((line.start-expected_start).length()<1e-10);
+            assert!((line.end-expected_end).length()<1e-10);
+            assert_eq!(doc.objects[&action], record);
+        }
+        for reopened in [
+            DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&baseline).unwrap())).read().unwrap(),
+            DxfReader::from_reader(Cursor::new(DxfWriter::new(&baseline).write_to_vec().unwrap())).unwrap().read().unwrap(),
+        ] {
+            assert_eq!(reopened.objects[&action], record);
+            let name = reopened.block_records.iter().find(|r| r.handle==def).unwrap().name.clone();
+            let mut source = reopened.clone();
+            let reference = source.add_entity(EntityType::Insert(codec::entities::Insert::new(name,Vector3::ZERO))).unwrap();
+            let changed = instance::evaluate(&source,reference,parameter,DVec3::new(15.,0.,0.)).unwrap().unwrap();
+            let EntityType::Insert(insert) = changed.get_entity(reference).unwrap() else { panic!() };
+            let evaluated = changed.block_records.get(&insert.block_name).unwrap().entity_handles[0];
+            let EntityType::Line(line) = changed.get_entity(evaluated).unwrap() else { panic!() };
+            let expected = if stretch { Vector3::new(10.,10.,0.) } else { Vector3::new(2.,10.,0.) };
+            assert!((line.end-expected).length()<1e-10);
+            assert_eq!(source.get_entity(targets[0]),reopened.get_entity(targets[0]));
+        }
+    }
+}
+
+#[test]
+fn block_stretch_supports_curves_points_and_text_with_native_vertex_membership() {
+    use codec::entities::{Arc,Circle,Ellipse,Point,Text,MText};
+    let mut text=Text::new();
+    text.insertion_point=Vector3::new(-2.,0.,0.);
+    text.normal=Vector3::new(0.,0.,-1.);
+    let mut mtext=MText::new();
+    mtext.insertion_point=Vector3::new(2.,0.,0.);
+    let mut scene=Scene::new();
+    scene.define_block_raw("CURVE_STRETCH",Vector3::ZERO,vec![
+        EntityType::Arc(Arc::from_center_radius_angles(Vector3::ZERO,2.,0.,std::f64::consts::PI)),
+        EntityType::Circle(Circle::from_center_radius(Vector3::new(2.,0.,0.),1.)),
+        EntityType::Ellipse(Ellipse::from_center_axes(Vector3::new(2.,0.,0.),Vector3::UNIT_X,0.5)),
+        EntityType::Point(Point::from_coords(2.,0.,0.)),
+        EntityType::Text(text),EntityType::MText(Box::new(mtext)),
+    ]);
+    let record=scene.document.block_records.get("CURVE_STRETCH").unwrap();
+    let (definition,targets)=(record.handle,record.entity_handles.clone());
+    let mut doc=scene.document;
+    let parameter=linear(&mut doc,definition);
+    let action=create_with_frame(&mut doc,definition,Kind::Stretch,parameter,&targets,DVec3::ZERO,
+        Some([DVec3::new(1.,-1.,0.),DVec3::new(3.,1.,0.)])).unwrap();
+    let baseline=doc.clone();
+    for reopened in [
+        baseline.clone(),
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&baseline).unwrap())).read().unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&baseline).write_to_vec().unwrap())).unwrap().read().unwrap(),
+    ] {
+        assert_eq!(reopened.objects[&action],baseline.objects[&action]);
+        let mut changed=reopened.clone();
+        evaluate(&mut changed,&reopened,definition,parameter,DVec3::new(12.,0.,0.)).unwrap();
+        let EntityType::Arc(arc)=changed.get_entity(targets[0]).unwrap() else {panic!()};
+        assert!((arc.start_point_wcs()-Vector3::new(4.,0.,0.)).length()<1e-10);
+        assert!((arc.end_point_wcs()-Vector3::new(-2.,0.,0.)).length()<1e-10);
+        let height=arc.radius*(1.-(arc.sweep_angle()/2.).cos());
+        assert!((height-2.).abs()<1e-10,"arc height is retained");
+        for target in &targets[1..] {
+            let points=stretch::control_points(changed.get_entity(*target).unwrap()).unwrap();
+            assert!((points[0]-DVec3::new(4.,0.,0.)).length()<1e-10);
+        }
+        evaluate(&mut changed,&reopened,definition,parameter,DVec3::new(10.,0.,0.)).unwrap();
+        assert_eq!(changed.get_entity(targets[0]),reopened.get_entity(targets[0]));
+    }
+    let mut collapsed=baseline.clone();
+    assert!(evaluate(&mut collapsed,&baseline,definition,parameter,DVec3::new(6.,0.,0.)).is_err());
+    assert_eq!(collapsed,baseline,"a collapsed arc chord leaves the document unchanged");
+}
+
+#[test]
+fn block_stretch_accepts_point_parameters_and_freezes_endpoint_membership() {
+    let (mut doc,definition,targets)=fixture();
+    let parameter=point::create(&mut doc,definition,Vector3::ZERO,Vector3::UNIT_Y).unwrap();
+    let action=create_with_frame(&mut doc,definition,Kind::Stretch,parameter,&targets[..1],DVec3::ZERO,
+        Some([DVec3::new(1.5,-1.,0.),DVec3::new(2.5,1.,0.)])).unwrap();
+    let baseline=doc.clone();
+    for value in [DVec3::new(2.,3.,0.),DVec3::new(4.,5.,0.)] {
+        evaluate(&mut doc,&baseline,definition,parameter,value).unwrap();
+        let EntityType::Line(line)=doc.get_entity(targets[0]).unwrap() else {panic!()};
+        assert_eq!(line.start,Vector3::UNIT_X);
+        assert_eq!(line.end,Vector3::new(2.+value.x,value.y,0.));
+        assert_eq!(doc.objects[&action],baseline.objects[&action]);
+    }
+}
+
+#[test]
+fn block_polygon_stretch_frames_bind_concave_regions_and_replace_atomically() {
+    let mut scene=Scene::new();
+    scene.define_block_raw("POLYGON_FRAME",Vector3::ZERO,vec![EntityType::Line(codec::entities::Line::from_points(
+        Vector3::new(0.5,3.,0.),Vector3::new(3.,3.,0.)))]);
+    let record=scene.document.block_records.get("POLYGON_FRAME").unwrap();
+    let (definition,targets)=(record.handle,record.entity_handles.clone());
+    let mut doc=scene.document;
+    let parameter=linear(&mut doc,definition);
+    let frame=vec![DVec3::ZERO,DVec3::new(4.,0.,0.),DVec3::new(4.,1.,0.),
+        DVec3::new(1.,1.,0.),DVec3::new(1.,4.,0.),DVec3::new(0.,4.,0.)];
+    let action=create_with_frame_points(&mut doc,definition,Kind::Stretch,parameter,None,&targets,DVec3::ZERO,Some(&frame),None).unwrap();
+    let ObjectType::DynamicBlock(object)=&doc.objects[&action] else {panic!()};
+    let DynamicBlockData::StretchAction(native)=&object.data else {panic!()};
+    assert_eq!(native.points.len(),6);
+    assert_eq!(native.handles[0].indexes,vec![0]);
+    let baseline=doc.clone();
+    for reopened in [
+        baseline.clone(),
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&baseline).unwrap())).read().unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&baseline).write_to_vec().unwrap())).unwrap().read().unwrap(),
+    ] {
+        assert_eq!(reopened.objects[&action],baseline.objects[&action]);
+        let mut changed=reopened.clone();
+        for distance in [12.,14.] {
+            evaluate(&mut changed,&reopened,definition,parameter,DVec3::new(distance,0.,0.)).unwrap();
+            let EntityType::Line(line)=changed.get_entity(targets[0]).unwrap() else {panic!()};
+            assert_eq!(line.start,Vector3::new(distance-9.5,3.,0.));
+            assert_eq!(line.end,Vector3::new(3.,3.,0.));
+        }
+    }
+    for bad in [
+        vec![DVec3::ZERO,DVec3::X,DVec3::new(2.,0.,0.)],
+        vec![DVec3::ZERO,DVec3::new(2.,2.,0.),DVec3::new(0.,2.,0.),DVec3::new(2.,0.,0.)],
+        vec![DVec3::ZERO,DVec3::X,DVec3::new(0.,1.,1.)],
+        vec![DVec3::ZERO,DVec3::X,DVec3::Y,DVec3::X],
+    ] {
+        assert!(retarget_frame_points(&mut doc,definition,action,&targets,Some(&bad)).is_err());
+        assert_eq!(doc,baseline);
+    }
+    let triangle=vec![DVec3::new(2.,2.,0.),DVec3::new(4.,2.,0.),DVec3::new(3.,4.,0.)];
+    assert!(retarget_frame_points(&mut doc,definition,action,&targets,Some(&triangle)).unwrap());
+    let ObjectType::DynamicBlock(object)=&doc.objects[&action] else {panic!()};
+    let DynamicBlockData::StretchAction(native)=&object.data else {panic!()};
+    assert_eq!(native.points.len(),3);
+    assert_eq!(native.handles[0].indexes,vec![1]);
+    assert_eq!(native.action.dependencies,targets);
+}
+
+#[test]
+fn polar_stretch_rotates_and_extends_separate_selections_with_native_overrides() {
+    // A rotation-only override must restore the saved frame membership when cleared.
+    let (mut partial, def, partial_targets, _, partial_action) = polar_stretch_fixture();
+    let original = partial.objects[&partial_action].clone();
+    options::set_rotate_only(&mut partial, def, partial_action, &partial_targets).unwrap();
+    let ObjectType::DynamicBlock(object) = &partial.objects[&partial_action] else { panic!() };
+    let DynamicBlockData::PolarStretchAction(native) = &object.data else { panic!() };
+    assert!(native.bindings.is_empty());
+    options::set_rotate_only(&mut partial, def, partial_action, &[]).unwrap();
+    assert_eq!(partial.objects[&partial_action], original);
+    let mut scene=Scene::new();
+    scene.define_block_raw("POLAR_GROUPS",Vector3::ZERO,vec![
+        EntityType::Line(codec::entities::Line::from_points(Vector3::ZERO,Vector3::new(10.,0.,0.))),
+        EntityType::Line(codec::entities::Line::from_points(Vector3::new(1.,1.,0.),Vector3::new(2.,1.,0.))),
+        EntityType::Circle(codec::entities::Circle::from_center_radius(Vector3::new(10.,2.,0.),1.)),
+        EntityType::Point(codec::entities::Point::from_coords(4.,4.,0.)),
+    ]);
+    let record=scene.document.block_records.get("POLAR_GROUPS").unwrap();
+    let (definition,targets)=(record.handle,record.entity_handles.clone());
+    let mut doc=scene.document;
+    let parameter=distance::create(&mut doc,definition,distance::Kind::Polar,Vector3::ZERO,
+        Vector3::new(10.,0.,0.),Vector3::new(5.,2.,0.)).unwrap();
+    let action=create_with_frame(&mut doc,definition,Kind::PolarStretch,parameter,&targets[..3],DVec3::ZERO,
+        Some([DVec3::new(9.,-1.,0.),DVec3::new(11.,1.,0.)])).unwrap();
+    assert!(options::set_rotate_only(&mut doc,definition,action,&targets[1..2]).unwrap());
+    assert!(!options::set_rotate_only(&mut doc,definition,action,&targets[1..2]).unwrap());
+    let before=doc.clone();
+    assert!(options::set_rotate_only(&mut doc,definition,action,&targets[3..]).is_err());
+    assert_eq!(doc,before);
+    options::set(&mut doc,definition,action,2.,0.).unwrap();
+    let baseline=doc.clone();
+    for reopened in [baseline.clone(),
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&baseline).unwrap())).read().unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&baseline).write_to_vec().unwrap())).unwrap().read().unwrap(),
+    ] {
+        assert_eq!(reopened.objects[&action],baseline.objects[&action]);
+        let mut changed=reopened.clone();
+        evaluate(&mut changed,&reopened,definition,parameter,DVec3::new(0.,15.,0.)).unwrap();
+        let EntityType::Line(stretched)=changed.get_entity(targets[0]).unwrap() else {panic!()};
+        assert!((stretched.start-Vector3::ZERO).length()<1e-10);
+        assert!((stretched.end-Vector3::new(0.,20.,0.)).length()<1e-10);
+        let EntityType::Line(rotated)=changed.get_entity(targets[1]).unwrap() else {panic!()};
+        assert!((rotated.start-Vector3::new(-1.,1.,0.)).length()<1e-10);
+        assert!((rotated.end-Vector3::new(-1.,2.,0.)).length()<1e-10);
+        let EntityType::Circle(moved)=changed.get_entity(targets[2]).unwrap() else {panic!()};
+        assert!((moved.center-Vector3::new(-2.,20.,0.)).length()<1e-10);
+        assert_eq!(changed.get_entity(targets[3]),reopened.get_entity(targets[3]));
+        evaluate(&mut changed,&reopened,definition,parameter,DVec3::new(10.,0.,0.)).unwrap();
+        for target in &targets {assert_eq!(changed.get_entity(*target),reopened.get_entity(*target));}
+        let mut source=reopened.clone();
+        let insert=source.add_entity(EntityType::Insert(codec::entities::Insert::new("POLAR_GROUPS",Vector3::ZERO))).unwrap();
+        let changed=instance::evaluate(&source,insert,parameter,DVec3::new(0.,15.,0.)).unwrap().unwrap();
+        let EntityType::Insert(reference)=changed.get_entity(insert).unwrap() else {panic!()};
+        let members=&changed.block_records.get(&reference.block_name).unwrap().entity_handles;
+        let EntityType::Line(rotated)=changed.get_entity(members[1]).unwrap() else {panic!()};
+        assert!((rotated.start-Vector3::new(-1.,1.,0.)).length()<1e-10);
+    }
+    options::set(&mut doc,definition,action,2.,std::f64::consts::FRAC_PI_2).unwrap();
+    let baseline=doc.clone();
+    evaluate(&mut doc,&baseline,definition,parameter,DVec3::new(0.,15.,0.)).unwrap();
+    let EntityType::Line(stretched)=doc.get_entity(targets[0]).unwrap() else {panic!()};
+    assert!((stretched.end-Vector3::new(-10.,10.,0.)).length()<1e-10);
+    let EntityType::Line(rotated)=doc.get_entity(targets[1]).unwrap() else {panic!()};
+    assert!((rotated.start-Vector3::new(-1.,1.,0.)).length()<1e-10);
+    let mut reset=baseline.clone();
+    assert!(options::set_rotate_only(&mut reset,definition,action,&[]).unwrap());
+    let ObjectType::DynamicBlock(object)=&reset.objects[&action] else {panic!()};
+    let DynamicBlockData::PolarStretchAction(native)=&object.data else {panic!()};
+    assert!(native.handles.is_empty());
+    assert_eq!(native.action.dependencies,targets[..3]);
+}

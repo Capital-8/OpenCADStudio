@@ -1523,6 +1523,8 @@ common =
     .selection = Auswahl
     .pick-box-size = { common.pickbox }: { common.size }
     .controls-both-the-visible-selection-box-and-the-click-aperture = Steuert sowohl das sichtbare Auswahlkästchen als auch den Klickbereich.
+    .aperture-size = Fangfenstergröße
+    .how-close-in-pixels-the-cursor-must-come-to-catch-an-object-snap = Wie nah der Cursor in Pixeln kommen muss, um einen Objektfang zu erfassen.
     .visual-effect-settings = { common.visual-effects } · { properties.settings }
     .applications = Anwendungen
     .installed-plugins-and-their-sources = Installierte Plug-ins und ihre Quellen
@@ -2596,6 +2598,7 @@ file =
     .cmd-cannot-create-folder-e = __ocs_fmt_0__: kann keinen Ordner erstellen (__ocs_fmt_1__).
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: die Zeichnung kann nicht gepackt werden (__ocs_fmt_1__).
     .cmd-packaged-copied-file-s-into = __ocs_fmt_0__: verpackte __ocs_fmt_1__ Datei(en) in __ocs_fmt_2__
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: __ocs_fmt_1__ referenzierte Datei(en) nicht gefunden: __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: __ocs_fmt_1__ referenzierte Datei(en) übersprungen, die in dieser Sitzung nicht geladen wurden: __ocs_fmt_2__
     .error-external-change-checks-remain-active = __ocs_fmt_0__. Externe Wechselprüfungen bleiben aktiv.
     .warning-external-change-checks-remain-active = __ocs_fmt_0__. Externe Wechselprüfungen bleiben aktiv.
@@ -3100,7 +3103,6 @@ draw =
     .arc-specify-tangent-direction-for-the-start-point-of-arc = ARC  Tangentenrichtung am Bogenanfang angeben:
     .arc-specify-radius-of-arc = ARC  Radius des Bogens angeben:
     .chord-length = Sehnenlänge
-
 
 modify =
     .add-vertex = Scheitelpunkt hinzufügen
@@ -4547,7 +4549,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2-Punkt
     .cube = Würfel
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Zu löschende Objekte wählen:
@@ -6679,6 +6680,7 @@ dgn-import =
     .help-import = Imports a file of the chosen format with the format's importer.
     .blank = Filename cannot be blank
     .invalid-dgn = Invalid or unsupported DGN file.
+    .nothing-to-import = The DGN model has nothing that can be imported.
 import-3ds =
     .title = 3D Studio Import
     .summary = { $objects } objects, { $materials } materials
@@ -6714,6 +6716,22 @@ import-3ds =
     .cancel = Cancel
     .import = Import
     .help = Imports the checked objects of a 3D Studio file: meshes as polyface meshes with their materials, cameras as named views.
+import-3ds-alert =
+    .title = Objekt mit mehreren Materialien
+    .assignment = Materialzuweisung
+    .split = Nach Material teilen
+    .first = Erstes Material
+    .select = Material wählen
+    .material = Material
+    .none = *KEINES*
+    .note-split = Das Objekt wird in ein Netz pro Material geteilt; jeder Teil erhält sein eigenes Material.
+    .note-first = Das ganze Objekt erhält sein erstes Material.
+    .note-select = Das ganze Objekt erhält das gewählte Material; *KEINES* weist kein Material zu.
+    .remaining = Übrige Objekte
+    .remember = Diese Auswahl für die nächsten Objekte verwenden
+    .remember-note = Wenn aus, wird bei jedem Objekt mit mehreren Materialien erneut gefragt.
+    .apply = Anwenden
+    .help = Das Objekt verwendet mehrere Materialien: Teilen Sie es in ein Netz pro Material oder weisen Sie sein erstes oder das gewählte Material zu. Abbrechen beendet den Import bei diesem Objekt.
 import-panel =
     .dgn-import = DGN-Import
     .recognize-shx = SHX-Text erkennen
@@ -6741,6 +6759,28 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = Kennwortgeschützte PDF
+    .step-open = Kennwort zum Öffnen
+    .step-permission = Berechtigungskennwort
+    .open-password = Kennwort zum Öffnen
+    .permission-password = Berechtigungskennwort
+    .password = Kennwort
+    .open-hint = Dieses Dokument verlangt vor dem Öffnen ein Kennwort. Das Kennwort wird nicht in der Zeichnung gespeichert.
+    .permission-hint = Die Nutzung des Dokuments ist eingeschränkt; zum Importieren ist das Kennwort nötig, das die Einschränkungen aufhebt.
+    .wrong = Falsches Kennwort. Erneut eingeben und Öffnen drücken.
+    .session = Sitzung
+    .remember = Für diese Sitzung merken
+    .remember-hint = Gemerkte Kennwörter werden bei den anderen in dieser Sitzung geöffneten PDFs zuerst versucht.
+    .open = Öffnen
+    .help = Das Öffnen-Kennwort liest eine verschlüsselte PDF, das reicht zum Anhängen; zum Importieren ihrer Geometrie ist zusätzlich das Berechtigungskennwort nötig, das die Einschränkungen aufhebt.
+    .remembered =
+        Kennwortgeschützte PDF-Datei: { $path }
+        Mit zuvor eingegebenem Kennwort geöffnet.
+    .refused =
+        { $path }
+        Diese PDF-Datei kann nicht geöffnet werden.
+        Sie ist verschlüsselt und erfordert ein Kennwort.
 
 calc =
     .invalid-number = ungültige Zahl '__ocs_fmt_0__'

@@ -9,8 +9,17 @@ use codec::types::{Transform, Vector3};
 use codec::{CadDocument, EntityType, Handle};
 use glam::DVec3;
 pub(crate) mod instance;
+pub(crate) mod feedback;
+pub(crate) mod association;
 mod representation;
 mod stretch;
+pub(crate) mod options;
+
+/// Smallest signed distance between two angles in radians, accounting for the
+/// wrap at ±π. Used for BPT rotation snapping and current-row detection.
+pub(crate) fn angle_distance(a: f64, b: f64) -> f64 {
+    ((a - b + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI).abs()
+}
 #[cfg(test)]
 mod tests;
 
@@ -23,6 +32,14 @@ pub enum Kind {
     Stretch,
     PolarStretch,
     Array,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XyKeyPoint {
+    Base,
+    X,
+    Y,
+    End,
 }
 impl Kind {
     pub(crate) fn parse(s: &str) -> Option<Self> {
@@ -95,7 +112,7 @@ pub(crate) fn all_parameters(doc: &CadDocument, definition: Handle) -> Vec<Param
 pub(crate) fn compatible(p: &Parameter, kind: Kind) -> bool {
     match kind {
         Kind::Move => !p.rotation && !p.flip,
-        Kind::Stretch => !p.rotation && !p.flip && !p.point,
+        Kind::Stretch => !p.rotation && !p.flip,
         Kind::PolarStretch => p.polar,
         Kind::Scale => !p.rotation && !p.flip && !p.point && !p.xy,
         Kind::Rotate => p.rotation,
@@ -207,7 +224,7 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
     };
     let mut result = vec![];
     for (handle, p) in super::block_point_parameter::parameters(doc, definition) {
-        if kind == Kind::Move {
+        if matches!(kind, Kind::Move | Kind::Stretch) {
             result.push(Parameter {
                 handle,
                 id: p.parameter.parameter.element.eval.node_id,
@@ -379,7 +396,7 @@ pub(crate) fn create(
     location: DVec3,
 ) -> Result<Handle, &'static str> {
     create_with_options(
-        doc, definition, kind, parameter, targets, location, None, None,
+        doc, definition, kind, parameter, None, targets, location, None, None,
     )
 }
 
@@ -398,6 +415,7 @@ pub(crate) fn create_array(
         definition,
         Kind::Array,
         parameter,
+        None,
         targets,
         location,
         None,
@@ -405,7 +423,7 @@ pub(crate) fn create_array(
     )
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn create_with_frame(
     doc: &mut CadDocument,
     definition: Handle,
@@ -416,18 +434,35 @@ pub(crate) fn create_with_frame(
     frame: Option<[DVec3; 2]>,
 ) -> Result<Handle, &'static str> {
     create_with_options(
-        doc, definition, kind, parameter, targets, location, frame, None,
+        doc, definition, kind, parameter, None, targets, location, frame, None,
     )
 }
 
+#[cfg(test)]
 pub(crate) fn create_with_options(
     doc: &mut CadDocument,
     definition: Handle,
     kind: Kind,
     parameter: Handle,
+    xy_key_point: Option<XyKeyPoint>,
     targets: &[Handle],
     location: DVec3,
     frame: Option<[DVec3; 2]>,
+    array_offsets: Option<(f64, f64)>,
+) -> Result<Handle, &'static str> {
+    create_with_frame_points(doc, definition, kind, parameter, xy_key_point, targets, location,
+        frame.as_ref().map(|points| points.as_slice()), array_offsets)
+}
+
+pub(crate) fn create_with_frame_points(
+    doc: &mut CadDocument,
+    definition: Handle,
+    kind: Kind,
+    parameter: Handle,
+    xy_key_point: Option<XyKeyPoint>,
+    targets: &[Handle],
+    location: DVec3,
+    frame: Option<&[DVec3]>,
     array_offsets: Option<(f64, f64)>,
 ) -> Result<Handle, &'static str> {
     if !location.is_finite() {
@@ -437,6 +472,17 @@ pub(crate) fn create_with_options(
         .into_iter()
         .find(|p| p.handle == parameter)
         .ok_or("Select a compatible parameter belonging to this block.")?;
+    if xy_key_point.is_some_and(|point| {
+        !matches!(kind, Kind::Move | Kind::Stretch)
+            || (p.xy
+                && !matches!(
+                    point,
+                    XyKeyPoint::Base | XyKeyPoint::X | XyKeyPoint::Y | XyKeyPoint::End
+                ))
+            || (!p.xy && !matches!(point, XyKeyPoint::Base | XyKeyPoint::End))
+    }) {
+        return Err("Action key points are not compatible with this parameter.");
+    }
     if targets.is_empty() {
         return Err("Select at least one object for the action.");
     }
@@ -452,7 +498,9 @@ pub(crate) fn create_with_options(
                 .get_entity(*h)
                 .is_none_or(|e| !supported(e) || e.common().owner_handle != definition)
     }) {
-        return Err("This milestone supports lines, polylines, arcs, circles, ellipses, points and text belonging to this block.");
+        return Err(
+            "Select lines, lightweight polylines, arcs, circles, ellipses, points or text belonging to this block.",
+        );
     }
     let (column_offset, row_offset) = if kind == Kind::Array {
         let (col, row) = array_offsets.unwrap_or((1.0, 1.0));
@@ -470,7 +518,7 @@ pub(crate) fn create_with_options(
         if (location.z - p.end.z).abs() > 1e-8 {
             return Err("Place the Stretch marker in the parameter's XY plane.");
         }
-        Some(stretch::bind(
+        Some(stretch::bind_frame(
             doc,
             targets,
             frame.ok_or("Specify a stretch frame before selecting objects.")?,
@@ -483,7 +531,7 @@ pub(crate) fn create_with_options(
         if (location.z - p.end.z).abs() > 1e-8 {
             return Err("Place the Polar Stretch marker in the parameter's XY plane.");
         }
-        Some(stretch::bind(
+        Some(stretch::bind_frame(
             doc,
             targets,
             frame.ok_or("Specify a Polar Stretch frame before selecting objects.")?,
@@ -540,7 +588,7 @@ pub(crate) fn create_with_options(
             let (points, handles) = stretch_binding.unwrap();
             DynamicBlockData::StretchAction(BlockStretchAction {
                 action,
-                connections: [connection("EndXDelta"), connection("EndYDelta")],
+                connections: move_connections(&p, xy_key_point),
                 points,
                 handles,
                 codes: vec![],
@@ -578,11 +626,7 @@ pub(crate) fn create_with_options(
         }
         Kind::Move => DynamicBlockData::MoveAction(BlockMoveAction {
             action,
-            connections: if p.point {
-                [connection("XDelta"), connection("YDelta")]
-            } else {
-                [connection("EndXDelta"), connection("EndYDelta")]
-            },
+            connections: move_connections(&p, xy_key_point),
             offsets: BlockActionOffsets {
                 distance_multiplier: 1.,
                 angle_offset: 0.,
@@ -635,13 +679,73 @@ pub(crate) fn create_with_options(
     Ok(handle)
 }
 
+fn move_connections(p: &Parameter, key_point: Option<XyKeyPoint>) -> [BlockConnection; 2] {
+    let names = match (p.point, p.xy, key_point) {
+        (true, _, _) => ["XDelta", "YDelta"],
+        (_, _, Some(XyKeyPoint::Base)) => ["BaseXDelta", "BaseYDelta"],
+        (_, true, Some(XyKeyPoint::X)) => ["EndXDelta", "BaseYDelta"],
+        (_, true, Some(XyKeyPoint::Y)) => ["BaseXDelta", "EndYDelta"],
+        (_, true, Some(XyKeyPoint::End) | None) | (_, false, _) => ["EndXDelta", "EndYDelta"],
+    };
+    names.map(|name| BlockConnection {
+        code: p.id,
+        name: name.into(),
+    })
+}
+
+fn action_move_delta(
+    parameter: &Parameter,
+    current_end: DVec3,
+    connections: &[BlockConnection; 2],
+) -> Option<DVec3> {
+    if connections
+        .iter()
+        .any(|connection| connection.code != parameter.id)
+    {
+        return None;
+    }
+    let delta = current_end - parameter.end;
+    let names = [connections[0].name.as_str(), connections[1].name.as_str()];
+    if parameter.point && names == ["XDelta", "YDelta"] {
+        return Some(delta);
+    }
+    if names == ["BaseXDelta", "BaseYDelta"] {
+        return Some(DVec3::ZERO);
+    }
+    if parameter.xy {
+        return match names {
+            ["EndXDelta", "BaseYDelta"] => Some(DVec3::new(delta.x, 0.0, 0.0)),
+            ["BaseXDelta", "EndYDelta"] => Some(DVec3::new(0.0, delta.y, 0.0)),
+            ["EndXDelta", "EndYDelta"] => Some(delta),
+            _ => None,
+        };
+    }
+    (names == ["EndXDelta", "EndYDelta"]).then_some(delta)
+}
+
 /// Retarget an existing native action, retaining identity, graph and options.
+#[cfg(test)]
 pub(crate) fn retarget(
     doc: &mut CadDocument,
     definition: Handle,
     handle: Handle,
     targets: &[Handle],
     frame: Option<[DVec3; 2]>,
+) -> Result<bool, &'static str> {
+    retarget_frame_points(doc, definition, handle, targets, frame.as_ref().map(|points| points.as_slice()))
+}
+
+pub(crate) fn validate_frame_points(points: &[DVec3]) -> Result<(), &'static str> {
+    let plane = points.first().ok_or("Specify a stretch frame.")?.z;
+    stretch::native_frame(points, plane).map(|_| ())
+}
+
+pub(crate) fn retarget_frame_points(
+    doc: &mut CadDocument,
+    definition: Handle,
+    handle: Handle,
+    targets: &[Handle],
+    frame: Option<&[DVec3]>,
 ) -> Result<bool, &'static str> {
     let (_, action, kind, id) = actions(doc, definition)
         .into_iter()
@@ -682,7 +786,7 @@ pub(crate) fn retarget(
                 .z;
             stretch::validate_options(a)?;
             if let Some(corners) = frame {
-                let (points, handles) = stretch::bind(doc, &targets, corners, plane)?;
+                let (points, handles) = stretch::bind_frame(doc, &targets, corners, plane)?;
                 a.points = points;
                 a.handles = handles;
             } else {
@@ -709,16 +813,17 @@ pub(crate) fn retarget(
                 .ok_or("The Polar Stretch parameter is unavailable.")?
                 .end
                 .z;
+            let stretching = targets.iter().copied().filter(|handle| !a.handles.contains(handle)).collect::<Vec<_>>();
             if let Some(corners) = frame {
-                let (points, bindings) = stretch::bind(doc, &targets, corners, plane)?;
+                let (points, bindings) = stretch::bind_frame(doc, &stretching, corners, plane)?;
                 a.points = points;
                 a.bindings = bindings;
             } else {
-                a.bindings.retain(|b| targets.contains(&b.handle));
+                a.bindings.retain(|b| stretching.contains(&b.handle));
                 let added = targets
                     .iter()
                     .copied()
-                    .filter(|h| !old_targets.contains(h))
+                    .filter(|h| !old_targets.contains(h) && !a.handles.contains(h))
                     .collect::<Vec<_>>();
                 let frame = a.points.clone();
                 a.bindings
@@ -1028,20 +1133,89 @@ fn evaluate_impl(
                 return Err("Specify a finite parameter position.");
             }
             position.z = p.end.z;
+            if !force {
+                position = constrain_parameter_position(baseline, &p, position)?;
+            }
             if p.linear {
                 let axis = (p.end - p.base).normalize();
                 let length = (position - p.base).dot(axis);
                 if length < 1e-9 {
                     return Err("Specify a positive parameter length.");
                 }
-                position = p.base + axis * length;
+                let mut snapped_length = length;
+                if !force {
+                    if let Some(table) = super::block_properties_table::table(baseline, definition)?
+                    {
+                        if table.must_match
+                            && table.columns.iter().any(|column| {
+                                column.handle == p.handle
+                                    && column
+                                        .connection_name
+                                        .eq_ignore_ascii_case("UpdatedDistance")
+                            })
+                        {
+                            let values = table
+                                .columns
+                                .iter()
+                                .position(|column| {
+                                    column.handle == p.handle
+                                        && column
+                                            .connection_name
+                                            .eq_ignore_ascii_case("UpdatedDistance")
+                                })
+                                .map(|i| {
+                                    table
+                                        .rows
+                                        .iter()
+                                        .filter_map(|r| r.get(i).copied())
+                                        .collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default();
+                            if let Some(nearest) = values.iter().copied().min_by(|a, b| {
+                                (a - length)
+                                    .abs()
+                                    .total_cmp(&(b - length).abs())
+                                    .then_with(|| a.total_cmp(b))
+                            }) {
+                                snapped_length = nearest;
+                            }
+                        }
+                    }
+                }
+                position = p.base + axis * snapped_length;
             }
             if p.rotation {
                 let delta = position - p.base;
                 if delta.length() < 1e-9 {
                     return Err("Specify a rotation direction away from the parameter base.");
                 }
-                position = p.base + delta.normalize() * p.end.distance(p.base);
+                let mut angle = delta.y.atan2(delta.x);
+                if !force {
+                    if let Some(table) = super::block_properties_table::table(baseline, definition)?
+                    {
+                        if table.must_match {
+                            if let Some(col) = table.columns.iter().position(|column| {
+                                column.handle == p.handle
+                                    && column.connection_name.eq_ignore_ascii_case("UpdatedAngle")
+                            }) {
+                                if let Some(nearest) = table
+                                    .rows
+                                    .iter()
+                                    .filter_map(|row| row.get(col).copied())
+                                    .min_by(|a, b| {
+                                        angle_distance(*a, angle)
+                                            .total_cmp(&angle_distance(*b, angle))
+                                            .then_with(|| a.total_cmp(b))
+                                    })
+                                {
+                                    angle = nearest;
+                                }
+                            }
+                        }
+                    }
+                }
+                position =
+                    p.base + DVec3::new(angle.cos(), angle.sin(), 0.0) * p.end.distance(p.base);
             }
             Value::Point(position)
         }
@@ -1129,8 +1303,23 @@ fn evaluate_impl(
                 return Err("This parameter uses value constraints or chaining not supported yet.");
             }
             let end = current(&staged, &q);
+            let ObjectType::DynamicBlock(action_object) = &baseline.objects[action_handle] else {
+                unreachable!()
+            };
+            let move_translation = match &action_object.data {
+                DynamicBlockData::MoveAction(move_action) => {
+                    Some(action_move_delta(&q, end, &move_action.connections)
+                        .map(|delta| options::displacement(&move_action.offsets, delta)).transpose()?)
+                }
+                _ => None,
+            };
             let transform = match kind {
-                Kind::Move | Kind::Stretch | Kind::PolarStretch => {
+                Kind::Move => crate::command::EntityTransform::Translate(
+                    move_translation
+                        .flatten()
+                        .ok_or("This Move action uses unsupported parameter connections.")?,
+                ),
+                Kind::Stretch | Kind::PolarStretch => {
                     crate::command::EntityTransform::Translate(end - q.end)
                 }
                 Kind::Rotate => {
@@ -1165,45 +1354,16 @@ fn evaluate_impl(
                 }
                 Kind::Array => unreachable!(),
             };
-            // Imported actions with custom multipliers/offsets/chaining must
-            // not silently behave like the simple actions authored here.
+            // Do not silently ignore retained native action chains.
             if !a.action_ids.is_empty() {
                 return Err("Chained actions are not supported yet.");
             }
-            let ObjectType::DynamicBlock(o) = &baseline.objects[action_handle] else {
-                unreachable!()
-            };
+            let o = action_object;
             match &o.data {
                 DynamicBlockData::MoveAction(m)
-                    if m.offsets.distance_multiplier != 1.
-                        || m.offsets.angle_offset != 0.
-                        || m.offsets.flags != 0
-                        || m.connections
-                            != if q.point {
-                                [
-                                    BlockConnection {
-                                        code: q.id,
-                                        name: "XDelta".into(),
-                                    },
-                                    BlockConnection {
-                                        code: q.id,
-                                        name: "YDelta".into(),
-                                    },
-                                ]
-                            } else {
-                                [
-                                    BlockConnection {
-                                        code: q.id,
-                                        name: "EndXDelta".into(),
-                                    },
-                                    BlockConnection {
-                                        code: q.id,
-                                        name: "EndYDelta".into(),
-                                    },
-                                ]
-                            } =>
+                    if action_move_delta(&q, end, &m.connections).is_none() =>
                 {
-                    return Err("This Move action uses options not supported yet.")
+                    return Err("This Move action uses options not supported yet.");
                 }
                 DynamicBlockData::FlipAction(f)
                     if f.connections
@@ -1214,7 +1374,7 @@ fn evaluate_impl(
                             }
                         }) =>
                 {
-                    return Err("This Flip action uses options not supported yet.")
+                    return Err("This Flip action uses options not supported yet.");
                 }
                 DynamicBlockData::RotateAction(r)
                     if !r.action.dependent
@@ -1230,7 +1390,7 @@ fn evaluate_impl(
                                 name: name.into(),
                             }) =>
                 {
-                    return Err("This Rotate action uses options not supported yet.")
+                    return Err("This Rotate action uses options not supported yet.");
                 }
                 DynamicBlockData::ScaleAction(s)
                     if !s.action.dependent
@@ -1246,12 +1406,14 @@ fn evaluate_impl(
                                 name: name.into(),
                             }) =>
                 {
-                    return Err("This Scale action uses options not supported yet.")
+                    return Err("This Scale action uses options not supported yet.");
                 }
                 _ => {}
             }
             if let DynamicBlockData::StretchAction(s) = &o.data {
-                stretch::apply(&mut entity, s, end - q.end)?;
+                let delta = action_move_delta(&q, end, &s.connections)
+                    .ok_or("This Stretch action uses unsupported parameter connections.")?;
+                stretch::apply(&mut entity, s, options::displacement(&s.offsets, delta)?)?;
             } else if let DynamicBlockData::PolarStretchAction(s) = &o.data {
                 if s.connections.iter().any(|c| c.code != q.id) {
                     return Err("This Polar Stretch action uses a different parameter binding.");
@@ -1260,7 +1422,7 @@ fn evaluate_impl(
                 if direction.length() <= 1e-9 {
                     return Err("The Polar parameter needs a nonzero distance.");
                 }
-                stretch::apply_polar(&mut entity, &s.bindings, q.base, q.end, end)?;
+                stretch::apply_polar(&mut entity, s, q.base, q.end, end)?;
             } else {
                 super::view::dispatch::apply_transform(&mut entity, &transform);
             }
@@ -1393,41 +1555,142 @@ fn supported_parameter(doc: &CadDocument, handle: Handle) -> bool {
     let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&handle) else {
         return false;
     };
-    let distance = |s: &codec::objects::BlockParameterValueSet| {
-        s.flags == 1
-            && s.minimum == 0.
-            && s.maximum == 0.
-            && s.increment == 0.
-            && s.values.is_empty()
+    let valid_value_set = |s: &codec::objects::BlockParameterValueSet| {
+        s.flags & !0x0f == 0
+            && !(s.flags & 4 != 0 && s.flags & 8 != 0)
+            && s.minimum.is_finite()
+            && s.maximum.is_finite()
+            && s.increment.is_finite()
+            && (s.flags & 4 == 0 || s.increment > 0.)
+            && (s.flags & 8 == 0 || !s.values.is_empty())
+            && s.values.iter().all(|v| v.is_finite())
+            && !s.values.windows(2).any(|pair| pair[0] >= pair[1])
+            && !(s.flags & 3 == 3 && s.minimum > s.maximum)
     };
     match &o.data {
         DynamicBlockData::FlipParameter(p) => !p.parameter.parameter.chain_actions,
         DynamicBlockData::RotationParameter(p) => {
-            !p.parameter.parameter.chain_actions
-                && p.value_set.flags == 3
-                && p.value_set.minimum == 0.
-                && p.value_set.maximum == std::f64::consts::TAU
-                && p.value_set.increment == 0.
-                && p.value_set.values.is_empty()
+            !p.parameter.parameter.chain_actions && valid_value_set(&p.value_set)
         }
         DynamicBlockData::PointParameter(p) => !p.parameter.parameter.chain_actions,
         DynamicBlockData::LinearParameter(p) => {
-            !p.parameter.parameter.chain_actions && distance(&p.value_set)
+            !p.parameter.parameter.chain_actions && valid_value_set(&p.value_set)
         }
         DynamicBlockData::XYParameter(p) => {
             !p.parameter.parameter.chain_actions
-                && distance(&p.x_value_set)
-                && distance(&p.y_value_set)
+                && valid_value_set(&p.x_value_set)
+                && valid_value_set(&p.y_value_set)
         }
         DynamicBlockData::PolarParameter(p) => {
             !p.parameter.parameter.chain_actions
-                && distance(&p.distance_value_set)
-                && p.angle_value_set.flags == 3
-                && p.angle_value_set.minimum == 0.
-                && p.angle_value_set.maximum == std::f64::consts::TAU
-                && p.angle_value_set.increment == 0.
-                && p.angle_value_set.values.is_empty()
+                && valid_value_set(&p.distance_value_set)
+                && valid_value_set(&p.angle_value_set)
         }
         _ => false,
     }
+}
+
+fn constrain_value_set(value: f64, set: &codec::objects::BlockParameterValueSet) -> f64 {
+    let minimum = (set.flags & 1 != 0).then_some(set.minimum);
+    let maximum = (set.flags & 2 != 0).then_some(set.maximum);
+    let clamp = |value: f64| {
+        value
+            .max(minimum.unwrap_or(f64::NEG_INFINITY))
+            .min(maximum.unwrap_or(f64::INFINITY))
+    };
+    let value = clamp(value);
+    if set.flags & 8 != 0 {
+        return set
+            .values
+            .iter()
+            .copied()
+            .filter(|candidate| {
+                minimum.is_none_or(|min| *candidate >= min)
+                    && maximum.is_none_or(|max| *candidate <= max)
+            })
+            .min_by(|a, b| {
+                (a - value)
+                    .abs()
+                    .total_cmp(&(b - value).abs())
+                    .then_with(|| a.total_cmp(b))
+            })
+            .unwrap_or(value);
+    }
+    if set.flags & 4 != 0 {
+        let origin = minimum.unwrap_or(0.0);
+        let steps = ((value - origin) / set.increment).round();
+        return clamp(origin + steps * set.increment);
+    }
+    value
+}
+
+fn constrain_angle(value: f64, set: &codec::objects::BlockParameterValueSet) -> f64 {
+    if set.flags == 0 {
+        return value;
+    }
+    let origin = if set.flags & 1 != 0 { set.minimum } else { 0.0 };
+    let angle = origin + (value - origin).rem_euclid(std::f64::consts::TAU);
+    if set.flags & 8 != 0 {
+        return set
+            .values
+            .iter()
+            .copied()
+            .filter(|candidate| {
+                (set.flags & 1 == 0 || *candidate >= set.minimum)
+                    && (set.flags & 2 == 0 || *candidate <= set.maximum)
+            })
+            .min_by(|a, b| {
+                angle_distance(*a, angle)
+                    .total_cmp(&angle_distance(*b, angle))
+                    .then_with(|| a.total_cmp(b))
+            })
+            .unwrap_or(angle);
+    }
+    constrain_value_set(angle, set)
+}
+
+fn constrain_parameter_position(
+    doc: &CadDocument,
+    p: &Parameter,
+    mut position: DVec3,
+) -> Result<DVec3, &'static str> {
+    let Some(ObjectType::DynamicBlock(object)) = doc.objects.get(&p.handle) else {
+        return Ok(position);
+    };
+    match &object.data {
+        DynamicBlockData::LinearParameter(parameter) => {
+            let axis = (p.end - p.base).normalize();
+            let length = (position - p.base).dot(axis);
+            let length = constrain_value_set(length, &parameter.value_set);
+            position = p.base + axis * length;
+        }
+        DynamicBlockData::PolarParameter(parameter) => {
+            let delta = position - p.base;
+            let length = delta.length();
+            let distance = constrain_value_set(length, &parameter.distance_value_set);
+            let input_angle = delta.y.atan2(delta.x);
+            let angle = constrain_angle(input_angle, &parameter.angle_value_set);
+            if angle_distance(angle, input_angle) > 1e-14 {
+                position = p.base + DVec3::new(angle.cos(), angle.sin(), 0.0) * distance;
+            } else if distance != length && length > 1e-12 {
+                position = p.base + delta * (distance / length);
+            }
+        }
+        DynamicBlockData::XYParameter(parameter) => {
+            let delta = position - p.base;
+            position = p.base
+                + DVec3::new(
+                    constrain_value_set(delta.x, &parameter.x_value_set),
+                    constrain_value_set(delta.y, &parameter.y_value_set),
+                    delta.z,
+                );
+        }
+        DynamicBlockData::RotationParameter(parameter) => {
+            let delta = position - p.base;
+            let angle = constrain_angle(delta.y.atan2(delta.x), &parameter.value_set);
+            position = p.base + DVec3::new(angle.cos(), angle.sin(), 0.0) * delta.length();
+        }
+        _ => {}
+    }
+    Ok(position)
 }

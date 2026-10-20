@@ -6,6 +6,21 @@ use codec::types::Vector2;
 pub(crate) fn control_points(e: &EntityType) -> Result<Vec<DVec3>, &'static str> {
     let points = match e {
         EntityType::Line(l) => vec![v(l.start), v(l.end)],
+        EntityType::Arc(a) => {
+            if a.normal.x.abs() > 1e-10 || a.normal.y.abs() > 1e-10 {
+                return Err("Stretch requires an arc parallel to the parameter's XY plane.");
+            }
+            vec![v(a.start_point_wcs()), v(a.end_point_wcs())]
+        }
+        EntityType::Circle(c) => {
+            vec![v(codec::types::Matrix3::arbitrary_axis(c.normal) * c.center)]
+        }
+        EntityType::Ellipse(e) => vec![v(e.center)],
+        EntityType::Point(p) => vec![v(p.location)],
+        EntityType::Text(t) => vec![v(
+            codec::types::Matrix3::arbitrary_axis(t.normal) * t.insertion_point
+        )],
+        EntityType::MText(t) => vec![v(t.insertion_point)],
         EntityType::LwPolyline(p) => {
             let p = crate::entities::curve::lwpolyline_world_xy(p)
                 .ok_or("Stretch requires a planar XY lightweight polyline.")?;
@@ -14,7 +29,7 @@ pub(crate) fn control_points(e: &EntityType) -> Result<Vec<DVec3>, &'static str>
                 .map(|v| DVec3::new(v.location.x, v.location.y, p.elevation))
                 .collect()
         }
-        _ => return Err("Stretch currently supports lines and planar lightweight polylines."),
+        _ => return Err("Select a supported Stretch object."),
     };
     if points.is_empty() || points.iter().any(|p| !p.is_finite()) {
         return Err("Stretch targets need finite vertices.");
@@ -22,24 +37,95 @@ pub(crate) fn control_points(e: &EntityType) -> Result<Vec<DVec3>, &'static str>
     Ok(points)
 }
 
-pub(crate) fn bind(
-    doc: &CadDocument,
-    targets: &[Handle],
-    corners: [DVec3; 2],
-    plane: f64,
-) -> Result<(Vec<Vector2>, Vec<BlockStretchHandle>), &'static str> {
-    if corners
-        .iter()
-        .any(|p| !p.is_finite() || (p.z - plane).abs() > 1e-8)
+pub(crate) fn native_frame(corners: &[DVec3], plane: f64) -> Result<Vec<Vector2>, &'static str> {
+    if corners.len() < 2
+        || corners
+            .iter()
+            .any(|p| !p.is_finite() || (p.z - plane).abs() > 1e-8)
     {
         return Err("Specify finite stretch-frame corners in the parameter's XY plane.");
     }
-    let low = corners[0].min(corners[1]);
-    let high = corners[0].max(corners[1]);
-    if high.x - low.x < 1e-9 || high.y - low.y < 1e-9 {
-        return Err("The stretch frame needs a nonzero width and height.");
+    let points = if corners.len() == 2 {
+        let low = corners[0].min(corners[1]);
+        let high = corners[0].max(corners[1]);
+        if high.x - low.x < 1e-9 || high.y - low.y < 1e-9 {
+            return Err("The stretch frame needs a nonzero width and height.");
+        }
+        vec![Vector2::new(low.x, low.y), Vector2::new(high.x, high.y)]
+    } else {
+        corners
+            .iter()
+            .map(|point| Vector2::new(point.x, point.y))
+            .collect()
+    };
+    validate_polygon(&outline(&points, plane))?;
+    Ok(points)
+}
+
+fn validate_polygon(points: &[Vector3]) -> Result<(), &'static str> {
+    let error = "Use a simple polygon with distinct vertices and nonzero area.";
+    if points.len() < 3 {
+        return Err(error);
     }
-    let points = vec![Vector2::new(low.x, low.y), Vector2::new(high.x, high.y)];
+    let points = points
+        .iter()
+        .map(|point| v(*point) - v(points[0]))
+        .collect::<Vec<_>>();
+    let scale = points
+        .iter()
+        .map(|point| point.abs().max_element())
+        .fold(0., f64::max);
+    let coordinate_tolerance = f64::EPSILON * scale * 64.;
+    let area_tolerance = coordinate_tolerance * scale;
+    let cross = |a: DVec3, b: DVec3, c: DVec3| (b - a).cross(c - a).z;
+    let on = |a: DVec3, b: DVec3, p: DVec3| {
+        cross(a, b, p).abs() <= area_tolerance
+            && p.x >= a.x.min(b.x) - coordinate_tolerance
+            && p.x <= a.x.max(b.x) + coordinate_tolerance
+            && p.y >= a.y.min(b.y) - coordinate_tolerance
+            && p.y <= a.y.max(b.y) + coordinate_tolerance
+    };
+    let mut area = 0.;
+    for i in 0..points.len() {
+        let (a, b) = (points[i], points[(i + 1) % points.len()]);
+        if a.distance(b) < 1e-9 {
+            return Err(error);
+        }
+        area += a.cross(b).z;
+        for j in i + 1..points.len() {
+            if j == i + 1 || (i == 0 && j == points.len() - 1) {
+                continue;
+            }
+            let (c, d) = (points[j], points[(j + 1) % points.len()]);
+            let (ab_c, ab_d, cd_a, cd_b) = (
+                cross(a, b, c),
+                cross(a, b, d),
+                cross(c, d, a),
+                cross(c, d, b),
+            );
+            if (ab_c * ab_d < 0. && cd_a * cd_b < 0.)
+                || on(a, b, c)
+                || on(a, b, d)
+                || on(c, d, a)
+                || on(c, d, b)
+            {
+                return Err(error);
+            }
+        }
+    }
+    if !area.is_finite() || area.abs() <= area_tolerance {
+        return Err(error);
+    }
+    Ok(())
+}
+
+pub(crate) fn bind_frame(
+    doc: &CadDocument,
+    targets: &[Handle],
+    frame: &[DVec3],
+    plane: f64,
+) -> Result<(Vec<Vector2>, Vec<BlockStretchHandle>), &'static str> {
+    let points = native_frame(frame, plane)?;
     let bindings = bind_existing(doc, targets, &points, plane)?;
     Ok((points, bindings))
 }
@@ -103,14 +189,21 @@ pub(crate) fn bind_existing(
 }
 
 pub(crate) fn validate_options(a: &BlockStretchAction) -> Result<(), &'static str> {
-    if a.offsets.distance_multiplier != 1.
-        || a.offsets.angle_offset != 0.
-        || a.offsets.flags != 0
-        || !a.codes.is_empty()
+    options::validate(&a.offsets)?;
+    if !a.codes.is_empty()
         || !a.action.action_ids.is_empty()
         || a.connections[0].code != a.connections[1].code
-        || a.connections[0].name != "EndXDelta"
-        || a.connections[1].name != "EndYDelta"
+        || !matches!(
+            [
+                a.connections[0].name.as_str(),
+                a.connections[1].name.as_str()
+            ],
+            ["XDelta", "YDelta"]
+                | ["BaseXDelta", "BaseYDelta"]
+                | ["EndXDelta", "BaseYDelta"]
+                | ["BaseXDelta", "EndYDelta"]
+                | ["EndXDelta", "EndYDelta"]
+        )
     {
         return Err("This Stretch action uses options or parameter bindings not supported yet.");
     }
@@ -177,8 +270,8 @@ pub(crate) fn validate_polar(
         code: connection_code,
         name: name.into(),
     });
-    if a.distance_multiplier != 1.
-        || a.angle_offset != 0.
+    if !a.distance_multiplier.is_finite()
+        || !a.angle_offset.is_finite()
         || a.connections != connections
         || !a.codes.is_empty()
         || !a.extra.is_empty()
@@ -193,7 +286,9 @@ pub(crate) fn validate_polar(
     let mut handles = a.handles.clone();
     handles.sort();
     handles.dedup();
-    if handles != a.handles || handles.iter().any(|h| !a.action.dependencies.contains(h)) {
+    if handles.len() != a.handles.len()
+        || handles.iter().any(|h| !a.action.dependencies.contains(h))
+    {
         return Err("The Polar Stretch action has invalid target bindings.");
     }
     let mut seen = std::collections::BTreeSet::new();
@@ -234,6 +329,9 @@ pub(crate) fn apply(
     a: &BlockStretchAction,
     delta: DVec3,
 ) -> Result<(), &'static str> {
+    if delta == DVec3::ZERO {
+        return Ok(());
+    }
     let Some(binding) = a
         .handles
         .iter()
@@ -246,6 +344,26 @@ pub(crate) fn apply(
         return Ok(());
     };
     match e {
+        EntityType::Arc(arc) => {
+            if !crate::modules::draw::modify::stretch::stretch_arc_endpoints(
+                arc,
+                binding.indexes.contains(&0),
+                binding.indexes.contains(&1),
+                delta,
+            ) {
+                return Err("The Stretch displacement collapses the arc chord.");
+            }
+        }
+        EntityType::Circle(_)
+        | EntityType::Ellipse(_)
+        | EntityType::Point(_)
+        | EntityType::Text(_)
+        | EntityType::MText(_) => {
+            crate::scene::view::dispatch::apply_transform(
+                e,
+                &crate::command::EntityTransform::Translate(delta),
+            );
+        }
         EntityType::Line(l) => {
             for index in &binding.indexes {
                 let at = match index {
@@ -293,24 +411,54 @@ pub(crate) fn apply(
     Ok(())
 }
 
-/// Apply the authored polar displacement to only the vertices frozen in the
-/// Polar Stretch bindings; targets without a partial binding move as a whole.
+/// Rotate the selection first, then extend frozen vertices along the updated
+/// polar direction. Explicit rotate-only targets retain their original size.
 pub(crate) fn apply_polar(
     e: &mut EntityType,
-    bindings: &[BlockStretchHandle],
+    action: &BlockPolarStretchAction,
     base: DVec3,
     old_end: DVec3,
     new_end: DVec3,
 ) -> Result<(), &'static str> {
     let (old_vec, new_vec) = (old_end - base, new_end - base);
-    if old_vec.length() <= 1e-9 || new_vec.length() <= 1e-9 {
+    let (old_length, new_length) = (old_vec.length(), new_vec.length());
+    if !old_length.is_finite()
+        || !new_length.is_finite()
+        || old_length <= 1e-9
+        || new_length <= 1e-9
+    {
         return Err("The Polar parameter needs a nonzero distance.");
     }
-    let action = BlockStretchAction {
-        handles: bindings.to_vec(),
+    if old_end == new_end {
+        return Ok(());
+    }
+    let angle = old_vec.cross(new_vec).z.atan2(old_vec.dot(new_vec));
+    if angle != 0. {
+        crate::scene::view::dispatch::apply_transform(
+            e,
+            &crate::command::EntityTransform::Rotate {
+                center: base,
+                axis: DVec3::Z,
+                angle_rad: angle,
+            },
+        );
+    }
+    if action.handles.contains(&e.common().handle) {
+        return Ok(());
+    }
+    let delta = options::displacement(
+        &BlockActionOffsets {
+            distance_multiplier: action.distance_multiplier,
+            angle_offset: action.angle_offset,
+            flags: 0,
+        },
+        new_vec / new_length * (new_length - old_length),
+    )?;
+    let stretch = BlockStretchAction {
+        handles: action.bindings.clone(),
         ..Default::default()
     };
-    apply(e, &action, new_end - old_end)
+    apply(e, &stretch, delta)
 }
 
 pub(crate) fn outline(points: &[Vector2], z: f64) -> Vec<Vector3> {

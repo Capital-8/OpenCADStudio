@@ -1522,6 +1522,8 @@ common =
     .selection = Zaznaczenie
     .pick-box-size = { common.pickbox }: { common.size }
     .controls-both-the-visible-selection-box-and-the-click-aperture = Steruje widocznym polem wyboru oraz obszarem kliknięcia.
+    .aperture-size = Rozmiar apertury
+    .how-close-in-pixels-the-cursor-must-come-to-catch-an-object-snap = Jak blisko, w pikselach, musi podejść kursor, aby uchwycić przyciąganie do obiektu.
     .visual-effect-settings = { common.visual-effects } · { properties.settings }
     .applications = Aplikacje
     .installed-plugins-and-their-sources = Zainstalowane wtyczki i ich źródła
@@ -2595,6 +2597,7 @@ file =
     .cmd-cannot-create-folder-e = __ocs_fmt_0__: nie można utworzyć folderu (__ocs_fmt_1__).
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: nie można spakować rysunku (__ocs_fmt_1__).
     .cmd-packaged-copied-file-s-into = __ocs_fmt_0__: spakowane pliki __ocs_fmt_1__ do __ocs_fmt_2__
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: nie znaleziono __ocs_fmt_1__ przywołanych plików: __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: pominięto __ocs_fmt_1__ przywołanych plików, niezaładowanych w tej sesji: __ocs_fmt_2__
     .error-external-change-checks-remain-active = __ocs_fmt_0__. Kontrole zmian zewnętrznych pozostają aktywne.
     .warning-external-change-checks-remain-active = __ocs_fmt_0__. Kontrole zmian zewnętrznych pozostają aktywne.
@@ -3099,7 +3102,6 @@ draw =
     .arc-specify-tangent-direction-for-the-start-point-of-arc = ARC  Określ kierunek stycznej w punkcie początkowym łuku:
     .arc-specify-radius-of-arc = ARC  Określ promień łuku:
     .chord-length = Długość cięciwy
-
 
 modify =
     .add-vertex = Dodaj wierzchołek
@@ -4548,7 +4550,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2-punktowy
     .cube = Sześcian
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Wybierz obiekty do usunięcia:
@@ -6680,6 +6681,7 @@ dgn-import =
     .help-import = Imports a file of the chosen format with the format's importer.
     .blank = Filename cannot be blank
     .invalid-dgn = Invalid or unsupported DGN file.
+    .nothing-to-import = The DGN model has nothing that can be imported.
 import-3ds =
     .title = 3D Studio Import
     .summary = { $objects } objects, { $materials } materials
@@ -6715,6 +6717,22 @@ import-3ds =
     .cancel = Cancel
     .import = Import
     .help = Imports the checked objects of a 3D Studio file: meshes as polyface meshes with their materials, cameras as named views.
+import-3ds-alert =
+    .title = Obiekt z wieloma materiałami
+    .assignment = Przypisanie materiału
+    .split = Podziel według materiału
+    .first = Pierwszy materiał
+    .select = Wybierz materiał
+    .material = Materiał
+    .none = *BRAK*
+    .note-split = Obiekt jest dzielony na jedną siatkę na materiał; każda część otrzymuje własny materiał.
+    .note-first = Cały obiekt otrzymuje swój pierwszy materiał.
+    .note-select = Cały obiekt otrzymuje wybrany materiał; *BRAK* nie przypisuje materiału.
+    .remaining = Pozostałe obiekty
+    .remember = Użyj tego wyboru dla kolejnych obiektów
+    .remember-note = Gdy wyłączone, pytanie pojawia się ponownie dla każdego obiektu z wieloma materiałami.
+    .apply = Zastosuj
+    .help = Obiekt używa wielu materiałów: podziel go na jedną siatkę na materiał albo przypisz mu pierwszy lub wybrany materiał. Anuluj zatrzymuje import na tym obiekcie.
 import-panel =
     .dgn-import = Import DGN
     .recognize-shx = Rozpoznaj tekst SHX
@@ -6742,6 +6760,28 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = PDF chroniony hasłem
+    .step-open = Hasło otwarcia
+    .step-permission = Hasło uprawnień
+    .open-password = Hasło otwarcia
+    .permission-password = Hasło uprawnień
+    .password = Hasło
+    .open-hint = Ten dokument wymaga hasła przed otwarciem. Hasło nie jest zapisywane w rysunku.
+    .permission-hint = Użycie dokumentu jest ograniczone; import wymaga hasła, które znosi ograniczenia.
+    .wrong = Nieprawidłowe hasło. Wpisz je ponownie i kliknij Otwórz.
+    .session = Sesja
+    .remember = Zapamiętaj w tej sesji
+    .remember-hint = Zapamiętane hasła są najpierw próbowane w innych plikach PDF otwieranych w tej sesji.
+    .open = Otwórz
+    .help = Hasło otwarcia odczytuje zaszyfrowany plik PDF, co wystarcza do jego dołączenia; import jego geometrii wymaga też hasła uprawnień, które znosi ograniczenia.
+    .remembered =
+        Plik PDF chroniony hasłem: { $path }
+        Otwarto wcześniej podanym hasłem.
+    .refused =
+        { $path }
+        Nie można otworzyć tego pliku PDF.
+        Jest zaszyfrowany i wymaga hasła.
 
 calc =
     .invalid-number = nieprawidłowa liczba '__ocs_fmt_0__'

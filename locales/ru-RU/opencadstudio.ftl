@@ -1526,6 +1526,8 @@ common =
     .selection = Выбор
     .pick-box-size = { common.pickbox }: { common.size }
     .controls-both-the-visible-selection-box-and-the-click-aperture = Управляет видимым прицелом выбора и областью щелчка.
+    .aperture-size = Размер апертуры
+    .how-close-in-pixels-the-cursor-must-come-to-catch-an-object-snap = Насколько близко, в пикселях, должен подойти курсор, чтобы захватить объектную привязку.
     .visual-effect-settings = { common.visual-effects } · { properties.settings }
     .applications = Приложения
     .installed-plugins-and-their-sources = Установленные плагины и их источники
@@ -2599,6 +2601,7 @@ file =
     .cmd-cannot-create-folder-e = __ocs_fmt_0__: не может создавать папку (__ocs_fmt_1__).
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: не удалось упаковать чертёж (__ocs_fmt_1__).
     .cmd-packaged-copied-file-s-into = __ocs_fmt_0__: упакованный файл(ы) __ocs_fmt_1__ в __ocs_fmt_2__
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: не найдено __ocs_fmt_1__ связанных файлов: __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: пропущено __ocs_fmt_1__ связанных файлов, не загруженных в этом сеансе: __ocs_fmt_2__
     .error-external-change-checks-remain-active = __ocs_fmt_0__ Проверки внешних изменений остаются активными.
     .warning-external-change-checks-remain-active = __ocs_fmt_0__ Проверки внешних изменений остаются активными.
@@ -3103,7 +3106,6 @@ draw =
     .arc-specify-tangent-direction-for-the-start-point-of-arc = ARC  Укажите направление касательной в начальной точке дуги:
     .arc-specify-radius-of-arc = ARC  Укажите радиус дуги:
     .chord-length = Длина хорды
-
 
 modify =
     .add-vertex = Добавить вершину
@@ -4550,7 +4552,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2-точка
     .cube = Куб
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Выберите объекты для удаления:
@@ -6682,6 +6683,7 @@ dgn-import =
     .help-import = Imports a file of the chosen format with the format's importer.
     .blank = Filename cannot be blank
     .invalid-dgn = Invalid or unsupported DGN file.
+    .nothing-to-import = The DGN model has nothing that can be imported.
 import-3ds =
     .title = 3D Studio Import
     .summary = { $objects } objects, { $materials } materials
@@ -6717,6 +6719,22 @@ import-3ds =
     .cancel = Cancel
     .import = Import
     .help = Imports the checked objects of a 3D Studio file: meshes as polyface meshes with their materials, cameras as named views.
+import-3ds-alert =
+    .title = Объект с несколькими материалами
+    .assignment = Назначение материала
+    .split = Разделить по материалу
+    .first = Первый материал
+    .select = Выбрать материал
+    .material = Материал
+    .none = *НЕТ*
+    .note-split = Объект делится на отдельную сеть для каждого материала; каждая часть получает свой материал.
+    .note-first = Весь объект получает свой первый материал.
+    .note-select = Весь объект получает выбранный материал; *НЕТ* не назначает материал.
+    .remaining = Оставшиеся объекты
+    .remember = Использовать этот выбор для следующих объектов
+    .remember-note = Если выключено, вопрос задаётся заново для каждого объекта с несколькими материалами.
+    .apply = Применить
+    .help = Объект использует несколько материалов: разделите его на сети по материалам или назначьте ему первый либо выбранный материал. Отмена останавливает импорт на этом объекте.
 import-panel =
     .dgn-import = Импорт DGN
     .recognize-shx = Распознать текст SHX
@@ -6744,6 +6762,28 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = PDF, защищённый паролем
+    .step-open = Пароль открытия
+    .step-permission = Пароль разрешений
+    .open-password = Пароль открытия
+    .permission-password = Пароль разрешений
+    .password = Пароль
+    .open-hint = Этот документ запрашивает пароль перед открытием. Пароль не сохраняется в чертеже.
+    .permission-hint = Использование документа ограничено; для импорта нужен пароль, снимающий ограничения.
+    .wrong = Неверный пароль. Введите его снова и нажмите «Открыть».
+    .session = Сеанс
+    .remember = Запомнить на этот сеанс
+    .remember-hint = Запомненные пароли сначала пробуются для других PDF, открываемых в этом сеансе.
+    .open = Открыть
+    .help = Пароль открытия читает зашифрованный PDF, и этого достаточно для его подключения; для импорта его геометрии нужен ещё пароль разрешений, снимающий ограничения.
+    .remembered =
+        PDF-файл, защищённый паролем: { $path }
+        Открыт с ранее введённым паролем.
+    .refused =
+        { $path }
+        Не удаётся открыть этот PDF-файл.
+        Он зашифрован и требует пароль.
 
 calc =
     .invalid-number = недопустимое число '__ocs_fmt_0__'

@@ -1535,6 +1535,8 @@ common =
     .selection = التحديد
     .pick-box-size = { common.pickbox }: { common.size }
     .controls-both-the-visible-selection-box-and-the-click-aperture = يتحكم في مربع التحديد المرئي ومنطقة النقر معًا.
+    .aperture-size = حجم فتحة الالتقاط
+    .how-close-in-pixels-the-cursor-must-come-to-catch-an-object-snap = مدى قرب المؤشر، بالبكسل، اللازم لالتقاط نقطة التقاط الكائن.
     .visual-effect-settings = { common.visual-effects } · { properties.settings }
     .applications = التطبيقات
     .installed-plugins-and-their-sources = الإضافات المثبتة ومصادرها
@@ -2608,6 +2610,7 @@ file =
     .cmd-cannot-create-folder-e = __ocs_fmt_0__: تعذر إنشاء المجلد (__ocs_fmt_1__).
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: لا يمكن حزم الرسم (__ocs_fmt_1__).
     .cmd-packaged-copied-file-s-into = __ocs_fmt_0__: جُمّع __ocs_fmt_1__ ملف في __ocs_fmt_2__
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: لم يتم العثور على __ocs_fmt_1__ ملف(ات) مرجعية: __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: تم تخطي __ocs_fmt_1__ ملفًا مرجعيًا غير محمّل في هذه الجلسة: __ocs_fmt_2__
     .error-external-change-checks-remain-active = __ocs_fmt_0__. تظل فحوص التغيير الخارجي نشطة.
     .warning-external-change-checks-remain-active = __ocs_fmt_0__. تظل فحوص التغيير الخارجي نشطة.
@@ -3112,7 +3115,6 @@ draw =
     .arc-specify-tangent-direction-for-the-start-point-of-arc = ARC  حدد اتجاه المماس عند نقطة بداية القوس:
     .arc-specify-radius-of-arc = ARC  حدد نصف قطر القوس:
     .chord-length = طول الوتر
-
 
 modify =
     .add-vertex = إضافة رأس
@@ -4561,7 +4563,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = نقطتان
     .cube = مكعب
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  حدد الكائنات المراد حذفها:
@@ -6693,6 +6694,7 @@ dgn-import =
     .help-import = Imports a file of the chosen format with the format's importer.
     .blank = Filename cannot be blank
     .invalid-dgn = Invalid or unsupported DGN file.
+    .nothing-to-import = The DGN model has nothing that can be imported.
 import-3ds =
     .title = 3D Studio Import
     .summary = { $objects } objects, { $materials } materials
@@ -6728,6 +6730,22 @@ import-3ds =
     .cancel = Cancel
     .import = Import
     .help = Imports the checked objects of a 3D Studio file: meshes as polyface meshes with their materials, cameras as named views.
+import-3ds-alert =
+    .title = كائن متعدد المواد
+    .assignment = تعيين المادة
+    .split = تقسيم حسب المادة
+    .first = المادة الأولى
+    .select = تحديد مادة
+    .material = المادة
+    .none = *لا شيء*
+    .note-split = يُقسَّم الكائن إلى شبكة واحدة لكل مادة؛ ويأخذ كل جزء مادته الخاصة.
+    .note-first = يأخذ الكائن بأكمله مادته الأولى.
+    .note-select = يأخذ الكائن بأكمله المادة المختارة؛ و*لا شيء* لا يعيّن أي مادة.
+    .remaining = الكائنات المتبقية
+    .remember = استخدام هذا الاختيار للكائنات التالية
+    .remember-note = عند إيقافه، يُعاد السؤال لكل كائن متعدد المواد.
+    .apply = تطبيق
+    .help = يستخدم الكائن عدة مواد: قسّمه إلى شبكة لكل مادة، أو عيّن له مادته الأولى أو المادة المختارة. يؤدي الإلغاء إلى إيقاف الاستيراد عند هذا الكائن.
 import-panel =
     .dgn-import = استيراد DGN
     .recognize-shx = التعرف على نص SHX
@@ -6755,6 +6773,28 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = ملف PDF محمي بكلمة مرور
+    .step-open = كلمة مرور الفتح
+    .step-permission = كلمة مرور الأذونات
+    .open-password = كلمة مرور الفتح
+    .permission-password = كلمة مرور الأذونات
+    .password = كلمة المرور
+    .open-hint = يطلب هذا المستند كلمة مرور قبل فتحه. لا تُحفظ كلمة المرور في الرسم.
+    .permission-hint = استخدام المستند مقيد؛ يتطلب استيراده كلمة المرور التي تزيل القيود.
+    .wrong = كلمة مرور خاطئة. اكتبها مرة أخرى واضغط فتح.
+    .session = الجلسة
+    .remember = تذكّر في هذه الجلسة
+    .remember-hint = تُجرَّب كلمات المرور المحفوظة أولاً على ملفات PDF الأخرى المفتوحة في هذه الجلسة.
+    .open = فتح
+    .help = كلمة مرور الفتح تقرأ ملف PDF المشفر، وهذا يكفي لإرفاقه؛ أما استيراد هندسته فيتطلب أيضًا كلمة مرور الأذونات التي تزيل قيوده.
+    .remembered =
+        ملف PDF محمي بكلمة مرور: { $path }
+        فُتح بكلمة مرور أُدخلت سابقًا.
+    .refused =
+        { $path }
+        تعذر فتح ملف PDF هذا.
+        إنه مشفر ويتطلب كلمة مرور.
 
 calc =
     .invalid-number = رقم غير صالح '__ocs_fmt_0__'

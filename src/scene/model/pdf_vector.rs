@@ -14,7 +14,6 @@ use hayro::hayro_interpret::{
 };
 use hayro::hayro_syntax::content::ops::TypedInstruction;
 use hayro::hayro_syntax::object::Name;
-use hayro::hayro_syntax::Pdf;
 use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape};
 
 /// One segment of a path, in page inches.
@@ -251,7 +250,7 @@ fn read_page(path: &str, page: &str) -> Option<PageVectors> {
 
 fn read_page_with(path: &str, page: &str, images: bool) -> Option<PageVectors> {
     let bytes = super::pdf_raster::source_bytes(path)?;
-    let pdf = Pdf::new(bytes).ok()?;
+    let pdf = super::pdf_password::open(path, bytes).ok()?;
     let page_no = page.trim().parse::<usize>().ok()?;
     let page = pdf.pages().get(page_no.checked_sub(1)?)?;
     let (w, h) = page.render_dimensions();

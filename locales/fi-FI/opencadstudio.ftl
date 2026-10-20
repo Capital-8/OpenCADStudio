@@ -1522,6 +1522,8 @@ common =
     .selection = Valinta
     .pick-box-size = { common.pickbox }: { common.size }
     .controls-both-the-visible-selection-box-and-the-click-aperture = Säätää sekä näkyvää valintaruutua että napsautusaluetta.
+    .aperture-size = Kohdistusalueen koko
+    .how-close-in-pixels-the-cursor-must-come-to-catch-an-object-snap = Kuinka lähelle kohdistimen on tultava pikseleinä, jotta objektikohdistus tarttuu.
     .visual-effect-settings = { common.visual-effects } · { properties.settings }
     .applications = Sovellukset
     .installed-plugins-and-their-sources = Asennetut laajennukset ja niiden lähteet
@@ -2595,6 +2597,7 @@ file =
     .cmd-cannot-create-folder-e = __ocs_fmt_0__: kansiota (__ocs_fmt_1__) ei voi luoda.
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: piirustuksen paketointi epäonnistui (__ocs_fmt_1__).
     .cmd-packaged-copied-file-s-into = __ocs_fmt_0__: pakattu __ocs_fmt_1__-tiedosto(t) kohteeseen __ocs_fmt_2__
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: __ocs_fmt_1__ viitattua tiedostoa ei löytynyt: __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: ohitettiin __ocs_fmt_1__ viitattua tiedostoa, joita ei ladattu tässä istunnossa: __ocs_fmt_2__
     .error-external-change-checks-remain-active = __ocs_fmt_0__. Ulkoiset muutostarkastukset pysyvät aktiivisina.
     .warning-external-change-checks-remain-active = __ocs_fmt_0__. Ulkoiset muutostarkastukset pysyvät aktiivisina.
@@ -3099,7 +3102,6 @@ draw =
     .arc-specify-tangent-direction-for-the-start-point-of-arc = ARC  Määritä tangentin suunta kaaren alkupisteessä:
     .arc-specify-radius-of-arc = ARC  Määritä kaaren säde:
     .chord-length = Jänteen pituus
-
 
 modify =
     .add-vertex = Lisää kärkipiste
@@ -4548,7 +4550,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2-piste
     .cube = Kuutio
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Valitse poistettavat objektit:
@@ -6678,6 +6679,7 @@ dgn-import =
     .help-import = Imports a file of the chosen format with the format's importer.
     .blank = Filename cannot be blank
     .invalid-dgn = Invalid or unsupported DGN file.
+    .nothing-to-import = The DGN model has nothing that can be imported.
 import-3ds =
     .title = 3D Studio Import
     .summary = { $objects } objects, { $materials } materials
@@ -6713,6 +6715,22 @@ import-3ds =
     .cancel = Cancel
     .import = Import
     .help = Imports the checked objects of a 3D Studio file: meshes as polyface meshes with their materials, cameras as named views.
+import-3ds-alert =
+    .title = Usean materiaalin objekti
+    .assignment = Materiaalin määritys
+    .split = Jaa materiaalin mukaan
+    .first = Ensimmäinen materiaali
+    .select = Valitse materiaali
+    .material = Materiaali
+    .none = *EI MITÄÄN*
+    .note-split = Objekti jaetaan yhdeksi verkoksi materiaalia kohden; kukin osa saa oman materiaalinsa.
+    .note-first = Koko objekti saa ensimmäisen materiaalinsa.
+    .note-select = Koko objekti saa valitun materiaalin; *EI MITÄÄN* ei määritä materiaalia.
+    .remaining = Jäljellä olevat objektit
+    .remember = Käytä tätä valintaa seuraaville objekteille
+    .remember-note = Pois päältä kysytään uudelleen jokaiselle usean materiaalin objektille.
+    .apply = Käytä
+    .help = Objekti käyttää useita materiaaleja: jaa se yhdeksi verkoksi materiaalia kohden tai anna sille ensimmäinen tai valittu materiaali. Peruuta pysäyttää tuonnin tähän objektiin.
 import-panel =
     .dgn-import = DGN-tuonti
     .recognize-shx = Tunnista SHX-teksti
@@ -6740,6 +6758,28 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = Salasanalla suojattu PDF
+    .step-open = Avaussalasana
+    .step-permission = Käyttöoikeussalasana
+    .open-password = Avaussalasana
+    .permission-password = Käyttöoikeussalasana
+    .password = Salasana
+    .open-hint = Tämä asiakirja pyytää salasanaa ennen avaamista. Salasanaa ei tallenneta piirustukseen.
+    .permission-hint = Asiakirjan käyttöä on rajoitettu; tuonti vaatii salasanan, joka poistaa rajoitukset.
+    .wrong = Väärä salasana. Kirjoita se uudelleen ja paina Avaa.
+    .session = Istunto
+    .remember = Muista tämän istunnon ajan
+    .remember-hint = Muistettuja salasanoja kokeillaan ensin muihin tässä istunnossa avattaviin PDF-tiedostoihin.
+    .open = Avaa
+    .help = Avaussalasana lukee salatun PDF-tiedoston, mikä riittää sen liittämiseen; sen geometrian tuonti vaatii lisäksi käyttöoikeussalasanan, joka poistaa rajoitukset.
+    .remembered =
+        Salasanalla suojattu PDF-tiedosto: { $path }
+        Avattu aiemmin annetulla salasanalla.
+    .refused =
+        { $path }
+        Tätä PDF-tiedostoa ei voi avata.
+        Se on salattu ja vaatii salasanan.
 
 calc =
     .invalid-number = virheellinen luku '__ocs_fmt_0__'

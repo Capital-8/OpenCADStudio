@@ -850,7 +850,7 @@ fn bench_ui_ribbon_view_construction(runner: &mut BenchmarkRunner) {
 
     // Warm-up for allocator and tree settling
     for _ in 0..10 {
-        let _ = black_box(ribbon.view(false, false, 0, 0, false));
+        let _ = black_box(ribbon.view(false, false, 0, 0, false, None));
     }
 
     let n = if runner.quick_mode { 20 } else { 100 };
@@ -860,7 +860,7 @@ fn bench_ui_ribbon_view_construction(runner: &mut BenchmarkRunner) {
     for _ in 0..runs {
         let t0 = Instant::now();
         for _ in 0..n {
-            let elem = ribbon.view(false, false, 0, 0, false);
+            let elem = ribbon.view(false, false, 0, 0, false, None);
             black_box(elem);
         }
         let per_us = (t0.elapsed().as_micros() as f64) / (n as f64);
@@ -1581,6 +1581,8 @@ fn build_selection_overlay_element(
             snap_angle_deg: 0.0,
             point_mode: false,
             pick_pending: false,
+            matchprop_source_pick: false,
+            matchprop_pickbox: false,
             hide_arms: false,
             snap_color: None,
             snap_size: Default::default(),

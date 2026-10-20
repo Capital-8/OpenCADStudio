@@ -1521,6 +1521,8 @@ common =
     .selection = Selectie
     .pick-box-size = { common.pickbox }: { common.size }
     .controls-both-the-visible-selection-box-and-the-click-aperture = Bepaalt zowel het zichtbare selectievak als het klikgebied.
+    .aperture-size = Aperturegrootte
+    .how-close-in-pixels-the-cursor-must-come-to-catch-an-object-snap = Hoe dicht de cursor, in pixels, moet komen om een objectsnap te vangen.
     .visual-effect-settings = { common.visual-effects } · { properties.settings }
     .applications = Toepassingen
     .installed-plugins-and-their-sources = Geïnstalleerde plug-ins en hun bronnen
@@ -2596,6 +2598,7 @@ file =
     .cmd-cannot-create-folder-e = __ocs_fmt_0__: kan map (__ocs_fmt_1__) niet aanmaken.
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: kan de tekening niet inpakken (__ocs_fmt_1__).
     .cmd-packaged-copied-file-s-into = __ocs_fmt_0__: verpakt __ocs_fmt_1__ bestand(s) in __ocs_fmt_2__
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: __ocs_fmt_1__ gerefereerde bestand(en) niet gevonden: __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: __ocs_fmt_1__ gerefereerde bestand(en) overgeslagen die niet in deze sessie zijn geladen: __ocs_fmt_2__
     .error-external-change-checks-remain-active = __ocs_fmt_0__. Externe wijzigingen blijven actief.
     .warning-external-change-checks-remain-active = __ocs_fmt_0__. Externe wijzigingen blijven actief.
@@ -3100,7 +3103,6 @@ draw =
     .arc-specify-tangent-direction-for-the-start-point-of-arc = ARC  Geef raaklijnrichting in beginpunt van boog op:
     .arc-specify-radius-of-arc = ARC  Geef straal van boog op:
     .chord-length = Koordelengte
-
 
 modify =
     .add-vertex = Hoekpunt toevoegen
@@ -4547,7 +4549,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2-punt
     .cube = Kubus
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Selecteer de te verwijderen objecten:
@@ -6679,6 +6680,7 @@ dgn-import =
     .help-import = Imports a file of the chosen format with the format's importer.
     .blank = Filename cannot be blank
     .invalid-dgn = Invalid or unsupported DGN file.
+    .nothing-to-import = The DGN model has nothing that can be imported.
 import-3ds =
     .title = 3D Studio Import
     .summary = { $objects } objects, { $materials } materials
@@ -6714,6 +6716,22 @@ import-3ds =
     .cancel = Cancel
     .import = Import
     .help = Imports the checked objects of a 3D Studio file: meshes as polyface meshes with their materials, cameras as named views.
+import-3ds-alert =
+    .title = Object met meerdere materialen
+    .assignment = Materiaaltoewijzing
+    .split = Splitsen per materiaal
+    .first = Eerste materiaal
+    .select = Materiaal kiezen
+    .material = Materiaal
+    .none = *GEEN*
+    .note-split = Het object wordt gesplitst in één mesh per materiaal; elk deel krijgt zijn eigen materiaal.
+    .note-first = Het hele object krijgt zijn eerste materiaal.
+    .note-select = Het hele object krijgt het gekozen materiaal; *GEEN* wijst geen materiaal toe.
+    .remaining = Overige objecten
+    .remember = Deze keuze gebruiken voor de volgende objecten
+    .remember-note = Uit: voor elk object met meerdere materialen wordt opnieuw gevraagd.
+    .apply = Toepassen
+    .help = Het object gebruikt meerdere materialen: splits het in één mesh per materiaal, of wijs het eerste of het gekozen materiaal toe. Annuleren stopt de import bij dit object.
 import-panel =
     .dgn-import = DGN importeren
     .recognize-shx = SHX-tekst herkennen
@@ -6741,6 +6759,28 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = Met wachtwoord beveiligde PDF
+    .step-open = Wachtwoord voor openen
+    .step-permission = Machtigingswachtwoord
+    .open-password = Wachtwoord voor openen
+    .permission-password = Machtigingswachtwoord
+    .password = Wachtwoord
+    .open-hint = Dit document vraagt een wachtwoord voordat het opent. Het wachtwoord wordt niet in de tekening opgeslagen.
+    .permission-hint = Het gebruik van het document is beperkt; importeren vereist het wachtwoord dat de beperkingen opheft.
+    .wrong = Onjuist wachtwoord. Typ het opnieuw en klik op Openen.
+    .session = Sessie
+    .remember = Onthouden voor deze sessie
+    .remember-hint = Onthouden wachtwoorden worden eerst geprobeerd bij de andere PDF's die in deze sessie worden geopend.
+    .open = Openen
+    .help = Het openwachtwoord leest een versleutelde PDF, wat genoeg is om hem te koppelen; het importeren van de geometrie vereist ook het machtigingswachtwoord dat de beperkingen opheft.
+    .remembered =
+        Met wachtwoord beveiligd PDF-bestand: { $path }
+        Geopend met een eerder opgegeven wachtwoord.
+    .refused =
+        { $path }
+        Kan dit PDF-bestand niet openen.
+        Het is versleuteld en vereist een wachtwoord.
 
 calc =
     .invalid-number = ongeldig getal '__ocs_fmt_0__'

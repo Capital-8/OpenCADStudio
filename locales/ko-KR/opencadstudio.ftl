@@ -1522,6 +1522,8 @@ common =
     .selection = 선택
     .pick-box-size = { common.pickbox }: { common.size }
     .controls-both-the-visible-selection-box-and-the-click-aperture = 표시되는 선택 상자와 클릭 영역을 모두 제어합니다.
+    .aperture-size = 조준창 크기
+    .how-close-in-pixels-the-cursor-must-come-to-catch-an-object-snap = 객체 스냅을 잡기 위해 커서가 다가가야 하는 거리(픽셀)입니다.
     .visual-effect-settings = { common.visual-effects } · { properties.settings }
     .applications = 응용 프로그램
     .installed-plugins-and-their-sources = 설치된 플러그인 및 해당 소스
@@ -2595,6 +2597,7 @@ file =
     .cmd-cannot-create-folder-e = __ocs_fmt_0__: 폴더(__ocs_fmt_1__)를 생성할 수 없습니다.
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: 도면을 패키지할 수 없습니다(__ocs_fmt_1__).
     .cmd-packaged-copied-file-s-into = __ocs_fmt_0__: __ocs_fmt_1__ 파일을 __ocs_fmt_2__로 패키징했습니다.
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: 참조 파일 __ocs_fmt_1__개를 찾을 수 없습니다: __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: 이 세션에서 로드되지 않은 참조 파일 __ocs_fmt_1__개를 건너뛰었습니다: __ocs_fmt_2__
     .error-external-change-checks-remain-active = __ocs_fmt_0__. 외부 변경 검사는 활성 상태로 유지됩니다.
     .warning-external-change-checks-remain-active = __ocs_fmt_0__. 외부 변경 검사는 활성 상태로 유지됩니다.
@@ -3099,7 +3102,6 @@ draw =
     .arc-specify-tangent-direction-for-the-start-point-of-arc = ARC  호 시작점의 접선 방향 지정:
     .arc-specify-radius-of-arc = ARC  호의 반지름 지정:
     .chord-length = 현 길이
-
 
 modify =
     .add-vertex = 정점 추가
@@ -4548,7 +4550,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2점
     .cube = 정육면체
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  삭제할 객체 선택:
@@ -6680,6 +6681,7 @@ dgn-import =
     .help-import = Imports a file of the chosen format with the format's importer.
     .blank = Filename cannot be blank
     .invalid-dgn = Invalid or unsupported DGN file.
+    .nothing-to-import = The DGN model has nothing that can be imported.
 import-3ds =
     .title = 3D Studio Import
     .summary = { $objects } objects, { $materials } materials
@@ -6715,6 +6717,22 @@ import-3ds =
     .cancel = Cancel
     .import = Import
     .help = Imports the checked objects of a 3D Studio file: meshes as polyface meshes with their materials, cameras as named views.
+import-3ds-alert =
+    .title = 다중 재질 객체
+    .assignment = 재질 지정
+    .split = 재질별로 분할
+    .first = 첫 번째 재질
+    .select = 재질 선택
+    .material = 재질
+    .none = *없음*
+    .note-split = 객체가 재질마다 하나의 메시로 분할되며, 각 부분은 자체 재질을 갖습니다.
+    .note-first = 객체 전체에 첫 번째 재질이 지정됩니다.
+    .note-select = 객체 전체에 선택한 재질이 지정됩니다. *없음*은 재질을 지정하지 않습니다.
+    .remaining = 남은 객체
+    .remember = 다음 객체에도 이 선택 사용
+    .remember-note = 끄면 다중 재질 객체마다 다시 묻습니다.
+    .apply = 적용
+    .help = 객체가 여러 재질을 사용합니다. 재질별 메시로 분할하거나 첫 번째 재질 또는 선택한 재질을 지정하십시오. 취소하면 이 객체에서 가져오기가 중지됩니다.
 import-panel =
     .dgn-import = DGN 가져오기
     .recognize-shx = SHX 문자 인식
@@ -6742,6 +6760,28 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = 암호로 보호된 PDF
+    .step-open = 열기 암호
+    .step-permission = 권한 암호
+    .open-password = 열기 암호
+    .permission-password = 권한 암호
+    .password = 암호
+    .open-hint = 이 문서는 열기 전에 암호를 요구합니다. 암호는 도면에 저장되지 않습니다.
+    .permission-hint = 문서 사용이 제한되어 있습니다. 가져오려면 제한을 해제하는 암호가 필요합니다.
+    .wrong = 암호가 틀렸습니다. 다시 입력하고 열기를 누르십시오.
+    .session = 세션
+    .remember = 이 세션 동안 기억
+    .remember-hint = 기억된 암호는 이 세션에서 여는 다른 PDF에서 먼저 시도됩니다.
+    .open = 열기
+    .help = 열기 암호로 암호화된 PDF를 읽을 수 있으며 첨부에는 이것으로 충분합니다. 형상을 가져오려면 제한을 해제하는 권한 암호도 필요합니다.
+    .remembered =
+        암호로 보호된 PDF 파일: { $path }
+        이전에 입력한 암호로 열었습니다.
+    .refused =
+        { $path }
+        이 PDF 파일을 열 수 없습니다.
+        암호화되어 있어 암호가 필요합니다.
 
 calc =
     .invalid-number = 잘못된 숫자 '__ocs_fmt_0__'

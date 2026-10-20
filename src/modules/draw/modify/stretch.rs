@@ -303,6 +303,14 @@ pub(crate) fn held_bulge(
 /// Stretch an arc by its ends: both in the window move it whole; one moves
 /// that end while the arc keeps its height over the new chord.
 fn stretch_arc(arc: &mut codec::entities::Arc, in_win: &dyn Fn(f64, f64) -> bool, delta: DVec3) -> bool {
+    let (start, finish) = (arc.start_point_wcs(), arc.end_point_wcs());
+    stretch_arc_endpoints(arc, in_win(start.x, start.y), in_win(finish.x, finish.y), delta)
+}
+
+/// Apply fixed endpoint membership, shared by ordinary and dynamic Stretch.
+pub(crate) fn stretch_arc_endpoints(
+    arc: &mut codec::entities::Arc, start_in: bool, finish_in: bool, delta: DVec3,
+) -> bool {
     use codec::types::{Matrix3, Vector3};
     let ocs = Matrix3::arbitrary_axis(arc.normal);
     let end = |angle: f64| {
@@ -313,8 +321,6 @@ fn stretch_arc(arc: &mut codec::entities::Arc, in_win: &dyn Fn(f64, f64) -> bool
         )
     };
     let (start, finish) = (end(arc.start_angle), end(arc.end_angle));
-    let (start_w, finish_w) = (ocs * start, ocs * finish);
-    let (start_in, finish_in) = (in_win(start_w.x, start_w.y), in_win(finish_w.x, finish_w.y));
     if !start_in && !finish_in {
         return false;
     }

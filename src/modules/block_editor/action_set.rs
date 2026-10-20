@@ -15,6 +15,7 @@ struct Candidate {
     at: DVec3,
     targets: Vec<Handle>,
     stretch: bool,
+    polar: bool,
     expected: ObjectType,
 }
 #[derive(Clone, Copy)]
@@ -23,6 +24,7 @@ enum Mode {
     Add,
     Remove,
     Frame,
+    RotateOnly,
 }
 pub(crate) struct ActionSetCommand {
     document: u64,
@@ -32,6 +34,7 @@ pub(crate) struct ActionSetCommand {
     mode: Option<Mode>,
     picked: Vec<Handle>,
     frame: Vec<DVec3>,
+    polygon_frame: bool,
     context: Option<PointPickContext>,
 }
 impl ActionSetCommand {
@@ -49,6 +52,7 @@ impl ActionSetCommand {
                 at: actions::v(a.display_location),
                 targets: a.dependencies.clone(),
                 stretch: actions::needs_frame(kind),
+                polar: kind == actions::Kind::PolarStretch,
                 expected: doc.objects[&handle].clone(),
             })
             .collect::<Vec<_>>();
@@ -61,7 +65,19 @@ impl ActionSetCommand {
             mode: None,
             picked: vec![],
             frame: vec![],
+            polygon_frame: false,
             context: None,
+        }
+    }
+    fn finish_polygon(&self) -> CmdResult {
+        if self.frame.len() < 3 {
+            return CmdResult::ReportError(
+                crate::t!("Specify at least three polygon vertices.").into_owned(),
+            );
+        }
+        match actions::validate_frame_points(&self.frame) {
+            Ok(()) => self.finish(),
+            Err(error) => CmdResult::ReportError(crate::t!(error).into_owned()),
         }
     }
     fn finish(&self) -> CmdResult {
@@ -75,7 +91,7 @@ impl ActionSetCommand {
                 .copied()
                 .filter(|h| !self.picked.contains(h))
                 .collect(),
-            Mode::Frame => c.targets.clone(),
+            Mode::Frame | Mode::RotateOnly => c.targets.clone(),
         };
         CmdResult::EditBlockActionSet {
             document: self.document,
@@ -83,7 +99,8 @@ impl ActionSetCommand {
             action: c.handle,
             expected: Box::new(c.expected.clone()),
             targets,
-            frame: (self.frame.len() == 2).then(|| [self.frame[0], self.frame[1]]),
+            frame: matches!(self.mode, Some(Mode::Frame)).then(|| self.frame.clone()),
+            rotate_only: matches!(self.mode, Some(Mode::RotateOnly)).then(|| self.picked.clone()),
         }
     }
 }
@@ -103,12 +120,18 @@ impl CadCommand for ActionSetCommand {
     fn prompt(&self) -> String {
         crate::t!(if self.chosen.is_none() {
             "BACTIONSET  Pick an action marker or enter its name:"
+        } else if self.mode.is_none() && self.candidates[self.chosen.unwrap()].polar {
+            "BACTIONSET  [New/Add/Remove/Frame/RotateOnly] <New>:"
+        } else if matches!(self.mode, Some(Mode::RotateOnly)) {
+            "BACTIONSET  Select objects from this action to rotate only, then press Enter <None>:"
         } else if self.mode.is_none() && self.candidates[self.chosen.unwrap()].stretch {
             "BACTIONSET  [New/Add/Remove/Frame] <New>:"
         } else if self.mode.is_none() {
             "BACTIONSET  [New/Add/Remove] <New>:"
+        } else if matches!(self.mode, Some(Mode::Frame)) && self.polygon_frame {
+            "BACTIONSET  Specify polygon vertex or [Undo/Close]; press Enter to close:"
         } else if matches!(self.mode, Some(Mode::Frame)) && self.frame.is_empty() {
-            "BACTIONSET  Specify first corner of replacement action frame:"
+            "BACTIONSET  Specify first corner of replacement action frame or [CPolygon]:"
         } else if matches!(self.mode, Some(Mode::Frame)) {
             "BACTIONSET  Specify opposite corner of replacement action frame:"
         } else {
@@ -126,12 +149,41 @@ impl CadCommand for ActionSetCommand {
             if self.candidates[self.chosen.unwrap()].stretch {
                 options.push(CmdOption::new("Frame", "Frame"));
             }
+            if self.candidates[self.chosen.unwrap()].polar {
+                options.push(CmdOption::new("RotateOnly", "RotateOnly"));
+            }
             options
+        } else if matches!(self.mode, Some(Mode::Frame)) {
+            if self.polygon_frame {
+                vec![
+                    CmdOption::new("Undo", "Undo"),
+                    CmdOption::new("Close", "Close"),
+                ]
+            } else if self.frame.is_empty() {
+                vec![CmdOption::new("CPolygon", "CPolygon")]
+            } else {
+                vec![]
+            }
         } else {
             vec![]
         }
     }
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        if matches!(self.mode, Some(Mode::Frame)) {
+            match text.trim().to_ascii_uppercase().as_str() {
+                "CPOLYGON" | "CP" if self.frame.is_empty() => {
+                    self.polygon_frame = true;
+                    return Some(CmdResult::NeedPoint);
+                }
+                "UNDO" | "U" if self.polygon_frame => {
+                    self.frame.pop();
+                    return Some(CmdResult::NeedPoint);
+                }
+                "CLOSE" | "C" if self.polygon_frame => return Some(self.finish_polygon()),
+                _ => {}
+            }
+        }
+
         if self.chosen.is_none() {
             let matches = self
                 .candidates
@@ -155,6 +207,9 @@ impl CadCommand for ActionSetCommand {
                 "ADD" | "A" => Mode::Add,
                 "REMOVE" | "R" => Mode::Remove,
                 "FRAME" | "F" if self.candidates[self.chosen.unwrap()].stretch => Mode::Frame,
+                "ROTATEONLY" | "RO" if self.candidates[self.chosen.unwrap()].polar => {
+                    Mode::RotateOnly
+                }
                 _ => {
                     return Some(CmdResult::ReportError(
                         crate::t!("Choose an available selection-editing option.").into_owned(),
@@ -200,6 +255,22 @@ impl CadCommand for ActionSetCommand {
                     crate::t!("Specify a finite corner in the action's XY plane.").into_owned(),
                 );
             }
+            if self.polygon_frame {
+                if self.frame.len() >= 3 && self.frame[0].distance(point) < 1e-9 {
+                    return self.finish_polygon();
+                }
+                if self
+                    .frame
+                    .last()
+                    .is_some_and(|last| last.distance(point) < 1e-9)
+                {
+                    return CmdResult::ReportError(
+                        crate::t!("Specify a distinct polygon vertex.").into_owned(),
+                    );
+                }
+                self.frame.push(point);
+                return CmdResult::NeedPoint;
+            }
             if self
                 .frame
                 .first()
@@ -218,13 +289,20 @@ impl CadCommand for ActionSetCommand {
         CmdResult::NeedPoint
     }
     fn is_selection_gathering(&self) -> bool {
-        matches!(self.mode, Some(Mode::New | Mode::Add | Mode::Remove))
+        matches!(
+            self.mode,
+            Some(Mode::New | Mode::Add | Mode::Remove | Mode::RotateOnly)
+        )
     }
     fn on_selection_complete(&mut self, handles: Vec<Handle>) -> CmdResult {
         self.picked = handles;
         CmdResult::NeedPoint
     }
     fn on_enter(&mut self) -> CmdResult {
+        if matches!(self.mode, Some(Mode::Frame)) && self.polygon_frame {
+            return self.finish_polygon();
+        }
+
         if self.chosen.is_none() {
             return CmdResult::Cancel;
         }
@@ -238,6 +316,10 @@ impl CadCommand for ActionSetCommand {
         }
     }
     fn on_preview_wires(&mut self, point: DVec3) -> Vec<crate::scene::WireModel> {
-        super::action::frame_preview(&self.frame, point)
+        if self.polygon_frame {
+            super::action::polygon_preview(&self.frame, Some(point))
+        } else {
+            super::action::frame_preview(&self.frame, point)
+        }
     }
 }

@@ -587,8 +587,12 @@ impl OpenCADStudio {
             result @ CmdResult::EditBlockAuthoring { .. } => {
                 return self.handle_authoring_edit(result);
             }
+            CmdResult::SetBlockActionBars { document,definition,mode,parameters } => {
+                return self.set_action_bars(document,definition,mode,parameters);
+            }
             result @ (CmdResult::PlaceBlockAction { .. }
             | CmdResult::EditBlockActionSet { .. }
+            | CmdResult::AssociateBlockAction { .. }
             | CmdResult::EvaluateBlockParameter { .. }) => {
                 return self.handle_block_action_result(result);
             }
@@ -668,16 +672,18 @@ impl OpenCADStudio {
                 self.apply_xclip(i, inserts, action);
             }
             CmdResult::OpenPdfImportSettings => self.open_pdf_import_settings(),
+            CmdResult::PdfPassword {
+                path,
+                input,
+                stage,
+                remembered,
+                attach,
+            } => return self.handle_pdf_password(path, input, stage, remembered, attach),
             CmdResult::DgnImport(request) => {
                 self.tabs[i].scene.clear_preview_wire();
                 self.tabs[i].active_cmd = None;
                 self.tabs[i].snap_result = None;
                 return self.run_dgn_import(i, request);
-            }
-            CmdResult::TdsImport(request) => {
-                self.tabs[i].active_cmd = None;
-                self.tabs[i].snap_result = None;
-                self.run_tds_import(i, request);
             }
             CmdResult::PdfImportFile(import) => {
                 self.tabs[i].scene.clear_preview_wire();
@@ -1217,6 +1223,9 @@ impl OpenCADStudio {
 
     fn handle_cancel(&mut self, cancel: CmdResult) {
         let i = self.active_tab;
+        self.tabs[i].pending_parameter_set_follow_up = None;
+        self.tabs[i].pending_xy_box_set = None;
+        self.tabs[i].pending_action_pair = None;
         self.tabs[i].measurement.clear();
         let space_changed = matches!(cancel, CmdResult::CancelForSpaceChange);
         self.tabs[i].scene.clear_preview_wire();
@@ -1318,6 +1327,20 @@ impl OpenCADStudio {
             .map(|(h, _)| h)
             .collect();
         self.feed_command(StepInput::SelectionComplete(selected))
+    }
+
+    #[inline(never)]
+    fn handle_pdf_password(
+        &mut self,
+        path: String,
+        input: String,
+        stage: crate::scene::model::pdf_password::Stage,
+        remembered: bool,
+        attach: bool,
+    ) -> Task<Message> {
+        use crate::ui::window::pdf_password_dialog::PdfPasswordThen;
+        let then = PdfPasswordThen::Command { input, attach };
+        self.open_pdf_password(&path, stage, remembered, then)
     }
 
     fn handle_relaunch(&mut self, cmd: String, handles: Vec<Handle>) -> Task<Message> {

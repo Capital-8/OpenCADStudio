@@ -461,6 +461,20 @@ pub(crate) fn retag_members(document: &mut CadDocument, definition: Handle) {
     }
 }
 
+/// A copied definition owns its identity even when its evaluation IDs are retained.
+pub(crate) fn refresh_copied_identity(document: &mut CadDocument, definition: Handle, name: &str) {
+    if !matches!(graph(document, definition), Ok(Some(_))) {
+        return;
+    }
+    let mut true_name = ExtendedDataRecord::new(TRUE_NAME);
+    true_name.add_value(XDataValue::String(name.to_owned()));
+    document.set_object_xdata_record(definition, true_name);
+    let mut guid = ExtendedDataRecord::new(GUID);
+    guid.add_value(XDataValue::String(new_guid()));
+    document.set_object_xdata_record(definition, guid);
+    retag_members(document, definition);
+}
+
 /// Give every object of the definition its element tag, numbering the new
 /// ones after the highest id in use, and record the next id on the block.
 pub(super) fn tag_members(document: &mut CadDocument, definition: Handle) {

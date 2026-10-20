@@ -4,9 +4,10 @@ version = 4
 
 [[package]]
 name = "OpenCADStudio"
-version = "2026.41.0"
+version = "2026.42.0"
 dependencies = [
  "acadrust",
+ "aes",
  "allsorts",
  "ashpd",
  "base64",
@@ -40,6 +41,7 @@ dependencies = [
  "libloading",
  "log",
  "lyon_tessellation",
+ "md-5",
  "meshopt",
  "naga 27.0.3",
  "objc2 0.5.2",
@@ -96,7 +98,7 @@ checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
 [[package]]
 name = "acadrust"
 version = "0.6.4"
-source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=12d68e4#12d68e472d52a137f7d6f338e576d882ae219548"
+source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=e35ff58#e35ff58511199b173b67eabfcfae84ad24e6eec0"
 dependencies = [
  "anyhow",
  "bitflags 2.13.1",
@@ -4406,7 +4408,7 @@ dependencies = [
 [[package]]
 name = "opencadgraph"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencadgraph.git?rev=5f217e4#5f217e4e7648598f37d6d23460d8b63579245ffb"
+source = "git+https://github.com/HakanSeven12/opencadgraph.git?rev=e89e013#e89e0137e446e51052ea415590300b766083603a"
 dependencies = [
  "opencadkernel",
  "serde_json",
@@ -4415,7 +4417,7 @@ dependencies = [
 [[package]]
 name = "opencadkernel"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=6f986ae#6f986ae0942bedae791f73f7645d166558a0740e"
+source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=e5eb487#e5eb48788e6a88005cd809b6d15e428d5fed9fb2"
 dependencies = [
  "acadrust",
  "cavalier_contours",
@@ -4426,7 +4428,7 @@ dependencies = [
 [[package]]
 name = "opencadkernel-constraints"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=6f986ae#6f986ae0942bedae791f73f7645d166558a0740e"
+source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=e5eb487#e5eb48788e6a88005cd809b6d15e428d5fed9fb2"
 dependencies = [
  "nalgebra",
 ]

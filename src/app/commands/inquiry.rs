@@ -1021,7 +1021,14 @@ impl OpenCADStudio {
         br_handle: codec::Handle,
         unpersisted_pre_document: Option<codec::CadDocument>,
     ) {
+        if self.block_editor_preferences.locked {
+            self.command_line.push_error(
+                crate::t!("The Block Editor is locked by BLOCKEDITLOCK.").as_ref(),
+            );
+            return;
+        }
         use crate::modules::draw::modify::block_edit::BlockEditSession;
+        self.tabs[i].action_bars=Default::default();
         // Capture the camera before the editor reframes it, so leaving
         // the block editor returns the view exactly where it was (#425).
         let current_camera = self.tabs[i].scene.camera.borrow().clone();
@@ -1075,6 +1082,7 @@ impl OpenCADStudio {
         self.grip_hover = None;
         self.grip_popup = None;
         self.visibility_popup = None;
+        self.table_popup = None;
         // Entering BEDIT changes which block is assembled, not the
         // cached geometry of that block's entities.
         self.tabs[i].scene.bump_geometry_no_blocks();
@@ -1109,6 +1117,7 @@ impl OpenCADStudio {
         self.grip_hover = None;
         self.grip_popup = None;
         self.visibility_popup = None;
+        self.table_popup = None;
 
         let parent_index = return_block.and_then(|parent_name| {
             self.tabs[i]

@@ -306,6 +306,253 @@ pub(crate) fn evaluate_value(
     Ok(Some(result))
 }
 
+/// Restore one reference without changing the definition or another reference.
+pub(crate) fn reset(
+    doc: &CadDocument,
+    insert: Handle,
+) -> Result<Option<CadDocument>, &'static str> {
+    let def = doc
+        .dynamic_definition_for_insert(insert)
+        .ok_or("Select a dynamic block reference.")?;
+    let parameters = all_parameters(doc, def);
+    let default = |parameter: &Parameter| {
+        if parameter.flip {
+            Value::Flip(false)
+        } else {
+            Value::Point(parameter.end)
+        }
+    };
+    let history = match table_history_owner(doc, insert)? {
+        Some(owner) => entry(doc, owner, "ACAD_ENHANCEDBLOCKHISTORY")?,
+        None => None,
+    };
+    let unchanged = parameters
+        .iter()
+        .all(|p| value(doc, insert, p).ok() == Some(default(p)))
+        && (crate::scene::block_visibility::parameter(doc, def).is_none()
+            || super::representation::visibility_state(doc, doc, def, insert) == Some(0))
+        && history.is_none();
+    if unchanged {
+        return Ok(None);
+    }
+    let mut evaluated = doc.clone();
+    for p in &parameters {
+        super::set_value(&mut evaluated, p, default(p))?;
+    }
+    super::rebuild(&mut evaluated, doc, def)?;
+    let mut result = materialize(doc, insert, def, &evaluated)?;
+    for p in &parameters {
+        save(&mut result, insert, p, default(p))?;
+    }
+    if crate::scene::block_visibility::parameter(&result, def).is_some() {
+        super::representation::apply_visibility(&mut result, def, insert, 0)?;
+    }
+    clear_table_history(&mut result, insert, history)?;
+    Ok(Some(result))
+}
+
+pub(crate) fn reset_test(
+    doc: &CadDocument,
+    baseline: &CadDocument,
+    def: Handle,
+    insert: Handle,
+) -> Result<Option<CadDocument>, &'static str> {
+    let EntityType::Insert(reference) = doc.get_entity(insert).ok_or("Missing block reference.")?
+    else {
+        return Err("Select a block reference.");
+    };
+    let name = reference.block_name.clone();
+    let mut result = doc.clone();
+    let parameters = all_parameters(baseline, def);
+    for p in &parameters {
+        let value = if p.flip {
+            Value::Flip(false)
+        } else {
+            Value::Point(p.end)
+        };
+        super::set_value(&mut result, p, value)?;
+        if cache(doc, insert, p.id)?.is_some() {
+            save(&mut result, insert, p, value)?;
+        }
+    }
+    super::rebuild(&mut result, baseline, def)?;
+    super::sync_representation(&mut result, def, &name)?;
+    if let Some(parameter) =
+        crate::scene::block_visibility::parameter(&result, def).map(|p| p.handle)
+    {
+        crate::scene::block_visibility::apply_state(&mut result, parameter, 0);
+        super::representation::apply_visibility(&mut result, def, insert, 0)?;
+    }
+    let history = match table_history_owner(doc, insert)? {
+        Some(owner) => entry(doc, owner, "ACAD_ENHANCEDBLOCKHISTORY")?,
+        None => None,
+    };
+    clear_table_history(&mut result, insert, history)?;
+    Ok((result != *doc).then_some(result))
+}
+
+fn clear_table_history(
+    result: &mut CadDocument,
+    insert: Handle,
+    history: Option<Handle>,
+) -> Result<(), &'static str> {
+    if let Some(history) = history {
+        let owner = table_history_owner(result, insert)?
+            .ok_or("The table history owner is unavailable.")?;
+        if result.object_owner(history) != Some(owner) {
+            return Err("The table history has an invalid owner.");
+        }
+        if let Some(ObjectType::Dictionary(dictionary)) = result.objects.get_mut(&owner) {
+            dictionary.entries.retain(|(_, h)| *h != history);
+        }
+        let mut owned = std::collections::BTreeSet::from([history]);
+        loop {
+            let children = result
+                .objects
+                .keys()
+                .copied()
+                .filter(|h| {
+                    !owned.contains(h)
+                        && result
+                            .object_owner(*h)
+                            .is_some_and(|owner| owned.contains(&owner))
+                })
+                .collect::<Vec<_>>();
+            if children.is_empty() {
+                break;
+            }
+            owned.extend(children);
+        }
+        for handle in owned {
+            let applications = result
+                .object_xdata(handle)
+                .map(|data| {
+                    data.records()
+                        .iter()
+                        .map(|record| record.application_name.clone())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            for application in applications {
+                result.remove_object_xdata_record(handle, &application);
+            }
+            result.block_representations.remove(&handle);
+            result.block_visibility_params.remove(&handle);
+            result.objects.remove(&handle);
+        }
+    }
+    Ok(())
+}
+
+fn table_history_owner(doc: &CadDocument, insert: Handle) -> Result<Option<Handle>, &'static str> {
+    let Some(mut owner) = doc.extension_dictionary_handle(insert) else {
+        return Ok(None);
+    };
+    for key in ["AcDbBlockRepresentation", "AppDataCache"] {
+        let Some(child) = entry(doc, owner, key)? else {
+            return Ok(None);
+        };
+        owner = child;
+    }
+    Ok(Some(owner))
+}
+
+pub(crate) fn evaluate_table_row(
+    doc: &CadDocument,
+    insert: Handle,
+    columns: &[crate::scene::block_properties_table::Column],
+    row: usize,
+) -> Result<Option<CadDocument>, &'static str> {
+    let def =
+        definition(doc, insert).ok_or("Select a uniformly scaled dynamic block reference.")?;
+    let view = crate::scene::block_properties_table::table(doc, def)?
+        .ok_or("The Block Properties Table is unavailable.")?;
+    let values = view
+        .rows
+        .get(row)
+        .ok_or("The selected table row is unavailable.")?;
+    let mut staged = doc.clone();
+    for (column, value) in columns.iter().zip(values) {
+        let p = all_parameters(&staged, def)
+            .into_iter()
+            .find(|p| p.handle == column.handle)
+            .ok_or("The table parameter is unavailable.")?;
+        let input = if column.connection_name.eq_ignore_ascii_case("UpdatedAngle") {
+            Value::Point(
+                p.base + DVec3::new(value.cos(), value.sin(), 0.0) * p.end.distance(p.base),
+            )
+        } else {
+            let axis = (p.end - p.base).normalize();
+            Value::Point(p.base + axis * *value)
+        };
+        if let Some(next) = evaluate_value(&staged, insert, p.handle, input)? {
+            staged = next;
+        }
+    }
+    write_table_history(&mut staged, insert, &view, row)?;
+    Ok(Some(staged))
+}
+
+fn write_table_history(
+    doc: &mut CadDocument,
+    insert: Handle,
+    view: &crate::scene::block_properties_table::TableView,
+    row: usize,
+) -> Result<(), &'static str> {
+    let mut owner = doc.ensure_extension_dictionary(insert);
+    for key in ["AcDbBlockRepresentation", "AppDataCache"] {
+        owner = ensure_dictionary(doc, owner, key)?;
+    }
+    let def = doc
+        .dynamic_definition_for_insert(insert)
+        .ok_or("The block definition is unavailable.")?;
+    let table_eval = view.table.parameter.parameter.element.eval.node_id;
+    let mut entries = vec![
+        XRecordEntry::int16(1070, 3),
+        XRecordEntry::int32(1071, table_eval),
+        XRecordEntry::new(300, XRecordValue::String("Block Table1".into())),
+        XRecordEntry::int16(70, row as i16),
+        XRecordEntry::int16(1070, -1),
+    ];
+    let params = all_parameters(doc, def);
+    for (column, value) in view.columns.iter().zip(
+        view.rows
+            .get(row)
+            .ok_or("The selected table row is unavailable.")?,
+    ) {
+        let p = params
+            .iter()
+            .find(|p| p.handle == column.handle)
+            .ok_or("The table parameter is unavailable.")?;
+        entries.push(XRecordEntry::int32(1071, p.id));
+        entries.push(XRecordEntry::new(300, XRecordValue::String(p.name.clone())));
+        entries.push(XRecordEntry::double(40, *value));
+    }
+    entries.push(XRecordEntry::int16(1070, -2));
+    let h = if let Some(h) = entry(doc, owner, "ACAD_ENHANCEDBLOCKHISTORY")? {
+        h
+    } else {
+        doc.allocate_handle()
+    };
+    let mut rec = XRecord::named("ACAD_ENHANCEDBLOCKHISTORY");
+    rec.handle = h;
+    rec.owner = owner;
+    rec.reactors.push(owner);
+    rec.cloning_flags = codec::objects::DictionaryCloningFlags::KeepExisting;
+    rec.entries = entries;
+    doc.objects.insert(h, ObjectType::XRecord(rec));
+    if let Some(ObjectType::Dictionary(d)) = doc.objects.get_mut(&owner) {
+        if !d
+            .entries
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("ACAD_ENHANCEDBLOCKHISTORY"))
+        {
+            d.add_entry("ACAD_ENHANCEDBLOCKHISTORY", h);
+        }
+    }
+    Ok(())
+}
+
 /// Refresh existing evaluated references after an authoring change.
 pub(crate) fn refresh(doc: &CadDocument, def: Handle) -> Result<CadDocument, &'static str> {
     refresh_after_edit(doc, doc, def)

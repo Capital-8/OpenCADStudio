@@ -1528,6 +1528,8 @@ common =
     .selection = ການເລືອກ
     .pick-box-size = ຂະໜາດກ່ອງເລືອກ
     .controls-both-the-visible-selection-box-and-the-click-aperture = ຄວບຄຸມທັງກ່ອງເລືອກທີ່ເບິ່ງເຫັນ ແລະ ຊ່ອງຮັບການຄລິກ.
+    .aperture-size = ຂະໜາດຮູຮັບ
+    .how-close-in-pixels-the-cursor-must-come-to-catch-an-object-snap = ເຄີເຊີຕ້ອງເຂົ້າໃກ້ເທົ່າໃດ, ເປັນພິກເຊວ, ເພື່ອຈັບການສະແນັບວັດຖຸ.
     .visual-effect-settings = ການຕັ້ງຄ່າເອັບເຟັກພາບ
     .applications = ແອັບພລິເຄຊັນ
     .installed-plugins-and-their-sources = ປລັກອິນທີ່ຕິດຕັ້ງ ແລະ ແຫຼ່ງທີ່ມາ
@@ -2524,6 +2526,7 @@ file =
     .drawing-not-loaded-in-the-browser = ແບບແຕ້ມບໍ່ໄດ້ໂຫຼດໃນໂປຣແກຣມທ່ອງເວັບ: __ocs_fmt_0__.
     .adding-folders-is-not-available-in-the-browser = ບໍ່ສາມາດເພີ່ມໂຟນເດີໃນໂປຣແກຣມທ່ອງເວັບໄດ້. ກະລຸນາເພີ່ມໄຟລ໌ແບບແຕ້ມແທນ.
     .pick-the-file-again-to-load-its-contents = ເລືອກໄຟລ໌ອີກຄັ້ງເພື່ອໂຫຼດເນື້ອຫາໃນໂປຣແກຣມທ່ອງເວັບ.
+    .cmd-n-referenced-file-s-not-found = __ocs_fmt_0__: ບໍ່ພົບ __ocs_fmt_1__ ໄຟລ໌ອ້າງອີງ: __ocs_fmt_2__
     .cmd-skipped-n-referenced-file-s-not-loaded-in = __ocs_fmt_0__: ຂ້າມ __ocs_fmt_1__ ໄຟລ໌ອ້າງອີງທີ່ບໍ່ໄດ້ໂຫຼດໃນເຊສຊັນນີ້: __ocs_fmt_2__
     .cmd-cannot-package-the-drawing-e = __ocs_fmt_0__: ບໍ່ສາມາດຫຸ້ມຫໍ່ແບບແຕ້ມໄດ້ (__ocs_fmt_1__).
     .cmd-cannot-build-the-transmittal-zip-e = __ocs_fmt_0__: ບໍ່ສາມາດສ້າງ ZIP ສົ່ງຕໍ່ໄດ້ (__ocs_fmt_1__).
@@ -3713,7 +3716,6 @@ annotate =
     .text-specify-rotation-angle = TEXT  ກໍານົດມຸມໝູນ <__ocs_fmt_0__>:
     .text-specify-second-endpoint = TEXT  ກໍານົດຈຸດປາຍທີສອງ:
     .tolerance-specify-insertion-point = TOLERANCE  ກໍານົດຈຸດແຊກ:
-
 
 insert =
     .pastespec-specify-insertion-point = PASTESPEC  ກຳນົດຈຸດແຊກ:
@@ -6681,6 +6683,7 @@ dgn-import =
     .help-import = Imports a file of the chosen format with the format's importer.
     .blank = Filename cannot be blank
     .invalid-dgn = Invalid or unsupported DGN file.
+    .nothing-to-import = The DGN model has nothing that can be imported.
 import-3ds =
     .title = 3D Studio Import
     .summary = { $objects } objects, { $materials } materials
@@ -6716,6 +6719,22 @@ import-3ds =
     .cancel = Cancel
     .import = Import
     .help = Imports the checked objects of a 3D Studio file: meshes as polyface meshes with their materials, cameras as named views.
+import-3ds-alert =
+    .title = ວັດຖຸທີ່ມີຫຼາຍວັດສະດຸ
+    .assignment = ການກຳນົດວັດສະດຸ
+    .split = ແຍກຕາມວັດສະດຸ
+    .first = ວັດສະດຸທຳອິດ
+    .select = ເລືອກວັດສະດຸ
+    .material = ວັດສະດຸ
+    .none = *ບໍ່ມີ*
+    .note-split = ວັດຖຸຖືກແຍກເປັນໜຶ່ງເມຊຕໍ່ວັດສະດຸ; ແຕ່ລະສ່ວນໄດ້ຮັບວັດສະດຸຂອງຕົນເອງ.
+    .note-first = ວັດຖຸທັງໝົດໄດ້ຮັບວັດສະດຸທຳອິດຂອງມັນ.
+    .note-select = ວັດຖຸທັງໝົດໄດ້ຮັບວັດສະດຸທີ່ເລືອກ; *ບໍ່ມີ* ບໍ່ກຳນົດວັດສະດຸ.
+    .remaining = ວັດຖຸທີ່ເຫຼືອ
+    .remember = ໃຊ້ການເລືອກນີ້ສຳລັບວັດຖຸຕໍ່ໄປ
+    .remember-note = ເມື່ອປິດ, ຈະຖາມຄືນສຳລັບແຕ່ລະວັດຖຸທີ່ມີຫຼາຍວັດສະດຸ.
+    .apply = ນຳໃຊ້
+    .help = ວັດຖຸນີ້ໃຊ້ຫຼາຍວັດສະດຸ: ແຍກເປັນໜຶ່ງເມຊຕໍ່ວັດສະດຸ, ຫຼື ກຳນົດວັດສະດຸທຳອິດ ຫຼື ວັດສະດຸທີ່ເລືອກ. ຍົກເລີກ ຈະຢຸດການນຳເຂົ້າທີ່ວັດຖຸນີ້.
 import-panel =
     .dgn-import = ນໍາເຂົ້າ DGN
     .recognize-shx = ຮັບຮູ້ຂໍ້ຄວາມ SHX
@@ -6743,6 +6762,28 @@ pdf-shx =
     .defaults = Restore defaults
     .apply = Apply
     .help = PDFSHXTEXT compares the selected geometry with the fonts that are on, top first, and converts a group with the first font whose recognised share reaches the threshold (with "Use best matching font", with the best one).
+pdf-password =
+    .title = PDF ທີ່ປ້ອງກັນດ້ວຍລະຫັດຜ່ານ
+    .step-open = ລະຫັດເປີດ
+    .step-permission = ລະຫັດສິດ
+    .open-password = ລະຫັດເປີດ
+    .permission-password = ລະຫັດສິດ
+    .password = ລະຫັດຜ່ານ
+    .open-hint = ເອກະສານນີ້ຕ້ອງການລະຫັດຜ່ານກ່ອນເປີດ. ລະຫັດຜ່ານບໍ່ຖືກບັນທຶກໃນແບບແຕ້ມ.
+    .permission-hint = ການນຳໃຊ້ເອກະສານຖືກຈຳກັດ; ການນຳເຂົ້າຕ້ອງໃຊ້ລະຫັດທີ່ຍົກເລີກຂໍ້ຈຳກັດ.
+    .wrong = ລະຫັດຜ່ານຜິດ. ພິມໃໝ່ແລ້ວກົດເປີດ.
+    .session = ເຊດຊັນ
+    .remember = ຈື່ໄວ້ໃນເຊດຊັນນີ້
+    .remember-hint = ລະຫັດທີ່ຈື່ໄວ້ຈະຖືກລອງກ່ອນກັບ PDF ອື່ນທີ່ເປີດໃນເຊດຊັນນີ້.
+    .open = ເປີດ
+    .help = ລະຫັດເປີດອ່ານ PDF ທີ່ເຂົ້າລະຫັດໄດ້ ເຊິ່ງພຽງພໍສຳລັບການແນບ; ການນຳເຂົ້າເລຂາຄະນິດຂອງມັນຍັງຕ້ອງໃຊ້ລະຫັດສິດທີ່ຍົກເລີກຂໍ້ຈຳກັດ.
+    .remembered =
+        ໄຟລ໌ PDF ທີ່ປ້ອງກັນດ້ວຍລະຫັດຜ່ານ: { $path }
+        ເປີດດ້ວຍລະຫັດຜ່ານທີ່ໃສ່ໄວ້ກ່ອນໜ້ານີ້.
+    .refused =
+        { $path }
+        ບໍ່ສາມາດເປີດໄຟລ໌ PDF ນີ້ໄດ້.
+        ມັນຖືກເຂົ້າລະຫັດ ແລະ ຕ້ອງໃຊ້ລະຫັດຜ່ານ.
 
 calc =
     .invalid-number = ຕົວເລກບໍ່ຖືກຕ້ອງ '__ocs_fmt_0__'

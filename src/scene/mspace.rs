@@ -398,7 +398,13 @@ impl Scene {
         let Some(mut camera) = self.camera_for_viewport(viewport_handle) else {
             return false;
         };
-        camera.fit_to_bounds(min, max, (width / height.max(1e-9)) as f32);
+        // The viewport's size on screen: its paper size over the paper
+        // camera's world-per-pixel.
+        let canvas_h = self.selection.borrow().view.vp_size.1;
+        let paper_wpp = 2.0 * f64::from(self.camera.borrow().ortho_size()) / f64::from(canvas_h);
+        let pixels = (paper_wpp.is_finite() && paper_wpp > 0.0)
+            .then(|| ((width / paper_wpp) as f32, (height / paper_wpp) as f32));
+        camera.fit_to_bounds_bordered_f32(min, max, (width / height.max(1e-9)) as f32, pixels);
         if let Some(codec::EntityType::Viewport(viewport)) =
             self.document.get_entity_mut(viewport_handle)
         {

@@ -361,10 +361,10 @@ impl PdfImportCommand {
             return CmdResult::ReportError(UNREADABLE_FILE.to_string());
         }
         crate::scene::model::pdf_raster::register_source(&path, std::sync::Arc::new(bytes));
-        // An encrypted file is asked for again without a message.
-        if crate::scene::model::pdf_raster::is_encrypted(&path) {
-            return CmdResult::NeedPoint;
-        }
+        let notice = match crate::scene::model::pdf_password::prompt_gate(&path, text, false) {
+            Ok(notice) => notice,
+            Err(ask) => return ask,
+        };
         let Some(pages) =
             crate::scene::model::pdf_raster::page_count(&path).filter(|&pages| pages > 0)
         else {
@@ -373,7 +373,7 @@ impl PdfImportCommand {
         self.pages = pages;
         self.file.path = path;
         self.step = Step::Page;
-        CmdResult::NeedPoint
+        notice.map_or(CmdResult::NeedPoint, CmdResult::ReportMeasurement)
     }
 
     fn page(&mut self, text: &str) -> CmdResult {

@@ -9,6 +9,7 @@ mod attman;
 mod block_cmdline;
 mod blocks;
 mod blockvars;
+mod block_editor_vars;
 mod bvisibility;
 mod count;
 mod dgn_import;
@@ -25,6 +26,7 @@ mod pc_colormap;
 mod pc_extract;
 mod pdf_dialogs;
 pub(crate) mod pdf_import;
+mod pdf_password;
 mod pdf_shx_text;
 mod pdf_underlay;
 mod plotvars;
@@ -175,11 +177,47 @@ impl OpenCADStudio {
         };
         let resolved = self.resolve_alias(cmd);
         let cmd = resolved.as_deref().unwrap_or(cmd);
+        if let Some(task) = self.dispatch_block_editor_vars(cmd, i) {
+            return task;
+        }
+        if cmd.trim_start_matches(['_', '.']) == "BCYCLEORDER" {
+            return self.open_block_cycle_order();
+        }
+        let verb = cmd
+            .split([' ', ':'])
+            .next()
+            .unwrap_or(cmd)
+            .trim_start_matches(['_', '.']);
+        if self.block_editor_preferences.locked
+            && matches!(verb, "BEDIT" | "BEDIT_BEGIN" | "BEDIT_OPEN" | "BEDIT_NEW")
+        {
+            self.command_line.push_error(
+                crate::t!("The Block Editor is locked by BLOCKEDITLOCK.").as_ref(),
+            );
+            return Task::none();
+        }
         if cmd == "BACTIONSET" {
             if let Some(error) = self.action_set_error() {
                 self.command_line.push_error(crate::t!(error).as_ref());
                 return Task::none();
             }
+        }
+        if cmd == "BASSOCIATE" {
+            if let Some(error)=self.action_association_error() {
+                self.command_line.push_error(crate::t!(error).as_ref());
+                return Task::none();
+            }
+        }
+        if cmd == "BACTIONBAR" || cmd.starts_with("BACTIONBAR ") {
+            if let Some(error)=self.action_bar_error() {
+                self.command_line.push_error(crate::t!(error).as_ref());
+                return Task::none();
+            }
+        }
+        if self.block_editor_preferences.action_bars && self.tabs[i].active_block_edit_session().is_some()
+            && matches!(verb,"BACTIONSET"|"BASSOCIATE"|"BLOOKUPTABLE") {
+            self.command_line.push_error(crate::t!("Use the action bar to edit this action, or set BACTIONBARMODE to 0.").as_ref());
+            return Task::none();
         }
         if matches!(
             cmd.split(' ').next(),
@@ -217,6 +255,20 @@ impl OpenCADStudio {
                 self.command_line.push_error(crate::t!(error).as_ref());
                 return Task::none();
             }
+        }
+        if cmd == "BTABLE" || cmd == "BPROPERTIESTABLE" || cmd.starts_with("BPROPERTIESTABLE ") {
+            if let Some(error) = self.properties_table_error() {
+                self.command_line.push_error(crate::t!(error).as_ref());
+                return Task::none();
+            }
+        }
+        if matches!(cmd, "RESETBLOCK" | "RESETBLOCK APPLY")
+            && self.tabs[i].active_block_edit_session().is_some()
+        {
+            self.command_line.push_error(
+                crate::t!("RESETBLOCK is not available inside the Block Editor.").as_ref(),
+            );
+            return Task::none();
         }
         if self.tabs[i].block_test.is_some() {
             let name = cmd.split([' ', ':']).next().unwrap_or(cmd);
@@ -313,6 +365,9 @@ impl OpenCADStudio {
         }
         // Cancel any running command before starting a new one.
         if self.tabs[i].active_cmd.is_some() {
+            self.tabs[i].pending_parameter_set_follow_up = None;
+            self.tabs[i].pending_xy_box_set = None;
+            self.tabs[i].pending_action_pair = None;
             self.tabs[i].scene.clear_preview_wire();
             self.tabs[i].active_cmd = None;
             // Interrupting an ADDSELECTED draw with another command reverts its
@@ -551,6 +606,7 @@ pub fn is_transparent(cmd: &str) -> bool {
                 | "DSETTINGS"
                 | "BAUTHORPALETTE"
                 | "BAUTHORPALETTECLOSE"
+                | "PARAMETERSCLOSE"
         )
 }
 
@@ -621,6 +677,8 @@ inventory::submit!(crate::command::CommandRegistration {
         "CUI",
         "DSETTINGS",
         "PARAMETERS",
+        "PARAMETERSCLOSE",
+        "BTABLE",
         "GRID",
         "GRAPHICATTRIBUTES",
         "ISODRAFT",
@@ -803,6 +861,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "SHORTCUTMENUDURATION",
         "CURSORSIZE",
         "PICKBOX",
+        "APERTURE",
         "CURSORTYPE",
         "SNAPANG",
         "ATTREQ",
@@ -813,6 +872,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "REGENMODE",
         "BLIPMODE",
         "SPLFRAME",
+        "CAMERADISPLAY",
         "DELOBJ",
         "PLINEGEN",
         "PSLTSCALE",
