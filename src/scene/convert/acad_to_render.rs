@@ -45,7 +45,11 @@ pub struct TextPlane {
 /// Z axis: the run's origin (in the entity's object coordinates, at
 /// elevation `z`) and the object system's X and Y axes, in world space.
 /// `None` for a run in the XY plane, which is drawn as it is.
-pub fn ocs_text_plane(normal: codec::types::Vector3, origin: [f64; 2], z: f64) -> Option<TextPlane> {
+pub fn ocs_text_plane(
+    normal: codec::types::Vector3,
+    origin: [f64; 2],
+    z: f64,
+) -> Option<TextPlane> {
     if normal.x.abs() < 1e-12 && normal.y.abs() < 1e-12 && normal.z > 0.0 {
         return None;
     }

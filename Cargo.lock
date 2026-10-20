@@ -6,7 +6,7 @@ version = 4
 name = "OpenCADStudio"
 version = "2026.42.0"
 dependencies = [
- "acadrust 0.6.4 (git+https://github.com/HakanSeven12/opencadcodec.git?rev=cc6fbe8)",
+ "acadrust",
  "aes",
  "allsorts",
  "ashpd",
@@ -4335,7 +4335,7 @@ dependencies = [
 name = "ocs_plugin_api"
 version = "0.2.1"
 dependencies = [
- "acadrust 0.6.4 (git+https://github.com/HakanSeven12/opencadcodec.git?rev=cc6fbe8)",
+ "acadrust",
  "bincode",
  "cargo-lock",
  "getrandom 0.2.17",
@@ -4354,7 +4354,7 @@ dependencies = [
 name = "ocs_save"
 version = "0.1.0"
 dependencies = [
- "acadrust 0.6.4 (git+https://github.com/HakanSeven12/opencadcodec.git?rev=cc6fbe8)",
+ "acadrust",
  "bincode",
  "serde",
 ]
@@ -4363,7 +4363,7 @@ dependencies = [
 name = "ocs_web_worker"
 version = "0.1.0"
 dependencies = [
- "acadrust 0.6.4 (git+https://github.com/HakanSeven12/opencadcodec.git?rev=cc6fbe8)",
+ "acadrust",
  "bincode",
  "console_error_panic_hook",
  "getrandom 0.3.4",
@@ -4419,7 +4419,7 @@ name = "opencadkernel"
 version = "0.1.0"
 source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=e9bc66d#e9bc66d91ab27879625bc6a5d4881cf1c8f821d8"
 dependencies = [
- "acadrust 0.6.4 (git+https://github.com/HakanSeven12/opencadcodec.git?rev=cc6fbe8)",
+ "acadrust",
  "cavalier_contours",
  "rustc-hash 2.1.3",
  "spade",
