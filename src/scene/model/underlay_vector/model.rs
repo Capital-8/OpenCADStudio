@@ -851,6 +851,8 @@ pub struct DgnImport {
     pub text_styles: Vec<(u32, String, String)>,
     /// The dimension style table (V8): each style's id and name.
     pub dim_styles: Vec<(u32, String)>,
+    /// A 3D V7 file.
+    pub three_d: bool,
 }
 
 /// A reference attachment of a DGN model: the file and model it shows and

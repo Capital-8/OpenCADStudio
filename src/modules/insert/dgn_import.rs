@@ -245,6 +245,49 @@ fn polyline(points: &[P3], bulges: &[f64]) -> EntityType {
 /// outline's elevation; `None` when the outline is not at one z. It is
 /// marked associative with no source yet: the outline converted just before
 /// it becomes its source once both are in the drawing.
+/// A flat outline that winds clockwise seen from +z (by its vertices, the
+/// closing edge included) in its entity coordinates about -z: x and z
+/// negated, the bulges negated. `None` when it winds the other way.
+fn turned_about_minus_z(points: &[P3], bulges: &[f64]) -> Option<(Vec<P3>, Vec<f64>)> {
+    let n = points.len();
+    let area: f64 = (0..n)
+        .map(|k| {
+            let (a, b) = (points[k], points[(k + 1) % n]);
+            a[0] * b[1] - b[0] * a[1]
+        })
+        .sum();
+    (n >= 2 && flat(points) && area < 0.0).then(|| {
+        (
+            points.iter().map(|p| [-p[0], p[1], -p[2]]).collect(),
+            bulges.iter().map(|b| -b).collect(),
+        )
+    })
+}
+
+/// [`polyline`] and its filling [`solid_hatch`], about -z when `by_winding`
+/// and the outline winds clockwise.
+fn outline(points: &[P3], bulges: &[f64], filled: bool, by_winding: bool) -> Vec<EntityType> {
+    let turned = by_winding.then(|| turned_about_minus_z(points, bulges)).flatten();
+    let (points, bulges) = match &turned {
+        Some((p, b)) => (p.as_slice(), b.as_slice()),
+        None => (points, bulges),
+    };
+    let mut out = vec![polyline(points, bulges)];
+    if filled {
+        out.extend(solid_hatch(points, bulges));
+    }
+    if turned.is_some() {
+        for entity in &mut out {
+            match entity {
+                EntityType::LwPolyline(pl) => pl.normal = Vector3::new(0.0, 0.0, -1.0),
+                EntityType::Hatch(h) => h.normal = Vector3::new(0.0, 0.0, -1.0),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
 fn solid_hatch(points: &[P3], bulges: &[f64]) -> Option<EntityType> {
     use codec::entities::{BoundaryEdge, BoundaryPath, Hatch, PolylineEdge};
     if points.len() < 3 || !flat(points) {
@@ -752,7 +795,14 @@ fn dimension_entity(
         _ => return None,
     };
     dimension.base_mut().style_name = style.to_string();
-    Some(EntityType::Dimension(Box::new(dimension)))
+    let mut entity = EntityType::Dimension(Box::new(dimension));
+    // An imported dimension draws no centre mark (DIMCEN 0 on the object).
+    crate::entities::dim_override::set_on_entity(
+        &mut entity,
+        crate::entities::dim_override::DIMCEN,
+        Some(codec::xdata::XDataValue::Real(0.0)),
+    );
+    Some(entity)
 }
 
 fn insert_entity(block: String, m: [f64; 4], origin: P3, z_scale: f64) -> EntityType {
@@ -875,6 +925,13 @@ impl<'a> Converter<'a> {
         layer
     }
 
+    /// Whether a flat outline's normal follows its winding (-z when it
+    /// winds clockwise): in V8 files and V7 3D files; a V7 2D file's are
+    /// all +z.
+    fn by_winding(&self) -> bool {
+        !self.import.v7 || self.import.three_d
+    }
+
     /// The object(s) one element converts to.
     fn geom(
         &mut self,
@@ -890,11 +947,7 @@ impl<'a> Converter<'a> {
             DgnGeom::Line(a, b) => vec![EntityType::Line(Line::from_points(v3(*a), v3(*b)))],
             // A filled shape is its outline and a solid hatch inside it.
             DgnGeom::Points(pts) if pts.len() >= 2 => {
-                let mut out = vec![polyline(pts, &[])];
-                if element.filled {
-                    out.extend(solid_hatch(pts, &[]));
-                }
-                out
+                outline(pts, &[], element.filled, self.by_winding())
             }
             DgnGeom::Points(_) => Vec::new(),
             DgnGeom::Dimension {
@@ -966,11 +1019,7 @@ impl<'a> Converter<'a> {
                 if points.len() < 2 {
                     return Vec::new();
                 }
-                let mut out = vec![polyline(&points, &bulges)];
-                if element.filled {
-                    out.extend(solid_hatch(&points, &bulges));
-                }
-                out
+                outline(&points, &bulges, element.filled, self.by_winding())
             }
             // V7 text is TEXT, V8 text an MTEXT.
             DgnGeom::Text { font: Some(_), .. } => {

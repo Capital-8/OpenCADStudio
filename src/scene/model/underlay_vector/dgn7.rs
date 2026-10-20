@@ -999,6 +999,7 @@ pub fn import(bytes: &[u8]) -> Option<DgnImport> {
         .collect();
     Some(DgnImport {
         dim_styles: Vec::new(),
+        three_d: is_3d(bytes),
         elements: scaled_elements(&raw.elements, s, [-u.origin[0] * s, -u.origin[1] * s, 0.0]),
         cells,
         levels,

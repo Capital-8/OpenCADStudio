@@ -1732,6 +1732,7 @@ pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
         references,
         text_styles: text_style_table(&nm),
         dim_styles: dim_style_table(&nm),
+        three_d: false,
     })
 }
 
