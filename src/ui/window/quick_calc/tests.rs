@@ -28,10 +28,16 @@ fn submit_records_history_and_ans() {
     submit(&mut p, "/ 2").unwrap();
     assert_eq!(p.history[1].expr, "ans / 2");
     assert_eq!(p.ans, Some(Value::Number(435.0)));
-    // An error keeps the input and changes nothing.
+    // An error keeps the input and changes nothing; it shows only after
+    // Enter, and only until the input changes.
+    p.input = "2 +".into();
+    assert!(!p.error_shown());
     assert!(submit(&mut p, "2 +").is_none());
     assert_eq!(p.input, "2 +");
     assert_eq!(p.history.len(), 2);
+    assert!(p.error_shown());
+    p.append(" 3");
+    assert!(!p.error_shown());
 }
 
 #[test]

@@ -77,11 +77,11 @@ impl OpenCADStudio {
         crate::ui::window::quick_calc::view(
             &self.quick_calc,
             crate::ui::window::quick_calc::Inputs {
-                drawing: &drawing,
+                drawing,
                 base_unit: base_unit(tab),
                 unit_label: unit_label(tab),
                 pick_step,
-                theme: &self.active_theme,
+                theme: self.active_theme.clone(),
             },
             width,
             chrome,

@@ -234,6 +234,10 @@ pub struct QuickCalcPalette {
     /// elsewhere). Escape clears the input only then, since a focused
     /// field drops its focus before the Escape shortcut arrives.
     pub typing: bool,
+    /// The input as it was when Enter failed on it. Its error shows only
+    /// while the input is unchanged, so a half-typed `1.2m / ` is not
+    /// flagged before the user asks for the result.
+    pub failed_input: Option<String>,
 }
 
 impl Default for QuickCalcPalette {
@@ -259,6 +263,7 @@ impl Default for QuickCalcPalette {
             unit_to,
             unit_value: "1".into(),
             typing: false,
+            failed_input: None,
         }
     }
 }
@@ -362,6 +367,12 @@ impl QuickCalcPalette {
         ctx
     }
 
+    /// Whether the error of the current input should show: only after Enter
+    /// failed on exactly this text.
+    pub fn error_shown(&self) -> bool {
+        self.failed_input.as_deref() == Some(self.input.as_str())
+    }
+
     pub fn preview(&self, ctx: &CalcContext) -> Preview {
         if self.input.trim().is_empty() {
             return Preview::Empty;
@@ -388,7 +399,10 @@ impl QuickCalcPalette {
         if trimmed.is_empty() {
             return None;
         }
-        let value = calc::evaluate(&trimmed, &mut ctx.clone()).ok()?;
+        let Ok(value) = calc::evaluate(&trimmed, &mut ctx.clone()) else {
+            self.failed_input = Some(self.input.clone());
+            return None;
+        };
         let expr = if continues_ans(&trimmed) {
             format!("ans {trimmed}")
         } else {
