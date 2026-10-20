@@ -4662,12 +4662,9 @@ impl OpenCADStudio {
                 // While dragging a pane, just track the cursor (no focus swap or
                 // snap) so the drop target reads cleanly.
                 if self.pane_move_from.is_some() {
-                    self.tabs[self.active_tab]
-                        .scene
-                        .selection
-                        .borrow_mut()
-                        .input
-                        .last_move_pos = Some(p);
+                    let mut sel = self.tabs[self.active_tab].scene.selection.borrow_mut();
+                    sel.input.last_move_pos = Some(p);
+                    sel.input.pointer_away = false;
                     return Task::none();
                 }
                 self.focus_model_pane(idx);

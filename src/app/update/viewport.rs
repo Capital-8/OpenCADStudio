@@ -1457,6 +1457,7 @@ impl OpenCADStudio {
         }
         let i = self.active_tab;
         self.tabs[i].measurement.live_visible = true;
+        self.tabs[i].scene.selection.borrow_mut().input.pointer_away = false;
         if let Some(task) = self.start_drag_move(i, p) {
             return Task::batch([task, self.on_viewport_move(p)]);
         }
@@ -3746,6 +3747,7 @@ impl OpenCADStudio {
             self.tabs[i].scene.clear_preview_wire();
         }
         let mut sel = self.tabs[i].scene.selection.borrow_mut();
+        sel.input.pointer_away = true;
         sel.input.left_down = false;
         sel.input.left_press_pos = None;
         sel.input.left_press_time = None;
