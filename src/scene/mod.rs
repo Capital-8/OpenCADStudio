@@ -10310,6 +10310,22 @@ impl Scene {
         }
     }
 
+    /// Only the handles of editable, visible HATCH entities. Modification
+    /// commands need these in addition to the wire-based entity list: hatch
+    /// fills are rendered separately and otherwise never reach TRIM.
+    /// Unlike visible_hatches_for_click this never clones GPU hatch models.
+    pub fn visible_hatch_handles_for_edit(&self) -> Vec<Handle> {
+        self.hatches
+            .keys()
+            .copied()
+            .filter(|handle| {
+                self.hatch_visible_for_interaction(*handle)
+                    && matches!(self.document.get_entity(*handle), Some(EntityType::Hatch(_)))
+                    && !self.is_reference_only(*handle)
+            })
+            .collect()
+    }
+
     /// Hatches eligible for click / box / lasso hit-testing in the current
     /// layout. Filters out block-internal source hatches (stored in
     /// `self.hatches` at block-local coords for the block-defn position,
