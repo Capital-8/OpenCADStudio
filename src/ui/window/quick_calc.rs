@@ -135,7 +135,6 @@ pub enum QuickCalcMsg {
     /// Ctrl+Enter, or the toolbar button: the current value to the command line.
     PasteToCommandLine,
     Copy,
-    Clear,
     Pick(PickKind),
     CancelPick,
     /// A pick finished (from `CmdResult::QuickCalcPick`).

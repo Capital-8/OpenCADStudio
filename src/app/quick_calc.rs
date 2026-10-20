@@ -181,12 +181,6 @@ impl OpenCADStudio {
                 }
                 None => Task::none(),
             },
-            QuickCalcMsg::Clear => {
-                qc.input.clear();
-                qc.hist_idx = None;
-                qc.typing = true;
-                focus_input()
-            }
             QuickCalcMsg::Pick(kind) => self.quick_calc_pick(kind),
             QuickCalcMsg::CancelPick => {
                 let i = self.active_tab;

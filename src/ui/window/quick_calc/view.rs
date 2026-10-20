@@ -20,7 +20,6 @@ pub const ICON: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/quick
 const POINT: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/point.svg");
 const DISTANCE: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/distance.svg");
 const ANGLE: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/angle.svg");
-const CLEAR: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/clear.svg");
 const COPY: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/copy.svg");
 const SEND: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/send.svg");
 const CHEVRON_DOWN: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/chevron_down.svg");
@@ -316,7 +315,7 @@ enum Look {
     Eq,
 }
 
-fn key<'a>(label: &str, k: Key, look: Look, hint: Option<String>) -> Element<'a, Message> {
+fn key<'a>(label: &str, k: Key, look: Look) -> Element<'a, Message> {
     let t = text(label.to_string())
         .size(match look {
             Look::Digit | Look::Op => 13.0,
@@ -369,10 +368,7 @@ fn key<'a>(label: &str, k: Key, look: Look, hint: Option<String>) -> Element<'a,
                 ..Default::default()
             }
         });
-    match hint {
-        Some(h) => tip(b, h),
-        None => b.into(),
-    }
+    b.into()
 }
 
 fn grid<'a>(keys: Vec<Element<'a, Message>>, columns: usize) -> Element<'a, Message> {
@@ -433,91 +429,71 @@ fn section_header<'a>(
 
 fn pad<'a>() -> Element<'a, Message> {
     use Key::*;
-    let t = |s: &str| crate::t!(s).into_owned();
-    let d = |s: &'static str| key(s, Text(s), Look::Digit, None);
-    let op = |label: &'static str, ins: &'static str| key(label, Text(ins), Look::Op, None);
+    let d = |s: &'static str| key(s, Text(s), Look::Digit);
+    let op = |label: &'static str, ins: &'static str| key(label, Text(ins), Look::Op);
     let keys = vec![
-        key("MS", MemStore, Look::Plain, Some(t("Memory store"))),
-        key("M+", MemAdd, Look::Plain, Some(t("Add to memory"))),
-        key("MR", MemRecall, Look::Plain, Some(t("Memory recall"))),
-        key("←", Back, Look::Edit, Some(t("Backspace"))),
-        key("C", Clear, Look::Edit, Some(t("Clear input"))),
-        key("MC", MemClear, Look::Plain, Some(t("Memory clear"))),
+        key("MS", MemStore, Look::Plain),
+        key("M+", MemAdd, Look::Plain),
+        key("MR", MemRecall, Look::Plain),
+        key("←", Back, Look::Edit),
+        key("C", Clear, Look::Edit),
+        key("MC", MemClear, Look::Plain),
         op("(", "("),
         op(")", ")"),
-        key("pi", Text("pi"), Look::Plain, Some(t("Pi"))),
-        key("√", Sqrt, Look::Plain, Some(t("Square root of the input"))),
-        key(
-            "1/x",
-            Inverse,
-            Look::Plain,
-            Some(t("Reciprocal of the input")),
-        ),
+        key("pi", Text("pi"), Look::Plain),
+        key("√", Sqrt, Look::Plain),
+        key("1/x", Inverse, Look::Plain),
         d("7"),
         d("8"),
         d("9"),
         op("/", " / "),
-        key("x²", Square, Look::Plain, Some(t("Square the input"))),
+        key("x²", Square, Look::Plain),
         d("4"),
         d("5"),
         d("6"),
         op("*", " * "),
-        key("x³", Cube, Look::Plain, Some(t("Cube the input"))),
+        key("x³", Cube, Look::Plain),
         d("1"),
         d("2"),
         d("3"),
         op("-", " - "),
-        key("xʸ", Text("^"), Look::Plain, Some(t("Raise to a power"))),
+        key("xʸ", Text("^"), Look::Plain),
         d("0"),
         d("."),
-        key("=", Eval, Look::Eq, Some(t("Evaluate the input"))),
+        key("=", Eval, Look::Eq),
         op("+", " + "),
     ];
     grid(keys, 5)
 }
 
 fn scientific<'a>() -> Element<'a, Message> {
-    let f = |label: &'static str, ins: &'static str, hint: &str| {
-        key(
-            label,
-            Key::Text(ins),
-            Look::Plain,
-            Some(crate::t!(hint).into_owned()),
-        )
-    };
+    let f = |label: &'static str, ins: &'static str| key(label, Key::Text(ins), Look::Plain);
     grid(
         vec![
-            f("sin", "sin(", "Sine"),
-            f("cos", "cos(", "Cosine"),
-            f("tan", "tan(", "Tangent of an angle"),
-            f("√", "sqrt(", "Square root"),
-            f("x²", "^2", "Squared"),
-            f("asin", "asin(", "Arcsine"),
-            f("acos", "acos(", "Arccosine"),
-            f("atan", "atan(", "Arctangent"),
-            f("ln", "ln(", "Natural logarithm"),
-            f("log", "log(", "Base-10 logarithm"),
-            f("π", "pi", "Pi"),
-            f("abs", "abs(", "Absolute value"),
-            f("round", "round(", "Round"),
-            f("d2r", "d2r(", "Degrees to radians"),
-            f("r2d", "r2d(", "Radians to degrees"),
+            f("sin", "sin("),
+            f("cos", "cos("),
+            f("tan", "tan("),
+            f("√", "sqrt("),
+            f("x²", "^2"),
+            f("asin", "asin("),
+            f("acos", "acos("),
+            f("atan", "atan("),
+            f("ln", "ln("),
+            f("log", "log("),
+            f("π", "pi"),
+            f("abs", "abs("),
+            f("round", "round("),
+            f("d2r", "d2r("),
+            f("r2d", "r2d("),
         ],
         5,
     )
 }
 
 fn point_functions<'a>() -> Element<'a, Message> {
-    let punct = |label: &'static str, ins: &'static str, hint: &str| {
-        key(
-            label,
-            Key::Text(ins),
-            Look::Op,
-            Some(crate::t!(hint).into_owned()),
-        )
-    };
-    let sig = |name: &'static str, ins: &'static str, signature: &'static str, hint: &str| {
-        let b = button(
+    let punct = |label: &'static str, ins: &'static str| key(label, Key::Text(ins), Look::Op);
+    let sig = |name: &'static str, ins: &'static str, signature: &'static str| {
+        button(
             column![strong(name, 11.5, STRONG), muted(signature, 10.0)]
                 .spacing(2)
                 .align_x(iced::Center)
@@ -545,20 +521,20 @@ fn point_functions<'a>() -> Element<'a, Message> {
                 text_color: t.text,
                 ..Default::default()
             }
-        });
-        tip(b, crate::t!(hint).into_owned())
+        })
+        .into()
     };
     grid(
         vec![
-            punct("[", "[", "Start a point"),
-            punct(",", ", ", "Separate coordinates"),
-            punct("]", "]", "End a point"),
-            sig("dist", "dist(", "(p1, p2)", "Distance between two points"),
-            sig("ang", "ang(", "(p1, p2)", "Angle of the line from p1 to p2"),
-            sig("mid", "mid(", "(p1, p2)", "Midpoint of two points"),
-            sig("xof", "xof(", "(p)", "X coordinate of a point"),
-            sig("yof", "yof(", "(p)", "Y coordinate of a point"),
-            sig("zof", "zof(", "(p)", "Z coordinate of a point"),
+            punct("[", "["),
+            punct(",", ", "),
+            punct("]", "]"),
+            sig("dist", "dist(", "(p1, p2)"),
+            sig("ang", "ang(", "(p1, p2)"),
+            sig("mid", "mid(", "(p1, p2)"),
+            sig("xof", "xof(", "(p)"),
+            sig("yof", "yof(", "(p)"),
+            sig("zof", "zof(", "(p)"),
         ],
         3,
     )
@@ -798,6 +774,8 @@ pub struct Inputs {
 /// instead of squeezing the history below this.
 const MIN_HISTORY_ROWS: f32 = 4.0;
 const HISTORY_ROW_H: f32 = 22.0;
+/// Space between an embedded scrollbar and the content it scrolls.
+const SCROLLBAR_GAP: f32 = 4.0;
 
 pub fn view<'a>(
     p: &'a QuickCalcPalette,
@@ -861,9 +839,9 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
         ),
         container(divider).padding([0, 4]),
         tool(
-            CLEAR,
-            crate::t!("Clear input").into_owned(),
-            QuickCalcMsg::Clear,
+            crate::ui::icons::TRASH,
+            crate::t!("Clear history").into_owned(),
+            QuickCalcMsg::ClearHistory,
             false
         ),
         tool(
@@ -885,17 +863,11 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
     .align_y(iced::Center);
 
     // History, newest at the bottom next to the input.
-    let mut header = row![muted(crate::t!("History").into_owned(), 10.5).width(Fill)];
-    if !p.history.is_empty() {
-        header = header.push(
-            button(muted(crate::t!("Clear history").into_owned(), 10.5))
-                .padding(0)
-                .on_press(m(QuickCalcMsg::ClearHistory))
-                .style(button::text),
-        );
-    }
-    let history: Element<'a, Message> = if p.history.is_empty() {
-        container(
+    // The empty state, or the rows; the list around the rows is built once
+    // the layout knows whether they overflow (see below).
+    let (empty_state, history_rows): (Option<Element<'a, Message>>, Vec<Element<'a, Message>>) =
+        if p.history.is_empty() {
+            (Some(container(
             column![
                 icon(ICON, 28.0, |t| t.faint),
                 text(crate::t!("Results collect here")).size(11.5),
@@ -913,55 +885,46 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
         )
         .padding([24, 20])
         .center(Fill)
-        .into()
-    } else {
-        let rows = p.history.iter().enumerate().map(|(i, e)| {
-            let expr = button(
-                muted(e.expr.clone(), 11.5)
-                    .font(MONO)
-                    .wrapping(Wrapping::None)
-                    .ellipsis(Ellipsis::End),
-            )
-            .width(Fill)
-            .padding(0)
-            .on_press(m(QuickCalcMsg::HistoryLoad(i)))
-            .style(button::text);
-            let result = button(text(e.value.display()).size(12.5).font(MONO_STRONG))
+        .into()), Vec::new())
+        } else {
+            let rows = p.history.iter().enumerate().map(|(i, e)| {
+                let expr = button(
+                    muted(e.expr.clone(), 11.5)
+                        .font(MONO)
+                        .wrapping(Wrapping::None)
+                        .ellipsis(Ellipsis::End),
+                )
+                .width(Fill)
                 .padding(0)
-                .on_press(m(QuickCalcMsg::HistoryCopy(i)))
-                .style(|theme: &Theme, status| {
-                    let t = tokens(theme);
-                    button::Style {
-                        text_color: if matches!(status, button::Status::Hovered) {
-                            t.accent
-                        } else {
-                            t.text
-                        },
-                        ..Default::default()
-                    }
-                });
-            container(
-                row![
-                    tip(expr, crate::t!("Load into the input").into_owned()),
-                    tip(result, crate::t!("Copy result").into_owned()),
-                ]
-                .spacing(10)
-                .align_y(iced::Center),
-            )
-            .padding([3, 4])
-            .into()
-        });
-        // Newest at the bottom, right above the input: a short history sits
-        // on the bottom edge, a long one scrolls up from it.
-        container(
-            scrollable(column(rows))
-                .anchor_bottom()
-                .height(Length::Shrink),
-        )
-        .align_bottom(Fill)
-        .width(Fill)
-        .into()
-    };
+                .on_press(m(QuickCalcMsg::HistoryLoad(i)))
+                .style(button::text);
+                let result = button(text(e.value.display()).size(12.5).font(MONO_STRONG))
+                    .padding(0)
+                    .on_press(m(QuickCalcMsg::HistoryCopy(i)))
+                    .style(|theme: &Theme, status| {
+                        let t = tokens(theme);
+                        button::Style {
+                            text_color: if matches!(status, button::Status::Hovered) {
+                                t.accent
+                            } else {
+                                t.text
+                            },
+                            ..Default::default()
+                        }
+                    });
+                container(
+                    row![
+                        tip(expr, crate::t!("Load into the input").into_owned()),
+                        tip(result, crate::t!("Copy result").into_owned()),
+                    ]
+                    .spacing(10)
+                    .align_y(iced::Center),
+                )
+                .padding([3, 4])
+                .into()
+            });
+            (None, rows.collect())
+        };
 
     // Input, with the pick banner above it and the preview or error below.
     let mut input_block = column![].spacing(6);
@@ -1207,19 +1170,40 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
         + 6.0
         + if show_error { 38.0 } else { 18.0 }
         + if picking.is_some() { 52.0 } else { 0.0 };
-    let history_min = 16.0 + MIN_HISTORY_ROWS * HISTORY_ROW_H;
+    let history_min = MIN_HISTORY_ROWS * HISTORY_ROW_H;
     let fixed = 28.0 + input_h + 22.0 + 4.0 * 6.0;
     let sections_cap = (height - fixed - history_min).max(0.0);
     let natural = sections_height(p, inputs.drawing.len());
+    // A scrollbar that shows takes its own room beside the content
+    // (`spacing` embeds it) instead of covering the keys or the results.
     let sections: Element<'a, Message> = if natural <= sections_cap {
         sections.into()
     } else {
-        scrollable(sections).height(sections_cap).into()
+        scrollable(sections)
+            .spacing(SCROLLBAR_GAP)
+            .height(sections_cap)
+            .into()
+    };
+    let history: Element<'a, Message> = match empty_state {
+        Some(empty) => empty,
+        None => {
+            // Newest at the bottom, right above the input: a short history
+            // sits on the bottom edge, a long one scrolls up from it.
+            let room = height - fixed - natural.min(sections_cap);
+            let overflows = history_rows.len() as f32 * HISTORY_ROW_H > room;
+            let mut list = scrollable(column(history_rows))
+                .anchor_bottom()
+                .height(Length::Shrink);
+            if overflows {
+                list = list.spacing(SCROLLBAR_GAP);
+            }
+            container(list).align_bottom(Fill).width(Fill).into()
+        }
     };
 
     column![
         toolbar,
-        column![header, history].spacing(2).height(Fill),
+        container(history).height(Fill),
         input_block,
         sections,
         footer,
