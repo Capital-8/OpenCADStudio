@@ -654,15 +654,37 @@ impl CadCommand for StretchCommand {
         }
     }
 
+    fn preview_original_snap_wires(&self) -> &[WireModel] {
+        if matches!(self.step, Step::Target { .. }) {
+            &self.wire_models
+        } else {
+            &[]
+        }
+    }
+
     fn on_preview_wires(&mut self, pt: DVec3) -> Vec<WireModel> {
         match &self.step {
             // The crossing-window rectangle is drawn as a filled selection
             // marquee by the host (via window_first_corner) so it matches a
             // normal box selection — nothing to draw here. (#291)
             Step::WindowCorner2(_) => vec![],
-            // The stretched entities themselves come from `preview_entities`.
+            // STRETCH hides the original resident geometry. Draw a pale,
+            // stationary ghost from its snapshot *behind* the moving geometry.
+            // Do not replace the snapshot itself: it remains the snap source.
             Step::Target { base } => {
-                vec![WireModel::solid_f64(
+                let mut wires: Vec<WireModel> = self.wire_models.iter()
+                    .filter(|wire| wire.display_visible)
+                    .cloned()
+                    .map(|mut wire| {
+                        wire.selected = false;
+                        wire.color = [0.67, 0.79, 0.84, wire.color[3] * 0.38];
+                        wire.aci = 0;
+                        wire.reference_only = true;
+                        wire.plot_visible = false;
+                        wire
+                    })
+                    .collect();
+                wires.push(WireModel::solid_f64(
                     "rubber_band".into(),
                     vec![
                         [base.x, base.y, base.z],
@@ -670,7 +692,8 @@ impl CadCommand for StretchCommand {
                     ],
                     WireModel::CYAN,
                     false,
-                )]
+                ));
+                wires
             }
             _ => vec![],
         }
