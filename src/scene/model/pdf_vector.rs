@@ -366,6 +366,7 @@ fn read_page_with(path: &str, page: &str, images: bool) -> Option<PageVectors> {
     };
     interpret_page(page, &mut context, &mut device);
     device.finish_text();
+    merge_fill_and_stroke(page, &mut device);
 
     // Base font names in the order the content stream selects them; glyph
     // fonts are matched to them in their order of first use.
@@ -419,6 +420,74 @@ fn read_page_with(path: &str, page: &str, images: bool) -> Option<PageVectors> {
         oc_marks: device.oc_marks,
         oc_sections: device.oc_sections,
     })
+}
+
+/// A path filled and stroked by one operator (`B`, `b*` …) is one path
+/// with both a fill and a stroke, as the reference reads it (its fill, at
+/// the stroke's weight). The interpreter draws such a path twice; the page's
+/// own operators tell those pairs from a fill followed by a separate stroke
+/// of the same path. Nothing is merged when the drawn paths do not match
+/// the page's operators one for one (paths drawn by forms or patterns).
+fn merge_fill_and_stroke(page: &hayro::hayro_syntax::page::Page<'_>, device: &mut Collector) {
+    let mut calls: Vec<usize> = Vec::new();
+    let mut ops = page.typed_operations();
+    while let Some(op) = ops.next() {
+        calls.push(match op {
+            TypedInstruction::StrokePath(_)
+            | TypedInstruction::CloseAndStrokePath(_)
+            | TypedInstruction::FillPathNonZero(_)
+            | TypedInstruction::FillPathNonZeroCompatibility(_)
+            | TypedInstruction::FillPathEvenOdd(_) => 1,
+            TypedInstruction::FillAndStrokeNonZero(_)
+            | TypedInstruction::FillAndStrokeEvenOdd(_)
+            | TypedInstruction::CloseFillAndStrokeNonZero(_)
+            | TypedInstruction::CloseFillAndStrokeEvenOdd(_) => 2,
+            _ => continue,
+        });
+    }
+    if calls.iter().sum::<usize>() != device.path_calls.len() {
+        return;
+    }
+    let mut gone = vec![false; device.paths.len()];
+    let mut at = 0;
+    for count in calls {
+        if count == 2 {
+            if let (Some(Some(f)), Some(Some(s))) = (device.path_calls.get(at), device.path_calls.get(at + 1)) {
+                let (f, s) = (*f, *s);
+                if device.paths[f].fill.is_some()
+                    && device.paths[s].stroke.is_some()
+                    && device.paths[f].subpaths == device.paths[s].subpaths
+                {
+                    device.paths[f].stroke = device.paths[s].stroke;
+                    gone[s] = true;
+                }
+            }
+        }
+        at += count;
+    }
+    if !gone.contains(&true) {
+        return;
+    }
+    let mut new_index = vec![0usize; gone.len()];
+    let mut kept = Vec::new();
+    for (k, path) in std::mem::take(&mut device.paths).into_iter().enumerate() {
+        new_index[k] = kept.len();
+        if !gone[k] {
+            kept.push(path);
+        }
+    }
+    device.paths = kept;
+    let (mut order, mut marks) = (Vec::new(), Vec::new());
+    for (drawn, mark) in device.order.iter().zip(&device.oc_marks) {
+        match *drawn {
+            Drawn::Path(i) if gone[i] => continue,
+            Drawn::Path(i) => order.push(Drawn::Path(new_index[i])),
+            other => order.push(other),
+        }
+        marks.push(*mark);
+    }
+    device.order = order;
+    device.oc_marks = marks;
 }
 
 /// The layer each optional-content section of a page's own content stream
@@ -507,6 +576,9 @@ struct Collector {
     images: Vec<PdfImage>,
     order: Vec<Drawn>,
     oc_marks: Vec<usize>,
+    /// Each path the interpreter drew, in order: the index of the path it
+    /// became, `None` when left out.
+    path_calls: Vec<Option<usize>>,
     /// Optional-content sections begun so far.
     oc_sections: usize,
     /// The visible area, in inches: the page, then each clip path's box
@@ -633,6 +705,7 @@ impl<'a> Device<'a> for Collector {
         mode: &PathDrawMode,
     ) {
         self.finish_text();
+        self.path_calls.push(None);
         let subpaths = subpaths(path, transform);
         if subpaths.is_empty() {
             return;
@@ -666,6 +739,9 @@ impl<'a> Device<'a> for Collector {
             }
             PathDrawMode::Fill(_) => (None, Some(rgb(paint))),
         };
+        if let Some(call) = self.path_calls.last_mut() {
+            *call = Some(self.paths.len());
+        }
         self.order.push(Drawn::Path(self.paths.len()));
         self.oc_marks.push(self.oc_sections);
         self.paths.push(PdfPath {

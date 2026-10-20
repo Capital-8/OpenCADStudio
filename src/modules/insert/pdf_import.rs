@@ -1414,6 +1414,24 @@ pub fn convert(
                     continue;
                 }
                 match (path.stroke, path.fill) {
+                    // Filled and stroked by one operator: the fill, at the
+                    // stroke's weight.
+                    (Some((_, width)), Some(rgb)) if settings.fills => {
+                        let layer = naming.layer(pdf_layer, Kind::Fill);
+                        let color = color_on(&layer, color_of(rgb));
+                        let weight = if settings.lineweights {
+                            lineweight_of(width)
+                        } else {
+                            LineWeight::ByLayer
+                        };
+                        for mut entity in fill_entities(path, settings.hatches, &world2, &world3, z)
+                        {
+                            let common = entity.common_mut();
+                            (common.layer, common.color, common.transparency, common.line_weight) =
+                                (layer.clone(), color, fill_transparency, weight);
+                            result.entities.push(entity);
+                        }
+                    }
                     (Some((rgb, width)), _) => {
                         let layer = naming.layer(pdf_layer, Kind::Geometry);
                         let color = color_on(&layer, color_of(rgb));
