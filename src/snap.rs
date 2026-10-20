@@ -2720,22 +2720,27 @@ impl Snapper {
                     .iter()
                     .any(|(_, hint)| matches!(hint, SnapHint::ArcCenter))
             };
+            // First carrier per name, gathered once: looking it up by scanning
+            // every candidate for every segment was quadratic, and all wires
+            // of one block copy share a name (#1891).
+            let mut carriers: HashMap<&str, &WireModel> = HashMap::default();
+            for wire in wires.iter() {
+                if !wire.name.is_empty() && carries(wire) {
+                    carriers.entry(wire.name.as_str()).or_insert(wire);
+                }
+            }
             let arc_centre = |wire: &WireModel, on: (DVec3, DVec3)| -> Option<DVec3> {
                 if carries(wire) {
                     return arc_segment_center(wire, on);
                 }
-                let carrier = wires
-                    .iter()
-                    .find(|w| !wire.name.is_empty() && w.name == wire.name && carries(w))?;
-                arc_segment_center(carrier, on)
+                arc_segment_center(carriers.get(wire.name.as_str())?, on)
             };
             let has_centre = |wire: &WireModel| {
                 wire.snap_pts
                     .iter()
                     .any(|(_, hint)| matches!(hint, SnapHint::Center))
                     || carries(wire)
-                    || (!wire.name.is_empty()
-                        && wires.iter().any(|w| w.name == wire.name && carries(w)))
+                    || carriers.contains_key(wire.name.as_str())
             };
             // `on`: the piece of the wire under the cursor, which picks out
             // the arc segment of a polyline whose centre is offered.
