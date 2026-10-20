@@ -80,6 +80,8 @@ struct Entity {
     transform: usize,
     /// Colour number, or a negated pointer to a colour definition.
     color: i64,
+    /// The directory entry's level number.
+    level: i64,
     /// Whether another entity uses it (the directory's subordinate switch).
     subordinate: bool,
     params: Vec<P>,
@@ -115,6 +117,9 @@ impl Doc {
         let rgb = match number {
             // Black becomes the dark grey 250.
             1 => return Color::Index(250),
+            // No colour, or a number past the eight standard ones.
+            0 => return Color::ByBlock,
+            n if n > 8 => return Color::ByBlock,
             2 => [255, 0, 0],
             3 => [0, 255, 0],
             4 => [0, 0, 255],
@@ -128,10 +133,10 @@ impl Doc {
                 }),
                 None => return Color::ByLayer,
             },
-            // None, or a number past the eight standard colours.
             _ => return Color::ByLayer,
         };
         match rgb {
+            [0, 0, 0] => Color::Index(250),
             [255, 0, 0] => Color::Index(1),
             [255, 255, 0] => Color::Index(2),
             [0, 255, 0] => Color::Index(3),
@@ -851,12 +856,33 @@ impl Assembly<'_> {
 
     /// A loop along curve pieces, in their order.
     fn curve_ring(&mut self, pieces: Vec<(Curve3, [f64; 3], [f64; 3])>) -> Option<Vec<(EdgeKey, bool)>> {
+        // Pieces of one loop follow on from each other: a piece starts where
+        // the one before it ends (and the last runs back to the first) even
+        // when the file's points part by more than its resolution, up to a
+        // ten-thousandth of the loop's size.
+        let (lo, hi) = pieces.iter().flat_map(|(_, f, t)| [*f, *t]).fold(
+            ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]),
+            |(lo, hi), p| ([0, 1, 2].map(|k| lo[k].min(p[k])), [0, 1, 2].map(|k| hi[k].max(p[k]))),
+        );
+        let gap = (1e-4 * distance(lo, hi)).max(self.doc.resolution);
         let mut ring = Vec::new();
-        for (curve, from, to) in pieces {
+        let mut first: Option<([f64; 3], VertexKey)> = None;
+        let mut last: Option<([f64; 3], VertexKey)> = None;
+        let count = pieces.len();
+        for (k, (curve, from, to)) in pieces.into_iter().enumerate() {
             if distance(from, to) <= self.doc.resolution && matches!(curve, Curve3::Line(_)) {
                 continue;
             }
-            let (a, b) = (self.corner(from), self.corner(to));
+            let a = match last {
+                Some((point, v)) if distance(point, from) <= gap => v,
+                _ => self.corner(from),
+            };
+            let b = match first {
+                Some((point, v)) if k + 1 == count && distance(point, to) <= gap => v,
+                _ => self.corner(to),
+            };
+            first.get_or_insert((from, a));
+            last = Some((to, b));
             ring.push((self.build.edge(curve, a, b)?, true));
         }
         (!ring.is_empty()).then_some(ring)
@@ -1045,10 +1071,13 @@ impl Assembly<'_> {
 
 /// What an IGES file holds.
 pub struct IgesModel {
-    /// Each solid, scaled to the drawing, with its colour.
-    pub bodies: Vec<(kernel::brep::Body, codec::types::Color)>,
-    /// Each trimmed or bounded surface, a one-face sheet, with its colour.
-    pub sheets: Vec<(kernel::brep::Body, codec::types::Color)>,
+    /// Each solid, scaled to the drawing, with its colour and layer.
+    pub bodies: Vec<(kernel::brep::Body, codec::types::Color, String)>,
+    /// Each trimmed or bounded surface, a one-face sheet, with its colour
+    /// and layer.
+    pub sheets: Vec<(kernel::brep::Body, codec::types::Color, String)>,
+    /// Each spline curve no other entity uses, with its colour and layer.
+    pub curves: Vec<(NurbsCurve3, codec::types::Color, String)>,
 }
 
 /// `drawing_mm`: millimetres per drawing unit, `None` for a unitless drawing.
@@ -1133,11 +1162,28 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
                 form: field(second, 4),
                 transform: field(first, 6).max(0) as usize,
                 color: field(second, 2),
+                level: field(first, 4),
                 subordinate: (field(first, 8) / 10_000) % 100 != 0,
                 params: parameters(&data, delimiter, terminator),
             },
         );
     }
+    // Level names: a level function property (406 form 3) names the level
+    // its own entry is on.
+    let level_names: HashMap<i64, String> = entities
+        .values()
+        .filter(|e| e.kind == 406 && e.form == 3)
+        .filter_map(|e| match e.params.get(3) {
+            Some(P::Str(name)) if !name.is_empty() => Some((e.level, name.clone())),
+            _ => None,
+        })
+        .collect();
+    // An entity's layer: its level's name, else the level number; level 0
+    // (and a pointer to several levels) is layer 0.
+    let layer = |entity: &Entity| match entity.level {
+        n if n > 0 => level_names.get(&n).cloned().unwrap_or_else(|| n.to_string()),
+        _ => "0".to_string(),
+    };
     let scale = drawing_mm.filter(|mm| *mm > 0.0).map_or(1.0, |mm| unit_mm / mm);
     let resolution = globals.get(18).map(P::num).filter(|r| *r > 0.0).unwrap_or(1e-6) * scale;
     let doc = Doc {
@@ -1177,7 +1223,7 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
             shells.push(outer);
             shells.extend(voids);
             if assembly.build.lump(shells).is_some() {
-                bodies.push((assembly.build.body, doc.color(entity.color)));
+                bodies.push((assembly.build.body, doc.color(entity.color), layer(entity)));
             }
         }
     }
@@ -1211,12 +1257,28 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
             _ => assembly.whole(number as f64),
         };
         match made {
-            Some(true) => bodies.push((assembly.build.body, doc.color(entity.color))),
-            Some(false) => sheets.push((assembly.build.body, doc.color(entity.color))),
+            Some(true) => bodies.push((assembly.build.body, doc.color(entity.color), layer(entity))),
+            Some(false) => sheets.push((assembly.build.body, doc.color(entity.color), layer(entity))),
             None => {}
         }
     }
-    Some(IgesModel { bodies, sheets })
+    // Rational B-spline curves (126) no other entity uses come in as
+    // splines.
+    let mut numbers: Vec<usize> = doc
+        .entities
+        .iter()
+        .filter(|(_, e)| e.kind == 126 && !e.subordinate)
+        .map(|(n, _)| *n)
+        .collect();
+    numbers.sort_unstable();
+    let curves = numbers
+        .into_iter()
+        .filter_map(|number| {
+            let entity = &doc.entities[&number];
+            Some((doc.nurbs_curve(number as f64)?, doc.color(entity.color), layer(entity)))
+        })
+        .collect();
+    Some(IgesModel { bodies, sheets, curves })
 }
 
 /// A point along a parameter-space curve piece at `t` in 0..=1; an arc

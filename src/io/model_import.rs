@@ -205,17 +205,30 @@ pub fn read(format: ModelFormat, bytes: &[u8], drawing_mm: Option<f64>, stem: &s
             step_blocks(model, scale, stem)
         }
         ModelFormat::Iges => {
-            // Solids, then the surfaces as surfaces however flat; faces and
-            // edges carry the object's colour.
+            // Solids, then the surfaces as surfaces however flat, then the
+            // free curves as splines; faces and edges carry the object's
+            // colour, every object its level's layer.
             let model = crate::io::iges_import::read(bytes, drawing_mm)?;
             let solids = model.bodies.iter().map(|body| (body, false));
             let sheets = model.sheets.iter().map(|body| (body, true));
+            let mut entities: Vec<EntityType> = solids
+                .chain(sheets)
+                .filter_map(|((body, color, layer), sheet)| {
+                    let mut entity = painted_body_entity(body, Some(*color), &[], sheet)?;
+                    entity.common_mut().layer = layer.clone();
+                    Some(entity)
+                })
+                .collect();
+            for (curve, color, layer) in &model.curves {
+                let mut spline = codec::entities::Spline::new();
+                crate::entities::spline::replace_with_nurbs(&mut spline, curve);
+                spline.common.color = *color;
+                spline.common.layer = layer.clone();
+                entities.push(EntityType::Spline(spline));
+            }
             Imported {
                 blocks: Vec::new(),
-                entities: solids
-                    .chain(sheets)
-                    .filter_map(|((body, color), sheet)| painted_body_entity(body, Some(*color), &[], sheet))
-                    .collect(),
+                entities,
             }
         }
     };
