@@ -3000,6 +3000,26 @@ pub trait CadCommand: Send {
         None
     }
 
+    /// Opt in only for commands with useful, potentially expensive preview
+    /// geometry. Normal selection and other modify commands stay untouched.
+    fn drag_selection_preview_enabled(&self) -> bool {
+        false
+    }
+
+    /// Live preview for a drag box or lasso, before the mouse release commits
+    /// its selection. The host supplies only spatially nearby handles so an
+    /// interactive preview need not scan every entity in a large DWG.
+    /// Returning None retains the command's ordinary hover preview.
+    fn on_drag_selection_preview(
+        &mut self,
+        _fence: &[[f64; 2]],
+        _window: Option<([f64; 2], [f64; 2])>,
+        _crossing: bool,
+        _candidate_handles: &[Handle],
+    ) -> Option<Vec<WireModel>> {
+        None
+    }
+
     /// Whether an empty click may start a two-corner selection box for this
     /// command instead of being reported as a missed entity pick.
     fn accepts_drag_selection(&self) -> bool {

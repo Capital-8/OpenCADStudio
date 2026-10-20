@@ -2719,6 +2719,79 @@ fn fence_pass(
     out
 }
 
+/// EXTEND's normal box selection applies ONE extension per selected entity.
+/// Unlike the multi-round Fence/Crossing operator, this cannot extend an
+/// already-updated line again after it reaches its first boundary.
+/// The box is only a selector; all targets still use the chosen common
+/// boundary-edge geometry (`geos`).
+fn extend_box_pass(
+    all: &[EntityType],
+    geos: &[Geo],
+    boundary_handles: &[Handle],
+    fence: &[[f64; 2]],
+    window: Option<CrossingWindow>,
+    crossing: bool,
+) -> Vec<(Handle, Vec<EntityType>)> {
+    let selected = drag_selected_handles(all, fence, window, crossing);
+    if selected.is_empty() {
+        return Vec::new();
+    }
+    let selected: std::collections::HashSet<_> = selected.into_iter().collect();
+    let boundaries: std::collections::HashSet<_> = boundary_handles.iter().copied().collect();
+    let mut replacements = Vec::new();
+    for entity in all {
+        let handle = entity.common().handle;
+        if !selected.contains(&handle) || boundaries.contains(&handle) {
+            continue;
+        }
+        // Prefer the end visibly touched by the selection rectangle.
+        // If both ends are within it, use the nearest reachable boundary;
+        // if neither end is within it, follow the box crossing position.
+        // This is independent of line direction in the file.
+        let extended = if let EntityType::Line(line) = entity {
+            let contains = |x: f64, y: f64| window.is_some_and(|w| {
+                x >= w.min[0] && x <= w.max[0]
+                    && y >= w.min[1] && y <= w.max[1]
+            });
+            let start_in = contains(line.start.x, line.start.y);
+            let end_in = contains(line.end.x, line.end.y);
+            if start_in && end_in {
+                let start = extend_line(line, 0.0, geos);
+                let end = extend_line(line, 1.0, geos);
+                match (start, end) {
+                    (Some(a), Some(b)) => {
+                        let dist = |result: &EntityType| {
+                            let EntityType::Line(extended) = result else { return f64::INFINITY; };
+                            (extended.start.x - line.start.x).hypot(extended.start.y - line.start.y)
+                                + (extended.end.x - line.end.x).hypot(extended.end.y - line.end.y)
+                        };
+                        Some(if dist(&a) <= dist(&b) { a } else { b })
+                    }
+                    (a @ Some(_), None) | (None, a @ Some(_)) => a,
+                    (None, None) => None,
+                }
+            } else if start_in {
+                extend_line(line, 0.0, geos)
+            } else if end_in {
+                extend_line(line, 1.0, geos)
+            } else {
+                let pick = window.and_then(|w| entity_point_in_window(entity, w));
+                pick.and_then(|p| pick_extend_at(all, geos, handle, p[0], p[1]))
+            }
+        } else {
+            // Keep the existing analytic extension for arcs, polylines,
+            // ellipses and splines instead of introducing another solver.
+            window.and_then(|w| entity_point_in_window(entity, w))
+                .or_else(|| fence_cross_points(entity, &build_fence_geos(fence)).first().copied())
+                .and_then(|p| pick_extend_at(all, geos, handle, p[0], p[1]))
+        };
+        if let Some(new_entity) = extended {
+            replacements.push((handle, vec![new_entity]));
+        }
+    }
+    replacements
+}
+
 /// The ADDED tail of an extend result, dashed — the slice of the extended
 /// curve beyond the original endpoint, so the preview shows the extension
 /// itself rather than only a recolored whole (#336). Generic over entity
@@ -3778,6 +3851,10 @@ pub struct ExtendCommand {
     implied_edges: bool,
     /// Live Shift state — Shift+click trims instead of extends (#336).
     shift: bool,
+    /// Cached live box preview; rebuilding extensions on every raw pointer
+    /// event can stall large drawings. Final commit always recalculates.
+    box_preview_wires: Vec<WireModel>,
+    box_preview_at: Option<std::time::Instant>,
 }
 
 impl ExtendCommand {
@@ -3820,6 +3897,8 @@ impl ExtendCommand {
             selection_previous_quick: None,
             implied_edges: false,
             shift: false,
+            box_preview_wires: Vec::new(),
+            box_preview_at: None,
         };
         cmd.rebuild_geos();
         cmd
@@ -3870,7 +3949,7 @@ impl CadCommand for ExtendCommand {
         };
         match &self.mode {
             TrimMode::Pick => {
-                crate::tf!("EXTEND{edge}  Click near end of object to extend (Shift+click trims):")
+                crate::tf!("EXTEND{edge}  Click near an end or draw a crossing box to extend multiple objects (Shift trims):")
                     .into_owned()
             }
             TrimMode::SelectEdges => crate::tf!(
@@ -4033,31 +4112,107 @@ impl CadCommand for ExtendCommand {
         self.rebuild_geos();
     }
 
+    fn drag_selection_preview_enabled(&self) -> bool {
+        matches!(self.mode, TrimMode::Pick) && !self.shift
+    }
+
+    fn on_drag_selection_preview(
+        &mut self,
+        fence: &[[f64; 2]],
+        window: Option<([f64; 2], [f64; 2])>,
+        crossing: bool,
+        candidate_handles: &[Handle],
+    ) -> Option<Vec<WireModel>> {
+        if !matches!(self.mode, TrimMode::Pick) || self.shift || fence.len() < 2 {
+            return None;
+        }
+        // A 20 Hz geometric update keeps the live box responsive without
+        // intersecting every visible edge on each raw mouse move.
+        if self.box_preview_at.is_some_and(|at| {
+            at.elapsed() < std::time::Duration::from_millis(50)
+        }) {
+            return Some(self.box_preview_wires.clone());
+        }
+        let window = window.map(|(min, max)| CrossingWindow { min, max });
+        // The scene's interaction index has already narrowed this list to
+        // the box. A bounded preview is important with survey-size DWGs;
+        // the final commit has no such limit and processes all targets.
+        let entities: Vec<EntityType> = candidate_handles
+            .iter()
+            .take(1_000)
+            .filter_map(|&handle| self.entity_index.get(&self.all_entities, handle).cloned())
+            .collect();
+        let replacements = extend_box_pass(
+            &entities, &self.geos, &self.edge_set, fence, window, crossing,
+        );
+        let mut preview = Vec::new();
+        for (handle, extended) in replacements {
+            let Some(original) = self.entity_index.get(&self.all_entities, handle) else {
+                continue;
+            };
+            for entity in extended {
+                preview.extend(extend_hover_wires(
+                    original, &entity, &self.all_entities, handle, self.implied_edges,
+                ));
+            }
+        }
+        self.box_preview_wires = preview;
+        self.box_preview_at = Some(std::time::Instant::now());
+        Some(self.box_preview_wires.clone())
+    }
+
     fn on_drag_selection(
         &mut self,
         fence: &[[f64; 2]],
         window: Option<([f64; 2], [f64; 2])>,
         crossing: bool,
     ) -> Option<CmdResult> {
-        if !matches!(self.mode, TrimMode::SelectEdges) || fence.len() < 2 {
+        // Never reuse throttled preview geometry for the final edit.
+        self.box_preview_wires.clear();
+        self.box_preview_at = None;
+        if fence.len() < 2 {
             return None;
         }
         let window = window.map(|(min, max)| CrossingWindow { min, max });
-        let handles = drag_selected_handles(&self.all_entities, fence, window, crossing);
-        if self.shift {
-            self.edge_set.retain(|handle| !handles.contains(handle));
-        } else {
-            for handle in handles {
-                if !self.edge_set.contains(&handle) {
-                    self.edge_set.push(handle);
+        match self.mode {
+            TrimMode::SelectEdges => {
+                let handles = drag_selected_handles(&self.all_entities, fence, window, crossing);
+                if self.shift {
+                    self.edge_set.retain(|handle| !handles.contains(handle));
+                } else {
+                    for handle in handles {
+                        if !self.edge_set.contains(&handle) {
+                            self.edge_set.push(handle);
+                        }
+                    }
                 }
+                Some(CmdResult::NeedPoint)
             }
+            TrimMode::Pick => {
+                // Shift retains EXTEND's usual inverse TRIM gesture.
+                if self.shift {
+                    return Some(self.fence_run(fence, window));
+                }
+                let replacements = extend_box_pass(
+                    &self.all_entities,
+                    &self.geos,
+                    &self.edge_set,
+                    fence,
+                    window,
+                    crossing,
+                );
+                if replacements.is_empty() {
+                    return Some(CmdResult::NeedPoint);
+                }
+                self.pending = replacements.clone();
+                Some(CmdResult::ReplaceManyContinue(replacements))
+            }
+            _ => None,
         }
-        Some(CmdResult::NeedPoint)
     }
 
     fn accepts_drag_selection(&self) -> bool {
-        matches!(self.mode, TrimMode::SelectEdges)
+        matches!(self.mode, TrimMode::Pick | TrimMode::SelectEdges)
     }
 
     fn persistent_preview_wires(&self) -> Vec<WireModel> {
@@ -4348,6 +4503,117 @@ mod tests {
 
     fn vertical_boundary(x: f64, y1: f64, y2: f64, handle: u64) -> EntityType {
         xline_at(x, y1, x, y2, handle)
+    }
+
+    #[test]
+    fn extend_live_box_preview_shows_all_targets_without_modifying_them() {
+        let all = vec![
+            xline_at(0.0, 0.0, 0.0, 4.0, 1),
+            xline_at(2.0, 0.0, 2.0, 5.0, 2),
+            xline_at(-2.0, 10.0, 5.0, 10.0, 100),
+        ];
+        let mut cmd = ExtendCommand::new(all);
+        cmd.mode = TrimMode::Pick;
+        cmd.edge_set = vec![Handle::new(100)];
+        cmd.rebuild_geos();
+        let fence = [
+            [-1.0, 3.0], [3.0, 3.0], [3.0, 6.0], [-1.0, 6.0], [-1.0, 3.0],
+        ];
+        let window = Some(([-1.0, 3.0], [3.0, 6.0]));
+        let preview = cmd.on_drag_selection_preview(
+            &fence, window, true,
+            &[Handle::new(1), Handle::new(2), Handle::new(100)],
+        ).expect("EXTEND must preview crossing boxes");
+        // Same cyan complete-object overlay and dashed added tail as a single
+        // hover, once for every valid target (not for the cutting boundary).
+        assert_eq!(preview.iter().filter(|w| w.name == "extend_prev").count(), 2);
+        assert_eq!(preview.iter().filter(|w| w.name == "extend_tail").count(), 2);
+        for wire in preview.iter().filter(|w| w.name == "extend_prev") {
+            assert!(wire.points.iter().any(|p| (p[1] - 10.0).abs() < 1e-6));
+        }
+        assert!(cmd.pending.is_empty(), "preview must not commit geometry");
+        assert_eq!(cmd.all_entities.len(), 3);
+        // Mouse-up still computes actual edits even if a cached preview exists.
+        assert!(matches!(
+            cmd.on_drag_selection(&fence, window, true),
+            Some(CmdResult::ReplaceManyContinue(replacements)) if replacements.len() == 2
+        ));
+    }
+
+    #[test]
+    fn extend_crossing_box_reaches_one_common_horizontal_boundary() {
+        let all = vec![
+            xline_at(0.0, 0.0, 0.0, 4.0, 1),
+            // Reversed direction: the upper endpoint is START, not END.
+            xline_at(2.0, 5.0, 2.0, 1.0, 2),
+            // Both ends in the box: only the upward extension is reachable.
+            xline_at(4.0, 2.0, 4.0, 3.0, 3),
+            xline_at(8.0, 0.0, 8.0, 4.0, 4),
+            xline_at(-2.0, 10.0, 10.0, 10.0, 100),
+        ];
+        let mut cmd = ExtendCommand::new(all);
+        cmd.mode = TrimMode::Pick;
+        cmd.edge_set = vec![Handle::new(100)];
+        cmd.rebuild_geos();
+        let fence = [
+            [-0.5, 1.5], [4.5, 1.5], [4.5, 6.0], [-0.5, 6.0], [-0.5, 1.5],
+        ];
+        let CmdResult::ReplaceManyContinue(replacements) = cmd
+            .on_drag_selection(&fence, Some(([-0.5, 1.5], [4.5, 6.0])), true)
+            .expect("EXTEND accepts crossing-box selection")
+        else {
+            panic!("the crossing box must extend all selected lines");
+        };
+        assert_eq!(replacements.len(), 3);
+        assert!(replacements.iter().all(|(handle, _)|
+            *handle != Handle::new(4) && *handle != Handle::new(100)
+        ));
+        for (handle, entities) in replacements {
+            let EntityType::Line(line) = &entities[0] else {
+                panic!("line expected");
+            };
+            if handle == Handle::new(2) {
+                assert!((line.start.y - 10.0).abs() < 1e-9);
+                assert!((line.end.y - 1.0).abs() < 1e-9);
+            } else {
+                assert!((line.end.y - 10.0).abs() < 1e-9);
+                assert!((line.start.y - if handle == Handle::new(1) { 0.0 } else { 2.0 }).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn extend_box_does_not_modify_targets_without_reachable_boundary() {
+        let lines = vec![
+            xline_at(0.0, 0.0, 0.0, 4.0, 1),
+            xline_at(2.0, 0.0, 2.0, 4.0, 2),
+        ];
+        let mut cmd = ExtendCommand::new(lines);
+        cmd.mode = TrimMode::Pick;
+        let fence = [
+            [-1.0, 3.0], [3.0, 3.0], [3.0, 5.0], [-1.0, 5.0], [-1.0, 3.0],
+        ];
+        assert!(matches!(
+            cmd.on_drag_selection(&fence, Some(([-1.0, 3.0], [3.0, 5.0])), true),
+            Some(CmdResult::NeedPoint)
+        ));
+    }
+
+    #[test]
+    fn extend_box_window_left_to_right_requires_full_containment() {
+        let all = vec![
+            xline_at(0.0, 0.0, 0.0, 4.0, 1),
+            xline_at(-1.0, 10.0, 1.0, 10.0, 100),
+        ];
+        let mut cmd = ExtendCommand::new(all);
+        cmd.mode = TrimMode::Pick;
+        let fence = [
+            [-0.5, 3.0], [0.5, 3.0], [0.5, 5.0], [-0.5, 5.0], [-0.5, 3.0],
+        ];
+        assert!(matches!(
+            cmd.on_drag_selection(&fence, Some(([-0.5, 3.0], [0.5, 5.0])), false),
+            Some(CmdResult::NeedPoint)
+        ));
     }
 
     #[test]

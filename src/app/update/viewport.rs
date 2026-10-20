@@ -3655,6 +3655,112 @@ impl OpenCADStudio {
                     Vec::new()
                 }
             };
+            // While a command selection box (or lasso) is being drawn,
+            // preview the operation for all touched objects before release.
+            // The actual selection/commit path remains authoritative. This
+            // opt-in only affects commands exposing a drag-selection preview.
+            let (box_anchor, box_crossing, poly_active, poly_crossing, poly_points) = {
+                let selection = self.tabs[i].scene.selection.borrow();
+                (
+                    selection.gesture.box_anchor,
+                    selection.gesture.box_crossing,
+                    selection.gesture.poly_active,
+                    selection.gesture.poly_crossing,
+                    if selection.gesture.poly_active {
+                        selection.gesture.poly_points.clone()
+                    } else {
+                        Vec::new()
+                    },
+                )
+            };
+            if self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .is_some_and(|command| command.drag_selection_preview_enabled())
+                && (box_anchor.is_some() || poly_active)
+            {
+                let (screen_fence, window, crossing) = if poly_active {
+                    let mut points = poly_points;
+                    if points.last().is_none_or(|last| {
+                        (last.x - p_full.x).abs() > f32::EPSILON
+                            || (last.y - p_full.y).abs() > f32::EPSILON
+                    }) {
+                        points.push(p_full);
+                    }
+                    if let Some(first) = points.first().copied() {
+                        points.push(first);
+                    }
+                    (points, None, poly_crossing)
+                } else {
+                    let anchor = box_anchor.unwrap();
+                    let corners = vec![
+                        anchor,
+                        iced::Point::new(anchor.x, p_full.y),
+                        p_full,
+                        iced::Point::new(p_full.x, anchor.y),
+                        anchor,
+                    ];
+                    let window = Some((
+                        [anchor.x.min(p_full.x), anchor.y.min(p_full.y)],
+                        [anchor.x.max(p_full.x), anchor.y.max(p_full.y)],
+                    ));
+                    (corners, window, box_crossing)
+                };
+                let fence: Vec<[f64; 2]> = screen_fence
+                    .iter()
+                    .map(|point| {
+                        let local = iced::Point::new(point.x - tile_b.x, point.y - tile_b.y);
+                        let world = self.cursor_model_point(i, &edit_cam, local, bounds);
+                        [world.x, world.y]
+                    })
+                    .collect();
+                if fence.len() >= 3 {
+                    let xy_min_max = fence.iter().fold(
+                        ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]),
+                        |(mut min, mut max), point| {
+                            for axis in 0..2 {
+                                min[axis] = min[axis].min(point[axis]);
+                                max[axis] = max[axis].max(point[axis]);
+                            }
+                            (min, max)
+                        },
+                    );
+                    let area = [
+                        xy_min_max.0[0], xy_min_max.0[1],
+                        xy_min_max.1[0], xy_min_max.1[1],
+                    ];
+                    // For rectangles, use model-space corners: a pixel box
+                    // may not map 1:1 onto world coordinates when rotated.
+                    let window = window.map(|_| xy_min_max);
+                    let mut nearby: Vec<_> = self.tabs[i]
+                        .scene
+                        .interaction_handles_in_world_aabb(area)
+                        .into_iter()
+                        .collect();
+                    nearby.sort_unstable_by_key(|handle| handle.value());
+                    if let Some(mut box_preview) = self.tabs[i]
+                        .active_cmd
+                        .as_mut()
+                        .and_then(|command| {
+                            command.on_drag_selection_preview(
+                                &fence, window, crossing, &nearby,
+                            )
+                        })
+                    {
+                        if wo_f != glam::DVec3::ZERO {
+                            for wire in &mut box_preview {
+                                for point in &mut wire.points {
+                                    point[0] -= wo_f.x as f32;
+                                    point[1] -= wo_f.y as f32;
+                                    point[2] -= wo_f.z as f32;
+                                }
+                            }
+                        }
+                        previews = box_preview;
+                        self.tabs[i].scene.set_hover_highlight(None);
+                    }
+                }
+            }
             // Polar tracking guide line: dotted line from last_point along
             // the snapped angle direction, extending across the drawing.
             if self.polar_mode && !needs_entity {
