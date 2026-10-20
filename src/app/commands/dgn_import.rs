@@ -604,7 +604,7 @@ impl OpenCADStudio {
         };
         let layers = place_converted(&mut self.tabs[i].scene, converted, &naming);
         if request.references != ReferenceMode::Ignore {
-            let k = if request.sub_units { import.sub_per_master } else { 1.0 };
+            let k = dgn_import::unit_scale(&import, request.sub_units);
             // A reference is placed on the model's default level.
             let layer = import
                 .levels
@@ -821,6 +821,33 @@ fn place_converted(
         }
         styles.insert(name.clone(), target);
     }
+    // Dimension styles take the drawing's style of the same name (else
+    // the current one) as their settings; the style records' own values
+    // are not read.
+    let mut dim_styles: HashMap<String, String> = HashMap::new();
+    for name in &converted.dim_styles {
+        let doc = &scene.document;
+        let taken = |n: &str| doc.dim_styles.iter().any(|s| s.name.eq_ignore_ascii_case(n));
+        let target = naming.name('s', name, &taken);
+        if !scene.document.dim_styles.iter().any(|s| s.name.eq_ignore_ascii_case(&target)) {
+            let doc = &scene.document;
+            let base = doc
+                .dim_styles
+                .iter()
+                .find(|s| s.name.eq_ignore_ascii_case(name))
+                .or_else(|| {
+                    doc.dim_styles
+                        .iter()
+                        .find(|s| s.name.eq_ignore_ascii_case(&doc.header.current_dimstyle_name))
+                })
+                .cloned();
+            let mut style = base.unwrap_or_else(|| codec::tables::DimStyle::new(target.as_str()));
+            style.name = target.clone();
+            style.handle = scene.document.allocate_handle();
+            let _ = scene.document.dim_styles.add(style);
+        }
+        dim_styles.insert(name.clone(), target);
+    }
     let mut blocks: HashMap<String, String> = HashMap::new();
     let mut claimed: Vec<String> = Vec::new();
     for (name, _) in &converted.blocks {
@@ -852,6 +879,16 @@ fn place_converted(
             codec::EntityType::Insert(insert) => {
                 if let Some(b) = blocks.get(&insert.block_name) {
                     insert.block_name = b.clone();
+                }
+            }
+            codec::EntityType::Dimension(d) => {
+                if let Some(s) = dim_styles.get(&d.base().style_name) {
+                    d.base_mut().style_name = s.clone();
+                }
+            }
+            codec::EntityType::Leader(l) => {
+                if let Some(s) = dim_styles.get(&l.dimension_style) {
+                    l.dimension_style = s.clone();
                 }
             }
             _ => {}

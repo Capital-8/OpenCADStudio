@@ -72,6 +72,8 @@ pub enum ExistingReference {
 pub struct Converted {
     pub layers: Vec<(String, Color)>,
     pub styles: Vec<(String, String)>,
+    /// Dimension styles, by name, in the file's table order.
+    pub dim_styles: Vec<String>,
     pub blocks: Vec<(String, Vec<EntityType>)>,
     pub entities: Vec<EntityType>,
 }
@@ -243,6 +245,49 @@ fn polyline(points: &[P3], bulges: &[f64]) -> EntityType {
 /// outline's elevation; `None` when the outline is not at one z. It is
 /// marked associative with no source yet: the outline converted just before
 /// it becomes its source once both are in the drawing.
+/// A flat outline that winds clockwise seen from +z (by its vertices, the
+/// closing edge included) in its entity coordinates about -z: x and z
+/// negated, the bulges negated. `None` when it winds the other way.
+fn turned_about_minus_z(points: &[P3], bulges: &[f64]) -> Option<(Vec<P3>, Vec<f64>)> {
+    let n = points.len();
+    let area: f64 = (0..n)
+        .map(|k| {
+            let (a, b) = (points[k], points[(k + 1) % n]);
+            a[0] * b[1] - b[0] * a[1]
+        })
+        .sum();
+    (n >= 2 && flat(points) && area < 0.0).then(|| {
+        (
+            points.iter().map(|p| [-p[0], p[1], -p[2]]).collect(),
+            bulges.iter().map(|b| -b).collect(),
+        )
+    })
+}
+
+/// [`polyline`] and its filling [`solid_hatch`], about -z when `by_winding`
+/// and the outline winds clockwise.
+fn outline(points: &[P3], bulges: &[f64], filled: bool, by_winding: bool) -> Vec<EntityType> {
+    let turned = by_winding.then(|| turned_about_minus_z(points, bulges)).flatten();
+    let (points, bulges) = match &turned {
+        Some((p, b)) => (p.as_slice(), b.as_slice()),
+        None => (points, bulges),
+    };
+    let mut out = vec![polyline(points, bulges)];
+    if filled {
+        out.extend(solid_hatch(points, bulges));
+    }
+    if turned.is_some() {
+        for entity in &mut out {
+            match entity {
+                EntityType::LwPolyline(pl) => pl.normal = Vector3::new(0.0, 0.0, -1.0),
+                EntityType::Hatch(h) => h.normal = Vector3::new(0.0, 0.0, -1.0),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
 fn solid_hatch(points: &[P3], bulges: &[f64]) -> Option<EntityType> {
     use codec::entities::{BoundaryEdge, BoundaryPath, Hatch, PolylineEdge};
     if points.len() < 3 || !flat(points) {
@@ -562,13 +607,21 @@ fn mtext_of_node(
     color: Option<u16>,
 ) -> Option<EntityType> {
     let (_, first, height, rotation, _) = lines.iter().find_map(text_line)?;
-    let texts: Vec<String> = lines
-        .iter()
-        .filter_map(text_line)
-        .map(|l| mtext_escape(l.0))
-        .collect();
+    // A component on the line of the one before it (its origin less than
+    // half a text height away across the line) continues that line.
+    let up_dir = [-rotation.sin(), rotation.cos(), 0.0];
+    let mut joined = String::new();
+    let mut previous: Option<P3> = None;
+    for (text, origin, h, _, _) in lines.iter().filter_map(text_line) {
+        if let Some(p) = previous {
+            if dot(sub(origin, p), up_dir).abs() >= 0.5 * h.max(height) {
+                joined.push_str("\\P");
+            }
+        }
+        joined.push_str(&mtext_escape(text));
+        previous = Some(origin);
+    }
     let mut m = MText::new();
-    let joined = texts.join("\\P");
     m.value = match color {
         Some(c) => format!("{{\\C{c};{joined}}}"),
         None => joined,
@@ -665,6 +718,93 @@ fn arc_entity(center: P3, u: P3, v: P3, start: f64, sweep: f64) -> Vec<EntityTyp
 
 /// A shared cell instance as an INSERT: a mirrored placement looks along
 /// -z (x negated in its entity coordinates, z scale negated).
+/// The name of the dimension style with this id (Standard when the
+/// table has none).
+fn dim_style_name(import: &DgnImport, id: u32) -> String {
+    import
+        .dim_styles
+        .iter()
+        .find(|(i, _)| *i == id)
+        .map(|(_, name)| symbol_name(name))
+        .unwrap_or_else(|| "Standard".to_string())
+}
+
+/// A V8 dimension as a dimension object, in the dimension's own style:
+/// linear (1) as a rotated dimension along its x axis, the dimension line
+/// `offset` from its last point along its y axis; angle size (5) as a
+/// three-point angle (vertex, first, second point) with its arc through the
+/// first point; radius (11) and diameter (12) from the centre and a point
+/// on the circle, the text at the third point.
+fn dimension_entity(
+    kind: u8,
+    points: &[P3],
+    offset: f64,
+    axes: &[[f64; 2]; 2],
+    style: &str,
+) -> Option<EntityType> {
+    use codec::entities::{
+        Dimension, DimensionAngular3Pt, DimensionDiameter, DimensionLinear, DimensionRadius,
+    };
+    let at = |k: usize| points.get(k).copied();
+    let along = |p: P3, d: [f64; 2], t: f64| [p[0] + d[0] * t, p[1] + d[1] * t, p[2]];
+    let mut dimension = match kind {
+        1 => {
+            let (p0, p1) = (at(0)?, at(1)?);
+            let [x, y] = *axes;
+            // The direction the dimension line reads along: x or -x, whichever
+            // turns less than a half turn from the world x axis.
+            let x = if x[0] < -1e-12 || (x[0].abs() <= 1e-12 && x[1] < 0.0) { [-x[0], -x[1]] } else { x };
+            let line = along(p1, y, offset);
+            let t = |p: P3| (p[0] - line[0]) * x[0] + (p[1] - line[1]) * x[1];
+            let mut d = DimensionLinear::rotated(v3(p0), v3(p1), x[1].atan2(x[0]));
+            d.definition_point = v3(line);
+            d.base.actual_measurement = (t(p1) - t(p0)).abs();
+            d.base.text_middle_point = v3(along(line, x, 0.5 * (t(p0) + t(p1))));
+            Dimension::Linear(d)
+        }
+        5 => {
+            let (vertex, first, second) = (at(0)?, at(1)?, at(2)?);
+            let mut d = DimensionAngular3Pt::new(v3(vertex), v3(first), v3(second));
+            let a0 = (first[1] - vertex[1]).atan2(first[0] - vertex[0]);
+            let mut sweep = (second[1] - vertex[1]).atan2(second[0] - vertex[0]) - a0;
+            if sweep < 0.0 {
+                sweep += std::f64::consts::TAU;
+            }
+            let radius = norm(sub(first, vertex));
+            let mid = a0 + 0.5 * sweep;
+            let arc = [vertex[0] + radius * mid.cos(), vertex[1] + radius * mid.sin(), vertex[2]];
+            d.definition_point = v3(arc);
+            d.base.text_middle_point = v3(arc);
+            Dimension::Angular3Pt(d)
+        }
+        11 => {
+            let (center, point) = (at(0)?, at(1)?);
+            let mut d = DimensionRadius::new(v3(center), v3(point));
+            d.base.definition_point = v3(center);
+            d.base.text_middle_point = v3(at(2).unwrap_or(point));
+            Dimension::Radius(d)
+        }
+        12 => {
+            let (center, point) = (at(0)?, at(1)?);
+            let far = [2.0 * center[0] - point[0], 2.0 * center[1] - point[1], 2.0 * center[2] - point[2]];
+            let mut d = DimensionDiameter::new(v3(point), v3(far));
+            d.base.text_middle_point = v3(at(2).unwrap_or(point));
+            d.base.text_user_positioned = true;
+            Dimension::Diameter(d)
+        }
+        _ => return None,
+    };
+    dimension.base_mut().style_name = style.to_string();
+    let mut entity = EntityType::Dimension(Box::new(dimension));
+    // An imported dimension draws no centre mark (DIMCEN 0 on the object).
+    crate::entities::dim_override::set_on_entity(
+        &mut entity,
+        crate::entities::dim_override::DIMCEN,
+        Some(codec::xdata::XDataValue::Real(0.0)),
+    );
+    Some(entity)
+}
+
 fn insert_entity(block: String, m: [f64; 4], origin: P3, z_scale: f64) -> EntityType {
     let det = m[0] * m[3] - m[1] * m[2];
     let mirrored = det < 0.0;
@@ -785,6 +925,13 @@ impl<'a> Converter<'a> {
         layer
     }
 
+    /// Whether a flat outline's normal follows its winding (-z when it
+    /// winds clockwise): in V8 files and V7 3D files; a V7 2D file's are
+    /// all +z.
+    fn by_winding(&self) -> bool {
+        !self.import.v7 || self.import.three_d
+    }
+
     /// The object(s) one element converts to.
     fn geom(
         &mut self,
@@ -800,13 +947,49 @@ impl<'a> Converter<'a> {
             DgnGeom::Line(a, b) => vec![EntityType::Line(Line::from_points(v3(*a), v3(*b)))],
             // A filled shape is its outline and a solid hatch inside it.
             DgnGeom::Points(pts) if pts.len() >= 2 => {
-                let mut out = vec![polyline(pts, &[])];
-                if element.filled {
-                    out.extend(solid_hatch(pts, &[]));
-                }
-                out
+                outline(pts, &[], element.filled, self.by_winding())
             }
             DgnGeom::Points(_) => Vec::new(),
+            DgnGeom::Dimension {
+                kind,
+                points,
+                offset,
+                axes,
+                style,
+            } => dimension_entity(*kind, points, *offset, axes, &dim_style_name(self.import, *style))
+                .into_iter()
+                .collect(),
+            DgnGeom::Leader { points, style } => {
+                let mut leader = codec::entities::Leader::new();
+                leader.vertices = points.iter().map(|p| v3(*p)).collect();
+                leader.dimension_style = dim_style_name(self.import, *style);
+                vec![EntityType::Leader(leader)]
+            }
+            DgnGeom::Arc {
+                center,
+                u,
+                v,
+                start,
+                sweep,
+            } if self.import.v7
+                && *sweep < 0.0
+                && *sweep > -std::f64::consts::TAU
+                && circular(*u, *v)
+                && u[2].abs() < 1e-12
+                && v[2].abs() < 1e-12
+                && cross(*u, *v)[2] > 0.0 =>
+            {
+                // A V7 circular arc drawn clockwise comes in as a two-point
+                // polyline from its start to its end with a negative bulge.
+                let at = |t: f64| {
+                    [
+                        center[0] + u[0] * t.cos() + v[0] * t.sin(),
+                        center[1] + u[1] * t.cos() + v[1] * t.sin(),
+                        center[2],
+                    ]
+                };
+                vec![polyline(&[at(*start), at(*start + *sweep)], &[(*sweep / 4.0).tan()])]
+            }
             DgnGeom::Arc {
                 center,
                 u,
@@ -836,11 +1019,7 @@ impl<'a> Converter<'a> {
                 if points.len() < 2 {
                     return Vec::new();
                 }
-                let mut out = vec![polyline(&points, &bulges)];
-                if element.filled {
-                    out.extend(solid_hatch(&points, &bulges));
-                }
-                out
+                outline(&points, &bulges, element.filled, self.by_winding())
             }
             // V7 text is TEXT, V8 text an MTEXT.
             DgnGeom::Text { font: Some(_), .. } => {
@@ -875,16 +1054,22 @@ impl<'a> Converter<'a> {
             }
             // A cell that is not shared becomes a block of its own ("the
             // cell's name, else AnonymousCell" and a number) placed at the
-            // origin; its objects keep their layers.
+            // cell's origin: its objects move by the origin only (not turned
+            // or scaled back) and keep their layers.
             DgnGeom::CellGroup { parts, .. } if self.in_definition => {
                 self.elements(parts, true, copy, depth + 1)
             }
-            DgnGeom::CellGroup { name, parts } => {
+            DgnGeom::CellGroup { name, origin, parts } => {
                 let base = if name.is_empty() { "AnonymousCell" } else { name.as_str() };
                 let block = self.unique(&block_name(base));
-                let entities = self.elements(parts, false, copy, depth + 1);
+                let local = crate::scene::model::underlay_vector::scaled_elements(
+                    parts,
+                    1.0,
+                    origin.map(|c| -c),
+                );
+                let entities = self.elements(&local, false, copy, depth + 1);
                 self.out.blocks.push((block.clone(), entities));
-                vec![insert_entity(block, [1.0, 0.0, 0.0, 1.0], [0.0; 3], 1.0)]
+                vec![insert_entity(block, [1.0, 0.0, 0.0, 1.0], *origin, 1.0)]
             }
             DgnGeom::Cell {
                 name,
@@ -944,14 +1129,24 @@ impl<'a> Converter<'a> {
     }
 }
 
+/// Sub units per drawing unit: a V7 file with 12 sub units to its master
+/// unit (feet and inches) comes in in sub units whichever is chosen.
+pub fn unit_scale(import: &DgnImport, sub_units: bool) -> f64 {
+    if sub_units || (import.v7 && import.sub_per_master == 12.0) {
+        import.sub_per_master
+    } else {
+        1.0
+    }
+}
+
 /// The import's objects, in sub units when `sub_units`. V7 cell
 /// definitions become blocks as drawn; each is placed through a copy (the
 /// definition's name and a number), made before the blocks that place it. V8 cells are blocks placed as they
 /// are. A V8 file's levels all become layers, in its level table's order.
 pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) -> Converted {
-    let k = if sub_units { import.sub_per_master } else { 1.0 };
+    let k = unit_scale(import, sub_units);
     let scale = |elements: &[DgnElement]| {
-        crate::scene::model::underlay_vector::scaled_elements(elements, k, [0.0, 0.0])
+        crate::scene::model::underlay_vector::scaled_elements(elements, k, [0.0; 3])
     };
     let cells: Vec<(String, Vec<DgnElement>)> = import
         .cells
@@ -984,6 +1179,13 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
             c.layer(&element, false);
         }
     }
+    // Every dimension style of the file's table comes in, used or not.
+    for (_, name) in &import.dim_styles {
+        let name = symbol_name(name);
+        if !c.out.dim_styles.contains(&name) {
+            c.out.dim_styles.push(name);
+        }
+    }
     // Every text style of the file's table comes in, used or not.
     for (_, name, font) in &import.text_styles {
         let name = symbol_name(name);
@@ -1013,6 +1215,29 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
     for (_, entities) in &mut c.out.blocks {
         entities.retain(placed);
     }
+    // An anonymous definition (a "*" name, as a dimension's drawing) that
+    // nothing places is not kept as a block.
+    let anonymous: HashSet<String> = cells
+        .iter()
+        .filter(|(name, _)| name.starts_with('*'))
+        .map(|(name, _)| block_name(name).to_ascii_uppercase())
+        .collect();
+    let used: HashSet<String> = c
+        .out
+        .entities
+        .iter()
+        .chain(c.out.blocks.iter().flat_map(|b| b.1.iter()))
+        .filter_map(|e| match e {
+            EntityType::Insert(i) => Some(i.block_name.to_ascii_uppercase()),
+            _ => None,
+        })
+        .collect();
+    c.out
+        .blocks
+        .retain(|(name, _)| {
+            let key = name.to_ascii_uppercase();
+            !anonymous.contains(&key) || used.contains(&key)
+        });
     c.out
 }
 

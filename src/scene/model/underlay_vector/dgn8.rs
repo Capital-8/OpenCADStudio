@@ -317,6 +317,34 @@ fn text_style_table(nm: &[&[u8]]) -> Vec<(u32, String, String)> {
     out
 }
 
+/// The dimension style table (table 5): each entry's element id and name.
+/// One style can have more than one entry.
+fn dim_style_table(nm: &[&[u8]]) -> Vec<(u32, String)> {
+    let mut out = Vec::new();
+    let mut table = 0;
+    for e in nm {
+        match kind(e) {
+            96 => table = u32_at(e, 12).unwrap_or(0),
+            95 if table == 5 => {
+                if let (Some(id), Some(name)) = (u32_at(e, 16), marked_string(e, 104)) {
+                    out.push((id, name));
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The shared cell definitions by element id (offset 16), named as their
+/// type-34 header names them.
+fn cell_ids(nm: &[&[u8]]) -> HashMap<u32, String> {
+    nm.iter()
+        .filter(|e| kind(e) == 34 && !is_component(e))
+        .filter_map(|e| Some((u32_at(e, 16)?, marked_string(e, 248)?)))
+        .collect()
+}
+
 /// The font table (table 2): each font's number, kind (2 SHX, 4 TrueType)
 /// and name.
 fn font_table(nm: &[&[u8]]) -> Vec<(u8, u8, String)> {
@@ -381,6 +409,8 @@ struct Styles {
     hidden: std::collections::HashSet<u32>,
     /// True colours, in the order colour words number them (1 first).
     extended: Vec<[u8; 3]>,
+    /// Shared cell definition names by element id.
+    cells: HashMap<u32, String>,
 }
 
 /// The true colours of the file: a zlib-packed UTF-16 record in the
@@ -803,8 +833,11 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                 if parts && n > 0 {
                     collect.open(
                         n,
+                        // The origin follows the transformation: 176
+                        // (232 in 3D).
                         element(DgnGeom::CellGroup {
                             name: marked_string(e, 104).unwrap_or_default(),
+                            origin: p3(if d3 { 232 } else { 176 }).map(at3).unwrap_or([0.0; 3]),
                             parts: Vec::new(),
                         }),
                     );
@@ -1027,6 +1060,65 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     color,
                     font: "txt".to_string(),
                 });
+            }
+            // A dimension: its type (133), point count (135), axes (the columns of a 2×2 matrix by rows from 272; in
+            // 3D a quaternion there, its first two rows) and points from
+            // 304, 48 bytes apart, the first point's +24 holding the
+            // dimension line's offset. It is drawn by the shared cell its
+            // linkage names (the id after `13 27 07 00 00 03 01 00`). A note
+            // (53) is a leader through its points.
+            33 => {
+                let cell = e
+                    .windows(8)
+                    .position(|w| w == [0x13, 0x27, 0x07, 0x00, 0x00, 0x03, 0x01, 0x00])
+                    .and_then(|at| u32_at(e, at + 8))
+                    .and_then(|id| styles.cells.get(&id));
+                let dim = e.get(133).copied().unwrap_or(0);
+                let count = e.get(135).copied().unwrap_or(0) as usize;
+                let points: Option<Vec<[f64; 3]>> = (0..count).map(|k| p3(304 + 48 * k).map(at3)).collect();
+                let style = u32_at(e, 104).unwrap_or(0);
+                // Only a dimension in the XY plane comes in as a dimension.
+                let axes = if d3 {
+                    quat_axes(e, 272).filter(|(x, y)| x[2].abs() < 1e-9 && y[2].abs() < 1e-9)
+                } else {
+                    (0..4)
+                        .map(|k| f64_at(e, 272 + 8 * k))
+                        .collect::<Option<Vec<f64>>>()
+                        .map(|m| ([m[0], m[2], 0.0], [m[1], m[3], 0.0]))
+                };
+                match (points, axes) {
+                    (Some(points), _) if dim == 53 && points.len() >= 2 => {
+                        collect.push(element(DgnGeom::Leader { points, style }));
+                    }
+                    (Some(points), Some((x, y))) if matches!(dim, 1 | 5 | 11 | 12) && points.len() >= 2 => {
+                        let x = dir3(x);
+                        let y = dir3(y);
+                        collect.push(element(DgnGeom::Dimension {
+                            kind: dim,
+                            points,
+                            offset: f64_at(e, 328).unwrap_or(0.0),
+                            axes: [[x[0], x[1]], [y[0], y[1]]],
+                            style,
+                        }));
+                    }
+                    // Otherwise the dimension comes in as its drawing.
+                    _ => {
+                        if let Some(name) = cell {
+                            collect.push(element(DgnGeom::Cell {
+                                name: name.clone(),
+                                m: [1.0, 0.0, 0.0, 1.0],
+                                origin: [0.0; 3],
+                                z_scale: 1.0,
+                            }));
+                        }
+                    }
+                }
+                if let Some(name) = cell {
+                    raw.instances.push(Instance {
+                        name: name.to_ascii_uppercase(),
+                        xf: *xf,
+                    });
+                }
             }
             35 => {
                 // Shared cell instance: a 3×3 matrix by rows from 160, the
@@ -1354,6 +1446,7 @@ pub fn model(bytes: &[u8], name: &str, hidden: &[String]) -> Option<Sheet> {
         levels,
         hidden,
         extended: extended_colors(&cfb),
+        cells: cell_ids(&nm),
     };
     // Shared cell definitions: a type-34 element and its components.
     let mut defs: HashMap<String, Vec<&[u8]>> = HashMap::new();
@@ -1575,6 +1668,7 @@ pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
         levels: table.iter().map(|l| (l.0, l.2)).collect(),
         hidden: Default::default(),
         extended: extended_colors(&cfb),
+        cells: cell_ids(&nm),
         colors,
     };
     let levels = table
@@ -1600,7 +1694,7 @@ pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
             // not to the drawing: it is left out.
             if !cell.eq_ignore_ascii_case("POINT_DISPLAY") {
                 let def = read_run(&nm[i + 1..j], &styles, &IDENTITY).elements;
-                cells.push((cell, scaled_elements(&def, s, [0.0, 0.0])));
+                cells.push((cell, scaled_elements(&def, s, [0.0; 3])));
             }
             i = j;
         } else {
@@ -1628,7 +1722,7 @@ pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
         })
         .collect();
     Some(DgnImport {
-        elements: scaled_elements(&raw.elements, s, [-origin[0] * s, -origin[1] * s]),
+        elements: scaled_elements(&raw.elements, s, [-origin[0] * s, -origin[1] * s, 0.0]),
         cells,
         levels,
         level_order,
@@ -1637,6 +1731,8 @@ pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
         v7: false,
         references,
         text_styles: text_style_table(&nm),
+        dim_styles: dim_style_table(&nm),
+        three_d: false,
     })
 }
 
