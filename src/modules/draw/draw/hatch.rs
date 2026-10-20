@@ -319,6 +319,14 @@ impl HatchCommand {
     }
 
     fn make_hatch(&self, rings: Vec<Vec<[f64; 2]>>) -> HatchModel {
+        let perf_build = crate::perf::enabled();
+        let build_started = perf_build.then(iced::time::Instant::now);
+        let ring_count = rings.len();
+        let input_vertices = if perf_build {
+            rings.iter().map(Vec::len).sum::<usize>()
+        } else {
+            0
+        };
         let world_rings: Vec<Vec<[f64; 2]>> = rings
             .iter()
             .map(|ring| {
@@ -348,6 +356,7 @@ impl HatchCommand {
             .map(|depth| depth == 0)
             .collect();
         let near = crate::scene::sources_near_rings(&rings, &self.boundary_sources, 1.0e-6);
+        let near_source_count = near.len();
         let mut boundary_sources: Vec<Vec<Handle>> = rings
             .iter()
             .map(|ring| crate::scene::ring_source_handles(ring, &near))
@@ -384,6 +393,13 @@ impl HatchCommand {
                     family.x0 = ((dx * cos as f64 + dy * sin as f64) / scale as f64) as f32;
                     family.y0 = ((-dx * sin as f64 + dy * cos as f64) / scale as f64) as f32;
                 }
+            }
+            let build_ms = crate::perf::elapsed_ms(build_started);
+            if perf_build && build_ms >= 1.0 {
+                crate::perf_record!(
+                    "[perf] hatch-build total={build_ms:.1}ms rings={ring_count} vertices={input_vertices} sources={} nearby_sources={near_source_count} inherited=true",
+                    self.boundary_sources.len(),
+                );
             }
             return HatchModel {
                 pattern_origin: source.pattern_origin,
@@ -445,6 +461,13 @@ impl HatchCommand {
                 family.x0 += ((dx * cos + dy * sin) / scale as f64) as f32;
                 family.y0 += ((-dx * sin + dy * cos) / scale as f64) as f32;
             }
+        }
+        let build_ms = crate::perf::elapsed_ms(build_started);
+        if perf_build && build_ms >= 1.0 {
+            crate::perf_record!(
+                "[perf] hatch-build total={build_ms:.1}ms rings={ring_count} vertices={input_vertices} sources={} nearby_sources={near_source_count} inherited=false",
+                self.boundary_sources.len(),
+            );
         }
         HatchModel {
             pattern_origin: Some(self.default_origin),
@@ -1680,6 +1703,50 @@ mod tests {
     #[test]
     fn click_outside_returns_none() {
         assert!(resolve_hatch_rings(&nested(true), [50.0, 50.0]).is_none());
+    }
+
+    #[test]
+    fn hatch_pick_finds_region_and_island_among_far_clutter() {
+        let mut sources = rustc_hash::FxHashMap::default();
+        let mut add_ring = |base: u64, ring: &[[f64; 2]]| {
+            for (index, (start, end)) in ring
+                .iter()
+                .copied()
+                .zip(ring.iter().copied().cycle().skip(1))
+                .take(ring.len())
+                .enumerate()
+            {
+                let segment = Line { start, end };
+                sources.insert(
+                    Handle::new(base + index as u64),
+                    crate::scene::BoundarySource {
+                        segments: vec![segment],
+                        curves: vec![Curve::Line(segment)],
+                    },
+                );
+            }
+        };
+        add_ring(1, &rect(-10.0, -10.0, 10.0, 10.0));
+        add_ring(10, &rect(-2.0, -2.0, 2.0, 2.0));
+        for index in 0..64 {
+            let x = 100.0 + index as f64 * 4.0;
+            let segment = Line {
+                start: [x, 100.0],
+                end: [x + 1.0, 100.0],
+            };
+            sources.insert(
+                Handle::new(100 + index),
+                crate::scene::BoundarySource {
+                    segments: vec![segment],
+                    curves: Vec::new(),
+                },
+            );
+        }
+
+        let mut command = HatchCommand::new(sources, Vec::new(), None, WorkingPlane::default());
+        command.on_point(DVec3::new(5.0, 5.0, 0.0));
+        assert_eq!(command.point_regions.len(), 1);
+        assert_eq!(command.point_regions[0].len(), 2, "outer ring plus island");
     }
 
     #[test]

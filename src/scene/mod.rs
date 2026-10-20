@@ -2515,10 +2515,21 @@ pub struct Scene {
     /// is handled at draw time via `hatch_skip_flags` in the pipeline,
     /// not at build time — that lets the GPU buffer stay stable across
     /// pan/zoom while still skipping out-of-view hatches.
-    /// Keyed by `(geometry_epoch, selection_generation)` — selected hatches
-    /// are tinted, so a select/deselect must rebuild even when the geometry
-    /// is unchanged (issue #71).
+    /// Keyed by geometry and selection in paper space. Model-space selection
+    /// tint is drawn through the small live overlay so selecting one hatch
+    /// does not rebuild and re-upload every resident hatch.
     hatch_cache: RefCell<HashMap<(Handle, String), (u64, u64, Arc<Vec<HatchModel>>)>>,
+    /// Small selected-hatch tint overlay, keyed independently from the
+    /// resident hatch set. The rendered preview cache retains the source Arcs
+    /// so pointer identity is ABA-safe when command/grip previews change.
+    selected_hatch_overlay_cache: RefCell<Option<(u64, u64, Arc<Vec<HatchModel>>)>>,
+    combined_preview_hatch_cache: RefCell<
+        Option<(
+            Arc<Vec<HatchModel>>,
+            Arc<Vec<HatchModel>>,
+            Arc<Vec<HatchModel>>,
+        )>,
+    >,
     /// Cached wipeout fill models, keyed by target block and geometry_epoch. Same
     /// reasoning as `hatch_cache`.
     wipeout_cache: RefCell<HashMap<(Handle, String), (u64, Arc<Vec<HatchModel>>)>>,
@@ -3046,6 +3057,8 @@ impl Scene {
             draw_depth_generation: std::cell::Cell::new(0),
             no_draw_depths: Arc::new(HashMap::default()),
             hatch_cache: RefCell::new(HashMap::default()),
+            selected_hatch_overlay_cache: RefCell::new(None),
+            combined_preview_hatch_cache: RefCell::new(None),
             wipeout_cache: RefCell::new(HashMap::default()),
             image_cache: RefCell::new(HashMap::default()),
             mesh_cache: RefCell::new(HashMap::default()),
@@ -8590,13 +8603,15 @@ impl Scene {
         self.hatch_models_arc_for_view(true)
     }
 
-    fn hatch_models_arc_for_view(&self, tint_selected: bool) -> Arc<Vec<HatchModel>> {
+    fn hatch_models_arc_for_view(&self, requested_tint_selected: bool) -> Arc<Vec<HatchModel>> {
+        // Model-space selection is rendered as a tiny overlay. Keep the
+        // resident model set stable across select/deselect so its expensive
+        // tessellation/style sync and GPU buffers remain warm.
+        let tint_selected = requested_tint_selected && self.current_layout != "Model";
         // Hatch models bake the selection tint (issue #71), so they depend on
-        // the *selected set* — but NOT on hover. Keying on `selection_generation`
-        // (which also bumps on every hover) made each hover-over a new entity
-        // rebuild every hatch model: an O(N-hatch) stutter on hatch-heavy
-        // drawings. Key on a signature of `selected` instead, so hover (which
-        // never changes `selected`) keeps the cache warm.
+        // the selected set in paper layouts, but NOT on hover. Keying on
+        // `selection_generation` (which also bumps on every hover) made each
+        // hover-over a new entity rebuild every hatch model.
         let sel_sig = if tint_selected {
             self.selected_hatch_sig()
         } else {
@@ -8642,6 +8657,7 @@ impl Scene {
         } else {
             self.paper_annotation_scale_handle()
         };
+        let build_started = crate::perf::enabled().then(iced::time::Instant::now);
         let arc = Arc::new(self.synced_hatch_models(
             target_block,
             None,
@@ -8650,6 +8666,15 @@ impl Scene {
             None,
             tint_selected,
         ));
+        let build_ms = crate::perf::elapsed_ms(build_started);
+        if build_ms >= 1.0 {
+            crate::perf_record!(
+                "[perf] hatch-models rebuild={build_ms:.1}ms models={} source_hatches={} selected={} tint_selected={tint_selected}",
+                arc.len(),
+                self.hatches.len(),
+                self.selected.len(),
+            );
+        }
         self.hatch_cache
             .borrow_mut()
             .insert(key, (self.geometry_epoch, sel_sig, Arc::clone(&arc)));
@@ -9595,6 +9620,7 @@ impl Scene {
         frozen: &HashSet<Handle>,
         tint_selected: bool,
     ) -> Arc<Vec<HatchModel>> {
+        let tint_selected = tint_selected && self.current_layout != "Model";
         if viewport.is_null() && frozen.is_empty() {
             return self.hatch_models_arc_for_view(tint_selected);
         }

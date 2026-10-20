@@ -1847,11 +1847,9 @@ impl Scene {
         // the one on screen (model space while a BEDIT is open) has to build
         // its own set.
         let hatches = if block == self.content_render_block_handle() {
-            // Tinted, matching the renderer's own call: the two then share one
-            // cache entry. Asking for an untinted set would key the same slot
-            // with a different selection signature and the two would evict
-            // each other on every frame. Tint is colour; it moves no vertex.
-            self.hatch_models_arc_for_view(true)
+            // Selection tint is a separate live overlay, and colour does not
+            // affect extents. Reuse the same stable resident cache as rendering.
+            self.hatch_models_arc_for_view(false)
         } else {
             std::sync::Arc::new(self.synced_hatch_models(
                 block,
