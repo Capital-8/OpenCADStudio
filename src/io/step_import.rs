@@ -1019,9 +1019,11 @@ fn without_products(doc: &Doc, ids: &[u64], unit_mm: Option<f64>) -> StepModel {
     let mut products: Vec<StepProduct> = Vec::new();
     let mut mapped: Vec<(usize, u64, Placement)> = Vec::new();
     for &rep in &reps {
+        // The items list: the second parameter, or the first where an
+        // early writer left the name out.
         let items: Vec<u64> = doc
             .simple(rep)
-            .and_then(|(_, p)| p.get(1))
+            .and_then(|(_, p)| p.iter().find(|v| matches!(v, P::List(_))))
             .map(P::list)
             .unwrap_or_default()
             .iter()
