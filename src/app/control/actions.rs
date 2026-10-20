@@ -1157,10 +1157,12 @@ impl OpenCADStudio {
                     x: 0.0,
                     y: lines as f32,
                 })
+            } else if event.get("leave").and_then(Value::as_bool) == Some(true) {
+                Message::ViewportExit
             } else {
                 outcome = Err(failure(
                     "invalid_request",
-                    "Each event is move, move_world, press, release or wheel",
+                    "Each event is move, move_world, press, release, wheel or leave",
                 ));
                 break;
             };
