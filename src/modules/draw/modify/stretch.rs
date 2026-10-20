@@ -662,11 +662,11 @@ impl CadCommand for StretchCommand {
             Step::WindowCorner2(_) => vec![],
             // The stretched entities themselves come from `preview_entities`.
             Step::Target { base } => {
-                vec![WireModel::solid(
+                vec![WireModel::solid_f64(
                     "rubber_band".into(),
                     vec![
-                        [base.x as f32, base.y as f32, base.z as f32],
-                        [pt.x as f32, pt.y as f32, pt.z as f32],
+                        [base.x, base.y, base.z],
+                        [pt.x, pt.y, pt.z],
                     ],
                     WireModel::CYAN,
                     false,
