@@ -1061,8 +1061,7 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     font: "txt".to_string(),
                 });
             }
-            // A dimension: its type (129, 133 in 3D), point count (131, 135
-            // in 3D), axes (the columns of a 2×2 matrix by rows from 272; in
+            // A dimension: its type (133), point count (135), axes (the columns of a 2×2 matrix by rows from 272; in
             // 3D a quaternion there, its first two rows) and points from
             // 304, 48 bytes apart, the first point's +24 holding the
             // dimension line's offset. It is drawn by the shared cell its
@@ -1074,9 +1073,8 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     .position(|w| w == [0x13, 0x27, 0x07, 0x00, 0x00, 0x03, 0x01, 0x00])
                     .and_then(|at| u32_at(e, at + 8))
                     .and_then(|id| styles.cells.get(&id));
-                let shift = if d3 { 4 } else { 0 };
-                let dim = e.get(129 + shift).copied().unwrap_or(0);
-                let count = e.get(131 + shift).copied().unwrap_or(0) as usize;
+                let dim = e.get(133).copied().unwrap_or(0);
+                let count = e.get(135).copied().unwrap_or(0) as usize;
                 let points: Option<Vec<[f64; 3]>> = (0..count).map(|k| p3(304 + 48 * k).map(at3)).collect();
                 let style = u32_at(e, 104).unwrap_or(0);
                 // Only a dimension in the XY plane comes in as a dimension.
