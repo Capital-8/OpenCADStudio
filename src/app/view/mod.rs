@@ -60,9 +60,10 @@ fn touch_cursor_move(event: &iced::Event, bounds: iced::Rectangle) -> Option<ice
     match event {
         iced::Event::Touch(
             Touch::FingerPressed { position, .. } | Touch::FingerMoved { position, .. },
-        ) if bounds.contains(*position) => {
-            Some(iced::Point::new(position.x - bounds.x, position.y - bounds.y))
-        }
+        ) if bounds.contains(*position) => Some(iced::Point::new(
+            position.x - bounds.x,
+            position.y - bounds.y,
+        )),
         _ => None,
     }
 }
@@ -829,6 +830,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             is_hovered,
                             dir,
                             is_plugin: false,
+                            is_authoring: crate::app::block_authoring_edit::is_editor_grip(grip_id),
                         }
                     })
                     .collect()
@@ -858,6 +860,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             }),
                             dir: None,
                             is_plugin: true,
+                            is_authoring: false,
                         });
                     }
                 }
@@ -1253,6 +1256,14 @@ bg={bg_ms:.1}ms n={view_count}"
             let authoring_dimensions = tab
                 .active_block_edit_session()
                 .map(|session| {
+                    let action_handles: std::collections::HashSet<_> =
+                        crate::scene::block_actions::actions(
+                            &tab.scene.document,
+                            session.br_handle,
+                        )
+                        .into_iter()
+                        .map(|(handle, _, _, _)| handle)
+                        .collect();
                     crate::scene::block_distance_parameter::parameters(
                         &tab.scene.document,
                         session.br_handle,
@@ -1384,6 +1395,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             .collect::<Option<Vec<_>>>()?;
                         Some(crate::ui::overlay::AuthoringDimension {
                             selected: tab.selected_authoring == Some(handle),
+                            is_action: action_handles.contains(&handle),
                             lines,
                             base_grips: graphic
                                 .base_grips
@@ -1489,6 +1501,11 @@ bg={bg_ms:.1}ms n={view_count}"
                 authoring_visibility,
                 authoring_points,
                 authoring_dimensions,
+                crate::ui::overlay::authoring::AuthoringVisualOptions::new(
+                    &self.block_editor_preferences,
+                    &tab.scene.document,
+                    crosshair_background(tab, is_paper),
+                ),
             )
         };
 
@@ -1520,7 +1537,12 @@ bg={bg_ms:.1}ms n={view_count}"
             a: desk_bg[3],
         };
         let bg_color = if tab.active_block_edit_session().is_some() {
-            Color { r: 0.62, g: 0.62, b: 0.62, a: 1.0 }
+            Color {
+                r: 0.62,
+                g: 0.62,
+                b: 0.62,
+                a: 1.0,
+            }
         } else if is_paper {
             desk_color
         } else {

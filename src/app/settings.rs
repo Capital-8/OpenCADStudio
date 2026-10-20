@@ -434,10 +434,101 @@ pub const MAX_SELECTED_GRIPS: usize = 4096;
 /// The "settings" section of the consolidated config ([`crate::app::config`]).
 /// Field defaults mirror the app's in-code defaults so a missing key restores
 /// the value the app boots with.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BlockEditorPreferences {
     pub locked: bool,
+    pub action_color: String,
+    pub parameter_color: String,
+    pub grip_color: String,
+    pub grip_size: u8,
+    pub parameter_size: u8,
+    pub parameter_font: String,
+    pub text_horizontal: bool,
+}
+
+impl Default for BlockEditorPreferences {
+    fn default() -> Self {
+        Self {
+            locked: false,
+            action_color: "7".into(),
+            parameter_color: "170".into(),
+            grip_color: "141".into(),
+            grip_size: 8,
+            parameter_size: 12,
+            parameter_font: "Simplex.shx".into(),
+            text_horizontal: true,
+        }
+    }
+}
+
+pub const BLOCK_DISPLAY_VARIABLES: &[(&str, &str)] = &[
+    ("BACTIONCOLOR", "Action color"),
+    ("BPARAMETERCOLOR", "Parameter color"),
+    ("BGRIPOBJCOLOR", "Grip color"),
+    ("BGRIPOBJSIZE", "Grip size (pixels)"),
+    ("BPARAMETERSIZE", "Parameter text size (pixels)"),
+    ("BPARAMETERFONT", "Parameter font"),
+    ("BPTEXTHORIZONTAL", "Keep parameter text horizontal"),
+];
+
+impl BlockEditorPreferences {
+    pub(crate) fn display_variable(&self, name: &str) -> Option<String> {
+        Some(match name {
+            "BACTIONCOLOR" => self.action_color.clone(),
+            "BPARAMETERCOLOR" => self.parameter_color.clone(),
+            "BGRIPOBJCOLOR" => self.grip_color.clone(),
+            "BGRIPOBJSIZE" => self.grip_size.to_string(),
+            "BPARAMETERSIZE" => self.parameter_size.to_string(),
+            "BPARAMETERFONT" => self.parameter_font.clone(),
+            "BPTEXTHORIZONTAL" => u8::from(self.text_horizontal).to_string(),
+            _ => return None,
+        })
+    }
+
+    pub(crate) fn set_display_variable(
+        &mut self,
+        name: &str,
+        value: &str,
+    ) -> Result<(), &'static str> {
+        match name {
+            "BACTIONCOLOR" | "BPARAMETERCOLOR" | "BGRIPOBJCOLOR" => {
+                let value = crate::ui::overlay::authoring::normalize_color(value)
+                    .ok_or("Use BYLAYER, BYBLOCK, an index from 1 to 255, or RGB:r,g,b.")?;
+                match name {
+                    "BACTIONCOLOR" => self.action_color = value,
+                    "BPARAMETERCOLOR" => self.parameter_color = value,
+                    _ => self.grip_color = value,
+                }
+            }
+            "BGRIPOBJSIZE" | "BPARAMETERSIZE" => {
+                let value = value
+                    .parse::<u8>()
+                    .ok()
+                    .filter(|v| *v > 0)
+                    .ok_or("Enter an integer from 1 to 255.")?;
+                if name == "BGRIPOBJSIZE" {
+                    self.grip_size = value;
+                } else {
+                    self.parameter_size = value;
+                }
+            }
+            "BPARAMETERFONT" => {
+                let value = value.trim().trim_matches('"');
+                if value.is_empty() || value.chars().any(char::is_control) {
+                    return Err("Enter a font family, font file, or primary,bigfont pair.");
+                }
+                self.parameter_font = value.to_owned();
+            }
+            "BPTEXTHORIZONTAL" => match value {
+                "0" => self.text_horizontal = false,
+                "1" => self.text_horizontal = true,
+                _ => return Err("Enter 0 or 1."),
+            },
+            _ => return Err("Unknown display variable."),
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]

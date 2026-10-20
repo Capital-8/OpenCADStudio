@@ -1143,7 +1143,9 @@ impl OpenCADStudio {
         // In-viewport grips are model-space — project with the viewport camera
         // at the viewport's own rect; the cursor is mapped into that rect.
         let edit_frame = self.tabs[i].scene.viewport_edit_frame((vw, vh));
-        let hit = if let Some((cam, full)) = &edit_frame {
+        let hit = if self.tabs[i].active_block_edit_session().is_some() && self.tabs[i].selected_authoring.is_some() {
+            self.authoring_grip_hit(p, bounds)
+        } else if let Some((cam, full)) = &edit_frame {
             let local = iced::Rectangle {
                 x: 0.0,
                 y: 0.0,
@@ -4507,7 +4509,9 @@ impl OpenCADStudio {
                 // viewport camera so they hit-test where the GPU draws
                 // them. Paper-space entities use the 2-D paper transform;
                 // the model tab uses the model camera.
-                let grip_hit = if let Some(cam) = &edit_cam {
+                let grip_hit = if self.tabs[i].active_block_edit_session().is_some() && self.tabs[i].selected_authoring.is_some() {
+                    self.authoring_grip_hit(p, bounds)
+                } else if let Some(cam) = &edit_cam {
                     find_hit_grip_rte(
                         p,
                         &self.tabs[i].selected_grips,

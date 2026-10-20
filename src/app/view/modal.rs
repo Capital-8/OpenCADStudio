@@ -14,6 +14,7 @@ impl OpenCADStudio {
             Some(K::Shortcuts) => crate::tr!("modal", "keyboard-shortcuts"),
             Some(K::Aliases) => crate::tr!("modal", "command-aliases"),
             Some(K::NamedParameters) => crate::t!("Named Parameters").into_owned(),
+            Some(K::BlockEditorSettings) => crate::t!("Block Editor Settings").into_owned(),
             Some(K::Options) => crate::tr!("action", "options"),
             Some(K::FindReplace) => crate::tr!("modal", "find-replace"),
             Some(K::PluginManager) => crate::tr!("modal", "plugin-manager"),
@@ -141,6 +142,9 @@ impl OpenCADStudio {
                         flow,
                     )
                 })
+            }
+            super::super::ModalKind::BlockEditorSettings => {
+                crate::ui::window::block_editor_settings::view_window(self.block_editor_settings.as_ref()?)
             }
             super::super::ModalKind::Options => {
                 let dirty = self.options_dirty();

@@ -94,6 +94,11 @@ impl CadModule for BlockEditorModule {
             groups.extend(ParametricModule.ribbon_groups().iter().cloned());
             if let Some(manage) = groups.iter_mut().find(|group| group.title == "Manage") {
                 manage.tools.push(command(
+                    "BESETTINGS",
+                    "Editor Settings",
+                    include_bytes!("../../../assets/icons/tool_palettes.svg"),
+                ));
+                manage.tools.push(command(
                     "BACTIONSET",
                     "Action Selection",
                     include_bytes!("../../../assets/icons/blocks/select_objects.svg"),

@@ -73,6 +73,63 @@ impl CadCommand for EditCommand {
     }
 }
 impl OpenCADStudio {
+    fn authoring_label_corners(
+        &self,
+        graphic: &crate::scene::block_distance_parameter::Graphic,
+        anchor: Point,
+        label: &str,
+        index: usize,
+        camera: &crate::scene::view::camera::Camera,
+        bounds: Rectangle,
+    ) -> [Point; 4] {
+        let prefs = &self.block_editor_preferences;
+        let angle = if prefs.text_horizontal {
+            0.0
+        } else {
+            graphic
+                .dimensions
+                .get(index)
+                .or_else(|| graphic.dimensions.first())
+                .and_then(|[a, b]| {
+                    let a = camera.project(DVec3::new(a.x, a.y, a.z), bounds)?;
+                    let b = camera.project(DVec3::new(b.x, b.y, b.z), bounds)?;
+                    Some(crate::ui::overlay::authoring::readable_angle(
+                        (b.y - a.y).atan2(b.x - a.x),
+                    ))
+                })
+                .unwrap_or(0.0)
+        };
+        crate::ui::overlay::authoring::label_corners(
+            anchor,
+            label,
+            angle,
+            prefs.parameter_size,
+            &prefs.parameter_font,
+        )
+    }
+
+    pub(super) fn authoring_grip_hit(
+        &self,
+        point: Point,
+        bounds: Rectangle,
+    ) -> Option<(usize, usize, bool, DVec3)> {
+        let tab = &self.tabs[self.active_tab];
+        tab.active_block_edit_session()?;
+        let camera = tab.scene.camera.borrow();
+        let half = self.block_editor_preferences.grip_size.max(1) as f32 / 2.0 + 3.0;
+        tab.selected_grips
+            .iter()
+            .enumerate()
+            .filter(|(_, g)| is_editor_grip(g.id))
+            .filter_map(|(index, g)| {
+                let screen = camera.project(g.world, bounds)?;
+                let dx = (screen.x - point.x).abs();
+                let dy = (screen.y - point.y).abs();
+                (dx <= half && dy <= half).then_some((dx.hypot(dy), index, g))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, index, g)| (index, g.id, g.is_midpoint, g.world))
+    }
     pub(super) fn authoring_parameter_properties(
         &self,
         handle: Handle,
@@ -321,12 +378,21 @@ impl OpenCADStudio {
                     .graphic
                     .labels
                     .iter()
-                    .filter_map(|(point, label)| {
+                    .enumerate()
+                    .filter_map(|(index, (point, label))| {
                         let point =
                             camera.project(DVec3::new(point.x, point.y, point.z), bounds)?;
                         let point = Point::new(point.x, point.y);
-                        projected.push(point);
-                        Some((point, label.chars().count() as f32 * 7.0 + 20.0, 16.0))
+                        let corners = self.authoring_label_corners(
+                            &item.graphic,
+                            point,
+                            label,
+                            index,
+                            &camera,
+                            bounds,
+                        );
+                        projected.extend(corners);
+                        Some(corners)
                     })
                     .collect::<Vec<_>>();
                 let inside =
@@ -363,11 +429,13 @@ impl OpenCADStudio {
                 };
                 let any = projected.iter().any(|p| inside(*p))
                     || segments.iter().copied().any(crosses)
-                    || labels.iter().any(|(p, width, height)| {
-                        p.x <= max.x
-                            && p.x + width >= min.x
-                            && p.y - height <= max.y
-                            && p.y >= min.y
+                    || labels.iter().any(|corners| {
+                        corners
+                            .iter()
+                            .zip(corners.iter().cycle().skip(1))
+                            .take(4)
+                            .any(|(a, b)| crosses([*a, *b]))
+                            || crate::ui::overlay::authoring::label_contains(*corners, min)
                     });
                 let all = !projected.is_empty() && projected.iter().all(|p| inside(*p));
                 (if crossing { any } else { all }).then_some(item.handle)
@@ -394,16 +462,27 @@ impl OpenCADStudio {
         edit::items(&tab.scene.document, session.br_handle)
             .into_iter()
             .find_map(|item| {
-                item.graphic.labels.iter().find_map(|(point, label)| {
-                    let projected =
-                        camera.project(DVec3::new(point.x, point.y, point.z), bounds)?;
-                    let anchor = Point::new(projected.x, projected.y);
-                    let width = (label.chars().count() as f32 * 7.0).max(20.0);
-                    (p.x >= anchor.x - 8.0
-                        && p.x <= anchor.x + width + 12.0
-                        && (p.y - anchor.y).abs() < 16.0)
+                item.graphic
+                    .labels
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, (point, label))| {
+                        let projected =
+                            camera.project(DVec3::new(point.x, point.y, point.z), bounds)?;
+                        let anchor = Point::new(projected.x, projected.y);
+                        crate::ui::overlay::authoring::label_contains(
+                            self.authoring_label_corners(
+                                &item.graphic,
+                                anchor,
+                                label,
+                                index,
+                                &camera,
+                                bounds,
+                            ),
+                            p,
+                        )
                         .then(|| (item.handle, label.clone()))
-                })
+                    })
             })
     }
 
@@ -459,7 +538,10 @@ impl OpenCADStudio {
                 let mut d = f32::INFINITY;
                 for (_, v) in &item.grips {
                     if let Some(v) = project(*v) {
-                        d = d.min(segment(v, v));
+                        let distance = segment(v, v);
+                        if distance <= self.block_editor_preferences.grip_size as f32 / 2.0 + 3.0 {
+                            d = d.min(0.0);
+                        }
                     }
                 }
                 for [a, b] in &item.graphic.lines {
@@ -467,16 +549,24 @@ impl OpenCADStudio {
                         d = d.min(segment(a, b));
                     }
                 }
-                for (v, label) in &item.graphic.labels {
+                for (index, (v, label)) in item.graphic.labels.iter().enumerate() {
                     if let Some(v) = project(*v) {
-                        // Labels are drawn starting beside their anchor, in screen pixels.
-                        let width = (label.chars().count() as f32 * 7.).max(20.);
-                        if p.x >= v.x - 8. && p.x <= v.x + width + 12. && (p.y - v.y).abs() < 16. {
+                        if crate::ui::overlay::authoring::label_contains(
+                            self.authoring_label_corners(
+                                &item.graphic,
+                                v,
+                                label,
+                                index,
+                                &camera,
+                                bounds,
+                            ),
+                            p,
+                        ) {
                             d = d.min(0.);
                         }
                     }
                 }
-                (d <= 10.).then_some((d, item.handle, item.name.clone()))
+                (d <= 10.0).then_some((d, item.handle, item.name.clone()))
             })
             .min_by(|a, b| a.0.total_cmp(&b.0));
         drop(camera);

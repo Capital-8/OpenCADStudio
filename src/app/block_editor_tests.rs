@@ -1533,8 +1533,8 @@ fn double_clicking_block_parameter_label_starts_rename() {
         bounds,
     )
     .unwrap();
-    let cursor_local = iced::Point::new(screen.x, screen.y);
-    let cursor = iced::Point::new(tile.x + screen.x, tile.y + screen.y);
+    let cursor_local = iced::Point::new(screen.x + 10.0, screen.y - 10.0);
+    let cursor = iced::Point::new(tile.x + cursor_local.x, tile.y + cursor_local.y);
     assert_eq!(
         app.authoring_label_at(cursor_local, bounds),
         Some((parameter, item.name.clone()))
@@ -5029,4 +5029,42 @@ fn visibility_parameter_placement_reframes_an_empty_definition_and_undoes_it() {
         placed_visibility(&app).def_point,
         Vector3::new(2.0, 2.0, 0.0)
     );
+}
+
+#[test]
+fn block_editor_display_changes_keep_rotated_labels_and_large_grips_pickable() {
+    use crate::ui::overlay::authoring::{label_angle, label_corners};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 6,6 1,4");
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let item = crate::scene::block_authoring::edit::items(&app.tabs[i].scene.document, definition)
+        .into_iter().find(|item| item.name.starts_with("Distance")).unwrap();
+    let bounds = iced::Rectangle { x:0.0, y:0.0, width:800.0, height:600.0 };
+    app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800.0,600.0);
+    app.tabs[i].scene.camera.borrow_mut().fit_to_bounds_f64(
+        glam::DVec3::new(-2.0,-2.0,0.0), glam::DVec3::new(10.0,10.0,0.0), 800.0/600.0);
+    let _ = app.dispatch_command("BPARAMETERSIZE 48");
+    let _ = app.dispatch_command("BPTEXTHORIZONTAL 0");
+    let camera = app.tabs[i].scene.camera.borrow();
+    let project = |v: Vector3| {
+        let p = camera.project(glam::DVec3::new(v.x,v.y,v.z), bounds).unwrap();
+        iced::Point::new(p.x,p.y)
+    };
+    let dimensions: Vec<_> = item.graphic.dimensions.iter().map(|[a,b]| [project(*a),project(*b)]).collect();
+    let (anchor,label) = &item.graphic.labels[0];
+    let corners = label_corners(project(*anchor), label, label_angle(&dimensions,0,false),48,"Simplex.shx");
+    let cursor = iced::Point::new((corners[0].x+corners[2].x)/2.0,(corners[0].y+corners[2].y)/2.0);
+    assert_eq!(app.authoring_label_at(cursor,bounds),Some((item.handle,label.clone())));
+    drop(camera);
+    assert!(app.pick_authoring_object(cursor,bounds));
+    let _ = app.dispatch_command("BGRIPOBJSIZE 80");
+    app.refresh_authoring_grips([0.0;3]);
+    let g = &app.tabs[i].selected_grips[0];
+    let p = app.tabs[i].scene.camera.borrow().project(g.world,bounds).unwrap();
+    let cursor = iced::Point::new(p.x+35.0,p.y+35.0);
+    assert!(app.authoring_grip_hit(cursor,bounds).is_some());
+    let _ = app.dispatch_command("BGRIPOBJSIZE 8");
+    assert!(app.authoring_grip_hit(cursor,bounds).is_none());
 }

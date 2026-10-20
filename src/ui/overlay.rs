@@ -1,5 +1,7 @@
 //! Viewport overlay widgets.
 
+pub(crate) mod authoring;
+
 use std::cell::RefCell;
 
 use glam::{Mat4, Vec3};
@@ -594,6 +596,7 @@ pub struct GripMarker {
     /// distinct plugin accent so it reads differently from built-in
     /// selection grips.
     pub is_plugin: bool,
+    pub is_authoring: bool,
 }
 
 // ── Grid display params ───────────────────────────────────────────────────
@@ -800,20 +803,14 @@ fn extension_guide_tip(
     snapped: Point,
     acquired_direction: Option<Point>,
 ) -> Option<(Point, Point)> {
-    let delta = acquired_direction.unwrap_or(Point::new(
-        snapped.x - base.x,
-        snapped.y - base.y,
-    ));
+    let delta = acquired_direction.unwrap_or(Point::new(snapped.x - base.x, snapped.y - base.y));
     let len = delta.x.hypot(delta.y);
     if !len.is_finite() || len <= 1e-3 {
         return None;
     }
     let u = Point::new(delta.x / len, delta.y / len);
     let along = (snapped.x - base.x) * u.x + (snapped.y - base.y) * u.y;
-    let tip = Point::new(
-        base.x + u.x * (along + 18.0),
-        base.y + u.y * (along + 18.0),
-    );
+    let tip = Point::new(base.x + u.x * (along + 18.0), base.y + u.y * (along + 18.0));
     Some((u, tip))
 }
 
@@ -1050,6 +1047,7 @@ pub(crate) fn selection_overlay<'a>(
     authoring_visibility: Option<(Point, String, iced::Rectangle, bool)>,
     authoring_points: Vec<(Point, Point, String, iced::Rectangle, bool)>,
     authoring_dimensions: Vec<AuthoringDimension>,
+    authoring_visual: authoring::AuthoringVisualOptions,
 ) -> Element<'a, Message> {
     canvas(SelectionCanvas {
         selection,
@@ -1082,6 +1080,7 @@ pub(crate) fn selection_overlay<'a>(
         authoring_visibility,
         authoring_points,
         authoring_dimensions,
+        authoring_visual,
     })
     .width(Length::Fill)
     .height(Length::Fill)
@@ -1090,6 +1089,7 @@ pub(crate) fn selection_overlay<'a>(
 
 pub(crate) struct AuthoringDimension {
     pub selected: bool,
+    pub is_action: bool,
     pub lines: Vec<[Point; 2]>,
     pub round_grips: Vec<Point>,
     pub base_grips: Vec<Point>,
@@ -1174,6 +1174,7 @@ struct SelectionCanvas {
     authoring_visibility: Option<(Point, String, iced::Rectangle, bool)>,
     authoring_points: Vec<(Point, Point, String, iced::Rectangle, bool)>,
     authoring_dimensions: Vec<AuthoringDimension>,
+    authoring_visual: authoring::AuthoringVisualOptions,
 }
 
 /// The move gizmo: an arrow per axis (X red, Y green, Z blue) from the
@@ -1268,9 +1269,14 @@ fn draw_grip_marker(
     grip: &GripMarker,
     theme: &Theme,
     visual: &SelectionVisualOptions,
+    authoring: &authoring::AuthoringVisualOptions,
 ) {
     let sp = grip.pos;
-    let h = visual.grip_size.clamp(1.0, 25.0);
+    let h = if grip.is_authoring {
+        authoring.grip_size / 2.0
+    } else {
+        visual.grip_size.clamp(1.0, 25.0)
+    };
     let path = match grip.shape {
         GripShape::Square => {
             canvas::Path::rectangle(Point::new(sp.x - h, sp.y - h), Size::new(h * 2.0, h * 2.0))
@@ -1357,7 +1363,9 @@ fn draw_grip_marker(
         );
     } else {
         let palette = theme.palette();
-        let color = if grip.is_plugin {
+        let color = if grip.is_authoring {
+            authoring.grip
+        } else if grip.is_plugin {
             // Plugin-declared custom grip (API v11): a distinct accent so
             // it never reads as a built-in selection grip. Hot and hover
             // treatments stay identical to built-ins.
@@ -1752,7 +1760,13 @@ impl canvas::Program<Message> for SelectionCanvas {
                         grip.shape,
                         GripShape::GizmoAxis(_) | GripShape::GizmoPlane(_)
                     ) {
-                        draw_grip_marker(frame, grip, theme, &self.selection_visual);
+                        draw_grip_marker(
+                            frame,
+                            grip,
+                            theme,
+                            &self.selection_visual,
+                            &self.authoring_visual,
+                        );
                     }
                 }
             });
@@ -1820,10 +1834,7 @@ impl canvas::Program<Message> for SelectionCanvas {
                         let dy = sp.y - base.y;
                         let len = dx.hypot(dy);
                         if len > 1e-3 {
-                            let tip = Point::new(
-                                sp.x + dx / len * 18.0,
-                                sp.y + dy / len * 18.0,
-                            );
+                            let tip = Point::new(sp.x + dx / len * 18.0, sp.y + dy / len * 18.0);
                             if let Some((a, b)) = clip_seg(base, tip, bounds) {
                                 frame.stroke(&canvas::Path::line(a, b), guide_dash.clone());
                             }
@@ -2446,15 +2457,13 @@ impl canvas::Program<Message> for SelectionCanvas {
         }
         if let Some((point, label, clip, selected)) = &self.authoring_visibility {
             frame.with_clip(*clip, |frame| {
-                let color = if *selected {
-                    theme.palette().primary.strong.color
-                } else {
-                    theme.palette().primary.base.color
-                };
+                let style = &self.authoring_visual;
+                let color = style.parameter;
+                let r = style.grip_size / 2.0;
                 let triangle = canvas::Path::new(|builder| {
-                    builder.move_to(Point::new(point.x - 5.0, point.y - 3.0));
-                    builder.line_to(Point::new(point.x + 5.0, point.y - 3.0));
-                    builder.line_to(Point::new(point.x, point.y + 5.0));
+                    builder.move_to(Point::new(point.x - r, point.y - r));
+                    builder.line_to(Point::new(point.x + r, point.y - r));
+                    builder.line_to(Point::new(point.x, point.y + r));
                     builder.close();
                 });
                 if *selected {
@@ -2463,23 +2472,22 @@ impl canvas::Program<Message> for SelectionCanvas {
                         canvas::Stroke::default().with_color(color).with_width(2.0),
                     );
                 }
-                frame.fill(&triangle, color);
-                frame.fill_text(canvas::Text {
-                    content: label.clone(),
-                    position: Point::new(point.x + 10.0, point.y - 9.0),
+                frame.fill(&triangle, style.grip);
+                authoring::draw_label(
+                    frame,
+                    Point::new(point.x + 5.0, point.y - 4.0),
+                    label,
                     color,
-                    size: iced::Pixels(13.0),
-                    ..Default::default()
-                });
+                    None,
+                    0.0,
+                    style,
+                );
             });
         }
         for (point, label_point, label, clip, selected) in &self.authoring_points {
             frame.with_clip(*clip, |frame| {
-                let color = if *selected {
-                    theme.palette().primary.strong.color
-                } else {
-                    theme.palette().primary.base.color
-                };
+                let style = &self.authoring_visual;
+                let color = style.parameter;
                 if *selected {
                     frame.stroke(
                         &canvas::Path::circle(*point, 10.0),
@@ -2491,28 +2499,29 @@ impl canvas::Program<Message> for SelectionCanvas {
                     canvas::Stroke::default().with_color(color),
                 );
                 frame.fill(
-                    &canvas::Path::rectangle(
-                        Point::new(point.x - 3.0, point.y - 3.0),
-                        iced::Size::new(6.0, 6.0),
-                    ),
-                    color,
+                    &authoring::grip_rectangle(*point, style.grip_size),
+                    style.grip,
                 );
-                frame.fill_text(canvas::Text {
-                    content: label.clone(),
-                    position: Point::new(label_point.x + 8.0, label_point.y - 9.0),
+                authoring::draw_label(
+                    frame,
+                    Point::new(label_point.x + 5.0, label_point.y - 4.0),
+                    label,
                     color,
-                    size: iced::Pixels(13.0),
-                    ..Default::default()
-                });
+                    None,
+                    0.0,
+                    style,
+                );
             });
         }
         for dimension in &self.authoring_dimensions {
             frame.with_clip(dimension.clip, |frame| {
-                let color = if dimension.selected {
-                    theme.palette().primary.strong.color
+                let style = &self.authoring_visual;
+                let color = if dimension.is_action {
+                    style.action
                 } else {
-                    theme.palette().primary.base.color
+                    style.parameter
                 };
+                let grip_scale = style.grip_size / 8.0;
                 if dimension.selected {
                     for point in dimension
                         .base_grips
@@ -2549,7 +2558,7 @@ impl canvas::Program<Message> for SelectionCanvas {
                         frame.fill(&arrow, color);
                     }
                 }
-                for (point, label) in &dimension.labels {
+                for (index, (point, label)) in dimension.labels.iter().enumerate() {
                     // Keep diagonal dimension lines from crossing the label.
                     let background = Color::from_rgba(
                         self.crosshair_bg[0],
@@ -2557,35 +2566,31 @@ impl canvas::Program<Message> for SelectionCanvas {
                         self.crosshair_bg[2],
                         self.crosshair_bg[3],
                     );
-                    frame.fill(
-                        &canvas::Path::rectangle(
-                            Point::new(point.x + 2.0, point.y - 19.0),
-                            iced::Size::new(label.chars().count() as f32 * 8.0 + 6.0, 19.0),
-                        ),
-                        background,
-                    );
-                    frame.fill_text(canvas::Text {
-                        content: label.clone(),
-                        position: Point::new(point.x + 5.0, point.y - 17.0),
+                    let angle = authoring::label_angle(&dimension.dimensions, index, style.horizontal);
+                    authoring::draw_label(
+                        frame,
+                        Point::new(point.x + 5.0, point.y - 4.0),
+                        label,
                         color,
-                        size: iced::Pixels(13.0),
-                        ..Default::default()
-                    });
+                        Some(background),
+                        angle,
+                        style,
+                    );
                 }
                 for point in &dimension.base_grips {
-                    let stroke = canvas::Stroke::default().with_color(color);
-                    frame.stroke(&canvas::Path::circle(*point, 6.0), stroke);
+                    let stroke = canvas::Stroke::default().with_color(style.grip);
+                    frame.stroke(&canvas::Path::circle(*point, 6.0 * grip_scale), stroke);
                     frame.stroke(
                         &canvas::Path::line(
-                            Point::new(point.x - 9.0, point.y),
-                            Point::new(point.x + 9.0, point.y),
+                            Point::new(point.x - 9.0 * grip_scale, point.y),
+                            Point::new(point.x + 9.0 * grip_scale, point.y),
                         ),
                         stroke,
                     );
                     frame.stroke(
                         &canvas::Path::line(
-                            Point::new(point.x, point.y - 9.0),
-                            Point::new(point.x, point.y + 9.0),
+                            Point::new(point.x, point.y - 9.0 * grip_scale),
+                            Point::new(point.x, point.y + 9.0 * grip_scale),
                         ),
                         stroke,
                     );
@@ -2593,16 +2598,22 @@ impl canvas::Program<Message> for SelectionCanvas {
                 for point in &dimension.lookup_grips {
                     frame.fill(
                         &canvas::Path::new(|p| {
-                            p.move_to(Point::new(point.x - 5.0, point.y - 4.0));
-                            p.line_to(Point::new(point.x + 5.0, point.y - 4.0));
-                            p.line_to(Point::new(point.x, point.y + 5.0));
+                            p.move_to(Point::new(
+                                point.x - 5.0 * grip_scale,
+                                point.y - 4.0 * grip_scale,
+                            ));
+                            p.line_to(Point::new(
+                                point.x + 5.0 * grip_scale,
+                                point.y - 4.0 * grip_scale,
+                            ));
+                            p.line_to(Point::new(point.x, point.y + 5.0 * grip_scale));
                             p.close();
                         }),
-                        color,
+                        style.grip,
                     );
                 }
                 for point in &dimension.round_grips {
-                    frame.fill(&canvas::Path::circle(*point, 3.5), color);
+                    frame.fill(&canvas::Path::circle(*point, 3.5 * grip_scale), style.grip);
                 }
                 for (point, base) in &dimension.grips {
                     let marker = if let Some(base) = base {
@@ -2611,24 +2622,24 @@ impl canvas::Program<Message> for SelectionCanvas {
                         let length = dx.hypot(dy).max(1.0);
                         let (x, y) = (dx / length, dy / length);
                         canvas::Path::new(|path| {
-                            path.move_to(Point::new(point.x + 5.0 * x, point.y + 5.0 * y));
-                            path.line_to(Point::new(
-                                point.x - 4.0 * x - 4.0 * y,
-                                point.y - 4.0 * y + 4.0 * x,
+                            path.move_to(Point::new(
+                                point.x + 5.0 * x * grip_scale,
+                                point.y + 5.0 * y * grip_scale,
                             ));
                             path.line_to(Point::new(
-                                point.x - 4.0 * x + 4.0 * y,
-                                point.y - 4.0 * y - 4.0 * x,
+                                point.x - (4.0 * x + 4.0 * y) * grip_scale,
+                                point.y - (4.0 * y - 4.0 * x) * grip_scale,
+                            ));
+                            path.line_to(Point::new(
+                                point.x - (4.0 * x - 4.0 * y) * grip_scale,
+                                point.y - (4.0 * y + 4.0 * x) * grip_scale,
                             ));
                             path.close();
                         })
                     } else {
-                        canvas::Path::rectangle(
-                            Point::new(point.x - 3.0, point.y - 3.0),
-                            iced::Size::new(6.0, 6.0),
-                        )
+                        authoring::grip_rectangle(*point, style.grip_size)
                     };
-                    frame.fill(&marker, color);
+                    frame.fill(&marker, style.grip);
                 }
             });
         }

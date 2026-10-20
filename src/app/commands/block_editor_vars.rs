@@ -1,9 +1,22 @@
 use crate::app::{Message, OpenCADStudio};
 use iced::Task;
 
-const NAMES: &[&str] = &["APSTATE", "BLOCKEDITOR", "BLOCKTESTWINDOW", "BLOCKEDITLOCK"];
+const NAMES: &[&str] = &[
+    "APSTATE",
+    "BLOCKEDITOR",
+    "BLOCKTESTWINDOW",
+    "BLOCKEDITLOCK",
+    "BACTIONCOLOR",
+    "BPARAMETERCOLOR",
+    "BGRIPOBJCOLOR",
+    "BGRIPOBJSIZE",
+    "BPARAMETERSIZE",
+    "BPARAMETERFONT",
+    "BPTEXTHORIZONTAL",
+];
 
 inventory::submit!(crate::command::CommandRegistration { names: NAMES });
+inventory::submit!(crate::command::CommandRegistration { names: &["BESETTINGS"] });
 
 pub(super) fn setvar_listing() -> String {
     format!("SETVAR (block editor): {}", NAMES.join(" "))
@@ -29,6 +42,21 @@ impl OpenCADStudio {
         i: usize,
     ) -> Option<Task<Message>> {
         let command = cmd.trim_start_matches(['_', '.']);
+        if command == "BESETTINGS" {
+            if self.tabs[i].active_block_edit_session().is_none() {
+                self.command_line.push_error(
+                    crate::t!("BESETTINGS requires an active Block Editor session.").as_ref(),
+                );
+            } else {
+                self.block_editor_settings =
+                    Some(crate::ui::window::block_editor_settings::State::new(
+                        &self.block_editor_preferences,
+                    ));
+                self.active_modal = Some(crate::app::ModalKind::BlockEditorSettings);
+                self.modal_resize = iced::Vector::ZERO;
+            }
+            return Some(Task::none());
+        }
         let rest = command.strip_prefix("SETVAR ").unwrap_or(command).trim();
         let mut parts = rest.splitn(2, char::is_whitespace);
         let name = parts.next()?.to_ascii_uppercase();
@@ -39,6 +67,33 @@ impl OpenCADStudio {
             .next()
             .map(str::trim)
             .filter(|value| !value.is_empty());
+        if let Some(current) = self.block_editor_preferences.display_variable(&name) {
+            if let Some(value) = value {
+                match self
+                    .block_editor_preferences
+                    .set_display_variable(&name, value)
+                {
+                    Ok(()) => {
+                        if self.pending_setvar.as_deref() == Some(name.as_str()) {
+                            self.pending_setvar = None;
+                        }
+                        self.persist_settings_if_changed();
+                        self.command_line.push_output(&format!(
+                            "{name} = {}",
+                            self.block_editor_preferences
+                                .display_variable(&name)
+                                .unwrap()
+                        ));
+                    }
+                    Err(error) => self.command_line.push_error(crate::t!(error).as_ref()),
+                }
+            } else {
+                self.command_line
+                    .push_output(&format!("Enter new value for {name} <{current}>:"));
+                self.pending_setvar = Some(name);
+            }
+            return Some(Task::none());
+        }
         let current = self.block_editor_session_variable(&name, i).unwrap_or(0);
         if name != "BLOCKEDITLOCK" {
             if value.is_some() {
@@ -199,7 +254,8 @@ mod tests {
         let _ = app.dispatch_command("SETVAR BLOCKEDITLOCK 1");
         assert!(app.pending_setvar.is_none());
         let saved = serde_json::to_value(app.current_settings()).unwrap();
-        assert_eq!(saved["block_editor"], serde_json::json!({"locked": true}));
+        assert_eq!(saved["block_editor"]["locked"], true);
+        assert!(saved["block_editor"].get("BLOCKEDITOR").is_none());
         let loaded = serde_json::from_value(saved).unwrap();
         let mut restored = OpenCADStudio::new_for_test();
         restored.apply_settings(&loaded);
@@ -209,5 +265,90 @@ mod tests {
         let _ = app.dispatch_command("LINE");
         let _ = app.dispatch_command("._SETVAR APSTATE");
         assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+    }
+
+    #[test]
+    fn block_editor_display_variables_validate_persist_and_preserve_command_and_document() {
+        let (mut app, _, _) = fixture();
+        let i = app.active_tab;
+        let before = app.tabs[i].scene.document.clone();
+        let depth = app.tabs[i].history.undo_stack.len();
+        let _ = app.dispatch_command("LINE");
+        for (name, value, expected) in [
+            ("BACTIONCOLOR", "rgb:1,2,3", "RGB:1,2,3"),
+            ("BPARAMETERCOLOR", "bylayer", "BYLAYER"),
+            ("BGRIPOBJCOLOR", "255", "255"),
+            ("BGRIPOBJSIZE", "255", "255"),
+            ("BPARAMETERSIZE", "1", "1"),
+            ("BPARAMETERFONT", "Arial Unicode MS", "Arial Unicode MS"),
+            ("BPTEXTHORIZONTAL", "0", "0"),
+        ] {
+            let _ = app.dispatch_command(&format!("SETVAR {name} {value}"));
+            assert_eq!(
+                app.block_editor_preferences
+                    .display_variable(name)
+                    .as_deref(),
+                Some(expected)
+            );
+            assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+        }
+        let valid = app.block_editor_preferences.clone();
+        for command in [
+            "BGRIPOBJSIZE 0",
+            "BPARAMETERSIZE 256",
+            "BACTIONCOLOR RGB:1,2,999",
+            "BGRIPOBJCOLOR -1",
+            "BPTEXTHORIZONTAL 2",
+            "BPARAMETERFONT \"\"",
+        ] {
+            let _ = app.dispatch_command(command);
+            assert_eq!(app.block_editor_preferences, valid, "{command}");
+        }
+        let saved = serde_json::to_value(app.current_settings()).unwrap();
+        let mut restored = OpenCADStudio::new_for_test();
+        restored.apply_settings(&serde_json::from_value(saved).unwrap());
+        assert_eq!(restored.block_editor_preferences, valid);
+        assert_eq!(app.tabs[i].scene.document, before);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    }
+
+    #[test]
+    fn block_editor_settings_apply_is_atomic_and_cancel_discards_staged_changes() {
+        let (mut app, _, reference) = fixture();
+        let _ = app.dispatch_command("LINE");
+        let _ = app.dispatch_command("BESETTINGS");
+        assert!(app.active_modal.is_none());
+        assert_eq!(
+            app.tabs[app.active_tab].active_cmd.as_ref().unwrap().name(),
+            "LINE"
+        );
+        let _ = app.dispatch_command(&format!("BEDIT_BEGIN:{}", reference.value()));
+        let baseline = app.block_editor_preferences.clone();
+        let _ = app.dispatch_command("BESETTINGS");
+        assert_eq!(
+            app.active_modal,
+            Some(crate::app::ModalKind::BlockEditorSettings)
+        );
+        let _ = app.update(Message::BlockEditorSettingsInput(0, "RGB:12,34,56".into()));
+        let _ = app.update(Message::BlockEditorSettingsInput(3, "0".into()));
+        let _ = app.update(Message::BlockEditorSettingsApply);
+        assert_eq!(app.block_editor_preferences, baseline);
+        assert!(app.block_editor_settings.as_ref().unwrap().error.is_some());
+        let _ = app.update(Message::BlockEditorSettingsInput(3, "32".into()));
+        let _ = app.update(Message::BlockEditorSettingsApply);
+        assert_eq!(app.block_editor_preferences.action_color, "RGB:12,34,56");
+        assert_eq!(app.block_editor_preferences.grip_size, 32);
+        assert!(app.active_modal.is_none());
+        let applied = app.block_editor_preferences.clone();
+        let _ = app.dispatch_command("BESETTINGS");
+        let _ = app.update(Message::BlockEditorSettingsReset);
+        assert_eq!(app.block_editor_preferences, applied);
+        let _ = app.update(Message::CloseModal);
+        assert_eq!(app.block_editor_preferences, applied);
+        assert!(app.block_editor_settings.is_none());
+        let _ = app.dispatch_command("BESETTINGS");
+        let _ = app.update(Message::BlockEditorSettingsReset);
+        let _ = app.update(Message::BlockEditorSettingsApply);
+        assert_eq!(app.block_editor_preferences, baseline);
     }
 }

@@ -152,6 +152,9 @@ impl OpenCADStudio {
     pub(in crate::app) fn close_active_modal(&mut self) {
         self.mark_startup_modal_shown();
         use super::ModalKind::*;
+        if self.active_modal == Some(BlockEditorSettings) {
+            self.block_editor_settings = None;
+        }
         // Plot Style opened from PLOT behaves as a child modal.
         // Closing it restores the parent Plot dialog instead of returning
         // to the drawing.
@@ -9001,6 +9004,37 @@ impl OpenCADStudio {
                     })
                     .collect();
                 self.active_modal = Some(super::ModalKind::NamedParameters);
+                Task::none()
+            }
+            Message::BlockEditorSettingsInput(index, value) => {
+                if let Some(state) = &mut self.block_editor_settings {
+                    if let Some(field) = state.values.get_mut(index) { *field = value; }
+                    state.error = None;
+                }
+                Task::none()
+            }
+            Message::BlockEditorSettingsReset => {
+                if self.block_editor_settings.is_some() {
+                    self.block_editor_settings = Some(crate::ui::window::block_editor_settings::State::new(&super::settings::BlockEditorPreferences::default()));
+                }
+                Task::none()
+            }
+            Message::BlockEditorSettingsApply => {
+                if self.active_modal == Some(super::ModalKind::BlockEditorSettings) {
+                    if let Some(state) = &mut self.block_editor_settings {
+                        let mut staged = self.block_editor_preferences.clone();
+                        for ((name, _), value) in super::settings::BLOCK_DISPLAY_VARIABLES.iter().zip(&state.values) {
+                            if let Err(error) = staged.set_display_variable(name, value) {
+                                state.error = Some(format!("{name}: {}", crate::t!(error)));
+                                return Task::none();
+                            }
+                        }
+                        self.block_editor_preferences = staged;
+                        self.persist_settings_if_changed();
+                        self.block_editor_settings = None;
+                        self.close_active_modal();
+                    }
+                }
                 Task::none()
             }
             Message::NamedParametersInput { idx, field, value } => {

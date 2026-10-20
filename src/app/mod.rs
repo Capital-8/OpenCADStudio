@@ -633,6 +633,7 @@ pub(super) struct OpenCADStudio {
     block_properties_table: Option<crate::ui::window::block_properties_table::State>,
     block_visibility_mode: bool,
     block_editor_preferences: settings::BlockEditorPreferences,
+    block_editor_settings: Option<crate::ui::window::block_editor_settings::State>,
     /// PDF dialogs' working copies; `None` while closed.
     pdf_attach: Option<crate::ui::window::pdf_dialogs::PdfAttachState>,
     point_cloud_attach: Option<crate::ui::window::pdf_dialogs::PointCloudAttachState>,
@@ -2391,6 +2392,7 @@ pub enum ModalKind {
     LayerDeleteWarning,
     Aliases,
     NamedParameters,
+    BlockEditorSettings,
     ScaleManager,
     /// Add / remove the annotation scales a single selected object has a
     /// per-object representation for.
@@ -4002,6 +4004,9 @@ pub enum Message {
     /// Open the named-parameter editor, seeding rows from the active tab's
     /// `Scene::named_parameters`.
     NamedParametersOpen,
+    BlockEditorSettingsInput(usize, String),
+    BlockEditorSettingsReset,
+    BlockEditorSettingsApply,
     /// Live edit of the name or formula in row `idx`.
     NamedParametersInput {
         idx: usize,
@@ -4833,6 +4838,7 @@ impl OpenCADStudio {
             block_properties_table: None,
             block_visibility_mode: false,
             block_editor_preferences: settings::BlockEditorPreferences::default(),
+            block_editor_settings: None,
             pdf_attach: None,
             point_cloud_attach: None,
             attdef_dialog: None,
