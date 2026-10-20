@@ -423,7 +423,12 @@ pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
             continue;
         }
         if options.stop_at.as_ref() == Some(name) {
-            out.messages.push(format!("Import stopped at {name}"));
+            // What the cancelled material question leaves on the command
+            // line, word for word (the unformatted "%s" included).
+            out.messages.push(format!("Processing object {name}"));
+            out.messages.push("Render API error: ".to_string());
+            out.messages.push("Render API error: %s.".to_string());
+            out.messages.push(".".to_string());
             return out;
         }
         match object {
