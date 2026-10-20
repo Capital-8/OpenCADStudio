@@ -1821,7 +1821,7 @@ impl Snapper {
         }
 
         // ── Perpendicular — foot of perpendicular from the drawing base ──
-        // Perpendicular requires a drawing base; cursor fallback acts like Nearest. (#716)
+        // Perpendicular requires a drawing base: no base, no feet. (#716)
         if self.is_on(SnapType::Perpendicular) {
             if let Some(q) = self.from_point {
                 if let Some(segments) = &local_segments {
@@ -2884,7 +2884,7 @@ fn arc_segment_center(wire: &WireModel, (a, b): (DVec3, DVec3)) -> Option<DVec3>
 
 /// Selection priority for an object snap — lower wins. Discrete snaps that
 /// land on a specific feature (Endpoint, Midpoint, Center, …) outrank the
-/// "continuous" snaps (Perpendicular, Tangent, Nearest) that can sit anywhere
+/// "continuous" snaps (Tangent, Nearest, Extension) that can sit anywhere
 /// along the geometry, so enabling a continuous snap can't suppress the
 /// discrete ones the user also turned on. Mirrors the usual CAD running-osnap
 /// precedence. See #118.
@@ -2893,9 +2893,15 @@ fn arc_segment_center(wire: &WireModel, (a, b): (DVec3, DVec3)) -> Option<DVec3>
 /// among them — a circle's Center must not mask its Quadrants just by rank
 /// (#420). Continuous snaps keep their individual lower tiers, preserving the
 /// #118 guarantee that they never suppress a discrete snap in the aperture.
+///
+/// Perpendicular is a point snap too: it is only offered from a base point,
+/// as the feet seen from it, so it ranks by distance with the others. In the
+/// continuous tiers the rim-hover Center (tier 1) hid a foot sitting right
+/// under the cursor on any circle or arc (#1914), as it once did Tangent.
 pub(crate) fn snap_tier(t: SnapType) -> u8 {
     match t {
         SnapType::Endpoint
+        | SnapType::Perpendicular
         | SnapType::Intersection
         | SnapType::ApparentIntersection
         | SnapType::Midpoint
@@ -5796,6 +5802,74 @@ mod ext_tests {
             .expect("a snap on the rim");
         assert_eq!(snap.snap_type, SnapType::Tangent);
         assert!((snap.world - tangent).length() < 1e-3);
+    }
+
+    #[test]
+    fn perpendicular_foot_ranks_by_distance_like_endpoint() {
+        // PER, END and CEN on, base at (100, 0): the foot on the circle at
+        // (50, 0) is under the cursor, so it beats the rim-hover Center; a
+        // line's endpoint nearer the cursor still beats the foot. (#1914)
+        let mut snapper = Snapper::default();
+        snapper.snap_enabled = true;
+        snapper.enabled = [SnapType::Perpendicular, SnapType::Endpoint, SnapType::Center]
+            .into_iter()
+            .collect();
+        snapper.from_point = Some(DVec3::new(100.0, 0.0, 0.0));
+        let points = (0..=64)
+            .map(|i| {
+                let a = i as f32 / 64.0 * std::f32::consts::TAU;
+                [50.0 * a.cos(), 50.0 * a.sin(), 0.0]
+            })
+            .collect();
+        let circle = WireModel {
+            points,
+            aabb: [-50.0, -50.0, 50.0, 50.0],
+            // The quadrant hint marks it closed: its seam is no endpoint.
+            snap_pts: vec![
+                (DVec3::ZERO, SnapHint::Center),
+                (DVec3::new(0.0, 50.0, 0.0), SnapHint::Quadrant),
+            ],
+            tangent_geoms: vec![TangentGeom::Circle {
+                center: [0.0, 0.0, 0.0],
+                radius: 50.0,
+            }],
+            ..Default::default()
+        };
+        // Ends 3 px left of the foot (1 px = 1 unit at this zoom).
+        let line = WireModel {
+            points: vec![[47.0, -30.0, 0.0], [47.0, 0.0, 0.0]],
+            aabb: [47.0, -30.0, 47.0, 0.0],
+            ..Default::default()
+        };
+        let wires = vec![circle, line];
+        let view_rot = Mat4::from_scale(Vec3::new(0.002, 0.002, 1.0));
+        let bounds = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 1000.0,
+            height: 1000.0,
+        };
+        let pick = |at: DVec3| {
+            let cursor = world_to_screen(at, view_rot, DVec3::ZERO, bounds);
+            snapper
+                .snap(
+                    at,
+                    cursor,
+                    wires.as_slice(),
+                    view_rot,
+                    DVec3::ZERO,
+                    bounds,
+                    Vec3::ZERO,
+                    (Vec3::X, Vec3::Y, Vec3::Z),
+                    None,
+                )
+                .expect("a snap near the rim")
+        };
+        let foot = pick(DVec3::new(50.0, 0.5, 0.0));
+        assert_eq!(foot.snap_type, SnapType::Perpendicular);
+        assert!((foot.world - DVec3::new(50.0, 0.0, 0.0)).length() < 1e-3);
+        let end = pick(DVec3::new(47.5, 0.5, 0.0));
+        assert_eq!(end.snap_type, SnapType::Endpoint);
     }
 
     #[test]
