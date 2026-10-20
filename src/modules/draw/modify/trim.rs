@@ -2502,7 +2502,7 @@ fn pick_trim_at(
         }
         Some(EntityType::LwPolyline(p)) => trim_lwpolyline(p, px, py, geos),
         Some(EntityType::Hatch(hatch)) => trim_hatch_at(hatch, geos, px, py)
-            .map(|result| vec![EntityType::Hatch(result)]),
+            .map(|result| vec![EntityType::Hatch(Box::new(result))]),
         _ => None,
     };
     result
