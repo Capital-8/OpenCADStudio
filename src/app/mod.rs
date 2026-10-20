@@ -632,6 +632,7 @@ pub(super) struct OpenCADStudio {
     block_lookup: Option<crate::ui::window::block_lookup::State>,
     block_properties_table: Option<crate::ui::window::block_properties_table::State>,
     block_visibility_mode: bool,
+    block_editor_preferences: settings::BlockEditorPreferences,
     /// PDF dialogs' working copies; `None` while closed.
     pdf_attach: Option<crate::ui::window::pdf_dialogs::PdfAttachState>,
     point_cloud_attach: Option<crate::ui::window::pdf_dialogs::PointCloudAttachState>,
@@ -4831,6 +4832,7 @@ impl OpenCADStudio {
             block_lookup: None,
             block_properties_table: None,
             block_visibility_mode: false,
+            block_editor_preferences: settings::BlockEditorPreferences::default(),
             pdf_attach: None,
             point_cloud_attach: None,
             attdef_dialog: None,

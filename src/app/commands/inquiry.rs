@@ -1010,6 +1010,12 @@ impl OpenCADStudio {
         br_handle: codec::Handle,
         unpersisted_pre_document: Option<codec::CadDocument>,
     ) {
+        if self.block_editor_preferences.locked {
+            self.command_line.push_error(
+                crate::t!("The Block Editor is locked by BLOCKEDITLOCK.").as_ref(),
+            );
+            return;
+        }
         use crate::modules::draw::modify::block_edit::BlockEditSession;
         // Capture the camera before the editor reframes it, so leaving
         // the block editor returns the view exactly where it was (#425).

@@ -322,6 +322,12 @@ impl OpenCADStudio {
     }
 
     pub(super) fn open_bedit_dialog(&mut self, i: usize) {
+        if self.block_editor_preferences.locked {
+            self.command_line.push_error(
+                crate::t!("The Block Editor is locked by BLOCKEDITLOCK.").as_ref(),
+            );
+            return;
+        }
         if self.tabs[i].refedit_session.is_some() {
             self.command_line.push_error(
                 crate::t!("BEDIT: finish the active REFEDIT (REFCLOSE) first.").as_ref(),

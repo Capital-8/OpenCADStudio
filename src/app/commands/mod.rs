@@ -9,6 +9,7 @@ mod attman;
 mod block_cmdline;
 mod blocks;
 mod blockvars;
+mod block_editor_vars;
 mod bvisibility;
 mod count;
 mod dgn_import;
@@ -176,6 +177,22 @@ impl OpenCADStudio {
         };
         let resolved = self.resolve_alias(cmd);
         let cmd = resolved.as_deref().unwrap_or(cmd);
+        if let Some(task) = self.dispatch_block_editor_vars(cmd, i) {
+            return task;
+        }
+        let verb = cmd
+            .split([' ', ':'])
+            .next()
+            .unwrap_or(cmd)
+            .trim_start_matches(['_', '.']);
+        if self.block_editor_preferences.locked
+            && matches!(verb, "BEDIT" | "BEDIT_BEGIN" | "BEDIT_OPEN" | "BEDIT_NEW")
+        {
+            self.command_line.push_error(
+                crate::t!("The Block Editor is locked by BLOCKEDITLOCK.").as_ref(),
+            );
+            return Task::none();
+        }
         if cmd == "BACTIONSET" {
             if let Some(error) = self.action_set_error() {
                 self.command_line.push_error(crate::t!(error).as_ref());

@@ -938,6 +938,7 @@ impl OpenCADStudio {
             block_mru_list: self.block_mru_list,
             block_redefine_mode: self.block_redefine_mode,
             block_navigate: self.block_navigate.clone(),
+            block_editor: self.block_editor_preferences.clone(),
             refedit: self.refedit_options.clone(),
             xfadectl: crate::scene::cache::block_cache::refedit_fade_ctl() as u8,
             count_color: self.count_palette.color,
@@ -1131,6 +1132,7 @@ impl OpenCADStudio {
         self.block_mru_list = s.block_mru_list.min(100);
         self.block_redefine_mode = s.block_redefine_mode.min(2);
         self.block_navigate = s.block_navigate.clone();
+        self.block_editor_preferences = s.block_editor.clone();
         crate::scene::cache::block_cache::set_refedit_fade_ctl(i32::from(s.xfadectl.min(90)));
         self.refedit_options = s.refedit.clone();
         self.count_palette.color = s.count_color;

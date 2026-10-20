@@ -6491,6 +6491,13 @@ properties={:.1}ms picked={}",
                         Some(AcadEntityType::Insert(_))
                     );
                     if is_insert && self.tabs[i].refedit_session.is_none() {
+                        if self.block_editor_preferences.locked && !self.double_click_block_refedit {
+                            self.tabs[i].scene.deselect_all();
+                            self.tabs[i].scene.select_entity(handle, true);
+                            self.tabs[i].selected_handle = Some(handle);
+                            self.refresh_properties();
+                            return self.dock_set_open(crate::ui::dock::PanelId::Properties, true);
+                        }
                         let command = if self.double_click_block_refedit {
                             "REFEDIT_BEGIN"
                         } else {

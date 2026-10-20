@@ -434,9 +434,16 @@ pub const MAX_SELECTED_GRIPS: usize = 4096;
 /// The "settings" section of the consolidated config ([`crate::app::config`]).
 /// Field defaults mirror the app's in-code defaults so a missing key restores
 /// the value the app boots with.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BlockEditorPreferences {
+    pub locked: bool,
+}
+
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UserSettings {
+    pub block_editor: BlockEditorPreferences,
     pub spacemouse: crate::input::spacemouse::Preferences,
     pub dyn_input: bool,
     pub dyn_mode: i16,
@@ -957,6 +964,7 @@ pub fn clamp_clipromptlines(v: i32) -> i32 {
 impl Default for UserSettings {
     fn default() -> Self {
         Self {
+            block_editor: BlockEditorPreferences::default(),
             spacemouse: crate::input::spacemouse::Preferences::default(),
             dyn_input: true,
             dyn_mode: 3,
