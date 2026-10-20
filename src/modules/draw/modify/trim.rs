@@ -2162,6 +2162,218 @@ fn crossing_trim_lwpolyline(
     )
 }
 
+/// Cut a polygonal HATCH with an exact CIRCLE: create an internal round
+/// opening, or replace part of its outer boundary with an analytic arc.
+/// Do not approximate the final arc with chords (DWG must retain a true arc).
+/// Return None for complex topology that would require a region boolean.
+fn trim_hatch_circle(
+    hatch: &codec::entities::Hatch,
+    rings: &[Vec<[f64; 2]>],
+    outer_index: usize,
+    circle: &Geo,
+    pick: [f64; 2],
+) -> Option<codec::entities::Hatch> {
+    use codec::entities::{BoundaryEdge, BoundaryPath, BoundaryPathFlags, CircularArcEdge, LineEdge};
+    use codec::types::Vector2;
+    use std::f64::consts::TAU;
+    let Geo::Circle { handle, cx, cy, r } = *circle else {
+        return None;
+    };
+    if handle == hatch.common.handle || !r.is_finite() || r <= 1.0e-9 {
+        return None;
+    }
+    let centre = [cx, cy];
+    let d2 = |p: [f64; 2]| (p[0] - cx).powi(2) + (p[1] - cy).powi(2);
+    let tolerance = 1.0e-8_f64.max(r * 1.0e-9);
+    let r2 = r * r;
+    // A click INSIDE the cutter removes the circular portion of the HATCH.
+    // Clicking outside must not unexpectedly remove the entire hatch.
+    if d2(pick) >= (r - tolerance).max(0.0).powi(2) {
+        return None;
+    }
+    let polygon_contains = |ring: &[[f64; 2]], p: [f64; 2]| {
+        let mut inside = false;
+        for (a, b) in ring.iter().zip(ring.iter().cycle().skip(1)).take(ring.len()) {
+            if (a[1] > p[1]) != (b[1] > p[1]) {
+                let cross_x = (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0];
+                if p[0] < cross_x {
+                    inside = !inside;
+                }
+            }
+        }
+        inside
+    };
+    let ring = &rings[outer_index];
+    if ring.len() < 3 || !polygon_contains(ring, pick) {
+        return None;
+    }
+    // The incoming tessellation can repeat the first point at the end.
+    let mut points = ring.clone();
+    if points.len() >= 2
+        && (points[0][0] - points.last().unwrap()[0])
+            .hypot(points[0][1] - points.last().unwrap()[1]) <= tolerance
+    {
+        points.pop();
+    }
+    if points.len() < 3 {
+        return None;
+    }
+    #[derive(Clone, Copy)]
+    struct Hit {
+        at: f64,
+        point: [f64; 2],
+    }
+    let hits_on = |polygon: &[[f64; 2]]| -> Vec<Hit> {
+        let mut hits = Vec::new();
+        for i in 0..polygon.len() {
+            let a = polygon[i];
+            let b = polygon[(i + 1) % polygon.len()];
+            let dir = [b[0] - a[0], b[1] - a[1]];
+            let f = [a[0] - cx, a[1] - cy];
+            let aa = dir[0] * dir[0] + dir[1] * dir[1];
+            if aa <= tolerance * tolerance {
+                continue;
+            }
+            let bb = 2.0 * (dir[0] * f[0] + dir[1] * f[1]);
+            let cc = f[0] * f[0] + f[1] * f[1] - r2;
+            let discriminant = bb * bb - 4.0 * aa * cc;
+            if discriminant <= tolerance * tolerance {
+                continue;
+            }
+            for t in [(-bb - discriminant.sqrt()) / (2.0 * aa),
+                      (-bb + discriminant.sqrt()) / (2.0 * aa)] {
+                if t < -tolerance || t > 1.0 + tolerance {
+                    continue;
+                }
+                let t = t.clamp(0.0, 1.0);
+                let point = [a[0] + t * dir[0], a[1] + t * dir[1]];
+                if !hits.iter().any(|prev: &Hit| {
+                    (point[0] - prev.point[0]).hypot(point[1] - prev.point[1]) <= tolerance
+                }) {
+                    hits.push(Hit { at: i as f64 + t, point });
+                }
+            }
+        }
+        hits.sort_by(|a, b| a.at.total_cmp(&b.at));
+        hits
+    };
+    let hits = hits_on(&points);
+    // Don't attempt to combine a cutter with existing holes. The hole must
+    // remain completely separate from this disk.
+    for (index, hole) in rings.iter().enumerate() {
+        if index == outer_index { continue; }
+        if hits_on(hole).len() != 0
+            || hole.iter().any(|p| d2(*p) <= (r + tolerance).powi(2))
+            || polygon_contains(hole, centre)
+        {
+            return None;
+        }
+    }
+    let mut result = hatch.clone();
+    result.common.handle = Handle::NULL;
+    result.is_associative = false;
+    match hits.len() {
+        0 => {
+            // A circle completely inside the outer region becomes an exact
+            // circular island/hole. The circle itself is left untouched.
+            if !polygon_contains(&points, centre) {
+                return None;
+            }
+            for offset in [[r, 0.0], [-r, 0.0], [0.0, r], [0.0, -r]] {
+                if !polygon_contains(&points, [cx + offset[0], cy + offset[1]]) {
+                    return None;
+                }
+            }
+            let mut hole = BoundaryPath::new();
+            hole.add_edge(BoundaryEdge::CircularArc(CircularArcEdge {
+                center: Vector2::new(cx, cy),
+                radius: r,
+                start_angle: 0.0,
+                end_angle: TAU,
+                counter_clockwise: true,
+            }));
+            result.paths.push(hole);
+        }
+        2 => {
+            let n = points.len() as f64;
+            let forward_chain = |a: Hit, b: Hit| -> Vec<[f64; 2]> {
+                let finish = if b.at <= a.at { b.at + n } else { b.at };
+                let mut chain = vec![a.point];
+                let mut vertex = a.at.floor() + 1.0;
+                while vertex < finish - tolerance && chain.len() <= points.len() + 2 {
+                    chain.push(points[vertex as usize % points.len()]);
+                    vertex += 1.0;
+                }
+                chain.push(b.point);
+                chain
+            };
+            let a = forward_chain(hits[0], hits[1]);
+            let b = forward_chain(hits[1], hits[0]);
+            let outside = |chain: &[[f64; 2]]| {
+                chain.windows(2).all(|pair| {
+                    let p = [(pair[0][0] + pair[1][0]) * 0.5,
+                             (pair[0][1] + pair[1][1]) * 0.5];
+                    d2(p) >= (r - tolerance).max(0.0).powi(2)
+                })
+            };
+            let chain = match (outside(&a), outside(&b)) {
+                (true, false) => a,
+                (false, true) => b,
+                _ => return None,
+            };
+            if chain.len() < 2 || chain.len() > points.len() + 2 {
+                return None;
+            }
+            // Close the outer path with the arc on the INSIDE of the old
+            // polygon, NOT the opposite circle arc outside the filled area.
+            let arc_start = *chain.last().unwrap();
+            let arc_end = chain[0];
+            let t0 = (arc_start[1] - cy).atan2(arc_start[0] - cx);
+            let t1 = (arc_end[1] - cy).atan2(arc_end[0] - cx);
+            let ccw_sweep = (t1 - t0).rem_euclid(TAU);
+            let cw_sweep = (t0 - t1).rem_euclid(TAU);
+            let midpoint = |angle: f64| [cx + r * angle.cos(), cy + r * angle.sin()];
+            let ccw_inside = polygon_contains(&points, midpoint(t0 + ccw_sweep * 0.5));
+            let cw_inside = polygon_contains(&points, midpoint(t0 - cw_sweep * 0.5));
+            let counter_clockwise = match (ccw_inside, cw_inside) {
+                (true, false) => true,
+                (false, true) => false,
+                _ => return None,
+            };
+            let sweep = if counter_clockwise { ccw_sweep } else { cw_sweep };
+            if sweep <= tolerance || sweep >= TAU - tolerance {
+                return None;
+            }
+            let stored_start = if counter_clockwise { t0 } else { -t0 }.rem_euclid(TAU);
+            let mut path = BoundaryPath::with_flags(BoundaryPathFlags::OUTERMOST);
+            for pair in chain.windows(2) {
+                if (pair[0][0] - pair[1][0]).hypot(pair[0][1] - pair[1][1]) > tolerance {
+                    path.add_edge(BoundaryEdge::Line(LineEdge {
+                        start: Vector2::new(pair[0][0], pair[0][1]),
+                        end: Vector2::new(pair[1][0], pair[1][1]),
+                    }));
+                }
+            }
+            path.add_edge(BoundaryEdge::CircularArc(CircularArcEdge {
+                center: Vector2::new(cx, cy),
+                radius: r,
+                start_angle: stored_start,
+                end_angle: stored_start + sweep,
+                counter_clockwise,
+            }));
+            result.paths[outer_index] = path;
+        }
+        // More intersections can split the hatch into several disconnected
+        // pieces or merge holes. Until a full region boolean exists, refuse.
+        _ => return None,
+    }
+    for path in &mut result.paths {
+        path.boundary_handles.clear();
+        path.flags.set_external(false);
+    }
+    Some(result)
+}
+
 /// TRIM a planar hatch as a REGION, not as an individual hatch boundary edge.
 ///
 /// The picked point chooses the half-plane to REMOVE. Only a finite straight
@@ -2236,6 +2448,21 @@ fn trim_hatch_at(
         return None;
     }
     let mut best: Option<(f64, codec::entities::Hatch)> = None;
+    // A click inside a circle should cut that disk out of the hatch. Do
+    // not let an unrelated nearby straight edge win this pick.
+    for circle in geos.iter().filter(|geo| matches!(geo, Geo::Circle { .. })) {
+        if let Some(clipped) = trim_hatch_circle(hatch, &rings, outer_index, circle, [px, py]) {
+            if let Geo::Circle { cx, cy, r, .. } = *circle {
+                let distance = (r - (px - cx).hypot(py - cy)).abs();
+                if best.as_ref().is_none_or(|(d, _)| distance < *d) {
+                    best = Some((distance, clipped));
+                }
+            }
+        }
+    }
+    if best.is_some() {
+        return best.map(|(_, result)| result);
+    }
     for geo in geos {
         let Geo::Line { handle, p1, p2 } = geo else {
             continue;
