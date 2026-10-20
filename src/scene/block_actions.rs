@@ -813,16 +813,17 @@ pub(crate) fn retarget_frame_points(
                 .ok_or("The Polar Stretch parameter is unavailable.")?
                 .end
                 .z;
+            let stretching = targets.iter().copied().filter(|handle| !a.handles.contains(handle)).collect::<Vec<_>>();
             if let Some(corners) = frame {
-                let (points, bindings) = stretch::bind_frame(doc, &targets, corners, plane)?;
+                let (points, bindings) = stretch::bind_frame(doc, &stretching, corners, plane)?;
                 a.points = points;
                 a.bindings = bindings;
             } else {
-                a.bindings.retain(|b| targets.contains(&b.handle));
+                a.bindings.retain(|b| stretching.contains(&b.handle));
                 let added = targets
                     .iter()
                     .copied()
-                    .filter(|h| !old_targets.contains(h))
+                    .filter(|h| !old_targets.contains(h) && !a.handles.contains(h))
                     .collect::<Vec<_>>();
                 let frame = a.points.clone();
                 a.bindings
@@ -1421,7 +1422,7 @@ fn evaluate_impl(
                 if direction.length() <= 1e-9 {
                     return Err("The Polar parameter needs a nonzero distance.");
                 }
-                stretch::apply_polar(&mut entity, &s.bindings, q.base, q.end, end)?;
+                stretch::apply_polar(&mut entity, s, q.base, q.end, end)?;
             } else {
                 super::view::dispatch::apply_transform(&mut entity, &transform);
             }

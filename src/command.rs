@@ -1542,6 +1542,7 @@ pub enum CmdResult {
         expected: Box<codec::objects::ObjectType>,
         targets: Vec<Handle>,
         frame: Option<Vec<DVec3>>,
+        rotate_only: Option<Vec<Handle>>,
     },
     EditBlockAuthoring {
         document: u64,
@@ -1561,6 +1562,7 @@ pub enum CmdResult {
         frame: Option<Vec<DVec3>>,
         array_offsets: Option<(f64, f64)>,
         displacement_overrides: Option<(f64, f64)>,
+        rotate_only: Vec<Handle>,
     },
     EvaluateBlockParameter {
         insert: Option<Handle>,

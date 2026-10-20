@@ -578,6 +578,7 @@ fn block_actions_set_frame_cancel_stale_and_context_guards() {
         expected: expected.clone(),
         targets: targets.clone(),
         frame: None,
+        rotate_only: None,
     });
     assert_eq!(app.tabs[i].scene.document, original);
     crate::scene::block_authoring::edit::move_part(
@@ -596,6 +597,7 @@ fn block_actions_set_frame_cancel_stale_and_context_guards() {
         expected,
         targets,
         frame: None,
+        rotate_only: None,
     });
     assert_eq!(app.tabs[i].scene.document, stale);
 }
@@ -2236,6 +2238,7 @@ fn block_actions_rejected_outside_editor_preserve_running_command_and_stale_resu
         frame: None,
         array_offsets: None,
         displacement_overrides: None,
+        rotate_only: vec![],
     });
     assert_eq!(app.tabs[i].scene.document, before);
     let _ = app.dispatch_command("LINE");
@@ -5472,4 +5475,65 @@ fn block_polygon_stretch_command_cancel_close_replace_and_local_history() {
     assert!(actions::actions(&app.tabs[i].scene.document,definition).is_empty());
     app.redo_steps(2);
     assert_eq!(actions::frame_outline(&app.tabs[i].scene.document,action).len(),3);
+}
+
+#[test]
+fn polar_stretch_authoring_collects_rotation_selection_and_edits_it_with_local_undo() {
+    use crate::scene::block_actions::{self as actions,Kind};
+    let (mut app,reference)=fixture();
+    begin(&mut app,reference);
+    let i=app.active_tab;
+    circle(&mut app,3.);
+    let _=app.run_command_line("BPARAMETER POLAR 0,0 10,0 5,2");
+    let definition=app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter=actions::all_parameters(&app.tabs[i].scene.document,definition)[0].clone();
+    let targets=members(&app);
+    let before=app.tabs[i].scene.document.clone();
+    let depth=app.tabs[i].history.undo_stack.len();
+    let _=app.dispatch_command("BACTION POLAR STRETCH");
+    feed(&mut app,&parameter.name);
+    feed(&mut app,"9,-1");feed(&mut app,"11,1");
+    let _=app.feed_command(crate::command::StepInput::Enter);
+    assert!(app.tabs[i].active_cmd.as_ref().unwrap().prompt().contains("rotate only"));
+    let _=app.feed_command(crate::command::StepInput::SelectionComplete(vec![targets[1]]));
+    let _=app.update(Message::CommandEscape);
+    assert_eq!(app.tabs[i].scene.document,before);
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth);
+    let _=app.dispatch_command("BACTION POLAR STRETCH");
+    feed(&mut app,&parameter.name);
+    feed(&mut app,"9,-1");feed(&mut app,"11,1");
+    let _=app.feed_command(crate::command::StepInput::SelectionComplete(vec![targets[0]]));
+    let _=app.feed_command(crate::command::StepInput::Enter);
+    assert!(app.tabs[i].active_cmd.as_ref().unwrap().prompt().contains("rotate only"));
+    let _=app.feed_command(crate::command::StepInput::SelectionComplete(vec![targets[1]]));
+    let _=app.feed_command(crate::command::StepInput::Enter);
+    feed(&mut app,"Multiplier");feed(&mut app,"2");
+    feed(&mut app,"Offset");feed(&mut app,"90");
+    assert_eq!(app.tabs[i].scene.document,before,"all selections and overrides are staged");
+    feed(&mut app,"4,4");
+    assert!(app.tabs[i].active_cmd.is_none());
+    let action=actions::actions(&app.tabs[i].scene.document,definition).iter().find(|(_,_,kind,_)|*kind==Kind::PolarStretch).unwrap().0;
+    let native=app.tabs[i].scene.document.objects[&action].clone();
+    let codec::objects::ObjectType::DynamicBlock(object)=&native else {panic!()};
+    let codec::objects::DynamicBlockData::PolarStretchAction(polar)=&object.data else {panic!()};
+    assert_eq!(polar.handles,vec![targets[1]]);
+    assert_eq!(polar.action.dependencies,targets);
+    assert_eq!(polar.distance_multiplier,2.);
+    assert_eq!(polar.angle_offset,std::f64::consts::FRAC_PI_2);
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth+1);
+    let _=app.update(Message::BlockActionBarSelect(action));
+    let _=app.update(Message::BlockActionBarEdit(action));
+    feed(&mut app,"RotateOnly");
+    let _=app.feed_command(crate::command::StepInput::Enter);
+    assert!(app.tabs[i].active_cmd.is_none());
+    let codec::objects::ObjectType::DynamicBlock(object)=&app.tabs[i].scene.document.objects[&action] else {panic!()};
+    let codec::objects::DynamicBlockData::PolarStretchAction(polar)=&object.data else {panic!()};
+    assert!(polar.handles.is_empty());
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth+2);
+    app.undo_steps(1);
+    assert_eq!(app.tabs[i].scene.document.objects[&action],native);
+    app.undo_steps(1);
+    assert!(actions::actions(&app.tabs[i].scene.document,definition).is_empty());
+    app.redo_steps(2);
+    assert!(actions::options::offsets(&app.tabs[i].scene.document,action).is_some());
 }

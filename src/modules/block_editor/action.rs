@@ -17,6 +17,8 @@ pub(crate) struct ActionCommand {
     xy_key_point: Option<XyKeyPoint>,
     targets: Vec<Handle>,
     selecting: bool,
+    choosing_rotation: bool,
+    rotate_only: Vec<Handle>,
     frame: Vec<DVec3>,
     polygon_frame: bool,
     frame_done: bool,
@@ -43,6 +45,8 @@ impl ActionCommand {
             xy_key_point: None,
             targets: vec![],
             selecting: false,
+            choosing_rotation: false,
+            rotate_only: vec![],
             frame: vec![],
             polygon_frame: false,
             frame_done: false,
@@ -172,6 +176,10 @@ impl CadCommand for ActionCommand {
         if self.kind.is_some_and(actions::needs_frame) && self.frame.len() == 1 {
             return crate::t!("BACTION  Specify opposite corner of action frame:").into_owned();
         }
+        if self.selecting && self.choosing_rotation {
+            return crate::t!("BACTION  Select objects to rotate only, then press Enter <None>:")
+                .into_owned();
+        }
         if self.selecting {
             if let Some(point) = self.xy_key_point {
                 let point = match point {
@@ -201,7 +209,10 @@ impl CadCommand for ActionCommand {
                 return crate::t!("BACTION  Specify distance between rows:").into_owned();
             }
         }
-        if matches!(self.kind, Some(Kind::Move | Kind::Stretch)) {
+        if matches!(
+            self.kind,
+            Some(Kind::Move | Kind::Stretch | Kind::PolarStretch)
+        ) {
             crate::t!("BACTION  Specify action marker location or [Multiplier/Offset]:")
                 .into_owned()
         } else {
@@ -236,7 +247,10 @@ impl CadCommand for ActionCommand {
         } else if self.parameter.is_some()
             && !self.selecting
             && self.override_input.is_none()
-            && matches!(self.kind, Some(Kind::Move | Kind::Stretch))
+            && matches!(
+                self.kind,
+                Some(Kind::Move | Kind::Stretch | Kind::PolarStretch)
+            )
             && (!self.kind.is_some_and(actions::needs_frame) || self.frame_done)
         {
             vec![
@@ -287,7 +301,10 @@ impl CadCommand for ActionCommand {
         }
         if self.parameter.is_some()
             && !self.selecting
-            && matches!(self.kind, Some(Kind::Move | Kind::Stretch))
+            && matches!(
+                self.kind,
+                Some(Kind::Move | Kind::Stretch | Kind::PolarStretch)
+            )
             && (!self.kind.is_some_and(actions::needs_frame) || self.frame_done)
         {
             match s.trim().to_ascii_uppercase().as_str() {
@@ -492,12 +509,22 @@ impl CadCommand for ActionCommand {
             kind: self.kind.unwrap(),
             parameter: self.parameter.unwrap(),
             xy_key_point: self.xy_key_point,
-            targets: self.targets.clone(),
+            targets: {
+                let mut targets = self.targets.clone();
+                targets.extend(&self.rotate_only);
+                targets.sort();
+                targets.dedup();
+                targets
+            },
             location: point,
             frame: self.frame_done.then(|| self.frame.clone()),
             array_offsets,
-            displacement_overrides: matches!(self.kind, Some(Kind::Move | Kind::Stretch))
-                .then_some((self.multiplier, self.angle_offset)),
+            displacement_overrides: matches!(
+                self.kind,
+                Some(Kind::Move | Kind::Stretch | Kind::PolarStretch)
+            )
+            .then_some((self.multiplier, self.angle_offset)),
+            rotate_only: self.rotate_only.clone(),
         }
     }
 
@@ -515,7 +542,11 @@ impl CadCommand for ActionCommand {
     fn on_selection_complete(&mut self, handles: Vec<Handle>) -> CmdResult {
         // The host calls this after every pick/window/removal, not just Enter.
         // Retain the current set while the user gathers additional objects.
-        self.targets = handles;
+        if self.choosing_rotation {
+            self.rotate_only = handles;
+        } else {
+            self.targets = handles;
+        }
         CmdResult::NeedPoint
     }
     fn on_enter(&mut self) -> CmdResult {
@@ -527,7 +558,11 @@ impl CadCommand for ActionCommand {
             return CmdResult::NeedPoint;
         }
         if self.selecting {
-            if self.targets.is_empty() {
+            if self.kind == Some(Kind::PolarStretch) && !self.choosing_rotation {
+                self.choosing_rotation = true;
+                return CmdResult::DeselectAndContinue;
+            }
+            if self.targets.is_empty() && self.rotate_only.is_empty() {
                 return CmdResult::ReportError(
                     crate::t!("Select at least one object for the action.").into_owned(),
                 );

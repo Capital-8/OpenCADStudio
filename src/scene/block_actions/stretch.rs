@@ -270,8 +270,8 @@ pub(crate) fn validate_polar(
         code: connection_code,
         name: name.into(),
     });
-    if a.distance_multiplier != 1.
-        || a.angle_offset != 0.
+    if !a.distance_multiplier.is_finite()
+        || !a.angle_offset.is_finite()
         || a.connections != connections
         || !a.codes.is_empty()
         || !a.extra.is_empty()
@@ -286,7 +286,9 @@ pub(crate) fn validate_polar(
     let mut handles = a.handles.clone();
     handles.sort();
     handles.dedup();
-    if handles != a.handles || handles.iter().any(|h| !a.action.dependencies.contains(h)) {
+    if handles.len() != a.handles.len()
+        || handles.iter().any(|h| !a.action.dependencies.contains(h))
+    {
         return Err("The Polar Stretch action has invalid target bindings.");
     }
     let mut seen = std::collections::BTreeSet::new();
@@ -409,24 +411,54 @@ pub(crate) fn apply(
     Ok(())
 }
 
-/// Apply the authored polar displacement to only the vertices frozen in the
-/// Polar Stretch bindings; targets without a partial binding move as a whole.
+/// Rotate the selection first, then extend frozen vertices along the updated
+/// polar direction. Explicit rotate-only targets retain their original size.
 pub(crate) fn apply_polar(
     e: &mut EntityType,
-    bindings: &[BlockStretchHandle],
+    action: &BlockPolarStretchAction,
     base: DVec3,
     old_end: DVec3,
     new_end: DVec3,
 ) -> Result<(), &'static str> {
     let (old_vec, new_vec) = (old_end - base, new_end - base);
-    if old_vec.length() <= 1e-9 || new_vec.length() <= 1e-9 {
+    let (old_length, new_length) = (old_vec.length(), new_vec.length());
+    if !old_length.is_finite()
+        || !new_length.is_finite()
+        || old_length <= 1e-9
+        || new_length <= 1e-9
+    {
         return Err("The Polar parameter needs a nonzero distance.");
     }
-    let action = BlockStretchAction {
-        handles: bindings.to_vec(),
+    if old_end == new_end {
+        return Ok(());
+    }
+    let angle = old_vec.cross(new_vec).z.atan2(old_vec.dot(new_vec));
+    if angle != 0. {
+        crate::scene::view::dispatch::apply_transform(
+            e,
+            &crate::command::EntityTransform::Rotate {
+                center: base,
+                axis: DVec3::Z,
+                angle_rad: angle,
+            },
+        );
+    }
+    if action.handles.contains(&e.common().handle) {
+        return Ok(());
+    }
+    let delta = options::displacement(
+        &BlockActionOffsets {
+            distance_multiplier: action.distance_multiplier,
+            angle_offset: action.angle_offset,
+            flags: 0,
+        },
+        new_vec / new_length * (new_length - old_length),
+    )?;
+    let stretch = BlockStretchAction {
+        handles: action.bindings.clone(),
         ..Default::default()
     };
-    apply(e, &action, new_end - old_end)
+    apply(e, &stretch, delta)
 }
 
 pub(crate) fn outline(points: &[Vector2], z: f64) -> Vec<Vector3> {

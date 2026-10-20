@@ -66,8 +66,9 @@ pub(crate) fn associate(
                 "UpdatedEnd",
             ]
             .map(connection);
+            let stretching = native.action.dependencies.iter().copied().filter(|handle| !native.handles.contains(handle)).collect::<Vec<_>>();
             native.bindings =
-                stretch::bind_existing(doc, &native.action.dependencies, &native.points, p.end.z)?;
+                stretch::bind_existing(doc, &stretching, &native.points, p.end.z)?;
         }
         DynamicBlockData::ArrayAction(native) => {
             native.connections = ["Base", "End", "UpdatedBase", "UpdatedEnd"].map(connection)

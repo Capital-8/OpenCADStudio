@@ -15,6 +15,7 @@ struct Candidate {
     at: DVec3,
     targets: Vec<Handle>,
     stretch: bool,
+    polar: bool,
     expected: ObjectType,
 }
 #[derive(Clone, Copy)]
@@ -23,6 +24,7 @@ enum Mode {
     Add,
     Remove,
     Frame,
+    RotateOnly,
 }
 pub(crate) struct ActionSetCommand {
     document: u64,
@@ -50,6 +52,7 @@ impl ActionSetCommand {
                 at: actions::v(a.display_location),
                 targets: a.dependencies.clone(),
                 stretch: actions::needs_frame(kind),
+                polar: kind == actions::Kind::PolarStretch,
                 expected: doc.objects[&handle].clone(),
             })
             .collect::<Vec<_>>();
@@ -88,7 +91,7 @@ impl ActionSetCommand {
                 .copied()
                 .filter(|h| !self.picked.contains(h))
                 .collect(),
-            Mode::Frame => c.targets.clone(),
+            Mode::Frame | Mode::RotateOnly => c.targets.clone(),
         };
         CmdResult::EditBlockActionSet {
             document: self.document,
@@ -97,6 +100,7 @@ impl ActionSetCommand {
             expected: Box::new(c.expected.clone()),
             targets,
             frame: matches!(self.mode, Some(Mode::Frame)).then(|| self.frame.clone()),
+            rotate_only: matches!(self.mode, Some(Mode::RotateOnly)).then(|| self.picked.clone()),
         }
     }
 }
@@ -116,6 +120,10 @@ impl CadCommand for ActionSetCommand {
     fn prompt(&self) -> String {
         crate::t!(if self.chosen.is_none() {
             "BACTIONSET  Pick an action marker or enter its name:"
+        } else if self.mode.is_none() && self.candidates[self.chosen.unwrap()].polar {
+            "BACTIONSET  [New/Add/Remove/Frame/RotateOnly] <New>:"
+        } else if matches!(self.mode, Some(Mode::RotateOnly)) {
+            "BACTIONSET  Select objects from this action to rotate only, then press Enter <None>:"
         } else if self.mode.is_none() && self.candidates[self.chosen.unwrap()].stretch {
             "BACTIONSET  [New/Add/Remove/Frame] <New>:"
         } else if self.mode.is_none() {
@@ -140,6 +148,9 @@ impl CadCommand for ActionSetCommand {
             ];
             if self.candidates[self.chosen.unwrap()].stretch {
                 options.push(CmdOption::new("Frame", "Frame"));
+            }
+            if self.candidates[self.chosen.unwrap()].polar {
+                options.push(CmdOption::new("RotateOnly", "RotateOnly"));
             }
             options
         } else if matches!(self.mode, Some(Mode::Frame)) {
@@ -196,6 +207,9 @@ impl CadCommand for ActionSetCommand {
                 "ADD" | "A" => Mode::Add,
                 "REMOVE" | "R" => Mode::Remove,
                 "FRAME" | "F" if self.candidates[self.chosen.unwrap()].stretch => Mode::Frame,
+                "ROTATEONLY" | "RO" if self.candidates[self.chosen.unwrap()].polar => {
+                    Mode::RotateOnly
+                }
                 _ => {
                     return Some(CmdResult::ReportError(
                         crate::t!("Choose an available selection-editing option.").into_owned(),
@@ -275,7 +289,10 @@ impl CadCommand for ActionSetCommand {
         CmdResult::NeedPoint
     }
     fn is_selection_gathering(&self) -> bool {
-        matches!(self.mode, Some(Mode::New | Mode::Add | Mode::Remove))
+        matches!(
+            self.mode,
+            Some(Mode::New | Mode::Add | Mode::Remove | Mode::RotateOnly)
+        )
     }
     fn on_selection_complete(&mut self, handles: Vec<Handle>) -> CmdResult {
         self.picked = handles;

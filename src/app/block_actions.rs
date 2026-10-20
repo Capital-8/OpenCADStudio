@@ -366,6 +366,7 @@ impl OpenCADStudio {
                 expected,
                 targets,
                 frame,
+                rotate_only,
             } => {
                 let tab = &self.tabs[i];
                 if tab.id != document
@@ -383,6 +384,11 @@ impl OpenCADStudio {
                 let mut staged = tab.scene.document.clone();
                 let result = actions::retarget_frame_points(&mut staged, definition, action, &targets, frame.as_deref())
                     .and_then(|changed| {
+                        let rotation_changed = match rotate_only.as_deref() {
+                            Some(targets) => actions::options::set_rotate_only(&mut staged, definition, action, targets)?,
+                            None => false,
+                        };
+                        let changed = changed || rotation_changed;
                         if changed {
                             staged = actions::instance::refresh(&staged, definition)?;
                         }
@@ -417,6 +423,7 @@ impl OpenCADStudio {
                 frame,
                 array_offsets,
                 displacement_overrides,
+                rotate_only,
             } => {
                 if self.tabs[i].id != document
                     || self.tabs[i]
@@ -444,6 +451,11 @@ impl OpenCADStudio {
                 ).and_then(|handle| {
                     if let Some((multiplier, angle)) = displacement_overrides {
                         actions::options::set(&mut staged, definition, handle, multiplier, angle)?;
+                    }
+                    if kind == Kind::PolarStretch {
+                        actions::options::set_rotate_only(&mut staged, definition, handle, &rotate_only)?;
+                    } else if !rotate_only.is_empty() {
+                        return Err("Rotate-only objects require a Polar Stretch action.");
                     }
                     Ok(handle)
                 }) {

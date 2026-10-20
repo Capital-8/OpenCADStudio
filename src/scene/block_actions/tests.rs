@@ -966,8 +966,8 @@ fn polar_stretch_evaluates_test_block_and_saved_reference() {
     let EntityType::Line(line) = doc.get_entity(targets[0]).unwrap() else {
         panic!()
     };
-    assert_eq!(line.start, Vector3::new(-9., 10., 0.));
-    assert_eq!(line.end, Vector3::new(2., 0., 0.));
+    assert!((line.start-Vector3::new(0.,1.,0.)).length()<1e-10);
+    assert!((line.end-Vector3::new(0.,2.,0.)).length()<1e-10);
 
     let mut source = baseline.clone();
     let insert = source
@@ -996,8 +996,8 @@ fn polar_stretch_evaluates_test_block_and_saved_reference() {
     let EntityType::Line(line) = changed.get_entity(evaluated_member).unwrap() else {
         panic!()
     };
-    assert_eq!(line.start, Vector3::new(-9., 10., 0.));
-    assert_eq!(line.end, Vector3::new(2., 0., 0.));
+    assert!((line.start-Vector3::new(0.,1.,0.)).length()<1e-10);
+    assert!((line.end-Vector3::new(0.,2.,0.)).length()<1e-10);
 }
 
 #[test]
@@ -2408,4 +2408,77 @@ fn block_polygon_stretch_frames_bind_concave_regions_and_replace_atomically() {
     assert_eq!(native.points.len(),3);
     assert_eq!(native.handles[0].indexes,vec![1]);
     assert_eq!(native.action.dependencies,targets);
+}
+
+#[test]
+fn polar_stretch_rotates_and_extends_separate_selections_with_native_overrides() {
+    // A rotation-only override must restore the saved frame membership when cleared.
+    let (mut partial, def, partial_targets, _, partial_action) = polar_stretch_fixture();
+    let original = partial.objects[&partial_action].clone();
+    options::set_rotate_only(&mut partial, def, partial_action, &partial_targets).unwrap();
+    let ObjectType::DynamicBlock(object) = &partial.objects[&partial_action] else { panic!() };
+    let DynamicBlockData::PolarStretchAction(native) = &object.data else { panic!() };
+    assert!(native.bindings.is_empty());
+    options::set_rotate_only(&mut partial, def, partial_action, &[]).unwrap();
+    assert_eq!(partial.objects[&partial_action], original);
+    let mut scene=Scene::new();
+    scene.define_block_raw("POLAR_GROUPS",Vector3::ZERO,vec![
+        EntityType::Line(codec::entities::Line::from_points(Vector3::ZERO,Vector3::new(10.,0.,0.))),
+        EntityType::Line(codec::entities::Line::from_points(Vector3::new(1.,1.,0.),Vector3::new(2.,1.,0.))),
+        EntityType::Circle(codec::entities::Circle::from_center_radius(Vector3::new(10.,2.,0.),1.)),
+        EntityType::Point(codec::entities::Point::from_coords(4.,4.,0.)),
+    ]);
+    let record=scene.document.block_records.get("POLAR_GROUPS").unwrap();
+    let (definition,targets)=(record.handle,record.entity_handles.clone());
+    let mut doc=scene.document;
+    let parameter=distance::create(&mut doc,definition,distance::Kind::Polar,Vector3::ZERO,
+        Vector3::new(10.,0.,0.),Vector3::new(5.,2.,0.)).unwrap();
+    let action=create_with_frame(&mut doc,definition,Kind::PolarStretch,parameter,&targets[..3],DVec3::ZERO,
+        Some([DVec3::new(9.,-1.,0.),DVec3::new(11.,1.,0.)])).unwrap();
+    assert!(options::set_rotate_only(&mut doc,definition,action,&targets[1..2]).unwrap());
+    assert!(!options::set_rotate_only(&mut doc,definition,action,&targets[1..2]).unwrap());
+    let before=doc.clone();
+    assert!(options::set_rotate_only(&mut doc,definition,action,&targets[3..]).is_err());
+    assert_eq!(doc,before);
+    options::set(&mut doc,definition,action,2.,0.).unwrap();
+    let baseline=doc.clone();
+    for reopened in [baseline.clone(),
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&baseline).unwrap())).read().unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&baseline).write_to_vec().unwrap())).unwrap().read().unwrap(),
+    ] {
+        assert_eq!(reopened.objects[&action],baseline.objects[&action]);
+        let mut changed=reopened.clone();
+        evaluate(&mut changed,&reopened,definition,parameter,DVec3::new(0.,15.,0.)).unwrap();
+        let EntityType::Line(stretched)=changed.get_entity(targets[0]).unwrap() else {panic!()};
+        assert!((stretched.start-Vector3::ZERO).length()<1e-10);
+        assert!((stretched.end-Vector3::new(0.,20.,0.)).length()<1e-10);
+        let EntityType::Line(rotated)=changed.get_entity(targets[1]).unwrap() else {panic!()};
+        assert!((rotated.start-Vector3::new(-1.,1.,0.)).length()<1e-10);
+        assert!((rotated.end-Vector3::new(-1.,2.,0.)).length()<1e-10);
+        let EntityType::Circle(moved)=changed.get_entity(targets[2]).unwrap() else {panic!()};
+        assert!((moved.center-Vector3::new(-2.,20.,0.)).length()<1e-10);
+        assert_eq!(changed.get_entity(targets[3]),reopened.get_entity(targets[3]));
+        evaluate(&mut changed,&reopened,definition,parameter,DVec3::new(10.,0.,0.)).unwrap();
+        for target in &targets {assert_eq!(changed.get_entity(*target),reopened.get_entity(*target));}
+        let mut source=reopened.clone();
+        let insert=source.add_entity(EntityType::Insert(codec::entities::Insert::new("POLAR_GROUPS",Vector3::ZERO))).unwrap();
+        let changed=instance::evaluate(&source,insert,parameter,DVec3::new(0.,15.,0.)).unwrap().unwrap();
+        let EntityType::Insert(reference)=changed.get_entity(insert).unwrap() else {panic!()};
+        let members=&changed.block_records.get(&reference.block_name).unwrap().entity_handles;
+        let EntityType::Line(rotated)=changed.get_entity(members[1]).unwrap() else {panic!()};
+        assert!((rotated.start-Vector3::new(-1.,1.,0.)).length()<1e-10);
+    }
+    options::set(&mut doc,definition,action,2.,std::f64::consts::FRAC_PI_2).unwrap();
+    let baseline=doc.clone();
+    evaluate(&mut doc,&baseline,definition,parameter,DVec3::new(0.,15.,0.)).unwrap();
+    let EntityType::Line(stretched)=doc.get_entity(targets[0]).unwrap() else {panic!()};
+    assert!((stretched.end-Vector3::new(-10.,10.,0.)).length()<1e-10);
+    let EntityType::Line(rotated)=doc.get_entity(targets[1]).unwrap() else {panic!()};
+    assert!((rotated.start-Vector3::new(-1.,1.,0.)).length()<1e-10);
+    let mut reset=baseline.clone();
+    assert!(options::set_rotate_only(&mut reset,definition,action,&[]).unwrap());
+    let ObjectType::DynamicBlock(object)=&reset.objects[&action] else {panic!()};
+    let DynamicBlockData::PolarStretchAction(native)=&object.data else {panic!()};
+    assert!(native.handles.is_empty());
+    assert_eq!(native.action.dependencies,targets[..3]);
 }
