@@ -1271,6 +1271,77 @@ pub(crate) fn boundary_faces(
     bounded_faces(&segments, Tolerance::new(tolerance))
 }
 
+/// The faces a pick at `point` needs, built from the sources near it only.
+///
+/// The search box starts just past the nearest geometry and doubles until
+/// the innermost face holding the point lies inside it. A source that misses
+/// the box lies wholly outside it, so it cannot cut that face or sit in it
+/// as an island: the result matches `boundary_faces` over every source for
+/// this pick, without building the arrangement of the whole drawing (#1869).
+pub(crate) fn boundary_faces_around(
+    sources: &rustc_hash::FxHashMap<Handle, BoundarySource>,
+    point: [f64; 2],
+    tolerance: f64,
+) -> Vec<Vec<[f64; 2]>> {
+    let boxes: Vec<([f64; 2], [f64; 2], &BoundarySource)> = sources
+        .values()
+        .filter_map(|source| {
+            segments_bounds(&source.segments, tolerance).map(|(min, max)| (min, max, source))
+        })
+        .collect();
+    let Some((all_min, all_max)) = boxes.iter().map(|&(min, max, _)| (min, max)).reduce(
+        |(a_min, a_max), (b_min, b_max)| {
+            (
+                [a_min[0].min(b_min[0]), a_min[1].min(b_min[1])],
+                [a_max[0].max(b_max[0]), a_max[1].max(b_max[1])],
+            )
+        },
+    ) else {
+        return Vec::new();
+    };
+    let nearest = boxes
+        .iter()
+        .flat_map(|(_, _, source)| &source.segments)
+        .map(|segment| distance_to(&Curve::Line(*segment), point))
+        .fold(f64::INFINITY, f64::min);
+    let extent = (all_max[0] - all_min[0]).max(all_max[1] - all_min[1]);
+    let mut half = (nearest * 2.0).max(extent / 1024.0).max(tolerance * 4.0);
+    loop {
+        let (min, max) = (
+            [point[0] - half, point[1] - half],
+            [point[0] + half, point[1] + half],
+        );
+        let covers_all = min[0] <= all_min[0]
+            && min[1] <= all_min[1]
+            && max[0] >= all_max[0]
+            && max[1] >= all_max[1];
+        let segments: Vec<Line> = boxes
+            .iter()
+            .filter(|(lo, hi, _)| {
+                lo[0] <= max[0] && hi[0] >= min[0] && lo[1] <= max[1] && hi[1] >= min[1]
+            })
+            .flat_map(|(_, _, source)| source.segments.iter().copied())
+            .collect();
+        let faces = bounded_faces(&segments, Tolerance::new(tolerance));
+        let innermost = faces
+            .iter()
+            .filter(|face| contains(&face_curves(face), point, Tolerance::new(tolerance)))
+            .min_by(|a, b| signed_area(a).abs().total_cmp(&signed_area(b).abs()));
+        let settled = innermost.is_some_and(|face| {
+            face.iter().all(|p| {
+                p[0] > min[0] + tolerance
+                    && p[0] < max[0] - tolerance
+                    && p[1] > min[1] + tolerance
+                    && p[1] < max[1] - tolerance
+            })
+        });
+        if settled || covers_all {
+            return faces;
+        }
+        half *= 2.0;
+    }
+}
+
 #[cfg(test)]
 mod boundary_xline_tests {
     use super::*;
@@ -1382,5 +1453,66 @@ mod boundary_xline_tests {
             1,
             "a distant xline must leave the single rectangle face alone"
         );
+    }
+
+    #[test]
+    fn faces_around_a_pick_match_the_whole_drawing() {
+        // A 12×12 grid of rooms, one holding an island. Every wall runs the
+        // full grid, so each search box pulls in walls reaching far beyond it.
+        let mut segments = Vec::new();
+        for k in 0..=12 {
+            let k = k as f64 * 10.0;
+            segments.push(Line {
+                start: [0.0, k],
+                end: [120.0, k],
+            });
+            segments.push(Line {
+                start: [k, 0.0],
+                end: [k, 120.0],
+            });
+        }
+        let island = [[53.0, 53.0], [57.0, 53.0], [57.0, 57.0], [53.0, 57.0]];
+        for k in 0..4 {
+            segments.push(Line {
+                start: island[k],
+                end: island[(k + 1) % 4],
+            });
+        }
+        let sources: rustc_hash::FxHashMap<_, _> = segments
+            .into_iter()
+            .enumerate()
+            .map(|(k, line)| {
+                let source = BoundarySource {
+                    segments: vec![line],
+                    curves: vec![Curve::Line(line)],
+                };
+                (Handle::new(k as u64 + 1), source)
+            })
+            .collect();
+        let tolerance = 1.0e-6;
+        let innermost = |faces: &[Vec<[f64; 2]>], point: [f64; 2]| {
+            let mut found: Vec<_> = faces
+                .iter()
+                .filter(|face| contains(&face_curves(face), point, Tolerance::new(tolerance)))
+                .map(|face| (signed_area(face).abs(), face.clone()))
+                .collect();
+            found.sort_by(|a, b| a.0.total_cmp(&b.0));
+            found.first().map(|(area, _)| *area)
+        };
+        let islands = |faces: &[Vec<[f64; 2]>]| {
+            faces
+                .iter()
+                .filter(|face| (signed_area(face).abs() - 16.0).abs() < 1e-9)
+                .count()
+        };
+        let all = boundary_faces(&sources, tolerance);
+        for point in [[51.0, 51.0], [55.0, 55.0], [5.0, 115.0], [119.0, 1.0], [200.0, 5.0]] {
+            let near = boundary_faces_around(&sources, point, tolerance);
+            assert_eq!(innermost(&near, point), innermost(&all, point), "{point:?}");
+            assert!(near.len() <= all.len());
+        }
+        let room = boundary_faces_around(&sources, [51.0, 51.0], tolerance);
+        assert_eq!(islands(&room), 1, "the island in the picked room is kept");
+        assert!(room.len() < all.len() / 4, "only the neighbourhood is built");
     }
 }

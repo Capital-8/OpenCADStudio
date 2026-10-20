@@ -1929,29 +1929,13 @@ impl InteractionCandidates {
         if !self.iter().any(|wire| wire.stub.is_some()) {
             return self;
         }
-        let near = |wire: &WireModel, query: [f64; 4]| {
-            let [x0, y0, x1, y1] = wire.aabb.map(f64::from);
-            !(x0.is_finite() && y0.is_finite() && x1.is_finite() && y1.is_finite())
-                || (x1 >= query[0] && x0 <= query[2] && y1 >= query[1] && y0 <= query[3])
-        };
         let mut wires = Vec::new();
         for wire in self.iter() {
-            if wire.stub.is_none() {
-                wires.push(wire.clone());
-                continue;
-            }
-            let start = wires.len();
-            crate::scene::model::instance_model::expand_stub_into(wire, &mut wires);
-            if let Some(query) = self.query_aabb {
-                let mut keep = start;
-                for index in start..wires.len() {
-                    if near(&wires[index], query) {
-                        wires.swap(keep, index);
-                        keep += 1;
-                    }
-                }
-                wires.truncate(keep);
-            }
+            crate::scene::model::instance_model::expand_stub_near_into(
+                wire,
+                self.query_aabb,
+                &mut wires,
+            );
         }
         Self {
             query_aabb: self.query_aabb,
