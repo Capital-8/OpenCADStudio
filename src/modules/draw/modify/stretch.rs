@@ -676,3 +676,44 @@ impl CadCommand for StretchCommand {
         }
     }
 }
+
+#[cfg(test)]
+mod shift_stretch_tests {
+    use super::*;
+    use codec::entities::Line;
+    use codec::types::Vector3;
+
+    #[test]
+    fn excluded_endpoint_stays_fixed_while_other_endpoint_stretches() {
+        let mut entity = codec::EntityType::Line(Line::from_points(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(10.0, 0.0, 0.0),
+        ));
+        let window = [(DVec3::new(-1.0, -1.0, -1.0), DVec3::new(11.0, 1.0, 1.0))];
+        let excluded = [DVec3::ZERO];
+        assert!(stretch_entity_except(
+            &mut entity, &window, &excluded, DVec3::new(5.0, 0.0, 0.0),
+        ));
+        let codec::EntityType::Line(line) = entity else { panic!("line expected") };
+        assert_eq!(line.start, Vector3::new(0.0, 0.0, 0.0));
+        assert_eq!(line.end, Vector3::new(15.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn shift_removed_point_survives_command_to_commit() {
+        let handle = Handle::new(42);
+        let window = (DVec3::new(-1.0, -1.0, -1.0), DVec3::new(11.0, 1.0, 1.0));
+        let mut cmd = StretchCommand::with_windows(
+            vec![handle], vec![], vec![window], Vec::new(),
+        );
+        assert!(cmd.remove_stretch_point(handle, DVec3::ZERO));
+        assert!(cmd.consume_stretch_remove_release());
+        assert!(!cmd.consume_stretch_remove_release());
+        assert!(matches!(cmd.on_enter(), CmdResult::NeedPoint));
+        assert!(matches!(cmd.on_point(DVec3::ZERO), CmdResult::NeedPoint));
+        let CmdResult::StretchEntities { excluded_points, .. } =
+            cmd.on_point(DVec3::new(5.0, 0.0, 0.0))
+        else { panic!("expected STRETCH result") };
+        assert_eq!(excluded_points, vec![(handle, DVec3::ZERO)]);
+    }
+}
