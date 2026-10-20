@@ -219,11 +219,19 @@ impl OpenCADStudio {
                 return Task::none();
             }
         }
-        if cmd == "BPROPERTIESTABLE" || cmd.starts_with("BPROPERTIESTABLE ") {
+        if cmd == "BTABLE" || cmd == "BPROPERTIESTABLE" || cmd.starts_with("BPROPERTIESTABLE ") {
             if let Some(error) = self.properties_table_error() {
                 self.command_line.push_error(crate::t!(error).as_ref());
                 return Task::none();
             }
+        }
+        if matches!(cmd, "RESETBLOCK" | "RESETBLOCK APPLY")
+            && self.tabs[i].active_block_edit_session().is_some()
+        {
+            self.command_line.push_error(
+                crate::t!("RESETBLOCK is not available inside the Block Editor.").as_ref(),
+            );
+            return Task::none();
         }
         if self.tabs[i].block_test.is_some() {
             let name = cmd.split([' ', ':']).next().unwrap_or(cmd);
@@ -561,6 +569,7 @@ pub fn is_transparent(cmd: &str) -> bool {
                 | "DSETTINGS"
                 | "BAUTHORPALETTE"
                 | "BAUTHORPALETTECLOSE"
+                | "PARAMETERSCLOSE"
         )
 }
 
@@ -631,6 +640,8 @@ inventory::submit!(crate::command::CommandRegistration {
         "CUI",
         "DSETTINGS",
         "PARAMETERS",
+        "PARAMETERSCLOSE",
+        "BTABLE",
         "GRID",
         "GRAPHICATTRIBUTES",
         "ISODRAFT",

@@ -710,6 +710,79 @@ fn block_actions_scale_uses_distance_ratio_and_parameter_base() {
     assert_eq!(doc, before);
 }
 #[test]
+fn block_reset_restores_values_geometry_and_table_state_without_changing_other_references() {
+    let (mut doc, def, targets) = fixture();
+    let parameter = linear(&mut doc, def);
+    create(
+        &mut doc,
+        def,
+        Kind::Move,
+        parameter,
+        &targets[..1],
+        DVec3::ZERO,
+    )
+    .unwrap();
+    let columns = super::super::block_properties_table::columns(&doc, def);
+    super::super::block_properties_table::apply(
+        &mut doc,
+        def,
+        &columns,
+        &[vec![10.], vec![20.]],
+        false,
+    )
+    .unwrap();
+    let a = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::ZERO,
+        )))
+        .unwrap();
+    let b = doc
+        .add_entity(EntityType::Insert(codec::entities::Insert::new(
+            "ACTIONS",
+            Vector3::new(30., 0., 0.),
+        )))
+        .unwrap();
+    assert!(instance::reset(&doc, a).unwrap().is_none());
+    let baseline = doc.clone();
+    doc = instance::evaluate_table_row(&doc, a, &columns, 1)
+        .unwrap()
+        .unwrap();
+    doc = instance::evaluate(&doc, b, parameter, DVec3::new(15., 0., 0.))
+        .unwrap()
+        .unwrap();
+    assert_eq!(instance_line(&doc, a), Vector3::new(11., 0., 0.));
+    let reset = instance::reset(&doc, a).unwrap().unwrap();
+    assert_eq!(instance_line(&reset, a), Vector3::UNIT_X);
+    assert_eq!(instance_line(&reset, b), Vector3::new(6., 0., 0.));
+    assert_eq!(
+        reset.get_entity(targets[0]),
+        baseline.get_entity(targets[0])
+    );
+    let p = parameters(&reset, def, Kind::Move).remove(0);
+    assert_eq!(instance::current(&reset, a, &p).unwrap(), p.end);
+    assert!(!reset
+        .objects
+        .values()
+        .any(|object| matches!(object, ObjectType::Dictionary(dictionary)
+        if dictionary.entries.iter().any(|(name, _)| name == "ACAD_ENHANCEDBLOCKHISTORY"))));
+    assert!(instance::reset(&reset, a).unwrap().is_none());
+    for saved in [
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&reset).unwrap()))
+            .read()
+            .unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&reset).write_to_vec().unwrap()))
+            .unwrap()
+            .read()
+            .unwrap(),
+    ] {
+        assert_eq!(instance_line(&saved, a), Vector3::UNIT_X);
+        assert_eq!(instance_line(&saved, b), Vector3::new(6., 0., 0.));
+        assert_eq!(instance::current(&saved, a, &p).unwrap(), p.end);
+    }
+}
+
+#[test]
 fn block_actions_reject_invalid_selection_binding_and_nonfinite_without_mutation() {
     let (mut doc, def, handles) = fixture();
     let p = linear(&mut doc, def);

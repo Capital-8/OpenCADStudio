@@ -13,6 +13,7 @@ pub mod single_parameter;
 pub mod distance_parameter;
 pub mod orientation_parameter;
 pub mod parameter_set;
+pub mod reset;
 
 pub struct BlockEditorModule;
 

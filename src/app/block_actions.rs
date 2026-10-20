@@ -11,6 +11,67 @@ pub(super) fn is_test_grip(id: usize) -> bool {
     (TEST_GRIP_START..usize::MAX).contains(&id)
 }
 impl OpenCADStudio {
+    pub(in crate::app) fn reset_selected_block_references(&mut self, apply: bool) -> Task<Message> {
+        let i = self.active_tab;
+        let handles = self.tabs[i]
+            .scene
+            .selected_entities()
+            .iter()
+            .map(|(handle, _)| *handle)
+            .collect::<Vec<_>>();
+        if handles.is_empty() && !apply {
+            let command = crate::modules::block_editor::reset::ResetCommand::new();
+            self.command_line.push_info(&command.prompt());
+            self.tabs[i].active_cmd = Some(Box::new(command));
+            return Task::none();
+        }
+        let mut staged = self.tabs[i].scene.document.clone();
+        let mut changed = 0;
+        for handle in handles {
+            let Some(definition) = staged.dynamic_definition_for_insert(handle) else {
+                continue;
+            };
+            if self.tabs[i].scene.is_layer_locked(handle) {
+                self.command_line.push_error(
+                    crate::t!("RESETBLOCK: a selected reference is on a locked layer.").as_ref(),
+                );
+                return Task::none();
+            }
+            let result = if let Some(test) = &self.tabs[i].block_test {
+                if handle != test.insert || definition != test.definition
+                    || staged.entities().any(|entity| matches!(entity, EntityType::Insert(other) if other.common.handle != handle && staged.dynamic_definition_for_insert(other.common.handle) == Some(definition))) {
+                    self.command_line.push_error(crate::t!("Reset the single test reference or reopen Test Block.").as_ref());
+                    return Task::none();
+                }
+                actions::instance::reset_test(&staged, &test.baseline, definition, handle)
+            } else {
+                actions::instance::reset(&staged, handle)
+            };
+            match result {
+                Ok(Some(next)) => {
+                    staged = next;
+                    changed += 1;
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    self.command_line.push_error(crate::t!(error).as_ref());
+                    return Task::none();
+                }
+            }
+        }
+        if changed != 0 {
+            self.push_undo_snapshot(i, "Reset block references");
+            self.apply_action_document(i, staged);
+            self.tabs[i].scene.bump_geometry();
+            self.tabs[i].dirty = true;
+            self.finish_pending_history(i);
+            self.refresh_properties();
+        }
+        self.command_line
+            .push_output(crate::tf!("Reset {} dynamic block references.", changed).as_ref());
+        Task::none()
+    }
+
     pub(in crate::app) fn action_error(&self, kind: Option<Kind>) -> Option<&'static str> {
         let tab = &self.tabs[self.active_tab];
         let Some(s) = tab.active_block_edit_session() else {

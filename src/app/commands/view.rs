@@ -380,6 +380,14 @@ impl OpenCADStudio {
             "PARAMETERS" => {
                 return Some(Task::done(Message::NamedParametersOpen));
             }
+            "PARAMETERSCLOSE" => {
+                if self.active_modal == Some(crate::app::ModalKind::NamedParameters) {
+                    self.active_modal = None;
+                    self.named_parameter_editor_rows.clear();
+                    self.reset_modal_geometry();
+                }
+                return Some(Task::none());
+            }
 
             // CUIEXPORT <path> — write the keyboard-shortcut customizations
             // (the drawing-independent CUI data) to a plain "KEY COMMAND" file.

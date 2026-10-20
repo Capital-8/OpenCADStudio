@@ -2069,6 +2069,142 @@ fn xy_box_set_guides_four_separate_action_selections() {
 }
 
 #[test]
+fn block_reset_selection_cancel_and_undo_preserve_reference_isolation() {
+    use crate::command::StepInput;
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let parameter =
+        actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0].handle;
+    let targets = members(&app);
+    actions::create(
+        &mut app.tabs[i].scene.document,
+        definition,
+        Kind::Move,
+        parameter,
+        &targets,
+        glam::DVec3::ZERO,
+    )
+    .unwrap();
+    assert!(app.save_block_edit(i));
+    app.close_block_edit(i, false);
+    app.tabs[i].scene.document = actions::instance::evaluate(
+        &app.tabs[i].scene.document,
+        reference,
+        parameter,
+        glam::DVec3::new(20., 0., 0.),
+    )
+    .unwrap()
+    .unwrap();
+    app.tabs[i].scene.deselect_all();
+    let changed = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let _ = app.dispatch_command("RESETBLOCK");
+    let _ = app.feed_command(StepInput::SelectionComplete(vec![reference]));
+    let _ = app.update(Message::CommandEscape);
+    assert_eq!(app.tabs[i].scene.document, changed);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    let _ = app.dispatch_command("RESETBLOCK");
+    let _ = app.feed_command(StepInput::SelectionComplete(vec![reference]));
+    let _ = app.feed_command(StepInput::Enter);
+    let reset = app.tabs[i].scene.document.clone();
+    assert_ne!(reset, changed);
+    let p = actions::parameters(&reset, definition, Kind::Move)[0].clone();
+    assert_eq!(
+        actions::instance::current(&reset, reference, &p).unwrap(),
+        p.end
+    );
+    assert_eq!(reset.get_entity(targets[0]), changed.get_entity(targets[0]));
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    app.undo_steps(1);
+    assert_eq!(app.tabs[i].scene.document, changed);
+    app.redo_steps(1);
+    assert_eq!(app.tabs[i].scene.document, reset);
+    app.tabs[i].scene.select_entity(reference, true);
+    let _ = app.dispatch_command("RESETBLOCK");
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+}
+
+#[test]
+fn block_reset_test_window_restores_its_baseline_and_keeps_the_editor_unchanged() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let source = app.active_tab;
+    let definition = app.tabs[source]
+        .active_block_edit_session()
+        .unwrap()
+        .br_handle;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let parameter =
+        actions::parameters(&app.tabs[source].scene.document, definition, Kind::Move)[0].handle;
+    let targets = members(&app);
+    actions::create(
+        &mut app.tabs[source].scene.document,
+        definition,
+        Kind::Move,
+        parameter,
+        &targets,
+        glam::DVec3::ZERO,
+    )
+    .unwrap();
+    let editor = app.tabs[source].scene.document.clone();
+    let _ = app.dispatch_command("BTESTBLOCK");
+    let i = app.active_tab;
+    let insert = app.tabs[i].block_test.as_ref().unwrap().insert;
+    let _ = app.handle_block_action_result(crate::command::CmdResult::EvaluateBlockParameter {
+        insert: None,
+        document: app.tabs[i].id,
+        definition,
+        parameter,
+        value: actions::Value::Point(glam::DVec3::new(20., 0., 0.)),
+    });
+    let changed = app.tabs[i].scene.document.clone();
+    assert_ne!(
+        changed.get_entity(targets[0]),
+        editor.get_entity(targets[0])
+    );
+    app.tabs[i].scene.select_entity(insert, true);
+    let _ = app.dispatch_command("RESETBLOCK");
+    assert_eq!(
+        app.tabs[i].scene.document.get_entity(targets[0]),
+        editor.get_entity(targets[0])
+    );
+    assert_eq!(app.tabs[source].scene.document, editor);
+    let reset = app.tabs[i].scene.document.clone();
+    app.undo_steps(1);
+    assert_eq!(app.tabs[i].scene.document, changed);
+    app.redo_steps(1);
+    assert_eq!(app.tabs[i].scene.document, reset);
+}
+
+#[test]
+fn block_reset_and_table_context_guards_preserve_running_commands() {
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    let _ = app.dispatch_command("LINE");
+    let _ = app.dispatch_command("BTABLE");
+    assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+    let _ = app.update(Message::CommandEscape);
+    begin(&mut app, reference);
+    let _ = app.dispatch_command("LINE");
+    let _ = app.dispatch_command("RESETBLOCK");
+    assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+    let _ = app.update(Message::CommandEscape);
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let _ = app.dispatch_command("BTABLE");
+    assert_eq!(app.active_modal, Some(ModalKind::BlockPropertiesTable));
+    let _ = app.update(Message::CloseModal);
+    let _ = app.update(Message::NamedParametersOpen);
+    assert_eq!(app.active_modal, Some(ModalKind::NamedParameters));
+    let _ = app.dispatch_command("PARAMETERSCLOSE");
+    assert_eq!(app.active_modal, None);
+}
+
+#[test]
 fn block_actions_rejected_outside_editor_preserve_running_command_and_stale_results_are_inert() {
     use crate::scene::block_actions::Kind;
     let (mut app, reference) = fixture();
