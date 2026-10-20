@@ -109,8 +109,16 @@ pub(crate) fn validate_options(a: &BlockStretchAction) -> Result<(), &'static st
         || !a.codes.is_empty()
         || !a.action.action_ids.is_empty()
         || a.connections[0].code != a.connections[1].code
-        || a.connections[0].name != "EndXDelta"
-        || a.connections[1].name != "EndYDelta"
+        || !matches!(
+            [
+                a.connections[0].name.as_str(),
+                a.connections[1].name.as_str()
+            ],
+            ["BaseXDelta", "BaseYDelta"]
+                | ["EndXDelta", "BaseYDelta"]
+                | ["BaseXDelta", "EndYDelta"]
+                | ["EndXDelta", "EndYDelta"]
+        )
     {
         return Err("This Stretch action uses options or parameter bindings not supported yet.");
     }

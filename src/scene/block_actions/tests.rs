@@ -343,49 +343,52 @@ fn xy_move_box_set_creates_four_key_point_bindings() {
 }
 
 #[test]
-fn xy_move_box_set_actions_apply_their_key_point_axis_deltas() {
-    for (key_point, expected_delta) in [
-        (XyKeyPoint::Base, DVec3::ZERO),
-        (XyKeyPoint::X, DVec3::new(3., 0., 0.)),
-        (XyKeyPoint::Y, DVec3::new(0., 5., 0.)),
-        (XyKeyPoint::End, DVec3::new(3., 5., 0.)),
-    ] {
-        let (mut doc, def, targets) = fixture();
-        let parameter = distance::create(
-            &mut doc,
-            def,
-            distance::Kind::XY,
-            Vector3::ZERO,
-            Vector3::new(10., 10., 0.),
-            Vector3::new(5., 5., 0.),
-        )
-        .unwrap();
-        create_with_options(
-            &mut doc,
-            def,
-            Kind::Move,
-            parameter,
-            Some(key_point),
-            &[targets[0]],
-            DVec3::ZERO,
-            None,
-            None,
-        )
-        .unwrap();
-        let baseline = doc.clone();
-        evaluate(
-            &mut doc,
-            &baseline,
-            def,
-            parameter,
-            DVec3::new(13., 15., 0.),
-        )
-        .unwrap();
-        assert_eq!(
-            start(&doc, targets[0]),
-            Vector3::new(1. + expected_delta.x, expected_delta.y, 0.),
-            "key point {key_point:?}"
-        );
+fn xy_box_set_actions_apply_their_key_point_axis_deltas() {
+    for kind in [Kind::Move, Kind::Stretch] {
+        for (key_point, expected_delta) in [
+            (XyKeyPoint::Base, DVec3::ZERO),
+            (XyKeyPoint::X, DVec3::new(3., 0., 0.)),
+            (XyKeyPoint::Y, DVec3::new(0., 5., 0.)),
+            (XyKeyPoint::End, DVec3::new(3., 5., 0.)),
+        ] {
+            let (mut doc, def, targets) = fixture();
+            let parameter = distance::create(
+                &mut doc,
+                def,
+                distance::Kind::XY,
+                Vector3::ZERO,
+                Vector3::new(10., 10., 0.),
+                Vector3::new(5., 5., 0.),
+            )
+            .unwrap();
+            create_with_options(
+                &mut doc,
+                def,
+                kind,
+                parameter,
+                Some(key_point),
+                &[targets[0]],
+                DVec3::ZERO,
+                (kind == Kind::Stretch)
+                    .then_some([DVec3::new(0.5, -1., 0.), DVec3::new(2.5, 1., 0.)]),
+                None,
+            )
+            .unwrap();
+            let baseline = doc.clone();
+            evaluate(
+                &mut doc,
+                &baseline,
+                def,
+                parameter,
+                DVec3::new(13., 15., 0.),
+            )
+            .unwrap();
+            assert_eq!(
+                start(&doc, targets[0]),
+                Vector3::new(1. + expected_delta.x, expected_delta.y, 0.),
+                "key point {key_point:?}"
+            );
+        }
     }
 }
 
@@ -1088,6 +1091,81 @@ fn block_actions_stretch_saved_reference_independence_copy_and_reopen() {
         panic!()
     };
     assert_eq!(line.end, Vector3::new(13., 0., 0.));
+}
+
+#[test]
+fn stretch_pair_bindings_evaluate_and_roundtrip_for_linear_and_polar_parameters() {
+    for parameter_kind in [distance::Kind::Linear, distance::Kind::Polar] {
+        let (mut doc, def, targets) = fixture();
+        let parameter = distance::create(
+            &mut doc,
+            def,
+            parameter_kind,
+            Vector3::ZERO,
+            Vector3::new(10., 0., 0.),
+            Vector3::new(5., 2., 0.),
+        )
+        .unwrap();
+        for (key_point, frame) in [
+            (
+                XyKeyPoint::Base,
+                [DVec3::new(0.5, -1., 0.), DVec3::new(1.5, 1., 0.)],
+            ),
+            (
+                XyKeyPoint::End,
+                [DVec3::new(1.5, -1., 0.), DVec3::new(2.5, 1., 0.)],
+            ),
+        ] {
+            create_with_options(
+                &mut doc,
+                def,
+                Kind::Stretch,
+                parameter,
+                Some(key_point),
+                &targets[..1],
+                DVec3::ZERO,
+                Some(frame),
+                None,
+            )
+            .unwrap();
+        }
+        let roundtrips = [
+            doc.clone(),
+            DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+                .read()
+                .unwrap(),
+            DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap()))
+                .unwrap()
+                .read()
+                .unwrap(),
+        ];
+        for baseline in roundtrips {
+            let mut changed = baseline.clone();
+            for end in [DVec3::new(13., 0., 0.), DVec3::new(14., 0., 0.)] {
+                evaluate(&mut changed, &baseline, def, parameter, end).unwrap();
+                let EntityType::Line(line) = changed.get_entity(targets[0]).unwrap() else {
+                    panic!()
+                };
+                assert_eq!(line.start, Vector3::UNIT_X);
+                assert_eq!(line.end, Vector3::new(2. + end.x - 10., 0., 0.));
+            }
+            if parameter_kind == distance::Kind::Polar {
+                evaluate(
+                    &mut changed,
+                    &baseline,
+                    def,
+                    parameter,
+                    DVec3::new(0., 12., 0.),
+                )
+                .unwrap();
+                let EntityType::Line(line) = changed.get_entity(targets[0]).unwrap() else {
+                    panic!()
+                };
+                assert_eq!(line.start, Vector3::UNIT_X);
+                assert_eq!(line.end, Vector3::new(-8., 12., 0.));
+            }
+        }
+    }
 }
 
 #[test]

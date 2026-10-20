@@ -616,13 +616,23 @@ impl OpenCADStudio {
         parameter: Handle,
     ) -> Task<Message> {
         match self.tabs[i].pending_parameter_set_follow_up.take() {
-            Some("XY_MOVE_BOX_SET") => {
-                self.tabs[i].pending_xy_move_box_set = Some((parameter, 0));
-                self.start_xy_move_box_set_action(parameter, 0)
+            Some(follow_up @ ("XY_MOVE_BOX_SET" | "XY_STRETCH_BOX_SET")) => {
+                let kind = if follow_up == "XY_MOVE_BOX_SET" {
+                    crate::scene::block_actions::Kind::Move
+                } else {
+                    crate::scene::block_actions::Kind::Stretch
+                };
+                self.tabs[i].pending_xy_box_set = Some((parameter, kind, 0));
+                self.start_xy_box_set_action(parameter, kind, 0)
             }
-            Some("MOVE_PAIR") => {
-                self.tabs[i].pending_move_pair = Some((parameter, 0));
-                self.start_move_pair_action(parameter, 0)
+            Some(follow_up @ ("MOVE_PAIR" | "STRETCH_PAIR")) => {
+                let kind = if follow_up == "MOVE_PAIR" {
+                    crate::scene::block_actions::Kind::Move
+                } else {
+                    crate::scene::block_actions::Kind::Stretch
+                };
+                self.tabs[i].pending_action_pair = Some((parameter, kind, 0));
+                self.start_parameter_pair_action(parameter, kind, 0)
             }
             Some(command) if command.starts_with("BACTION ") => {
                 self.start_block_action_for_parameter(

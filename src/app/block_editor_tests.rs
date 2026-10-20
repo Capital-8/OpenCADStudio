@@ -1870,63 +1870,202 @@ fn block_actions_command_selection_cancel_undo_and_test_block_isolation() {
 }
 
 #[test]
-fn xy_move_box_set_guides_four_separate_action_selections() {
+fn stretch_pair_sets_guide_both_frames_with_undo_and_cancel() {
+    use crate::command::StepInput;
+    use crate::scene::block_actions::{self as actions, Kind};
+    for label in [
+        "Linear Stretch Pair",
+        "Polar Stretch Pair",
+        "Linear Move Pair",
+    ] {
+        let kind = if label.contains("Stretch") {
+            Kind::Stretch
+        } else {
+            Kind::Move
+        };
+        let (mut app, reference) = fixture();
+        begin(&mut app, reference);
+        let i = app.active_tab;
+        let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+        let targets = members(&app);
+        let _ = app.dispatch_command(&format!("BPARAMETERSET {label}"));
+        for point in [
+            glam::DVec3::ZERO,
+            glam::DVec3::new(10., 0., 0.),
+            glam::DVec3::new(5., 2., 0.),
+        ] {
+            let _ = app.feed_command(StepInput::Point(point));
+        }
+        for (side, expected) in [
+            (0, ["BaseXDelta", "BaseYDelta"]),
+            (1, ["EndXDelta", "EndYDelta"]),
+        ] {
+            if kind == Kind::Stretch {
+                assert!(app.tabs[i]
+                    .active_cmd
+                    .as_ref()
+                    .unwrap()
+                    .prompt()
+                    .contains(if side == 0 { "base" } else { "endpoint" }));
+                for point in [
+                    glam::DVec3::new(side as f64 - 0.25, -1., 0.),
+                    glam::DVec3::new(side as f64 + 0.25, 1., 0.),
+                ] {
+                    let _ = app.feed_command(StepInput::Point(point));
+                }
+            }
+            assert!(app.tabs[i]
+                .active_cmd
+                .as_ref()
+                .unwrap()
+                .is_selection_gathering());
+            let _ = app.feed_command(StepInput::SelectionComplete(targets.clone()));
+            let _ = app.feed_command(StepInput::Enter);
+            let _ = app.feed_command(StepInput::Point(glam::DVec3::new(3., 4., 0.)));
+            let authored = actions::actions(&app.tabs[i].scene.document, definition);
+            assert_eq!(authored.len(), side + 1);
+            assert_eq!(authored[side].2, kind);
+            let codec::objects::ObjectType::DynamicBlock(object) =
+                &app.tabs[i].scene.document.objects[&authored[side].0]
+            else {
+                panic!()
+            };
+            let connections = match &object.data {
+                codec::objects::DynamicBlockData::StretchAction(a) => &a.connections,
+                codec::objects::DynamicBlockData::MoveAction(a) => &a.connections,
+                _ => panic!(),
+            };
+            assert_eq!(
+                [connections[0].name.as_str(), connections[1].name.as_str()],
+                expected
+            );
+        }
+        assert!(app.tabs[i].pending_action_pair.is_none());
+        assert!(app.tabs[i].active_cmd.is_none());
+        app.undo_steps(1);
+        assert_eq!(
+            actions::actions(&app.tabs[i].scene.document, definition).len(),
+            1
+        );
+        app.redo_steps(1);
+        assert_eq!(
+            actions::actions(&app.tabs[i].scene.document, definition).len(),
+            2
+        );
+
+        let _ = app.dispatch_command(&format!("BPARAMETERSET {label}"));
+        for point in [
+            glam::DVec3::ZERO,
+            glam::DVec3::new(10., 0., 0.),
+            glam::DVec3::new(5., 2., 0.),
+        ] {
+            let _ = app.feed_command(StepInput::Point(point));
+        }
+        let before = app.tabs[i].scene.document.clone();
+        let _ = app.update(Message::CommandEscape);
+        assert!(app.tabs[i].pending_action_pair.is_none());
+        assert_eq!(app.tabs[i].scene.document, before);
+
+        let _ = app.dispatch_command(&format!("BPARAMETERSET {label}"));
+        for point in [
+            glam::DVec3::ZERO,
+            glam::DVec3::new(10., 0., 0.),
+            glam::DVec3::new(5., 2., 0.),
+        ] {
+            let _ = app.feed_command(StepInput::Point(point));
+        }
+        assert!(app.tabs[i].pending_action_pair.is_some());
+        let _ = app.dispatch_command("LINE");
+        assert!(app.tabs[i].pending_action_pair.is_none());
+        assert!(app.tabs[i].pending_parameter_set_follow_up.is_none());
+        let _ = app.update(Message::CommandEscape);
+    }
+}
+
+#[test]
+fn xy_box_set_guides_four_separate_action_selections() {
     use crate::scene::block_actions::{self as actions, Kind};
     use crate::scene::block_distance_parameter as distance;
-    let (mut app, reference) = fixture();
-    begin(&mut app, reference);
-    let i = app.active_tab;
-    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
-    let parameter = distance::create(
-        &mut app.tabs[i].scene.document,
-        definition,
-        distance::Kind::XY,
-        Vector3::ZERO,
-        Vector3::new(10., 10., 0.),
-        Vector3::new(5., 5., 0.),
-    )
-    .unwrap();
-    app.tabs[i].pending_parameter_set_follow_up = Some("XY_MOVE_BOX_SET");
-    let _ = app.finish_parameter_set_placement(i, parameter);
-    let targets = members(&app);
-    for (key_point, expected_names) in [
-        ("base", ["BaseXDelta", "BaseYDelta"]),
-        ("X-axis", ["EndXDelta", "BaseYDelta"]),
-        ("Y-axis", ["BaseXDelta", "EndYDelta"]),
-        ("end", ["EndXDelta", "EndYDelta"]),
-    ] {
-        assert!(app.tabs[i]
-            .active_cmd
-            .as_ref()
-            .unwrap()
-            .prompt()
-            .contains(key_point));
-        let _ = app.feed_command(crate::command::StepInput::SelectionComplete(
-            targets.clone(),
-        ));
-        let _ = app.feed_command(crate::command::StepInput::Enter);
-        let _ = app.feed_command(crate::command::StepInput::Point(glam::DVec3::ZERO));
-        let authored = actions::actions(&app.tabs[i].scene.document, definition);
-        let action = authored.last().unwrap();
-        let codec::objects::ObjectType::DynamicBlock(object) =
-            &app.tabs[i].scene.document.objects[&action.0]
-        else {
-            panic!()
-        };
-        let codec::objects::DynamicBlockData::MoveAction(move_action) = &object.data else {
-            panic!()
-        };
+    for kind in [Kind::Move, Kind::Stretch] {
+        let (mut app, reference) = fixture();
+        begin(&mut app, reference);
+        let i = app.active_tab;
+        let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+        let parameter = distance::create(
+            &mut app.tabs[i].scene.document,
+            definition,
+            distance::Kind::XY,
+            Vector3::ZERO,
+            Vector3::new(10., 10., 0.),
+            Vector3::new(5., 5., 0.),
+        )
+        .unwrap();
+        app.tabs[i].pending_parameter_set_follow_up = Some(if kind == Kind::Move {
+            "XY_MOVE_BOX_SET"
+        } else {
+            "XY_STRETCH_BOX_SET"
+        });
+        let _ = app.finish_parameter_set_placement(i, parameter);
+        let targets = members(&app);
+        for (key_point, expected_names) in [
+            ("base", ["BaseXDelta", "BaseYDelta"]),
+            ("X-axis", ["EndXDelta", "BaseYDelta"]),
+            ("Y-axis", ["BaseXDelta", "EndYDelta"]),
+            ("end", ["EndXDelta", "EndYDelta"]),
+        ] {
+            if kind == Kind::Stretch {
+                assert!(app.tabs[i]
+                    .active_cmd
+                    .as_ref()
+                    .unwrap()
+                    .prompt()
+                    .contains(key_point));
+                for point in [
+                    glam::DVec3::new(-0.25, -1., 0.),
+                    glam::DVec3::new(0.25, 1., 0.),
+                ] {
+                    let _ = app.feed_command(crate::command::StepInput::Point(point));
+                }
+            }
+            assert!(app.tabs[i]
+                .active_cmd
+                .as_ref()
+                .unwrap()
+                .prompt()
+                .contains(key_point));
+            let _ = app.feed_command(crate::command::StepInput::SelectionComplete(
+                targets.clone(),
+            ));
+            let _ = app.feed_command(crate::command::StepInput::Enter);
+            let _ = app.feed_command(crate::command::StepInput::Point(glam::DVec3::ZERO));
+            let authored = actions::actions(&app.tabs[i].scene.document, definition);
+            let action = authored.last().unwrap();
+            let codec::objects::ObjectType::DynamicBlock(object) =
+                &app.tabs[i].scene.document.objects[&action.0]
+            else {
+                panic!()
+            };
+            let connections = match &object.data {
+                codec::objects::DynamicBlockData::MoveAction(a) => &a.connections,
+                codec::objects::DynamicBlockData::StretchAction(a) => &a.connections,
+                _ => panic!(),
+            };
+            assert_eq!(
+                [connections[0].name.as_str(), connections[1].name.as_str(),],
+                expected_names
+            );
+        }
         assert_eq!(
-            [
-                move_action.connections[0].name.as_str(),
-                move_action.connections[1].name.as_str(),
-            ],
-            expected_names
+            actions::actions(&app.tabs[i].scene.document, definition).len(),
+            4
         );
+        assert!(app.tabs[i].active_cmd.is_none());
+        assert_eq!(
+            actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move).len(),
+            1
+        );
+        assert!(app.tabs[i].pending_xy_box_set.is_none());
     }
-    assert_eq!(actions::actions(&app.tabs[i].scene.document, definition).len(), 4);
-    assert!(app.tabs[i].active_cmd.is_none());
-    assert_eq!(actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move).len(), 1);
 }
 
 #[test]

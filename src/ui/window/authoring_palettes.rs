@@ -187,6 +187,16 @@ const PARAMETER_SETS: &[(&str, &[u8])] = &[
     ),
 ];
 
+#[test]
+fn every_parameter_set_has_an_authoring_workflow() {
+    for (label, _) in PARAMETER_SETS {
+        assert!(
+            crate::modules::block_editor::parameter_set::get(label).is_some(),
+            "{label}"
+        );
+    }
+}
+
 /// Catalog rows remain inert until their authoring commands exist.
 #[allow(clippy::too_many_arguments)]
 fn catalog(
@@ -230,9 +240,6 @@ fn catalog(
         let action_error=match *label {"Scale"=>scale_error,"Stretch"=>stretch_action_error,"Polar Stretch"=>polar_stretch_action_error,"Rotate"=>rotate_error,"Flip"=>flip_action_error,"Array"=>array_action_error,_=>move_error};
         let parameter_set = (tab == Tab::ParameterSets)
             .then(|| crate::modules::block_editor::parameter_set::get(label))
-            .flatten();
-        let parameter_set_unavailable = (tab == Tab::ParameterSets)
-            .then(|| crate::modules::block_editor::parameter_set::unavailable_reason(label))
             .flatten();
         let enabled = (geometry_action&&action_error.is_none())||(single&&point_error.is_none())||(lookup_action&&lookup_error.is_none())||(properties_table_action&&properties_table_error.is_none())||(orientation && orientation_error.is_none()) || (visibility && visibility_error.is_none()) || ((point || distance) && point_error.is_none()) || (parameter_set.is_some() && parameter_set_error.is_none());
         let base = if enabled {
@@ -284,8 +291,6 @@ fn catalog(
             crate::t!(lookup_error.unwrap_or("Create or edit property Lookup tables for this block.")).into_owned()
         } else if properties_table_action {
             crate::t!(properties_table_error.unwrap_or("Create or edit this block's properties table; rows bind Linear and Polar parameters.")).into_owned()
-        } else if parameter_set_unavailable.is_some() {
-            crate::t!(parameter_set_unavailable.unwrap()).into_owned()
         } else if parameter_set.is_some() {
             crate::t!(parameter_set_error.unwrap_or("Place a parameter, then continue into its matching action or editor.")).into_owned()
         } else {

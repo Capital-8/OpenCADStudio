@@ -15,9 +15,7 @@ mod stretch;
 /// Smallest signed distance between two angles in radians, accounting for the
 /// wrap at ±π. Used for BPT rotation snapping and current-row detection.
 pub(crate) fn angle_distance(a: f64, b: f64) -> f64 {
-    ((a - b + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
-        - std::f64::consts::PI)
-        .abs()
+    ((a - b + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI).abs()
 }
 #[cfg(test)]
 mod tests;
@@ -456,11 +454,15 @@ pub(crate) fn create_with_options(
         .find(|p| p.handle == parameter)
         .ok_or("Select a compatible parameter belonging to this block.")?;
     if xy_key_point.is_some_and(|point| {
-        kind != Kind::Move
-            || (p.xy && !matches!(point, XyKeyPoint::Base | XyKeyPoint::X | XyKeyPoint::Y | XyKeyPoint::End))
+        !matches!(kind, Kind::Move | Kind::Stretch)
+            || (p.xy
+                && !matches!(
+                    point,
+                    XyKeyPoint::Base | XyKeyPoint::X | XyKeyPoint::Y | XyKeyPoint::End
+                ))
             || (!p.xy && !matches!(point, XyKeyPoint::Base | XyKeyPoint::End))
     }) {
-        return Err("Move key points are not compatible with this parameter.");
+        return Err("Action key points are not compatible with this parameter.");
     }
     if targets.is_empty() {
         return Err("Select at least one object for the action.");
@@ -567,7 +569,7 @@ pub(crate) fn create_with_options(
             let (points, handles) = stretch_binding.unwrap();
             DynamicBlockData::StretchAction(BlockStretchAction {
                 action,
-                connections: [connection("EndXDelta"), connection("EndYDelta")],
+                connections: move_connections(&p, xy_key_point),
                 points,
                 handles,
                 codes: vec![],
@@ -664,9 +666,7 @@ fn move_connections(p: &Parameter, key_point: Option<XyKeyPoint>) -> [BlockConne
         (_, _, Some(XyKeyPoint::Base)) => ["BaseXDelta", "BaseYDelta"],
         (_, true, Some(XyKeyPoint::X)) => ["EndXDelta", "BaseYDelta"],
         (_, true, Some(XyKeyPoint::Y)) => ["BaseXDelta", "EndYDelta"],
-        (_, true, Some(XyKeyPoint::End) | None) | (_, false, _) => {
-            ["EndXDelta", "EndYDelta"]
-        }
+        (_, true, Some(XyKeyPoint::End) | None) | (_, false, _) => ["EndXDelta", "EndYDelta"],
     };
     names.map(|name| BlockConnection {
         code: p.id,
@@ -686,10 +686,7 @@ fn action_move_delta(
         return None;
     }
     let delta = current_end - parameter.end;
-    let names = [
-        connections[0].name.as_str(),
-        connections[1].name.as_str(),
-    ];
+    let names = [connections[0].name.as_str(), connections[1].name.as_str()];
     if parameter.point && names == ["XDelta", "YDelta"] {
         return Some(delta);
     }
@@ -1381,7 +1378,9 @@ fn evaluate_impl(
                 _ => {}
             }
             if let DynamicBlockData::StretchAction(s) = &o.data {
-                stretch::apply(&mut entity, s, end - q.end)?;
+                let delta = action_move_delta(&q, end, &s.connections)
+                    .ok_or("This Stretch action uses unsupported parameter connections.")?;
+                stretch::apply(&mut entity, s, delta)?;
             } else if let DynamicBlockData::PolarStretchAction(s) = &o.data {
                 if s.connections.iter().any(|c| c.code != q.id) {
                     return Err("This Polar Stretch action uses a different parameter binding.");

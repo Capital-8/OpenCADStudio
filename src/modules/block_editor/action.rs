@@ -53,9 +53,11 @@ impl ActionCommand {
         xy_key_point: Option<XyKeyPoint>,
     ) -> Option<Self> {
         let mut command = Self::new(document, definition, Some(kind), candidates);
-        if !command.candidates.iter().any(|candidate| {
-            candidate.handle == parameter && actions::compatible(candidate, kind)
-        }) {
+        if !command
+            .candidates
+            .iter()
+            .any(|candidate| candidate.handle == parameter && actions::compatible(candidate, kind))
+        {
             return None;
         }
         command.parameter = Some(parameter);
@@ -112,6 +114,15 @@ impl CadCommand for ActionCommand {
             .into_owned();
         }
         if self.kind.is_some_and(actions::needs_frame) && self.frame.is_empty() {
+            if let Some(point) = self.xy_key_point {
+                let point = match point {
+                    XyKeyPoint::Base => "base",
+                    XyKeyPoint::X => "X-axis",
+                    XyKeyPoint::Y => "Y-axis",
+                    XyKeyPoint::End => "endpoint",
+                };
+                return crate::tf!("BACTION  Specify first corner of action frame for the parameter's {point} point:").into_owned();
+            }
             return crate::t!("BACTION  Specify first corner of action frame:").into_owned();
         }
         if self.kind.is_some_and(actions::needs_frame) && self.frame.len() == 1 {

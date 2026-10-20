@@ -164,9 +164,10 @@ impl OpenCADStudio {
         self.tabs[self.active_tab].active_cmd = Some(Box::new(command));
         Task::none()
     }
-    pub(in crate::app) fn start_xy_move_box_set_action(
+    pub(in crate::app) fn start_xy_box_set_action(
         &mut self,
         parameter: codec::Handle,
+        kind: Kind,
         key_point: u8,
     ) -> Task<Message> {
         let key_point = match key_point {
@@ -176,11 +177,12 @@ impl OpenCADStudio {
             3 => actions::XyKeyPoint::End,
             _ => return Task::none(),
         };
-        self.start_block_action_for_parameter_at("MOVE", parameter, Some(key_point))
+        self.start_block_action_for_parameter_at(kind.name(), parameter, Some(key_point))
     }
-    pub(in crate::app) fn start_move_pair_action(
+    pub(in crate::app) fn start_parameter_pair_action(
         &mut self,
         parameter: codec::Handle,
+        kind: Kind,
         side: u8,
     ) -> Task<Message> {
         let key_point = match side {
@@ -188,7 +190,7 @@ impl OpenCADStudio {
             1 => actions::XyKeyPoint::End,
             _ => return Task::none(),
         };
-        self.start_block_action_for_parameter_at("MOVE", parameter, Some(key_point))
+        self.start_block_action_for_parameter_at(kind.name(), parameter, Some(key_point))
     }
     pub(in crate::app) fn handle_block_action_result(
         &mut self,
@@ -288,7 +290,9 @@ impl OpenCADStudio {
                         self.finish_pending_history(i);
                         self.refresh_properties();
                         self.command_line.push_output(crate::tf!("{} action attached. Select the reference and use its parameter grip, or open Test Block.",crate::t!(kind.name())).as_ref());
-                        if let Some((set_parameter, next_key_point)) = self.tabs[i].pending_xy_move_box_set {
+                        if let Some((set_parameter, expected_kind, next_key_point)) =
+                            self.tabs[i].pending_xy_box_set
+                        {
                             let completed_key_point = match xy_key_point {
                                 Some(actions::XyKeyPoint::Base) => 0,
                                 Some(actions::XyKeyPoint::X) => 1,
@@ -297,29 +301,33 @@ impl OpenCADStudio {
                                 None => 3,
                             };
                             if set_parameter == parameter
+                                && kind == expected_kind
                                 && usize::from(next_key_point) == completed_key_point
                                 && next_key_point < 3
                             {
                                 let next = next_key_point + 1;
-                                self.tabs[i].pending_xy_move_box_set = Some((parameter, next));
-                                return self.start_xy_move_box_set_action(parameter, next);
+                                self.tabs[i].pending_xy_box_set = Some((parameter, kind, next));
+                                return self.start_xy_box_set_action(parameter, kind, next);
                             }
-                            self.tabs[i].pending_xy_move_box_set = None;
+                            self.tabs[i].pending_xy_box_set = None;
                         }
-                        if let Some((set_parameter, expected_side)) = self.tabs[i].pending_move_pair {
+                        if let Some((set_parameter, expected_kind, expected_side)) =
+                            self.tabs[i].pending_action_pair
+                        {
                             let completed_side = match xy_key_point {
                                 Some(actions::XyKeyPoint::Base) => Some(0),
                                 Some(actions::XyKeyPoint::End) | None => Some(1),
                                 _ => None,
                             };
                             if set_parameter == parameter
+                                && kind == expected_kind
                                 && completed_side == Some(expected_side)
                                 && expected_side == 0
                             {
-                                self.tabs[i].pending_move_pair = Some((parameter, 1));
-                                return self.start_move_pair_action(parameter, 1);
+                                self.tabs[i].pending_action_pair = Some((parameter, kind, 1));
+                                return self.start_parameter_pair_action(parameter, kind, 1);
                             }
-                            self.tabs[i].pending_move_pair = None;
+                            self.tabs[i].pending_action_pair = None;
                         }
                     }
                     Err(e) => self.command_line.push_error(crate::t!(e).as_ref()),
