@@ -960,6 +960,34 @@ impl OpenCADStudio {
         }
     }
 
+    /// Discrete snaps against the original geometry retained by STRETCH.
+    /// These stationary reference wires are separate from the moving overlay:
+    /// only endpoints/vertices/midpoints/etc. are eligible, so a nearest or
+    /// tangent snap cannot pull the cursor continuously onto its old outline.
+    pub(in crate::app) fn command_original_snap_hit(
+        &self,
+        i: usize,
+        screen: iced::Point,
+        view_rot: glam::Mat4,
+        eye: glam::DVec3,
+        bounds: iced::Rectangle,
+    ) -> Option<crate::snap::SnapResult> {
+        let originals = self.tabs[i]
+            .active_cmd
+            .as_ref()?
+            .preview_original_snap_wires();
+        if originals.is_empty() {
+            return None;
+        }
+        self.snapper
+            .snap_discrete_preview(screen, originals, view_rot, eye, bounds)
+            // Do not capture the STRETCH base point at zero displacement:
+            // it would hold the moving cursor at its starting position.
+            .filter(|hit| self.last_point.is_none_or(|base| {
+                (hit.world - base).length_squared() > 1e-16
+            }))
+    }
+
     pub(in crate::app) fn grip_edit_for_hit(
         &mut self,
         i: usize,
@@ -2790,6 +2818,15 @@ impl OpenCADStudio {
             } else {
                 None
             };
+            // Keep the pale, stationary STRETCH reference snappable in the
+            // capped fast path, without restoring its hidden resident wires or
+            // feeding its geometry into the main drawing interaction index.
+            let original_snap = if run_discrete_preview || refresh_stretch_preview {
+                self.command_original_snap_hit(i, p, view_rot, eye, bounds)
+            } else {
+                None
+            };
+            let snap = crate::snap::merge_snap(snap, original_snap, p);
             let world = snap.map_or(cursor_world, |hit| hit.world);
             self.tabs[i].last_cursor_world = world;
             self.tabs[i].last_cursor_screen = p_full;
@@ -3015,6 +3052,12 @@ impl OpenCADStudio {
                     additional_rays.as_ref().map_or(&[], |rays| rays.as_slice()),
                 )
             };
+            // Restore discrete snap targets from STRETCH's original snapshot
+            // even though the corresponding resident objects are hidden.
+            let original_snap = self.command_original_snap_hit(i, p, view_rot, eye, bounds);
+            self.tabs[i].snap_result = crate::snap::merge_snap(
+                self.tabs[i].snap_result, original_snap, p,
+            );
             let snap_ms = crate::perf::elapsed_ms(snap_started);
             if perf_move && snap_ms >= 1.0 {
                 crate::perf_record!(
@@ -5241,6 +5284,14 @@ impl OpenCADStudio {
                         snap_hit = crate::snap::merge_snap(snap_hit, face_hit, p);
                     }
                 }
+                // Mouse-up must resolve the same original snap as mouse-move;
+                // otherwise the highlighted reference point and committed
+                // STRETCH destination could disagree.
+                snap_hit = crate::snap::merge_snap(
+                    snap_hit,
+                    self.command_original_snap_hit(i, p, view_rot, eye, bounds),
+                    p,
+                );
                 let click_evaluate_ms = crate::perf::elapsed_ms(click_evaluate_started);
                 if crate::perf::enabled()
                     && click_source_ms + click_query_ms + click_evaluate_ms >= 1.0
