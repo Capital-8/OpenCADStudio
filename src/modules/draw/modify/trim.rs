@@ -4941,6 +4941,28 @@ mod tests {
     }
 
     #[test]
+    fn trim_command_click_and_hover_accepts_circle_as_cutting_boundary() {
+        let mut circle = CircleEnt::from_coords(5.0, 5.0, 0.0, 3.0);
+        circle.common.handle = Handle::new(70);
+        let all = vec![
+            EntityType::Hatch(Box::new(rect_hatch(1, true))),
+            EntityType::Circle(circle),
+        ];
+        let mut cmd = TrimCommand::with_cutting_edges(all, vec![Handle::new(70)]);
+        assert!(cmd.entity_pick_includes_fills());
+        let preview = cmd.on_hover_entity(Handle::new(1), DVec3::new(5.0, 5.0, 0.0));
+        assert!(!preview.is_empty(), "circle cutter must produce hatch hover preview");
+        let CmdResult::ReplaceEntity(handle, results) = cmd.on_entity_pick(
+            Handle::new(1), DVec3::new(5.0, 5.0, 0.0),
+        ) else {
+            panic!("circle cutting edge must trim the picked hatch");
+        };
+        assert_eq!(handle, Handle::new(1));
+        let EntityType::Hatch(hatch) = &results[0] else { panic!("hatch expected"); };
+        assert_eq!(hatch.paths.len(), 2);
+    }
+
+    #[test]
     fn trim_circle_never_cuts_holes_or_unrelated_regions() {
         let mut hatch = rect_hatch(1, false);
         add_rect_hole(&mut hatch, 4.0, 4.0, 6.0, 6.0);
