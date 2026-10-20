@@ -3433,6 +3433,10 @@ impl CadCommand for TrimCommand {
         )
     }
 
+    fn entity_pick_includes_fills(&self) -> bool {
+        matches!(self.mode, TrimMode::Pick)
+    }
+
     fn on_entity_pick(&mut self, handle: Handle, pt: DVec3) -> CmdResult {
         if handle.is_null() {
             return CmdResult::NeedPoint;
@@ -3838,6 +3842,35 @@ impl CadCommand for TrimCommand {
                         WireModel::CYAN,
                         false,
                     ));
+                }
+                out
+            }
+            Some(EntityType::Hatch(hatch)) => {
+                let Some(trimmed) = trim_hatch_at(hatch, geos, pt.x, pt.y) else {
+                    return vec![];
+                };
+                let mut out = Vec::new();
+                for (index, path) in hatch.paths.iter().enumerate() {
+                    if let Some(mut points) = crate::scene::hatch_path_ring(path) {
+                        points.push(points[0]);
+                        out.push(WireModel::solid_f64(
+                            format!("trim_hatch_original_{index}"),
+                            points.into_iter().map(|p| [p[0], p[1], hatch.elevation]).collect(),
+                            TRIM_REMOVE_GRAY,
+                            false,
+                        ));
+                    }
+                }
+                for (index, path) in trimmed.paths.iter().enumerate() {
+                    if let Some(mut points) = crate::scene::hatch_path_ring(path) {
+                        points.push(points[0]);
+                        out.push(WireModel::solid_f64(
+                            format!("trim_hatch_keep_{index}"),
+                            points.into_iter().map(|p| [p[0], p[1], hatch.elevation]).collect(),
+                            WireModel::CYAN,
+                            false,
+                        ));
+                    }
                 }
                 out
             }
