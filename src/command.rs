@@ -2242,8 +2242,11 @@ pub enum CmdResult {
         handles: Vec<Handle>,
         /// Every crossing window gathered so far.
         windows: Vec<(DVec3, DVec3)>,
-        /// Previously selected vertices removed with Shift+click.
+        /// Previously selected vertices removed with Shift+click or Shift+window.
         excluded_points: Vec<(Handle, DVec3)>,
+        /// A Shift+window excludes points inside this area without adding a
+        /// new crossing window or subtracting whole entities.
+        subtract_window: Option<(DVec3, DVec3)>,
     },
     /// Stretch entities: move only vertices/endpoints inside any gathered
     /// crossing window.
