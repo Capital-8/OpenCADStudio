@@ -22,6 +22,7 @@ language =
     .chinese-traditional = 繁體中文
     .bulgarian = Български
     .greek = Ελληνικά
+    .vietnamese = Tiếng Việt
 
 action =
     .close = Bezárás
