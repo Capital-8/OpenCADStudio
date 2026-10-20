@@ -6,6 +6,17 @@ use codec::types::Vector2;
 pub(crate) fn control_points(e: &EntityType) -> Result<Vec<DVec3>, &'static str> {
     let points = match e {
         EntityType::Line(l) => vec![v(l.start), v(l.end)],
+        EntityType::Arc(a) => {
+            if a.normal.x.abs() > 1e-10 || a.normal.y.abs() > 1e-10 {
+                return Err("Stretch requires an arc parallel to the parameter's XY plane.");
+            }
+            vec![v(a.start_point_wcs()), v(a.end_point_wcs())]
+        }
+        EntityType::Circle(c) => vec![v(codec::types::Matrix3::arbitrary_axis(c.normal) * c.center)],
+        EntityType::Ellipse(e) => vec![v(e.center)],
+        EntityType::Point(p) => vec![v(p.location)],
+        EntityType::Text(t) => vec![v(codec::types::Matrix3::arbitrary_axis(t.normal) * t.insertion_point)],
+        EntityType::MText(t) => vec![v(t.insertion_point)],
         EntityType::LwPolyline(p) => {
             let p = crate::entities::curve::lwpolyline_world_xy(p)
                 .ok_or("Stretch requires a planar XY lightweight polyline.")?;
@@ -14,7 +25,7 @@ pub(crate) fn control_points(e: &EntityType) -> Result<Vec<DVec3>, &'static str>
                 .map(|v| DVec3::new(v.location.x, v.location.y, p.elevation))
                 .collect()
         }
-        _ => return Err("Stretch currently supports lines and planar lightweight polylines."),
+        _ => return Err("Select a supported Stretch object."),
     };
     if points.is_empty() || points.iter().any(|p| !p.is_finite()) {
         return Err("Stretch targets need finite vertices.");
@@ -112,7 +123,8 @@ pub(crate) fn validate_options(a: &BlockStretchAction) -> Result<(), &'static st
                 a.connections[0].name.as_str(),
                 a.connections[1].name.as_str()
             ],
-            ["BaseXDelta", "BaseYDelta"]
+            ["XDelta", "YDelta"]
+                | ["BaseXDelta", "BaseYDelta"]
                 | ["EndXDelta", "BaseYDelta"]
                 | ["BaseXDelta", "EndYDelta"]
                 | ["EndXDelta", "EndYDelta"]
@@ -240,6 +252,7 @@ pub(crate) fn apply(
     a: &BlockStretchAction,
     delta: DVec3,
 ) -> Result<(), &'static str> {
+    if delta == DVec3::ZERO { return Ok(()); }
     let Some(binding) = a
         .handles
         .iter()
@@ -252,6 +265,19 @@ pub(crate) fn apply(
         return Ok(());
     };
     match e {
+        EntityType::Arc(arc) => {
+            if !crate::modules::draw::modify::stretch::stretch_arc_endpoints(
+                arc, binding.indexes.contains(&0), binding.indexes.contains(&1), delta,
+            ) {
+                return Err("The Stretch displacement collapses the arc chord.");
+            }
+        }
+        EntityType::Circle(_) | EntityType::Ellipse(_) | EntityType::Point(_)
+        | EntityType::Text(_) | EntityType::MText(_) => {
+            crate::scene::view::dispatch::apply_transform(
+                e, &crate::command::EntityTransform::Translate(delta),
+            );
+        }
         EntityType::Line(l) => {
             for index in &binding.indexes {
                 let at = match index {

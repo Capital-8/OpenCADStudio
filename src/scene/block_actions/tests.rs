@@ -2296,3 +2296,67 @@ fn block_action_overrides_evaluate_and_roundtrip_without_accumulation() {
         }
     }
 }
+
+#[test]
+fn block_stretch_supports_curves_points_and_text_with_native_vertex_membership() {
+    use codec::entities::{Arc,Circle,Ellipse,Point,Text,MText};
+    let mut text=Text::new();
+    text.insertion_point=Vector3::new(-2.,0.,0.);
+    text.normal=Vector3::new(0.,0.,-1.);
+    let mut mtext=MText::new();
+    mtext.insertion_point=Vector3::new(2.,0.,0.);
+    let mut scene=Scene::new();
+    scene.define_block_raw("CURVE_STRETCH",Vector3::ZERO,vec![
+        EntityType::Arc(Arc::from_center_radius_angles(Vector3::ZERO,2.,0.,std::f64::consts::PI)),
+        EntityType::Circle(Circle::from_center_radius(Vector3::new(2.,0.,0.),1.)),
+        EntityType::Ellipse(Ellipse::from_center_axes(Vector3::new(2.,0.,0.),Vector3::UNIT_X,0.5)),
+        EntityType::Point(Point::from_coords(2.,0.,0.)),
+        EntityType::Text(text),EntityType::MText(Box::new(mtext)),
+    ]);
+    let record=scene.document.block_records.get("CURVE_STRETCH").unwrap();
+    let (definition,targets)=(record.handle,record.entity_handles.clone());
+    let mut doc=scene.document;
+    let parameter=linear(&mut doc,definition);
+    let action=create_with_frame(&mut doc,definition,Kind::Stretch,parameter,&targets,DVec3::ZERO,
+        Some([DVec3::new(1.,-1.,0.),DVec3::new(3.,1.,0.)])).unwrap();
+    let baseline=doc.clone();
+    for reopened in [
+        baseline.clone(),
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&baseline).unwrap())).read().unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&baseline).write_to_vec().unwrap())).unwrap().read().unwrap(),
+    ] {
+        assert_eq!(reopened.objects[&action],baseline.objects[&action]);
+        let mut changed=reopened.clone();
+        evaluate(&mut changed,&reopened,definition,parameter,DVec3::new(12.,0.,0.)).unwrap();
+        let EntityType::Arc(arc)=changed.get_entity(targets[0]).unwrap() else {panic!()};
+        assert!((arc.start_point_wcs()-Vector3::new(4.,0.,0.)).length()<1e-10);
+        assert!((arc.end_point_wcs()-Vector3::new(-2.,0.,0.)).length()<1e-10);
+        let height=arc.radius*(1.-(arc.sweep_angle()/2.).cos());
+        assert!((height-2.).abs()<1e-10,"arc height is retained");
+        for target in &targets[1..] {
+            let points=stretch::control_points(changed.get_entity(*target).unwrap()).unwrap();
+            assert!((points[0]-DVec3::new(4.,0.,0.)).length()<1e-10);
+        }
+        evaluate(&mut changed,&reopened,definition,parameter,DVec3::new(10.,0.,0.)).unwrap();
+        assert_eq!(changed.get_entity(targets[0]),reopened.get_entity(targets[0]));
+    }
+    let mut collapsed=baseline.clone();
+    assert!(evaluate(&mut collapsed,&baseline,definition,parameter,DVec3::new(6.,0.,0.)).is_err());
+    assert_eq!(collapsed,baseline,"a collapsed arc chord leaves the document unchanged");
+}
+
+#[test]
+fn block_stretch_accepts_point_parameters_and_freezes_endpoint_membership() {
+    let (mut doc,definition,targets)=fixture();
+    let parameter=point::create(&mut doc,definition,Vector3::ZERO,Vector3::UNIT_Y).unwrap();
+    let action=create_with_frame(&mut doc,definition,Kind::Stretch,parameter,&targets[..1],DVec3::ZERO,
+        Some([DVec3::new(1.5,-1.,0.),DVec3::new(2.5,1.,0.)])).unwrap();
+    let baseline=doc.clone();
+    for value in [DVec3::new(2.,3.,0.),DVec3::new(4.,5.,0.)] {
+        evaluate(&mut doc,&baseline,definition,parameter,value).unwrap();
+        let EntityType::Line(line)=doc.get_entity(targets[0]).unwrap() else {panic!()};
+        assert_eq!(line.start,Vector3::UNIT_X);
+        assert_eq!(line.end,Vector3::new(2.+value.x,value.y,0.));
+        assert_eq!(doc.objects[&action],baseline.objects[&action]);
+    }
+}

@@ -112,7 +112,7 @@ pub(crate) fn all_parameters(doc: &CadDocument, definition: Handle) -> Vec<Param
 pub(crate) fn compatible(p: &Parameter, kind: Kind) -> bool {
     match kind {
         Kind::Move => !p.rotation && !p.flip,
-        Kind::Stretch => !p.rotation && !p.flip && !p.point,
+        Kind::Stretch => !p.rotation && !p.flip,
         Kind::PolarStretch => p.polar,
         Kind::Scale => !p.rotation && !p.flip && !p.point && !p.xy,
         Kind::Rotate => p.rotation,
@@ -224,7 +224,7 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
     };
     let mut result = vec![];
     for (handle, p) in super::block_point_parameter::parameters(doc, definition) {
-        if kind == Kind::Move {
+        if matches!(kind, Kind::Move | Kind::Stretch) {
             result.push(Parameter {
                 handle,
                 id: p.parameter.parameter.element.eval.node_id,
@@ -483,7 +483,7 @@ pub(crate) fn create_with_options(
                 .is_none_or(|e| !supported(e) || e.common().owner_handle != definition)
     }) {
         return Err(
-            "This milestone supports lines, polylines, arcs, circles, ellipses, points and text belonging to this block.",
+            "Select lines, lightweight polylines, arcs, circles, ellipses, points or text belonging to this block.",
         );
     }
     let (column_offset, row_offset) = if kind == Kind::Array {
