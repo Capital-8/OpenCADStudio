@@ -4448,6 +4448,82 @@ mod tests {
     }
 
     #[test]
+    fn extend_crossing_box_reaches_one_common_horizontal_boundary() {
+        let all = vec![
+            xline_at(0.0, 0.0, 0.0, 4.0, 1),
+            // Reversed direction: the upper endpoint is START, not END.
+            xline_at(2.0, 5.0, 2.0, 1.0, 2),
+            // Both ends in the box: only the upward extension is reachable.
+            xline_at(4.0, 2.0, 4.0, 3.0, 3),
+            xline_at(8.0, 0.0, 8.0, 4.0, 4),
+            xline_at(-2.0, 10.0, 10.0, 10.0, 100),
+        ];
+        let mut cmd = ExtendCommand::new(all);
+        cmd.mode = TrimMode::Pick;
+        cmd.edge_set = vec![Handle::new(100)];
+        cmd.rebuild_geos();
+        let fence = [
+            [-0.5, 1.5], [4.5, 1.5], [4.5, 6.0], [-0.5, 6.0], [-0.5, 1.5],
+        ];
+        let CmdResult::ReplaceManyContinue(replacements) = cmd
+            .on_drag_selection(&fence, Some(([-0.5, 1.5], [4.5, 6.0])), true)
+            .expect("EXTEND accepts crossing-box selection")
+        else {
+            panic!("the crossing box must extend all selected lines");
+        };
+        assert_eq!(replacements.len(), 3);
+        assert!(replacements.iter().all(|(handle, _)|
+            *handle != Handle::new(4) && *handle != Handle::new(100)
+        ));
+        for (handle, entities) in replacements {
+            let EntityType::Line(line) = &entities[0] else {
+                panic!("line expected");
+            };
+            if handle == Handle::new(2) {
+                assert!((line.start.y - 10.0).abs() < 1e-9);
+                assert!((line.end.y - 1.0).abs() < 1e-9);
+            } else {
+                assert!((line.end.y - 10.0).abs() < 1e-9);
+                assert!((line.start.y - if handle == Handle::new(1) { 0.0 } else { 2.0 }).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn extend_box_does_not_modify_targets_without_reachable_boundary() {
+        let lines = vec![
+            xline_at(0.0, 0.0, 0.0, 4.0, 1),
+            xline_at(2.0, 0.0, 2.0, 4.0, 2),
+        ];
+        let mut cmd = ExtendCommand::new(lines);
+        cmd.mode = TrimMode::Pick;
+        let fence = [
+            [-1.0, 3.0], [3.0, 3.0], [3.0, 5.0], [-1.0, 5.0], [-1.0, 3.0],
+        ];
+        assert!(matches!(
+            cmd.on_drag_selection(&fence, Some(([-1.0, 3.0], [3.0, 5.0])), true),
+            Some(CmdResult::NeedPoint)
+        ));
+    }
+
+    #[test]
+    fn extend_box_window_left_to_right_requires_full_containment() {
+        let all = vec![
+            xline_at(0.0, 0.0, 0.0, 4.0, 1),
+            xline_at(-1.0, 10.0, 1.0, 10.0, 100),
+        ];
+        let mut cmd = ExtendCommand::new(all);
+        cmd.mode = TrimMode::Pick;
+        let fence = [
+            [-0.5, 3.0], [0.5, 3.0], [0.5, 5.0], [-0.5, 5.0], [-0.5, 3.0],
+        ];
+        assert!(matches!(
+            cmd.on_drag_selection(&fence, Some(([-0.5, 3.0], [0.5, 5.0])), false),
+            Some(CmdResult::NeedPoint)
+        ));
+    }
+
+    #[test]
     fn edge_drag_window_selects_only_fully_contained_objects() {
         let entities = vec![
             xline_at(2.0, 2.0, 4.0, 2.0, 1),
