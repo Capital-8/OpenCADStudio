@@ -700,6 +700,9 @@ fn dimension_entity(
         1 => {
             let (p0, p1) = (at(0)?, at(1)?);
             let [x, y] = *axes;
+            // The direction the dimension line reads along: x or -x, whichever
+            // turns less than a half turn from the world x axis.
+            let x = if x[0] < -1e-12 || (x[0].abs() <= 1e-12 && x[1] < 0.0) { [-x[0], -x[1]] } else { x };
             let line = along(p1, y, offset);
             let t = |p: P3| (p[0] - line[0]) * x[0] + (p[1] - line[1]) * x[1];
             let mut d = DimensionLinear::rotated(v3(p0), v3(p1), x[1].atan2(x[0]));
