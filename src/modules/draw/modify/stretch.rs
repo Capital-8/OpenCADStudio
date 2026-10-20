@@ -386,7 +386,7 @@ enum Step {
     /// Waiting for the first corner of another crossing window.
     WindowCorner1,
     /// Waiting for the opposite corner.
-    WindowCorner2(DVec3),
+    WindowCorner2(DVec3, bool),
     /// Selection is complete; waiting for the displacement base point.
     Base,
     /// Waiting for the displacement target.
@@ -400,6 +400,7 @@ pub struct StretchCommand {
     windows: Vec<(DVec3, DVec3)>,
     excluded_points: Vec<(Handle, DVec3)>,
     remove_release_pending: bool,
+    shift_down: bool,
     step: Step,
 }
 
@@ -411,6 +412,7 @@ impl StretchCommand {
             windows: Vec::new(),
             excluded_points: Vec::new(),
             remove_release_pending: false,
+            shift_down: false,
             step: Step::WindowCorner1,
         }
     }
@@ -428,6 +430,7 @@ impl StretchCommand {
             windows: vec![window],
             excluded_points: Vec::new(),
             remove_release_pending: false,
+            shift_down: false,
             step: Step::Base,
         }
     }
@@ -446,6 +449,7 @@ impl StretchCommand {
             windows,
             excluded_points,
             remove_release_pending: false,
+            shift_down: false,
             step: Step::WindowCorner1,
         }
     }
@@ -503,7 +507,13 @@ impl CadCommand for StretchCommand {
                     .into_owned()
                 }
             }
-            Step::WindowCorner2(_) => t!("STRETCH  Specify opposite corner:").into_owned(),
+            Step::WindowCorner2(_, subtract) => {
+                if *subtract {
+                    "STRETCH  Specify opposite corner to remove selected vertices:".into()
+                } else {
+                    t!("STRETCH  Specify opposite corner:").into_owned()
+                }
+            },
             Step::Base => t!("STRETCH  Specify base point:").into_owned(),
             Step::Target { base } => {
                 let bx = format!("{:.3}", base.x);
@@ -521,24 +531,33 @@ impl CadCommand for StretchCommand {
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
         match &self.step {
             Step::WindowCorner1 => {
-                self.step = Step::WindowCorner2(pt);
+                // Remember Shift at the FIRST corner. The user can release it
+                // while choosing the second corner without turning subtraction
+                // into an ordinary additive crossing window.
+                self.step = Step::WindowCorner2(pt, self.shift_down && !self.windows.is_empty());
                 CmdResult::NeedPoint
             }
 
-            Step::WindowCorner2(c1) => {
+            Step::WindowCorner2(c1, subtract) => {
                 let win_min = c1.min(pt);
                 let win_max = c1.max(pt);
 
+                // A Shift+window subtracts only currently active vertices.
+                // The host uses its filtered stretch grips, rather than
+                // reselecting whole entities or guessing tessellation points.
                 let mut windows = self.windows.clone();
-                windows.push((win_min, win_max));
+                let subtract_window = if *subtract {
+                    Some((win_min, win_max))
+                } else {
+                    windows.push((win_min, win_max));
+                    None
+                };
 
-                // Hand the accumulated selection back to the host. The host resolves
-                // the entities touched by this window and relaunches STRETCH still in
-                // the selection stage, so another crossing window can be drawn.
                 CmdResult::StretchWindow {
                     handles: self.handles.clone(),
                     windows,
                     excluded_points: self.excluded_points.clone(),
+                    subtract_window,
                 }
             }
 
@@ -583,6 +602,10 @@ impl CadCommand for StretchCommand {
         CmdResult::Cancel
     }
 
+    fn set_shift(&mut self, shift: bool) {
+        self.shift_down = shift;
+    }
+
     fn remove_stretch_point(&mut self, handle: Handle, world: DVec3) -> bool {
         if !matches!(self.step, Step::WindowCorner1)
             || !self.handles.contains(&handle)
@@ -609,7 +632,7 @@ impl CadCommand for StretchCommand {
     fn window_corner_pick(&self) -> bool {
         // The two crossing-window corners are free points; Ortho/Polar must not
         // pin the opposite corner to an axis or the window becomes a line (#291).
-        matches!(self.step, Step::WindowCorner1 | Step::WindowCorner2(_))
+        matches!(self.step, Step::WindowCorner1 | Step::WindowCorner2(_, _))
     }
 
     fn selects_by_window(&self) -> bool {
@@ -622,7 +645,7 @@ impl CadCommand for StretchCommand {
         // Expose the first corner so the host draws a filled crossing marquee to
         // the cursor, matching a normal box selection instead of a bare outline.
         match &self.step {
-            Step::WindowCorner2(c1) => Some(*c1),
+            Step::WindowCorner2(c1, _) => Some(*c1),
             _ => None,
         }
     }
@@ -667,7 +690,7 @@ impl CadCommand for StretchCommand {
             // The crossing-window rectangle is drawn as a filled selection
             // marquee by the host (via window_first_corner) so it matches a
             // normal box selection — nothing to draw here. (#291)
-            Step::WindowCorner2(_) => vec![],
+            Step::WindowCorner2(_, _) => vec![],
             // STRETCH hides the original resident geometry. Draw a pale,
             // stationary ghost from its snapshot *behind* the moving geometry.
             // Do not replace the snapshot itself: it remains the snap source.
