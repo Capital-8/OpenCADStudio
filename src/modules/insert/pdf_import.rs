@@ -706,7 +706,8 @@ fn color_of(rgb: [u8; 3]) -> Color {
         [0, 255, 255] => Color::Index(4),
         [0, 0, 255] => Color::Index(5),
         [255, 0, 255] => Color::Index(6),
-        [0, 0, 0] | [255, 255, 255] => Color::Index(7),
+        // Black is 7; white stays a true colour.
+        [0, 0, 0] => Color::Index(7),
         [r, g, b] => Color::Rgb { r, g, b },
     }
 }
@@ -717,8 +718,9 @@ fn lineweight_of(width_pt: f64) -> LineWeight {
         0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158,
         200, 211,
     ];
+    // A zero-width (thinnest) line is the 0.00 mm weight.
     if width_pt <= 0.0 {
-        return LineWeight::ByLayer;
+        return LineWeight::Value(0);
     }
     let hundredths = width_pt * 25.4 / 72.0 * 100.0;
     let best = STANDARD
@@ -1390,22 +1392,14 @@ pub fn convert(
     let in_area = |p: [f64; 2]| area_local.as_deref().is_none_or(|a| inside(a, p));
 
     let mut result = ImportResult::default();
+    // Layers in the order their first object comes; the colours are settled
+    // once every object is made (see `layer_colours_by_majority`).
     let mut layer_colors: Vec<(String, Color)> = Vec::new();
-    // A layer takes the colour of its first object; objects of that colour
-    // then follow the layer.
     let mut color_on = |layer: &str, color: Color| -> Color {
-        let layer_color = match layer_colors.iter().find(|(n, _)| n == layer) {
-            Some((_, c)) => *c,
-            None => {
-                layer_colors.push((layer.to_string(), color));
-                color
-            }
-        };
-        if color == layer_color {
-            Color::ByLayer
-        } else {
-            color
+        if !layer_colors.iter().any(|(n, _)| n == layer) {
+            layer_colors.push((layer.to_string(), color));
         }
+        color
     };
     let fill_transparency = codec::types::Transparency::from_alpha_value(0x0200_007F);
     let mut strokes: Vec<Stroke> = Vec::new();
@@ -1527,7 +1521,8 @@ pub fn convert(
                 mtext.rotation = text.rotation + underlay.rotation;
                 mtext.style = style;
                 mtext.attachment_point = AttachmentPoint::MiddleLeft;
-                let layer = naming.layer(pdf_layer, Kind::Text);
+                // Text goes to the text layer whatever PDF layer holds it.
+                let layer = naming.layer(None, Kind::Text);
                 mtext.common.color = color_on(&layer, color_of(text.color));
                 mtext.common.layer = layer;
                 result.entities.push(EntityType::MText(Box::new(mtext)));
@@ -1647,12 +1642,41 @@ pub fn convert(
     curves.sort_by_key(|(order, _)| *order);
     result.entities.extend(curves.into_iter().map(|(_, entity)| entity));
     result.layers = layer_colors;
+    layer_colours_by_majority(&mut result);
     for image in &result.images {
         if !result.layers.iter().any(|(n, _)| *n == image.layer) {
             result.layers.push((image.layer.clone(), Color::Index(7)));
         }
     }
     result
+}
+
+/// Each layer takes the colour most of its objects have (the first such
+/// colour on a tie); those objects then follow the layer.
+fn layer_colours_by_majority(result: &mut ImportResult) {
+    for (layer, layer_color) in &mut result.layers {
+        let mut counts: Vec<(Color, usize)> = Vec::new();
+        for entity in &result.entities {
+            let common = entity.common();
+            if common.layer != *layer {
+                continue;
+            }
+            match counts.iter_mut().find(|(c, _)| *c == common.color) {
+                Some((_, n)) => *n += 1,
+                None => counts.push((common.color, 1)),
+            }
+        }
+        // `max_by_key` keeps the last maximum: search from the back.
+        if let Some((color, _)) = counts.iter().rev().max_by_key(|(_, n)| *n) {
+            *layer_color = *color;
+        }
+        for entity in &mut result.entities {
+            let common = entity.common_mut();
+            if common.layer == *layer && common.color == *layer_color {
+                common.color = Color::ByLayer;
+            }
+        }
+    }
 }
 
 /// One cubic B-spline through a subpath's Bézier control points (lines as
