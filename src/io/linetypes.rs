@@ -472,6 +472,7 @@ fn complex_elements(
                     scale: decimal(*scale),
                     rotation: decimal(*rot_deg).to_radians(),
                     absolute_rotation: false,
+                    upright: false,
                     source_flags: 0,
                     offset: [decimal(*x), decimal(*y)],
                 }
@@ -493,6 +494,7 @@ fn complex_elements(
                 scale: decimal(*scale),
                 rotation: decimal(*rot_deg).to_radians(),
                 absolute_rotation: false,
+                upright: false,
                 source_flags: 0,
                 offset: [decimal(*x), decimal(*y)],
             },
