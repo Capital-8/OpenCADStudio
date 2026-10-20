@@ -1415,8 +1415,16 @@ pub fn convert(
                 }
                 match (path.stroke, path.fill) {
                     // Filled and stroked by one operator: the fill, at the
-                    // stroke's weight.
-                    (Some((_, width)), Some(rgb)) if settings.fills => {
+                    // stroke's weight, when its edges are straight; a curved
+                    // one is its outline (below).
+                    (Some((_, width)), Some(rgb))
+                        if settings.fills
+                            && path
+                                .subpaths
+                                .iter()
+                                .flat_map(|sp| &sp.segments)
+                                .all(|s| matches!(s, Segment::Line(..))) =>
+                    {
                         let layer = naming.layer(pdf_layer, Kind::Fill);
                         let color = color_on(&layer, color_of(rgb));
                         let weight = if settings.lineweights {

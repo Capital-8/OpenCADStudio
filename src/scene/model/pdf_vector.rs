@@ -425,13 +425,12 @@ fn read_page_with(path: &str, page: &str, images: bool) -> Option<PageVectors> {
 /// A path filled and stroked by one operator (`B`, `b*` …) is one path
 /// with both a fill and a stroke, as the reference reads it (its fill, at
 /// the stroke's weight). The interpreter draws such a path twice; the page's
-/// own operators tell those pairs from a fill followed by a separate stroke
-/// of the same path. Nothing is merged when the drawn paths do not match
-/// the page's operators one for one (paths drawn by forms or patterns).
+/// operators tell those pairs from a fill followed by a separate stroke of
+/// the same path. Nothing is merged when the drawn paths do not match the
+/// operators one for one (paths drawn by patterns or glyph procedures).
 fn merge_fill_and_stroke(page: &hayro::hayro_syntax::page::Page<'_>, device: &mut Collector) {
     let mut calls: Vec<usize> = Vec::new();
-    let mut ops = page.typed_operations();
-    while let Some(op) = ops.next() {
+    walk_operators(page, &mut |op, _| {
         calls.push(match op {
             TypedInstruction::StrokePath(_)
             | TypedInstruction::CloseAndStrokePath(_)
@@ -442,9 +441,9 @@ fn merge_fill_and_stroke(page: &hayro::hayro_syntax::page::Page<'_>, device: &mu
             | TypedInstruction::FillAndStrokeEvenOdd(_)
             | TypedInstruction::CloseFillAndStrokeNonZero(_)
             | TypedInstruction::CloseFillAndStrokeEvenOdd(_) => 2,
-            _ => continue,
+            _ => return,
         });
-    }
+    });
     if calls.iter().sum::<usize>() != device.path_calls.len() {
         return;
     }
@@ -506,13 +505,16 @@ fn oc_section_layers(path: &str, page: &str) -> Option<Vec<Option<String>>> {
             .map(|s| super::pdf_layers::text_string(s.as_bytes()))
     };
     let mut out = Vec::new();
-    let mut ops = page.typed_operations();
-    while let Some(op) = ops.next() {
-        let TypedInstruction::BeginMarkedContentWithProperties(bdc) = op else { continue };
+    walk_operators(&page, &mut |op, resources| {
+        let TypedInstruction::BeginMarkedContentWithProperties(bdc) = op else { return };
         if bdc.0.as_ref() != b"OC" {
-            continue;
+            return;
         }
-        let properties = &page.resources().properties;
+        // A form's own properties, else the page's.
+        let properties = match bdc.1.clone().into_name() {
+            Some(n) if resources.properties.contains_key(n.as_ref()) => &resources.properties,
+            _ => &page.resources().properties,
+        };
         let name = bdc.1.clone().into_name();
         let indirect = name.as_ref().and_then(|n| properties.get_ref(n.as_ref())).is_some();
         let dict = name.and_then(|n| properties.get::<Dict<'_>>(n.as_ref()));
@@ -533,8 +535,50 @@ fn oc_section_layers(path: &str, page: &str) -> Option<Vec<Option<String>>> {
             }
         });
         out.push(layer);
-    }
+    });
     Some(out)
+}
+
+/// Every operator of a page's content in the order the interpreter runs
+/// them, a form XObject's operators where it is drawn (with the resources
+/// they read names from).
+fn walk_operators<'a>(
+    page: &hayro::hayro_syntax::page::Page<'a>,
+    visit: &mut dyn FnMut(&TypedInstruction<'_, '_>, &hayro::hayro_syntax::page::Resources<'a>),
+) {
+    use hayro::hayro_syntax::content::TypedIter;
+    use hayro::hayro_syntax::object::Dict;
+    use hayro::hayro_syntax::page::Resources;
+    fn walk<'a>(
+        data: &[u8],
+        resources: &Resources<'a>,
+        depth: usize,
+        visit: &mut dyn FnMut(&TypedInstruction<'_, '_>, &Resources<'a>),
+    ) {
+        let mut ops = TypedIter::new(data);
+        while let Some(op) = ops.next() {
+            visit(&op, resources);
+            let TypedInstruction::XObject(x) = &op else { continue };
+            // Nested forms are followed a few levels deep.
+            if depth >= 8 {
+                continue;
+            }
+            let Some(stream) = resources.get_x_object(&x.0) else { continue };
+            if !stream.dict().get::<Name<'_>>(b"Subtype").is_some_and(|t| t.as_ref() == b"Form") {
+                continue;
+            }
+            let own = match stream.dict().get::<Dict<'_>>(b"Resources") {
+                Some(dict) => Resources::from_parent(dict, resources.clone()),
+                None => resources.clone(),
+            };
+            if let Ok(data) = stream.decoded() {
+                walk(&data, &own, depth + 1, visit);
+            }
+        }
+    }
+    if let Some(data) = page.page_stream() {
+        walk(data, page.resources(), 0, visit);
+    }
 }
 
 /// Whether a font dictionary carries its font program (for a composite
