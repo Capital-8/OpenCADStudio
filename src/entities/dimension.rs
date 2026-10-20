@@ -6492,7 +6492,7 @@ fn dimension_text_entity(
             mtext.line_spacing_factor = base.line_spacing_factor;
         }
         mtext.normal = base.normal;
-        mtext.common = base.common.clone();
+        mtext.common = synthesized_text_common(base);
         return Some(EntityType::MText(Box::new(mtext)));
     }
 
@@ -6519,8 +6519,18 @@ fn dimension_text_entity(
     // assumes XY, so non-XY normals are read but not applied here.
     let _ = base.normal;
 
-    text.common = base.common.clone();
+    text.common = synthesized_text_common(base);
     Some(EntityType::Text(text))
+}
+
+/// The dimension's properties for its synthesized text, less its extension
+/// dictionary. The text height already carries the annotation scale; with the
+/// dimension's per-scale contexts the text would resolve as annotative itself
+/// and scale a second time at every scale but the default one. (#1939)
+fn synthesized_text_common(base: &DimensionBase) -> codec::entities::EntityCommon {
+    let mut common = base.common.clone();
+    common.xdictionary_handle = None;
+    common
 }
 
 fn attachment_to_text_align(
