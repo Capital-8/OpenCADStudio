@@ -2727,6 +2727,11 @@ pub trait CadCommand: Send {
         false
     }
 
+    /// Consume the matching release after STRETCH removed a selected grip.
+    fn consume_stretch_remove_release(&mut self) -> bool {
+        false
+    }
+
     /// Constrain the cursor to a construction axis for this step.
     fn cursor_axis(&self) -> Option<(DVec3, DVec3)> {
         None
