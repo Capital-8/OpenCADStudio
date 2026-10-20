@@ -6137,6 +6137,7 @@ ui =
     .viewport-annotation-scale-sync = Đồng bộ tỷ lệ khung nhìn / chú thích
     .viewport-count = Số lượng khung nhìn
     .viewport-count-in-active-layout = Số lượng khung nhìn trong bố cục đang hoạt động
+    .lock-unlock-viewport = Khóa/Mở khóa khung nhìn
     .what-s-new = Có gì mới
     .width-value = Chiều rộng: __ocs_arg_value__
     .working = Đang xử lý…
