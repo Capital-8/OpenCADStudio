@@ -6120,6 +6120,7 @@ ui =
     .viewport-annotation-scale-sync = व्यूपोर्ट / एनोटेशन स्केल सिंक
     .viewport-count = व्यूपोर्ट की संख्या
     .viewport-count-in-active-layout = सक्रिय लेआउट में व्यूपोर्ट की संख्या
+    .lock-unlock-viewport = व्यूपोर्ट लॉक/अनलॉक करें
     .what-s-new = नया क्या है
     .width-value = चौड़ाई: __ocs_arg_value__
     .working = कार्य...

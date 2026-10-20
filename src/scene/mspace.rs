@@ -734,6 +734,39 @@ impl Scene {
         })
     }
 
+    /// The viewports the status-bar lock acts on: the one entered, else the
+    /// selected viewports of the current layout.
+    pub(crate) fn lockable_viewports(&self) -> Vec<Handle> {
+        if self.current_layout == "Model" {
+            return Vec::new();
+        }
+        let is_viewport = |handle: &Handle| {
+            matches!(
+                self.document.get_entity(*handle),
+                Some(codec::EntityType::Viewport(vp))
+                    if !Self::is_sheet_viewport(&self.document, vp)
+            )
+        };
+        match self.active_viewport.filter(is_viewport) {
+            Some(active) => vec![active],
+            None => self.selected.iter().copied().filter(is_viewport).collect(),
+        }
+    }
+
+    /// Display lock of [`Self::lockable_viewports`]: `Some(true)` when all
+    /// are locked, `None` when there is no viewport to lock.
+    pub fn viewports_display_locked(&self) -> Option<bool> {
+        let handles = self.lockable_viewports();
+        (!handles.is_empty()).then(|| {
+            handles.iter().all(|handle| {
+                matches!(
+                    self.document.get_entity(*handle),
+                    Some(codec::EntityType::Viewport(vp)) if vp.status.locked
+                )
+            })
+        })
+    }
+
     /// Commit an externally navigated camera through the same floating-view
     /// encoding as the ViewCube. Camera coordinates already include view_center.
     pub(crate) fn apply_navigation_camera(&mut self, camera: view::camera::Camera) -> bool {

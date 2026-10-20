@@ -5365,6 +5365,20 @@ impl OpenCADStudio {
                 }
                 Task::none()
             }
+            Message::ToggleViewportLock => {
+                let i = self.active_tab;
+                let scene = &self.tabs[i].scene;
+                let lock = scene.viewports_display_locked() == Some(false);
+                let handles = scene.lockable_viewports();
+                self.apply_property_op(i, "CHPROP", &handles, |app, handle| {
+                    if let Some(codec::EntityType::Viewport(vp)) =
+                        app.tabs[i].scene.document.get_entity_mut(handle)
+                    {
+                        vp.status.locked = lock;
+                    }
+                });
+                Task::none()
+            }
             Message::ToggleScalePopup => {
                 self.scale_popup_open ^= true;
                 Task::none()

@@ -6144,6 +6144,7 @@ ui =
     .viewport-annotation-scale-sync = مزامنة منفذ العرض / مقياس التعليق التوضيحي
     .viewport-count = عدد منافذ العرض
     .viewport-count-in-active-layout = عدد منافذ العرض في التخطيط النشط
+    .lock-unlock-viewport = قفل/إلغاء قفل منفذ العرض
     .what-s-new = ما الجديد
     .width-value = العرض: __ocs_arg_value__
     .working = جارٍ العمل…

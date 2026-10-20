@@ -1643,7 +1643,9 @@ impl OpenCADStudio {
                         .active_model_tile_bounds(vp_size.0, vp_size.1);
                     drop(sel);
                     let zoom_delta = -dy * 0.03;
-                    if self.tabs[i].scene.active_viewport.is_some() {
+                    if self.tabs[i].scene.active_viewport.is_some()
+                        && !self.tabs[i].scene.navigation_locked()
+                    {
                         self.tabs[i].scene.pan_active_viewport(dx, 0.0, bounds);
                         self.tabs[i].scene.zoom_active_viewport(zoom_delta, None);
                     } else {
@@ -7112,7 +7114,11 @@ properties={:.1}ms picked={}",
         // viewport height), so a tiled pane pans at the correct rate.
         let (vw, vh) = self.tabs[i].scene.selection.borrow().view.vp_size;
         let bounds = self.tabs[i].scene.active_model_tile_bounds(vw, vh);
-        if self.tabs[i].scene.active_viewport.is_some() {
+        // A display-locked viewport keeps its scale: navigating inside it
+        // pans the sheet instead.
+        if self.tabs[i].scene.active_viewport.is_some()
+            && !self.tabs[i].scene.navigation_locked()
+        {
             self.tabs[i].scene.pan_active_viewport(dx, dy, bounds);
             // Bump so the GPU re-uploads the viewport's re-culled wire set —
             // otherwise newly-revealed lines stay invisible until MSPACE is
@@ -7152,9 +7158,12 @@ properties={:.1}ms picked={}",
             width: vw,
             height: vh,
         };
-        if self.tabs[i].scene.active_viewport.is_some() {
+        if self.tabs[i].scene.active_viewport.is_some()
+            && !self.tabs[i].scene.navigation_locked()
+        {
             // In MSPACE: zoom the active viewport's model-space view,
-            // keeping the model point under the cursor stationary.
+            // keeping the model point under the cursor stationary. A
+            // display-locked viewport keeps its scale, so the sheet zooms.
             let cursor_paper = cursor.map(|cp| {
                 let pt = self.tabs[i]
                     .scene

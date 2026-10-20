@@ -69,6 +69,8 @@ pub struct StatusBarLayoutState<'a> {
     pub annotation_all_visible: bool,
     pub annotation_auto_add: bool,
     pub viewport_scale_synced: Option<bool>,
+    /// Display lock of the entered or selected viewports, `None` without one.
+    pub viewport_locked: Option<bool>,
     pub lineweight_display: bool,
 }
 
@@ -150,6 +152,7 @@ impl StatusBar {
             annotation_all_visible,
             annotation_auto_add,
             viewport_scale_synced,
+            viewport_locked,
             lineweight_display,
         } = layout;
         let StatusBarModes {
@@ -459,6 +462,17 @@ impl StatusBar {
                             Message::SyncViewportAnnotationScale,
                         ),
                         t!("Viewport / Annotation Scale Sync"),
+                    )
+                    .into(),
+                );
+            }
+        }
+        if vis(StatusPill::VpLock) {
+            if let Some(locked) = viewport_locked {
+                pills.push(
+                    tip(
+                        toggle_pill(crate::ui::icons::LOCK, locked, Message::ToggleViewportLock),
+                        t!("Lock/Unlock Viewport"),
                     )
                     .into(),
                 );

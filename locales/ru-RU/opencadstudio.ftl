@@ -6133,6 +6133,7 @@ ui =
     .viewport-annotation-scale-sync = Синхронизация масштаба видового экрана и аннотаций
     .viewport-count = Количество видовых экранов
     .viewport-count-in-active-layout = Количество видовых экранов на активном листе
+    .lock-unlock-viewport = Блокировать/разблокировать видовой экран
     .what-s-new = Что нового
     .width-value = Ширина: __ocs_arg_value__
     .working = Работать...

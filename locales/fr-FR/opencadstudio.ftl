@@ -6132,6 +6132,7 @@ ui =
     .viewport-annotation-scale-sync = Synchronisation de l’échelle de la fenêtre et des annotations
     .viewport-count = Nombre de fenêtres
     .viewport-count-in-active-layout = Nombre de fenêtres dans la présentation active
+    .lock-unlock-viewport = Verrouiller/déverrouiller la fenêtre
     .what-s-new = Quoi de neuf ?
     .width-value = Largeur: __ocs_arg_value__
     .working = Travailler...

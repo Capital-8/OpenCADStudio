@@ -2061,6 +2061,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Loading videos…" => Some(("common", "loading-videos")),
         "Load…" => Some(("common", "load")),
         "Lock" => Some(("layers", "lock")),
+        "Lock/Unlock Viewport" => Some(("ui", "lock-unlock-viewport")),
         "Lock position" => Some(("properties", "lock-position")),
         "Locked" => Some(("properties", "locked")),
         "Loft Flags" => Some(("model", "loft-flags")),

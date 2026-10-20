@@ -6131,6 +6131,7 @@ ui =
     .viewport-annotation-scale-sync = Synchronizacja skali rzutni / adnotacji
     .viewport-count = Liczba rzutni
     .viewport-count-in-active-layout = Liczba rzutni w aktywnym układzie
+    .lock-unlock-viewport = Zablokuj/odblokuj rzutnię
     .what-s-new = Co nowego
     .width-value = Szerokość: __ocs_arg_value__
     .working = Pracuję…

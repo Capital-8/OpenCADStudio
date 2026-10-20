@@ -6115,6 +6115,7 @@ ui =
     .viewport-annotation-scale-sync = 视口/注释比例同步
     .viewport-count = 视口数量
     .viewport-count-in-active-layout = 当前布局中的视口数量
+    .lock-unlock-viewport = 锁定/解锁视口
     .what-s-new = 更新内容
     .width-value = 宽度：__ocs_arg_value__
     .working = 正在处理…

@@ -6130,6 +6130,7 @@ ui =
     .viewport-annotation-scale-sync = Ansichtsfenster-/Beschriftungsmaßstab synchronisieren
     .viewport-count = Anzahl der Ansichtsfenster
     .viewport-count-in-active-layout = Anzahl der Ansichtsfenster im aktiven Layout
+    .lock-unlock-viewport = Ansichtsfenster sperren/entsperren
     .what-s-new = Was ist neu
     .width-value = Breite: __ocs_arg_value__
     .working = Arbeitend...

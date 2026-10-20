@@ -6132,6 +6132,7 @@ ui =
     .viewport-annotation-scale-sync = Συγχρονισμός κλίμακας θύρας προβολής / επισημείωσης
     .viewport-count = Πλήθος θυρών προβολής
     .viewport-count-in-active-layout = Πλήθος θυρών προβολής στην ενεργή διάταξη
+    .lock-unlock-viewport = Κλείδωμα/ξεκλείδωμα θύρας προβολής
     .what-s-new = Τι νέο υπάρχει
     .width-value = Πλάτος: __ocs_arg_value__
     .working = Εκτέλεση…

@@ -3534,6 +3534,8 @@ pub enum Message {
     ToggleAnnotationVisibility,
     ToggleAnnotationAutoAdd,
     SyncViewportAnnotationScale,
+    /// Status bar: toggle the display lock of the entered or selected viewports.
+    ToggleViewportLock,
     /// Toggle the scale picker popup open/closed.
     ToggleScalePopup,
     /// Close the scale picker popup.

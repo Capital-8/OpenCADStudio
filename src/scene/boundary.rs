@@ -170,18 +170,30 @@ fn live_segments_for_curves(
 }
 
 fn hatch_path_seed(path: &codec::entities::BoundaryPath) -> Option<[f64; 2]> {
-    let mut ring = Vec::new();
+    // A clockwise arc edge tessellates counter-clockwise, so the edges are
+    // chained tip to tail instead of appended: appended, the reversed arc
+    // folds the ring and the seed lands in the neighbouring region.
+    let mut edges = Vec::with_capacity(path.edges.len());
     for edge in &path.edges {
         let curve = crate::entities::hatch::edge_curve(edge)?;
-        let points = curve.tessellate_angle(kernel::tessellation::DEFAULT_ANGLE);
-        ring.extend(points.into_iter().skip(usize::from(!ring.is_empty())));
+        edges.push(curve.tessellate_angle(kernel::tessellation::DEFAULT_ANGLE));
     }
+    let ring = super::entity::chain_path_edges(edges);
     if ring.len() < 3 {
         return None;
     }
+    // The largest triangle's centroid: a sliver along a tessellated arc can
+    // sit on the far side of the true curve, in the neighbouring region.
     let (points, triangles) = triangulate(&ring, &[]);
-    if let Some(triangle) = triangles.first() {
-        let [a, b, c] = triangle.map(|vertex| points[vertex]);
+    let corners = |triangle: &[usize; 3]| triangle.map(|vertex| points[vertex]);
+    let area = |[a, b, c]: [[f64; 2]; 3]| {
+        ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])).abs()
+    };
+    if let Some(triangle) = triangles
+        .iter()
+        .max_by(|a, b| area(corners(a)).total_cmp(&area(corners(b))))
+    {
+        let [a, b, c] = corners(triangle);
         Some([(a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0])
     } else {
         Some([
@@ -1436,6 +1448,38 @@ mod boundary_xline_tests {
             codec::types::Vector3::new(start[0], start[1], start[2]),
             codec::types::Vector3::new(end[0], end[1], end[2]),
         )))
+    }
+
+    #[test]
+    fn hatch_seed_stays_in_a_region_bounded_by_a_clockwise_arc() {
+        use codec::entities::{BoundaryEdge, BoundaryPath, CircularArcEdge, LineEdge};
+        use codec::types::Vector2;
+        // The part of a 50 x 30 rectangle right of a radius-20 circle at
+        // (25, 15), as HATCH stores it: three lines and a clockwise arc.
+        let x = 25.0 + 175f64.sqrt();
+        let line = |a: [f64; 2], b: [f64; 2]| {
+            BoundaryEdge::Line(LineEdge {
+                start: Vector2::new(a[0], a[1]),
+                end: Vector2::new(b[0], b[1]),
+            })
+        };
+        let angle = (15f64).atan2(x - 25.0);
+        let mut path = BoundaryPath::new();
+        path.edges = vec![
+            line([x, 0.0], [50.0, 0.0]),
+            line([50.0, 0.0], [50.0, 30.0]),
+            line([50.0, 30.0], [x, 30.0]),
+            BoundaryEdge::CircularArc(CircularArcEdge {
+                center: Vector2::new(25.0, 15.0),
+                radius: 20.0,
+                start_angle: std::f64::consts::TAU - angle,
+                end_angle: std::f64::consts::TAU + angle,
+                counter_clockwise: false,
+            }),
+        ];
+        let [sx, sy] = hatch_path_seed(&path).expect("a seed");
+        assert!(sx < 50.0 && (0.0..30.0).contains(&sy));
+        assert!((sx - 25.0).hypot(sy - 15.0) > 20.0, "seed {sx},{sy} is inside the circle");
     }
 
     #[test]

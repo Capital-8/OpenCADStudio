@@ -2661,9 +2661,10 @@ bg={bg_ms:.1}ms n={view_count}"
 
         let main_ui = container({
             // Clean-screen mode drops the ribbon for a full-canvas view; the
-            // status bar stays so the mode can be toggled back off.
+            // menu bar and status bar stay so commands remain reachable and
+            // the mode can be toggled back off.
             let mut col = column![];
-            if !self.clean_screen && self.show_menu_bar {
+            if self.show_menu_bar {
                 col = col.push(crate::ui::menu_bar::view());
             }
             if !self.clean_screen && !self.ribbon_closed {
@@ -2770,6 +2771,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             annotation_all_visible: tab.scene.annotation_all_visible(),
                             annotation_auto_add: self.annotation_auto_scale > 0,
                             viewport_scale_synced: tab.scene.viewport_annotation_scale_synced(),
+                            viewport_locked: tab.scene.viewports_display_locked(),
                             lineweight_display: tab.scene.document.header.lineweight_display,
                         },
                         crate::ui::statusbar::StatusBarModes {
