@@ -21,6 +21,9 @@ pub(crate) struct ActionCommand {
     column_offset: Option<f64>,
     row_offset: Option<f64>,
     context: Option<PointPickContext>,
+    multiplier: f64,
+    angle_offset: f64,
+    override_input: Option<bool>,
 }
 impl ActionCommand {
     pub(crate) fn new(
@@ -42,6 +45,9 @@ impl ActionCommand {
             column_offset: None,
             row_offset: None,
             context: None,
+            multiplier: 1.,
+            angle_offset: 0.,
+            override_input: None,
         }
     }
     pub(crate) fn for_parameter(
@@ -81,6 +87,9 @@ impl CadCommand for ActionCommand {
         "BACTION"
     }
     fn input_kind(&self) -> crate::command::InputKind {
+        if self.override_input.is_some() {
+            return crate::command::InputKind::SingleToken;
+        }
         if self.parameter.is_some() {
             if self.kind == Some(Kind::Array) && !self.selecting {
                 let is_xy = self
@@ -100,6 +109,17 @@ impl CadCommand for ActionCommand {
         }
     }
     fn prompt(&self) -> String {
+        if let Some(multiplier) = self.override_input {
+            return if multiplier {
+                crate::tf!("BACTION  Enter distance multiplier <{}>:", self.multiplier).into_owned()
+            } else {
+                crate::tf!(
+                    "BACTION  Enter angle offset in degrees <{}>:",
+                    self.angle_offset.to_degrees()
+                )
+                .into_owned()
+            };
+        }
         if self.kind.is_none() {
             return crate::t!(
                 "BACTION  Enter action type [Move/Scale/Stretch/Polar Stretch/Rotate/Flip/Array]:"
@@ -157,7 +177,12 @@ impl CadCommand for ActionCommand {
                 return crate::t!("BACTION  Specify distance between rows:").into_owned();
             }
         }
-        crate::t!("BACTION  Specify action marker location:").into_owned()
+        if matches!(self.kind, Some(Kind::Move | Kind::Stretch)) {
+            crate::t!("BACTION  Specify action marker location or [Multiplier/Offset]:")
+                .into_owned()
+        } else {
+            crate::t!("BACTION  Specify action marker location:").into_owned()
+        }
     }
     fn options(&self) -> Vec<CmdOption> {
         if self.kind.is_none() {
@@ -170,11 +195,54 @@ impl CadCommand for ActionCommand {
                 CmdOption::new("Flip", "Flip"),
                 CmdOption::new("Array", "Array"),
             ]
+        } else if self.parameter.is_some()
+            && !self.selecting
+            && self.override_input.is_none()
+            && matches!(self.kind, Some(Kind::Move | Kind::Stretch))
+            && (!self.kind.is_some_and(actions::needs_frame) || self.frame.len() == 2)
+        {
+            vec![
+                CmdOption::new("Multiplier", "Multiplier"),
+                CmdOption::new("Offset", "Offset"),
+            ]
         } else {
             vec![]
         }
     }
     fn on_text_input(&mut self, s: &str) -> Option<CmdResult> {
+        if let Some(multiplier) = self.override_input {
+            let Ok(value) = s.trim().parse::<f64>() else {
+                return Some(CmdResult::ReportError(
+                    crate::t!("Enter a finite action override.").into_owned(),
+                ));
+            };
+            if !value.is_finite() {
+                return Some(CmdResult::ReportError(
+                    crate::t!("Enter a finite action override.").into_owned(),
+                ));
+            }
+            if multiplier {
+                self.multiplier = value;
+            } else {
+                self.angle_offset = value.to_radians();
+            }
+            self.override_input = None;
+            return Some(CmdResult::NeedPoint);
+        }
+        if self.parameter.is_some()
+            && !self.selecting
+            && matches!(self.kind, Some(Kind::Move | Kind::Stretch))
+            && (!self.kind.is_some_and(actions::needs_frame) || self.frame.len() == 2)
+        {
+            match s.trim().to_ascii_uppercase().as_str() {
+                "MULTIPLIER" | "M" => self.override_input = Some(true),
+                "OFFSET" | "O" => self.override_input = Some(false),
+                _ => {}
+            }
+            if self.override_input.is_some() {
+                return Some(CmdResult::NeedPoint);
+            }
+        }
         if self.kind.is_none() {
             return Some(if let Some(k) = Kind::parse(s) {
                 self.kind = Some(k);
@@ -248,6 +316,11 @@ impl CadCommand for ActionCommand {
         self.context = c;
     }
     fn on_point(&mut self, point: DVec3) -> CmdResult {
+        if self.override_input.is_some() {
+            return CmdResult::ReportError(
+                crate::t!("Enter a finite action override.").into_owned(),
+            );
+        }
         if self.parameter.is_none() {
             let Some(c) = self.context else {
                 return CmdResult::ReportError(crate::t!("Enter the parameter name.").into_owned());
@@ -350,6 +423,8 @@ impl CadCommand for ActionCommand {
             location: point,
             frame: (self.frame.len() == 2).then(|| [self.frame[0], self.frame[1]]),
             array_offsets,
+            displacement_overrides: matches!(self.kind, Some(Kind::Move | Kind::Stretch))
+                .then_some((self.multiplier, self.angle_offset)),
         }
     }
 
@@ -367,6 +442,9 @@ impl CadCommand for ActionCommand {
         CmdResult::NeedPoint
     }
     fn on_enter(&mut self) -> CmdResult {
+        if self.override_input.take().is_some() {
+            return CmdResult::NeedPoint;
+        }
         if self.selecting {
             if self.targets.is_empty() {
                 return CmdResult::ReportError(

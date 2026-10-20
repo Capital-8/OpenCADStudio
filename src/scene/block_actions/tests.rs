@@ -827,7 +827,7 @@ fn block_actions_reject_invalid_selection_binding_and_nonfinite_without_mutation
     let DynamicBlockData::MoveAction(m) = &mut o.data else {
         panic!()
     };
-    m.offsets.distance_multiplier = 0.5;
+    m.offsets.distance_multiplier = f64::INFINITY;
     let baseline = doc.clone();
     assert!(evaluate(&mut doc, &baseline, def, p, DVec3::new(15., 0., 0.)).is_err());
     assert_eq!(doc, baseline);
@@ -1301,7 +1301,7 @@ fn block_actions_stretch_invalid_frame_binding_and_options_are_atomic() {
         };
         match corrupt {
             0 => a.handles[0].indexes = vec![99],
-            1 => a.offsets.distance_multiplier = 2.,
+            1 => a.offsets.distance_multiplier = f64::INFINITY,
             _ => a.connections[0].name = "BaseXDelta".into(),
         }
         let baseline = invalid.clone();
@@ -2244,3 +2244,55 @@ fn block_actions_array_rejections() {
     assert!(create_array(&mut doc, def, p_lin, &targets, DVec3::ZERO, -2.0, 1.0).is_err());
 }
 
+
+#[test]
+fn block_action_overrides_evaluate_and_roundtrip_without_accumulation() {
+    for stretch in [false, true] {
+        let (mut doc, def, targets, parameter, action) = if stretch {
+            stretch_fixture()
+        } else {
+            let (mut doc, def, targets) = fixture();
+            let parameter = linear(&mut doc, def);
+            let action = create(&mut doc, def, Kind::Move, parameter, &targets, DVec3::ZERO).unwrap();
+            (doc, def, targets, parameter, action)
+        };
+        assert!(options::set(&mut doc, def, action, 2., std::f64::consts::FRAC_PI_2).unwrap());
+        assert!(!options::set(&mut doc, def, action, 2., std::f64::consts::FRAC_PI_2).unwrap());
+        let before = doc.clone();
+        for (multiplier, angle) in [(f64::NAN,0.),(1.,f64::INFINITY)] {
+            assert!(options::set(&mut doc, def, action, multiplier, angle).is_err());
+            assert_eq!(doc, before);
+        }
+        let record = doc.objects[&action].clone();
+        let baseline = doc.clone();
+        for distance in [15.,12.,10.] {
+            evaluate(&mut doc, &baseline, def, parameter, DVec3::new(distance,0.,0.)).unwrap();
+            let EntityType::Line(line) = doc.get_entity(targets[0]).unwrap() else { panic!() };
+            let offset = (distance-10.)*2.;
+            let (expected_start, expected_end) = if stretch {
+                (Vector3::ZERO,Vector3::new(10.,offset,0.))
+            } else {
+                (Vector3::new(1.,offset,0.),Vector3::new(2.,offset,0.))
+            };
+            assert!((line.start-expected_start).length()<1e-10);
+            assert!((line.end-expected_end).length()<1e-10);
+            assert_eq!(doc.objects[&action], record);
+        }
+        for reopened in [
+            DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&baseline).unwrap())).read().unwrap(),
+            DxfReader::from_reader(Cursor::new(DxfWriter::new(&baseline).write_to_vec().unwrap())).unwrap().read().unwrap(),
+        ] {
+            assert_eq!(reopened.objects[&action], record);
+            let name = reopened.block_records.iter().find(|r| r.handle==def).unwrap().name.clone();
+            let mut source = reopened.clone();
+            let reference = source.add_entity(EntityType::Insert(codec::entities::Insert::new(name,Vector3::ZERO))).unwrap();
+            let changed = instance::evaluate(&source,reference,parameter,DVec3::new(15.,0.,0.)).unwrap().unwrap();
+            let EntityType::Insert(insert) = changed.get_entity(reference).unwrap() else { panic!() };
+            let evaluated = changed.block_records.get(&insert.block_name).unwrap().entity_handles[0];
+            let EntityType::Line(line) = changed.get_entity(evaluated).unwrap() else { panic!() };
+            let expected = if stretch { Vector3::new(10.,10.,0.) } else { Vector3::new(2.,10.,0.) };
+            assert!((line.end-expected).length()<1e-10);
+            assert_eq!(source.get_entity(targets[0]),reopened.get_entity(targets[0]));
+        }
+    }
+}

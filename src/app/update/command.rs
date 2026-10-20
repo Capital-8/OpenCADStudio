@@ -3979,6 +3979,9 @@ impl OpenCADStudio {
     }
 
     pub(super) fn on_prop_geom_commit(&mut self, field: &'static str) -> Task<Message> {
+        if field.starts_with("authoring_action_") {
+            return self.commit_authoring_action_option(field);
+        }
         if field == "authoring_name" {
             return self.commit_authoring_name();
         }

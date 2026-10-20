@@ -73,6 +73,49 @@ impl CadCommand for EditCommand {
     }
 }
 impl OpenCADStudio {
+    pub(super) fn commit_authoring_action_option(&mut self, field: &'static str) -> Task<Message> {
+        use crate::scene::block_actions::options;
+        let i = self.active_tab;
+        let Some(session) = self.tabs[i].active_block_edit_session() else { return Task::none() };
+        let definition = session.br_handle;
+        let Some(handle) = self.tabs[i].selected_authoring else { return Task::none() };
+        let key = crate::ui::properties::FieldKey::Geom(field);
+        let Some(input) = self.tabs[i].properties.edit_buf.get(&key) else { return Task::none() };
+        let Some(before) = options::offsets(&self.tabs[i].scene.document, handle) else { return Task::none() };
+        let value = crate::app::expr_eval::eval_to_string(input).parse::<f64>();
+        let Ok(value) = value else {
+            self.command_line.push_error(crate::t!("Enter a finite action override.").as_ref());
+            return Task::none();
+        };
+        let (multiplier, angle) = match field {
+            "authoring_action_multiplier" => (value, before.angle_offset),
+            "authoring_action_angle" => (before.distance_multiplier, value.to_radians()),
+            _ => return Task::none(),
+        };
+        let mut staged = self.tabs[i].scene.document.clone();
+        match options::set(&mut staged, definition, handle, multiplier, angle) {
+            Ok(true) => {
+                let staged = match crate::scene::block_actions::instance::refresh(&staged, definition) {
+                    Ok(staged) => staged,
+                    Err(error) => {
+                        self.command_line.push_error(crate::t!(error).as_ref());
+                        return Task::none();
+                    }
+                };
+                self.push_undo_snapshot(i, "Edit block action override");
+                self.apply_action_document(i, staged);
+                self.tabs[i].dirty = true;
+                self.tabs[i].scene.bump_geometry();
+                self.finish_pending_history(i);
+                self.tabs[i].properties.edit_buf.remove(&key);
+                self.refresh_properties();
+            }
+            Ok(false) => { self.tabs[i].properties.edit_buf.remove(&key); }
+            Err(error) => self.command_line.push_error(crate::t!(error).as_ref()),
+        }
+        Task::none()
+    }
+
     fn authoring_label_corners(
         &self,
         graphic: &crate::scene::block_distance_parameter::Graphic,

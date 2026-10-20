@@ -1560,6 +1560,7 @@ pub enum CmdResult {
         location: DVec3,
         frame: Option<[DVec3; 2]>,
         array_offsets: Option<(f64, f64)>,
+        displacement_overrides: Option<(f64, f64)>,
     },
     EvaluateBlockParameter {
         insert: Option<Handle>,

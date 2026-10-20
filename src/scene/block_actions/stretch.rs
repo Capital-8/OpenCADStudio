@@ -103,10 +103,8 @@ pub(crate) fn bind_existing(
 }
 
 pub(crate) fn validate_options(a: &BlockStretchAction) -> Result<(), &'static str> {
-    if a.offsets.distance_multiplier != 1.
-        || a.offsets.angle_offset != 0.
-        || a.offsets.flags != 0
-        || !a.codes.is_empty()
+    options::validate(&a.offsets)?;
+    if !a.codes.is_empty()
         || !a.action.action_ids.is_empty()
         || a.connections[0].code != a.connections[1].code
         || !matches!(

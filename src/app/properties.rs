@@ -2525,6 +2525,24 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                         }))
                         .collect(),
                     }];
+                    if let Some(offsets) = crate::scene::block_actions::options::offsets(
+                        &self.tabs[i].scene.document, item.handle) {
+                        panel.sections.push(PropSection {
+                            title: crate::t!("Action overrides").into_owned(),
+                            props: vec![
+                                Property {
+                                    label: crate::t!("Distance multiplier").into_owned(),
+                                    field: "authoring_action_multiplier",
+                                    value: PropValue::EditText(offsets.distance_multiplier.to_string()),
+                                },
+                                Property {
+                                    label: crate::t!("Angle offset (degrees)").into_owned(),
+                                    field: "authoring_action_angle",
+                                    value: PropValue::EditText(offsets.angle_offset.to_degrees().to_string()),
+                                },
+                            ],
+                        });
+                    }
                     if let Some((chain_actions, value_sets)) =
                         self.authoring_parameter_properties(item.handle)
                     {

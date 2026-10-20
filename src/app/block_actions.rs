@@ -416,6 +416,7 @@ impl OpenCADStudio {
                 location,
                 frame,
                 array_offsets,
+                displacement_overrides,
             } => {
                 if self.tabs[i].id != document
                     || self.tabs[i]
@@ -440,7 +441,12 @@ impl OpenCADStudio {
                     location,
                     frame,
                     array_offsets,
-                ) {
+                ).and_then(|handle| {
+                    if let Some((multiplier, angle)) = displacement_overrides {
+                        actions::options::set(&mut staged, definition, handle, multiplier, angle)?;
+                    }
+                    Ok(handle)
+                }) {
                     Ok(_) => {
                         self.push_undo_snapshot(i, &format!("{} action", kind.name()));
                         self.tabs[i].scene.document = staged;

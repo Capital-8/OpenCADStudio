@@ -13,6 +13,7 @@ pub(crate) mod feedback;
 pub(crate) mod association;
 mod representation;
 mod stretch;
+pub(crate) mod options;
 
 /// Smallest signed distance between two angles in radians, accounting for the
 /// wrap at ±π. Used for BPT rotation snapping and current-row detection.
@@ -1274,7 +1275,8 @@ fn evaluate_impl(
             };
             let move_translation = match &action_object.data {
                 DynamicBlockData::MoveAction(move_action) => {
-                    Some(action_move_delta(&q, end, &move_action.connections))
+                    Some(action_move_delta(&q, end, &move_action.connections)
+                        .map(|delta| options::displacement(&move_action.offsets, delta)).transpose()?)
                 }
                 _ => None,
             };
@@ -1319,18 +1321,14 @@ fn evaluate_impl(
                 }
                 Kind::Array => unreachable!(),
             };
-            // Imported actions with custom multipliers/offsets/chaining must
-            // not silently behave like the simple actions authored here.
+            // Do not silently ignore retained native action chains.
             if !a.action_ids.is_empty() {
                 return Err("Chained actions are not supported yet.");
             }
             let o = action_object;
             match &o.data {
                 DynamicBlockData::MoveAction(m)
-                    if m.offsets.distance_multiplier != 1.
-                        || m.offsets.angle_offset != 0.
-                        || m.offsets.flags != 0
-                        || action_move_delta(&q, end, &m.connections).is_none() =>
+                    if action_move_delta(&q, end, &m.connections).is_none() =>
                 {
                     return Err("This Move action uses options not supported yet.");
                 }
@@ -1382,7 +1380,7 @@ fn evaluate_impl(
             if let DynamicBlockData::StretchAction(s) = &o.data {
                 let delta = action_move_delta(&q, end, &s.connections)
                     .ok_or("This Stretch action uses unsupported parameter connections.")?;
-                stretch::apply(&mut entity, s, delta)?;
+                stretch::apply(&mut entity, s, options::displacement(&s.offsets, delta)?)?;
             } else if let DynamicBlockData::PolarStretchAction(s) = &o.data {
                 if s.connections.iter().any(|c| c.code != q.id) {
                     return Err("This Polar Stretch action uses a different parameter binding.");

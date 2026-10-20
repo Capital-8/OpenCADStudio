@@ -2235,6 +2235,7 @@ fn block_actions_rejected_outside_editor_preserve_running_command_and_stale_resu
         location: glam::DVec3::ZERO,
         frame: None,
         array_offsets: None,
+        displacement_overrides: None,
     });
     assert_eq!(app.tabs[i].scene.document, before);
     let _ = app.dispatch_command("LINE");
@@ -5337,4 +5338,85 @@ fn block_action_bars_open_lookup_and_orphan_association_and_ignore_stale_callbac
     assert!(app.tabs[i].active_cmd.is_none());
     assert!(app.tabs[i].action_bars.offsets.is_empty());
     assert_eq!(app.tabs[i].scene.document, before);
+}
+
+#[test]
+fn block_action_overrides_properties_are_atomic_and_locally_undoable() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter = actions::all_parameters(&app.tabs[i].scene.document,definition)[0].handle;
+    let targets = members(&app);
+    let action = actions::create(&mut app.tabs[i].scene.document,definition,Kind::Move,parameter,&targets,glam::DVec3::ZERO).unwrap();
+    let _ = app.update(Message::BlockActionBarSelect(action));
+    let fields=app.tabs[i].properties.sections.iter().flat_map(|s| &s.props).map(|p|p.field).collect::<Vec<_>>();
+    assert!(fields.contains(&"authoring_action_multiplier"));
+    assert!(fields.contains(&"authoring_action_angle"));
+    let initial = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    for (field,value) in [("authoring_action_multiplier","1/2"),("authoring_action_angle","90")] {
+        let _=app.update(Message::PropGeomInput{field,value:value.into()});
+        let _=app.update(Message::PropGeomCommit(field));
+    }
+    let offsets=actions::options::offsets(&app.tabs[i].scene.document,action).unwrap();
+    assert_eq!(offsets.distance_multiplier,0.5);
+    assert_eq!(offsets.angle_offset,std::f64::consts::FRAC_PI_2);
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth+2);
+    let changed=app.tabs[i].scene.document.clone();
+    for value in ["NaN","inf","unresolved_name"] {
+        let _=app.update(Message::PropGeomInput{field:"authoring_action_multiplier",value:value.into()});
+        let _=app.update(Message::PropGeomCommit("authoring_action_multiplier"));
+        assert_eq!(app.tabs[i].scene.document,changed);
+        assert_eq!(app.tabs[i].history.undo_stack.len(),depth+2);
+    }
+    app.undo_steps(2);
+    assert_eq!(app.tabs[i].scene.document.objects[&action],initial.objects[&action]);
+    app.redo_steps(2);
+    assert_eq!(app.tabs[i].scene.document.objects[&action],changed.objects[&action]);
+    let _=app.dispatch_command("BEDIT_DISCARD");
+    let before=app.tabs[i].scene.document.clone();
+    let _=app.update(Message::PropGeomCommit("authoring_action_multiplier"));
+    assert_eq!(app.tabs[i].scene.document,before);
+}
+
+#[test]
+fn block_action_overrides_command_options_create_one_atomic_action() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app,reference);
+    let i=app.active_tab;
+    let _=app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let definition=app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter=actions::all_parameters(&app.tabs[i].scene.document,definition)[0].clone();
+    let targets=members(&app);
+    let before=app.tabs[i].scene.document.clone();
+    let depth=app.tabs[i].history.undo_stack.len();
+    let _=app.dispatch_command("BACTION MOVE");
+    feed(&mut app,&parameter.name);
+    let _=app.feed_command(crate::command::StepInput::SelectionComplete(targets));
+    let _=app.feed_command(crate::command::StepInput::Enter);
+    feed(&mut app,"Multiplier");
+    feed(&mut app,"NaN");
+    assert!(app.tabs[i].active_cmd.is_some());
+    assert_eq!(app.tabs[i].scene.document,before);
+    feed(&mut app,"0.5");
+    feed(&mut app,"Offset");
+    feed(&mut app,"90");
+    feed(&mut app,"4,4");
+    assert!(app.tabs[i].active_cmd.is_none());
+    let native=actions::actions(&app.tabs[i].scene.document,definition);
+    assert_eq!(native.len(),1);
+    assert_eq!(native[0].2,Kind::Move);
+    let action=native[0].0;
+    let offsets=actions::options::offsets(&app.tabs[i].scene.document,action).unwrap();
+    assert_eq!(offsets.distance_multiplier,0.5);
+    assert_eq!(offsets.angle_offset,std::f64::consts::FRAC_PI_2);
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth+1);
+    app.undo_steps(1);
+    assert!(actions::actions(&app.tabs[i].scene.document,definition).is_empty());
+    app.redo_steps(1);
+    assert!(actions::options::offsets(&app.tabs[i].scene.document,action).is_some());
 }
