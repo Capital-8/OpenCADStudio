@@ -20,15 +20,25 @@ pub struct PdfLayer {
     object: (i32, i32),
 }
 
-fn text_string(bytes: &[u8]) -> String {
-    if bytes.starts_with(&[0xFE, 0xFF]) {
-        let units: Vec<u16> = bytes[2..]
+/// A PDF text string: UTF-16 with a byte-order mark (big-endian per the
+/// standard; some producers write little-endian), UTF-8 with its mark, else
+/// PDFDocEncoding read as Latin-1. Trailing NULs some producers append are
+/// dropped.
+pub(crate) fn text_string(bytes: &[u8]) -> String {
+    let utf16 = |rest: &[u8], le: bool| {
+        let units: Vec<u16> = rest
             .chunks_exact(2)
-            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .map(|c| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) })
             .collect();
-        return String::from_utf16_lossy(&units);
-    }
-    bytes.iter().map(|&b| b as char).collect()
+        String::from_utf16_lossy(&units)
+    };
+    let text = match bytes {
+        [0xFE, 0xFF, rest @ ..] => utf16(rest, false),
+        [0xFF, 0xFE, rest @ ..] => utf16(rest, true),
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned(),
+        _ => bytes.iter().map(|&b| b as char).collect(),
+    };
+    text.trim_end_matches(char::from(0)).to_string()
 }
 
 /// The layers a PDF declares, in file order.
