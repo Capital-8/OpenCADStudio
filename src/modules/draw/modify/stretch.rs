@@ -730,6 +730,49 @@ mod shift_stretch_tests {
     use codec::types::Vector3;
 
     #[test]
+    fn shift_window_subtracts_selected_vertices_without_adding_a_crossing_window() {
+        let original = vec![(DVec3::ZERO, DVec3::new(20.0, 20.0, 0.0))];
+        let mut cmd = StretchCommand::with_windows(
+            vec![Handle::NULL], vec![], original.clone(), vec![],
+        );
+        // The first corner latches subtraction: releasing Shift before the
+        // second click must not turn it back into an additive selection.
+        cmd.set_shift(true);
+        assert!(matches!(cmd.on_point(DVec3::new(5.0, 7.0, 0.0)), CmdResult::NeedPoint));
+        cmd.set_shift(false);
+        match cmd.on_point(DVec3::new(12.0, 15.0, 0.0)) {
+            CmdResult::StretchWindow {
+                windows,
+                subtract_window: Some((min, max)),
+                ..
+            } => {
+                assert_eq!(windows, original);
+                assert_eq!(min, DVec3::new(5.0, 7.0, 0.0));
+                assert_eq!(max, DVec3::new(12.0, 15.0, 0.0));
+            }
+            _ => panic!("Shift selection must subtract existing STRETCH vertices"),
+        }
+    }
+
+    #[test]
+    fn normal_window_still_adds_to_the_stretch_selection() {
+        let original = vec![(DVec3::ZERO, DVec3::new(20.0, 20.0, 0.0))];
+        let mut cmd = StretchCommand::with_windows(vec![], vec![], original.clone(), vec![]);
+        assert!(matches!(cmd.on_point(DVec3::new(24.0, 4.0, 0.0)), CmdResult::NeedPoint));
+        match cmd.on_point(DVec3::new(30.0, 10.0, 0.0)) {
+            CmdResult::StretchWindow {
+                windows,
+                subtract_window: None,
+                ..
+            } => {
+                assert_eq!(windows.len(), 2);
+                assert_eq!(windows[0], original[0]);
+            }
+            _ => panic!("Ordinary STRETCH crossing window must still add"),
+        }
+    }
+
+    #[test]
     fn excluded_endpoint_stays_fixed_while_other_endpoint_stretches() {
         let mut entity = codec::EntityType::Line(Line::from_points(
             Vector3::new(0.0, 0.0, 0.0),
