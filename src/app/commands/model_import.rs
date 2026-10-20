@@ -88,7 +88,11 @@ impl OpenCADStudio {
         let drawing_mm = crate::app::properties::insunits_to_mm(
             self.tabs[i].scene.document.header.insertion_units,
         );
-        let Some(imported) = model_import::read(format, &bytes, drawing_mm) else {
+        let stem = std::path::Path::new(&path.replace('\\', "/"))
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let Some(imported) = model_import::read(format, &bytes, drawing_mm, &stem) else {
             self.command_line
                 .push_error(&format!("Import failed: {path} has no model the importer reads."));
             return Task::none();
