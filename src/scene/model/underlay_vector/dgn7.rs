@@ -179,6 +179,31 @@ const MAX_CELL_DEPTH: usize = 16;
 /// chains and shapes (joined), B-splines, text, cells and shared cell
 /// instances. In a 3D file (`d3`) points have a z and planar elements their
 /// plane; the drawn geometry is their plan.
+/// The fractions of a UOR an element's coordinates carry past their whole
+/// values: the user linkage 0x51A9 (after the attribute index at 30) holds a
+/// count, a key word and that many signed 1/32768ths, one per coordinate in
+/// the element's point order.
+fn uor_fractions(e: &[u8]) -> Vec<f64> {
+    let mut at = 32 + 2 * uint16(e, 30).unwrap_or(0) as usize;
+    while let Some(h) = uint16(e, at) {
+        if h & 0x1000 == 0 || h == 0 {
+            break;
+        }
+        let words = (h & 0xff) as usize + 1;
+        if uint16(e, at + 2) == Some(0x51a9) {
+            let count = uint16(e, at + 4).unwrap_or(0) as usize;
+            if 4 + count <= words {
+                return (0..count)
+                    .filter_map(|k| e.get(at + 8 + 2 * k..at + 10 + 2 * k))
+                    .map(|w| i16::from_le_bytes([w[0], w[1]]) as f64 / 32768.0)
+                    .collect();
+            }
+        }
+        at += 2 * words;
+    }
+    Vec::new()
+}
+
 fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
     let mut raw = Raw::default();
     // An open B-spline curve: order, pole count, colour, closed, and the
@@ -287,6 +312,19 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
         };
         let plan = |p: [f64; 3]| [p[0], p[1]];
         let step = if d3 { 12 } else { 8 };
+        // Point `k` of the element (at `at`) with its UOR fractions, when the
+        // element carries one for each coordinate of its `n` points.
+        let fractions = uor_fractions(e);
+        let dims = if d3 { 3 } else { 2 };
+        let vertex = |k: usize, at: usize, n: usize| -> Option<[f64; 3]> {
+            let mut p = pt3(at)?;
+            if fractions.len() == n * dims {
+                for (j, c) in p.iter_mut().take(dims).enumerate() {
+                    *c += fractions[k * dims + j];
+                }
+            }
+            Some(p)
+        };
         match kind {
             // A cell: its components follow as complex elements, as many as
             // its total length (36, the words after its first 38 bytes)
@@ -340,7 +378,7 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
                 }
             }
             3 => {
-                if let (Some(a3), Some(b3)) = (pt3(36), pt3(36 + step)) {
+                if let (Some(a3), Some(b3)) = (vertex(0, 36, 2), vertex(1, 36 + step, 2)) {
                     let (a, b) = (plan(a3), plan(b3));
                     collect.push(element(DgnGeom::Line(a3, b3)));
                     push(
@@ -359,7 +397,7 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
             }
             4 | 6 | 11 => {
                 let n = uint16(e, 36).unwrap_or(0) as usize;
-                let pts3: Vec<[f64; 3]> = (0..n).filter_map(|k| pt3(38 + k * step)).collect();
+                let pts3: Vec<[f64; 3]> = (0..n).filter_map(|k| vertex(k, 38 + k * step, n)).collect();
                 let pts: Vec<[f64; 2]> = pts3.iter().map(|p| plan(*p)).collect();
                 if pts.len() >= 2 {
                     collect.push(element(DgnGeom::Points(pts3)));
@@ -945,6 +983,7 @@ pub fn import(bytes: &[u8]) -> Option<DgnImport> {
         })
         .collect();
     Some(DgnImport {
+        dim_styles: Vec::new(),
         elements: scaled_elements(&raw.elements, s, [-u.origin[0] * s, -u.origin[1] * s, 0.0]),
         cells,
         levels,

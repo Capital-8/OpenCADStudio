@@ -634,6 +634,20 @@ pub enum DgnGeom {
         origin: P3,
         parts: Vec<DgnElement>,
     },
+    /// A dimension (V8, 2D): its MicroStation type (1 linear, 5 angle,
+    /// 11 radius, 12 diameter), its points, the dimension line's offset
+    /// from the last point (along `axes[1]`) and its x and y axes; `style`
+    /// is its dimension style's id.
+    Dimension {
+        kind: u8,
+        points: Vec<P3>,
+        offset: f64,
+        axes: [[f64; 2]; 2],
+        style: u32,
+    },
+    /// A note's leader (V8): its points, the arrow first, and its
+    /// dimension style's id.
+    Leader { points: Vec<P3>, style: u32 },
     /// A shared cell instance: x' = m[0]·x + m[1]·y + origin.x,
     /// y' = m[2]·x + m[3]·y + origin.y.
     Cell {
@@ -653,6 +667,23 @@ impl DgnGeom {
         match self {
             DgnGeom::Line(a, b) => DgnGeom::Line(p(*a), p(*b)),
             DgnGeom::Points(pts) => DgnGeom::Points(pts.iter().map(|q| p(*q)).collect()),
+            DgnGeom::Dimension {
+                kind,
+                points,
+                offset,
+                axes,
+                style,
+            } => DgnGeom::Dimension {
+                kind: *kind,
+                points: points.iter().map(|q| p(*q)).collect(),
+                offset: offset * s,
+                axes: *axes,
+                style: *style,
+            },
+            DgnGeom::Leader { points, style } => DgnGeom::Leader {
+                points: points.iter().map(|q| p(*q)).collect(),
+                style: *style,
+            },
             DgnGeom::Arc {
                 center,
                 u,
@@ -818,6 +849,8 @@ pub struct DgnImport {
     pub references: Vec<DgnReference>,
     /// The text style table (V8): each style's id, name and font file.
     pub text_styles: Vec<(u32, String, String)>,
+    /// The dimension style table (V8): each style's id and name.
+    pub dim_styles: Vec<(u32, String)>,
 }
 
 /// A reference attachment of a DGN model: the file and model it shows and

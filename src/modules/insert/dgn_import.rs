@@ -72,6 +72,8 @@ pub enum ExistingReference {
 pub struct Converted {
     pub layers: Vec<(String, Color)>,
     pub styles: Vec<(String, String)>,
+    /// Dimension styles, by name, in the file's table order.
+    pub dim_styles: Vec<String>,
     pub blocks: Vec<(String, Vec<EntityType>)>,
     pub entities: Vec<EntityType>,
 }
@@ -665,6 +667,83 @@ fn arc_entity(center: P3, u: P3, v: P3, start: f64, sweep: f64) -> Vec<EntityTyp
 
 /// A shared cell instance as an INSERT: a mirrored placement looks along
 /// -z (x negated in its entity coordinates, z scale negated).
+/// The name of the dimension style with this id (Standard when the
+/// table has none).
+fn dim_style_name(import: &DgnImport, id: u32) -> String {
+    import
+        .dim_styles
+        .iter()
+        .find(|(i, _)| *i == id)
+        .map(|(_, name)| symbol_name(name))
+        .unwrap_or_else(|| "Standard".to_string())
+}
+
+/// A V8 dimension as a dimension object, in the dimension's own style:
+/// linear (1) as a rotated dimension along its x axis, the dimension line
+/// `offset` from its last point along its y axis; angle size (5) as a
+/// three-point angle (vertex, first, second point) with its arc through the
+/// first point; radius (11) and diameter (12) from the centre and a point
+/// on the circle, the text at the third point.
+fn dimension_entity(
+    kind: u8,
+    points: &[P3],
+    offset: f64,
+    axes: &[[f64; 2]; 2],
+    style: &str,
+) -> Option<EntityType> {
+    use codec::entities::{
+        Dimension, DimensionAngular3Pt, DimensionDiameter, DimensionLinear, DimensionRadius,
+    };
+    let at = |k: usize| points.get(k).copied();
+    let along = |p: P3, d: [f64; 2], t: f64| [p[0] + d[0] * t, p[1] + d[1] * t, p[2]];
+    let mut dimension = match kind {
+        1 => {
+            let (p0, p1) = (at(0)?, at(1)?);
+            let [x, y] = *axes;
+            let line = along(p1, y, offset);
+            let t = |p: P3| (p[0] - line[0]) * x[0] + (p[1] - line[1]) * x[1];
+            let mut d = DimensionLinear::rotated(v3(p0), v3(p1), x[1].atan2(x[0]));
+            d.definition_point = v3(line);
+            d.base.actual_measurement = (t(p1) - t(p0)).abs();
+            d.base.text_middle_point = v3(along(line, x, 0.5 * (t(p0) + t(p1))));
+            Dimension::Linear(d)
+        }
+        5 => {
+            let (vertex, first, second) = (at(0)?, at(1)?, at(2)?);
+            let mut d = DimensionAngular3Pt::new(v3(vertex), v3(first), v3(second));
+            let a0 = (first[1] - vertex[1]).atan2(first[0] - vertex[0]);
+            let mut sweep = (second[1] - vertex[1]).atan2(second[0] - vertex[0]) - a0;
+            if sweep < 0.0 {
+                sweep += std::f64::consts::TAU;
+            }
+            let radius = norm(sub(first, vertex));
+            let mid = a0 + 0.5 * sweep;
+            let arc = [vertex[0] + radius * mid.cos(), vertex[1] + radius * mid.sin(), vertex[2]];
+            d.definition_point = v3(arc);
+            d.base.text_middle_point = v3(arc);
+            Dimension::Angular3Pt(d)
+        }
+        11 => {
+            let (center, point) = (at(0)?, at(1)?);
+            let mut d = DimensionRadius::new(v3(center), v3(point));
+            d.base.definition_point = v3(center);
+            d.base.text_middle_point = v3(at(2).unwrap_or(point));
+            Dimension::Radius(d)
+        }
+        12 => {
+            let (center, point) = (at(0)?, at(1)?);
+            let far = [2.0 * center[0] - point[0], 2.0 * center[1] - point[1], 2.0 * center[2] - point[2]];
+            let mut d = DimensionDiameter::new(v3(point), v3(far));
+            d.base.text_middle_point = v3(at(2).unwrap_or(point));
+            d.base.text_user_positioned = true;
+            Dimension::Diameter(d)
+        }
+        _ => return None,
+    };
+    dimension.base_mut().style_name = style.to_string();
+    Some(EntityType::Dimension(Box::new(dimension)))
+}
+
 fn insert_entity(block: String, m: [f64; 4], origin: P3, z_scale: f64) -> EntityType {
     let det = m[0] * m[3] - m[1] * m[2];
     let mirrored = det < 0.0;
@@ -807,6 +886,21 @@ impl<'a> Converter<'a> {
                 out
             }
             DgnGeom::Points(_) => Vec::new(),
+            DgnGeom::Dimension {
+                kind,
+                points,
+                offset,
+                axes,
+                style,
+            } => dimension_entity(*kind, points, *offset, axes, &dim_style_name(self.import, *style))
+                .into_iter()
+                .collect(),
+            DgnGeom::Leader { points, style } => {
+                let mut leader = codec::entities::Leader::new();
+                leader.vertices = points.iter().map(|p| v3(*p)).collect();
+                leader.dimension_style = dim_style_name(self.import, *style);
+                vec![EntityType::Leader(leader)]
+            }
             DgnGeom::Arc {
                 center,
                 u,
@@ -1000,6 +1094,13 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
             c.layer(&element, false);
         }
     }
+    // Every dimension style of the file's table comes in, used or not.
+    for (_, name) in &import.dim_styles {
+        let name = symbol_name(name);
+        if !c.out.dim_styles.contains(&name) {
+            c.out.dim_styles.push(name);
+        }
+    }
     // Every text style of the file's table comes in, used or not.
     for (_, name, font) in &import.text_styles {
         let name = symbol_name(name);
@@ -1029,6 +1130,29 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
     for (_, entities) in &mut c.out.blocks {
         entities.retain(placed);
     }
+    // An anonymous definition (a "*" name, as a dimension's drawing) that
+    // nothing places is not kept as a block.
+    let anonymous: HashSet<String> = cells
+        .iter()
+        .filter(|(name, _)| name.starts_with('*'))
+        .map(|(name, _)| block_name(name).to_ascii_uppercase())
+        .collect();
+    let used: HashSet<String> = c
+        .out
+        .entities
+        .iter()
+        .chain(c.out.blocks.iter().flat_map(|b| b.1.iter()))
+        .filter_map(|e| match e {
+            EntityType::Insert(i) => Some(i.block_name.to_ascii_uppercase()),
+            _ => None,
+        })
+        .collect();
+    c.out
+        .blocks
+        .retain(|(name, _)| {
+            let key = name.to_ascii_uppercase();
+            !anonymous.contains(&key) || used.contains(&key)
+        });
     c.out
 }
 
