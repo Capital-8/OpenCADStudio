@@ -1979,18 +1979,16 @@ pub fn style_sections(
             ov::handle(data, ov::DIMLDRBLK).unwrap_or(s.dimldrblk),
             "Closed filled",
         )
+    } else if s.dimsah {
+        arrow_name(ov::DIMBLK1, s.dimblk1, &s.dimblk1_name)
     } else {
-        let inherited = if matches!(dimension, Dimension::Diameter(_)) && !s.dimsah {
-            (s.dimblk, s.dimblk_name.as_str())
-        } else {
-            (s.dimblk1, s.dimblk1_name.as_str())
-        };
-        arrow_name(ov::DIMBLK1, inherited.0, inherited.1)
+        // Separate arrows off: both ends draw DIMBLK, as the renderer does.
+        block_name(document, s.dimblk, &s.dimblk_name)
     };
-    let arrow_2 = if matches!(dimension, Dimension::Diameter(_)) && !s.dimsah {
-        arrow_name(ov::DIMBLK2, s.dimblk, &s.dimblk_name)
-    } else {
+    let arrow_2 = if s.dimsah {
         arrow_name(ov::DIMBLK2, s.dimblk2, &s.dimblk2_name)
+    } else {
+        block_name(document, s.dimblk, &s.dimblk_name)
     };
     // The standard arrowheads, then any user arrow block in use. (#1820)
     let arrow_options =
