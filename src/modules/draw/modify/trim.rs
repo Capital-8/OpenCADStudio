@@ -4594,6 +4594,94 @@ mod tests {
     use super::*;
     use std::f64::consts::PI;
 
+    fn rect_hatch(handle: u64, associative: bool) -> codec::entities::Hatch {
+        use codec::entities::{BoundaryEdge, BoundaryPath, PolylineEdge};
+        use codec::types::Vector2;
+        let mut hatch = codec::entities::Hatch::new();
+        hatch.common.handle = Handle::new(handle);
+        hatch.is_associative = associative;
+        hatch.is_solid = true;
+        let corners = [
+            [0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0],
+        ];
+        let mut boundary = BoundaryPath::new();
+        boundary.add_edge(BoundaryEdge::Polyline(PolylineEdge::new(
+            corners.into_iter().map(|p| Vector2::new(p[0], p[1])).collect(),
+            true,
+        )));
+        if associative {
+            boundary.boundary_handles.push(Handle::new(50));
+            boundary.flags.set_external(true);
+        }
+        hatch.paths.push(boundary);
+        hatch
+    }
+
+    fn add_rect_hole(hatch: &mut codec::entities::Hatch, xmin: f64, ymin: f64, xmax: f64, ymax: f64) {
+        use codec::entities::{BoundaryEdge, BoundaryPath, PolylineEdge};
+        use codec::types::Vector2;
+        let points = [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]];
+        let mut hole = BoundaryPath::new();
+        hole.add_edge(BoundaryEdge::Polyline(PolylineEdge::new(
+            points.into_iter().map(|p| Vector2::new(p[0], p[1])).collect(), true,
+        )));
+        hatch.paths.push(hole);
+    }
+
+    #[test]
+    fn trim_hatch_removes_clicked_side_and_detaches_association() {
+        let hatch = rect_hatch(1, true);
+        let boundary = xline_at(5.0, -2.0, 5.0, 12.0, 50);
+        let all = vec![EntityType::Hatch(hatch.clone()), boundary];
+        let mut cmd = TrimCommand::new(all);
+        assert!(cmd.entity_pick_includes_fills());
+        assert!(!cmd.on_hover_entity(Handle::new(1), DVec3::new(2.0, 5.0, 0.0)).is_empty());
+        let CmdResult::ReplaceEntity(handle, edited) = cmd.on_entity_pick(
+            Handle::new(1), DVec3::new(2.0, 5.0, 0.0),
+        ) else {
+            panic!("TRIM should clip a picked hatch");
+        };
+        assert_eq!(handle, Handle::new(1));
+        let EntityType::Hatch(trimmed) = &edited[0] else { panic!("HATCH expected"); };
+        assert!(!trimmed.is_associative);
+        assert!(trimmed.paths.iter().all(|p| p.boundary_handles.is_empty()));
+        assert_eq!(trimmed.common.handle, Handle::NULL);
+        assert_eq!(trimmed.paths.len(), 1);
+        let ring = crate::scene::hatch_path_ring(&trimmed.paths[0]).unwrap();
+        assert!(ring.iter().all(|p| p[0] >= 5.0 - 1e-8));
+        assert!((crate::entities::hatch::boundary_area(trimmed) - 50.0).abs() < 1e-7);
+        assert!(hatch.is_associative, "input is unchanged");
+        assert!(!hatch.paths[0].boundary_handles.is_empty());
+    }
+
+    #[test]
+    fn trim_hatch_preserves_untouched_hole_and_refuses_hole_crossing() {
+        let mut hatch = rect_hatch(1, false);
+        add_rect_hole(&mut hatch, 6.0, 3.0, 8.0, 7.0);
+        let cutter = [Geo::Line {
+            handle: Handle::new(50), p1: [5.0, -2.0], p2: [5.0, 12.0],
+        }];
+        let kept = trim_hatch_at(&hatch, &cutter, 2.0, 5.0).expect("hole retained");
+        assert_eq!(kept.paths.len(), 2);
+        assert!((crate::entities::hatch::boundary_area(&kept) - 42.0).abs() < 1e-7);
+        let mut crossing = rect_hatch(1, false);
+        add_rect_hole(&mut crossing, 4.0, 3.0, 6.0, 7.0);
+        assert!(trim_hatch_at(&crossing, &cutter, 2.0, 5.0).is_none());
+    }
+
+    #[test]
+    fn trim_hatch_rejects_cutter_that_does_not_span_boundary() {
+        let hatch = rect_hatch(1, false);
+        let too_short = [Geo::Line {
+            handle: Handle::new(50), p1: [5.0, 3.0], p2: [5.0, 7.0],
+        }];
+        assert!(trim_hatch_at(&hatch, &too_short, 2.0, 5.0).is_none());
+        let tangent = [Geo::Line {
+            handle: Handle::new(50), p1: [10.0, -2.0], p2: [10.0, 12.0],
+        }];
+        assert!(trim_hatch_at(&hatch, &tangent, 2.0, 5.0).is_none());
+    }
+
     fn xline_at(x1: f64, y1: f64, x2: f64, y2: f64, h: u64) -> EntityType {
         let mut l = LineEnt::new();
         l.start = Vector3::new(x1, y1, 0.0);
