@@ -4501,6 +4501,49 @@ impl OpenCADStudio {
             height: vh,
         };
 
+        // STRETCH: Shift+click an already selected vertex to subtract only
+        // that vertex (not its entire entity). Use the same grip hit testing
+        // as a normal click, including paper-space and viewport transforms.
+        if self.shift_down
+            && self.tabs[i].active_cmd.as_ref().is_some_and(|command| command.name() == "STRETCH")
+            && !self.tabs[i].selected_grips.is_empty()
+        {
+            let grip_hit = if let Some(cam) = &edit_cam {
+                find_hit_grip_rte(
+                    p, &self.tabs[i].selected_grips,
+                    cam.view_proj_rte(bounds), cam.eye(), bounds,
+                )
+            } else if self.tabs[i].scene.current_layout != "Model" {
+                let cam = self.tabs[i].scene.camera.borrow();
+                let aspect = if vh > 0.0 { vw / vh } else { 1.0 };
+                let half_h = cam.ortho_size();
+                let half_w = half_h * aspect;
+                find_hit_grip_paper(
+                    p, &self.tabs[i].selected_grips,
+                    cam.target.x as f32, cam.target.y as f32,
+                    half_w, half_h, bounds,
+                )
+            } else {
+                let cam = self.tabs[i].scene.camera.borrow();
+                find_hit_grip(p, &self.tabs[i].selected_grips, &cam, bounds)
+            };
+            if let Some((index, grip_id, _, world)) = grip_hit {
+                if let Some(&handle) = self.tabs[i].selected_grip_handles.get(index) {
+                    let removed = self.tabs[i].active_cmd.as_mut().is_some_and(|command| {
+                        command.remove_stretch_point(handle, world)
+                    });
+                    if removed {
+                        self.tabs[i].selected_grips.remove(index);
+                        self.tabs[i].selected_grip_handles.remove(index);
+                        self.tabs[i].hot_grips.remove(&(handle, grip_id));
+                        self.grip_hover = None;
+                        self.tabs[i].scene.selection.borrow_mut().clear_left_selection_gesture();
+                        return Task::none();
+                    }
+                }
+            }
+        }
+
         if self.tabs[i].active_cmd.is_none()
             && self.tabs[i].active_grip.is_none()
             && !self.tabs[i].selected_grips.is_empty()
@@ -4852,6 +4895,10 @@ impl OpenCADStudio {
         if let Some(command) = self.tabs[i].active_cmd.as_mut() {
             command.set_ctrl(self.ctrl_down);
             command.set_shift(self.shift_down);
+            if command.consume_stretch_remove_release() {
+                self.tabs[i].scene.selection.borrow_mut().clear_left_selection_gesture();
+                return Task::none();
+            }
         }
 
         // Navigation mode: end this drag but keep the tool armed for the next
