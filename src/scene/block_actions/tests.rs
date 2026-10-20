@@ -11,6 +11,36 @@ fn rotation_table_angles_match_across_pi_wrap() {
     assert!(super::angle_distance(near_positive_pi, 0.0) > 3.0);
 }
 
+#[test]
+fn angular_value_sets_wrap_and_choose_the_nearest_periodic_value() {
+    use codec::objects::BlockParameterValueSet;
+    let quarter = std::f64::consts::FRAC_PI_2;
+    let mut set = BlockParameterValueSet {
+        flags: 3,
+        minimum: 0.0,
+        maximum: std::f64::consts::TAU,
+        ..Default::default()
+    };
+    assert!((constrain_angle(-quarter, &set) - 3.0 * quarter).abs() < 1e-12);
+    set.flags = 8;
+    set.values = vec![0.0, std::f64::consts::PI];
+    assert_eq!(constrain_angle(-0.01, &set), 0.0);
+    set.flags = 4;
+    set.increment = quarter;
+    assert!((constrain_angle(-quarter - 0.1, &set) - 3.0 * quarter).abs() < 1e-12);
+}
+
+#[test]
+fn signed_value_set_increments_preserve_negative_axis_values() {
+    let set = codec::objects::BlockParameterValueSet {
+        flags: 4,
+        increment: 2.0,
+        ..Default::default()
+    };
+    assert_eq!(constrain_value_set(-5.0, &set), -6.0);
+    assert_eq!(constrain_value_set(5.0, &set), 6.0);
+}
+
 fn fixture() -> (CadDocument, Handle, Vec<Handle>) {
     let mut scene = Scene::new();
     scene.define_block_raw(
@@ -714,11 +744,10 @@ fn block_actions_reject_invalid_selection_binding_and_nonfinite_without_mutation
         p,
         DVec3::new(20., 0., 0.)
     )
-    .is_err());
-    assert_eq!(
-        restricted, restricted_baseline,
-        "unsupported value constraints are not silently ignored"
-    );
+    .unwrap());
+    assert_eq!(start(&restricted, handles[0]), Vector3::new(6., 0., 0.));
+    let constrained = parameters(&restricted_baseline, def, Kind::Move).remove(0);
+    assert_eq!(current(&restricted, &constrained), DVec3::new(15., 0., 0.));
     let ObjectType::DynamicBlock(o) = doc.objects.get_mut(&action).unwrap() else {
         panic!()
     };

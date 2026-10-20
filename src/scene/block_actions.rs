@@ -1585,10 +1585,35 @@ fn constrain_value_set(value: f64, set: &codec::objects::BlockParameterValueSet)
     }
     if set.flags & 4 != 0 {
         let origin = minimum.unwrap_or(0.0);
-        let steps = ((value - origin) / set.increment).round().max(0.0);
+        let steps = ((value - origin) / set.increment).round();
         return clamp(origin + steps * set.increment);
     }
     value
+}
+
+fn constrain_angle(value: f64, set: &codec::objects::BlockParameterValueSet) -> f64 {
+    if set.flags == 0 {
+        return value;
+    }
+    let origin = if set.flags & 1 != 0 { set.minimum } else { 0.0 };
+    let angle = origin + (value - origin).rem_euclid(std::f64::consts::TAU);
+    if set.flags & 8 != 0 {
+        return set
+            .values
+            .iter()
+            .copied()
+            .filter(|candidate| {
+                (set.flags & 1 == 0 || *candidate >= set.minimum)
+                    && (set.flags & 2 == 0 || *candidate <= set.maximum)
+            })
+            .min_by(|a, b| {
+                angle_distance(*a, angle)
+                    .total_cmp(&angle_distance(*b, angle))
+                    .then_with(|| a.total_cmp(b))
+            })
+            .unwrap_or(angle);
+    }
+    constrain_value_set(angle, set)
 }
 
 fn constrain_parameter_position(
@@ -1608,9 +1633,15 @@ fn constrain_parameter_position(
         }
         DynamicBlockData::PolarParameter(parameter) => {
             let delta = position - p.base;
-            let distance = constrain_value_set(delta.length(), &parameter.distance_value_set);
-            let angle = constrain_value_set(delta.y.atan2(delta.x), &parameter.angle_value_set);
-            position = p.base + DVec3::new(angle.cos(), angle.sin(), 0.0) * distance;
+            let length = delta.length();
+            let distance = constrain_value_set(length, &parameter.distance_value_set);
+            let input_angle = delta.y.atan2(delta.x);
+            let angle = constrain_angle(input_angle, &parameter.angle_value_set);
+            if angle_distance(angle, input_angle) > 1e-14 {
+                position = p.base + DVec3::new(angle.cos(), angle.sin(), 0.0) * distance;
+            } else if distance != length && length > 1e-12 {
+                position = p.base + delta * (distance / length);
+            }
         }
         DynamicBlockData::XYParameter(parameter) => {
             let delta = position - p.base;
@@ -1623,7 +1654,7 @@ fn constrain_parameter_position(
         }
         DynamicBlockData::RotationParameter(parameter) => {
             let delta = position - p.base;
-            let angle = constrain_value_set(delta.y.atan2(delta.x), &parameter.value_set);
+            let angle = constrain_angle(delta.y.atan2(delta.x), &parameter.value_set);
             position = p.base + DVec3::new(angle.cos(), angle.sin(), 0.0) * delta.length();
         }
         _ => {}
