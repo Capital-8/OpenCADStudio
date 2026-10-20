@@ -2850,6 +2850,14 @@ impl OpenCADStudio {
                 // prompt keywords keep their established uppercase behavior;
                 // `CommandLine::submit` uppercases only the command verb.
                 let text_with_spaces = self.is_free_text_active();
+                // Pasted rows (a column of points copied from a spreadsheet)
+                // are entries one after another, and a tab separates X from
+                // Y: the same as spaces and commas typed here.
+                let s = if text_with_spaces || !s.contains(['\r', '\n', '\t']) {
+                    s
+                } else {
+                    s.replace("\r\n", " ").replace(['\r', '\n'], " ").replace('\t', ",")
+                };
                 let active_prompt = self.tabs[self.active_tab].active_cmd.is_some();
                 let literal = self.command_line.literal_spaces || s.starts_with('>');
                 let s = if active_prompt && !text_with_spaces && !literal {
@@ -7288,11 +7296,12 @@ impl OpenCADStudio {
 
                 match result {
                     Text::Text(text) => {
-                        let flat = text.replace(['\r', '\n'], " ").to_uppercase();
-                        self.command_line.input.push_str(&flat);
-                        self.command_line.autocomplete_cursor = None;
-                        self.command_line.cancel_history_navigation();
-                        self.focus_cmd_input()
+                        // As if typed: rows submit one after another.
+                        let typed = format!("{}{text}", self.command_line.input);
+                        Task::batch([
+                            self.update(Message::CommandInput(typed)),
+                            self.focus_cmd_input(),
+                        ])
                     }
                     Text::EmptyOrUnsupported => {
                         // No text — the clipboard may still hold an IMAGE (a
@@ -13005,6 +13014,29 @@ mod free_text_entry_tests {
         app.tabs[0].active_cmd = None;
         assert_eq!(app.text_entry_mode(), TextEntryMode::Command);
         assert!(!app.is_free_text_active());
+    }
+
+    #[test]
+    fn pasted_spreadsheet_rows_enter_one_point_each() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let _ = app.run_command_line("PLINE");
+        // A column copied from a spreadsheet, then X/Y in two columns.
+        let _ = app.update(Message::CommandInput("1,4\r\n2,6\r\n3,1\r\n".into()));
+        let _ = app.update(Message::CommandInput("4\t4\r\n".into()));
+        let _ = app.update(Message::CommandSubmit);
+        let points: Vec<(f64, f64)> = app.tabs[0]
+            .scene
+            .document
+            .entities()
+            .find_map(|entity| match entity {
+                codec::EntityType::LwPolyline(p) => Some(
+                    p.vertices.iter().map(|v| (v.location.x, v.location.y)).collect(),
+                ),
+                _ => None,
+            })
+            .expect("the pasted rows drew a polyline");
+        assert_eq!(points, vec![(1.0, 4.0), (2.0, 6.0), (3.0, 1.0), (4.0, 4.0)]);
     }
 
     #[test]
