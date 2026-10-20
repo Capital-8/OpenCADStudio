@@ -2242,6 +2242,11 @@ pub enum CmdResult {
         handles: Vec<Handle>,
         /// Every crossing window gathered so far.
         windows: Vec<(DVec3, DVec3)>,
+        /// Previously selected vertices removed with Shift+click or Shift+window.
+        excluded_points: Vec<(Handle, DVec3)>,
+        /// A Shift+window excludes points inside this area without adding a
+        /// new crossing window or subtracting whole entities.
+        subtract_window: Option<(DVec3, DVec3)>,
     },
     /// Stretch entities: move only vertices/endpoints inside any gathered
     /// crossing window.
@@ -2249,6 +2254,8 @@ pub enum CmdResult {
         handles: Vec<Handle>,
         /// Independent crossing windows that define the points to move.
         windows: Vec<(DVec3, DVec3)>,
+        /// Vertices explicitly removed from this operation using Shift+click.
+        excluded_points: Vec<(Handle, DVec3)>,
         /// Translation vector applied once to every selected point.
         delta: DVec3,
     },
@@ -2717,6 +2724,17 @@ pub trait CadCommand: Send {
     /// during TRIM and trims during EXTEND, #336). Default no-op.
     fn set_shift(&mut self, _shift: bool) {}
 
+    /// Remove one selected vertex in STRETCH's crossing-window collection stage.
+    /// Other commands keep the normal Shift+grip behavior.
+    fn remove_stretch_point(&mut self, _handle: Handle, _world: DVec3) -> bool {
+        false
+    }
+
+    /// Consume the matching release after STRETCH removed a selected grip.
+    fn consume_stretch_remove_release(&mut self) -> bool {
+        false
+    }
+
     /// Constrain the cursor to a construction axis for this step.
     fn cursor_axis(&self) -> Option<(DVec3, DVec3)> {
         None
@@ -3054,6 +3072,13 @@ pub trait CadCommand: Send {
     /// these from the resident render until the command commits or cancels.
     /// Commands such as COPY keep their sources visible and use the default.
     fn preview_hidden_handles(&self) -> &[Handle] {
+        &[]
+    }
+
+    /// Original, stationary wires available as discrete snap references while
+    /// a command shows replacement geometry. Never includes the moving preview.
+    /// The default leaves every other command's snapping unchanged.
+    fn preview_original_snap_wires(&self) -> &[WireModel] {
         &[]
     }
 

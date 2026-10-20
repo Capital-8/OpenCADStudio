@@ -960,6 +960,34 @@ impl OpenCADStudio {
         }
     }
 
+    /// Discrete snaps against the original geometry retained by STRETCH.
+    /// These stationary reference wires are separate from the moving overlay:
+    /// only endpoints/vertices/midpoints/etc. are eligible, so a nearest or
+    /// tangent snap cannot pull the cursor continuously onto its old outline.
+    pub(in crate::app) fn command_original_snap_hit(
+        &self,
+        i: usize,
+        screen: iced::Point,
+        view_rot: glam::Mat4,
+        eye: glam::DVec3,
+        bounds: iced::Rectangle,
+    ) -> Option<crate::snap::SnapResult> {
+        let originals = self.tabs[i]
+            .active_cmd
+            .as_ref()?
+            .preview_original_snap_wires();
+        if originals.is_empty() {
+            return None;
+        }
+        self.snapper
+            .snap_discrete_preview(screen, originals, view_rot, eye, bounds)
+            // Do not capture the STRETCH base point at zero displacement:
+            // it would hold the moving cursor at its starting position.
+            .filter(|hit| self.last_point.is_none_or(|base| {
+                (hit.world - base).length_squared() > 1e-16
+            }))
+    }
+
     pub(in crate::app) fn grip_edit_for_hit(
         &mut self,
         i: usize,
@@ -2715,6 +2743,18 @@ impl OpenCADStudio {
                     .snap_dwell
                     .as_ref()
                     .is_some_and(|dwell| dwell.discrete_preview_due_at(Instant::now()));
+            // STRETCH hides its resident sources, so unlike a point-only
+            // rubber band its edited geometry must keep updating during the
+            // lightweight mouse path. Cap it to the same 60 Hz preview budget
+            // rather than running full DWG snapping/tessellation each event.
+            let refresh_stretch_preview = self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .is_some_and(|cmd| cmd.name() == "STRETCH")
+                && (run_discrete_preview
+                    || self.snap_dwell.as_ref().is_some_and(|dwell| {
+                        dwell.discrete_preview_due_at(Instant::now())
+                    }));
             // F3 off (or only continuous modes configured) means this live
             // pass cannot produce a snap. Avoid even querying the large scene
             // index; the full settled/click pass remains authoritative.
@@ -2778,6 +2818,15 @@ impl OpenCADStudio {
             } else {
                 None
             };
+            // Keep the pale, stationary STRETCH reference snappable in the
+            // capped fast path, without restoring its hidden resident wires or
+            // feeding its geometry into the main drawing interaction index.
+            let original_snap = if run_discrete_preview || refresh_stretch_preview {
+                self.command_original_snap_hit(i, p, view_rot, eye, bounds)
+            } else {
+                None
+            };
+            let snap = crate::snap::merge_snap(snap, original_snap, p);
             let world = snap.map_or(cursor_world, |hit| hit.world);
             self.tabs[i].last_cursor_world = world;
             self.tabs[i].last_cursor_screen = p_full;
@@ -2787,6 +2836,11 @@ impl OpenCADStudio {
                 hit.screen.y += tile_b.y;
             }
             self.tabs[i].snap_result = snap;
+            if refresh_stretch_preview {
+                // Rebuild only the command overlay, not the resident drawing;
+                // the full snap pass still waits for the normal dwell tick.
+                self.refresh_active_cmd_preview(i);
+            }
             // Re-arm the dwell — tick fires SNAP_DWELL_MS after the last move.
             if let Some(dwell) = self.snap_dwell.as_mut() {
                 dwell.last_move_at = Instant::now();
@@ -2794,7 +2848,7 @@ impl OpenCADStudio {
                 dwell.tab = i;
                 dwell.preview_dirty = true;
                 dwell.snap_resolved = false;
-                if run_discrete_preview {
+                if run_discrete_preview || refresh_stretch_preview {
                     dwell.last_preview_snap_at = Instant::now();
                 }
             }
@@ -2998,6 +3052,12 @@ impl OpenCADStudio {
                     additional_rays.as_ref().map_or(&[], |rays| rays.as_slice()),
                 )
             };
+            // Restore discrete snap targets from STRETCH's original snapshot
+            // even though the corresponding resident objects are hidden.
+            let original_snap = self.command_original_snap_hit(i, p, view_rot, eye, bounds);
+            self.tabs[i].snap_result = crate::snap::merge_snap(
+                self.tabs[i].snap_result, original_snap, p,
+            );
             let snap_ms = crate::perf::elapsed_ms(snap_started);
             if perf_move && snap_ms >= 1.0 {
                 crate::perf_record!(
@@ -3580,11 +3640,20 @@ impl OpenCADStudio {
                         None
                     }
                 });
-                self.tabs[i]
-                    .active_cmd
-                    .as_mut()
-                    .map(|c| c.on_preview_wires_with_tangent(effective, live_tangent))
-                    .unwrap_or_default()
+                let tab = &mut self.tabs[i];
+                if let Some(cmd) = tab.active_cmd.as_mut() {
+                    let mut wires = cmd.on_preview_wires_with_tangent(effective, live_tangent);
+                    // STRETCH replaces its source entities while the pointer moves.
+                    // Without the edited-entity overlay, its source hide-set makes
+                    // the selected lines disappear until the final click.
+                    if cmd.name() == "STRETCH" {
+                        let entities = cmd.preview_entities(&tab.scene.document, effective);
+                        wires.extend(tab.scene.wires_for_entities(&entities));
+                    }
+                    wires
+                } else {
+                    Vec::new()
+                }
             };
             // Polar tracking guide line: dotted line from last_point along
             // the snapped angle direction, extending across the drawing.
@@ -4501,6 +4570,49 @@ impl OpenCADStudio {
             height: vh,
         };
 
+        // STRETCH: Shift+click an already selected vertex to subtract only
+        // that vertex (not its entire entity). Use the same grip hit testing
+        // as a normal click, including paper-space and viewport transforms.
+        if self.shift_down
+            && self.tabs[i].active_cmd.as_ref().is_some_and(|command| command.name() == "STRETCH")
+            && !self.tabs[i].selected_grips.is_empty()
+        {
+            let grip_hit = if let Some(cam) = &edit_cam {
+                find_hit_grip_rte(
+                    p, &self.tabs[i].selected_grips,
+                    cam.view_proj_rte(bounds), cam.eye(), bounds,
+                )
+            } else if self.tabs[i].scene.current_layout != "Model" {
+                let cam = self.tabs[i].scene.camera.borrow();
+                let aspect = if vh > 0.0 { vw / vh } else { 1.0 };
+                let half_h = cam.ortho_size();
+                let half_w = half_h * aspect;
+                find_hit_grip_paper(
+                    p, &self.tabs[i].selected_grips,
+                    cam.target.x as f32, cam.target.y as f32,
+                    half_w, half_h, bounds,
+                )
+            } else {
+                let cam = self.tabs[i].scene.camera.borrow();
+                find_hit_grip(p, &self.tabs[i].selected_grips, &cam, bounds)
+            };
+            if let Some((index, grip_id, _, world)) = grip_hit {
+                if let Some(&handle) = self.tabs[i].selected_grip_handles.get(index) {
+                    let removed = self.tabs[i].active_cmd.as_mut().is_some_and(|command| {
+                        command.remove_stretch_point(handle, world)
+                    });
+                    if removed {
+                        self.tabs[i].selected_grips.remove(index);
+                        self.tabs[i].selected_grip_handles.remove(index);
+                        self.tabs[i].hot_grips.remove(&(handle, grip_id));
+                        self.grip_hover = None;
+                        self.tabs[i].scene.selection.borrow_mut().clear_left_selection_gesture();
+                        return Task::none();
+                    }
+                }
+            }
+        }
+
         if self.tabs[i].active_cmd.is_none()
             && self.tabs[i].active_grip.is_none()
             && !self.tabs[i].selected_grips.is_empty()
@@ -4852,6 +4964,10 @@ impl OpenCADStudio {
         if let Some(command) = self.tabs[i].active_cmd.as_mut() {
             command.set_ctrl(self.ctrl_down);
             command.set_shift(self.shift_down);
+            if command.consume_stretch_remove_release() {
+                self.tabs[i].scene.selection.borrow_mut().clear_left_selection_gesture();
+                return Task::none();
+            }
         }
 
         // Navigation mode: end this drag but keep the tool armed for the next
@@ -5168,6 +5284,14 @@ impl OpenCADStudio {
                         snap_hit = crate::snap::merge_snap(snap_hit, face_hit, p);
                     }
                 }
+                // Mouse-up must resolve the same original snap as mouse-move;
+                // otherwise the highlighted reference point and committed
+                // STRETCH destination could disagree.
+                snap_hit = crate::snap::merge_snap(
+                    snap_hit,
+                    self.command_original_snap_hit(i, p, view_rot, eye, bounds),
+                    p,
+                );
                 let click_evaluate_ms = crate::perf::elapsed_ms(click_evaluate_started);
                 if crate::perf::enabled()
                     && click_source_ms + click_query_ms + click_evaluate_ms >= 1.0
@@ -8229,6 +8353,63 @@ mod rapid_drawing_tests {
             assert!(app.snap_dwell.as_ref().unwrap().snap_resolved);
             assert_eq!(app.tabs[i].last_cursor_world, resolved_point);
         }
+    }
+
+    #[test]
+    fn stretch_cursor_move_keeps_live_lines_visible_even_during_fast_pointer_updates() {
+        use crate::command::{CadCommand, CmdResult};
+        use crate::modules::draw::modify::stretch::StretchCommand;
+        use codec::{entities::Line, types::Vector3, EntityType};
+
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800.0, 600.0);
+        app.snapper.snap_enabled = false;
+        app.snapper.grid_snap_on = false;
+        app.snapper.otrack_enabled = false;
+        app.ortho_mode = false;
+        app.polar_mode = false;
+
+        let handle = app.tabs[i].scene.add_entity(EntityType::Line(Line::from_points(
+            Vector3::new(40.0, 30.0, 0.0),
+            Vector3::new(80.0, 30.0, 0.0),
+        )));
+        let wires = app.tabs[i].scene.wire_models_for(&[handle]);
+        let window = (
+            glam::DVec3::new(39.0, 29.0, -1.0),
+            glam::DVec3::new(81.0, 31.0, 1.0),
+        );
+        let base = glam::DVec3::new(40.0, 30.0, 0.0);
+        let mut cmd = StretchCommand::preselected(vec![handle], wires, window);
+        assert!(matches!(cmd.on_point(base), CmdResult::NeedPoint));
+        app.tabs[i].active_cmd = Some(Box::new(cmd));
+
+        let preview_has_endpoint = |app: &OpenCADStudio, x: f32, y: f32| {
+            app.tabs[i].scene.preview_wires.iter().any(|wire| {
+                wire.points.iter().any(|pt| {
+                    (pt[0] - x).abs() < 0.1 && (pt[1] - y).abs() < 0.1
+                })
+            })
+        };
+        let first = glam::DVec3::new(45.0, 40.0, 0.0);
+        let _ = app.on_viewport_move(screen(&app, first));
+        assert!(
+            preview_has_endpoint(&app, 85.0, 40.0),
+            "first cursor move must show the translated STRETCH line, not just its guide"
+        );
+
+        // A subsequent move normally takes the low-cost SnapDwell path.
+        // Make the 60 Hz overlay budget due without sleeping.
+        let dwell = app.snap_dwell.as_mut().expect("STRETCH dwell");
+        dwell.last_preview_snap_at =
+            Instant::now() - std::time::Duration::from_millis(100);
+        let second = glam::DVec3::new(48.0, 42.0, 0.0);
+        let _ = app.on_viewport_move(screen(&app, second));
+        assert!(
+            preview_has_endpoint(&app, 88.0, 42.0),
+            "fast cursor move must update the STRETCH geometry, not hide it"
+        );
     }
 }
 
