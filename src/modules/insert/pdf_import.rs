@@ -1807,7 +1807,10 @@ fn fill_entities(
         if run.len() > 1 && same_point(run[0].0, run[run.len() - 1].0) && run[run.len() - 1].1 == 0.0 {
             run.pop();
         }
-        if !run.is_empty() {
+        // A loop that stays on one point (to the file's single precision)
+        // bounds nothing.
+        let o = run.first().map_or([0.0; 2], |(p, _)| *p);
+        if run.iter().any(|(p, _)| (p[0] - o[0]).hypot(p[1] - o[1]) > 1e-5) {
             loops.push(run);
         }
     }
