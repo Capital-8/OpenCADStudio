@@ -1359,9 +1359,12 @@ bg={bg_ms:.1}ms n={view_count}"
                                     .take(frame.len())
                                     .map(|(a, b)| [*a, *b]),
                             );
-                            g.grips.push((action.display_location, false));
-                            g.labels
-                                .push((action.display_location, action.element.name.clone()));
+                            if !self.block_editor_preferences.action_bars {
+                                g.grips.push((action.display_location, false));
+                                g.labels.push((action.display_location, action.element.name.clone()));
+                            } else if tab.selected_authoring!=Some(handle) {
+                                g.lines.clear();
+                            }
                             (handle, g, action.display_location)
                         }),
                     )
@@ -2082,6 +2085,13 @@ bg={bg_ms:.1}ms n={view_count}"
                 }
             }
 
+            let (vw,vh)=tab.scene.selection.borrow().view.vp_size;
+            let bar_bounds=tab.scene.active_model_tile_bounds(vw,vh);
+            let bar_color=crate::ui::overlay::authoring::AuthoringVisualOptions::new(&self.block_editor_preferences,&tab.scene.document,crosshair_background(tab,is_paper)).action;
+            for (group,point,offset,width) in self.action_bar_layout(bar_bounds) {
+                let bar=crate::ui::window::block_action_bars::view(group,tab.selected_authoring,offset,width,tab.active_cmd.is_none(),bar_color);
+                viewport_stack=viewport_stack.push(position_canvas_overlay(point,bar));
+            }
             if let Some(hover) = self.grip_hover.as_ref().filter(|hover|
                 hover.started.elapsed().as_millis() >= 500 && self.grip_popup.is_none()) {
                 if let Some(tip) = self.dynamic_grip_tip(hover.handle,hover.grip_id) {

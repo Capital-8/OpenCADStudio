@@ -208,6 +208,17 @@ impl OpenCADStudio {
                 return Task::none();
             }
         }
+        if cmd == "BACTIONBAR" || cmd.starts_with("BACTIONBAR ") {
+            if let Some(error)=self.action_bar_error() {
+                self.command_line.push_error(crate::t!(error).as_ref());
+                return Task::none();
+            }
+        }
+        if self.block_editor_preferences.action_bars && self.tabs[i].active_block_edit_session().is_some()
+            && matches!(verb,"BACTIONSET"|"BASSOCIATE"|"BLOOKUPTABLE") {
+            self.command_line.push_error(crate::t!("Use the action bar to edit this action, or set BACTIONBARMODE to 0.").as_ref());
+            return Task::none();
+        }
         if matches!(
             cmd.split(' ').next(),
             Some("BACTION" | "BACTIONTOOL" | "BARRAY")

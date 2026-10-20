@@ -17,6 +17,7 @@ const NAMES: &[&str] = &[
     "BTMARKDISPLAY",
     "GRIPDYNCOLOR",
     "GRIPTIPS",
+    "BACTIONBARMODE",
 ];
 
 inventory::submit!(crate::command::CommandRegistration { names: NAMES });
@@ -83,6 +84,7 @@ impl OpenCADStudio {
                         if self.pending_setvar.as_deref() == Some(name.as_str()) {
                             self.pending_setvar = None;
                         }
+                        if name == "BACTIONBARMODE" { self.refresh_properties(); }
                         self.persist_settings_if_changed();
                         self.command_line.push_output(&format!(
                             "{name} = {}",

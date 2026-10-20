@@ -449,6 +449,7 @@ pub struct BlockEditorPreferences {
     pub value_markers: bool,
     pub dynamic_grip_color: u8,
     pub grip_tips: bool,
+    pub action_bars: bool,
 }
 
 impl Default for BlockEditorPreferences {
@@ -466,6 +467,7 @@ impl Default for BlockEditorPreferences {
             value_markers: true,
             dynamic_grip_color: 140,
             grip_tips: true,
+            action_bars: true,
         }
     }
 }
@@ -482,6 +484,7 @@ pub const BLOCK_DISPLAY_VARIABLES: &[(&str, &str)] = &[
     ("BTMARKDISPLAY", "Show value-set markers"),
     ("GRIPDYNCOLOR", "Dynamic grip color (index)"),
     ("GRIPTIPS", "Show grip tips"),
+    ("BACTIONBARMODE", "Display actions in bars"),
 ];
 
 impl BlockEditorPreferences {
@@ -498,6 +501,7 @@ impl BlockEditorPreferences {
             "BTMARKDISPLAY" => u8::from(self.value_markers).to_string(),
             "GRIPDYNCOLOR" => self.dynamic_grip_color.to_string(),
             "GRIPTIPS" => u8::from(self.grip_tips).to_string(),
+            "BACTIONBARMODE" => u8::from(self.action_bars).to_string(),
             _ => return None,
         })
     }
@@ -538,7 +542,11 @@ impl BlockEditorPreferences {
                 }
                 self.parameter_font = value.to_owned();
             }
-            "BPTEXTHORIZONTAL" | "BDEPENDENCYHIGHLIGHT" | "BTMARKDISPLAY" | "GRIPTIPS" => {
+            "BPTEXTHORIZONTAL"
+            | "BDEPENDENCYHIGHLIGHT"
+            | "BTMARKDISPLAY"
+            | "GRIPTIPS"
+            | "BACTIONBARMODE" => {
                 let value = match value {
                     "0" => false,
                     "1" => true,
@@ -548,7 +556,8 @@ impl BlockEditorPreferences {
                     "BPTEXTHORIZONTAL" => self.text_horizontal = value,
                     "BDEPENDENCYHIGHLIGHT" => self.dependency_highlight = value,
                     "BTMARKDISPLAY" => self.value_markers = value,
-                    _ => self.grip_tips = value,
+                    "GRIPTIPS" => self.grip_tips = value,
+                    _ => self.action_bars = value,
                 }
             }
             _ => return Err("Unknown display variable."),

@@ -11,6 +11,7 @@ mod annotation_data;
 mod block_actions;
 mod block_feedback;
 mod block_cycle_order;
+mod block_action_bars;
 mod block_authoring_edit;
 mod block_editor;
 #[cfg(test)]
@@ -4016,6 +4017,10 @@ pub enum Message {
     BlockCycleEnable(usize, bool),
     BlockCycleMove(usize, bool),
     BlockCycleApply,
+    BlockActionBarSelect(codec::Handle),
+    BlockActionBarEdit(codec::Handle),
+    BlockActionBarMove(codec::Handle, iced::Vector),
+    BlockActionBarHide(codec::Handle),
     /// Live edit of the name or formula in row `idx`.
     NamedParametersInput {
         idx: usize,

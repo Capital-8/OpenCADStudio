@@ -578,6 +578,9 @@ impl OpenCADStudio {
             result @ CmdResult::EditBlockAuthoring { .. } => {
                 return self.handle_authoring_edit(result);
             }
+            CmdResult::SetBlockActionBars { document,definition,mode,parameters } => {
+                return self.set_action_bars(document,definition,mode,parameters);
+            }
             result @ (CmdResult::PlaceBlockAction { .. }
             | CmdResult::EditBlockActionSet { .. }
             | CmdResult::AssociateBlockAction { .. }

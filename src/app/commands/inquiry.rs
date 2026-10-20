@@ -1017,6 +1017,7 @@ impl OpenCADStudio {
             return;
         }
         use crate::modules::draw::modify::block_edit::BlockEditSession;
+        self.tabs[i].action_bars=Default::default();
         // Capture the camera before the editor reframes it, so leaving
         // the block editor returns the view exactly where it was (#425).
         let current_camera = self.tabs[i].scene.camera.borrow().clone();

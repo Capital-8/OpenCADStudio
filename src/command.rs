@@ -1521,6 +1521,12 @@ impl DimensionPreview {
 /// Returned by every `CadCommand` method to tell main.rs what to do.
 #[allow(dead_code)]
 pub enum CmdResult {
+    SetBlockActionBars {
+        document: u64,
+        definition: Handle,
+        mode: crate::modules::block_editor::action_bar::Mode,
+        parameters: Vec<Handle>,
+    },
     AssociateBlockAction {
         document: u64,
         definition: Handle,

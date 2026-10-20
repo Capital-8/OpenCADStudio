@@ -1249,6 +1249,7 @@ fn block_actions_set_ribbon_flyout_starts_action_selection_and_uses_preselected_
     with_stack(|| {
         use crate::scene::block_actions::{self as actions, Kind};
         let mut app = authoring_app();
+        let _ = app.dispatch_command("BACTIONBARMODE 0");
         let i = app.active_tab;
         let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
         let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;

@@ -407,6 +407,7 @@ impl OpenCADStudio {
             }
             "BACTIONSET" => Some(self.start_block_action_set()),
             "BASSOCIATE" => Some(self.start_block_action_association()),
+            cmd if cmd=="BACTIONBAR" || cmd.starts_with("BACTIONBAR ") => Some(self.start_action_bar_command(cmd.strip_prefix("BACTIONBAR").unwrap().trim())),
             cmd if cmd == "BACTION"
                 || cmd.starts_with("BACTION ")
                 || cmd == "BACTIONTOOL"

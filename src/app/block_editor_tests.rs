@@ -60,6 +60,7 @@ fn feed(app: &mut OpenCADStudio, text: &str) {
 }
 
 fn edit_action_set(app: &mut OpenCADStudio, action: Handle, mode: &str, targets: Vec<Handle>) {
+    let _ = app.dispatch_command("BACTIONBARMODE 0");
     app.tabs[app.active_tab].selected_authoring = Some(action);
     let _ = app.dispatch_command("BACTIONSET");
     feed(app, mode);
@@ -526,6 +527,7 @@ fn block_actions_set_frame_cancel_stale_and_context_guards() {
     );
     let _ = app.update(Message::CommandEscape);
     begin(&mut app, reference);
+    let _ = app.dispatch_command("BACTIONBARMODE 0");
     let i = app.active_tab;
     let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
     let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
@@ -1175,6 +1177,7 @@ fn authoring_edit_mouse_selection_endpoint_label_marker_history_and_reopen() {
     use crate::scene::block_actions::{self as actions, Kind};
     let (mut app, reference) = fixture();
     begin(&mut app, reference);
+    let _ = app.dispatch_command("BACTIONBARMODE 0");
     let i = app.active_tab;
     let _ = app.run_command_line("BPARAMETER LINEAR 2,2 6,2 4,3");
     let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
@@ -2451,6 +2454,7 @@ fn lookup_basepoint_placement_history_test_block_and_saved_parent_undo() {
 fn lookup_editor_fixture() -> (OpenCADStudio, Handle, Handle) {
     let (mut app, reference) = fixture();
     begin(&mut app, reference);
+    let _ = app.dispatch_command("BACTIONBARMODE 0");
     let _ = app.run_command_line("BPARAMETER LINEAR 0,0 2,0 0,1");
     let _ = app.run_command_line("BPARAMETER LOOKUP 1,1");
     let i = app.active_tab;
@@ -5078,6 +5082,7 @@ fn block_action_association_repairs_multiple_orphans_with_local_undo_and_stale_g
     let _=app.dispatch_command("BASSOCIATE");
     assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(),"LINE");
     begin(&mut app,reference);
+    let _ = app.dispatch_command("BACTIONBARMODE 0");
     let _=app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
     let definition=app.tabs[i].active_block_edit_session().unwrap().br_handle;
     let original=actions::all_parameters(&app.tabs[i].scene.document,definition)[0].clone();
@@ -5233,4 +5238,103 @@ fn block_grip_cycling_ctrl_edges_use_saved_order_during_classic_insertion() {
     let handle=inserted.common.handle;
     app.undo_steps(1);
     assert!(app.tabs[i].scene.document.get_entity(handle).is_none());
+}
+
+#[test]
+fn block_action_bars_group_native_actions_and_preserve_drawing_history() {
+    use crate::scene::{block_action_bars as bars, block_actions::{self as actions, Kind}};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    assert!(app.block_editor_preferences.action_bars);
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter = actions::all_parameters(&app.tabs[i].scene.document, definition)[0].clone();
+    let targets = members(&app);
+    let mut handles = vec![];
+    for kind in [Kind::Move, Kind::Scale] {
+        handles.push(actions::create(&mut app.tabs[i].scene.document, definition, kind,
+            parameter.handle, &targets, glam::DVec3::new(4.,4.,0.)).unwrap());
+    }
+    let groups = bars::groups(&app.tabs[i].scene.document, definition);
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].parameter, parameter.handle);
+    assert_eq!(groups[0].entries.len(), 2);
+    let before = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let local_depth = main_depth(&app);
+    let _ = app.update(Message::BlockActionBarSelect(handles[0]));
+    assert_eq!(app.tabs[i].selected_authoring, Some(handles[0]));
+    let _ = app.update(Message::BlockActionBarMove(parameter.handle, iced::Vector::new(80., 25.)));
+    assert_eq!(app.tabs[i].action_bars.offsets[&parameter.handle], iced::Vector::new(80.,25.));
+    let _ = app.dispatch_command("BACTIONBAR Hide");
+    let _ = app.feed_command(crate::command::StepInput::Enter);
+    assert!(app.tabs[i].action_bars.hidden.contains(&parameter.handle));
+    app.tabs[i].selected_authoring = None;
+    let _ = app.update(Message::BlockActionBarSelect(handles[0]));
+    assert!(app.tabs[i].selected_authoring.is_none(), "hidden controls cannot select");
+    let _ = app.dispatch_command("BACTIONBAR Show All");
+    assert!(app.tabs[i].action_bars.hidden.is_empty());
+    assert!(app.tabs[i].action_bars.offsets.contains_key(&parameter.handle));
+    let _ = app.update(Message::BlockActionBarHide(parameter.handle));
+    let _ = app.dispatch_command("BACTIONBAR Reset");
+    assert!(app.tabs[i].action_bars.hidden.is_empty());
+    assert!(app.tabs[i].action_bars.offsets.is_empty());
+    assert_eq!(app.tabs[i].scene.document, before);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    assert_eq!(main_depth(&app), local_depth);
+    let _ = app.update(Message::BlockActionBarEdit(handles[0]));
+    assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "BACTIONSET");
+    let _ = app.update(Message::CommandEscape);
+    let _ = app.dispatch_command("LINE");
+    for command in ["BACTIONSET", "BASSOCIATE", "BLOOKUPTABLE"] {
+        let _ = app.dispatch_command(command);
+        assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+    }
+    let _ = app.update(Message::CommandEscape);
+    let _ = app.dispatch_command("BACTIONBARMODE 0");
+    let _ = app.dispatch_command("LINE");
+    let _ = app.dispatch_command("BACTIONBAR Reset");
+    assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+    let _ = app.update(Message::CommandEscape);
+    let _ = app.update(Message::BlockActionBarEdit(handles[0]));
+    assert!(app.tabs[i].active_cmd.is_none());
+    let _ = app.dispatch_command("BACTIONSET");
+    assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "BACTIONSET");
+}
+
+#[test]
+fn block_action_bars_open_lookup_and_orphan_association_and_ignore_stale_callbacks() {
+    use crate::scene::{block_action_bars as bars, block_actions::{self as actions, Kind}};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LOOKUP 3,3");
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let lookup = crate::scene::block_lookup::parameters(&app.tabs[i].scene.document, definition)[0].0;
+    let _ = app.update(Message::BlockActionBarEdit(lookup));
+    assert_eq!(app.active_modal, Some(ModalKind::BlockLookup));
+    assert_eq!(app.block_lookup.as_ref().unwrap().drafts[app.block_lookup.as_ref().unwrap().selected].parameter, lookup);
+    let _ = app.update(Message::CloseModal);
+    let parameter = actions::all_parameters(&app.tabs[i].scene.document, definition)[0].clone();
+    let targets = members(&app);
+    let action = actions::create(&mut app.tabs[i].scene.document, definition, Kind::Move,
+        parameter.handle, &targets, glam::DVec3::new(4.,4.,0.)).unwrap();
+    let Some(codec::objects::ObjectType::DynamicBlock(object)) = app.tabs[i].scene.document.objects.get_mut(&action) else { panic!() };
+    let codec::objects::DynamicBlockData::MoveAction(native) = &mut object.data else { panic!() };
+    native.connections.iter_mut().for_each(|connection| connection.code = -1);
+    assert!(bars::groups(&app.tabs[i].scene.document, definition).iter().any(|group|
+        group.entries.iter().any(|entry| entry.handle == action && matches!(entry.kind,bars::EntryKind::Orphan(_)))));
+    let _ = app.update(Message::BlockActionBarEdit(action));
+    assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "BASSOCIATE");
+    let _ = app.update(Message::CommandEscape);
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    let before = app.tabs[i].scene.document.clone();
+    let _ = app.update(Message::BlockActionBarMove(parameter.handle, iced::Vector::new(2.,3.)));
+    let _ = app.update(Message::BlockActionBarHide(parameter.handle));
+    let _ = app.update(Message::BlockActionBarEdit(action));
+    assert!(app.tabs[i].active_cmd.is_none());
+    assert!(app.tabs[i].action_bars.offsets.is_empty());
+    assert_eq!(app.tabs[i].scene.document, before);
 }

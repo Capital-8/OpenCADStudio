@@ -9042,6 +9042,17 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::BlockCycleApply => self.apply_block_cycle_order(),
+            Message::BlockActionBarSelect(handle) => self.handle_action_bar(handle,false),
+            Message::BlockActionBarEdit(handle) => self.handle_action_bar(handle,true),
+            Message::BlockActionBarMove(handle,offset) => { self.move_action_bar(handle,offset); Task::none() }
+            Message::BlockActionBarHide(handle) => {
+                let i=self.active_tab;
+                if self.action_bar_error().is_none() && self.tabs[i].active_cmd.is_none()
+                    && self.tabs[i].active_block_edit_session().is_some_and(|session| crate::scene::block_action_bars::groups(&self.tabs[i].scene.document,session.br_handle).iter().any(|group| group.parameter==handle)) {
+                    self.tabs[i].action_bars.hidden.insert(handle);
+                }
+                Task::none()
+            }
             Message::BlockEditorSettingsInput(index, value) => {
                 if let Some(state) = &mut self.block_editor_settings {
                     if let Some(field) = state.values.get_mut(index) { *field = value; }
@@ -9066,6 +9077,7 @@ impl OpenCADStudio {
                             }
                         }
                         self.block_editor_preferences = staged;
+                        self.refresh_properties();
                         self.persist_settings_if_changed();
                         self.block_editor_settings = None;
                         self.close_active_modal();

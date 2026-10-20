@@ -34,7 +34,11 @@ pub(crate) fn view_window(state: &State) -> Element<'_, Message> {
     {
         if matches!(
             *name,
-            "BPTEXTHORIZONTAL" | "BDEPENDENCYHIGHLIGHT" | "BTMARKDISPLAY" | "GRIPTIPS"
+            "BPTEXTHORIZONTAL"
+                | "BDEPENDENCYHIGHLIGHT"
+                | "BTMARKDISPLAY"
+                | "GRIPTIPS"
+                | "BACTIONBARMODE"
         ) {
             fields = fields.push(checkbox(value == "1").label(crate::t!(*label)).on_toggle(
                 move |value| Message::BlockEditorSettingsInput(index, u8::from(value).to_string()),

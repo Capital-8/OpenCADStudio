@@ -355,6 +355,13 @@ impl OpenCADStudio {
         let max = Point::new(a.x.max(b.x), a.y.max(b.y));
         let hit = items
             .into_iter()
+            .filter(|item| {
+                !self.block_editor_preferences.action_bars
+                    || !crate::scene::block_action_bars::is_action(
+                        &self.tabs[i].scene.document,
+                        item.handle,
+                    )
+            })
             .filter_map(|item| {
                 let mut projected = Vec::new();
                 for (_, p) in &item.grips {
@@ -461,6 +468,10 @@ impl OpenCADStudio {
         let camera = tab.scene.camera.borrow();
         edit::items(&tab.scene.document, session.br_handle)
             .into_iter()
+            .filter(|item| {
+                !self.block_editor_preferences.action_bars
+                    || !crate::scene::block_action_bars::is_action(&tab.scene.document, item.handle)
+            })
             .find_map(|item| {
                 item.graphic
                     .labels
@@ -534,6 +545,10 @@ impl OpenCADStudio {
         };
         let hit = items
             .iter()
+            .filter(|item| {
+                !self.block_editor_preferences.action_bars
+                    || !crate::scene::block_action_bars::is_action(&tab.scene.document, item.handle)
+            })
             .filter_map(|item| {
                 let mut d = f32::INFINITY;
                 for (_, v) in &item.grips {
@@ -601,6 +616,11 @@ impl OpenCADStudio {
         let Some(handle) = self.tabs[i].selected_authoring else {
             return;
         };
+        if self.block_editor_preferences.action_bars
+            && crate::scene::block_action_bars::is_action(&self.tabs[i].scene.document, handle)
+        {
+            return;
+        }
         let item = self.tabs[i].active_block_edit_session().and_then(|s| {
             edit::items(&self.tabs[i].scene.document, s.br_handle)
                 .into_iter()
@@ -629,6 +649,11 @@ impl OpenCADStudio {
             return false;
         }
         let i = self.active_tab;
+        if self.block_editor_preferences.action_bars
+            && crate::scene::block_action_bars::is_action(&self.tabs[i].scene.document, handle)
+        {
+            return false;
+        }
         let Some(session) = self.tabs[i].active_block_edit_session() else {
             return false;
         };

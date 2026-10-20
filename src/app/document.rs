@@ -212,6 +212,7 @@ pub(super) struct DocumentTab {
     pub(super) grip_base_pending: bool,
     pub(super) selected_handle: Option<Handle>,
     pub(super) selected_authoring: Option<Handle>,
+    pub(super) action_bars: super::block_action_bars::ViewState,
     /// Dynamic-block visibility grip for the current single selection.
     pub(super) visibility_grip: Option<super::visibility::VisibilityGrip>,
     pub(super) wireframe: bool,
@@ -754,6 +755,7 @@ impl DocumentTab {
             grip_base_pending: false,
             selected_handle: None,
             selected_authoring: None,
+            action_bars: Default::default(),
             visibility_grip: None,
             table_grip: None,
             wireframe: false,

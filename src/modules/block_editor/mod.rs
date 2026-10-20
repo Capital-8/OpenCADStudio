@@ -9,6 +9,7 @@ pub mod visibility_parameter;
 pub mod action;
 pub mod action_set;
 pub(crate) mod associate;
+pub(crate) mod action_bar;
 pub mod point_parameter;
 pub mod single_parameter;
 pub mod distance_parameter;
