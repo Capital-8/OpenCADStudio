@@ -152,6 +152,7 @@ impl OpenCADStudio {
         mut excluded_points: Vec<(Handle, glam::DVec3)>,
         subtract_window: Option<(glam::DVec3, glam::DVec3)>,
     ) {
+        use crate::modules::draw::modify::stretch::is_excluded;
         let i = self.active_tab;
         if let Some((min, max)) = subtract_window {
             // Subtract only the vertex grips that STRETCH actually selected.
@@ -163,12 +164,11 @@ impl OpenCADStudio {
                 .zip(self.tabs[i].selected_grips.iter())
             {
                 let world = grip.world;
-                let inside = world.x >= min.x - 1e-9 && world.x <= max.x + 1e-9
-                    && world.y >= min.y - 1e-9 && world.y <= max.y + 1e-9;
-                if inside && !excluded_points.iter().any(|(owner, point)| {
-                    *owner == handle && (point.x - world.x).abs() <= 1e-9
-                        && (point.y - world.y).abs() <= 1e-9
-                }) {
+                let inside = world.x >= min.x - 1e-9
+                    && world.x <= max.x + 1e-9
+                    && world.y >= min.y - 1e-9
+                    && world.y <= max.y + 1e-9;
+                if inside && !is_excluded(&excluded_points, handle, world) {
                     excluded_points.push((handle, world));
                 }
             }
@@ -221,10 +221,7 @@ impl OpenCADStudio {
             for &handle in &handles {
                 let wires = self.tabs[i].scene.wire_models_for(&[handle]);
                 let active_point = |point: glam::DVec3| {
-                    point_inside(point) && !excluded_points.iter().any(|(owner, removed)| {
-                        *owner == handle && (removed.x - point.x).abs() <= 1e-9
-                            && (removed.y - point.y).abs() <= 1e-9
-                    })
+                    point_inside(point) && !is_excluded(&excluded_points, handle, point)
                 };
 
                 let affected = wires.iter().any(|wire| {
@@ -271,11 +268,10 @@ impl OpenCADStudio {
                 .into_iter()
                 .zip(std::mem::take(&mut self.tabs[i].selected_grips))
             {
-                let removed = excluded_points.iter().any(|(owner, point)| {
-                    *owner == handle && (point.x - grip.world.x).abs() <= 1e-9
-                        && (point.y - grip.world.y).abs() <= 1e-9
-                });
-                if !grip.is_midpoint && point_inside(grip.world) && !removed {
+                if !grip.is_midpoint
+                    && point_inside(grip.world)
+                    && !is_excluded(&excluded_points, handle, grip.world)
+                {
                     stretch_grip_handles.push(handle);
                     stretch_grips.push(grip);
                 }
@@ -326,16 +322,14 @@ impl OpenCADStudio {
         for handle in &handles {
             // Subtract only this entity's explicitly removed vertices. The same
             // predicate gates preview, geometry mutation and inferred constraints.
-            let excluded: Vec<_> = excluded_points.iter()
-                .filter(|(owner, _)| owner == handle)
-                .map(|(_, point)| *point)
-                .collect();
             let in_win = |x: f64, y: f64| -> bool {
                 windows.iter().any(|(min, max)| {
                     x >= min.x && x <= max.x && y >= min.y && y <= max.y
-                }) && !excluded.iter().any(|point| {
-                    (point.x - x).abs() <= 1e-9 && (point.y - y).abs() <= 1e-9
-                })
+                }) && !crate::modules::draw::modify::stretch::is_excluded(
+                    &excluded_points,
+                    *handle,
+                    glam::DVec3::new(x, y, 0.0),
+                )
             };
             let before = self.tabs[i].scene.document.get_entity_arc(*handle);
             if let Some(entity) = before.as_deref() {
@@ -380,7 +374,11 @@ impl OpenCADStudio {
                 continue;
             };
             let stretched = crate::modules::draw::modify::stretch::stretch_entity_except(
-                entity, &windows, &excluded, delta,
+                entity,
+                *handle,
+                &windows,
+                &excluded_points,
+                delta,
             );
             if stretched && matches!(entity, codec::EntityType::Dimension(_)) {
                 stretched_dims.push(*handle);

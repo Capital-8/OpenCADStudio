@@ -1019,7 +1019,9 @@ impl OpenCADStudio {
                 excluded_points,
                 delta,
             } => {
-                if let Some(task) = self.handle_stretch_entities(handles, windows, excluded_points, delta) {
+                if let Some(task) =
+                    self.handle_stretch_entities(handles, windows, excluded_points, delta)
+                {
                     return task;
                 }
             }

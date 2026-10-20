@@ -37,23 +37,32 @@ pub fn stretch_entity(
     windows: &[(DVec3, DVec3)],
     delta: DVec3,
 ) -> bool {
-    stretch_entity_except(entity, windows, &[], delta)
+    stretch_entity_except(entity, Handle::NULL, windows, &[], delta)
 }
 
-/// STRETCH with point-level subtractions from Shift+click.
-/// Exclusions affect the moved vertices, not the crossing selection itself.
+/// Whether `point` of `handle` was taken out of the stretch set with Shift.
+pub(crate) fn is_excluded(excluded: &[(Handle, DVec3)], handle: Handle, point: DVec3) -> bool {
+    excluded.iter().any(|(owner, removed)| {
+        *owner == handle
+            && (removed.x - point.x).abs() <= 1e-9
+            && (removed.y - point.y).abs() <= 1e-9
+    })
+}
+
+/// [`stretch_entity`] for the entity `handle`, leaving its points listed in
+/// `excluded` in place. Exclusions affect the moved vertices, not the
+/// crossing selection itself.
 pub(crate) fn stretch_entity_except(
     entity: &mut codec::EntityType,
+    handle: Handle,
     windows: &[(DVec3, DVec3)],
-    excluded: &[DVec3],
+    excluded: &[(Handle, DVec3)],
     delta: DVec3,
 ) -> bool {
     let in_win = |x: f64, y: f64| -> bool {
         windows.iter().any(|(win_min, win_max)| {
             x >= win_min.x && x <= win_max.x && y >= win_min.y && y <= win_max.y
-        }) && !excluded.iter().any(|point| {
-            (point.x - x).abs() <= 1e-9 && (point.y - y).abs() <= 1e-9
-        })
+        }) && !is_excluded(excluded, handle, DVec3::new(x, y, 0.0))
     };
     let (dx, dy, dz) = (delta.x, delta.y, delta.z);
     let mut stretched = false;
@@ -507,13 +516,7 @@ impl CadCommand for StretchCommand {
                     .into_owned()
                 }
             }
-            Step::WindowCorner2(_, subtract) => {
-                if *subtract {
-                    "STRETCH  Specify opposite corner to remove selected vertices:".into()
-                } else {
-                    t!("STRETCH  Specify opposite corner:").into_owned()
-                }
-            },
+            Step::WindowCorner2(..) => t!("STRETCH  Specify opposite corner:").into_owned(),
             Step::Base => t!("STRETCH  Specify base point:").into_owned(),
             Step::Target { base } => {
                 let bx = format!("{:.3}", base.x);
@@ -610,15 +613,12 @@ impl CadCommand for StretchCommand {
         if !matches!(self.step, Step::WindowCorner1)
             || !self.handles.contains(&handle)
             || !self.windows.iter().any(|(min, max)| {
-                world.x >= min.x && world.x <= max.x
-                    && world.y >= min.y && world.y <= max.y
+                world.x >= min.x && world.x <= max.x && world.y >= min.y && world.y <= max.y
             })
         {
             return false;
         }
-        if !self.excluded_points.iter().any(|(h, p)| {
-            *h == handle && (p.x - world.x).abs() <= 1e-9 && (p.y - world.y).abs() <= 1e-9
-        }) {
+        if !is_excluded(&self.excluded_points, handle, world) {
             self.excluded_points.push((handle, world));
         }
         self.remove_release_pending = true;
@@ -660,11 +660,8 @@ impl CadCommand for StretchCommand {
             .filter_map(|handle| document.get_entity(*handle).map(|entity| (*handle, entity)))
             .map(|(handle, entity)| {
                 let mut entity = entity.clone();
-                let excluded: Vec<_> = self.excluded_points.iter()
-                    .filter(|(owner, _)| *owner == handle)
-                    .map(|(_, point)| *point)
-                    .collect();
-                stretch_entity_except(&mut entity, &self.windows, &excluded, delta);
+                let excluded = &self.excluded_points;
+                stretch_entity_except(&mut entity, handle, &self.windows, excluded, delta);
                 entity
             })
             .collect()
@@ -695,7 +692,9 @@ impl CadCommand for StretchCommand {
             // stationary ghost from its snapshot *behind* the moving geometry.
             // Do not replace the snapshot itself: it remains the snap source.
             Step::Target { base } => {
-                let mut wires: Vec<WireModel> = self.wire_models.iter()
+                let mut wires: Vec<WireModel> = self
+                    .wire_models
+                    .iter()
                     .filter(|wire| wire.display_visible)
                     .cloned()
                     .map(|mut wire| {
@@ -709,10 +708,7 @@ impl CadCommand for StretchCommand {
                     .collect();
                 wires.push(WireModel::solid_f64(
                     "rubber_band".into(),
-                    vec![
-                        [base.x, base.y, base.z],
-                        [pt.x, pt.y, pt.z],
-                    ],
+                    vec![[base.x, base.y, base.z], [pt.x, pt.y, pt.z]],
                     WireModel::CYAN,
                     false,
                 ));
@@ -779,9 +775,14 @@ mod shift_stretch_tests {
             Vector3::new(10.0, 0.0, 0.0),
         ));
         let window = [(DVec3::new(-1.0, -1.0, -1.0), DVec3::new(11.0, 1.0, 1.0))];
-        let excluded = [DVec3::ZERO];
+        let handle = Handle::new(7);
+        let excluded = [(handle, DVec3::ZERO)];
         assert!(stretch_entity_except(
-            &mut entity, &window, &excluded, DVec3::new(5.0, 0.0, 0.0),
+            &mut entity,
+            handle,
+            &window,
+            &excluded,
+            DVec3::new(5.0, 0.0, 0.0),
         ));
         let codec::EntityType::Line(line) = entity else { panic!("line expected") };
         assert_eq!(line.start, Vector3::new(0.0, 0.0, 0.0));
