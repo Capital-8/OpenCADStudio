@@ -824,6 +824,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "REGENMODE",
         "BLIPMODE",
         "SPLFRAME",
+        "CAMERADISPLAY",
         "DELOBJ",
         "PLINEGEN",
         "PSLTSCALE",

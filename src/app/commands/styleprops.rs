@@ -1170,6 +1170,7 @@ impl OpenCADStudio {
                     | "REGENMODE"
                     | "BLIPMODE"
                     | "SPLFRAME"
+                    | "CAMERADISPLAY"
                     | "DELOBJ"
                     | "SOLIDHIST"
                     | "SHOWHIST"
@@ -2988,6 +2989,18 @@ impl OpenCADStudio {
                                     Ok((format!("SPLFRAME = {}", h.spline_frame as i32), false))
                                 }
                             },
+                            "CAMERADISPLAY" => match &value {
+                                Some(v) => parse_bool(v)
+                                    .map(|b| {
+                                        h.camera_display = b;
+                                        (format!("CAMERADISPLAY = {}", b as i32), true)
+                                    })
+                                    .ok_or_else(|| "SETVAR: 0 or 1 required.".into()),
+                                None => Ok((
+                                    format!("CAMERADISPLAY = {}", h.camera_display as i32),
+                                    false,
+                                )),
+                            },
                             "DELOBJ" => match &value {
                                 Some(v) => v
                                     .parse::<i16>()
@@ -3535,7 +3548,7 @@ impl OpenCADStudio {
                                 } else {
                                     self.tabs[i].dirty = true;
                                 }
-                                if name == "FILLMODE" {
+                                if name == "FILLMODE" || name == "CAMERADISPLAY" {
                                     self.tabs[i].scene.bump_geometry();
                                 }
                                 if matches!(name.as_str(), "PSLTSCALE" | "PLIMCHECK") {
