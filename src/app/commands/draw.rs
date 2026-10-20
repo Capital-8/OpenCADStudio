@@ -737,6 +737,8 @@ impl OpenCADStudio {
 
             "HATCH" => {
                 use crate::modules::draw::draw::hatch::HatchCommand;
+                let perf_hatch = crate::perf::enabled();
+                let hatch_start = perf_hatch.then(iced::time::Instant::now);
                 let working_plane = if self.tabs[i].editing_model_space() {
                     self.tabs[i].ucs_xform().working_plane()
                 } else {
@@ -753,26 +755,55 @@ impl OpenCADStudio {
                     glam::DVec3::from_array(storage.x_axis),
                     glam::DVec3::from_array(storage.y_axis),
                 );
+                let sources_started = crate::perf::enabled().then(iced::time::Instant::now);
                 let boundary_sources = self.tabs[i].scene.boundary_sources_on_plane(plane, 1.0e-6);
-                let outlines = crate::scene::boundary_faces(&boundary_sources, 1.0e-6);
+                let sources_ms = crate::perf::elapsed_ms(sources_started);
+                let (source_count, segment_count, curve_count) = if perf_hatch {
+                    (
+                        boundary_sources.len(),
+                        boundary_sources
+                            .values()
+                            .map(|source| source.segments.len())
+                            .sum::<usize>(),
+                        boundary_sources
+                            .values()
+                            .map(|source| source.curves.len())
+                            .sum::<usize>(),
+                    )
+                } else {
+                    (0, 0, 0)
+                };
                 let selected = self.tabs[i]
                     .scene
                     .selected_entities()
                     .into_iter()
                     .map(|(handle, _)| handle)
                     .collect::<Vec<_>>();
+                let faces_started = crate::perf::enabled().then(iced::time::Instant::now);
+                let face_components =
+                    crate::scene::boundary_face_components(&boundary_sources, 1.0e-6);
+                let face_component_count = face_components.len();
+                let faces_ms = crate::perf::elapsed_ms(faces_started);
                 let inherited = selected.iter().find_map(|handle| {
                     let model = self.tabs[i].scene.hatches.get(handle)?.clone();
                     let common = self.tabs[i].scene.document.get_entity(*handle)?.common();
                     Some((model, common.color.clone(), common.transparency))
                 });
                 let new_cmd =
-                    HatchCommand::new(outlines, boundary_sources, selected, inherited, plane)
+                    HatchCommand::new(Vec::new(), boundary_sources, selected, inherited, plane)
+                        .with_face_components(face_components)
                         .with_origin(self.tabs[i].scene.document.hatch_origin())
                         .with_associative(self.hatch_associative);
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
                 self.refresh_area_preview(i);
+                let total_ms = crate::perf::elapsed_ms(hatch_start);
+                if perf_hatch && total_ms >= 1.0 {
+                    crate::perf_record!(
+                        "[perf] hatch-command-start total={total_ms:.1}ms sources={source_count} segments={segment_count} curves={curve_count} face-components={} eager-outlines=0 source-query={sources_ms:.1}ms component-index={faces_ms:.1}ms",
+                        face_component_count,
+                    );
+                }
             }
 
             "HATCHEDIT" => {

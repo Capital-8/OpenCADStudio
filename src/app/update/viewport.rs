@@ -2442,9 +2442,18 @@ impl OpenCADStudio {
                     .scene
                     .bump_entities_after_parametric_solve(&mesh_changes);
             }
+            let hatch_preview_started = crate::perf::enabled().then(Instant::now);
             self.tabs[i]
                 .scene
                 .set_preview_hatches(&self.grip_preview_handles);
+            let hatch_preview_ms = crate::perf::elapsed_ms(hatch_preview_started);
+            if hatch_preview_ms >= 1.0 {
+                crate::perf_record!(
+                    "[perf] grip-hatch-preview build={hatch_preview_ms:.1}ms handles={} models={}",
+                    self.grip_preview_handles.len(),
+                    self.tabs[i].scene.preview_hatches.len(),
+                );
+            }
             self.tabs[i].dirty = true;
             if let Some(active) = self.tabs[i].active_grip.as_mut() {
                 active.last_world = snapped;
@@ -4167,10 +4176,13 @@ impl OpenCADStudio {
         bounds: iced::Rectangle,
         edit_cam: &Option<crate::scene::view::camera::Camera>,
     ) -> bool {
+        let started = crate::perf::enabled().then(Instant::now);
         let (view_rot, eye, wires) = self.pick_view(i, edit_cam, bounds);
         let aperture = crate::ui::overlay::pick_box_aperture_px(self.pick_box);
         let world = self.cursor_model_point(i, edit_cam, p, bounds);
         let scene = &self.tabs[i].scene;
+        let wire_count = wires.len();
+        let candidate_started = crate::perf::enabled().then(Instant::now);
         let candidates = scene.interaction_hover_candidates_near(
             wires,
             world,
@@ -4179,7 +4191,9 @@ impl OpenCADStudio {
             bounds,
             aperture * 2.0,
         );
-        scene::pick::hit_test::click_hit(
+        let candidate_ms = crate::perf::elapsed_ms(candidate_started);
+        let hit_started = crate::perf::enabled().then(Instant::now);
+        let hit = scene::pick::hit_test::click_hit(
             p,
             &candidates,
             view_rot,
@@ -4190,7 +4204,17 @@ impl OpenCADStudio {
             &scene.draw_depth_map(),
         )
         .and_then(Scene::handle_from_wire_name)
-        .is_some_and(|handle| scene.selected.contains(&handle))
+        .is_some_and(|handle| scene.selected.contains(&handle));
+        let hit_ms = crate::perf::elapsed_ms(hit_started);
+        let total_ms = crate::perf::elapsed_ms(started);
+        if total_ms >= 1.0 {
+            crate::perf_record!(
+                "[perf] selected-drag-probe total={total_ms:.1}ms candidates={candidate_ms:.1}ms hit={hit_ms:.1}ms wires={} candidates_count={} selected_hit={hit}",
+                wire_count,
+                candidates.len(),
+            );
+        }
+        hit
     }
 
     /// Once a press on a selected object has moved far enough, MOVE (COPY
@@ -6004,6 +6028,7 @@ properties={:.1}ms picked={}",
                         let t_arm = crate::perf::enabled().then(Instant::now);
                         let prior_selection = self.tabs[i].scene.selected.len();
                         let pick_aperture = crate::ui::overlay::pick_box_aperture_px(self.pick_box);
+                        let query_started = crate::perf::enabled().then(Instant::now);
                         let click_candidates = self.tabs[i].scene.interaction_pick_candidates_near(
                             all_wires,
                             click_world,
@@ -6012,9 +6037,12 @@ properties={:.1}ms picked={}",
                             bounds,
                             pick_aperture * 2.0,
                         );
+                        let candidate_ms = crate::perf::elapsed_ms(query_started);
+                        let handles_started = crate::perf::enabled().then(Instant::now);
                         let candidate_handles = self.tabs[i]
                             .scene
                             .interaction_candidate_handles(&click_candidates);
+                        let handles_ms = crate::perf::elapsed_ms(handles_started);
 
                         // Selection cycling: where two or more objects
                         // overlap, open a list box to pick which one; a
@@ -6045,7 +6073,8 @@ properties={:.1}ms picked={}",
                         }
 
                         if !handled_by_cycling {
-                            let hit = scene::pick::hit_test::click_hit(
+                            let wire_started = crate::perf::enabled().then(Instant::now);
+                            let mut hit = scene::pick::hit_test::click_hit(
                                 p,
                                 &click_candidates,
                                 view_rot,
@@ -6055,43 +6084,72 @@ properties={:.1}ms picked={}",
                                 pick_aperture,
                                 &self.tabs[i].scene.draw_depth_map(),
                             )
-                            .and_then(|s| Scene::handle_from_wire_name(s))
-                            .or_else(|| {
-                                scene::pick::hit_test::click_hit_hatch(
+                            .and_then(|s| Scene::handle_from_wire_name(s));
+                            let wire_ms = crate::perf::elapsed_ms(wire_started);
+                            let mut hatch_models_ms = 0.0;
+                            let mut hatch_test_ms = 0.0;
+                            let mut hatch_count = 0usize;
+                            if hit.is_none() {
+                                let models_started = crate::perf::enabled().then(Instant::now);
+                                let hatches = self.tabs[i]
+                                    .scene
+                                    .visible_hatches_for_click(candidate_handles.as_ref());
+                                hatch_count = hatches.len();
+                                hatch_models_ms = crate::perf::elapsed_ms(models_started);
+                                let hatch_started = crate::perf::enabled().then(Instant::now);
+                                hit = scene::pick::hit_test::click_hit_hatch(
                                     p,
-                                    &self.tabs[i]
-                                        .scene
-                                        .visible_hatches_for_click(candidate_handles.as_ref()),
+                                    &hatches,
                                     view_rot,
                                     eye,
                                     bounds,
                                     candidate_handles.as_ref(),
-                                )
-                            })
-                            .or_else(|| {
+                                );
+                                hatch_test_ms = crate::perf::elapsed_ms(hatch_started);
+                            }
+                            let mut insert_ms = 0.0;
+                            if hit.is_none() {
                                 // Block-internal hatch: resolve to the parent Insert.
-                                scene::pick::hit_test::click_hit_insert_hatch(
+                                let insert_started = crate::perf::enabled().then(Instant::now);
+                                hit = scene::pick::hit_test::click_hit_insert_hatch(
                                     p,
                                     self.tabs[i].scene.insert_hatches_for_click().as_ref(),
                                     view_rot,
                                     eye,
                                     bounds,
                                     candidate_handles.as_ref(),
-                                )
-                            })
-                            .or_else(|| {
+                                );
+                                insert_ms = crate::perf::elapsed_ms(insert_started);
+                            }
+                            let mut solid_ms = 0.0;
+                            if hit.is_none() {
                                 // Normal 3D selection follows the displayed B-rep
                                 // edges. Face-interior picking remains reserved for
                                 // modelling commands that explicitly request it.
-                                self.tabs[i].scene.solid_edge_click_hit(
+                                let solid_started = crate::perf::enabled().then(Instant::now);
+                                hit = self.tabs[i].scene.solid_edge_click_hit(
                                     p,
                                     view_rot,
                                     eye,
                                     bounds,
                                     candidate_handles.as_ref(),
                                     pick_aperture,
+                                );
+                                solid_ms = crate::perf::elapsed_ms(solid_started);
+                            }
+                            let hit_hatch = hit.is_some_and(|handle| {
+                                matches!(
+                                    self.tabs[i].scene.document.get_entity(handle),
+                                    Some(codec::EntityType::Hatch(_))
                                 )
                             });
+                            let pick_ms = crate::perf::elapsed_ms(t_arm);
+                            if crate::perf::enabled() && pick_ms >= 1.0 {
+                                crate::perf_record!(
+                                    "[perf] select-click total={pick_ms:.1}ms candidates={candidate_ms:.2}ms handles={handles_ms:.2}ms wire={wire_ms:.2}ms hatch-models={hatch_models_ms:.2}ms hatch-test={hatch_test_ms:.2}ms insert={insert_ms:.2}ms solid={solid_ms:.2}ms candidate_wires={} hatch_candidates={hatch_count} hit_hatch={hit_hatch}",
+                                    click_candidates.len(),
+                                );
+                            }
                             // Selection filter: drop a pick whose type is excluded.
                             let hit =
                                 hit.filter(|&h| self.tabs[i].scene.passes_selection_filter(h));

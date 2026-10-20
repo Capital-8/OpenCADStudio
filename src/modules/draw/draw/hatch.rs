@@ -179,6 +179,8 @@ fn rte_boundary(pts: impl Iterator<Item = (f64, f64)>) -> (Vec<[f32; 2]>, [f64; 
 
 pub struct HatchCommand {
     outlines: Vec<Vec<[f64; 2]>>,
+    face_components: Vec<crate::scene::BoundaryFaceComponent>,
+    solved_face_components: Vec<bool>,
     boundary_sources: rustc_hash::FxHashMap<Handle, crate::scene::BoundarySource>,
     point_regions: Vec<Vec<Vec<[f64; 2]>>>,
     object_regions: Vec<Vec<Vec<[f64; 2]>>>,
@@ -216,6 +218,8 @@ impl HatchCommand {
         let has_selection = !selected_objects.is_empty();
         let mut command = Self {
             outlines,
+            face_components: Vec::new(),
+            solved_face_components: Vec::new(),
             boundary_sources,
             point_regions: Vec::new(),
             object_regions: Vec::new(),
@@ -246,6 +250,66 @@ impl HatchCommand {
         };
         command.set_object_selection(selected_objects);
         command
+    }
+
+    /// Defer planar face extraction until the user picks a point. HATCH only
+    /// needs the connected arrangements near that point and any arrangements
+    /// that can enclose holes inside the chosen face.
+    pub(crate) fn with_face_components(
+        mut self,
+        components: Vec<crate::scene::BoundaryFaceComponent>,
+    ) -> Self {
+        self.solved_face_components = vec![false; components.len()];
+        self.face_components = components;
+        self
+    }
+
+    fn solve_components_overlapping(&mut self, bounds: [f64; 4]) -> usize {
+        let candidates: Vec<_> = self
+            .face_components
+            .iter()
+            .enumerate()
+            .filter_map(|(index, component)| {
+                let candidate = component.bounds();
+                let overlaps = candidate[0] <= bounds[2]
+                    && bounds[0] <= candidate[2]
+                    && candidate[1] <= bounds[3]
+                    && bounds[1] <= candidate[3];
+                (overlaps && !self.solved_face_components[index]).then_some(index)
+            })
+            .collect();
+        let count = candidates.len();
+        for index in candidates {
+            self.outlines
+                .extend(self.face_components[index].faces(1.0e-6));
+            self.solved_face_components[index] = true;
+        }
+        count
+    }
+
+    fn resolve_point_region(&mut self, point: [f64; 2]) -> (Option<Vec<Vec<[f64; 2]>>>, usize) {
+        let mut computed =
+            self.solve_components_overlapping([point[0], point[1], point[0], point[1]]);
+        let Some(initial) = resolve_hatch_rings(&self.outlines, point) else {
+            return (None, computed);
+        };
+        let Some(outer) = initial.first() else {
+            return (Some(initial), computed);
+        };
+        let Some(first) = outer.first().copied() else {
+            return (Some(initial), computed);
+        };
+        let mut bounds = [first[0], first[1], first[0], first[1]];
+        for point in outer.iter().copied().skip(1) {
+            bounds[0] = bounds[0].min(point[0]);
+            bounds[1] = bounds[1].min(point[1]);
+            bounds[2] = bounds[2].max(point[0]);
+            bounds[3] = bounds[3].max(point[1]);
+        }
+        // A hole may not contain the pick, so solve every component whose
+        // bounds intersect the chosen outer ring before resolving nesting.
+        computed += self.solve_components_overlapping(bounds);
+        (resolve_hatch_rings(&self.outlines, point), computed)
     }
 
     /// HPASSOC: whether the hatch starts out associative.
@@ -322,6 +386,14 @@ impl HatchCommand {
     }
 
     fn make_hatch(&self, rings: Vec<Vec<[f64; 2]>>) -> HatchModel {
+        let perf_build = crate::perf::enabled();
+        let build_started = perf_build.then(iced::time::Instant::now);
+        let ring_count = rings.len();
+        let input_vertices = if perf_build {
+            rings.iter().map(Vec::len).sum::<usize>()
+        } else {
+            0
+        };
         let world_rings: Vec<Vec<[f64; 2]>> = rings
             .iter()
             .map(|ring| {
@@ -351,6 +423,7 @@ impl HatchCommand {
             .map(|depth| depth == 0)
             .collect();
         let near = crate::scene::sources_near_rings(&rings, &self.boundary_sources, 1.0e-6);
+        let near_source_count = near.len();
         let mut boundary_sources: Vec<Vec<Handle>> = rings
             .iter()
             .map(|ring| crate::scene::ring_source_handles(ring, &near))
@@ -387,6 +460,13 @@ impl HatchCommand {
                     family.x0 = ((dx * cos as f64 + dy * sin as f64) / scale as f64) as f32;
                     family.y0 = ((-dx * sin as f64 + dy * cos as f64) / scale as f64) as f32;
                 }
+            }
+            let build_ms = crate::perf::elapsed_ms(build_started);
+            if perf_build && build_ms >= 1.0 {
+                crate::perf_record!(
+                    "[perf] hatch-build total={build_ms:.1}ms rings={ring_count} vertices={input_vertices} sources={} nearby_sources={near_source_count} inherited=true",
+                    self.boundary_sources.len(),
+                );
             }
             return HatchModel {
                 pattern_origin: source.pattern_origin,
@@ -448,6 +528,13 @@ impl HatchCommand {
                 family.x0 += ((dx * cos + dy * sin) / scale as f64) as f32;
                 family.y0 += ((-dx * sin + dy * cos) / scale as f64) as f32;
             }
+        }
+        let build_ms = crate::perf::elapsed_ms(build_started);
+        if perf_build && build_ms >= 1.0 {
+            crate::perf_record!(
+                "[perf] hatch-build total={build_ms:.1}ms rings={ring_count} vertices={input_vertices} sources={} nearby_sources={near_source_count} inherited=false",
+                self.boundary_sources.len(),
+            );
         }
         HatchModel {
             pattern_origin: Some(self.default_origin),
@@ -665,10 +752,23 @@ impl CadCommand for HatchCommand {
 
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
         let pt = self.plane.to_local(pt);
-        match &self.mode {
+        match self.mode {
             HatchMode::PickInside => {
                 let xy = [pt.x, pt.y];
-                match resolve_hatch_rings(&self.outlines, xy) {
+                let resolve_started = crate::perf::enabled().then(iced::time::Instant::now);
+                let (resolved, computed_components) = self.resolve_point_region(xy);
+                let resolve_ms = crate::perf::elapsed_ms(resolve_started);
+                if resolve_ms >= 1.0 {
+                    crate::perf_record!(
+                        "[perf] hatch-region resolve={resolve_ms:.1}ms components_solved={computed_components} outlines={} result_rings={} result_vertices={}",
+                        self.outlines.len(),
+                        resolved.as_ref().map_or(0, Vec::len),
+                        resolved
+                            .as_ref()
+                            .map_or(0, |rings| rings.iter().map(Vec::len).sum::<usize>()),
+                    );
+                }
+                match resolved {
                     Some(rings) => {
                         self.missed = false;
                         self.add_point_region(rings);
@@ -1685,6 +1785,58 @@ mod tests {
     #[test]
     fn click_outside_returns_none() {
         assert!(resolve_hatch_rings(&nested(true), [50.0, 50.0]).is_none());
+    }
+
+    #[test]
+    fn lazy_hatch_face_resolution_solves_only_nearby_components() {
+        let mut sources = rustc_hash::FxHashMap::default();
+        let mut add_ring = |base: u64, ring: &[[f64; 2]]| {
+            for (index, (start, end)) in ring
+                .iter()
+                .copied()
+                .zip(ring.iter().copied().cycle().skip(1))
+                .take(ring.len())
+                .enumerate()
+            {
+                let segment = Line { start, end };
+                sources.insert(
+                    Handle::new(base + index as u64),
+                    crate::scene::BoundarySource {
+                        segments: vec![segment],
+                        curves: vec![Curve::Line(segment)],
+                    },
+                );
+            }
+        };
+        add_ring(1, &rect(-10.0, -10.0, 10.0, 10.0));
+        for index in 0..64 {
+            let x = 100.0 + index as f64 * 4.0;
+            let segment = Line {
+                start: [x, 100.0],
+                end: [x + 1.0, 100.0],
+            };
+            sources.insert(
+                Handle::new(100 + index),
+                crate::scene::BoundarySource {
+                    segments: vec![segment],
+                    curves: Vec::new(),
+                },
+            );
+        }
+
+        let components = crate::scene::boundary_face_components(&sources, 1.0e-6);
+        let mut command = HatchCommand::new(
+            Vec::new(),
+            sources,
+            Vec::new(),
+            None,
+            WorkingPlane::default(),
+        )
+        .with_face_components(components);
+        let (rings, solved) = command.resolve_point_region([0.0, 0.0]);
+        assert_eq!(solved, 1, "only the rectangle component should be solved");
+        assert_eq!(rings.unwrap().len(), 1);
+        assert_eq!(command.outlines.len(), 1);
     }
 
     #[test]
