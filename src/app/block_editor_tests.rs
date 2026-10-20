@@ -5068,3 +5068,62 @@ fn block_editor_display_changes_keep_rotated_labels_and_large_grips_pickable() {
     let _ = app.dispatch_command("BGRIPOBJSIZE 8");
     assert!(app.authoring_grip_hit(cursor,bounds).is_none());
 }
+
+#[test]
+fn block_action_association_repairs_multiple_orphans_with_local_undo_and_stale_guards() {
+    use crate::scene::block_actions::{self as actions,Kind};
+    let (mut app,reference)=fixture();
+    let i=app.active_tab;
+    let _=app.dispatch_command("LINE");
+    let _=app.dispatch_command("BASSOCIATE");
+    assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(),"LINE");
+    begin(&mut app,reference);
+    let _=app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let definition=app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let original=actions::all_parameters(&app.tabs[i].scene.document,definition)[0].clone();
+    let _=app.run_command_line("BPARAMETER XY 0,0 10,10 5,5");
+    let replacement=actions::all_parameters(&app.tabs[i].scene.document,definition).into_iter().find(|p| p.xy).unwrap();
+    let target=members(&app)[0];
+    let mut handles=vec![];
+    for x in [3.0,5.0] {
+        let action=actions::create(&mut app.tabs[i].scene.document,definition,Kind::Move,original.handle,&[target],glam::DVec3::new(x,3.0,0.0)).unwrap();
+        let Some(codec::objects::ObjectType::DynamicBlock(object))=app.tabs[i].scene.document.objects.get_mut(&action) else { panic!() };
+        let codec::objects::DynamicBlockData::MoveAction(native)=&mut object.data else { panic!() };
+        native.connections.iter_mut().for_each(|connection| connection.code=-1);
+        handles.push(action);
+    }
+    let baseline=app.tabs[i].scene.document.clone();
+    let depth=app.tabs[i].history.undo_stack.len();
+    app.tabs[i].selected_authoring=Some(handles[0]);
+    let _=app.dispatch_command("BASSOCIATE");
+    let _=app.feed_command(crate::command::StepInput::Enter);
+    assert_eq!(app.tabs[i].scene.document,baseline);
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth);
+    let _=app.dispatch_command("BASSOCIATE");
+    feed(&mut app,&replacement.name);
+    feed(&mut app,"X");
+    assert!(app.tabs[i].active_cmd.is_none());
+    assert_eq!(actions::association::orphaned(&app.tabs[i].scene.document,definition),vec![handles[1]]);
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth+1);
+    app.tabs[i].selected_authoring=Some(handles[1]);
+    let _=app.dispatch_command("BASSOCIATE");
+    feed(&mut app,&original.name);
+    let _=app.feed_command(crate::command::StepInput::Enter);
+    assert!(app.tabs[i].active_cmd.is_none());
+    assert!(actions::association::orphaned(&app.tabs[i].scene.document,definition).is_empty());
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth+2);
+    app.undo_steps(1);
+    assert_eq!(actions::association::orphaned(&app.tabs[i].scene.document,definition),vec![handles[1]]);
+    let expected=app.tabs[i].scene.document.objects[&handles[1]].clone();
+    let Some(codec::objects::ObjectType::DynamicBlock(object))=app.tabs[i].scene.document.objects.get_mut(&handles[1]) else { panic!() };
+    let codec::objects::DynamicBlockData::MoveAction(native)=&mut object.data else { panic!() };
+    native.action.display_location.x+=1.0;
+    let before=app.tabs[i].scene.document.clone();
+    let depth=app.tabs[i].history.undo_stack.len();
+    let _=app.handle_block_action_result(crate::command::CmdResult::AssociateBlockAction {
+        document:app.tabs[i].id,definition,action:handles[1],expected:Box::new(expected),parameter:original.handle,key_point:Some(actions::XyKeyPoint::End),
+    });
+    assert_eq!(app.tabs[i].scene.document,before);
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth);
+    assert!(app.command_line.last_error.as_ref().unwrap().contains("changed"));
+}

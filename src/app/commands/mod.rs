@@ -199,6 +199,12 @@ impl OpenCADStudio {
                 return Task::none();
             }
         }
+        if cmd == "BASSOCIATE" {
+            if let Some(error)=self.action_association_error() {
+                self.command_line.push_error(crate::t!(error).as_ref());
+                return Task::none();
+            }
+        }
         if matches!(
             cmd.split(' ').next(),
             Some("BACTION" | "BACTIONTOOL" | "BARRAY")

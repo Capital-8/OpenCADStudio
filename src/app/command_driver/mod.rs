@@ -580,6 +580,7 @@ impl OpenCADStudio {
             }
             result @ (CmdResult::PlaceBlockAction { .. }
             | CmdResult::EditBlockActionSet { .. }
+            | CmdResult::AssociateBlockAction { .. }
             | CmdResult::EvaluateBlockParameter { .. }) => {
                 return self.handle_block_action_result(result);
             }

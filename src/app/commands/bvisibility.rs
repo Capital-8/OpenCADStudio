@@ -406,6 +406,7 @@ impl OpenCADStudio {
                 Some(self.dispatch_command(&format!("BPARAMETER {}", set.parameter)))
             }
             "BACTIONSET" => Some(self.start_block_action_set()),
+            "BASSOCIATE" => Some(self.start_block_action_association()),
             cmd if cmd == "BACTION"
                 || cmd.starts_with("BACTION ")
                 || cmd == "BACTIONTOOL"

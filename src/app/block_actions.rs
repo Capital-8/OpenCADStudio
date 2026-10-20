@@ -11,6 +11,49 @@ pub(super) fn is_test_grip(id: usize) -> bool {
     (TEST_GRIP_START..usize::MAX).contains(&id)
 }
 impl OpenCADStudio {
+    pub(in crate::app) fn action_association_error(&self) -> Option<&'static str> {
+        let tab = &self.tabs[self.active_tab];
+        let Some(session) = tab.active_block_edit_session() else {
+            return Some("BASSOCIATE is only available in the Block Editor.");
+        };
+        let orphaned = actions::association::orphaned(&tab.scene.document, session.br_handle);
+        if orphaned.is_empty() {
+            return Some("This definition has no unassociated actions.");
+        }
+        let selected = tab
+            .selected_authoring
+            .filter(|selected| orphaned.contains(selected));
+        let compatible = actions::actions(&tab.scene.document, session.br_handle)
+            .into_iter()
+            .filter(|(handle, _, _, _)| {
+                orphaned.contains(handle) && selected.is_none_or(|selected| selected == *handle)
+            })
+            .any(|(_, _, kind, _)| {
+                !actions::parameters(&tab.scene.document, session.br_handle, kind).is_empty()
+            });
+        if !compatible {
+            return Some("Add a compatible parameter before associating an action.");
+        }
+        None
+    }
+
+    pub(in crate::app) fn start_block_action_association(&mut self) -> Task<Message> {
+        if let Some(error) = self.action_association_error() {
+            self.command_line.push_error(crate::t!(error).as_ref());
+            return Task::none();
+        }
+        let tab = &self.tabs[self.active_tab];
+        let command = crate::modules::block_editor::associate::AssociateCommand::new(
+            tab.id,
+            tab.active_block_edit_session().unwrap().br_handle,
+            &tab.scene.document,
+            tab.selected_authoring,
+        );
+        self.command_line.push_info(&command.prompt());
+        self.command_line.set_step_options(command.options());
+        self.tabs[self.active_tab].active_cmd = Some(Box::new(command));
+        Task::none()
+    }
     pub(in crate::app) fn reset_selected_block_references(&mut self, apply: bool) -> Task<Message> {
         let i = self.active_tab;
         let handles = self.tabs[i]
@@ -259,6 +302,63 @@ impl OpenCADStudio {
     ) -> Task<Message> {
         let i = self.active_tab;
         match result {
+            crate::command::CmdResult::AssociateBlockAction {
+                document,
+                definition,
+                action,
+                expected,
+                parameter,
+                key_point,
+            } => {
+                let tab = &self.tabs[i];
+                if tab.id != document
+                    || tab
+                        .active_block_edit_session()
+                        .map(|session| session.br_handle)
+                        != Some(definition)
+                    || tab.scene.document.objects.get(&action) != Some(expected.as_ref())
+                {
+                    self.command_line.push_error(
+                        crate::t!(
+                            "The action or its Block Editor session changed; restart BASSOCIATE."
+                        )
+                        .as_ref(),
+                    );
+                    return Task::none();
+                }
+                let mut staged = tab.scene.document.clone();
+                let result = actions::association::associate(
+                    &mut staged,
+                    definition,
+                    action,
+                    parameter,
+                    key_point,
+                )
+                .and_then(|changed| {
+                    if changed && actions::association::orphaned(&staged, definition).is_empty() {
+                        staged = actions::instance::refresh(&staged, definition)?;
+                    }
+                    Ok(changed)
+                });
+                match result {
+                    Ok(changed) => {
+                        if changed {
+                            self.push_undo_snapshot(i, "Associate block action");
+                            self.apply_action_document(i, staged);
+                            self.tabs[i].scene.bump_geometry();
+                            self.tabs[i].dirty = true;
+                            self.finish_pending_history(i);
+                        }
+                        self.tabs[i].active_cmd = None;
+                        self.tabs[i].scene.clear_preview_wire();
+                        self.tabs[i].selected_authoring = Some(action);
+                        self.refresh_properties();
+                        self.command_line
+                            .push_output(crate::t!("Action associated with parameter.").as_ref());
+                    }
+                    Err(error) => self.command_line.push_error(crate::t!(error).as_ref()),
+                }
+            }
             crate::command::CmdResult::EditBlockActionSet {
                 document,
                 definition,

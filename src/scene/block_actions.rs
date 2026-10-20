@@ -10,6 +10,7 @@ use codec::{CadDocument, EntityType, Handle};
 use glam::DVec3;
 pub(crate) mod instance;
 pub(crate) mod feedback;
+pub(crate) mod association;
 mod representation;
 mod stretch;
 
