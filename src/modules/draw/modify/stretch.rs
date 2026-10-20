@@ -399,6 +399,7 @@ pub struct StretchCommand {
     /// Independent crossing windows accumulated during the selection stage.
     windows: Vec<(DVec3, DVec3)>,
     excluded_points: Vec<(Handle, DVec3)>,
+    remove_release_pending: bool,
     step: Step,
 }
 
@@ -409,6 +410,7 @@ impl StretchCommand {
             wire_models,
             windows: Vec::new(),
             excluded_points: Vec::new(),
+            remove_release_pending: false,
             step: Step::WindowCorner1,
         }
     }
@@ -425,6 +427,7 @@ impl StretchCommand {
             wire_models,
             windows: vec![window],
             excluded_points: Vec::new(),
+            remove_release_pending: false,
             step: Step::Base,
         }
     }
@@ -442,6 +445,7 @@ impl StretchCommand {
             wire_models,
             windows,
             excluded_points,
+            remove_release_pending: false,
             step: Step::WindowCorner1,
         }
     }
@@ -594,7 +598,12 @@ impl CadCommand for StretchCommand {
         }) {
             self.excluded_points.push((handle, world));
         }
+        self.remove_release_pending = true;
         true
+    }
+
+    fn consume_stretch_remove_release(&mut self) -> bool {
+        std::mem::take(&mut self.remove_release_pending)
     }
 
     fn window_corner_pick(&self) -> bool {
