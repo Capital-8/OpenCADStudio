@@ -3487,6 +3487,260 @@ fn save_as_preserves_block_parameters_and_remaps_constraint_geometry() {
 }
 
 #[test]
+fn save_as_copies_native_authoring_graphs_and_keeps_reference_values_independent() {
+    use crate::scene::{
+        block_actions as actions, block_lookup as lookup, block_properties_table as tables,
+    };
+    use codec::objects::{DynamicBlockData, ObjectType};
+    use std::io::Cursor;
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let original = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let targets = members(&app);
+    for command in [
+        "BPARAMETER LINEAR 0,0 10,0 5,2",
+        "BPARAMETER POLAR 0,0 10,0 5,2",
+        "BPARAMETER ROTATION 0,0 10,0 10,0",
+        "BPARAMETER FLIP 0,0 10,0 -2,2",
+    ] {
+        let _ = app.run_command_line(command);
+    }
+    let doc = &mut app.tabs[i].scene.document;
+    let lookup_parameter = lookup::create(doc, original, Vector3::new(4., 4., 0.)).unwrap();
+    let parameter_data = lookup::parameters(doc, original)
+        .into_iter()
+        .find(|(h, _)| *h == lookup_parameter)
+        .unwrap()
+        .1;
+    let mut table = lookup::empty_table(&parameter_data);
+    table
+        .columns
+        .insert(0, lookup::properties(doc, original)[0].column.clone());
+    table.column_count = 2;
+    table.row_count = 1;
+    table.expressions = vec!["10".into(), "Standard".into()];
+    lookup::apply_table(doc, original, lookup_parameter, table).unwrap();
+    let columns = tables::columns(doc, original)
+        .into_iter()
+        .filter(|c| c.connection_name == "UpdatedDistance")
+        .take(1)
+        .collect::<Vec<_>>();
+    tables::apply(doc, original, &columns, &[vec![10.], vec![15.]], false).unwrap();
+    let visibility =
+        crate::scene::block_visibility::create(doc, original, Vector3::new(3., 3., 0.)).unwrap();
+    for kind in [
+        actions::Kind::Move,
+        actions::Kind::Scale,
+        actions::Kind::Stretch,
+        actions::Kind::PolarStretch,
+        actions::Kind::Rotate,
+        actions::Kind::Flip,
+        actions::Kind::Array,
+    ] {
+        let parameter = actions::parameters(doc, original, kind)[0].handle;
+        actions::create_with_options(
+            doc,
+            original,
+            kind,
+            parameter,
+            None,
+            &targets,
+            glam::DVec3::ZERO,
+            actions::needs_frame(kind).then_some([
+                glam::DVec3::new(0.5, -1., 0.),
+                glam::DVec3::new(1.5, 1., 0.),
+            ]),
+            (kind == actions::Kind::Array).then_some((2., 2.)),
+        )
+        .unwrap();
+    }
+    let authored = app.tabs[i].scene.document.clone();
+    assert!(
+        app.save_block_edit_as(i, "COPY"),
+        "{:?}",
+        app.command_line.last_error
+    );
+    let copied = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let doc = &app.tabs[i].scene.document;
+    assert!(
+        actions::all_parameters(doc, original).is_empty(),
+        "unsaved source authoring remains at its checkpoint"
+    );
+    assert_eq!(actions::actions(doc, copied).len(), 7);
+    assert_eq!(lookup::parameters(doc, copied).len(), 1);
+    assert!(tables::table(doc, copied).unwrap().is_some());
+    let copied_visibility = crate::scene::block_visibility::parameter(doc, copied).unwrap();
+    assert_ne!(copied_visibility.handle, visibility);
+    assert!(copied_visibility
+        .all_blocks
+        .iter()
+        .all(|h| !targets.contains(h)));
+    let graph = tables::graph_handle(doc, copied).unwrap();
+    let original_graph = tables::graph_handle(&authored, original).unwrap();
+    assert_ne!(graph, original_graph);
+    let original_guid = authored
+        .object_xdata(original)
+        .unwrap()
+        .get_record("AcDbDynamicBlockGUID")
+        .unwrap();
+    let copied_guid = doc
+        .object_xdata(copied)
+        .unwrap()
+        .get_record("AcDbDynamicBlockGUID")
+        .unwrap();
+    assert_ne!(original_guid, copied_guid);
+    for (handle, action, _, _) in actions::actions(doc, copied) {
+        assert!(action.dependencies.iter().all(|h| !targets.contains(h)));
+        let ObjectType::DynamicBlock(object) = &doc.objects[&handle] else {
+            panic!()
+        };
+        assert_eq!(object.owner, graph);
+    }
+    for saved in [
+        doc.clone(),
+        codec::DwgReader::from_stream(Cursor::new(codec::DwgWriter::write_to_vec(doc).unwrap()))
+            .read()
+            .unwrap(),
+        codec::DxfReader::from_reader(Cursor::new(
+            codec::DxfWriter::new(doc).write_to_vec().unwrap(),
+        ))
+        .unwrap()
+        .read()
+        .unwrap(),
+    ] {
+        assert_eq!(actions::actions(&saved, copied).len(), 7);
+        assert!(tables::table(&saved, copied).unwrap().is_some());
+        assert!(crate::scene::block_visibility::parameter(&saved, copied).is_some());
+        let ObjectType::DynamicBlock(object) = &saved.objects[&graph] else {
+            panic!()
+        };
+        let DynamicBlockData::EvaluationGraph(graph) = &object.data else {
+            panic!()
+        };
+        assert!(graph
+            .nodes
+            .iter()
+            .all(|node| saved.objects.contains_key(&node.expression)));
+    }
+    app.close_block_edit(i, false);
+    let copy_reference = app.tabs[i]
+        .scene
+        .document
+        .add_entity(EntityType::Insert(Insert::new(
+            "COPY",
+            Vector3::new(20., 0., 0.),
+        )))
+        .unwrap();
+    let original_reference = app.tabs[i]
+        .scene
+        .document
+        .get_entity(reference)
+        .unwrap()
+        .clone();
+    let parameter =
+        actions::parameters(&app.tabs[i].scene.document, copied, actions::Kind::Rotate)[0].handle;
+    let changed = actions::instance::evaluate(
+        &app.tabs[i].scene.document,
+        copy_reference,
+        parameter,
+        glam::DVec3::new(0., 10., 0.),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(changed.get_entity(reference), Some(&original_reference));
+    assert_eq!(
+        changed.get_entity(targets[0]),
+        app.tabs[i].scene.document.get_entity(targets[0])
+    );
+}
+
+#[test]
+fn save_as_existing_dynamic_definition_retains_both_graphs_and_undoes_atomically() {
+    use crate::scene::{block_actions as actions, block_distance_parameter as distance};
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    let original = app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("EDIT_ME")
+        .unwrap()
+        .handle;
+    let targets = members(&app);
+    let doc = &mut app.tabs[i].scene.document;
+    let parameter = distance::create(
+        doc,
+        original,
+        distance::Kind::Linear,
+        Vector3::ZERO,
+        Vector3::new(10., 0., 0.),
+        Vector3::new(5., 2., 0.),
+    )
+    .unwrap();
+    actions::create(
+        doc,
+        original,
+        actions::Kind::Move,
+        parameter,
+        &targets,
+        glam::DVec3::ZERO,
+    )
+    .unwrap();
+    let before = app.tabs[i].scene.document.clone();
+    begin(&mut app, reference);
+    assert!(app.save_block_edit_as(i, "COPY"));
+    let copied = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    app.close_block_edit(i, false);
+    assert_eq!(
+        actions::actions(&app.tabs[i].scene.document, original),
+        actions::actions(&before, original)
+    );
+    app.undo_steps(1);
+    assert!(app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("COPY")
+        .is_none());
+    assert_eq!(
+        actions::actions(&app.tabs[i].scene.document, original),
+        actions::actions(&before, original)
+    );
+    app.redo_steps(1);
+    assert_eq!(
+        actions::actions(&app.tabs[i].scene.document, copied).len(),
+        1
+    );
+    let copy_reference = app.tabs[i]
+        .scene
+        .document
+        .add_entity(EntityType::Insert(Insert::new("COPY", Vector3::ZERO)))
+        .unwrap();
+    let copy_parameter =
+        actions::parameters(&app.tabs[i].scene.document, copied, actions::Kind::Move)[0].handle;
+    assert_ne!(copy_parameter, parameter);
+    let changed = actions::instance::evaluate(
+        &app.tabs[i].scene.document,
+        copy_reference,
+        copy_parameter,
+        glam::DVec3::new(15., 0., 0.),
+    )
+    .unwrap()
+    .unwrap();
+    let original_parameter =
+        actions::parameters(&changed, original, actions::Kind::Move)[0].clone();
+    assert_eq!(
+        actions::instance::current(&changed, reference, &original_parameter).unwrap(),
+        glam::DVec3::new(10., 0., 0.)
+    );
+    assert_eq!(
+        changed.get_entity(targets[0]),
+        before.get_entity(targets[0])
+    );
+}
+
+#[test]
 fn save_as_refuses_unsupported_owned_graphs_without_losing_edits() {
     use codec::objects::{DynamicBlockObject, ObjectType};
     let (mut app, reference) = fixture();
