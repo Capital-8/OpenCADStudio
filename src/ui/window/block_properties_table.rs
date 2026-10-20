@@ -63,9 +63,7 @@ impl State {
                 self.columns.push(property.clone());
                 self.selected_property = None;
             }
-            Action::RemoveProperty(index)
-                if self.original.is_none() && index < self.columns.len() =>
-            {
+            Action::RemoveProperty(index) if index < self.columns.len() => {
                 self.columns.remove(index);
                 for row in &mut self.rows {
                     if index < row.len() {
@@ -99,12 +97,10 @@ pub(crate) fn view(state: &State, sizing: crate::ui::modal::ModalSizing) -> Elem
     let mut headings = row![text(" ").width(28)].spacing(6);
     for (index, column_binding) in state.columns.iter().enumerate() {
         let mut header = column![text(column_binding.display_name.clone()).size(13)];
-        if state.original.is_none() {
-            header = header.push(
-                button(text(crate::t!("Remove").into_owned()).size(11))
-                    .on_press(send(Action::RemoveProperty(index))),
-            );
-        }
+        header = header.push(
+            button(text(crate::t!("Remove").into_owned()).size(11))
+                .on_press(send(Action::RemoveProperty(index))),
+        );
         headings = headings.push(container(header.spacing(4)).width(160));
     }
     let mut grid = column![headings].spacing(7);
