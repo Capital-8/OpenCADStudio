@@ -5208,6 +5208,85 @@ mod tests {
     }
 
     #[test]
+    fn line_trim_preserves_exact_round_hole_after_circle_trim() {
+        use std::f64::consts::PI;
+        let source = rect_hatch(1, true);
+        let circle = [Geo::Circle {
+            handle: Handle::new(70), cx: 7.0, cy: 7.0, r: 1.0,
+        }];
+        let cut_circle = trim_hatch_at(&source, &circle, 7.0, 7.0)
+            .expect("first trim must make a round hole");
+        assert_eq!(cut_circle.paths.len(), 2);
+        let line = [Geo::Line {
+            handle: Handle::new(71), p1: [5.0, -1.0], p2: [5.0, 11.0],
+        }];
+        let cut_line = trim_hatch_at(&cut_circle, &line, 2.0, 5.0)
+            .expect("next trim by line must retain round hole");
+        assert_eq!(cut_line.paths.len(), 2);
+        assert!(matches!(cut_line.paths[1].edges.first(),
+            Some(codec::entities::BoundaryEdge::CircularArc(_))));
+        assert!((crate::entities::hatch::boundary_area(&cut_line)
+            - (50.0 - PI)).abs() < 1.0e-5);
+    }
+
+    #[test]
+    fn line_trim_after_circular_notch_keeps_exact_analytic_arc() {
+        let source = rect_hatch(1, false);
+        let circle = [Geo::Circle {
+            handle: Handle::new(70), cx: 10.5, cy: 5.0, r: 3.0,
+        }];
+        let notch = trim_hatch_at(&source, &circle, 9.0, 5.0)
+            .expect("first trim must create arc notch");
+        let original_area = crate::entities::hatch::boundary_area(&notch);
+        let line = [Geo::Line {
+            handle: Handle::new(71), p1: [3.0, -1.0], p2: [3.0, 11.0],
+        }];
+        let trimmed = trim_hatch_at(&notch, &line, 1.0, 5.0)
+            .expect("subsequent line must trim the already notched hatch");
+        assert_eq!(trimmed.paths.len(), 1);
+        assert!(trimmed.paths[0].edges.iter().any(|edge| matches!(
+            edge, codec::entities::BoundaryEdge::CircularArc(arc)
+                if (arc.center.x - 10.5).abs() < 1.0e-9
+                    && (arc.radius - 3.0).abs() < 1.0e-9
+        )));
+        let area = crate::entities::hatch::boundary_area(&trimmed);
+        assert!(area > 0.0 && area < original_area);
+        assert!(crate::scene::Scene::hatch_model_from_dxf(&trimmed, [1.0; 4]).is_some());
+    }
+
+    #[test]
+    fn trim_click_erases_standalone_circular_hatch_not_plain_rectangle() {
+        use codec::entities::{BoundaryEdge, BoundaryPath, CircularArcEdge};
+        use codec::types::Vector2;
+        let mut round = codec::entities::Hatch::new();
+        round.common.handle = Handle::new(90);
+        round.is_solid = true;
+        let mut path = BoundaryPath::new();
+        path.add_edge(BoundaryEdge::CircularArc(CircularArcEdge {
+            center: Vector2::new(5.0, 5.0), radius: 3.0,
+            start_angle: 0.0, end_angle: std::f64::consts::TAU,
+            counter_clockwise: true,
+        }));
+        round.paths.push(path);
+        let all = vec![
+            EntityType::Hatch(Box::new(round)),
+            EntityType::Hatch(Box::new(rect_hatch(91, false))),
+        ];
+        let mut cmd = TrimCommand::new(all);
+        cmd.mode = TrimMode::Pick;
+        assert!(!cmd.on_hover_entity(Handle::new(90), DVec3::new(5.0, 5.0, 0.0)).is_empty());
+        assert!(matches!(
+            cmd.on_entity_pick(Handle::new(90), DVec3::new(5.0, 5.0, 0.0)),
+            CmdResult::ReplaceEntity(handle, pieces)
+                if handle == Handle::new(90) && pieces.is_empty()
+        ));
+        assert!(matches!(
+            cmd.on_entity_pick(Handle::new(91), DVec3::new(1.0, 1.0, 0.0)),
+            CmdResult::NeedPoint
+        ), "ordinary polygon hatch without cutting boundary must survive");
+    }
+
+    #[test]
     fn trim_circle_never_cuts_holes_or_unrelated_regions() {
         let mut hatch = rect_hatch(1, false);
         add_rect_hole(&mut hatch, 4.0, 4.0, 6.0, 6.0);
