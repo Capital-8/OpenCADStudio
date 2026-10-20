@@ -2399,23 +2399,9 @@ fn trim_hatch_at(
     {
         return None;
     }
-    // Preserve analytic curves intact by refusing cuts that would require
-    // replacing arcs or splines with sampled chords.
-    let straight = |path: &BoundaryPath| {
-        !path.edges.is_empty()
-            && path.edges.iter().all(|edge| match edge {
-                BoundaryEdge::Line(_) => true,
-                BoundaryEdge::Polyline(poly) => {
-                    poly.is_closed
-                        && poly.vertices.len() >= 3
-                        && poly.vertices.iter().all(|v| v.z.abs() <= 1.0e-12)
-                }
-                _ => false,
-            })
-    };
-    if !hatch.paths.iter().all(straight) {
-        return None;
-    }
+    // Inner paths (including exact circles) do not need to be clipped when
+    // entirely on one side of the cutter. Preserve those analytic curves as
+    // they are rather than refusing to trim the hatch again.
     let rings: Vec<Vec<[f64; 2]>> = hatch
         .paths
         .iter()
@@ -2432,6 +2418,8 @@ fn trim_hatch_at(
         return None;
     }
     let outer_index = outer[0];
+    // Preserve exact outer curves; the mixed-edge solver below handles
+    // successive straight cuts even after a curved notch has been made.
     let ring = &rings[outer_index];
     const EPS: f64 = 1.0e-8;
     let ring_area = |points: &[[f64; 2]]| -> f64 {
