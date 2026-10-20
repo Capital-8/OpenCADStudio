@@ -854,28 +854,12 @@ fn append_pdf_page(
                     }
                 }
             }
-            // Near-white and near-yellow (viewport active border) → dark grey for print
-            // (only when no CTB override was applied).
+            // Colour 7 plots black on the white sheet (only when no CTB
+            // override was applied).
             // `aci == 0` is an explicit true colour and plots as drawn, like the
             // hatch pass (#1621); only a pure white there is an unresolved colour 7.
             if !color_overridden && (wire.aci != 0 || [r, g, b] == [1.0; 3]) {
-                // An authored white (not colour 7) plots as drawn, like on screen.
-                let is_light = r > 0.80
-                    && g > 0.80
-                    && b > 0.80
-                    && !crate::scene::convert::tess_util::is_authored_white([r, g, b]);
-                let is_yellow = r > 0.80 && g > 0.70 && b < 0.30;
-                let is_cyan = r < 0.30 && g > 0.70 && b > 0.70;
-                if is_light || is_yellow {
-                    r = 0.0;
-                    g = 0.0;
-                    b = 0.0;
-                } else if is_cyan {
-                    // Viewport border: print as dark blue.
-                    r = 0.0;
-                    g = 0.15;
-                    b = 0.50;
-                }
+                [r, g, b] = adapt_to_paper([r, g, b]);
             }
             [r, g, b] = plotted_color([r, g, b], a, screening, options);
 
@@ -1479,7 +1463,7 @@ fn emit_wire_fills(
                 }
             }
             if !color_overridden {
-                [r, g, b] = adapt_text_color([r, g, b]);
+                [r, g, b] = adapt_to_paper([r, g, b]);
             }
             [r, g, b] = plotted_color([r, g, b], a, screening, options);
         }
@@ -1592,8 +1576,7 @@ fn emit_hatch(
     }
     // Adapt hatch fills to the white sheet, mirroring the wire pass: colours
     // arrive adapted to the (dark) screen background, so a white/ACI-7 fill
-    // would vanish white-on-white on paper. Force near-white/near-yellow → black
-    // and near-cyan → dark blue for a readable white-sheet result.
+    // would vanish white-on-white on paper, so near-white turns black.
     // Genuine colours are untouched; WIPEOUTS keep their paper-white mask.
     let is_wipeout = hatch.name == "WIPEOUT_FILL";
     let mut screening = 1.0;
@@ -1627,22 +1610,7 @@ fn emit_hatch(
         && hatch.aci != 0
         && !(hatch.aci == 7 && matches!(hatch.pattern, HatchPattern::Solid))
     {
-        // An authored white (not colour 7) plots as drawn, like on screen.
-        let is_light = r > 0.80
-            && g > 0.80
-            && b > 0.80
-            && !crate::scene::convert::tess_util::is_authored_white([r, g, b]);
-        let is_yellow = r > 0.80 && g > 0.70 && b < 0.30;
-        let is_cyan = r < 0.30 && g > 0.70 && b > 0.70;
-        if is_light || is_yellow {
-            r = 0.0;
-            g = 0.0;
-            b = 0.0;
-        } else if is_cyan {
-            r = 0.0;
-            g = 0.15;
-            b = 0.50;
-        }
+        [r, g, b] = adapt_to_paper([r, g, b]);
     }
     [r, g, b] = plotted_color([r, g, b], a, screening, options);
     // `boundary` holds f32 offsets from the f64 `world_origin`, so resolve the
@@ -1695,7 +1663,7 @@ fn emit_hatch(
                 [r, g, b]
             } else {
                 plotted_color(
-                    adapt_text_color([color2[0], color2[1], color2[2]]),
+                    adapt_to_paper([color2[0], color2[1], color2[2]]),
                     color2[3],
                     screening,
                     options,
@@ -1807,20 +1775,17 @@ fn glyph_world_xy(v: &crate::scene::pipeline::text_gpu::TextVertex) -> [f64; 2] 
     ]
 }
 
-/// Adapt a text colour to the white sheet, mirroring the wire/hatch passes:
-/// near-white / near-yellow (colour-7-on-white) → black, near-cyan → dark blue.
-fn adapt_text_color([r, g, b]: [f32; 3]) -> [f32; 3] {
+/// Adapt a screen colour to the white sheet, shared by every PDF/SVG pass:
+/// only near-white (colour 7) turns black. Every other colour, yellow and
+/// cyan included, plots as drawn. (#1926)
+pub(crate) fn adapt_to_paper([r, g, b]: [f32; 3]) -> [f32; 3] {
     // An authored white (not colour 7) plots as drawn, like on screen.
     let is_light = r > 0.80
         && g > 0.80
         && b > 0.80
         && !crate::scene::convert::tess_util::is_authored_white([r, g, b]);
-    let is_yellow = r > 0.80 && g > 0.70 && b < 0.30;
-    let is_cyan = r < 0.30 && g > 0.70 && b > 0.70;
-    if is_light || is_yellow {
+    if is_light {
         [0.0, 0.0, 0.0]
-    } else if is_cyan {
-        [0.0, 0.15, 0.50]
     } else {
         [r, g, b]
     }
@@ -1932,7 +1897,7 @@ fn emit_searchable_text(
                 continue;
             }
             let rgb = ctb_color
-                .unwrap_or_else(|| adapt_text_color([run.color[0], run.color[1], run.color[2]]));
+                .unwrap_or_else(|| adapt_to_paper([run.color[0], run.color[1], run.color[2]]));
             let [r, g, b] = plotted_color(rgb, run.color[3], screening, options);
             // World mm → page points; the page CTM (plot scale/rotation/clip)
             // applies on top, exactly as for the wire geometry.
@@ -2299,7 +2264,7 @@ fn emit_text(
             // as in the wire pass — else a monochrome.ctb plot plots the lines
             // black and leaves the text on its screen colour.
             let rgb = ctb_color.unwrap_or_else(|| {
-                adapt_text_color([quad[0].color[0], quad[0].color[1], quad[0].color[2]])
+                adapt_to_paper([quad[0].color[0], quad[0].color[1], quad[0].color[2]])
             });
             let [r, g, b] = plotted_color(rgb, a, screening, options);
 
@@ -2753,6 +2718,14 @@ pub(crate) fn pdf_stream_text(bytes: &[u8]) -> String {
 mod tests {
     use crate::io::plot_style::PlotStyleTableExt as _;
     use super::*;
+
+    #[test]
+    fn only_colour_7_adapts_to_the_white_sheet() {
+        assert_eq!(adapt_to_paper([1.0, 1.0, 1.0]), [0.0, 0.0, 0.0]);
+        for rgb in [[1.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 1.0, 0.5]] {
+            assert_eq!(adapt_to_paper(rgb), rgb, "{rgb:?} must plot as drawn");
+        }
+    }
 
     fn test_page(wires: Vec<PlotWire>) -> PdfPageInput {
         PdfPageInput {
