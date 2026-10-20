@@ -1202,6 +1202,9 @@ impl OpenCADStudio {
             "view_focus" => self.control_view_focus(req)?,
             #[cfg(not(target_arch = "wasm32"))]
             "save" => {
+                if let Some(refusal) = self.read_only_save_refusal() {
+                    return Err(refusal);
+                }
                 if self.tabs[i].block_test.is_some() {
                     return Err(failure(
                         "temporary_document",
@@ -1306,6 +1309,9 @@ impl OpenCADStudio {
             }
             #[cfg(not(target_arch = "wasm32"))]
             "save_verified" => {
+                if let Some(refusal) = self.read_only_save_refusal() {
+                    return Err(refusal);
+                }
                 let result = self.save_verified_request(req)?;
                 self.set_control_result(result);
                 Task::none()
