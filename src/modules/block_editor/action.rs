@@ -18,6 +18,8 @@ pub(crate) struct ActionCommand {
     targets: Vec<Handle>,
     selecting: bool,
     frame: Vec<DVec3>,
+    polygon_frame: bool,
+    frame_done: bool,
     column_offset: Option<f64>,
     row_offset: Option<f64>,
     context: Option<PointPickContext>,
@@ -42,6 +44,8 @@ impl ActionCommand {
             targets: vec![],
             selecting: false,
             frame: vec![],
+            polygon_frame: false,
+            frame_done: false,
             column_offset: None,
             row_offset: None,
             context: None,
@@ -70,6 +74,19 @@ impl ActionCommand {
         command.xy_key_point = xy_key_point;
         command.selecting = !actions::needs_frame(kind);
         Some(command)
+    }
+    fn finish_frame(&mut self) -> CmdResult {
+        if self.frame.len() < 3 {
+            return CmdResult::ReportError(
+                crate::t!("Specify at least three polygon vertices.").into_owned(),
+            );
+        }
+        if let Err(error) = actions::validate_frame_points(&self.frame) {
+            return CmdResult::ReportError(crate::t!(error).into_owned());
+        }
+        self.frame_done = true;
+        self.selecting = true;
+        CmdResult::DeselectAndContinue
     }
     fn choose(&mut self, p: Parameter) -> CmdResult {
         if self.kind.is_some_and(|kind| !actions::compatible(&p, kind)) {
@@ -133,6 +150,12 @@ impl CadCommand for ActionCommand {
             )
             .into_owned();
         }
+        if self.kind.is_some_and(actions::needs_frame) && !self.frame_done && self.polygon_frame {
+            return crate::t!(
+                "BACTION  Specify polygon vertex or [Undo/Close]; press Enter to close:"
+            )
+            .into_owned();
+        }
         if self.kind.is_some_and(actions::needs_frame) && self.frame.is_empty() {
             if let Some(point) = self.xy_key_point {
                 let point = match point {
@@ -143,7 +166,8 @@ impl CadCommand for ActionCommand {
                 };
                 return crate::tf!("BACTION  Specify first corner of action frame for the parameter's {point} point:").into_owned();
             }
-            return crate::t!("BACTION  Specify first corner of action frame:").into_owned();
+            return crate::t!("BACTION  Specify first corner of action frame or [CPolygon]:")
+                .into_owned();
         }
         if self.kind.is_some_and(actions::needs_frame) && self.frame.len() == 1 {
             return crate::t!("BACTION  Specify opposite corner of action frame:").into_owned();
@@ -196,10 +220,24 @@ impl CadCommand for ActionCommand {
                 CmdOption::new("Array", "Array"),
             ]
         } else if self.parameter.is_some()
+            && self.kind.is_some_and(actions::needs_frame)
+            && !self.frame_done
+        {
+            if self.polygon_frame {
+                vec![
+                    CmdOption::new("Undo", "Undo"),
+                    CmdOption::new("Close", "Close"),
+                ]
+            } else if self.frame.is_empty() {
+                vec![CmdOption::new("CPolygon", "CPolygon")]
+            } else {
+                vec![]
+            }
+        } else if self.parameter.is_some()
             && !self.selecting
             && self.override_input.is_none()
             && matches!(self.kind, Some(Kind::Move | Kind::Stretch))
-            && (!self.kind.is_some_and(actions::needs_frame) || self.frame.len() == 2)
+            && (!self.kind.is_some_and(actions::needs_frame) || self.frame_done)
         {
             vec![
                 CmdOption::new("Multiplier", "Multiplier"),
@@ -210,6 +248,24 @@ impl CadCommand for ActionCommand {
         }
     }
     fn on_text_input(&mut self, s: &str) -> Option<CmdResult> {
+        if self.parameter.is_some()
+            && self.kind.is_some_and(actions::needs_frame)
+            && !self.frame_done
+        {
+            match s.trim().to_ascii_uppercase().as_str() {
+                "CPOLYGON" | "CP" if self.frame.is_empty() => {
+                    self.polygon_frame = true;
+                    return Some(CmdResult::NeedPoint);
+                }
+                "UNDO" | "U" if self.polygon_frame => {
+                    self.frame.pop();
+                    return Some(CmdResult::NeedPoint);
+                }
+                "CLOSE" | "C" if self.polygon_frame => return Some(self.finish_frame()),
+                _ => {}
+            }
+        }
+
         if let Some(multiplier) = self.override_input {
             let Ok(value) = s.trim().parse::<f64>() else {
                 return Some(CmdResult::ReportError(
@@ -232,7 +288,7 @@ impl CadCommand for ActionCommand {
         if self.parameter.is_some()
             && !self.selecting
             && matches!(self.kind, Some(Kind::Move | Kind::Stretch))
-            && (!self.kind.is_some_and(actions::needs_frame) || self.frame.len() == 2)
+            && (!self.kind.is_some_and(actions::needs_frame) || self.frame_done)
         {
             match s.trim().to_ascii_uppercase().as_str() {
                 "MULTIPLIER" | "M" => self.override_input = Some(true),
@@ -342,7 +398,7 @@ impl CadCommand for ActionCommand {
                 )
             });
         }
-        if self.kind.is_some_and(actions::needs_frame) && self.frame.len() < 2 {
+        if self.kind.is_some_and(actions::needs_frame) && !self.frame_done {
             let plane = self
                 .candidates
                 .iter()
@@ -355,6 +411,22 @@ impl CadCommand for ActionCommand {
                     crate::t!("Specify a finite corner in the parameter's XY plane.").into_owned(),
                 );
             }
+            if self.polygon_frame {
+                if self.frame.len() >= 3 && self.frame[0].distance(point) < 1e-9 {
+                    return self.finish_frame();
+                }
+                if self
+                    .frame
+                    .last()
+                    .is_some_and(|last| last.distance(point) < 1e-9)
+                {
+                    return CmdResult::ReportError(
+                        crate::t!("Specify a distinct polygon vertex.").into_owned(),
+                    );
+                }
+                self.frame.push(point);
+                return CmdResult::NeedPoint;
+            }
             if self
                 .frame
                 .first()
@@ -366,6 +438,7 @@ impl CadCommand for ActionCommand {
             }
             self.frame.push(point);
             if self.frame.len() == 2 {
+                self.frame_done = true;
                 self.selecting = true;
                 return CmdResult::DeselectAndContinue;
             }
@@ -421,7 +494,7 @@ impl CadCommand for ActionCommand {
             xy_key_point: self.xy_key_point,
             targets: self.targets.clone(),
             location: point,
-            frame: (self.frame.len() == 2).then(|| [self.frame[0], self.frame[1]]),
+            frame: self.frame_done.then(|| self.frame.clone()),
             array_offsets,
             displacement_overrides: matches!(self.kind, Some(Kind::Move | Kind::Stretch))
                 .then_some((self.multiplier, self.angle_offset)),
@@ -429,7 +502,11 @@ impl CadCommand for ActionCommand {
     }
 
     fn on_preview_wires(&mut self, point: DVec3) -> Vec<crate::scene::WireModel> {
-        frame_preview(&self.frame, point)
+        if self.polygon_frame {
+            polygon_preview(&self.frame, (!self.frame_done).then_some(point))
+        } else {
+            frame_preview(&self.frame, point)
+        }
     }
 
     fn is_selection_gathering(&self) -> bool {
@@ -442,6 +519,10 @@ impl CadCommand for ActionCommand {
         CmdResult::NeedPoint
     }
     fn on_enter(&mut self) -> CmdResult {
+        if self.polygon_frame && !self.frame_done {
+            return self.finish_frame();
+        }
+
         if self.override_input.take().is_some() {
             return CmdResult::NeedPoint;
         }
@@ -506,6 +587,28 @@ pub(super) fn frame_preview(frame: &[DVec3], point: DVec3) -> Vec<crate::scene::
             [b.x, b.y, a.z],
             [a.x, b.y, a.z],
         ],
+        crate::scene::WireModel::CYAN,
+        true,
+    )]
+}
+
+pub(super) fn polygon_preview(
+    frame: &[DVec3],
+    cursor: Option<DVec3>,
+) -> Vec<crate::scene::WireModel> {
+    let mut points = frame
+        .iter()
+        .map(|point| point.to_array())
+        .collect::<Vec<_>>();
+    if let Some(point) = cursor.filter(|point| point.is_finite()) {
+        points.push(point.to_array());
+    }
+    if points.len() < 2 {
+        return vec![];
+    }
+    vec![crate::scene::WireModel::solid_f64(
+        "preview_stretch_polygon".into(),
+        points,
         crate::scene::WireModel::CYAN,
         true,
     )]

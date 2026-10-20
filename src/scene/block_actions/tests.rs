@@ -2360,3 +2360,52 @@ fn block_stretch_accepts_point_parameters_and_freezes_endpoint_membership() {
         assert_eq!(doc.objects[&action],baseline.objects[&action]);
     }
 }
+
+#[test]
+fn block_polygon_stretch_frames_bind_concave_regions_and_replace_atomically() {
+    let mut scene=Scene::new();
+    scene.define_block_raw("POLYGON_FRAME",Vector3::ZERO,vec![EntityType::Line(codec::entities::Line::from_points(
+        Vector3::new(0.5,3.,0.),Vector3::new(3.,3.,0.)))]);
+    let record=scene.document.block_records.get("POLYGON_FRAME").unwrap();
+    let (definition,targets)=(record.handle,record.entity_handles.clone());
+    let mut doc=scene.document;
+    let parameter=linear(&mut doc,definition);
+    let frame=vec![DVec3::ZERO,DVec3::new(4.,0.,0.),DVec3::new(4.,1.,0.),
+        DVec3::new(1.,1.,0.),DVec3::new(1.,4.,0.),DVec3::new(0.,4.,0.)];
+    let action=create_with_frame_points(&mut doc,definition,Kind::Stretch,parameter,None,&targets,DVec3::ZERO,Some(&frame),None).unwrap();
+    let ObjectType::DynamicBlock(object)=&doc.objects[&action] else {panic!()};
+    let DynamicBlockData::StretchAction(native)=&object.data else {panic!()};
+    assert_eq!(native.points.len(),6);
+    assert_eq!(native.handles[0].indexes,vec![0]);
+    let baseline=doc.clone();
+    for reopened in [
+        baseline.clone(),
+        DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&baseline).unwrap())).read().unwrap(),
+        DxfReader::from_reader(Cursor::new(DxfWriter::new(&baseline).write_to_vec().unwrap())).unwrap().read().unwrap(),
+    ] {
+        assert_eq!(reopened.objects[&action],baseline.objects[&action]);
+        let mut changed=reopened.clone();
+        for distance in [12.,14.] {
+            evaluate(&mut changed,&reopened,definition,parameter,DVec3::new(distance,0.,0.)).unwrap();
+            let EntityType::Line(line)=changed.get_entity(targets[0]).unwrap() else {panic!()};
+            assert_eq!(line.start,Vector3::new(distance-9.5,3.,0.));
+            assert_eq!(line.end,Vector3::new(3.,3.,0.));
+        }
+    }
+    for bad in [
+        vec![DVec3::ZERO,DVec3::X,DVec3::new(2.,0.,0.)],
+        vec![DVec3::ZERO,DVec3::new(2.,2.,0.),DVec3::new(0.,2.,0.),DVec3::new(2.,0.,0.)],
+        vec![DVec3::ZERO,DVec3::X,DVec3::new(0.,1.,1.)],
+        vec![DVec3::ZERO,DVec3::X,DVec3::Y,DVec3::X],
+    ] {
+        assert!(retarget_frame_points(&mut doc,definition,action,&targets,Some(&bad)).is_err());
+        assert_eq!(doc,baseline);
+    }
+    let triangle=vec![DVec3::new(2.,2.,0.),DVec3::new(4.,2.,0.),DVec3::new(3.,4.,0.)];
+    assert!(retarget_frame_points(&mut doc,definition,action,&targets,Some(&triangle)).unwrap());
+    let ObjectType::DynamicBlock(object)=&doc.objects[&action] else {panic!()};
+    let DynamicBlockData::StretchAction(native)=&object.data else {panic!()};
+    assert_eq!(native.points.len(),3);
+    assert_eq!(native.handles[0].indexes,vec![1]);
+    assert_eq!(native.action.dependencies,targets);
+}

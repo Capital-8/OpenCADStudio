@@ -1541,7 +1541,7 @@ pub enum CmdResult {
         action: Handle,
         expected: Box<codec::objects::ObjectType>,
         targets: Vec<Handle>,
-        frame: Option<[DVec3; 2]>,
+        frame: Option<Vec<DVec3>>,
     },
     EditBlockAuthoring {
         document: u64,
@@ -1558,7 +1558,7 @@ pub enum CmdResult {
         xy_key_point: Option<crate::scene::block_actions::XyKeyPoint>,
         targets: Vec<Handle>,
         location: DVec3,
-        frame: Option<[DVec3; 2]>,
+        frame: Option<Vec<DVec3>>,
         array_offsets: Option<(f64, f64)>,
         displacement_overrides: Option<(f64, f64)>,
     },

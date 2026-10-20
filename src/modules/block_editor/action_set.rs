@@ -32,6 +32,7 @@ pub(crate) struct ActionSetCommand {
     mode: Option<Mode>,
     picked: Vec<Handle>,
     frame: Vec<DVec3>,
+    polygon_frame: bool,
     context: Option<PointPickContext>,
 }
 impl ActionSetCommand {
@@ -61,7 +62,19 @@ impl ActionSetCommand {
             mode: None,
             picked: vec![],
             frame: vec![],
+            polygon_frame: false,
             context: None,
+        }
+    }
+    fn finish_polygon(&self) -> CmdResult {
+        if self.frame.len() < 3 {
+            return CmdResult::ReportError(
+                crate::t!("Specify at least three polygon vertices.").into_owned(),
+            );
+        }
+        match actions::validate_frame_points(&self.frame) {
+            Ok(()) => self.finish(),
+            Err(error) => CmdResult::ReportError(crate::t!(error).into_owned()),
         }
     }
     fn finish(&self) -> CmdResult {
@@ -83,7 +96,7 @@ impl ActionSetCommand {
             action: c.handle,
             expected: Box::new(c.expected.clone()),
             targets,
-            frame: (self.frame.len() == 2).then(|| [self.frame[0], self.frame[1]]),
+            frame: matches!(self.mode, Some(Mode::Frame)).then(|| self.frame.clone()),
         }
     }
 }
@@ -107,8 +120,10 @@ impl CadCommand for ActionSetCommand {
             "BACTIONSET  [New/Add/Remove/Frame] <New>:"
         } else if self.mode.is_none() {
             "BACTIONSET  [New/Add/Remove] <New>:"
+        } else if matches!(self.mode, Some(Mode::Frame)) && self.polygon_frame {
+            "BACTIONSET  Specify polygon vertex or [Undo/Close]; press Enter to close:"
         } else if matches!(self.mode, Some(Mode::Frame)) && self.frame.is_empty() {
-            "BACTIONSET  Specify first corner of replacement action frame:"
+            "BACTIONSET  Specify first corner of replacement action frame or [CPolygon]:"
         } else if matches!(self.mode, Some(Mode::Frame)) {
             "BACTIONSET  Specify opposite corner of replacement action frame:"
         } else {
@@ -127,11 +142,37 @@ impl CadCommand for ActionSetCommand {
                 options.push(CmdOption::new("Frame", "Frame"));
             }
             options
+        } else if matches!(self.mode, Some(Mode::Frame)) {
+            if self.polygon_frame {
+                vec![
+                    CmdOption::new("Undo", "Undo"),
+                    CmdOption::new("Close", "Close"),
+                ]
+            } else if self.frame.is_empty() {
+                vec![CmdOption::new("CPolygon", "CPolygon")]
+            } else {
+                vec![]
+            }
         } else {
             vec![]
         }
     }
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        if matches!(self.mode, Some(Mode::Frame)) {
+            match text.trim().to_ascii_uppercase().as_str() {
+                "CPOLYGON" | "CP" if self.frame.is_empty() => {
+                    self.polygon_frame = true;
+                    return Some(CmdResult::NeedPoint);
+                }
+                "UNDO" | "U" if self.polygon_frame => {
+                    self.frame.pop();
+                    return Some(CmdResult::NeedPoint);
+                }
+                "CLOSE" | "C" if self.polygon_frame => return Some(self.finish_polygon()),
+                _ => {}
+            }
+        }
+
         if self.chosen.is_none() {
             let matches = self
                 .candidates
@@ -200,6 +241,22 @@ impl CadCommand for ActionSetCommand {
                     crate::t!("Specify a finite corner in the action's XY plane.").into_owned(),
                 );
             }
+            if self.polygon_frame {
+                if self.frame.len() >= 3 && self.frame[0].distance(point) < 1e-9 {
+                    return self.finish_polygon();
+                }
+                if self
+                    .frame
+                    .last()
+                    .is_some_and(|last| last.distance(point) < 1e-9)
+                {
+                    return CmdResult::ReportError(
+                        crate::t!("Specify a distinct polygon vertex.").into_owned(),
+                    );
+                }
+                self.frame.push(point);
+                return CmdResult::NeedPoint;
+            }
             if self
                 .frame
                 .first()
@@ -225,6 +282,10 @@ impl CadCommand for ActionSetCommand {
         CmdResult::NeedPoint
     }
     fn on_enter(&mut self) -> CmdResult {
+        if matches!(self.mode, Some(Mode::Frame)) && self.polygon_frame {
+            return self.finish_polygon();
+        }
+
         if self.chosen.is_none() {
             return CmdResult::Cancel;
         }
@@ -238,6 +299,10 @@ impl CadCommand for ActionSetCommand {
         }
     }
     fn on_preview_wires(&mut self, point: DVec3) -> Vec<crate::scene::WireModel> {
-        super::action::frame_preview(&self.frame, point)
+        if self.polygon_frame {
+            super::action::polygon_preview(&self.frame, Some(point))
+        } else {
+            super::action::frame_preview(&self.frame, point)
+        }
     }
 }

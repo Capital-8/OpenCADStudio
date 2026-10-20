@@ -381,7 +381,7 @@ impl OpenCADStudio {
                     return Task::none();
                 }
                 let mut staged = tab.scene.document.clone();
-                let result = actions::retarget(&mut staged, definition, action, &targets, frame)
+                let result = actions::retarget_frame_points(&mut staged, definition, action, &targets, frame.as_deref())
                     .and_then(|changed| {
                         if changed {
                             staged = actions::instance::refresh(&staged, definition)?;
@@ -431,7 +431,7 @@ impl OpenCADStudio {
                     return Task::none();
                 }
                 let mut staged = self.tabs[i].scene.document.clone();
-                match actions::create_with_options(
+                match actions::create_with_frame_points(
                     &mut staged,
                     definition,
                     kind,
@@ -439,7 +439,7 @@ impl OpenCADStudio {
                     xy_key_point,
                     &targets,
                     location,
-                    frame,
+                    frame.as_deref(),
                     array_offsets,
                 ).and_then(|handle| {
                     if let Some((multiplier, angle)) = displacement_overrides {

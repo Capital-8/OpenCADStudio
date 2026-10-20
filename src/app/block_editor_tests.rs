@@ -5420,3 +5420,56 @@ fn block_action_overrides_command_options_create_one_atomic_action() {
     app.redo_steps(1);
     assert!(actions::options::offsets(&app.tabs[i].scene.document,action).is_some());
 }
+
+#[test]
+fn block_polygon_stretch_command_cancel_close_replace_and_local_history() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app,reference)=fixture();
+    begin(&mut app,reference);
+    let i=app.active_tab;
+    let _=app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+    let definition=app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter=actions::all_parameters(&app.tabs[i].scene.document,definition)[0].clone();
+    let before=app.tabs[i].scene.document.clone();
+    let depth=app.tabs[i].history.undo_stack.len();
+    let _=app.dispatch_command("BACTION STRETCH");
+    feed(&mut app,&parameter.name);
+    feed(&mut app,"CPolygon");
+    feed(&mut app,"0,0");
+    feed(&mut app,"2,0");
+    feed(&mut app,"Close");
+    assert!(app.tabs[i].active_cmd.is_some());
+    assert_eq!(app.tabs[i].scene.document,before);
+    let _=app.update(Message::CommandEscape);
+    assert_eq!(app.tabs[i].scene.document,before);
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth);
+    let _=app.dispatch_command("BACTION STRETCH");
+    feed(&mut app,&parameter.name);
+    feed(&mut app,"CPolygon");
+    for value in ["-1,-1","2,-1","8,8","Undo","2,2","-1,2"] {feed(&mut app,value);}
+    let _=app.feed_command(crate::command::StepInput::Enter);
+    let targets=members(&app);
+    let _=app.feed_command(crate::command::StepInput::SelectionComplete(targets));
+    let _=app.feed_command(crate::command::StepInput::Enter);
+    feed(&mut app,"4,4");
+    assert!(app.tabs[i].active_cmd.is_none());
+    let action=actions::actions(&app.tabs[i].scene.document,definition).iter().find(|(_,_,kind,_)|*kind==Kind::Stretch).unwrap().0;
+    assert_eq!(actions::frame_outline(&app.tabs[i].scene.document,action).len(),4);
+    let created=app.tabs[i].scene.document.objects[&action].clone();
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth+1);
+    let _=app.update(Message::BlockActionBarSelect(action));
+    let _=app.update(Message::BlockActionBarEdit(action));
+    feed(&mut app,"Frame");
+    feed(&mut app,"CPolygon");
+    for value in ["0,-1","2,-1","0,2"] {feed(&mut app,value);}
+    feed(&mut app,"Close");
+    assert!(app.tabs[i].active_cmd.is_none());
+    assert_eq!(actions::frame_outline(&app.tabs[i].scene.document,action).len(),3);
+    assert_eq!(app.tabs[i].history.undo_stack.len(),depth+2);
+    app.undo_steps(1);
+    assert_eq!(app.tabs[i].scene.document.objects[&action],created);
+    app.undo_steps(1);
+    assert!(actions::actions(&app.tabs[i].scene.document,definition).is_empty());
+    app.redo_steps(2);
+    assert_eq!(actions::frame_outline(&app.tabs[i].scene.document,action).len(),3);
+}

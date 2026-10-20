@@ -12,10 +12,14 @@ pub(crate) fn control_points(e: &EntityType) -> Result<Vec<DVec3>, &'static str>
             }
             vec![v(a.start_point_wcs()), v(a.end_point_wcs())]
         }
-        EntityType::Circle(c) => vec![v(codec::types::Matrix3::arbitrary_axis(c.normal) * c.center)],
+        EntityType::Circle(c) => {
+            vec![v(codec::types::Matrix3::arbitrary_axis(c.normal) * c.center)]
+        }
         EntityType::Ellipse(e) => vec![v(e.center)],
         EntityType::Point(p) => vec![v(p.location)],
-        EntityType::Text(t) => vec![v(codec::types::Matrix3::arbitrary_axis(t.normal) * t.insertion_point)],
+        EntityType::Text(t) => vec![v(
+            codec::types::Matrix3::arbitrary_axis(t.normal) * t.insertion_point
+        )],
         EntityType::MText(t) => vec![v(t.insertion_point)],
         EntityType::LwPolyline(p) => {
             let p = crate::entities::curve::lwpolyline_world_xy(p)
@@ -33,24 +37,95 @@ pub(crate) fn control_points(e: &EntityType) -> Result<Vec<DVec3>, &'static str>
     Ok(points)
 }
 
-pub(crate) fn bind(
-    doc: &CadDocument,
-    targets: &[Handle],
-    corners: [DVec3; 2],
-    plane: f64,
-) -> Result<(Vec<Vector2>, Vec<BlockStretchHandle>), &'static str> {
-    if corners
-        .iter()
-        .any(|p| !p.is_finite() || (p.z - plane).abs() > 1e-8)
+pub(crate) fn native_frame(corners: &[DVec3], plane: f64) -> Result<Vec<Vector2>, &'static str> {
+    if corners.len() < 2
+        || corners
+            .iter()
+            .any(|p| !p.is_finite() || (p.z - plane).abs() > 1e-8)
     {
         return Err("Specify finite stretch-frame corners in the parameter's XY plane.");
     }
-    let low = corners[0].min(corners[1]);
-    let high = corners[0].max(corners[1]);
-    if high.x - low.x < 1e-9 || high.y - low.y < 1e-9 {
-        return Err("The stretch frame needs a nonzero width and height.");
+    let points = if corners.len() == 2 {
+        let low = corners[0].min(corners[1]);
+        let high = corners[0].max(corners[1]);
+        if high.x - low.x < 1e-9 || high.y - low.y < 1e-9 {
+            return Err("The stretch frame needs a nonzero width and height.");
+        }
+        vec![Vector2::new(low.x, low.y), Vector2::new(high.x, high.y)]
+    } else {
+        corners
+            .iter()
+            .map(|point| Vector2::new(point.x, point.y))
+            .collect()
+    };
+    validate_polygon(&outline(&points, plane))?;
+    Ok(points)
+}
+
+fn validate_polygon(points: &[Vector3]) -> Result<(), &'static str> {
+    let error = "Use a simple polygon with distinct vertices and nonzero area.";
+    if points.len() < 3 {
+        return Err(error);
     }
-    let points = vec![Vector2::new(low.x, low.y), Vector2::new(high.x, high.y)];
+    let points = points
+        .iter()
+        .map(|point| v(*point) - v(points[0]))
+        .collect::<Vec<_>>();
+    let scale = points
+        .iter()
+        .map(|point| point.abs().max_element())
+        .fold(0., f64::max);
+    let coordinate_tolerance = f64::EPSILON * scale * 64.;
+    let area_tolerance = coordinate_tolerance * scale;
+    let cross = |a: DVec3, b: DVec3, c: DVec3| (b - a).cross(c - a).z;
+    let on = |a: DVec3, b: DVec3, p: DVec3| {
+        cross(a, b, p).abs() <= area_tolerance
+            && p.x >= a.x.min(b.x) - coordinate_tolerance
+            && p.x <= a.x.max(b.x) + coordinate_tolerance
+            && p.y >= a.y.min(b.y) - coordinate_tolerance
+            && p.y <= a.y.max(b.y) + coordinate_tolerance
+    };
+    let mut area = 0.;
+    for i in 0..points.len() {
+        let (a, b) = (points[i], points[(i + 1) % points.len()]);
+        if a.distance(b) < 1e-9 {
+            return Err(error);
+        }
+        area += a.cross(b).z;
+        for j in i + 1..points.len() {
+            if j == i + 1 || (i == 0 && j == points.len() - 1) {
+                continue;
+            }
+            let (c, d) = (points[j], points[(j + 1) % points.len()]);
+            let (ab_c, ab_d, cd_a, cd_b) = (
+                cross(a, b, c),
+                cross(a, b, d),
+                cross(c, d, a),
+                cross(c, d, b),
+            );
+            if (ab_c * ab_d < 0. && cd_a * cd_b < 0.)
+                || on(a, b, c)
+                || on(a, b, d)
+                || on(c, d, a)
+                || on(c, d, b)
+            {
+                return Err(error);
+            }
+        }
+    }
+    if !area.is_finite() || area.abs() <= area_tolerance {
+        return Err(error);
+    }
+    Ok(())
+}
+
+pub(crate) fn bind_frame(
+    doc: &CadDocument,
+    targets: &[Handle],
+    frame: &[DVec3],
+    plane: f64,
+) -> Result<(Vec<Vector2>, Vec<BlockStretchHandle>), &'static str> {
+    let points = native_frame(frame, plane)?;
     let bindings = bind_existing(doc, targets, &points, plane)?;
     Ok((points, bindings))
 }
@@ -252,7 +327,9 @@ pub(crate) fn apply(
     a: &BlockStretchAction,
     delta: DVec3,
 ) -> Result<(), &'static str> {
-    if delta == DVec3::ZERO { return Ok(()); }
+    if delta == DVec3::ZERO {
+        return Ok(());
+    }
     let Some(binding) = a
         .handles
         .iter()
@@ -267,15 +344,22 @@ pub(crate) fn apply(
     match e {
         EntityType::Arc(arc) => {
             if !crate::modules::draw::modify::stretch::stretch_arc_endpoints(
-                arc, binding.indexes.contains(&0), binding.indexes.contains(&1), delta,
+                arc,
+                binding.indexes.contains(&0),
+                binding.indexes.contains(&1),
+                delta,
             ) {
                 return Err("The Stretch displacement collapses the arc chord.");
             }
         }
-        EntityType::Circle(_) | EntityType::Ellipse(_) | EntityType::Point(_)
-        | EntityType::Text(_) | EntityType::MText(_) => {
+        EntityType::Circle(_)
+        | EntityType::Ellipse(_)
+        | EntityType::Point(_)
+        | EntityType::Text(_)
+        | EntityType::MText(_) => {
             crate::scene::view::dispatch::apply_transform(
-                e, &crate::command::EntityTransform::Translate(delta),
+                e,
+                &crate::command::EntityTransform::Translate(delta),
             );
         }
         EntityType::Line(l) => {

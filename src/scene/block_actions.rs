@@ -438,6 +438,7 @@ pub(crate) fn create_with_frame(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn create_with_options(
     doc: &mut CadDocument,
     definition: Handle,
@@ -447,6 +448,21 @@ pub(crate) fn create_with_options(
     targets: &[Handle],
     location: DVec3,
     frame: Option<[DVec3; 2]>,
+    array_offsets: Option<(f64, f64)>,
+) -> Result<Handle, &'static str> {
+    create_with_frame_points(doc, definition, kind, parameter, xy_key_point, targets, location,
+        frame.as_ref().map(|points| points.as_slice()), array_offsets)
+}
+
+pub(crate) fn create_with_frame_points(
+    doc: &mut CadDocument,
+    definition: Handle,
+    kind: Kind,
+    parameter: Handle,
+    xy_key_point: Option<XyKeyPoint>,
+    targets: &[Handle],
+    location: DVec3,
+    frame: Option<&[DVec3]>,
     array_offsets: Option<(f64, f64)>,
 ) -> Result<Handle, &'static str> {
     if !location.is_finite() {
@@ -502,7 +518,7 @@ pub(crate) fn create_with_options(
         if (location.z - p.end.z).abs() > 1e-8 {
             return Err("Place the Stretch marker in the parameter's XY plane.");
         }
-        Some(stretch::bind(
+        Some(stretch::bind_frame(
             doc,
             targets,
             frame.ok_or("Specify a stretch frame before selecting objects.")?,
@@ -515,7 +531,7 @@ pub(crate) fn create_with_options(
         if (location.z - p.end.z).abs() > 1e-8 {
             return Err("Place the Polar Stretch marker in the parameter's XY plane.");
         }
-        Some(stretch::bind(
+        Some(stretch::bind_frame(
             doc,
             targets,
             frame.ok_or("Specify a Polar Stretch frame before selecting objects.")?,
@@ -708,12 +724,28 @@ fn action_move_delta(
 }
 
 /// Retarget an existing native action, retaining identity, graph and options.
+#[cfg(test)]
 pub(crate) fn retarget(
     doc: &mut CadDocument,
     definition: Handle,
     handle: Handle,
     targets: &[Handle],
     frame: Option<[DVec3; 2]>,
+) -> Result<bool, &'static str> {
+    retarget_frame_points(doc, definition, handle, targets, frame.as_ref().map(|points| points.as_slice()))
+}
+
+pub(crate) fn validate_frame_points(points: &[DVec3]) -> Result<(), &'static str> {
+    let plane = points.first().ok_or("Specify a stretch frame.")?.z;
+    stretch::native_frame(points, plane).map(|_| ())
+}
+
+pub(crate) fn retarget_frame_points(
+    doc: &mut CadDocument,
+    definition: Handle,
+    handle: Handle,
+    targets: &[Handle],
+    frame: Option<&[DVec3]>,
 ) -> Result<bool, &'static str> {
     let (_, action, kind, id) = actions(doc, definition)
         .into_iter()
@@ -754,7 +786,7 @@ pub(crate) fn retarget(
                 .z;
             stretch::validate_options(a)?;
             if let Some(corners) = frame {
-                let (points, handles) = stretch::bind(doc, &targets, corners, plane)?;
+                let (points, handles) = stretch::bind_frame(doc, &targets, corners, plane)?;
                 a.points = points;
                 a.handles = handles;
             } else {
@@ -782,7 +814,7 @@ pub(crate) fn retarget(
                 .end
                 .z;
             if let Some(corners) = frame {
-                let (points, bindings) = stretch::bind(doc, &targets, corners, plane)?;
+                let (points, bindings) = stretch::bind_frame(doc, &targets, corners, plane)?;
                 a.points = points;
                 a.bindings = bindings;
             } else {
