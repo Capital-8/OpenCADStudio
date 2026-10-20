@@ -4502,6 +4502,41 @@ mod tests {
     }
 
     #[test]
+    fn extend_live_box_preview_shows_all_targets_without_modifying_them() {
+        let all = vec![
+            xline_at(0.0, 0.0, 0.0, 4.0, 1),
+            xline_at(2.0, 0.0, 2.0, 5.0, 2),
+            xline_at(-2.0, 10.0, 5.0, 10.0, 100),
+        ];
+        let mut cmd = ExtendCommand::new(all);
+        cmd.mode = TrimMode::Pick;
+        cmd.edge_set = vec![Handle::new(100)];
+        cmd.rebuild_geos();
+        let fence = [
+            [-1.0, 3.0], [3.0, 3.0], [3.0, 6.0], [-1.0, 6.0], [-1.0, 3.0],
+        ];
+        let window = Some(([-1.0, 3.0], [3.0, 6.0]));
+        let preview = cmd.on_drag_selection_preview(
+            &fence, window, true,
+            &[Handle::new(1), Handle::new(2), Handle::new(100)],
+        ).expect("EXTEND must preview crossing boxes");
+        // Same cyan complete-object overlay and dashed added tail as a single
+        // hover, once for every valid target (not for the cutting boundary).
+        assert_eq!(preview.iter().filter(|w| w.name == "extend_prev").count(), 2);
+        assert_eq!(preview.iter().filter(|w| w.name == "extend_tail").count(), 2);
+        for wire in preview.iter().filter(|w| w.name == "extend_prev") {
+            assert!(wire.points.iter().any(|p| (p[1] - 10.0).abs() < 1e-6));
+        }
+        assert!(cmd.pending.is_empty(), "preview must not commit geometry");
+        assert_eq!(cmd.all_entities.len(), 3);
+        // Mouse-up still computes actual edits even if a cached preview exists.
+        assert!(matches!(
+            cmd.on_drag_selection(&fence, window, true),
+            Some(CmdResult::ReplaceManyContinue(replacements)) if replacements.len() == 2
+        ));
+    }
+
+    #[test]
     fn extend_crossing_box_reaches_one_common_horizontal_boundary() {
         let all = vec![
             xline_at(0.0, 0.0, 0.0, 4.0, 1),
