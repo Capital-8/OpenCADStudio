@@ -37,9 +37,22 @@ pub fn stretch_entity(
     windows: &[(DVec3, DVec3)],
     delta: DVec3,
 ) -> bool {
+    stretch_entity_except(entity, windows, &[], delta)
+}
+
+/// STRETCH with point-level subtractions from Shift+click.
+/// Exclusions affect the moved vertices, not the crossing selection itself.
+pub(crate) fn stretch_entity_except(
+    entity: &mut codec::EntityType,
+    windows: &[(DVec3, DVec3)],
+    excluded: &[DVec3],
+    delta: DVec3,
+) -> bool {
     let in_win = |x: f64, y: f64| -> bool {
         windows.iter().any(|(win_min, win_max)| {
             x >= win_min.x && x <= win_max.x && y >= win_min.y && y <= win_max.y
+        }) && !excluded.iter().any(|point| {
+            (point.x - x).abs() <= 1e-9 && (point.y - y).abs() <= 1e-9
         })
     };
     let (dx, dy, dz) = (delta.x, delta.y, delta.z);
@@ -385,6 +398,7 @@ pub struct StretchCommand {
     wire_models: Vec<WireModel>,
     /// Independent crossing windows accumulated during the selection stage.
     windows: Vec<(DVec3, DVec3)>,
+    excluded_points: Vec<(Handle, DVec3)>,
     step: Step,
 }
 
@@ -394,6 +408,7 @@ impl StretchCommand {
             handles,
             wire_models,
             windows: Vec::new(),
+            excluded_points: Vec::new(),
             step: Step::WindowCorner1,
         }
     }
@@ -409,6 +424,7 @@ impl StretchCommand {
             handles,
             wire_models,
             windows: vec![window],
+            excluded_points: Vec::new(),
             step: Step::Base,
         }
     }
@@ -419,11 +435,13 @@ impl StretchCommand {
         handles: Vec<Handle>,
         wire_models: Vec<WireModel>,
         windows: Vec<(DVec3, DVec3)>,
+        excluded_points: Vec<(Handle, DVec3)>,
     ) -> Self {
         Self {
             handles,
             wire_models,
             windows,
+            excluded_points,
             step: Step::WindowCorner1,
         }
     }
@@ -516,6 +534,7 @@ impl CadCommand for StretchCommand {
                 CmdResult::StretchWindow {
                     handles: self.handles.clone(),
                     windows,
+                    excluded_points: self.excluded_points.clone(),
                 }
             }
 
@@ -530,6 +549,7 @@ impl CadCommand for StretchCommand {
                 CmdResult::StretchEntities {
                     handles: self.handles.clone(),
                     windows: self.windows.clone(),
+                    excluded_points: self.excluded_points.clone(),
                     delta,
                 }
             }
@@ -557,6 +577,24 @@ impl CadCommand for StretchCommand {
     }
     fn on_escape(&mut self) -> CmdResult {
         CmdResult::Cancel
+    }
+
+    fn remove_stretch_point(&mut self, handle: Handle, world: DVec3) -> bool {
+        if !matches!(self.step, Step::WindowCorner1)
+            || !self.handles.contains(&handle)
+            || !self.windows.iter().any(|(min, max)| {
+                world.x >= min.x && world.x <= max.x
+                    && world.y >= min.y && world.y <= max.y
+            })
+        {
+            return false;
+        }
+        if !self.excluded_points.iter().any(|(h, p)| {
+            *h == handle && (p.x - world.x).abs() <= 1e-9 && (p.y - world.y).abs() <= 1e-9
+        }) {
+            self.excluded_points.push((handle, world));
+        }
+        true
     }
 
     fn window_corner_pick(&self) -> bool {
@@ -587,10 +625,14 @@ impl CadCommand for StretchCommand {
         let delta = pt - *base;
         self.handles
             .iter()
-            .filter_map(|handle| document.get_entity(*handle))
-            .map(|entity| {
+            .filter_map(|handle| document.get_entity(*handle).map(|entity| (*handle, entity)))
+            .map(|(handle, entity)| {
                 let mut entity = entity.clone();
-                stretch_entity(&mut entity, &self.windows, delta);
+                let excluded: Vec<_> = self.excluded_points.iter()
+                    .filter(|(owner, _)| *owner == handle)
+                    .map(|(_, point)| *point)
+                    .collect();
+                stretch_entity_except(&mut entity, &self.windows, &excluded, delta);
                 entity
             })
             .collect()
