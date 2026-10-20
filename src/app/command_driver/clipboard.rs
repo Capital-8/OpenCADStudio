@@ -210,6 +210,14 @@ impl OpenCADStudio {
                 }
             }
         }
+        let hatch_detached = self.tabs[i].active_cmd.as_ref().is_some_and(|cmd| cmd.name() == "TRIM")
+            && matches!(
+                self.tabs[i].scene.document.get_entity(handle),
+                Some(codec::EntityType::Hatch(hatch)) if hatch.is_associative
+            )
+            && new_entities.iter().any(|entity| matches!(
+                entity, codec::EntityType::Hatch(hatch) if !hatch.is_associative
+            ));
         let label = self.history_label_from_active_cmd(i, "TRIM");
         self.push_undo_snapshot(i, label);
         // A replacement reusing the original handle must land after the erase;
@@ -254,6 +262,11 @@ impl OpenCADStudio {
             }
         }
         self.tabs[i].dirty = true;
+        if hatch_detached {
+            self.command_line.push_info(
+                "TRIM: hatch boundary updated; associativity removed because its original source objects were not modified.",
+            );
+        }
         let prompt = self.tabs[i].active_cmd.as_ref().map(|c| c.prompt());
         if let Some(p) = prompt {
             self.command_line.push_info(&p);
