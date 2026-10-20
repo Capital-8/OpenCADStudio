@@ -121,8 +121,10 @@ fn elements(b: &[u8]) -> Vec<&[u8]> {
 /// The file's colour table (element type 5 on level 1): index i < 255 at
 /// 41 + 3i, the background (255) at 38.
 fn color_table(elements: &[&[u8]]) -> Option<Vec<[u8; 3]>> {
+    // A file with more than one colour table uses the last.
     elements
         .iter()
+        .rev()
         .find(|e| e[1] == 5 && e[0] & 0x3f == 1)
         .and_then(|e| dgn_color_table(e, 41))
 }
@@ -202,6 +204,23 @@ fn uor_fractions(e: &[u8]) -> Vec<f64> {
         at += 2 * words;
     }
     Vec::new()
+}
+
+/// Single-byte text as code page 1252 reads it (a code it leaves
+/// undefined stands for itself).
+fn windows_1252(bytes: &[u8]) -> String {
+    const HIGH: [u32; 32] = [
+        0x20AC, 0x81, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160,
+        0x2039, 0x0152, 0x8D, 0x017D, 0x8F, 0x90, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013,
+        0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x9D, 0x017E, 0x0178,
+    ];
+    bytes
+        .iter()
+        .map(|&b| match b {
+            0x80..=0x9F => char::from_u32(HIGH[(b - 0x80) as usize]).unwrap_or('\u{FFFD}'),
+            _ => char::from(b),
+        })
+        .collect()
 }
 
 fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
@@ -563,15 +582,11 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
                 let Some(chars) = e.get(count_at + 2..count_at + 2 + n) else {
                     continue;
                 };
-                // Sizes in whole UORs (the multipliers are 1000/6 of one).
-                let (height, width) = (
-                    (height as f64 * 6.0 / 1000.0).round(),
-                    (width as f64 * 6.0 / 1000.0).round(),
-                );
+                // Sizes in UORs (the multipliers are 1000/6 of one), not
+                // rounded.
+                let (height, width) = (height as f64 * 6.0 / 1000.0, width as f64 * 6.0 / 1000.0);
                 let text = Text {
-                    text: String::from_utf8_lossy(chars)
-                        .trim_end_matches('\0')
-                        .to_string(),
+                    text: windows_1252(chars).trim_end_matches('\0').to_string(),
                     origin,
                     height,
                     width_factor: if height > 0.0 { width / height } else { 1.0 },

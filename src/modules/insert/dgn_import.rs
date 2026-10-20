@@ -564,13 +564,21 @@ fn mtext_of_node(
     color: Option<u16>,
 ) -> Option<EntityType> {
     let (_, first, height, rotation, _) = lines.iter().find_map(text_line)?;
-    let texts: Vec<String> = lines
-        .iter()
-        .filter_map(text_line)
-        .map(|l| mtext_escape(l.0))
-        .collect();
+    // A component on the line of the one before it (its origin less than
+    // half a text height away across the line) continues that line.
+    let up_dir = [-rotation.sin(), rotation.cos(), 0.0];
+    let mut joined = String::new();
+    let mut previous: Option<P3> = None;
+    for (text, origin, h, _, _) in lines.iter().filter_map(text_line) {
+        if let Some(p) = previous {
+            if dot(sub(origin, p), up_dir).abs() >= 0.5 * h.max(height) {
+                joined.push_str("\\P");
+            }
+        }
+        joined.push_str(&mtext_escape(text));
+        previous = Some(origin);
+    }
     let mut m = MText::new();
-    let joined = texts.join("\\P");
     m.value = match color {
         Some(c) => format!("{{\\C{c};{joined}}}"),
         None => joined,
@@ -903,6 +911,31 @@ impl<'a> Converter<'a> {
                 leader.vertices = points.iter().map(|p| v3(*p)).collect();
                 leader.dimension_style = dim_style_name(self.import, *style);
                 vec![EntityType::Leader(leader)]
+            }
+            DgnGeom::Arc {
+                center,
+                u,
+                v,
+                start,
+                sweep,
+            } if self.import.v7
+                && *sweep < 0.0
+                && *sweep > -std::f64::consts::TAU
+                && circular(*u, *v)
+                && u[2].abs() < 1e-12
+                && v[2].abs() < 1e-12
+                && cross(*u, *v)[2] > 0.0 =>
+            {
+                // A V7 circular arc drawn clockwise comes in as a two-point
+                // polyline from its start to its end with a negative bulge.
+                let at = |t: f64| {
+                    [
+                        center[0] + u[0] * t.cos() + v[0] * t.sin(),
+                        center[1] + u[1] * t.cos() + v[1] * t.sin(),
+                        center[2],
+                    ]
+                };
+                vec![polyline(&[at(*start), at(*start + *sweep)], &[(*sweep / 4.0).tan()])]
             }
             DgnGeom::Arc {
                 center,
