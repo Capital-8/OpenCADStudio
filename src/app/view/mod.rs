@@ -2661,9 +2661,10 @@ bg={bg_ms:.1}ms n={view_count}"
 
         let main_ui = container({
             // Clean-screen mode drops the ribbon for a full-canvas view; the
-            // status bar stays so the mode can be toggled back off.
+            // menu bar and status bar stay so commands remain reachable and
+            // the mode can be toggled back off.
             let mut col = column![];
-            if !self.clean_screen && self.show_menu_bar {
+            if self.show_menu_bar {
                 col = col.push(crate::ui::menu_bar::view());
             }
             if !self.clean_screen && !self.ribbon_closed {
