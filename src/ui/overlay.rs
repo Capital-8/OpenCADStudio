@@ -2142,6 +2142,9 @@ impl canvas::Program<Message> for SelectionCanvas {
         // arrow (see `mouse_interaction`); drawing the CAD crosshair on
         // top of it would double up the visual feedback.
         let over_divider = self.divider_under(cursor, bounds);
+        // Off the viewport (or under an overlay that took the pointer) the
+        // cursor is the OS arrow; no crosshair or brush lingers at the last spot.
+        let pointer_away = self.selection.borrow().input.pointer_away;
         // ── MATCHPROP paintbrush cursor ───────────────────────────────
         // While MATCHPROP is armed the user is transferring properties from a
         // source object onto others, so the crosshair gives way to a paintbrush
@@ -2149,6 +2152,7 @@ impl canvas::Program<Message> for SelectionCanvas {
         // the crosshair below, never on top of it.
         if !over_viewcube
             && !over_divider
+            && !pointer_away
             && self.nav == NavCursor::None
             && !self.suppressed
             && self.show_match_brush
@@ -2227,6 +2231,7 @@ impl canvas::Program<Message> for SelectionCanvas {
         // An armed navigation tool replaces the crosshair with its own cursor.
         if !over_viewcube
             && !over_divider
+            && !pointer_away
             && self.nav == NavCursor::None
             && !self.suppressed
             && !self.show_match_brush
