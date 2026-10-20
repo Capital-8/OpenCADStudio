@@ -1061,12 +1061,13 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     font: "txt".to_string(),
                 });
             }
-            // A dimension: its type (133), point count (135), axes (the columns of a 2×2 matrix by rows from 272; in
-            // 3D a quaternion there, its first two rows) and points from
-            // 304, 48 bytes apart, the first point's +24 holding the
-            // dimension line's offset. It is drawn by the shared cell its
-            // linkage names (the id after `13 27 07 00 00 03 01 00`). A note
-            // (53) is a leader through its points.
+            // A dimension: its type (133), point count (135), axes (the
+            // columns of a 2×2 matrix by rows from 272; in 3D a quaternion
+            // there, its first two rows) and points from 304, 48 bytes
+            // apart, the first point's +24 holding the dimension line's
+            // offset. It is drawn by the shared cell its linkage names (the
+            // id after `13 27 07 00 00 03 01 00`). A note (53) is a leader
+            // through its points.
             33 => {
                 let cell = e
                     .windows(8)
@@ -1075,7 +1076,8 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     .and_then(|id| styles.cells.get(&id));
                 let dim = e.get(133).copied().unwrap_or(0);
                 let count = e.get(135).copied().unwrap_or(0) as usize;
-                let points: Option<Vec<[f64; 3]>> = (0..count).map(|k| p3(304 + 48 * k).map(at3)).collect();
+                let points: Option<Vec<[f64; 3]>> =
+                    (0..count).map(|k| p3(304 + 48 * k).map(at3)).collect();
                 let style = u32_at(e, 104).unwrap_or(0);
                 // Only a dimension in the XY plane comes in as a dimension.
                 let axes = if d3 {
@@ -1090,7 +1092,9 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
                     (Some(points), _) if dim == 53 && points.len() >= 2 => {
                         collect.push(element(DgnGeom::Leader { points, style }));
                     }
-                    (Some(points), Some((x, y))) if matches!(dim, 1 | 5 | 11 | 12) && points.len() >= 2 => {
+                    (Some(points), Some((x, y)))
+                        if matches!(dim, 1 | 5 | 11 | 12) && points.len() >= 2 =>
+                    {
                         let x = dir3(x);
                         let y = dir3(y);
                         collect.push(element(DgnGeom::Dimension {

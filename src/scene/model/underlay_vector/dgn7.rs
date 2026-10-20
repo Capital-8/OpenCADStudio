@@ -177,10 +177,6 @@ struct Instance {
 /// How deep cells inside cells are read.
 const MAX_CELL_DEPTH: usize = 16;
 
-/// Reads a run of elements into raw geometry: plain elements, complex
-/// chains and shapes (joined), B-splines, text, cells and shared cell
-/// instances. In a 3D file (`d3`) points have a z and planar elements their
-/// plane; the drawn geometry is their plan.
 /// The fractions of a UOR an element's coordinates carry past their whole
 /// values: the user linkage 0x51A9 (after the attribute index at 30) holds a
 /// count, a key word and that many signed 1/32768ths, one per coordinate in
@@ -223,6 +219,10 @@ fn windows_1252(bytes: &[u8]) -> String {
         .collect()
 }
 
+/// Reads a run of elements into raw geometry: plain elements, complex
+/// chains and shapes (joined), B-splines, text, cells and shared cell
+/// instances. In a 3D file (`d3`) points have a z and planar elements their
+/// plane; the drawn geometry is their plan.
 fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
     let mut raw = Raw::default();
     // An open B-spline curve: order, pole count, colour, closed, and the
@@ -416,7 +416,8 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
             }
             4 | 6 | 11 => {
                 let n = uint16(e, 36).unwrap_or(0) as usize;
-                let pts3: Vec<[f64; 3]> = (0..n).filter_map(|k| vertex(k, 38 + k * step, n)).collect();
+                let pts3: Vec<[f64; 3]> =
+                    (0..n).filter_map(|k| vertex(k, 38 + k * step, n)).collect();
                 let pts: Vec<[f64; 2]> = pts3.iter().map(|p| plan(*p)).collect();
                 if pts.len() >= 2 {
                     collect.push(element(DgnGeom::Points(pts3)));

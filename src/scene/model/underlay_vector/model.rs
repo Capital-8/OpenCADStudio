@@ -634,7 +634,7 @@ pub enum DgnGeom {
         origin: P3,
         parts: Vec<DgnElement>,
     },
-    /// A dimension (V8, 2D): its MicroStation type (1 linear, 5 angle,
+    /// A dimension (V8, in the XY plane): its type (1 linear, 5 angle,
     /// 11 radius, 12 diameter), its points, the dimension line's offset
     /// from the last point (along `axes[1]`) and its x and y axes; `style`
     /// is its dimension style's id.

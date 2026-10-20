@@ -241,10 +241,6 @@ fn polyline(points: &[P3], bulges: &[f64]) -> EntityType {
     EntityType::LwPolyline(pl)
 }
 
-/// A solid hatch filling a closed outline (with its bulges) at the
-/// outline's elevation; `None` when the outline is not at one z. It is
-/// marked associative with no source yet: the outline converted just before
-/// it becomes its source once both are in the drawing.
 /// A flat outline that winds clockwise seen from +z (by its vertices, the
 /// closing edge included) in its entity coordinates about -z: x and z
 /// negated, the bulges negated. `None` when it winds the other way.
@@ -288,6 +284,10 @@ fn outline(points: &[P3], bulges: &[f64], filled: bool, by_winding: bool) -> Vec
     out
 }
 
+/// A solid hatch filling a closed outline (with its bulges) at the
+/// outline's elevation; `None` when the outline is not at one z. It is
+/// marked associative with no source yet: the outline converted just before
+/// it becomes its source once both are in the drawing.
 fn solid_hatch(points: &[P3], bulges: &[f64]) -> Option<EntityType> {
     use codec::entities::{BoundaryEdge, BoundaryPath, Hatch, PolylineEdge};
     if points.len() < 3 || !flat(points) {
@@ -716,8 +716,6 @@ fn arc_entity(center: P3, u: P3, v: P3, start: f64, sweep: f64) -> Vec<EntityTyp
     vec![EntityType::Ellipse(e)]
 }
 
-/// A shared cell instance as an INSERT: a mirrored placement looks along
-/// -z (x negated in its entity coordinates, z scale negated).
 /// The name of the dimension style with this id (Standard when the
 /// table has none).
 fn dim_style_name(import: &DgnImport, id: u32) -> String {
@@ -742,29 +740,35 @@ fn dimension_entity(
     axes: &[[f64; 2]; 2],
     style: &str,
 ) -> Option<EntityType> {
-    use codec::entities::{
-        Dimension, DimensionAngular3Pt, DimensionDiameter, DimensionLinear, DimensionRadius,
-    };
+    use codec::entities::{Dimension, DimensionDiameter, DimensionLinear, DimensionRadius};
     let at = |k: usize| points.get(k).copied();
     let along = |p: P3, d: [f64; 2], t: f64| [p[0] + d[0] * t, p[1] + d[1] * t, p[2]];
-    let mut dimension = match kind {
+    let mut entity = match kind {
         1 => {
             let (p0, p1) = (at(0)?, at(1)?);
             let [x, y] = *axes;
             // The direction the dimension line reads along: x or -x, whichever
             // turns less than a half turn from the world x axis.
-            let x = if x[0] < -1e-12 || (x[0].abs() <= 1e-12 && x[1] < 0.0) { [-x[0], -x[1]] } else { x };
+            let x = if x[0] < -1e-12 || (x[0].abs() <= 1e-12 && x[1] < 0.0) {
+                [-x[0], -x[1]]
+            } else {
+                x
+            };
+            let length = x[0].hypot(x[1]);
+            if !(length > 1e-12) {
+                return None;
+            }
+            let x = [x[0] / length, x[1] / length];
             let line = along(p1, y, offset);
             let t = |p: P3| (p[0] - line[0]) * x[0] + (p[1] - line[1]) * x[1];
             let mut d = DimensionLinear::rotated(v3(p0), v3(p1), x[1].atan2(x[0]));
             d.definition_point = v3(line);
-            d.base.actual_measurement = (t(p1) - t(p0)).abs();
+            d.base.actual_measurement = d.measurement();
             d.base.text_middle_point = v3(along(line, x, 0.5 * (t(p0) + t(p1))));
-            Dimension::Linear(d)
+            EntityType::Dimension(Box::new(Dimension::Linear(d)))
         }
         5 => {
             let (vertex, first, second) = (at(0)?, at(1)?, at(2)?);
-            let mut d = DimensionAngular3Pt::new(v3(vertex), v3(first), v3(second));
             let a0 = (first[1] - vertex[1]).atan2(first[0] - vertex[0]);
             let mut sweep = (second[1] - vertex[1]).atan2(second[0] - vertex[0]) - a0;
             if sweep < 0.0 {
@@ -773,29 +777,40 @@ fn dimension_entity(
             let radius = norm(sub(first, vertex));
             let mid = a0 + 0.5 * sweep;
             let arc = [vertex[0] + radius * mid.cos(), vertex[1] + radius * mid.sin(), vertex[2]];
-            d.definition_point = v3(arc);
-            d.base.text_middle_point = v3(arc);
-            Dimension::Angular3Pt(d)
+            let dvec = |p: P3| glam::DVec3::from_array(p);
+            crate::modules::annotate::angular_dim::angular_three_point_entity(
+                dvec(vertex),
+                dvec(first),
+                dvec(second),
+                dvec(arc),
+                None,
+            )?
         }
-        11 => {
+        11 | 12 => {
             let (center, point) = (at(0)?, at(1)?);
-            let mut d = DimensionRadius::new(v3(center), v3(point));
-            d.base.definition_point = v3(center);
-            d.base.text_middle_point = v3(at(2).unwrap_or(point));
-            Dimension::Radius(d)
-        }
-        12 => {
-            let (center, point) = (at(0)?, at(1)?);
-            let far = [2.0 * center[0] - point[0], 2.0 * center[1] - point[1], 2.0 * center[2] - point[2]];
-            let mut d = DimensionDiameter::new(v3(point), v3(far));
-            d.base.text_middle_point = v3(at(2).unwrap_or(point));
-            d.base.text_user_positioned = true;
-            Dimension::Diameter(d)
+            let text = at(2).unwrap_or(point);
+            let mut d = if kind == 11 {
+                let mut d = DimensionRadius::new(v3(center), v3(point));
+                d.base.definition_point = v3(center);
+                d.leader_length = norm(sub(text, point));
+                Dimension::Radius(d)
+            } else {
+                let far = sub(center, sub(point, center));
+                let mut d = DimensionDiameter::new(v3(point), v3(far));
+                d.leader_length = norm(sub(text, point));
+                Dimension::Diameter(d)
+            };
+            let base = d.base_mut();
+            base.text_middle_point = v3(text);
+            base.insertion_point = v3(text);
+            base.text_user_positioned = true;
+            EntityType::Dimension(Box::new(d))
         }
         _ => return None,
     };
-    dimension.base_mut().style_name = style.to_string();
-    let mut entity = EntityType::Dimension(Box::new(dimension));
+    if let EntityType::Dimension(d) = &mut entity {
+        d.base_mut().style_name = style.to_string();
+    }
     // An imported dimension draws no centre mark (DIMCEN 0 on the object).
     crate::entities::dim_override::set_on_entity(
         &mut entity,
@@ -805,6 +820,8 @@ fn dimension_entity(
     Some(entity)
 }
 
+/// A shared cell instance as an INSERT: a mirrored placement looks along
+/// -z (x negated in its entity coordinates, z scale negated).
 fn insert_entity(block: String, m: [f64; 4], origin: P3, z_scale: f64) -> EntityType {
     let det = m[0] * m[3] - m[1] * m[2];
     let mirrored = det < 0.0;
@@ -956,9 +973,10 @@ impl<'a> Converter<'a> {
                 offset,
                 axes,
                 style,
-            } => dimension_entity(*kind, points, *offset, axes, &dim_style_name(self.import, *style))
-                .into_iter()
-                .collect(),
+            } => {
+                let style = dim_style_name(self.import, *style);
+                dimension_entity(*kind, points, *offset, axes, &style).into_iter().collect()
+            }
             DgnGeom::Leader { points, style } => {
                 let mut leader = codec::entities::Leader::new();
                 leader.vertices = points.iter().map(|p| v3(*p)).collect();
@@ -1232,12 +1250,10 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
             _ => None,
         })
         .collect();
-    c.out
-        .blocks
-        .retain(|(name, _)| {
-            let key = name.to_ascii_uppercase();
-            !anonymous.contains(&key) || used.contains(&key)
-        });
+    c.out.blocks.retain(|(name, _)| {
+        let key = name.to_ascii_uppercase();
+        !anonymous.contains(&key) || used.contains(&key)
+    });
     c.out
 }
 
