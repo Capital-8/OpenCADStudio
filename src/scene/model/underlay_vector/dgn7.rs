@@ -774,6 +774,23 @@ fn level(e: &[u8]) -> u8 {
 fn level_names(all: &[&[u8]]) -> HashMap<u8, String> {
     let mut names = HashMap::new();
     for e in all.iter().filter(|e| e[1] & 0x7f == 66 && level(e) == 6) {
+        // The named-levels table: a count at 40, then 104-byte entries of
+        // the level number and its zero-terminated name (which may hold
+        // spaces, as "Level 1").
+        let count = usize::from(u16::from_le_bytes([e.get(40).copied().unwrap_or(0), e.get(41).copied().unwrap_or(0)]));
+        if count > 0 && 42 + count * 104 <= e.len() {
+            for k in 0..count {
+                let at = 42 + k * 104;
+                let n = u16::from_le_bytes([e[at], e[at + 1]]);
+                let field = &e[at + 2..at + 104];
+                let len = field.iter().position(|c| *c == 0).unwrap_or(field.len());
+                let name: String = field[..len].iter().map(|&c| char::from(c)).collect();
+                if (1..=63).contains(&n) && !name.trim().is_empty() {
+                    names.entry(n as u8).or_insert_with(|| name.trim().to_string());
+                }
+            }
+            continue;
+        }
         for j in 36..e.len().saturating_sub(3) {
             let n = u16::from_le_bytes([e[j], e[j + 1]]);
             if !(1..=63).contains(&n) || (j > 36 && e[j - 1] != 0) || names.contains_key(&(n as u8))
