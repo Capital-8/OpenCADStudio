@@ -2374,6 +2374,202 @@ fn trim_hatch_circle(
     Some(result)
 }
 
+/// Trim a boundary with mixed exact LINE and CIRCULAR ARC edges against
+/// one straight cutting segment. Work in parameter space: retain the chain
+/// on the opposite side of the click and close it along the cutter. A new
+/// CircularArcEdge is emitted for the surviving portion of any split arc.
+fn trim_hatch_curved_outer(
+    path: &codec::entities::BoundaryPath,
+    p1: [f64; 2],
+    p2: [f64; 2],
+    keep_sign: f64,
+) -> Option<codec::entities::BoundaryPath> {
+    use codec::entities::{BoundaryEdge, BoundaryPath, BoundaryPathFlags, CircularArcEdge, LineEdge};
+    use codec::types::Vector2;
+    const EPS: f64 = 1.0e-8;
+    const TAU: f64 = std::f64::consts::TAU;
+    #[derive(Clone, Copy)]
+    enum Segment {
+        Line { a: [f64; 2], b: [f64; 2] },
+        Arc { center: [f64; 2], radius: f64, start: f64, sweep: f64, ccw: bool },
+    }
+    impl Segment {
+        fn point(self, t: f64) -> [f64; 2] {
+            match self {
+                Segment::Line { a, b } => [
+                    a[0] + t * (b[0] - a[0]),
+                    a[1] + t * (b[1] - a[1]),
+                ],
+                Segment::Arc { center, radius, start, sweep, ccw } => {
+                    let angle = start + if ccw { sweep * t } else { -sweep * t };
+                    [center[0] + radius * angle.cos(), center[1] + radius * angle.sin()]
+                }
+            }
+        }
+        fn portion(self, t0: f64, t1: f64) -> Option<BoundaryEdge> {
+            if t1 - t0 <= 1.0e-10 { return None; }
+            match self {
+                Segment::Line { .. } => {
+                    let a = self.point(t0);
+                    let b = self.point(t1);
+                    ((a[0] - b[0]).hypot(a[1] - b[1]) > 1.0e-10).then_some(
+                        BoundaryEdge::Line(LineEdge {
+                            start: Vector2::new(a[0], a[1]),
+                            end: Vector2::new(b[0], b[1]),
+                        })
+                    )
+                }
+                Segment::Arc { center, radius, start, sweep, ccw } => {
+                    let actual_start = start + if ccw { sweep * t0 } else { -sweep * t0 };
+                    let stored = if ccw { actual_start } else { -actual_start }.rem_euclid(TAU);
+                    Some(BoundaryEdge::CircularArc(CircularArcEdge {
+                        center: Vector2::new(center[0], center[1]),
+                        radius,
+                        start_angle: stored,
+                        end_angle: stored + sweep * (t1 - t0),
+                        counter_clockwise: ccw,
+                    }))
+                }
+            }
+        }
+    }
+    let mut edges = Vec::new();
+    for edge in &path.edges {
+        match edge {
+            BoundaryEdge::Line(line) => edges.push(Segment::Line {
+                a: [line.start.x, line.start.y],
+                b: [line.end.x, line.end.y],
+            }),
+            BoundaryEdge::Polyline(poly)
+                if poly.is_closed
+                    && poly.vertices.len() >= 3
+                    && poly.vertices.iter().all(|v| v.z.abs() <= 1.0e-12) =>
+            {
+                for j in 0..poly.vertices.len() {
+                    let a = &poly.vertices[j];
+                    let b = &poly.vertices[(j + 1) % poly.vertices.len()];
+                    edges.push(Segment::Line {
+                        a: [a.x, a.y],
+                        b: [b.x, b.y],
+                    });
+                }
+            }
+            BoundaryEdge::CircularArc(arc) => {
+                let sweep = arc.end_angle - arc.start_angle;
+                if !sweep.is_finite() || sweep <= 0.0 || sweep > TAU + EPS {
+                    return None;
+                }
+                edges.push(Segment::Arc {
+                    center: [arc.center.x, arc.center.y],
+                    radius: arc.radius,
+                    start: if arc.counter_clockwise { arc.start_angle } else { -arc.start_angle },
+                    sweep,
+                    ccw: arc.counter_clockwise,
+                });
+            }
+            _ => return None,
+        }
+    }
+    if edges.len() < 2 || !edges.iter().any(|edge| matches!(edge, Segment::Arc { .. })) {
+        return None;
+    }
+    let n = edges.len();
+    for i in 0..n {
+        let a = edges[i].point(1.0);
+        let b = edges[(i + 1) % n].point(0.0);
+        if (a[0] - b[0]).hypot(a[1] - b[1]) > EPS {
+            return None; // malformed or unordered DXF path
+        }
+    }
+    let (dx, dy) = (p2[0] - p1[0], p2[1] - p1[1]);
+    let length = dx.hypot(dy);
+    if length <= EPS { return None; }
+    let (ux, uy) = (dx / length, dy / length);
+    let side = |p: [f64; 2]| ux * (p[1] - p1[1]) - uy * (p[0] - p1[0]);
+    #[derive(Clone, Copy)]
+    struct Hit { at: f64, point: [f64; 2] }
+    let mut hits: Vec<Hit> = Vec::new();
+    let mut record = |edge_index: usize, t: f64, edge: Segment| {
+        let p = edge.point(t.clamp(0.0, 1.0));
+        let proj = (p[0] - p1[0]) * ux + (p[1] - p1[1]) * uy;
+        if proj < -EPS || proj > length + EPS { return; }
+        if hits.iter().any(|h| (h.point[0] - p[0]).hypot(h.point[1] - p[1]) <= EPS) {
+            return;
+        }
+        let position = (edge_index as f64 + t).rem_euclid(n as f64);
+        hits.push(Hit { at: position, point: p });
+    };
+    for (i, edge) in edges.iter().copied().enumerate() {
+        match edge {
+            Segment::Line { a, b } => {
+                let da = side(a);
+                let db = side(b);
+                if da.abs() <= EPS && db.abs() <= EPS { return None; }
+                if da.abs() <= EPS { record(i, 0.0, edge); }
+                if db.abs() <= EPS { record(i, 1.0, edge); }
+                if da * db < -EPS * EPS {
+                    record(i, da / (da - db), edge);
+                }
+            }
+            Segment::Arc { center, radius, start, sweep, ccw } => {
+                let signed = side(center);
+                if signed.abs() > radius + EPS { continue; }
+                let along = (radius * radius - signed * signed).max(0.0).sqrt();
+                for proj in [-along, along] {
+                    let p = [center[0] - signed * (-uy) + proj * ux,
+                             center[1] - signed * ux + proj * uy];
+                    let angle = (p[1] - center[1]).atan2(p[0] - center[0]);
+                    let angle_delta = if ccw { (angle - start).rem_euclid(TAU) }
+                                      else { (start - angle).rem_euclid(TAU) };
+                    if angle_delta <= sweep + EPS {
+                        let t = (angle_delta / sweep).clamp(0.0, 1.0);
+                        record(i, t, edge);
+                    }
+                }
+            }
+        }
+    }
+    if hits.len() != 2 { return None; }
+    hits.sort_by(|a, b| a.at.total_cmp(&b.at));
+    let create = |from: Hit, to: Hit| -> Option<BoundaryPath> {
+        let end = if to.at <= from.at { to.at + n as f64 } else { to.at };
+        let mut position = from.at;
+        let mut parts: Vec<BoundaryEdge> = Vec::new();
+        // Every surviving edge midpoint must be strictly inside the retained
+        // halfplane; this rejects disjoint/concave portions without rewriting
+        // the hatch into a self-intersecting polygon.
+        while position < end - 1.0e-10 {
+            let segment_index = position.floor() as usize;
+            let next = ((segment_index + 1) as f64).min(end);
+            let edge = edges[segment_index % n];
+            let begin_t = position - segment_index as f64;
+            let end_t = next - segment_index as f64;
+            if keep_sign * side(edge.point((begin_t + end_t) * 0.5)) < -EPS {
+                return None;
+            }
+            if let Some(edge) = edge.portion(begin_t, end_t) {
+                parts.push(edge);
+            }
+            position = next;
+            if parts.len() > n + 3 { return None; }
+        }
+        if parts.is_empty() { return None; }
+        parts.push(BoundaryEdge::Line(LineEdge {
+            start: Vector2::new(to.point[0], to.point[1]),
+            end: Vector2::new(from.point[0], from.point[1]),
+        }));
+        let mut result = BoundaryPath::with_flags(BoundaryPathFlags::OUTERMOST);
+        result.edges = parts;
+        Some(result)
+    };
+    let first = create(hits[0], hits[1]);
+    let second = create(hits[1], hits[0]);
+    match (first, second) {
+        (Some(path), None) | (None, Some(path)) => Some(path),
+        _ => None,
+    }
+}
+
 /// TRIM a planar hatch as a REGION, not as an individual hatch boundary edge.
 ///
 /// The picked point chooses the half-plane to REMOVE. Only a finite straight
@@ -2545,19 +2741,38 @@ fn trim_hatch_at(
         {
             continue;
         }
+        // On a previously circular-notched hatch, use exact original arc
+        // segments rather than tessellating the curved boundary to polylines.
+        let curved_outer = hatch.paths[outer_index].edges.iter().any(|edge| {
+            matches!(edge, BoundaryEdge::CircularArc(_))
+        });
+        let analytic_outer = if curved_outer {
+            let Some(path) = trim_hatch_curved_outer(
+                &hatch.paths[outer_index], *p1, *p2, keep_sign,
+            ) else {
+                continue;
+            };
+            Some(path)
+        } else {
+            None
+        };
         let mut new_paths = Vec::with_capacity(hatch.paths.len());
         let mut safe = true;
         for (index, path) in hatch.paths.iter().enumerate() {
             if index == outer_index {
-                let mut replacement = BoundaryPath::with_flags(BoundaryPathFlags::OUTERMOST);
-                replacement.add_edge(BoundaryEdge::Polyline(PolylineEdge::new(
-                    cleaned
-                        .iter()
-                        .map(|p| Vector2::new(p[0], p[1]))
-                        .collect(),
-                    true,
-                )));
-                new_paths.push(replacement);
+                if let Some(ref path) = analytic_outer {
+                    new_paths.push(path.clone());
+                } else {
+                    let mut replacement = BoundaryPath::with_flags(BoundaryPathFlags::OUTERMOST);
+                    replacement.add_edge(BoundaryEdge::Polyline(PolylineEdge::new(
+                        cleaned
+                            .iter()
+                            .map(|p| Vector2::new(p[0], p[1]))
+                            .collect(),
+                        true,
+                    )));
+                    new_paths.push(replacement);
+                }
             } else {
                 // A hole entirely retained keeps its exact path; a hole
                 // entirely removed disappears. Straddling holes need a
