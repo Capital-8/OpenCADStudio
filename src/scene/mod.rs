@@ -631,6 +631,47 @@ fn hatch_interaction_aabb(hatch: &model::hatch_model::HatchModel) -> Option<[f64
     aabb.iter().all(|value| value.is_finite()).then_some(aabb)
 }
 
+/// Whether a wire's geometry meets a world-XY box `[min_x, min_y, max_x,
+/// max_y]`. A wire with no finite stored box is measured from what it
+/// carries (points, fills, snap features); one carrying nothing never meets.
+fn wire_meets_xy_box(wire: &WireModel, query: [f64; 4]) -> bool {
+    // The stored box is f32: allow its rounding at survey coordinates. Scaled
+    // by the query, not the wire, so a construction line's huge far end does
+    // not widen it.
+    let pad = 1e-6 * query.iter().fold(1.0f64, |m, v| m.max(v.abs()));
+    let meets = |[x0, y0, x1, y1]: [f64; 4]| {
+        x1 + pad >= query[0] && x0 - pad <= query[2] && y1 + pad >= query[1] && y0 - pad <= query[3]
+    };
+    if wire.aabb.iter().all(|value| value.is_finite()) {
+        return meets(wire.aabb.map(f64::from));
+    }
+    fn combine<'a>(
+        high: &'a [[f32; 3]],
+        low: &'a [[f32; 3]],
+    ) -> impl Iterator<Item = [f64; 2]> + 'a {
+        high.iter().enumerate().map(move |(index, point)| {
+            let residual = low.get(index).copied().unwrap_or([0.0; 3]);
+            [point[0] as f64 + residual[0] as f64, point[1] as f64 + residual[1] as f64]
+        })
+    }
+    let mut aabb = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
+    for [x, y] in combine(&wire.points, &wire.points_low)
+        .chain(combine(&wire.fill_tris, &wire.fill_tris_low))
+        .chain(wire.key_vertices.iter().map(|point| [point[0], point[1]]))
+        .chain(wire.snap_pts.iter().map(|(point, _)| [point.x, point.y]))
+    {
+        if x.is_finite() && y.is_finite() {
+            aabb = [aabb[0].min(x), aabb[1].min(y), aabb[2].max(x), aabb[3].max(y)];
+        }
+    }
+    aabb.iter().all(|value| value.is_finite()) && meets(aabb)
+}
+
 fn mesh_interaction_aabb(set: &model::mesh_model::MeshLodSet) -> Option<[f64; 6]> {
     if let Some(aabb) = set.instance_aabb {
         return Some(aabb);
@@ -11516,11 +11557,17 @@ impl Scene {
         Some(handles)
     }
 
+    /// Handles whose geometry meets a world-XY box. The wire candidates are a
+    /// broad phase: a wire without a finite box (an INSERT's snap carrier, a
+    /// dimension part) comes back for any box, and an unindexed set returns
+    /// every wire. STRETCH took all of them, so every block in the drawing
+    /// joined it and vanished from its preview (#1891).
     pub fn interaction_handles_in_world_aabb(&self, aabb: [f64; 4]) -> HashSet<Handle> {
         let wires = self.hit_test_wires();
         let candidates = self.indexed_interaction_candidates_xy(wires, aabb, false, false, None);
         let mut handles: HashSet<Handle> = candidates
             .iter()
+            .filter(|wire| wire_meets_xy_box(wire, aabb))
             .filter_map(|wire| Self::handle_from_wire_name(&wire.name))
             .collect();
         let insert_hatches = self.insert_hatches_for_click();
@@ -16110,4 +16157,44 @@ pub(crate) fn is_locked_point_cloud(entity: &EntityType) -> bool {
         EntityType::Extended(extended)
             if matches!(&extended.data, codec::entities::ExtendedEntityData::PointCloudEx(data) if data.locked)
     )
+}
+
+#[cfg(test)]
+mod world_box_handle_tests {
+    use super::Scene;
+    use codec::entities::{Insert, Line};
+    use codec::types::Vector3;
+    use codec::EntityType;
+
+    fn line(a: [f64; 2], b: [f64; 2]) -> EntityType {
+        EntityType::Line(Line::from_points(
+            Vector3::new(a[0], a[1], 0.0),
+            Vector3::new(b[0], b[1], 0.0),
+        ))
+    }
+
+    /// STRETCH gathers its objects through this query: block copies and
+    /// lines away from the window must stay out of it (#1891).
+    #[test]
+    fn world_box_handles_leave_out_far_blocks_and_lines() {
+        let mut scene = Scene::new();
+        scene.define_block_raw(
+            "CHAIR",
+            Vector3::new(0.0, 0.0, 0.0),
+            vec![line([0.0, 0.0], [1.0, 1.0])],
+        );
+        let insert = |x: f64, y: f64| {
+            EntityType::Insert(Insert::new("CHAIR".to_string(), Vector3::new(x, y, 0.0)))
+        };
+        let far_block = scene.add_entity(insert(-500.0, 0.0));
+        let far_line = scene.add_entity(line([-500.0, 10.0], [-490.0, 10.0]));
+        let near_block = scene.add_entity(insert(12.0, 2.0));
+        let near_line = scene.add_entity(line([5.0, 5.0], [20.0, 5.0]));
+
+        let handles = scene.interaction_handles_in_world_aabb([10.0, 0.0, 30.0, 10.0]);
+
+        assert!(handles.contains(&near_line) && handles.contains(&near_block));
+        assert!(!handles.contains(&far_block), "far block copy joined the box");
+        assert!(!handles.contains(&far_line), "far line joined the box");
+    }
 }
