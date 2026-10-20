@@ -157,6 +157,7 @@ impl OpenCADStudio {
                         self.cursor_size,
                         crate::ui::window::options::SelectionPrefs {
                             pick_box: self.pick_box,
+                            aperture: self.snapper.osnap_radius_px.round() as i32,
                             pick_add: self.pick_add,
                             pick_drag_rect: self.pick_drag_rect,
                             grip_object_limit: self.grip_object_limit,

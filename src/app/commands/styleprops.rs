@@ -1153,6 +1153,7 @@ impl OpenCADStudio {
                     | "SHORTCUTMENUDURATION"
                     | "CURSORSIZE"
                     | "PICKBOX"
+                    | "APERTURE"
                     | "HPASSOC"
                     | "COMMANDLINEOPACITY"
                     | "MENUBAR"
@@ -2494,6 +2495,27 @@ impl OpenCADStudio {
                                 },
                                 None => Ok((format!("PICKBOX = {}", self.pick_box), false)),
                             },
+                            "APERTURE" => {
+                                let (min, max) = (
+                                    crate::snap::MIN_OSNAP_RADIUS_PX,
+                                    crate::snap::MAX_OSNAP_RADIUS_PX,
+                                );
+                                match &value {
+                                    Some(v) => match v.parse::<i32>() {
+                                        Ok(px) if (min as i32..=max as i32).contains(&px) => {
+                                            self.snapper.osnap_radius_px = px as f32;
+                                            Ok((format!("APERTURE = {px}"), true))
+                                        }
+                                        _ => Err(format!(
+                                            "SETVAR: integer from {min} to {max} required."
+                                        )),
+                                    },
+                                    None => Ok((
+                                        format!("APERTURE = {}", self.snapper.osnap_radius_px),
+                                        false,
+                                    )),
+                                }
+                            }
                             "MENUBAR" => match value.as_deref() {
                                 Some(v @ ("0" | "1")) => {
                                     self.show_menu_bar = v == "1";
@@ -3478,6 +3500,7 @@ impl OpenCADStudio {
                                         | "SHORTCUTMENUDURATION"
                                         | "CURSORSIZE"
                                         | "PICKBOX"
+                                        | "APERTURE"
                                         | "HPASSOC"
                                         | "COMMANDLINEOPACITY"
                                         | "MENUBAR"

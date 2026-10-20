@@ -14,7 +14,10 @@ use kernel::geom2d::Curve;
 use crate::command::{DimensionAssociationSource, TangentObject};
 use crate::scene::model::wire_model::{SnapHint, TangentGeom, WireModel};
 use crate::scene::pick::interaction_index::WireSource;
-const DEFAULT_OSNAP_RADIUS_PX: f32 = 25.0;
+pub(crate) const DEFAULT_OSNAP_RADIUS_PX: f32 = 25.0;
+/// APERTURE bounds: the object-snap capture radius in screen pixels.
+pub(crate) const MIN_OSNAP_RADIUS_PX: f32 = 4.0;
+pub(crate) const MAX_OSNAP_RADIUS_PX: f32 = 40.0;
 
 // ── Snap type ─────────────────────────────────────────────────────────────
 

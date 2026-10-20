@@ -810,6 +810,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "SHORTCUTMENUDURATION",
         "CURSORSIZE",
         "PICKBOX",
+        "APERTURE",
         "CURSORTYPE",
         "SNAPANG",
         "ATTREQ",

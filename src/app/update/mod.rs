@@ -9110,6 +9110,13 @@ impl OpenCADStudio {
                 Task::none()
             }
 
+            Message::ApertureChanged(value) => {
+                self.snapper.osnap_radius_px = (value as f32)
+                    .clamp(crate::snap::MIN_OSNAP_RADIUS_PX, crate::snap::MAX_OSNAP_RADIUS_PX);
+                self.persist_settings_if_changed();
+                Task::none()
+            }
+
             Message::DoubleClickBlockRefeditChanged(enabled) => {
                 self.double_click_block_refedit = enabled;
                 self.persist_settings_if_changed();

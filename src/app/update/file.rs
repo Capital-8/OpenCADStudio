@@ -820,6 +820,7 @@ impl OpenCADStudio {
             zoom_factor: self.zoom_factor,
             cursor_size: self.cursor_size,
             pick_box: self.pick_box,
+            aperture: self.snapper.osnap_radius_px,
             hatch_associative: self.hatch_associative,
             show_menu_bar: self.show_menu_bar,
             ribbon_closed: self.ribbon_closed,
@@ -966,6 +967,11 @@ impl OpenCADStudio {
         self.zoom_factor_input = self.zoom_factor.to_string();
         self.cursor_size = s.cursor_size.clamp(1, 100);
         self.pick_box = s.pick_box.clamp(0, 50);
+        self.snapper.osnap_radius_px = if s.aperture.is_finite() {
+            s.aperture.clamp(crate::snap::MIN_OSNAP_RADIUS_PX, crate::snap::MAX_OSNAP_RADIUS_PX)
+        } else {
+            crate::snap::DEFAULT_OSNAP_RADIUS_PX
+        };
         self.hatch_associative = s.hatch_associative;
         self.show_menu_bar = s.show_menu_bar;
         self.ribbon_closed = s.ribbon_closed;

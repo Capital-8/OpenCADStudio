@@ -5093,6 +5093,8 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Selection" => Some(("common", "selection")),
         "Pick box size" => Some(("common", "pick-box-size")),
         "Controls both the visible selection box and the click aperture." => Some(("common", "controls-both-the-visible-selection-box-and-the-click-aperture")),
+        "Aperture size" => Some(("common", "aperture-size")),
+        "How close, in pixels, the cursor must come to catch an object snap." => Some(("common", "how-close-in-pixels-the-cursor-must-come-to-catch-an-object-snap")),
         "Visual Effect Settings" => Some(("common", "visual-effect-settings")),
         "Applications" => Some(("common", "applications")),
         "Installed plugins and their sources" => Some(("common", "installed-plugins-and-their-sources")),

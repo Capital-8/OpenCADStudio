@@ -457,6 +457,8 @@ pub struct UserSettings {
     pub cursor_size: i32,
     /// PICKBOX: normalized visible-box and click-aperture size.
     pub pick_box: i32,
+    /// APERTURE: object-snap capture radius in screen pixels.
+    pub aperture: f32,
     /// HPASSOC: new hatches follow their boundary objects.
     pub hatch_associative: bool,
     /// MENUBAR: the classic pull-down menus show above the ribbon.
@@ -968,6 +970,7 @@ impl Default for UserSettings {
             zoom_factor: 60,
             cursor_size: 5,
             pick_box: 3,
+            aperture: crate::snap::DEFAULT_OSNAP_RADIUS_PX,
             hatch_associative: true,
             show_menu_bar: false,
             ribbon_closed: false,
