@@ -8303,6 +8303,63 @@ mod rapid_drawing_tests {
             assert_eq!(app.tabs[i].last_cursor_world, resolved_point);
         }
     }
+
+    #[test]
+    fn stretch_cursor_move_keeps_live_lines_visible_even_during_fast_pointer_updates() {
+        use crate::command::{CadCommand, CmdResult};
+        use crate::modules::draw::modify::stretch::StretchCommand;
+        use codec::{entities::Line, types::Vector3, EntityType};
+
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800.0, 600.0);
+        app.snapper.snap_enabled = false;
+        app.snapper.grid_snap_on = false;
+        app.snapper.otrack_enabled = false;
+        app.ortho_mode = false;
+        app.polar_mode = false;
+
+        let handle = app.tabs[i].scene.add_entity(EntityType::Line(Line::from_points(
+            Vector3::new(40.0, 30.0, 0.0),
+            Vector3::new(80.0, 30.0, 0.0),
+        )));
+        let wires = app.tabs[i].scene.wire_models_for(&[handle]);
+        let window = (
+            glam::DVec3::new(39.0, 29.0, -1.0),
+            glam::DVec3::new(81.0, 31.0, 1.0),
+        );
+        let base = glam::DVec3::new(40.0, 30.0, 0.0);
+        let mut cmd = StretchCommand::preselected(vec![handle], wires, window);
+        assert!(matches!(cmd.on_point(base), CmdResult::NeedPoint));
+        app.tabs[i].active_cmd = Some(Box::new(cmd));
+
+        let preview_has_endpoint = |app: &OpenCADStudio, x: f32, y: f32| {
+            app.tabs[i].scene.preview_wires.iter().any(|wire| {
+                wire.points.iter().any(|pt| {
+                    (pt[0] - x).abs() < 0.1 && (pt[1] - y).abs() < 0.1
+                })
+            })
+        };
+        let first = glam::DVec3::new(45.0, 40.0, 0.0);
+        let _ = app.on_viewport_move(screen(&app, first));
+        assert!(
+            preview_has_endpoint(&app, 85.0, 40.0),
+            "first cursor move must show the translated STRETCH line, not just its guide"
+        );
+
+        // A subsequent move normally takes the low-cost SnapDwell path.
+        // Make the 60 Hz overlay budget due without sleeping.
+        let dwell = app.snap_dwell.as_mut().expect("STRETCH dwell");
+        dwell.last_preview_snap_at =
+            Instant::now() - std::time::Duration::from_millis(100);
+        let second = glam::DVec3::new(48.0, 42.0, 0.0);
+        let _ = app.on_viewport_move(screen(&app, second));
+        assert!(
+            preview_has_endpoint(&app, 88.0, 42.0),
+            "fast cursor move must update the STRETCH geometry, not hide it"
+        );
+    }
 }
 
 #[cfg(test)]
