@@ -641,7 +641,12 @@ impl OpenCADStudio {
                             .remove(&name.to_ascii_uppercase())
                             .unwrap_or_default();
                         let preview = self.tabs[i].scene.block_preview_wires(&name);
-                        let cmd = InsertBlockCommand::classic_for_block(name, preview, units);
+                        let mut cmd = InsertBlockCommand::classic_for_block(name.clone(), preview, units);
+                        if let Some(record)=self.tabs[i].scene.document.block_records.get(&name) {
+                            let doc=&self.tabs[i].scene.document;
+                            cmd.set_insertion_points(crate::scene::render_graph::block_base_point(doc,&name),
+                                crate::scene::block_grips::insertion_points(doc,record.handle));
+                        }
                         self.command_line.push_info(&cmd.prompt());
                         self.tabs[i].active_cmd = Some(Box::new(cmd));
                     }

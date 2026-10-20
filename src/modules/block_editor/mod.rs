@@ -100,6 +100,11 @@ impl CadModule for BlockEditorModule {
                     include_bytes!("../../../assets/icons/tool_palettes.svg"),
                 ));
                 manage.tools.push(command(
+                    "BCYCLEORDER",
+                    "Grip Cycle Order",
+                    include_bytes!("../../../assets/icons/ui/list.svg"),
+                ));
+                manage.tools.push(command(
                     "BACTIONSET",
                     "Action Selection",
                     include_bytes!("../../../assets/icons/blocks/select_objects.svg"),

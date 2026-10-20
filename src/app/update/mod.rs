@@ -155,6 +155,9 @@ impl OpenCADStudio {
         if self.active_modal == Some(BlockEditorSettings) {
             self.block_editor_settings = None;
         }
+        if self.active_modal == Some(BlockCycleOrder) {
+            self.block_cycle_order = None;
+        }
         // Plot Style opened from PLOT behaves as a child modal.
         // Closing it restores the parent Plot dialog instead of returning
         // to the drawing.
@@ -6948,6 +6951,12 @@ impl OpenCADStudio {
                 // without waiting for the next mouse move.
                 let i = self.active_tab;
                 if ctrl_changed && self.tabs[i].active_cmd.is_some() {
+                    if ctrl && self.tabs[i].active_cmd.as_mut().is_some_and(|command| command.cycle_insertion_point()) {
+                        if let Some(command)=self.tabs[i].active_cmd.as_ref() {
+                            self.command_line.push_info(&command.prompt());
+                        }
+                        self.refresh_active_cmd_preview(i);
+                    }
                     let p = self.tabs[i].last_cursor_screen;
                     return Task::done(Message::ViewportMove(p));
                 }
@@ -9006,6 +9015,24 @@ impl OpenCADStudio {
                 self.active_modal = Some(super::ModalKind::NamedParameters);
                 Task::none()
             }
+            Message::BlockCycleEnable(index, enabled) => {
+                if let Some(state)=self.block_cycle_order.as_mut() {
+                    if let Some(row)=state.rows.get_mut(index) { row.enabled=enabled; }
+                    state.error=None;
+                }
+                Task::none()
+            }
+            Message::BlockCycleMove(index, up) => {
+                if let Some(state)=self.block_cycle_order.as_mut() {
+                    let target=if up { index.checked_sub(1) } else { index.checked_add(1) };
+                    if let Some(target)=target.filter(|target| *target<state.rows.len() && index<state.rows.len()) {
+                        state.rows.swap(index,target);
+                        state.error=None;
+                    }
+                }
+                Task::none()
+            }
+            Message::BlockCycleApply => self.apply_block_cycle_order(),
             Message::BlockEditorSettingsInput(index, value) => {
                 if let Some(state) = &mut self.block_editor_settings {
                     if let Some(field) = state.values.get_mut(index) { *field = value; }

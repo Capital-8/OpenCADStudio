@@ -10,6 +10,7 @@ pub use automation::{export_headless, serve};
 mod annotation_data;
 mod block_actions;
 mod block_feedback;
+mod block_cycle_order;
 mod block_authoring_edit;
 mod block_editor;
 #[cfg(test)]
@@ -635,6 +636,7 @@ pub(super) struct OpenCADStudio {
     block_visibility_mode: bool,
     block_editor_preferences: settings::BlockEditorPreferences,
     block_editor_settings: Option<crate::ui::window::block_editor_settings::State>,
+    block_cycle_order: Option<crate::ui::window::block_cycle_order::State>,
     block_dependency_cache: std::cell::RefCell<Option<block_feedback::DependencyCache>>,
     /// PDF dialogs' working copies; `None` while closed.
     pdf_attach: Option<crate::ui::window::pdf_dialogs::PdfAttachState>,
@@ -2395,6 +2397,7 @@ pub enum ModalKind {
     Aliases,
     NamedParameters,
     BlockEditorSettings,
+    BlockCycleOrder,
     ScaleManager,
     /// Add / remove the annotation scales a single selected object has a
     /// per-object representation for.
@@ -4009,6 +4012,9 @@ pub enum Message {
     BlockEditorSettingsInput(usize, String),
     BlockEditorSettingsReset,
     BlockEditorSettingsApply,
+    BlockCycleEnable(usize, bool),
+    BlockCycleMove(usize, bool),
+    BlockCycleApply,
     /// Live edit of the name or formula in row `idx`.
     NamedParametersInput {
         idx: usize,
@@ -4841,6 +4847,7 @@ impl OpenCADStudio {
             block_visibility_mode: false,
             block_editor_preferences: settings::BlockEditorPreferences::default(),
             block_editor_settings: None,
+            block_cycle_order: None,
             block_dependency_cache: std::cell::RefCell::new(None),
             pdf_attach: None,
             point_cloud_attach: None,

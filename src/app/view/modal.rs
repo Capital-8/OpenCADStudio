@@ -15,6 +15,7 @@ impl OpenCADStudio {
             Some(K::Aliases) => crate::tr!("modal", "command-aliases"),
             Some(K::NamedParameters) => crate::t!("Named Parameters").into_owned(),
             Some(K::BlockEditorSettings) => crate::t!("Block Editor Settings").into_owned(),
+            Some(K::BlockCycleOrder) => crate::t!("Grip Cycle Order").into_owned(),
             Some(K::Options) => crate::tr!("action", "options"),
             Some(K::FindReplace) => crate::tr!("modal", "find-replace"),
             Some(K::PluginManager) => crate::tr!("modal", "plugin-manager"),
@@ -145,6 +146,9 @@ impl OpenCADStudio {
             }
             super::super::ModalKind::BlockEditorSettings => {
                 crate::ui::window::block_editor_settings::view_window(self.block_editor_settings.as_ref()?)
+            }
+            super::super::ModalKind::BlockCycleOrder => {
+                crate::ui::window::block_cycle_order::view_window(self.block_cycle_order.as_ref()?)
             }
             super::super::ModalKind::Options => {
                 let dirty = self.options_dirty();

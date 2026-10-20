@@ -3123,6 +3123,11 @@ pub trait CadCommand: Send {
         None
     }
 
+    /// Advance the insertion anchor on a rising Ctrl key edge.
+    fn cycle_insertion_point(&mut self) -> bool {
+        false
+    }
+
     fn is_selection_gathering(&self) -> bool {
         false
     }

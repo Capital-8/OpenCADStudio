@@ -11,6 +11,7 @@ pub mod block_edit_picker;
 pub mod block_palette;
 pub mod block_save_as;
 pub(crate) mod block_editor_settings;
+pub(crate) mod block_cycle_order;
 pub mod block_visibility;
 pub mod block_lookup;
 pub mod block_properties_table;
