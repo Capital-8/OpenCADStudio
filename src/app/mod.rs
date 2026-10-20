@@ -2758,6 +2758,8 @@ pub enum Message {
     CursorSizeChanged(i32),
     /// Set PICKBOX from the Selection-page slider.
     PickBoxChanged(i32),
+    /// Set APERTURE (object-snap capture radius) from the Selection-page slider.
+    ApertureChanged(i32),
     /// Choose whether double-clicking a block starts BEDIT or REFEDIT.
     DoubleClickBlockRefeditChanged(bool),
     /// Choose whether double-clicking a block with attributes starts ATTEDIT.

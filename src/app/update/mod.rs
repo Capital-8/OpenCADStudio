@@ -634,6 +634,13 @@ impl OpenCADStudio {
                 return Task::none();
             }
         }
+        // The Shift+right-click snap menu owns the keyboard too: a snap's
+        // letter picks it, and no other key reaches the command line.
+        if self.snap_override_popup.is_some() {
+            if let Some(task) = self.intercept_snap_override_key(&msg) {
+                return task;
+            }
+        }
         // The open right-click context menu owns the keyboard the same way:
         // arrows / Enter / mnemonic letters drive it, any other key closes it
         // and falls through to the command line (the behaviour of commercial solutions).
@@ -9099,6 +9106,13 @@ impl OpenCADStudio {
 
             Message::PickBoxChanged(value) => {
                 self.pick_box = value.clamp(0, 50);
+                self.persist_settings_if_changed();
+                Task::none()
+            }
+
+            Message::ApertureChanged(value) => {
+                self.snapper.osnap_radius_px = (value as f32)
+                    .clamp(crate::snap::MIN_OSNAP_RADIUS_PX, crate::snap::MAX_OSNAP_RADIUS_PX);
                 self.persist_settings_if_changed();
                 Task::none()
             }
