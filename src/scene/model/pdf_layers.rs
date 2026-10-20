@@ -24,7 +24,7 @@ pub struct PdfLayer {
 /// standard; some producers write little-endian), UTF-8 with its mark, else
 /// PDFDocEncoding read as Latin-1. Trailing NULs some producers append are
 /// dropped.
-fn text_string(bytes: &[u8]) -> String {
+pub(crate) fn text_string(bytes: &[u8]) -> String {
     let utf16 = |rest: &[u8], le: bool| {
         let units: Vec<u16> = rest
             .chunks_exact(2)

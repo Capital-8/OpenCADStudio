@@ -90,6 +90,11 @@ pub struct PageVectors {
     pub images: Vec<PdfImage>,
     /// Paths, texts and images in the order the page draws them.
     pub order: Vec<Drawn>,
+    /// For each drawn item, how many optional-content sections (`/OC …
+    /// BDC`) had begun before it.
+    pub oc_marks: Vec<usize>,
+    /// Optional-content sections the page begins in all.
+    pub oc_sections: usize,
 }
 
 /// One drawn item: an index into `paths`, `texts` or `images`.
@@ -155,6 +160,47 @@ pub fn page_content_by_layer(
     }
     let read = |off: &[String]| page_content(&source_with_layers(path, off), page);
     let shown = read(hidden)?;
+    // The reference puts an item on the layer whose section opened last
+    // before it (a section left keeps its layer current). When every
+    // section sits in the page's own content, that sequence is read
+    // directly; otherwise the layers are told apart by turning them off.
+    if let Some(sections) = oc_section_layers(path, page).filter(|s| s.len() == shown.oc_sections) {
+        let mut current: Vec<Option<String>> = Vec::with_capacity(sections.len() + 1);
+        current.push(None);
+        for section in sections {
+            let last = current.last().cloned().flatten();
+            current.push(section.or(last));
+        }
+        let visible: Vec<&String> = names.iter().filter(|n| !hidden.contains(n)).collect();
+        let mut groups: Vec<PageVectors> = (0..=visible.len()).map(|_| PageVectors::default()).collect();
+        for (k, drawn) in shown.order.iter().enumerate() {
+            let layer = shown.oc_marks.get(k).and_then(|m| current.get(*m)).cloned().flatten();
+            let g = layer
+                .and_then(|l| visible.iter().position(|n| **n == l))
+                .map_or(0, |n| n + 1);
+            let group = &mut groups[g];
+            match *drawn {
+                Drawn::Path(i) => {
+                    group.order.push(Drawn::Path(group.paths.len()));
+                    group.paths.push(shown.paths[i].clone());
+                }
+                Drawn::Text(i) => {
+                    group.order.push(Drawn::Text(group.texts.len()));
+                    group.texts.push(shown.texts[i].clone());
+                }
+                Drawn::Image(i) => {
+                    group.order.push(Drawn::Image(group.images.len()));
+                    group.images.push(shown.images[i].clone());
+                }
+            }
+        }
+        let mut groups = groups.into_iter();
+        let base = groups.next().unwrap_or_default();
+        let mut out: Vec<(Option<String>, PageVectors)> =
+            visible.iter().map(|n| Some((*n).clone())).zip(groups).collect();
+        out.insert(0, (None, base));
+        return Some(out);
+    }
     let key = |s: &dyn std::fmt::Debug| format!("{s:?}");
     let keys = |pv: &PageVectors| -> HashMap<String, usize> {
         let mut out: HashMap<String, usize> = HashMap::new();
@@ -370,7 +416,56 @@ fn read_page_with(path: &str, page: &str, images: bool) -> Option<PageVectors> {
         texts: texts.into_iter().map(|t| t.text).collect(),
         images: device.images,
         order: device.order,
+        oc_marks: device.oc_marks,
+        oc_sections: device.oc_sections,
     })
+}
+
+/// The layer each optional-content section of a page's own content stream
+/// opens, in order: a group's name; for a membership dictionary, its last
+/// group's when it is an object of its own, its first when written out in
+/// the resources (as the reference reads them); `None` when it names no
+/// group.
+fn oc_section_layers(path: &str, page: &str) -> Option<Vec<Option<String>>> {
+    use hayro::hayro_syntax::object::{Array, Dict, ObjectIdentifier};
+    let bytes = super::pdf_raster::source_bytes(path)?;
+    let pdf = super::pdf_password::open(path, bytes).ok()?;
+    let xref = pdf.xref();
+    let page = pdf.pages().get(page.trim().parse::<usize>().ok()?.checked_sub(1)?)?;
+    let group_name = |dict: &Dict<'_>| {
+        dict.get::<hayro::hayro_syntax::object::String<'_>>(b"Name")
+            .map(|s| super::pdf_layers::text_string(s.as_bytes()))
+    };
+    let mut out = Vec::new();
+    let mut ops = page.typed_operations();
+    while let Some(op) = ops.next() {
+        let TypedInstruction::BeginMarkedContentWithProperties(bdc) = op else { continue };
+        if bdc.0.as_ref() != b"OC" {
+            continue;
+        }
+        let properties = &page.resources().properties;
+        let name = bdc.1.clone().into_name();
+        let indirect = name.as_ref().and_then(|n| properties.get_ref(n.as_ref())).is_some();
+        let dict = name.and_then(|n| properties.get::<Dict<'_>>(n.as_ref()));
+        let layer = dict.and_then(|dict| {
+            if dict.get::<Name<'_>>(b"Type").is_some_and(|t| t.as_ref() == b"OCMD") {
+                let groups: Vec<Dict<'_>> = match dict.get::<Array<'_>>(b"OCGs") {
+                    Some(array) => array
+                        .raw_iter()
+                        .filter_map(|item| item.as_obj_ref())
+                        .filter_map(|r| xref.get::<Dict<'_>>(ObjectIdentifier::from(r)))
+                        .collect(),
+                    None => dict.get::<Dict<'_>>(b"OCGs").into_iter().collect(),
+                };
+                let group = if indirect { groups.last() } else { groups.first() };
+                group.and_then(group_name)
+            } else {
+                group_name(&dict)
+            }
+        });
+        out.push(layer);
+    }
+    Some(out)
 }
 
 /// Whether a font dictionary carries its font program (for a composite
@@ -398,6 +493,8 @@ struct PendingText {
     em: f64,
     /// Tops of the capital letters seen so far, inches.
     caps: Vec<f64>,
+    /// Optional-content sections begun before the run.
+    oc: usize,
 }
 
 #[derive(Default)]
@@ -409,6 +506,9 @@ struct Collector {
     want_images: bool,
     images: Vec<PdfImage>,
     order: Vec<Drawn>,
+    oc_marks: Vec<usize>,
+    /// Optional-content sections begun so far.
+    oc_sections: usize,
     /// The visible area, in inches: the page, then each clip path's box
     /// within the one before it (the last is the current one).
     visible: Vec<Rect>,
@@ -419,6 +519,7 @@ impl Collector {
         if let Some(text) = self.current.take() {
             if !text.text.text.trim().is_empty() {
                 self.order.push(Drawn::Text(self.texts.len()));
+                self.oc_marks.push(text.oc);
                 self.texts.push(text);
             }
         }
@@ -566,6 +667,7 @@ impl<'a> Device<'a> for Collector {
             PathDrawMode::Fill(_) => (None, Some(rgb(paint))),
         };
         self.order.push(Drawn::Path(self.paths.len()));
+        self.oc_marks.push(self.oc_sections);
         self.paths.push(PdfPath {
             subpaths,
             stroke,
@@ -654,6 +756,7 @@ impl<'a> Device<'a> for Collector {
                 end: origin,
                 em,
                 caps: Vec::new(),
+                oc: self.oc_sections,
             });
         }
         if let Some(run) = self.current.as_mut() {
@@ -671,6 +774,11 @@ impl<'a> Device<'a> for Collector {
             run.text.width = ((run.end[0] - run.text.origin[0]).powi(2)
                 + (run.end[1] - run.text.origin[1]).powi(2))
             .sqrt();
+        }
+    }
+    fn begin_marked_content(&mut self, tag: &[u8], _: Option<i32>) {
+        if tag == b"OC" {
+            self.oc_sections += 1;
         }
     }
     fn draw_image(&mut self, image: Image<'a, '_>, transform: Affine) {
@@ -721,6 +829,7 @@ impl<'a> Device<'a> for Collector {
         );
         if let Some(image) = decoded {
             self.order.push(Drawn::Image(self.images.len()));
+            self.oc_marks.push(self.oc_sections);
             self.images.push(image);
         }
     }
