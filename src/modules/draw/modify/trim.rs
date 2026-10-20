@@ -4897,6 +4897,66 @@ mod tests {
     }
 
     #[test]
+    fn trim_circle_inside_hatch_creates_exact_round_hole() {
+        use std::f64::consts::PI;
+        let hatch = rect_hatch(1, true);
+        let cutter = [Geo::Circle {
+            handle: Handle::new(70), cx: 5.0, cy: 5.0, r: 3.0,
+        }];
+        let result = trim_hatch_at(&hatch, &cutter, 5.0, 5.0)
+            .expect("circle inside hatch must make a hole");
+        assert_eq!(result.paths.len(), 2);
+        assert!(!result.is_associative);
+        assert!(result.paths.iter().all(|path| path.boundary_handles.is_empty()));
+        assert!(matches!(result.paths[1].edges.first(),
+            Some(codec::entities::BoundaryEdge::CircularArc(arc))
+                if arc.counter_clockwise && (arc.end_angle - arc.start_angle - std::f64::consts::TAU).abs() < 1e-9));
+        assert!((crate::entities::hatch::boundary_area(&result) - (100.0 - PI * 9.0)).abs() < 1e-5);
+        let render = crate::scene::Scene::hatch_model_from_dxf(&result, [1.0; 4])
+            .expect("round hole must render as a HATCH");
+        assert!(!render.fill_mesh().1.is_empty());
+    }
+
+    #[test]
+    fn trim_circle_intersecting_side_creates_exact_arc_notch() {
+        let hatch = rect_hatch(1, false);
+        let cutter = [Geo::Circle {
+            handle: Handle::new(70), cx: 10.5, cy: 5.0, r: 3.0,
+        }];
+        let result = trim_hatch_at(&hatch, &cutter, 9.0, 5.0)
+            .expect("circle crossing one side must cut a curved notch");
+        assert_eq!(result.paths.len(), 1);
+        let arcs: Vec<_> = result.paths[0].edges.iter().filter_map(|edge| {
+            let codec::entities::BoundaryEdge::CircularArc(arc) = edge else { return None; };
+            Some(arc)
+        }).collect();
+        assert_eq!(arcs.len(), 1);
+        assert!((arcs[0].center.x - 10.5).abs() < 1e-9);
+        assert!((arcs[0].radius - 3.0).abs() < 1e-9);
+        let area = crate::entities::hatch::boundary_area(&result);
+        assert!(area > 0.0 && area < 100.0, "clipped area={area}");
+        let render = crate::scene::Scene::hatch_model_from_dxf(&result, [1.0; 4])
+            .expect("mixed lines and arc must render as a HATCH");
+        assert!(!render.fill_mesh().1.is_empty());
+    }
+
+    #[test]
+    fn trim_circle_never_cuts_holes_or_unrelated_regions() {
+        let mut hatch = rect_hatch(1, false);
+        add_rect_hole(&mut hatch, 4.0, 4.0, 6.0, 6.0);
+        let cutter = [Geo::Circle {
+            handle: Handle::new(70), cx: 5.0, cy: 5.0, r: 3.0,
+        }];
+        assert!(trim_hatch_at(&hatch, &cutter, 5.0, 5.0).is_none());
+        let clean = rect_hatch(1, false);
+        assert!(trim_hatch_at(&clean, &cutter, 1.0, 1.0).is_none());
+        let outside = [Geo::Circle {
+            handle: Handle::new(70), cx: 20.0, cy: 20.0, r: 3.0,
+        }];
+        assert!(trim_hatch_at(&clean, &outside, 5.0, 5.0).is_none());
+    }
+
+    #[test]
     fn trim_hatch_rejects_cutter_that_does_not_span_boundary() {
         let hatch = rect_hatch(1, false);
         let too_short = [Geo::Line {
