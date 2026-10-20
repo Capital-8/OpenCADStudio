@@ -2719,6 +2719,79 @@ fn fence_pass(
     out
 }
 
+/// EXTEND's normal box selection applies ONE extension per selected entity.
+/// Unlike the multi-round Fence/Crossing operator, this cannot extend an
+/// already-updated line again after it reaches its first boundary.
+/// The box is only a selector; all targets still use the chosen common
+/// boundary-edge geometry (`geos`).
+fn extend_box_pass(
+    all: &[EntityType],
+    geos: &[Geo],
+    boundary_handles: &[Handle],
+    fence: &[[f64; 2]],
+    window: Option<CrossingWindow>,
+    crossing: bool,
+) -> Vec<(Handle, Vec<EntityType>)> {
+    let selected = drag_selected_handles(all, fence, window, crossing);
+    if selected.is_empty() {
+        return Vec::new();
+    }
+    let selected: std::collections::HashSet<_> = selected.into_iter().collect();
+    let boundaries: std::collections::HashSet<_> = boundary_handles.iter().copied().collect();
+    let mut replacements = Vec::new();
+    for entity in all {
+        let handle = entity.common().handle;
+        if !selected.contains(&handle) || boundaries.contains(&handle) {
+            continue;
+        }
+        // Prefer the end visibly touched by the selection rectangle.
+        // If both ends are within it, use the nearest reachable boundary;
+        // if neither end is within it, follow the box crossing position.
+        // This is independent of line direction in the file.
+        let extended = if let EntityType::Line(line) = entity {
+            let contains = |x: f64, y: f64| window.is_some_and(|w| {
+                x >= w.min[0] && x <= w.max[0]
+                    && y >= w.min[1] && y <= w.max[1]
+            });
+            let start_in = contains(line.start.x, line.start.y);
+            let end_in = contains(line.end.x, line.end.y);
+            if start_in && end_in {
+                let start = extend_line(line, 0.0, geos);
+                let end = extend_line(line, 1.0, geos);
+                match (start, end) {
+                    (Some(a), Some(b)) => {
+                        let dist = |result: &EntityType| {
+                            let EntityType::Line(extended) = result else { return f64::INFINITY; };
+                            (extended.start.x - line.start.x).hypot(extended.start.y - line.start.y)
+                                + (extended.end.x - line.end.x).hypot(extended.end.y - line.end.y)
+                        };
+                        Some(if dist(&a) <= dist(&b) { a } else { b })
+                    }
+                    (a @ Some(_), None) | (None, a @ Some(_)) => a,
+                    (None, None) => None,
+                }
+            } else if start_in {
+                extend_line(line, 0.0, geos)
+            } else if end_in {
+                extend_line(line, 1.0, geos)
+            } else {
+                let pick = window.and_then(|w| entity_point_in_window(entity, w));
+                pick.and_then(|p| pick_extend_at(all, geos, handle, p[0], p[1]))
+            }
+        } else {
+            // Keep the existing analytic extension for arcs, polylines,
+            // ellipses and splines instead of introducing another solver.
+            window.and_then(|w| entity_point_in_window(entity, w))
+                .or_else(|| fence_cross_points(entity, &build_fence_geos(fence)).first().copied())
+                .and_then(|p| pick_extend_at(all, geos, handle, p[0], p[1]))
+        };
+        if let Some(new_entity) = extended {
+            replacements.push((handle, vec![new_entity]));
+        }
+    }
+    replacements
+}
+
 /// The ADDED tail of an extend result, dashed — the slice of the extended
 /// curve beyond the original endpoint, so the preview shows the extension
 /// itself rather than only a recolored whole (#336). Generic over entity
@@ -3870,7 +3943,7 @@ impl CadCommand for ExtendCommand {
         };
         match &self.mode {
             TrimMode::Pick => {
-                crate::tf!("EXTEND{edge}  Click near end of object to extend (Shift+click trims):")
+                crate::tf!("EXTEND{edge}  Click near an end or draw a crossing box to extend multiple objects (Shift trims):")
                     .into_owned()
             }
             TrimMode::SelectEdges => crate::tf!(
@@ -4039,25 +4112,49 @@ impl CadCommand for ExtendCommand {
         window: Option<([f64; 2], [f64; 2])>,
         crossing: bool,
     ) -> Option<CmdResult> {
-        if !matches!(self.mode, TrimMode::SelectEdges) || fence.len() < 2 {
+        if fence.len() < 2 {
             return None;
         }
         let window = window.map(|(min, max)| CrossingWindow { min, max });
-        let handles = drag_selected_handles(&self.all_entities, fence, window, crossing);
-        if self.shift {
-            self.edge_set.retain(|handle| !handles.contains(handle));
-        } else {
-            for handle in handles {
-                if !self.edge_set.contains(&handle) {
-                    self.edge_set.push(handle);
+        match self.mode {
+            TrimMode::SelectEdges => {
+                let handles = drag_selected_handles(&self.all_entities, fence, window, crossing);
+                if self.shift {
+                    self.edge_set.retain(|handle| !handles.contains(handle));
+                } else {
+                    for handle in handles {
+                        if !self.edge_set.contains(&handle) {
+                            self.edge_set.push(handle);
+                        }
+                    }
                 }
+                Some(CmdResult::NeedPoint)
             }
+            TrimMode::Pick => {
+                // Shift retains EXTEND's usual inverse TRIM gesture.
+                if self.shift {
+                    return Some(self.fence_run(fence, window));
+                }
+                let replacements = extend_box_pass(
+                    &self.all_entities,
+                    &self.geos,
+                    &self.edge_set,
+                    fence,
+                    window,
+                    crossing,
+                );
+                if replacements.is_empty() {
+                    return Some(CmdResult::NeedPoint);
+                }
+                self.pending = replacements.clone();
+                Some(CmdResult::ReplaceManyContinue(replacements))
+            }
+            _ => None,
         }
-        Some(CmdResult::NeedPoint)
     }
 
     fn accepts_drag_selection(&self) -> bool {
-        matches!(self.mode, TrimMode::SelectEdges)
+        matches!(self.mode, TrimMode::Pick | TrimMode::SelectEdges)
     }
 
     fn persistent_preview_wires(&self) -> Vec<WireModel> {
