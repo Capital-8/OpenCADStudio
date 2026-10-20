@@ -2743,14 +2743,14 @@ impl OpenCADStudio {
                     .snap_dwell
                     .as_ref()
                     .is_some_and(|dwell| dwell.discrete_preview_due_at(Instant::now()));
-            // STRETCH hides its resident sources, so unlike a point-only
-            // rubber band its edited geometry must keep updating during the
-            // lightweight mouse path. Cap it to the same 60 Hz preview budget
-            // rather than running full DWG snapping/tessellation each event.
+            // A command that hides its resident sources (STRETCH) must keep
+            // its edited geometry updating during the lightweight mouse path,
+            // unlike a point-only rubber band. Cap it to the same 60 Hz
+            // preview budget rather than running full snapping each event.
             let refresh_stretch_preview = self.tabs[i]
                 .active_cmd
                 .as_ref()
-                .is_some_and(|cmd| cmd.name() == "STRETCH")
+                .is_some_and(|cmd| !cmd.preview_hidden_handles().is_empty())
                 && (run_discrete_preview
                     || self.snap_dwell.as_ref().is_some_and(|dwell| {
                         dwell.discrete_preview_due_at(Instant::now())
@@ -3646,10 +3646,8 @@ impl OpenCADStudio {
                     // STRETCH replaces its source entities while the pointer moves.
                     // Without the edited-entity overlay, its source hide-set makes
                     // the selected lines disappear until the final click.
-                    if cmd.name() == "STRETCH" {
-                        let entities = cmd.preview_entities(&tab.scene.document, effective);
-                        wires.extend(tab.scene.wires_for_entities(&entities));
-                    }
+                    let entities = cmd.preview_entities(&tab.scene.document, effective);
+                    wires.extend(tab.scene.wires_for_entities(&entities));
                     wires
                 } else {
                     Vec::new()
@@ -4680,7 +4678,7 @@ impl OpenCADStudio {
         // that vertex (not its entire entity). Use the same grip hit testing
         // as a normal click, including paper-space and viewport transforms.
         if self.shift_down
-            && self.tabs[i].active_cmd.as_ref().is_some_and(|command| command.name() == "STRETCH")
+            && self.tabs[i].active_cmd.is_some()
             && !self.tabs[i].selected_grips.is_empty()
         {
             let grip_hit = if let Some(cam) = &edit_cam {
