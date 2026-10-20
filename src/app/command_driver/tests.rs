@@ -140,7 +140,10 @@ mod trim_extend_history_tests {
         let hatch_handle = app.tabs[i]
             .scene
             .add_entity(codec::EntityType::Hatch(Box::new(hatch)));
-        add_line(&mut app, [5.0, -2.0], [5.0, 12.0]);
+        let boundary = add_line(&mut app, [5.0, -2.0], [5.0, 12.0]);
+        // Pick-first supplies a deterministic Standard-mode cutting edge,
+        // regardless of the global TRIMMODE setting from other tests.
+        app.tabs[i].scene.select_entity(boundary, false);
         assert!(app.tabs[i]
             .scene
             .visible_hatch_handles_for_edit()
