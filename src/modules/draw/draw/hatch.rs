@@ -178,7 +178,6 @@ fn rte_boundary(pts: impl Iterator<Item = (f64, f64)>) -> (Vec<[f32; 2]>, [f64; 
 // ── HATCH command ──────────────────────────────────────────────────────────
 
 pub struct HatchCommand {
-    outlines: Vec<Vec<[f64; 2]>>,
     boundary_sources: rustc_hash::FxHashMap<Handle, crate::scene::BoundarySource>,
     point_regions: Vec<Vec<Vec<[f64; 2]>>>,
     object_regions: Vec<Vec<Vec<[f64; 2]>>>,
@@ -203,7 +202,6 @@ pub struct HatchCommand {
 
 impl HatchCommand {
     pub fn new(
-        outlines: Vec<Vec<[f64; 2]>>,
         boundary_sources: rustc_hash::FxHashMap<Handle, crate::scene::BoundarySource>,
         selected_objects: Vec<Handle>,
         inherited: Option<(HatchModel, codec::types::Color, codec::types::Transparency)>,
@@ -215,7 +213,6 @@ impl HatchCommand {
             .collect();
         let has_selection = !selected_objects.is_empty();
         let mut command = Self {
-            outlines,
             boundary_sources,
             point_regions: Vec::new(),
             object_regions: Vec::new(),
@@ -668,7 +665,8 @@ impl CadCommand for HatchCommand {
         match &self.mode {
             HatchMode::PickInside => {
                 let xy = [pt.x, pt.y];
-                match resolve_hatch_rings(&self.outlines, xy) {
+                let faces = crate::scene::boundary_faces_around(&self.boundary_sources, xy, 1.0e-6);
+                match resolve_hatch_rings(&faces, xy) {
                     Some(rings) => {
                         self.missed = false;
                         self.add_point_region(rings);
@@ -951,7 +949,6 @@ impl CadCommand for HatchCommand {
 // ── GRADIENT command ───────────────────────────────────────────────────────
 
 pub struct GradientCommand {
-    outlines: Vec<Vec<[f64; 2]>>,
     boundary_sources: rustc_hash::FxHashMap<Handle, crate::scene::BoundarySource>,
     mode: Mode,
     manual_pts: Vec<DVec3>,
@@ -964,11 +961,9 @@ pub struct GradientCommand {
 
 impl GradientCommand {
     pub fn new(
-        outlines: Vec<Vec<[f64; 2]>>,
         boundary_sources: rustc_hash::FxHashMap<Handle, crate::scene::BoundarySource>,
     ) -> Self {
         Self {
-            outlines,
             boundary_sources,
             mode: Mode::PickInside,
             manual_pts: vec![],
@@ -1079,7 +1074,8 @@ impl CadCommand for GradientCommand {
         match &self.mode {
             Mode::PickInside => {
                 let xy = [pt.x, pt.y];
-                match resolve_hatch_rings(&self.outlines, xy) {
+                let faces = crate::scene::boundary_faces_around(&self.boundary_sources, xy, 1.0e-6);
+                match resolve_hatch_rings(&faces, xy) {
                     Some(rings) => {
                         self.missed = false;
                         return CmdResult::CommitHatch(self.make_hatch(rings));
@@ -1170,7 +1166,6 @@ pub struct BoundaryCommand {
     sources: rustc_hash::FxHashMap<Handle, crate::scene::BoundarySource>,
     active_sources: rustc_hash::FxHashMap<Handle, crate::scene::BoundarySource>,
     restrict_sources: bool,
-    outlines: Vec<Vec<[f64; 2]>>,
     point_regions: Vec<Vec<Vec<[f64; 2]>>>,
     selected_objects: Vec<Handle>,
     mode: BoundaryMode,
@@ -1203,12 +1198,10 @@ impl BoundaryCommand {
         selected_objects: Vec<Handle>,
         plane: WorkingPlane,
     ) -> Self {
-        let outlines = crate::scene::boundary_faces(&sources, 1.0e-6);
         let mut command = Self {
             sources,
             active_sources: rustc_hash::FxHashMap::default(),
             restrict_sources: false,
-            outlines,
             point_regions: Vec::new(),
             selected_objects: Vec::new(),
             mode: BoundaryMode::PickInside,
@@ -1237,13 +1230,10 @@ impl BoundaryCommand {
             .collect();
         self.active_sources = selected_sources;
         self.restrict_sources = restrict_sources;
-        let sources = if self.restrict_sources {
-            &self.active_sources
-        } else {
-            &self.sources
-        };
-        self.outlines = crate::scene::boundary_faces(sources, self.gap_tolerance);
-        self.missed = !handles.is_empty() && self.outlines.is_empty();
+        // Only a chosen boundary set is checked up front: it is small, while
+        // the whole drawing is resolved around each pick instead (#1869).
+        self.missed = restrict_sources
+            && crate::scene::boundary_faces(&self.active_sources, self.gap_tolerance).is_empty();
         self.selected_objects = handles;
         self.point_regions.clear();
     }
@@ -1265,6 +1255,12 @@ impl BoundaryCommand {
     }
 
     fn picked_region(&self, point: [f64; 2]) -> Option<Vec<Vec<[f64; 2]>>> {
+        let sources = if self.restrict_sources {
+            &self.active_sources
+        } else {
+            &self.sources
+        };
+        let outlines = crate::scene::boundary_faces_around(sources, point, self.gap_tolerance);
         let tolerance = Tolerance::new(self.gap_tolerance);
         let curves = |outline: &Vec<[f64; 2]>| {
             outline
@@ -1275,8 +1271,7 @@ impl BoundaryCommand {
                 .map(|(start, end)| Curve::Line(Line { start, end }))
                 .collect::<Vec<_>>()
         };
-        let mut containing: Vec<(usize, f64)> = self
-            .outlines
+        let mut containing: Vec<(usize, f64)> = outlines
             .iter()
             .enumerate()
             .filter(|(_, outline)| contains(&curves(outline), point, tolerance))
@@ -1284,15 +1279,15 @@ impl BoundaryCommand {
             .collect();
         containing.sort_by(|left, right| left.1.total_cmp(&right.1));
         let outer_index = containing.first()?.0;
-        let outer = &self.outlines[outer_index];
+        let outer = &outlines[outer_index];
         let outer_curves = curves(outer);
-        let depths = ring_nesting_depths(&self.outlines);
+        let depths = ring_nesting_depths(&outlines);
         let outer_depth = depths.get(outer_index).copied().unwrap_or(0);
         let mut rings = vec![outer.clone()];
         if self.island_style == BoundaryIslandStyle::Ignore {
             return Some(rings);
         }
-        for (index, candidate) in self.outlines.iter().enumerate() {
+        for (index, candidate) in outlines.iter().enumerate() {
             let Some(seed) = candidate.first().copied() else {
                 continue;
             };
