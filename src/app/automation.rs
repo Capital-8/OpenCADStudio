@@ -32,8 +32,8 @@ use super::OpenCADStudio;
 /// a time (the document session persists across reconnects); every socket
 /// request carries `"token"` (see `rest::api_token`).
 #[cfg(not(target_arch = "wasm32"))]
-pub fn serve() {
-    let mut app = OpenCADStudio::new();
+pub fn serve(read_only: bool) {
+    let mut app = OpenCADStudio::new_headless(read_only);
     match port_arg() {
         Some(port) => serve_socket(
             &mut app,
@@ -674,6 +674,28 @@ fn audit_ascii_dxf_references(path: &std::path::Path) -> Result<Value, String> {
 }
 
 impl OpenCADStudio {
+    /// A headless session. `read_only` is the `--read-only` launch flag,
+    /// which the GUI takes from its startup config instead. (#1928)
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn new_headless(read_only: bool) -> Self {
+        let mut app = Self::new();
+        app.read_only = read_only;
+        app
+    }
+
+    /// The refusal every automation write of the drawing gives in a
+    /// `--read-only` session, matching the GUI's SAVE / SAVEAS / SAVEALL.
+    pub(super) fn read_only_save_refusal(&self) -> Option<Value> {
+        self.read_only.then(|| {
+            json!({
+                "ok": false,
+                "status": "failed",
+                "code": "read_only",
+                "error": "Read-only session (--read-only): saving is disabled.",
+            })
+        })
+    }
+
     /// Handle one JSON request line and return the JSON response.
     #[cfg(any(test, not(target_arch = "wasm32")))]
     pub(crate) fn automation_op(&mut self, line: &str) -> Value {
@@ -1018,6 +1040,9 @@ impl OpenCADStudio {
                 json!({ "ok": true, "selected": self.tabs[i].scene.selected_entities().len() })
             }
             "save" => {
+                if let Some(refusal) = self.read_only_save_refusal() {
+                    return refusal;
+                }
                 if self.tabs[self.active_tab].block_test.is_some() {
                     return err("Test Block is temporary and cannot be saved.");
                 }

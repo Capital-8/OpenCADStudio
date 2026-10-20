@@ -726,6 +726,10 @@ fn exchange(
         timeout,
     )
     .map_err(CallError::infra)?;
+    // One request line in, one reply line out: Nagle + the GUI's delayed ACK
+    // would hold every reply's tail segment for ~200 ms per round. Matches
+    // the GUI-side set_nodelay on the accepted stream (control/transport).
+    let _ = stream.set_nodelay(true);
     stream
         .set_read_timeout(Some(timeout))
         .map_err(CallError::infra)?;
@@ -3102,7 +3106,14 @@ pub fn run() {
             }
         };
         if let Some(response) = response {
-            if writeln!(output, "{response}")
+            // Serialize once: write_fmt on a Value Display streams every
+            // JSON token through the (line-buffered) stdout lock as its own
+            // write, so big replies pay hundreds of pipe writes. One String
+            // + one write_all produces the identical bytes.
+            let mut response_line = response.to_string();
+            response_line.push('\n');
+            if output
+                .write_all(response_line.as_bytes())
                 .and_then(|_| output.flush())
                 .is_err()
             {

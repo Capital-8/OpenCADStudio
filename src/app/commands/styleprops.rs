@@ -284,6 +284,12 @@ impl OpenCADStudio {
                 // (nested blocks, layers, linetypes, styles), so those become
                 // purgeable on the next pass — repeat until a pass removes
                 // nothing, so one PURGE does what re-running it used to.
+                // Xref-dependent records (`Xref|Name`) belong to the xref and
+                // come back with its next reload, so they are never purged —
+                // also when the xref did not resolve and nothing in the host
+                // draws on them (#1929). Blocks get the same rule in
+                // `block_service::protected_reason`.
+                let xref_dependent = |name: &str, flagged: bool| flagged || name.contains('|');
                 let (mut n_layers, mut n_styles, mut n_lts, mut n_blocks) =
                     (0usize, 0usize, 0usize, 0usize);
                 let mut snapshot_pushed = false;
@@ -371,7 +377,9 @@ impl OpenCADStudio {
                             .layers
                             .iter()
                             .filter(|l| {
-                                l.name != "0" && !used_layers.contains(&l.name.to_uppercase())
+                                l.name != "0"
+                                    && !xref_dependent(&l.name, l.flags.xref_dependent)
+                                    && !used_layers.contains(&l.name.to_uppercase())
                             })
                             .map(|l| l.name.clone())
                             .collect()
@@ -390,6 +398,7 @@ impl OpenCADStudio {
                                 !s.name.is_empty()
                                     && !s.is_shape_file
                                     && !s.name.eq_ignore_ascii_case("Standard")
+                                    && !xref_dependent(&s.name, s.xref_dependent)
                                     && !used_text_styles.contains(&s.name.to_uppercase())
                                     && !linetype_styles.contains(&s.handle)
                             })
@@ -407,6 +416,7 @@ impl OpenCADStudio {
                             .iter()
                             .filter(|lt| {
                                 !standard.iter().any(|s| s.eq_ignore_ascii_case(&lt.name))
+                                    && !xref_dependent(&lt.name, lt.xref_dependent)
                                     && !used_linetypes.contains(&lt.name.to_uppercase())
                             })
                             .map(|lt| lt.name.clone())
