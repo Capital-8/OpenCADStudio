@@ -2549,8 +2549,9 @@ impl super::Scene {
         // EXTMIN / EXTMAX: the model's extents as it is saved (an empty
         // model keeps the unset values).
         if let Some((min, max)) = self.visible_block_bounds(self.model_space_block_handle()) {
-            document.header.model_space_extents_min = codec::types::Vector3::new(min.x, min.y, min.z);
-            document.header.model_space_extents_max = codec::types::Vector3::new(max.x, max.y, max.z);
+            let header = &mut document.header;
+            header.model_space_extents_min = codec::types::Vector3::new(min.x, min.y, min.z);
+            header.model_space_extents_max = codec::types::Vector3::new(max.x, max.y, max.z);
         }
         document
     }

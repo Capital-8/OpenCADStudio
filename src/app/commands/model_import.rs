@@ -572,7 +572,12 @@ impl OpenCADStudio {
                         &handle,
                     ));
                     first_material = false;
-                    let values = crate::io::tds_legacy::material_values(&name, colours[1], finish.roughness, asked);
+                    let values = crate::io::tds_legacy::material_values(
+                        &name,
+                        colours[1],
+                        finish.roughness,
+                        asked,
+                    );
                     with_attributes(&mut insert, crate::io::tds_legacy::material_block(), |tag| {
                         values.iter().find(|(t, _)| *t == tag).map(|(_, v)| v.clone())
                     });

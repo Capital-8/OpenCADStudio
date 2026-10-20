@@ -219,7 +219,12 @@ pub fn material_block() -> Vec<EntityType> {
 /// The material block's attribute values for a material whose diffuse
 /// colour is `diffuse` (0 to 1); `asked` when the meshes also link to the
 /// record through their finish.
-pub fn material_values(name: &str, diffuse: [f64; 3], roughness: f32, asked: bool) -> Vec<(&'static str, String)> {
+pub fn material_values(
+    name: &str,
+    diffuse: [f64; 3],
+    roughness: f32,
+    asked: bool,
+) -> Vec<(&'static str, String)> {
     MATERIAL_TAGS
         .iter()
         .map(|tag| {

@@ -845,7 +845,9 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
             .filter(|&id| doc.kind(id) == kind)
             .collect()
     };
-    let param = |id: u64, k: usize| doc.simple(id).and_then(|(_, p)| p.get(k)).and_then(P::reference);
+    let param = |id: u64, k: usize| {
+        doc.simple(id).and_then(|(_, p)| p.get(k)).and_then(P::reference)
+    };
 
     // Product definitions and the name of the product each defines.
     let definitions: Vec<u64> = ids
@@ -1006,7 +1008,9 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
 /// of the representation it maps. A top representation (one no other maps)
 /// that places nothing puts its solids straight into the drawing.
 fn without_products(doc: &Doc, ids: &[u64], unit_mm: Option<f64>) -> StepModel {
-    let param = |id: u64, k: usize| doc.simple(id).and_then(|(_, p)| p.get(k)).and_then(P::reference);
+    let param = |id: u64, k: usize| {
+        doc.simple(id).and_then(|(_, p)| p.get(k)).and_then(P::reference)
+    };
     let reps: Vec<u64> = ids
         .iter()
         .copied()

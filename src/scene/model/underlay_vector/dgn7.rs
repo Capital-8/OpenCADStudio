@@ -834,7 +834,8 @@ fn level_names(all: &[&[u8]]) -> HashMap<u8, String> {
         // The named-levels table: a count at 40, then 104-byte entries of
         // the level number and its zero-terminated name (which may hold
         // spaces, as "Level 1").
-        let count = usize::from(u16::from_le_bytes([e.get(40).copied().unwrap_or(0), e.get(41).copied().unwrap_or(0)]));
+        let byte = |at: usize| e.get(at).copied().unwrap_or(0);
+        let count = usize::from(u16::from_le_bytes([byte(40), byte(41)]));
         if count > 0 && 42 + count * 104 <= e.len() {
             for k in 0..count {
                 let at = 42 + k * 104;

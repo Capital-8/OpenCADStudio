@@ -1257,8 +1257,12 @@ pub fn read(bytes: &[u8], drawing_mm: Option<f64>) -> Option<IgesModel> {
             _ => assembly.whole(number as f64),
         };
         match made {
-            Some(true) => bodies.push((assembly.build.body, doc.color(entity.color), layer(entity))),
-            Some(false) => sheets.push((assembly.build.body, doc.color(entity.color), layer(entity))),
+            Some(true) => {
+                bodies.push((assembly.build.body, doc.color(entity.color), layer(entity)))
+            }
+            Some(false) => {
+                sheets.push((assembly.build.body, doc.color(entity.color), layer(entity)))
+            }
             None => {}
         }
     }
