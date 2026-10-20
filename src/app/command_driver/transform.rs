@@ -149,15 +149,38 @@ impl OpenCADStudio {
         &mut self,
         mut handles: Vec<Handle>,
         windows: Vec<(glam::DVec3, glam::DVec3)>,
-        excluded_points: Vec<(Handle, glam::DVec3)>,
+        mut excluded_points: Vec<(Handle, glam::DVec3)>,
+        subtract_window: Option<(glam::DVec3, glam::DVec3)>,
     ) {
         let i = self.active_tab;
+        if let Some((min, max)) = subtract_window {
+            // Subtract only the vertex grips that STRETCH actually selected.
+            // Testing whole entities would remove all of their vertices,
+            // including points outside the subtraction rectangle.
+            for (&handle, grip) in self.tabs[i]
+                .selected_grip_handles
+                .iter()
+                .zip(self.tabs[i].selected_grips.iter())
+            {
+                let world = grip.world;
+                let inside = world.x >= min.x - 1e-9 && world.x <= max.x + 1e-9
+                    && world.y >= min.y - 1e-9 && world.y <= max.y + 1e-9;
+                if inside && !excluded_points.iter().any(|(owner, point)| {
+                    *owner == handle && (point.x - world.x).abs() <= 1e-9
+                        && (point.y - world.y).abs() <= 1e-9
+                }) {
+                    excluded_points.push((handle, world));
+                }
+            }
+        }
         // Accumulate every entity touched by any crossing window. Keep STRETCH
         // in its selection stage; Enter is what advances to the base point.
         {
             let scene = &self.tabs[i].scene;
 
-            for (win_min, win_max) in &windows {
+            // A subtraction window leaves the current crossing windows
+            // unchanged; do not rerun a large drawing's selection query.
+            for (win_min, win_max) in windows.iter().filter(|_| subtract_window.is_none()) {
                 handles.extend(
                     scene
                         .interaction_handles_in_world_aabb([
@@ -197,13 +220,19 @@ impl OpenCADStudio {
 
             for &handle in &handles {
                 let wires = self.tabs[i].scene.wire_models_for(&[handle]);
+                let active_point = |point: glam::DVec3| {
+                    point_inside(point) && !excluded_points.iter().any(|(owner, removed)| {
+                        *owner == handle && (removed.x - point.x).abs() <= 1e-9
+                            && (removed.y - point.y).abs() <= 1e-9
+                    })
+                };
 
                 let affected = wires.iter().any(|wire| {
                     // LINE / LWPOLYLINE / other vertex-based entities.
                     let vertex_hit = wire
                         .key_vertices
                         .iter()
-                        .any(|point| point_inside(glam::DVec3::from_array(*point)));
+                        .any(|point| active_point(glam::DVec3::from_array(*point)));
 
                     if vertex_hit {
                         return true;
@@ -218,7 +247,7 @@ impl OpenCADStudio {
                             crate::scene::model::wire_model::SnapHint::Center
                                 | crate::scene::model::wire_model::SnapHint::Insertion
                                 | crate::scene::model::wire_model::SnapHint::Node
-                        ) && point_inside(*point)
+                        ) && active_point(*point)
                     })
                 });
 
