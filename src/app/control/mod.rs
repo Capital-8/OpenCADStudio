@@ -3122,8 +3122,8 @@ mod tests {
                 .all(|(channel, expected)| (channel - expected).abs() < 0.02)
         };
         assert!(
-            color_ops.iter().any(|c| near(c, [0.0, 0.15, 0.5])),
-            "unstyled cyan frame plots as the dark-blue print remap: {color_ops:?}"
+            color_ops.iter().any(|c| near(c, [0.0, 1.0, 1.0])),
+            "unstyled cyan frame keeps its colour on paper (#1926): {color_ops:?}"
         );
         assert!(
             color_ops.iter().any(|c| near(c, [1.0, 0.0, 0.0])),

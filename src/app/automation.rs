@@ -3541,6 +3541,8 @@ mod tests {
             let _ = app.run_command_line("LINE 0,0 10,10");
             app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800.0, 600.0);
             let _ = app.run_command_line("ZOOM EXTENTS");
+            // Extents leave a 3-pixel border, so the window paths run 1 px
+            // inside the view edge to enclose the line.
             // Both directions. Crossing = a right → left diagonal sweep (the
             // freeform path may be degenerate — crossing counts hits).
             // Window = a left → right perimeter walk so the freeform ring
@@ -3550,11 +3552,11 @@ mod tests {
                 (0..=10)
                     .map(|k| {
                         let t = k as f32 / 10.0;
-                        (20.0 + t * 760.0, 20.0 + t * 560.0)
+                        (1.0 + t * 798.0, 1.0 + t * 598.0)
                     })
                     .collect()
             } else if add {
-                let (sx, sy, ex, ey) = (780.0f32, 580.0f32, 20.0f32, 20.0f32);
+                let (sx, sy, ex, ey) = (799.0f32, 599.0f32, 1.0f32, 1.0f32);
                 (0..=10)
                     .map(|k| {
                         let t = k as f32 / 10.0;
@@ -3563,14 +3565,14 @@ mod tests {
                     .collect()
             } else {
                 vec![
-                    (20.0, 20.0),
-                    (400.0, 20.0),
-                    (780.0, 20.0),
-                    (780.0, 300.0),
-                    (780.0, 580.0),
-                    (400.0, 580.0),
-                    (20.0, 580.0),
-                    (20.0, 300.0),
+                    (1.0, 1.0),
+                    (400.0, 1.0),
+                    (799.0, 1.0),
+                    (799.0, 300.0),
+                    (799.0, 599.0),
+                    (400.0, 599.0),
+                    (1.0, 599.0),
+                    (1.0, 300.0),
                 ]
             };
             let _ = app.update(Message::ViewportMove(iced::Point::new(
