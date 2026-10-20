@@ -3607,7 +3607,7 @@ impl OpenCADStudio {
             if self.tabs[i]
                 .active_cmd
                 .as_ref()
-                .is_some_and(|command| command.accepts_drag_selection())
+                .is_some_and(|command| command.drag_selection_preview_enabled())
                 && (box_anchor.is_some() || poly_active)
             {
                 let (screen_fence, window, crossing) = if poly_active {
