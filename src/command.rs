@@ -2982,6 +2982,12 @@ pub trait CadCommand: Send {
         None
     }
 
+    /// Opt in only for commands with useful, potentially expensive preview
+    /// geometry. Normal selection and other modify commands stay untouched.
+    fn drag_selection_preview_enabled(&self) -> bool {
+        false
+    }
+
     /// Live preview for a drag box or lasso, before the mouse release commits
     /// its selection. The host supplies only spatially nearby handles so an
     /// interactive preview need not scan every entity in a large DWG.
