@@ -4012,6 +4012,7 @@ pub enum Message {
     BlockEditorSettingsInput(usize, String),
     BlockEditorSettingsReset,
     BlockEditorSettingsApply,
+    BlockCycleSelect(usize),
     BlockCycleEnable(usize, bool),
     BlockCycleMove(usize, bool),
     BlockCycleApply,

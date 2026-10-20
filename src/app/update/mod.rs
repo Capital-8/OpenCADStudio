@@ -9015,9 +9015,15 @@ impl OpenCADStudio {
                 self.active_modal = Some(super::ModalKind::NamedParameters);
                 Task::none()
             }
+            Message::BlockCycleSelect(index) => {
+                if let Some(state) = self.block_cycle_order.as_mut() {
+                    if index < state.rows.len() { state.selected = Some(index); }
+                }
+                Task::none()
+            }
             Message::BlockCycleEnable(index, enabled) => {
                 if let Some(state)=self.block_cycle_order.as_mut() {
-                    if let Some(row)=state.rows.get_mut(index) { row.enabled=enabled; }
+                    if let Some(row)=state.rows.get_mut(index) { row.enabled=enabled; state.selected=Some(index); }
                     state.error=None;
                 }
                 Task::none()
@@ -9027,6 +9033,9 @@ impl OpenCADStudio {
                     let target=if up { index.checked_sub(1) } else { index.checked_add(1) };
                     if let Some(target)=target.filter(|target| *target<state.rows.len() && index<state.rows.len()) {
                         state.rows.swap(index,target);
+                        state.selected = state.selected.map(|selected| {
+                            if selected == index { target } else if selected == target { index } else { selected }
+                        });
                         state.error=None;
                     }
                 }

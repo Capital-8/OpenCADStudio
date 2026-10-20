@@ -8,6 +8,8 @@ use codec::{
 pub(crate) struct GripInfo {
     pub handle: Handle,
     pub name: String,
+    pub parameter_type: &'static str,
+    pub location: String,
     pub point: Vector3,
     pub enabled: bool,
     pub weight: i32,
@@ -63,14 +65,29 @@ pub(crate) fn grips(doc: &CadDocument, definition: Handle) -> Result<Vec<GripInf
                 return None;
             }
             let grip = grip(&object.data)?;
-            let name = parameters
+            let parameter = parameters
                 .iter()
-                .find(|parameter| parameter.grip == object.handle)
+                .find(|parameter| parameter.grip == object.handle);
+            let name = parameter
                 .map(|p| p.name.clone())
                 .unwrap_or_else(|| grip.element.name.clone());
+            let parameter_type = match &object.data {
+                DynamicBlockData::AlignmentGrip(_) => "Alignment",
+                DynamicBlockData::LinearGrip(_) => "Linear",
+                DynamicBlockData::FlipGrip(_) => "Flip",
+                DynamicBlockData::LookupGrip(_) => "Lookup",
+                DynamicBlockData::PolarGrip(_) => "Polar",
+                DynamicBlockData::RotationGrip(_) => "Rotation",
+                DynamicBlockData::VisibilityGrip(_) => "Visibility",
+                DynamicBlockData::PropertiesTableGrip(_) => "Block Properties Table",
+                _ if parameter.is_some_and(|p| p.point) => "Point",
+                _ => "XY",
+            };
             Some(GripInfo {
                 handle: object.handle,
                 name,
+                parameter_type,
+                location: grip.element.name.clone(),
                 point: grip.location,
                 enabled: grip.insert_cycling,
                 weight: grip.insert_cycling_weight,
