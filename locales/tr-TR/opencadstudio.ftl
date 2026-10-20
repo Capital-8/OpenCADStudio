@@ -6605,6 +6605,7 @@ dgn-import =
     .help-import = Seçilen biçimdeki dosyayı o biçimin içe aktarıcısıyla içe aktarır.
     .blank = Dosya adı boş olamaz
     .invalid-dgn = Geçersiz veya desteklenmeyen DGN dosyası.
+    .nothing-to-import = DGN modelinde içe aktarılabilecek bir şey yok.
 import-3ds =
     .title = 3D Studio İçe Aktar
     .summary = { $objects } nesne, { $materials } malzeme
