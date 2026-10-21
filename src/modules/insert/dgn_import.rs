@@ -1301,9 +1301,13 @@ fn curve_fit_points(pts: &[P3]) -> Vec<P3> {
         let h = u[i + 1] - u[i];
         let t = (at - u[i]) / h;
         let (t2, t3) = (t * t, t * t * t);
-        let (h00, h10, h01, h11) = (2.0 * t3 - 3.0 * t2 + 1.0, t3 - 2.0 * t2 + t, -2.0 * t3 + 3.0 * t2, t3 - t2);
+        let (h00, h10) = (2.0 * t3 - 3.0 * t2 + 1.0, t3 - 2.0 * t2 + t);
+        let (h01, h11) = (-2.0 * t3 + 3.0 * t2, t3 - t2);
         std::array::from_fn(|c| {
-            h00 * pts[i][c] + h10 * slopes[c][i] * h + h01 * pts[i + 1][c] + h11 * slopes[c][i + 1] * h
+            h00 * pts[i][c]
+                + h10 * slopes[c][i] * h
+                + h01 * pts[i + 1][c]
+                + h11 * slopes[c][i + 1] * h
         })
     };
     let (start, end) = (u[2], u[n - 3]);
