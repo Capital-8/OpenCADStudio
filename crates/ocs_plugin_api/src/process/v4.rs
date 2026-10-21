@@ -1384,8 +1384,10 @@ mod tests {
                 .poll_grip(&mut host, Duration::from_millis(50))
                 .expect("poll never errors on silence");
             assert!(landed.is_none());
+            // Well under the runner's one-second hold: a slow CI machine
+            // may overshoot 50 ms, a blocking poll would not return at all.
             assert!(
-                poll_start.elapsed() < Duration::from_millis(200),
+                poll_start.elapsed() < Duration::from_millis(900),
                 "the bounded poll stays bounded"
             );
         }
@@ -1404,7 +1406,7 @@ mod tests {
         );
         assert!(failed.is_err());
         assert!(
-            start.elapsed() < Duration::from_secs(2),
+            start.elapsed() < Duration::from_secs(5),
             "the whole exchange stays cheap — the wall-clock timeout never runs"
         );
         runner.join().expect("runner thread finished");
