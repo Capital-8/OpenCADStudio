@@ -526,8 +526,8 @@ mod keypad_tests {
         app.dock_open_at_default(PanelId::QuickCalc);
         let _ = app.on_quick_calc(QuickCalcMsg::SetKeypadMode(KeypadMode::Scientific));
         assert!(app.quick_calc.is_open(Section::Keypad));
-        let _ = app.on_quick_calc(QuickCalcMsg::Flyout(Flyout::Trigonometry));
         let _ = app.on_quick_calc(QuickCalcMsg::Input("12".into()));
+        let _ = app.on_quick_calc(QuickCalcMsg::Flyout(Flyout::Trigonometry));
         assert!(app.quick_calc_shortcut("ESCAPE").is_some());
         assert_eq!(app.quick_calc.flyout, None);
         // The next Escape clears the input.
