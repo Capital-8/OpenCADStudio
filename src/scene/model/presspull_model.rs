@@ -512,7 +512,7 @@ fn preview_body_wires(body: &Body, color: [f32; 4], isolines: usize) -> Vec<Wire
     let wireframe = brep::mesh::tessellate_wireframe(
         body,
         brep::mesh::TessellationTolerance::new(kernel::tessellation::DEFAULT_ANGLE, 1e-9)
-            .with_isolines(isolines),
+            .with_solid_isolines(isolines),
     );
     wireframe
         .edges
