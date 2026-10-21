@@ -11991,7 +11991,9 @@ impl Scene {
             .map(|ucs| (ucs, pick))
     }
 
-    /// The nearest solid or mesh surface under `local` (relative to `bounds`).
+    /// The nearest drawn surface under `local` (relative to `bounds`): a solid
+    /// or mesh face, or a wire's shaded triangles (3DFACE, filled SOLID,
+    /// thickness walls) — drawings made only of faces must lock too.
     pub fn surface_pivot_at(
         &self,
         bounds: iced::Rectangle,
@@ -12001,8 +12003,17 @@ impl Scene {
         let view_rot = camera.view_proj_rte(bounds);
         let eye = camera.eye();
         drop(camera);
+        let (near, _) = pick::hit_test::pick_ray(local, view_rot, eye, bounds)?;
+        let wires = self.interaction_pick_candidates_near(
+            self.hit_test_wires(),
+            near,
+            view_rot,
+            eye,
+            bounds,
+            1.0,
+        );
         let meshes = self.interaction_meshes_arc();
-        pick::hit_test::mesh_click_point(
+        pick::hit_test::surface_click_point(
             local,
             meshes.iter().filter_map(|set| {
                 let handle = set.entity_handle()?;
@@ -12014,6 +12025,7 @@ impl Scene {
                     mesh_interaction_aabb(set)?,
                 ))
             }),
+            &wires,
             view_rot,
             eye,
             bounds,
