@@ -119,6 +119,7 @@ impl Config {
     }
     fn roles(&self, count: usize) -> Option<Vec<usize>> {
         match (self.kind, count) {
+            (Kind::Alignment, 0) => None,
             (_, 0) => Some(vec![]),
             (Kind::Linear | Kind::Polar | Kind::XY | Kind::Rotation, 1) => Some(vec![1]),
             (_, 1) => Some(vec![0]),
@@ -448,7 +449,7 @@ pub(crate) fn set(
             Kind::Linear | Kind::Alignment => {
                 let oriented = BlockOrientedGrip {
                     grip: native,
-                    orientation: if role == 0 {
+                    orientation: if config.kind == Kind::Linear && role == 0 {
                         config.base - config.end
                     } else {
                         config.end - config.base
@@ -735,13 +736,23 @@ mod tests {
                 .into_iter()
                 .map(|(h, ..)| (h, doc.objects[&h].clone()))
                 .collect::<Vec<_>>();
-            let maximum = *choices(&doc, definition, parameter).last().unwrap();
+            let available = choices(&doc, definition, parameter);
+            let maximum = *available.last().unwrap();
+            if family == 6 {
+                assert_eq!(available, vec![1]);
+                let before = doc.clone();
+                assert!(set(&mut doc, definition, parameter, Some(0)).is_err());
+                assert_eq!(doc, before);
+            }
             let before = doc.clone();
             assert!(set(&mut doc, definition, parameter, Some(3)).is_err());
             assert_eq!(doc, before);
             assert!(set(&mut doc, Handle::NULL, parameter, Some(0)).is_err());
             assert_eq!(doc, before);
-            for desired in [0, maximum, 1, maximum, 0, maximum] {
+            for desired in [0, maximum, 1, maximum, 0, maximum]
+                .into_iter()
+                .filter(|count| available.contains(count))
+            {
                 set(&mut doc, definition, parameter, Some(desired)).unwrap();
                 assert_eq!(
                     count(&doc, definition, parameter),
