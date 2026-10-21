@@ -1249,6 +1249,7 @@ impl OpenCADStudio {
                     | "FILEDIA"
                     | "SDI"
                     | "TRIMEXTENDMODE"
+                    | "PELLIPSE"
                     | "SELECTIONCYCLING"
                     | "UCSDETECT"
                     | "SURFACEASSOCIATIVITY"
@@ -1829,6 +1830,28 @@ impl OpenCADStudio {
                                     self.save_config();
                                 }
                             }
+                            Some(None) => {
+                                self.command_line
+                                    .push_error(crate::t!("Requires 0 or 1 only.").as_ref());
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    if name == "PELLIPSE" {
+                        use crate::modules::draw::defaults;
+                        let current = i16::from(defaults::get_pellipse());
+                        let prompt = format!("Enter new value for PELLIPSE <{current}>:");
+                        match value
+                            .as_deref()
+                            .map(|v| v.trim().parse::<i16>().ok().filter(|v| (0..=1).contains(v)))
+                        {
+                            Some(Some(mode)) => defaults::set_pellipse(mode == 1),
                             Some(None) => {
                                 self.command_line
                                     .push_error(crate::t!("Requires 0 or 1 only.").as_ref());

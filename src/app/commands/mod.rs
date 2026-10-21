@@ -968,6 +968,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "FILEDIA",
         "SDI",
         "TRIMEXTENDMODE",
+        "PELLIPSE",
         "SELECTIONCYCLING",
         "UCSDETECT",
         "SURFACEASSOCIATIVITY",

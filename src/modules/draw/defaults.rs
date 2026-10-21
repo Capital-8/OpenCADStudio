@@ -34,6 +34,7 @@ thread_local! {
     static HELIX_TURNS: Cell<f64> = Cell::new(3.0);
     static HELIX_COUNTER_CLOCKWISE: Cell<bool> = Cell::new(true);
     static FILLET_TRIM:     Cell<bool> = Cell::new(true);   // TRIMMODE
+    static PELLIPSE:        Cell<bool> = Cell::new(false);  // ELLIPSE draws a polyline
 }
 
 macro_rules! accessors {
@@ -91,6 +92,13 @@ pub fn get_helix_counter_clockwise() -> bool {
 
 pub fn set_helix_counter_clockwise(value: bool) {
     HELIX_COUNTER_CLOCKWISE.with(|current| current.set(value));
+}
+pub fn get_pellipse() -> bool {
+    PELLIPSE.with(|value| value.get())
+}
+
+pub fn set_pellipse(value: bool) {
+    PELLIPSE.with(|current| current.set(value));
 }
 pub fn get_fillet_trim() -> bool {
     FILLET_TRIM.with(|value| value.get())
