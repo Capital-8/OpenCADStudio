@@ -24,6 +24,8 @@ pub(crate) fn angle_distance(a: f64, b: f64) -> f64 {
 mod tests;
 #[cfg(test)]
 mod frame_tests;
+#[cfg(test)]
+mod frame_evaluation_tests;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -733,6 +735,7 @@ fn move_connections(p: &Parameter, key_point: Option<XyKeyPoint>) -> [BlockConne
 
 fn action_move_delta(
     parameter: &Parameter,
+    current_base: DVec3,
     current_end: DVec3,
     connections: &[BlockConnection; 2],
 ) -> Option<DVec3> {
@@ -747,18 +750,14 @@ fn action_move_delta(
     if parameter.point && names == ["XDelta", "YDelta"] {
         return Some(delta);
     }
-    if names == ["BaseXDelta", "BaseYDelta"] {
-        return Some(DVec3::ZERO);
+    let base_delta = current_base - parameter.base;
+    match names {
+        ["BaseXDelta", "BaseYDelta"] => Some(base_delta),
+        ["EndXDelta", "BaseYDelta"] if parameter.xy => Some(DVec3::new(delta.x, base_delta.y, 0.)),
+        ["BaseXDelta", "EndYDelta"] if parameter.xy => Some(DVec3::new(base_delta.x, delta.y, 0.)),
+        ["EndXDelta", "EndYDelta"] => Some(delta),
+        _ => None,
     }
-    if parameter.xy {
-        return match names {
-            ["EndXDelta", "BaseYDelta"] => Some(DVec3::new(delta.x, 0.0, 0.0)),
-            ["BaseXDelta", "EndYDelta"] => Some(DVec3::new(0.0, delta.y, 0.0)),
-            ["EndXDelta", "EndYDelta"] => Some(delta),
-            _ => None,
-        };
-    }
-    (names == ["EndXDelta", "EndYDelta"]).then_some(delta)
 }
 
 /// Retarget an existing native action, retaining identity, graph and options.
@@ -1147,7 +1146,7 @@ pub(crate) fn evaluate_value(
     parameter: Handle,
     input: Value,
 ) -> Result<bool, &'static str> {
-    evaluate_impl(doc, baseline, definition, parameter, input, false)
+    evaluate_impl(doc, baseline, definition, parameter, input, Evaluation::default())
 }
 
 pub(crate) fn rebuild(
@@ -1159,7 +1158,41 @@ pub(crate) fn rebuild(
         return Ok(());
     };
     let input = value(doc, &p)?;
-    evaluate_impl(doc, baseline, definition, p.handle, input, true)?;
+    evaluate_impl(doc, baseline, definition, p.handle, input, Evaluation { rebuild: true, ..Evaluation::default() })?;
+    Ok(())
+}
+
+#[derive(Default)]
+struct Evaluation<'a> {
+    rebuild: bool,
+    bases: Option<&'a std::collections::BTreeMap<Handle, DVec3>>,
+    base_changed: bool,
+}
+
+pub(crate) fn evaluate_framed(
+    doc: &mut CadDocument,
+    baseline: &CadDocument,
+    definition: Handle,
+    parameter: Handle,
+    input: Value,
+    frames: &std::collections::BTreeMap<Handle, instance::ParameterFrame>,
+    base_changed: bool,
+) -> Result<bool, &'static str> {
+    let bases = frames.iter().map(|(handle, frame)| (*handle, frame.base)).collect();
+    evaluate_impl(doc, baseline, definition, parameter, input,
+        Evaluation { bases: Some(&bases), base_changed, rebuild: false })
+}
+
+pub(crate) fn rebuild_framed(
+    doc: &mut CadDocument,
+    baseline: &CadDocument,
+    definition: Handle,
+    frames: &std::collections::BTreeMap<Handle, instance::ParameterFrame>,
+) -> Result<(), &'static str> {
+    let Some(p) = all_parameters(baseline, definition).into_iter().next() else { return Ok(()) };
+    let bases = frames.iter().map(|(handle, frame)| (*handle, frame.base)).collect();
+    evaluate_impl(doc, baseline, definition, p.handle, value(doc, &p)?,
+        Evaluation { bases: Some(&bases), rebuild: true, base_changed: false })?;
     Ok(())
 }
 
@@ -1169,15 +1202,21 @@ fn evaluate_impl(
     definition: Handle,
     parameter: Handle,
     input: Value,
-    force: bool,
+    evaluation: Evaluation<'_>,
 ) -> Result<bool, &'static str> {
+    let force = evaluation.rebuild;
+    let base_for = |p: &Parameter| evaluation.bases.and_then(|bases| bases.get(&p.handle)).copied().unwrap_or(p.base);
     if authoring::graph(baseline, definition)?.is_none() {
         return Err("The block authoring graph is unavailable.");
     }
-    let p = all_parameters(baseline, definition)
+    let mut p = all_parameters(baseline, definition)
         .into_iter()
         .find(|p| p.handle == parameter)
         .ok_or("The block parameter is unavailable.")?;
+    let base = base_for(&p);
+    if !base.is_finite() || (base.z - p.base.z).abs() > 1e-8 { return Err("Specify a finite parameter base in the definition plane."); }
+    p.end += base - p.base;
+    p.base = base;
     let input = match input {
         Value::Flip(_) if !p.flip => return Err("Select a Flip parameter."),
         Value::Point(_) if p.flip => return Err("Use the Flip grip to toggle its state."),
@@ -1275,7 +1314,7 @@ fn evaluate_impl(
         value => value,
     };
     let previous = value(doc, &p)?;
-    if !force
+    if !force && !evaluation.base_changed
         && match (previous, input) {
             (Value::Flip(a), Value::Flip(b)) => a == b,
             (Value::Point(a), Value::Point(b)) => a.distance(b) < 1e-10,
@@ -1356,12 +1395,13 @@ fn evaluate_impl(
                 return Err("This parameter uses value constraints or chaining not supported yet.");
             }
             let end = current(&staged, &q);
+            let base = base_for(&q);
             let ObjectType::DynamicBlock(action_object) = &baseline.objects[action_handle] else {
                 unreachable!()
             };
             let move_translation = match &action_object.data {
                 DynamicBlockData::MoveAction(move_action) => {
-                    Some(action_move_delta(&q, end, &move_action.connections)
+                    Some(action_move_delta(&q, base, end, &move_action.connections)
                         .map(|delta| options::displacement(&move_action.offsets, delta)).transpose()?)
                 }
                 _ => None,
@@ -1376,7 +1416,7 @@ fn evaluate_impl(
                     crate::command::EntityTransform::Translate(end - q.end)
                 }
                 Kind::Rotate => {
-                    let a = end - q.base;
+                    let a = end - base;
                     let b = q.end - q.base;
                     crate::command::EntityTransform::Rotate {
                         center: options::pivot(options::base(baseline, *action_handle).ok_or("The Rotate action base is unavailable.")?, q.base)?,
@@ -1396,7 +1436,7 @@ fn evaluate_impl(
                     }
                 }
                 Kind::Scale => {
-                    let factor = end.distance(q.base) / q.end.distance(q.base);
+                    let factor = end.distance(base) / q.end.distance(q.base);
                     if !factor.is_finite() || factor < 1e-9 {
                         return Err("Specify a positive scale distance.");
                     }
@@ -1414,7 +1454,7 @@ fn evaluate_impl(
             let o = action_object;
             match &o.data {
                 DynamicBlockData::MoveAction(m)
-                    if action_move_delta(&q, end, &m.connections).is_none() =>
+                    if action_move_delta(&q, base, end, &m.connections).is_none() =>
                 {
                     return Err("This Move action uses options not supported yet.");
                 }
@@ -1460,7 +1500,7 @@ fn evaluate_impl(
                 _ => {}
             }
             if let DynamicBlockData::StretchAction(s) = &o.data {
-                let delta = action_move_delta(&q, end, &s.connections)
+                let delta = action_move_delta(&q, base, end, &s.connections)
                     .ok_or("This Stretch action uses unsupported parameter connections.")?;
                 stretch::apply(&mut entity, s, options::displacement(&s.offsets, delta)?)?;
             } else if let DynamicBlockData::PolarStretchAction(s) = &o.data {
@@ -1471,9 +1511,16 @@ fn evaluate_impl(
                 if direction.length() <= 1e-9 {
                     return Err("The Polar parameter needs a nonzero distance.");
                 }
-                stretch::apply_polar(&mut entity, s, q.base, q.end, end)?;
+                stretch::apply_polar(&mut entity, s, q.base, q.end, q.base + (end - base))?;
+                super::view::dispatch::apply_transform(&mut entity, &crate::command::EntityTransform::Translate(base - q.base));
             } else {
                 super::view::dispatch::apply_transform(&mut entity, &transform);
+            }
+            if matches!(kind, Kind::Rotate | Kind::Scale)
+                && options::base(baseline, *action_handle).is_some_and(|action| action.dependent)
+            {
+                super::view::dispatch::apply_transform(&mut entity,
+                    &crate::command::EntityTransform::Translate(base - q.base));
             }
             let bounds = entity.as_entity().bounding_box();
             if !v(bounds.min).is_finite() || !v(bounds.max).is_finite() {
@@ -1516,13 +1563,14 @@ fn evaluate_impl(
             return Err("Chained actions are not supported yet.");
         }
         let end = current(&staged, &q);
+        let base = base_for(&q);
         let displacements: Vec<(usize, DVec3)> = if q.xy {
-            let dx = (end.x - q.base.x).abs();
-            let dy = (end.y - q.base.y).abs();
+            let dx = (end.x - base.x).abs();
+            let dy = (end.y - base.y).abs();
             let nx = ((dx + 1e-9) / arr.column_offset).floor() as usize + 1;
             let ny = ((dy + 1e-9) / arr.row_offset).floor() as usize + 1;
-            let dir_x = if end.x >= q.base.x { 1.0 } else { -1.0 };
-            let dir_y = if end.y >= q.base.y { 1.0 } else { -1.0 };
+            let dir_x = if end.x >= base.x { 1.0 } else { -1.0 };
+            let dir_y = if end.y >= base.y { 1.0 } else { -1.0 };
             let mut list = vec![];
             let mut idx = 1;
             for row in 0..ny {
@@ -1542,13 +1590,13 @@ fn evaluate_impl(
             list
         } else if q.linear {
             let axis = (q.end - q.base).normalize();
-            let length = (end - q.base).dot(axis);
+            let length = (end - base).dot(axis);
             let n = ((length.max(0.0) + 1e-9) / arr.column_offset).floor() as usize + 1;
             (1..n)
                 .map(|k| (k, (k as f64) * arr.column_offset * axis))
                 .collect()
         } else {
-            let delta = end - q.base;
+            let delta = end - base;
             let dist = delta.length();
             let axis = if dist > 1e-9 {
                 delta / dist

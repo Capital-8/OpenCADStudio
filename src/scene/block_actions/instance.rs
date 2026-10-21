@@ -382,6 +382,65 @@ pub(crate) fn evaluate_value(
     parameter: Handle,
     input: Value,
 ) -> Result<Option<CadDocument>, &'static str> {
+    if let Value::Point(mut end) = input {
+        let def =
+            definition(doc, insert).ok_or("Select a uniformly scaled dynamic block reference.")?;
+        let p = all_parameters(doc, def)
+            .into_iter()
+            .find(|p| p.handle == parameter)
+            .ok_or("The reference parameter is unavailable.")?;
+        if !end.is_finite() {
+            return Err("Specify a finite parameter position.");
+        }
+        end.z = p.end.z;
+        let previous = frame(doc, insert, &p)?;
+        return evaluate_frame(doc, insert, parameter, ParameterFrame { end, ..previous });
+    }
+    evaluate_input(doc, insert, parameter, input, None)
+}
+
+pub(crate) fn evaluate_frame(
+    doc: &CadDocument,
+    insert: Handle,
+    parameter: Handle,
+    requested: ParameterFrame,
+) -> Result<Option<CadDocument>, &'static str> {
+    evaluate_input(
+        doc,
+        insert,
+        parameter,
+        Value::Point(requested.end),
+        Some(requested),
+    )
+}
+
+fn load_frames(
+    doc: &CadDocument,
+    evaluated: &mut CadDocument,
+    insert: Handle,
+    parameters: &[Parameter],
+) -> Result<std::collections::BTreeMap<Handle, ParameterFrame>, &'static str> {
+    let mut frames = std::collections::BTreeMap::new();
+    for p in parameters {
+        let value = if p.flip {
+            value(doc, insert, p)?
+        } else {
+            let frame = frame(doc, insert, p)?;
+            frames.insert(p.handle, frame);
+            Value::Point(frame.end)
+        };
+        super::set_value(evaluated, p, value)?;
+    }
+    Ok(frames)
+}
+
+fn evaluate_input(
+    doc: &CadDocument,
+    insert: Handle,
+    parameter: Handle,
+    input: Value,
+    requested: Option<ParameterFrame>,
+) -> Result<Option<CadDocument>, &'static str> {
     let def =
         definition(doc, insert).ok_or("Select a uniformly scaled dynamic block reference.")?;
     let parameters = all_parameters(doc, def);
@@ -390,16 +449,38 @@ pub(crate) fn evaluate_value(
         .find(|p| p.handle == parameter)
         .ok_or("The reference parameter is unavailable.")?;
     let mut evaluated = doc.clone();
-    for p in &parameters {
-        let value = value(doc, insert, p)?;
-        super::set_value(&mut evaluated, p, value)?;
+    let mut frames = load_frames(doc, &mut evaluated, insert, &parameters)?;
+    let mut base_changed = false;
+    if let Some(requested) = requested {
+        if selected.flip {
+            return Err("Use the Flip state for this parameter.");
+        }
+        let requested = requested.validate(selected)?;
+        let previous = frames
+            .get_mut(&parameter)
+            .ok_or("The parameter frame is unavailable.")?;
+        base_changed = requested.base.distance(previous.base) > 1e-10;
+        previous.base = requested.base;
     }
-    if !super::evaluate_value(&mut evaluated, doc, def, parameter, input)? {
+    if !super::evaluate_framed(
+        &mut evaluated,
+        doc,
+        def,
+        parameter,
+        input,
+        &frames,
+        base_changed,
+    )? {
         return Ok(None);
     }
     let value = super::value(&evaluated, selected)?;
     let mut result = materialize(doc, insert, def, &evaluated)?;
-    save(&mut result, insert, selected, value)?;
+    if let Value::Point(end) = value {
+        let base = frames[&parameter].base;
+        save_frame(&mut result, insert, selected, ParameterFrame { base, end })?;
+    } else {
+        save(&mut result, insert, selected, value)?;
+    }
     Ok(Some(result))
 }
 
@@ -706,11 +787,9 @@ pub(crate) fn refresh_after_edit(
         .collect::<Vec<_>>();
     for insert in inserts {
         let mut evaluated = staged.clone();
-        for p in all_parameters(&staged, def) {
-            let v = value(&staged, insert, &p)?;
-            super::set_value(&mut evaluated, &p, v)?;
-        }
-        super::rebuild(&mut evaluated, &staged, def)?;
+        let parameters = all_parameters(&staged, def);
+        let frames = load_frames(&staged, &mut evaluated, insert, &parameters)?;
+        super::rebuild_framed(&mut evaluated, &staged, def, &frames)?;
         let state = super::representation::visibility_state(&staged, before, def, insert);
         staged = materialize(&staged, insert, def, &evaluated)?;
         if let Some(state) = state {
