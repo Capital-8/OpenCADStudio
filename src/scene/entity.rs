@@ -1519,6 +1519,52 @@ impl Scene {
         self.belongs_to_visible_block(handle, c.owner_handle, target_block)
     }
 
+    /// Solid backdrop for a hatch's HATCHBACKGROUNDCOLOR, drawn behind `fill`;
+    /// `style` is the fill's resolved (colour, ACI), which ByBlock takes.
+    pub(super) fn hatch_backdrop(
+        &self,
+        dxf: &DxfHatch,
+        fill: &HatchModel,
+        style: ([f32; 4], u8),
+        viewport: Option<Handle>,
+    ) -> Option<HatchModel> {
+        let bg = crate::entities::hatch::background_color(dxf)?;
+        let mut b = fill.clone();
+        b.pattern = model::hatch_model::HatchPattern::Solid;
+        // ByLayer / ByBlock backgrounds resolve through the normal style chain
+        // instead of the raw ACI table (#415).
+        let (bg_color, bg_aci) = match bg {
+            codec::types::Color::ByLayer => {
+                let layer = self.document.layers.get(&dxf.common.layer);
+                let aci = layer
+                    .and_then(|layer| match &layer.color {
+                        codec::types::Color::Index(index) => Some(*index),
+                        _ => None,
+                    })
+                    .unwrap_or(0);
+                (
+                    crate::scene::view::render::layer_render_style_viewport(
+                        &self.document,
+                        &dxf.common.layer,
+                        viewport,
+                    )
+                    .color,
+                    aci,
+                )
+            }
+            codec::types::Color::ByBlock => style,
+            codec::types::Color::Index(index) => {
+                let color = codec::types::Color::Index(index);
+                (crate::scene::convert::tess_util::aci_to_rgba(&color), index)
+            }
+            other => (crate::scene::convert::tess_util::aci_to_rgba(&other), 0),
+        };
+        b.color = bg_color;
+        b.aci = bg_aci;
+        b.name = "SOLID".into();
+        Some(b)
+    }
+
     /// `model` synced to its entity's current display style: the fill and
     /// its optional background (HATCHBACKGROUNDCOLOR) backdrop.
     #[allow(clippy::too_many_arguments)]
@@ -1575,45 +1621,7 @@ impl Scene {
                 m.color = style.0;
             }
             if let EntityType::Hatch(dxf) = e {
-                if let Some(bg) = crate::entities::hatch::background_color(dxf) {
-                    let mut b = m.clone();
-                    b.pattern = model::hatch_model::HatchPattern::Solid;
-                    // ByLayer / ByBlock backgrounds resolve through the
-                    // normal style chain instead of the raw ACI table
-                    // (#415).
-                    let (bg_color, bg_aci) = match bg {
-                        codec::types::Color::ByLayer => {
-                            let layer = self.document.layers.get(&dxf.common.layer);
-                            let aci = layer
-                                .and_then(|layer| match &layer.color {
-                                    codec::types::Color::Index(index) => Some(*index),
-                                    _ => None,
-                                })
-                                .unwrap_or(0);
-                            (
-                                crate::scene::view::render::layer_render_style_viewport(
-                                    &self.document,
-                                    &dxf.common.layer,
-                                    viewport,
-                                )
-                                .color,
-                                aci,
-                            )
-                        }
-                        codec::types::Color::ByBlock => (style.0, style.4),
-                        codec::types::Color::Index(index) => (
-                            crate::scene::convert::tess_util::aci_to_rgba(
-                                &codec::types::Color::Index(index),
-                            ),
-                            index,
-                        ),
-                        other => (crate::scene::convert::tess_util::aci_to_rgba(&other), 0),
-                    };
-                    b.color = bg_color;
-                    b.aci = bg_aci;
-                    b.name = "SOLID".into();
-                    backdrop = Some(b);
-                }
+                backdrop = self.hatch_backdrop(dxf, &m, (style.0, style.4), viewport);
                 match &mut m.pattern {
                     // Pattern built from the hatch's own stored lines is
                     // already final (scale 1 / angle 0) — don't re-apply

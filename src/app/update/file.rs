@@ -7628,6 +7628,47 @@ mod plot_paper_tests {
     use crate::app::{Message, OpenCADStudio};
     use crate::ui::window::plot::PlotDlgMsg;
 
+    /// A Model plot resolves top-level fills against the white sheet, not the
+    /// dark screen: colour 7 and ByBlock fills used to plot white, and a
+    /// hatch background colour was left out of the plot. (#2001)
+    #[test]
+    fn colour_7_and_byblock_hatches_plot_dark_from_model() {
+        use codec::entities::{BoundaryEdge, BoundaryPath, Hatch, HatchPattern, PolylineEdge};
+        use codec::types::{Color, Vector2};
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        let colors = [Color::ByLayer, Color::Index(7), Color::ByBlock];
+        for (k, color) in colors.into_iter().enumerate() {
+            let x = k as f64 * 20.0;
+            let mut path = BoundaryPath::new();
+            path.add_edge(BoundaryEdge::Polyline(PolylineEdge::new(
+                [[x, 0.0], [x + 10.0, 0.0], [x + 10.0, 10.0], [x, 10.0]]
+                    .into_iter()
+                    .map(|p| Vector2::new(p[0], p[1]))
+                    .collect(),
+                true,
+            )));
+            let mut hatch = if k == 2 {
+                Hatch::with_pattern(HatchPattern::new("ANSI31"))
+            } else {
+                Hatch::solid()
+            };
+            hatch.common.color = color;
+            hatch.paths.push(path);
+            if k == 2 {
+                crate::entities::hatch::set_background_color(&mut hatch, &Color::Index(1));
+            }
+            app.tabs[i].scene.add_entity(codec::EntityType::Hatch(Box::new(hatch)));
+        }
+        let page = app.layout_plot_page();
+        let colors: Vec<_> = page.content.hatches.iter().map(|h| h.color).collect();
+        assert_eq!(colors.len(), 4, "{colors:?}");
+        let red = colors.iter().filter(|c| c[..3] == [1.0, 0.0, 0.0]).count();
+        let black = colors.iter().filter(|c| c[..3] == [0.0; 3]).count();
+        assert_eq!((red, black), (1, 3), "{colors:?}");
+    }
+
     /// Solids draw on screen as GPU meshes and a thickened wide polyline's band
     /// is a fill: both must reach model and layout plots (#1904, #1882).
     #[test]
