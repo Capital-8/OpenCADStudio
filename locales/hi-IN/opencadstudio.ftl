@@ -6847,3 +6847,12 @@ dash-command =
     .layout-missing = लेआउट '__ocs_fmt_0__' मौजूद नहीं है
     .plot-file-only = -PLOT केवल फ़ाइल में लिखता है; प्लॉट को फ़ाइल में लिखने के लिए Yes उत्तर दें।
     .plot-written = प्लॉट __ocs_fmt_0__ में लिखा गया
+
+script-files =
+    .open-prompt = OPEN  खोलने के लिए ड्रॉइंग का नाम दर्ज करें:
+    .open-not-found = OPEN: फ़ाइल नहीं मिली: __ocs_fmt_0__
+    .saveas-format = SAVEAS  फ़ाइल प्रारूप दर्ज करें [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  ड्रॉइंग को इस रूप में सहेजें <__ocs_arg_name__>:
+    .close-save = CLOSE  __ocs_arg_name__ में परिवर्तन सहेजें? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" का अभी कोई फ़ाइल पथ नहीं है; पहले SAVEAS का उपयोग करें।
+    .sdi-dirty = SDI: कोई दूसरी ड्रॉइंग खोलने से पहले "__ocs_fmt_0__" को सहेजें या बंद करें।

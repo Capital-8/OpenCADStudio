@@ -6860,3 +6860,12 @@ dash-command =
     .layout-missing = Лист '__ocs_fmt_0__' не существует
     .plot-file-only = -PLOT выводит только в файл; ответьте Yes, чтобы записать печать в файл.
     .plot-written = Печать записана в __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Введите имя открываемого чертежа:
+    .open-not-found = OPEN: файл не найден: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Введите формат файла [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Сохранить чертёж как <__ocs_arg_name__>:
+    .close-save = CLOSE  Сохранить изменения в __ocs_arg_name__? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: у "__ocs_fmt_0__" ещё нет пути к файлу; сначала используйте SAVEAS.
+    .sdi-dirty = SDI: сохраните или закройте "__ocs_fmt_0__", прежде чем открыть другой чертёж.

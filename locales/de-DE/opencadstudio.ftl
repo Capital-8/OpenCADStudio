@@ -6857,3 +6857,12 @@ dash-command =
     .layout-missing = Layout '__ocs_fmt_0__' existiert nicht
     .plot-file-only = -PLOT gibt nur in eine Datei aus; antworten Sie mit Yes, um den Plot in eine Datei zu schreiben.
     .plot-written = Plot geschrieben nach __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Namen der zu öffnenden Zeichnung eingeben:
+    .open-not-found = OPEN: Datei nicht gefunden: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Dateiformat eingeben [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Zeichnung speichern unter <__ocs_arg_name__>:
+    .close-save = CLOSE  Änderungen an __ocs_arg_name__ speichern? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" hat noch keinen Dateipfad; verwenden Sie zuerst SAVEAS.
+    .sdi-dirty = SDI: Speichern oder schließen Sie "__ocs_fmt_0__", bevor Sie eine andere Zeichnung öffnen.

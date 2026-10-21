@@ -6858,3 +6858,12 @@ dash-command =
     .layout-missing = Arkusz '__ocs_fmt_0__' nie istnieje
     .plot-file-only = -PLOT zapisuje tylko do pliku; odpowiedz Yes, aby zapisać wydruk do pliku.
     .plot-written = Wydruk zapisano w __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Wprowadź nazwę rysunku do otwarcia:
+    .open-not-found = OPEN: nie znaleziono pliku: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Wprowadź format pliku [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Zapisz rysunek jako <__ocs_arg_name__>:
+    .close-save = CLOSE  Zapisać zmiany w __ocs_arg_name__? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" nie ma jeszcze ścieżki pliku; najpierw użyj SAVEAS.
+    .sdi-dirty = SDI: zapisz lub zamknij "__ocs_fmt_0__" przed otwarciem innego rysunku.

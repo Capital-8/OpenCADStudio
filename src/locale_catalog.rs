@@ -6228,6 +6228,13 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Layout '{}' does not exist" => Some(("dash-command", "layout-missing")),
         "-PLOT sends to a file only; answer Yes to write the plot to a file." => Some(("dash-command", "plot-file-only")),
         "Plot written to {}" => Some(("dash-command", "plot-written")),
+        "OPEN  Enter name of drawing to open:" => Some(("script-files", "open-prompt")),
+        "OPEN: file not found: {}" => Some(("script-files", "open-not-found")),
+        "SAVEAS  Enter file format [R14/2000/2004/2007/2010/2013/2018/DXF] <%{name}>:" => Some(("script-files", "saveas-format")),
+        "SAVEAS  Save drawing as <%{name}>:" => Some(("script-files", "saveas-path")),
+        "CLOSE  Save changes to %{name}? [Yes/No] <Yes>:" => Some(("script-files", "close-save")),
+        "CLOSE: \"{}\" has no file path yet; use SAVEAS first." => Some(("script-files", "close-no-path")),
+        "SDI: save or close \"{}\" before opening another drawing." => Some(("script-files", "sdi-dirty")),
         _ => None,
     }
 }

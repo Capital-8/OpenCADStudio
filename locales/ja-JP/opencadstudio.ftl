@@ -6847,3 +6847,12 @@ dash-command =
     .layout-missing = レイアウト '__ocs_fmt_0__' は存在しません
     .plot-file-only = -PLOT はファイルにのみ出力します。印刷をファイルに書き出すには Yes と答えてください。
     .plot-written = 印刷を __ocs_fmt_0__ に書き出しました
+
+script-files =
+    .open-prompt = OPEN  開く図面の名前を入力:
+    .open-not-found = OPEN: ファイルが見つかりません: __ocs_fmt_0__
+    .saveas-format = SAVEAS  ファイル形式を入力 [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  図面に名前を付けて保存 <__ocs_arg_name__>:
+    .close-save = CLOSE  __ocs_arg_name__ の変更を保存しますか? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: 「__ocs_fmt_0__」にはまだファイル パスがありません。先に SAVEAS を使用してください。
+    .sdi-dirty = SDI: 別の図面を開く前に「__ocs_fmt_0__」を保存するか閉じてください。

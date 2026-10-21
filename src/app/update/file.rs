@@ -2377,6 +2377,9 @@ impl OpenCADStudio {
         // it for the next boot's restore flow (web session memory).
         #[cfg(target_arch = "wasm32")]
         self.persist_web_session();
+        // A running script does not stop at the recovery dialog; the
+        // report is already written and the repairs were on the command line.
+        let recovery_report = recovery_report.filter(|_| !self.script_running);
         let pending_open_task = if let Some(report) = recovery_report {
             self.recovery_report = Some(report);
             self.active_modal = Some(crate::app::ModalKind::Recovery);
@@ -2398,7 +2401,11 @@ impl OpenCADStudio {
                 // Read-only/MCP evaluation sessions must remain non-blocking:
                 // report missing fonts through control state, but never offer
                 // a network/download mutation from a read-only launch.
-                if !missing.is_empty() && self.check_missing_fonts && !self.read_only {
+                // A running script reports them instead of stopping at a dialog.
+                if !missing.is_empty() && self.script_running {
+                    let list = format!("{}: {}", crate::t!("Missing fonts"), missing.join(", "));
+                    self.command_line.push_warning(&list);
+                } else if !missing.is_empty() && self.check_missing_fonts && !self.read_only {
                     self.font_source_input = self.font_source_url.clone();
                     self.missing_fonts = Some(missing);
                     self.missing_fonts_path = self.tabs[i].current_path.clone();
@@ -2410,11 +2417,8 @@ impl OpenCADStudio {
         };
         let startup_script_task = if !self.pending_startup_script_lines.is_empty() {
             let lines = std::mem::take(&mut self.pending_startup_script_lines);
-            Task::batch(
-                lines
-                    .into_iter()
-                    .map(|l| Task::done(Message::ScriptLine(l))),
-            )
+            self.script_queue.extend(lines);
+            Task::done(Message::ScriptPump)
         } else {
             Task::none()
         };

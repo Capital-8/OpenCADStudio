@@ -966,6 +966,9 @@ impl OpenCADStudio {
             || tokens[0].eq_ignore_ascii_case("XREF")
             // `VIEW WINDOW <name> <x1,y1> <x2,y2>` takes its arguments in one line.
             || tokens[0].eq_ignore_ascii_case("VIEW")
+            // A path after OPEN / SAVEAS may hold spaces; it is one answer.
+            || tokens[0].eq_ignore_ascii_case("OPEN")
+            || tokens[0].eq_ignore_ascii_case("SAVEAS")
         {
             return self.dispatch_command(cmd);
         }

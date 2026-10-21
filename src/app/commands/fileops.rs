@@ -35,7 +35,22 @@ impl OpenCADStudio {
                     Message::NewFromTemplate,
                 ));
             }
+            // With FILEDIA 0, or while a script runs, OPEN and SAVEAS ask on
+            // the command line instead of showing a file dialog.
+            "OPEN" if self.file_prompts_on_command_line() => {
+                use crate::command::ValuePromptCommand;
+                let c = ValuePromptCommand::new("OPEN", "OPEN  Enter name of drawing to open:");
+                self.command_line.push_info(&c.prompt());
+                self.tabs[i].active_cmd = Some(Box::new(c));
+            }
             "OPEN" => return Some(Task::done(Message::OpenFile)),
+            cmd if cmd.starts_with("OPEN ") => {
+                let path = cmd["OPEN ".len()..].trim().trim_matches('"');
+                if path.is_empty() {
+                    return Some(Task::none());
+                }
+                return Some(self.open_from_command_line(std::path::PathBuf::from(path)));
+            }
             "SAVE" | "QSAVE" => return Some(Task::done(Message::SaveFile)),
             // SAVEALL — write every open drawing that already has a file path.
             // Tabs without a path (never saved) are skipped with a note.
@@ -100,7 +115,30 @@ impl OpenCADStudio {
                 #[cfg(not(target_arch = "wasm32"))]
                 return Some(Task::none());
             }
+            "SAVEAS" if self.file_prompts_on_command_line() => {
+                let doc = &self.tabs[i].scene.document;
+                let is_dxf = crate::io::source_is_dxf(self.tabs[i].current_path.as_deref(), doc);
+                let format = if is_dxf {
+                    "DXF".to_string()
+                } else {
+                    let name = crate::io::format_for_version(doc.version, false);
+                    name.trim_start_matches("DWG ").to_string()
+                };
+                let path = self.tabs[i]
+                    .current_path
+                    .as_ref()
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| format!("{}.dwg", self.tabs[i].tab_title));
+                let flow = saveas_flow(format, path);
+                let c = crate::command::ScriptPromptCommand::new("SAVEAS", flow);
+                self.command_line.push_info(&c.prompt());
+                self.command_line.set_step_options(c.options());
+                self.tabs[i].active_cmd = Some(Box::new(c));
+            }
             "SAVEAS" => return Some(Task::done(Message::SaveAs)),
+            cmd if cmd.starts_with("SAVEAS ") => {
+                return Some(self.save_as_from_command_line(i, cmd["SAVEAS ".len()..].trim()));
+            }
             // UNDO <n> — step back n operations at once; bare UNDO / U is one step.
             cmd if cmd.starts_with("UNDO ") => {
                 let arg = cmd["UNDO ".len()..].trim();
@@ -174,6 +212,42 @@ impl OpenCADStudio {
             }
             // CLOSE — close the active drawing tab (with the unsaved-changes
             // prompt the tab-close handler already runs).
+            // Unsaved changes are asked about on the command line where a
+            // script can answer (FILEDIA 0 or a running script).
+            "CLOSE"
+                if self.tabs[i].dirty
+                    && !self.tabs[i].is_start
+                    && self.file_prompts_on_command_line() =>
+            {
+                let name = self.tabs[i]
+                    .current_path
+                    .as_deref()
+                    .and_then(std::path::Path::file_name)
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| self.tabs[i].tab_title.clone());
+                let flow: crate::command::PromptFlow = Box::new(move |answers| {
+                    let mut q = crate::command::PromptAnswers::new(answers);
+                    let prompt =
+                        crate::t!("CLOSE  Save changes to %{name}? [Yes/No] <Yes>:", name = name);
+                    match q.yes_no(prompt.into_owned(), true) {
+                        Ok(save) => crate::command::PromptStep::Run(
+                            if save { "CLOSE YES" } else { "CLOSE NO" }.into(),
+                        ),
+                        Err(step) => step,
+                    }
+                });
+                let c = crate::command::ScriptPromptCommand::new("CLOSE", flow);
+                self.command_line.push_info(&c.prompt());
+                self.command_line.set_step_options(c.options());
+                self.tabs[i].active_cmd = Some(Box::new(c));
+            }
+            // The close runs as its own message: this arm may be reached from
+            // inside the prompt's own command step, which still indexes the tab.
+            "CLOSE NO" => {
+                self.tabs[i].dirty = false;
+                return Some(Task::done(Message::TabClose(self.tabs[i].id)));
+            }
+            "CLOSE YES" => return Some(self.save_and_close(i)),
             "CLOSE" => {
                 return Some(match self.tabs.get(self.active_tab) {
                     Some(tab) => Task::done(Message::TabClose(tab.id)),
@@ -521,15 +595,220 @@ impl OpenCADStudio {
     /// web picker's `ScriptFilePicked`.
     pub(in crate::app) fn run_script(&mut self, path: &str, text: &str) -> Task<Message> {
         let p = path;
-        let cmds: Vec<Task<Message>> = script_command_lines(text)
-            .into_iter()
-            .map(|line| Task::done(Message::ScriptLine(line)))
-            .collect();
+        let lines = script_command_lines(text);
         self.command_line.push_output(
-            crate::tf!("SCRIPT: running {} command(s) from {p}.", cmds.len()).as_ref(),
+            crate::tf!("SCRIPT: running {} command(s) from {p}.", lines.len()).as_ref(),
         );
-        Task::batch(cmds)
+        self.script_queue.extend(lines);
+        Task::done(Message::ScriptPump)
     }
+
+    /// Run the next script row once the previous one has finished,
+    /// including the open or save it started; `update` resumes a paused
+    /// script when that work ends.
+    pub(in crate::app) fn pump_script(&mut self) -> Task<Message> {
+        if self.script_busy() {
+            self.script_paused = true;
+            return Task::none();
+        }
+        let Some(line) = self.script_queue.pop_front() else {
+            self.script_running = false;
+            return Task::none();
+        };
+        self.script_running = true;
+        self.feed_script_line(&line)
+            .chain(Task::done(Message::ScriptPump))
+    }
+
+    /// An open or a save is still running.
+    pub(in crate::app) fn script_busy(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        let saving =
+            !self.active_save_jobs.is_empty() || self.pending_native_thumbnail_save.is_some();
+        #[cfg(target_arch = "wasm32")]
+        let saving = false;
+        self.opening.is_some() || !self.pending_opens.is_empty() || saving
+    }
+
+    /// File commands ask on the command line, not in a dialog.
+    fn file_prompts_on_command_line(&self) -> bool {
+        !crate::sys::file_dia() || self.script_running
+    }
+
+    /// OPEN with a typed path. Under SDI the current drawing is closed by
+    /// the open itself (`OpenPathPicked`).
+    fn open_from_command_line(&mut self, path: std::path::PathBuf) -> Task<Message> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if !path.is_file() {
+                self.command_line
+                    .push_error(crate::tf!("OPEN: file not found: {}", path.display()).as_ref());
+                return Task::none();
+            }
+            if let Some(idx) = self.tab_showing(&path) {
+                return Task::done(Message::TabSwitch(idx));
+            }
+            if self.opening.is_some() {
+                self.pending_opens.push_back(path);
+                return Task::none();
+            }
+            // As a message: under SDI the open closes this tab, which the
+            // OPEN prompt's own command step may still be indexing.
+            Task::done(Message::OpenRecent(path))
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = path;
+            Task::done(Message::OpenFile)
+        }
+    }
+
+    /// SAVEAS answered on the command line: `[format, path]` from the
+    /// prompts, or `[format] path` typed on one line.
+    fn save_as_from_command_line(&mut self, i: usize, rest: &str) -> Task<Message> {
+        let (format, path) = match serde_json::from_str::<Vec<String>>(rest) {
+            Ok(answers) if answers.len() == 2 => (answers[0].clone(), answers[1].clone()),
+            _ => match rest.split_once(char::is_whitespace) {
+                Some((first, path))
+                    if first.eq_ignore_ascii_case("DXF")
+                        || crate::io::parse_target_version(first).is_ok() =>
+                {
+                    (first.to_string(), path.trim().to_string())
+                }
+                _ => (String::new(), rest.to_string()),
+            },
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if self.read_only {
+                self.command_line.push_error(
+                    crate::t!("Read-only session (--read-only): saving is disabled.").as_ref(),
+                );
+                return Task::none();
+            }
+            let mut path = std::path::PathBuf::from(path.trim().trim_matches('"'));
+            let dxf = format.eq_ignore_ascii_case("DXF");
+            let version = crate::io::parse_target_version(&format)
+                .unwrap_or(self.tabs[i].scene.document.version);
+            let extension = path
+                .extension()
+                .map(|ext| ext.to_string_lossy().to_ascii_lowercase());
+            if dxf || extension.is_none() {
+                let dxf = dxf || crate::io::source_is_dxf(None, &self.tabs[i].scene.document);
+                path.set_extension(if dxf { "dxf" } else { "dwg" });
+            }
+            if self.main_window.is_none() {
+                match self.save_tab_synchronously_protected_as(i, path.clone(), version, true) {
+                    Ok(()) => {
+                        let filename = path.display().to_string();
+                        self.command_line
+                            .push_output(crate::tf!("Saved: {filename}").as_ref());
+                    }
+                    Err(error) => self.command_line.push_error(&error.to_string()),
+                }
+                return Task::none();
+            }
+            self.prepare_native_save(i);
+            self.queue_native_save(
+                i,
+                path,
+                version,
+                crate::app::SavePurpose::SaveAs,
+                crate::app::SaveContinuation::None,
+                true,
+                true,
+            )
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (i, format, path);
+            Task::done(Message::SaveAs)
+        }
+    }
+
+    /// CLOSE answered Yes: save to the drawing's file, then close it.
+    fn save_and_close(&mut self, i: usize) -> Task<Message> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let path = self.tabs[i]
+                .current_path
+                .clone()
+                .filter(|_| !self.tabs[i].recovery_save_as_required);
+            let Some(path) = path else {
+                self.command_line.push_error(
+                    crate::tf!(
+                        "CLOSE: \"{}\" has no file path yet; use SAVEAS first.",
+                        self.tabs[i].tab_title
+                    )
+                    .as_ref(),
+                );
+                return Task::none();
+            };
+            let version = self.tabs[i].scene.document.version;
+            if self.main_window.is_none() {
+                return match self.save_tab_synchronously_protected_as(i, path, version, false) {
+                    Ok(()) => {
+                        self.tabs[i].dirty = false;
+                        Task::done(Message::TabClose(self.tabs[i].id))
+                    }
+                    Err(error) => {
+                        self.command_line.push_error(&error.to_string());
+                        Task::none()
+                    }
+                };
+            }
+            self.prepare_native_save(i);
+            self.queue_native_save(
+                i,
+                path,
+                version,
+                crate::app::SavePurpose::Manual,
+                crate::app::SaveContinuation::CloseTab,
+                false,
+                true,
+            )
+        }
+        #[cfg(target_arch = "wasm32")]
+        Task::done(Message::TabClose(self.tabs[i].id))
+    }
+}
+
+/// SAVEAS on the command line: the file format, then the path.
+fn saveas_flow(format: String, path: String) -> crate::command::PromptFlow {
+    use crate::command::{PromptAnswers, PromptStep};
+    const FORMATS: [(&str, &str); 8] = [
+        ("R14", "R14"),
+        ("2000", "2000"),
+        ("2004", "2004"),
+        ("2007", "2007"),
+        ("2010", "2010"),
+        ("2013", "2013"),
+        ("2018", "2018"),
+        ("DXF", "DXF"),
+    ];
+    Box::new(move |answers| {
+        let mut q = PromptAnswers::new(answers);
+        let run = |q: &mut PromptAnswers| -> Result<PromptStep, PromptStep> {
+            let format = q.keyword(
+                crate::t!(
+                    "SAVEAS  Enter file format [R14/2000/2004/2007/2010/2013/2018/DXF] <%{name}>:",
+                    name = format
+                )
+                .into_owned(),
+                Some(format.as_str()),
+                &FORMATS,
+            )?;
+            let path = q.text(
+                crate::t!("SAVEAS  Save drawing as <%{name}>:", name = path).into_owned(),
+                Some(path.clone()),
+            )?;
+            Ok(PromptStep::Run(format!(
+                "SAVEAS {}",
+                serde_json::json!([format, path])
+            )))
+        };
+        run(&mut q).unwrap_or_else(|step| step)
+    })
 }
 
 /// One runnable row of a `.scr` script: trimmed, comment rows (`#`, `;`)
@@ -872,6 +1151,35 @@ mod tests {
         let mut app = OpenCADStudio::new_for_test();
         app.automation_op(r#"{"op":"new"}"#);
         app
+    }
+
+    /// A batch script walks a drawing: OPEN by path (the next rows wait for
+    /// the load), SAVEAS a version, CLOSE answering its save question.
+    #[test]
+    fn batch_script_opens_saves_and_closes() {
+        let dir = std::env::temp_dir().join(format!("ocs-batch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("a 1.dxf");
+        let doc = codec::CadDocument::new();
+        std::fs::write(&a, crate::io::save_to_bytes(&doc, "dxf", doc.version).unwrap()).unwrap();
+        let out = dir.join("out file.dwg");
+        let _ = std::fs::remove_file(&out);
+        let mut app = OpenCADStudio::new_for_test();
+        app.script_queue.extend([
+            format!("OPEN \"{}\"", a.display()),
+            "CIRCLE 0,0 5".to_string(),
+            format!("SAVEAS 2013 \"{}\"", out.display()),
+            "CIRCLE 1,1 2".to_string(),
+            "CLOSE".to_string(),
+            "Y".to_string(),
+        ]);
+        let t = app.update(Message::ScriptPump);
+        app.drive_headless_task(t).unwrap();
+        assert!(out.is_file());
+        assert!(app.tabs.iter().all(|t| t.current_path.as_deref() != Some(out.as_path())));
+        let back = crate::io::load_file(&out).unwrap();
+        assert_eq!(back.entities().count(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -6871,3 +6871,12 @@ dash-command =
     .layout-missing = المخطط '__ocs_fmt_0__' غير موجود
     .plot-file-only = يكتب -PLOT إلى ملف فقط؛ أجب Yes لكتابة الطباعة في ملف.
     .plot-written = كُتبت الطباعة إلى __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  أدخل اسم الرسم المراد فتحه:
+    .open-not-found = OPEN: الملف غير موجود: __ocs_fmt_0__
+    .saveas-format = SAVEAS  أدخل تنسيق الملف [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  حفظ الرسم باسم <__ocs_arg_name__>:
+    .close-save = CLOSE  حفظ التغييرات في __ocs_arg_name__؟ [Yes/No] <Yes>:
+    .close-no-path = CLOSE: ليس لـ "__ocs_fmt_0__" مسار ملف بعد؛ استخدم SAVEAS أولًا.
+    .sdi-dirty = SDI: احفظ "__ocs_fmt_0__" أو أغلقه قبل فتح رسم آخر.

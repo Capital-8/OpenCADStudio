@@ -6859,3 +6859,12 @@ dash-command =
     .layout-missing = O layout '__ocs_fmt_0__' não existe
     .plot-file-only = -PLOT grava apenas em arquivo; responda Yes para gravar a plotagem em um arquivo.
     .plot-written = Plotagem gravada em __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Insira o nome do desenho a abrir:
+    .open-not-found = OPEN: arquivo não encontrado: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Insira o formato do arquivo [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Salvar desenho como <__ocs_arg_name__>:
+    .close-save = CLOSE  Salvar as alterações em __ocs_arg_name__? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" ainda não tem caminho de arquivo; use SAVEAS primeiro.
+    .sdi-dirty = SDI: salve ou feche "__ocs_fmt_0__" antes de abrir outro desenho.

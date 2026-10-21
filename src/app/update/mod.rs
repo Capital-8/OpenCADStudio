@@ -443,7 +443,13 @@ impl OpenCADStudio {
                 }
             }
         }
-        let task = self.update_message(msg);
+        let mut task = self.update_message(msg);
+        // A script waiting on an open or a save goes on once it is done,
+        // however that open or save ended.
+        if self.script_paused && !self.script_busy() {
+            self.script_paused = false;
+            task = Task::batch([task, Task::done(Message::ScriptPump)]);
+        }
         self.restore_dynamic_ucs_after_command();
         self.sync_block_visibility_display();
         if self.tabs.get(self.active_tab).map(|tab| tab.id) != before {
@@ -1427,6 +1433,23 @@ impl OpenCADStudio {
             }
 
             Message::OpenPathPicked(Some((path, size_bytes))) => {
+                // SDI 1: one drawing at a time, so the current one closes first.
+                let i = self.active_tab;
+                let sdi_close = if self.sdi && !self.tabs[i].is_start {
+                    if self.tabs[i].dirty {
+                        self.command_line.push_error(
+                            crate::tf!(
+                                "SDI: save or close \"{}\" before opening another drawing.",
+                                self.tabs[i].tab_title
+                            )
+                            .as_ref(),
+                        );
+                        return Task::none();
+                    }
+                    self.on_tab_close(i)
+                } else {
+                    Task::none()
+                };
                 let name = path
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -1455,10 +1478,13 @@ impl OpenCADStudio {
                 let model_bg = self
                     .default_bg_color
                     .unwrap_or_else(|| self.model_space.resolve_model_bg(&self.active_theme));
-                Task::perform(
-                    crate::io::open_path_with_phase(path, progress, model_bg),
-                    move |result| Message::FileOpened(open_id, result),
-                )
+                Task::batch([
+                    sdi_close,
+                    Task::perform(
+                        crate::io::open_path_with_phase(path, progress, model_bg),
+                        move |result| Message::FileOpened(open_id, result),
+                    ),
+                ])
             }
 
             Message::OpenCancel => {
@@ -3356,6 +3382,7 @@ impl OpenCADStudio {
             }
 
             Message::ScriptLine(line) => self.feed_script_line(&line),
+            Message::ScriptPump => self.pump_script(),
 
             // Web SCRIPT: the picked .scr file arrived — run it through the
             // same runner the native path feeds.

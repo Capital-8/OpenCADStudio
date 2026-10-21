@@ -652,7 +652,11 @@ fn is_spacemouse_command(cmd: &str) -> bool {
 /// source of truth: the dispatch gate refuses everything else, and the ribbon
 /// dims the tools this rejects.
 pub fn start_allowed(cmd: &str) -> bool {
+    // A batch script starts from no drawing: it sets FILEDIA / SDI and
+    // opens the drawings it works on by path.
+    let verb = cmd.split_whitespace().next().unwrap_or("");
     is_spacemouse_command(cmd)
+        || matches!(verb, "OPEN" | "SCRIPT" | "SCR" | "FILEDIA" | "SDI")
         || matches!(
             cmd,
             "NEW"
@@ -962,6 +966,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "UOSNAP",
         "FIELDDISPLAY",
         "FILEDIA",
+        "SDI",
         "TRIMEXTENDMODE",
         "SELECTIONCYCLING",
         "UCSDETECT",

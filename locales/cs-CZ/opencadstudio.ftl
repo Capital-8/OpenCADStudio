@@ -6856,3 +6856,12 @@ dash-command =
     .layout-missing = Rozvržení '__ocs_fmt_0__' neexistuje
     .plot-file-only = -PLOT zapisuje pouze do souboru; odpovězte Yes pro zápis vykreslení do souboru.
     .plot-written = Vykreslení zapsáno do __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Zadejte název výkresu k otevření:
+    .open-not-found = OPEN: soubor nenalezen: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Zadejte formát souboru [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Uložit výkres jako <__ocs_arg_name__>:
+    .close-save = CLOSE  Uložit změny výkresu __ocs_arg_name__? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" zatím nemá cestu k souboru; nejprve použijte SAVEAS.
+    .sdi-dirty = SDI: před otevřením jiného výkresu uložte nebo zavřete "__ocs_fmt_0__".

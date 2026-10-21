@@ -6859,3 +6859,12 @@ dash-command =
     .layout-missing = ໂຄງຮ່າງ '__ocs_fmt_0__' ບໍ່ມີຢູ່
     .plot-file-only = -PLOT ຂຽນລົງໄຟລ໌ເທົ່ານັ້ນ; ຕອບ Yes ເພື່ອຂຽນການພິມລົງໄຟລ໌.
     .plot-written = ຂຽນການພິມລົງ __ocs_fmt_0__ ແລ້ວ
+
+script-files =
+    .open-prompt = OPEN  ປ້ອນຊື່ແຜ່ນແຕ້ມທີ່ຈະເປີດ:
+    .open-not-found = OPEN: ບໍ່ພົບໄຟລ໌: __ocs_fmt_0__
+    .saveas-format = SAVEAS  ປ້ອນຮູບແບບໄຟລ໌ [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  ບັນທຶກແຜ່ນແຕ້ມເປັນ <__ocs_arg_name__>:
+    .close-save = CLOSE  ບັນທຶກການປ່ຽນແປງໃນ __ocs_arg_name__ ບໍ? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" ຍັງບໍ່ມີເສັ້ນທາງໄຟລ໌; ໃຊ້ SAVEAS ກ່ອນ.
+    .sdi-dirty = SDI: ບັນທຶກ ຫຼື ປິດ "__ocs_fmt_0__" ກ່ອນເປີດແຜ່ນແຕ້ມອື່ນ.

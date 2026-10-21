@@ -6859,3 +6859,12 @@ dash-command =
     .layout-missing = La présentation '__ocs_fmt_0__' n'existe pas
     .plot-file-only = -PLOT écrit uniquement dans un fichier ; répondez Yes pour écrire le tracé dans un fichier.
     .plot-written = Tracé écrit dans __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Entrez le nom du dessin à ouvrir :
+    .open-not-found = OPEN : fichier introuvable : __ocs_fmt_0__
+    .saveas-format = SAVEAS  Entrez le format de fichier [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Enregistrer le dessin sous <__ocs_arg_name__>:
+    .close-save = CLOSE  Enregistrer les modifications de __ocs_arg_name__ ? [Yes/No] <Yes>:
+    .close-no-path = CLOSE : « __ocs_fmt_0__ » n'a pas encore de chemin de fichier ; utilisez d'abord SAVEAS.
+    .sdi-dirty = SDI : enregistrez ou fermez « __ocs_fmt_0__ » avant d'ouvrir un autre dessin.

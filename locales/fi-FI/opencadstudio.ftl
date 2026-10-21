@@ -6856,3 +6856,12 @@ dash-command =
     .layout-missing = Asettelua '__ocs_fmt_0__' ei ole olemassa
     .plot-file-only = -PLOT kirjoittaa vain tiedostoon; vastaa Yes kirjoittaaksesi tulosteen tiedostoon.
     .plot-written = Tuloste kirjoitettu kohteeseen __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Anna avattavan piirustuksen nimi:
+    .open-not-found = OPEN: tiedostoa ei löydy: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Anna tiedostomuoto [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Tallenna piirustus nimellä <__ocs_arg_name__>:
+    .close-save = CLOSE  Tallennetaanko muutokset kohteeseen __ocs_arg_name__? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: kohteella "__ocs_fmt_0__" ei ole vielä tiedostopolkua; käytä ensin SAVEAS-komentoa.
+    .sdi-dirty = SDI: tallenna tai sulje "__ocs_fmt_0__" ennen toisen piirustuksen avaamista.

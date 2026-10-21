@@ -6858,3 +6858,12 @@ dash-command =
     .layout-missing = 배치 '__ocs_fmt_0__'이(가) 없습니다
     .plot-file-only = -PLOT은 파일로만 출력합니다. 플롯을 파일에 기록하려면 Yes로 답하십시오.
     .plot-written = 플롯을 __ocs_fmt_0__에 기록했습니다
+
+script-files =
+    .open-prompt = OPEN  열 도면 이름 입력:
+    .open-not-found = OPEN: 파일을 찾을 수 없음: __ocs_fmt_0__
+    .saveas-format = SAVEAS  파일 형식 입력 [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  다른 이름으로 도면 저장 <__ocs_arg_name__>:
+    .close-save = CLOSE  __ocs_arg_name__의 변경 사항을 저장하시겠습니까? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__"에는 아직 파일 경로가 없습니다. 먼저 SAVEAS를 사용하십시오.
+    .sdi-dirty = SDI: 다른 도면을 열기 전에 "__ocs_fmt_0__"을(를) 저장하거나 닫으십시오.

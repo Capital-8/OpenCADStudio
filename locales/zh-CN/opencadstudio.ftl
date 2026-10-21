@@ -6842,3 +6842,12 @@ dash-command =
     .layout-missing = 布局 '__ocs_fmt_0__' 不存在
     .plot-file-only = -PLOT 仅输出到文件；回答 Yes 以将打印写入文件。
     .plot-written = 打印已写入 __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  输入要打开的图形名称:
+    .open-not-found = OPEN: 找不到文件: __ocs_fmt_0__
+    .saveas-format = SAVEAS  输入文件格式 [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  图形另存为 <__ocs_arg_name__>:
+    .close-save = CLOSE  是否保存对 __ocs_arg_name__ 的更改? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: “__ocs_fmt_0__”还没有文件路径；请先使用 SAVEAS。
+    .sdi-dirty = SDI: 打开其他图形前，请保存或关闭“__ocs_fmt_0__”。

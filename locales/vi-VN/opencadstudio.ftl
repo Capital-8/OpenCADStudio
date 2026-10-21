@@ -6864,3 +6864,12 @@ dash-command =
     .layout-missing = Bố cục '__ocs_fmt_0__' không tồn tại
     .plot-file-only = -PLOT chỉ ghi vào tệp; trả lời Yes để ghi bản in vào tệp.
     .plot-written = Đã ghi bản in vào __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Nhập tên bản vẽ cần mở:
+    .open-not-found = OPEN: không tìm thấy tệp: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Nhập định dạng tệp [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Lưu bản vẽ thành <__ocs_arg_name__>:
+    .close-save = CLOSE  Lưu thay đổi cho __ocs_arg_name__? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" chưa có đường dẫn tệp; hãy dùng SAVEAS trước.
+    .sdi-dirty = SDI: hãy lưu hoặc đóng "__ocs_fmt_0__" trước khi mở bản vẽ khác.

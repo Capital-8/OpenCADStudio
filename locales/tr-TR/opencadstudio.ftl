@@ -6780,3 +6780,12 @@ dash-command =
     .layout-missing = '__ocs_fmt_0__' paftası yok
     .plot-file-only = -PLOT yalnızca dosyaya yazar; çizimi dosyaya yazmak için Yes yanıtını verin.
     .plot-written = Çizim __ocs_fmt_0__ dosyasına yazıldı
+
+script-files =
+    .open-prompt = OPEN  Açılacak çizimin adını girin:
+    .open-not-found = OPEN: dosya bulunamadı: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Dosya biçimini girin [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Çizimi farklı kaydet <__ocs_arg_name__>:
+    .close-save = CLOSE  __ocs_arg_name__ üzerindeki değişiklikler kaydedilsin mi? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" için henüz dosya yolu yok; önce SAVEAS kullanın.
+    .sdi-dirty = SDI: başka bir çizim açmadan önce "__ocs_fmt_0__" çizimini kaydedin veya kapatın.

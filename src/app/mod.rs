@@ -1663,6 +1663,15 @@ pub(super) struct OpenCADStudio {
     /// all arriving at once), which makes this queue load-bearing, not polish.
     pub(super) pending_opens: std::collections::VecDeque<PathBuf>,
     pub(super) pending_startup_script_lines: Vec<String>,
+    /// Script rows still to run, one at a time: a row waits until whatever
+    /// the previous one started (an open, a save) has finished.
+    pub(super) script_queue: std::collections::VecDeque<String>,
+    /// A script row is running (the queue may already be empty).
+    pub(super) script_running: bool,
+    /// The next row waits for an open or save to finish.
+    pub(super) script_paused: bool,
+    /// SDI 1: opening a drawing closes the current one first.
+    pub(super) sdi: bool,
     /// One global interaction-index build at a time. Large drawings can each
     /// hold millions of entries, so file-open bursts must not multiply peak
     /// CPU and memory by the number of tabs.
@@ -3187,6 +3196,8 @@ pub enum Message {
     /// dispatch, this accepts an interactive verb and all of its arguments on
     /// the same line (`BOX 0,0,0 10,10,0 10`).
     ScriptLine(String),
+    /// Run the next queued script row (see `script_queue`).
+    ScriptPump,
     /// Web SCRIPT: the picked .scr file's name and text. `None` = the
     /// browser dialog was cancelled.
     #[cfg(target_arch = "wasm32")]
@@ -5203,6 +5214,10 @@ impl OpenCADStudio {
             suppressed_missing_fonts: rustc_hash::FxHashSet::default(),
             pending_opens: std::collections::VecDeque::new(),
             pending_startup_script_lines: Vec::new(),
+            script_queue: std::collections::VecDeque::new(),
+            script_running: false,
+            script_paused: false,
+            sdi: false,
             active_interaction_index: None,
             queued_interaction_indices: std::collections::VecDeque::new(),
             pending_close: None,
@@ -5568,19 +5583,20 @@ impl OpenCADStudio {
         // Startup command script: if files were passed to open, defer the
         // script lines until the document finishes opening. Otherwise, dispatch
         // them on the newly created drawing tab.
+        let has_script = !cfg.script_lines.is_empty();
         let script: Task<Message> = if cfg.script_lines.is_empty() {
             Task::none()
         } else if has_files {
             s.pending_startup_script_lines = cfg.script_lines;
             Task::none()
         } else {
-            Task::batch(
-                cfg.script_lines
-                    .into_iter()
-                    .map(|line| Task::done(Message::ScriptLine(line))),
-            )
+            s.script_queue.extend(cfg.script_lines);
+            Task::done(Message::ScriptPump)
         };
-        s.queue_startup_prompts();
+        // An unattended script must not stop at a startup dialog.
+        if !has_script {
+            s.queue_startup_prompts();
+        }
         // Fetch the Patreon supporters list once at boot for the Start page.
         #[cfg(not(target_arch = "wasm32"))]
         let patrons_fetch = Task::perform(

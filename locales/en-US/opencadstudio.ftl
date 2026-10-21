@@ -6858,3 +6858,12 @@ dash-command =
     .layout-missing = Layout '__ocs_fmt_0__' does not exist
     .plot-file-only = -PLOT sends to a file only; answer Yes to write the plot to a file.
     .plot-written = Plot written to __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Enter name of drawing to open:
+    .open-not-found = OPEN: file not found: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Enter file format [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Save drawing as <__ocs_arg_name__>:
+    .close-save = CLOSE  Save changes to __ocs_arg_name__? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" has no file path yet; use SAVEAS first.
+    .sdi-dirty = SDI: save or close "__ocs_fmt_0__" before opening another drawing.

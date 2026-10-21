@@ -6843,3 +6843,12 @@ dash-command =
     .layout-missing = A(z) '__ocs_fmt_0__' elrendezés nem létezik
     .plot-file-only = A -PLOT csak fájlba ír; válaszoljon Yes-szel a nyomat fájlba írásához.
     .plot-written = Nyomat kiírva ide: __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Adja meg a megnyitandó rajz nevét:
+    .open-not-found = OPEN: a fájl nem található: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Adja meg a fájlformátumot [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Rajz mentése másként <__ocs_arg_name__>:
+    .close-save = CLOSE  Menti a(z) __ocs_arg_name__ módosításait? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: a(z) "__ocs_fmt_0__" rajznak még nincs fájlútvonala; először használja a SAVEAS parancsot.
+    .sdi-dirty = SDI: mentse vagy zárja be a(z) "__ocs_fmt_0__" rajzot, mielőtt másikat nyit meg.

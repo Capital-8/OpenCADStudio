@@ -6859,3 +6859,12 @@ dash-command =
     .layout-missing = Оформлението '__ocs_fmt_0__' не съществува
     .plot-file-only = -PLOT записва само във файл; отговорете Yes, за да запишете печата във файл.
     .plot-written = Печатът е записан в __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Въведете име на чертежа за отваряне:
+    .open-not-found = OPEN: файлът не е намерен: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Въведете файлов формат [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Запис на чертежа като <__ocs_arg_name__>:
+    .close-save = CLOSE  Да се запишат ли промените в __ocs_arg_name__? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" все още няма път до файл; първо използвайте SAVEAS.
+    .sdi-dirty = SDI: запишете или затворете "__ocs_fmt_0__", преди да отворите друг чертеж.

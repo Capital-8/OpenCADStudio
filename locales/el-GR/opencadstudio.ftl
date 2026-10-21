@@ -6859,3 +6859,12 @@ dash-command =
     .layout-missing = Η διάταξη '__ocs_fmt_0__' δεν υπάρχει
     .plot-file-only = Το -PLOT γράφει μόνο σε αρχείο· απαντήστε Yes για εγγραφή της εκτύπωσης σε αρχείο.
     .plot-written = Η εκτύπωση γράφτηκε στο __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Εισαγάγετε όνομα σχεδίου για άνοιγμα:
+    .open-not-found = OPEN: το αρχείο δεν βρέθηκε: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Εισαγάγετε μορφή αρχείου [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Αποθήκευση σχεδίου ως <__ocs_arg_name__>:
+    .close-save = CLOSE  Αποθήκευση αλλαγών στο __ocs_arg_name__; [Yes/No] <Yes>:
+    .close-no-path = CLOSE: το "__ocs_fmt_0__" δεν έχει ακόμη διαδρομή αρχείου· χρησιμοποιήστε πρώτα SAVEAS.
+    .sdi-dirty = SDI: αποθηκεύστε ή κλείστε το "__ocs_fmt_0__" πριν ανοίξετε άλλο σχέδιο.

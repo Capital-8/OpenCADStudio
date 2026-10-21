@@ -1247,6 +1247,7 @@ impl OpenCADStudio {
                     | "UOSNAP"
                     | "FIELDDISPLAY"
                     | "FILEDIA"
+                    | "SDI"
                     | "TRIMEXTENDMODE"
                     | "SELECTIONCYCLING"
                     | "UCSDETECT"
@@ -1886,6 +1887,28 @@ impl OpenCADStudio {
                                 self.command_line.push_error(&crate::tf!(
                                     "Requires an integer between {min} and {max}."
                                 ));
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    // SDI 1: one drawing at a time (OPEN closes the current one).
+                    if name == "SDI" {
+                        let current = i16::from(self.sdi);
+                        let prompt = format!("Enter new value for SDI <{current}>:");
+                        match value
+                            .as_deref()
+                            .map(|v| v.trim().parse::<i16>().ok().filter(|v| (0..=1).contains(v)))
+                        {
+                            Some(Some(mode)) => self.sdi = mode == 1,
+                            Some(None) => {
+                                self.command_line
+                                    .push_error(crate::t!("Requires 0 or 1 only.").as_ref());
                                 self.command_line.push_output(&prompt);
                                 self.pending_setvar = Some(name.clone());
                             }

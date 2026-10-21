@@ -6857,3 +6857,12 @@ dash-command =
     .layout-missing = Layout '__ocs_fmt_0__' bestaat niet
     .plot-file-only = -PLOT schrijft alleen naar een bestand; antwoord Yes om de plot naar een bestand te schrijven.
     .plot-written = Plot geschreven naar __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Voer de naam in van de te openen tekening:
+    .open-not-found = OPEN: bestand niet gevonden: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Voer de bestandsindeling in [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Tekening opslaan als <__ocs_arg_name__>:
+    .close-save = CLOSE  Wijzigingen in __ocs_arg_name__ opslaan? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" heeft nog geen bestandspad; gebruik eerst SAVEAS.
+    .sdi-dirty = SDI: sla "__ocs_fmt_0__" op of sluit deze voordat u een andere tekening opent.

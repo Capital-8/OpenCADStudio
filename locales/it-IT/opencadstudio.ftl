@@ -6858,3 +6858,12 @@ dash-command =
     .layout-missing = Il layout '__ocs_fmt_0__' non esiste
     .plot-file-only = -PLOT scrive solo su file; rispondere Yes per scrivere la stampa su file.
     .plot-written = Stampa scritta in __ocs_fmt_0__
+
+script-files =
+    .open-prompt = OPEN  Immettere il nome del disegno da aprire:
+    .open-not-found = OPEN: file non trovato: __ocs_fmt_0__
+    .saveas-format = SAVEAS  Immettere il formato del file [R14/2000/2004/2007/2010/2013/2018/DXF] <__ocs_arg_name__>:
+    .saveas-path = SAVEAS  Salva disegno con nome <__ocs_arg_name__>:
+    .close-save = CLOSE  Salvare le modifiche a __ocs_arg_name__? [Yes/No] <Yes>:
+    .close-no-path = CLOSE: "__ocs_fmt_0__" non ha ancora un percorso file; usare prima SAVEAS.
+    .sdi-dirty = SDI: salvare o chiudere "__ocs_fmt_0__" prima di aprire un altro disegno.
