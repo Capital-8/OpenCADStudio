@@ -787,6 +787,7 @@ fn read_run(run: &[&[u8]], styles: &Styles, xf: &Xf) -> Raw {
             },
             geom,
             filled: matches!(kind(e), 6 | 14) && e.windows(4).any(|w| w == [0x07, 0x10, 0x41, 0x00]),
+            construction: false,
         };
         let stroke = Some((color, -1.0));
         let d3 = is_3d(e);
@@ -1781,6 +1782,7 @@ pub fn import(bytes: &[u8], name: &str) -> Option<DgnImport> {
         text_styles: text_style_table(&nm),
         dim_styles: dim_style_table(&nm),
         three_d: false,
+        construction_layers: false,
     })
 }
 

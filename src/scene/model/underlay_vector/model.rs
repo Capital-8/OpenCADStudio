@@ -574,6 +574,8 @@ pub struct DgnElement {
     pub geom: DgnGeom,
     /// The element is a filled shape (it has a fill linkage).
     pub filled: bool,
+    /// Its class is construction (V7).
+    pub construction: bool,
 }
 
 /// A point of a DGN element (z 0 in a 2D file).
@@ -584,6 +586,9 @@ pub enum DgnGeom {
     Line(P3, P3),
     /// A line string, curve or shape (its points end where they start).
     Points(Vec<P3>),
+    /// A V7 curve: its points, the first two and last two of which only
+    /// set the slopes at its ends.
+    Curve(Vec<P3>),
     /// An elliptical arc: the point at parameter t is
     /// `center + cos t · u + sin t · v`, from `start` over `sweep` (radians).
     Arc {
@@ -670,6 +675,7 @@ impl DgnGeom {
         match self {
             DgnGeom::Line(a, b) => DgnGeom::Line(p(*a), p(*b)),
             DgnGeom::Points(pts) => DgnGeom::Points(pts.iter().map(|q| p(*q)).collect()),
+            DgnGeom::Curve(pts) => DgnGeom::Curve(pts.iter().map(|q| p(*q)).collect()),
             DgnGeom::Dimension {
                 kind,
                 points,
@@ -860,6 +866,9 @@ pub struct DgnImport {
     pub dim_styles: Vec<(u32, String)>,
     /// A 3D V7 file.
     pub three_d: bool,
+    /// The file's first view hides construction elements (V7): they come in
+    /// on layers of their own, turned off.
+    pub construction_layers: bool,
 }
 
 /// A reference attachment of a DGN model: the file and model it shows and
