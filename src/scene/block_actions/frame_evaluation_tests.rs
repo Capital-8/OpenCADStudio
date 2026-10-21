@@ -211,6 +211,11 @@ fn block_frame_scale_and_rotation_map_dependent_pivots_and_keep_independent_pivo
                 .unwrap()
                 .unwrap();
             for saved in roundtrips(&changed) {
+                if kind == Kind::Rotate {
+                    let properties = saved.dynamic_block_properties(def, Some(a)).unwrap();
+                    assert!(properties.iter().any(|property| property.parameter_handle == p.handle
+                        && matches!(property.value, BlockEvalValue::Real(angle) if (angle - std::f64::consts::FRAC_PI_2).abs() < 1e-8)));
+                }
                 assert!(line(&saved, a).start.distance(&expected) < 1e-8);
                 assert!(
                     line(&instance::refresh(&saved, def).unwrap(), a)

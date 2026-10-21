@@ -87,13 +87,6 @@ pub(crate) fn frame(
         .filter_map(|e| e.value.as_point3d())
         .map(|(x, y, z)| DVec3::new(x, y, z))
         .collect::<Vec<_>>();
-    if p.rotation
-        && points
-            .get(3)
-            .is_none_or(|r| !r.is_finite() || r.distance(p.reference) > 1e-8)
-    {
-        return Err("The rotation reference point is unavailable or has been relocated.");
-    }
     let missing = "The reference parameter cache has no finite endpoint.";
     let a = *points.first().ok_or(missing)?;
     let result = if p.point {
@@ -113,7 +106,15 @@ pub(crate) fn frame(
             ParameterFrame { base: a, end: b }
         }
     };
-    result.validate(p)
+    let result = result.validate(p)?;
+    if p.rotation
+        && points.get(3).is_none_or(|reference| {
+            !reference.is_finite() || reference.distance(p.reference + result.base - p.base) > 1e-8
+        })
+    {
+        return Err("The rotation reference point is unavailable or has been relocated.");
+    }
+    Ok(result)
 }
 
 pub(crate) fn current(
@@ -275,6 +276,16 @@ pub(crate) fn save_frame(
     } else {
         put(frame.base)?;
         put(frame.end)?;
+    }
+    if p.rotation {
+        let reference = r
+            .entries
+            .iter_mut()
+            .filter(|entry| matches!(entry.value, XRecordValue::Point3D(..)))
+            .nth(3)
+            .ok_or("The rotation parameter cache has no reference point.")?;
+        let point = p.reference + frame.base - p.base;
+        reference.value = XRecordValue::Point3D(point.x, point.y, point.z);
     }
     r.raw_data.clear();
     r.raw_dwg_data = None;
