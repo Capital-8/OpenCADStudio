@@ -4417,7 +4417,7 @@ dependencies = [
 [[package]]
 name = "opencadkernel"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=95556b2#95556b2fb63bbc690f3402029aa16c8fa8870e48"
+source = "git+https://github.com/ramox81/cadkernel.git?rev=6351f41#6351f41fe93993e2400480c7c07d3d522c7f7de3"
 dependencies = [
  "acadrust",
  "cavalier_contours",
@@ -4428,7 +4428,7 @@ dependencies = [
 [[package]]
 name = "opencadkernel-constraints"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=95556b2#95556b2fb63bbc690f3402029aa16c8fa8870e48"
+source = "git+https://github.com/ramox81/cadkernel.git?rev=6351f41#6351f41fe93993e2400480c7c07d3d522c7f7de3"
 dependencies = [
  "nalgebra",
 ]

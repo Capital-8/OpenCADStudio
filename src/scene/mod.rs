@@ -4527,11 +4527,11 @@ impl Scene {
         let (isolines, planar_isolines) = match self.document.get_entity(handle) {
             Some(EntityType::Surface(surface)) => (
                 crate::entities::solid3d::surface_isoline_counts(surface),
-                crate::entities::solid3d::surface_property_state(surface).isolines,
+                Some(crate::entities::solid3d::surface_property_state(surface).isolines),
             ),
             _ => (
                 [crate::entities::solid3d::clamp_header_isolines(self.document.header.isolines); 2],
-                false,
+                None,
             ),
         };
         let (mut set, wires, center) = crate::scene::model::solid_model::display_from_solid(
