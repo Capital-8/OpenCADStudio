@@ -118,14 +118,15 @@ impl CadModule for InsertModule {
                     title: "Reference",
                     tools: vec![
                         RibbonItem::LargeTool(xattach::tool()),
-                        // PDF, DWF, DGN or a point cloud; the face runs the
-                        // last one chosen.
+                        // PDF, a raster image, DWF, DGN or a point cloud;
+                        // the face runs the last one chosen.
                         RibbonItem::LargeDropdown {
                             id: "UNDERLAY_ATTACH",
                             label: "Attach Underlay",
                             icon: pdf_attach::ICON,
                             items: vec![
                                 ("PDFATTACH", "Attach PDF", pdf_attach::ICON),
+                                ("IMAGEATTACH", "Attach Image", pdf_attach::ICON),
                                 ("DWFATTACH", "Attach DWF", pdf_attach::ICON),
                                 ("DGNATTACH", "Attach DGN", pdf_attach::ICON),
                                 ("POINTCLOUDATTACH", "Attach Point Cloud", pc_attach::ICON),
