@@ -3698,27 +3698,51 @@ fn extend_hover_wires(
     out
 }
 
+/// A TRIM/EXTEND working copy: the objects, their index and the boundaries
+/// cut against.
+struct Snapshot<'a> {
+    all: &'a mut Vec<EntityType>,
+    index: &'a mut ModifyEntityIndex,
+    geos: &'a mut Vec<Geo>,
+    edge_set: &'a mut Vec<Handle>,
+    implied_edges: bool,
+}
+
 /// Apply one confirmed replacement to a command's entity snapshot: the old
 /// entry goes and its pieces join under the handles the document assigned.
 /// Edits stay pending until this callback, so a rejected edit (locked layer)
-/// leaves the snapshot untouched.
+/// leaves the snapshot untouched. Only the replaced object's entries change;
+/// rebuilding every boundary and the index per pick made each click cost the
+/// whole drawing (#1978). Returns whether the boundaries need a full rebuild
+/// (the last picked cutting edge went, so every object cuts again).
 fn apply_pending_replacement(
-    all: &mut Vec<EntityType>,
-    edge_set: &mut Vec<Handle>,
+    snapshot: Snapshot,
     pending: &mut Vec<(Handle, Vec<EntityType>)>,
     old: Handle,
     new_handles: &[Handle],
-) {
+) -> bool {
     let Some(index) = pending.iter().position(|(handle, _)| *handle == old) else {
-        return;
+        return false;
     };
     let (_, pieces) = pending.swap_remove(index);
-    all.retain(|entity| entity.common().handle != old);
-    edge_set.retain(|handle| *handle != old);
+    snapshot.index.remove(snapshot.all, old);
+    snapshot.geos.retain(|geo| geo.handle() != old);
+    let had_edges = !snapshot.edge_set.is_empty();
+    snapshot.edge_set.retain(|handle| *handle != old);
+    // Pieces never join a picked edge set; with none, every object cuts.
+    let all_cut = snapshot.edge_set.is_empty();
     for (mut piece, &handle) in pieces.into_iter().zip(new_handles) {
         piece.as_entity_mut().set_handle(handle);
-        all.push(piece);
+        if all_cut {
+            let mut geos = build_geos(std::slice::from_ref(&piece));
+            if snapshot.implied_edges {
+                imply_edge_geos(&mut geos);
+            }
+            snapshot.geos.extend(geos);
+        }
+        snapshot.index.push(snapshot.all, piece);
     }
+    had_edges && all_cut
 }
 
 pub struct TrimCommand {
@@ -4029,27 +4053,24 @@ impl CadCommand for TrimCommand {
     }
 
     fn on_entity_replaced(&mut self, old: Handle, new_handles: &[codec::Handle]) {
-        apply_pending_replacement(
-            &mut self.all_entities,
-            &mut self.edge_set,
-            &mut self.pending,
-            old,
-            new_handles,
-        );
-        self.rebuild_geos();
+        self.on_entities_replaced(&[(old, new_handles.to_vec())]);
     }
 
     fn on_entities_replaced(&mut self, replacements: &[(Handle, Vec<codec::Handle>)]) {
+        let mut rebuild = false;
         for (old, new_handles) in replacements {
-            apply_pending_replacement(
-                &mut self.all_entities,
-                &mut self.edge_set,
-                &mut self.pending,
-                *old,
-                new_handles,
-            );
+            let snapshot = Snapshot {
+                all: &mut self.all_entities,
+                index: &mut self.entity_index,
+                geos: &mut self.geos,
+                edge_set: &mut self.edge_set,
+                implied_edges: self.implied_edges,
+            };
+            rebuild |= apply_pending_replacement(snapshot, &mut self.pending, *old, new_handles);
         }
-        self.rebuild_geos();
+        if rebuild {
+            self.rebuild_geos();
+        }
     }
 
     fn on_drag_selection(
@@ -4831,27 +4852,24 @@ impl CadCommand for ExtendCommand {
     }
 
     fn on_entity_replaced(&mut self, old: Handle, new_handles: &[codec::Handle]) {
-        apply_pending_replacement(
-            &mut self.all_entities,
-            &mut self.edge_set,
-            &mut self.pending,
-            old,
-            new_handles,
-        );
-        self.rebuild_geos();
+        self.on_entities_replaced(&[(old, new_handles.to_vec())]);
     }
 
     fn on_entities_replaced(&mut self, replacements: &[(Handle, Vec<codec::Handle>)]) {
+        let mut rebuild = false;
         for (old, new_handles) in replacements {
-            apply_pending_replacement(
-                &mut self.all_entities,
-                &mut self.edge_set,
-                &mut self.pending,
-                *old,
-                new_handles,
-            );
+            let snapshot = Snapshot {
+                all: &mut self.all_entities,
+                index: &mut self.entity_index,
+                geos: &mut self.geos,
+                edge_set: &mut self.edge_set,
+                implied_edges: self.implied_edges,
+            };
+            rebuild |= apply_pending_replacement(snapshot, &mut self.pending, *old, new_handles);
         }
-        self.rebuild_geos();
+        if rebuild {
+            self.rebuild_geos();
+        }
     }
 
     fn drag_selection_preview_enabled(&self) -> bool {

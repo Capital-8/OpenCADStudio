@@ -10317,6 +10317,28 @@ impl Scene {
     /// commands need these in addition to the wire-based entity list: hatch
     /// fills are rendered separately and otherwise never reach TRIM.
     /// Unlike visible_hatches_for_click this never clones GPU hatch models.
+    /// Each object drawn in the current space that `keep` accepts, once, as a
+    /// `(handle, entity)` clone for a modify command's working copy. Only the
+    /// resident wire names are read and block copies stay unexpanded: one
+    /// object can own many wires, and cloning per expanded wire copied a large
+    /// drawing many times over when the command started (#1978).
+    pub fn visible_entities_for_edit(
+        &self,
+        keep: impl Fn(&EntityType) -> bool,
+    ) -> Vec<(Handle, EntityType)> {
+        let wires = self.entity_wires_arc();
+        let mut seen: HashSet<Handle> = HashSet::default();
+        wires
+            .iter()
+            .filter_map(|wire| Self::handle_from_wire_name(&wire.name))
+            .filter(|handle| seen.insert(*handle))
+            .filter_map(|handle| {
+                let entity = self.document.get_entity(handle).filter(|e| keep(e))?;
+                Some((handle, entity.clone()))
+            })
+            .collect()
+    }
+
     pub fn visible_hatch_handles_for_edit(&self) -> Vec<Handle> {
         self.hatches
             .keys()

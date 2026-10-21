@@ -1036,20 +1036,7 @@ impl OpenCADStudio {
 
             "FILLET" => {
                 use crate::modules::draw::modify::fillet::FilletCommand;
-                let entities: Vec<_> = self.tabs[i]
-                    .scene
-                    .entity_wires()
-                    .iter()
-                    .filter_map(|w| {
-                        let h = Scene::handle_from_wire_name(&w.name)?;
-                        self.tabs[i]
-                            .scene
-                            .document
-                            .get_entity(h)
-                            .cloned()
-                            .map(|e| (h, e))
-                    })
-                    .collect();
+                let entities: Vec<_> = self.tabs[i].scene.visible_entities_for_edit(|_| true);
                 let all_entities: Vec<_> = entities.into_iter().map(|(_, e)| e).collect();
                 let new_cmd = FilletCommand::new(
                     crate::modules::draw::defaults::get_fillet_radius(),
@@ -1063,12 +1050,9 @@ impl OpenCADStudio {
                 use crate::modules::draw::modify::blend::BlendCommand;
                 let all_entities: Vec<_> = self.tabs[i]
                     .scene
-                    .entity_wires()
-                    .iter()
-                    .filter_map(|wire| {
-                        let handle = Scene::handle_from_wire_name(&wire.name)?;
-                        self.tabs[i].scene.document.get_entity(handle).cloned()
-                    })
+                    .visible_entities_for_edit(|_| true)
+                    .into_iter()
+                    .map(|(_, e)| e)
                     .collect();
                 let new_cmd = BlendCommand::new(all_entities);
                 self.command_line.push_info(&new_cmd.prompt());
@@ -1134,12 +1118,9 @@ impl OpenCADStudio {
                     let wires = self.tabs[i].scene.wire_models_for(&handles);
                     let all_entities: Vec<_> = self.tabs[i]
                         .scene
-                        .entity_wires()
-                        .iter()
-                        .filter_map(|w| {
-                            let h = Scene::handle_from_wire_name(&w.name)?;
-                            self.tabs[i].scene.document.get_entity(h).cloned()
-                        })
+                        .visible_entities_for_edit(|_| true)
+                        .into_iter()
+                        .map(|(_, e)| e)
                         .collect();
                     let new_cmd = ArrayPathCommand::new(handles, wires, all_entities);
                     self.command_line.push_info(&new_cmd.prompt());
@@ -1219,20 +1200,7 @@ impl OpenCADStudio {
 
             "CHAMFER" => {
                 use crate::modules::draw::modify::fillet::ChamferCommand;
-                let entities: Vec<_> = self.tabs[i]
-                    .scene
-                    .entity_wires()
-                    .iter()
-                    .filter_map(|w| {
-                        let h = Scene::handle_from_wire_name(&w.name)?;
-                        self.tabs[i]
-                            .scene
-                            .document
-                            .get_entity(h)
-                            .cloned()
-                            .map(|e| (h, e))
-                    })
-                    .collect();
+                let entities: Vec<_> = self.tabs[i].scene.visible_entities_for_edit(|_| true);
                 let all_entities: Vec<_> = entities.into_iter().map(|(_, e)| e).collect();
                 let new_cmd = ChamferCommand::new(
                     crate::modules::draw::defaults::get_chamfer_dist1(),
@@ -1363,12 +1331,9 @@ impl OpenCADStudio {
                 use crate::modules::draw::modify::offset::{is_offsettable, OffsetCommand};
                 let all_entities: Vec<_> = self.tabs[i]
                     .scene
-                    .entity_wires()
-                    .iter()
-                    .filter_map(|w| {
-                        let h = Scene::handle_from_wire_name(&w.name)?;
-                        self.tabs[i].scene.document.get_entity(h).cloned()
-                    })
+                    .visible_entities_for_edit(|_| true)
+                    .into_iter()
+                    .map(|(_, e)| e)
                     .collect();
                 // Pick-first (#422): with offsettable objects already selected,
                 // skip the distance and pick steps and open on the live side
@@ -1390,25 +1355,13 @@ impl OpenCADStudio {
             }
 
             "TRIM" => {
-                use crate::modules::draw::modify::trim::TrimCommand;
-                // Curves live in entity_wires(), but HATCH fills have their
-                // own renderer. Include visible top-level hatch entities in
-                // the command's geometry snapshot so clicking inside one
-                // can actually reach the hatch trim solver.
-                let mut entities: Vec<_> = self.tabs[i]
-                    .scene
-                    .entity_wires()
-                    .iter()
-                    .filter_map(|w| {
-                        let h = Scene::handle_from_wire_name(&w.name)?;
-                        self.tabs[i]
-                            .scene
-                            .document
-                            .get_entity(h)
-                            .cloned()
-                            .map(|e| (h, e))
-                    })
-                    .collect();
+                use crate::modules::draw::modify::trim::{is_trim_boundary_entity, TrimCommand};
+                // Only curves cut or get cut: block references, text and the
+                // like stay out of the working copy (#1978). HATCH fills have
+                // their own renderer, so visible top-level hatches are added
+                // for the hatch trim solver.
+                let mut entities =
+                    self.tabs[i].scene.visible_entities_for_edit(is_trim_boundary_entity);
                 let mut seen: std::collections::HashSet<codec::Handle> =
                     entities.iter().map(|(handle, _)| *handle).collect();
                 for handle in self.tabs[i].scene.visible_hatch_handles_for_edit() {
@@ -1422,10 +1375,8 @@ impl OpenCADStudio {
                     .scene
                     .selected_entities()
                     .into_iter()
-                    .filter_map(|(handle, entity)| {
-                        crate::modules::draw::modify::trim::is_trim_boundary_entity(&entity)
-                            .then_some(handle)
-                    })
+                    .filter(|(_, entity)| is_trim_boundary_entity(entity))
+                    .map(|(handle, _)| handle)
                     .collect();
                 let all_entities: Vec<_> = entities.into_iter().map(|(_, e)| e).collect();
                 let new_cmd = TrimCommand::with_cutting_edges(all_entities, initial_edges);
@@ -1434,50 +1385,23 @@ impl OpenCADStudio {
             }
 
             "EXTRIM" => {
-                use crate::modules::draw::modify::trim::ExtrimCommand;
-                let all: Vec<_> = self.tabs[i]
-                    .scene
-                    .entity_wires()
-                    .iter()
-                    .filter_map(|w| {
-                        let h = Scene::handle_from_wire_name(&w.name)?;
-                        self.tabs[i]
-                            .scene
-                            .document
-                            .get_entity(h)
-                            .cloned()
-                            .map(|e| (h, e))
-                    })
-                    .collect();
+                use crate::modules::draw::modify::trim::{is_trim_boundary_entity, ExtrimCommand};
+                let all = self.tabs[i].scene.visible_entities_for_edit(is_trim_boundary_entity);
                 let new_cmd = ExtrimCommand::new(all);
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
             }
 
             "EXTEND" => {
-                use crate::modules::draw::modify::trim::ExtendCommand;
-                let entities: Vec<_> = self.tabs[i]
-                    .scene
-                    .entity_wires()
-                    .iter()
-                    .filter_map(|w| {
-                        let h = Scene::handle_from_wire_name(&w.name)?;
-                        self.tabs[i]
-                            .scene
-                            .document
-                            .get_entity(h)
-                            .cloned()
-                            .map(|e| (h, e))
-                    })
-                    .collect();
+                use crate::modules::draw::modify::trim::{is_trim_boundary_entity, ExtendCommand};
+                let entities =
+                    self.tabs[i].scene.visible_entities_for_edit(is_trim_boundary_entity);
                 let initial_edges: Vec<codec::Handle> = self.tabs[i]
                     .scene
                     .selected_entities()
                     .into_iter()
-                    .filter_map(|(handle, entity)| {
-                        crate::modules::draw::modify::trim::is_trim_boundary_entity(&entity)
-                            .then_some(handle)
-                    })
+                    .filter(|(_, entity)| is_trim_boundary_entity(entity))
+                    .map(|(handle, _)| handle)
                     .collect();
                 let all_entities: Vec<_> = entities.into_iter().map(|(_, e)| e).collect();
                 let new_cmd = ExtendCommand::with_boundary_edges(all_entities, initial_edges);
