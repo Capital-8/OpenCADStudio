@@ -73,6 +73,31 @@ impl CadCommand for EditCommand {
     }
 }
 impl OpenCADStudio {
+    pub(super) fn set_authoring_alignment_type(&mut self, value: &str) -> Task<Message> {
+        let i = self.active_tab;
+        let Some(definition) = self.tabs[i].active_block_edit_session().map(|session| session.br_handle) else { return Task::none() };
+        let Some(parameter) = self.tabs[i].selected_authoring else { return Task::none() };
+        let perpendicular = if value.eq_ignore_ascii_case("Perpendicular") || value == crate::t!("Perpendicular").as_ref() { true }
+            else if value.eq_ignore_ascii_case("Tangent") || value == crate::t!("Tangent").as_ref() { false }
+            else { self.command_line.push_error(crate::t!("Choose Perpendicular or Tangent.").as_ref()); return Task::none() };
+        let mut staged = self.tabs[i].scene.document.clone();
+        match crate::scene::block_orientation_parameter::set_alignment_type(&mut staged, definition, parameter, perpendicular) {
+            Ok(changed) => {
+                if changed {
+                    self.push_undo_snapshot(i, "Alignment type");
+                    self.apply_action_document(i, staged);
+                    self.tabs[i].scene.bump_geometry();
+                    self.tabs[i].dirty = true;
+                    self.finish_pending_history(i);
+                }
+                self.tabs[i].properties.edit_choice_open = false;
+                self.refresh_properties();
+            }
+            Err(error) => self.command_line.push_error(crate::t!(error).as_ref()),
+        }
+        Task::none()
+    }
+
     pub(super) fn commit_authoring_action_option(&mut self, field: &'static str) -> Task<Message> {
         if field.starts_with("authoring_action_base_") {
             return self.commit_authoring_action_base(field);

@@ -2668,6 +2668,7 @@ impl OpenCADStudio {
         field: &'static str,
         value: String,
     ) -> Task<Message> {
+        if field == "authoring_alignment_type" { return self.set_authoring_alignment_type(&value); }
         if field.starts_with("bedit_") {
             return self.set_block_property(field, &value);
         }

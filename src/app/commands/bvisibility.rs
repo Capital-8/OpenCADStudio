@@ -15,6 +15,7 @@ impl OpenCADStudio {
             document_id,
             definition,
             kind,
+            perpendicular,
             base,
             end,
             reference,
@@ -46,6 +47,10 @@ impl OpenCADStudio {
             self.command_line.push_error(crate::t!(error).as_ref());
             return Task::none();
         }
+        if perpendicular && kind != crate::scene::block_orientation_parameter::Kind::Alignment {
+            self.command_line.push_error(crate::t!("Alignment type is only available for Alignment parameters.").as_ref());
+            return Task::none();
+        }
         self.push_undo_snapshot(i, &format!("{} parameter", kind.name()));
         let parameter = crate::scene::block_orientation_parameter::create(
             &mut self.tabs[i].scene.document,
@@ -56,6 +61,10 @@ impl OpenCADStudio {
             vector(reference),
         )
         .expect("validated parameter placement");
+        if perpendicular {
+            crate::scene::block_orientation_parameter::set_alignment_type(&mut self.tabs[i].scene.document, definition, parameter, true)
+                .expect("validated Alignment parameter placement");
+        }
         self.tabs[i].scene.bump_geometry();
         self.tabs[i].dirty = true;
         self.tabs[i].active_cmd = None;

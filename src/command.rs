@@ -1590,6 +1590,7 @@ pub enum CmdResult {
         document_id: u64,
         definition: Handle,
         kind: crate::scene::block_orientation_parameter::Kind,
+        perpendicular: bool,
         base: DVec3,
         end: DVec3,
         reference: DVec3,

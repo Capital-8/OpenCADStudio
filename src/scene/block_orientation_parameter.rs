@@ -131,6 +131,19 @@ pub(crate) fn parameters(document: &CadDocument, definition: Handle) -> Vec<Para
         .collect()
 }
 
+pub(crate) fn set_alignment_type(
+    document: &mut CadDocument, definition: Handle, handle: Handle, perpendicular: bool,
+) -> Result<bool, &'static str> {
+    if !parameters(document, definition).iter().any(|p| p.handle == handle && p.kind == Kind::Alignment) {
+        return Err("Select an Alignment parameter in the active block definition.");
+    }
+    let Some(ObjectType::DynamicBlock(object)) = document.objects.get_mut(&handle) else { unreachable!() };
+    let DynamicBlockData::AlignmentParameter(parameter) = &mut object.data else { unreachable!() };
+    if parameter.align_perpendicular == perpendicular { return Ok(false); }
+    parameter.align_perpendicular = perpendicular;
+    Ok(true)
+}
+
 pub(crate) fn placement_error(
     document: &CadDocument,
     definition: Handle,

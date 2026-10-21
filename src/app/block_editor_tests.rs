@@ -2706,6 +2706,7 @@ fn orientation_parameter_stale_context_and_invalid_result_do_not_start_history()
                 document_id,
                 definition,
                 kind: Kind::Flip,
+                perpendicular: false,
                 base: glam::DVec3::ZERO,
                 end,
                 reference: glam::DVec3::X,
@@ -5839,4 +5840,66 @@ fn block_runtime_native_roles_drag_cancel_undo_redo_and_preserve_relocated_grips
             assert!(app.tabs[i].selected_grips.iter().any(|grip| grip.id == id));
         }
     }
+}
+
+#[test]
+fn block_alignment_type_placement_properties_history_and_native_roundtrips() {
+    use crate::scene::block_orientation_parameter::{self as orientation, Kind};
+    use codec::objects::{DynamicBlockData, ObjectType};
+    use std::io::Cursor;
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let _ = app.run_command_line("BPARAMETER ALIGNMENT 0,0 TYPE P 10,0");
+    let parameter = orientation::parameters(&app.tabs[i].scene.document, definition).into_iter()
+        .find(|p| p.kind == Kind::Alignment).unwrap().handle;
+    let perpendicular = |doc: &codec::CadDocument| match &doc.objects[&parameter] {
+        ObjectType::DynamicBlock(object) => match &object.data {
+            DynamicBlockData::AlignmentParameter(p) => p.align_perpendicular,
+            _ => panic!(),
+        }, _ => panic!(),
+    };
+    assert!(perpendicular(&app.tabs[i].scene.document));
+    app.tabs[i].selected_authoring = Some(parameter);
+    app.refresh_properties();
+    assert!(app.tabs[i].properties.sections.iter().flat_map(|section| &section.props)
+        .any(|property| property.field == "authoring_alignment_type"));
+    let original = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let _ = app.update(Message::PropGeomChoiceChanged { field: "authoring_alignment_type", value: "Tangent".into() });
+    assert!(!perpendicular(&app.tabs[i].scene.document));
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    for (handle, object) in &original.objects {
+        if *handle != parameter { assert_eq!(app.tabs[i].scene.document.objects.get(handle), Some(object)); }
+    }
+    assert_eq!(app.tabs[i].scene.document.entities().cloned().collect::<Vec<_>>(), original.entities().cloned().collect::<Vec<_>>());
+    app.undo_steps(1);
+    assert!(perpendicular(&app.tabs[i].scene.document));
+    app.redo_steps(1);
+    assert!(!perpendicular(&app.tabs[i].scene.document));
+    app.tabs[i].selected_authoring = Some(parameter);
+    let unchanged = app.tabs[i].scene.document.clone();
+    let _ = app.update(Message::PropGeomChoiceChanged { field: "authoring_alignment_type", value: "Tangent".into() });
+    let _ = app.update(Message::PropGeomChoiceChanged { field: "authoring_alignment_type", value: "Diagonal".into() });
+    assert_eq!(app.tabs[i].scene.document, unchanged);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    let _ = app.update(Message::PropGeomChoiceChanged { field: "authoring_alignment_type", value: "Perpendicular".into() });
+    let doc = &app.tabs[i].scene.document;
+    for saved in [
+        codec::DwgReader::from_stream(Cursor::new(codec::DwgWriter::write_to_vec(doc).unwrap())).read().unwrap(),
+        codec::DxfReader::from_reader(Cursor::new(codec::DxfWriter::new(doc).write_to_vec().unwrap())).unwrap().read().unwrap(),
+    ] { assert!(perpendicular(&saved)); }
+    let before = app.tabs[i].scene.document.clone();
+    assert!(orientation::set_alignment_type(&mut app.tabs[i].scene.document, Handle::NULL, parameter, false).is_err());
+    assert_eq!(app.tabs[i].scene.document, before);
+    let _ = app.run_command_line("BPARAMETER ALIGNMENT 2,2 TYPE");
+    let _ = app.update(Message::CommandEscape);
+    assert_eq!(app.tabs[i].scene.document, before);
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BCLOSE");
+    assert!(perpendicular(&app.tabs[i].scene.document));
+    let before = app.tabs[i].scene.document.clone();
+    let _ = app.update(Message::PropGeomChoiceChanged { field: "authoring_alignment_type", value: "Tangent".into() });
+    assert_eq!(app.tabs[i].scene.document, before);
 }

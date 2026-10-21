@@ -1,5 +1,5 @@
 //! Interactive native Rotation, Alignment and Flip placement.
-use crate::command::{CadCommand, CmdResult};
+use crate::command::{CadCommand, CmdOption, CmdResult};
 use crate::scene::{
     block_orientation_parameter::{self, Kind},
     WireModel,
@@ -13,6 +13,8 @@ pub struct OrientationParameterCommand {
     kind: Kind,
     base: Option<DVec3>,
     second: Option<DVec3>,
+    perpendicular: bool,
+    choosing_type: bool,
 }
 
 impl OrientationParameterCommand {
@@ -23,6 +25,8 @@ impl OrientationParameterCommand {
             kind,
             base: None,
             second: None,
+            perpendicular: false,
+            choosing_type: false,
         }
     }
     fn finish(&self, end: DVec3, reference: DVec3) -> CmdResult {
@@ -40,6 +44,7 @@ impl OrientationParameterCommand {
             document_id: self.document_id,
             definition: self.definition,
             kind: self.kind,
+            perpendicular: self.perpendicular,
             base,
             end,
             reference,
@@ -61,13 +66,25 @@ impl CadCommand for OrientationParameterCommand {
         "BPARAMETER"
     }
     fn prompt(&self) -> String {
-        let step = if self.base.is_none() {
+        let step = if self.choosing_type {
+            if self.perpendicular {
+                "Choose alignment type [Perpendicular/Tangent] <Perpendicular>:"
+            } else {
+                "Choose alignment type [Perpendicular/Tangent] <Tangent>:"
+            }
+        } else if self.base.is_none() {
             "Specify parameter base point:"
         } else {
             match (self.kind, self.second.is_some()) {
                 (Kind::Rotation, false) => "Specify parameter radius or pick a radius point:",
                 (Kind::Rotation, true) => "Specify default rotation angle or pick direction <0>:",
-                (Kind::Alignment, _) => "Specify alignment direction (tangent):",
+                (Kind::Alignment, _) => {
+                    if self.perpendicular {
+                        "Specify alignment direction or [Type] <Perpendicular>:"
+                    } else {
+                        "Specify alignment direction or [Type] <Tangent>:"
+                    }
+                }
                 (Kind::Flip, false) => "Specify reflection line endpoint:",
                 (Kind::Flip, true) => "Specify flip parameter label location:",
             }
@@ -79,7 +96,25 @@ impl CadCommand for OrientationParameterCommand {
         )
         .into_owned()
     }
+    fn options(&self) -> Vec<CmdOption> {
+        if self.kind != Kind::Alignment {
+            return vec![];
+        }
+        if self.choosing_type {
+            vec![
+                CmdOption::new(crate::t!("Perpendicular").as_ref(), "Perpendicular"),
+                CmdOption::new(crate::t!("Tangent").as_ref(), "Tangent"),
+            ]
+        } else {
+            vec![CmdOption::new(crate::t!("Type").as_ref(), "Type")]
+        }
+    }
     fn on_point(&mut self, point: DVec3) -> CmdResult {
+        if self.choosing_type {
+            return CmdResult::ReportError(
+                crate::t!("Choose Perpendicular or Tangent.").into_owned(),
+            );
+        }
         if !point.is_finite() {
             return CmdResult::ReportError(
                 crate::t!("Specify a finite parameter location.").into_owned(),
@@ -121,6 +156,26 @@ impl CadCommand for OrientationParameterCommand {
         }
     }
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        if self.kind == Kind::Alignment {
+            let text = text.trim().to_ascii_uppercase();
+            if self.choosing_type {
+                match text.as_str() {
+                    "PERPENDICULAR" | "P" => self.perpendicular = true,
+                    "TANGENT" | "T" => self.perpendicular = false,
+                    _ => {
+                        return Some(CmdResult::ReportError(
+                            crate::t!("Choose Perpendicular or Tangent.").into_owned(),
+                        ))
+                    }
+                }
+                self.choosing_type = false;
+                return Some(CmdResult::NeedPoint);
+            }
+            if matches!(text.as_str(), "TYPE" | "T") {
+                self.choosing_type = true;
+                return Some(CmdResult::NeedPoint);
+            }
+        }
         if self.kind != Kind::Rotation || self.base.is_none() {
             return None;
         }
@@ -184,6 +239,10 @@ impl CadCommand for OrientationParameterCommand {
             .collect()
     }
     fn on_enter(&mut self) -> CmdResult {
+        if self.choosing_type {
+            self.choosing_type = false;
+            return CmdResult::NeedPoint;
+        }
         if self.kind == Kind::Rotation && self.second.is_some() {
             self.rotation_at(0.0)
         } else {
