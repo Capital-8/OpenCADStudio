@@ -170,6 +170,32 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
+    fn draw_order_table_does_not_drop_the_dynamic_graph() {
+        let mut scene = Scene::new();
+        scene.define_block_raw("SORTED", Vector3::ZERO, vec![]);
+        scene.define_block_raw("COPY", Vector3::ZERO, vec![]);
+        let doc = &mut scene.document;
+        let definition = doc.block_records.get("SORTED").unwrap().handle;
+        let (start, end) = (Vector3::ZERO, Vector3::new(10.0, 0.0, 0.0));
+        let label = Vector3::new(5.0, 2.0, 0.0);
+        distance::create(doc, definition, distance::Kind::Linear, start, end, label).unwrap();
+        let xdict = doc.extension_dictionary_handle(definition).unwrap();
+        let mut table = codec::objects::SortEntitiesTable::for_block(definition);
+        table.handle = doc.allocate_handle();
+        table.owner_handle = xdict;
+        let sort = table.handle;
+        doc.objects.insert(sort, ObjectType::SortEntitiesTable(table));
+        if let Some(ObjectType::Dictionary(d)) = doc.objects.get_mut(&xdict) {
+            d.add_entry("ACAD_SORTENTS", sort);
+        }
+        assert!(doc.export_block_graph(definition).is_none());
+        let graph = crate::scene::block_authoring::export_graph(doc, definition).unwrap();
+        let copy = doc.block_records.get("COPY").unwrap().handle;
+        doc.import_block_graph(&graph, copy, &Default::default());
+        assert_eq!(grips(doc, copy).unwrap().len(), 1);
+    }
+
+    #[test]
     fn block_grip_cycling_preserves_native_order_through_dwg_and_dxf() {
         let mut scene = Scene::new();
         scene.define_block_raw("CYCLE", Vector3::ZERO, vec![]);

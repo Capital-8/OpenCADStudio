@@ -2310,7 +2310,7 @@ impl ClipboardDeps {
             base_point,
             entities: owned,
             source: br.handle,
-            graph: doc.export_block_graph(br.handle),
+            graph: crate::scene::block_authoring::export_graph(doc, br.handle),
         })
     }
 
