@@ -1804,6 +1804,26 @@ fn a_zero_residual_write_to_the_other_tangency_side_is_not_displaced() {
     let (_, end_marker_radius) = circle_geom(&scene, end_marker);
     assert!((start_marker_radius - 2.0).abs() < 1e-9);
     assert!((end_marker_radius - 2.0).abs() < 1e-9);
+    // Nothing else drifted either: line 1 and both marker centers are the
+    // same on both configurations, and the arc's end point (0, -15) is the
+    // sharp flip detector - the short configuration ends the arc at (0, 15).
+    let (line1_start, line1_end) = line_endpoints(&scene, line1);
+    assert!((line1_start.x - -45.0).abs() < 1e-6 && (line1_start.y - 0.0).abs() < 1e-6);
+    assert!((line1_end.x - -15.0).abs() < 1e-6 && (line1_end.y - 0.0).abs() < 1e-6);
+    let (start_marker_center, _) = circle_geom(&scene, start_marker);
+    let (end_marker_center, _) = circle_geom(&scene, end_marker);
+    assert!(
+        (start_marker_center.x - -45.0).abs() < 1e-6 && (start_marker_center.y - 0.0).abs() < 1e-6
+    );
+    assert!((end_marker_center.x - 0.0).abs() < 1e-6 && (end_marker_center.y - 45.0).abs() < 1e-6);
+    let arc_end = match scene.document.get_entity(arc) {
+        Some(EntityType::Arc(a)) => a.end_point(),
+        other => panic!("expected an Arc, got {other:?}"),
+    };
+    assert!(
+        (arc_end.x - 0.0).abs() < 1e-6 && (arc_end.y - -15.0).abs() < 1e-6,
+        "the arc must still end at the written far-side joint: {arc_end:?}"
+    );
 }
 
 // The fixpoint guarantee is not a veto on solving: a write whose state is
