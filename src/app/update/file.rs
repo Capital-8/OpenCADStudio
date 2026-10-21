@@ -2068,6 +2068,9 @@ impl OpenCADStudio {
             .unwrap_or(0);
         self.command_line
             .push_output(crate::tf!("Opened \"{name}\" — {entity_count} entities").as_ref());
+        // Reference problems are warnings, not errors: the host drawing
+        // opened and is usable, and automation reads an error as a failed
+        // open (#1971). The full list goes to `state.xrefs`.
         for info in &caches.xrefs {
             match info.status {
                 crate::io::xref::XrefStatus::Loaded => {
@@ -2075,7 +2078,7 @@ impl OpenCADStudio {
                         .push_output(crate::tf!("XREF  Loaded \"{}\"", info.name).as_ref());
                 }
                 crate::io::xref::XrefStatus::Recovered => {
-                    self.command_line.push_error(
+                    self.command_line.push_warning(
                         crate::tf!("XREF  Recovered with warnings: \"{}\"", info.name).as_ref(),
                     );
                 }
@@ -2085,14 +2088,14 @@ impl OpenCADStudio {
                 // several unresolved xrefs would repeat the same hint.
                 #[cfg(not(target_arch = "wasm32"))]
                 crate::io::xref::XrefStatus::NotFound => {
-                    self.command_line.push_error(
+                    self.command_line.push_warning(
                         crate::tf!("XREF  Not found: \"{}\" ({})", info.name, info.path).as_ref(),
                     );
                 }
                 #[cfg(target_arch = "wasm32")]
                 crate::io::xref::XrefStatus::NotFound => {}
                 crate::io::xref::XrefStatus::Failed => {
-                    self.command_line.push_error(
+                    self.command_line.push_warning(
                         crate::tf!("XREF  Recovery failed: \"{}\" ({})", info.name, info.path)
                             .as_ref(),
                     );
@@ -2150,6 +2153,11 @@ impl OpenCADStudio {
             .filter(|item| item.status == crate::io::xref::XrefStatus::NotFound)
             .count();
         self.tabs[i].xref_missing = missing;
+        self.tabs[i].xref_report = caches
+            .xrefs
+            .iter()
+            .map(|item| (item.name.clone(), item.path.clone(), item.status.clone()))
+            .collect();
         if missing > 0 {
             self.command_line.push_output(
                 crate::tf!(

@@ -472,6 +472,17 @@ pub(super) fn active_command_metadata(command: &dyn crate::command::CadCommand) 
     })
 }
 
+fn xref_status_name(status: &crate::io::xref::XrefStatus) -> &'static str {
+    use crate::io::xref::XrefStatus as S;
+    match status {
+        S::Loaded => "loaded",
+        S::Recovered => "recovered",
+        S::Failed => "failed",
+        S::NotFound => "not_found",
+        S::Unloaded => "unloaded",
+    }
+}
+
 impl OpenCADStudio {
     pub(super) fn control_busy(&self) -> bool {
         self.control.pending.is_some()
@@ -530,6 +541,7 @@ impl OpenCADStudio {
         json!({"ok":true,"protocol":1,"session_id":session_id(),"version":env!("OCS_APP_VERSION"),
             "mode":if self.main_window.is_some(){"gui"}else{"headless"},"enabled":self.control.enabled,
             "read_only":self.read_only,"missing_fonts":missing_fonts,
+            "xrefs":tab.xref_report.iter().map(|(name,path,status)|json!({"name":name,"path":path,"status":xref_status_name(status)})).collect::<Vec<_>>(),
             "document_id":tab.id,"revision":tab.edit_revision,"geometry_revision":tab.scene.geometry_epoch,"camera_revision":tab.scene.camera_generation,
             "hand_seed":format!("{:X}",tab.scene.document.header.handle_seed.max(tab.scene.document.next_handle())),
             "plugins":plugin_ids(),
@@ -2420,6 +2432,27 @@ mod tests {
             1
         );
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn open_with_missing_xrefs_succeeds_and_lists_every_reference() {
+        let mut doc = codec::CadDocument::new();
+        for name in ["Grid Plan", "Wall Base"] {
+            let mut record = codec::tables::BlockRecord::new(name);
+            record.flags.is_xref = true;
+            record.xref_path = format!("missing-dir/{name}.dwg");
+            doc.block_records.add(record).unwrap();
+        }
+        let bytes = crate::io::save_to_bytes(&doc, "dwg", doc.version).unwrap();
+        let path = std::env::temp_dir().join(format!("ocs-xref-open-{}.dwg", session_id()));
+        std::fs::write(&path, bytes).unwrap();
+        let mut app = OpenCADStudio::new_for_test();
+        let opened = request(&mut app, json!({"op":"open","path":path}));
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(opened["ok"], true, "{opened}");
+        let xrefs = opened["state"]["xrefs"].as_array().unwrap();
+        assert_eq!(xrefs.len(), 2, "{opened}");
+        assert!(xrefs.iter().all(|x| x["status"] == "not_found"), "{opened}");
     }
 
     #[test]
