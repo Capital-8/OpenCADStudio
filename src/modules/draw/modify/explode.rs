@@ -13,7 +13,7 @@
 //     Dimension   → Lines (extension + dimension + arrows) + Text
 //     MText       → Text lines
 //     Region      → Lines, Arcs, Circles, Ellipses, Splines (from ACIS B-Rep loops or wires)
-//     Hatch       → Lines of its pattern, clipped to the boundary (solid/gradient: not explodable)
+//     Hatch       → Lines of its pattern, clipped to the boundary (not solid/gradient)
 //
 //   Unsupported entity types are skipped silently.
 
