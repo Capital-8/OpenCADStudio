@@ -3816,7 +3816,11 @@ impl OpenCADStudio {
             }
             crate::app::SaveContinuation::Quit if snapshot_is_current => {
                 self.pending_close = None;
-                if self.tabs.iter().any(|tab| tab.dirty) {
+                if self.file_prompts_on_command_line() {
+                    // EXIT on the command line asks about the next drawing.
+                    tasks.push(self.close_unsaved_dialog_window());
+                    tasks.push(self.exit_from_command_line());
+                } else if self.tabs.iter().any(|tab| tab.dirty) {
                     self.pending_close = Some(crate::app::PendingClose::Quit);
                     tasks.push(self.open_unsaved_dialog_window());
                 } else {
@@ -4841,6 +4845,7 @@ impl OpenCADStudio {
     /// Remove the autosave recovery files, then quit the application.
     pub(in crate::app) fn exit_app(&mut self) -> Task<Message> {
         self.cleanup_autosaves();
+        self.exit_requested = true;
         iced::exit()
     }
 

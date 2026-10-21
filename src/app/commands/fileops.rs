@@ -219,27 +219,10 @@ impl OpenCADStudio {
                     && !self.tabs[i].is_start
                     && self.file_prompts_on_command_line() =>
             {
-                let name = self.tabs[i]
-                    .current_path
-                    .as_deref()
-                    .and_then(std::path::Path::file_name)
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| self.tabs[i].tab_title.clone());
-                let flow: crate::command::PromptFlow = Box::new(move |answers| {
-                    let mut q = crate::command::PromptAnswers::new(answers);
-                    let prompt =
-                        crate::t!("CLOSE  Save changes to %{name}? [Yes/No] <Yes>:", name = name);
-                    match q.yes_no(prompt.into_owned(), true) {
-                        Ok(save) => crate::command::PromptStep::Run(
-                            if save { "CLOSE YES" } else { "CLOSE NO" }.into(),
-                        ),
-                        Err(step) => step,
-                    }
-                });
-                let c = crate::command::ScriptPromptCommand::new("CLOSE", flow);
-                self.command_line.push_info(&c.prompt());
-                self.command_line.set_step_options(c.options());
-                self.tabs[i].active_cmd = Some(Box::new(c));
+                let name = self.drawing_file_name(i);
+                let prompt =
+                    crate::t!("CLOSE  Save changes to %{name}? [Yes/No] <Yes>:", name = name);
+                self.ask_save_changes("CLOSE", prompt.into_owned());
             }
             // The close runs as its own message: this arm may be reached from
             // inside the prompt's own command step, which still indexes the tab.
@@ -247,7 +230,7 @@ impl OpenCADStudio {
                 self.tabs[i].dirty = false;
                 return Some(Task::done(Message::TabClose(self.tabs[i].id)));
             }
-            "CLOSE YES" => return Some(self.save_and_close(i)),
+            "CLOSE YES" => return Some(self.save_then(i, false)),
             "CLOSE" => {
                 return Some(match self.tabs.get(self.active_tab) {
                     Some(tab) => Task::done(Message::TabClose(tab.id)),
@@ -369,6 +352,25 @@ impl OpenCADStudio {
                 }
             }
 
+            // With FILEDIA 0 or in a script, each unsaved drawing is asked
+            // about on the command line, so a script can end the program.
+            "EXIT" | "QUIT"
+                if cfg!(not(target_arch = "wasm32")) && self.file_prompts_on_command_line() =>
+            {
+                return Some(self.exit_from_command_line());
+            }
+            "EXIT NO" => {
+                if let Some(d) = self.first_unsaved_drawing() {
+                    self.tabs[d].dirty = false;
+                }
+                return Some(self.exit_from_command_line());
+            }
+            "EXIT YES" => {
+                return Some(match self.first_unsaved_drawing() {
+                    Some(d) => self.save_then(d, true),
+                    None => self.exit_from_command_line(),
+                });
+            }
             "EXIT" | "QUIT" => {
                 // Funnel through the OS close path so the unsaved-changes
                 // dialog runs before `iced::exit()`. Falls back to a hard
@@ -603,6 +605,71 @@ impl OpenCADStudio {
         Task::done(Message::ScriptPump)
     }
 
+    /// Unattended run with no window (`--batch` / `--each`): the script's
+    /// rows run once, or once per drawing in `files` (opened first, closed
+    /// after without saving what the script did not save). The command line
+    /// is printed as it runs. Returns 0, or 1 when a row reported an error.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(in crate::app) fn run_batch(&mut self, text: &str, files: &[std::path::PathBuf]) -> i32 {
+        let lines = script_command_lines(text);
+        let errors = self.command_line.error_revision;
+        if files.is_empty() {
+            self.run_batch_rows(lines.clone());
+        }
+        for file in files {
+            if self.exit_requested {
+                break;
+            }
+            let before = self.command_line.error_revision;
+            self.run_batch_rows(vec![format!("OPEN \"{}\"", file.display())]);
+            if self.command_line.error_revision == before {
+                self.run_batch_rows(lines.clone());
+            }
+            let open: Vec<u64> = self
+                .tabs
+                .iter()
+                .filter(|tab| !tab.is_start)
+                .map(|tab| tab.id)
+                .collect();
+            for id in open {
+                if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == id) {
+                    tab.dirty = false;
+                }
+                let task = self.update(Message::TabClose(id));
+                let _ = self.drive_headless_task(task);
+            }
+        }
+        i32::from(self.command_line.error_revision != errors)
+    }
+
+    /// Feed batch rows one at a time, printing what each one wrote to the
+    /// command line. Stops at EXIT / QUIT.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn run_batch_rows(&mut self, rows: Vec<String>) {
+        self.script_queue.extend(rows);
+        while let Some(row) = self.script_queue.pop_front() {
+            if self.exit_requested {
+                break;
+            }
+            self.script_running = true;
+            self.command_line.history.clear();
+            let task = self.update(Message::ScriptLine(row));
+            if let Err(error) = self.drive_headless_task(task) {
+                if !self.exit_requested {
+                    self.command_line.push_error(&error);
+                }
+            }
+            for entry in &self.command_line.history {
+                if entry.kind == crate::ui::command_line::EntryKind::Error {
+                    eprintln!("{}", entry.text);
+                } else {
+                    println!("{}", entry.text);
+                }
+            }
+        }
+        self.script_queue.clear();
+    }
+
     /// Run the next script row once the previous one has finished,
     /// including the open or save it started; `update` resumes a paused
     /// script when that work ends.
@@ -631,8 +698,57 @@ impl OpenCADStudio {
     }
 
     /// File commands ask on the command line, not in a dialog.
-    fn file_prompts_on_command_line(&self) -> bool {
+    pub(in crate::app) fn file_prompts_on_command_line(&self) -> bool {
         !crate::sys::file_dia() || self.script_running
+    }
+
+    /// The drawing's file name, or its tab title before its first save.
+    fn drawing_file_name(&self, i: usize) -> String {
+        self.tabs[i]
+            .current_path
+            .as_deref()
+            .and_then(std::path::Path::file_name)
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| self.tabs[i].tab_title.clone())
+    }
+
+    /// Ask "Save changes? [Yes/No]" on the command line; the answer runs
+    /// `<command> YES` or `<command> NO`.
+    fn ask_save_changes(&mut self, command: &'static str, prompt: String) {
+        let flow: crate::command::PromptFlow = Box::new(move |answers| {
+            let mut q = crate::command::PromptAnswers::new(answers);
+            match q.yes_no(prompt.clone(), true) {
+                Ok(save) => crate::command::PromptStep::Run(format!(
+                    "{command} {}",
+                    if save { "YES" } else { "NO" }
+                )),
+                Err(step) => step,
+            }
+        });
+        let c = crate::command::ScriptPromptCommand::new(command, flow);
+        self.command_line.push_info(&c.prompt());
+        self.command_line.set_step_options(c.options());
+        let i = self.active_tab;
+        self.tabs[i].active_cmd = Some(Box::new(c));
+    }
+
+    /// The first drawing EXIT still has to ask about.
+    fn first_unsaved_drawing(&self) -> Option<usize> {
+        self.tabs
+            .iter()
+            .position(|tab| tab.dirty && !tab.is_start && tab.block_test.is_none())
+    }
+
+    /// EXIT / QUIT on the command line: asks about each drawing with
+    /// unsaved changes in turn, then exits.
+    pub(in crate::app) fn exit_from_command_line(&mut self) -> Task<Message> {
+        let Some(d) = self.first_unsaved_drawing() else {
+            return self.request_quit_with_block_edits();
+        };
+        let name = self.drawing_file_name(d);
+        let prompt = crate::t!("EXIT  Save changes to %{name}? [Yes/No] <Yes>:", name = name);
+        self.ask_save_changes("EXIT", prompt.into_owned());
+        Task::none()
     }
 
     /// OPEN with a typed path. Under SDI the current drawing is closed by
@@ -726,8 +842,9 @@ impl OpenCADStudio {
         }
     }
 
-    /// CLOSE answered Yes: save to the drawing's file, then close it.
-    fn save_and_close(&mut self, i: usize) -> Task<Message> {
+    /// CLOSE or EXIT answered Yes: save to the drawing's file, then close
+    /// it, or go on with the exit (`quit`).
+    fn save_then(&mut self, i: usize, quit: bool) -> Task<Message> {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let path = self.tabs[i]
@@ -735,26 +852,27 @@ impl OpenCADStudio {
                 .clone()
                 .filter(|_| !self.tabs[i].recovery_save_as_required);
             let Some(path) = path else {
-                self.command_line.push_error(
-                    crate::tf!(
-                        "CLOSE: \"{}\" has no file path yet; use SAVEAS first.",
-                        self.tabs[i].tab_title
-                    )
-                    .as_ref(),
-                );
+                let name = &self.tabs[i].tab_title;
+                let error = if quit {
+                    crate::tf!("EXIT: \"{}\" has no file path yet; use SAVEAS first.", name)
+                } else {
+                    crate::tf!("CLOSE: \"{}\" has no file path yet; use SAVEAS first.", name)
+                };
+                self.command_line.push_error(error.as_ref());
                 return Task::none();
             };
             let version = self.tabs[i].scene.document.version;
             if self.main_window.is_none() {
-                return match self.save_tab_synchronously_protected_as(i, path, version, false) {
-                    Ok(()) => {
-                        self.tabs[i].dirty = false;
-                        Task::done(Message::TabClose(self.tabs[i].id))
-                    }
-                    Err(error) => {
-                        self.command_line.push_error(&error.to_string());
-                        Task::none()
-                    }
+                if let Err(error) = self.save_tab_synchronously_protected_as(i, path, version, false)
+                {
+                    self.command_line.push_error(&error.to_string());
+                    return Task::none();
+                }
+                self.tabs[i].dirty = false;
+                return if quit {
+                    self.exit_from_command_line()
+                } else {
+                    Task::done(Message::TabClose(self.tabs[i].id))
                 };
             }
             self.prepare_native_save(i);
@@ -763,13 +881,21 @@ impl OpenCADStudio {
                 path,
                 version,
                 crate::app::SavePurpose::Manual,
-                crate::app::SaveContinuation::CloseTab,
+                if quit {
+                    crate::app::SaveContinuation::Quit
+                } else {
+                    crate::app::SaveContinuation::CloseTab
+                },
                 false,
                 true,
             )
         }
         #[cfg(target_arch = "wasm32")]
-        Task::done(Message::TabClose(self.tabs[i].id))
+        if quit {
+            self.request_quit_with_block_edits()
+        } else {
+            Task::done(Message::TabClose(self.tabs[i].id))
+        }
     }
 }
 
@@ -1179,6 +1305,23 @@ mod tests {
         assert!(app.tabs.iter().all(|t| t.current_path.as_deref() != Some(out.as_path())));
         let back = crate::io::load_file(&out).unwrap();
         assert_eq!(back.entities().count(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A headless batch run ends at EXIT: the Yes answer saves the changed
+    /// drawing, and the rows after EXIT never run.
+    #[test]
+    fn batch_exit_saves_and_stops() {
+        let dir = std::env::temp_dir().join(format!("ocs-batch-exit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("a.dxf");
+        let doc = codec::CadDocument::new();
+        std::fs::write(&a, crate::io::save_to_bytes(&doc, "dxf", doc.version).unwrap()).unwrap();
+        let mut app = OpenCADStudio::new_for_test();
+        let text = format!("OPEN \"{}\"\nCIRCLE 0,0 5\nEXIT\nY\nCIRCLE 1,1 2\n", a.display());
+        assert_eq!(app.run_batch(&text, &[]), 0);
+        assert!(app.exit_requested);
+        assert_eq!(crate::io::load_file(&a).unwrap().entities().count(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

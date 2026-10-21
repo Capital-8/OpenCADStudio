@@ -6,7 +6,7 @@ pub(crate) fn automation_action_names() -> &'static [&'static str] {
 }
 pub(crate) mod config;
 #[cfg(not(target_arch = "wasm32"))]
-pub use automation::{export_headless, serve};
+pub use automation::{export_headless, run_batch, serve};
 mod annotation_data;
 mod block_actions;
 mod block_feedback;
@@ -1672,6 +1672,8 @@ pub(super) struct OpenCADStudio {
     pub(super) script_paused: bool,
     /// SDI 1: opening a drawing closes the current one first.
     pub(super) sdi: bool,
+    /// The app asked to exit; a headless batch run stops there.
+    pub(super) exit_requested: bool,
     /// One global interaction-index build at a time. Large drawings can each
     /// hold millions of entries, so file-open bursts must not multiply peak
     /// CPU and memory by the number of tabs.
@@ -5218,6 +5220,7 @@ impl OpenCADStudio {
             script_running: false,
             script_paused: false,
             sdi: false,
+            exit_requested: false,
             active_interaction_index: None,
             queued_interaction_indices: std::collections::VecDeque::new(),
             pending_close: None,

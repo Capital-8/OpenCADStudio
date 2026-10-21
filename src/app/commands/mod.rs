@@ -653,10 +653,11 @@ fn is_spacemouse_command(cmd: &str) -> bool {
 /// dims the tools this rejects.
 pub fn start_allowed(cmd: &str) -> bool {
     // A batch script starts from no drawing: it sets FILEDIA / SDI and
-    // opens the drawings it works on by path.
+    // opens the drawings it works on by path, and EXIT answers its save
+    // questions from any tab.
     let verb = cmd.split_whitespace().next().unwrap_or("");
     is_spacemouse_command(cmd)
-        || matches!(verb, "OPEN" | "SCRIPT" | "SCR" | "FILEDIA" | "SDI")
+        || matches!(verb, "OPEN" | "SCRIPT" | "SCR" | "FILEDIA" | "SDI" | "EXIT")
         || matches!(
             cmd,
             "NEW"

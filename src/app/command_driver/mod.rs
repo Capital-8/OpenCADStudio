@@ -1143,8 +1143,9 @@ impl OpenCADStudio {
         }
         // When no command is running the ribbon tool button still has to
         // visually deactivate. Keyboard focus is assigned below to whichever
-        // editor currently owns typed input.
-        if self.tabs[i].active_cmd.is_none() {
+        // editor currently owns typed input. Re-read the active tab: a
+        // dispatched command (CLOSE, an SDI open) may have closed tab `i`.
+        if self.tabs[self.active_tab].active_cmd.is_none() {
             self.ribbon.deactivate_tool();
         }
         // The rich text canvas owns keyboard editing itself. Leaving the

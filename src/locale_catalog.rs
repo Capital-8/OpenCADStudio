@@ -4529,6 +4529,8 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "TCP port for --serve (defaults to stdin/stdout)." => Some(("common", "tcp-port-for-serve-defaults-to-stdin-stdout")),
         "Convert IN to OUT using the output file extension, then exit." => Some(("common", "convert-in-to-out-using-the-output-file-extension-then-exit")),
         "Run a command script at startup, one command per line." => Some(("common", "run-a-command-script-at-startup-one-command-per-line")),
+        "Run a script with no window, then exit (1 if a row failed)." => Some(("common", "run-a-script-with-no-window-then-exit-1-if-a-row-failed")),
+        "Run a script on each listed drawing with no window, then exit." => Some(("common", "run-a-script-on-each-listed-drawing-with-no-window-then-exit")),
         "Log level (error|warn|info|debug|trace). Also reads RUST_LOG." => Some(("common", "log-level-error-warn-info-debug-trace-also-reads-rust-log")),
         "Dim line angle" => Some(("common", "dim-line-angle")),
         "Extension line angle" => Some(("common", "extension-line-angle")),
@@ -6234,6 +6236,8 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "SAVEAS  Save drawing as <%{name}>:" => Some(("script-files", "saveas-path")),
         "CLOSE  Save changes to %{name}? [Yes/No] <Yes>:" => Some(("script-files", "close-save")),
         "CLOSE: \"{}\" has no file path yet; use SAVEAS first." => Some(("script-files", "close-no-path")),
+        "EXIT  Save changes to %{name}? [Yes/No] <Yes>:" => Some(("script-files", "exit-save")),
+        "EXIT: \"{}\" has no file path yet; use SAVEAS first." => Some(("script-files", "exit-no-path")),
         "SDI: save or close \"{}\" before opening another drawing." => Some(("script-files", "sdi-dirty")),
         _ => None,
     }

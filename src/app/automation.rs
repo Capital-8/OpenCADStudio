@@ -82,6 +82,19 @@ pub fn export_headless(
     }
 }
 
+/// Unattended script run (`--batch SCRIPT`, or `--each SCRIPT FILES...`)
+/// with no window; returns the process exit code (2: unreadable script).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn run_batch(script: &std::path::Path, files: &[PathBuf], read_only: bool) -> i32 {
+    match std::fs::read_to_string(script) {
+        Ok(text) => OpenCADStudio::new_headless(read_only).run_batch(&text, files),
+        Err(e) => {
+            eprintln!("batch: cannot read {}: {e}", script.display());
+            2
+        }
+    }
+}
+
 /// `--port <N>` if present on the command line.
 #[cfg(not(target_arch = "wasm32"))]
 fn port_arg() -> Option<u16> {
