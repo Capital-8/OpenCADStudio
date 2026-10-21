@@ -54,9 +54,13 @@ impl OpenCADStudio {
             PdfImportSource::Underlay(_) => self
                 .command_line
                 .push_output(&format!("Binding PDF file {shown}, page {page} ...")),
-            PdfImportSource::File(_) => self
-                .command_line
-                .push_output(&format!("Importing page {page} of PDF file: {shown}...")),
+            PdfImportSource::File(_) => {
+                self.command_line
+                    .push_output(&format!("Importing page {page} of PDF file: {shown}..."));
+                if let Some(notice) = crate::scene::model::pdf_password::reopened_notice(&path) {
+                    self.command_line.push_output(&notice);
+                }
+            }
         }
         // The underlay's own layer overrides leave those layers out.
         let hidden = crate::scene::model::pdf_layers::hidden_layers(&underlay);
