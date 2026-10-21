@@ -174,6 +174,7 @@ impl OpenCADStudio {
         let Ok(Some(view)) = crate::scene::block_properties_table::table(doc, def) else {
             return;
         };
+        if view.table.parameter.property_count <= 0 { return; }
         let Some(EntityType::Insert(ins)) = doc.get_entity(handle) else {
             return;
         };
@@ -369,6 +370,7 @@ impl OpenCADStudio {
             return;
         };
 
+        if param.property_info_count <= 0 && crate::scene::block_grips::config::count(doc, def_block, param.handle) == Some(0) { return; }
         // `def_point` is a block-definition coordinate (see the codec's
         // BlockVisibilityParameter), so the grip follows the same base-point
         // convention as the rendered reference.

@@ -3979,6 +3979,7 @@ impl OpenCADStudio {
     }
 
     pub(super) fn on_prop_geom_commit(&mut self, field: &'static str) -> Task<Message> {
+        if field == "authoring_grip_count" { return self.commit_block_grip_count(); }
         if field.starts_with("authoring_action_") {
             return self.commit_authoring_action_option(field);
         }

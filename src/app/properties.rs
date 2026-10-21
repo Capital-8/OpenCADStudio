@@ -2525,6 +2525,9 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                         }))
                         .collect(),
                     }];
+                    if let Some(count) = self.tabs[i].active_block_edit_session().and_then(|session| crate::scene::block_grips::config::count(&self.tabs[i].scene.document, session.br_handle, item.handle)) {
+                        panel.sections.push(PropSection { title: crate::t!("Grips").into_owned(), props: vec![Property { label: crate::t!("Number of grips").into_owned(), field: "authoring_grip_count", value: PropValue::EditText(count.to_string()) }] });
+                    }
                     if let Some(base) = crate::scene::block_actions::options::base(&self.tabs[i].scene.document, item.handle) {
                         let mut props = vec![Property {
                             label: crate::t!("Dependent base point").into_owned(),

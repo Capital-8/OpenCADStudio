@@ -11,6 +11,7 @@ mod annotation_data;
 mod block_actions;
 mod block_feedback;
 mod block_cycle_order;
+mod block_grip_set;
 mod block_action_bars;
 mod block_authoring_edit;
 mod block_editor;

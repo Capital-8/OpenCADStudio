@@ -180,6 +180,9 @@ impl OpenCADStudio {
         if let Some(task) = self.dispatch_block_editor_vars(cmd, i) {
             return task;
         }
+        if cmd.trim_start_matches(['_', '.']) == "BGRIPSET" {
+            return self.start_block_grip_set();
+        }
         if cmd.trim_start_matches(['_', '.']) == "BCYCLEORDER" {
             return self.open_block_cycle_order();
         }

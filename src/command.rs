@@ -1544,6 +1544,13 @@ pub enum CmdResult {
         frame: Option<Vec<DVec3>>,
         rotate_only: Option<Vec<Handle>>,
     },
+    SetBlockParameterGrips {
+        document: u64,
+        definition: Handle,
+        parameter: Handle,
+        expected: Vec<(Handle, codec::objects::ObjectType)>,
+        count: Option<usize>,
+    },
     EditBlockAuthoring {
         document: u64,
         definition: Handle,
