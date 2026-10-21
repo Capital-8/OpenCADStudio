@@ -384,6 +384,7 @@ impl shader::Primitive for Primitive {
         let recovering = pipeline.gpu_error_epoch != errors_at_entry;
         if recovering {
             pipeline.wire_buffer_cache.clear();
+            pipeline.mesh_batch_cache.clear();
             pipeline.block_geometry.clear();
             pipeline.gpu_error_epoch = errors_at_entry;
         }
@@ -1188,7 +1189,12 @@ retained_contributors={}",
                         && inner.patch_mesh_batch(device, queue, &vp.meshes[..], &patch.changes)
                 });
                 if !patched {
-                    inner.upload_mesh_batch(device, queue, &vp.meshes[..]);
+                    inner.upload_mesh_batch(
+                        device,
+                        queue,
+                        &vp.meshes,
+                        &mut pipeline.mesh_batch_cache,
+                    );
                 }
                 inner.cached_mesh_source = Some(Arc::clone(&vp.meshes));
             }

@@ -8,7 +8,7 @@ use codec::objects::{
 };
 use codec::types::{Handle, Vector3};
 use codec::{CadDocument, EntityType};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::named_parameters::{DrivingValue, ParameterTable};
 use super::parametric_constraints::{
@@ -1571,16 +1571,25 @@ fn remove_owned_recursive(document: &mut CadDocument, root: Handle) {
     if root.is_null() {
         return;
     }
-    let children: Vec<Handle> = document
-        .objects
-        .keys()
-        .copied()
-        .filter(|&h| document.object_owner(h) == Some(root))
-        .collect();
-    for child in children {
-        remove_owned_recursive(document, child);
+    // One ownership pass for the whole tree: rescanning every object per
+    // removed node made a graph rebuild quadratic in the drawing's objects.
+    let mut children: FxHashMap<Handle, Vec<Handle>> = FxHashMap::default();
+    for &handle in document.objects.keys() {
+        if let Some(owner) = document.object_owner(handle) {
+            children.entry(owner).or_default().push(handle);
+        }
     }
-    document.objects.remove(&root);
+    let mut seen = FxHashSet::default();
+    let mut stack = vec![root];
+    while let Some(handle) = stack.pop() {
+        if !seen.insert(handle) {
+            continue;
+        }
+        document.objects.remove(&handle);
+        if let Some(owned) = children.get(&handle) {
+            stack.extend_from_slice(owned);
+        }
+    }
 }
 
 fn native_group_handles(document: &CadDocument, owner: Handle) -> Vec<Handle> {
