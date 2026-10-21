@@ -77,6 +77,7 @@ pub(crate) struct Parameter {
     pub handle: Handle,
     pub id: i32,
     pub grip: Handle,
+    pub grip_location: Option<DVec3>,
     pub name: String,
     pub base: DVec3,
     pub end: DVec3,
@@ -216,9 +217,18 @@ pub(crate) fn set_value(
 
 pub(crate) fn grip_position(p: &Parameter, value: Value) -> DVec3 {
     match value {
-        Value::Point(at) => at,
-        Value::Flip(_) => p.reference,
+        Value::Point(at) => at + grip_offset(p),
+        Value::Flip(_) => p.grip_location.unwrap_or(p.reference),
     }
+}
+
+/// Native display placement is independent of the evaluated endpoint.
+pub(crate) fn grip_offset(p: &Parameter) -> DVec3 { p.grip_location.map(|at| at - p.end).unwrap_or(DVec3::ZERO) }
+pub(crate) fn world_grip_offset(doc: &CadDocument, insert: Handle, p: &Parameter) -> Option<DVec3> {
+    let EntityType::Insert(insert) = doc.get_entity(insert)? else { return None };
+    let transform = crate::scene::render_graph::insert_transform(doc, insert);
+    let offset = v(transform.apply_rotation(native(grip_offset(p))));
+    offset.is_finite().then_some(offset)
 }
 
 /// A Flip arrow points across its reflection line and reverses with its state.
@@ -241,6 +251,7 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
                 handle,
                 id: p.parameter.parameter.element.eval.node_id,
                 grip: Handle::NULL,
+                grip_location: None,
                 name: p.position_name.clone(),
                 base: v(p.parameter.definition_point),
                 end: v(p.parameter.definition_point),
@@ -270,6 +281,7 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
             handle: p.handle,
             id: p.native.parameter.element.eval.node_id,
             grip: Handle::NULL,
+            grip_location: None,
             name: p.labels.first().cloned().unwrap_or_default(),
             base: v(p.native.definition_base_point),
             end: v(p.native.definition_end_point),
@@ -294,6 +306,7 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
             handle: p.handle,
             id: p.native.parameter.element.eval.node_id,
             grip: Handle::NULL,
+            grip_location: None,
             name: p.label,
             base: v(p.native.definition_base_point),
             end: v(p.native.definition_end_point),
@@ -367,6 +380,15 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
             return false;
         }
         p.grip = grips.first().copied().unwrap_or(Handle::NULL);
+        p.grip_location = doc.objects.get(&p.grip).and_then(|object| {
+            let ObjectType::DynamicBlock(object) = object else { return None };
+            match &object.data {
+                DynamicBlockData::LinearGrip(g) => Some(v(g.grip.location)),
+                DynamicBlockData::FlipGrip(g) => Some(v(g.grip.location)),
+                DynamicBlockData::XYGrip(g) | DynamicBlockData::PolarGrip(g) | DynamicBlockData::RotationGrip(g) => Some(v(g.location)),
+                _ => None,
+            }
+        });
         if p.flip {
             if let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&p.grip) {
                 if let DynamicBlockData::FlipGrip(g) = &o.data {

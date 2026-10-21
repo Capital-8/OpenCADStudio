@@ -575,6 +575,7 @@ impl CadCommand for ActionCommand {
 }
 
 pub(crate) struct TestParameterCommand {
+    pub display_offset: DVec3,
     pub insert: Option<Handle>,
     pub document: u64,
     pub definition: Handle,
@@ -600,7 +601,7 @@ impl CadCommand for TestParameterCommand {
             document: self.document,
             definition: self.definition,
             parameter: self.parameter,
-            value: actions::Value::Point(position),
+            value: actions::Value::Point(position - self.display_offset),
         }
     }
     fn on_enter(&mut self) -> CmdResult {

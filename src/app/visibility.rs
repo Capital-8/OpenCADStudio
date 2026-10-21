@@ -12,7 +12,6 @@
 use std::collections::HashSet;
 
 use codec::objects::BlockVisibilityParameter;
-use codec::types::Vector3;
 use codec::{EntityType, Handle};
 
 use crate::scene::model::object::{GripDef, GripShape};
@@ -374,11 +373,9 @@ impl OpenCADStudio {
         // `def_point` is a block-definition coordinate (see the codec's
         // BlockVisibilityParameter), so the grip follows the same base-point
         // convention as the rendered reference.
-        let wp = crate::scene::render_graph::insert_transform(doc, ins).apply(Vector3::new(
-            param.def_point.x,
-            param.def_point.y,
-            param.def_point.z,
-        ));
+        let point = crate::scene::block_grips::config::locations(doc, def_block, param.handle).ok()
+            .and_then(|grips| grips.into_iter().next()).map(|grip| grip.point).unwrap_or(param.def_point);
+        let wp = crate::scene::render_graph::insert_transform(doc, ins).apply(point);
         let state_names: Vec<String> = param.states.iter().map(|s| s.name.clone()).collect();
         let anon_name = ins.block_name.clone();
         let current = Self::current_visibility_state(doc, def_block, &anon_name, param);

@@ -25,7 +25,14 @@ impl GripSetCommand {
     ) -> Result<Self, &'static str> {
         let candidates = edit::items(doc, definition)
             .into_iter()
-            .filter_map(|item| {
+            .filter_map(|mut item| {
+                if let Ok(grips) = config::locations(doc, definition, item.handle) {
+                    item.grips.extend(
+                        grips
+                            .into_iter()
+                            .map(|grip| (edit::Part::Point, grip.point)),
+                    );
+                }
                 let choices = config::choices(doc, definition, item.handle);
                 (!choices.is_empty()).then_some((item, choices))
             })

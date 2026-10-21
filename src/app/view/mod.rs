@@ -1214,11 +1214,9 @@ bg={bg_ms:.1}ms n={view_count}"
                     &tab.scene.document,
                     session.br_handle,
                 )?;
-                let location = glam::DVec3::new(
-                    parameter.def_point.x,
-                    parameter.def_point.y,
-                    parameter.def_point.z,
-                );
+                let native_point = crate::scene::block_grips::config::locations(&tab.scene.document, session.br_handle, parameter.handle).ok()
+                    .and_then(|grips| grips.into_iter().next()).map(|grip| grip.point).unwrap_or(parameter.def_point);
+                let location = glam::DVec3::new(native_point.x, native_point.y, native_point.z);
                 let point = tab.scene.camera.borrow().project(location, vp_bounds)?;
                 let point = iced::Point::new(vp_bounds.x + point.x, vp_bounds.y + point.y);
                 (point.x.is_finite() && point.y.is_finite()).then(|| {
@@ -1282,6 +1280,9 @@ bg={bg_ms:.1}ms n={view_count}"
                             p.native.definition_base_point,
                         )
                     })
+                    .chain(crate::scene::block_point_parameter::parameters(&tab.scene.document, session.br_handle).into_iter().map(|(handle, p)| {
+                        (handle, crate::scene::block_distance_parameter::Graphic::default(), p.parameter.definition_point)
+                    }))
                     .chain(
                         crate::scene::block_orientation_parameter::parameters(
                             &tab.scene.document,
@@ -1340,6 +1341,12 @@ bg={bg_ms:.1}ms n={view_count}"
                             (handle, g, p.parameter.definition_point)
                         }),
                     )
+                    .chain(crate::scene::block_authoring::edit::items(&tab.scene.document, session.br_handle).into_iter().filter_map(|item| {
+                        let native = tab.scene.document.objects.get(&item.handle)?;
+                        if matches!(native, codec::objects::ObjectType::DynamicBlock(object) if matches!(object.data, codec::objects::DynamicBlockData::PropertiesTable(_))) {
+                            Some((item.handle, item.graphic, item.grips.first()?.1))
+                        } else { None }
+                    }))
                     .chain(
                         crate::scene::block_actions::actions(
                             &tab.scene.document,
@@ -1368,7 +1375,8 @@ bg={bg_ms:.1}ms n={view_count}"
                             (handle, g, action.display_location)
                         }),
                     )
-                    .filter_map(|(handle, graphic, marker_tail)| {
+                    .filter_map(|(handle, mut graphic, marker_tail)| {
+                        let native_grips = crate::scene::block_grips::config::apply_graphic(&tab.scene.document, session.br_handle, handle, &mut graphic);
                         let project = |p: codec::types::Vector3| {
                             let p = tab
                                 .scene
@@ -1395,7 +1403,9 @@ bg={bg_ms:.1}ms n={view_count}"
                                 Some((
                                     project(point)?,
                                     if oriented {
-                                        Some(project(marker_tail)?)
+                                        let tail = native_grips.as_ref().and_then(|grips| grips.iter().find(|grip| grip.point == point))
+                                            .and_then(|grip| grip.direction.map(|direction| point - direction)).unwrap_or(marker_tail);
+                                        Some(project(tail)?)
                                     } else {
                                         None
                                     },

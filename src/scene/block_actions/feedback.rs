@@ -116,7 +116,7 @@ pub(crate) fn value_markers(doc: &CadDocument, p: &Parameter, value: Value) -> V
         _ => {}
     }
     points.retain(|point| point.is_finite());
-    points
+    points.into_iter().map(|point| grip_position(p, Value::Point(point))).collect()
 }
 
 pub(crate) fn dependencies(doc: &CadDocument, definition: Handle, selected: Handle) -> Vec<Handle> {

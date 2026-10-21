@@ -611,6 +611,123 @@ pub(crate) fn count(doc: &CadDocument, definition: Handle, parameter: Handle) ->
     Some(config.ids.iter().filter(|id| **id > 0).count())
 }
 
+pub(crate) struct NativeGrip {
+    pub role: usize,
+    pub handle: Handle,
+    pub point: Vector3,
+    pub key_point: Vector3,
+    pub direction: Option<Vector3>,
+}
+
+pub(crate) fn locations(
+    doc: &CadDocument,
+    definition: Handle,
+    parameter: Handle,
+) -> Result<Vec<NativeGrip>, &'static str> {
+    let config = Config::read(doc, definition, parameter)?;
+    let graph = authoring::graph(doc, definition)?.unwrap();
+    let mut result = Vec::new();
+    for (role, id) in config.ids.iter().enumerate().filter(|(_, id)| **id > 0) {
+        let candidates = doc
+            .objects
+            .iter()
+            .filter_map(|(handle, object)| {
+                let ObjectType::DynamicBlock(object) = object else {
+                    return None;
+                };
+                if object.owner != graph {
+                    return None;
+                }
+                let native = super::grip(&object.data)?;
+                if native.element.eval.node_id != *id {
+                    return None;
+                }
+                let direction = match &object.data {
+                    DynamicBlockData::LinearGrip(g) | DynamicBlockData::AlignmentGrip(g) => {
+                        Some(g.orientation)
+                    }
+                    DynamicBlockData::FlipGrip(g) => {
+                        Some(Vector3::new(-g.orientation.y, g.orientation.x, 0.))
+                    }
+                    _ => None,
+                };
+                Some(NativeGrip {
+                    role,
+                    handle: *handle,
+                    point: native.location,
+                    key_point: config.point(role),
+                    direction,
+                })
+            })
+            .collect::<Vec<_>>();
+        if candidates.len() != 1 {
+            return Err("The parameter has an unavailable or ambiguous grip.");
+        }
+        result.extend(candidates);
+    }
+    if result
+        .iter()
+        .map(|g| g.handle)
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+        != result.len()
+    {
+        return Err("The parameter has ambiguous grip roles.");
+    }
+    Ok(result)
+}
+
+pub(crate) fn set_location(
+    doc: &mut CadDocument,
+    definition: Handle,
+    parameter: Handle,
+    role: usize,
+    point: Vector3,
+) -> Result<bool, &'static str> {
+    let config = Config::read(doc, definition, parameter)?;
+    let grip = locations(doc, definition, parameter)?
+        .into_iter()
+        .find(|grip| grip.role == role)
+        .ok_or("The selected native grip is unavailable.")?;
+    if ![point.x, point.y, point.z]
+        .iter()
+        .all(|value| value.is_finite())
+        || (point.z - config.point(role).z).abs() > 1e-8
+    {
+        return Err("Specify a finite grip location in the parameter plane.");
+    }
+    if grip.point == point {
+        return Ok(false);
+    }
+    let ObjectType::DynamicBlock(object) = doc.objects.get_mut(&grip.handle).unwrap() else {
+        unreachable!()
+    };
+    super::grip_mut(&mut object.data).unwrap().location = point;
+    Ok(true)
+}
+
+/// Keep native display glyphs separate from definition geometry and labels.
+pub(crate) fn apply_graphic(
+    doc: &CadDocument,
+    definition: Handle,
+    parameter: Handle,
+    graphic: &mut crate::scene::block_distance_parameter::Graphic,
+) -> Option<Vec<NativeGrip>> {
+    let config = Config::read(doc, definition, parameter).ok()?;
+    let grips = locations(doc, definition, parameter).ok()?;
+    graphic.grips.clear();
+    graphic.round_grips.clear();
+    graphic.lookup_grips.clear();
+    for grip in &grips {
+        match config.kind {
+            Kind::Rotation => graphic.round_grips.push(grip.point),
+            Kind::Lookup | Kind::Table | Kind::Visibility => graphic.lookup_grips.push(grip.point),
+            _ => graphic.grips.push((grip.point, grip.direction.is_some())),
+        }
+    }
+    Some(grips)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -728,6 +845,203 @@ mod tests {
         handles.sort();
         handles
     }
+    #[test]
+    fn block_grip_locations_follow_key_point_edits_without_losing_offsets() {
+        use crate::scene::block_authoring::edit::{self, Part};
+        for family in 0..10 {
+            let (mut doc, definition, parameter) = fixture(family);
+            let maximum = *choices(&doc, definition, parameter).last().unwrap();
+            set(&mut doc, definition, parameter, Some(maximum)).unwrap();
+            for grip in locations(&doc, definition, parameter).unwrap() {
+                set_location(
+                    &mut doc,
+                    definition,
+                    parameter,
+                    grip.role,
+                    grip.point + Vector3::new(15., 7., 0.),
+                )
+                .unwrap();
+            }
+            assert!(edit::items(&doc, definition)
+                .iter()
+                .any(|item| item.handle == parameter));
+            let before = locations(&doc, definition, parameter).unwrap();
+            let part = if (1..=6).contains(&family) {
+                Part::Base
+            } else {
+                Part::Point
+            };
+            edit::move_part(
+                &mut doc,
+                definition,
+                parameter,
+                part,
+                Vector3::new(-2., -3., 0.),
+            )
+            .unwrap();
+            for (old, new) in before
+                .iter()
+                .zip(locations(&doc, definition, parameter).unwrap())
+            {
+                assert_eq!(old.handle, new.handle);
+                assert!((new.point - new.key_point - (old.point - old.key_point)).length() < 1e-8);
+            }
+            if family == 1 {
+                let grips = locations(&doc, definition, parameter).unwrap();
+                let base = grips
+                    .iter()
+                    .find(|grip| grip.role == 0)
+                    .unwrap()
+                    .direction
+                    .unwrap();
+                let end = grips
+                    .iter()
+                    .find(|grip| grip.role == 1)
+                    .unwrap()
+                    .direction
+                    .unwrap();
+                assert!((base + end).length() < 1e-8);
+            }
+            check_graph(&doc, definition);
+        }
+    }
+
+    #[test]
+    fn block_grip_alignment_restores_its_required_grip_and_direction() {
+        let (mut doc, definition, parameter) = fixture(6);
+        let native = locations(&doc, definition, parameter).unwrap().remove(0);
+        let graph_handle = authoring::graph(&doc, definition).unwrap().unwrap();
+        let graph = graph_mut(&mut doc, graph_handle);
+        let node = graph
+            .nodes
+            .iter()
+            .find(|node| node.expression == native.handle)
+            .unwrap()
+            .id;
+        let edges = graph
+            .edges
+            .iter()
+            .filter(|edge| edge.source_node == node || edge.destination_node == node)
+            .map(|edge| edge.id)
+            .collect::<Vec<_>>();
+        for edge in edges {
+            authoring::graph::remove(graph, edge);
+        }
+        graph.nodes.retain(|n| n.id != node);
+        doc.objects.remove(&native.handle);
+        let ObjectType::DynamicBlock(object) = doc.objects.get_mut(&parameter).unwrap() else {
+            panic!()
+        };
+        let DynamicBlockData::AlignmentParameter(p) = &mut object.data else {
+            panic!()
+        };
+        p.parameter.property_states[0] = 0;
+        assert_eq!(choices(&doc, definition, parameter), vec![1]);
+        assert!(set(&mut doc, definition, parameter, Some(0)).is_err());
+        assert!(set(&mut doc, definition, parameter, Some(1)).unwrap());
+        let restored = locations(&doc, definition, parameter).unwrap().remove(0);
+        assert!((restored.direction.unwrap() - native.direction.unwrap()).length() < 1e-8);
+        check_graph(&doc, definition);
+    }
+
+    #[test]
+    fn block_grip_locations_preserve_definition_values_graphs_and_roundtrip() {
+        for family in 0..10 {
+            let (mut doc, definition, parameter) = fixture(family);
+            let maximum = *choices(&doc, definition, parameter).last().unwrap();
+            set(&mut doc, definition, parameter, Some(maximum)).unwrap();
+            let grips = locations(&doc, definition, parameter).unwrap();
+            let handles = grips.iter().map(|grip| grip.handle).collect::<Vec<_>>();
+            if family <= 5 {
+                let p = actions::all_parameters(&doc, definition)
+                    .into_iter()
+                    .find(|p| p.handle == parameter)
+                    .unwrap();
+                let native = locations(&doc, definition, parameter)
+                    .unwrap()
+                    .into_iter()
+                    .find(|g| g.handle == p.grip)
+                    .unwrap();
+                assert_eq!(
+                    actions::grip_position(&p, actions::value(&doc, &p).unwrap()),
+                    actions::v(native.point)
+                );
+            }
+            let before = doc.clone();
+            for grip in &grips {
+                let point = grip.point + Vector3::new(15., 7., 0.);
+                assert!(set_location(&mut doc, definition, parameter, grip.role, point).unwrap());
+                assert!(!set_location(&mut doc, definition, parameter, grip.role, point).unwrap());
+            }
+            assert!(before
+                .objects
+                .iter()
+                .filter(|(handle, _)| !handles.contains(handle))
+                .all(|(handle, object)| &doc.objects[handle] == object));
+            assert_eq!(
+                doc.entities().cloned().collect::<Vec<_>>(),
+                before.entities().cloned().collect::<Vec<_>>()
+            );
+            check_graph(&doc, definition);
+            if family <= 5 {
+                let p = actions::all_parameters(&doc, definition)
+                    .into_iter()
+                    .find(|p| p.handle == parameter)
+                    .unwrap();
+                let native = locations(&doc, definition, parameter)
+                    .unwrap()
+                    .into_iter()
+                    .find(|g| g.handle == p.grip)
+                    .unwrap();
+                assert_eq!(
+                    actions::grip_position(&p, actions::value(&doc, &p).unwrap()),
+                    actions::v(native.point)
+                );
+            }
+            let changed = doc.clone();
+            for point in [
+                Vector3::new(f64::INFINITY, 0., 0.),
+                Vector3::new(1., 2., 1.),
+            ] {
+                assert!(
+                    set_location(&mut doc, definition, parameter, grips[0].role, point).is_err()
+                );
+                assert_eq!(doc, changed);
+            }
+            assert!(set_location(&mut doc, definition, parameter, 99, Vector3::ZERO).is_err());
+            assert_eq!(doc, changed);
+            for saved in [
+                DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap()))
+                    .read()
+                    .unwrap(),
+                DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap()))
+                    .unwrap()
+                    .read()
+                    .unwrap(),
+            ] {
+                let saved_grips = locations(&saved, definition, parameter).unwrap();
+                for (original, saved) in grips.iter().zip(&saved_grips) {
+                    assert_eq!(saved.handle, original.handle);
+                    assert_eq!(saved.point, original.point + Vector3::new(15., 7., 0.));
+                }
+                let mut graphic = crate::scene::block_distance_parameter::Graphic::default();
+                apply_graphic(&saved, definition, parameter, &mut graphic).unwrap();
+                assert_eq!(
+                    graphic.grips.len() + graphic.round_grips.len() + graphic.lookup_grips.len(),
+                    maximum
+                );
+            }
+            set(&mut doc, definition, parameter, None).unwrap();
+            for (old, restored) in grips
+                .iter()
+                .zip(locations(&doc, definition, parameter).unwrap())
+            {
+                assert_eq!(old.handle, restored.handle);
+                assert_eq!(old.point, restored.point);
+            }
+        }
+    }
+
     #[test]
     fn block_grip_counts_preserve_action_graphs_and_native_roundtrips() {
         for family in 0..10 {

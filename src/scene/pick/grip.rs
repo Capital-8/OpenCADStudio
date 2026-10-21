@@ -301,6 +301,28 @@ pub fn grips_to_screen_paper(
         .collect()
 }
 
+/// Start of the ID range used by custom block parameter markers.
+pub const CUSTOM_GRIP_ID_START: usize = usize::MAX / 2;
+
+pub(crate) fn is_custom_block_marker(grip: &GripDef) -> bool {
+    grip.id >= CUSTOM_GRIP_ID_START && grip.shape == GripShape::Triangle
+}
+
+fn nearer_grip(
+    distance: f32,
+    best_distance: f32,
+    grip: &GripDef,
+    best: &Option<(usize, usize, bool, DVec3)>,
+    grips: &[GripDef],
+) -> bool {
+    distance < best_distance
+        || (distance == best_distance
+            && is_custom_block_marker(grip)
+            && best
+                .as_ref()
+                .is_some_and(|(index, _, _, _)| !is_custom_block_marker(&grips[*index])))
+}
+
 /// Paper-space hit-test variant (mirrors `find_hit_grip` but uses 2-D projection).
 pub fn find_hit_grip_paper(
     cursor: Point,
@@ -325,7 +347,7 @@ pub fn find_hit_grip_paper(
         let dx = screen.x - cursor.x;
         let dy = screen.y - cursor.y;
         let d = (dx * dx + dy * dy).sqrt();
-        if d < best_dist {
+        if nearer_grip(d, best_dist, g, &best, grips) {
             best_dist = d;
             best = Some((index, g.id, g.is_midpoint, g.world));
         }
@@ -350,7 +372,7 @@ pub fn find_hit_grip(
             continue;
         };
         let d = marker_distance(g.shape, screen, dir, cursor);
-        if d < best_dist {
+        if nearer_grip(d, best_dist, g, &best, grips) {
             best_dist = d;
             best = Some((index, g.id, g.is_midpoint, g.world));
         }
@@ -422,7 +444,7 @@ pub fn find_hit_grip_rte(
             continue;
         };
         let d = marker_distance(g.shape, screen, dir, cursor);
-        if d < best_dist {
+        if nearer_grip(d, best_dist, g, &best, grips) {
             best_dist = d;
             best = Some((index, g.id, g.is_midpoint, g.world));
         }
@@ -433,6 +455,68 @@ pub fn find_hit_grip_rte(
 #[cfg(test)]
 mod tests {
     use super::GripEditMode;
+
+    #[test]
+    fn custom_grips_win_coincident_hits_without_overriding_nearer_entity_grips() {
+        use super::*;
+        let scene = crate::scene::Scene::new();
+        let bounds = Rectangle::with_size(iced::Size::new(1000., 800.));
+        let mut camera = scene.camera.borrow_mut();
+        camera.fit_to_bounds_f64(DVec3::new(-5., -4., 0.), DVec3::new(5., 4., 0.), 1.25);
+        let standard = GripDef {
+            id: 0,
+            world: DVec3::ZERO,
+            is_midpoint: false,
+            shape: GripShape::Square,
+            dir: None,
+            axis: None,
+        };
+        let custom = GripDef {
+            id: CUSTOM_GRIP_ID_START,
+            world: DVec3::ZERO,
+            is_midpoint: false,
+            shape: GripShape::Triangle,
+            dir: Some(DVec3::Y),
+            axis: None,
+        };
+        let screen = camera.project(DVec3::ZERO, bounds).unwrap();
+        let cursor = Point::new(screen.x, screen.y);
+        for grips in [
+            vec![standard.clone(), custom.clone()],
+            vec![custom.clone(), standard.clone()],
+        ] {
+            assert_eq!(
+                find_hit_grip(cursor, &grips, &camera, bounds).unwrap().1,
+                CUSTOM_GRIP_ID_START
+            );
+            assert_eq!(
+                find_hit_grip_rte(
+                    cursor,
+                    &grips,
+                    camera.view_proj_rte(bounds),
+                    camera.eye(),
+                    bounds
+                )
+                .unwrap()
+                .1,
+                CUSTOM_GRIP_ID_START
+            );
+            assert_eq!(
+                find_hit_grip_paper(Point::new(500., 400.), &grips, 0., 0., 5., 4., bounds)
+                    .unwrap()
+                    .1,
+                CUSTOM_GRIP_ID_START
+            );
+        }
+        let mut nearby = custom;
+        nearby.world.x = 0.01;
+        assert_eq!(
+            find_hit_grip(cursor, &[standard, nearby], &camera, bounds)
+                .unwrap()
+                .1,
+            0
+        );
+    }
 
     #[test]
     fn scalar_dynamic_input_modes_include_move_parallel() {

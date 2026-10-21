@@ -860,6 +860,8 @@ fn block_actions_rotate_flip_mouse_grips_authoring_history_and_reopen() {
     let rotate =
         actions::parameters(&app.tabs[source].scene.document, def, Kind::Rotate)[0].clone();
     let flip = actions::parameters(&app.tabs[source].scene.document, def, Kind::Flip)[0].clone();
+    let flip_at = actions::grip_position(&flip, actions::Value::Flip(false));
+    assert!(flip_at.distance(flip.base) < 1e-8);
     let targets = members(&app);
     for (kind, p) in [("Rotate", &rotate), ("Flip", &flip)] {
         let depth = app.tabs[source].history.undo_stack.len();
@@ -949,7 +951,7 @@ fn block_actions_rotate_flip_mouse_grips_authoring_history_and_reopen() {
             .selected_grips
             .iter()
             .find(|g| {
-                super::block_actions::is_test_grip(g.id) && g.world.distance(flip.reference) < 1e-5
+                super::block_actions::is_test_grip(g.id) && g.world.distance(flip_at) < 1e-5
             })
             .unwrap();
         assert_eq!(
@@ -957,7 +959,7 @@ fn block_actions_rotate_flip_mouse_grips_authoring_history_and_reopen() {
             crate::scene::model::object::GripShape::Triangle
         );
         assert!(flip_grip.dir.unwrap().distance(glam::DVec3::Y) < 1e-5);
-        click(&mut app, flip.reference);
+        click(&mut app, flip_at);
         assert!(
             app.tabs[i].active_cmd.is_none(),
             "Flip toggles immediately without point input"
@@ -969,7 +971,7 @@ fn block_actions_rotate_flip_mouse_grips_authoring_history_and_reopen() {
             .selected_grips
             .iter()
             .find(|g| {
-                super::block_actions::is_test_grip(g.id) && g.world.distance(flip.reference) < 1e-5
+                super::block_actions::is_test_grip(g.id) && g.world.distance(flip_at) < 1e-5
             })
             .unwrap();
         assert!(flip_grip.dir.unwrap().distance(-glam::DVec3::Y) < 1e-5);
@@ -988,7 +990,7 @@ fn block_actions_rotate_flip_mouse_grips_authoring_history_and_reopen() {
                 .unwrap();
             app.tabs[i].scene.selected.insert(insert);
             app.refresh_properties();
-            click(&mut app, flip.reference);
+            click(&mut app, flip_at);
             check(&app, insert, Vector3::UNIT_Y);
             let EntityType::Line(original) =
                 app.tabs[i].scene.document.get_entity(targets[0]).unwrap()
@@ -5662,5 +5664,72 @@ fn block_grip_count_hides_and_restores_native_visibility_grip_after_save() {
         app.refresh_visibility_grip([0.;3]);
         assert_eq!(app.tabs[i].visibility_grip.is_some(), desired > 0);
         if desired == 0 { begin(&mut app, reference); }
+    }
+}
+
+#[test]
+fn block_grip_locations_edit_undo_and_drag_in_transformed_references_and_test_block() {
+    use crate::scene::{block_actions as actions, block_grips::config};
+    use glam::DVec3;
+    for testing in [false, true] {
+        let (mut app, reference) = fixture();
+        begin(&mut app, reference);
+        let source = app.active_tab;
+        let _ = app.run_command_line("BPARAMETER LINEAR 0,0 10,0 5,2");
+        let definition = app.tabs[source].active_block_edit_session().unwrap().br_handle;
+        let parameter = actions::all_parameters(&app.tabs[source].scene.document, definition)[0].handle;
+        let targets = members(&app);
+        actions::create(&mut app.tabs[source].scene.document, definition, actions::Kind::Move, parameter, &targets, DVec3::ZERO).unwrap();
+        app.tabs[source].selected_authoring = Some(parameter);
+        app.refresh_properties();
+        let parameter_before = app.tabs[source].scene.document.objects[&parameter].clone();
+        let depth = app.tabs[source].history.undo_stack.len();
+        for (field, value) in [("authoring_display_grip_end_x", "20+5"), ("authoring_display_grip_end_y", "7")] {
+            let _ = app.update(Message::PropGeomInput { field, value: value.into() });
+            let _ = app.update(Message::PropGeomCommit(field));
+        }
+        assert_eq!(app.tabs[source].scene.document.objects[&parameter], parameter_before);
+        assert_eq!(config::locations(&app.tabs[source].scene.document, definition, parameter).unwrap()[0].point, Vector3::new(25., 7., 0.));
+        assert_eq!(app.tabs[source].history.undo_stack.len(), depth + 2);
+        let before = app.tabs[source].scene.document.clone();
+        let _ = app.update(Message::PropGeomInput { field: "authoring_display_grip_end_y", value: "NaN".into() });
+        let _ = app.update(Message::PropGeomCommit("authoring_display_grip_end_y"));
+        assert_eq!(app.tabs[source].scene.document, before);
+        app.undo_steps(2);
+        assert_eq!(config::locations(&app.tabs[source].scene.document, definition, parameter).unwrap()[0].point, Vector3::new(10., 0., 0.));
+        app.redo_steps(2);
+        if testing { let _ = app.open_block_test(source); }
+        else { let _ = app.dispatch_command("BSAVE"); let _ = app.dispatch_command("BCLOSE"); }
+        let i = app.active_tab;
+        let insert = app.tabs[i].block_test.as_ref().map(|test| test.insert).unwrap_or(reference);
+        let EntityType::Insert(native) = app.tabs[i].scene.document.get_entity_mut(insert).unwrap() else { panic!() };
+        native.insert_point = Vector3::new(100., 200., 0.);
+        native.rotation = std::f64::consts::FRAC_PI_2;
+        native.set_x_scale(2.); native.set_y_scale(2.); native.set_z_scale(2.);
+        app.tabs[i].scene.select_entity(insert, true);
+        app.tabs[i].selected_handle = Some(insert);
+        app.tabs[i].selected_grips.clear(); app.tabs[i].selected_grip_handles.clear();
+        app.refresh_test_action_grips([0.; 3]);
+        let id = super::block_actions::TEST_GRIP_START;
+        let displayed = app.tabs[i].selected_grips.iter().find(|grip| grip.id == id).unwrap().world;
+        assert!(displayed.distance(DVec3::new(86., 250., 0.)) < 1e-8);
+        let grip = config::locations(&app.tabs[i].scene.document, definition, parameter).unwrap()[0].handle;
+        let grip_before = app.tabs[i].scene.document.objects[&grip].clone();
+        assert!(app.start_test_action_grip(insert, id));
+        let before = app.tabs[i].scene.document.clone();
+        let _ = app.update(Message::CommandEscape);
+        assert_eq!(app.tabs[i].scene.document, before);
+        app.tabs[i].scene.select_entity(insert, true);
+        app.tabs[i].selected_handle = Some(insert);
+        assert!(app.start_test_action_grip(insert, id));
+        let result = app.tabs[i].active_cmd.as_mut().unwrap().on_point(DVec3::new(86., 260., 0.));
+        let _ = app.handle_block_action_result(result);
+        let p = actions::all_parameters(&app.tabs[i].scene.document, definition).remove(0);
+        let value = if testing { actions::value(&app.tabs[i].scene.document, &p) } else { actions::instance::value(&app.tabs[i].scene.document, insert, &p) }.unwrap();
+        assert!(matches!(value, actions::Value::Point(point) if point.distance(DVec3::new(15.,0.,0.)) < 1e-8));
+        assert_eq!(app.tabs[i].scene.document.objects[&grip], grip_before);
+        let EntityType::Insert(native) = app.tabs[i].scene.document.get_entity(insert).unwrap() else { panic!() };
+        let line = app.tabs[i].scene.document.block_records.get(&native.block_name).unwrap().entity_handles.iter().find_map(|handle| match app.tabs[i].scene.document.get_entity(*handle) { Some(EntityType::Line(line)) => Some(line), _ => None }).unwrap();
+        assert!(line.start.distance(&Vector3::new(5., 0., 0.)) < 1e-8);
     }
 }

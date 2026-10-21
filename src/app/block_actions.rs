@@ -6,7 +6,7 @@ use iced::Task;
 
 // These grips start an ordinary point-input command, keeping snapping, typed
 // coordinates and Escape on the command driver's existing path.
-pub(super) const TEST_GRIP_START: usize = usize::MAX / 2;
+pub(super) const TEST_GRIP_START: usize = crate::scene::pick::grip::CUSTOM_GRIP_ID_START;
 pub(super) fn is_test_grip(id: usize) -> bool {
     (TEST_GRIP_START..usize::MAX).contains(&id)
 }
@@ -615,6 +615,28 @@ impl OpenCADStudio {
         }
         Task::none()
     }
+    pub(super) fn custom_block_grip_at_cursor(&self, i: usize, point: iced::Point, width: f32, height: f32) -> bool {
+        use crate::scene::pick::grip::{find_hit_grip, find_hit_grip_paper, find_hit_grip_rte, is_custom_block_marker};
+        let tab = &self.tabs[i];
+        if !tab.selected_grips.iter().any(is_custom_block_marker) { return false }
+        let frame = tab.scene.viewport_edit_frame((width, height));
+        let rect = frame.as_ref().map(|(_, rect)| *rect).unwrap_or_else(|| tab.scene.active_model_tile_bounds(width, height));
+        let bounds = iced::Rectangle::with_size(iced::Size::new(rect.width, rect.height));
+        let local = iced::Point::new(point.x - rect.x, point.y - rect.y);
+        let hit = if let Some((camera, _)) = frame {
+            find_hit_grip_rte(local, &tab.selected_grips, camera.view_proj_rte(bounds), camera.eye(), bounds)
+        } else if tab.scene.current_layout != "Model" {
+            let camera = tab.scene.camera.borrow();
+            let half_h = camera.ortho_size();
+            let half_w = half_h * rect.width / rect.height.max(1.);
+            find_hit_grip_paper(local, &tab.selected_grips, camera.target.x as f32, camera.target.y as f32, half_w, half_h, bounds)
+        } else {
+            find_hit_grip(local, &tab.selected_grips, &tab.scene.camera.borrow(), bounds)
+        };
+        hit.is_some_and(|(index, _, _, _)| is_custom_block_marker(&tab.selected_grips[index])
+            && tab.selected_grip_handles.get(index).is_some_and(|handle| matches!(tab.scene.document.get_entity(*handle), Some(EntityType::Insert(_)))))
+    }
+
     pub(super) fn refresh_test_action_grips(&mut self, wo: [f64; 3]) {
         let i = self.active_tab;
         let tab = &self.tabs[i];
@@ -692,7 +714,9 @@ impl OpenCADStudio {
             let definition = test.definition;
             return self.toggle_action_grip(document, definition, p.handle, None, state);
         }
+        let Some(display_offset) = actions::world_grip_offset(&tab.scene.document, test.insert, &p) else { return false };
         let command = crate::modules::block_editor::action::TestParameterCommand {
+            display_offset,
             insert: None,
             document: tab.id,
             definition: test.definition,
@@ -781,7 +805,9 @@ impl OpenCADStudio {
             let document = tab.id;
             return self.toggle_action_grip(document, def, p.handle, Some(handle), state);
         }
+        let Some(display_offset) = actions::world_grip_offset(&tab.scene.document, handle, &p) else { return false };
         let command = crate::modules::block_editor::action::TestParameterCommand {
+            display_offset,
             insert: Some(handle),
             document: tab.id,
             definition: def,

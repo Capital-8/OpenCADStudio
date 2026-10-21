@@ -1559,6 +1559,7 @@ impl OpenCADStudio {
 
             // UCS icon hover highlight (suppressed mid grip-drag).
             self.ucs_icon_hover = self.ucs_grip_drag.is_none()
+                && !self.custom_block_grip_at_cursor(i, p, svw, svh)
                 && self
                     .ucs_icon_hit_info(i, svw, svh)
                     .map(|h| over_ucs_icon(p, &h))
@@ -4621,12 +4622,19 @@ impl OpenCADStudio {
             }
         }
 
+        let custom_grip_at_cursor = self.tabs[i].active_cmd.is_none() && self.custom_block_grip_at_cursor(i, p, vw, vh);
+        if custom_grip_at_cursor {
+            self.ucs_icon_selected = false;
+            self.ucs_icon_hover = false;
+        }
+
         // UCS icon: click to select (grips appear), then drag a grip to
         // move/rotate. A click off the icon clears the selection. Works
         // in the corner too (parked icon), not just at the origin.
         if self.show_ucs_icon
             && self.tabs[i].active_cmd.is_none()
             && self.tabs[i].active_block_edit_session().is_none()
+            && !custom_grip_at_cursor
         {
             if let Some(hit) = self.ucs_icon_hit_info(i, vw, vh) {
                 // Already selected → a press on a grip starts the drag.

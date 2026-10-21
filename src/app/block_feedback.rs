@@ -377,6 +377,7 @@ mod tests {
         app.grip_hover = None;
         app.tabs[i].active_cmd = Some(Box::new(
             crate::modules::block_editor::action::TestParameterCommand {
+                display_offset: DVec3::ZERO,
                 insert: Some(insert),
                 document: app.tabs[i].id,
                 definition,
