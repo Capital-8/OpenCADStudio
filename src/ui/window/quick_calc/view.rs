@@ -8,8 +8,8 @@ use iced::widget::{
 use iced::{Background, Border, Color, Element, Fill, Font, Length, Theme};
 
 use super::{
-    assignment_target, continues_ans, has_length_suffix, Key, Preview, QuickCalcMsg,
-    QuickCalcPalette, Section, UnitCat, VarScope, INPUT_ID,
+    assignment_target, continues_ans, has_length_suffix, Preview, QuickCalcMsg, QuickCalcPalette,
+    Section, UnitCat, VarScope, INPUT_ID,
 };
 use crate::app::calc::{AngleMode, Value};
 use crate::app::Message;
@@ -17,38 +17,40 @@ use crate::modules::draw::inquiry::calc_pick::PickKind;
 use crate::ui::dock::{Chrome, PanelId};
 
 pub const ICON: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/quickcalc.svg");
-const POINT: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/point.svg");
+pub(super) const POINT: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/point.svg");
 const DISTANCE: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/distance.svg");
 const ANGLE: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/angle.svg");
 const COPY: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/copy.svg");
 const SEND: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/send.svg");
-const CHEVRON_DOWN: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/chevron_down.svg");
-const CHEVRON_RIGHT: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/chevron_right.svg");
+pub(super) const CHEVRON_DOWN: &[u8] =
+    include_bytes!("../../../../assets/icons/quickcalc/chevron_down.svg");
+pub(super) const CHEVRON_RIGHT: &[u8] =
+    include_bytes!("../../../../assets/icons/quickcalc/chevron_right.svg");
 const SWAP: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/swap.svg");
 const DELETE: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/delete.svg");
 const PLUS: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/plus.svg");
 const ERROR: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/error.svg");
 
-const MONO: Font = Font::MONOSPACE;
+pub(super) const MONO: Font = Font::MONOSPACE;
 /// The heavier weight for keys, section headers and results. The default
 /// font is the system's, which often has no Medium, and asking for one
 /// would quietly come back Regular; Semibold is reliably there.
-const STRONG: Font = Font {
+pub(super) const STRONG: Font = Font {
     weight: iced::font::Weight::Semibold,
     ..Font::DEFAULT
 };
-const MONO_STRONG: Font = Font {
+pub(super) const MONO_STRONG: Font = Font {
     weight: iced::font::Weight::Semibold,
     ..Font::MONOSPACE
 };
 
-fn m(msg: QuickCalcMsg) -> Message {
+pub(super) fn m(msg: QuickCalcMsg) -> Message {
     Message::QuickCalc(msg)
 }
 
 // ── Colours ─────────────────────────────────────────────────────────────
 
-fn mix(a: Color, b: Color, t: f32) -> Color {
+pub(super) fn mix(a: Color, b: Color, t: f32) -> Color {
     Color {
         r: a.r + (b.r - a.r) * t,
         g: a.g + (b.g - a.g) * t,
@@ -87,40 +89,54 @@ fn on_accent(accent: Color) -> Color {
 /// The pallet's colours, all derived from the theme so Fusion Black, Fusion
 /// White and every other theme get a matching pallet.
 #[derive(Clone, Copy)]
-struct Tokens {
-    weak: Color,
-    strong: Color,
-    line: Color,
-    text: Color,
-    muted: Color,
-    faint: Color,
-    accent: Color,
-    on_accent: Color,
-    warn: Color,
-    danger: Color,
+pub(super) struct Tokens {
+    pub(super) weak: Color,
+    pub(super) strong: Color,
+    pub(super) line: Color,
+    pub(super) text: Color,
+    pub(super) muted: Color,
+    pub(super) faint: Color,
+    pub(super) accent: Color,
+    pub(super) on_accent: Color,
+    pub(super) danger: Color,
     /// Error text: the danger colour, lightened on dark chrome for contrast.
-    danger_text: Color,
-    field: Color,
-    digit: Color,
-    digit_line: Color,
+    pub(super) danger_text: Color,
+    pub(super) field: Color,
+    /// Keypad: function and operator keys, digit keys, their border.
+    pub(super) key: Color,
+    pub(super) key_hover: Color,
+    pub(super) digit: Color,
+    pub(super) digit_hover: Color,
+    pub(super) key_line: Color,
+    /// Flyout panels over the keys, and their shadow.
+    pub(super) fly: Color,
+    pub(super) shadow: Color,
 }
 
-fn tokens(theme: &Theme) -> Tokens {
+pub(super) fn tokens(theme: &Theme) -> Tokens {
     let p = theme.palette();
     let dark = p.is_dark;
     let bg = p.background.base.color;
     let text = p.background.base.text;
-    let line = p.background.neutral.color;
+    // Keys step away from the pallet's background: lighter on dark chrome
+    // (#2A2A2A function, #383838 digit on Fusion Black), darker on light
+    // chrome with white digits (#F3F3F3 / #FFFFFF on Fusion White).
+    let step = |t: f32| {
+        if dark {
+            mix(bg, Color::WHITE, t)
+        } else {
+            mix(bg, Color::BLACK, t)
+        }
+    };
     Tokens {
         weak: p.background.weak.color,
         strong: p.background.strong.color,
-        line,
+        line: p.background.neutral.color,
         text,
         muted: mix(bg, text, 0.68),
         faint: mix(bg, text, 0.52),
         accent: p.primary.base.color,
         on_accent: on_accent(p.primary.base.color),
-        warn: p.warning.base.color,
         danger: p.danger.base.color,
         danger_text: if dark {
             Color::from_rgb8(0xFF, 0x6B, 0x66)
@@ -132,20 +148,25 @@ fn tokens(theme: &Theme) -> Tokens {
         } else {
             Color::WHITE
         },
-        digit: if dark {
-            mix(bg, Color::WHITE, 0.2)
+        key: if dark { step(0.065) } else { step(0.028) },
+        key_hover: if dark { step(0.095) } else { step(0.064) },
+        digit: if dark { step(0.135) } else { Color::WHITE },
+        digit_hover: if dark {
+            step(0.17)
         } else {
-            Color::WHITE
+            mix(Color::WHITE, Color::BLACK, 0.035)
         },
-        digit_line: if dark {
-            mix(bg, Color::WHITE, 0.28)
-        } else {
-            mix(line, Color::BLACK, 0.12)
-        },
+        key_line: if dark { step(0.04) } else { step(0.12) },
+        fly: if dark { step(0.05) } else { Color::WHITE },
+        shadow: Color::BLACK.scale_alpha(if dark { 0.55 } else { 0.16 }),
     }
 }
 
-fn icon<'a>(bytes: &'static [u8], size: f32, color: fn(&Tokens) -> Color) -> Element<'a, Message> {
+pub(super) fn icon<'a>(
+    bytes: &'static [u8],
+    size: f32,
+    color: fn(&Tokens) -> Color,
+) -> Element<'a, Message> {
     svg(crate::ui::icons::themed_handle(bytes))
         .width(size)
         .height(size)
@@ -156,7 +177,10 @@ fn icon<'a>(bytes: &'static [u8], size: f32, color: fn(&Tokens) -> Color) -> Ele
 }
 
 /// A tooltip as the ribbon shows them: after a short delay, on a panel.
-fn tip<'a>(content: impl Into<Element<'a, Message>>, label: String) -> Element<'a, Message> {
+pub(super) fn tip<'a>(
+    content: impl Into<Element<'a, Message>>,
+    label: String,
+) -> Element<'a, Message> {
     tooltip(
         content,
         crate::ui::ribbon::tooltip_content(label),
@@ -168,7 +192,11 @@ fn tip<'a>(content: impl Into<Element<'a, Message>>, label: String) -> Element<'
 }
 
 /// Full-strength text in the theme's text colour.
-fn strong<'a>(s: impl text::IntoFragment<'a>, size: f32, font: Font) -> text::Text<'a, Theme> {
+pub(super) fn strong<'a>(
+    s: impl text::IntoFragment<'a>,
+    size: f32,
+    font: Font,
+) -> text::Text<'a, Theme> {
     text(s)
         .size(size)
         .font(font)
@@ -181,7 +209,7 @@ fn mono<'a>(s: impl text::IntoFragment<'a>, size: f32) -> text::Text<'a, Theme> 
     text(s).size(size).font(MONO)
 }
 
-fn muted<'a>(s: impl text::IntoFragment<'a>, size: f32) -> text::Text<'a, Theme> {
+pub(super) fn muted<'a>(s: impl text::IntoFragment<'a>, size: f32) -> text::Text<'a, Theme> {
     text(s).size(size).style(|theme: &Theme| text::Style {
         color: Some(tokens(theme).muted),
     })
@@ -230,7 +258,7 @@ fn tool<'a>(
     tip(b, label)
 }
 
-fn plain_button_style(theme: &Theme, status: button::Status) -> button::Style {
+pub(super) fn plain_button_style(theme: &Theme, status: button::Status) -> button::Style {
     let t = tokens(theme);
     button::Style {
         background: matches!(status, button::Status::Hovered | button::Status::Pressed)
@@ -243,6 +271,16 @@ fn plain_button_style(theme: &Theme, status: button::Status) -> button::Style {
         text_color: t.text,
         ..Default::default()
     }
+}
+
+/// [`plain_button_style`] without the border, for icon buttons.
+pub(super) fn plain_button_style_borderless(
+    theme: &Theme,
+    status: button::Status,
+) -> button::Style {
+    let mut s = plain_button_style(theme, status);
+    s.border.width = 0.0;
+    s
 }
 
 /// A bordered text button (Cancel, Insert, New variable).
@@ -258,7 +296,12 @@ fn text_button<'a>(
 }
 
 /// One option of a segmented control.
-fn segment<'a>(label: String, on: bool, msg: QuickCalcMsg, fill: bool) -> Element<'a, Message> {
+pub(super) fn segment<'a>(
+    label: String,
+    on: bool,
+    msg: QuickCalcMsg,
+    fill: bool,
+) -> Element<'a, Message> {
     let label = text(label).size(10.5);
     let content = if fill {
         container(label).center(Fill)
@@ -292,7 +335,7 @@ fn segment<'a>(label: String, on: bool, msg: QuickCalcMsg, fill: bool) -> Elemen
     }
 }
 
-fn segmented<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
+pub(super) fn segmented<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
     container(row(items).spacing(1))
         .padding(2)
         .style(|theme: &Theme| container::Style {
@@ -306,238 +349,60 @@ fn segmented<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
         .into()
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum Look {
-    Plain,
-    Digit,
-    Edit,
-    Op,
-    Eq,
-}
-
-fn key<'a>(label: &str, k: Key, look: Look) -> Element<'a, Message> {
-    let t = text(label.to_string())
-        .size(match look {
-            Look::Digit | Look::Op => 13.0,
-            Look::Eq => 14.0,
-            _ => 11.5,
-        })
-        .font(if look == Look::Op {
-            MONO_STRONG
-        } else {
-            STRONG
-        });
-    let b = button(container(t).center(Fill))
-        .width(Fill)
-        .height(28)
-        .padding(0)
-        .on_press(m(QuickCalcMsg::Key(k)))
-        .style(move |theme: &Theme, status| {
-            let t = tokens(theme);
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            let (fill, border, color) = match look {
-                Look::Digit => (
-                    if hovered {
-                        mix(t.digit, t.text, 0.08)
-                    } else {
-                        t.digit
-                    },
-                    t.digit_line,
-                    t.text,
-                ),
-                Look::Eq => (
-                    if hovered {
-                        mix(t.accent, Color::WHITE, 0.1)
-                    } else {
-                        t.accent
-                    },
-                    t.accent,
-                    t.on_accent,
-                ),
-                Look::Edit => (if hovered { t.strong } else { t.weak }, t.warn, t.text),
-                Look::Plain | Look::Op => (if hovered { t.strong } else { t.weak }, t.line, t.text),
-            };
-            button::Style {
-                background: Some(Background::Color(fill)),
-                border: Border {
-                    color: border,
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                text_color: color,
-                ..Default::default()
-            }
-        });
-    b.into()
-}
-
-fn grid<'a>(keys: Vec<Element<'a, Message>>, columns: usize) -> Element<'a, Message> {
-    let mut rows = column![].spacing(3);
-    let mut keys = keys.into_iter().peekable();
-    while keys.peek().is_some() {
-        let cells: Vec<_> = keys.by_ref().take(columns).collect();
-        rows = rows.push(row(cells).spacing(3));
-    }
-    container(rows).padding([6, 2]).into()
-}
-
 // ── Sections ────────────────────────────────────────────────────────────
 
+/// A section's 28 px header: the chevron and title toggle the section;
+/// `meta` (a muted note) or `control` (the keypad's mode switch) sits on the
+/// right, outside the toggle.
 fn section_header<'a>(
     section: Section,
     label: String,
     meta: Option<String>,
+    control: Option<Element<'a, Message>>,
     open: bool,
 ) -> Element<'a, Message> {
     let mut content = row![
         icon(if open { CHEVRON_DOWN } else { CHEVRON_RIGHT }, 10.0, |t| t
             .muted),
-        strong(label, 11.0, STRONG).width(Fill),
+        strong(label, 11.5, STRONG).width(Fill),
     ]
-    .spacing(6)
+    .spacing(7)
     .align_y(iced::Center);
     if let Some(meta) = meta {
         content = content.push(muted(meta, 10.5));
+    }
+    let toggle = button(content)
+        .width(Fill)
+        .height(Fill)
+        .padding([0, 8])
+        .on_press(m(QuickCalcMsg::Toggle(section)))
+        .style(|theme: &Theme, status| {
+            let t = tokens(theme);
+            button::Style {
+                background: matches!(status, button::Status::Hovered)
+                    .then_some(Background::Color(t.strong)),
+                text_color: t.text,
+                ..Default::default()
+            }
+        });
+    let mut bar = row![toggle].align_y(iced::Center);
+    if let Some(control) = control {
+        bar = bar.push(container(control).padding([0, 6]));
     }
     column![
         container(Space::new().width(Fill).height(1)).style(|theme: &Theme| container::Style {
             background: Some(Background::Color(tokens(theme).line)),
             ..Default::default()
         }),
-        button(content)
+        container(bar)
+            .height(28)
             .width(Fill)
-            .height(24)
-            .padding([0, 8])
-            .on_press(m(QuickCalcMsg::Toggle(section)))
-            .style(|theme: &Theme, status| {
-                let t = tokens(theme);
-                button::Style {
-                    background: Some(Background::Color(
-                        if matches!(status, button::Status::Hovered) {
-                            t.strong
-                        } else {
-                            t.weak
-                        },
-                    )),
-                    text_color: t.text,
-                    ..Default::default()
-                }
+            .style(|theme: &Theme| container::Style {
+                background: Some(Background::Color(tokens(theme).weak)),
+                ..Default::default()
             }),
     ]
     .into()
-}
-
-fn pad<'a>() -> Element<'a, Message> {
-    use Key::*;
-    let d = |s: &'static str| key(s, Text(s), Look::Digit);
-    let op = |label: &'static str, ins: &'static str| key(label, Text(ins), Look::Op);
-    let keys = vec![
-        key("MS", MemStore, Look::Plain),
-        key("M+", MemAdd, Look::Plain),
-        key("MR", MemRecall, Look::Plain),
-        key("←", Back, Look::Edit),
-        key("C", Clear, Look::Edit),
-        key("MC", MemClear, Look::Plain),
-        op("(", "("),
-        op(")", ")"),
-        key("pi", Text("pi"), Look::Plain),
-        key("√", Sqrt, Look::Plain),
-        key("1/x", Inverse, Look::Plain),
-        d("7"),
-        d("8"),
-        d("9"),
-        op("/", " / "),
-        key("x²", Square, Look::Plain),
-        d("4"),
-        d("5"),
-        d("6"),
-        op("*", " * "),
-        key("x³", Cube, Look::Plain),
-        d("1"),
-        d("2"),
-        d("3"),
-        op("-", " - "),
-        key("xʸ", Text("^"), Look::Plain),
-        d("0"),
-        d("."),
-        key("=", Eval, Look::Eq),
-        op("+", " + "),
-    ];
-    grid(keys, 5)
-}
-
-fn scientific<'a>() -> Element<'a, Message> {
-    let f = |label: &'static str, ins: &'static str| key(label, Key::Text(ins), Look::Plain);
-    grid(
-        vec![
-            f("sin", "sin("),
-            f("cos", "cos("),
-            f("tan", "tan("),
-            f("√", "sqrt("),
-            f("x²", "^2"),
-            f("asin", "asin("),
-            f("acos", "acos("),
-            f("atan", "atan("),
-            f("ln", "ln("),
-            f("log", "log("),
-            f("π", "pi"),
-            f("abs", "abs("),
-            f("round", "round("),
-            f("d2r", "d2r("),
-            f("r2d", "r2d("),
-        ],
-        5,
-    )
-}
-
-fn point_functions<'a>() -> Element<'a, Message> {
-    let punct = |label: &'static str, ins: &'static str| key(label, Key::Text(ins), Look::Op);
-    let sig = |name: &'static str, ins: &'static str, signature: &'static str| {
-        button(
-            column![strong(name, 11.5, STRONG), muted(signature, 10.0)]
-                .spacing(2)
-                .align_x(iced::Center)
-                .width(Fill),
-        )
-        .width(Fill)
-        .height(38)
-        .padding([4, 0])
-        .on_press(m(QuickCalcMsg::Key(Key::Text(ins))))
-        .style(|theme: &Theme, status| {
-            let t = tokens(theme);
-            button::Style {
-                background: Some(Background::Color(
-                    if matches!(status, button::Status::Hovered | button::Status::Pressed) {
-                        t.strong
-                    } else {
-                        t.weak
-                    },
-                )),
-                border: Border {
-                    color: t.line,
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                text_color: t.text,
-                ..Default::default()
-            }
-        })
-        .into()
-    };
-    grid(
-        vec![
-            punct("[", "["),
-            punct(",", ", "),
-            punct("]", "]"),
-            sig("dist", "dist(", "(p1, p2)"),
-            sig("ang", "ang(", "(p1, p2)"),
-            sig("mid", "mid(", "(p1, p2)"),
-            sig("xof", "xof(", "(p)"),
-            sig("yof", "yof(", "(p)"),
-            sig("zof", "zof(", "(p)"),
-        ],
-        3,
-    )
 }
 
 fn chip<'a>(label: &'static str, on: bool, msg: QuickCalcMsg) -> Element<'a, Message> {
@@ -1061,17 +926,11 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
     }
 
     // Sections.
-    let mode_short = match p.mode {
-        AngleMode::Degrees => "DEG",
-        AngleMode::Radians => "RAD",
-    };
     let mut sections = column![];
     for section in Section::ALL {
         let open = p.is_open(section);
         let (label, meta) = match section {
-            Section::Pad => (crate::t!("Number pad"), None),
-            Section::Scientific => (crate::t!("Scientific"), Some(mode_short.to_string())),
-            Section::Points => (crate::t!("Point functions"), None),
+            Section::Keypad => (crate::t!("Keypad"), None),
             Section::Units => (
                 crate::t!("Units"),
                 Some(format!("{} → {}", p.unit_from, p.unit_to)),
@@ -1081,12 +940,17 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
                 Some((inputs.drawing.len() + p.session.len() + p.constants.len()).to_string()),
             ),
         };
-        sections = sections.push(section_header(section, label.into_owned(), meta, open));
+        let control = (section == Section::Keypad).then(|| super::keypad_view::mode_switch(p));
+        sections = sections.push(section_header(
+            section,
+            label.into_owned(),
+            meta,
+            control,
+            open,
+        ));
         if open {
             sections = sections.push(match section {
-                Section::Pad => pad(),
-                Section::Scientific => scientific(),
-                Section::Points => point_functions(),
+                Section::Keypad => super::keypad_view::keypad(p),
                 Section::Units => units(p),
                 Section::Variables => variables(p, &inputs.drawing),
             });
@@ -1108,7 +972,7 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
     ]
     .spacing(6)
     .align_y(iced::Center);
-    if let Some(mem) = p.memory {
+    if let Some(&mem) = p.memory.first() {
         left = left.push(tip(
             container(mono(format!("M {}", Value::Number(mem).display()), 10.5))
                 .padding([0, 5])
@@ -1168,7 +1032,7 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
     // footer, the gaps and the history's minimum. Past that they scroll.
     let input_h = 30.0
         + 6.0
-        + if show_error { 38.0 } else { 18.0 }
+        + if show_error { 38.0 } else { 20.0 }
         + if picking.is_some() { 52.0 } else { 0.0 };
     let history_min = MIN_HISTORY_ROWS * HISTORY_ROW_H;
     let fixed = 28.0 + input_h + 22.0 + 4.0 * 6.0;
@@ -1216,17 +1080,14 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
 /// The sections' height when laid out in full: every header plus the open
 /// bodies, from the fixed key and row sizes they are built with.
 fn sections_height(p: &QuickCalcPalette, drawing_vars: usize) -> f32 {
-    const HEADER: f32 = 25.0;
-    let grid = |rows: f32, row_h: f32| rows * row_h + (rows - 1.0) * 3.0 + 12.0;
+    const HEADER: f32 = 29.0;
     Section::ALL
         .iter()
         .map(|section| {
             HEADER
                 + if p.is_open(*section) {
                     match section {
-                        Section::Pad => grid(6.0, 28.0),
-                        Section::Scientific => grid(3.0, 28.0),
-                        Section::Points => 28.0 + 2.0 * 38.0 + 2.0 * 3.0 + 12.0,
+                        Section::Keypad => super::keypad_view::height(p),
                         Section::Units => 24.0 + 2.0 * 22.0 + 28.0 + 26.0 + 4.0 * 8.0 + 16.0,
                         Section::Variables => {
                             let rows = drawing_vars + p.session.len() + p.constants.len();
@@ -1247,10 +1108,10 @@ fn preview_line<'a>(lead: String, value: String) -> Element<'a, Message> {
             .wrapping(Wrapping::None)
             .ellipsis(Ellipsis::End)
             .width(Fill),
-        strong(value, 14.0, MONO_STRONG),
+        strong(value, 16.0, MONO_STRONG),
     ]
     .spacing(8)
-    .height(Length::Fixed(18.0))
+    .height(Length::Fixed(20.0))
     .align_y(iced::Center)
     .into()
 }

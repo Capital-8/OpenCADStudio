@@ -112,10 +112,18 @@ impl OpenCADStudio {
     /// Escape and Ctrl+Enter reach the app as shortcuts even while the input
     /// has focus. Returns the task when QuickCalc handled the key.
     pub(in crate::app) fn quick_calc_shortcut(&mut self, key: &str) -> Option<Task<Message>> {
-        if !self.quick_calc.typing || !self.dock_panel_visible(PanelId::QuickCalc) {
+        if !self.dock_panel_visible(PanelId::QuickCalc) {
             return None;
         }
         let base = key.rsplit('+').next().unwrap_or(key);
+        // An open flyout closes first, wherever the focus is.
+        if base == "ESCAPE" && self.quick_calc.flyout.is_some() {
+            self.quick_calc.flyout = None;
+            return Some(Task::none());
+        }
+        if !self.quick_calc.typing {
+            return None;
+        }
         let accel = key.starts_with("CTRL+") || key.starts_with("CMD+");
         if base == "ESCAPE" && self.tabs[self.active_tab].active_cmd.is_none() {
             self.quick_calc.typing = false;
@@ -132,6 +140,19 @@ impl OpenCADStudio {
     pub(in crate::app) fn on_quick_calc(&mut self, msg: QuickCalcMsg) -> Task<Message> {
         let ctx = self.quick_calc_context();
         let qc = &mut self.quick_calc;
+        // Doing anything else in the pallet closes an open flyout.
+        if !matches!(
+            msg,
+            QuickCalcMsg::Flyout(_)
+                | QuickCalcMsg::CloseFlyout
+                | QuickCalcMsg::Key(_)
+                | QuickCalcMsg::Memory(_)
+                | QuickCalcMsg::MemoryInsert(_)
+                | QuickCalcMsg::FlashExpired
+                | QuickCalcMsg::HistoryStep(_)
+        ) {
+            qc.flyout = None;
+        }
         match msg {
             QuickCalcMsg::Input(text) => {
                 qc.input = text;
@@ -223,11 +244,36 @@ impl OpenCADStudio {
                 iced::widget::operation::move_cursor_to_end(iced::widget::Id::new(INPUT_ID))
             }
             QuickCalcMsg::Key(key) => {
-                if let Some(status) = qc.press(key, &ctx) {
+                if let Some(status) = qc.press(key) {
                     qc.set_flash(status);
                 }
                 qc.typing = true;
                 focus_input()
+            }
+            QuickCalcMsg::Memory(op) => {
+                if let Some(status) = qc.memory_op(op, &ctx) {
+                    qc.set_flash(status);
+                }
+                qc.typing = true;
+                focus_input()
+            }
+            QuickCalcMsg::MemoryInsert(index) => {
+                qc.memory_insert(index);
+                qc.typing = true;
+                focus_input()
+            }
+            QuickCalcMsg::SetKeypadMode(mode) => {
+                qc.set_keypad_mode(mode);
+                self.save_quick_calc_settings();
+                Task::none()
+            }
+            QuickCalcMsg::Flyout(flyout) => {
+                qc.toggle_flyout(flyout);
+                Task::none()
+            }
+            QuickCalcMsg::CloseFlyout => {
+                qc.flyout = None;
+                Task::none()
             }
             QuickCalcMsg::Toggle(section) => {
                 qc.toggle(section);
@@ -461,8 +507,48 @@ mod tests {
         for k in ["1", "2"] {
             let _ = app.on_quick_calc(QuickCalcMsg::Key(Key::Text(k)));
         }
-        let _ = app.on_quick_calc(QuickCalcMsg::Key(Key::Square));
+        let _ = app.on_quick_calc(QuickCalcMsg::Key(Key::Postfix("^2")));
         let _ = app.on_quick_calc(QuickCalcMsg::Key(Key::Eval));
         assert_eq!(app.quick_calc.ans, Some(Value::Number(144.0)));
+    }
+}
+
+#[cfg(test)]
+mod keypad_tests {
+    use super::*;
+    use crate::ui::window::quick_calc::{Flyout, KeypadMode, MemoryOp, Section};
+
+    #[test]
+    fn escape_closes_a_flyout_first() {
+        let mut app = OpenCADStudio::new_for_test();
+        let _ = app.automation_op(r#"{"op":"new"}"#);
+        app.quick_calc.show = true;
+        app.dock_open_at_default(PanelId::QuickCalc);
+        let _ = app.on_quick_calc(QuickCalcMsg::SetKeypadMode(KeypadMode::Scientific));
+        assert!(app.quick_calc.is_open(Section::Keypad));
+        let _ = app.on_quick_calc(QuickCalcMsg::Flyout(Flyout::Trigonometry));
+        let _ = app.on_quick_calc(QuickCalcMsg::Input("12".into()));
+        assert!(app.quick_calc_shortcut("ESCAPE").is_some());
+        assert_eq!(app.quick_calc.flyout, None);
+        // The next Escape clears the input.
+        assert!(app.quick_calc_shortcut("ESCAPE").is_some());
+        assert!(app.quick_calc.input.is_empty());
+    }
+
+    #[test]
+    fn memory_row_and_flyout() {
+        let mut app = OpenCADStudio::new_for_test();
+        let _ = app.automation_op(r#"{"op":"new"}"#);
+        let _ = app.on_quick_calc(QuickCalcMsg::Input("2 * 435".into()));
+        let _ = app.on_quick_calc(QuickCalcMsg::Memory(MemoryOp::Store));
+        assert_eq!(app.quick_calc.memory, vec![870.0]);
+        let _ = app.on_quick_calc(QuickCalcMsg::Input("[1,2]".into()));
+        let _ = app.on_quick_calc(QuickCalcMsg::Memory(MemoryOp::Store));
+        assert!(app.quick_calc.flash.is_some());
+        let _ = app.on_quick_calc(QuickCalcMsg::Input(String::new()));
+        let _ = app.on_quick_calc(QuickCalcMsg::Flyout(Flyout::Memory));
+        let _ = app.on_quick_calc(QuickCalcMsg::MemoryInsert(0));
+        assert_eq!(app.quick_calc.input, "870");
+        assert_eq!(app.quick_calc.flyout, None);
     }
 }

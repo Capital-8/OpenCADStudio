@@ -11,11 +11,6 @@ fn submit(p: &mut QuickCalcPalette, input: &str) -> Option<Submitted> {
     p.submit(&c)
 }
 
-fn press(p: &mut QuickCalcPalette, key: Key) -> Option<String> {
-    let c = ctx(p);
-    p.press(key, &c)
-}
-
 #[test]
 fn submit_records_history_and_ans() {
     let mut p = QuickCalcPalette::default();
@@ -88,58 +83,6 @@ fn history_arrows() {
 }
 
 #[test]
-fn wrap_keys_take_the_whole_input_or_ans() {
-    let mut p = QuickCalcPalette {
-        input: "wall + 90".into(),
-        ..Default::default()
-    };
-    press(&mut p, Key::Sqrt);
-    assert_eq!(p.input, "sqrt(wall + 90)");
-    p.input = "wall".into();
-    press(&mut p, Key::Square);
-    assert_eq!(p.input, "wall^2");
-    p.input = "2+1".into();
-    press(&mut p, Key::Inverse);
-    assert_eq!(p.input, "1/(2+1)");
-    // Empty with no ans: the start of the function is typed.
-    p.input.clear();
-    press(&mut p, Key::Sqrt);
-    assert_eq!(p.input, "sqrt(");
-    // Empty with an ans: it is used.
-    submit(&mut p, "9");
-    press(&mut p, Key::Cube);
-    assert_eq!(p.input, "ans^3");
-    p.input.clear();
-    press(&mut p, Key::Sqrt);
-    assert_eq!(p.input, "sqrt(ans)");
-    press(&mut p, Key::Back);
-    assert_eq!(p.input, "sqrt(ans");
-    press(&mut p, Key::Clear);
-    assert!(p.input.is_empty());
-}
-
-#[test]
-fn memory_keys() {
-    let mut p = QuickCalcPalette::default();
-    assert!(press(&mut p, Key::MemStore).is_some());
-    assert_eq!(p.memory, None);
-    submit(&mut p, "870");
-    press(&mut p, Key::MemStore);
-    assert_eq!(p.memory, Some(870.0));
-    p.input = "30".into();
-    press(&mut p, Key::MemAdd);
-    assert_eq!(p.memory, Some(900.0));
-    p.input = "[1,2]".into();
-    assert!(press(&mut p, Key::MemStore).is_some());
-    assert_eq!(p.memory, Some(900.0));
-    p.input.clear();
-    press(&mut p, Key::MemRecall);
-    assert_eq!(p.input, "900");
-    press(&mut p, Key::MemClear);
-    assert_eq!(p.memory, None);
-}
-
-#[test]
 fn unit_converter() {
     let mut p = QuickCalcPalette {
         unit_value: "3600".into(),
@@ -191,11 +134,13 @@ fn settings_round_trip() {
     p.constants.push(("brick".into(), 210.0));
     p.mode = AngleMode::Radians;
     p.toggle(Section::Units);
+    p.set_keypad_mode(KeypadMode::Scientific);
     let s = p.settings();
     let json = serde_json::to_string(&s).unwrap();
     let back: QuickCalcSettings = serde_json::from_str(&json).unwrap();
     let mut q = QuickCalcPalette::default();
     q.apply_settings(&back);
+    assert_eq!(q.keypad_mode, KeypadMode::Scientific);
     assert_eq!(q.constants, p.constants);
     assert_eq!(q.mode, AngleMode::Radians);
     assert!(q.is_open(Section::Units));
@@ -205,4 +150,26 @@ fn settings_round_trip() {
     bad.constants.push(("x".into(), f64::NAN));
     q.apply_settings(&bad);
     assert_eq!(q.constants.len(), 1);
+}
+
+#[test]
+fn settings_from_an_older_build_still_load() {
+    // Five sections under `open`, before the keypad: ignored, not an error.
+    let old =
+        r#"{"constants":[["brick",210.0]],"open":[true,true,false,false,false],"radians":true}"#;
+    let s: QuickCalcSettings = serde_json::from_str(old).unwrap();
+    let mut p = QuickCalcPalette::default();
+    p.apply_settings(&s);
+    assert_eq!(p.constants.len(), 1);
+    assert_eq!(p.mode, AngleMode::Radians);
+    assert!(p.is_open(Section::Keypad));
+}
+
+#[test]
+fn choosing_a_keypad_mode_opens_the_keypad() {
+    let mut p = QuickCalcPalette::default();
+    p.toggle(Section::Keypad);
+    assert!(!p.is_open(Section::Keypad));
+    p.set_keypad_mode(KeypadMode::Scientific);
+    assert!(p.is_open(Section::Keypad));
 }

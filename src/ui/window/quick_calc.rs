@@ -23,21 +23,13 @@ const FLASH_SECS: f32 = 2.2;
 /// The collapsible sections, top to bottom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
-    Pad,
-    Scientific,
-    Points,
+    Keypad,
     Units,
     Variables,
 }
 
 impl Section {
-    pub const ALL: [Section; 5] = [
-        Section::Pad,
-        Section::Scientific,
-        Section::Points,
-        Section::Units,
-        Section::Variables,
-    ];
+    pub const ALL: [Section; 3] = [Section::Keypad, Section::Units, Section::Variables];
 
     fn index(self) -> usize {
         self as usize
@@ -98,25 +90,6 @@ impl UnitCat {
     }
 }
 
-/// A number pad, scientific or point key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Key {
-    /// Appends its text to the input.
-    Text(&'static str),
-    Back,
-    Clear,
-    Eval,
-    /// √, 1/x, x², x³ wrap the whole input (or `ans` when it is empty).
-    Sqrt,
-    Inverse,
-    Square,
-    Cube,
-    MemStore,
-    MemAdd,
-    MemRecall,
-    MemClear,
-}
-
 /// Where a variable is kept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VarScope {
@@ -148,6 +121,13 @@ pub enum QuickCalcMsg {
     /// ↑ (`true`) / ↓ through the history while the input has focus.
     HistoryStep(bool),
     Key(Key),
+    Memory(MemoryOp),
+    /// A value picked from the memory flyout.
+    MemoryInsert(usize),
+    SetKeypadMode(KeypadMode),
+    /// Open or close a flyout over the keys.
+    Flyout(Flyout),
+    CloseFlyout,
     Toggle(Section),
     UnitCat(UnitCat),
     UnitFrom(&'static str),
@@ -168,17 +148,20 @@ pub enum QuickCalcMsg {
 pub struct QuickCalcSettings {
     /// "My constants", in the order they were made.
     pub constants: Vec<(String, f64)>,
-    /// Which sections are open, in [`Section::ALL`] order.
-    pub open: [bool; 5],
+    /// Which sections are open, in [`Section::ALL`] order. (Earlier builds
+    /// wrote five sections under `open`; that key is ignored now.)
+    pub sections: Vec<bool>,
     pub radians: bool,
+    pub scientific: bool,
 }
 
 impl Default for QuickCalcSettings {
     fn default() -> Self {
         Self {
             constants: Vec::new(),
-            open: [true, false, false, false, false],
+            sections: vec![true, false, false],
             radians: false,
+            scientific: false,
         }
     }
 }
@@ -218,8 +201,14 @@ pub struct QuickCalcPalette {
     /// Point variables, which a drawing parameter cannot hold.
     pub session: HashMap<String, Value>,
     pub constants: Vec<(String, f64)>,
-    pub memory: Option<f64>,
-    pub open: [bool; 5],
+    /// Memory, newest first.
+    pub memory: Vec<f64>,
+    pub open: [bool; 3],
+    pub keypad_mode: KeypadMode,
+    /// 2nd and hyp on the scientific keypad.
+    pub second: bool,
+    pub hyp: bool,
+    pub flyout: Option<Flyout>,
     /// The pick the pallet started (its command may since have ended).
     pub pick: Option<PickKind>,
     pub flash: Option<(String, iced::time::Instant)>,
@@ -242,7 +231,6 @@ pub struct QuickCalcPalette {
 impl Default for QuickCalcPalette {
     fn default() -> Self {
         let (unit_from, unit_to) = UnitCat::Length.defaults();
-        let settings = QuickCalcSettings::default();
         Self {
             show: false,
             input: String::new(),
@@ -251,9 +239,13 @@ impl Default for QuickCalcPalette {
             ans: None,
             mode: AngleMode::Degrees,
             session: HashMap::new(),
-            constants: settings.constants,
-            memory: None,
-            open: settings.open,
+            constants: Vec::new(),
+            memory: Vec::new(),
+            open: [true, false, false],
+            keypad_mode: KeypadMode::Standard,
+            second: false,
+            hyp: false,
+            flyout: None,
             pick: None,
             flash: None,
             new_var_hint: false,
@@ -328,8 +320,9 @@ impl QuickCalcPalette {
     pub fn settings(&self) -> QuickCalcSettings {
         QuickCalcSettings {
             constants: self.constants.clone(),
-            open: self.open,
+            sections: self.open.to_vec(),
             radians: self.mode == AngleMode::Radians,
+            scientific: self.keypad_mode == KeypadMode::Scientific,
         }
     }
 
@@ -340,7 +333,14 @@ impl QuickCalcPalette {
             .filter(|(name, value)| !calc::is_reserved_name(name) && value.is_finite())
             .cloned()
             .collect();
-        self.open = s.open;
+        for (open, saved) in self.open.iter_mut().zip(&s.sections) {
+            *open = *saved;
+        }
+        self.keypad_mode = if s.scientific {
+            KeypadMode::Scientific
+        } else {
+            KeypadMode::Standard
+        };
         self.mode = if s.radians {
             AngleMode::Radians
         } else {
@@ -467,91 +467,16 @@ impl QuickCalcPalette {
         }
     }
 
-    /// `input` as one operand: bare when it is a single name or number,
-    /// otherwise in brackets; `ans` when it is empty and there is one.
-    fn operand(&self) -> Option<String> {
-        let trimmed = self.input.trim();
-        if trimmed.is_empty() {
-            return self.ans.map(|_| "ans".to_string());
-        }
-        let simple = trimmed
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '.');
-        Some(if simple {
-            trimmed.to_string()
-        } else {
-            format!("({trimmed})")
-        })
-    }
-
-    fn wrap(&mut self, build: impl Fn(&str) -> String, partial: &str) {
-        match self.operand() {
-            Some(o) => self.input = build(&o),
-            None => self.input.push_str(partial),
-        }
-        self.hist_idx = None;
-    }
-
-    /// A key press that needs nothing from the app (all but `Eval`).
-    /// Returns a footer status, if the key reports one.
-    pub fn press(&mut self, key: Key, ctx: &CalcContext) -> Option<String> {
-        match key {
-            Key::Text(text) => self.append(text),
-            Key::Back => {
-                self.input.pop();
-                self.hist_idx = None;
-            }
-            Key::Clear => {
-                self.input.clear();
-                self.hist_idx = None;
-            }
-            Key::Eval => {}
-            Key::Sqrt => {
-                let inner = match self.input.trim() {
-                    "" => self.ans.map(|_| "ans".to_string()),
-                    t => Some(t.to_string()),
-                };
-                match inner {
-                    Some(inner) => self.input = format!("sqrt({inner})"),
-                    None => self.input.push_str("sqrt("),
-                }
-                self.hist_idx = None;
-            }
-            Key::Inverse => self.wrap(|o| format!("1/{o}"), "1/"),
-            Key::Square => self.wrap(|o| format!("{o}^2"), "^2"),
-            Key::Cube => self.wrap(|o| format!("{o}^3"), "^3"),
-            Key::MemStore | Key::MemAdd => {
-                let n = match self.current_value(ctx) {
-                    None => return Some(crate::t!("Nothing to store yet").into_owned()),
-                    Some(Value::Point(_)) => {
-                        return Some(crate::t!("Memory holds numbers only").into_owned())
-                    }
-                    Some(Value::Number(n)) => n,
-                };
-                if key == Key::MemStore {
-                    self.memory = Some(n);
-                    let shown = Value::Number(n).display();
-                    return Some(crate::tf!("Stored {} in memory", shown).into_owned());
-                }
-                let total = self.memory.unwrap_or(0.0) + n;
-                self.memory = Some(total);
-                let shown = Value::Number(total).display();
-                return Some(crate::tf!("Memory is now {}", shown).into_owned());
-            }
-            Key::MemRecall => match self.memory {
-                Some(n) => self.insert_value(&Value::Number(n)),
-                None => return Some(crate::t!("Memory is empty").into_owned()),
-            },
-            Key::MemClear => {
-                self.memory = None;
-                return Some(crate::t!("Memory cleared").into_owned());
-            }
-        }
-        None
-    }
-
     pub fn toggle(&mut self, section: Section) {
         self.open[section.index()] ^= true;
+        self.flyout = None;
+    }
+
+    /// Choosing a keypad mode also opens the keypad.
+    pub fn set_keypad_mode(&mut self, mode: KeypadMode) {
+        self.keypad_mode = mode;
+        self.open[Section::Keypad.index()] = true;
+        self.flyout = None;
     }
 
     pub fn set_unit_cat(&mut self, cat: UnitCat) {
@@ -600,7 +525,10 @@ impl QuickCalcPalette {
 
 // ── View ────────────────────────────────────────────────────────────────
 
+mod keypad;
+mod keypad_view;
 mod view;
+pub use keypad::{Flyout, Key, KeypadMode, MemoryOp};
 pub use view::{view, Inputs, ICON};
 
 #[cfg(test)]
