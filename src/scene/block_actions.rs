@@ -22,6 +22,8 @@ pub(crate) fn angle_distance(a: f64, b: f64) -> f64 {
 }
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod frame_tests;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {

@@ -41,7 +41,7 @@ fn signed_value_set_increments_preserve_negative_axis_values() {
     assert_eq!(constrain_value_set(5.0, &set), 6.0);
 }
 
-fn fixture() -> (CadDocument, Handle, Vec<Handle>) {
+pub(super) fn fixture() -> (CadDocument, Handle, Vec<Handle>) {
     let mut scene = Scene::new();
     scene.define_block_raw(
         "ACTIONS",
