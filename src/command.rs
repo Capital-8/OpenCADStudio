@@ -565,11 +565,11 @@ impl CadCommand for RenameCommand {
                 let canonical = match t.to_uppercase().as_str() {
                     "LAYER" | "LA" => "LAYER",
                     "BLOCK" | "B" => "BLOCK",
-                    "STYLE" | "TEXTSTYLE" | "ST" => "STYLE",
+                    "STYLE" | "TEXTSTYLE" | "ST" | "S" => "STYLE",
                     "DIMSTYLE" | "D" => "DIMSTYLE",
-                    "LINETYPE" | "LT" => "LINETYPE",
-                    "UCS" => "UCS",
-                    "VIEW" | "V" => "VIEW",
+                    "LINETYPE" | "LTYPE" | "LT" => "LINETYPE",
+                    "UCS" | "U" => "UCS",
+                    "VIEW" | "VI" | "V" => "VIEW",
                     _ => return Some(CmdResult::NeedPoint),
                 };
                 self.step = RenameStep::Old {
@@ -885,6 +885,186 @@ impl CadCommand for TwoValuePromptCommand {
             // Enter on the second step with nothing typed = report / no-op form.
             Some(first) => CmdResult::Dispatch(format!("{} {first}", self.name)),
             None => CmdResult::Cancel,
+        }
+    }
+}
+
+// ── Script prompt sequences (-LAYER, -PURGE, -STYLE …) ─────────────────────
+
+/// What a [`ScriptPromptCommand`] does next, decided from the answers so far.
+pub enum PromptStep {
+    /// Ask: translated prompt, the answer a bare Enter gives (`None` = Enter
+    /// ends the command), and the option buttons `(label, keyword)`.
+    Ask(String, Option<String>, Vec<(&'static str, &'static str)>),
+    /// Every answer is in: dispatch this command line to the inline handler.
+    Run(String),
+    /// The last answer does not fit its prompt: drop it, say why, ask again.
+    Retry(&'static str),
+    /// End quietly.
+    Finish,
+}
+
+/// Reads the answers of a prompt sequence in order; a flow is written as the
+/// prompts it asks, and the first one without an answer yet becomes the
+/// current prompt (returned as `Err`).
+pub struct PromptAnswers<'a> {
+    answers: &'a [String],
+    pos: usize,
+}
+
+impl<'a> PromptAnswers<'a> {
+    pub fn new(answers: &'a [String]) -> Self {
+        Self { answers, pos: 0 }
+    }
+
+    /// Free text (a name, a list, a path).
+    pub fn text(&mut self, prompt: String, default: Option<String>) -> Result<String, PromptStep> {
+        let answer = self.answers.get(self.pos).cloned();
+        self.pos += 1;
+        answer.ok_or(PromptStep::Ask(prompt, default, Vec::new()))
+    }
+
+    /// One of `options` `(label, keyword)`: the full label or keyword, or the
+    /// label's capitalised short form and anything longer (`LA`, `LAY` for
+    /// `LAyers`). `default` is the keyword a bare Enter picks.
+    pub fn keyword(
+        &mut self,
+        prompt: String,
+        default: Option<&str>,
+        options: &[(&'static str, &'static str)],
+    ) -> Result<&'static str, PromptStep> {
+        let Some(answer) = self.answers.get(self.pos) else {
+            return Err(PromptStep::Ask(
+                prompt,
+                default.map(str::to_string),
+                options.to_vec(),
+            ));
+        };
+        self.pos += 1;
+        options
+            .iter()
+            .find(|(label, keyword)| keyword_matches(label, keyword, answer))
+            .map(|(_, keyword)| *keyword)
+            .ok_or(PromptStep::Retry("Invalid option keyword."))
+    }
+
+    pub fn yes_no(&mut self, prompt: String, default: bool) -> Result<bool, PromptStep> {
+        let default = if default { "Y" } else { "N" };
+        Ok(self.keyword(prompt, Some(default), &[("Yes", "Y"), ("No", "N")])? == "Y")
+    }
+
+    pub fn number(&mut self, prompt: String, default: f64) -> Result<f64, PromptStep> {
+        let answer = self.text(prompt, Some(default.to_string()))?;
+        answer
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite())
+            .ok_or(PromptStep::Retry("Invalid input."))
+    }
+}
+
+/// A typed option matches its full keyword or label, or the label's
+/// capitalised letters (`LA` in `LAyers`, `ST` in `textSTyles`) followed by
+/// more of the same word.
+fn keyword_matches(label: &str, keyword: &str, typed: &str) -> bool {
+    let typed = typed.trim().to_uppercase();
+    if typed.is_empty() {
+        return false;
+    }
+    if typed == keyword.to_uppercase() || typed == label.to_uppercase() {
+        return true;
+    }
+    let Some(start) = label.find(|c: char| c.is_ascii_uppercase()) else {
+        return false;
+    };
+    let short: String = label[start..]
+        .chars()
+        .take_while(|c| !c.is_ascii_lowercase())
+        .collect();
+    typed.starts_with(&short) && label[start..].to_uppercase().starts_with(&typed)
+}
+
+pub type PromptFlow = Box<dyn Fn(&[String]) -> PromptStep + Send>;
+
+/// The command-line form of a dialog command, the way scripts drive it: a
+/// fixed sequence of prompts where each answer decides the next one. The
+/// answers then dispatch to the command's existing inline handler, as
+/// [`KeywordCommand`] does.
+pub struct ScriptPromptCommand {
+    name: &'static str,
+    answers: Vec<String>,
+    flow: PromptFlow,
+}
+
+impl ScriptPromptCommand {
+    pub fn new(name: &'static str, flow: PromptFlow) -> Self {
+        Self {
+            name,
+            answers: Vec::new(),
+            flow,
+        }
+    }
+
+    fn answer(&mut self, text: String) -> CmdResult {
+        self.answers.push(text);
+        match (self.flow)(&self.answers) {
+            PromptStep::Ask(..) => CmdResult::NeedPoint,
+            PromptStep::Run(line) => CmdResult::Dispatch(line),
+            PromptStep::Finish => CmdResult::Measurement(String::new()),
+            PromptStep::Retry(why) => {
+                self.answers.pop();
+                CmdResult::ReportError(crate::t!(why).into_owned())
+            }
+        }
+    }
+}
+
+impl CadCommand for ScriptPromptCommand {
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
+    fn prompt(&self) -> String {
+        match (self.flow)(&self.answers) {
+            PromptStep::Ask(prompt, ..) => prompt,
+            _ => self.name.to_string(),
+        }
+    }
+
+    fn options(&self) -> Vec<CmdOption> {
+        match (self.flow)(&self.answers) {
+            PromptStep::Ask(_, _, options) => options
+                .iter()
+                .map(|(label, keyword)| CmdOption::new(label, keyword))
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn wants_text_input(&self) -> bool {
+        true
+    }
+
+    fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        let t = text.trim();
+        if t.is_empty() {
+            return None;
+        }
+        // A leading underscore marks the English keyword, as in scripts.
+        let t = t.strip_prefix('_').filter(|r| !r.is_empty()).unwrap_or(t);
+        Some(self.answer(t.trim_matches('"').to_string()))
+    }
+
+    fn on_point(&mut self, pt: DVec3) -> CmdResult {
+        // A typed `x,y` arrives as a point; prompts read it back as text.
+        self.answer(format!("{},{}", pt.x, pt.y))
+    }
+
+    fn on_enter(&mut self) -> CmdResult {
+        match (self.flow)(&self.answers) {
+            PromptStep::Ask(_, Some(default), _) => self.answer(default),
+            _ => CmdResult::Measurement(String::new()),
         }
     }
 }

@@ -7893,23 +7893,38 @@ properties={:.1}ms picked={}",
     }
 
     pub(super) fn on_layout_create(&mut self) -> Task<Message> {
+        self.create_layout_named(None)
+    }
+
+    /// The next free `LayoutN` name, counting from the number of layouts.
+    pub(in crate::app) fn next_layout_name(existing: &[String]) -> String {
+        (existing.len()..)
+            .map(|n| format!("Layout{n}"))
+            .find(|candidate| !existing.contains(candidate))
+            .unwrap_or_default()
+    }
+
+    /// A new layout called `name`, or the next free `LayoutN`.
+    pub(in crate::app) fn create_layout_named(&mut self, name: Option<String>) -> Task<Message> {
         let i = self.active_tab;
         if self.tabs[i].is_start {
             self.command_line
                 .push_info(crate::t!("Open or create a drawing to add a layout.").as_ref());
             return Task::none();
         }
-        let cancel_task = self.cancel_active_command_for_space_change();
         // Find a unique name (e.g. Layout2, Layout3, ...).
         let existing = self.tabs[i].scene.layout_names();
-        let mut idx = existing.len();
-        let new_name = loop {
-            let candidate = format!("Layout{}", idx);
-            if !existing.contains(&candidate) {
-                break candidate;
-            }
-            idx += 1;
-        };
+        if let Some(name) = name.as_ref().filter(|name| {
+            existing
+                .iter()
+                .any(|layout| layout.eq_ignore_ascii_case(name))
+        }) {
+            self.command_line
+                .push_error(crate::tf!("\"{}\" name already in use", name).as_ref());
+            return Task::none();
+        }
+        let cancel_task = self.cancel_active_command_for_space_change();
+        let new_name = name.unwrap_or_else(|| Self::next_layout_name(&existing));
         self.push_undo_snapshot(i, "LAYOUT");
         match self.tabs[i].scene.add_layout(&new_name) {
             Ok(_) => {
@@ -7973,15 +7988,30 @@ properties={:.1}ms picked={}",
     /// Copy layout `source` as "source (2)": its page setup and every
     /// paper-space object, viewports included. The copy opens.
     pub(super) fn on_layout_copy(&mut self, source: String) -> Task<Message> {
+        self.copy_layout_named(source, None)
+    }
+
+    /// Copy layout `source` as `name`, or as the next free "source (n)".
+    pub(in crate::app) fn copy_layout_named(
+        &mut self,
+        source: String,
+        name: Option<String>,
+    ) -> Task<Message> {
         let i = self.active_tab;
         if self.tabs[i].is_start || source == "Model" {
             return Task::none();
         }
         let existing = self.tabs[i].scene.layout_names();
-        let Some(name) = (2..)
-            .map(|n| format!("{source} ({n})"))
-            .find(|candidate| !existing.contains(candidate))
-        else {
+        if let Some(name) = name.as_ref().filter(|name| existing.contains(name)) {
+            self.command_line
+                .push_error(crate::tf!("\"{}\" name already in use", name).as_ref());
+            return Task::none();
+        }
+        let Some(name) = name.or_else(|| {
+            (2..)
+                .map(|n| format!("{source} ({n})"))
+                .find(|candidate| !existing.contains(candidate))
+        }) else {
             return Task::none();
         };
         let cancel_task = self.cancel_active_command_for_space_change();
@@ -8011,7 +8041,7 @@ properties={:.1}ms picked={}",
         Task::batch([cancel_task, switch_task])
     }
 
-    pub(super) fn on_layout_rename_commit(&mut self) -> Task<Message> {
+    pub(in crate::app) fn on_layout_rename_commit(&mut self) -> Task<Message> {
         if let Some((orig, new_name)) = self.layout_rename_state.take() {
             let new_name = new_name.trim().to_string();
             if !new_name.is_empty() && new_name != orig {

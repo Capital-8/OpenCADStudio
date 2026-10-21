@@ -268,10 +268,18 @@ impl OpenCADStudio {
                     .nth(1)
                     .unwrap_or("ALL")
                     .to_uppercase();
+                // An optional third word limits the purge to matching names
+                // (`PURGE LAYERS A*,TMP`).
+                let pattern = cmd.split_whitespace().nth(2).unwrap_or("*").to_string();
+                let wanted = |name: &str| {
+                    pattern
+                        .split(',')
+                        .any(|p| crate::io::xref_model::wildcard_match(name, p.trim()))
+                };
                 let all = sub == "ALL" || sub.is_empty();
                 let do_layers = all || matches!(sub.as_str(), "LAYERS" | "LAYER" | "LA");
                 let do_styles = all || matches!(sub.as_str(), "TEXTSTYLES" | "STYLES" | "ST");
-                let do_lts = all || matches!(sub.as_str(), "LINETYPES" | "LT");
+                let do_lts = all || matches!(sub.as_str(), "LINETYPES" | "LTYPES" | "LT");
                 let do_blocks = all || matches!(sub.as_str(), "BLOCKS" | "BLOCK" | "B");
                 if !(do_layers || do_styles || do_lts || do_blocks) {
                     self.command_line.push_error(crate::tf!(
@@ -444,6 +452,14 @@ impl OpenCADStudio {
                         vec![]
                     };
 
+                    let layer_remove: Vec<String> =
+                        layer_remove.into_iter().filter(|n| wanted(n)).collect();
+                    let style_remove: Vec<String> =
+                        style_remove.into_iter().filter(|n| wanted(n)).collect();
+                    let lt_remove: Vec<String> =
+                        lt_remove.into_iter().filter(|n| wanted(n)).collect();
+                    let block_remove: Vec<String> =
+                        block_remove.into_iter().filter(|n| wanted(n)).collect();
                     if layer_remove.len()
                         + style_remove.len()
                         + lt_remove.len()
@@ -3786,7 +3802,7 @@ impl OpenCADStudio {
             // Bare RENAME prompts step by step (type → old → new); the argument
             // form below both handles a fully-typed line and is the target the
             // stepped front-end dispatches to.
-            "RENAME" => {
+            "RENAME" | "-RENAME" => {
                 use crate::command::RenameCommand;
                 let c = RenameCommand::new();
                 self.command_line.push_info(&c.prompt());

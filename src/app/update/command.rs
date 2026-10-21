@@ -2537,7 +2537,7 @@ impl OpenCADStudio {
         Task::none()
     }
 
-    pub(super) fn on_ribbon_style_changed(
+    pub(in crate::app) fn on_ribbon_style_changed(
         &mut self,
         key: crate::modules::StyleKey,
         name: String,
