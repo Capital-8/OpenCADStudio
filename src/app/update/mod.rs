@@ -3380,6 +3380,7 @@ impl OpenCADStudio {
                 crate::io::linetypes::populate_document_from_source(
                     &mut self.tabs[i].scene.document,
                     &source,
+                    None,
                 );
                 match self.tabs[i]
                     .scene
@@ -11452,12 +11453,13 @@ impl OpenCADStudio {
             }
 
             // ── Plot Style Table ──────────────────────────────────────────────
-            Message::LinetypeLoaded(Some(source)) => {
+            Message::LinetypeLoaded(Some((lin_dir, source))) => {
                 let i = self.active_tab;
                 self.push_undo_snapshot(i, "LINETYPE");
                 let added = crate::io::linetypes::populate_document_from_source(
                     &mut self.tabs[i].scene.document,
                     &source,
+                    lin_dir.as_deref(),
                 );
                 if added > 0 {
                     self.tabs[i].dirty = true;

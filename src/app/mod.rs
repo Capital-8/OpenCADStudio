@@ -4388,7 +4388,8 @@ pub enum Message {
     /// Open file dialog to load a CTB/STB plot style table.
     PlotStyleLoad,
     /// LINETYPE Load: the picked `.lin` file's text, `None` when cancelled.
-    LinetypeLoaded(Option<String>),
+    /// A picked `.lin`: its folder (native only) and text.
+    LinetypeLoaded(Option<(Option<std::path::PathBuf>, String)>),
     /// Callback when the user picks (or cancels) a CTB/STB file.
     /// The Load… picker finished: a table, nothing (cancelled), or why the
     /// file could not be read.
