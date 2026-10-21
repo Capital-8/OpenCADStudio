@@ -408,6 +408,11 @@ pub struct StretchCommand {
     /// Independent crossing windows accumulated during the selection stage.
     windows: Vec<(DVec3, DVec3)>,
     excluded_points: Vec<(Handle, DVec3)>,
+    /// The objects the drag really changes. A crossing window also catches
+    /// objects that only pass through it; those stay drawn and snappable
+    /// instead of being hidden behind the preview (#1989). Resolved on the
+    /// first preview, once the windows are final.
+    moving: Option<Vec<Handle>>,
     remove_release_pending: bool,
     shift_down: bool,
     step: Step,
@@ -420,6 +425,7 @@ impl StretchCommand {
             wire_models,
             windows: Vec::new(),
             excluded_points: Vec::new(),
+            moving: None,
             remove_release_pending: false,
             shift_down: false,
             step: Step::WindowCorner1,
@@ -438,6 +444,7 @@ impl StretchCommand {
             wire_models,
             windows: vec![window],
             excluded_points: Vec::new(),
+            moving: None,
             remove_release_pending: false,
             shift_down: false,
             step: Step::Base,
@@ -457,6 +464,7 @@ impl StretchCommand {
             wire_models,
             windows,
             excluded_points,
+            moving: None,
             remove_release_pending: false,
             shift_down: false,
             step: Step::WindowCorner1,
@@ -651,12 +659,34 @@ impl CadCommand for StretchCommand {
     }
 
     fn preview_entities(&mut self, document: &codec::CadDocument, pt: DVec3) -> Vec<codec::EntityType> {
+        // The base-point step already has the final windows: resolve what
+        // moves there, so the drag starts with only those objects hidden.
+        if matches!(self.step, Step::Base | Step::Target { .. }) && self.moving.is_none() {
+            let moving: Vec<Handle> = self
+                .handles
+                .iter()
+                .copied()
+                .filter(|handle| {
+                    document.get_entity(*handle).is_some_and(|entity| {
+                        let mut probe = entity.clone();
+                        let (windows, excluded) = (&self.windows, &self.excluded_points);
+                        stretch_entity_except(&mut probe, *handle, windows, excluded, DVec3::X)
+                    })
+                })
+                .collect();
+            self.wire_models.retain(|wire| {
+                crate::scene::Scene::handle_from_wire_name(&wire.name)
+                    .is_some_and(|handle| moving.contains(&handle))
+            });
+            self.moving = Some(moving);
+        }
         let Step::Target { base } = &self.step else {
             return Vec::new();
         };
         let delta = pt - *base;
-        self.handles
+        self.moving
             .iter()
+            .flatten()
             .filter_map(|handle| document.get_entity(*handle).map(|entity| (*handle, entity)))
             .map(|(handle, entity)| {
                 let mut entity = entity.clone();
@@ -669,7 +699,7 @@ impl CadCommand for StretchCommand {
 
     fn preview_hidden_handles(&self) -> &[Handle] {
         match self.step {
-            Step::Target { .. } => &self.handles,
+            Step::Target { .. } => self.moving.as_deref().unwrap_or(&self.handles),
             _ => &[],
         }
     }
@@ -805,5 +835,25 @@ mod shift_stretch_tests {
             cmd.on_point(DVec3::new(5.0, 0.0, 0.0))
         else { panic!("expected STRETCH result") };
         assert_eq!(excluded_points, vec![(handle, DVec3::ZERO)]);
+    }
+
+    #[test]
+    fn only_objects_the_drag_moves_are_hidden() {
+        let mut document = codec::CadDocument::new();
+        let mut add = |a: Vector3, b: Vector3| {
+            let line = codec::EntityType::Line(Line::from_points(a, b));
+            document.add_entity(line).unwrap()
+        };
+        // One end inside the window, and a line merely passing through it.
+        let moved = add(Vector3::new(5.0, 5.0, 0.0), Vector3::new(50.0, 5.0, 0.0));
+        let crossing = add(Vector3::new(-20.0, 2.0, 0.0), Vector3::new(30.0, 2.0, 0.0));
+        let window = (DVec3::new(0.0, 0.0, -1.0), DVec3::new(10.0, 10.0, 1.0));
+        let mut cmd =
+            StretchCommand::with_windows(vec![moved, crossing], vec![], vec![window], vec![]);
+        assert!(matches!(cmd.on_enter(), CmdResult::NeedPoint));
+        assert!(matches!(cmd.on_point(DVec3::ZERO), CmdResult::NeedPoint));
+        let preview = cmd.preview_entities(&document, DVec3::new(0.0, 3.0, 0.0));
+        assert_eq!(preview.len(), 1);
+        assert_eq!(cmd.preview_hidden_handles(), &[moved]);
     }
 }
