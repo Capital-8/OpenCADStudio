@@ -692,7 +692,7 @@ pub fn read(bytes: &[u8], fit: [f64; 2]) -> Option<Picture> {
                 let mut text = Text::new();
                 text.value = value;
                 text.insertion_point = base;
-                text.height = 0.8 * drop * scale;
+                text.height = 0.8 * height * scale;
                 text.rotation = rotation;
                 text.common.color = color(text_rgb);
                 player.text_fonts.push((player.entities.len(), index));
