@@ -5710,7 +5710,7 @@ fn block_grip_locations_edit_undo_and_drag_in_transformed_references_and_test_bl
         app.tabs[i].selected_handle = Some(insert);
         app.tabs[i].selected_grips.clear(); app.tabs[i].selected_grip_handles.clear();
         app.refresh_test_action_grips([0.; 3]);
-        let id = super::block_actions::TEST_GRIP_START;
+        let id = crate::scene::block_grips::runtime::id(actions::all_parameters(&app.tabs[i].scene.document, definition)[0].id, 1).unwrap();
         let displayed = app.tabs[i].selected_grips.iter().find(|grip| grip.id == id).unwrap().world;
         assert!(displayed.distance(DVec3::new(86., 250., 0.)) < 1e-8);
         let grip = config::locations(&app.tabs[i].scene.document, definition, parameter).unwrap()[0].handle;
@@ -5731,5 +5731,112 @@ fn block_grip_locations_edit_undo_and_drag_in_transformed_references_and_test_bl
         let EntityType::Insert(native) = app.tabs[i].scene.document.get_entity(insert).unwrap() else { panic!() };
         let line = app.tabs[i].scene.document.block_records.get(&native.block_name).unwrap().entity_handles.iter().find_map(|handle| match app.tabs[i].scene.document.get_entity(*handle) { Some(EntityType::Line(line)) => Some(line), _ => None }).unwrap();
         assert!(line.start.distance(&Vector3::new(5., 0., 0.)) < 1e-8);
+    }
+}
+
+#[test]
+fn block_runtime_native_roles_drag_cancel_undo_redo_and_preserve_relocated_grips() {
+    use crate::scene::{block_actions as actions, block_grips::{config, runtime}};
+    use actions::{instance::ParameterFrame, XyKeyPoint};
+    use glam::DVec3;
+    for testing in [false, true] {
+        for (family, role, desired, expected) in [
+            ("POINT", 0, DVec3::new(3., 5., 0.), DVec3::new(3., 5., 0.)),
+            ("LINEAR", 0, DVec3::new(-2., 4., 0.), DVec3::new(-2., 0., 0.)),
+            ("LINEAR", 1, DVec3::new(13., 4., 0.), DVec3::new(3., 0., 0.)),
+            ("POLAR", 0, DVec3::new(-2., -3., 0.), DVec3::new(-2., -3., 0.)),
+            ("POLAR", 1, DVec3::new(13., 15., 0.), DVec3::new(3., 15., 0.)),
+            ("XY", 0, DVec3::new(-2., -3., 0.), DVec3::new(-2., -3., 0.)),
+            ("XY", 1, DVec3::new(13., 15., 0.), DVec3::new(3., 5., 0.)),
+            ("XY", 2, DVec3::new(13., -3., 0.), DVec3::new(3., -3., 0.)),
+            ("XY", 3, DVec3::new(-2., 15., 0.), DVec3::new(-2., 5., 0.)),
+        ] {
+            let (mut app, reference) = fixture();
+            begin(&mut app, reference);
+            let source = app.active_tab;
+            let command = if family == "POINT" { "BPARAMETER POINT 0,0 5,2".to_owned() }
+                else { format!("BPARAMETER {family} 0,0 {} 5,2", if family == "XY" { "10,10" } else { "10,0" }) };
+            let _ = app.run_command_line(&command);
+            let definition = app.tabs[source].active_block_edit_session().unwrap().br_handle;
+            let p = actions::all_parameters(&app.tabs[source].scene.document, definition).remove(0);
+            let key = [XyKeyPoint::Base, XyKeyPoint::End, XyKeyPoint::X, XyKeyPoint::Y][role];
+            let targets = members(&app);
+            actions::create_with_options(&mut app.tabs[source].scene.document, definition, actions::Kind::Move,
+                p.handle, (family != "POINT").then_some(key), &targets, DVec3::ZERO, None, None).unwrap();
+            let maximum = *config::choices(&app.tabs[source].scene.document, definition, p.handle).last().unwrap();
+            config::set(&mut app.tabs[source].scene.document, definition, p.handle, Some(maximum)).unwrap();
+            let stable_ids = runtime::grips(&app.tabs[source].scene.document, definition, &p, actions::Value::Point(p.end)).into_iter().map(|grip| grip.id).collect::<Vec<_>>();
+            config::set(&mut app.tabs[source].scene.document, definition, p.handle, Some(0)).unwrap();
+            assert!(runtime::grips(&app.tabs[source].scene.document, definition, &p, actions::Value::Point(p.end)).is_empty());
+            config::set(&mut app.tabs[source].scene.document, definition, p.handle, Some(maximum)).unwrap();
+            assert_eq!(runtime::grips(&app.tabs[source].scene.document, definition, &p, actions::Value::Point(p.end)).into_iter().map(|grip| grip.id).collect::<Vec<_>>(), stable_ids);
+            let offset = Vector3::new(15., 7., 0.);
+            for grip in config::locations(&app.tabs[source].scene.document, definition, p.handle).unwrap() {
+                config::set_location(&mut app.tabs[source].scene.document, definition, p.handle, grip.role, grip.point + offset).unwrap();
+            }
+            if testing { let _ = app.open_block_test(source); }
+            else { let _ = app.dispatch_command("BSAVE"); let _ = app.dispatch_command("BCLOSE"); }
+            let i = app.active_tab;
+            let insert = app.tabs[i].block_test.as_ref().map(|test| test.insert).unwrap_or(reference);
+            let EntityType::Insert(native) = app.tabs[i].scene.document.get_entity_mut(insert).unwrap() else { panic!() };
+            native.insert_point = Vector3::new(100., 200., 30.);
+            native.normal = Vector3::new(0., std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2);
+            native.rotation = std::f64::consts::FRAC_PI_2;
+            native.set_x_scale(2.); native.set_y_scale(2.); native.set_z_scale(2.);
+            let to_world = crate::scene::render_graph::insert_transform(&app.tabs[i].scene.document,
+                match app.tabs[i].scene.document.get_entity(insert).unwrap() { EntityType::Insert(ins) => ins, _ => panic!() });
+            app.tabs[i].scene.selection.borrow_mut().view.vp_size = (1000., 800.);
+            app.tabs[i].scene.camera.borrow_mut().fit_to_bounds_f64(DVec3::new(40., 180., 0.), DVec3::new(120., 280., 0.), 1.25);
+            let click = |app: &mut OpenCADStudio, point: DVec3| {
+                let scene = &app.tabs[i].scene;
+                let tile = scene.active_model_tile_bounds(1000., 800.);
+                let at = scene.camera.borrow().project(point, iced::Rectangle::with_size(iced::Size::new(tile.width, tile.height))).unwrap();
+                let point = iced::Point::new(at.x + tile.x, at.y + tile.y);
+                let _ = app.update(Message::ViewportLeftPressAt(point));
+                let _ = app.update(Message::ViewportLeftRelease);
+            };
+            let select = |app: &mut OpenCADStudio| {
+                app.tabs[i].scene.select_entity(insert, true);
+                app.tabs[i].selected_handle = Some(insert);
+                app.tabs[i].selected_grips.clear(); app.tabs[i].selected_grip_handles.clear();
+                app.refresh_test_action_grips([0.; 3]);
+            };
+            select(&mut app);
+            let id = runtime::id(p.id, role).unwrap();
+            assert_eq!(app.tabs[i].selected_grips.iter().filter(|grip| super::block_actions::is_test_grip(grip.id)).count(), maximum);
+            assert!(app.tabs[i].selected_grips.iter().any(|grip| grip.id == id));
+            let before = app.tabs[i].scene.document.clone();
+            let displayed = app.tabs[i].selected_grips.iter().find(|grip| grip.id == id).unwrap().world;
+            click(&mut app, displayed);
+            assert_eq!(app.tabs[i].active_cmd.as_ref().and_then(|command| command.block_parameter_grip_id()), Some(id));
+            let _ = app.update(Message::CommandEscape);
+            assert_eq!(app.tabs[i].scene.document, before);
+            select(&mut app);
+            let native_grips = config::locations(&app.tabs[i].scene.document, definition, p.handle).unwrap().into_iter()
+                .map(|grip| (grip.handle, app.tabs[i].scene.document.objects[&grip.handle].clone())).collect::<Vec<_>>();
+            click(&mut app, displayed);
+            assert_eq!(app.tabs[i].active_cmd.as_ref().and_then(|command| command.block_parameter_grip_id()), Some(id));
+            let world = actions::v(to_world.apply(actions::native(desired) + offset));
+            click(&mut app, world);
+            let frame = actions::instance::frame(&app.tabs[i].scene.document, insert, &p).unwrap();
+            let changed = app.tabs[i].scene.document.clone();
+            let check = |app: &OpenCADStudio, delta: DVec3| {
+                let EntityType::Insert(reference) = app.tabs[i].scene.document.get_entity(insert).unwrap() else { panic!() };
+                let line = app.tabs[i].scene.document.block_records.get(&reference.block_name).unwrap().entity_handles.iter()
+                    .find_map(|handle| match app.tabs[i].scene.document.get_entity(*handle) { Some(EntityType::Line(line)) => Some(line), _ => None }).unwrap();
+                assert!(actions::v(line.start).distance(delta) < 1e-4, "{testing} {family} role{role}: {:?} != {delta:?}", line.start);
+            };
+            check(&app, expected);
+            for (handle, native) in &native_grips { assert_eq!(&changed.objects[handle], native); }
+            app.undo_steps(1);
+            check(&app, DVec3::ZERO);
+            assert_eq!(actions::instance::frame(&app.tabs[i].scene.document, insert, &p).unwrap(), ParameterFrame { base: p.base, end: p.end });
+            assert_eq!(app.tabs[i].scene.document.objects.len(), before.objects.len());
+            app.redo_steps(1);
+            check(&app, expected);
+            assert_eq!(actions::instance::frame(&app.tabs[i].scene.document, insert, &p).unwrap(), frame);
+            select(&mut app);
+            assert!(app.tabs[i].selected_grips.iter().any(|grip| grip.id == id));
+        }
     }
 }

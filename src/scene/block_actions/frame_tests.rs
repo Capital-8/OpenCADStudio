@@ -132,10 +132,8 @@ fn block_parameter_frames_preserve_both_endpoints_and_native_metadata() {
             assert!(reference.common.xdictionary_handle.is_some());
             assert_eq!(reference.block_name, "ACTIONS");
             assert_eq!(reference.insert_point, Vector3::ZERO);
-            // Endpoint-only evaluation remains guarded until frame-aware actions are wired.
-            if !p.point {
-                assert!(instance::current(&saved, insert, &p).is_err());
-            }
+            assert_eq!(instance::current(&saved, insert, &p).unwrap(), expected.end);
+
         }
         let reset = instance::reset(&doc, insert).unwrap().unwrap();
         assert_eq!(instance::frame(&reset, insert, &p).unwrap(), initial);

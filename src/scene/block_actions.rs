@@ -103,7 +103,17 @@ pub(crate) fn native(p: DVec3) -> Vector3 {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
     Point(DVec3),
+    Frame { base: DVec3, end: DVec3 },
     Flip(bool),
+}
+impl Value {
+    pub(crate) fn map_points(self, map: impl Fn(DVec3) -> DVec3) -> Self {
+        match self {
+            Self::Point(point) => Self::Point(map(point)),
+            Self::Frame { base, end } => Self::Frame { base: map(base), end: map(end) },
+            state => state,
+        }
+    }
 }
 
 pub(crate) fn all_parameters(doc: &CadDocument, definition: Handle) -> Vec<Parameter> {
@@ -196,7 +206,7 @@ pub(crate) fn set_value(
         return Ok(());
     }
     let Value::Point(position) = value else {
-        unreachable!()
+        return Err("Evaluate complete parameter frames in a reference context.");
     };
     if !position.is_finite() {
         return Err("Specify a finite parameter position.");
@@ -221,19 +231,13 @@ pub(crate) fn set_value(
 
 pub(crate) fn grip_position(p: &Parameter, value: Value) -> DVec3 {
     match value {
-        Value::Point(at) => at + grip_offset(p),
+        Value::Point(at) | Value::Frame { end: at, .. } => at + grip_offset(p),
         Value::Flip(_) => p.grip_location.unwrap_or(p.reference),
     }
 }
 
 /// Native display placement is independent of the evaluated endpoint.
 pub(crate) fn grip_offset(p: &Parameter) -> DVec3 { p.grip_location.map(|at| at - p.end).unwrap_or(DVec3::ZERO) }
-pub(crate) fn world_grip_offset(doc: &CadDocument, insert: Handle, p: &Parameter) -> Option<DVec3> {
-    let EntityType::Insert(insert) = doc.get_entity(insert)? else { return None };
-    let transform = crate::scene::render_graph::insert_transform(doc, insert);
-    let offset = v(transform.apply_rotation(native(grip_offset(p))));
-    offset.is_finite().then_some(offset)
-}
 
 /// A Flip arrow points across its reflection line and reverses with its state.
 pub(crate) fn grip_direction(p: &Parameter, value: Value) -> Option<DVec3> {
@@ -1139,6 +1143,7 @@ pub(crate) fn evaluate(
     evaluate_value(doc, baseline, definition, parameter, Value::Point(position))
 }
 
+#[cfg(test)]
 pub(crate) fn evaluate_value(
     doc: &mut CadDocument,
     baseline: &CadDocument,
@@ -1218,6 +1223,7 @@ fn evaluate_impl(
     p.end += base - p.base;
     p.base = base;
     let input = match input {
+        Value::Frame { .. } => return Err("Evaluate complete parameter frames in a reference context."),
         Value::Flip(_) if !p.flip => return Err("Select a Flip parameter."),
         Value::Point(_) if p.flip => return Err("Use the Flip grip to toggle its state."),
         Value::Point(mut position) => {
@@ -1687,7 +1693,7 @@ fn supported_parameter(doc: &CadDocument, handle: Handle) -> bool {
     }
 }
 
-fn constrain_value_set(value: f64, set: &codec::objects::BlockParameterValueSet) -> f64 {
+pub(crate) fn constrain_value_set(value: f64, set: &codec::objects::BlockParameterValueSet) -> f64 {
     let minimum = (set.flags & 1 != 0).then_some(set.minimum);
     let maximum = (set.flags & 2 != 0).then_some(set.maximum);
     let clamp = |value: f64| {
@@ -1721,7 +1727,7 @@ fn constrain_value_set(value: f64, set: &codec::objects::BlockParameterValueSet)
     value
 }
 
-fn constrain_angle(value: f64, set: &codec::objects::BlockParameterValueSet) -> f64 {
+pub(crate) fn constrain_angle(value: f64, set: &codec::objects::BlockParameterValueSet) -> f64 {
     if set.flags == 0 {
         return value;
     }

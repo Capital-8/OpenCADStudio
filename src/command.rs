@@ -3183,6 +3183,9 @@ pub trait CadCommand: Send {
     fn block_parameter_target(&self) -> Option<(Option<codec::Handle>, codec::Handle)> {
         None
     }
+    fn block_parameter_grip_id(&self) -> Option<usize> {
+        None
+    }
 
     /// Advance the insertion anchor on a rising Ctrl key edge.
     fn cycle_insertion_point(&mut self) -> bool {

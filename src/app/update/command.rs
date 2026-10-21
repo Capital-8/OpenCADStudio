@@ -3420,11 +3420,9 @@ impl OpenCADStudio {
                     if self.tabs[i].scene.is_layer_locked(handle) {
                         continue;
                     }
-                    let result = crate::scene::block_lookup::evaluate_reference_choice(
-                        &self.tabs[i].scene.document,
-                        handle,
-                        &value,
-                    );
+                    let result = if let Some(test) = self.tabs[i].block_test.as_ref().filter(|test| test.insert == handle) {
+                        crate::scene::block_lookup::evaluate_test_choice(&self.tabs[i].scene.document, &test.baseline, handle, &value)
+                    } else { crate::scene::block_lookup::evaluate_reference_choice(&self.tabs[i].scene.document, handle, &value) };
                     match result {
                         Ok(Some(staged)) => {
                             self.apply_action_document(i, staged);

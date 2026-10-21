@@ -117,17 +117,53 @@ pub(crate) fn frame(
     Ok(result)
 }
 
+#[cfg(test)]
 pub(crate) fn current(
     doc: &CadDocument,
     insert: Handle,
     p: &Parameter,
 ) -> Result<DVec3, &'static str> {
     let frame = frame(doc, insert, p)?;
-    // Endpoint-only callers cannot yet evaluate a changed base correctly.
-    if !p.point && frame.base.distance(p.base) > 1e-8 {
-        return Err("This reference uses a relocated parameter base that is not supported yet.");
-    }
     Ok(frame.end)
+}
+
+fn frame_value(p: &Parameter, frame: ParameterFrame) -> Value {
+    if frame.base.distance(p.base) > 1e-10 {
+        Value::Frame {
+            base: frame.base,
+            end: frame.end,
+        }
+    } else {
+        Value::Point(frame.end)
+    }
+}
+
+pub(crate) fn test_frame(
+    doc: &CadDocument,
+    insert: Handle,
+    p: &Parameter,
+) -> Result<ParameterFrame, &'static str> {
+    if cache(doc, insert, p.id)?.is_some() {
+        frame(doc, insert, p)
+    } else {
+        ParameterFrame {
+            base: p.base,
+            end: super::current(doc, p),
+        }
+        .validate(p)
+    }
+}
+
+pub(crate) fn test_value(
+    doc: &CadDocument,
+    insert: Handle,
+    p: &Parameter,
+) -> Result<Value, &'static str> {
+    if cache(doc, insert, p.id)?.is_some() {
+        value(doc, insert, p)
+    } else {
+        super::value(doc, p)
+    }
 }
 
 pub(crate) fn value(
@@ -136,7 +172,8 @@ pub(crate) fn value(
     p: &Parameter,
 ) -> Result<Value, &'static str> {
     if !p.flip {
-        return current(doc, insert, p).map(Value::Point);
+        let frame = frame(doc, insert, p)?;
+        return Ok(frame_value(p, frame));
     }
     let Some(h) = cache(doc, insert, p.id)? else {
         return Ok(Value::Flip(false));
@@ -203,6 +240,9 @@ pub(crate) fn save(
     p: &Parameter,
     value: Value,
 ) -> Result<(), &'static str> {
+    if let Value::Frame { base, end } = value {
+        return save_frame(doc, insert, p, ParameterFrame { base, end });
+    }
     if let Value::Point(end) = value {
         if p.flip {
             return Err("Use the Flip state for this parameter.");
@@ -393,6 +433,9 @@ pub(crate) fn evaluate_value(
     parameter: Handle,
     input: Value,
 ) -> Result<Option<CadDocument>, &'static str> {
+    if let Value::Frame { base, end } = input {
+        return evaluate_frame(doc, insert, parameter, ParameterFrame { base, end });
+    }
     if let Value::Point(mut end) = input {
         let def =
             definition(doc, insert).ok_or("Select a uniformly scaled dynamic block reference.")?;
@@ -425,7 +468,7 @@ pub(crate) fn evaluate_frame(
     )
 }
 
-fn load_frames(
+pub(crate) fn load_frames(
     doc: &CadDocument,
     evaluated: &mut CadDocument,
     insert: Handle,
@@ -493,6 +536,94 @@ fn evaluate_input(
         save(&mut result, insert, selected, value)?;
     }
     Ok(Some(result))
+}
+
+pub(crate) fn load_test_frames(
+    doc: &CadDocument,
+    evaluated: &mut CadDocument,
+    insert: Handle,
+    parameters: &[Parameter],
+) -> Result<std::collections::BTreeMap<Handle, ParameterFrame>, &'static str> {
+    let mut frames = std::collections::BTreeMap::new();
+    for p in parameters {
+        let value = if p.flip {
+            test_value(doc, insert, p)?
+        } else {
+            let frame = test_frame(doc, insert, p)?;
+            frames.insert(p.handle, frame);
+            Value::Point(frame.end)
+        };
+        super::set_value(evaluated, p, value)?;
+    }
+    Ok(frames)
+}
+
+/// Evaluate a scratch reference while retaining its immutable definition baseline.
+pub(crate) fn evaluate_test_value(
+    doc: &CadDocument,
+    baseline: &CadDocument,
+    definition: Handle,
+    insert: Handle,
+    parameter: Handle,
+    input: Value,
+) -> Result<Option<CadDocument>, &'static str> {
+    let parameters = all_parameters(baseline, definition);
+    let selected = parameters
+        .iter()
+        .find(|p| p.handle == parameter)
+        .ok_or("The test parameter is unavailable.")?;
+    let mut staged = doc.clone();
+    let mut frames = load_test_frames(doc, &mut staged, insert, &parameters)?;
+    let mut base_changed = false;
+    let input = match input {
+        Value::Frame { base, end } => {
+            if selected.flip {
+                return Err("Use the Flip state for this parameter.");
+            }
+            let requested = ParameterFrame { base, end }.validate(selected)?;
+            let previous = frames
+                .get_mut(&parameter)
+                .ok_or("The test frame is unavailable.")?;
+            base_changed = previous.base.distance(requested.base) > 1e-10;
+            previous.base = requested.base;
+            Value::Point(requested.end)
+        }
+        value => value,
+    };
+    if !super::evaluate_framed(
+        &mut staged,
+        baseline,
+        definition,
+        parameter,
+        input,
+        &frames,
+        base_changed,
+    )? {
+        return Ok(None);
+    }
+    let value = super::value(&staged, selected)?;
+    if let Value::Point(end) = value {
+        save_frame(
+            &mut staged,
+            insert,
+            selected,
+            ParameterFrame {
+                base: frames[&parameter].base,
+                end,
+            },
+        )?;
+    } else {
+        save(&mut staged, insert, selected, value)?;
+    }
+    let EntityType::Insert(reference) = staged
+        .get_entity(insert)
+        .ok_or("The test reference is unavailable.")?
+    else {
+        return Err("Select a test reference.");
+    };
+    let name = reference.block_name.clone();
+    super::sync_representation(&mut staged, definition, &name)?;
+    Ok(Some(staged))
 }
 
 /// Restore one reference without changing the definition or another reference.
@@ -676,6 +807,26 @@ pub(crate) fn evaluate_table_row(
     columns: &[crate::scene::block_properties_table::Column],
     row: usize,
 ) -> Result<Option<CadDocument>, &'static str> {
+    evaluate_table_row_context(doc, None, insert, columns, row)
+}
+
+pub(crate) fn evaluate_test_table_row(
+    doc: &CadDocument,
+    baseline: &CadDocument,
+    insert: Handle,
+    columns: &[crate::scene::block_properties_table::Column],
+    row: usize,
+) -> Result<Option<CadDocument>, &'static str> {
+    evaluate_table_row_context(doc, Some(baseline), insert, columns, row)
+}
+
+fn evaluate_table_row_context(
+    doc: &CadDocument,
+    baseline: Option<&CadDocument>,
+    insert: Handle,
+    columns: &[crate::scene::block_properties_table::Column],
+    row: usize,
+) -> Result<Option<CadDocument>, &'static str> {
     let def =
         definition(doc, insert).ok_or("Select a uniformly scaled dynamic block reference.")?;
     let view = crate::scene::block_properties_table::table(doc, def)?
@@ -690,15 +841,23 @@ pub(crate) fn evaluate_table_row(
             .into_iter()
             .find(|p| p.handle == column.handle)
             .ok_or("The table parameter is unavailable.")?;
+        let base = if baseline.is_some() {
+            test_frame(&staged, insert, &p)?.base
+        } else {
+            frame(&staged, insert, &p)?.base
+        };
         let input = if column.connection_name.eq_ignore_ascii_case("UpdatedAngle") {
-            Value::Point(
-                p.base + DVec3::new(value.cos(), value.sin(), 0.0) * p.end.distance(p.base),
-            )
+            Value::Point(base + DVec3::new(value.cos(), value.sin(), 0.0) * p.end.distance(p.base))
         } else {
             let axis = (p.end - p.base).normalize();
-            Value::Point(p.base + axis * *value)
+            Value::Point(base + axis * *value)
         };
-        if let Some(next) = evaluate_value(&staged, insert, p.handle, input)? {
+        let next = if let Some(baseline) = baseline {
+            evaluate_test_value(&staged, baseline, def, insert, p.handle, input)?
+        } else {
+            evaluate_value(&staged, insert, p.handle, input)?
+        };
+        if let Some(next) = next {
             staged = next;
         }
     }

@@ -77,12 +77,11 @@ impl OpenCADStudio {
             let Ok(Some(view)) = crate::scene::block_properties_table::table(doc, def) else {
                 return;
             };
-            crate::scene::block_actions::instance::evaluate_table_row(
-                doc,
-                insert,
-                &view.columns,
-                row,
-            )
+            if let Some(test) = self.tabs[i].block_test.as_ref().filter(|test| test.insert == insert) {
+                crate::scene::block_actions::instance::evaluate_test_table_row(doc, &test.baseline, insert, &view.columns, row)
+            } else {
+                crate::scene::block_actions::instance::evaluate_table_row(doc, insert, &view.columns, row)
+            }
         };
         match result {
             Ok(Some(staged)) => {
@@ -201,15 +200,14 @@ impl OpenCADStudio {
                 valid = false;
                 continue;
             };
-            match crate::scene::block_actions::instance::value(doc, handle, p) {
-                Ok(crate::scene::block_actions::Value::Point(v)) => values.push(
+            let frame = if self.tabs[i].block_test.is_some() {
+                crate::scene::block_actions::instance::test_frame(doc, handle, p)
+            } else { crate::scene::block_actions::instance::frame(doc, handle, p) };
+            match frame {
+                Ok(frame) => values.push(
                     if column.connection_name.eq_ignore_ascii_case("UpdatedAngle") {
-                        (v.y - p.base.y)
-                            .atan2(v.x - p.base.x)
-                            .rem_euclid(std::f64::consts::TAU)
-                    } else {
-                        v.distance(p.base)
-                    },
+                        (frame.end.y - frame.base.y).atan2(frame.end.x - frame.base.x).rem_euclid(std::f64::consts::TAU)
+                    } else { frame.end.distance(frame.base) },
                 ),
                 _ => {
                     values.push(f64::NAN);
