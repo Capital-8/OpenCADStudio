@@ -1391,7 +1391,11 @@ impl OpenCADStudio {
 
             "TRIM" => {
                 use crate::modules::draw::modify::trim::TrimCommand;
-                let entities: Vec<_> = self.tabs[i]
+                // Curves live in entity_wires(), but HATCH fills have their
+                // own renderer. Include visible top-level hatch entities in
+                // the command's geometry snapshot so clicking inside one
+                // can actually reach the hatch trim solver.
+                let mut entities: Vec<_> = self.tabs[i]
                     .scene
                     .entity_wires()
                     .iter()
@@ -1405,6 +1409,15 @@ impl OpenCADStudio {
                             .map(|e| (h, e))
                     })
                     .collect();
+                let mut seen: std::collections::HashSet<codec::Handle> =
+                    entities.iter().map(|(handle, _)| *handle).collect();
+                for handle in self.tabs[i].scene.visible_hatch_handles_for_edit() {
+                    if seen.insert(handle) {
+                        if let Some(entity) = self.tabs[i].scene.document.get_entity(handle).cloned() {
+                            entities.push((handle, entity));
+                        }
+                    }
+                }
                 let initial_edges: Vec<codec::Handle> = self.tabs[i]
                     .scene
                     .selected_entities()
