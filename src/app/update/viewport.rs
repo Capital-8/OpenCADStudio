@@ -1342,7 +1342,6 @@ impl OpenCADStudio {
             self.tabs[i].scene.set_active_visual_style_named(
                 crate::modules::view::visual_style::style_name_for(mode),
             );
-            self.tabs[i].scene.bump_geometry_no_blocks();
             self.tabs[i].dirty = true;
             self.command_line
                 .push_output(crate::tf!("Viewport visual style: {label}").as_ref());
@@ -1381,9 +1380,8 @@ impl OpenCADStudio {
         self.tabs[i].wireframe = wf;
         self.ribbon.set_wireframe(wf);
         self.tabs[i].visual_style = label.into();
-        // Re-upload face3d fills on the next frame — the render
-        // pipeline keys its upload cache off `geometry_epoch`.
-        self.tabs[i].scene.bump_geometry_no_blocks();
+        // No geometry bump: every render pass keys on the viewport's own
+        // mode, and a bump re-tessellated and re-uploaded the whole drawing.
         self.tabs[i].dirty = true;
     }
 
