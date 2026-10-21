@@ -1,4 +1,5 @@
 //! Native grip metadata shared by the editor and insertion commands.
+pub(crate) mod config;
 use codec::{
     objects::{BlockGrip, DynamicBlockData, ObjectType},
     types::Vector3,

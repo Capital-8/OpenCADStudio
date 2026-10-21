@@ -90,7 +90,7 @@ pub fn parameter(document: &CadDocument, definition: Handle) -> Option<&BlockVis
 }
 
 /// Store an edited parameter in the document and its lookup view.
-fn store(document: &mut CadDocument, parameter: BlockVisibilityParameter) {
+pub(crate) fn store(document: &mut CadDocument, parameter: BlockVisibilityParameter) {
     document
         .block_visibility_params
         .insert(parameter.handle, parameter.clone());
