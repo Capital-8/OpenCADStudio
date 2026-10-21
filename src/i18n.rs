@@ -261,6 +261,30 @@ pub fn active_language_tag() -> String {
         .to_string()
 }
 
+/// Catalog ids of a source string, memoized per thread. The catalog is one
+/// string `match` over thousands of arms, a linear scan per call; labels are
+/// looked up on every view pass and per selected object in the Properties
+/// panel, so the scan dominated those paths (#1999).
+fn catalog_ids(source: &str) -> Option<(&'static str, &'static str)> {
+    type Ids = rustc_hash::FxHashMap<Box<str>, Option<(&'static str, &'static str)>>;
+    thread_local! {
+        static IDS: std::cell::RefCell<Ids> = std::cell::RefCell::default();
+    }
+    IDS.with(|ids| {
+        if let Some(found) = ids.borrow().get(source) {
+            return *found;
+        }
+        let found = locale_catalog::message_attribute(source);
+        let mut ids = ids.borrow_mut();
+        // Runtime text (names, values) can reach `t!` too; stay bounded.
+        if ids.len() >= 16_384 {
+            ids.clear();
+        }
+        ids.insert(source.into(), found);
+        found
+    })
+}
+
 /// Translate an application-facing source label from the complete UI catalog.
 ///
 /// Stable semantic ids remain preferable for new code. This compatibility
@@ -269,7 +293,7 @@ pub fn active_language_tag() -> String {
 /// translatable data.
 pub fn translate(source: impl AsRef<str>) -> Cow<'static, str> {
     let source = source.as_ref();
-    locale_catalog::message_attribute(source)
+    catalog_ids(source)
         .map(|(message_id, attribute_id)| Cow::Owned(loader().get_attr(message_id, attribute_id)))
         .unwrap_or_else(|| Cow::Owned(source.to_string()))
 }
@@ -278,7 +302,7 @@ pub fn translate(source: impl AsRef<str>) -> Cow<'static, str> {
 /// command prompts. Markers preserve values through Fluent parsing.
 pub fn translate_args(source: impl AsRef<str>, args: &[(&str, String)]) -> Cow<'static, str> {
     let source = source.as_ref();
-    let mut translated = locale_catalog::message_attribute(source)
+    let mut translated = catalog_ids(source)
         .map(|(message_id, attribute_id)| loader().get_attr(message_id, attribute_id))
         .unwrap_or_else(|| source.to_string());
     for (name, value) in args {
@@ -294,7 +318,7 @@ pub fn translate_args(source: impl AsRef<str>, args: &[(&str, String)]) -> Cow<'
 /// sentence. File names, handles, counts, and command values therefore remain
 /// data instead of being sent through translation.
 pub fn translate_format(template: &str, rendered: String) -> Cow<'static, str> {
-    let Some((message_id, attribute_id)) = locale_catalog::message_attribute(template) else {
+    let Some((message_id, attribute_id)) = catalog_ids(template) else {
         return Cow::Owned(rendered);
     };
     let Some(values) = format_values(template, &rendered) else {
