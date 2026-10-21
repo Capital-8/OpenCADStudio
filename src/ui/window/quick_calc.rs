@@ -148,9 +148,8 @@ pub enum QuickCalcMsg {
 pub struct QuickCalcSettings {
     /// "My constants", in the order they were made.
     pub constants: Vec<(String, f64)>,
-    /// Which sections are open, in [`Section::ALL`] order. (Earlier builds
-    /// wrote five sections under `open`; that key is ignored now.)
-    pub sections: Vec<bool>,
+    /// Which sections are open, in [`Section::ALL`] order.
+    pub open: [bool; 3],
     pub radians: bool,
     pub scientific: bool,
 }
@@ -159,7 +158,7 @@ impl Default for QuickCalcSettings {
     fn default() -> Self {
         Self {
             constants: Vec::new(),
-            sections: vec![true, false, false],
+            open: [true, false, false],
             radians: false,
             scientific: false,
         }
@@ -241,7 +240,7 @@ impl Default for QuickCalcPalette {
             session: HashMap::new(),
             constants: Vec::new(),
             memory: Vec::new(),
-            open: [true, false, false],
+            open: QuickCalcSettings::default().open,
             keypad_mode: KeypadMode::Standard,
             second: false,
             hyp: false,
@@ -260,12 +259,12 @@ impl Default for QuickCalcPalette {
 }
 
 /// Whether `input` starts with `* / ^`, so it continues from `ans`.
-pub fn continues_ans(input: &str) -> bool {
+fn continues_ans(input: &str) -> bool {
     input.trim_start().starts_with(['*', '/', '^'])
 }
 
 /// `name` when `input` is `name = …`.
-pub fn assignment_target(input: &str) -> Option<&str> {
+fn assignment_target(input: &str) -> Option<&str> {
     let (lhs, rhs) = input.split_once('=')?;
     let name = lhs.trim();
     let starts = name
@@ -277,7 +276,7 @@ pub fn assignment_target(input: &str) -> Option<&str> {
 }
 
 /// Whether `input` has a length suffix, so its value was converted.
-pub fn has_length_suffix(input: &str) -> bool {
+fn has_length_suffix(input: &str) -> bool {
     let bytes = input.as_bytes();
     if input.contains(['\'', '"']) {
         return true;
@@ -320,7 +319,7 @@ impl QuickCalcPalette {
     pub fn settings(&self) -> QuickCalcSettings {
         QuickCalcSettings {
             constants: self.constants.clone(),
-            sections: self.open.to_vec(),
+            open: self.open,
             radians: self.mode == AngleMode::Radians,
             scientific: self.keypad_mode == KeypadMode::Scientific,
         }
@@ -333,9 +332,7 @@ impl QuickCalcPalette {
             .filter(|(name, value)| !calc::is_reserved_name(name) && value.is_finite())
             .cloned()
             .collect();
-        for (open, saved) in self.open.iter_mut().zip(&s.sections) {
-            *open = *saved;
-        }
+        self.open = s.open;
         self.keypad_mode = if s.scientific {
             KeypadMode::Scientific
         } else {

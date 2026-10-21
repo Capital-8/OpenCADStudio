@@ -6855,6 +6855,3 @@ quickcalc =
     .cmd-point = QuickCalc  Geef een punt op:
     .cmd-first = QuickCalc  Geef het eerste punt op:
     .cmd-second = QuickCalc  Geef het tweede punt op:
-    .backspace = Backspace
-    .pi = Pi
-    .sqrt = Vierkantswortel

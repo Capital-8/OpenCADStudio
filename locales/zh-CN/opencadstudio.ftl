@@ -6840,6 +6840,3 @@ quickcalc =
     .cmd-point = QuickCalc  Specify a point:
     .cmd-first = QuickCalc  Specify first point:
     .cmd-second = QuickCalc  Specify second point:
-    .backspace = Backspace
-    .pi = Pi
-    .sqrt = Square root
