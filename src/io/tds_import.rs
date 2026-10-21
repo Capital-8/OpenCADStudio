@@ -500,6 +500,22 @@ pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
                     if let Some(m) = &material {
                         if !out.materials.contains(m) {
                             out.messages.push(format!("Converting material {m}"));
+                            // A texture map is looked for in the search path
+                            // (the current folder), not beside the file.
+                            let map = scene
+                                .materials
+                                .iter()
+                                .find(|x| x.name == *m)
+                                .and_then(|x| x.map.as_ref());
+                            if let Some((file, _)) = map {
+                                let found = std::env::current_dir()
+                                    .is_ok_and(|dir| dir.join(file).is_file());
+                                if !found {
+                                    out.messages.push(format!(
+                                        "Cannot find texture map file \"{file}\"."
+                                    ));
+                                }
+                            }
                             out.materials.push(m.clone());
                             first_use = Some(m.clone());
                         }
