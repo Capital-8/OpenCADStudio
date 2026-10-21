@@ -588,6 +588,9 @@ fn to_page_vectors(sheet: &Sheet) -> super::pdf_vector::PageVectors {
                 .collect(),
             stroke: p.stroke.map(|(c, w)| (c, w.max(0.0))),
             fill: p.fill,
+            pen: None,
+            closes: Vec::new(),
+            clip: None,
         })
         .collect();
     pv::PageVectors {
