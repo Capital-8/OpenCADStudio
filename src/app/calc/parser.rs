@@ -32,6 +32,8 @@ pub(super) enum ExprKind {
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
     Div(Box<Expr>, Box<Expr>),
+    /// `a mod b`: the remainder with the sign of `b`.
+    Mod(Box<Expr>, Box<Expr>),
     Pow(Box<Expr>, Box<Expr>),
     Call(String, Vec<Expr>),
     Point(Vec<Expr>),
@@ -170,7 +172,7 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    // product → unary (('*' | '/') unary)*
+    // product → unary (('*' | '/' | 'mod') unary)*
     fn product(&mut self, depth: usize) -> Result<Expr, CalcError> {
         let depth = self.deeper(depth)?;
         let mut lhs = self.unary(depth)?;
@@ -178,6 +180,7 @@ impl<'a> Parser<'a> {
             let op: fn(_, _) -> _ = match self.peek() {
                 Some(TokKind::Star) => ExprKind::Mul,
                 Some(TokKind::Slash) => ExprKind::Div,
+                Some(TokKind::Ident(name)) if is_mod(name) => ExprKind::Mod,
                 _ => break,
             };
             self.pos += 1;
@@ -299,6 +302,8 @@ impl<'a> Parser<'a> {
         let unit = match &t.kind {
             TokKind::Feet => units::lookup("'"),
             TokKind::Inches => units::lookup("\""),
+            // `5 mod 3`: the operator, not a unit.
+            TokKind::Ident(name) if is_mod(name) => None,
             TokKind::Ident(name) => match units::lookup(name) {
                 Some(unit) => Some(unit),
                 // `2x` reads as a typo'd unit; `2 x` as a stray name.
@@ -341,6 +346,10 @@ impl<'a> Parser<'a> {
         }
         Ok(feet)
     }
+}
+
+fn is_mod(name: &str) -> bool {
+    name.eq_ignore_ascii_case("mod")
 }
 
 /// A token as written, for error messages.

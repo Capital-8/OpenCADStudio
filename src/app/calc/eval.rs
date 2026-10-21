@@ -15,10 +15,16 @@ pub(super) fn eval(expr: &Expr, ctx: &CalcContext) -> Result<Value, CalcError> {
         ExprKind::Ref(name) => {
             if name.eq_ignore_ascii_case("pi") {
                 Value::Number(std::f64::consts::PI)
+            } else if let Some(value) = ctx.vars.get(name) {
+                *value
+            } else if name == "e" {
+                // A variable called `e` (from the drawing) wins over the constant.
+                Value::Number(std::f64::consts::E)
             } else {
-                *ctx.vars.get(name).ok_or_else(|| {
-                    CalcError::new(expr.span.clone(), crate::tf!("unknown variable '{}'", name))
-                })?
+                return Err(CalcError::new(
+                    expr.span.clone(),
+                    crate::tf!("unknown variable '{}'", name),
+                ));
             }
         }
         ExprKind::Ans => ctx.ans.ok_or_else(|| {
@@ -63,6 +69,17 @@ pub(super) fn eval(expr: &Expr, ctx: &CalcContext) -> Result<Value, CalcError> {
                 Value::Number(x) => Value::Number(x / divisor),
                 Value::Point(p) => Value::Point(p / divisor),
             }
+        }
+        ExprKind::Mod(a, b) => {
+            let x = number(eval(a, ctx)?, a.span.clone())?;
+            let m = number(eval(b, ctx)?, b.span.clone())?;
+            if m == 0.0 {
+                return Err(CalcError::new(
+                    b.span.clone(),
+                    crate::t!("division by zero"),
+                ));
+            }
+            Value::Number(x - m * (x / m).floor())
         }
         ExprKind::Pow(a, b) => {
             let base = number(eval(a, ctx)?, a.span.clone())?;

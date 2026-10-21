@@ -70,12 +70,15 @@ pub fn evaluate(input: &str, ctx: &mut CalcContext) -> Result<Value, CalcError> 
     Ok(value)
 }
 
-/// Names a variable cannot take: functions, `pi`, `ans` and unit suffixes.
+/// Names a variable cannot take: functions, `pi`, `e`, `ans`, `mod` and
+/// unit suffixes.
 pub fn is_reserved_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     functions::FUNCTIONS.contains(&lower.as_str())
         || lower == "pi"
         || lower == "ans"
+        || lower == "e"
+        || lower == "mod"
         || units::is_unit_name(&lower)
 }
 

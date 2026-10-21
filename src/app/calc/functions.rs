@@ -13,9 +13,10 @@ use super::CalcError;
 /// Every built-in function name. These, `pi`, `ans` and the unit suffixes
 /// cannot be used as variable names.
 pub(super) const FUNCTIONS: &[&str] = &[
-    "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sqrt", "abs", "round", "floor", "ceil",
-    "ln", "log", "exp", "pow", "min", "max", "d2r", "r2d", "dist", "ang", "mid", "xof", "yof",
-    "zof",
+    "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sec", "csc", "cot", "asec", "acsc",
+    "acot", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "sqrt", "cbrt", "root", "abs",
+    "round", "floor", "ceil", "fact", "ln", "log", "logb", "exp", "pow", "min", "max", "d2r",
+    "r2d", "dist", "ang", "mid", "xof", "yof", "zof",
 ];
 
 pub(super) fn call(
@@ -56,24 +57,50 @@ pub(super) fn call(
     };
 
     let value = match lower.as_str() {
-        "sin" | "cos" | "tan" => {
+        "sin" | "cos" | "tan" | "sec" | "csc" | "cot" => {
             arity(1..=1, "1")?;
             let a = mode.to_radians(num(0)?);
             Value::Number(match lower.as_str() {
                 "sin" => a.sin(),
                 "cos" => a.cos(),
-                _ => a.tan(),
+                "tan" => a.tan(),
+                "sec" => 1.0 / a.cos(),
+                "csc" => 1.0 / a.sin(),
+                _ => 1.0 / a.tan(),
             })
         }
-        "asin" | "acos" | "atan" => {
+        "asin" | "acos" | "atan" | "asec" | "acsc" | "acot" => {
             arity(1..=1, "1")?;
             let x = num(0)?;
             let a = match lower.as_str() {
                 "asin" => x.asin(),
                 "acos" => x.acos(),
-                _ => x.atan(),
+                "atan" => x.atan(),
+                "asec" => (1.0 / x).acos(),
+                "acsc" => (1.0 / x).asin(),
+                // acot(0) is a quarter turn, from either side.
+                _ if x == 0.0 => std::f64::consts::FRAC_PI_2,
+                _ => (1.0 / x).atan(),
             };
             Value::Number(mode.radians_to_mode(a))
+        }
+        // Hyperbolic functions take and give plain numbers, whatever the
+        // angle mode.
+        "sinh" => unary(f64::sinh)?,
+        "cosh" => unary(f64::cosh)?,
+        "tanh" => unary(f64::tanh)?,
+        "asinh" => unary(f64::asinh)?,
+        "acosh" => unary(f64::acosh)?,
+        "atanh" => unary(f64::atanh)?,
+        "cbrt" => unary(f64::cbrt)?,
+        "fact" => unary(factorial)?,
+        "root" => {
+            arity(2..=2, "2")?;
+            Value::Number(nth_root(num(0)?, num(1)?))
+        }
+        "logb" => {
+            arity(2..=2, "2")?;
+            Value::Number(num(0)?.ln() / num(1)?.ln())
         }
         "atan2" => {
             arity(2..=2, "2")?;
@@ -152,4 +179,26 @@ pub(super) fn call(
         }
     };
     finite(value, span)
+}
+
+/// `n!` for whole numbers 0..=170 (171! overflows); anything else has no
+/// real result.
+fn factorial(n: f64) -> f64 {
+    if n < 0.0 || n.fract() != 0.0 || n > 170.0 {
+        return f64::NAN;
+    }
+    (1..=n as u32).map(f64::from).product()
+}
+
+/// The `n`-th root of `x`; a negative `x` has one only for odd whole `n`.
+fn nth_root(x: f64, n: f64) -> f64 {
+    if n == 0.0 {
+        return f64::NAN;
+    }
+    let odd = n.fract() == 0.0 && n.rem_euclid(2.0) == 1.0;
+    if x < 0.0 && odd {
+        -(-x).powf(1.0 / n)
+    } else {
+        x.powf(1.0 / n)
+    }
 }

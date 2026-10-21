@@ -384,3 +384,79 @@ fn random_input_never_panics() {
         }
     }
 }
+
+// ── Keypad additions ────────────────────────────────────────────────────
+
+#[test]
+fn modulo() {
+    assert_eq!(num("7 mod 3"), 1.0);
+    assert_eq!(num("-7 mod 3"), 2.0);
+    assert_eq!(num("7 mod -3"), -2.0);
+    assert_eq!(num("7.5 MOD 2"), 1.5);
+    // Same precedence as * and /, left to right.
+    assert_eq!(num("2 * 7 mod 4"), 2.0);
+    assert_eq!(num("1 + 7 mod 4"), 4.0);
+    assert_eq!(num("10mod 4"), 2.0);
+    assert_eq!(underlined("5 mod 0"), "0");
+    assert_eq!(underlined("[1,2] mod 2"), "[1,2]");
+    assert_eq!(underlined("mod = 1"), "mod");
+}
+
+#[test]
+fn euler_constant() {
+    assert_close!(num("e"), std::f64::consts::E);
+    assert_close!(num("ln(e)"), 1.0);
+    assert_close!(num("2*e"), 2.0 * std::f64::consts::E);
+    // A variable called e (a drawing parameter, say) wins.
+    let mut c = ctx();
+    c.vars.insert("e".into(), Value::Number(5.0));
+    assert_eq!(num_in("e + 1", &mut c), 6.0);
+    assert_eq!(underlined("e = 3"), "e");
+}
+
+#[test]
+fn roots_powers_and_factorial() {
+    assert_close!(num("cbrt(27)"), 3.0);
+    assert_close!(num("cbrt(-8)"), -2.0);
+    assert_close!(num("root(16, 4)"), 2.0);
+    assert_close!(num("root(-32, 5)"), -2.0);
+    assert_eq!(underlined("root(-16, 4)"), "root(-16, 4)");
+    assert_eq!(underlined("root(8, 0)"), "root(8, 0)");
+    assert_eq!(num("fact(0)"), 1.0);
+    assert_eq!(num("fact(5)"), 120.0);
+    assert!(num("fact(170)").is_finite());
+    assert_eq!(underlined("fact(171)"), "fact(171)");
+    assert_eq!(underlined("fact(-1)"), "fact(-1)");
+    assert_eq!(underlined("fact(2.5)"), "fact(2.5)");
+    assert_close!(num("logb(8, 2)"), 3.0);
+    assert_close!(num("logb(1000, 10)"), 3.0);
+    assert_eq!(underlined("logb(8, 1)"), "logb(8, 1)");
+}
+
+#[test]
+fn reciprocal_trig() {
+    assert_close!(num("sec(60)"), 2.0);
+    assert_close!(num("csc(30)"), 2.0);
+    assert_close!(num("cot(45)"), 1.0);
+    assert_close!(num("asec(2)"), 60.0);
+    assert_close!(num("acsc(2)"), 30.0);
+    assert_close!(num("acot(1)"), 45.0);
+    assert_close!(num("acot(0)"), 90.0);
+    let mut rad = CalcContext::new(AngleMode::Radians, 1.0);
+    assert_close!(num_in("sec(0)", &mut rad), 1.0);
+    assert_close!(num_in("acot(1)", &mut rad), std::f64::consts::FRAC_PI_4);
+}
+
+#[test]
+fn hyperbolic_ignores_the_angle_mode() {
+    for mode in [AngleMode::Degrees, AngleMode::Radians] {
+        let mut c = CalcContext::new(mode, 1.0);
+        assert_close!(num_in("sinh(1)", &mut c), 1f64.sinh());
+        assert_close!(num_in("cosh(1)", &mut c), 1f64.cosh());
+        assert_close!(num_in("tanh(1)", &mut c), 1f64.tanh());
+        assert_close!(num_in("asinh(sinh(0.5))", &mut c), 0.5);
+        assert_close!(num_in("acosh(cosh(2))", &mut c), 2.0);
+        assert_close!(num_in("atanh(tanh(0.3))", &mut c), 0.3);
+    }
+    assert_eq!(underlined("acosh(0)"), "acosh(0)");
+}
