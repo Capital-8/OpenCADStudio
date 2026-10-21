@@ -6032,6 +6032,10 @@ ui =
     .dynamic-input-f12 =
         動態輸入
         F12
+    .dynamic-ucs = 動態 UCS
+    .dynamic-ucs-f6 =
+        動態 UCS
+        F6
     .end-isolation = 結束隔離
     .end-object-isolation = 結束物件隔離
     .find-next = 查找下一個

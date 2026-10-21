@@ -5971,6 +5971,10 @@ ui =
     .dynamic-input = Dinamik Giriş
     .dynamic-input-f12 = Dinamik Giriş
             F12
+    .dynamic-ucs = Dinamik UCS
+    .dynamic-ucs-f6 =
+        Dinamik UCS
+        F6
     .end-isolation = İzolasyonu Sonlandır
     .end-object-isolation = Nesne İzolasyonunu Sonlandır
     .find-next = Sonrakini Bul

@@ -26,6 +26,9 @@ pub enum TrackingKind {
     Generic,
     Extension,
     Perpendicular,
+    /// Ortho / polar along the UCS Z axis in a 3D view, up or down.
+    PlusZ,
+    MinusZ,
 }
 /// Every OSNAP mode — mirrors the OpenCADStudio list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

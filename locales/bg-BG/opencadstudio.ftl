@@ -6037,6 +6037,10 @@ ui =
     .dynamic-input-f12 =
         Динамичен вход
         F12
+    .dynamic-ucs = Динамична ПКС
+    .dynamic-ucs-f6 =
+        Динамична ПКС
+        F6
     .end-isolation = Прекрати изолация
     .end-object-isolation = Прекрати изолация на обект
     .find-next = Намери следващо

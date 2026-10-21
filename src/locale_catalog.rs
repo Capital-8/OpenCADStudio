@@ -1467,6 +1467,8 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Dynamic Block Entity" => Some(("properties", "dynamic-block-entity")),
         "Dynamic Input" => Some(("ui", "dynamic-input")),
         "Dynamic Input\nF12" => Some(("ui", "dynamic-input-f12")),
+        "Dynamic UCS" => Some(("ui", "dynamic-ucs")),
+        "Dynamic UCS\nF6" => Some(("ui", "dynamic-ucs-f6")),
         "ELLIPSE  Specify center:" => Some(("draw", "ellipse-specify-center")),
         "ELLIPSE  Specify major axis endpoint:" => Some(("draw", "ellipse-specify-major-axis-endpoint")),
         "ELLIPSE  Specify minor axis point or type half-length  [major r={:.3}]:" => Some(("draw", "ellipse-specify-minor-axis-point-or-type-half")),

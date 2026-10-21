@@ -6036,6 +6036,10 @@ ui =
     .dynamic-input-f12 =
         Dynaaminen syöttö
         F12
+    .dynamic-ucs = Dynaaminen UCS
+    .dynamic-ucs-f6 =
+        Dynaaminen UCS
+        F6
     .end-isolation = Lopeta eristäminen
     .end-object-isolation = Lopeta objektin eristäminen
     .find-next = Etsi Seuraava

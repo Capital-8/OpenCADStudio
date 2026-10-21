@@ -6037,6 +6037,10 @@ ui =
     .dynamic-input-f12 =
         Entrada dinâmica
         F12
+    .dynamic-ucs = SCU dinâmico
+    .dynamic-ucs-f6 =
+        SCU dinâmico
+        F6
     .end-isolation = Encerrar isolamento
     .end-object-isolation = Encerrar isolamento de objetos
     .find-next = Localizar próxima

@@ -6037,6 +6037,10 @@ ui =
     .dynamic-input-f12 =
         Δυναμική εισαγωγή
         F12
+    .dynamic-ucs = Δυναμικό UCS
+    .dynamic-ucs-f6 =
+        Δυναμικό UCS
+        F6
     .end-isolation = Τερματισμός απομόνωσης
     .end-object-isolation = Τερματισμός απομόνωσης αντικειμένων
     .find-next = Εύρεση επόμενου

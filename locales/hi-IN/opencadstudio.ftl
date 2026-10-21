@@ -6025,6 +6025,10 @@ ui =
     .dynamic-input-f12 =
         गतिशील इनपुट
         F12
+    .dynamic-ucs = डायनामिक UCS
+    .dynamic-ucs-f6 =
+        डायनामिक UCS
+        F6
     .end-isolation = अंत अलगाव
     .end-object-isolation = ऑब्जेक्ट आइसोलेशन समाप्त करें
     .find-next = अगला

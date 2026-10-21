@@ -400,20 +400,6 @@ pub(super) fn polar_constrain_if_near(
     (((cx - sx).powi(2) + (cy - sy).powi(2)).sqrt() <= tol_px).then_some(snapped)
 }
 
-/// Constrain near an engaged polar ray; otherwise keep the cursor free.
-pub(super) fn polar_constrain_near(
-    pt: glam::DVec3,
-    base: glam::DVec3,
-    step_deg: f32,
-    view_rot: glam::Mat4,
-    eye: glam::DVec3,
-    bounds: iced::Rectangle,
-    tol_px: f32,
-    xf: &UcsXform,
-) -> glam::DVec3 {
-    polar_constrain_if_near(pt, base, step_deg, view_rot, eye, bounds, tol_px, xf).unwrap_or(pt)
-}
-
 /// Hard axis lock (#312): the locked ray's direction — the nearest polar
 /// increment (or ortho axis) from `base` toward `cursor`, in the active UCS
 /// plane. `None` when the cursor sits on the base point.

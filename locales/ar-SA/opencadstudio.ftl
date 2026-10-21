@@ -6049,6 +6049,10 @@ ui =
     .dynamic-input-f12 =
         الإدخال الديناميكي
         F12
+    .dynamic-ucs = نظام الإحداثيات الديناميكي
+    .dynamic-ucs-f6 =
+        نظام الإحداثيات الديناميكي
+        F6
     .end-isolation = إنهاء العزل
     .end-object-isolation = إنهاء عزل الكائن
     .find-next = بحث عن التالي

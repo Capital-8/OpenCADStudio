@@ -6020,6 +6020,10 @@ ui =
     .dynamic-input-f12 =
         动态输入
         F12
+    .dynamic-ucs = 动态 UCS
+    .dynamic-ucs-f6 =
+        动态 UCS
+        F6
     .end-isolation = 结束隔离
     .end-object-isolation = 结束对象隔离
     .find-next = 查找下一个

@@ -6037,6 +6037,10 @@ ui =
     .dynamic-input-f12 =
         ການປ້ອນຂໍ້ມູນແບບໄດນາມິກ
         F12
+    .dynamic-ucs = UCS ແບບໄດນາມິກ
+    .dynamic-ucs-f6 =
+        UCS ແບບໄດນາມິກ
+        F6
     .end-isolation = ສິ້ນສຸດການແຍກສະແດງ
     .end-object-isolation = ສິ້ນສຸດການແຍກສະແດງວັດຖຸ
     .find-next = ຊອກຫາຕໍ່ໄປ

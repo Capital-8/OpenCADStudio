@@ -6034,6 +6034,10 @@ ui =
     .dynamic-input-f12 =
         Dynamický vstup
         F12
+    .dynamic-ucs = Dynamický USS
+    .dynamic-ucs-f6 =
+        Dynamický USS
+        F6
     .end-isolation = Ukončete izolaci
     .end-object-isolation = Ukončení izolace objektů
     .find-next = Najít další

@@ -6037,6 +6037,10 @@ ui =
     .dynamic-input-f12 =
         Entrada dinámica
         F12
+    .dynamic-ucs = SCP dinámico
+    .dynamic-ucs-f6 =
+        SCP dinámico
+        F6
     .end-isolation = Finalizar aislamiento
     .end-object-isolation = Finalizar aislamiento de objetos
     .find-next = Buscar siguiente

@@ -6061,6 +6061,10 @@ ui =
     .dynamic-input-f12 =
         Dinamikus bemenet
         F12
+    .dynamic-ucs = Dinamikus FKR
+    .dynamic-ucs-f6 =
+        Dinamikus FKR
+        F6
     .end-isolation = Elkülönítés vége
     .end-object-isolation = Objektumelkülönítés vége
     .find-next = Következő

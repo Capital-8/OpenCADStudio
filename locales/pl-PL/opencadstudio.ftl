@@ -6036,6 +6036,10 @@ ui =
     .dynamic-input-f12 =
         Wejście dynamiczne
         F12
+    .dynamic-ucs = Dynamiczny LUW
+    .dynamic-ucs-f6 =
+        Dynamiczny LUW
+        F6
     .end-isolation = Koniec z izolacją
     .end-object-isolation = Zakończ izolację obiektu
     .find-next = Znajdź następny

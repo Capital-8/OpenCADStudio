@@ -6036,6 +6036,10 @@ ui =
     .dynamic-input-f12 =
         동적 입력
         F12
+    .dynamic-ucs = 동적 UCS
+    .dynamic-ucs-f6 =
+        동적 UCS
+        F6
     .end-isolation = 격리 종료
     .end-object-isolation = 객체 격리 종료
     .find-next = 다음 찾기

@@ -6035,6 +6035,10 @@ ui =
     .dynamic-input-f12 =
         Dynamischer Eingang
         F12
+    .dynamic-ucs = Dynamisches BKS
+    .dynamic-ucs-f6 =
+        Dynamisches BKS
+        F6
     .end-isolation = Endisolation
     .end-object-isolation = Endobjektisolierung
     .find-next = Finden Sie Next

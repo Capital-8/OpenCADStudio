@@ -6042,6 +6042,10 @@ ui =
     .dynamic-input-f12 =
         Nhập động
         F12
+    .dynamic-ucs = UCS động
+    .dynamic-ucs-f6 =
+        UCS động
+        F6
     .end-isolation = Kết thúc cô lập
     .end-object-isolation = Kết thúc cô lập đối tượng
     .find-next = Tìm tiếp theo

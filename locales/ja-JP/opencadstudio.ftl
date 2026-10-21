@@ -6025,6 +6025,10 @@ ui =
     .dynamic-input-f12 =
         ダイナミック入力
         F12
+    .dynamic-ucs = ダイナミック UCS
+    .dynamic-ucs-f6 =
+        ダイナミック UCS
+        F6
     .end-isolation = 隔離を終了
     .end-object-isolation = オブジェクト隔離を終了
     .find-next = 次を検索

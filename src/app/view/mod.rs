@@ -1806,6 +1806,8 @@ bg={bg_ms:.1}ms n={view_count}"
                 Some(crate::snap::TrackingKind::Extension) => {
                     Some(crate::tr!("common", "extension"))
                 }
+                Some(crate::snap::TrackingKind::PlusZ) => Some("+Z".to_string()),
+                Some(crate::snap::TrackingKind::MinusZ) => Some("-Z".to_string()),
                 _ => None,
             };
 
@@ -2790,6 +2792,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             polar_increment_deg: self.polar_increment_deg,
                             dyn_input: self.dyn_input,
                             otrack: self.snapper.otrack_enabled,
+                            dynamic_ucs: self.dynamic_ucs,
                             isometric_drafting: self.isometric_drafting,
                             iso_plane: self.iso_plane,
                             clean_screen: self.clean_screen,

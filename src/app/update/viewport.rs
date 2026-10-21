@@ -5,7 +5,7 @@ use super::util::*;
 use super::{format_size, VIEWCUBE_HIT_SIZE};
 use crate::app::helpers::{
     axis_lock_apply, axis_lock_capture, drafting_axes, drafting_constrain, parse_coord,
-    polar_constrain_if_near, polar_constrain_near, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis,
+    polar_constrain_if_near, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis,
     CoordKind,
 };
 use crate::app::{Message, ModalKind, OpenCADStudio, POLY_START_DELAY_MS};
@@ -431,23 +431,57 @@ impl OpenCADStudio {
     fn active_construction_ray(
         &self,
         tab: usize,
+        screen: Point,
         cursor: glam::DVec3,
         base: glam::DVec3,
         view_rot: glam::Mat4,
         eye: glam::DVec3,
         bounds: iced::Rectangle,
     ) -> Option<(glam::DVec3, glam::DVec3)> {
-        let ucs = self.tabs[tab].ucs_xform();
-        let mut target = if self.ortho_mode {
-            drafting_constrain(
+        let (target, _) = self.drafting_point(tab, screen, cursor, base, view_rot, eye, bounds)?;
+        Some((base, target))
+    }
+
+    /// Ortho / polar from `base`, for the cursor, the click and grip drags
+    /// alike. In-plane the point keeps `base`'s elevation, so the band runs
+    /// parallel to the UCS XY plane. In a view that shows the UCS Z axis,
+    /// that axis is a drafting direction too (#2000): with the cursor
+    /// (`screen`, pane-local) nearer its projection than the in-plane
+    /// candidate, the point runs straight up or down from `base`. Returns
+    /// the point and whether it lies on that Z axis; `None` while neither
+    /// mode is engaged.
+    fn drafting_point(
+        &self,
+        tab: usize,
+        screen: Point,
+        cursor: glam::DVec3,
+        base: glam::DVec3,
+        view_rot: glam::Mat4,
+        eye: glam::DVec3,
+        bounds: iced::Rectangle,
+    ) -> Option<(glam::DVec3, bool)> {
+        if !self.ortho_mode && !self.polar_mode {
+            return None;
+        }
+        let xf = self.tabs[tab].ucs_xform();
+        let (_, ux, uy, uz) = xf.axes();
+        // A cursor on another level than `base` is lifted onto its plane.
+        let level = (xf.to_ucs(cursor).z - xf.to_ucs(base).z).abs();
+        let cursor = if level > 1e-9 * (1.0 + base.length()) {
+            cursor_on_plane(screen, bounds, view_rot, eye, base, uz).unwrap_or(cursor)
+        } else {
+            cursor
+        };
+        let planar = if self.ortho_mode {
+            Some(drafting_constrain(
                 cursor,
                 base,
-                &ucs,
+                &xf,
                 self.isometric_drafting,
                 self.iso_plane,
                 self.snap_angle_deg,
-            )
-        } else if self.polar_mode {
+            ))
+        } else {
             polar_constrain_if_near(
                 cursor,
                 base,
@@ -456,15 +490,55 @@ impl OpenCADStudio {
                 eye,
                 bounds,
                 self.snapper.osnap_radius_px,
-                &ucs,
-            )?
-        } else {
-            return None;
+                &xf,
+            )
         };
-        if self.tabs[tab].active_ucs.is_none() {
-            target.z = base.z;
+        let to_screen = |w: glam::DVec3| {
+            let ndc = view_rot.project_point3((w - eye).as_vec3());
+            glam::Vec2::new(
+                (ndc.x + 1.0) * 0.5 * bounds.width,
+                (1.0 - ndc.y) * 0.5 * bounds.height,
+            )
+        };
+        let at = glam::Vec2::new(screen.x, screen.y);
+        let gap = |w: glam::DVec3| to_screen(w).distance(at);
+        let along = |dir: glam::DVec3| {
+            cursor_on_projected_axis(screen, bounds, view_rot, eye, base, dir)
+        };
+        // A plan view shows the Z axis end-on: no third direction there.
+        let reach = (cursor - base).length();
+        let origin = to_screen(base);
+        let shown = |dir: glam::DVec3| to_screen(base + dir * reach).distance(origin);
+        let z_point = (reach > 0.0 && shown(uz) > 0.05 * shown(ux).max(shown(uy)))
+            .then(|| along(uz))
+            .flatten();
+        let Some(z_point) = z_point else {
+            return planar.map(|point| (point, false));
+        };
+        let z_gap = gap(z_point);
+        let planar_gap = if self.ortho_mode {
+            let (a, b, _) = drafting_axes(
+                ux,
+                uy,
+                uz,
+                self.isometric_drafting,
+                self.iso_plane,
+                self.snap_angle_deg,
+            );
+            [a, b]
+                .into_iter()
+                .filter_map(along)
+                .map(gap)
+                .fold(f32::INFINITY, f32::min)
+        } else {
+            planar.map_or(f32::INFINITY, gap)
+        };
+        let engaged = self.ortho_mode || z_gap <= self.snapper.osnap_radius_px;
+        if engaged && z_gap < planar_gap {
+            Some((z_point, true))
+        } else {
+            planar.map(|point| (point, false))
         }
-        Some((base, target))
     }
 
     fn active_axis_lock(
@@ -2035,7 +2109,7 @@ impl OpenCADStudio {
             let (go, gr) = self.drafting_grid_basis(i);
             let base = grip.origin_world;
             let construction_ray =
-                self.active_construction_ray(i, raw, base, view_rot, eye, bounds);
+                self.active_construction_ray(i, p, raw, base, view_rot, eye, bounds);
             // `raw` is already model space (viewport camera or paper→model),
             // and the wires are model space, so the snap result is model.
             // Normal snap: only the rest of the drawing participates here.
@@ -2181,27 +2255,10 @@ impl OpenCADStudio {
                 })
             {
                 let base = grip.origin_world;
-                let ucs_xf = self.tabs[i].ucs_xform();
-                if self.ortho_mode {
-                    snapped = drafting_constrain(
-                        snapped,
-                        base,
-                        &ucs_xf,
-                        self.isometric_drafting,
-                        self.iso_plane,
-                        self.snap_angle_deg,
-                    );
-                } else if self.polar_mode {
-                    snapped = polar_constrain_near(
-                        snapped,
-                        base,
-                        self.polar_increment_deg,
-                        view_rot,
-                        eye,
-                        bounds,
-                        self.snapper.osnap_radius_px,
-                        &ucs_xf,
-                    );
+                if let Some((point, _)) =
+                    self.drafting_point(i, p, snapped, base, view_rot, eye, bounds)
+                {
+                    snapped = point;
                 }
             }
 
@@ -3036,7 +3093,7 @@ impl OpenCADStudio {
                     None
                 } else {
                     self.last_point.and_then(|base| {
-                        self.active_construction_ray(i, snap_cursor, base, view_rot, eye, bounds)
+                        self.active_construction_ray(i, p, snap_cursor, base, view_rot, eye, bounds)
                     })
                 };
                 let additional_rays =
@@ -3190,6 +3247,8 @@ impl OpenCADStudio {
             }
 
             let effective = {
+                // Ortho / polar from the last point keep its elevation.
+                let mut drafted_elevation = false;
                 let mut pt: glam::DVec3 =
                     if let (Some(dir), Some(base)) = (axis_lock, self.last_point) {
                         let point = self.tabs[i]
@@ -3219,30 +3278,32 @@ impl OpenCADStudio {
                         let osnap_locked = self.tabs[i]
                             .snap_result
                             .is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid);
-                        if !osnap_locked && !is_window_corner && !uses_command_cursor_plane {
-                            if let Some(base) = self.last_point {
-                                let ucs_xf = self.tabs[i].ucs_xform();
-                                if self.ortho_mode {
-                                    pt = drafting_constrain(
-                                        pt,
-                                        base,
-                                        &ucs_xf,
-                                        self.isometric_drafting,
-                                        self.iso_plane,
-                                        self.snap_angle_deg,
-                                    );
-                                } else if self.polar_mode {
-                                    pt = polar_constrain_near(
-                                        pt,
-                                        base,
-                                        self.polar_increment_deg,
-                                        view_rot,
-                                        eye,
-                                        bounds,
-                                        self.snapper.osnap_radius_px,
-                                        &ucs_xf,
-                                    );
-                                }
+                        let drafted = (!osnap_locked
+                            && !is_window_corner
+                            && !uses_command_cursor_plane)
+                            .then_some(self.last_point)
+                            .flatten()
+                            .and_then(|base| {
+                                let hit = self
+                                    .drafting_point(i, p, pt, base, view_rot, eye, bounds)?;
+                                Some((base, hit))
+                            });
+                        if let Some((base, (point, on_z))) = drafted {
+                            pt = point;
+                            drafted_elevation = true;
+                            // Straight up or down from the last point: the
+                            // tracking ray carries typed distances and its
+                            // guide, and the tip reads +Z / -Z (#2000).
+                            let up = (point - base).dot(self.tabs[i].ucs_xform().axes().3);
+                            if on_z && up != 0.0 {
+                                self.otrack_active =
+                                    Some((base, (point - base).normalize()));
+                                self.otrack_cross = None;
+                                self.otrack_kind = Some(if up > 0.0 {
+                                    crate::snap::TrackingKind::PlusZ
+                                } else {
+                                    crate::snap::TrackingKind::MinusZ
+                                });
                             }
                         }
                         pt
@@ -3254,6 +3315,7 @@ impl OpenCADStudio {
                 if self.tabs[i].active_cmd.is_some()
                     && self.tabs[i].active_ucs.is_none()
                     && !uses_command_cursor_plane
+                    && !drafted_elevation
                     && !snap_keeps_elevation(self.tabs[i].snap_result.map(|s| s.snap_type))
                 {
                     pt.z = 0.0;
@@ -5332,6 +5394,7 @@ impl OpenCADStudio {
                         self.last_point.and_then(|base| {
                             self.active_construction_ray(
                                 i,
+                                p,
                                 snap_cursor,
                                 base,
                                 view_rot,
@@ -5494,29 +5557,10 @@ impl OpenCADStudio {
                 {
                     // Object snap wins over ortho/polar — a snapped point
                     // commits as-is. Grid snap still combines. (#132)
-                    if let Some(base) = self.last_point {
-                        let ucs_xf = self.tabs[i].ucs_xform();
-                        if self.ortho_mode {
-                            pt = drafting_constrain(
-                                pt,
-                                base,
-                                &ucs_xf,
-                                self.isometric_drafting,
-                                self.iso_plane,
-                                self.snap_angle_deg,
-                            );
-                        } else if self.polar_mode {
-                            pt = polar_constrain_near(
-                                pt,
-                                base,
-                                self.polar_increment_deg,
-                                view_rot,
-                                eye,
-                                bounds,
-                                self.snapper.osnap_radius_px,
-                                &ucs_xf,
-                            );
-                        }
+                    if let Some((point, _)) = self.last_point.and_then(|base| {
+                        self.drafting_point(i, p, pt, base, view_rot, eye, bounds)
+                    }) {
+                        pt = point;
                     }
                 }
                 pt = self.tabs[i]
@@ -8421,6 +8465,30 @@ mod rapid_drawing_tests {
         assert!((app.last_point.unwrap() - target).length() < 0.001);
         assert!(app.dynamic_ucs);
         assert!(app.tabs[app.active_tab].active_cmd.is_some());
+    }
+
+    #[test]
+    fn ortho_in_a_3d_view_runs_up_the_z_axis_and_keeps_that_level() {
+        let mut app = drawing_app("LINE");
+        let _ = app.apply_view_preset("SWISO");
+        app.ortho_mode = true;
+        let click = |app: &mut OpenCADStudio, aim: glam::DVec3| {
+            let at = screen(app, aim);
+            let _ = app.update(Message::ViewportMove(at));
+            let _ = app.update(Message::ViewportLeftPressAt(at));
+            let _ = app.update(Message::ViewportLeftRelease);
+            app.last_point.unwrap()
+        };
+        let start = click(&mut app, glam::DVec3::ZERO);
+        // Straight up: exactly on the axis, as high as the cursor shows.
+        let up = click(&mut app, glam::DVec3::new(0.5, 0.0, 50.0));
+        assert!((up - start).truncate().length() < 1e-9, "{start:?} -> {up:?}");
+        assert!((up.z - 50.0).abs() < 0.5, "{up:?}");
+        // Then along X at that level, not back down to the ground plane.
+        let across = click(&mut app, glam::DVec3::new(30.0, 0.5, up.z));
+        assert!((across.y - up.y).abs() < 1e-9, "{across:?}");
+        assert!((across.z - up.z).abs() < 1e-6, "{across:?}");
+        assert!((across.x - 30.0).abs() < 0.5, "{across:?}");
     }
 
     #[test]

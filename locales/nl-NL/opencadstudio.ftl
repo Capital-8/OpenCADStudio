@@ -6035,6 +6035,10 @@ ui =
     .dynamic-input-f12 =
         Dynamische invoer
         F12
+    .dynamic-ucs = Dynamisch GCS
+    .dynamic-ucs-f6 =
+        Dynamisch GCS
+        F6
     .end-isolation = Einde isolatie
     .end-object-isolation = Eindobject-isolatie
     .find-next = Volgende zoeken

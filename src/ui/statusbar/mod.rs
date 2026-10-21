@@ -81,6 +81,7 @@ pub struct StatusBarModes {
     pub polar_increment_deg: f32,
     pub dyn_input: bool,
     pub otrack: bool,
+    pub dynamic_ucs: bool,
     pub isometric_drafting: bool,
     pub iso_plane: crate::app::settings::IsoPlane,
     pub clean_screen: bool,
@@ -161,6 +162,7 @@ impl StatusBar {
             polar_increment_deg,
             dyn_input,
             otrack,
+            dynamic_ucs,
             isometric_drafting,
             iso_plane,
             clean_screen,
@@ -395,6 +397,19 @@ impl StatusBar {
                 tip(
                     toggle_pill(crate::ui::icons::ST_OTRACK, otrack, Message::ToggleOTrack),
                     t!("Object Snap Tracking\nF11"),
+                )
+                .into(),
+            );
+        }
+        if vis(StatusPill::Ducs) {
+            pills.push(
+                tip(
+                    toggle_pill(
+                        crate::ui::icons::ST_DUCS,
+                        dynamic_ucs,
+                        Message::ToggleDynamicUcs,
+                    ),
+                    t!("Dynamic UCS\nF6"),
                 )
                 .into(),
             );
