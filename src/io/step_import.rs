@@ -610,6 +610,9 @@ pub struct StepProduct {
     /// after the file and this entity number (`<file>-<number>`).
     pub numbered: Option<u64>,
     pub bodies: Vec<StepBody>,
+    /// The scale its bodies take in its block (1 but for a representation
+    /// mapped without length units; see `without_products`).
+    pub scale: f64,
     /// Components: the product (an index into [`StepModel::products`]) and
     /// its placement in this one.
     pub children: Vec<(usize, Placement)>,
@@ -661,6 +664,19 @@ fn unit_size(doc: &Doc, mut id: u64) -> Option<f64> {
         );
     }
     None
+}
+
+/// The millimetres of the length unit a representation context assigns,
+/// or `None` when it assigns none.
+fn length_unit_mm(doc: &Doc, context: u64) -> Option<f64> {
+    doc.part(context, "GLOBAL_UNIT_ASSIGNED_CONTEXT")
+        .and_then(|units| units.first())
+        .map(P::list)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(P::reference)
+        .find(|unit| doc.part(*unit, "LENGTH_UNIT").is_some())
+        .map(|unit| unit_size(doc, unit).unwrap_or(1.0))
 }
 
 /// The bodies of one B-rep item: a solid, a solid with voids, or each shell
@@ -730,8 +746,8 @@ impl Doc {
             .or_else(|| z.cross(x).normalize())
             .unwrap_or(Vec3::new(0.0, 1.0, 0.0));
         let o = p.get(5).and_then(|o| self.point(o)).unwrap_or([0.0; 3]);
-        let scale = p.get(6).and_then(P::num).unwrap_or(1.0);
-        let [x, y, z] = [x, y, z].map(|v| [v.x * scale, v.y * scale, v.z * scale]);
+        // Its scale is not applied (as the reference reads it).
+        let [x, y, z] = [x, y, z].map(|v| [v.x, v.y, v.z]);
         Some([0, 1, 2].map(|r| [x[r], y[r], z[r], o[r]]))
     }
 
@@ -935,6 +951,7 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
         products.push(StepProduct {
             name: product_name(definition),
             numbered: None,
+            scale: 1.0,
             bodies,
             children: Vec::new(),
         });
@@ -987,6 +1004,7 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
         products.push(StepProduct {
             name,
             numbered: None,
+            scale: 1.0,
             bodies: loose_bodies,
             children: Vec::new(),
         });
@@ -1051,22 +1069,42 @@ fn without_products(doc: &Doc, ids: &[u64], unit_mm: Option<f64>) -> StepModel {
         products.push(StepProduct {
             name: String::new(),
             numbered: Some(rep),
+            scale: 1.0,
             bodies,
             children: Vec::new(),
         });
     }
+    // A representation one without length units maps, itself without
+    // them, comes in at a hundredth of its size (as the reference reads it).
+    let context = |rep: u64| {
+        doc.simple(rep)
+            .and_then(|(_, p)| p.last())
+            .and_then(P::reference)
+    };
+    let unit = |rep: u64| context(rep).and_then(|c| length_unit_mm(doc, c));
+    let unitless = |rep: u64| unit(rep).is_none();
+    let parents: HashMap<usize, u64> = index.iter().map(|(rep, k)| (*k, *rep)).collect();
     let mut component = vec![false; products.len()];
     for (parent, source, placement) in mapped {
         if let Some(&child) = index.get(&source) {
+            if unitless(source) && parents.get(&parent).is_some_and(|rep| unitless(*rep)) {
+                products[child].scale = 0.01;
+            }
             products[parent].children.push((child, placement));
             component[child] = true;
         }
     }
+    // The drawing takes the length unit of the top representation (the
+    // first one no other maps), as the reference reads it.
+    let mut top_unit = None;
     let mut direct = Vec::new();
     let mut roots = Vec::new();
     for k in 0..products.len() {
         if component[k] || (products[k].bodies.is_empty() && products[k].children.is_empty()) {
             continue;
+        }
+        if direct.is_empty() && roots.is_empty() {
+            top_unit = Some(parents.get(&k).and_then(|rep| unit(*rep)));
         }
         if products[k].children.is_empty() {
             direct.append(&mut products[k].bodies);
@@ -1075,7 +1113,7 @@ fn without_products(doc: &Doc, ids: &[u64], unit_mm: Option<f64>) -> StepModel {
         }
     }
     StepModel {
-        unit_mm,
+        unit_mm: top_unit.unwrap_or(unit_mm),
         direct,
         products,
         roots,
