@@ -4168,7 +4168,10 @@ impl Scene {
         }
         if !self.parametric_constraints.is_empty() || !self.named_parameters.is_empty() {
             self.refresh_dynamic_dimension_texts();
-            self.sync_native_parametric_graph();
+            // A restyle changes no constraint, so the stored graph is current.
+            if !appearance_only {
+                self.sync_native_parametric_graph();
+            }
         }
         // A modified image-bearing entity redraws its raster: an underlay's
         // display adjustments and clip live on the entity, not the image.
