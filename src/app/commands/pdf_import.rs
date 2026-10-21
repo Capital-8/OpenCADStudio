@@ -83,6 +83,13 @@ impl OpenCADStudio {
             settings,
             prefix: import_prefix(),
             current: current_layer.clone(),
+            styles: self.tabs[i]
+                .scene
+                .document
+                .text_styles
+                .iter()
+                .map(|s| (s.name.clone(), s.font_file.clone()))
+                .collect(),
         };
         let mut result = pdf_import::convert(&content, &underlay, &area, &naming);
         let images = std::mem::take(&mut result.images);
