@@ -3313,6 +3313,8 @@ impl Scene {
         // current. Standard stays available for imperial work.
         self.document.header.measurement = 1;
         self.document.header.insertion_units = 6;
+        // Its solids are drawn with eight isolines.
+        self.document.header.isolines = 8;
         let iso = crate::scene::creation_style::ensure_iso_dim_style(&mut self.document);
         self.document.header.current_dimstyle_name = "ISO-25".to_string();
         // The name alone leaves the header pointing at the previous style, and
