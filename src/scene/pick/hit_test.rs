@@ -918,17 +918,14 @@ pub(crate) fn mesh_click_handle_point<'a>(
         .map(|(_, handle, point)| (handle, point))
 }
 
-fn mesh_click_result<'a>(
+/// The world-space pick ray under `cursor`: its near-plane origin and unit
+/// direction. `None` when the projection is degenerate.
+pub(crate) fn pick_ray(
     cursor: Point,
-    meshes: impl Iterator<Item = MeshPickItem<'a>>,
     view_rot: Mat4,
     eye: glam::DVec3,
     bounds: Rectangle,
-) -> Option<(f64, Handle, glam::DVec3)> {
-    let profile = crate::perf::enabled().then(iced::time::Instant::now);
-    let mut set_count = 0usize;
-    let mut bound_hits = 0usize;
-    let mut exact_triangles = 0usize;
+) -> Option<(glam::DVec3, glam::DVec3)> {
     let ndc = glam::Vec3::new(
         cursor.x / bounds.width * 2.0 - 1.0,
         1.0 - cursor.y / bounds.height * 2.0,
@@ -940,11 +937,92 @@ fn mesh_click_result<'a>(
         + inverse_view
             .project_point3(glam::Vec3::new(ndc.x, ndc.y, 1.0))
             .as_dvec3();
-    let world_direction = (far - near).normalize_or_zero();
-    if !near.is_finite() || !world_direction.is_finite() || world_direction.length_squared() < 1e-18
-    {
+    let direction = (far - near).normalize_or_zero();
+    if !near.is_finite() || !direction.is_finite() || direction.length_squared() < 1e-18 {
         return None;
     }
+    Some((near, direction))
+}
+
+/// The nearest drawn surface under `cursor` — a solid/mesh face or a wire's
+/// shaded triangles (3DFACE, filled SOLID, thickness walls) — and where the
+/// pick ray meets it.
+pub(crate) fn surface_click_point<'a, W: WireSource + ?Sized>(
+    cursor: Point,
+    meshes: impl Iterator<Item = MeshPickItem<'a>>,
+    wires: &W,
+    view_rot: Mat4,
+    eye: glam::DVec3,
+    bounds: Rectangle,
+) -> Option<glam::DVec3> {
+    let (near, direction) = pick_ray(cursor, view_rot, eye, bounds)?;
+    let mut best = mesh_click_result(cursor, meshes, view_rot, eye, bounds)
+        .map(|(distance, _, point)| (distance, point));
+    let mut test = |tris: &[[f32; 3]], low: &[[f32; 3]], start: usize| {
+        let Some(tri) = tris.get(start..start + 3) else {
+            return;
+        };
+        let corner = |k: usize| {
+            let [lx, ly, lz] = low.get(start + k).copied().unwrap_or([0.0; 3]);
+            glam::DVec3::new(
+                tri[k][0] as f64 + lx as f64,
+                tri[k][1] as f64 + ly as f64,
+                tri[k][2] as f64 + lz as f64,
+            )
+        };
+        if let Some(t) = ray_triangle(near, direction, corner(0), corner(1), corner(2)) {
+            if best.is_none_or(|(current, _)| t < current) {
+                best = Some((t, near + direction * t));
+            }
+        }
+    };
+    let surface = |wire: &WireModel| !wire.snap_only && !wire.reference_only;
+    match (wires.fill_triangles(), wires.pick_triangles()) {
+        (Some(fills), Some(walls)) => {
+            for (triangle, pick_only) in fills
+                .iter()
+                .map(|t| (t, false))
+                .chain(walls.iter().map(|t| (t, true)))
+            {
+                let Some(wire) = wires.source_wire(triangle.wire).filter(|w| surface(w)) else {
+                    continue;
+                };
+                let (tris, low) = if pick_only {
+                    (&wire.pick_tris, &wire.pick_tris_low)
+                } else {
+                    (&wire.fill_tris, &wire.fill_tris_low)
+                };
+                test(tris, low, triangle.start as usize);
+            }
+        }
+        _ => {
+            for wire in wires.iter().filter(|w| surface(w)) {
+                for (tris, low) in [
+                    (&wire.fill_tris, &wire.fill_tris_low),
+                    (&wire.pick_tris, &wire.pick_tris_low),
+                ] {
+                    for start in (0..tris.len() / 3).map(|k| k * 3) {
+                        test(tris, low, start);
+                    }
+                }
+            }
+        }
+    }
+    best.map(|(_, point)| point)
+}
+
+fn mesh_click_result<'a>(
+    cursor: Point,
+    meshes: impl Iterator<Item = MeshPickItem<'a>>,
+    view_rot: Mat4,
+    eye: glam::DVec3,
+    bounds: Rectangle,
+) -> Option<(f64, Handle, glam::DVec3)> {
+    let profile = crate::perf::enabled().then(iced::time::Instant::now);
+    let mut set_count = 0usize;
+    let mut bound_hits = 0usize;
+    let mut exact_triangles = 0usize;
+    let (near, world_direction) = pick_ray(cursor, view_rot, eye, bounds)?;
     let mut best: Option<(f64, Handle, glam::DVec3)> = None;
     for (handle, mesh, transform, aabb) in meshes {
         set_count += 1;
@@ -2753,6 +2831,33 @@ mod aabb_reject_tests {
             ),
             Some("5")
         );
+    }
+
+    // Face-only drawings (3DFACE) have no mesh; the orbit pivot must still
+    // land on the nearest shaded triangle under the pointer.
+    #[test]
+    fn surface_click_point_hits_nearest_wire_fill() {
+        let face = |name: &str, z: f32| {
+            let mut w = wire(name, vec![], WireModel::UNBOUNDED_AABB);
+            w.fill_tris = vec![[-1.0, -1.0, z], [1.0, -1.0, z], [0.0, 1.0, z]];
+            w
+        };
+        let bounds = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 200.0,
+            height: 200.0,
+        };
+        let point = surface_click_point(
+            Point::new(100.0, 100.0),
+            std::iter::empty(),
+            &[face("far", 0.75), face("near", 0.25)][..],
+            Mat4::IDENTITY,
+            glam::DVec3::ZERO,
+            bounds,
+        )
+        .expect("the faces under the pointer are hit");
+        assert!(point.distance(glam::DVec3::new(0.0, 0.0, 0.25)) < 1e-5);
     }
 
     #[test]

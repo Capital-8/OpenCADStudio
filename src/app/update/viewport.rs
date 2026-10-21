@@ -1700,12 +1700,14 @@ impl OpenCADStudio {
                             let scene = &self.tabs[i].scene;
                             let bounds = scene.active_model_tile_bounds(vp_size.0, vp_size.1);
                             // The surface under the pointer where the drag
-                            // began, so the model turns about what is grabbed.
+                            // began, so the model turns about what is grabbed —
+                            // even with a selection or a command picking points.
+                            // The selection centre only stands in over empty space.
                             let grabbed = iced::Point::new(last.x - bounds.x, last.y - bounds.y);
                             sel.orbit.pivot = Some(
                                 scene
-                                    .orbit_pivot()
-                                    .or_else(|| scene.surface_pivot_at(bounds, grabbed))
+                                    .surface_pivot_at(bounds, grabbed)
+                                    .or_else(|| scene.orbit_pivot())
                                     .or_else(|| scene.view_center_surface_pivot(bounds))
                                     .unwrap_or_else(|| scene.camera.borrow().target),
                             );
