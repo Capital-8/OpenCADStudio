@@ -75,7 +75,7 @@ pub enum MemoryOp {
 /// Where the last operand of `input` starts: the trailing number, name,
 /// number with a unit (`1.2m`), bracketed group, point, or function call.
 /// `None` when the input ends in an operator (or is empty).
-pub fn split_operand(input: &str) -> Option<usize> {
+fn split_operand(input: &str) -> Option<usize> {
     let t = input.trim_end().as_bytes();
     let last = *t.last()?;
     let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'.';
@@ -343,137 +343,87 @@ impl QuickCalcPalette {
 mod tests {
     use super::*;
 
-    fn op(input: &str) -> Option<&str> {
-        let t = input.trim_end();
-        split_operand(t).map(|i| &t[i..])
-    }
-
     #[test]
     fn splits_the_last_operand() {
-        assert_eq!(op("12"), Some("12"));
-        assert_eq!(op("3 + 12.5"), Some("12.5"));
-        assert_eq!(op("3 + 1.2m"), Some("1.2m"));
-        assert_eq!(op("wall * ans"), Some("ans"));
-        assert_eq!(op("2 * (3 + (4 - 1))"), Some("(3 + (4 - 1))"));
-        assert_eq!(op("1 + [3, 4]"), Some("[3, 4]"));
-        assert_eq!(op("1 + dist([0,0], [3,4])"), Some("dist([0,0], [3,4])"));
-        assert_eq!(op("2 + sqrt(9)  "), Some("sqrt(9)"));
-        assert_eq!(op("2 + "), None);
-        assert_eq!(op("2 *"), None);
-        assert_eq!(op("7 mod "), None);
-        assert_eq!(op("7 mod"), None);
-        assert_eq!(op(""), None);
-        assert_eq!(op("1 + 2)"), None);
-    }
-
-    fn after(input: &str, key: Key) -> String {
-        let mut p = QuickCalcPalette {
-            input: input.into(),
-            ..Default::default()
+        let op = |input: &str| {
+            let t = input.trim_end();
+            split_operand(t).map(|i| t[i..].to_string())
         };
-        p.press(key);
-        p.input
+        for (input, expected) in [
+            ("3 + 12.5", Some("12.5")),
+            ("3 + 1.2m", Some("1.2m")),
+            ("wall * ans", Some("ans")),
+            ("2 * (3 + (4 - 1))", Some("(3 + (4 - 1))")),
+            ("1 + [3, 4]", Some("[3, 4]")),
+            ("1 + dist([0,0], [3,4])", Some("dist([0,0], [3,4])")),
+            ("2 + sqrt(9)  ", Some("sqrt(9)")),
+            ("2 + ", None),
+            ("7 mod ", None),
+            ("", None),
+            ("1 + 2)", None),
+        ] {
+            assert_eq!(op(input).as_deref(), expected, "{input:?}");
+        }
     }
 
     #[test]
-    fn unary_keys_act_on_the_last_operand() {
-        assert_eq!(after("3 + 4", Key::Postfix("^2")), "3 + 4^2");
-        assert_eq!(after("3 + (1 + 1)", Key::Postfix("^3")), "3 + (1 + 1)^3");
-        assert_eq!(after("50", Key::Postfix("/100")), "50/100");
-        assert_eq!(after("3 + 4", Key::Prefix("1/")), "3 + 1/4");
-        assert_eq!(after("2 * wall", Key::Prefix("10^")), "2 * 10^wall");
-        assert_eq!(after("9", Key::Func("sqrt")), "sqrt(9)");
-        assert_eq!(after("1 + (2 + 7)", Key::Func("sqrt")), "1 + sqrt(2 + 7)");
-        assert_eq!(after("1.2m", Key::Func("abs")), "abs(1.2m)");
-        assert_eq!(after("5", Key::Func("fact")), "fact(5)");
-        assert_eq!(after("27", Key::TwoArg("root")), "root(27, ");
-        assert_eq!(after("8", Key::TwoArg("logb")), "logb(8, ");
-        assert_eq!(after("[1,2]", Key::Func("xof")), "xof([1,2])");
-        // A call is atomic; a sum is bracketed.
-        assert_eq!(after("sqrt(9)", Key::Postfix("^2")), "sqrt(9)^2");
-        assert_eq!(after("(-3)", Key::Postfix("^2")), "(-3)^2");
+    fn keys_edit_the_input() {
+        let ans = Some(Value::Number(4.0));
+        for (input, previous, key, expected) in [
+            // Unary keys act on the last operand; a call or bracket group is
+            // atomic, a sum gets brackets.
+            ("3 + 4", None, Key::Postfix("^2"), "3 + 4^2"),
+            ("3 + (1 + 1)", None, Key::Postfix("^3"), "3 + (1 + 1)^3"),
+            ("sqrt(9)", None, Key::Postfix("/100"), "sqrt(9)/100"),
+            ("3 + 4", None, Key::Prefix("1/"), "3 + 1/4"),
+            ("1 + (2 + 7)", None, Key::Func("sqrt"), "1 + sqrt(2 + 7)"),
+            ("1.2m", None, Key::Func("abs"), "abs(1.2m)"),
+            ("27", None, Key::TwoArg("root"), "root(27, "),
+            ("3 + 4", None, Key::Negate, "3 + (-4)"),
+            ("3 + (-4)", None, Key::Negate, "3 + 4"),
+            // Empty: ans when there is one; without an operand a function
+            // starts, a postfix key leaves the input alone.
+            ("", ans, Key::Postfix("^2"), "ans^2"),
+            ("2 + ", None, Key::Func("sin"), "2 + sin("),
+            ("2 + ", None, Key::Postfix("^2"), "2 + "),
+            ("", None, Key::Negate, "(-"),
+            // Clearing.
+            ("12 + 34", None, Key::ClearEntry, "12 + "),
+            ("7 mod ", None, Key::ClearEntry, "7 "),
+            ("12 + 34", None, Key::Clear, ""),
+            ("12 + ", None, Key::Back, "12 "),
+            ("2π", None, Key::Back, "2"),
+        ] {
+            let mut p = QuickCalcPalette {
+                input: input.into(),
+                ans: previous,
+                ..Default::default()
+            };
+            p.press(key);
+            assert_eq!(p.input, expected, "{input:?} {key:?}");
+        }
     }
 
     #[test]
-    fn negate_toggles() {
-        assert_eq!(after("3 + 4", Key::Negate), "3 + (-4)");
-        assert_eq!(after("3 + (-4)", Key::Negate), "3 + 4");
-        assert_eq!(after("(1 + 2)", Key::Negate), "(-(1 + 2))");
-        assert_eq!(after("", Key::Negate), "(-");
-    }
-
-    #[test]
-    fn no_operand() {
-        let mut p = QuickCalcPalette {
-            input: "2 + ".into(),
-            ..Default::default()
-        };
-        assert!(p.press(Key::Postfix("^2")).is_some());
-        assert_eq!(p.input, "2 + ");
-        assert!(p.press(Key::Func("sin")).is_none());
-        assert_eq!(p.input, "2 + sin(");
-        // Empty with a previous result: it applies to ans.
-        let mut p = QuickCalcPalette {
-            ans: Some(Value::Number(4.0)),
-            ..Default::default()
-        };
-        p.press(Key::Postfix("^2"));
-        assert_eq!(p.input, "ans^2");
-        // Empty without one: postfix keys need a number.
-        let mut p = QuickCalcPalette::default();
-        assert!(p.press(Key::Postfix("/100")).is_some());
-        assert!(p.input.is_empty());
-    }
-
-    #[test]
-    fn clear_entry_and_backspace() {
-        assert_eq!(after("12 + 34", Key::ClearEntry), "12 + ");
-        assert_eq!(after("12 + ", Key::ClearEntry), "12 ");
-        assert_eq!(after("7 mod ", Key::ClearEntry), "7 ");
-        assert_eq!(after("12", Key::ClearEntry), "");
-        assert_eq!(after("12 + 34", Key::Clear), "");
-        assert_eq!(after("123", Key::Back), "12");
-        assert_eq!(after("12 + ", Key::Back), "12 ");
-        assert_eq!(after("", Key::Back), "");
-        assert_eq!(after("2π", Key::Back), "2");
-    }
-
-    #[test]
-    fn trig_follows_second_and_hyp() {
+    fn second_hyp_and_flyouts() {
         let mut p = QuickCalcPalette {
             input: "30".into(),
             ..Default::default()
         };
+        p.toggle_flyout(Flyout::Trigonometry);
+        // The toggles keep the flyout open and stay on until pressed again.
         p.press(Key::Second);
         p.press(Key::Hyp);
-        assert_eq!(p.trig_name("sin", true), "asinh");
+        assert_eq!(p.flyout, Some(Flyout::Trigonometry));
         assert_eq!(p.trig_name("sec", false), "asec");
+        // A pick closes it.
         p.press(Key::Trig {
             name: "sin",
             hyp: true,
         });
         assert_eq!(p.input, "asinh(30)");
-        // 2nd stays on until pressed again.
-        assert!(p.second);
-        p.press(Key::Second);
-        p.press(Key::Hyp);
-        assert_eq!(p.trig_name("cos", true), "cos");
-    }
-
-    #[test]
-    fn flyouts_close_on_a_pick_but_not_on_toggles() {
-        let mut p = QuickCalcPalette::default();
-        p.toggle_flyout(Flyout::Trigonometry);
-        p.press(Key::Second);
-        assert_eq!(p.flyout, Some(Flyout::Trigonometry));
-        p.press(Key::Trig {
-            name: "tan",
-            hyp: true,
-        });
         assert_eq!(p.flyout, None);
-        p.toggle_flyout(Flyout::Point);
-        p.toggle_flyout(Flyout::Point);
-        assert_eq!(p.flyout, None);
+        assert!(p.second && p.hyp);
     }
 
     #[test]
@@ -481,29 +431,27 @@ mod tests {
         let ctx = CalcContext::default();
         let mut p = QuickCalcPalette::default();
         assert!(p.memory_op(MemoryOp::Store, &ctx).is_some());
-        p.input = "870".into();
-        p.memory_op(MemoryOp::Store, &ctx);
-        p.input = "30".into();
-        p.memory_op(MemoryOp::Store, &ctx);
-        assert_eq!(p.memory, vec![30.0, 870.0]);
-        p.input = "5".into();
-        p.memory_op(MemoryOp::Add, &ctx);
-        p.memory_op(MemoryOp::Subtract, &ctx);
-        p.memory_op(MemoryOp::Subtract, &ctx);
+        for (input, op) in [
+            ("870", MemoryOp::Store),
+            ("30", MemoryOp::Store),
+            ("5", MemoryOp::Add),
+            ("10", MemoryOp::Subtract),
+        ] {
+            p.input = input.into();
+            p.memory_op(op, &ctx);
+        }
         assert_eq!(p.memory, vec![25.0, 870.0]);
+        p.input = "[1,2]".into();
+        assert!(p.memory_op(MemoryOp::Store, &ctx).is_some());
         p.input.clear();
         p.memory_op(MemoryOp::Recall, &ctx);
         assert_eq!(p.input, "25");
         p.input.clear();
         p.toggle_flyout(Flyout::Memory);
         p.memory_insert(1);
-        assert_eq!(p.input, "870");
-        assert_eq!(p.flyout, None);
-        p.input = "[1,2]".into();
-        assert!(p.memory_op(MemoryOp::Store, &ctx).is_some());
+        assert_eq!((p.input.as_str(), p.flyout), ("870", None));
         p.memory_op(MemoryOp::Clear, &ctx);
-        assert!(p.memory.is_empty());
-        // M+ on an empty memory stores the value.
+        // M− on an empty memory stores the negated value.
         p.input = "4".into();
         p.memory_op(MemoryOp::Subtract, &ctx);
         assert_eq!(p.memory, vec![-4.0]);

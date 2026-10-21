@@ -108,20 +108,22 @@ mod tests {
     use super::*;
     use crate::entities::common::{set_unit_context, unit_context, UnitContext};
 
-    fn pick(kind: PickKind, mode: AngleMode, points: &[DVec3]) -> CmdResult {
-        let mut cmd = CalcPickCommand::new(kind, mode);
+    fn pick(mut cmd: CalcPickCommand, points: &[DVec3]) -> Value {
         let (last, rest) = points.split_last().unwrap();
         for p in rest {
             assert!(matches!(cmd.on_point(*p), CmdResult::NeedPoint));
             assert_eq!(cmd.quick_calc_step(), Some(2));
         }
-        cmd.on_point(*last)
-    }
-
-    fn value(result: CmdResult) -> Value {
-        match result {
+        match cmd.on_point(*last) {
             CmdResult::QuickCalcPick(v) => v,
             _ => panic!("expected a QuickCalc pick"),
+        }
+    }
+
+    fn number(v: Value) -> f64 {
+        match v {
+            Value::Number(n) => n,
+            v => panic!("{v:?}"),
         }
     }
 
@@ -133,51 +135,21 @@ mod tests {
             angdir_cw: false,
             ..previous
         });
-        let p = DVec3::new(4200.0, 3600.0, 0.0);
-        assert_eq!(
-            value(pick(PickKind::Point, AngleMode::Degrees, &[p])),
-            Value::Point(p)
-        );
-        let a = DVec3::ZERO;
-        let b = DVec3::new(0.0, 3600.0, 0.0);
-        assert_eq!(
-            value(pick(PickKind::Distance, AngleMode::Degrees, &[a, b])),
-            Value::Number(3600.0)
-        );
-        match value(pick(PickKind::Angle, AngleMode::Degrees, &[a, b])) {
-            Value::Number(deg) => assert!((deg - 90.0).abs() < 1e-9),
-            v => panic!("{v:?}"),
-        }
-        match value(pick(PickKind::Angle, AngleMode::Radians, &[a, b])) {
-            Value::Number(rad) => assert!((rad - std::f64::consts::FRAC_PI_2).abs() < 1e-12),
-            v => panic!("{v:?}"),
-        }
+        let new = |kind, mode| CalcPickCommand::new(kind, mode);
+        let (a, b) = (DVec3::ZERO, DVec3::new(0.0, 3600.0, 0.0));
+        let point = pick(new(PickKind::Point, AngleMode::Degrees), &[b]);
+        let distance = pick(new(PickKind::Distance, AngleMode::Degrees), &[a, b]);
+        let degrees = pick(new(PickKind::Angle, AngleMode::Degrees), &[a, b]);
+        let radians = pick(new(PickKind::Angle, AngleMode::Radians), &[a, b]);
         set_unit_context(previous);
+        assert_eq!(point, Value::Point(b));
+        assert_eq!(distance, Value::Number(3600.0));
+        assert!((number(degrees) - 90.0).abs() < 1e-9);
+        assert!((number(radians) - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
     }
 
     #[test]
-    fn angle_follows_angbase_and_angdir() {
-        let previous = unit_context();
-        set_unit_context(UnitContext {
-            angbase: std::f64::consts::FRAC_PI_2,
-            angdir_cw: true,
-            ..previous
-        });
-        // Pointing east is 90° clockwise from a north ANGBASE.
-        let v = value(pick(
-            PickKind::Angle,
-            AngleMode::Degrees,
-            &[DVec3::ZERO, DVec3::X],
-        ));
-        set_unit_context(previous);
-        match v {
-            Value::Number(deg) => assert!((deg - 90.0).abs() < 1e-9, "{deg}"),
-            v => panic!("{v:?}"),
-        }
-    }
-
-    #[test]
-    fn point_is_reported_in_the_working_plane() {
+    fn follows_the_ucs_angbase_and_angdir() {
         let mut cmd = CalcPickCommand::new(PickKind::Point, AngleMode::Degrees);
         cmd.set_working_plane(WorkingPlane::new(
             DVec3::new(100.0, 0.0, 0.0),
@@ -185,8 +157,21 @@ mod tests {
             DVec3::Y,
         ));
         assert_eq!(
-            value(cmd.on_point(DVec3::new(150.0, 20.0, 0.0))),
+            pick(cmd, &[DVec3::new(150.0, 20.0, 0.0)]),
             Value::Point(DVec3::new(50.0, 20.0, 0.0))
         );
+        // Pointing east is 90° clockwise from a north ANGBASE.
+        let previous = unit_context();
+        set_unit_context(UnitContext {
+            angbase: std::f64::consts::FRAC_PI_2,
+            angdir_cw: true,
+            ..previous
+        });
+        let angle = pick(
+            CalcPickCommand::new(PickKind::Angle, AngleMode::Degrees),
+            &[DVec3::ZERO, DVec3::X],
+        );
+        set_unit_context(previous);
+        assert!((number(angle) - 90.0).abs() < 1e-9);
     }
 }

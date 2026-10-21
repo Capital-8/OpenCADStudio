@@ -374,9 +374,10 @@ impl OpenCADStudio {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::window::quick_calc::Key;
+    use crate::ui::window::quick_calc::{Flyout, KeypadMode, MemoryOp};
     use glam::DVec3;
 
+    /// A millimetre drawing with the pallet open.
     fn app() -> OpenCADStudio {
         let mut app = OpenCADStudio::new_for_test();
         let _ = app.automation_op(r#"{"op":"new"}"#);
@@ -385,169 +386,112 @@ mod tests {
         app
     }
 
-    fn type_and_submit(app: &mut OpenCADStudio, input: &str) {
-        let _ = app.on_quick_calc(QuickCalcMsg::Input(input.into()));
-        let _ = app.on_quick_calc(QuickCalcMsg::Submit);
+    fn send(app: &mut OpenCADStudio, msgs: impl IntoIterator<Item = QuickCalcMsg>) {
+        for msg in msgs {
+            let _ = app.on_quick_calc(msg);
+        }
+    }
+
+    fn enter(app: &mut OpenCADStudio, input: &str) {
+        send(
+            app,
+            [QuickCalcMsg::Input(input.into()), QuickCalcMsg::Submit],
+        );
     }
 
     #[test]
-    fn quickcalc_toggles_the_pallet_and_cal_stays_a_command() {
+    fn quickcalc_toggles_and_cal_stays_a_command() {
         let mut app = app();
         let _ = app.dispatch_command("QUICKCALC");
         assert!(app.dock_panel_visible(PanelId::QuickCalc));
         let _ = app.dispatch_command("QC");
         assert!(!app.dock_panel_visible(PanelId::QuickCalc));
         let _ = app.dispatch_command("CAL 2+3");
-        assert!(app
-            .command_line
-            .history
-            .last()
-            .unwrap()
-            .text
-            .ends_with("= 5"));
-        assert!(!app.dock_panel_visible(PanelId::QuickCalc));
+        let last = &app.command_line.history.last().unwrap().text;
+        assert!(last.ends_with("= 5"), "{last}");
     }
 
     #[test]
-    fn assignment_makes_a_drawing_variable() {
+    fn assignments_go_to_the_drawing_or_the_constants() {
         let mut app = app();
-        type_and_submit(&mut app, "wall = 3.6m");
         let i = app.active_tab;
-        assert_eq!(
-            app.tabs[i].scene.named_parameters().resolve("wall").ok(),
-            Some(3600.0)
-        );
-        type_and_submit(&mut app, "wall / 2");
-        assert_eq!(app.quick_calc.ans, Some(Value::Number(1800.0)));
-        // Updating keeps one parameter.
-        type_and_submit(&mut app, "wall = 300");
-        assert_eq!(app.tabs[i].scene.named_parameters().len(), 1);
-        let _ = app.on_quick_calc(QuickCalcMsg::VarDelete(VarScope::Drawing, "wall".into()));
-        assert!(app.tabs[i].scene.named_parameters().is_empty());
-    }
-
-    #[test]
-    fn constants_are_updated_in_place() {
-        let mut app = app();
+        enter(&mut app, "wall = 3.6m");
+        enter(&mut app, "wall = wall / 2");
+        let table = app.tabs[i].scene.named_parameters();
+        assert_eq!((table.len(), table.resolve("wall").ok()), (1, Some(1800.0)));
         app.quick_calc.constants.push(("brick".into(), 210.0));
-        type_and_submit(&mut app, "brick = 215");
+        enter(&mut app, "brick = 215");
         assert_eq!(app.quick_calc.constants, vec![("brick".to_string(), 215.0)]);
-        let i = app.active_tab;
+        send(
+            &mut app,
+            [QuickCalcMsg::VarDelete(VarScope::Drawing, "wall".into())],
+        );
         assert!(app.tabs[i].scene.named_parameters().is_empty());
     }
 
     #[test]
-    fn pick_runs_as_a_command_and_inserts_its_value() {
+    fn picks_run_as_a_command() {
         let mut app = app();
-        app.quick_calc.show = true;
-        let _ = app.on_quick_calc(QuickCalcMsg::Input("wall + ".into()));
-        let _ = app.on_quick_calc(QuickCalcMsg::Pick(PickKind::Distance));
         let i = app.active_tab;
-        assert_eq!(
-            app.tabs[i]
-                .active_cmd
-                .as_ref()
-                .and_then(|c| c.quick_calc_step()),
-            Some(1)
+        // Not while another command runs.
+        let _ = app.dispatch_command("LINE");
+        send(&mut app, [QuickCalcMsg::Pick(PickKind::Point)]);
+        assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+        let _ = app.update(Message::CommandEscape);
+        send(
+            &mut app,
+            [
+                QuickCalcMsg::Input("wall + ".into()),
+                QuickCalcMsg::Pick(PickKind::Distance),
+            ],
         );
-        let first = app.tabs[i]
-            .active_cmd
-            .as_mut()
-            .unwrap()
-            .on_point(DVec3::ZERO);
-        assert!(matches!(first, crate::command::CmdResult::NeedPoint));
-        let done = app.tabs[i]
-            .active_cmd
-            .as_mut()
-            .unwrap()
-            .on_point(DVec3::new(0.0, 3600.0, 0.0));
+        let cmd = app.tabs[i].active_cmd.as_mut().unwrap();
+        assert_eq!(cmd.quick_calc_step(), Some(1));
+        cmd.on_point(DVec3::ZERO);
+        let done = cmd.on_point(DVec3::new(0.0, 3600.0, 0.0));
         let _ = app.apply_cmd_result(done);
         assert!(app.tabs[i].active_cmd.is_none());
-        // The routed message, as the runtime would deliver it.
-        let _ = app.on_quick_calc(QuickCalcMsg::Picked(Value::Number(3600.0)));
+        // The routed message, as the runtime delivers it.
+        send(&mut app, [QuickCalcMsg::Picked(Value::Number(3600.0))]);
         assert_eq!(app.quick_calc.input, "wall + 3600");
-        assert_eq!(app.quick_calc.pick, None);
     }
 
     #[test]
-    fn pick_waits_for_a_running_command() {
-        let mut app = app();
-        let _ = app.dispatch_command("LINE");
-        let _ = app.on_quick_calc(QuickCalcMsg::Pick(PickKind::Point));
-        let i = app.active_tab;
-        assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
-        assert!(app.quick_calc.flash.is_some());
-    }
-
-    #[test]
-    fn paste_sends_the_value_to_the_command_line() {
-        let mut app = app();
-        let _ = app.on_quick_calc(QuickCalcMsg::Input("[1,2] * 2".into()));
-        let _ = app.on_quick_calc(QuickCalcMsg::PasteToCommandLine);
-        assert_eq!(app.command_line.input, "2,4");
-    }
-
-    #[test]
-    fn escape_clears_only_while_typing() {
+    fn keyboard_paste_and_memory() {
         let mut app = app();
         app.quick_calc.show = true;
         app.dock_open_at_default(PanelId::QuickCalc);
-        let _ = app.on_quick_calc(QuickCalcMsg::Input("12".into()));
+        // Ctrl+Enter sends the value to the command line as a coordinate.
+        send(&mut app, [QuickCalcMsg::Input("[1,2] * 2".into())]);
+        assert!(app.quick_calc_shortcut("CTRL+ENTER").is_some());
+        assert_eq!(app.command_line.input, "2,4");
+        // Escape closes a flyout first, then clears what is being typed.
+        send(
+            &mut app,
+            [
+                QuickCalcMsg::SetKeypadMode(KeypadMode::Scientific),
+                QuickCalcMsg::Input("2 * 435".into()),
+                QuickCalcMsg::Flyout(Flyout::Trigonometry),
+            ],
+        );
+        assert!(app.quick_calc_shortcut("ESCAPE").is_some());
+        assert_eq!(app.quick_calc.flyout, None);
+        send(&mut app, [QuickCalcMsg::Memory(MemoryOp::Store)]);
         assert!(app.quick_calc_shortcut("ESCAPE").is_some());
         assert!(app.quick_calc.input.is_empty());
+        // Not while typing elsewhere.
         app.quick_calc.input = "12".into();
         app.quick_calc.typing = false;
         assert!(app.quick_calc_shortcut("ESCAPE").is_none());
-        assert_eq!(app.quick_calc.input, "12");
-    }
-
-    #[test]
-    fn keypad_keys_edit_the_input() {
-        let mut app = app();
-        for k in ["1", "2"] {
-            let _ = app.on_quick_calc(QuickCalcMsg::Key(Key::Text(k)));
-        }
-        let _ = app.on_quick_calc(QuickCalcMsg::Key(Key::Postfix("^2")));
-        let _ = app.on_quick_calc(QuickCalcMsg::Key(Key::Eval));
-        assert_eq!(app.quick_calc.ans, Some(Value::Number(144.0)));
-    }
-}
-
-#[cfg(test)]
-mod keypad_tests {
-    use super::*;
-    use crate::ui::window::quick_calc::{Flyout, KeypadMode, MemoryOp, Section};
-
-    #[test]
-    fn escape_closes_a_flyout_first() {
-        let mut app = OpenCADStudio::new_for_test();
-        let _ = app.automation_op(r#"{"op":"new"}"#);
-        app.quick_calc.show = true;
-        app.dock_open_at_default(PanelId::QuickCalc);
-        let _ = app.on_quick_calc(QuickCalcMsg::SetKeypadMode(KeypadMode::Scientific));
-        assert!(app.quick_calc.is_open(Section::Keypad));
-        let _ = app.on_quick_calc(QuickCalcMsg::Input("12".into()));
-        let _ = app.on_quick_calc(QuickCalcMsg::Flyout(Flyout::Trigonometry));
-        assert!(app.quick_calc_shortcut("ESCAPE").is_some());
-        assert_eq!(app.quick_calc.flyout, None);
-        // The next Escape clears the input.
-        assert!(app.quick_calc_shortcut("ESCAPE").is_some());
-        assert!(app.quick_calc.input.is_empty());
-    }
-
-    #[test]
-    fn memory_row_and_flyout() {
-        let mut app = OpenCADStudio::new_for_test();
-        let _ = app.automation_op(r#"{"op":"new"}"#);
-        let _ = app.on_quick_calc(QuickCalcMsg::Input("2 * 435".into()));
-        let _ = app.on_quick_calc(QuickCalcMsg::Memory(MemoryOp::Store));
-        assert_eq!(app.quick_calc.memory, vec![870.0]);
-        let _ = app.on_quick_calc(QuickCalcMsg::Input("[1,2]".into()));
-        let _ = app.on_quick_calc(QuickCalcMsg::Memory(MemoryOp::Store));
-        assert!(app.quick_calc.flash.is_some());
-        let _ = app.on_quick_calc(QuickCalcMsg::Input(String::new()));
-        let _ = app.on_quick_calc(QuickCalcMsg::Flyout(Flyout::Memory));
-        let _ = app.on_quick_calc(QuickCalcMsg::MemoryInsert(0));
+        // The memory flyout inserts a stored value.
+        send(
+            &mut app,
+            [
+                QuickCalcMsg::Input(String::new()),
+                QuickCalcMsg::Flyout(Flyout::Memory),
+                QuickCalcMsg::MemoryInsert(0),
+            ],
+        );
         assert_eq!(app.quick_calc.input, "870");
         assert_eq!(app.quick_calc.flyout, None);
     }

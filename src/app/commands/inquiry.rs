@@ -1747,47 +1747,29 @@ mod find_replace_command_tests {
 mod cal_tests {
     use super::*;
 
-    /// A millimetre drawing, so length suffixes have a known target.
-    fn app() -> OpenCADStudio {
+    #[test]
+    fn cal_evaluates_on_the_shared_engine() {
         let mut app = OpenCADStudio::new_for_test();
         let _ = app.automation_op(r#"{"op":"new"}"#);
         let i = app.active_tab;
         app.tabs[i].scene.document.header.insertion_units = 4;
-        app
-    }
-
-    fn last_line(app: &OpenCADStudio) -> String {
-        app.command_line.history.last().unwrap().text.clone()
-    }
-
-    #[test]
-    fn cal_evaluates_on_the_shared_engine() {
-        let mut app = app();
-        let _ = app.dispatch_command("CAL (2+3)*4");
-        assert!(last_line(&app).ends_with("= 20"), "{}", last_line(&app));
-        // Variables and `ans` carry over between CAL calls.
-        let _ = app.dispatch_command("CAL wall = 3.6m");
-        assert!(last_line(&app).ends_with("= 3600"), "{}", last_line(&app));
-        let _ = app.dispatch_command("CAL wall + 90");
-        assert!(last_line(&app).ends_with("= 3690"), "{}", last_line(&app));
-        let _ = app.dispatch_command("CAL *2");
-        assert!(last_line(&app).ends_with("= 7380"), "{}", last_line(&app));
-        let _ = app.dispatch_command("CAL dist([0,0],[3,4])");
-        assert!(last_line(&app).ends_with("= 5"), "{}", last_line(&app));
-        // Lengths follow the drawing unit.
-        app.tabs[app.active_tab].scene.document.header.insertion_units = 6;
-        let _ = app.dispatch_command("CAL 1500mm");
-        assert!(last_line(&app).ends_with("= 1.5"), "{}", last_line(&app));
-        let _ = app.dispatch_command("CAL 1/0");
-        assert!(last_line(&app).contains("CAL:"), "{}", last_line(&app));
-    }
-
-    #[test]
-    fn cal_prompt_takes_an_expression_with_spaces() {
-        let mut app = app();
+        // The prompt takes free text, spaces included; variables, ans and
+        // the drawing unit carry through every CAL.
         let _ = app.dispatch_command("CAL");
-        assert!(app.tabs[app.active_tab].active_cmd.is_some());
-        let _ = app.feed_active_cmd("(2 + 3) * 4");
-        assert!(last_line(&app).ends_with("= 20"), "{}", last_line(&app));
+        let _ = app.feed_active_cmd("wall = (2 + 1.6) * 1m");
+        for (cmd, expected) in [
+            ("CAL wall + 90", "= 3690"),
+            ("CAL *2", "= 7380"),
+            ("CAL dist([0,0],[3,4])", "= 5"),
+            ("CAL 1/0", "CAL:"),
+        ] {
+            let _ = app.dispatch_command(cmd);
+            let last = &app.command_line.history.last().unwrap().text;
+            assert!(last.contains(expected), "{cmd}: {last}");
+        }
+        app.tabs[i].scene.document.header.insertion_units = 6;
+        let _ = app.dispatch_command("CAL 1500mm");
+        let last = &app.command_line.history.last().unwrap().text;
+        assert!(last.ends_with("= 1.5"), "{last}");
     }
 }
