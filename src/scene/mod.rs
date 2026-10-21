@@ -10313,10 +10313,6 @@ impl Scene {
         }
     }
 
-    /// Only the handles of editable, visible HATCH entities. Modification
-    /// commands need these in addition to the wire-based entity list: hatch
-    /// fills are rendered separately and otherwise never reach TRIM.
-    /// Unlike visible_hatches_for_click this never clones GPU hatch models.
     /// Each object drawn in the current space that `keep` accepts, once, as a
     /// `(handle, entity)` clone for a modify command's working copy. Only the
     /// resident wire names are read and block copies stay unexpanded: one
@@ -10339,6 +10335,10 @@ impl Scene {
             .collect()
     }
 
+    /// Only the handles of editable, visible HATCH entities. Modification
+    /// commands need these in addition to the wire-based entity list: hatch
+    /// fills are rendered separately and otherwise never reach TRIM.
+    /// Unlike visible_hatches_for_click this never clones GPU hatch models.
     pub fn visible_hatch_handles_for_edit(&self) -> Vec<Handle> {
         self.hatches
             .keys()
