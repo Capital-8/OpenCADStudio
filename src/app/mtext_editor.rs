@@ -1253,7 +1253,11 @@ impl super::OpenCADStudio {
                     if !ed.font.trim().is_empty() {
                         ed.font.clone()
                     } else {
-                        crate::entities::text_support::resolve_text_style(&ed.style, doc).font_name
+                        // The family, not the style's bold / italic face of it.
+                        let font =
+                            crate::entities::text_support::resolve_text_style(&ed.style, doc)
+                                .font_name;
+                        crate::scene::text::sysfont::split_style(&font).0.to_string()
                     }
                 })
                 .unwrap_or_default()
@@ -1554,7 +1558,10 @@ impl super::OpenCADStudio {
             self.mtext_editor
                 .as_ref()
                 .map(|ed| {
-                    crate::entities::text_support::resolve_text_style(&ed.style, doc).font_name
+                    let font =
+                        crate::entities::text_support::resolve_text_style(&ed.style, doc)
+                            .font_name;
+                    crate::scene::text::sysfont::split_style(&font).0.to_string()
                 })
                 .unwrap_or_default()
         } else {

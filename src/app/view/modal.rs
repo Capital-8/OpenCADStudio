@@ -777,6 +777,7 @@ impl OpenCADStudio {
                         )
                     })
                     .unwrap_or((false, false, false, false, false));
+                let ttf_flags = selected_style.map_or(0, |style| style.true_type_font_flags);
                 let in_use =
                     self.style_in_use(crate::app::StyleKind::Text, &self.textstyle_selected);
                 let compare_opts: Vec<String> = styles
@@ -834,6 +835,9 @@ impl OpenCADStudio {
                             height_buf: &self.textstyle_height,
                             bigfont_buf: &self.textstyle_bigfont,
                             ttf_buf: &self.textstyle_ttf,
+                            bold: ttf_flags & crate::entities::text_support::TTF_FLAG_BOLD != 0,
+                            italic: ttf_flags & crate::entities::text_support::TTF_FLAG_ITALIC
+                                != 0,
                             backward,
                             upside_down,
                             vertical,

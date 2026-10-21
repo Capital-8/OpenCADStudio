@@ -26,6 +26,9 @@ pub struct TextStyleView<'a> {
     pub height_buf: &'a str,
     pub bigfont_buf: &'a str,
     pub ttf_buf: &'a str,
+    /// The TrueType font style (typeface flags).
+    pub bold: bool,
+    pub italic: bool,
     pub backward: bool,
     pub upside_down: bool,
     pub vertical: bool,
@@ -68,6 +71,8 @@ fn list_item(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
 
 struct TextPreviewCanvas {
     font: String,
+    /// `font` in the style's bold / italic face, when it has one.
+    face: String,
     big_font: String,
     width_factor: f32,
     oblique: f32,
@@ -109,7 +114,7 @@ impl canvas::Program<Message> for TextPreviewCanvas {
                     rotation,
                     self.width_factor,
                     self.oblique,
-                    &self.font,
+                    &self.face,
                     &character.to_string(),
                 );
                 result.append(&mut glyph);
@@ -122,7 +127,7 @@ impl canvas::Program<Message> for TextPreviewCanvas {
                 rotation,
                 self.width_factor,
                 self.oblique,
-                &self.font,
+                &self.face,
                 "AaBbCc 0123",
             )
             .0
@@ -286,8 +291,15 @@ pub fn view_window<'a>(
         .unwrap_or(1.0)
         .abs()
         .clamp(0.01, 100.0);
+    let ttf = !v.ttf_buf.trim().is_empty();
     let preview = canvas(TextPreviewCanvas {
         font: effective_font.to_string(),
+        face: crate::entities::text_support::styled_font(
+            effective_font,
+            ttf && v.bold,
+            ttf && v.italic,
+        )
+        .unwrap_or_else(|| effective_font.to_string()),
         big_font: v.bigfont_buf.to_string(),
         width_factor: if v.backward { -width } else { width },
         oblique: v
@@ -340,6 +352,12 @@ pub fn view_window<'a>(
                     "ttf",
                     v.read_only
                 ),
+                // A system font's style; stroke fonts have none.
+                row![
+                    toggle(t!("Bold"), v.bold, "bold", v.read_only || !ttf),
+                    toggle(t!("Italic"), v.italic, "italic", v.read_only || !ttf),
+                ]
+                .spacing(18),
             ]
             .spacing(8)
             .into()

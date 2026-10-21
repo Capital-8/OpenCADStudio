@@ -53,12 +53,13 @@ fn fonts() -> &'static SysFonts {
                 continue;
             };
             // Remember every face file: a DWG style names the file, and the
-            // family inside it is usually a different string.
+            // family inside it is usually a different string. A bold or italic
+            // file (`GOTHICB.TTF`) names that face of its family.
             if let fontdb::Source::File(path) = &face.source {
                 if let Some(name) = path.file_name() {
                     by_file
                         .entry(name.to_string_lossy().to_ascii_lowercase())
-                        .or_insert_with(|| family.clone());
+                        .or_insert_with(|| face_family(face, family));
                 }
             }
         }
@@ -69,6 +70,18 @@ fn fonts() -> &'static SysFonts {
             by_file: Mutex::new(by_file),
         }
     })
+}
+
+/// `family` naming `face` itself: with the [`STYLE_SEP`] style of a bold or
+/// italic face.
+fn face_family(face: &fontdb::FaceInfo, family: &str) -> String {
+    let b = if face.weight.0 >= fontdb::Weight::SEMIBOLD.0 { "b" } else { "" };
+    let i = if face.style != fontdb::Style::Normal { "i" } else { "" };
+    if b.is_empty() && i.is_empty() {
+        family.to_string()
+    } else {
+        format!("{family}{STYLE_SEP}{b}{i}")
+    }
 }
 
 /// Sorted, de-duplicated family names of every face currently in `db`.
@@ -195,6 +208,10 @@ fn canonical_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
 /// fetched Noto subset joins the database, because earlier `None` resolutions
 /// (font still in flight) must not stick.
 pub fn canonical_family_name(family: &str) -> Option<String> {
+    // A styled name keeps its style on the canonical family.
+    if let Some((base, style)) = family.split_once(STYLE_SEP) {
+        return canonical_family_name(base).map(|c| format!("{c}{STYLE_SEP}{style}"));
+    }
     if let Some(hit) = canonical_cache().lock().unwrap().get(family) {
         return hit.clone();
     }
@@ -279,7 +296,49 @@ fn canonical_family_name_uncached(family: &str) -> Option<String> {
     None
 }
 
-/// Resolve a family name to a concrete face id (regular weight/style).
+/// Separator between a family and the face of it a [`styled_family`] name
+/// asks for; a control character no family name contains.
+pub const STYLE_SEP: char = '\u{2}';
+
+/// A [`styled_family`] name split into the family and whether it asks for
+/// the bold and the italic face. A plain family asks for neither.
+pub fn split_style(name: &str) -> (&str, bool, bool) {
+    match name.split_once(STYLE_SEP) {
+        Some((family, style)) => (family, style.contains('b'), style.contains('i')),
+        None => (name, false, false),
+    }
+}
+
+/// The family name that draws `family`'s own bold and/or italic face — a
+/// separate face, often a separate file (`GOTHICB.TTF`) — wherever a family
+/// name goes (glyph outlines, shaping, PDF embedding). Only what the
+/// installed faces really have is asked for; `None` when they have neither,
+/// so the caller keeps the plain family.
+pub fn styled_family(family: &str, bold: bool, italic: bool) -> Option<String> {
+    let (base, was_bold, was_italic) = split_style(family);
+    let (bold, italic) = (bold || was_bold, italic || was_italic);
+    if !bold && !italic {
+        return None;
+    }
+    let canonical = canonical_family_name(base)?;
+    let db = fonts().db.lock().unwrap();
+    let face = db.face(db.query(&fontdb::Query {
+        families: &[fontdb::Family::Name(&canonical)],
+        weight: if bold { fontdb::Weight::BOLD } else { fontdb::Weight::NORMAL },
+        style: if italic { fontdb::Style::Italic } else { fontdb::Style::Normal },
+        ..Default::default()
+    })?)?;
+    let bold = bold && face.weight.0 >= fontdb::Weight::SEMIBOLD.0;
+    let italic = italic && face.style != fontdb::Style::Normal;
+    (bold || italic).then(|| {
+        let b = if bold { "b" } else { "" };
+        let i = if italic { "i" } else { "" };
+        format!("{canonical}{STYLE_SEP}{b}{i}")
+    })
+}
+
+/// Resolve a family name to a concrete face id (regular weight/style, or
+/// the face a [`styled_family`] name asks for).
 fn face_id(family: &str) -> Option<fontdb::ID> {
     face_id_weighted(family, fontdb::Weight::NORMAL)
 }
@@ -288,10 +347,12 @@ fn face_id(family: &str) -> Option<fontdb::ID> {
 /// (e.g. bold runs). Falls back through fontdb's fuzzy matching, so a
 /// family without a bold face still resolves — to its regular face.
 fn face_id_weighted(family: &str, weight: fontdb::Weight) -> Option<fontdb::ID> {
+    let (family, bold, italic) = split_style(family);
     let canonical = canonical_family_name(family)?;
     let query = fontdb::Query {
         families: &[fontdb::Family::Name(&canonical)],
-        weight,
+        weight: if bold { fontdb::Weight::BOLD } else { weight },
+        style: if italic { fontdb::Style::Italic } else { fontdb::Style::Normal },
         ..Default::default()
     };
     fonts().db.lock().unwrap().query(&query)
@@ -483,14 +544,18 @@ mod tests {
             eprintln!("no installed face files on this host; skipping");
             return;
         };
+        // A bold / italic file names that face of the family.
+        let family_of = |name: &str| family_for_file(name).map(|f| split_style(&f).0.to_string());
+        let family_of_reference =
+            |name: &str| family_for_reference(name).map(|f| split_style(&f).0.to_string());
 
-        assert_eq!(family_for_file(&file).as_deref(), Some(family.as_str()));
+        assert_eq!(family_of(&file).as_deref(), Some(family.as_str()));
         assert_eq!(
-            family_for_file(&file.to_ascii_uppercase()).as_deref(),
+            family_of(&file.to_ascii_uppercase()).as_deref(),
             Some(family.as_str())
         );
         assert_eq!(
-            family_for_reference(&format!("/somewhere/else/{file}")).as_deref(),
+            family_of_reference(&format!("/somewhere/else/{file}")).as_deref(),
             Some(family.as_str())
         );
         assert_eq!(family_for_file("no-such-face-9f3.ttf"), None);

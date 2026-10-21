@@ -11832,6 +11832,13 @@ impl OpenCADStudio {
                         "upside_down" => s.flags.upside_down = !s.flags.upside_down,
                         "vertical" => s.is_vertical = !s.is_vertical,
                         "annotative" => s.annotative = !s.annotative,
+                        "bold" => {
+                            s.true_type_font_flags ^= crate::entities::text_support::TTF_FLAG_BOLD
+                        }
+                        "italic" => {
+                            s.true_type_font_flags ^=
+                                crate::entities::text_support::TTF_FLAG_ITALIC
+                        }
                         _ => {}
                     }
                 }
