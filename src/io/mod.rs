@@ -12,6 +12,7 @@ pub mod brep_build;
 pub mod fbx;
 pub mod file_association;
 pub mod font_repo;
+pub mod georef;
 pub(crate) mod fs_access;
 pub mod iges_import;
 pub mod iges_surfaces;
@@ -1595,7 +1596,14 @@ pub(crate) fn resolve_image_file(raw: &str, base_dir: Option<&Path>) -> Option<S
         return Some(raw.to_string());
     }
     let base_dir = base_dir?;
-    let joined = base_dir.join(raw);
+    // A relative path written on Windows (`.\images\a.tif`) keeps its
+    // backslashes on other systems, where they are not separators.
+    let relative = if cfg!(windows) {
+        std::borrow::Cow::Borrowed(raw)
+    } else {
+        std::borrow::Cow::Owned(raw.replace('\\', "/"))
+    };
+    let joined = base_dir.join(&*relative);
     if joined.is_file() {
         return Some(joined.to_string_lossy().into_owned());
     }

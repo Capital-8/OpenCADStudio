@@ -1754,6 +1754,8 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "ID  Specify point:" => Some(("inquiry", "id-specify-point")),
         "IMAGE  \"{short}\": {pw}×{ph} px" => Some(("common", "image-short-pw-ph-px")),
         "IMAGE  Specify insertion point (%{name}):  " => Some(("draw", "image-specify-insertion-point-name")),
+        "IMAGE  Specify insertion point or [Georeferenced] <Georeferenced> (%{name}):  " => Some(("draw", "image-specify-insertion-point-or-georeferenced-name")),
+        "Georeferenced" => Some(("draw", "georeferenced")),
         "IMAGE  Specify width (drag right):" => Some(("draw", "image-specify-width-drag-right")),
         "IMAGE: {e}" => Some(("common", "image-e")),
         "\"{name}\" is {width}×{height} px and would decode to {decoded} MB, over the {limit} MB image limit of this build — it cannot be attached. Images within the limit are attached at a reduced display resolution when needed." => Some(("file", "image-over-the-decode-limit-cannot-be-attached")),
