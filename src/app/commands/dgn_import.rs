@@ -812,6 +812,9 @@ fn place_converted(
             let mut layer = codec::tables::Layer::new(target.as_str());
             layer.handle = scene.document.allocate_handle();
             layer.color = *color;
+            if converted.layers_off.contains(name) {
+                layer.flags.off = true;
+            }
             let _ = scene.document.layers.add(layer);
         }
         layers.insert(name.clone(), target);
