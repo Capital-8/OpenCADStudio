@@ -5537,3 +5537,44 @@ fn polar_stretch_authoring_collects_rotation_selection_and_edits_it_with_local_u
     app.redo_steps(2);
     assert!(actions::options::offsets(&app.tabs[i].scene.document,action).is_some());
 }
+
+#[test]
+fn block_action_base_properties_edit_native_pivot_with_local_undo() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let _ = app.run_command_line("BPARAMETER LINEAR 2,3 12,3 7,5");
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let parameter = actions::all_parameters(&app.tabs[i].scene.document, definition)[0].handle;
+    let targets = members(&app);
+    let action = actions::create(&mut app.tabs[i].scene.document, definition, Kind::Scale, parameter, &targets, glam::DVec3::ZERO).unwrap();
+    let _ = app.update(Message::BlockActionBarSelect(action));
+    let initial = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let _ = app.update(Message::PropBoolToggle("authoring_action_base_dependent"));
+    let base = actions::options::base(&app.tabs[i].scene.document, action).unwrap();
+    assert!(!base.dependent);
+    assert_eq!(base.base_point, codec::types::Vector3::new(2., 3., 0.));
+    assert!(app.tabs[i].properties.sections.iter().flat_map(|s| &s.props).any(|p| p.field == "authoring_action_base_x"));
+    let _ = app.update(Message::PropGeomInput { field: "authoring_action_base_x", value: "9/2".into() });
+    let _ = app.update(Message::PropGeomCommit("authoring_action_base_x"));
+    assert_eq!(actions::options::base(&app.tabs[i].scene.document, action).unwrap().base_point.x, 4.5);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 2);
+    let changed = app.tabs[i].scene.document.clone();
+    for input in ["NaN", "inf", "unknown_name"] {
+        let _ = app.update(Message::PropGeomInput { field: "authoring_action_base_y", value: input.into() });
+        let _ = app.update(Message::PropGeomCommit("authoring_action_base_y"));
+        assert_eq!(app.tabs[i].scene.document, changed);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 2);
+    }
+    app.undo_steps(2);
+    assert_eq!(app.tabs[i].scene.document.objects[&action], initial.objects[&action]);
+    app.redo_steps(2);
+    assert_eq!(app.tabs[i].scene.document.objects[&action], changed.objects[&action]);
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    let before = app.tabs[i].scene.document.clone();
+    let _ = app.update(Message::PropBoolToggle("authoring_action_base_dependent"));
+    let _ = app.update(Message::PropGeomCommit("authoring_action_base_x"));
+    assert_eq!(app.tabs[i].scene.document, before);
+}

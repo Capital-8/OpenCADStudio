@@ -131,6 +131,10 @@ pub fn items(doc: &CadDocument, definition: Handle) -> Vec<Item> {
     }
     for (handle, p, _, _) in crate::scene::block_actions::actions(doc, definition) {
         let mut item = single(handle, p.element.name.clone(), p.display_location);
+        if let Some(base) = crate::scene::block_actions::options::base(doc, handle).filter(|base| !base.dependent) {
+            item.grips.push((Part::Base, base.base_point));
+            item.graphic.lines.push([p.display_location, base.base_point]);
+        }
         let frame = crate::scene::block_actions::frame_outline(doc, handle);
         if !frame.is_empty() {
             item.graphic.lines.extend(
@@ -321,7 +325,12 @@ pub fn move_part(
                 DynamicBlockData::StretchAction(p) => p.action.display_location = at,
                 DynamicBlockData::FlipAction(p) => p.action.display_location = at,
                 DynamicBlockData::ScaleAction(p) | DynamicBlockData::RotateAction(p) => {
-                    p.action.action.display_location = at
+                    if part == Part::Base {
+                        crate::scene::block_actions::options::pivot(&p.action, glam::DVec3::new(at.x, at.y, at.z))?;
+                        p.action.base_point = at;
+                    } else {
+                        p.action.action.display_location = at;
+                    }
                 }
                 DynamicBlockData::AlignmentParameter(_) => {}
                 _ => return Err("This authoring object cannot be edited yet."),

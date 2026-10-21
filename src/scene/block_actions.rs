@@ -1327,7 +1327,7 @@ fn evaluate_impl(
                     let a = end - q.base;
                     let b = q.end - q.base;
                     crate::command::EntityTransform::Rotate {
-                        center: q.base,
+                        center: options::pivot(options::base(baseline, *action_handle).ok_or("The Rotate action base is unavailable.")?, q.base)?,
                         axis: DVec3::Z,
                         angle_rad: a.y.atan2(a.x) - b.y.atan2(b.x),
                     }
@@ -1349,7 +1349,7 @@ fn evaluate_impl(
                         return Err("Specify a positive scale distance.");
                     }
                     crate::command::EntityTransform::Scale {
-                        center: q.base,
+                        center: options::pivot(options::base(baseline, *action_handle).ok_or("The Scale action base is unavailable.")?, q.base)?,
                         factor,
                     }
                 }
@@ -1378,9 +1378,7 @@ fn evaluate_impl(
                     return Err("This Flip action uses options not supported yet.");
                 }
                 DynamicBlockData::RotateAction(r)
-                    if !r.action.dependent
-                        || r.action.offset != Vector3::ZERO
-                        || r.connections
+                    if r.connections
                             != vec![BlockConnection {
                                 code: q.id,
                                 name: "AngleDelta".into(),
@@ -1394,9 +1392,7 @@ fn evaluate_impl(
                     return Err("This Rotate action uses options not supported yet.");
                 }
                 DynamicBlockData::ScaleAction(s)
-                    if !s.action.dependent
-                        || s.action.offset != Vector3::ZERO
-                        || s.connections
+                    if s.connections
                             != ["Scale", "XScale", "YScale"].map(|name| BlockConnection {
                                 code: q.id,
                                 name: name.into(),

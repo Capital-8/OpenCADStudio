@@ -74,6 +74,9 @@ impl CadCommand for EditCommand {
 }
 impl OpenCADStudio {
     pub(super) fn commit_authoring_action_option(&mut self, field: &'static str) -> Task<Message> {
+        if field.starts_with("authoring_action_base_") {
+            return self.commit_authoring_action_base(field);
+        }
         use crate::scene::block_actions::options;
         let i = self.active_tab;
         let Some(session) = self.tabs[i].active_block_edit_session() else { return Task::none() };
@@ -110,6 +113,50 @@ impl OpenCADStudio {
                 self.tabs[i].properties.edit_buf.remove(&key);
                 self.refresh_properties();
             }
+            Ok(false) => { self.tabs[i].properties.edit_buf.remove(&key); }
+            Err(error) => self.command_line.push_error(crate::t!(error).as_ref()),
+        }
+        Task::none()
+    }
+
+    pub(super) fn commit_authoring_action_base(&mut self, field: &'static str) -> Task<Message> {
+        use crate::scene::block_actions::{instance, options};
+        let i = self.active_tab;
+        let Some(session) = self.tabs[i].active_block_edit_session() else { return Task::none() };
+        let definition = session.br_handle;
+        let Some(handle) = self.tabs[i].selected_authoring else { return Task::none() };
+        let Some(before) = options::base(&self.tabs[i].scene.document, handle) else { return Task::none() };
+        let key = crate::ui::properties::FieldKey::Geom(field);
+        let mut point = DVec3::new(before.base_point.x, before.base_point.y, before.base_point.z);
+        let dependent = if field == "authoring_action_base_dependent" { !before.dependent } else { before.dependent };
+        let point = if field == "authoring_action_base_dependent" { None } else {
+            if dependent { return Task::none() }
+            let Some(input) = self.tabs[i].properties.edit_buf.get(&key) else { return Task::none() };
+            let Ok(value) = crate::app::expr_eval::eval_to_string(input).parse::<f64>() else {
+                self.command_line.push_error(crate::t!("Specify a finite action base point.").as_ref());
+                return Task::none();
+            };
+            match field {
+                "authoring_action_base_x" => point.x = value,
+                "authoring_action_base_y" => point.y = value,
+                _ => return Task::none(),
+            }
+            Some(point)
+        };
+        let mut staged = self.tabs[i].scene.document.clone();
+        match options::set_base(&mut staged, definition, handle, dependent, point) {
+            Ok(true) => match instance::refresh(&staged, definition) {
+                Ok(staged) => {
+                    self.push_undo_snapshot(i, "Edit block action base point");
+                    self.apply_action_document(i, staged);
+                    self.tabs[i].dirty = true;
+                    self.tabs[i].scene.bump_geometry();
+                    self.finish_pending_history(i);
+                    self.tabs[i].properties.edit_buf.remove(&key);
+                    self.refresh_properties();
+                }
+                Err(error) => self.command_line.push_error(crate::t!(error).as_ref()),
+            },
             Ok(false) => { self.tabs[i].properties.edit_buf.remove(&key); }
             Err(error) => self.command_line.push_error(crate::t!(error).as_ref()),
         }

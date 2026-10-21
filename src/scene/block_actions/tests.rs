@@ -257,7 +257,7 @@ fn block_actions_rotate_flip_test_baseline_reversible_and_invalid_atomic() {
     let DynamicBlockData::RotateAction(a) = &mut o.data else {
         panic!()
     };
-    a.action.dependent = false;
+    a.action.offset = Vector3::UNIT_X;
     let unsupported = doc.clone();
     assert!(evaluate(&mut doc, &unsupported, def, r, DVec3::new(0., 10., 0.)).is_err());
     assert_eq!(doc, unsupported);
@@ -2481,4 +2481,53 @@ fn polar_stretch_rotates_and_extends_separate_selections_with_native_overrides()
     let DynamicBlockData::PolarStretchAction(native)=&object.data else {panic!()};
     assert!(native.handles.is_empty());
     assert_eq!(native.action.dependencies,targets[..3]);
+}
+
+#[test]
+fn block_actions_independent_bases_evaluate_save_reset_and_isolate_references() {
+    use crate::scene::block_orientation_parameter::Kind as O;
+    use crate::scene::block_authoring::edit::{self, Part};
+    for kind in [Kind::Rotate, Kind::Scale] {
+        let (mut doc, def, targets) = fixture();
+        let parameter = if kind == Kind::Rotate { orientation(&mut doc, def, O::Rotation) } else { linear(&mut doc, def) };
+        let action = create(&mut doc, def, kind, parameter, &targets[..1], DVec3::new(7., 8., 0.)).unwrap();
+        assert!(options::set_base(&mut doc, def, action, false, Some(DVec3::new(3., 2., 0.))).unwrap());
+        let item = edit::items(&doc, def).into_iter().find(|item| item.handle == action).unwrap();
+        assert!(item.grips.contains(&(Part::Base, Vector3::new(3., 2., 0.))));
+        // The pivot grip and the action display marker edit distinct native fields.
+        edit::move_part(&mut doc, def, action, Part::Base, Vector3::new(4., 2., 0.)).unwrap();
+        assert_eq!(options::base(&doc, action).unwrap().action.display_location, Vector3::new(7., 8., 0.));
+        edit::move_part(&mut doc, def, action, Part::Base, Vector3::new(3., 2., 0.)).unwrap();
+        let before = doc.clone();
+        for point in [DVec3::new(f64::INFINITY, 0., 0.), DVec3::new(3., 2., 1.)] {
+            assert!(options::set_base(&mut doc, def, action, false, Some(point)).is_err());
+            assert_eq!(doc, before);
+        }
+        assert!(options::set_base(&mut doc, Handle::NULL, action, false, None).is_err());
+        let a = doc.add_entity(EntityType::Insert(codec::entities::Insert::new("ACTIONS", Vector3::ZERO))).unwrap();
+        let b = doc.add_entity(EntityType::Insert(codec::entities::Insert::new("ACTIONS", Vector3::new(30., 0., 0.)))).unwrap();
+        let end = if kind == Kind::Rotate { DVec3::new(0., 10., 0.) } else { DVec3::new(20., 0., 0.) };
+        let expected = if kind == Kind::Rotate { Vector3::new(5., 0., 0.) } else { Vector3::new(-1., -2., 0.) };
+        doc = instance::evaluate(&doc, a, parameter, end).unwrap().unwrap();
+        assert!(instance_line(&doc, a).distance(&expected) < 1e-8);
+        for saved in [
+            doc.clone(),
+            DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap())).read().unwrap(),
+            DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap())).unwrap().read().unwrap(),
+        ] {
+            assert_eq!(options::base(&saved, action), options::base(&doc, action));
+            assert!(instance_line(&saved, a).distance(&expected) < 1e-8);
+            assert_eq!(instance_line(&saved, b), Vector3::UNIT_X);
+            assert_eq!(start(&saved, targets[0]), Vector3::UNIT_X);
+            let reset = instance::evaluate(&saved, a, parameter, DVec3::new(10., 0., 0.)).unwrap().unwrap();
+            assert!(instance_line(&reset, a).distance(&Vector3::UNIT_X) < 1e-8);
+            let again = instance::evaluate(&reset, a, parameter, end).unwrap().unwrap();
+            assert!(instance_line(&again, a).distance(&expected) < 1e-8);
+            let mut dependent = saved.clone();
+            options::set_base(&mut dependent, def, action, true, None).unwrap();
+            let refreshed = instance::refresh(&dependent, def).unwrap();
+            let expected_dependent = if kind == Kind::Rotate { Vector3::UNIT_Y } else { Vector3::new(2., 0., 0.) };
+            assert!(instance_line(&refreshed, a).distance(&expected_dependent) < 1e-8);
+        }
+    }
 }

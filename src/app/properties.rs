@@ -2525,6 +2525,20 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                         }))
                         .collect(),
                     }];
+                    if let Some(base) = crate::scene::block_actions::options::base(&self.tabs[i].scene.document, item.handle) {
+                        let mut props = vec![Property {
+                            label: crate::t!("Dependent base point").into_owned(),
+                            field: "authoring_action_base_dependent",
+                            value: PropValue::BoolToggle { field: "authoring_action_base_dependent", value: base.dependent },
+                        }];
+                        if !base.dependent {
+                            props.extend([
+                                Property { label: crate::t!("Base X").into_owned(), field: "authoring_action_base_x", value: PropValue::EditText(base.base_point.x.to_string()) },
+                                Property { label: crate::t!("Base Y").into_owned(), field: "authoring_action_base_y", value: PropValue::EditText(base.base_point.y.to_string()) },
+                            ]);
+                        }
+                        panel.sections.push(PropSection { title: crate::t!("Action base point").into_owned(), props });
+                    }
                     if let Some(offsets) = crate::scene::block_actions::options::offsets(
                         &self.tabs[i].scene.document, item.handle) {
                         panel.sections.push(PropSection {
