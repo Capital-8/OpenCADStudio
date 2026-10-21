@@ -1845,13 +1845,22 @@ impl OpenCADStudio {
                     }
                     if name == "PELLIPSE" {
                         use crate::modules::draw::defaults;
-                        let current = i16::from(defaults::get_pellipse());
+                        // Saved in the drawing (DWG header); ELLIPSE reads it.
+                        let header = &self.tabs[i].scene.document.header;
+                        let current = i16::from(header.create_ellipse_as_polyline);
                         let prompt = format!("Enter new value for PELLIPSE <{current}>:");
                         match value
                             .as_deref()
                             .map(|v| v.trim().parse::<i16>().ok().filter(|v| (0..=1).contains(v)))
                         {
-                            Some(Some(mode)) => defaults::set_pellipse(mode == 1),
+                            Some(Some(mode)) => {
+                                let header = &mut self.tabs[i].scene.document.header;
+                                if header.create_ellipse_as_polyline != (mode == 1) {
+                                    header.create_ellipse_as_polyline = mode == 1;
+                                    self.tabs[i].dirty = true;
+                                }
+                                defaults::set_pellipse(mode == 1);
+                            }
                             Some(None) => {
                                 self.command_line
                                     .push_error(crate::t!("Requires 0 or 1 only.").as_ref());

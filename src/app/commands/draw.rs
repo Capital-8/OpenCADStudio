@@ -883,6 +883,8 @@ impl OpenCADStudio {
 
             "ELLIPSE" => {
                 use crate::modules::draw::draw::ellipse::EllipseCommand;
+                let pellipse = self.tabs[i].scene.document.header.create_ellipse_as_polyline;
+                crate::modules::draw::defaults::set_pellipse(pellipse);
                 let new_cmd = EllipseCommand::new();
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
@@ -890,6 +892,8 @@ impl OpenCADStudio {
 
             "ELLIPSE_AXIS" => {
                 use crate::modules::draw::draw::ellipse::EllipseAxisCommand;
+                let pellipse = self.tabs[i].scene.document.header.create_ellipse_as_polyline;
+                crate::modules::draw::defaults::set_pellipse(pellipse);
                 let new_cmd = EllipseAxisCommand::new();
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
@@ -897,6 +901,8 @@ impl OpenCADStudio {
 
             "ELLIPSE_ARC" => {
                 use crate::modules::draw::draw::ellipse::EllipseArcCommand;
+                let pellipse = self.tabs[i].scene.document.header.create_ellipse_as_polyline;
+                crate::modules::draw::defaults::set_pellipse(pellipse);
                 let new_cmd = EllipseArcCommand::new();
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
