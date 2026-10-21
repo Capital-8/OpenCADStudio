@@ -978,6 +978,7 @@ impl Scene {
             rotation,
             distance,
             fov_y,
+            lens: lens_length,
             projection: if perspective {
                 view::camera::Projection::Perspective
             } else {
@@ -1044,7 +1045,7 @@ impl Scene {
             entry.aspect_ratio = viewport_width / viewport_height;
         }
         entry.perspective = cam.projection == view::camera::Projection::Perspective;
-        entry.lens_length = (12.0 / (cam.fov_y * 0.5).tan().max(1e-6)) as f64;
+        entry.lens_length = cam.lens as f64;
         entry.view_center = codec::types::Vector2::ZERO;
         // Stored twist = -roll, matching the decoder (roll = -twist).
         entry.view_twist = -cam.roll() as f64;
@@ -1493,7 +1494,7 @@ impl Scene {
                 vp.view_height = view_height as f64;
                 vp.twist_angle = twist;
                 vp.status.perspective = cam.projection == view::camera::Projection::Perspective;
-                vp.lens_length = (12.0 / (cam.fov_y * 0.5).tan().max(1e-6)) as f64;
+                vp.lens_length = cam.lens as f64;
             }
             true
         }
