@@ -445,14 +445,32 @@ pub fn decide_backend(
 }
 
 fn failover_reason(failed: &[&String], excluded: &[String], chosen: &str) -> String {
-    let mut parts: Vec<String> = failed.iter().map(|b| b.to_string()).collect();
-    parts.extend(excluded.iter().cloned());
-    parts.sort();
-    parts.dedup();
-    let what_failed = if parts.is_empty() {
-        "the preferred backend was skipped after the previous crash".to_string()
+    let list = |mut names: Vec<String>| {
+        names.sort();
+        names.dedup();
+        names.join(", ")
+    };
+    let failed: Vec<String> = failed
+        .iter()
+        .map(|b| b.to_string())
+        .filter(|b| !excluded.contains(b))
+        .collect();
+    // A backend skipped for the previous run's crash is not one that fails
+    // here: say which of the two happened.
+    let mut causes = Vec::new();
+    if !failed.is_empty() {
+        causes.push(format!("{} is not usable on this GPU", list(failed)));
+    }
+    if !excluded.is_empty() {
+        causes.push(format!(
+            "the previous session on {} ended unexpectedly",
+            list(excluded.to_vec())
+        ));
+    }
+    let what_failed = if causes.is_empty() {
+        "the preferred backend was skipped".to_string()
     } else {
-        format!("{} {}", parts.join(", "), "is not usable on this GPU")
+        causes.join(" and ")
     };
     let chosen_text = match chosen {
         "gl" => "the GL compatibility backend",
