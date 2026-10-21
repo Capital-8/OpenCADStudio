@@ -122,11 +122,15 @@ pub(crate) fn compatible(p: &Parameter, kind: Kind) -> bool {
 }
 
 fn flip_component(doc: &CadDocument, p: &Parameter) -> Result<Handle, &'static str> {
-    let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&p.grip) else {
-        return Err("Missing Flip grip.");
+    let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&p.handle) else {
+        return Err("Missing Flip parameter.");
     };
-    let DynamicBlockData::FlipGrip(g) = &o.data else {
-        return Err("Missing Flip grip.");
+    let state_id = match doc.objects.get(&p.grip) {
+        Some(ObjectType::DynamicBlock(grip)) => match &grip.data {
+            DynamicBlockData::FlipGrip(grip) => Some(grip.combined_state),
+            _ => return Err("Missing Flip grip."),
+        },
+        _ => None,
     };
     let candidates = doc
         .objects
@@ -134,7 +138,7 @@ fn flip_component(doc: &CadDocument, p: &Parameter) -> Result<Handle, &'static s
         .filter_map(|(h, x)| match x {
             ObjectType::DynamicBlock(x) if x.owner == o.owner => match &x.data {
                 DynamicBlockData::GripLocationComponent(c)
-                    if c.eval.node_id == g.combined_state && c.expression == "UpdatedFlip" =>
+                    if c.grip_type == p.id && state_id.is_none_or(|id| c.eval.node_id == id) && c.expression == "UpdatedFlip" =>
                 {
                     Some(*h)
                 }
@@ -189,16 +193,24 @@ pub(crate) fn set_value(
     let Value::Point(position) = value else {
         unreachable!()
     };
-    let Some(ObjectType::DynamicBlock(o)) = doc.objects.get_mut(&p.grip) else {
-        return Err("Missing parameter grip.");
-    };
-    match &mut o.data {
-        DynamicBlockData::XYGrip(g)
-        | DynamicBlockData::PolarGrip(g)
-        | DynamicBlockData::RotationGrip(g) => g.location = native(position),
-        DynamicBlockData::LinearGrip(g) => g.grip.location = native(position),
-        _ => return Err("Unsupported parameter grip."),
+    if !position.is_finite() {
+        return Err("Specify a finite parameter position.");
     }
+    let Some(ObjectType::DynamicBlock(object)) = doc.objects.get_mut(&p.handle) else {
+        return Err("Missing parameter.");
+    };
+    let eval = match &mut object.data {
+        DynamicBlockData::PointParameter(p) => &mut p.parameter.parameter.element.eval,
+        DynamicBlockData::LinearParameter(p) => &mut p.parameter.parameter.element.eval,
+        DynamicBlockData::PolarParameter(p) => &mut p.parameter.parameter.element.eval,
+        DynamicBlockData::XYParameter(p) => &mut p.parameter.parameter.element.eval,
+        DynamicBlockData::RotationParameter(p) => &mut p.parameter.parameter.element.eval,
+        _ => return Err("Unsupported parameter."),
+    };
+    // Scratch evaluation output belongs to the parameter, not its display grip.
+    // Evaluated definitions are temporary; saved INSERT values use AppDataCache.
+    eval.value_code = 10;
+    eval.value = BlockEvalValue::Point([position.x, position.y]);
     Ok(())
 }
 
@@ -346,14 +358,15 @@ pub(crate) fn parameters(doc: &CadDocument, definition: Handle, kind: Kind) -> V
                 (grip.element.eval.node_id == grip_id).then_some(*h)
             })
             .collect::<Vec<_>>();
-        if grips.len() != 1
+        if grips.len() > 1
+            || (grips.is_empty() && grip_id > 0)
             || !p.base.is_finite()
             || !p.end.is_finite()
             || (!p.point && (p.end.distance(p.base) < 1e-9 || !p.end.distance(p.base).is_finite()))
         {
             return false;
         }
-        p.grip = grips[0];
+        p.grip = grips.first().copied().unwrap_or(Handle::NULL);
         if p.flip {
             if let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&p.grip) {
                 if let DynamicBlockData::FlipGrip(g) = &o.data {
@@ -1008,15 +1021,30 @@ pub(crate) fn reframe(doc: &mut CadDocument, definition: Handle, t: &Transform) 
     handles.len()
 }
 
+/// Keep scratch parameter output in the same coordinate frame as its definition.
+pub(crate) fn reframe_value(eval: &mut codec::objects::BlockEvalExpression, plane: f64, transform: &Transform) {
+    if let BlockEvalValue::Point([x, y]) = eval.value {
+        if matches!(eval.value_code, 10 | 11) {
+            let point = transform.apply(Vector3::new(x, y, plane));
+            eval.value = BlockEvalValue::Point([point.x, point.y]);
+        }
+    }
+}
+
 pub(crate) fn current(doc: &CadDocument, p: &Parameter) -> DVec3 {
-    let Some(ObjectType::DynamicBlock(o)) = doc.objects.get(&p.grip) else {
+    let Some(ObjectType::DynamicBlock(object)) = doc.objects.get(&p.handle) else {
         return p.end;
     };
-    match &o.data {
-        DynamicBlockData::XYGrip(g)
-        | DynamicBlockData::PolarGrip(g)
-        | DynamicBlockData::RotationGrip(g) => v(g.location),
-        DynamicBlockData::LinearGrip(g) => v(g.grip.location),
+    let eval = match &object.data {
+        DynamicBlockData::PointParameter(p) => &p.parameter.parameter.element.eval,
+        DynamicBlockData::LinearParameter(p) => &p.parameter.parameter.element.eval,
+        DynamicBlockData::PolarParameter(p) => &p.parameter.parameter.element.eval,
+        DynamicBlockData::XYParameter(p) => &p.parameter.parameter.element.eval,
+        DynamicBlockData::RotationParameter(p) => &p.parameter.parameter.element.eval,
+        _ => return p.end,
+    };
+    match eval.value {
+        BlockEvalValue::Point([x, y]) if matches!(eval.value_code, 10 | 11) => DVec3::new(x, y, p.end.z),
         _ => p.end,
     }
 }

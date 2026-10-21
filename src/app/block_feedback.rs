@@ -77,6 +77,7 @@ impl OpenCADStudio {
             let p = actions::all_parameters(&test.baseline, test.definition)
                 .into_iter()
                 .nth(index)?;
+            if p.grip == Handle::NULL { return None; }
             let value = actions::value(&tab.scene.document, &p).ok()?;
             Some((p, value))
         } else {
@@ -84,6 +85,7 @@ impl OpenCADStudio {
             let p = actions::all_parameters(&tab.scene.document, definition)
                 .into_iter()
                 .nth(index)?;
+            if p.grip == Handle::NULL { return None; }
             let value = actions::instance::value(&tab.scene.document, handle, &p).ok()?;
             Some((p, value))
         }

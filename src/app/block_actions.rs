@@ -635,7 +635,7 @@ impl OpenCADStudio {
             .into_iter()
             .enumerate()
         {
-            if !all.iter().any(|(_, _, _, id)| *id == p.id) {
+            if p.grip == Handle::NULL || !all.iter().any(|(_, _, _, id)| *id == p.id) {
                 continue;
             }
             let Ok(value) = actions::value(&tab.scene.document, &p) else {
@@ -685,6 +685,7 @@ impl OpenCADStudio {
         else {
             return false;
         };
+        if p.grip == Handle::NULL { return false; }
         if p.flip {
             let state = actions::value(&tab.scene.document, &p);
             let document = tab.id;
@@ -729,7 +730,7 @@ impl OpenCADStudio {
             .into_iter()
             .enumerate()
         {
-            if !all.iter().any(|(_, _, _, id)| *id == p.id) {
+            if p.grip == Handle::NULL || !all.iter().any(|(_, _, _, id)| *id == p.id) {
                 continue;
             }
             let Ok(value) = actions::instance::value(&tab.scene.document, handle, &p) else {
@@ -774,6 +775,7 @@ impl OpenCADStudio {
         else {
             return false;
         };
+        if p.grip == Handle::NULL { return false; }
         if p.flip {
             let state = actions::instance::value(&tab.scene.document, handle, &p);
             let document = tab.id;
