@@ -82,7 +82,7 @@ impl OpenCADStudio {
                 .into_iter()
                 .find(|p| p.id == node)?;
             let value = actions::instance::test_value(&tab.scene.document, handle, &p).ok()?;
-            if !crate::scene::block_grips::runtime::grips(&test.baseline, test.definition, &p, value).iter().any(|grip| grip.id == id) { return None; }
+            if !crate::scene::block_grips::runtime::action_grips(&test.baseline, test.definition, &p, value).iter().any(|grip| grip.id == id) { return None; }
             Some((p, value))
         } else {
             let definition = actions::instance::definition(&tab.scene.document, handle)?;
@@ -90,7 +90,7 @@ impl OpenCADStudio {
                 .into_iter()
                 .find(|p| p.id == node)?;
             let value = actions::instance::value(&tab.scene.document, handle, &p).ok()?;
-            if !crate::scene::block_grips::runtime::grips(&tab.scene.document, definition, &p, value).iter().any(|grip| grip.id == id) { return None; }
+            if !crate::scene::block_grips::runtime::action_grips(&tab.scene.document, definition, &p, value).iter().any(|grip| grip.id == id) { return None; }
             Some((p, value))
         }
     }
@@ -215,7 +215,7 @@ impl OpenCADStudio {
                     let value = if tab.block_test.is_some() { actions::instance::test_value(&tab.scene.document, handle, &p).ok()? }
                         else { actions::instance::value(&tab.scene.document, handle, &p).ok()? };
                     let active_id = tab.active_cmd.as_ref().and_then(|command| command.block_parameter_grip_id());
-                    let grip = crate::scene::block_grips::runtime::grips(source, definition, &p, value).into_iter().find(|grip| active_id.is_none_or(|id| grip.id == id))?;
+                    let grip = crate::scene::block_grips::runtime::action_grips(source, definition, &p, value).into_iter().find(|grip| active_id.is_none_or(|id| grip.id == id))?;
                     Some((handle, grip.id))
                 });
             if let Some((handle, id)) = active.or(hot).or(hovered) {

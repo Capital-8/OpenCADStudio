@@ -622,6 +622,7 @@ impl CadCommand for TestParameterCommand {
     }
     fn on_point(&mut self, position: DVec3) -> CmdResult {
         CmdResult::EvaluateBlockParameter {
+            grip: self.grip_input.as_ref().map(|input| input.id),
             insert: self.insert,
             document: self.document,
             definition: self.definition,

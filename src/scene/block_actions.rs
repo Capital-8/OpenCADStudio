@@ -8,6 +8,7 @@ use codec::objects::{
 use codec::types::{Transform, Vector3};
 use codec::{CadDocument, EntityType, Handle};
 use glam::DVec3;
+pub(crate) mod grip_roles;
 pub(crate) mod instance;
 pub(crate) mod feedback;
 pub(crate) mod association;

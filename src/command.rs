@@ -1759,6 +1759,8 @@ pub enum CmdResult {
         flipped: bool,
     },
     EvaluateBlockParameter {
+        /// Native runtime grip identity, retained for commit-time eligibility checks.
+        grip: Option<usize>,
         insert: Option<Handle>,
         document: u64,
         definition: Handle,
