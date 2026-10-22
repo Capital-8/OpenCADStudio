@@ -3487,6 +3487,7 @@ impl OpenCADStudio {
                         None
                     }
                 });
+                self.refresh_command_point_pick_context(i);
                 let tab = &mut self.tabs[i];
                 if let Some(cmd) = tab.active_cmd.as_mut() {
                     p.extend(cmd.on_preview_wires_with_tangent(effective, live_tangent));
@@ -3705,6 +3706,7 @@ impl OpenCADStudio {
                         None
                     }
                 });
+                self.refresh_command_point_pick_context(i);
                 let tab = &mut self.tabs[i];
                 if let Some(cmd) = tab.active_cmd.as_mut() {
                     let mut wires = cmd.on_preview_wires_with_tangent(effective, live_tangent);
