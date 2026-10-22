@@ -254,6 +254,10 @@ harness = false
 name = "step_tokenizer"
 harness = false
 
+[[bench]]
+name = "properties_selection_aggregation"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
