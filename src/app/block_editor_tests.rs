@@ -1511,57 +1511,59 @@ fn block_editor_renames_orientation_basepoint_and_visibility_parameters() {
 fn double_clicking_block_parameter_label_starts_rename() {
     use crate::scene::block_authoring::edit;
     use crate::scene::block_actions::{self as actions, Kind};
-    let (mut app, reference) = fixture();
-    begin(&mut app, reference);
-    let i = app.active_tab;
-    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 6,0 3,2");
-    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
-    let parameter = actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0].handle;
-    let item = edit::items(&app.tabs[i].scene.document, definition)
-        .into_iter()
-        .find(|item| item.handle == parameter)
+    for kind in ["LINEAR", "XY", "POLAR"] {
+        let (mut app, reference) = fixture();
+        begin(&mut app, reference);
+        let i = app.active_tab;
+        let _ = app.run_command_line(&format!("BPARAMETER {kind} 0,0 6,2 3,2"));
+        let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+        let parameter = actions::parameters(&app.tabs[i].scene.document, definition, Kind::Move)[0].handle;
+        let item = edit::items(&app.tabs[i].scene.document, definition)
+            .into_iter()
+            .find(|item| item.handle == parameter)
+            .unwrap();
+        let label = item.graphic.labels[0].0;
+        app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800., 600.);
+        app.tabs[i].scene.camera.borrow_mut().fit_to_bounds_f64(
+            glam::DVec3::new(-1., -2., 0.),
+            glam::DVec3::new(7., 4., 0.),
+            800. / 600.,
+        );
+        let tile = app.tabs[i].scene.active_model_tile_bounds(800., 600.);
+        let bounds = iced::Rectangle {
+            x: 0.,
+            y: 0.,
+            width: tile.width,
+            height: tile.height,
+        };
+        let screen = app.tabs[i].scene.camera.borrow().project(
+            glam::DVec3::new(label.x, label.y, label.z),
+            bounds,
+        )
         .unwrap();
-    let label = item.graphic.labels[0].0;
-    app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800., 600.);
-    app.tabs[i].scene.camera.borrow_mut().fit_to_bounds_f64(
-        glam::DVec3::new(-1., -2., 0.),
-        glam::DVec3::new(7., 4., 0.),
-        800. / 600.,
-    );
-    let tile = app.tabs[i].scene.active_model_tile_bounds(800., 600.);
-    let bounds = iced::Rectangle {
-        x: 0.,
-        y: 0.,
-        width: tile.width,
-        height: tile.height,
-    };
-    let screen = app.tabs[i].scene.camera.borrow().project(
-        glam::DVec3::new(label.x, label.y, label.z),
-        bounds,
-    )
-    .unwrap();
-    let cursor_local = iced::Point::new(screen.x + 10.0, screen.y - 10.0);
-    let cursor = iced::Point::new(tile.x + cursor_local.x, tile.y + cursor_local.y);
-    assert_eq!(
-        app.authoring_label_at(cursor_local, bounds),
-        Some((parameter, item.name.clone()))
-    );
-    assert!(app.authoring_name_is_editable(parameter));
-    app.last_vp_click_time =
-        Some(std::time::Instant::now() - std::time::Duration::from_millis(100));
-    app.last_vp_click_pos = Some(cursor_local);
-    let _ = app.update(Message::ViewportMove(cursor));
-    let _ = app.update(Message::ViewportLeftPressAt(cursor));
+        let cursor_local = iced::Point::new(screen.x + 10.0, screen.y - 10.0);
+        let cursor = iced::Point::new(tile.x + cursor_local.x, tile.y + cursor_local.y);
+        assert_eq!(
+            app.authoring_label_at(cursor_local, bounds),
+            Some((parameter, item.graphic.labels[0].1.clone()))
+        );
+        assert!(app.authoring_name_is_editable(parameter));
+        app.last_vp_click_time =
+            Some(std::time::Instant::now() - std::time::Duration::from_millis(100));
+        app.last_vp_click_pos = Some(cursor_local);
+        let _ = app.update(Message::ViewportMove(cursor));
+        let _ = app.update(Message::ViewportLeftPressAt(cursor));
 
-    assert_eq!(app.tabs[i].selected_authoring, Some(parameter));
-    assert_eq!(
-        app.tabs[i]
-            .properties
-            .edit_buf
-            .get(&crate::ui::properties::FieldKey::Geom("authoring_name"))
-            .map(String::as_str),
-        Some(item.name.as_str()),
-    );
+        assert_eq!(app.tabs[i].selected_authoring, Some(parameter));
+        assert_eq!(
+            app.tabs[i]
+                .properties
+                .edit_buf
+                .get(&crate::ui::properties::FieldKey::Geom("authoring_name"))
+                .map(String::as_str),
+            Some(crate::scene::block_authoring::metadata::read(&app.tabs[i].scene.document, definition, parameter).unwrap().text[0].value),
+        );
+    }
 }
 
 #[test]
@@ -6262,4 +6264,181 @@ fn block_alignment_runtime_rejects_stale_sources_and_reevaluates_targets() {
     let before = app.tabs[i].scene.document.clone();
     let _ = app.handle_block_alignment(crate::command::CmdResult::AlignBlockReference { document: document + 1, alignment: Box::new(current), cursor, context: None, flipped: false });
     assert_eq!(app.tabs[i].scene.document, before);
+}
+
+#[test]
+fn block_parameter_metadata_properties_history_save_and_discard() {
+    use crate::scene::block_authoring::metadata::{self, Field};
+    use crate::scene::block_distance_parameter::{self as distance, Kind};
+    use crate::scene::model::object::PropValue;
+    for kind in [Kind::XY, Kind::Polar] {
+        let (mut app, reference) = fixture();
+        begin(&mut app, reference);
+        let i = app.active_tab;
+        let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+        let handle = distance::create(
+            &mut app.tabs[i].scene.document,
+            def,
+            kind,
+            Vector3::ZERO,
+            Vector3::new(2., 3., 0.),
+            Vector3::UNIT_Y,
+        )
+        .unwrap();
+        app.tabs[i].selected_authoring = Some(handle);
+        app.refresh_properties();
+        let original = app.tabs[i].scene.document.clone();
+        let fields = app.tabs[i]
+            .properties
+            .sections
+            .iter()
+            .flat_map(|section| &section.props)
+            .filter(|prop| metadata::Field::from_key(prop.field).is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(fields.len(), 4);
+        assert!(fields
+            .iter()
+            .all(|prop| matches!(prop.value, PropValue::PlainText(_))));
+        let primary = metadata::read(&original, def, handle).unwrap().text[0]
+            .value
+            .to_owned();
+        assert_eq!(fields[0].value, PropValue::PlainText(primary.clone()));
+        let depth = app.tabs[i].history.undo_stack.len();
+        for (field, value) in [
+            ("authoring_name", primary.as_str()),
+            ("authoring_name", " "),
+            ("authoring_secondary_name", primary.as_str()),
+        ] {
+            let _ = app.update(Message::PropGeomInput {
+                field,
+                value: value.into(),
+            });
+            let _ = app.update(Message::PropGeomCommit(field));
+            assert_eq!(app.tabs[i].scene.document, original);
+            assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+        }
+        for (field, value) in [
+            ("authoring_name", "Travel"),
+            ("authoring_secondary_name", "Secondary travel"),
+            ("authoring_description", "  1 + 2 / literal text  "),
+            ("authoring_secondary_description", "Second description"),
+        ] {
+            let _ = app.update(Message::PropGeomInput {
+                field,
+                value: value.into(),
+            });
+            let _ = app.update(Message::PropGeomCommit(field));
+            assert_eq!(
+                metadata::read(&app.tabs[i].scene.document, def, handle)
+                    .unwrap()
+                    .text
+                    .into_iter()
+                    .find(|text| text.field.key() == field)
+                    .unwrap()
+                    .value,
+                value
+            );
+        }
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 4);
+        let saved = app.tabs[i].scene.document.clone();
+        app.undo_steps(4);
+        assert_eq!(app.tabs[i].scene.document, original);
+        app.redo_steps(4);
+        assert_eq!(app.tabs[i].scene.document, saved);
+        let _ = app.dispatch_command("BSAVE");
+        app.tabs[i].selected_authoring = Some(handle);
+        let _ = app.update(Message::PropGeomInput {
+            field: "authoring_description",
+            value: "".into(),
+        });
+        let _ = app.update(Message::PropGeomCommit("authoring_description"));
+        assert_eq!(
+            metadata::read(&app.tabs[i].scene.document, def, handle)
+                .unwrap()
+                .text
+                .into_iter()
+                .find(|text| text.field == Field::Description)
+                .unwrap()
+                .value,
+            ""
+        );
+        let _ = app.dispatch_command("BEDIT_DISCARD");
+        begin(&mut app, reference);
+        assert_eq!(
+            metadata::read(&app.tabs[i].scene.document, def, handle)
+                .unwrap()
+                .text
+                .into_iter()
+                .find(|text| text.field == Field::Description)
+                .unwrap()
+                .value,
+            "  1 + 2 / literal text  "
+        );
+    }
+}
+
+#[test]
+fn block_visibility_metadata_flag_hides_property_preserving_native_grips_and_states() {
+    use crate::scene::{block_authoring::metadata, block_grips, block_visibility};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let handle =
+        block_visibility::create(&mut app.tabs[i].scene.document, def, Vector3::ZERO).unwrap();
+    metadata::set_text(
+        &mut app.tabs[i].scene.document,
+        def,
+        handle,
+        metadata::Field::Name,
+        "Display choice",
+    )
+    .unwrap();
+    app.tabs[i].selected_authoring = Some(handle);
+    app.refresh_properties();
+    assert!(app.tabs[i]
+        .properties
+        .sections
+        .iter()
+        .flat_map(|section| &section.props)
+        .any(|prop| prop.field == "authoring_show_properties"));
+    assert_eq!(
+        OpenCADStudio::visibility_property(&app.tabs[i].scene.document, reference)
+            .unwrap()
+            .label,
+        "Display choice"
+    );
+    let before = app.tabs[i].scene.document.clone();
+    let grips = block_grips::config::locations(&before, def, handle)
+        .unwrap()
+        .into_iter()
+        .map(|g| (g.role, g.handle, g.point, g.key_point, g.direction))
+        .collect::<Vec<_>>();
+    let states = block_visibility::parameter(&before, def)
+        .unwrap()
+        .states
+        .clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let _ = app.update(Message::PropBoolToggle("authoring_show_properties"));
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    assert!(OpenCADStudio::visibility_property(&app.tabs[i].scene.document, reference).is_none());
+    assert_eq!(
+        block_grips::config::locations(&app.tabs[i].scene.document, def, handle)
+            .unwrap()
+            .into_iter()
+            .map(|g| (g.role, g.handle, g.point, g.key_point, g.direction))
+            .collect::<Vec<_>>(),
+        grips
+    );
+    assert_eq!(
+        block_visibility::parameter(&app.tabs[i].scene.document, def)
+            .unwrap()
+            .states,
+        states
+    );
+    app.undo_steps(1);
+    assert_eq!(app.tabs[i].scene.document, before);
+    assert!(OpenCADStudio::visibility_property(&app.tabs[i].scene.document, reference).is_some());
+    app.redo_steps(1);
+    assert!(OpenCADStudio::visibility_property(&app.tabs[i].scene.document, reference).is_none());
 }
