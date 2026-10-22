@@ -731,17 +731,21 @@ fn apply_grip(ml: &mut MultiLeader, grip_id: usize, apply: GripApply) {
 // ── Properties ─────────────────────────────────────────────────────────────
 
 /// The nine horizontal text-attachment options, indexed 1:1 to
-/// `TextAttachmentType` values 0–8 (values 9/10 are the vertical set).
+/// `TextAttachmentType` values 0–8 (values 9/10 are the vertical set), named
+/// as AutoCAD names each stored value. The codec's variant names for 5–8 are
+/// one place off: 6 (`BottomOfTopLineUnderlineBottomLine`) is AutoCAD's
+/// "Underline top line" and 7 (`BottomOfTopLineUnderlineTopLine`) its
+/// "Bottom of top line".
 const ATTACH_LABELS: [&str; 9] = [
     "Top of top line",
     "Middle of top line",
     "Middle of text",
     "Middle of bottom line",
     "Bottom of bottom line",
-    "Bottom of top line",
     "Underline bottom line",
     "Underline top line",
-    "Underline all",
+    "Bottom of top line",
+    "Underline all text",
 ];
 
 fn attachment_str(a: &TextAttachmentType) -> &'static str {
@@ -1427,10 +1431,11 @@ fn parse_attachment(s: &str) -> TextAttachmentType {
         "Middle of top line" => TextAttachmentType::MiddleOfTopLine,
         "Middle of bottom line" => TextAttachmentType::MiddleOfBottomLine,
         "Bottom of bottom line" => TextAttachmentType::BottomOfBottomLine,
-        "Bottom of top line" => TextAttachmentType::BottomLine,
-        "Underline bottom line" => TextAttachmentType::BottomOfTopLineUnderlineBottomLine,
-        "Underline top line" => TextAttachmentType::BottomOfTopLineUnderlineTopLine,
-        "Underline all" => TextAttachmentType::BottomOfTopLineUnderlineAll,
+        // Values 5–8 by AutoCAD's names; see `ATTACH_LABELS`.
+        "Underline bottom line" => TextAttachmentType::BottomLine,
+        "Underline top line" => TextAttachmentType::BottomOfTopLineUnderlineBottomLine,
+        "Bottom of top line" => TextAttachmentType::BottomOfTopLineUnderlineTopLine,
+        "Underline all text" | "Underline all" => TextAttachmentType::BottomOfTopLineUnderlineAll,
         _ => TextAttachmentType::MiddleOfText,
     }
 }
@@ -2658,6 +2663,30 @@ mod tests {
         });
         let (lo, hi) = ys.fold((f32::MAX, f32::MIN), |(lo, hi), y| (lo.min(y), hi.max(y)));
         hi - lo
+    }
+
+    #[test]
+    fn test_attachment_labels_follow_autocad() {
+        // A drawing made in AutoCAD 2025, one MLEADER per option picked by
+        // name in its Properties palette, stores these values.
+        use codec::entities::multileader::TextAttachmentType as TA;
+        let autocad = [
+            (TA::BottomLine, "Underline bottom line"), // 5
+            (TA::BottomOfTopLineUnderlineBottomLine, "Underline top line"), // 6
+            (TA::BottomOfTopLineUnderlineTopLine, "Bottom of top line"), // 7
+            (TA::BottomOfTopLineUnderlineAll, "Underline all text"), // 8
+        ];
+        for (value, name) in autocad {
+            assert_eq!(attachment_str(&value), name, "{value:?} shows as");
+            assert_eq!(parse_attachment(name), value, "{name:?} stores as");
+        }
+        for label in ATTACH_LABELS {
+            assert_eq!(
+                attachment_str(&parse_attachment(label)),
+                label,
+                "round trip"
+            );
+        }
     }
 
     #[test]
