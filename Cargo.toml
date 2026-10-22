@@ -230,6 +230,10 @@ harness = false
 name = "grip_drag_otrack_candidates"
 harness = false
 
+[[bench]]
+name = "grid_segments_rebuild"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
