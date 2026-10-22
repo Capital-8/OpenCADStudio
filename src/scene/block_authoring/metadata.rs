@@ -89,6 +89,7 @@ fn describe(object: &ObjectType) -> Result<Metadata<'_>, &'static str> {
         }
         ObjectType::DynamicBlock(object) => match &object.data {
             Data::PointParameter(p) => {
+                visible = Some(p.parameter.parameter.show_properties);
                 text.push(Text {
                     field: Name,
                     label: "Parameter name",
@@ -101,6 +102,7 @@ fn describe(object: &ObjectType) -> Result<Metadata<'_>, &'static str> {
                 });
             }
             Data::LinearParameter(p) => {
+                visible = Some(p.parameter.parameter.show_properties);
                 text.push(Text {
                     field: Name,
                     label: "Distance name",
@@ -113,6 +115,7 @@ fn describe(object: &ObjectType) -> Result<Metadata<'_>, &'static str> {
                 });
             }
             Data::PolarParameter(p) => {
+                visible = Some(p.parameter.parameter.show_properties);
                 text.push(Text {
                     field: Name,
                     label: "Distance name",
@@ -135,6 +138,7 @@ fn describe(object: &ObjectType) -> Result<Metadata<'_>, &'static str> {
                 });
             }
             Data::XYParameter(p) => {
+                visible = Some(p.parameter.parameter.show_properties);
                 text.push(Text {
                     field: Name,
                     label: "X name",
@@ -157,6 +161,7 @@ fn describe(object: &ObjectType) -> Result<Metadata<'_>, &'static str> {
                 });
             }
             Data::RotationParameter(p) => {
+                visible = Some(p.parameter.parameter.show_properties);
                 text.push(Text {
                     field: Name,
                     label: "Angle name",
@@ -169,6 +174,7 @@ fn describe(object: &ObjectType) -> Result<Metadata<'_>, &'static str> {
                 });
             }
             Data::FlipParameter(p) => {
+                visible = Some(p.parameter.parameter.show_properties);
                 text.push(Text {
                     field: Name,
                     label: "Parameter name",
@@ -321,6 +327,12 @@ pub(crate) fn set_visible(
     match document.objects.get_mut(&handle).unwrap() {
         ObjectType::BlockVisibilityParameter(p) => p.show_properties = value,
         ObjectType::DynamicBlock(object) => match &mut object.data {
+            Data::PointParameter(p) => p.parameter.parameter.show_properties = value,
+            Data::LinearParameter(p) => p.parameter.parameter.show_properties = value,
+            Data::PolarParameter(p) => p.parameter.parameter.show_properties = value,
+            Data::XYParameter(p) => p.parameter.parameter.show_properties = value,
+            Data::RotationParameter(p) => p.parameter.parameter.show_properties = value,
+            Data::FlipParameter(p) => p.parameter.parameter.show_properties = value,
             Data::LookupParameter(p) => p.parameter.parameter.show_properties = value,
             _ => unreachable!(),
         },

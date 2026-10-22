@@ -8128,6 +8128,15 @@ impl OpenCADStudio {
             }
 
             Message::PropGeomCommit(field) => self.on_prop_geom_commit(field),
+            Message::PropBlockInput { key, value } => {
+                if self.block_property_target_is_current(key) {
+                    self.tabs[self.active_tab].properties.edit_buf.insert(crate::ui::properties::FieldKey::BlockParameter(key), value);
+                }
+                Task::none()
+            }
+            Message::PropBlockCommit(key) => self.commit_block_parameter_property(key, None),
+            Message::PropBlockChoice { key, index } => self.commit_block_parameter_property(key, Some(index)),
+
 
             Message::PropGroupToggle(key) => {
                 let groups = &mut self.tabs[self.active_tab].properties.expanded_groups;

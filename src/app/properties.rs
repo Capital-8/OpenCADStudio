@@ -938,7 +938,17 @@ impl OpenCADStudio {
                     xref_rows(&mut sections, ins, &br.xref_path, factor, overrides);
                 }
                 // A dynamic block's visibility states, picked like its grip.
-                let mut custom_properties = Vec::new();
+                let baseline = self.tabs[i].block_test.as_ref().filter(|test| test.insert == handle).map(|test| test.baseline.as_ref());
+                let mut custom_properties = crate::scene::block_parameter_properties::properties(doc, baseline, self.tabs[i].id, handle);
+                if self.tabs[i].active_block_edit_session().is_some() {
+                    for property in &mut custom_properties {
+                        property.value = match &property.value {
+                            crate::scene::model::object::PropValue::BlockNumber { value, description, .. } => crate::scene::model::object::PropValue::ReadOnlyWithTooltip { value: value.clone(), tooltip: description.clone() },
+                            crate::scene::model::object::PropValue::BlockChoice { selected, options, description, .. } => crate::scene::model::object::PropValue::ReadOnlyWithTooltip { value: options.get(*selected).cloned().unwrap_or_default(), tooltip: description.clone() },
+                            value => value.clone(),
+                        };
+                    }
+                }
                 custom_properties.extend(Self::visibility_property(doc, handle));
                 if let Some(row) = crate::scene::block_lookup::reference_property(doc, handle) {
                     custom_properties.push(row);
@@ -3706,6 +3716,8 @@ fn make_sections_read_only(
             | PropValue::LayerChoice(value)
             | PropValue::LinetypeChoice(value)
             | PropValue::HatchPatternChoice(value) => value.clone(),
+            PropValue::BlockNumber { value, .. } => value.clone(),
+            PropValue::BlockChoice { selected, options, .. } => options.get(*selected).cloned().unwrap_or_default(),
             PropValue::Choice { selected, .. } => selected.clone(),
             PropValue::EditChoice { value, .. } => value.clone(),
             PropValue::ColorChoice(color) => match color {

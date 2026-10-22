@@ -6442,3 +6442,228 @@ fn block_visibility_metadata_flag_hides_property_preserving_native_grips_and_sta
     app.redo_steps(1);
     assert!(OpenCADStudio::visibility_property(&app.tabs[i].scene.document, reference).is_none());
 }
+
+#[test]
+fn block_reference_numeric_properties_history_scratch_expression_and_stale_guards() {
+    use crate::scene::model::object::{BlockParameterComponent as Component, PropValue};
+    use crate::scene::{
+        block_actions as actions, block_distance_parameter as distance, block_grips,
+    };
+    use crate::ui::properties::FieldKey;
+    for testing in [false, true] {
+        let (mut app, reference) = fixture();
+        begin(&mut app, reference);
+        let source = app.active_tab;
+        let def = app.tabs[source]
+            .active_block_edit_session()
+            .unwrap()
+            .br_handle;
+        let parameter = distance::create(
+            &mut app.tabs[source].scene.document,
+            def,
+            distance::Kind::Linear,
+            Vector3::ZERO,
+            Vector3::new(10., 0., 0.),
+            Vector3::UNIT_Y,
+        )
+        .unwrap();
+        let target = members(&app)[0];
+        actions::create(
+            &mut app.tabs[source].scene.document,
+            def,
+            actions::Kind::Move,
+            parameter,
+            &[target],
+            glam::DVec3::ZERO,
+        )
+        .unwrap();
+        block_grips::config::set(
+            &mut app.tabs[source].scene.document,
+            def,
+            parameter,
+            Some(0),
+        )
+        .unwrap();
+        if testing {
+            let _ = app.open_block_test(source);
+        } else {
+            let _ = app.dispatch_command("BSAVE");
+            let _ = app.dispatch_command("BCLOSE");
+        }
+        let source_before = app.tabs[source].scene.document.clone();
+        let i = app.active_tab;
+        let insert = app.tabs[i]
+            .block_test
+            .as_ref()
+            .map_or(reference, |test| test.insert);
+        app.tabs[i].scene.select_entity(insert, true);
+        app.tabs[i].selected_handle = Some(insert);
+        app.refresh_properties();
+        let field = app.tabs[i]
+            .properties
+            .sections
+            .iter()
+            .flat_map(|section| &section.props)
+            .find_map(|property| match property.value {
+                PropValue::BlockNumber { key, .. } if key.component == Component::Distance => {
+                    Some(key)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(field.document, app.tabs[i].id);
+        assert!(app.tabs[i]
+            .properties
+            .prop_field_key_for_id(&FieldKey::BlockParameter(field).widget_id())
+            .is_some());
+        let before = app.tabs[i].scene.document.clone();
+        let depth = app.tabs[i].history.undo_stack.len();
+        for (key, raw) in [
+            (field, "10"),
+            (field, "invalid"),
+            (field, "1/0"),
+            (field, "-4"),
+            (
+                crate::scene::model::object::BlockParameterKey {
+                    document: field.document + 1,
+                    ..field
+                },
+                "20",
+            ),
+        ] {
+            let _ = app.update(Message::PropBlockInput {
+                key,
+                value: raw.into(),
+            });
+            let _ = app.update(Message::PropBlockCommit(key));
+            assert_eq!(app.tabs[i].scene.document, before);
+            assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+        }
+        let _ = app.update(Message::PropBlockInput {
+            key: field,
+            value: "10+5".into(),
+        });
+        let _ = app.update(Message::PropBlockCommit(field));
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+        assert!(!app.tabs[i]
+            .properties
+            .edit_buf
+            .contains_key(&FieldKey::BlockParameter(field)));
+        let changed = app.tabs[i].scene.document.clone();
+        let p = actions::all_parameters(&before, def)
+            .into_iter()
+            .find(|p| p.handle == parameter)
+            .unwrap();
+        assert_eq!(
+            actions::instance::frame(&changed, insert, &p).unwrap().end,
+            glam::DVec3::new(15., 0., 0.)
+        );
+        let EntityType::Insert(reference) = changed.get_entity(insert).unwrap() else {
+            panic!()
+        };
+        let line = changed
+            .block_records
+            .get(&reference.block_name)
+            .unwrap()
+            .entity_handles
+            .iter()
+            .find_map(|h| match changed.get_entity(*h) {
+                Some(EntityType::Line(line)) => Some(line),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(line.start, Vector3::new(5., 0., 0.));
+        assert_eq!(line.end, Vector3::new(6., 0., 0.));
+        app.undo_steps(1);
+        let mut expected_undo = before.clone();
+        // Entity undo preserves the monotonic handle allocator.
+        while expected_undo.next_handle() < app.tabs[i].scene.document.next_handle() {
+            expected_undo.allocate_handle();
+        }
+        assert_eq!(app.tabs[i].scene.document, expected_undo);
+        app.redo_steps(1);
+        assert_eq!(app.tabs[i].scene.document, changed);
+        let _ = app.update(Message::PropBlockInput {
+            key: field,
+            value: "15".into(),
+        });
+        let _ = app.update(Message::PropBlockCommit(field));
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+        app.tabs[i]
+            .scene
+            .document
+            .layers
+            .get_mut("0")
+            .unwrap()
+            .lock();
+        let locked = app.tabs[i].scene.document.clone();
+        let _ = app.update(Message::PropBlockInput {
+            key: field,
+            value: "30".into(),
+        });
+        let _ = app.update(Message::PropBlockCommit(field));
+        assert_eq!(app.tabs[i].scene.document, locked);
+        if testing {
+            assert_eq!(app.tabs[source].scene.document, source_before);
+        }
+    }
+}
+
+#[test]
+fn block_reference_properties_keys_do_not_retarget_other_selections() {
+    use crate::scene::model::object::PropValue;
+    use crate::scene::{block_actions as actions, block_distance_parameter as distance};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let def = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let _ = distance::create(
+        &mut app.tabs[i].scene.document,
+        def,
+        distance::Kind::XY,
+        Vector3::ZERO,
+        Vector3::new(10., 10., 0.),
+        Vector3::UNIT_Y,
+    )
+    .unwrap();
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BCLOSE");
+    let other = app.tabs[i]
+        .scene
+        .document
+        .add_entity(EntityType::Insert(Insert::new(
+            "EDIT_ME",
+            Vector3::new(20., 0., 0.),
+        )))
+        .unwrap();
+    app.tabs[i].scene.select_entity(reference, true);
+    app.tabs[i].selected_handle = Some(reference);
+    app.refresh_properties();
+    let keys = app.tabs[i]
+        .properties
+        .sections
+        .iter()
+        .flat_map(|s| &s.props)
+        .filter_map(|p| match p.value {
+            PropValue::BlockNumber { key, .. } => Some(key),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(keys.len(), 2);
+    assert_ne!(
+        crate::ui::properties::FieldKey::BlockParameter(keys[0]).widget_id(),
+        crate::ui::properties::FieldKey::BlockParameter(keys[1]).widget_id()
+    );
+    let _ = app.update(Message::PropBlockInput {
+        key: keys[0],
+        value: "20".into(),
+    });
+    app.tabs[i].scene.deselect_all();
+    app.tabs[i].scene.select_entity(other, true);
+    app.tabs[i].selected_handle = Some(other);
+    app.refresh_properties();
+    let before = app.tabs[i].scene.document.clone();
+    let _ = app.update(Message::PropBlockCommit(keys[0]));
+    assert_eq!(app.tabs[i].scene.document, before);
+    assert_eq!(actions::all_parameters(&before, def).len(), 1);
+}

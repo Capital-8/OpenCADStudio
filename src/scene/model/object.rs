@@ -3,9 +3,41 @@
 use codec::types::{Color as AcadColor, Handle, LineWeight};
 use glam::DVec3;
 
+/// Stable identity of a native reference parameter property.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BlockParameterKey {
+    pub document: u64,
+    pub definition: Handle,
+    pub insert: Handle,
+    pub parameter: Handle,
+    pub component: BlockParameterComponent,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BlockParameterComponent {
+    X,
+    Y,
+    Distance,
+    Angle,
+    Flip,
+}
+
 /// The kind of value held by a property row.
 #[derive(Clone, Debug, PartialEq)]
 pub enum PropValue {
+    /// Native numeric reference value, edited independently of its display grip.
+    BlockNumber {
+        key: BlockParameterKey,
+        value: String,
+        description: String,
+    },
+    /// Native state labels, with the state index retained separately from text.
+    BlockChoice {
+        key: BlockParameterKey,
+        selected: usize,
+        options: Vec<String>,
+        description: String,
+    },
+
     /// Read-only display text.
     ReadOnly(String),
     /// Read-only display text with a tooltip explaining why it cannot be edited.

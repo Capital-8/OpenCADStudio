@@ -9,6 +9,7 @@ pub(crate) mod config;
 pub use automation::{export_headless, run_batch, serve};
 mod annotation_data;
 mod block_actions;
+mod block_parameter_properties;
 mod block_alignment;
 mod block_feedback;
 mod block_cycle_order;
@@ -3855,6 +3856,10 @@ pub enum Message {
     },
     /// User committed a geometry/common field edit (Enter pressed).
     PropGeomCommit(&'static str),
+    PropBlockInput { key: crate::scene::model::object::BlockParameterKey, value: String },
+    PropBlockCommit(crate::scene::model::object::BlockParameterKey),
+    PropBlockChoice { key: crate::scene::model::object::BlockParameterKey, index: usize },
+
     /// Toggle a collapsed coordinate group ("Position", "Scale", …) open or
     /// closed in the Properties panel, keyed `section:base`.
     PropGroupToggle(String),
