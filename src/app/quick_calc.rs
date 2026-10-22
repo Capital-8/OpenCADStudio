@@ -1,27 +1,73 @@
-//! The app side of the QuickCalc pallet: drawing variables, the clipboard,
+//! The app side of the QuickCalc pallet: system variables, the clipboard,
 //! the command line, picks and the profile settings. The pallet's own state
 //! and logic are `ui::window::quick_calc`.
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use glam::DVec3;
 use iced::{Element, Task};
 
 use super::{DocumentTab, Message, OpenCADStudio};
-use crate::app::calc::{CalcContext, Value};
+use crate::app::calc::{CalcContext, SysVar, SysVars};
 use crate::command::CadCommand;
 use crate::modules::draw::inquiry::calc_pick::{CalcPickCommand, PickKind};
 use crate::ui::dock::PanelId;
-use crate::ui::window::quick_calc::{full_text, QuickCalcMsg, VarScope, INPUT_ID};
+use crate::ui::window::quick_calc::{full_text, FormMsg, QuickCalcMsg, VarMsg, INPUT_ID};
 
-/// The drawing's parameters that resolve to a number, in definition order.
-fn drawing_vars(tab: &DocumentTab) -> Vec<(String, f64)> {
-    let table = tab.scene.named_parameters();
-    let values = table.resolve_all();
-    table
-        .iter()
-        .filter_map(|p| match values.get(&p.name) {
-            Some(Ok(v)) if v.is_finite() => Some((p.name.clone(), *v)),
-            _ => None,
-        })
-        .collect()
+/// The drawing's system variables `getvar` can read, as of now.
+fn sysvars(tab: &DocumentTab) -> SysVars {
+    let h = &tab.scene.document.header;
+    let n = |v: f64| SysVar::Number(v);
+    let i = |v: i16| SysVar::Number(f64::from(v));
+    let mut map: HashMap<&'static str, SysVar> = HashMap::from([
+        ("lunits", i(h.linear_unit_format)),
+        ("luprec", i(h.linear_unit_precision)),
+        ("aunits", i(h.angular_unit_format)),
+        ("auprec", i(h.angular_unit_precision)),
+        ("angbase", n(h.angle_base)),
+        ("angdir", i(h.angle_direction)),
+        ("insunits", i(h.insertion_units)),
+        ("ltscale", n(h.linetype_scale)),
+        ("celtscale", n(h.current_entity_linetype_scale)),
+        ("textsize", n(h.text_height)),
+        ("filletrad", n(h.fillet_radius)),
+        ("chamfera", n(h.chamfer_distance_a)),
+        ("chamferb", n(h.chamfer_distance_b)),
+        ("pdmode", i(h.point_display_mode)),
+        ("pdsize", n(h.point_display_size)),
+        ("plinewid", n(h.polyline_width)),
+        ("tracewid", n(h.trace_width)),
+        ("sketchinc", n(h.sketch_increment)),
+        ("thickness", n(h.thickness)),
+        ("elevation", n(h.elevation)),
+        ("dimscale", n(h.dim_scale)),
+        ("mirrtext", n(f64::from(u8::from(h.mirror_text)))),
+        ("osmode", n(f64::from(h.object_snap_mode))),
+        ("userr1", n(h.user_real1)),
+        ("userr2", n(h.user_real2)),
+        ("userr3", n(h.user_real3)),
+        ("userr4", n(h.user_real4)),
+        ("userr5", n(h.user_real5)),
+        ("useri1", i(h.user_int1)),
+        ("useri2", i(h.user_int2)),
+        ("useri3", i(h.user_int3)),
+        ("useri4", i(h.user_int4)),
+        ("useri5", i(h.user_int5)),
+        ("clayer", SysVar::Text),
+        ("ctextstyle", SysVar::Text),
+        ("celtype", SysVar::Text),
+    ]);
+    let base = h.model_space_insertion_base;
+    map.insert("insbase", SysVar::Point(DVec3::new(base.x, base.y, base.z)));
+    let (lo, hi) = (h.model_space_limits_min, h.model_space_limits_max);
+    map.insert("limmin", SysVar::Point(DVec3::new(lo.x, lo.y, 0.0)));
+    map.insert("limmax", SysVar::Point(DVec3::new(hi.x, hi.y, 0.0)));
+    if let Some((min, max)) = tab.scene.model_space_extents() {
+        map.insert("extmin", SysVar::Point(min.as_dvec3()));
+        map.insert("extmax", SysVar::Point(max.as_dvec3()));
+    }
+    SysVars(Arc::new(move |name: &str| map.get(name).copied()))
 }
 
 /// Millimetres per drawing unit; a unitless drawing counts as millimetres.
@@ -72,12 +118,11 @@ impl OpenCADStudio {
         width: f32,
         chrome: crate::ui::dock::Chrome,
     ) -> Element<'a, Message> {
-        let drawing = drawing_vars(tab);
         let pick_step = tab.active_cmd.as_ref().and_then(|c| c.quick_calc_step());
         crate::ui::window::quick_calc::view(
             &self.quick_calc,
             crate::ui::window::quick_calc::Inputs {
-                drawing,
+                sysvars: Some(sysvars(tab)),
                 base_unit: base_unit(tab),
                 unit_label: unit_label(tab),
                 pick_step,
@@ -90,7 +135,7 @@ impl OpenCADStudio {
 
     fn quick_calc_context(&self) -> CalcContext {
         let tab = &self.tabs[self.active_tab];
-        self.quick_calc.context(&drawing_vars(tab), base_unit(tab))
+        self.quick_calc.context(base_unit(tab), Some(sysvars(tab)))
     }
 
     /// QUICKCALC / QC: show the pallet (docked on the right the first time)
@@ -119,6 +164,11 @@ impl OpenCADStudio {
         // An open flyout closes first, wherever the focus is.
         if base == "ESCAPE" && self.quick_calc.flyout.is_some() {
             self.quick_calc.flyout = None;
+            return Some(Task::none());
+        }
+        // Escape in the variable form cancels it.
+        if base == "ESCAPE" && self.quick_calc.typing && self.quick_calc.form.is_some() {
+            self.quick_calc.form = None;
             return Some(Task::none());
         }
         if !self.quick_calc.typing {
@@ -162,10 +212,8 @@ impl OpenCADStudio {
             }
             QuickCalcMsg::Submit | QuickCalcMsg::Key(crate::ui::window::quick_calc::Key::Eval) => {
                 qc.typing = true;
-                if let Some(done) = qc.submit(&ctx) {
-                    if let Some(name) = done.assign {
-                        self.quick_calc_store(&name, done.value);
-                    }
+                if qc.submit(&ctx).is_some_and(|done| done.assign.is_some()) {
+                    self.save_quick_calc_settings();
                 }
                 focus_input()
             }
@@ -307,31 +355,7 @@ impl OpenCADStudio {
                 }
                 focus_input()
             }
-            QuickCalcMsg::VarInsert(name) => {
-                qc.append(&name);
-                qc.typing = true;
-                focus_input()
-            }
-            QuickCalcMsg::VarDelete(VarScope::Constant, name) => {
-                qc.constants.retain(|(c, _)| *c != name);
-                self.save_quick_calc_settings();
-                Task::none()
-            }
-            QuickCalcMsg::VarDelete(VarScope::Drawing, name) => {
-                if qc.session.remove(&name).is_none() {
-                    let i = self.active_tab;
-                    self.delete_parameter(i, &name);
-                }
-                Task::none()
-            }
-            QuickCalcMsg::NewVar => {
-                qc.input.clear();
-                qc.hist_idx = None;
-                qc.new_var_hint = true;
-                qc.typing = true;
-                qc.set_flash(crate::t!("Type name = value, then Enter").into_owned());
-                focus_input()
-            }
+            QuickCalcMsg::Var(msg) => self.on_quick_calc_variable(msg),
             QuickCalcMsg::FlashExpired => {
                 qc.expire_flash();
                 Task::none()
@@ -339,17 +363,67 @@ impl OpenCADStudio {
         }
     }
 
-    /// Keep `name = value`: in "My constants" when it is one, as a drawing
-    /// parameter when it is a number, for the session when it is a point.
-    fn quick_calc_store(&mut self, name: &str, value: Value) {
-        let was_constant = self.quick_calc.constants.iter().any(|(c, _)| c == name);
-        match self.quick_calc.store(name, value) {
-            Some(number) => {
-                let i = self.active_tab;
-                self.apply_parameter_input(i, name, &number.to_string());
+    fn on_quick_calc_variable(&mut self, msg: VarMsg) -> Task<Message> {
+        let tab = &self.tabs[self.active_tab];
+        let (base, sys) = (base_unit(tab), Some(sysvars(tab)));
+        let ctx = self.quick_calc_context();
+        let qc = &mut self.quick_calc;
+        let insert = |qc: &mut crate::ui::window::quick_calc::QuickCalcPalette, name: &str| {
+            qc.append(&format!("${name}"));
+            qc.typing = true;
+            focus_input()
+        };
+        match msg {
+            VarMsg::New => {
+                let value = match qc.preview(&ctx) {
+                    crate::ui::window::quick_calc::Preview::Ok(value) => Some(value),
+                    _ => None,
+                };
+                qc.open_new_form(value);
+                Task::none()
             }
-            None if was_constant => self.save_quick_calc_settings(),
-            None => {}
+            VarMsg::Edit => {
+                qc.open_edit_form();
+                Task::none()
+            }
+            VarMsg::Delete => {
+                if let Some(name) = qc.delete_selected() {
+                    qc.set_flash(crate::tf!("Deleted ${}", name).into_owned());
+                    self.save_quick_calc_settings();
+                }
+                Task::none()
+            }
+            VarMsg::Return => match qc.selected_var.clone() {
+                Some(name) => insert(qc, &name),
+                None => Task::none(),
+            },
+            VarMsg::Select(name) => {
+                qc.selected_var = Some(name);
+                Task::none()
+            }
+            VarMsg::Insert(name) => {
+                qc.selected_var = Some(name.clone());
+                insert(qc, &name)
+            }
+            VarMsg::ToggleCategory(category) => {
+                qc.toggle_category(category);
+                Task::none()
+            }
+            VarMsg::Form(FormMsg::Save) => {
+                if qc.save_form(base, sys).is_some() {
+                    self.save_quick_calc_settings();
+                }
+                Task::none()
+            }
+            VarMsg::Form(FormMsg::Cancel) => {
+                qc.form = None;
+                Task::none()
+            }
+            VarMsg::Form(msg) => {
+                qc.form_msg(msg);
+                qc.typing = true;
+                Task::none()
+            }
         }
     }
 
@@ -374,8 +448,8 @@ impl OpenCADStudio {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::calc::Value;
     use crate::ui::window::quick_calc::{Flyout, KeypadMode, MemoryOp};
-    use glam::DVec3;
 
     /// A millimetre drawing with the pallet open.
     fn app() -> OpenCADStudio {
@@ -412,21 +486,33 @@ mod tests {
     }
 
     #[test]
-    fn assignments_go_to_the_drawing_or_the_constants() {
+    fn variables_are_global_and_getvar_reads_the_drawing() {
         let mut app = app();
         let i = app.active_tab;
-        enter(&mut app, "wall = 3.6m");
-        enter(&mut app, "wall = wall / 2");
-        let table = app.tabs[i].scene.named_parameters();
-        assert_eq!((table.len(), table.resolve("wall").ok()), (1, Some(1800.0)));
-        app.quick_calc.constants.push(("brick".into(), 210.0));
-        enter(&mut app, "brick = 215");
-        assert_eq!(app.quick_calc.constants, vec![("brick".to_string(), 215.0)]);
+        enter(&mut app, "$wall = 3.6m");
+        enter(&mut app, "$wall = $wall / 2");
+        // Kept in the user settings, not in the drawing.
+        assert!(app.tabs[i].scene.named_parameters().is_empty());
+        let saved = &app.current_settings().quick_calc.variables;
+        assert_eq!(saved.len(), 1);
+        assert_eq!(
+            saved[0].value,
+            Some(crate::ui::window::quick_calc::StoredValue::Number(1800.0))
+        );
+        // Delete removes it at once and says so.
         send(
             &mut app,
-            [QuickCalcMsg::VarDelete(VarScope::Drawing, "wall".into())],
+            [
+                QuickCalcMsg::Var(VarMsg::Select("wall".into())),
+                QuickCalcMsg::Var(VarMsg::Delete),
+            ],
         );
-        assert!(app.tabs[i].scene.named_parameters().is_empty());
+        assert!(app.quick_calc.variables.is_empty());
+        assert!(app.current_settings().quick_calc.variables.is_empty());
+        assert!(app.quick_calc.flash.is_some());
+        enter(&mut app, "getvar(insunits) + getvar(luprec)");
+        let expected = 4.0 + f64::from(app.tabs[i].scene.document.header.linear_unit_precision);
+        assert_eq!(app.quick_calc.ans, Some(Value::Number(expected)));
     }
 
     #[test]

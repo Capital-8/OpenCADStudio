@@ -8,8 +8,8 @@ use iced::widget::{
 use iced::{Background, Border, Color, Element, Fill, Font, Length, Theme};
 
 use super::{
-    assignment_target, continues_ans, has_length_suffix, Preview, QuickCalcMsg, QuickCalcPalette,
-    Section, UnitCat, VarScope, INPUT_ID,
+    continues_ans, has_length_suffix, Preview, QuickCalcMsg, QuickCalcPalette, Section, UnitCat,
+    INPUT_ID,
 };
 use crate::app::calc::{AngleMode, Value};
 use crate::app::Message;
@@ -27,8 +27,6 @@ pub(super) const CHEVRON_DOWN: &[u8] =
 pub(super) const CHEVRON_RIGHT: &[u8] =
     include_bytes!("../../../../assets/icons/quickcalc/chevron_right.svg");
 const SWAP: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/swap.svg");
-const DELETE: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/delete.svg");
-const PLUS: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/plus.svg");
 const ERROR: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/error.svg");
 
 pub(super) const MONO: Font = Font::MONOSPACE;
@@ -284,7 +282,7 @@ pub(super) fn plain_button_style_borderless(
 }
 
 /// A bordered text button (Cancel, Insert, New variable).
-fn text_button<'a>(
+pub(super) fn text_button<'a>(
     content: impl Into<Element<'a, Message>>,
     msg: QuickCalcMsg,
 ) -> Element<'a, Message> {
@@ -432,7 +430,11 @@ fn chip<'a>(label: &'static str, on: bool, msg: QuickCalcMsg) -> Element<'a, Mes
         .into()
 }
 
-fn field_style(theme: &Theme, status: text_input::Status, bad: bool) -> text_input::Style {
+pub(super) fn field_style(
+    theme: &Theme,
+    status: text_input::Status,
+    bad: bool,
+) -> text_input::Style {
     let t = tokens(theme);
     let border = if bad {
         t.danger
@@ -537,96 +539,12 @@ fn units<'a>(p: &'a QuickCalcPalette) -> Element<'a, Message> {
     .into()
 }
 
-fn var_row<'a>(name: &str, value: &Value, scope: VarScope) -> Element<'a, Message> {
-    let name = name.to_string();
-    let insert = button(
-        row![
-            text(name.clone())
-                .size(12)
-                .font(MONO)
-                .style(|theme: &Theme| text::Style {
-                    color: Some(tokens(theme).accent),
-                }),
-            Space::new().width(Fill),
-            mono(value.display(), 12.0),
-        ]
-        .align_y(iced::Center),
-    )
-    .width(Fill)
-    .height(24)
-    .padding([0, 6])
-    .on_press(m(QuickCalcMsg::VarInsert(name.clone())))
-    .style(|theme: &Theme, status| {
-        let t = tokens(theme);
-        button::Style {
-            background: matches!(status, button::Status::Hovered)
-                .then_some(Background::Color(t.weak)),
-            text_color: t.text,
-            ..Default::default()
-        }
-    });
-    let delete = button(icon(DELETE, 11.0, |t| t.faint))
-        .padding(4)
-        .on_press(m(QuickCalcMsg::VarDelete(scope, name.clone())))
-        .style(|theme: &Theme, status| {
-            let mut s = plain_button_style(theme, status);
-            s.border.width = 0.0;
-            s
-        });
-    row![
-        tip(insert, crate::t!("Insert into the expression").into_owned()),
-        tip(delete, crate::tf!("Delete {}", name).into_owned()),
-    ]
-    .spacing(2)
-    .align_y(iced::Center)
-    .into()
-}
-
-fn variables<'a>(p: &'a QuickCalcPalette, drawing: &[(String, f64)]) -> Element<'a, Message> {
-    let heading = |title: &str, note: &str| {
-        row![
-            text(crate::t!(title).into_owned()).size(10.5).width(Fill),
-            muted(crate::t!(note).into_owned(), 10.5),
-        ]
-        .padding([4, 6])
-    };
-    let mut list = column![heading("This drawing", "saved with the drawing")];
-    for (name, value) in drawing {
-        if !p.session.contains_key(name) {
-            list = list.push(var_row(name, &Value::Number(*value), VarScope::Drawing));
-        }
-    }
-    let mut session: Vec<_> = p.session.iter().collect();
-    session.sort_by(|a, b| a.0.cmp(b.0));
-    for (name, value) in session {
-        list = list.push(var_row(name, value, VarScope::Drawing));
-    }
-    list = list.push(heading("My constants", "every drawing"));
-    for (name, value) in &p.constants {
-        list = list.push(var_row(name, &Value::Number(*value), VarScope::Constant));
-    }
-    list.push(
-        container(text_button(
-            row![
-                icon(PLUS, 11.0, |t| t.text),
-                text(crate::t!("New variable")).size(11)
-            ]
-            .spacing(5)
-            .align_y(iced::Center),
-            QuickCalcMsg::NewVar,
-        ))
-        .padding([6, 6]),
-    )
-    .padding([4, 0])
-    .into()
-}
-
 // ── The pallet ──────────────────────────────────────────────────────────
 
 /// Everything the view needs from the app besides the pallet itself.
 pub struct Inputs {
-    /// The drawing's variables with their values.
-    pub drawing: Vec<(String, f64)>,
+    /// The drawing's system variables, for `getvar`.
+    pub sysvars: Option<crate::app::calc::SysVars>,
     /// Millimetres per drawing unit.
     pub base_unit: f64,
     /// The drawing unit's short name (`mm`, `m`, `in`, …).
@@ -660,7 +578,7 @@ pub fn view<'a>(
 }
 
 fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a, Message> {
-    let ctx = p.context(&inputs.drawing, inputs.base_unit);
+    let (ctx, var_errors) = p.context_and_errors(inputs.base_unit, inputs.sysvars.clone());
     let preview = p.preview(&ctx);
     let picking = inputs.pick_step.zip(p.pick);
     let active = |kind: PickKind| picking.is_some_and(|(_, k)| k == kind);
@@ -850,9 +768,7 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
     }
     let show_error = matches!(preview, Preview::Err(_)) && picking.is_none() && p.error_shown();
     let bad = show_error;
-    let placeholder = if p.new_var_hint {
-        crate::t!("Type name = value, then Enter")
-    } else if p.history.is_empty() {
+    let placeholder = if p.history.is_empty() {
         crate::t!("Expression, e.g. 2*300 + 90")
     } else {
         crate::t!("Expression, or start with * to reuse ans")
@@ -908,8 +824,8 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
         }
         _ if picking.is_some() => {}
         Preview::Ok(value) => {
-            let lead = if let Some(name) = assignment_target(trimmed) {
-                crate::tf!("sets {}", name).into_owned()
+            let lead = if let Some((name, _)) = crate::app::calc::assigned_variable(trimmed) {
+                crate::tf!("sets ${}", name).into_owned()
             } else if continues_ans(trimmed) {
                 format!("ans {trimmed}")
             } else if has_length_suffix(trimmed) {
@@ -942,10 +858,7 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
                 crate::t!("Units"),
                 Some(format!("{} → {}", p.unit_from, p.unit_to)),
             ),
-            Section::Variables => (
-                crate::t!("Variables"),
-                Some((inputs.drawing.len() + p.session.len() + p.constants.len()).to_string()),
-            ),
+            Section::Variables => (crate::t!("Variables"), Some(p.variables.len().to_string())),
         };
         let control = (section == Section::Keypad).then(|| super::keypad_view::mode_switch(p));
         sections = sections.push(section_header(
@@ -959,7 +872,14 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
             sections = sections.push(match section {
                 Section::Keypad => super::keypad_view::keypad(p),
                 Section::Units => units(p),
-                Section::Variables => variables(p, &inputs.drawing),
+                Section::Variables => super::variables_view::variables(
+                    p,
+                    &ctx,
+                    &var_errors,
+                    p.form
+                        .as_ref()
+                        .map(|_| p.check_form(inputs.base_unit, inputs.sysvars.clone())),
+                ),
             });
         }
     }
@@ -973,7 +893,7 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
     let history_min = MIN_HISTORY_ROWS * HISTORY_ROW_H;
     let fixed = 28.0 + input_h + 3.0 * 6.0;
     let sections_cap = (height - fixed - history_min).max(0.0);
-    let natural = sections_height(p, inputs.drawing.len());
+    let natural = sections_height(p);
     // A scrollbar that shows takes its own room beside the content
     // (`spacing` embeds it) instead of covering the keys or the results.
     let sections: Element<'a, Message> = if natural <= sections_cap {
@@ -1014,7 +934,7 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
 
 /// The sections' height when laid out in full: every header plus the open
 /// bodies, from the fixed key and row sizes they are built with.
-fn sections_height(p: &QuickCalcPalette, drawing_vars: usize) -> f32 {
+fn sections_height(p: &QuickCalcPalette) -> f32 {
     const HEADER: f32 = 29.0;
     Section::ALL
         .iter()
@@ -1024,10 +944,7 @@ fn sections_height(p: &QuickCalcPalette, drawing_vars: usize) -> f32 {
                     match section {
                         Section::Keypad => super::keypad_view::height(p),
                         Section::Units => 24.0 + 2.0 * 22.0 + 28.0 + 26.0 + 4.0 * 8.0 + 16.0,
-                        Section::Variables => {
-                            let rows = drawing_vars + p.session.len() + p.constants.len();
-                            2.0 * 22.0 + rows as f32 * 24.0 + 38.0 + 8.0
-                        }
+                        Section::Variables => super::variables_view::height(p),
                     }
                 } else {
                     0.0

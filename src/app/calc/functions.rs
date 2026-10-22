@@ -10,8 +10,8 @@ use super::parser::Expr;
 use super::value::{CalcContext, Value};
 use super::CalcError;
 
-/// Every built-in function name. These, `pi`, `ans` and the unit suffixes
-/// cannot be used as variable names.
+/// Every built-in function name; the tests call each one.
+#[cfg(test)]
 pub(super) const FUNCTIONS: &[&str] = &[
     "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sec", "csc", "cot", "asec", "acsc",
     "acot", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "sqrt", "cbrt", "root", "abs",

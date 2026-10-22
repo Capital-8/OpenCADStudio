@@ -84,7 +84,9 @@ pub enum SysVar {
 /// Reads system variables for `getvar`, by lowercase name. The host passes
 /// it in, so the engine itself never touches the drawing.
 #[derive(Clone)]
-pub struct SysVars(pub std::sync::Arc<dyn Fn(&str) -> Option<SysVar> + Send + Sync>);
+pub struct SysVars(pub std::sync::Arc<SysVarFn>);
+
+type SysVarFn = dyn Fn(&str) -> Option<SysVar> + Send + Sync;
 
 impl std::fmt::Debug for SysVars {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

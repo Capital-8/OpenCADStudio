@@ -4,14 +4,14 @@
 //! point, distance or angle from the drawing.
 //!
 //! The pallet's state and everything it does without the drawing live here;
-//! the app side (`app::quick_calc`) adds the drawing variables, the
+//! the app side (`app::quick_calc`) adds the system variables, the
 //! clipboard, the command line and the picks.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::app::calc::{self, AngleMode, CalcContext, CalcError, Value};
+use crate::app::calc::{self, AngleMode, CalcContext, CalcError, SysVars, Value};
 use crate::modules::draw::inquiry::calc_pick::PickKind;
 
 /// The expression field, so the app can focus it.
@@ -90,16 +90,6 @@ impl UnitCat {
     }
 }
 
-/// Where a variable is kept.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VarScope {
-    /// In the drawing's parameter table (saved with the drawing); point
-    /// variables, which a parameter cannot hold, last for the session.
-    Drawing,
-    /// "My constants", in the user settings: every drawing sees them.
-    Constant,
-}
-
 #[derive(Debug, Clone)]
 pub enum QuickCalcMsg {
     Input(String),
@@ -135,9 +125,7 @@ pub enum QuickCalcMsg {
     UnitValue(String),
     UnitSwap,
     UnitInsert,
-    VarInsert(String),
-    VarDelete(VarScope, String),
-    NewVar,
+    Var(VarMsg),
     /// The footer status timer ran out.
     FlashExpired,
 }
@@ -146,8 +134,8 @@ pub enum QuickCalcMsg {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct QuickCalcSettings {
-    /// "My constants", in the order they were made.
-    pub constants: Vec<(String, f64)>,
+    /// The variables, in their list order.
+    pub variables: Vec<Variable>,
     /// Which sections are open, in [`Section::ALL`] order.
     pub open: [bool; 3],
     pub radians: bool,
@@ -157,7 +145,7 @@ pub struct QuickCalcSettings {
 impl Default for QuickCalcSettings {
     fn default() -> Self {
         Self {
-            constants: Vec::new(),
+            variables: Vec::new(),
             open: [true, false, false],
             radians: false,
             scientific: false,
@@ -184,7 +172,7 @@ pub enum Preview {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Submitted {
     pub value: Value,
-    /// `name = …`: the variable it sets.
+    /// `$name = …`: the variable it set.
     pub assign: Option<String>,
 }
 
@@ -197,9 +185,13 @@ pub struct QuickCalcPalette {
     pub hist_idx: Option<usize>,
     pub ans: Option<Value>,
     pub mode: AngleMode,
-    /// Point variables, which a drawing parameter cannot hold.
-    pub session: HashMap<String, Value>,
-    pub constants: Vec<(String, f64)>,
+    /// Every variable, global to all drawings.
+    pub variables: Vec<Variable>,
+    pub selected_var: Option<String>,
+    /// Categories folded shut in the list.
+    pub collapsed: HashSet<String>,
+    /// The Variable Definition form, while it is open.
+    pub form: Option<VarForm>,
     /// Memory, newest first.
     pub memory: Vec<f64>,
     pub open: [bool; 3],
@@ -211,8 +203,6 @@ pub struct QuickCalcPalette {
     /// The pick the pallet started (its command may since have ended).
     pub pick: Option<PickKind>,
     pub flash: Option<(String, iced::time::Instant)>,
-    /// The placeholder "New variable" asks for, until the next evaluation.
-    pub new_var_hint: bool,
     pub unit_cat: UnitCat,
     pub unit_from: &'static str,
     pub unit_to: &'static str,
@@ -237,8 +227,10 @@ impl Default for QuickCalcPalette {
             hist_idx: None,
             ans: None,
             mode: AngleMode::Degrees,
-            session: HashMap::new(),
-            constants: Vec::new(),
+            variables: Vec::new(),
+            selected_var: None,
+            collapsed: HashSet::new(),
+            form: None,
             memory: Vec::new(),
             open: QuickCalcSettings::default().open,
             keypad_mode: KeypadMode::Standard,
@@ -247,7 +239,6 @@ impl Default for QuickCalcPalette {
             flyout: None,
             pick: None,
             flash: None,
-            new_var_hint: false,
             unit_cat: UnitCat::Length,
             unit_from,
             unit_to,
@@ -261,18 +252,6 @@ impl Default for QuickCalcPalette {
 /// Whether `input` starts with `* / ^`, so it continues from `ans`.
 fn continues_ans(input: &str) -> bool {
     input.trim_start().starts_with(['*', '/', '^'])
-}
-
-/// `name` when `input` is `name = …`.
-fn assignment_target(input: &str) -> Option<&str> {
-    let (lhs, rhs) = input.split_once('=')?;
-    let name = lhs.trim();
-    let starts = name
-        .chars()
-        .next()
-        .is_some_and(|c| c.is_alphabetic() || c == '_');
-    (starts && name.chars().all(|c| c.is_alphanumeric() || c == '_') && !rhs.starts_with('='))
-        .then_some(name)
 }
 
 /// Whether `input` has a length suffix, so its value was converted.
@@ -318,7 +297,7 @@ pub fn full_text(value: &Value) -> String {
 impl QuickCalcPalette {
     pub fn settings(&self) -> QuickCalcSettings {
         QuickCalcSettings {
-            constants: self.constants.clone(),
+            variables: self.variables.clone(),
             open: self.open,
             radians: self.mode == AngleMode::Radians,
             scientific: self.keypad_mode == KeypadMode::Scientific,
@@ -326,12 +305,7 @@ impl QuickCalcPalette {
     }
 
     pub fn apply_settings(&mut self, s: &QuickCalcSettings) {
-        self.constants = s
-            .constants
-            .iter()
-            .filter(|(name, value)| calc::is_valid_name(name) && value.is_finite())
-            .cloned()
-            .collect();
+        self.variables = variables::clean(&s.variables);
         self.open = s.open;
         self.keypad_mode = if s.scientific {
             KeypadMode::Scientific
@@ -349,18 +323,9 @@ impl QuickCalcPalette {
         self.open[section.index()]
     }
 
-    /// The evaluation context: constants, then the drawing's variables, then
-    /// this session's point variables — a later one wins on a shared name.
-    pub fn context(&self, drawing: &[(String, f64)], base_unit: f64) -> CalcContext {
-        let mut ctx = CalcContext::new(self.mode, base_unit);
-        for (name, value) in self.constants.iter().chain(drawing) {
-            ctx.vars.insert(name.clone(), Value::Number(*value));
-        }
-        for (name, value) in &self.session {
-            ctx.vars.insert(name.clone(), *value);
-        }
-        ctx.ans = self.ans;
-        ctx
+    /// The evaluation context, every variable defined.
+    pub fn context(&self, base_unit: f64, sysvars: Option<SysVars>) -> CalcContext {
+        self.context_and_errors(base_unit, sysvars).0
     }
 
     /// Whether the error of the current input should show: only after Enter
@@ -372,6 +337,9 @@ impl QuickCalcPalette {
     pub fn preview(&self, ctx: &CalcContext) -> Preview {
         if self.input.trim().is_empty() {
             return Preview::Empty;
+        }
+        if let Some(error) = self.assignment_error(&self.input) {
+            return Preview::Err(error);
         }
         match calc::evaluate(&self.input, &mut ctx.clone()) {
             Ok(value) => Preview::Ok(value),
@@ -395,7 +363,7 @@ impl QuickCalcPalette {
         if trimmed.is_empty() {
             return None;
         }
-        let Ok(value) = calc::evaluate(&trimmed, &mut ctx.clone()) else {
+        let Preview::Ok(value) = self.preview(ctx) else {
             self.failed_input = Some(self.input.clone());
             return None;
         };
@@ -404,33 +372,15 @@ impl QuickCalcPalette {
         } else {
             trimmed.clone()
         };
-        let assign = assignment_target(&trimmed).map(str::to_string);
+        let assign = calc::assigned_variable(&trimmed).map(|(name, _)| name);
+        if let Some(name) = &assign {
+            self.assign(name, value, &trimmed);
+        }
         self.history.push(Entry { expr, value });
         self.ans = Some(value);
         self.input.clear();
         self.hist_idx = None;
-        self.new_var_hint = false;
         Some(Submitted { value, assign })
-    }
-
-    /// Keep an assigned variable where it belongs. A constant of that name is
-    /// updated; a point lives for the session. Returns the number the drawing
-    /// should store, if any.
-    pub fn store(&mut self, name: &str, value: Value) -> Option<f64> {
-        match value {
-            Value::Number(n) => {
-                if let Some(slot) = self.constants.iter_mut().find(|(c, _)| c == name) {
-                    slot.1 = n;
-                    return None;
-                }
-                self.session.remove(name);
-                Some(n)
-            }
-            Value::Point(_) => {
-                self.session.insert(name.to_string(), value);
-                None
-            }
-        }
     }
 
     pub fn append(&mut self, text: &str) {
@@ -524,8 +474,11 @@ impl QuickCalcPalette {
 
 mod keypad;
 mod keypad_view;
+mod variables;
+mod variables_view;
 mod view;
 pub use keypad::{Flyout, Key, KeypadMode, MemoryOp};
+pub use variables::{FormMsg, StoredValue, VarForm, VarKind, VarMsg, Variable};
 pub use view::{view, Inputs, ICON};
 
 #[cfg(test)]

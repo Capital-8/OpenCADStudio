@@ -897,7 +897,7 @@ pub struct UserSettings {
     /// SSMAUTOOPEN, SSLOCATE, SSMPOLLTIME, SSMSHEETSTATUS.
     #[serde(default)]
     pub sheet_set: crate::ui::window::sheet_set::SheetSetSettings,
-    /// QuickCalc: "My constants", the open sections and the angle mode.
+    /// QuickCalc: the global variables, the open sections and the angle mode.
     #[serde(default)]
     pub quick_calc: crate::ui::window::quick_calc::QuickCalcSettings,
 }
