@@ -958,6 +958,23 @@ pub(super) struct OpenCADStudio {
     /// (and on cancel), never a history step of their own.
     #[cfg(not(target_arch = "wasm32"))]
     plugin_grip_live_originals: Vec<(codec::Handle, codec::EntityType)>,
+    /// The grip-settle watchdog floor: [`SETTLE_WATCHDOG`] in production;
+    /// tests lower it to exercise the strike ledger with millisecond
+    /// budgets instead of real seconds.
+    #[cfg(not(target_arch = "wasm32"))]
+    plugin_grip_settle_watchdog: std::time::Duration,
+    /// The grip-settle strike ledger: plugin -> the missed-delivery times.
+    /// Three misses inside the strike window tear the connection down (the
+    /// plugin is genuinely wedged under a live pump); a settle landing in
+    /// time clears the entry (one recovered settle resets the count).
+    #[cfg(not(target_arch = "wasm32"))]
+    plugin_grip_settle_strikes: rustc_hash::FxHashMap<String, Vec<std::time::Instant>>,
+    /// Grip-declaration re-arms queued by strike tear-downs: the reap tick
+    /// re-dispatches `SelectionChanged` (dedup cleared) once the plugin is
+    /// visible again, so its declared grips come back without human
+    /// intervention.
+    #[cfg(not(target_arch = "wasm32"))]
+    pending_plugin_grips_rearm: std::collections::BTreeSet<String>,
     /// Open multi-functional grip popup. Persists across mouse moves
     /// until dismissed (click outside, ESC, cursor leaves the grip).
     grip_popup: Option<GripPopup>,
@@ -5002,6 +5019,13 @@ impl OpenCADStudio {
             plugin_grip_deliveries: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             plugin_grip_live_originals: Vec::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            plugin_grip_settle_watchdog:
+                crate::app::update::SETTLE_WATCHDOG,
+            #[cfg(not(target_arch = "wasm32"))]
+            plugin_grip_settle_strikes: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            pending_plugin_grips_rearm: Default::default(),
             grip_popup: None,
             grip_pending: None,
             visibility_popup: None,
