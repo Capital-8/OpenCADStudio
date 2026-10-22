@@ -242,6 +242,10 @@ harness = false
 name = "step_assembly_cdsr_lookup"
 harness = false
 
+[[bench]]
+name = "xref_nested_document_cache"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
