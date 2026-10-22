@@ -1887,7 +1887,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "LAYERSTATE: saved \"{name}\" in the drawing." => Some(("common", "layerstate-saved-name-in-the-drawing")),
         "LAYERSTATE: updated \"{name}\"." => Some(("common", "layerstate-updated-name")),
         "LAYISO: isolated {} layer(s)." => Some(("layers", "layiso-isolated-layer-s")),
-        "LAYISO: select entities on the layers to isolate first." => Some(("layers", "layiso-select-entities-on-the-layers-to-isolat")),
+        "LAYUNISO: no layers were isolated by LAYISO." => Some(("layers", "layuniso-no-layers-were-isolated-by-layiso")),
         "LAYMATCH  Select objects to change layer:" => Some(("layers", "laymatch-select-objects-to-change-layer")),
         "LAYMATCH  Select source object to match layer from:" => Some(("layers", "laymatch-select-source-object-to-match-layer-f")),
         "LAYMRG  source layer (merged away):" => Some(("layers", "laymrg-source-layer-merged-away")),
