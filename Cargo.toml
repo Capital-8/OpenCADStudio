@@ -234,6 +234,10 @@ harness = false
 name = "grid_segments_rebuild"
 harness = false
 
+[[bench]]
+name = "parametric_preview_solve"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
