@@ -6179,12 +6179,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "expression is too long" => Some(("calc", "too-long")),
         "QuickCalc" => Some(("quickcalc", "title")),
         "Get point" => Some(("quickcalc", "get-point")),
-        "Distance between two points" => Some(("quickcalc", "pick-distance")),
-        "Angle of a line" => Some(("quickcalc", "pick-angle")),
         "Copy result" => Some(("quickcalc", "copy-result")),
-        "Paste to command line" => Some(("quickcalc", "paste")),
-        "Clear history" => Some(("quickcalc", "clear-history")),
-        "Load into the input" => Some(("quickcalc", "load")),
         "Specify a point in the drawing" => Some(("quickcalc", "point-prompt")),
         "Specify first point in the drawing" => Some(("quickcalc", "first-prompt")),
         "Specify second point in the drawing" => Some(("quickcalc", "second-prompt")),
@@ -6240,10 +6235,6 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Function: {}" => Some(("quickcalc", "function-expr")),
         "Double-click to insert" => Some(("quickcalc", "double-click-insert")),
         "Double-click to insert. Typing $name = value adds a constant too." => Some(("quickcalc", "variables-hint")),
-        "Standard keypad" => Some(("quickcalc", "standard-keypad")),
-        "Scientific keypad" => Some(("quickcalc", "scientific-keypad")),
-        "Angles in degrees. Switch to radians" => Some(("quickcalc", "angles-degrees")),
-        "Angles in radians. Switch to degrees" => Some(("quickcalc", "angles-radians")),
         _ => None,
     }
 }

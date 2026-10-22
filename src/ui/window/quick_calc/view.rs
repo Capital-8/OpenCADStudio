@@ -219,13 +219,8 @@ pub(super) fn muted<'a>(s: impl text::IntoFragment<'a>, size: f32) -> text::Text
 // ── Buttons ─────────────────────────────────────────────────────────────
 
 /// A 28 px toolbar button; `on` highlights the running pick tool.
-fn tool<'a>(
-    bytes: &'static [u8],
-    label: String,
-    msg: QuickCalcMsg,
-    on: bool,
-) -> Element<'a, Message> {
-    let b = button(
+fn tool<'a>(bytes: &'static [u8], msg: QuickCalcMsg, on: bool) -> Element<'a, Message> {
+    button(
         container(icon(
             bytes,
             18.0,
@@ -255,8 +250,8 @@ fn tool<'a>(
             text_color: t.text,
             ..Default::default()
         }
-    });
-    tip(b, label)
+    })
+    .into()
 }
 
 pub(super) fn plain_button_style(theme: &Theme, status: button::Status) -> button::Style {
@@ -386,9 +381,9 @@ fn section_header<'a>(section: Section, label: String, open: bool) -> Element<'a
 
 /// The Standard | Scientific switch: a calculator icon and an italic f(x).
 fn keypad_mode_switch<'a>(p: &QuickCalcPalette) -> Element<'a, Message> {
-    let option = |content: Element<'a, Message>, mode: KeypadMode, label: String| {
+    let option = |content: Element<'a, Message>, mode: KeypadMode| {
         let on = p.keypad_mode == mode;
-        let b = button(container(content).center(Fill))
+        button(container(content).center(Fill))
             .width(26)
             .height(22)
             .padding(0)
@@ -408,8 +403,7 @@ fn keypad_mode_switch<'a>(p: &QuickCalcPalette) -> Element<'a, Message> {
                     },
                     ..Default::default()
                 }
-            });
-        tip(b, label)
+            })
     };
     let on_std = p.keypad_mode == KeypadMode::Standard;
     // The icon follows the button's text colour: full when active or hovered.
@@ -429,16 +423,8 @@ fn keypad_mode_switch<'a>(p: &QuickCalcPalette) -> Element<'a, Message> {
     let fx = text("f(x)").size(13).font(super::keypad_view::MATH);
     container(
         row![
-            option(
-                calculator.into(),
-                KeypadMode::Standard,
-                crate::t!("Standard keypad").into_owned()
-            ),
-            option(
-                fx.into(),
-                KeypadMode::Scientific,
-                crate::t!("Scientific keypad").into_owned()
-            ),
+            option(calculator.into(), KeypadMode::Standard),
+            option(fx.into(), KeypadMode::Scientific),
         ]
         .spacing(1),
     )
@@ -456,11 +442,11 @@ fn keypad_mode_switch<'a>(p: &QuickCalcPalette) -> Element<'a, Message> {
 
 /// DEG or RAD: shows the angle mode and switches to the other one.
 fn angle_mode_button<'a>(mode: AngleMode) -> Element<'a, Message> {
-    let (short, label) = match mode {
-        AngleMode::Degrees => ("DEG", crate::t!("Angles in degrees. Switch to radians")),
-        AngleMode::Radians => ("RAD", crate::t!("Angles in radians. Switch to degrees")),
+    let short = match mode {
+        AngleMode::Degrees => "DEG",
+        AngleMode::Radians => "RAD",
     };
-    let b = button(container(strong(short, 10.5, STRONG)).center(Fill))
+    button(container(strong(short, 10.5, STRONG)).center(Fill))
         .width(38)
         .height(24)
         .padding([0, 6])
@@ -478,8 +464,8 @@ fn angle_mode_button<'a>(mode: AngleMode) -> Element<'a, Message> {
                 text_color: t.text,
                 ..Default::default()
             }
-        });
-    tip(b, label.into_owned())
+        })
+        .into()
 }
 
 fn chip<'a>(label: &'static str, on: bool, msg: QuickCalcMsg) -> Element<'a, Message> {
@@ -664,41 +650,23 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
     let toolbar = row![
         tool(
             POINT,
-            crate::t!("Get point").into_owned(),
             QuickCalcMsg::Pick(PickKind::Point),
             active(PickKind::Point)
         ),
         tool(
             DISTANCE,
-            crate::t!("Distance between two points").into_owned(),
             QuickCalcMsg::Pick(PickKind::Distance),
             active(PickKind::Distance)
         ),
         tool(
             ANGLE,
-            crate::t!("Angle of a line").into_owned(),
             QuickCalcMsg::Pick(PickKind::Angle),
             active(PickKind::Angle)
         ),
         container(divider).padding([0, 4]),
-        tool(
-            crate::ui::icons::TRASH,
-            crate::t!("Clear history").into_owned(),
-            QuickCalcMsg::ClearHistory,
-            false
-        ),
-        tool(
-            COPY,
-            crate::t!("Copy result").into_owned(),
-            QuickCalcMsg::Copy,
-            false
-        ),
-        tool(
-            SEND,
-            crate::t!("Paste to command line").into_owned(),
-            QuickCalcMsg::PasteToCommandLine,
-            false
-        ),
+        tool(crate::ui::icons::TRASH, QuickCalcMsg::ClearHistory, false),
+        tool(COPY, QuickCalcMsg::Copy, false),
+        tool(SEND, QuickCalcMsg::PasteToCommandLine, false),
         Space::new().width(Fill),
         keypad_mode_switch(p),
         container(angle_mode_button(p.mode)).padding(iced::Padding {
@@ -739,12 +707,9 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
                     }
                 });
             container(
-                row![
-                    tip(expr, crate::t!("Load into the input").into_owned()),
-                    tip(result, crate::t!("Copy result").into_owned()),
-                ]
-                .spacing(10)
-                .align_y(iced::Center),
+                row![expr, tip(result, crate::t!("Copy result").into_owned()),]
+                    .spacing(10)
+                    .align_y(iced::Center),
             )
             .padding([3, 4])
             .into()
