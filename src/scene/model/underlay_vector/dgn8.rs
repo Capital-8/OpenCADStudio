@@ -319,18 +319,18 @@ fn text_style_table(nm: &[&[u8]]) -> Vec<(u32, String, String)> {
 
 /// The dimension style table (table 5), lengths in master units (`s` per
 /// UOR). One style can have more than one entry. An entry holds its
-/// element id (16), text style id (56), accuracy (72), flags (80: 0x10 a
-/// line between the extension lines; 85: 0x10 text in the line, 0x20
-/// horizontal text; 184: 0x10 trailing zeros shown), text height (112),
+/// element id (16), text style id (56), accuracy (72), flags (85: 0x10
+/// text in the line, 0x20 horizontal text; 184: 0x01 a line between the
+/// extension lines, 0x10 trailing zeros shown), text height (112),
 /// extension line offset and extension (152, 160), text gap (360) and
 /// terminator width (408) as text heights, stack offset (288), centre
 /// mark (296), its master and sub units (numerator and denominator per
 /// metre at 520 and 544) and name (after 104); the linkage `de 56` holds
 /// its scale 54 bytes in.
 fn dim_style_table(nm: &[&[u8]], s: f64) -> Vec<DgnDimStyle> {
-    // Text style id (32) → its font number and kind (40).
+    // Text style id (32) → its font number and kind (40); the text style
+    // table can follow the dimension style table.
     let mut fonts = HashMap::new();
-    let mut out = Vec::new();
     let mut table = 0;
     for e in nm {
         match kind(e) {
@@ -340,6 +340,13 @@ fn dim_style_table(nm: &[&[u8]], s: f64) -> Vec<DgnDimStyle> {
                     fonts.entry(id).or_insert((f[0], f[1]));
                 }
             }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for e in nm {
+        match kind(e) {
+            96 => table = u32_at(e, 12).unwrap_or(0),
             95 if table == 5 => {
                 let (Some(id), Some(name)) = (u32_at(e, 16), marked_string(e, 104)) else {
                     continue;
@@ -374,7 +381,7 @@ fn dim_style_table(nm: &[&[u8]], s: f64) -> Vec<DgnDimStyle> {
                     trailing_zeros: bit(184, 0x10),
                     inline_text: bit(85, 0x10),
                     horizontal_text: bit(85, 0x20),
-                    line_inside: bit(80, 0x10),
+                    line_inside: bit(184, 0x01),
                     scale,
                     two_units: near(metres(520), 0.3048) && near(metres(544), 0.0254),
                 });

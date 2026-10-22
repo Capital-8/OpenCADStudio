@@ -7861,34 +7861,56 @@ pub(crate) fn automatic_text_position(document: &CadDocument, dim: &Dimension) -
     let scale = if style.dimscale > 1e-6 { style.dimscale } else { 1.0 };
     let height = style.dimtxt * scale;
     let mut position = dimension_text_pos_f64(dim, Some(&style), height, scale);
-    let (first, second, defpt, (ax, ay)) = match dim {
-        Dimension::Linear(d) => (
-            d.first_point,
-            d.second_point,
-            d.definition_point,
-            (d.rotation.cos(), d.rotation.sin()),
-        ),
-        Dimension::Aligned(d) => {
-            let (dx, dy) = (d.second_point.x - d.first_point.x, d.second_point.y - d.first_point.y);
-            let len = dx.hypot(dy).max(1e-12);
-            (d.first_point, d.second_point, d.definition_point, (dx / len, dy / len))
-        }
-        _ => return Some(position),
-    };
-    if !matches!(style.dimjust, 1 | 2) {
+    if !matches!(style.dimjust, 1 | 2) || dimension_text_is_outside(dim, Some(&style)) {
         return Some(position);
     }
     let Some(ink) = dimension_text_ink_width(document, dim, &style, height) else {
         return Some(position);
     };
+    // The layout spaced the text by character cells; it moves by half the
+    // difference to its inked width, away from the line it sits beside.
     let cells = dimension_text_cells(dim, Some(&style)).unwrap_or(0.0) * height * CELL_WIDTH;
-    let t1 = (first.x - defpt.x) * ax + (first.y - defpt.y) * ay;
-    let t2 = (second.x - defpt.x) * ax + (second.y - defpt.y) * ay;
-    let towards_second = if t2 >= t1 { 1.0 } else { -1.0 };
-    let inward = if style.dimjust == 1 { towards_second } else { -towards_second };
-    let shift = (ink - cells) * 0.5 * inward;
-    position.x += ax * shift;
-    position.y += ay * shift;
+    let half = (ink - cells) * 0.5;
+    let axis = |first: Vector3, second: Vector3, defpt: Vector3, ax: f64, ay: f64| {
+        let t1 = (first.x - defpt.x) * ax + (first.y - defpt.y) * ay;
+        let t2 = (second.x - defpt.x) * ax + (second.y - defpt.y) * ay;
+        let towards_second = if t2 >= t1 { 1.0 } else { -1.0 };
+        let inward = if style.dimjust == 1 { towards_second } else { -towards_second };
+        (ax * half * inward, ay * half * inward)
+    };
+    match dim {
+        Dimension::Linear(d) => {
+            let (dx, dy) = axis(
+                d.first_point,
+                d.second_point,
+                d.definition_point,
+                d.rotation.cos(),
+                d.rotation.sin(),
+            );
+            position.x += dx;
+            position.y += dy;
+        }
+        Dimension::Aligned(d) => {
+            let (ex, ey) = (d.second_point.x - d.first_point.x, d.second_point.y - d.first_point.y);
+            let len = ex.hypot(ey).max(1e-12);
+            let (dx, dy) =
+                axis(d.first_point, d.second_point, d.definition_point, ex / len, ey / len);
+            position.x += dx;
+            position.y += dy;
+        }
+        Dimension::Angular2Ln(_) | Dimension::Angular3Pt(_) => {
+            if let Some((vertex, start, end, radius)) = angular_dimension_frame(dim) {
+                let toward_end = if end >= start { 1.0 } else { -1.0 };
+                let sign = if style.dimjust == 1 { -toward_end } else { toward_end };
+                let (sin, cos) = (half * sign / f64::from(radius).max(1e-12)).sin_cos();
+                let (cx, cy) = (f64::from(vertex.x), f64::from(vertex.y));
+                let (px, py) = (position.x - cx, position.y - cy);
+                position.x = cx + px * cos - py * sin;
+                position.y = cy + px * sin + py * cos;
+            }
+        }
+        _ => {}
+    }
     Some(position)
 }
 
