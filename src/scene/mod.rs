@@ -2813,6 +2813,10 @@ pub struct Scene {
     /// Document-wide named-parameter and expression table decoded from
     /// standard associative variables.
     pub(crate) named_parameters: named_parameters::ParameterTable,
+    /// Content hash of the constraint model as of the last
+    /// `sync_native_parametric_graph`, letting geometry-only edits skip the
+    /// graph rebuild. `None` until the first sync records one.
+    native_graph_fingerprint: Option<u64>,
     /// Tessellated block definitions in block-local coords, keyed by render
     /// background and block epoch. Model and Paper adapt black/white colours
     /// differently; retaining both variants prevents a full block rebuild on
@@ -3169,6 +3173,7 @@ impl Scene {
             constraints_epoch: 0,
             glyph_cache: RefCell::new(None),
             named_parameters: named_parameters::ParameterTable::new(),
+            native_graph_fingerprint: None,
             has_associative_centers: std::cell::Cell::new(None),
             has_underlays: std::cell::Cell::new(None),
             has_face3d: std::cell::Cell::new(None),
@@ -4170,8 +4175,20 @@ impl Scene {
         }
         if !self.parametric_constraints.is_empty() || !self.named_parameters.is_empty() {
             self.refresh_dynamic_dimension_texts();
-            // A restyle changes no constraint, so the stored graph is current.
-            if !appearance_only {
+            // The stored associative graph rebuilds only when the constraint
+            // model actually changed since the last sync — never for a pure
+            // geometry edit. Nothing in the session reads the graph between
+            // edits: glyph placement and the solver run off the runtime
+            // constraint sets, and every consumer of the stored graph —
+            // save/export, parameter and constraint commands, undo replay —
+            // flushes with `sync_native_parametric_graph` itself. Constraint
+            // commands mutate the runtime sets with no explicit flush of
+            // their own, so hashing the model here is what still syncs an
+            // add/remove/toggle/value edit on this same bump. The refresh
+            // runs first because it can rewrite a reference constraint's
+            // parameter, which is itself graph input.
+            let fingerprint = self.constraint_model_fingerprint();
+            if self.native_graph_fingerprint != Some(fingerprint) {
                 self.sync_native_parametric_graph();
             }
         }

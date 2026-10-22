@@ -258,6 +258,10 @@ harness = false
 name = "properties_selection_aggregation"
 harness = false
 
+[[bench]]
+name = "native_constraint_graph_sync"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
