@@ -324,9 +324,9 @@ fn text_style_table(nm: &[&[u8]]) -> Vec<(u32, String, String)> {
 /// extension lines, 0x10 trailing zeros shown), text height (112),
 /// extension line offset and extension (152, 160), text gap (360) and
 /// terminator width (408) as text heights, stack offset (288), centre
-/// mark (296), its master and sub units (numerator and denominator per
-/// metre at 520 and 544) and name (after 104); the linkage `de 56` holds
-/// its scale 54 bytes in.
+/// mark (296), angle decimal places (307, plus one), its master and sub
+/// units (numerator and denominator per metre at 520 and 544) and name
+/// (after 104); the linkage `de 56` holds its scale 54 bytes in.
 fn dim_style_table(nm: &[&[u8]], s: f64) -> Vec<DgnDimStyle> {
     // Text style id (32) → its font number and kind (40); the text style
     // table can follow the dimension style table.
@@ -378,6 +378,7 @@ fn dim_style_table(nm: &[&[u8]], s: f64) -> Vec<DgnDimStyle> {
                     stack_offset: real(288) * s,
                     center: real(296) * s,
                     accuracy: e.get(72).copied().unwrap_or(0x84),
+                    angle_places: e.get(307).map_or(0, |b| b.saturating_sub(1)),
                     trailing_zeros: bit(184, 0x10),
                     inline_text: bit(85, 0x10),
                     horizontal_text: bit(85, 0x20),

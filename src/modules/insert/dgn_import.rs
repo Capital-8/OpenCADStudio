@@ -773,6 +773,7 @@ fn dim_style_values(import: &DgnImport, ds: &DgnDimStyle, k: f64, name: &str) ->
     let places = if bits == 0 { 0 } else { bits.trailing_zeros() as i16 + 1 };
     s.dimdec = places;
     s.dimtdec = places;
+    s.dimadec = i16::from(ds.angle_places);
     s.dimlunit = if ds.accuracy & 0x80 == 0 && bits != 0 {
         4
     } else if ds.two_units {
@@ -854,7 +855,7 @@ fn dimension_entity(
             // (a terminator, three gaps when it breaks the arc, one when it
             // does not, and half its width along the arc), fits between the
             // lines and reaches past the middle.
-            let label = format!("{:.0}\u{b0}", sweep.to_degrees());
+            let label = format!("{:.*}\u{b0}", layout.angle_places, sweep.to_degrees());
             let width = crate::entities::text_support::text_local_bounds(
                 &layout.font,
                 &label,
@@ -924,6 +925,7 @@ struct DimTextLayout {
     gap: f64,
     font: String,
     in_line: bool,
+    angle_places: usize,
 }
 
 /// The text, the variable overrides and the text layout an imported
@@ -961,6 +963,7 @@ fn dimension_settings(
     let mut overrides = vec![
         (ov::DIMCEN, Real(0.0)),
         (ov::DIMATFIT, Integer16(3)),
+        (ov::DIMSCALE, Real(scale)),
         (ov::DIMTXT, Real(length(look.text_height))),
         (ov::DIMASZ, Real(length(look.arrow))),
         (ov::DIMEXO, Real(length(look.ext_offset))),
@@ -979,6 +982,7 @@ fn dimension_settings(
         gap,
         font: own.or(style_font).map_or("txt", |f| f.0).to_string(),
         in_line: !look.text_outside,
+        angle_places: style.map_or(0, |s| usize::from(s.angle_places)),
     };
     (text, overrides, layout)
 }

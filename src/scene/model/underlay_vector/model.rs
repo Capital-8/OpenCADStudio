@@ -898,6 +898,8 @@ pub struct DgnDimStyle {
     pub stack_offset: f64,
     pub center: f64,
     pub accuracy: u8,
+    /// Decimal places of an angle.
+    pub angle_places: u8,
     pub trailing_zeros: bool,
     pub inline_text: bool,
     pub horizontal_text: bool,
