@@ -12,10 +12,14 @@ fn displacement(p: &Parameter, connections: &[BlockConnection]) -> u8 {
         connections[1].name.as_str(),
     ) {
         (true, _, "XDelta", "YDelta") => 1,
+        // XY corners share endpoint coordinates. A displacement input is
+        // associated with every configured role that can change either input.
+        (false, true, "BaseXDelta", "BaseYDelta") => 0b1101,
+        (false, true, "EndXDelta", "EndYDelta") => 0b1110,
+        (false, true, "EndXDelta", "BaseYDelta") => 0b0111,
+        (false, true, "BaseXDelta", "EndYDelta") => 0b1011,
         (false, _, "BaseXDelta", "BaseYDelta") => 1,
         (false, _, "EndXDelta", "EndYDelta") => 2,
-        (false, true, "EndXDelta", "BaseYDelta") => 4,
-        (false, true, "BaseXDelta", "EndYDelta") => 8,
         _ => 0,
     }
 }

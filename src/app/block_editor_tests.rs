@@ -6030,7 +6030,7 @@ fn block_runtime_native_roles_drag_cancel_undo_redo_and_preserve_relocated_grips
             };
             select(&mut app);
             let id = runtime::id(p.id, role).unwrap();
-            assert_eq!(app.tabs[i].selected_grips.iter().filter(|grip| super::block_actions::is_test_grip(grip.id)).count(), 1, "only the associated key point is eligible");
+            assert_eq!(app.tabs[i].selected_grips.iter().filter(|grip| super::block_actions::is_test_grip(grip.id)).count(), if family == "XY" { 3 } else { 1 }, "grips sharing action input coordinates are eligible");
             assert!(app.tabs[i].selected_grips.iter().any(|grip| grip.id == id));
             let before = app.tabs[i].scene.document.clone();
             let displayed = app.tabs[i].selected_grips.iter().find(|grip| grip.id == id).unwrap().world;
@@ -6934,7 +6934,7 @@ fn block_key_point_grip_eligibility_and_pending_result_follow_reassociation() {
                 .iter()
                 .filter_map(|grip| runtime::decode(grip.id))
                 .collect::<Vec<_>>(),
-            vec![(p.id, 1)]
+            vec![(p.id, 1), (p.id, 2), (p.id, 3)]
         );
         assert_eq!(
             config::locations(&app.tabs[i].scene.document, def, parameter)
@@ -6981,7 +6981,7 @@ fn block_key_point_grip_eligibility_and_pending_result_follow_reassociation() {
                 .iter()
                 .filter_map(|grip| runtime::decode(grip.id))
                 .collect::<Vec<_>>(),
-            vec![(p.id, 0)]
+            vec![(p.id, 0), (p.id, 2), (p.id, 3)]
         );
         let base_id = runtime::id(p.id, 0).unwrap();
         assert!(app.start_test_action_grip(insert, base_id));
