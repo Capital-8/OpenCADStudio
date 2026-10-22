@@ -262,6 +262,18 @@ harness = false
 name = "native_constraint_graph_sync"
 harness = false
 
+[[bench]]
+name = "overlay_interaction_candidates"
+harness = false
+
+[[bench]]
+name = "snap_intersection_sweep"
+harness = false
+
+[[bench]]
+name = "selection_overlay_frame"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
