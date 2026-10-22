@@ -2122,6 +2122,50 @@ impl<const N: usize> WireSource for [WireModel; N] {
     }
 }
 
+/// Two wire sources read back to back without copying either one's wires:
+/// `head` first (in its own index order), then `tail`. Produces the same wire
+/// sequence a `Vec` built by `extend` would have, so consumers that only walk
+/// `iter()` see identical geometry while the caller pays zero clones.
+///
+/// The optional indexed views (`segments`, `snap_points`, …) stay `None`:
+/// the tail has no parallel index, so an index-only walk over the head would
+/// silently drop the tail's wires. Consumers fall back to full iteration,
+/// exactly like a plain `Vec<WireModel>` source.
+pub struct ChainedWireSource<'a, H: WireSource + ?Sized, T: WireSource + ?Sized> {
+    head: &'a H,
+    tail: &'a T,
+}
+
+impl<'a, H: WireSource + ?Sized, T: WireSource + ?Sized> ChainedWireSource<'a, H, T> {
+    pub fn new(head: &'a H, tail: &'a T) -> Self {
+        Self { head, tail }
+    }
+}
+
+impl<H: WireSource + ?Sized, T: WireSource + ?Sized> WireSource for ChainedWireSource<'_, H, T> {
+    fn iter(&self) -> WireIter<'_> {
+        WireIter::Chain(Box::new(self.head.iter()), Box::new(self.tail.iter()))
+    }
+
+    fn len(&self) -> usize {
+        self.head.len() + self.tail.len()
+    }
+
+    fn get(&self, index: usize) -> Option<&WireModel> {
+        self.head.get(index).or_else(|| {
+            index
+                .checked_sub(self.head.len())
+                .and_then(|tail_index| self.tail.get(tail_index))
+        })
+    }
+
+    fn source_wire(&self, index: u32) -> Option<&WireModel> {
+        self.head
+            .source_wire(index)
+            .or_else(|| self.tail.source_wire(index))
+    }
+}
+
 #[derive(Clone)]
 pub enum WireIter<'a> {
     All(std::slice::Iter<'a, WireModel>),
@@ -2129,6 +2173,7 @@ pub enum WireIter<'a> {
         wires: &'a [WireModel],
         indices: std::slice::Iter<'a, u32>,
     },
+    Chain(Box<WireIter<'a>>, Box<WireIter<'a>>),
 }
 
 impl<'a> Iterator for WireIter<'a> {
@@ -2140,6 +2185,10 @@ impl<'a> Iterator for WireIter<'a> {
             Self::Indexed { wires, indices } => {
                 indices.next().and_then(|&idx| wires.get(idx as usize))
             }
+            Self::Chain(head, tail) => match head.next() {
+                Some(wire) => Some(wire),
+                None => tail.next(),
+            },
         }
     }
 }

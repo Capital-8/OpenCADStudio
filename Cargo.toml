@@ -226,6 +226,10 @@ harness = false
 name = "command_benchmarks"
 harness = false
 
+[[bench]]
+name = "grip_drag_otrack_candidates"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"

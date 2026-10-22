@@ -14,6 +14,7 @@ use crate::scene::model::object::GripApply;
 use crate::scene::pick::grip::{
     find_hit_grip, find_hit_grip_paper, find_hit_grip_rte, GripEdit, GripEditMode, GripTarget,
 };
+use crate::scene::pick::interaction_index::ChainedWireSource;
 use crate::scene::{
     self, hover_id, CubeRegion, Scene, VIEWCUBE_DRAW_PX, VIEWCUBE_PAD, VIEWCUBE_PX,
 };
@@ -2181,9 +2182,10 @@ impl OpenCADStudio {
             //
             // IMPORTANT: this combined set is used ONLY for OTRACK acquisition.
             // It is never passed to the normal movement snap above.
-            let mut tracking_candidates: Vec<_> = snap_candidates.iter().cloned().collect();
-
-            tracking_candidates.extend(self.grip_reference_wires.iter().cloned());
+            // Zero-copy: chains the near-cursor candidates with the frozen
+            // reference wires instead of deep-cloning both every pointer move.
+            let tracking_candidates =
+                ChainedWireSource::new(&snap_candidates, &self.grip_reference_wires);
 
             // Prefer a genuine drawing snap when it is an acquisition-capable point.
             // Otherwise let the frozen-reference snap drive the dwell acquisition.
