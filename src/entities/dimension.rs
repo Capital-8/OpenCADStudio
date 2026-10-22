@@ -7847,6 +7847,97 @@ fn stored_text_point(dim: &Dimension) -> Option<Vector3> {
     (p.x * p.x + p.y * p.y + p.z * p.z > 1e-16).then_some(p)
 }
 
+/// Where a dimension's text sits by its style in this drawing (its
+/// overrides applied) when the user has not placed it. Text beside an
+/// extension line (DIMJUST 1/2) is measured by the glyphs of its font, not
+/// by character cells.
+pub(crate) fn automatic_text_position(document: &CadDocument, dim: &Dimension) -> Option<Vector3> {
+    let name = &dim.base().style_name;
+    let source = document.dim_styles.iter().find(|s| {
+        s.name.eq_ignore_ascii_case(name)
+            || (name.trim().is_empty() && s.name.eq_ignore_ascii_case("Standard"))
+    })?;
+    let style = resolved_dimension_style(source, dim, document);
+    let scale = if style.dimscale > 1e-6 { style.dimscale } else { 1.0 };
+    let height = style.dimtxt * scale;
+    let mut position = dimension_text_pos_f64(dim, Some(&style), height, scale);
+    let (first, second, defpt, (ax, ay)) = match dim {
+        Dimension::Linear(d) => (
+            d.first_point,
+            d.second_point,
+            d.definition_point,
+            (d.rotation.cos(), d.rotation.sin()),
+        ),
+        Dimension::Aligned(d) => {
+            let (dx, dy) = (d.second_point.x - d.first_point.x, d.second_point.y - d.first_point.y);
+            let len = dx.hypot(dy).max(1e-12);
+            (d.first_point, d.second_point, d.definition_point, (dx / len, dy / len))
+        }
+        _ => return Some(position),
+    };
+    if !matches!(style.dimjust, 1 | 2) {
+        return Some(position);
+    }
+    let Some(ink) = dimension_text_ink_width(document, dim, &style, height) else {
+        return Some(position);
+    };
+    let cells = dimension_text_cells(dim, Some(&style)).unwrap_or(0.0) * height * CELL_WIDTH;
+    let t1 = (first.x - defpt.x) * ax + (first.y - defpt.y) * ay;
+    let t2 = (second.x - defpt.x) * ax + (second.y - defpt.y) * ay;
+    let towards_second = if t2 >= t1 { 1.0 } else { -1.0 };
+    let inward = if style.dimjust == 1 { towards_second } else { -towards_second };
+    let shift = (ink - cells) * 0.5 * inward;
+    position.x += ax * shift;
+    position.y += ay * shift;
+    Some(position)
+}
+
+/// The inked width of a dimension's text: its characters (formatting codes
+/// left out) in its font (an `\F` font in the text, else the style's text
+/// style) at `height`.
+fn dimension_text_ink_width(
+    document: &CadDocument,
+    dim: &Dimension,
+    style: &DimStyle,
+    height: f64,
+) -> Option<f64> {
+    let value = dimension_text_value(dim, Some(style))?;
+    let mut plain = String::new();
+    let mut font = None;
+    let mut chars = value.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '{' | '}' => {}
+            '\\' => match chars.next() {
+                Some('F' | 'f') => {
+                    let body: String = chars.by_ref().take_while(|c| *c != ';').collect();
+                    font.get_or_insert_with(|| body.split('|').next().unwrap_or("").to_string());
+                }
+                Some('C' | 'c' | 'H' | 'h' | 'W' | 'w' | 'Q' | 'q' | 'T' | 't' | 'A' | 'a' | 'p') => {
+                    chars.by_ref().find(|c| *c == ';');
+                }
+                Some('P') => plain.push(' '),
+                Some('~') => plain.push(' '),
+                Some(other @ ('\\' | '{' | '}')) => plain.push(other),
+                _ => {}
+            },
+            '~' => plain.push(' '),
+            other => plain.push(other),
+        }
+    }
+    let font = font.filter(|f| !f.is_empty()).unwrap_or_else(|| {
+        crate::entities::text_support::resolve_text_style(&style.dimtxsty, document).font_name
+    });
+    let bounds = crate::entities::text_support::text_local_bounds(
+        &font,
+        plain.trim(),
+        height as f32,
+        1.0,
+        0.0,
+    )?;
+    Some(f64::from(bounds.ink_max[0] - bounds.ink_min[0]))
+}
+
 /// Clear an automatic text position so the dimension is laid out from its
 /// current settings again. A loaded point is kept so a drawing looks as it
 /// was drawn; a new dimension, or one whose style or overrides just changed,
