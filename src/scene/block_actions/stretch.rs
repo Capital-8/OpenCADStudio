@@ -253,26 +253,27 @@ pub(crate) fn validate(doc: &CadDocument, a: &BlockStretchAction) -> Result<(), 
     Ok(())
 }
 
+pub(crate) fn polar_key_point(a: &BlockPolarStretchAction) -> Result<XyKeyPoint, &'static str> {
+    let key = match [a.connections[0].name.as_str(), a.connections[1].name.as_str()] {
+        ["BaseXDelta", "BaseYDelta"] => XyKeyPoint::Base,
+        ["EndXDelta", "EndYDelta"] => XyKeyPoint::End,
+        _ => return Err("This Polar Stretch action uses unsupported key-point connections."),
+    };
+    let connection_code = a.connections[0].code;
+    if a.connections.iter().any(|c| c.code != connection_code)
+        || a.connections[2..].iter().map(|c| c.name.as_str()).ne(["Base", "End", "UpdatedBase", "UpdatedEnd"]) {
+        return Err("This Polar Stretch action uses unsupported frame connections.");
+    }
+    Ok(key)
+}
+
 pub(crate) fn validate_polar(
     doc: &CadDocument,
     a: &BlockPolarStretchAction,
 ) -> Result<(), &'static str> {
-    let connection_code = a.connections[0].code;
-    let connections = [
-        "BaseXDelta",
-        "BaseYDelta",
-        "Base",
-        "End",
-        "UpdatedBase",
-        "UpdatedEnd",
-    ]
-    .map(|name| codec::objects::BlockConnection {
-        code: connection_code,
-        name: name.into(),
-    });
+    polar_key_point(a)?;
     if !a.distance_multiplier.is_finite()
         || !a.angle_offset.is_finite()
-        || a.connections != connections
         || !a.codes.is_empty()
         || !a.extra.is_empty()
         || !a.action.action_ids.is_empty()
@@ -408,6 +409,26 @@ pub(crate) fn apply(
         }
         _ => return Err("Unsupported Stretch target."),
     }
+    Ok(())
+}
+
+/// The bound key point is driven; the opposite endpoint anchors the action.
+pub(crate) fn apply_polar_frame(
+    entity: &mut EntityType,
+    action: &BlockPolarStretchAction,
+    old_base: DVec3,
+    old_end: DVec3,
+    new_base: DVec3,
+    new_end: DVec3,
+) -> Result<(), &'static str> {
+    let (pivot, old_tip, new_pivot, new_tip) = match polar_key_point(action)? {
+        XyKeyPoint::End => (old_base, old_end, new_base, new_end),
+        XyKeyPoint::Base => (old_end, old_base, new_end, new_base),
+        _ => unreachable!(),
+    };
+    apply_polar(entity, action, pivot, old_tip, pivot + (new_tip - new_pivot))?;
+    super::super::view::dispatch::apply_transform(entity,
+        &crate::command::EntityTransform::Translate(new_pivot - pivot));
     Ok(())
 }
 

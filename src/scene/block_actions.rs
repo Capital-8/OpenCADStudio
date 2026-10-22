@@ -26,6 +26,8 @@ mod tests;
 mod frame_tests;
 #[cfg(test)]
 mod frame_evaluation_tests;
+#[cfg(test)]
+mod polar_frame_tests;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -517,7 +519,7 @@ pub(crate) fn create_with_frame_points(
         .find(|p| p.handle == parameter)
         .ok_or("Select a compatible parameter belonging to this block.")?;
     if xy_key_point.is_some_and(|point| {
-        !matches!(kind, Kind::Move | Kind::Stretch)
+        !matches!(kind, Kind::Move | Kind::Stretch | Kind::PolarStretch)
             || (p.xy
                 && !matches!(
                     point,
@@ -647,18 +649,7 @@ pub(crate) fn create_with_frame_points(
             let (points, bindings) = polar_binding.unwrap();
             DynamicBlockData::PolarStretchAction(BlockPolarStretchAction {
                 action,
-                connections: std::array::from_fn(|i| BlockConnection {
-                    code: p.id,
-                    name: [
-                        "BaseXDelta",
-                        "BaseYDelta",
-                        "Base",
-                        "End",
-                        "UpdatedBase",
-                        "UpdatedEnd",
-                    ][i]
-                        .into(),
-                }),
+                connections: polar_connections(&p, xy_key_point),
                 points,
                 handles: vec![],
                 bindings,
@@ -735,6 +726,13 @@ fn move_connections(p: &Parameter, key_point: Option<XyKeyPoint>) -> [BlockConne
         code: p.id,
         name: name.into(),
     })
+}
+
+fn polar_connections(p: &Parameter, key_point: Option<XyKeyPoint>) -> [BlockConnection; 6] {
+    let (x, y) = if key_point == Some(XyKeyPoint::Base) {
+        ("BaseXDelta", "BaseYDelta")
+    } else { ("EndXDelta", "EndYDelta") };
+    [x, y, "Base", "End", "UpdatedBase", "UpdatedEnd"].map(|name| BlockConnection { code: p.id, name: name.into() })
 }
 
 fn action_move_delta(
@@ -1517,8 +1515,7 @@ fn evaluate_impl(
                 if direction.length() <= 1e-9 {
                     return Err("The Polar parameter needs a nonzero distance.");
                 }
-                stretch::apply_polar(&mut entity, s, q.base, q.end, q.base + (end - base))?;
-                super::view::dispatch::apply_transform(&mut entity, &crate::command::EntityTransform::Translate(base - q.base));
+                stretch::apply_polar_frame(&mut entity, s, q.base, q.end, base, end)?;
             } else {
                 super::view::dispatch::apply_transform(&mut entity, &transform);
             }

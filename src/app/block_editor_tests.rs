@@ -5649,6 +5649,98 @@ fn block_action_base_offset_properties_refresh_references_and_keep_history() {
 }
 
 #[test]
+fn block_polar_stretch_end_binding_command_scratch_and_reference_history() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    use crate::command::{CmdResult, StepInput};
+    use codec::objects::{DynamicBlockData, ObjectType};
+    use glam::DVec3;
+    for testing in [false, true] {
+        let (mut app, reference) = fixture();
+        begin(&mut app, reference);
+        let source = app.active_tab;
+        let _ = app.dispatch_command("BACTIONBARMODE 0");
+        let _ = app.run_command_line("BPARAMETER POLAR 0,0 10,0 5,2");
+        let definition = app.tabs[source].active_block_edit_session().unwrap().br_handle;
+        let parameter = actions::all_parameters(&app.tabs[source].scene.document, definition).remove(0);
+        let targets = members(&app);
+        let initial = app.tabs[source].scene.document.clone();
+        let depth = app.tabs[source].history.undo_stack.len();
+        let _ = app.dispatch_command("BACTION POLARSTRETCH");
+        feed(&mut app, &parameter.name); feed(&mut app, "End");
+        assert!(app.tabs[source].active_cmd.as_ref().unwrap().prompt().contains("<End>"));
+        let _ = app.update(Message::CommandEscape);
+        assert_eq!(app.tabs[source].scene.document, initial);
+        assert_eq!(app.tabs[source].history.undo_stack.len(), depth);
+        let _ = app.dispatch_command("BACTION POLARSTRETCH");
+        feed(&mut app, &parameter.name);
+        assert!(app.tabs[source].active_cmd.as_ref().unwrap().options().iter().any(|option| option.keyword == "End"));
+        feed(&mut app, "Base"); feed(&mut app, "End");
+        feed(&mut app, "0.5,-0.5"); feed(&mut app, "1.5,0.5");
+        let _ = app.feed_command(StepInput::SelectionComplete(targets));
+        let _ = app.feed_command(StepInput::Enter);
+        let _ = app.feed_command(StepInput::Enter);
+        assert_eq!(app.tabs[source].scene.document, initial);
+        feed(&mut app, "4,4");
+        assert!(app.tabs[source].active_cmd.is_none());
+        let action = actions::actions(&app.tabs[source].scene.document, definition).into_iter().find(|(_,_,kind,_)| *kind == Kind::PolarStretch).unwrap().0;
+        let native = app.tabs[source].scene.document.objects[&action].clone();
+        let ObjectType::DynamicBlock(object) = &native else { panic!() };
+        let DynamicBlockData::PolarStretchAction(polar) = &object.data else { panic!() };
+        assert_eq!(polar.connections[0].name, "EndXDelta");
+        assert_eq!(polar.connections[1].name, "EndYDelta");
+        assert_eq!(app.tabs[source].history.undo_stack.len(), depth + 1);
+        app.undo_steps(1);
+        assert!(actions::actions(&app.tabs[source].scene.document, definition).is_empty());
+        app.redo_steps(1);
+        assert_eq!(app.tabs[source].scene.document.objects[&action], native);
+        let ObjectType::DynamicBlock(object) = app.tabs[source].scene.document.objects.get_mut(&action).unwrap() else { panic!() };
+        let DynamicBlockData::PolarStretchAction(polar) = &mut object.data else { panic!() };
+        for connection in &mut polar.connections { connection.code = -1; }
+        let orphan = app.tabs[source].scene.document.objects[&action].clone();
+        app.tabs[source].selected_authoring = Some(action);
+        let _ = app.dispatch_command("BASSOCIATE");
+        feed(&mut app, &parameter.name);
+        assert!(app.tabs[source].active_cmd.as_ref().unwrap().prompt().contains("Base/End"));
+        feed(&mut app, "End");
+        assert!(app.tabs[source].active_cmd.is_none());
+        assert_eq!(app.tabs[source].scene.document.objects[&action], native);
+        app.undo_steps(1);
+        assert_eq!(app.tabs[source].scene.document.objects[&action], orphan);
+        app.redo_steps(1);
+        assert_eq!(app.tabs[source].scene.document.objects[&action], native);
+        if testing { let _ = app.open_block_test(source); }
+        else { let _ = app.dispatch_command("BSAVE"); let _ = app.dispatch_command("BCLOSE"); }
+        let source_before = app.tabs[source].scene.document.clone();
+        let i = app.active_tab;
+        let insert = app.tabs[i].block_test.as_ref().map_or(reference, |test| test.insert);
+        app.tabs[i].scene.select_entity(insert, true); app.tabs[i].selected_handle = Some(insert);
+        let before = app.tabs[i].scene.document.clone();
+        let depth = app.tabs[i].history.undo_stack.len();
+        let document = app.tabs[i].id;
+        let _ = app.handle_block_action_result(CmdResult::EvaluateBlockParameter {
+            insert: (!testing).then_some(insert), document, definition, parameter: parameter.handle,
+            value: actions::Value::Point(DVec3::new(0., 15., 0.)),
+        });
+        let geometry = |doc: &codec::CadDocument| {
+            let EntityType::Insert(reference) = doc.get_entity(insert).unwrap() else { panic!() };
+            let line = doc.block_records.get(&reference.block_name).unwrap().entity_handles.iter().find_map(|h| match doc.get_entity(*h) { Some(EntityType::Line(line)) => Some(line), _ => None }).unwrap();
+            (line.start, line.end)
+        };
+        let expected = (Vector3::ZERO, Vector3::new(0., 6., 0.));
+        let changed = geometry(&app.tabs[i].scene.document);
+        assert!(changed.0.distance(&expected.0) < 1e-8);
+        assert!(changed.1.distance(&expected.1) < 1e-8);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+        assert_eq!(app.tabs[i].scene.document.objects[&action], native);
+        app.undo_steps(1);
+        assert_eq!(geometry(&app.tabs[i].scene.document), geometry(&before));
+        app.redo_steps(1);
+        assert_eq!(geometry(&app.tabs[i].scene.document), changed);
+        if testing { assert_eq!(app.tabs[source].scene.document, source_before); }
+    }
+}
+
+#[test]
 fn block_grip_count_command_and_properties_are_atomic_and_undoable() {
     use crate::scene::block_grips::config;
     let (mut app, reference) = fixture();
