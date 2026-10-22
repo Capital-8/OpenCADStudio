@@ -260,7 +260,7 @@ pub(crate) fn stretch_entity_except(
                 }
             }
             if stretched {
-                dim.base_mut().actual_measurement = dim.measurement();
+                dim.base_mut().actual_measurement = dim.stored_measurement();
             }
         }
         codec::EntityType::Polyline3D(p) => {

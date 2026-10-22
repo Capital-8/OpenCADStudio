@@ -31,7 +31,7 @@ pub(crate) fn set_dimension_text_override(base: &mut DimensionBase, text: Option
 pub(crate) fn normalize_scripted_dimension(dim: &mut Dimension) {
     let definition_point = dimension_definition_point(dim);
     dim.base_mut().definition_point = definition_point;
-    dim.base_mut().actual_measurement = dim.measurement();
+    dim.base_mut().actual_measurement = dim.stored_measurement();
 }
 
 fn dimension_definition_point(dim: &Dimension) -> codec::types::Vector3 {
@@ -556,7 +556,7 @@ fn apply_geom_prop(dim: &mut Dimension, field: &str, value: &str) {
     }
     let definition_point = dimension_definition_point(dim);
     dim.base_mut().definition_point = definition_point;
-    dim.base_mut().actual_measurement = dim.measurement();
+    dim.base_mut().actual_measurement = dim.stored_measurement();
 }
 
 fn apply_linear_fields_aligned(d: &mut DimensionAligned, field: &str, value: &str) {
@@ -1448,7 +1448,7 @@ impl Grippable for Dimension {
 
         let definition_point = dimension_definition_point(self);
         self.base_mut().definition_point = definition_point;
-        self.base_mut().actual_measurement = self.measurement();
+        self.base_mut().actual_measurement = self.stored_measurement();
     }
 
     fn grip_menu(&self, grip_id: usize) -> Vec<crate::scene::model::object::GripMenuItem> {
