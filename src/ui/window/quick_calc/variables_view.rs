@@ -49,7 +49,7 @@ fn tool<'a>(bytes: &'static [u8], label: String, msg: Option<VarMsg>) -> Element
     let glyph = if enabled {
         icon(bytes, 17.0, |t| t.muted)
     } else {
-        icon(bytes, 17.0, |t| t.faint.scale_alpha(0.55))
+        icon(bytes, 17.0, super::view::disabled)
     };
     let b = button(container(glyph).center(Fill))
         .width(28)
@@ -242,7 +242,7 @@ fn form<'a>(
     );
     let result: Element<'a, Message> = match &check {
         Ok(value) => row![
-            strong(format!("= {}", value.display()), 11.0, STRONG),
+            strong(format!("= {}", value.display()), 11.0),
             muted(
                 if constant {
                     crate::t!("stored as a fixed value")
@@ -310,7 +310,7 @@ fn form<'a>(
     };
     container(
         column![
-            strong(title.into_owned(), 11.5, STRONG),
+            strong(title.into_owned(), 11.5),
             grid,
             row![
                 Space::new().width(Fill),
@@ -446,7 +446,7 @@ pub(super) fn variables<'a>(
             row![
                 icon(if open { CHEVRON_DOWN } else { CHEVRON_RIGHT }, 9.0, |t| t
                     .muted),
-                strong(category.clone(), 11.0, STRONG).width(Fill),
+                strong(category.clone(), 11.0).width(Fill),
                 muted(members.len().to_string(), 11.0),
             ]
             .spacing(6)

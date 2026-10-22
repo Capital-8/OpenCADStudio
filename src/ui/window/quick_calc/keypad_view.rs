@@ -304,7 +304,7 @@ fn memory_button<'a>(
                     ..Default::default()
                 },
                 text_color: if disabled {
-                    t.faint.scale_alpha(0.55)
+                    super::view::disabled(&t)
                 } else {
                     t.text
                 },
@@ -330,7 +330,7 @@ fn memory_row<'a>(p: &QuickCalcPalette) -> Element<'a, Message> {
             if has {
                 icon(CHEVRON_DOWN, 10.0, |t| t.text)
             } else {
-                icon(CHEVRON_DOWN, 10.0, |t| t.faint.scale_alpha(0.55))
+                icon(CHEVRON_DOWN, 10.0, super::view::disabled)
             }
         ]
         .spacing(2)
@@ -489,7 +489,7 @@ fn points<'a>() -> Element<'a, Message> {
     let h = SCIENTIFIC_KEY_H;
     let signature = |name: &'static str, ins: &'static str, sig: &'static str| {
         button(
-            column![strong(name, 13.0, STRONG), muted(sig, 10.0)]
+            column![strong(name, 13.0), muted(sig, 10.0)]
                 .spacing(3)
                 .align_x(iced::Center)
                 .width(Fill),

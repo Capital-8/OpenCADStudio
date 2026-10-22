@@ -109,6 +109,11 @@ pub(super) struct Tokens {
     pub(super) shadow: Color,
 }
 
+/// The colour of a control that is switched off, for text and icons alike.
+pub(super) fn disabled(t: &Tokens) -> Color {
+    t.faint.scale_alpha(0.55)
+}
+
 pub(super) fn tokens(theme: &Theme) -> Tokens {
     let p = theme.palette();
     let dark = p.is_dark;
@@ -188,14 +193,10 @@ pub(super) fn tip<'a>(
 }
 
 /// Full-strength text in the theme's text colour.
-pub(super) fn strong<'a>(
-    s: impl text::IntoFragment<'a>,
-    size: f32,
-    font: Font,
-) -> text::Text<'a, Theme> {
+pub(super) fn strong<'a>(s: impl text::IntoFragment<'a>, size: f32) -> text::Text<'a, Theme> {
     text(s)
         .size(size)
-        .font(font)
+        .font(STRONG)
         .style(|theme: &Theme| text::Style {
             color: Some(tokens(theme).text),
         })
@@ -331,7 +332,7 @@ fn section_header<'a>(section: Section, label: String, open: bool) -> Element<'a
     let chevron = icon(if open { CHEVRON_UP } else { CHEVRON_DOWN }, 11.0, |t| {
         t.muted
     });
-    let content = row![strong(label, 11.5, STRONG).width(Fill), chevron]
+    let content = row![strong(label, 11.5).width(Fill), chevron]
         .spacing(7)
         .align_y(iced::Center);
     // A button puts its content at the top; centre it in the 28 px bar.
@@ -437,7 +438,7 @@ fn angle_mode_button<'a>(mode: AngleMode) -> Element<'a, Message> {
         AngleMode::Degrees => "DEG",
         AngleMode::Radians => "RAD",
     };
-    button(container(strong(short, 10.5, STRONG)).center(Fill))
+    button(container(strong(short, 10.5)).center(Fill))
         .width(38)
         .height(24)
         .padding([0, 6])
@@ -559,7 +560,7 @@ fn units<'a>(p: &'a QuickCalcPalette) -> Element<'a, Message> {
                 .style(plain_button_style_borderless),
             crate::t!("Swap units").into_owned(),
         ),
-        container(strong(result, 13.0, STRONG)).align_right(Length::FillPortion(1)),
+        container(strong(result, 13.0)).align_right(Length::FillPortion(1)),
         muted(p.unit_to, 11.0).width(32),
     ]
     .spacing(6)
@@ -957,7 +958,7 @@ fn preview_line<'a>(lead: String, value: String, status: Option<String>) -> Elem
                     color: Some(if flashing { t.accent } else { t.muted }),
                 }
             }),
-        strong(value, 16.0, STRONG),
+        strong(value, 16.0),
     ]
     .spacing(8)
     .height(Length::Fixed(20.0))
