@@ -6504,6 +6504,7 @@ fn dimension_text_entity(
     let mut text = Text::with_value(value, pos_f64)
         .with_height(text_height)
         .with_rotation(rotation);
+    text.width_factor = style_width_factor(&style_name, document);
     text.style = style_name;
 
     // Map AttachmentPointType (1..9 grid) to Text horizontal + vertical
@@ -6521,6 +6522,13 @@ fn dimension_text_entity(
 
     text.common = synthesized_text_common(base);
     Some(EntityType::Text(text))
+}
+
+/// Width factor for a synthesized dimension TEXT. Dimension text is drawn at
+/// its text style's width factor; a TEXT's own factor (1.0 when synthesized)
+/// would otherwise win over the style's.
+fn style_width_factor(style_name: &str, document: &CadDocument) -> f64 {
+    f64::from(crate::entities::text_support::resolve_text_style(style_name, document).width_factor)
 }
 
 /// The dimension's properties for its synthesized text, less its extension
@@ -9588,5 +9596,43 @@ pub(crate) fn as_dimension_mut(
     match entity {
         codec::EntityType::Dimension(dimension) => Some(dimension),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod text_width_factor_tests {
+    use super::*;
+    use codec::entities::DimensionLinear;
+    use codec::tables::{DimStyle as DimStyleRecord, TextStyle};
+    use codec::types::Vector3;
+
+    #[test]
+    fn dimension_text_takes_its_style_width_factor() {
+        // A drawing whose dimension style writes with a 0.6-wide text style:
+        // AutoCAD 2025 draws the measurement 0.6 as wide; OCS drew it at 1.0.
+        let mut doc = CadDocument::default();
+        let mut narrow = TextStyle::new("narrow");
+        narrow.handle = doc.allocate_handle();
+        narrow.width_factor = 0.6;
+        let narrow_handle = narrow.handle;
+        doc.text_styles.add(narrow).unwrap();
+        let mut style = DimStyleRecord::new("NarrowDims");
+        style.dimtxsty = "narrow".to_string();
+        style.dimtxsty_handle = narrow_handle;
+        doc.dim_styles.add(style).unwrap();
+
+        let mut d =
+            DimensionLinear::horizontal(Vector3::new(0.0, 0.0, 0.0), Vector3::new(200.0, 0.0, 0.0));
+        d.base.style_name = "NarrowDims".to_string();
+        let Some(EntityType::Text(text)) =
+            baked_dimension_text_entity(&Dimension::Linear(d), &doc, 1.0)
+        else {
+            panic!("a plain measurement is synthesized as TEXT");
+        };
+        assert!(
+            (text.width_factor - 0.6).abs() < 1.0e-6,
+            "dimension text uses its style's width factor, got {}",
+            text.width_factor
+        );
     }
 }
