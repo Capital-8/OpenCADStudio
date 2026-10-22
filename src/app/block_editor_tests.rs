@@ -6667,3 +6667,192 @@ fn block_reference_properties_keys_do_not_retarget_other_selections() {
     assert_eq!(app.tabs[i].scene.document, before);
     assert_eq!(actions::all_parameters(&before, def).len(), 1);
 }
+
+#[test]
+fn block_parameter_without_actions_hides_runtime_grips_and_rejects_stale_activation() {
+    use crate::scene::block_grips::{config, runtime};
+    use crate::scene::model::object::PropValue;
+    use crate::scene::{
+        block_actions as actions, block_distance_parameter as distance,
+        block_orientation_parameter as orientation, block_point_parameter as point,
+    };
+    use codec::objects::{DynamicBlockData, ObjectType};
+    for testing in [false, true] {
+        for kind in 0..6 {
+            let (mut app, reference) = fixture();
+            begin(&mut app, reference);
+            let source = app.active_tab;
+            let def = app.tabs[source]
+                .active_block_edit_session()
+                .unwrap()
+                .br_handle;
+            let doc = &mut app.tabs[source].scene.document;
+            let base = Vector3::new(2., 3., 0.);
+            let end = Vector3::new(12., 13., 0.);
+            let parameter = match kind {
+                0 => point::create(doc, def, base, end),
+                1..=3 => distance::create(
+                    doc,
+                    def,
+                    match kind {
+                        1 => distance::Kind::Linear,
+                        2 => distance::Kind::Polar,
+                        _ => distance::Kind::XY,
+                    },
+                    base,
+                    end,
+                    Vector3::new(4., 5., 0.),
+                ),
+                _ => orientation::create(
+                    doc,
+                    def,
+                    if kind == 4 {
+                        orientation::Kind::Rotation
+                    } else {
+                        orientation::Kind::Flip
+                    },
+                    base,
+                    end,
+                    end,
+                ),
+            }
+            .unwrap();
+            if testing {
+                let _ = app.open_block_test(source);
+            } else {
+                let _ = app.dispatch_command("BSAVE");
+                let _ = app.dispatch_command("BCLOSE");
+            }
+            let source_before = app.tabs[source].scene.document.clone();
+            let i = app.active_tab;
+            let insert = app.tabs[i]
+                .block_test
+                .as_ref()
+                .map_or(reference, |test| test.insert);
+            app.tabs[i].scene.select_entity(insert, true);
+            app.tabs[i].selected_handle = Some(insert);
+            app.refresh_properties();
+            app.tabs[i].selected_grips.clear();
+            app.tabs[i].selected_grip_handles.clear();
+            app.refresh_test_action_grips([0.; 3]);
+            assert!(!app.tabs[i]
+                .selected_grips
+                .iter()
+                .any(|grip| runtime::decode(grip.id).is_some()));
+            assert!(app.tabs[i]
+                .properties
+                .sections
+                .iter()
+                .flat_map(|section| &section.props)
+                .any(|prop| matches!(
+                    prop.value,
+                    PropValue::BlockNumber { .. } | PropValue::BlockChoice { .. }
+                )));
+            let p = actions::all_parameters(&app.tabs[i].scene.document, def)
+                .into_iter()
+                .find(|p| p.handle == parameter)
+                .unwrap();
+            let before = app.tabs[i].scene.document.clone();
+            let depth = app.tabs[i].history.undo_stack.len();
+            let locations = config::locations(&before, def, parameter).unwrap();
+            assert!(!locations.is_empty());
+            for grip in locations {
+                assert!(!app.start_test_action_grip(insert, runtime::id(p.id, grip.role).unwrap()));
+                assert!(app.tabs[i].active_cmd.is_none());
+            }
+            let document = app.tabs[i].id;
+            let _ =
+                app.handle_block_action_result(crate::command::CmdResult::EvaluateBlockParameter {
+                    document,
+                    definition: def,
+                    parameter,
+                    insert: (!testing).then_some(insert),
+                    value: if kind == 5 {
+                        actions::Value::Flip(true)
+                    } else {
+                        actions::Value::Point(glam::DVec3::new(20., 20., 0.))
+                    },
+                });
+            assert_eq!(app.tabs[i].scene.document, before);
+            assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+            if testing {
+                assert_eq!(app.tabs[source].scene.document, source_before);
+            }
+            // Adding a valid native association restores the same configured grip.
+            let member = app.tabs[i]
+                .scene
+                .document
+                .block_records
+                .get("EDIT_ME")
+                .unwrap()
+                .entity_handles[0];
+            let action = actions::create(
+                &mut app.tabs[i].scene.document,
+                def,
+                match kind {
+                    4 => actions::Kind::Rotate,
+                    5 => actions::Kind::Flip,
+                    _ => actions::Kind::Move,
+                },
+                parameter,
+                &[member],
+                glam::DVec3::ZERO,
+            )
+            .unwrap();
+            let baseline = app.tabs[i].scene.document.clone();
+            if let Some(test) = &mut app.tabs[i].block_test {
+                test.baseline = std::sync::Arc::new(baseline);
+            }
+            app.tabs[i].selected_grips.clear();
+            app.tabs[i].selected_grip_handles.clear();
+            app.refresh_test_action_grips([0.; 3]);
+            let grip = app.tabs[i]
+                .selected_grips
+                .iter()
+                .find(|grip| runtime::decode(grip.id).is_some_and(|(node, _)| node == p.id))
+                .unwrap()
+                .id;
+            assert!(actions::has_action(
+                &app.tabs[i].scene.document,
+                def,
+                parameter
+            ));
+            if kind != 5 {
+                assert!(app.start_test_action_grip(insert, grip));
+                assert!(app.tabs[i].active_cmd.is_some());
+                let _ = app.update(Message::CommandEscape);
+            }
+            // A retained command result cannot mutate values after disassociation.
+            let ObjectType::DynamicBlock(object) =
+                app.tabs[i].scene.document.objects.get_mut(&action).unwrap()
+            else {
+                panic!()
+            };
+            let action = match &mut object.data {
+                DynamicBlockData::MoveAction(a) => &mut a.connections[0],
+                DynamicBlockData::RotateAction(a) => &mut a.connections[0],
+                DynamicBlockData::FlipAction(a) => &mut a.connections[0],
+                _ => unreachable!(),
+            };
+            action.code = -1;
+            let baseline = app.tabs[i].scene.document.clone();
+            if let Some(test) = &mut app.tabs[i].block_test {
+                test.baseline = std::sync::Arc::new(baseline);
+            }
+            let before = app.tabs[i].scene.document.clone();
+            let _ =
+                app.handle_block_action_result(crate::command::CmdResult::EvaluateBlockParameter {
+                    document,
+                    definition: def,
+                    parameter,
+                    insert: (!testing).then_some(insert),
+                    value: if kind == 5 {
+                        actions::Value::Flip(true)
+                    } else {
+                        actions::Value::Point(glam::DVec3::new(20., 20., 0.))
+                    },
+                });
+            assert_eq!(app.tabs[i].scene.document, before);
+        }
+    }
+}

@@ -528,7 +528,7 @@ impl OpenCADStudio {
                 let Some(test) = self.tabs[i].block_test.as_ref() else {
                     return Task::none();
                 };
-                if test.definition != definition {
+                if test.definition != definition || !actions::has_action(&test.baseline, definition, parameter) {
                     return Task::none();
                 }
                 let Some(EntityType::Insert(insert)) =
@@ -660,6 +660,7 @@ impl OpenCADStudio {
         else {
             return false;
         };
+        if !actions::has_action(&test.baseline, test.definition, p.handle) { return false; }
         let Ok(value) = actions::instance::test_value(&tab.scene.document, test.insert, &p) else { return false };
         let Some(grip) = crate::scene::block_grips::runtime::grips(&test.baseline, test.definition, &p, value).into_iter().find(|grip| grip.role == role) else { return false };
         if p.flip {
@@ -748,6 +749,7 @@ impl OpenCADStudio {
         else {
             return false;
         };
+        if !actions::has_action(&tab.scene.document, def, p.handle) { return false; }
         let Ok(value) = actions::instance::value(&tab.scene.document, handle, &p) else { return false };
         let Some(grip) = crate::scene::block_grips::runtime::grips(&tab.scene.document, def, &p, value).into_iter().find(|grip| grip.role == role) else { return false };
         if p.flip {
@@ -787,6 +789,7 @@ impl OpenCADStudio {
         if tab.active_block_edit_session().is_some()
             || tab.block_test.is_some()
             || actions::instance::definition(&tab.scene.document, handle) != Some(definition)
+            || !actions::has_action(&tab.scene.document, definition, parameter)
         {
             return Task::none();
         }

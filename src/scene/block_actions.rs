@@ -127,6 +127,12 @@ pub(crate) fn all_parameters(doc: &CadDocument, definition: Handle) -> Vec<Param
     result
 }
 
+/// Resolve native action association for runtime grip interaction.
+pub(crate) fn has_action(doc: &CadDocument, definition: Handle, parameter: Handle) -> bool {
+    let Some(p) = all_parameters(doc, definition).into_iter().find(|p| p.handle == parameter) else { return false; };
+    actions(doc, definition).iter().any(|(_, _, _, node)| *node == p.id)
+}
+
 pub(crate) fn compatible(p: &Parameter, kind: Kind) -> bool {
     match kind {
         Kind::Move => !p.rotation && !p.flip,
