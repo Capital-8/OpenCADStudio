@@ -63,6 +63,10 @@ struct Cursor<'a> {
     i: usize,
     /// How many parameter lists deep the cursor is.
     depth: usize,
+    /// Scratch shared by every number token of the file: a `.` that needs
+    /// a `0` after it is normalized here instead of allocating a fresh
+    /// String per number.
+    buf: Vec<u8>,
 }
 
 impl Cursor<'_> {
@@ -88,7 +92,9 @@ impl Cursor<'_> {
     fn eat(&mut self, c: u8) -> Option<()> {
         (self.peek()? == c).then(|| self.i += 1)
     }
-    fn word(&mut self) -> String {
+    /// The bytes of the next word, without materializing them: they run to
+    /// the first byte that is not alphanumeric, `_` or `-`.
+    fn word_span(&mut self) -> std::ops::Range<usize> {
         self.skip();
         let start = self.i;
         while self
@@ -98,13 +104,61 @@ impl Cursor<'_> {
         {
             self.i += 1;
         }
-        String::from_utf8_lossy(&self.s[start..self.i]).to_ascii_uppercase()
+        start..self.i
+    }
+    /// The next word, uppercased for keyword matching — one allocation,
+    /// only for the words that are actually stored (entity names, enum
+    /// values). Callers that just parse or check the word use
+    /// [`Cursor::word_span`] / [`Cursor::word_id`] and allocate nothing.
+    fn word(&mut self) -> String {
+        let span = self.word_span();
+        String::from_utf8_lossy(&self.s[span]).to_ascii_uppercase()
+    }
+    /// The next word read as an instance id (`#12`, `#345`). Digits are
+    /// untouched by the uppercasing [`Cursor::word`] would apply, so the
+    /// copy could never change the parse.
+    fn word_id(&mut self) -> Option<u64> {
+        let span = self.word_span();
+        std::str::from_utf8(&self.s[span]).ok()?.parse().ok()
+    }
+    /// Whether Rust's float parser needs a `0` written after the `.` at
+    /// `i`: it takes `1.E-3` as nothing (it wants `1.0E-3`), while a dot
+    /// with no digit anywhere before it — the malformed `+.` — is a
+    /// rejection the reader has always passed straight through.
+    fn dot_needs_zero(raw: &[u8], i: usize) -> bool {
+        let next = raw.get(i + 1);
+        !next.is_some_and(|n| n.is_ascii_digit())
+            && (matches!(next, Some(b'e' | b'E')) || raw[..i].iter().any(u8::is_ascii_digit))
+    }
+    /// One number token, parsed in place: a `.` that needs a `0` after it
+    /// (per [`Cursor::dot_needs_zero`]) is normalized into the scratch
+    /// `buf` this cursor shares across every token of the file, and
+    /// tokens needing no `0` parse straight out of the file's bytes —
+    /// where two `str::replace` calls used to allocate two Strings for
+    /// every number in every file.
+    fn number(&mut self, start: usize, end: usize) -> Option<f64> {
+        let raw = &self.s[start..end];
+        if !raw
+            .iter()
+            .enumerate()
+            .any(|(i, &c)| c == b'.' && Self::dot_needs_zero(raw, i))
+        {
+            return std::str::from_utf8(raw).ok()?.parse().ok();
+        }
+        self.buf.clear();
+        for (i, &c) in raw.iter().enumerate() {
+            self.buf.push(c);
+            if c == b'.' && Self::dot_needs_zero(raw, i) {
+                self.buf.push(b'0');
+            }
+        }
+        std::str::from_utf8(&self.buf).ok()?.parse().ok()
     }
     fn param(&mut self) -> Option<P> {
         Some(match self.peek()? {
             b'#' => {
                 self.i += 1;
-                P::Ref(self.word().parse().ok()?)
+                P::Ref(self.word_id()?)
             }
             b'\'' => {
                 self.i += 1;
@@ -143,11 +197,10 @@ impl Cursor<'_> {
                 {
                     self.i += 1;
                 }
-                let raw = String::from_utf8_lossy(&self.s[start..self.i]).replace(".E", ".0E");
-                P::Num(raw.replace(".e", ".0e").parse().ok()?)
+                P::Num(self.number(start, self.i)?)
             }
             _ => {
-                if self.word().is_empty() {
+                if self.word_span().is_empty() {
                     return None;
                 }
                 P::Typed(self.params()?)
@@ -186,7 +239,7 @@ impl Cursor<'_> {
     /// `#id = TYPE(...)` or `#id = (A(...) B(...))`, up to its `;`.
     fn instance(&mut self) -> Option<(u64, Instance)> {
         self.eat(b'#')?;
-        let id = self.word().parse().ok()?;
+        let id = self.word_id()?;
         self.eat(b'=')?;
         let mut parts = Vec::new();
         if self.eat(b'(').is_some() {
@@ -793,6 +846,7 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
         s: &text.as_bytes()[data..],
         i: 0,
         depth: 0,
+        buf: Vec::new(),
     };
     let mut instances = HashMap::new();
     while cursor.peek() == Some(b'#') {
