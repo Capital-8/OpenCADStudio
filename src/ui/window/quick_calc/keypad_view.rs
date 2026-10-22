@@ -325,7 +325,13 @@ fn memory_row<'a>(p: &QuickCalcPalette) -> Element<'a, Message> {
     let list = memory_button(
         row![
             text("M").size(11.5).font(STRONG),
-            icon(CHEVRON_DOWN, 10.0, |t| t.text)
+            // The svg doesn't take the button's text colour, so it is
+            // dimmed here to match the disabled label.
+            if has {
+                icon(CHEVRON_DOWN, 10.0, |t| t.text)
+            } else {
+                icon(CHEVRON_DOWN, 10.0, |t| t.faint.scale_alpha(0.55))
+            }
         ]
         .spacing(2)
         .align_y(iced::Center)
