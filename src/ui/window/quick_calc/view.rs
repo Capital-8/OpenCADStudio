@@ -627,10 +627,10 @@ pub struct Inputs {
     pub theme: Theme,
 }
 
-/// History rows the layout always keeps room for; the sections scroll
-/// instead of squeezing the history below this.
-const MIN_HISTORY_ROWS: f32 = 4.0;
 const HISTORY_ROW_H: f32 = 22.0;
+/// The gap between the pallet's blocks, the same as the frame's padding
+/// beside them.
+const GAP: f32 = 6.0;
 /// Space between an embedded scrollbar and the content it scrolls.
 const SCROLLBAR_GAP: f32 = 4.0;
 
@@ -913,49 +913,61 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
         }
     }
 
-    // Room for the sections: what is left after the toolbar, the input, the
-    // keypad, the gaps and the history's minimum. Past that they scroll;
-    // the keypad never does.
+    // One scroll for everything below the toolbar, as in the other pallets.
+    // While it all fits, the history fills the room above the input with
+    // its newest row at the bottom. Once it doesn't, the history takes its
+    // natural height and the whole column scrolls, held at the bottom so
+    // the input, the keypad and the sections stay in view.
     let input_h = 30.0
         + 6.0
         + if show_error { 38.0 } else { 20.0 }
         + if picking.is_some() { 52.0 } else { 0.0 };
-    let history_min = MIN_HISTORY_ROWS * HISTORY_ROW_H;
-    let fixed = 28.0 + input_h + super::keypad_view::height(p) + 4.0 * 6.0;
-    let sections_cap = (height - fixed - history_min).max(0.0);
-    let natural = sections_height(p);
-    // A scrollbar that shows takes its own room beside the content
-    // (`spacing` embeds it) instead of covering the keys or the results.
-    let sections: Element<'a, Message> = if natural <= sections_cap {
-        sections.into()
-    } else {
-        scrollable(sections)
-            .spacing(SCROLLBAR_GAP)
-            .height(sections_cap)
-            .into()
-    };
-    // Newest at the bottom, right above the input: a short history sits on
-    // the bottom edge, a long one scrolls up from it.
-    let room = height - fixed - natural.min(sections_cap);
-    let overflows = history_rows.len() as f32 * HISTORY_ROW_H > room;
-    let mut list = scrollable(column(history_rows))
-        .anchor_bottom()
-        .height(Length::Shrink);
-    if overflows {
-        list = list.spacing(SCROLLBAR_GAP);
-    }
-    let history = container(list).align_bottom(Fill).width(Fill);
-
-    column![
-        toolbar,
-        container(history).height(Fill),
+    let below_toolbar = height - 28.0 - GAP;
+    let history_h = history_rows.len() as f32 * HISTORY_ROW_H;
+    let rest = input_h + super::keypad_view::height(p) + sections_height(p) + 3.0 * GAP;
+    let overflows = history_h + rest > below_toolbar;
+    let history = container(column(history_rows))
+        .align_bottom(if overflows {
+            Length::Shrink
+        } else {
+            Length::Fill
+        })
+        .width(Fill);
+    let content = column![
+        history,
         input_block,
         super::keypad_view::keypad(p),
         sections,
     ]
-    .spacing(6)
-    .height(Fill)
-    .into()
+    .spacing(GAP);
+    let content: Element<'a, Message> = if overflows {
+        // The scrollbar takes its own room beside the content (`spacing`
+        // embeds it) instead of covering the keys or the results.
+        scrollable(content)
+            .anchor_bottom()
+            .spacing(SCROLLBAR_GAP)
+            .height(Fill)
+            .into()
+    } else {
+        content.height(Fill).into()
+    };
+
+    column![toolbar, content].spacing(GAP).height(Fill).into()
+}
+
+/// The height a newly floated pallet opens at: the toolbar, a few history
+/// rows, the input, the Standard keypad and both section headers closed.
+pub fn float_height() -> f32 {
+    const FRAME_PADDING: f32 = 2.0 * 6.0;
+    const HISTORY_ROWS: f32 = 3.0;
+    let p = QuickCalcPalette::default();
+    FRAME_PADDING
+        + 28.0
+        + HISTORY_ROWS * HISTORY_ROW_H
+        + (30.0 + 6.0 + 20.0)
+        + super::keypad_view::height(&p)
+        + sections_height(&p)
+        + 4.0 * GAP
 }
 
 /// The sections' height when laid out in full: every header plus the open

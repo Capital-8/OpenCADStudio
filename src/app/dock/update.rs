@@ -757,10 +757,12 @@ impl OpenCADStudio {
             return (f.w, f.h);
         }
         let (_, avail) = self.dock_workspace_size();
-        (
-            self.dock.width(id, self.win_size.0),
-            (avail * 0.6).clamp(crate::ui::dock::FLOAT_MIN_H, 520.0),
-        )
+        let mut h = (avail * 0.6).clamp(crate::ui::dock::FLOAT_MIN_H, 520.0);
+        // QuickCalc opens tall enough for its keypad and section headers.
+        if id == crate::ui::dock::PanelId::QuickCalc {
+            h = h.max(crate::ui::window::quick_calc::float_height().min(avail));
+        }
+        (self.dock.width(id, self.win_size.0), h)
     }
 
     /// Where a dragged pallet lands if released at workspace point `p`:

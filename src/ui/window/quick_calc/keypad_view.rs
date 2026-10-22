@@ -23,9 +23,6 @@ const SCIENTIFIC_KEY_H: f32 = 34.0;
 const SIGNATURE_KEY_H: f32 = 40.0;
 const MEMORY_ROW_H: f32 = 28.0;
 const FLYOUT_ROW_H: f32 = 30.0;
-/// Below the keys. The keypad has no top padding: the gap under the input
-/// separates them. Its sides line up with the input.
-const PAD_BOTTOM: f32 = 8.0;
 const ROW_GAP: f32 = 4.0;
 
 /// Math letters (x, y, e, n, f): italic serif, a little larger.
@@ -567,10 +564,9 @@ pub(super) fn keypad<'a>(p: &'a QuickCalcPalette) -> Element<'a, Message> {
     } else {
         standard()
     });
-    let base = container(body).padding(Padding {
-        bottom: PAD_BOTTOM,
-        ..Padding::ZERO
-    });
+    // No padding of its own: the pallet's gaps above and below match the
+    // frame's padding beside it, and its sides line up with the input.
+    let base = container(body);
     let Some(flyout) = p.flyout else {
         return base.into();
     };
@@ -586,7 +582,7 @@ pub(super) fn keypad<'a>(p: &'a QuickCalcPalette) -> Element<'a, Message> {
     };
     let layer: Element<'a, Message> = match flyout {
         Flyout::Memory => container(panel(memory_list(p)))
-            .padding(inset(below_memory, PAD_BOTTOM))
+            .padding(inset(below_memory, 0.0))
             .width(Fill)
             .height(Fill)
             .into(),
@@ -618,5 +614,5 @@ pub(super) fn height(p: &QuickCalcPalette) -> f32 {
     } else {
         keys(6.0, STANDARD_KEY_H)
     };
-    MEMORY_ROW_H + ROW_GAP + menus + PAD_BOTTOM
+    MEMORY_ROW_H + ROW_GAP + menus
 }

@@ -500,6 +500,29 @@ mod tests {
     }
 
     #[test]
+    fn floats_tall_enough_for_the_keypad() {
+        let app = app();
+        let float_height = crate::ui::window::quick_calc::float_height();
+        let workspace = |h: f32| {
+            app.tabs[app.active_tab]
+                .scene
+                .selection
+                .borrow_mut()
+                .view
+                .vp_size
+                .1 = h;
+        };
+        // A short workspace: other pallets float at 60 % of it.
+        workspace(700.0);
+        let (_, h) = app.dock_float_size(PanelId::QuickCalc);
+        assert!(h >= float_height, "{h} < {float_height}");
+        assert!(app.dock_float_size(PanelId::Layers).1 < float_height);
+        // Never taller than the workspace.
+        workspace(300.0);
+        assert_eq!(app.dock_float_size(PanelId::QuickCalc).1, 300.0);
+    }
+
+    #[test]
     fn variables_are_global_and_getvar_reads_the_drawing() {
         let mut app = app();
         let i = app.active_tab;
