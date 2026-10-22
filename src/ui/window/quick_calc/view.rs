@@ -574,12 +574,10 @@ fn units<'a>(p: &'a QuickCalcPalette) -> Element<'a, Message> {
     ]
     .spacing(6)
     .align_y(iced::Center);
-    let insert: Element<'a, Message> = match p.converted_literal() {
-        Some(lit) => text_button(
-            row![text(crate::t!("Insert")).size(11), mono(lit, 11.0)].spacing(4),
-            QuickCalcMsg::UnitInsert,
-        ),
-        None => Space::new().into(),
+    let insert: Element<'a, Message> = if p.converted_literal().is_some() {
+        text_button(text(crate::t!("Insert")).size(11), QuickCalcMsg::UnitInsert)
+    } else {
+        Space::new().into()
     };
     column![
         cats,
