@@ -1,4 +1,4 @@
-//! The keypad section: memory row, Standard or Scientific keys, and the
+//! The keypad, always shown under the input: memory row, Standard or Scientific keys, and the
 //! flyouts (trigonometry, functions, points, memory) that open over them.
 
 use iced::widget::text::Span;
@@ -8,8 +8,7 @@ use iced::widget::{
 use iced::{font, mouse, Background, Border, Color, Element, Fill, Font, Padding, Shadow, Theme};
 
 use super::view::{
-    icon, m, mix, muted, segment, segmented, strong, tip, tokens, CHEVRON_DOWN, MONO_STRONG, POINT,
-    STRONG,
+    icon, m, mix, muted, strong, tip, tokens, CHEVRON_DOWN, MONO_STRONG, POINT, STRONG,
 };
 use super::{Flyout, Key, KeypadMode, MemoryOp, QuickCalcMsg, QuickCalcPalette};
 use crate::app::calc::Value;
@@ -24,15 +23,13 @@ const SCIENTIFIC_KEY_H: f32 = 34.0;
 const SIGNATURE_KEY_H: f32 = 40.0;
 const MEMORY_ROW_H: f32 = 28.0;
 const FLYOUT_ROW_H: f32 = 30.0;
-/// The keypad body's padding: above the memory row, below the keys, and
-/// the inset of a flyout from the body's sides.
-const PAD_TOP: f32 = 6.0;
+/// Below the keys. The keypad has no top padding: the gap under the input
+/// separates them. Its sides line up with the input.
 const PAD_BOTTOM: f32 = 8.0;
-const FLYOUT_INSET: f32 = 8.0;
 const ROW_GAP: f32 = 4.0;
 
 /// Math letters (x, y, e, n, f): italic serif, a little larger.
-const MATH: Font = Font {
+pub(super) const MATH: Font = Font {
     family: font::Family::Serif,
     style: font::Style::Italic,
     ..Font::DEFAULT
@@ -559,24 +556,6 @@ fn memory_list<'a>(p: &QuickCalcPalette) -> Element<'a, Message> {
     .into()
 }
 
-/// The Standard | Scientific switch in the keypad's header.
-pub(super) fn mode_switch<'a>(p: &QuickCalcPalette) -> Element<'a, Message> {
-    segmented(vec![
-        segment(
-            crate::t!("Standard").into_owned(),
-            p.keypad_mode == KeypadMode::Standard,
-            QuickCalcMsg::SetKeypadMode(KeypadMode::Standard),
-            false,
-        ),
-        segment(
-            crate::t!("Scientific").into_owned(),
-            p.keypad_mode == KeypadMode::Scientific,
-            QuickCalcMsg::SetKeypadMode(KeypadMode::Scientific),
-            false,
-        ),
-    ])
-}
-
 pub(super) fn keypad<'a>(p: &'a QuickCalcPalette) -> Element<'a, Message> {
     let scientific_mode = p.keypad_mode == KeypadMode::Scientific;
     let mut body = column![memory_row(p)].spacing(ROW_GAP);
@@ -589,23 +568,21 @@ pub(super) fn keypad<'a>(p: &'a QuickCalcPalette) -> Element<'a, Message> {
         standard()
     });
     let base = container(body).padding(Padding {
-        top: PAD_TOP,
         bottom: PAD_BOTTOM,
-        left: 2.0,
-        right: 2.0,
+        ..Padding::ZERO
     });
     let Some(flyout) = p.flyout else {
         return base.into();
     };
-    // Below the memory row the memory list covers the keys; the menus open
-    // below their own row of buttons.
-    let below_memory = PAD_TOP + MEMORY_ROW_H + ROW_GAP;
+    // The memory list opens right below the memory row and covers the keys;
+    // the menus open right below their own row of buttons. The offsets are
+    // the same constants the rows are built with.
+    let below_memory = MEMORY_ROW_H + ROW_GAP;
     let below_menus = below_memory + FLYOUT_ROW_H + ROW_GAP;
     let inset = |top: f32, bottom: f32| Padding {
         top,
         bottom,
-        left: FLYOUT_INSET,
-        right: FLYOUT_INSET,
+        ..Padding::ZERO
     };
     let layer: Element<'a, Message> = match flyout {
         Flyout::Memory => container(panel(memory_list(p)))
@@ -641,5 +618,5 @@ pub(super) fn height(p: &QuickCalcPalette) -> f32 {
     } else {
         keys(6.0, STANDARD_KEY_H)
     };
-    PAD_TOP + MEMORY_ROW_H + ROW_GAP + menus + PAD_BOTTOM
+    MEMORY_ROW_H + ROW_GAP + menus + PAD_BOTTOM
 }

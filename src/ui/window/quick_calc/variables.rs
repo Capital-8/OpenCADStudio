@@ -531,14 +531,17 @@ mod tests {
             value: Some(StoredValue::Point([1.0, 2.0, 0.0])),
             ..constant("origin", 0.0, "")
         });
-        p.mode = crate::app::calc::AngleMode::Radians;
+        p.toggle_angle_mode();
         p.set_keypad_mode(super::super::KeypadMode::Scientific);
+        p.toggle(super::super::Section::Variables);
         let json = serde_json::to_string(&p.settings()).unwrap();
         let mut q = QuickCalcPalette::default();
         q.apply_settings(&serde_json::from_str(&json).unwrap());
         assert_eq!(q.variables.len(), 5);
         assert_eq!(q.mode, p.mode);
+        assert_eq!(q.mode, crate::app::calc::AngleMode::Radians);
         assert_eq!(q.keypad_mode, p.keypad_mode);
+        assert_eq!(q.open, [false, true]);
         assert_eq!(q.variables[4].category, "General");
         // Broken entries from a hand-edited file are dropped.
         let mut s = p.settings();

@@ -8,8 +8,8 @@ use iced::widget::{
 use iced::{Background, Border, Color, Element, Fill, Font, Length, Theme};
 
 use super::{
-    continues_ans, has_length_suffix, Preview, QuickCalcMsg, QuickCalcPalette, Section, UnitCat,
-    INPUT_ID,
+    continues_ans, has_length_suffix, KeypadMode, Preview, QuickCalcMsg, QuickCalcPalette, Section,
+    UnitCat, INPUT_ID,
 };
 use crate::app::calc::{AngleMode, Value};
 use crate::app::Message;
@@ -26,6 +26,9 @@ pub(super) const CHEVRON_DOWN: &[u8] =
     include_bytes!("../../../../assets/icons/quickcalc/chevron_down.svg");
 pub(super) const CHEVRON_RIGHT: &[u8] =
     include_bytes!("../../../../assets/icons/quickcalc/chevron_right.svg");
+const CHEVRON_UP: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/chevron_up.svg");
+const KEYPAD_STANDARD: &[u8] =
+    include_bytes!("../../../../assets/icons/quickcalc/keypad_standard.svg");
 const SWAP: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/swap.svg");
 const ERROR: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/error.svg");
 
@@ -349,60 +352,148 @@ pub(super) fn segmented<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Mes
 
 // ── Sections ────────────────────────────────────────────────────────────
 
-/// A section's 28 px header: the chevron and title toggle the section;
-/// `meta` (a muted note) or `control` (the keypad's mode switch) sits on the
-/// right, outside the toggle.
-fn section_header<'a>(
-    section: Section,
-    label: String,
-    meta: Option<String>,
-    control: Option<Element<'a, Message>>,
-    open: bool,
-) -> Element<'a, Message> {
-    let mut content = row![
-        icon(if open { CHEVRON_DOWN } else { CHEVRON_RIGHT }, 10.0, |t| t
-            .muted),
-        strong(label, 11.5, STRONG).width(Fill),
-    ]
-    .spacing(7)
-    .align_y(iced::Center);
-    if let Some(meta) = meta {
-        content = content.push(muted(meta, 10.5));
-    }
-    // A button puts its content at the top; centre it in the 28 px bar so
-    // the chevron and title line up with the keypad's mode switch.
+/// A section's 28 px header, one button that toggles the section: the
+/// title on the left, a chevron on the right that points down while the
+/// section is closed and up while it is open.
+fn section_header<'a>(section: Section, label: String, open: bool) -> Element<'a, Message> {
+    let chevron = icon(if open { CHEVRON_UP } else { CHEVRON_DOWN }, 11.0, |t| {
+        t.muted
+    });
+    let content = row![strong(label, 11.5, STRONG).width(Fill), chevron]
+        .spacing(7)
+        .align_y(iced::Center);
+    // A button puts its content at the top; centre it in the 28 px bar.
     let toggle = button(container(content).center_y(Fill))
         .width(Fill)
-        .height(Fill)
-        .padding([0, 8])
+        .height(28)
+        .padding(iced::Padding {
+            left: 8.0,
+            right: 14.0,
+            ..iced::Padding::ZERO
+        })
         .on_press(m(QuickCalcMsg::Toggle(section)))
         .style(|theme: &Theme, status| {
             let t = tokens(theme);
             button::Style {
-                background: matches!(status, button::Status::Hovered)
-                    .then_some(Background::Color(t.strong)),
+                background: Some(Background::Color(
+                    if matches!(status, button::Status::Hovered | button::Status::Pressed) {
+                        t.strong
+                    } else {
+                        t.weak
+                    },
+                )),
                 text_color: t.text,
                 ..Default::default()
             }
         });
-    let mut bar = row![toggle].align_y(iced::Center);
-    if let Some(control) = control {
-        bar = bar.push(container(control).padding([0, 6]));
-    }
     column![
         container(Space::new().width(Fill).height(1)).style(|theme: &Theme| container::Style {
             background: Some(Background::Color(tokens(theme).line)),
             ..Default::default()
         }),
-        container(bar)
-            .height(28)
-            .width(Fill)
-            .style(|theme: &Theme| container::Style {
-                background: Some(Background::Color(tokens(theme).weak)),
-                ..Default::default()
-            }),
+        toggle,
     ]
     .into()
+}
+
+// ── Toolbar controls ────────────────────────────────────────────────────
+
+/// The Standard | Scientific switch: a calculator icon and an italic f(x).
+fn keypad_mode_switch<'a>(p: &QuickCalcPalette) -> Element<'a, Message> {
+    let option = |content: Element<'a, Message>, mode: KeypadMode, label: String| {
+        let on = p.keypad_mode == mode;
+        let b = button(container(content).center(Fill))
+            .width(26)
+            .height(22)
+            .padding(0)
+            .on_press(m(QuickCalcMsg::SetKeypadMode(mode)))
+            .style(move |theme: &Theme, status| {
+                let t = tokens(theme);
+                button::Style {
+                    background: on.then_some(Background::Color(t.strong)),
+                    border: Border {
+                        radius: 3.0.into(),
+                        ..Default::default()
+                    },
+                    text_color: if on || matches!(status, button::Status::Hovered) {
+                        t.text
+                    } else {
+                        t.muted
+                    },
+                    ..Default::default()
+                }
+            });
+        tip(b, label)
+    };
+    let on_std = p.keypad_mode == KeypadMode::Standard;
+    // The icon follows the button's text colour: full when active or hovered.
+    let calculator = svg(crate::ui::icons::themed_handle(KEYPAD_STANDARD))
+        .width(16)
+        .height(16)
+        .style(move |theme: &Theme, status| {
+            let t = tokens(theme);
+            svg::Style {
+                color: Some(if on_std || matches!(status, svg::Status::Hovered) {
+                    t.text
+                } else {
+                    t.muted
+                }),
+            }
+        });
+    let fx = text("f(x)").size(13).font(super::keypad_view::MATH);
+    container(
+        row![
+            option(
+                calculator.into(),
+                KeypadMode::Standard,
+                crate::t!("Standard keypad").into_owned()
+            ),
+            option(
+                fx.into(),
+                KeypadMode::Scientific,
+                crate::t!("Scientific keypad").into_owned()
+            ),
+        ]
+        .spacing(1),
+    )
+    .padding(1)
+    .style(|theme: &Theme| container::Style {
+        border: Border {
+            color: tokens(theme).line,
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    })
+    .into()
+}
+
+/// DEG or RAD: shows the angle mode and switches to the other one.
+fn angle_mode_button<'a>(mode: AngleMode) -> Element<'a, Message> {
+    let (short, label) = match mode {
+        AngleMode::Degrees => ("DEG", crate::t!("Angles in degrees. Switch to radians")),
+        AngleMode::Radians => ("RAD", crate::t!("Angles in radians. Switch to degrees")),
+    };
+    let b = button(container(strong(short, 10.5, STRONG)).center(Fill))
+        .width(38)
+        .height(24)
+        .padding([0, 6])
+        .on_press(m(QuickCalcMsg::ToggleAngleMode))
+        .style(|theme: &Theme, status| {
+            let t = tokens(theme);
+            button::Style {
+                background: matches!(status, button::Status::Hovered | button::Status::Pressed)
+                    .then_some(Background::Color(t.strong)),
+                border: Border {
+                    color: t.line,
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                text_color: t.text,
+                ..Default::default()
+            }
+        });
+    tip(b, label.into_owned())
 }
 
 fn chip<'a>(label: &'static str, on: bool, msg: QuickCalcMsg) -> Element<'a, Message> {
@@ -584,20 +675,6 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
     let active = |kind: PickKind| picking.is_some_and(|(_, k)| k == kind);
 
     // Toolbar.
-    let mode_toggle = segmented(vec![
-        segment(
-            "DEG".into(),
-            p.mode == AngleMode::Degrees,
-            QuickCalcMsg::SetMode(AngleMode::Degrees),
-            false,
-        ),
-        segment(
-            "RAD".into(),
-            p.mode == AngleMode::Radians,
-            QuickCalcMsg::SetMode(AngleMode::Radians),
-            false,
-        ),
-    ]);
     let divider =
         container(Space::new().width(1).height(16)).style(|theme: &Theme| container::Style {
             background: Some(Background::Color(tokens(theme).line)),
@@ -642,7 +719,11 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
             false
         ),
         Space::new().width(Fill),
-        mode_toggle,
+        keypad_mode_switch(p),
+        container(angle_mode_button(p.mode)).padding(iced::Padding {
+            left: 4.0,
+            ..iced::Padding::ZERO
+        }),
     ]
     .spacing(2)
     .align_y(iced::Center);
@@ -852,25 +933,13 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
     let mut sections = column![];
     for section in Section::ALL {
         let open = p.is_open(section);
-        let (label, meta) = match section {
-            Section::Keypad => (crate::t!("Keypad"), None),
-            Section::Units => (
-                crate::t!("Units"),
-                Some(format!("{} → {}", p.unit_from, p.unit_to)),
-            ),
-            Section::Variables => (crate::t!("Variables"), Some(p.variables.len().to_string())),
+        let label = match section {
+            Section::Units => crate::t!("Units"),
+            Section::Variables => crate::t!("Variables"),
         };
-        let control = (section == Section::Keypad).then(|| super::keypad_view::mode_switch(p));
-        sections = sections.push(section_header(
-            section,
-            label.into_owned(),
-            meta,
-            control,
-            open,
-        ));
+        sections = sections.push(section_header(section, label.into_owned(), open));
         if open {
             sections = sections.push(match section {
-                Section::Keypad => super::keypad_view::keypad(p),
                 Section::Units => units(p),
                 Section::Variables => super::variables_view::variables(
                     p,
@@ -885,13 +954,14 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
     }
 
     // Room for the sections: what is left after the toolbar, the input, the
-    // gaps and the history's minimum. Past that they scroll.
+    // keypad, the gaps and the history's minimum. Past that they scroll;
+    // the keypad never does.
     let input_h = 30.0
         + 6.0
         + if show_error { 38.0 } else { 20.0 }
         + if picking.is_some() { 52.0 } else { 0.0 };
     let history_min = MIN_HISTORY_ROWS * HISTORY_ROW_H;
-    let fixed = 28.0 + input_h + 3.0 * 6.0;
+    let fixed = 28.0 + input_h + super::keypad_view::height(p) + 4.0 * 6.0;
     let sections_cap = (height - fixed - history_min).max(0.0);
     let natural = sections_height(p);
     // A scrollbar that shows takes its own room beside the content
@@ -925,6 +995,7 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
         toolbar,
         container(history).height(Fill),
         input_block,
+        super::keypad_view::keypad(p),
         sections,
     ]
     .spacing(6)
@@ -933,7 +1004,7 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
 }
 
 /// The sections' height when laid out in full: every header plus the open
-/// bodies, from the fixed key and row sizes they are built with.
+/// bodies, from the fixed row sizes they are built with.
 fn sections_height(p: &QuickCalcPalette) -> f32 {
     const HEADER: f32 = 29.0;
     Section::ALL
@@ -942,7 +1013,6 @@ fn sections_height(p: &QuickCalcPalette) -> f32 {
             HEADER
                 + if p.is_open(*section) {
                     match section {
-                        Section::Keypad => super::keypad_view::height(p),
                         Section::Units => 24.0 + 2.0 * 22.0 + 28.0 + 26.0 + 4.0 * 8.0 + 16.0,
                         Section::Variables => super::variables_view::height(p),
                     }

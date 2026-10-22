@@ -20,16 +20,15 @@ pub const INPUT_ID: &str = "quick-calc-input";
 /// How long a footer status ("Copied 870") stays.
 const FLASH_SECS: f32 = 2.2;
 
-/// The collapsible sections, top to bottom.
+/// The collapsible sections below the keypad, top to bottom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
-    Keypad,
     Units,
     Variables,
 }
 
 impl Section {
-    pub const ALL: [Section; 3] = [Section::Keypad, Section::Units, Section::Variables];
+    pub const ALL: [Section; 2] = [Section::Units, Section::Variables];
 
     fn index(self) -> usize {
         self as usize
@@ -102,7 +101,8 @@ pub enum QuickCalcMsg {
     CancelPick,
     /// A pick finished (from `CmdResult::QuickCalcPick`).
     Picked(Value),
-    SetMode(AngleMode),
+    /// The toolbar's DEG / RAD button: switch to the other angle mode.
+    ToggleAngleMode,
     ClearHistory,
     /// A history row's expression: load it into the input.
     HistoryLoad(usize),
@@ -131,27 +131,17 @@ pub enum QuickCalcMsg {
 }
 
 /// The settings kept with the user's profile.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct QuickCalcSettings {
     /// The variables, in their list order.
     pub variables: Vec<Variable>,
     /// Which sections are open, in [`Section::ALL`] order.
-    pub open: [bool; 3],
+    pub sections: [bool; 2],
     pub radians: bool,
     pub scientific: bool,
 }
 
-impl Default for QuickCalcSettings {
-    fn default() -> Self {
-        Self {
-            variables: Vec::new(),
-            open: [true, false, false],
-            radians: false,
-            scientific: false,
-        }
-    }
-}
 
 /// One evaluated line. The value keeps full precision; only the view rounds.
 #[derive(Debug, Clone, PartialEq)]
@@ -194,7 +184,7 @@ pub struct QuickCalcPalette {
     pub form: Option<VarForm>,
     /// Memory, newest first.
     pub memory: Vec<f64>,
-    pub open: [bool; 3],
+    pub open: [bool; 2],
     pub keypad_mode: KeypadMode,
     /// 2nd and hyp on the scientific keypad.
     pub second: bool,
@@ -232,7 +222,7 @@ impl Default for QuickCalcPalette {
             collapsed: HashSet::new(),
             form: None,
             memory: Vec::new(),
-            open: QuickCalcSettings::default().open,
+            open: QuickCalcSettings::default().sections,
             keypad_mode: KeypadMode::Standard,
             second: false,
             hyp: false,
@@ -298,7 +288,7 @@ impl QuickCalcPalette {
     pub fn settings(&self) -> QuickCalcSettings {
         QuickCalcSettings {
             variables: self.variables.clone(),
-            open: self.open,
+            sections: self.open,
             radians: self.mode == AngleMode::Radians,
             scientific: self.keypad_mode == KeypadMode::Scientific,
         }
@@ -306,7 +296,7 @@ impl QuickCalcPalette {
 
     pub fn apply_settings(&mut self, s: &QuickCalcSettings) {
         self.variables = variables::clean(&s.variables);
-        self.open = s.open;
+        self.open = s.sections;
         self.keypad_mode = if s.scientific {
             KeypadMode::Scientific
         } else {
@@ -419,11 +409,16 @@ impl QuickCalcPalette {
         self.flyout = None;
     }
 
-    /// Choosing a keypad mode also opens the keypad.
     pub fn set_keypad_mode(&mut self, mode: KeypadMode) {
         self.keypad_mode = mode;
-        self.open[Section::Keypad.index()] = true;
         self.flyout = None;
+    }
+
+    pub fn toggle_angle_mode(&mut self) {
+        self.mode = match self.mode {
+            AngleMode::Degrees => AngleMode::Radians,
+            AngleMode::Radians => AngleMode::Degrees,
+        };
     }
 
     pub fn set_unit_cat(&mut self, cat: UnitCat) {

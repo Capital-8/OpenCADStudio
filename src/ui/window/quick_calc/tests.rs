@@ -60,3 +60,16 @@ fn unit_converter() {
     p.unit_value = "abc".into();
     assert_eq!(p.converted(), None);
 }
+
+#[test]
+fn toolbar_switches_close_flyouts() {
+    let mut p = QuickCalcPalette::default();
+    p.set_keypad_mode(KeypadMode::Scientific);
+    p.flyout = Some(Flyout::Trigonometry);
+    p.set_keypad_mode(KeypadMode::Standard);
+    assert_eq!(p.flyout, None);
+    p.toggle_angle_mode();
+    assert_eq!(p.mode, AngleMode::Radians);
+    p.toggle_angle_mode();
+    assert_eq!(p.mode, AngleMode::Degrees);
+}

@@ -269,8 +269,8 @@ impl OpenCADStudio {
                 qc.typing = true;
                 focus_input()
             }
-            QuickCalcMsg::SetMode(mode) => {
-                qc.mode = mode;
+            QuickCalcMsg::ToggleAngleMode => {
+                qc.toggle_angle_mode();
                 self.save_quick_calc_settings();
                 Task::none()
             }
