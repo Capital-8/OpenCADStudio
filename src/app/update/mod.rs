@@ -444,6 +444,8 @@ impl OpenCADStudio {
             }
         }
         let mut task = self.update_message(msg);
+        // A dock change leaves the drawing where it was on screen.
+        self.dock_keep_view();
         // A script waiting on an open or a save goes on once it is done,
         // however that open or save ended.
         if self.script_paused && !self.script_busy() {
