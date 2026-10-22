@@ -851,8 +851,9 @@ fn dimension_entity(
             let radius = norm(sub(first, vertex));
             // The arc's point a third of the way round from the first line;
             // two thirds when the text, laid beside the second extension line
-            // (a terminator, two gaps and half its width along the arc),
-            // fits between the lines and reaches past the middle.
+            // (a terminator, three gaps when it breaks the arc, one when it
+            // does not, and half its width along the arc), fits between the
+            // lines and reaches past the middle.
             let label = format!("{:.0}\u{b0}", sweep.to_degrees());
             let width = crate::entities::text_support::text_local_bounds(
                 &layout.font,
@@ -864,8 +865,9 @@ fn dimension_entity(
             .map(|b| f64::from(b.ink_max[0] - b.ink_min[0]))
             .unwrap_or(0.0);
             let length = radius * sweep;
-            let beside = layout.arrow + 2.0 * layout.gap + width / 2.0;
-            let fits = length >= width + 2.0 * layout.arrow;
+            let gaps = if layout.in_line { 3.0 } else { 1.0 };
+            let beside = layout.arrow + gaps * layout.gap + width / 2.0;
+            let fits = length >= layout.arrow + gaps * layout.gap + width;
             let third = if fits && beside > length / 2.0 { 2.0 } else { 1.0 };
             let mid = a0 + sweep * third / 3.0;
             let arc = [vertex[0] + radius * mid.cos(), vertex[1] + radius * mid.sin(), vertex[2]];
@@ -911,12 +913,13 @@ fn dimension_entity(
 }
 
 /// What lays out an imported dimension's text: its height, terminator,
-/// gap and font.
+/// gap and font, and whether it sits in the dimension line.
 struct DimTextLayout {
     height: f64,
     arrow: f64,
     gap: f64,
     font: String,
+    in_line: bool,
 }
 
 /// The text, the variable overrides and the text layout an imported
@@ -971,6 +974,7 @@ fn dimension_settings(
         arrow: length(look.arrow),
         gap,
         font: own.or(style_font).map_or("txt", |f| f.0).to_string(),
+        in_line: !look.text_outside,
     };
     (text, overrides, layout)
 }
