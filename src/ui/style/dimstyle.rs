@@ -346,7 +346,7 @@ impl canvas::Program<Message> for DimensionPreview {
                         );
                     }
                 }
-                ArrowKind::Origin { size } => {
+                ArrowKind::Origin { size, .. } => {
                     let dot =
                         canvas::Path::circle(Point::new(tip_x + sign * size * 0.5, y), size * 0.4);
                     frame.stroke(
