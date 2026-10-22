@@ -7861,10 +7861,11 @@ pub(crate) fn automatic_text_position(document: &CadDocument, dim: &Dimension) -
     let scale = if style.dimscale > 1e-6 { style.dimscale } else { 1.0 };
     let height = style.dimtxt * scale;
     let mut position = dimension_text_pos_f64(dim, Some(&style), height, scale);
-    // Text beside an extension line, or a radius's text out past its arc.
+    // Text beside an extension line, or a radius's text, which sits out past
+    // its arc point an arrow and two gaps from it.
     let outside = dimension_text_is_outside(dim, Some(&style));
     let measured = match dim {
-        Dimension::Radius(_) => outside,
+        Dimension::Radius(_) => true,
         _ => matches!(style.dimjust, 1 | 2) && !outside,
     };
     if !measured {
@@ -7922,8 +7923,9 @@ pub(crate) fn automatic_text_position(document: &CadDocument, dim: &Dimension) -
                 d.definition_point.y - d.angle_vertex.y,
             );
             let len = dx.hypot(dy).max(1e-12);
-            position.x += dx / len * half;
-            position.y += dy / len * half;
+            let reach = (style.dimasz + 2.0 * style.dimgap.abs()) * scale + ink * 0.5;
+            position.x = d.definition_point.x + dx / len * reach;
+            position.y = d.definition_point.y + dy / len * reach;
         }
         _ => {}
     }
