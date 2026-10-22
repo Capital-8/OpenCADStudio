@@ -1,5 +1,5 @@
 //! The QuickCalc pallet's layout: toolbar, history, input with its preview
-//! or error, the collapsible sections and the footer.
+//! or error, and the collapsible sections.
 
 use iced::widget::text::{Ellipsis, Span, Wrapping};
 use iced::widget::{
@@ -371,7 +371,9 @@ fn section_header<'a>(
     if let Some(meta) = meta {
         content = content.push(muted(meta, 10.5));
     }
-    let toggle = button(content)
+    // A button puts its content at the top; centre it in the 28 px bar so
+    // the chevron and title line up with the keypad's mode switch.
+    let toggle = button(container(content).center_y(Fill))
         .width(Fill)
         .height(Fill)
         .padding([0, 8])
@@ -866,6 +868,7 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
             .style(move |theme, status| field_style(theme, status, bad)),
     );
     let trimmed = p.input.trim();
+    let flash = p.flash.as_ref().map(|(message, _)| message.clone());
     match &preview {
         Preview::Err(e) if show_error => {
             let start = e.span.start.min(p.input.len());
@@ -914,14 +917,18 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
             } else {
                 String::new()
             };
-            input_block = input_block.push(preview_line(lead, format!("= {}", value.display())));
+            input_block = input_block.push(preview_line(
+                lead,
+                format!("= {}", value.display()),
+                flash.clone(),
+            ));
         }
         _ => {
             let lead = p
                 .ans
                 .map(|a| format!("ans = {}", a.display()))
                 .unwrap_or_default();
-            input_block = input_block.push(preview_line(lead, String::new()));
+            input_block = input_block.push(preview_line(lead, String::new(), flash.clone()));
         }
     }
 
@@ -957,85 +964,14 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
         }
     }
 
-    // Footer.
-    let mode_word = match p.mode {
-        AngleMode::Degrees => crate::t!("Degrees"),
-        AngleMode::Radians => crate::t!("Radians"),
-    };
-    let mut left = row![
-        muted(
-            crate::tf!("Units: {}", inputs.unit_label).into_owned(),
-            10.5
-        ),
-        muted("·", 10.5),
-        muted(mode_word.into_owned(), 10.5),
-    ]
-    .spacing(6)
-    .align_y(iced::Center);
-    if let Some(&mem) = p.memory.first() {
-        left = left.push(tip(
-            container(mono(format!("M {}", Value::Number(mem).display()), 10.5))
-                .padding([0, 5])
-                .style(|theme: &Theme| container::Style {
-                    border: Border {
-                        color: tokens(theme).line,
-                        width: 1.0,
-                        radius: 3.0.into(),
-                    },
-                    ..Default::default()
-                }),
-            crate::t!("Value in memory").into_owned(),
-        ));
-    }
-    let (status, flashing) = match &p.flash {
-        Some((msg, _)) => (msg.clone(), true),
-        None => (
-            crate::t!("Enter evaluates · ↑↓ history").into_owned(),
-            false,
-        ),
-    };
-    let footer = container(
-        row![
-            left,
-            Space::new().width(Fill),
-            text(status)
-                .size(10.5)
-                .wrapping(Wrapping::None)
-                .ellipsis(Ellipsis::End)
-                .style(move |theme: &Theme| {
-                    let t = tokens(theme);
-                    text::Style {
-                        color: Some(if flashing { t.accent } else { t.muted }),
-                    }
-                }),
-        ]
-        .spacing(6)
-        .align_y(iced::Center),
-    )
-    .height(22)
-    .padding([0, 6])
-    .center_y(22)
-    .style(|theme: &Theme| {
-        let t = tokens(theme);
-        container::Style {
-            background: Some(Background::Color(t.weak)),
-            border: Border {
-                color: t.line,
-                width: 1.0,
-                radius: 0.0.into(),
-            },
-            ..Default::default()
-        }
-    });
-
     // Room for the sections: what is left after the toolbar, the input, the
-    // footer, the gaps and the history's minimum. Past that they scroll.
+    // gaps and the history's minimum. Past that they scroll.
     let input_h = 30.0
         + 6.0
         + if show_error { 38.0 } else { 20.0 }
         + if picking.is_some() { 52.0 } else { 0.0 };
     let history_min = MIN_HISTORY_ROWS * HISTORY_ROW_H;
-    let fixed = 28.0 + input_h + 22.0 + 4.0 * 6.0;
+    let fixed = 28.0 + input_h + 3.0 * 6.0;
     let sections_cap = (height - fixed - history_min).max(0.0);
     let natural = sections_height(p, inputs.drawing.len());
     // A scrollbar that shows takes its own room beside the content
@@ -1070,7 +1006,6 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
         container(history).height(Fill),
         input_block,
         sections,
-        footer,
     ]
     .spacing(6)
     .height(Fill)
@@ -1101,13 +1036,24 @@ fn sections_height(p: &QuickCalcPalette, drawing_vars: usize) -> f32 {
         .sum()
 }
 
-fn preview_line<'a>(lead: String, value: String) -> Element<'a, Message> {
+/// The line under the input: what the value means (`sets wall`, `in mm`) and
+/// the value. A status message ("Copied 870") takes the lead's place while
+/// it shows.
+fn preview_line<'a>(lead: String, value: String, status: Option<String>) -> Element<'a, Message> {
+    let flashing = status.is_some();
     row![
-        muted(lead, 11.0)
-            .font(MONO)
+        text(status.unwrap_or(lead))
+            .size(11.0)
+            .font(if flashing { Font::DEFAULT } else { MONO })
             .wrapping(Wrapping::None)
             .ellipsis(Ellipsis::End)
-            .width(Fill),
+            .width(Fill)
+            .style(move |theme: &Theme| {
+                let t = tokens(theme);
+                text::Style {
+                    color: Some(if flashing { t.accent } else { t.muted }),
+                }
+            }),
         strong(value, 16.0, MONO_STRONG),
     ]
     .spacing(8)
