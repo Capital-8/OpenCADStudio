@@ -27,10 +27,6 @@ pub(super) fn lookup(suffix: &str) -> Option<Unit> {
     })
 }
 
-pub(super) fn is_unit_name(name: &str) -> bool {
-    lookup(name).is_some()
-}
-
 /// `value` in `unit`, expressed in drawing units (lengths) or in the current
 /// angle mode (angles).
 pub(super) fn apply(value: f64, unit: Unit, base_unit: f64, mode: AngleMode) -> f64 {

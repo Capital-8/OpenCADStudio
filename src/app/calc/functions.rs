@@ -16,7 +16,7 @@ pub(super) const FUNCTIONS: &[&str] = &[
     "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sec", "csc", "cot", "asec", "acsc",
     "acot", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "sqrt", "cbrt", "root", "abs",
     "round", "floor", "ceil", "fact", "ln", "log", "logb", "exp", "pow", "min", "max", "d2r",
-    "r2d", "dist", "ang", "mid", "xof", "yof", "zof",
+    "r2d", "dist", "ang", "mid", "xof", "yof", "zof", "getvar",
 ];
 
 pub(super) fn call(

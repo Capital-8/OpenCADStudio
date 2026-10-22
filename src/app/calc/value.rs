@@ -72,8 +72,29 @@ impl AngleMode {
     }
 }
 
-/// Everything an evaluation reads and may change: variables, the previous
-/// result, the angle mode and the drawing's length unit.
+/// A system variable as `getvar` sees it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SysVar {
+    Number(f64),
+    Point(DVec3),
+    /// Exists but holds text (a layer name, say): not a calculator value.
+    Text,
+}
+
+/// Reads system variables for `getvar`, by lowercase name. The host passes
+/// it in, so the engine itself never touches the drawing.
+#[derive(Clone)]
+pub struct SysVars(pub std::sync::Arc<dyn Fn(&str) -> Option<SysVar> + Send + Sync>);
+
+impl std::fmt::Debug for SysVars {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SysVars")
+    }
+}
+
+/// Everything an evaluation reads and may change: variables (by lowercase
+/// name, without the `$`), the previous result, the angle mode, the
+/// drawing's length unit and the system variables.
 #[derive(Debug, Clone)]
 pub struct CalcContext {
     pub vars: HashMap<String, Value>,
@@ -81,6 +102,7 @@ pub struct CalcContext {
     pub angle_mode: AngleMode,
     /// Millimetres per drawing unit (INSUNITS); length suffixes convert to it.
     pub base_unit: f64,
+    pub sysvars: Option<SysVars>,
 }
 
 impl CalcContext {
@@ -90,6 +112,7 @@ impl CalcContext {
             ans: None,
             angle_mode,
             base_unit,
+            sysvars: None,
         }
     }
 }

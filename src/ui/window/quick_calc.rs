@@ -329,7 +329,7 @@ impl QuickCalcPalette {
         self.constants = s
             .constants
             .iter()
-            .filter(|(name, value)| !calc::is_reserved_name(name) && value.is_finite())
+            .filter(|(name, value)| calc::is_valid_name(name) && value.is_finite())
             .cloned()
             .collect();
         self.open = s.open;

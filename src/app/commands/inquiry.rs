@@ -1756,9 +1756,9 @@ mod cal_tests {
         // The prompt takes free text, spaces included; variables, ans and
         // the drawing unit carry through every CAL.
         let _ = app.dispatch_command("CAL");
-        let _ = app.feed_active_cmd("wall = (2 + 1.6) * 1m");
+        let _ = app.feed_active_cmd("$wall = (2 + 1.6) * 1m");
         for (cmd, expected) in [
-            ("CAL wall + 90", "= 3690"),
+            ("CAL $wall + 90", "= 3690"),
             ("CAL *2", "= 7380"),
             ("CAL dist([0,0],[3,4])", "= 5"),
             ("CAL 1/0", "CAL:"),

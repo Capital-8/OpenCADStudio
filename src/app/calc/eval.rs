@@ -3,7 +3,7 @@
 use std::ops::Range;
 
 use super::parser::{Expr, ExprKind};
-use super::value::{CalcContext, Value};
+use super::value::{CalcContext, SysVar, Value};
 use super::{functions, units, CalcError};
 
 pub(super) fn eval(expr: &Expr, ctx: &CalcContext) -> Result<Value, CalcError> {
@@ -12,21 +12,29 @@ pub(super) fn eval(expr: &Expr, ctx: &CalcContext) -> Result<Value, CalcError> {
         ExprKind::Quantity(n, unit) => {
             Value::Number(units::apply(*n, *unit, ctx.base_unit, ctx.angle_mode))
         }
+        // Plain names are the built-in constants; variables carry a `$`.
         ExprKind::Ref(name) => {
-            if name.eq_ignore_ascii_case("pi") {
-                Value::Number(std::f64::consts::PI)
-            } else if let Some(value) = ctx.vars.get(name) {
-                *value
-            } else if name == "e" {
-                // A variable called `e` (from the drawing) wins over the constant.
-                Value::Number(std::f64::consts::E)
-            } else {
-                return Err(CalcError::new(
-                    expr.span.clone(),
-                    crate::tf!("unknown variable '{}'", name),
-                ));
+            let lower = name.to_ascii_lowercase();
+            match lower.as_str() {
+                "pi" => Value::Number(std::f64::consts::PI),
+                "e" => Value::Number(std::f64::consts::E),
+                _ if ctx.vars.contains_key(&lower) => {
+                    return Err(CalcError::new(
+                        expr.span.clone(),
+                        crate::tf!("Variables start with $: use ${}", lower),
+                    ))
+                }
+                _ => {
+                    return Err(CalcError::new(
+                        expr.span.clone(),
+                        crate::tf!("Unknown name {}", name),
+                    ))
+                }
             }
         }
+        ExprKind::Var(name) => *ctx.vars.get(name).ok_or_else(|| {
+            CalcError::new(expr.span.clone(), crate::tf!("Unknown variable ${}", name))
+        })?,
         ExprKind::Ans => ctx.ans.ok_or_else(|| {
             CalcError::new(expr.span.clone(), crate::t!("no previous result yet"))
         })?,
@@ -86,6 +94,9 @@ pub(super) fn eval(expr: &Expr, ctx: &CalcContext) -> Result<Value, CalcError> {
             let exponent = number(eval(b, ctx)?, b.span.clone())?;
             Value::Number(base.powf(exponent))
         }
+        ExprKind::Call(name, args) if name.eq_ignore_ascii_case("getvar") => {
+            getvar(args, expr.span.clone(), ctx)?
+        }
         ExprKind::Call(name, args) => {
             let values = args
                 .iter()
@@ -137,4 +148,32 @@ fn mixed(expr: &Expr, op: &str) -> CalcError {
         expr.span.clone(),
         crate::tf!("'{}' does not work on a point and a number", op),
     )
+}
+
+/// `getvar(name)`: a numeric or point system variable, through the host's
+/// reader. The argument is the bare name, as in `getvar(luprec)`.
+fn getvar(args: &[Expr], span: Range<usize>, ctx: &CalcContext) -> Result<Value, CalcError> {
+    let [Expr {
+        kind: ExprKind::Ref(name),
+        ..
+    }] = args
+    else {
+        return Err(CalcError::new(
+            span,
+            crate::t!("getvar needs a system variable name, as in getvar(luprec)"),
+        ));
+    };
+    let lower = name.to_ascii_lowercase();
+    match ctx.sysvars.as_ref().and_then(|read| (read.0)(&lower)) {
+        Some(SysVar::Number(n)) => Ok(Value::Number(n)),
+        Some(SysVar::Point(p)) => Ok(Value::Point(p)),
+        Some(SysVar::Text) => Err(CalcError::new(
+            span,
+            crate::tf!("getvar({}) is not a number", lower),
+        )),
+        None => Err(CalcError::new(
+            args[0].span.clone(),
+            crate::tf!("Unknown system variable {}", lower),
+        )),
+    }
 }

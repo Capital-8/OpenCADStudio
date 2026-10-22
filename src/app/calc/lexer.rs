@@ -8,6 +8,8 @@ use super::CalcError;
 pub(super) enum TokKind {
     Number(f64),
     Ident(String),
+    /// `$name`, lowercased: variables are case-insensitive.
+    Var(String),
     Plus,
     Minus,
     Star,
@@ -37,6 +39,30 @@ pub(super) fn tokenize(input: &str) -> Result<Vec<Token>, CalcError> {
     let mut chars = input.char_indices().peekable();
     while let Some((start, c)) = chars.next() {
         if c.is_whitespace() {
+            continue;
+        }
+        if c == '$' {
+            let starts = |b: u8| b.is_ascii_alphabetic() || b == b'_';
+            if !bytes.get(start + 1).copied().is_some_and(starts) {
+                return Err(CalcError::new(
+                    start..start + 1,
+                    crate::t!("Type a variable name after $"),
+                ));
+            }
+            let mut end = start + 1;
+            while bytes
+                .get(end)
+                .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_')
+            {
+                end += 1;
+            }
+            while chars.peek().is_some_and(|&(i, _)| i < end) {
+                chars.next();
+            }
+            tokens.push(Token {
+                kind: TokKind::Var(input[start + 1..end].to_ascii_lowercase()),
+                span: start..end,
+            });
             continue;
         }
         let single = match c {

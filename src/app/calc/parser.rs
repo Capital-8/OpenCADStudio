@@ -25,7 +25,10 @@ pub(super) enum ExprKind {
     Number(f64),
     /// A number with a unit suffix, converted when evaluated.
     Quantity(f64, Unit),
+    /// A built-in name: `pi`, `e`.
     Ref(String),
+    /// `$name`, lowercased.
+    Var(String),
     Ans,
     Neg(Box<Expr>),
     Add(Box<Expr>, Box<Expr>),
@@ -61,6 +64,22 @@ pub(super) fn parse(tokens: &[Token], input_len: usize) -> Result<Statement, Cal
     let statement = match (tokens.first(), tokens.get(1)) {
         (
             Some(Token {
+                kind: TokKind::Var(name),
+                span,
+            }),
+            Some(Token {
+                kind: TokKind::Eq, ..
+            }),
+        ) => {
+            p.pos = 2;
+            Statement::Assign {
+                name: name.clone(),
+                name_span: span.clone(),
+                value: p.expr(0)?,
+            }
+        }
+        (
+            Some(Token {
                 kind: TokKind::Ident(name),
                 span,
             }),
@@ -68,18 +87,13 @@ pub(super) fn parse(tokens: &[Token], input_len: usize) -> Result<Statement, Cal
                 kind: TokKind::Eq, ..
             }),
         ) => {
-            if super::is_reserved_name(name) {
-                return Err(CalcError::new(
-                    span.clone(),
-                    crate::tf!("'{}' is a reserved name", name),
-                ));
-            }
-            p.pos = 2;
-            Statement::Assign {
-                name: name.clone(),
-                name_span: span.clone(),
-                value: p.expr(0)?,
-            }
+            return Err(CalcError::new(
+                span.clone(),
+                crate::tf!(
+                    "Variable names start with $: ${} = …",
+                    name.to_ascii_lowercase()
+                ),
+            ));
         }
         _ => Statement::Expr(p.expr(0)?),
     };
@@ -254,6 +268,10 @@ impl<'a> Parser<'a> {
                 };
                 Ok(node(kind, t.span.clone()))
             }
+            TokKind::Var(name) => {
+                self.pos += 1;
+                Ok(node(ExprKind::Var(name.clone()), t.span.clone()))
+            }
             TokKind::LParen => {
                 self.pos += 1;
                 let inner = self.expr(depth)?;
@@ -357,6 +375,7 @@ fn describe(kind: &TokKind) -> String {
     match kind {
         TokKind::Number(n) => n.to_string(),
         TokKind::Ident(name) => name.clone(),
+        TokKind::Var(name) => format!("${name}"),
         TokKind::Plus => "+".into(),
         TokKind::Minus => "-".into(),
         TokKind::Star => "*".into(),

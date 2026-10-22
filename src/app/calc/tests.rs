@@ -111,31 +111,109 @@ fn variables_and_ans() {
     numbers(
         &mut c,
         &[
-            ("wall = 3600", 3600.0),
-            ("wall + 90", 3690.0),
+            ("$wall = 3600", 3600.0),
+            ("$Wall + 90", 3690.0),
             ("*2", 7380.0),
             ("ANS / 2", 3690.0),
             ("^0", 1.0),
-            ("e", E),
+            // The `$` namespace keeps variables apart from built-ins and units.
+            ("$e = 5", 5.0),
+            ("$e + e", 5.0 + E),
+            ("$log = 100", 100.0),
+            ("log($log)", 2.0),
+            ("$m = 2", 2.0),
+            ("3m * $m", 6000.0),
         ],
     );
+    evaluate("$p = [1,2]", &mut c).unwrap();
     assert_eq!(c.vars["wall"], Value::Number(3600.0));
+    assert_eq!(c.vars["p"], Value::Point(DVec3::new(1.0, 2.0, 0.0)));
     // A failed evaluation changes nothing.
-    errors(&mut c, &[("wall = 1/0", "0")]);
+    errors(&mut c, &[("$wall = 1/0", "0")]);
     assert_eq!(c.vars["wall"], Value::Number(3600.0));
-    assert_eq!(c.ans, Some(Value::Number(E)));
-    // A variable called e wins over the constant; names are case-sensitive.
-    c.vars.insert("e".into(), Value::Number(5.0));
-    numbers(&mut c, &[("e + 1", 6.0)]);
     errors(
         &mut c,
         &[
-            ("WALL", "WALL"),
-            ("sin = 1", "sin"),
-            ("PI = 1", "PI"),
-            ("m = 1", "m"),
-            ("e = 1", "e"),
-            ("mod = 1", "mod"),
+            ("$nope + 1", "$nope"),
+            ("wall = 1", "wall"),
+            ("wall + 1", "wall"),
+            ("$ + 1", "$"),
+            ("$1 + 1", "$"),
+            ("x + 1", "x"),
+        ],
+    );
+    let message = |input: &str| evaluate(input, &mut c.clone()).unwrap_err().message;
+    assert_eq!(
+        message("wall = 1"),
+        "Variable names start with $: $wall = …"
+    );
+    assert_eq!(message("WALL + 1"), "Variables start with $: use $wall");
+    assert_eq!(message("$nope"), "Unknown variable $nope");
+}
+
+#[test]
+fn variable_definitions() {
+    let mut c = ctx();
+    let errors = define_variables(
+        &mut c,
+        [
+            ("module", Definition::Function("$brick + $joint")),
+            ("course", Definition::Function("$module * 2")),
+            ("broken", Definition::Function("$nope")),
+            ("brick", Definition::Constant(Value::Number(210.0))),
+            ("Joint", Definition::Constant(Value::Number(10.0))),
+        ],
+    );
+    // Constants first, then functions in order, each seeing the earlier ones.
+    assert_eq!(c.vars["module"], Value::Number(220.0));
+    assert_eq!(c.vars["course"], Value::Number(440.0));
+    assert!(!c.vars.contains_key("broken"));
+    assert_eq!(errors["broken"].message, "Unknown variable $nope");
+    // A function follows its inputs on the next definition.
+    let mut c = ctx();
+    define_variables(
+        &mut c,
+        [
+            ("brick", Definition::Constant(Value::Number(300.0))),
+            ("module", Definition::Function("$brick + 10")),
+        ],
+    );
+    assert_eq!(c.vars["module"], Value::Number(310.0));
+    // Helpers for the variable form.
+    assert_eq!(
+        assigned_variable("$Wall = 3"),
+        Some(("wall".to_string(), 0..5))
+    );
+    assert_eq!(assigned_variable("$wall + 3"), None);
+    assert!(uses_variable("2 * $MODULE", "module"));
+    assert!(!uses_variable("2 * module", "module"));
+    assert!(is_valid_name("_a1") && !is_valid_name("1a") && !is_valid_name("a-b"));
+    assert_eq!(
+        value_of("$x = 3", &ctx()).unwrap_err().message,
+        "Leave out the $name = part"
+    );
+}
+
+#[test]
+fn getvar_reads_system_variables() {
+    let mut c = ctx();
+    c.sysvars = Some(SysVars(std::sync::Arc::new(|name: &str| match name {
+        "luprec" => Some(SysVar::Number(4.0)),
+        "extmax" => Some(SysVar::Point(DVec3::new(10.0, 20.0, 0.0))),
+        "clayer" => Some(SysVar::Text),
+        _ => None,
+    })));
+    numbers(
+        &mut c,
+        &[("getvar(LUPREC) + 1", 5.0), ("xof(getvar(extmax))", 10.0)],
+    );
+    errors(
+        &mut c,
+        &[
+            ("getvar(clayer)", "getvar(clayer)"),
+            ("getvar(nope)", "nope"),
+            ("getvar(1)", "getvar(1)"),
+            ("getvar($x)", "getvar($x)"),
         ],
     );
 }
@@ -228,10 +306,8 @@ fn functions() {
             ("acosh(0)", "acosh(0)"),
         ],
     );
-    // Every function is reserved, and a wrong argument count is an error at
-    // the call, never a panic.
+    // A wrong argument count is an error at the call, never a panic.
     for name in functions::FUNCTIONS {
-        assert!(is_reserved_name(name), "{name}");
         let input = format!("{name}()");
         errors(&mut ctx(), &[(&input, &input)]);
     }
@@ -276,7 +352,8 @@ fn long_and_deep_input_is_bounded() {
 fn random_input_never_panics() {
     const ALPHABET: &[&str] = &[
         "1", "2.5", "0", "e", "1e", "+", "-", "*", "/", "^", "(", ")", "[", "]", ",", "=", " ",
-        "'", "\"", "pi", "ans", "x", "sin", "dist", "mid", "m", "deg", "mod", "√", ".", "é", "$",
+        "'", "\"", "pi", "ans", "x", "$x", "$", "sin", "dist", "mid", "m", "deg", "mod", "√", ".",
+        "é", "getvar(", "luprec",
     ];
     let mut seed: u64 = 0x5eed_cafe;
     let mut next = || {
