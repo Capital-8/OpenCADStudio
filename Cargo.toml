@@ -246,6 +246,10 @@ harness = false
 name = "xref_nested_document_cache"
 harness = false
 
+[[bench]]
+name = "parametric_constraint_refresh"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"

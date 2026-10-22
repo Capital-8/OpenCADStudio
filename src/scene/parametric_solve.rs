@@ -3856,7 +3856,10 @@ impl Scene {
         )
     }
 
-    pub(crate) fn refresh_parametric_constraints_with_initial_policy(
+    /// `doc(hidden)` public only so `benches/parametric_constraint_refresh.rs`
+    /// can time the real per-command-commit production entry point.
+    #[doc(hidden)]
+    pub fn refresh_parametric_constraints_with_initial_policy(
         &mut self,
         changes: &[(Handle, ChangeKind)],
         driven_refs: &[ParametricRef],
@@ -3876,23 +3879,63 @@ impl Scene {
         // `document.objects` and neither of those directories ever saw this
         // mutation) — one undo press now restores both the entity and its
         // constraints together.
-        for (handle, kind) in changes {
-            if *kind != ChangeKind::Removed {
-                continue;
+        //
+        // The removed-handle → scope-indices map inverts the old per-handle
+        // × per-scope `constraints.iter().any(...)` scans: one pass over
+        // every constraint's refs against a hashed removed-handle set,
+        // replacing O(removed × scopes × constraints) predicate evaluations
+        // with O(constraints + removed + hits). The per-(handle, scope)
+        // record/remove/bump sequence below is unchanged, so the undo
+        // before-image ordering and the epoch-bump count match the scan
+        // exactly. The before-image clone happens only when the recording is
+        // open and this scope has not been recorded yet:
+        // `record_undo_parametric_constraints_before` is first-touch-wins,
+        // so every later hit would have dropped the clone anyway.
+        let removed_handles: rustc_hash::FxHashSet<Handle> = changes
+            .iter()
+            .filter_map(|(handle, kind)| (*kind == ChangeKind::Removed).then_some(*handle))
+            .collect();
+        if !removed_handles.is_empty() {
+            let mut touching_removed: rustc_hash::FxHashMap<Handle, Vec<usize>> =
+                rustc_hash::FxHashMap::default();
+            for (index, set) in self.parametric_constraints.iter().enumerate() {
+                for constraint in set.constraints.iter() {
+                    for reference in constraint.refs.iter() {
+                        if removed_handles.contains(&reference.entity) {
+                            let scopes = touching_removed.entry(reference.entity).or_default();
+                            if scopes.last() != Some(&index) {
+                                scopes.push(index);
+                            }
+                        }
+                    }
+                }
             }
-            for i in 0..self.parametric_constraints.len() {
-                if self.parametric_constraints[i]
-                    .constraints
-                    .iter()
-                    .any(|constraint| constraint.refs.iter().any(|r| r.entity == *handle))
-                {
-                    let scope = self.parametric_constraints[i].scope;
-                    let before = self.parametric_constraints[i].clone();
-                    self.record_undo_parametric_constraints_before(scope, before);
-                    self.parametric_constraints[i].remove_all_touching(*handle);
+            for (handle, kind) in changes {
+                if *kind != ChangeKind::Removed {
+                    continue;
+                }
+                let Some(scopes) = touching_removed.get(handle) else {
+                    continue;
+                };
+                for &index in scopes {
+                    let scope = self.parametric_constraints[index].scope;
+                    let missing_before = self.undo_recording.as_ref().is_some_and(|recording| {
+                        !recording
+                            .parametric_constraints_before
+                            .contains_key(&scope)
+                    });
+                    if missing_before {
+                        let before = self.parametric_constraints[index].clone();
+                        self.record_undo_parametric_constraints_before(scope, before);
+                    }
+                    let removed = self.parametric_constraints[index].remove_all_touching(*handle);
                     // Erasing an entity deletes its constraints with it — the
-                    // glyph set changed.
-                    self.bump_constraints_epoch();
+                    // glyph set changed. Bumped exactly when the removal took
+                    // something, which is precisely when the old raw-ref
+                    // predicate held for this (handle, scope) pair.
+                    if !removed.is_empty() {
+                        self.bump_constraints_epoch();
+                    }
                 }
             }
         }
@@ -3920,13 +3963,31 @@ impl Scene {
             HashMap::new()
         };
         let mut result = Vec::new();
+        // Inverted touched check: a small change set (the common
+        // single-entity edit) still probes each scope's touch index once
+        // per change as before, but a bulk change set walks the scope's
+        // constraint list once against a hashed change set — O(total refs)
+        // per scope instead of O(changes × scope). The two probes are
+        // equivalent: `constraints_touching(h).next().is_some()` exists
+        // iff some enabled constraint in the scope references `h`.
+        let mut changed: Option<rustc_hash::FxHashSet<Handle>> = None;
         for i in 0..self.parametric_constraints.len() {
-            let touched = changes.iter().any(|(handle, _)| {
-                self.parametric_constraints[i]
-                    .constraints_touching(*handle)
-                    .next()
-                    .is_some()
-            });
+            let set = &self.parametric_constraints[i];
+            let touched = if changes.len() <= set.constraints.len() {
+                changes
+                    .iter()
+                    .any(|(handle, _)| set.constraints_touching(*handle).next().is_some())
+            } else {
+                let changed = changed
+                    .get_or_insert_with(|| changes.iter().map(|(handle, _)| *handle).collect());
+                set.constraints.iter().any(|constraint| {
+                    constraint.enabled
+                        && constraint
+                            .refs
+                            .iter()
+                            .any(|reference| changed.contains(&reference.entity))
+                })
+            };
             if !touched {
                 continue;
             }
