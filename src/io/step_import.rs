@@ -2,7 +2,7 @@
 //! AP203/AP214/AP242 file, as kernel bodies, with the product's name and the
 //! file's length unit.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use kernel::brep::{
     Circle3, Cone, Curve3, Cylinder, EdgeKey, Ellipse3, Line3, Sphere, Surface, Torus, VertexKey,
@@ -933,7 +933,7 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
 
     let mut index: HashMap<u64, usize> = HashMap::new();
     let mut products: Vec<StepProduct> = Vec::new();
-    let mut used_items: Vec<u64> = Vec::new();
+    let mut used_items: HashSet<u64> = HashSet::new();
     for &definition in &definitions {
         let mut bodies = Vec::new();
         for rep in shape_of.get(&definition).and_then(|pds| reps_of_shape.get(pds)).into_iter().flatten() {
@@ -941,7 +941,7 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
                 if !used_items.contains(&item) {
                     let found = item_bodies(&doc, item);
                     if !found.is_empty() {
-                        used_items.push(item);
+                        used_items.insert(item);
                     }
                     bodies.extend(found);
                 }
@@ -958,6 +958,16 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
     }
 
     // Components, placed by the transformation of their occurrence.
+    // The first context-dependent shape representation of each product
+    // definition shape, by entity number — the one the placement lookup
+    // below picks; indexed here so each occurrence is found in O(1)
+    // instead of a scan over every id in the file.
+    let mut cdsr_of_shape: HashMap<u64, u64> = HashMap::new();
+    for cdsr in of_kind("CONTEXT_DEPENDENT_SHAPE_REPRESENTATION") {
+        if let Some(pds) = param(cdsr, 1) {
+            cdsr_of_shape.entry(pds).or_insert(cdsr);
+        }
+    }
     let mut component = vec![false; products.len()];
     for occurrence in of_kind("NEXT_ASSEMBLY_USAGE_OCCURRENCE") {
         let (Some(&parent), Some(&child)) = (
@@ -968,11 +978,7 @@ pub fn read(bytes: &[u8]) -> Option<StepModel> {
         };
         let placement = shape_of
             .get(&occurrence)
-            .and_then(|pds| {
-                ids.iter().copied().find(|&id| {
-                    doc.kind(id) == "CONTEXT_DEPENDENT_SHAPE_REPRESENTATION" && param(id, 1) == Some(*pds)
-                })
-            })
+            .and_then(|pds| cdsr_of_shape.get(pds).copied())
             .and_then(|cdsr| param(cdsr, 0))
             .and_then(|relation| doc.part(relation, "REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION"))
             .and_then(|p| p.first()?.reference())

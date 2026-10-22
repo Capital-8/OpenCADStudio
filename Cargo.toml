@@ -238,6 +238,10 @@ harness = false
 name = "parametric_preview_solve"
 harness = false
 
+[[bench]]
+name = "step_assembly_cdsr_lookup"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
