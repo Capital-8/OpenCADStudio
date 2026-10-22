@@ -2991,6 +2991,12 @@ mod tests {
             stream.contains("Tr"),
             "searchable layer must be invisible (Tr rendering mode)"
         );
+        // `Tr` outlives `ET`: unless the run restores the graphics state,
+        // every embedded TrueType glyph drawn after it is invisible (#2007).
+        assert!(
+            stream.contains("q\nBT") && stream.contains("ET\nQ"),
+            "searchable run must be wrapped in q/Q"
+        );
     }
 
     // Invisible layer coexists with outlines: the searchable file carries the
