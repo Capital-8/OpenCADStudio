@@ -8084,10 +8084,13 @@ fn dimension_text_pos_f64(
                     1 | 3 => text_w > span,
                     _ => text_w > span,
                 };
-            // Beside an extension line the text starts an arrow and two gaps
-            // along the arc from it: DIMJUST 1 by the second line, 2 by the
-            // first (`text_w` carries a gap each side).
-            let beside = (arrow + dimgap + text_w * 0.5) / (radius as f64).max(1.0e-12);
+            // Beside an extension line the text starts an arrow and three
+            // gaps along the arc from it when it breaks the arc (one gap off
+            // the arc): DIMJUST 1 by the second line, 2 by the first
+            // (`text_w` carries a gap each side).
+            let gaps = if dimtad == 0 { 2.0 } else { 0.0 };
+            let beside =
+                (arrow + gaps * dimgap + text_w * 0.5) / (radius as f64).max(1.0e-12);
             let toward_end = if end >= start { 1.0 } else { -1.0 };
             let angle = if move_outside {
                 end as f64 + (text_w * 0.5 + dimgap + arrow) / (radius as f64).max(1.0e-12)
