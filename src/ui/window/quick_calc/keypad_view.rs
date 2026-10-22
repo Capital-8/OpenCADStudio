@@ -7,9 +7,7 @@ use iced::widget::{
 };
 use iced::{font, mouse, Background, Border, Color, Element, Fill, Font, Padding, Shadow, Theme};
 
-use super::view::{
-    icon, m, mix, muted, strong, tip, tokens, CHEVRON_DOWN, MONO_STRONG, POINT, STRONG,
-};
+use super::view::{icon, m, mix, muted, strong, tip, tokens, CHEVRON_DOWN, POINT, STRONG};
 use super::{Flyout, Key, KeypadMode, MemoryOp, QuickCalcMsg, QuickCalcPalette};
 use crate::app::calc::Value;
 use crate::app::Message;
@@ -515,27 +513,24 @@ fn points<'a>() -> Element<'a, Message> {
 
 fn memory_list<'a>(p: &QuickCalcPalette) -> Element<'a, Message> {
     let rows = p.memory.iter().enumerate().map(|(i, n)| {
-        button(
-            container(text(Value::Number(*n).display()).size(20).font(MONO_STRONG))
-                .align_right(Fill),
-        )
-        .width(Fill)
-        .padding([10, 12])
-        .on_press(m(QuickCalcMsg::MemoryInsert(i)))
-        .style(|theme: &Theme, status| {
-            let t = tokens(theme);
-            button::Style {
-                background: matches!(status, button::Status::Hovered | button::Status::Pressed)
-                    .then_some(Background::Color(t.strong)),
-                border: Border {
-                    radius: 4.0.into(),
+        button(container(text(Value::Number(*n).display()).size(20).font(STRONG)).align_right(Fill))
+            .width(Fill)
+            .padding([10, 12])
+            .on_press(m(QuickCalcMsg::MemoryInsert(i)))
+            .style(|theme: &Theme, status| {
+                let t = tokens(theme);
+                button::Style {
+                    background: matches!(status, button::Status::Hovered | button::Status::Pressed)
+                        .then_some(Background::Color(t.strong)),
+                    border: Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    text_color: t.text,
                     ..Default::default()
-                },
-                text_color: t.text,
-                ..Default::default()
-            }
-        })
-        .into()
+                }
+            })
+            .into()
     });
     let clear = tip(
         button(icon(crate::ui::icons::TRASH, 16.0, |t| t.muted))

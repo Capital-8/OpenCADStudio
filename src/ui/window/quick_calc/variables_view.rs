@@ -8,7 +8,7 @@ use iced::{font, Background, Border, Color, Element, Fill, Font, Theme};
 
 use super::view::{
     field_style, icon, m, mix, muted, segment, segmented, strong, text_button, tokens,
-    CHEVRON_DOWN, CHEVRON_RIGHT, MONO, MONO_STRONG, STRONG,
+    CHEVRON_DOWN, CHEVRON_RIGHT, STRONG,
 };
 use super::{FormMsg, QuickCalcMsg, QuickCalcPalette, VarForm, VarKind, VarMsg, Variable};
 use crate::app::calc::{CalcContext, CalcError, Value};
@@ -138,14 +138,12 @@ fn field<'a>(
     value: &str,
     placeholder: String,
     on_input: fn(String) -> FormMsg,
-    mono: bool,
 ) -> text_input::TextInput<'a, Message> {
     text_input(&placeholder, value)
         .on_input(move |s| f(on_input(s)))
         .on_submit(f(FormMsg::Save))
         .size(12)
         .padding([5, 7])
-        .font(if mono { MONO } else { Font::DEFAULT })
         .style(|theme, status| field_style(theme, status, false))
 }
 
@@ -171,18 +169,14 @@ fn form<'a>(
     // The name field shows a fixed `$` inside its border.
     let name = container(
         row![
-            text("$")
-                .size(12)
-                .font(MONO)
-                .style(|theme: &Theme| text::Style {
-                    color: Some(tokens(theme).accent),
-                }),
+            text("$").size(12).style(|theme: &Theme| text::Style {
+                color: Some(tokens(theme).accent),
+            }),
             text_input("", &form.name)
                 .on_input(|s| f(FormMsg::Name(s)))
                 .on_submit(f(FormMsg::Save))
                 .size(12)
                 .padding([5, 1])
-                .font(MONO)
                 .style(|theme, status| {
                     let mut s = field_style(theme, status, false);
                     s.border.width = 0.0;
@@ -237,7 +231,6 @@ fn form<'a>(
                     new,
                     crate::t!("e.g. Stairs").into_owned(),
                     FormMsg::NewCategoryName,
-                    false
                 )
             ]
             .align_y(iced::Center),
@@ -245,15 +238,11 @@ fn form<'a>(
     }
     let what = if constant { "Value" } else { "Expression" };
     grid = grid.push(
-        row![
-            label(what),
-            field(&form.expr, String::new(), FormMsg::Expr, true)
-        ]
-        .align_y(iced::Center),
+        row![label(what), field(&form.expr, String::new(), FormMsg::Expr)].align_y(iced::Center),
     );
     let result: Element<'a, Message> = match &check {
         Ok(value) => row![
-            strong(format!("= {}", value.display()), 11.0, MONO_STRONG),
+            strong(format!("= {}", value.display()), 11.0, STRONG),
             muted(
                 if constant {
                     crate::t!("stored as a fixed value")
@@ -281,7 +270,6 @@ fn form<'a>(
                 &form.description,
                 crate::t!("Optional, shown as a tooltip").into_owned(),
                 FormMsg::Description,
-                false
             )
         ]
         .align_y(iced::Center),
@@ -384,12 +372,11 @@ fn row_of<'a>(
         .center_x(14),
         text(format!("${}", var.name))
             .size(12)
-            .font(MONO)
             .style(|theme: &Theme| text::Style {
                 color: Some(tokens(theme).accent),
             }),
         Space::new().width(Fill),
-        text(shown).size(12).font(MONO).style(move |theme: &Theme| {
+        text(shown).size(12).style(move |theme: &Theme| {
             let t = tokens(theme);
             text::Style {
                 color: Some(if broken { t.danger_text } else { t.text }),

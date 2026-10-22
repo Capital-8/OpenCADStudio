@@ -32,17 +32,12 @@ const KEYPAD_STANDARD: &[u8] =
 const SWAP: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/swap.svg");
 const ERROR: &[u8] = include_bytes!("../../../../assets/icons/quickcalc/error.svg");
 
-pub(super) const MONO: Font = Font::MONOSPACE;
 /// The heavier weight for keys, section headers and results. The default
 /// font is the system's, which often has no Medium, and asking for one
 /// would quietly come back Regular; Semibold is reliably there.
 pub(super) const STRONG: Font = Font {
     weight: iced::font::Weight::Semibold,
     ..Font::DEFAULT
-};
-pub(super) const MONO_STRONG: Font = Font {
-    weight: iced::font::Weight::Semibold,
-    ..Font::MONOSPACE
 };
 
 pub(super) fn m(msg: QuickCalcMsg) -> Message {
@@ -204,10 +199,6 @@ pub(super) fn strong<'a>(
         .style(|theme: &Theme| text::Style {
             color: Some(tokens(theme).text),
         })
-}
-
-fn mono<'a>(s: impl text::IntoFragment<'a>, size: f32) -> text::Text<'a, Theme> {
-    text(s).size(size).font(MONO)
 }
 
 pub(super) fn muted<'a>(s: impl text::IntoFragment<'a>, size: f32) -> text::Text<'a, Theme> {
@@ -469,7 +460,7 @@ fn angle_mode_button<'a>(mode: AngleMode) -> Element<'a, Message> {
 }
 
 fn chip<'a>(label: &'static str, on: bool, msg: QuickCalcMsg) -> Element<'a, Message> {
-    button(container(mono(label, 11.0)).center_y(Fill))
+    button(container(text(label).size(11.0)).center_y(Fill))
         .height(22)
         .padding([0, 8])
         .on_press(m(msg))
@@ -556,12 +547,11 @@ fn units<'a>(p: &'a QuickCalcPalette) -> Element<'a, Message> {
     let value_row = row![
         text_input("", &p.unit_value)
             .on_input(|v| m(QuickCalcMsg::UnitValue(v)))
-            .font(MONO)
             .size(12)
             .padding([4, 6])
             .width(Length::FillPortion(1))
             .style(|theme, status| field_style(theme, status, false)),
-        muted(p.unit_from, 11.0).font(MONO).width(32),
+        muted(p.unit_from, 11.0).width(32),
         tip(
             button(icon(SWAP, 14.0, |t| t.muted))
                 .padding(4)
@@ -569,8 +559,8 @@ fn units<'a>(p: &'a QuickCalcPalette) -> Element<'a, Message> {
                 .style(plain_button_style_borderless),
             crate::t!("Swap units").into_owned(),
         ),
-        container(strong(result, 13.0, MONO_STRONG)).align_right(Length::FillPortion(1)),
-        muted(p.unit_to, 11.0).font(MONO).width(32),
+        container(strong(result, 13.0, STRONG)).align_right(Length::FillPortion(1)),
+        muted(p.unit_to, 11.0).width(32),
     ]
     .spacing(6)
     .align_y(iced::Center);
@@ -682,7 +672,6 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
         let rows = p.history.iter().enumerate().map(|(i, e)| {
             let expr = button(
                 muted(e.expr.clone(), 11.5)
-                    .font(MONO)
                     .wrapping(Wrapping::None)
                     .ellipsis(Ellipsis::End),
             )
@@ -690,7 +679,7 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
             .padding(0)
             .on_press(m(QuickCalcMsg::HistoryLoad(i)))
             .style(button::text);
-            let result = button(text(e.value.display()).size(12.5).font(MONO_STRONG))
+            let result = button(text(e.value.display()).size(12.5).font(STRONG))
                 .padding(0)
                 .on_press(m(QuickCalcMsg::HistoryCopy(i)))
                 .style(|theme: &Theme, status| {
@@ -782,7 +771,6 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
             .id(iced::widget::Id::new(INPUT_ID))
             .on_input(|v| m(QuickCalcMsg::Input(v)))
             .on_submit(m(QuickCalcMsg::Submit))
-            .font(MONO)
             .size(13)
             .padding([6, 8])
             .style(move |theme, status| field_style(theme, status, bad)),
@@ -807,7 +795,6 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
                 Span::new(p.input[end..].to_string()).color(t.muted),
             ])
             .size(12)
-            .font(MONO)
             .wrapping(Wrapping::None);
             input_block = input_block.push(
                 column![
@@ -961,7 +948,6 @@ fn preview_line<'a>(lead: String, value: String, status: Option<String>) -> Elem
     row![
         text(status.unwrap_or(lead))
             .size(11.0)
-            .font(if flashing { Font::DEFAULT } else { MONO })
             .wrapping(Wrapping::None)
             .ellipsis(Ellipsis::End)
             .width(Fill)
@@ -971,7 +957,7 @@ fn preview_line<'a>(lead: String, value: String, status: Option<String>) -> Elem
                     color: Some(if flashing { t.accent } else { t.muted }),
                 }
             }),
-        strong(value, 16.0, MONO_STRONG),
+        strong(value, 16.0, STRONG),
     ]
     .spacing(8)
     .height(Length::Fixed(20.0))
