@@ -728,69 +728,48 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
     .spacing(2)
     .align_y(iced::Center);
 
-    // History, newest at the bottom next to the input.
-    // The empty state, or the rows; the list around the rows is built once
-    // the layout knows whether they overflow (see below).
-    let (empty_state, history_rows): (Option<Element<'a, Message>>, Vec<Element<'a, Message>>) =
-        if p.history.is_empty() {
-            (Some(container(
-            column![
-                icon(ICON, 28.0, |t| t.faint),
-                text(crate::t!("Results collect here")).size(11.5),
-                muted(
-                    crate::t!(
-                        "Type an expression below, or pick a point, distance or angle from the drawing."
-                    )
-                    .into_owned(),
-                    11.5
-                )
-                .center(),
-            ]
-            .spacing(8)
-            .align_x(iced::Center),
-        )
-        .padding([24, 20])
-        .center(Fill)
-        .into()), Vec::new())
-        } else {
-            let rows = p.history.iter().enumerate().map(|(i, e)| {
-                let expr = button(
-                    muted(e.expr.clone(), 11.5)
-                        .font(MONO)
-                        .wrapping(Wrapping::None)
-                        .ellipsis(Ellipsis::End),
-                )
-                .width(Fill)
+    // History, newest at the bottom next to the input. Empty, it is just
+    // empty space. The list around the rows is built once the layout knows
+    // whether they overflow (see below).
+    let history_rows: Vec<Element<'a, Message>> = {
+        let rows = p.history.iter().enumerate().map(|(i, e)| {
+            let expr = button(
+                muted(e.expr.clone(), 11.5)
+                    .font(MONO)
+                    .wrapping(Wrapping::None)
+                    .ellipsis(Ellipsis::End),
+            )
+            .width(Fill)
+            .padding(0)
+            .on_press(m(QuickCalcMsg::HistoryLoad(i)))
+            .style(button::text);
+            let result = button(text(e.value.display()).size(12.5).font(MONO_STRONG))
                 .padding(0)
-                .on_press(m(QuickCalcMsg::HistoryLoad(i)))
-                .style(button::text);
-                let result = button(text(e.value.display()).size(12.5).font(MONO_STRONG))
-                    .padding(0)
-                    .on_press(m(QuickCalcMsg::HistoryCopy(i)))
-                    .style(|theme: &Theme, status| {
-                        let t = tokens(theme);
-                        button::Style {
-                            text_color: if matches!(status, button::Status::Hovered) {
-                                t.accent
-                            } else {
-                                t.text
-                            },
-                            ..Default::default()
-                        }
-                    });
-                container(
-                    row![
-                        tip(expr, crate::t!("Load into the input").into_owned()),
-                        tip(result, crate::t!("Copy result").into_owned()),
-                    ]
-                    .spacing(10)
-                    .align_y(iced::Center),
-                )
-                .padding([3, 4])
-                .into()
-            });
-            (None, rows.collect())
-        };
+                .on_press(m(QuickCalcMsg::HistoryCopy(i)))
+                .style(|theme: &Theme, status| {
+                    let t = tokens(theme);
+                    button::Style {
+                        text_color: if matches!(status, button::Status::Hovered) {
+                            t.accent
+                        } else {
+                            t.text
+                        },
+                        ..Default::default()
+                    }
+                });
+            container(
+                row![
+                    tip(expr, crate::t!("Load into the input").into_owned()),
+                    tip(result, crate::t!("Copy result").into_owned()),
+                ]
+                .spacing(10)
+                .align_y(iced::Center),
+            )
+            .padding([3, 4])
+            .into()
+        });
+        rows.collect()
+    };
 
     // Input, with the pick banner above it and the preview or error below.
     let mut input_block = column![].spacing(6);
@@ -974,22 +953,17 @@ fn body<'a>(p: &'a QuickCalcPalette, inputs: &Inputs, height: f32) -> Element<'a
             .height(sections_cap)
             .into()
     };
-    let history: Element<'a, Message> = match empty_state {
-        Some(empty) => empty,
-        None => {
-            // Newest at the bottom, right above the input: a short history
-            // sits on the bottom edge, a long one scrolls up from it.
-            let room = height - fixed - natural.min(sections_cap);
-            let overflows = history_rows.len() as f32 * HISTORY_ROW_H > room;
-            let mut list = scrollable(column(history_rows))
-                .anchor_bottom()
-                .height(Length::Shrink);
-            if overflows {
-                list = list.spacing(SCROLLBAR_GAP);
-            }
-            container(list).align_bottom(Fill).width(Fill).into()
-        }
-    };
+    // Newest at the bottom, right above the input: a short history sits on
+    // the bottom edge, a long one scrolls up from it.
+    let room = height - fixed - natural.min(sections_cap);
+    let overflows = history_rows.len() as f32 * HISTORY_ROW_H > room;
+    let mut list = scrollable(column(history_rows))
+        .anchor_bottom()
+        .height(Length::Shrink);
+    if overflows {
+        list = list.spacing(SCROLLBAR_GAP);
+    }
+    let history = container(list).align_bottom(Fill).width(Fill);
 
     column![
         toolbar,

@@ -6184,8 +6184,6 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Copy result" => Some(("quickcalc", "copy-result")),
         "Paste to command line" => Some(("quickcalc", "paste")),
         "Clear history" => Some(("quickcalc", "clear-history")),
-        "Results collect here" => Some(("quickcalc", "empty-title")),
-        "Type an expression below, or pick a point, distance or angle from the drawing." => Some(("quickcalc", "empty-body")),
         "Load into the input" => Some(("quickcalc", "load")),
         "Specify a point in the drawing" => Some(("quickcalc", "point-prompt")),
         "Specify first point in the drawing" => Some(("quickcalc", "first-prompt")),
