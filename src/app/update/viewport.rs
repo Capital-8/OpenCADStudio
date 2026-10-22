@@ -2909,32 +2909,15 @@ impl OpenCADStudio {
                         .and_then(|command| command.cursor_plane())
                         .is_some();
                     if !uses_command_cursor_plane {
-                        if let Some(base) = self.last_point {
-                            let ucs_xf = self.tabs[i].ucs_xform();
-                            if self.ortho_mode {
-                                pt = drafting_constrain(
-                                    pt,
-                                    base,
-                                    &ucs_xf,
-                                    self.isometric_drafting,
-                                    self.iso_plane,
-                                    self.snap_angle_deg,
-                                );
-                            } else if self.polar_mode {
-                                pt = polar_constrain_near(
-                                    pt,
-                                    base,
-                                    self.polar_increment_deg,
-                                    view_rot,
-                                    eye,
-                                    bounds,
-                                    self.snapper.osnap_radius_px,
-                                    &ucs_xf,
-                                );
-                            }
-                        }
-                        if self.tabs[i].active_ucs.is_none() {
-                            pt.z = 0.0;
+                        // The same ortho/polar resolution as the full path,
+                        // Z axis and kept elevation included.
+                        let drafted = self.last_point.and_then(|base| {
+                            self.drafting_point(i, p, pt, base, view_rot, eye, bounds)
+                        });
+                        match drafted {
+                            Some((point, _)) => pt = point,
+                            None if self.tabs[i].active_ucs.is_none() => pt.z = 0.0,
+                            None => {}
                         }
                     }
                     pt
