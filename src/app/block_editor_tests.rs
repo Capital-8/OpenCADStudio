@@ -5583,6 +5583,72 @@ fn block_action_base_properties_edit_native_pivot_with_local_undo() {
 }
 
 #[test]
+fn block_action_base_offset_properties_refresh_references_and_keep_history() {
+    use crate::scene::block_actions::{self as actions, Kind};
+    use glam::DVec3;
+    for kind in [Kind::Scale, Kind::Rotate] {
+        let (mut app, reference) = fixture();
+        begin(&mut app, reference);
+        let i = app.active_tab;
+        let _ = app.run_command_line(if kind == Kind::Scale { "BPARAMETER LINEAR 0,0 10,0 5,2" } else { "BPARAMETER ROTATION 0,0 10 0" });
+        let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+        let parameter = actions::all_parameters(&app.tabs[i].scene.document, definition)[0].handle;
+        let targets = members(&app);
+        let action = actions::create(&mut app.tabs[i].scene.document, definition, kind, parameter, &targets, DVec3::new(8., 9., 0.)).unwrap();
+        let _ = app.update(Message::BlockActionBarSelect(action));
+        let initial = app.tabs[i].scene.document.clone();
+        let depth = app.tabs[i].history.undo_stack.len();
+        assert!(app.tabs[i].properties.sections.iter().flat_map(|s| &s.props).any(|p| p.field == "authoring_action_base_offset_x"));
+        for (field, input) in [("authoring_action_base_offset_x", "6/2"), ("authoring_action_base_offset_y", "2")] {
+            let _ = app.update(Message::PropGeomInput { field, value: input.into() });
+            let _ = app.update(Message::PropGeomCommit(field));
+        }
+        let offset = Vector3::new(3., 2., 0.);
+        assert_eq!(actions::options::base(&app.tabs[i].scene.document, action).unwrap().offset, offset);
+        let changed = app.tabs[i].scene.document.clone();
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 2);
+        for input in ["NaN", "inf", "unknown_name", "2"] {
+            let _ = app.update(Message::PropGeomInput { field: "authoring_action_base_offset_y", value: input.into() });
+            let _ = app.update(Message::PropGeomCommit("authoring_action_base_offset_y"));
+            assert_eq!(app.tabs[i].scene.document, changed);
+            assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 2);
+        }
+        app.undo_steps(2);
+        assert_eq!(app.tabs[i].scene.document.objects[&action], initial.objects[&action]);
+        app.redo_steps(2);
+        assert_eq!(app.tabs[i].scene.document.objects[&action], changed.objects[&action]);
+        let _ = app.update(Message::BlockActionBarSelect(action));
+        let _ = app.update(Message::PropBoolToggle("authoring_action_base_dependent"));
+        let base = actions::options::base(&app.tabs[i].scene.document, action).unwrap();
+        assert_eq!(base.base_point, offset);
+        assert_eq!(base.offset, offset);
+        let independent = app.tabs[i].scene.document.clone();
+        let _ = app.update(Message::PropGeomInput { field: "authoring_action_base_offset_x", value: "20".into() });
+        let _ = app.update(Message::PropGeomCommit("authoring_action_base_offset_x"));
+        assert_eq!(app.tabs[i].scene.document, independent);
+        app.undo_steps(1);
+        let _ = app.dispatch_command("BSAVE"); let _ = app.dispatch_command("BCLOSE");
+        let desired = if kind == Kind::Scale { DVec3::new(20., 0., 0.) } else { DVec3::new(0., 10., 0.) };
+        let staged = actions::instance::evaluate(&app.tabs[i].scene.document, reference, parameter, desired).unwrap().unwrap();
+        app.apply_action_document(i, staged);
+        begin(&mut app, reference);
+        let _ = app.update(Message::BlockActionBarSelect(action));
+        // Editing the offset also rebuilds the previously evaluated reference.
+        let _ = app.update(Message::PropGeomInput { field: "authoring_action_base_offset_x", value: "4".into() });
+        let _ = app.update(Message::PropGeomCommit("authoring_action_base_offset_x"));
+        let doc = &app.tabs[i].scene.document;
+        let EntityType::Insert(native) = doc.get_entity(reference).unwrap() else { panic!() };
+        let line = doc.block_records.get(&native.block_name).unwrap().entity_handles.iter().find_map(|h| match doc.get_entity(*h) { Some(EntityType::Line(line)) => Some(line), _ => None }).unwrap();
+        let expected = if kind == Kind::Scale { Vector3::new(-4., -2., 0.) } else { Vector3::new(6., -2., 0.) };
+        assert!(line.start.distance(&expected) < 1e-8, "{kind:?}: {:?}", line.start);
+        let _ = app.dispatch_command("BEDIT_DISCARD");
+        let before = app.tabs[i].scene.document.clone();
+        let _ = app.update(Message::PropGeomCommit("authoring_action_base_offset_x"));
+        assert_eq!(app.tabs[i].scene.document, before);
+    }
+}
+
+#[test]
 fn block_grip_count_command_and_properties_are_atomic_and_undoable() {
     use crate::scene::block_grips::config;
     let (mut app, reference) = fixture();
