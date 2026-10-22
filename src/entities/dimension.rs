@@ -7861,14 +7861,21 @@ pub(crate) fn automatic_text_position(document: &CadDocument, dim: &Dimension) -
     let scale = if style.dimscale > 1e-6 { style.dimscale } else { 1.0 };
     let height = style.dimtxt * scale;
     let mut position = dimension_text_pos_f64(dim, Some(&style), height, scale);
-    if !matches!(style.dimjust, 1 | 2) || dimension_text_is_outside(dim, Some(&style)) {
+    // Text beside an extension line, or a radius's text out past its arc.
+    let outside = dimension_text_is_outside(dim, Some(&style));
+    let measured = match dim {
+        Dimension::Radius(_) => outside,
+        _ => matches!(style.dimjust, 1 | 2) && !outside,
+    };
+    if !measured {
         return Some(position);
     }
     let Some(ink) = dimension_text_ink_width(document, dim, &style, height) else {
         return Some(position);
     };
     // The layout spaced the text by character cells; it moves by half the
-    // difference to its inked width, away from the line it sits beside.
+    // difference to its inked width, away from the line it sits beside
+    // (or from the arc).
     let cells = dimension_text_cells(dim, Some(&style)).unwrap_or(0.0) * height * CELL_WIDTH;
     let half = (ink - cells) * 0.5;
     let axis = |first: Vector3, second: Vector3, defpt: Vector3, ax: f64, ay: f64| {
@@ -7908,6 +7915,15 @@ pub(crate) fn automatic_text_position(document: &CadDocument, dim: &Dimension) -
                 position.x = cx + px * cos - py * sin;
                 position.y = cy + px * sin + py * cos;
             }
+        }
+        Dimension::Radius(d) => {
+            let (dx, dy) = (
+                d.definition_point.x - d.angle_vertex.x,
+                d.definition_point.y - d.angle_vertex.y,
+            );
+            let len = dx.hypot(dy).max(1e-12);
+            position.x += dx / len * half;
+            position.y += dy / len * half;
         }
         _ => {}
     }

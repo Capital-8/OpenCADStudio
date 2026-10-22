@@ -894,10 +894,14 @@ fn dimension_entity(
                 d.leader_length = norm(sub(text, point));
                 Dimension::Diameter(d)
             };
-            let base = d.base_mut();
-            base.text_middle_point = v3(text);
-            base.insertion_point = v3(text);
-            base.text_user_positioned = true;
+            // A diameter's text stays where the file has it; a radius's text
+            // is laid out by its style along its arc point's direction.
+            if kind == 12 {
+                let base = d.base_mut();
+                base.text_middle_point = v3(text);
+                base.insertion_point = v3(text);
+                base.text_user_positioned = true;
+            }
             EntityType::Dimension(Box::new(d))
         }
         _ => return None,
