@@ -805,6 +805,7 @@ fn dim_style_values(import: &DgnImport, ds: &DgnDimStyle, k: f64, name: &str) ->
 /// first point; radius (11) and diameter (12) from the centre and a point
 /// on the circle, the text at the third point.
 /// It takes `text` and the variable `overrides` the reference import gives.
+/// An angle's arc point follows from its text `layout`.
 fn dimension_entity(
     kind: u8,
     points: &[P3],
@@ -813,6 +814,7 @@ fn dimension_entity(
     style: &str,
     text: String,
     overrides: &[(i16, codec::xdata::XDataValue)],
+    layout: &DimTextLayout,
 ) -> Option<EntityType> {
     use codec::entities::{Dimension, DimensionDiameter, DimensionLinear, DimensionRadius};
     let at = |k: usize| points.get(k).copied();
@@ -847,8 +849,25 @@ fn dimension_entity(
                 sweep += std::f64::consts::TAU;
             }
             let radius = norm(sub(first, vertex));
-            // The arc's point a third of the way round from the first line.
-            let mid = a0 + sweep / 3.0;
+            // The arc's point a third of the way round from the first line;
+            // two thirds when the text, laid beside the second extension line
+            // (a terminator, two gaps and half its width along the arc),
+            // fits between the lines and reaches past the middle.
+            let label = format!("{:.0}\u{b0}", sweep.to_degrees());
+            let width = crate::entities::text_support::text_local_bounds(
+                &layout.font,
+                &label,
+                layout.height as f32,
+                1.0,
+                0.0,
+            )
+            .map(|b| f64::from(b.ink_max[0] - b.ink_min[0]))
+            .unwrap_or(0.0);
+            let length = radius * sweep;
+            let beside = layout.arrow + 2.0 * layout.gap + width / 2.0;
+            let fits = length >= width + 2.0 * layout.arrow;
+            let third = if fits && beside > length / 2.0 { 2.0 } else { 1.0 };
+            let mid = a0 + sweep * third / 3.0;
             let arc = [vertex[0] + radius * mid.cos(), vertex[1] + radius * mid.sin(), vertex[2]];
             let dvec = |p: P3| glam::DVec3::from_array(p);
             crate::modules::annotate::angular_dim::angular_three_point_entity(
@@ -891,47 +910,55 @@ fn dimension_entity(
     Some(entity)
 }
 
-/// The text and the variable overrides an imported dimension takes: its
-/// text carries its colour and, when its font is not its style's text
-/// font, that font; it draws no centre mark, fits text and arrows best,
-/// and takes its own text height, terminator, extension line offset and
-/// extension (each over its style's scale squared, as the reference
-/// reads them), horizontal text as its style and, linear or angular, text
-/// beside the first extension line. Text in its line takes the margin as
-/// its gap; text off the line sits outside it at its own gap.
+/// What lays out an imported dimension's text: its height, terminator,
+/// gap and font.
+struct DimTextLayout {
+    height: f64,
+    arrow: f64,
+    gap: f64,
+    font: String,
+}
+
+/// The text, the variable overrides and the text layout an imported
+/// dimension takes: its text carries its colour and, when its font is not
+/// its style's text font, that font; it draws no centre mark, fits text
+/// and arrows best, and takes its own text height, terminator, extension
+/// line offset and extension (each over its style's scale squared, as the
+/// reference reads them), horizontal text as its style and, linear or
+/// angular, text beside the first extension line. Text in its line takes
+/// the margin as its gap; text off the line sits outside it at its own gap.
 fn dimension_settings(
     import: &DgnImport,
     kind: u8,
     look: &DgnDimLook,
     style: Option<&DgnDimStyle>,
     color: u16,
-) -> (String, Vec<(i16, codec::xdata::XDataValue)>) {
+) -> (String, Vec<(i16, codec::xdata::XDataValue)>, DimTextLayout) {
     use crate::entities::dim_override as ov;
     use codec::xdata::XDataValue::{Integer16, Real};
     let own = dgn_font(import, look.font);
-    let style_file = style.map(|s| dim_text_style(import, s).1);
+    let style_font = style.and_then(|s| dgn_font(import, s.font));
+    let differs = |file: &str| style_font.is_some_and(|(_, f)| !f.eq_ignore_ascii_case(file));
     let font = match own {
-        Some((name, file)) if style_file.as_deref().is_some_and(|f| !f.eq_ignore_ascii_case(file)) => {
-            if look.font.1 == 4 {
-                format!("\\F{name}|b0|i0|c0;")
-            } else {
-                format!("\\F{name}|c0;")
-            }
+        Some((name, file)) if differs(file) && look.font.1 == 4 => {
+            format!(r"\F{name}|b0|i0|c0;")
         }
+        Some((name, file)) if differs(file) => format!(r"\F{name}|c0;"),
         _ => String::new(),
     };
-    let text = format!("{{{font}\\C{color};<>}}");
+    let text = format!(r"{{{font}\C{color};<>}}");
     let scale = style.map(|s| s.scale).filter(|s| *s > 0.0).unwrap_or(1.0);
-    let length = |v: f64| Real(v / (scale * scale));
+    let length = |v: f64| v / (scale * scale);
+    let gap = length(if look.text_outside { look.gap } else { look.margin });
     let horizontal = i16::from(style.is_some_and(|s| s.horizontal_text));
     let mut overrides = vec![
         (ov::DIMCEN, Real(0.0)),
         (ov::DIMATFIT, Integer16(3)),
-        (ov::DIMTXT, length(look.text_height)),
-        (ov::DIMASZ, length(look.arrow)),
-        (ov::DIMEXO, length(look.ext_offset)),
-        (ov::DIMEXE, length(look.ext_extension)),
-        (ov::DIMGAP, length(if look.text_outside { look.gap } else { look.margin })),
+        (ov::DIMTXT, Real(length(look.text_height))),
+        (ov::DIMASZ, Real(length(look.arrow))),
+        (ov::DIMEXO, Real(length(look.ext_offset))),
+        (ov::DIMEXE, Real(length(look.ext_extension))),
+        (ov::DIMGAP, Real(gap)),
         (ov::DIMTAD, Integer16(if look.text_outside { 2 } else { 0 })),
         (ov::DIMTIH, Integer16(horizontal)),
         (ov::DIMTOH, Integer16(horizontal)),
@@ -939,7 +966,13 @@ fn dimension_settings(
     if matches!(kind, 1 | 5) {
         overrides.push((ov::DIMJUST, Integer16(1)));
     }
-    (text, overrides)
+    let layout = DimTextLayout {
+        height: length(look.text_height),
+        arrow: length(look.arrow),
+        gap,
+        font: own.or(style_font).map_or("txt", |f| f.0).to_string(),
+    };
+    (text, overrides, layout)
 }
 
 /// A mesh's face loops (1-based point numbers, a negative one hiding the
@@ -1200,10 +1233,10 @@ impl<'a> Converter<'a> {
                 look,
             } => {
                 let record = self.import.dim_styles.iter().find(|s| s.id == *style);
-                let (text, overrides) =
+                let (text, overrides, layout) =
                     dimension_settings(self.import, *kind, look, record, color_code(element.color));
                 let style = dim_style_name(self.import, *style);
-                dimension_entity(*kind, points, *offset, axes, &style, text, &overrides)
+                dimension_entity(*kind, points, *offset, axes, &style, text, &overrides, &layout)
                     .into_iter()
                     .collect()
             }
