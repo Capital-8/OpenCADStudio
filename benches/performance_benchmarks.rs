@@ -1584,6 +1584,7 @@ fn build_selection_overlay_element(
             matchprop_source_pick: false,
             matchprop_pickbox: false,
             hide_arms: false,
+            short_arms: false,
             snap_color: None,
             snap_size: Default::default(),
         },

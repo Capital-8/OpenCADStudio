@@ -310,6 +310,10 @@ pub struct CrosshairOptions {
     /// Draw only the pickbox: the active command previews a line that the
     /// full-length arms would cover.
     pub hide_arms: bool,
+    /// Keep the arms at the default short length even when CURSORSIZE asks
+    /// for full-screen ones: an infinite-line preview through the cursor
+    /// must stay visible past them, but the cursor itself must not vanish.
+    pub short_arms: bool,
     /// Explicit object-snap marker colour; `None` picks one that reads on
     /// the canvas.
     pub snap_color: Option<[u8; 3]>,
@@ -2716,7 +2720,10 @@ impl canvas::Program<Message> for SelectionCanvas {
                 } else {
                     pick_box_half_px(self.crosshair.pick_box)
                 };
-                let arm = crosshair_arm_px(bounds, self.crosshair.size_percent);
+                let mut arm = crosshair_arm_px(bounds, self.crosshair.size_percent);
+                if self.crosshair.short_arms {
+                    arm = arm.min(CROSSHAIR_ARM);
+                }
                 let base_angles: [f64; 2] = if self.crosshair.isometric {
                     self.crosshair.iso_plane.angles()
                 } else {
