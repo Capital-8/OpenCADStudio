@@ -2501,7 +2501,9 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                         props: std::iter::once(Property {
                             label: crate::t!("Parameter name").into_owned(),
                             field: "authoring_name",
-                            value: PropValue::PlainText(item.name.clone()),
+                            value: if matches!(self.tabs[i].scene.document.objects.get(&item.handle), Some(codec::objects::ObjectType::DynamicBlock(object)) if matches!(object.data, codec::objects::DynamicBlockData::PropertiesTable(_))) {
+                                PropValue::ReadOnly(item.name.clone())
+                            } else { PropValue::PlainText(item.name.clone()) },
                         })
                         .chain(item.grips.into_iter().map(|(part, point)| {
                             Property {
@@ -2525,6 +2527,42 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                         }))
                         .collect(),
                     }];
+                    if let Some(codec::objects::ObjectType::DynamicBlock(object)) = self.tabs[i].scene.document.objects.get(&item.handle) {
+                        if let codec::objects::DynamicBlockData::AlignmentParameter(parameter) = &object.data {
+                            panel.sections.push(PropSection { title: crate::t!("Alignment").into_owned(), props: vec![Property {
+                                label: crate::t!("Alignment type").into_owned(), field: "authoring_alignment_type",
+                                value: PropValue::Choice { selected: crate::t!(if parameter.align_perpendicular { "Perpendicular" } else { "Tangent" }).into_owned(),
+                                    options: vec![crate::t!("Tangent").into_owned(), crate::t!("Perpendicular").into_owned()] },
+                            }] });
+                        }
+                    }
+                    if let Some(count) = self.tabs[i].active_block_edit_session().and_then(|session| crate::scene::block_grips::config::count(&self.tabs[i].scene.document, session.br_handle, item.handle)) {
+                        panel.sections.push(PropSection { title: crate::t!("Grips").into_owned(), props: vec![Property { label: crate::t!("Number of grips").into_owned(), field: "authoring_grip_count", value: PropValue::EditText(count.to_string()) }] });
+                    }
+                    if let Some(grips) = self.tabs[i].active_block_edit_session().and_then(|session| crate::scene::block_grips::config::locations(&self.tabs[i].scene.document, session.br_handle, item.handle).ok()) {
+                        let fields = super::block_grip_set::native_grip_fields();
+                        for grip in grips {
+                            let (x, y) = fields[grip.role];
+                            panel.sections.push(PropSection { title: crate::t!(match grip.role { 0 => "Base grip location", 1 => "End grip location", 2 => "X grip location", _ => "Y grip location" }).into_owned(), props: vec![
+                                Property { label: "X".into(), field: x, value: PropValue::EditText(grip.point.x.to_string()) },
+                                Property { label: "Y".into(), field: y, value: PropValue::EditText(grip.point.y.to_string()) },
+                            ] });
+                        }
+                    }
+                    if let Some(base) = crate::scene::block_actions::options::base(&self.tabs[i].scene.document, item.handle) {
+                        let mut props = vec![Property {
+                            label: crate::t!("Dependent base point").into_owned(),
+                            field: "authoring_action_base_dependent",
+                            value: PropValue::BoolToggle { field: "authoring_action_base_dependent", value: base.dependent },
+                        }];
+                        if !base.dependent {
+                            props.extend([
+                                Property { label: crate::t!("Base X").into_owned(), field: "authoring_action_base_x", value: PropValue::EditText(base.base_point.x.to_string()) },
+                                Property { label: crate::t!("Base Y").into_owned(), field: "authoring_action_base_y", value: PropValue::EditText(base.base_point.y.to_string()) },
+                            ]);
+                        }
+                        panel.sections.push(PropSection { title: crate::t!("Action base point").into_owned(), props });
+                    }
                     if let Some(offsets) = crate::scene::block_actions::options::offsets(
                         &self.tabs[i].scene.document, item.handle) {
                         panel.sections.push(PropSection {

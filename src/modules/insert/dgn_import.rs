@@ -71,6 +71,8 @@ pub enum ExistingReference {
 #[derive(Default)]
 pub struct Converted {
     pub layers: Vec<(String, Color)>,
+    /// Layers that come in turned off.
+    pub layers_off: Vec<String>,
     pub styles: Vec<(String, String)>,
     /// Dimension styles, by name, in the file's table order.
     pub dim_styles: Vec<String>,
@@ -347,6 +349,7 @@ fn chain_points(parts: &[DgnGeom], use_bulges: bool) -> (Vec<P3>, Vec<f64>) {
                 add(*b, None);
             }
             DgnGeom::Points(pts) => pts.iter().for_each(|p| add(*p, None)),
+            DgnGeom::Curve(pts) => curve_fit_points(pts).iter().for_each(|p| add(*p, None)),
             DgnGeom::Arc {
                 center,
                 u,
@@ -692,7 +695,9 @@ fn arc_entity(center: P3, u: P3, v: P3, start: f64, sweep: f64) -> Vec<EntityTyp
         return vec![polyline(&arc_points(center, u, v, start, sweep), &[])];
     }
     // P(t) = c + cos t·u + sin t·v as an ellipse on its major axis with the
-    // minor axis turned counter-clockwise from it about the normal.
+    // minor axis turned counter-clockwise from it about the normal. A longer
+    // second axis makes the major axis the first one turned back a quarter
+    // (-v), as the reference does.
     let ccw = !flipped;
     let (major, ratio, map): (P3, f64, Box<dyn Fn(f64) -> f64>) = if lu >= lv {
         if ccw {
@@ -701,9 +706,9 @@ fn arc_entity(center: P3, u: P3, v: P3, start: f64, sweep: f64) -> Vec<EntityTyp
             (u, lv / lu, Box::new(|t: f64| -t))
         }
     } else if ccw {
-        (v, lu / lv, Box::new(|t: f64| t - std::f64::consts::FRAC_PI_2))
+        (v.map(|c| -c), lu / lv, Box::new(|t: f64| t + std::f64::consts::FRAC_PI_2))
     } else {
-        (v, lu / lv, Box::new(|t: f64| std::f64::consts::FRAC_PI_2 - t))
+        (v.map(|c| -c), lu / lv, Box::new(|t: f64| -t - std::f64::consts::FRAC_PI_2))
     };
     let mut e = Ellipse::from_center_axes(v3(center), v3(major), ratio);
     e.normal = v3(normal);
@@ -775,7 +780,8 @@ fn dimension_entity(
                 sweep += std::f64::consts::TAU;
             }
             let radius = norm(sub(first, vertex));
-            let mid = a0 + 0.5 * sweep;
+            // The arc's point a third of the way round from the first line.
+            let mid = a0 + sweep / 3.0;
             let arc = [vertex[0] + radius * mid.cos(), vertex[1] + radius * mid.sin(), vertex[2]];
             let dvec = |p: P3| glam::DVec3::from_array(p);
             crate::modules::annotate::angular_dim::angular_three_point_entity(
@@ -924,25 +930,34 @@ struct Converter<'a> {
     defs: HashMap<String, &'a [DgnElement]>,
     /// (cell, made inside a copy) → copy block name.
     copies: HashMap<(String, bool), String>,
-    names: Vec<String>,
+    /// Block names given so far, upper-cased.
+    names: std::collections::HashSet<String>,
+    /// For each name used as a base, the first number not yet tried.
+    next_number: HashMap<String, usize>,
     /// Converting a shared cell definition: the cells inside it are not
     /// blocks of their own, their objects are part of the definition.
     in_definition: bool,
+    /// The construction layer of each level, once one is made.
+    construction: HashMap<u32, String>,
 }
 
 impl<'a> Converter<'a> {
     /// `base`, or `base` and the first number that makes it a new name.
     fn unique(&mut self, base: &str) -> String {
-        let taken = |n: &str| self.names.iter().any(|t| t.eq_ignore_ascii_case(n));
-        let name = if taken(base) {
-            (1..)
-                .map(|k| format!("{base}{k}"))
-                .find(|n| !taken(n))
-                .unwrap_or_default()
+        let upper = base.to_ascii_uppercase();
+        let name = if self.names.contains(&upper) {
+            // Numbers below the last one given are all taken: carry on from
+            // there (a file can place one cell tens of thousands of times).
+            let mut k = self.next_number.get(&upper).copied().unwrap_or(1);
+            while self.names.contains(&format!("{upper}{k}")) {
+                k += 1;
+            }
+            self.next_number.insert(upper, k + 1);
+            format!("{base}{k}")
         } else {
             base.to_string()
         };
-        self.names.push(name.clone());
+        self.names.insert(name.to_ascii_uppercase());
         name
     }
 
@@ -990,6 +1005,23 @@ impl<'a> Converter<'a> {
         // A cell's objects are on layer 0 of its block.
         let layer = if in_cell {
             "0".to_string()
+        } else if element.construction && self.import.construction_layers {
+            // A construction element of a file whose view hides them is
+            // on "<level>(Construction)", turned off; a name another level
+            // took gets a number.
+            if let Some(name) = self.construction.get(&element.level) {
+                return name.clone();
+            }
+            let base = format!("{}(Construction)", layer_name(self.import, element.level));
+            let mut name = base.clone();
+            let mut k = 1;
+            while self.construction.values().any(|n| *n == name) {
+                name = format!("{base}{k}");
+                k += 1;
+            }
+            self.construction.insert(element.level, name.clone());
+            self.out.layers_off.push(name.clone());
+            name
         } else {
             layer_name(self.import, element.level)
         };
@@ -1032,6 +1064,17 @@ impl<'a> Converter<'a> {
                 outline(pts, &[], element.filled, self.by_winding())
             }
             DgnGeom::Points(_) => Vec::new(),
+            DgnGeom::Curve(pts) => {
+                let fit = curve_fit_points(pts);
+                if fit.len() < 2 {
+                    return Vec::new();
+                }
+                let mut s = Spline::new();
+                s.degree = 3;
+                s.fit_points = fit.iter().map(|p| v3(*p)).collect();
+                s.flags.planar = true;
+                vec![EntityType::Spline(s)]
+            }
             DgnGeom::Dimension {
                 kind,
                 points,
@@ -1213,10 +1256,95 @@ impl<'a> Converter<'a> {
     }
 }
 
-/// Sub units per drawing unit: a V7 file with 12 sub units to its master
-/// unit (feet and inches) comes in in sub units whichever is chosen.
+/// The points a V7 curve's spline is fitted through. The curve runs from
+/// its third point to its third last, each coordinate an Akima spline over
+/// the points' chord length (a repeated point counts 0.0001 long and adds a
+/// level stretch); the first two and last two points only set the end
+/// slopes. It is sampled at 3n + 3 equal steps of chord length (n points),
+/// and its own points between the ends are kept among the samples, a
+/// sample on one of them (within 2.54e-8) giving way to it.
+fn curve_fit_points(pts: &[P3]) -> Vec<P3> {
+    let n = pts.len();
+    if n < 6 {
+        return Vec::new();
+    }
+    let mut u = vec![0.0];
+    for k in 1..n {
+        u.push(u[k - 1] + dot(sub(pts[k], pts[k - 1]), sub(pts[k], pts[k - 1])).sqrt().max(1e-4));
+    }
+    // Each coordinate's slope at the points 2..n-3 (Akima).
+    let slopes: Vec<Vec<f64>> = (0..3)
+        .map(|c| {
+            let m: Vec<f64> = (0..n - 1)
+                .map(|k| (pts[k + 1][c] - pts[k][c]) / (u[k + 1] - u[k]))
+                .collect();
+            (0..n)
+                .map(|i| {
+                    if i < 2 || i + 2 >= n {
+                        return 0.0;
+                    }
+                    let (w1, w2) = ((m[i + 1] - m[i]).abs(), (m[i - 1] - m[i - 2]).abs());
+                    if w1 + w2 == 0.0 {
+                        (m[i - 1] + m[i]) / 2.0
+                    } else {
+                        (w1 * m[i - 1] + w2 * m[i]) / (w1 + w2)
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    let at = |at: f64| -> P3 {
+        let mut i = 2;
+        while i < n - 4 && at > u[i + 1] {
+            i += 1;
+        }
+        let h = u[i + 1] - u[i];
+        let t = (at - u[i]) / h;
+        let (t2, t3) = (t * t, t * t * t);
+        let (h00, h10) = (2.0 * t3 - 3.0 * t2 + 1.0, t3 - 2.0 * t2 + t);
+        let (h01, h11) = (-2.0 * t3 + 3.0 * t2, t3 - t2);
+        std::array::from_fn(|c| {
+            h00 * pts[i][c]
+                + h10 * slopes[c][i] * h
+                + h01 * pts[i + 1][c]
+                + h11 * slopes[c][i + 1] * h
+        })
+    };
+    let (start, end) = (u[2], u[n - 3]);
+    let steps = 3 * n + 3;
+    let mut marks: Vec<(f64, Option<P3>)> = (0..=steps)
+        .map(|k| {
+            let point = match k {
+                0 => Some(pts[2]),
+                k if k == steps => Some(pts[n - 3]),
+                _ => None,
+            };
+            (start + (end - start) * k as f64 / steps as f64, point)
+        })
+        .collect();
+    marks.extend((3..n - 3).map(|i| (u[i], Some(pts[i]))));
+    marks.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut out: Vec<P3> = Vec::new();
+    for (position, point) in marks {
+        let q = point.unwrap_or_else(|| at(position));
+        if let Some(last) = out.last_mut() {
+            if dot(sub(q, *last), sub(q, *last)).sqrt() <= 2.54e-8 {
+                if point.is_some() {
+                    *last = q;
+                }
+                continue;
+            }
+        }
+        out.push(q);
+    }
+    out
+}
+
+/// Sub units per drawing unit: a file with 12 sub units to its master
+/// unit (feet and inches, V7 or V8) comes in in sub units whichever is
+/// chosen.
 pub fn unit_scale(import: &DgnImport, sub_units: bool) -> f64 {
-    if sub_units || (import.v7 && import.sub_per_master == 12.0) {
+    if sub_units || (import.sub_per_master - 12.0).abs() < 1e-9 {
         import.sub_per_master
     } else {
         1.0
@@ -1247,8 +1375,10 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
             .map(|(name, elements)| (name.to_ascii_uppercase(), elements.as_slice()))
             .collect(),
         copies: HashMap::new(),
-        names: cells.iter().map(|(name, _)| block_name(name)).collect(),
+        names: cells.iter().map(|(name, _)| block_name(name).to_ascii_uppercase()).collect(),
+        next_number: HashMap::new(),
         in_definition: false,
+        construction: HashMap::new(),
     };
     if !import.v7 {
         for level in &import.level_order {
@@ -1259,6 +1389,7 @@ pub fn convert(import: &DgnImport, sub_units: bool, explode_text_nodes: bool) ->
                 style: By::Level,
                 geom: DgnGeom::Points(Vec::new()),
                 filled: false,
+                construction: false,
             };
             c.layer(&element, false);
         }

@@ -42,6 +42,15 @@ pub struct SubPath {
     pub closed: bool,
 }
 
+/// How a subpath of a PDF path ends.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SubClose {
+    /// Closed by the close operator (`h`, `s`, `b`, `re`).
+    pub op: bool,
+    /// Its last segment is the line that operator added back to the start.
+    pub line: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PdfPath {
     pub subpaths: Vec<SubPath>,
@@ -49,6 +58,14 @@ pub struct PdfPath {
     pub stroke: Option<([u8; 3], f64)>,
     /// Fill colour (RGB), for filled paths.
     pub fill: Option<[u8; 3]>,
+    /// The stroke colour and width (points) current when the path was
+    /// painted, stroked or not; `None` when the page could not be followed.
+    pub pen: Option<([u8; 3], f64)>,
+    /// Per subpath, how it ends (empty when not known).
+    pub closes: Vec<SubClose>,
+    /// The clipping polygon (page inches, convex) the path reaches out of;
+    /// `None` when the path lies inside the clip or the clip is no polygon.
+    pub clip: Option<Vec<[f64; 2]>>,
 }
 
 /// A run of glyphs on one baseline in one font and size.
@@ -66,6 +83,8 @@ pub struct PdfText {
     /// Baseline direction, radians.
     pub rotation: f64,
     pub color: [u8; 3],
+    /// The font size (one em), inches.
+    pub em: f64,
 }
 
 /// A raster image drawn on a page: its pixels and where they land.
@@ -90,6 +109,11 @@ pub struct PageVectors {
     pub images: Vec<PdfImage>,
     /// Paths, texts and images in the order the page draws them.
     pub order: Vec<Drawn>,
+    /// For each drawn item, how many optional-content sections (`/OC …
+    /// BDC`) had begun before it.
+    pub oc_marks: Vec<usize>,
+    /// Optional-content sections the page begins in all.
+    pub oc_sections: usize,
 }
 
 /// One drawn item: an index into `paths`, `texts` or `images`.
@@ -132,116 +156,227 @@ pub fn page_content(path: &str, page: &str) -> Option<PageVectors> {
 }
 
 /// A page's content split by PDF layer: `None` for what no layer holds,
-/// then each named layer that is not in `hidden`. Each layer's share is
-/// what the page shows with that layer alone on, less what it shows with
-/// every layer off.
-// ponytail: content in several layers at once (membership dictionaries) is
-// credited to the first layer that shows it.
+/// then each named layer that is not in `hidden`. Layers are taken by name
+/// (two groups of one name are one layer). An item belongs to the innermost
+/// layer that hides it: of the layers whose turning off removes it, the one
+/// that removes the least. What only several layers together decide
+/// (membership dictionaries) goes to the last of its layers that shows it alone.
 pub fn page_content_by_layer(
     path: &str,
     page: &str,
     hidden: &[String],
 ) -> Option<Vec<(Option<String>, PageVectors)>> {
+    use super::pdf_layers::source_with_layers;
     let layers = super::pdf_layers::layers(path);
     if layers.is_empty() {
         return Some(vec![(None, page_content(path, page)?)]);
     }
-    let names: Vec<String> = layers.iter().map(|l| l.name.clone()).collect();
-    let base = page_content(&super::pdf_layers::source_with_layers(path, &names), page)?;
-    let key = |s: &dyn std::fmt::Debug| format!("{s:?}");
-    let mut seen: HashMap<String, usize> = HashMap::new();
-    for item in base
-        .paths
-        .iter()
-        .map(|p| key(p))
-        .chain(base.texts.iter().map(|t| key(t)))
-    {
-        *seen.entry(item).or_default() += 1;
-    }
-    let mut out = Vec::new();
+    let mut names: Vec<String> = Vec::new();
     for layer in &layers {
-        if hidden.contains(&layer.name) {
-            continue;
+        if !names.contains(&layer.name) {
+            names.push(layer.name.clone());
         }
-        let others: Vec<String> = names
-            .iter()
-            .filter(|n| **n != layer.name)
-            .cloned()
-            .collect();
-        let Some(mut only) =
-            page_content(&super::pdf_layers::source_with_layers(path, &others), page)
-        else {
-            continue;
-        };
-        let mut left = seen.clone();
-        let mut fresh = |item: String| match left.get_mut(&item) {
-            Some(n) if *n > 0 => {
-                *n -= 1;
-                false
-            }
-            _ => true,
-        };
-        only.paths.retain(|p| fresh(key(p)));
-        only.texts.retain(|t| fresh(key(t)));
-        only.images.retain(|i| !base.images.contains(i));
-        out.push((Some(layer.name.clone()), only));
     }
-    let mut base = base;
-    images_to_last_layer(path, page, &mut base, &mut out);
+    let read = |off: &[String]| page_content(&source_with_layers(path, off), page);
+    let shown = read(hidden)?;
+    let visible: Vec<&String> = names.iter().filter(|n| !hidden.contains(n)).collect();
+    // The group of each drawn item: 0 for no layer, else 1 + its index in
+    // `visible`. The reference puts an item on the layer whose section
+    // opened last before it (a section left keeps its layer current). When
+    // every section is read in order, that sequence decides; otherwise the
+    // layers are told apart by turning them off.
+    let sections = oc_section_layers(path, page).filter(|s| s.len() == shown.oc_sections);
+    let group_of: Vec<usize> = if let Some(sections) = sections {
+        let mut current: Vec<Option<String>> = Vec::with_capacity(sections.len() + 1);
+        current.push(None);
+        for section in sections {
+            let last = current.last().cloned().flatten();
+            current.push(section.or(last));
+        }
+        (0..shown.order.len())
+            .map(|k| {
+                let layer = shown.oc_marks.get(k).and_then(|m| current.get(*m)).cloned();
+                layer
+                    .flatten()
+                    .and_then(|l| visible.iter().position(|n| **n == l))
+                    .map_or(0, |n| n + 1)
+            })
+            .collect()
+    } else {
+        groups_by_removal(&shown, &names, &visible, hidden, &read)?
+    };
+    let mut groups: Vec<PageVectors> =
+        (0..=visible.len()).map(|_| PageVectors::default()).collect();
+    for (drawn, g) in shown.order.iter().zip(group_of) {
+        let group = &mut groups[g];
+        match *drawn {
+            Drawn::Path(i) => {
+                group.order.push(Drawn::Path(group.paths.len()));
+                group.paths.push(shown.paths[i].clone());
+            }
+            Drawn::Text(i) => {
+                group.order.push(Drawn::Text(group.texts.len()));
+                group.texts.push(shown.texts[i].clone());
+            }
+            Drawn::Image(i) => {
+                group.order.push(Drawn::Image(group.images.len()));
+                group.images.push(shown.images[i].clone());
+            }
+        }
+    }
+    let mut groups = groups.into_iter();
+    let base = groups.next().unwrap_or_default();
+    let mut out: Vec<(Option<String>, PageVectors)> = visible
+        .iter()
+        .map(|n| Some((*n).clone()))
+        .zip(groups)
+        .collect();
     out.insert(0, (None, base));
     Some(out)
 }
 
-/// An image that no layer holds goes with the layer drawn last before it
-/// (with none before it, it stays unlayered): the page is read with every
-/// layer on for the drawing order.
-fn images_to_last_layer(
-    path: &str,
-    page: &str,
-    base: &mut PageVectors,
-    layered: &mut [(Option<String>, PageVectors)],
-) {
-    if base.images.is_empty() || layered.is_empty() {
-        return;
-    }
-    let Some(full) = page_content(&super::pdf_layers::source_with_layers(path, &[]), page) else {
-        return;
-    };
+/// The group of each item `shown` draws (as in [`page_content_by_layer`]),
+/// told apart by reading the page with layers turned off.
+fn groups_by_removal(
+    shown: &PageVectors,
+    names: &[String],
+    visible: &[&String],
+    hidden: &[String],
+    read: &dyn Fn(&[String]) -> Option<PageVectors>,
+) -> Option<Vec<usize>> {
     let key = |s: &dyn std::fmt::Debug| format!("{s:?}");
-    // Each layered path and text keyed once; the first layer holding it wins.
-    let mut owners: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    for (n, (_, pv)) in layered.iter().enumerate() {
-        for item in pv
-            .paths
-            .iter()
-            .map(|p| key(p))
-            .chain(pv.texts.iter().map(|t| key(t)))
-        {
-            owners.entry(item).or_insert(n);
+    // A path filled and stroked by one operator is keyed by its fill: a
+    // read that hides some layer's paths does not merge such pairs (see
+    // `merge_fill_and_stroke`), and its fill half must still match.
+    let path_key = |p: &PdfPath| match p.fill {
+        Some(_) if p.stroke.is_some() => key(&PdfPath {
+            stroke: None,
+            ..p.clone()
+        }),
+        _ => key(p),
+    };
+    let keys = |pv: &PageVectors| -> HashMap<String, usize> {
+        let mut out: HashMap<String, usize> = HashMap::new();
+        let texts = pv.texts.iter().map(|t| key(t));
+        for item in pv.paths.iter().map(path_key).chain(texts) {
+            *out.entry(item).or_default() += 1;
         }
+        out
+    };
+    let less = |a: &HashMap<String, usize>, b: &HashMap<String, usize>| {
+        a.iter()
+            .filter_map(|(k, n)| {
+                let left = n.saturating_sub(b.get(k).copied().unwrap_or(0));
+                (left > 0).then(|| (k.clone(), left))
+            })
+            .collect::<HashMap<String, usize>>()
+    };
+    let shown_keys = keys(shown);
+    let none_on = read(names)?;
+    let mut unlayered = keys(&none_on);
+    // What turning each layer off (as well) removes.
+    let mut removed: Vec<(HashMap<String, usize>, Vec<PdfImage>, usize)> = Vec::new();
+    for name in visible {
+        let mut off = hidden.to_vec();
+        off.push((*name).clone());
+        let (map, images) = match read(&off) {
+            Some(without) => {
+                let images: Vec<PdfImage> = shown
+                    .images
+                    .iter()
+                    .filter(|i| !without.images.contains(i))
+                    .cloned()
+                    .collect();
+                (less(&shown_keys, &keys(&without)), images)
+            }
+            None => (HashMap::new(), Vec::new()),
+        };
+        let size = map.values().sum::<usize>() + images.len();
+        removed.push((map, images, size));
     }
-    let owner = |item: String| owners.get(&item).copied();
-    let mut last: Option<usize> = None;
-    let mut moves: Vec<(usize, PdfImage)> = Vec::new();
-    for drawn in &full.order {
-        match *drawn {
-            Drawn::Path(i) => last = owner(key(&full.paths[i])).or(last),
-            Drawn::Text(i) => last = owner(key(&full.texts[i])).or(last),
-            Drawn::Image(i) => {
-                let image = &full.images[i];
-                if let Some(n) = layered.iter().position(|(_, pv)| pv.images.contains(image)) {
-                    last = Some(n);
-                } else if let (Some(n), Some(at)) =
-                    (last, base.images.iter().position(|b| b == image))
-                {
-                    moves.push((n, base.images.remove(at)));
-                }
+    // What each layer's removal holds, kept whole for nesting tests.
+    let holds: Vec<HashMap<String, usize>> =
+        removed.iter().map(|(map, _, _)| map.clone()).collect();
+    let image_group: Vec<usize> = shown
+        .images
+        .iter()
+        .map(|image| {
+            removed
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, images, _))| images.contains(image))
+                .min_by_key(|(_, (_, _, size))| *size)
+                .map_or(0, |(n, _)| n + 1)
+        })
+        .collect();
+    // What each layer shows alone, read only when needed.
+    let mut alone: Vec<Option<HashMap<String, usize>>> = vec![None; visible.len()];
+    let none_keys = unlayered.clone();
+    let mut owner_of = |item: String| -> Option<usize> {
+        if let Some(n) = unlayered.get_mut(&item).filter(|n| **n > 0) {
+            *n -= 1;
+            return None;
+        }
+        let best = removed
+            .iter()
+            .enumerate()
+            .filter(|(_, (map, _, _))| map.get(&item).is_some_and(|n| *n > 0))
+            .min_by_key(|(_, (_, _, size))| *size)
+            .map(|(n, _)| n);
+        if let Some(n) = best {
+            if let Some(count) = removed[n].0.get_mut(&item) {
+                *count -= 1;
+            }
+            return Some(n);
+        }
+        for (n, name) in visible.iter().enumerate().rev() {
+            if alone[n].is_none() {
+                let others: Vec<String> = names.iter().filter(|m| m != name).cloned().collect();
+                let only = read(&others).map(|pv| less(&keys(&pv), &none_keys));
+                alone[n] = Some(only.unwrap_or_default());
+            }
+            let count = alone[n].as_mut().and_then(|m| m.get_mut(&item));
+            if let Some(count) = count.filter(|c| **c > 0) {
+                *count -= 1;
+                return Some(n);
             }
         }
-    }
-    for (n, image) in moves {
-        layered[n].1.images.push(image);
-    }
+        None
+    };
+    // The layer an item lands on follows the reference's reading of the
+    // marked content: the layer last opened stays current. An item no layer
+    // holds goes with the layer of the item drawn before it, and an item of
+    // an outer layer drawn after an inner one closed stays on the inner one.
+    let mut last: Option<(usize, String)> = None;
+    let mut place = |owner: Option<usize>, item: String| -> usize {
+        let g = match (owner, &last) {
+            (None, Some((m, _))) => Some(*m),
+            (Some(n), Some((m, previous))) if *m != n && holds[n].contains_key(previous) => {
+                Some(*m)
+            }
+            (owner, _) => owner,
+        };
+        if let Some(g) = g {
+            last = Some((g, item));
+        }
+        g.map_or(0, |g| g + 1)
+    };
+    let group_of = shown
+        .order
+        .iter()
+        .map(|drawn| match *drawn {
+            Drawn::Path(i) => {
+                let item = path_key(&shown.paths[i]);
+                place(owner_of(item.clone()), item)
+            }
+            Drawn::Text(i) => {
+                let item = key(&shown.texts[i]);
+                place(owner_of(item.clone()), item)
+            }
+            Drawn::Image(i) => place(image_group[i].checked_sub(1), format!("image {i}")),
+        })
+        .collect();
+    Some(group_of)
 }
 
 fn read_page(path: &str, page: &str) -> Option<PageVectors> {
@@ -271,6 +406,8 @@ fn read_page_with(path: &str, page: &str, images: bool) -> Option<PageVectors> {
     };
     interpret_page(page, &mut context, &mut device);
     device.finish_text();
+    assign_pens(page, initial, &mut device);
+    merge_fill_and_stroke(page, &mut device);
 
     // Base font names in the order the content stream selects them; glyph
     // fonts are matched to them in their order of first use.
@@ -278,9 +415,9 @@ fn read_page_with(path: &str, page: &str, images: bool) -> Option<PageVectors> {
     let mut ops = page.typed_operations();
     while let Some(op) = ops.next() {
         if let TypedInstruction::TextFont(font) = op {
-            let name = page
-                .resources()
-                .get_font(font.0)
+            let dict = page.resources().get_font(font.0);
+            let name = dict
+                .as_ref()
                 .and_then(|dict| dict.get::<Name>(b"BaseFont"))
                 .map(|name| String::from_utf8_lossy(&name).into_owned())
                 .unwrap_or_default();
@@ -303,13 +440,526 @@ fn read_page_with(path: &str, page: &str, images: bool) -> Option<PageVectors> {
             .and_then(|i| names.get(i).cloned())
             .filter(|name| !name.is_empty())
             .unwrap_or_else(|| "Text".to_string());
+        // Capital height as a size share; PDF import measures its own (see
+        // `pdf_import`).
+        text.text.cap_height = 0.72 * text.em;
+        text.text.em = text.em;
     }
     Some(PageVectors {
         paths: device.paths,
         texts: texts.into_iter().map(|t| t.text).collect(),
         images: device.images,
         order: device.order,
+        oc_marks: device.oc_marks,
+        oc_sections: device.oc_sections,
     })
+}
+
+/// A path filled and stroked by one operator (`B`, `b*` …) is one path
+/// with both a fill and a stroke, as the reference reads it (its fill, at
+/// the stroke's weight). The interpreter draws such a path twice; the page's
+/// operators tell those pairs from a fill followed by a separate stroke of
+/// the same path. Nothing is merged when the drawn paths do not match the
+/// operators one for one (paths drawn by patterns or glyph procedures, or
+/// left out by a hidden layer).
+fn merge_fill_and_stroke(
+    page: &hayro::hayro_syntax::page::Page<'_>,
+    device: &mut Collector,
+) {
+    let mut calls: Vec<usize> = Vec::new();
+    walk_operators(page, &mut |op, _| {
+        calls.push(match op {
+            TypedInstruction::StrokePath(_)
+            | TypedInstruction::CloseAndStrokePath(_)
+            | TypedInstruction::FillPathNonZero(_)
+            | TypedInstruction::FillPathNonZeroCompatibility(_)
+            | TypedInstruction::FillPathEvenOdd(_) => 1,
+            TypedInstruction::FillAndStrokeNonZero(_)
+            | TypedInstruction::FillAndStrokeEvenOdd(_)
+            | TypedInstruction::CloseFillAndStrokeNonZero(_)
+            | TypedInstruction::CloseFillAndStrokeEvenOdd(_) => 2,
+            _ => return,
+        });
+    });
+    if calls.iter().sum::<usize>() != device.path_calls.len() {
+        return;
+    }
+    let mut gone = vec![false; device.paths.len()];
+    let mut at = 0;
+    for count in calls {
+        if count == 2 {
+            let pair = (device.path_calls.get(at), device.path_calls.get(at + 1));
+            if let (Some(Some(f)), Some(Some(s))) = pair {
+                let (f, s) = (*f, *s);
+                if device.paths[f].fill.is_some()
+                    && device.paths[s].stroke.is_some()
+                    && device.paths[f].subpaths == device.paths[s].subpaths
+                {
+                    device.paths[f].stroke = device.paths[s].stroke;
+                    gone[s] = true;
+                }
+            }
+        }
+        at += count;
+    }
+    if !gone.contains(&true) {
+        return;
+    }
+    let mut new_index = vec![0usize; gone.len()];
+    let mut kept = Vec::new();
+    for (k, path) in std::mem::take(&mut device.paths).into_iter().enumerate() {
+        new_index[k] = kept.len();
+        if !gone[k] {
+            kept.push(path);
+        }
+    }
+    device.paths = kept;
+    let (mut order, mut marks) = (Vec::new(), Vec::new());
+    for (drawn, mark) in device.order.iter().zip(&device.oc_marks) {
+        match *drawn {
+            Drawn::Path(i) if gone[i] => continue,
+            Drawn::Path(i) => order.push(Drawn::Path(new_index[i])),
+            other => order.push(other),
+        }
+        marks.push(*mark);
+    }
+    device.order = order;
+    device.oc_marks = marks;
+}
+
+/// The layer each optional-content section of a page's own content stream
+/// opens, in order: a group's name; for a membership dictionary, its last
+/// group's when it is an object of its own, its first when written out in
+/// the resources (as the reference reads them); `None` when it names no
+/// group.
+fn oc_section_layers(path: &str, page: &str) -> Option<Vec<Option<String>>> {
+    use hayro::hayro_syntax::object::{Array, Dict, ObjectIdentifier};
+    let bytes = super::pdf_raster::source_bytes(path)?;
+    let pdf = super::pdf_password::open(path, bytes).ok()?;
+    let xref = pdf.xref();
+    let page = pdf.pages().get(page.trim().parse::<usize>().ok()?.checked_sub(1)?)?;
+    let group_name = |dict: &Dict<'_>| {
+        dict.get::<hayro::hayro_syntax::object::String<'_>>(b"Name")
+            .map(|s| super::pdf_layers::text_string(s.as_bytes()))
+    };
+    let mut out = Vec::new();
+    walk_operators(&page, &mut |op, resources| {
+        let TypedInstruction::BeginMarkedContentWithProperties(bdc) = op else { return };
+        if bdc.0.as_ref() != b"OC" {
+            return;
+        }
+        // A form's own properties, else the page's.
+        let properties = match bdc.1.clone().into_name() {
+            Some(n) if resources.properties.contains_key(n.as_ref()) => &resources.properties,
+            _ => &page.resources().properties,
+        };
+        let name = bdc.1.clone().into_name();
+        let indirect = name.as_ref().and_then(|n| properties.get_ref(n.as_ref())).is_some();
+        let dict = name.and_then(|n| properties.get::<Dict<'_>>(n.as_ref()));
+        let layer = dict.and_then(|dict| {
+            if dict.get::<Name<'_>>(b"Type").is_some_and(|t| t.as_ref() == b"OCMD") {
+                let groups: Vec<Dict<'_>> = match dict.get::<Array<'_>>(b"OCGs") {
+                    Some(array) => array
+                        .raw_iter()
+                        .filter_map(|item| item.as_obj_ref())
+                        .filter_map(|r| xref.get::<Dict<'_>>(ObjectIdentifier::from(r)))
+                        .collect(),
+                    None => dict.get::<Dict<'_>>(b"OCGs").into_iter().collect(),
+                };
+                let group = if indirect { groups.last() } else { groups.first() };
+                group.and_then(group_name)
+            } else {
+                group_name(&dict)
+            }
+        });
+        out.push(layer);
+    });
+    Some(out)
+}
+
+/// Every operator of a page's content in the order the interpreter runs
+/// them, a form XObject's operators where it is drawn (with the resources
+/// they read names from).
+fn walk_operators<'a>(
+    page: &hayro::hayro_syntax::page::Page<'a>,
+    visit: &mut dyn FnMut(&TypedInstruction<'_, '_>, &hayro::hayro_syntax::page::Resources<'a>),
+) {
+    walk_steps(page, &mut |step, resources| {
+        if let Step::Op(op) = step {
+            visit(op, resources);
+        }
+    });
+}
+
+/// One step of [`walk_steps`].
+enum Step<'s, 'b, 'a> {
+    Op(&'s TypedInstruction<'b, 'a>),
+    /// A form begins, with its matrix.
+    FormStart(Affine),
+    FormEnd,
+}
+
+/// [`walk_operators`], also told where each form begins and ends.
+fn walk_steps<'a>(
+    page: &hayro::hayro_syntax::page::Page<'a>,
+    visit: &mut dyn FnMut(Step<'_, '_, '_>, &hayro::hayro_syntax::page::Resources<'a>),
+) {
+    use hayro::hayro_syntax::content::TypedIter;
+    use hayro::hayro_syntax::object::{Array, Dict};
+    use hayro::hayro_syntax::page::Resources;
+    fn walk<'a>(
+        data: &[u8],
+        resources: &Resources<'a>,
+        depth: usize,
+        visit: &mut dyn FnMut(Step<'_, '_, '_>, &Resources<'a>),
+    ) {
+        let mut ops = TypedIter::new(data);
+        while let Some(op) = ops.next() {
+            visit(Step::Op(&op), resources);
+            let TypedInstruction::XObject(x) = &op else { continue };
+            // Nested forms are followed a few levels deep.
+            if depth >= 8 {
+                continue;
+            }
+            let Some(stream) = resources.get_x_object(&x.0) else { continue };
+            if !stream.dict().get::<Name<'_>>(b"Subtype").is_some_and(|t| t.as_ref() == b"Form") {
+                continue;
+            }
+            let own = match stream.dict().get::<Dict<'_>>(b"Resources") {
+                Some(dict) => Resources::from_parent(dict, resources.clone()),
+                None => resources.clone(),
+            };
+            if let Ok(data) = stream.decoded() {
+                let m: Vec<f64> = stream
+                    .dict()
+                    .get::<Array<'_>>(b"Matrix")
+                    .map(|a| a.iter::<f64>().collect())
+                    .unwrap_or_default();
+                let matrix = match m.as_slice() {
+                    [a, b, c, d, e, f] => Affine::new([*a, *b, *c, *d, *e, *f]),
+                    _ => Affine::IDENTITY,
+                };
+                visit(Step::FormStart(matrix), &own);
+                walk(&data, &own, depth + 1, visit);
+                visit(Step::FormEnd, &own);
+            }
+        }
+    }
+    if let Some(data) = page.page_stream() {
+        walk(data, page.resources(), 0, visit);
+    }
+}
+
+/// The stroke colour and width current when each path the interpreter drew
+/// was painted, followed through the page's operators (the interpreter hands
+/// a fill only its fill colour). Left unset when the drawn paths do not match
+/// the painting operators one for one.
+fn assign_pens(
+    page: &hayro::hayro_syntax::page::Page<'_>,
+    initial: Affine,
+    device: &mut Collector,
+) {
+    use hayro::hayro_syntax::object::{Dict, Number, Object, Stream};
+    #[derive(Clone)]
+    struct State {
+        ctm: Affine,
+        width: f64,
+        rgb: [u8; 3],
+        /// Components of the stroke colour space (0 for a pattern).
+        components: usize,
+    }
+    fn to_rgb(v: &[f64]) -> [u8; 3] {
+        let c = |x: f64| (x.clamp(0.0, 1.0) * 255.0).round() as u8;
+        match v {
+            [g] => [c(*g); 3],
+            [r, g, b] => [c(*r), c(*g), c(*b)],
+            [cy, m, y, k] => [
+                c((1.0 - cy) * (1.0 - k)),
+                c((1.0 - m) * (1.0 - k)),
+                c((1.0 - y) * (1.0 - k)),
+            ],
+            _ => [0, 0, 0],
+        }
+    }
+    fn components(name: &Name<'_>, resources: &hayro::hayro_syntax::page::Resources<'_>) -> usize {
+        match name.as_ref() {
+            b"DeviceGray" | b"G" | b"CalGray" => 1,
+            b"DeviceRGB" | b"RGB" => 3,
+            b"DeviceCMYK" | b"CMYK" => 4,
+            b"Pattern" => 0,
+            _ => match resources.get_color_space(name) {
+                Some(Object::Array(array)) => {
+                    match array.iter::<Name<'_>>().next().as_ref().map(|f| f.as_ref()) {
+                        Some(b"ICCBased") => array
+                            .iter::<Stream<'_>>()
+                            .next()
+                            .and_then(|s| s.dict().get::<usize>(b"N"))
+                            .unwrap_or(3),
+                        Some(b"CalRGB") | Some(b"Lab") => 3,
+                        Some(b"Pattern") => 0,
+                        _ => 1,
+                    }
+                }
+                Some(Object::Name(n)) if n.as_ref() == b"Pattern" => 0,
+                _ => 3,
+            },
+        }
+    }
+    let f = |v: &Number| v.as_f64();
+    let pen = |s: &State| (s.rgb, s.width * s.ctm.determinant().abs().sqrt());
+    let mut stack = vec![State {
+        ctm: Affine::IDENTITY,
+        width: 1.0,
+        rgb: [0, 0, 0],
+        components: 1,
+    }];
+    // A form runs in a saved state its own `Q` cannot pop.
+    let mut floors: Vec<usize> = Vec::new();
+    // Per drawn path: the pen, and for a fill the path in user space with
+    // its transformation matrix.
+    type Fill = Option<(BezPath, Affine)>;
+    let mut calls: Vec<(([u8; 3], f64), Fill)> = Vec::new();
+    let mut path = BezPath::new();
+    let mut current = Point::ZERO;
+    walk_steps(page, &mut |step, resources| {
+        let op = match step {
+            Step::Op(op) => op,
+            Step::FormStart(matrix) => {
+                let mut state = stack[stack.len() - 1].clone();
+                state.ctm = state.ctm * matrix;
+                floors.push(stack.len());
+                stack.push(state);
+                return;
+            }
+            Step::FormEnd => {
+                if let Some(floor) = floors.pop() {
+                    stack.truncate(floor.max(1));
+                }
+                return;
+            }
+        };
+        let floor = floors.last().map_or(1, |f| f + 1);
+        let top = stack.len() - 1;
+        match op {
+            TypedInstruction::SaveState(_) => stack.push(stack[top].clone()),
+            TypedInstruction::RestoreState(_) => {
+                if stack.len() > floor {
+                    stack.pop();
+                }
+            }
+            TypedInstruction::Transform(t) => {
+                let m = Affine::new([f(&t.0), f(&t.1), f(&t.2), f(&t.3), f(&t.4), f(&t.5)]);
+                stack[top].ctm = stack[top].ctm * m;
+            }
+            TypedInstruction::LineWidth(w) => stack[top].width = f(&w.0),
+            TypedInstruction::SetGraphicsState(gs) => {
+                let width = resources
+                    .get_ext_g_state(&gs.0)
+                    .and_then(|d: Dict<'_>| d.get::<f64>(b"LW"));
+                if let Some(width) = width {
+                    stack[top].width = width;
+                }
+            }
+            TypedInstruction::StrokeColorDeviceGray(g) => {
+                (stack[top].rgb, stack[top].components) = (to_rgb(&[f(&g.0)]), 1)
+            }
+            TypedInstruction::StrokeColorDeviceRgb(c) => {
+                (stack[top].rgb, stack[top].components) =
+                    (to_rgb(&[f(&c.0), f(&c.1), f(&c.2)]), 3)
+            }
+            TypedInstruction::StrokeColorCmyk(c) => {
+                (stack[top].rgb, stack[top].components) =
+                    (to_rgb(&[f(&c.0), f(&c.1), f(&c.2), f(&c.3)]), 4)
+            }
+            TypedInstruction::ColorSpaceStroke(cs) => {
+                stack[top].components = components(cs.0, resources);
+                stack[top].rgb = [0, 0, 0];
+            }
+            TypedInstruction::StrokeColor(c) => {
+                if stack[top].components != 0 {
+                    let v: Vec<f64> = c.0.iter().map(f).collect();
+                    stack[top].rgb = to_rgb(&v);
+                }
+            }
+            TypedInstruction::StrokeColorNamed(c) => {
+                let v: Vec<f64> = c.0.iter().map(f).collect();
+                stack[top].rgb = if stack[top].components == 0 {
+                    [0, 0, 0]
+                } else {
+                    to_rgb(&v)
+                };
+            }
+            TypedInstruction::MoveTo(m) => {
+                let p = Point::new(f(&m.0), f(&m.1));
+                path.move_to(p);
+                current = p;
+            }
+            TypedInstruction::LineTo(m) => {
+                let p = Point::new(f(&m.0), f(&m.1));
+                path.line_to(p);
+                current = p;
+            }
+            TypedInstruction::CubicTo(c) => {
+                let p = Point::new(f(&c.4), f(&c.5));
+                path.curve_to(Point::new(f(&c.0), f(&c.1)), Point::new(f(&c.2), f(&c.3)), p);
+                current = p;
+            }
+            TypedInstruction::CubicStartTo(c) => {
+                let p = Point::new(f(&c.2), f(&c.3));
+                path.curve_to(current, Point::new(f(&c.0), f(&c.1)), p);
+                current = p;
+            }
+            TypedInstruction::CubicEndTo(c) => {
+                let p = Point::new(f(&c.2), f(&c.3));
+                path.curve_to(Point::new(f(&c.0), f(&c.1)), p, p);
+                current = p;
+            }
+            TypedInstruction::ClosePath(_) => path.close_path(),
+            TypedInstruction::RectPath(r) => {
+                let (x, y, w, h) = (f(&r.0), f(&r.1), f(&r.2), f(&r.3));
+                path.move_to((x, y));
+                path.line_to((x + w, y));
+                path.line_to((x + w, y + h));
+                path.line_to((x, y + h));
+                path.close_path();
+                current = Point::new(x, y);
+            }
+            TypedInstruction::EndPath(_) => path = BezPath::new(),
+            TypedInstruction::StrokePath(_) | TypedInstruction::CloseAndStrokePath(_) => {
+                calls.push((pen(&stack[top]), None));
+                path = BezPath::new();
+            }
+            TypedInstruction::FillPathNonZero(_)
+            | TypedInstruction::FillPathNonZeroCompatibility(_)
+            | TypedInstruction::FillPathEvenOdd(_) => {
+                let fill = (std::mem::take(&mut path), stack[top].ctm);
+                calls.push((pen(&stack[top]), Some(fill)));
+            }
+            TypedInstruction::FillAndStrokeNonZero(_)
+            | TypedInstruction::FillAndStrokeEvenOdd(_)
+            | TypedInstruction::CloseFillAndStrokeNonZero(_)
+            | TypedInstruction::CloseFillAndStrokeEvenOdd(_) => {
+                if matches!(
+                    op,
+                    TypedInstruction::CloseFillAndStrokeNonZero(_)
+                        | TypedInstruction::CloseFillAndStrokeEvenOdd(_)
+                ) {
+                    path.close_path();
+                }
+                let fill = (std::mem::take(&mut path), stack[top].ctm);
+                calls.push((pen(&stack[top]), Some(fill)));
+                calls.push((pen(&stack[top]), None));
+            }
+            _ => {}
+        }
+    });
+    if calls.len() != device.path_calls.len() {
+        return;
+    }
+    for (call, (pen, fill)) in device.path_calls.iter().zip(calls) {
+        let Some(i) = *call else { continue };
+        let drawn = &mut device.paths[i];
+        drawn.pen = Some(pen);
+        // The interpreter draws a fill without width or height as a thin
+        // line across its box; the import reads the path that was filled.
+        let Some((user, ctm)) = fill else { continue };
+        if let (Some((rgb, _)), None) = (drawn.stroke, drawn.fill) {
+            let (subpaths, closes) = subpaths(&user, initial * ctm);
+            if !subpaths.is_empty() {
+                (drawn.subpaths, drawn.closes, drawn.stroke, drawn.fill) =
+                    (subpaths, closes, None, Some(rgb));
+            }
+        }
+    }
+}
+
+/// The points of a path that is one straight loop bounding a convex area,
+/// counter-clockwise; `None` for any other path.
+fn convex_loop(path: &BezPath) -> Option<Vec<[f64; 2]>> {
+    let mut points: Vec<[f64; 2]> = Vec::new();
+    for (k, el) in path.elements().iter().enumerate() {
+        match *el {
+            PathEl::MoveTo(p) if k == 0 => points.push(pt(p)),
+            PathEl::LineTo(p) => points.push(pt(p)),
+            PathEl::ClosePath => {}
+            _ => return None,
+        }
+    }
+    points.dedup_by(|a, b| same(*a, *b));
+    if points.len() > 1 && same(points[0], points[points.len() - 1]) {
+        points.pop();
+    }
+    if points.len() < 3 {
+        return None;
+    }
+    let n = points.len();
+    let turns: Vec<f64> = (0..n)
+        .map(|i| cross(points[i], points[(i + 1) % n], points[(i + 2) % n]))
+        .collect();
+    let area: f64 = turns.iter().sum();
+    if turns.iter().any(|t| t * area < -1e-12) {
+        return None;
+    }
+    if area < 0.0 {
+        points.reverse();
+    }
+    Some(points)
+}
+
+fn same(a: [f64; 2], b: [f64; 2]) -> bool {
+    (a[0] - b[0]).hypot(a[1] - b[1]) < 1e-12
+}
+
+/// Twice the signed area of the triangle a, b, c (positive counter-clockwise).
+fn cross(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+}
+
+/// Whether `p` lies in the counter-clockwise convex polygon (or on it).
+pub fn inside_convex(poly: &[[f64; 2]], p: [f64; 2]) -> bool {
+    (0..poly.len()).all(|i| cross(poly[i], poly[(i + 1) % poly.len()], p) >= -1e-9)
+}
+
+/// A polygon cut to a counter-clockwise convex one (Sutherland–Hodgman).
+pub fn clip_to_convex(subject: &[[f64; 2]], clip: &[[f64; 2]]) -> Vec<[f64; 2]> {
+    let mut out: Vec<[f64; 2]> = subject.to_vec();
+    for i in 0..clip.len() {
+        let (a, b) = (clip[i], clip[(i + 1) % clip.len()]);
+        let input = std::mem::take(&mut out);
+        let side = |p: [f64; 2]| cross(a, b, p);
+        for k in 0..input.len() {
+            let (p, q) = (input[k], input[(k + 1) % input.len()]);
+            let (sp, sq) = (side(p), side(q));
+            if sp >= 0.0 {
+                out.push(p);
+            }
+            if (sp >= 0.0) != (sq >= 0.0) {
+                let t = sp / (sp - sq);
+                out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
+            }
+        }
+    }
+    out
+}
+
+/// The part of the segment a–b inside a counter-clockwise convex polygon
+/// (Cyrus–Beck), or `None`.
+pub fn clip_segment(a: [f64; 2], b: [f64; 2], clip: &[[f64; 2]]) -> Option<([f64; 2], [f64; 2])> {
+    let (mut t0, mut t1) = (0.0f64, 1.0f64);
+    for i in 0..clip.len() {
+        let (p, q) = (clip[i], clip[(i + 1) % clip.len()]);
+        let (sa, sb) = (cross(p, q, a), cross(p, q, b));
+        if sa < 0.0 && sb < 0.0 {
+            return None;
+        }
+        if sa < 0.0 {
+            t0 = t0.max(sa / (sa - sb));
+        } else if sb < 0.0 {
+            t1 = t1.min(sa / (sa - sb));
+        }
+    }
+    let at = |t: f64| [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    (t0 < t1).then(|| (at(t0), at(t1)))
 }
 
 struct PendingText {
@@ -318,8 +968,8 @@ struct PendingText {
     /// Baseline end, inches, for joining the next glyph.
     end: [f64; 2],
     em: f64,
-    /// Tops of the capital letters seen so far, inches.
-    caps: Vec<f64>,
+    /// Optional-content sections begun before the run.
+    oc: usize,
 }
 
 #[derive(Default)]
@@ -331,9 +981,18 @@ struct Collector {
     want_images: bool,
     images: Vec<PdfImage>,
     order: Vec<Drawn>,
+    oc_marks: Vec<usize>,
+    /// Each path the interpreter drew, in order: the index of the path it
+    /// became, `None` when left out.
+    path_calls: Vec<Option<usize>>,
+    /// Optional-content sections begun so far.
+    oc_sections: usize,
     /// The visible area, in inches: the page, then each clip path's box
     /// within the one before it (the last is the current one).
     visible: Vec<Rect>,
+    /// Each clip as a convex polygon in inches (`None` when it is not one),
+    /// within the one before it.
+    clips: Vec<Option<Vec<[f64; 2]>>>,
 }
 
 impl Collector {
@@ -341,6 +1000,7 @@ impl Collector {
         if let Some(text) = self.current.take() {
             if !text.text.text.trim().is_empty() {
                 self.order.push(Drawn::Text(self.texts.len()));
+                self.oc_marks.push(text.oc);
                 self.texts.push(text);
             }
         }
@@ -377,23 +1037,35 @@ fn import_precision(transform: Affine) -> impl Fn(Point) -> Point {
     move |p: Point| transform * Point::new(six(p.x), six(p.y))
 }
 
-fn subpaths(path: &BezPath, transform: Affine) -> Vec<SubPath> {
+fn subpaths(path: &BezPath, transform: Affine) -> (Vec<SubPath>, Vec<SubClose>) {
     let transform = import_precision(transform);
     let mut out: Vec<SubPath> = Vec::new();
+    let mut closes: Vec<SubClose> = Vec::new();
     let mut start = Point::ZERO;
     let mut last = Point::ZERO;
+    // The interpreter moves the end of a line onto its own start 0.0001 to
+    // the right (so round caps show); such a line is drawn on one point.
+    let (mut user_last, mut user_start) = (Point::ZERO, Point::ZERO);
     for el in path.elements() {
         match *el {
             PathEl::MoveTo(p) => {
+                (user_last, user_start) = (p, p);
                 let p = transform(p);
                 out.push(SubPath {
                     segments: Vec::new(),
                     closed: false,
                 });
+                closes.push(SubClose::default());
                 start = p;
                 last = p;
             }
             PathEl::LineTo(p) => {
+                let p = if (p.x - user_last.x - 1e-4).abs() < 1e-9 && p.y == user_last.y {
+                    user_last
+                } else {
+                    p
+                };
+                user_last = p;
                 let p = transform(p);
                 if let Some(sp) = out.last_mut() {
                     sp.segments.push(Segment::Line(pt(last), pt(p)));
@@ -401,6 +1073,7 @@ fn subpaths(path: &BezPath, transform: Affine) -> Vec<SubPath> {
                 last = p;
             }
             PathEl::QuadTo(c, p) => {
+                user_last = p;
                 let (c, p) = (transform(c), transform(p));
                 let c1 = last + (c - last) * (2.0 / 3.0);
                 let c2 = p + (c - p) * (2.0 / 3.0);
@@ -411,6 +1084,7 @@ fn subpaths(path: &BezPath, transform: Affine) -> Vec<SubPath> {
                 last = p;
             }
             PathEl::CurveTo(c1, c2, p) => {
+                user_last = p;
                 let (c1, c2, p) = (transform(c1), transform(c2), transform(p));
                 if let Some(sp) = out.last_mut() {
                     sp.segments
@@ -419,9 +1093,12 @@ fn subpaths(path: &BezPath, transform: Affine) -> Vec<SubPath> {
                 last = p;
             }
             PathEl::ClosePath => {
-                if let Some(sp) = out.last_mut() {
+                user_last = user_start;
+                if let (Some(sp), Some(close)) = (out.last_mut(), closes.last_mut()) {
+                    close.op = true;
                     if (last - start).hypot() > 1e-9 {
                         sp.segments.push(Segment::Line(pt(last), pt(start)));
+                        close.line = true;
                     }
                     sp.closed = true;
                 }
@@ -429,6 +1106,8 @@ fn subpaths(path: &BezPath, transform: Affine) -> Vec<SubPath> {
             }
         }
     }
+    let mut keep = out.iter().map(|sp| !sp.segments.is_empty());
+    closes.retain(|_| keep.next().unwrap_or(false));
     out.retain(|sp| !sp.segments.is_empty());
     // A path drawn back to its start without a close operator is closed.
     for sp in &mut out {
@@ -440,7 +1119,7 @@ fn subpaths(path: &BezPath, transform: Affine) -> Vec<SubPath> {
             sp.closed = true;
         }
     }
-    out
+    (out, closes)
 }
 
 impl<'a> Device<'a> for Collector {
@@ -453,11 +1132,24 @@ impl<'a> Device<'a> for Collector {
         paint: &Paint<'a>,
         mode: &PathDrawMode,
     ) {
-        self.finish_text();
-        let subpaths = subpaths(path, transform);
+        // Graphics drawn between glyphs do not end a text run: the next
+        // glyph still joins it when it follows on along the baseline.
+        self.path_calls.push(None);
+        let (subpaths, closes) = subpaths(path, transform);
         if subpaths.is_empty() {
             return;
         }
+        let points = || {
+            subpaths.iter().flat_map(|sp| &sp.segments).flat_map(|seg| match seg {
+                Segment::Line(a, b) => vec![*a, *b],
+                Segment::Cubic(a, b, c, d) => vec![*a, *b, *c, *d],
+            })
+        };
+        // A path reaching out of a polygon clip is clipped to it on import.
+        let clip = match self.clips.last() {
+            Some(Some(poly)) if points().any(|p| !inside_convex(poly, p)) => Some(poly.clone()),
+            _ => None,
+        };
         // A path wholly outside the visible area is left out; one that
         // reaches into it is kept whole.
         if let Some(area) = self.visible.last() {
@@ -487,17 +1179,32 @@ impl<'a> Device<'a> for Collector {
             }
             PathDrawMode::Fill(_) => (None, Some(rgb(paint))),
         };
+        if let Some(call) = self.path_calls.last_mut() {
+            *call = Some(self.paths.len());
+        }
         self.order.push(Drawn::Path(self.paths.len()));
+        self.oc_marks.push(self.oc_sections);
         self.paths.push(PdfPath {
             subpaths,
             stroke,
             fill,
+            pen: None,
+            closes,
+            clip,
         });
     }
     fn push_clip_path(&mut self, clip: &ClipPath) {
         let bounds = clip.path.bounding_box();
         let area = self.visible.last().map_or(bounds, |a| a.intersect(bounds));
         self.visible.push(area);
+        // A clip of one straight convex loop is kept as a polygon (within
+        // the one before it); any other clip is known by its box alone.
+        let polygon = convex_loop(&clip.path).and_then(|poly| match self.clips.last() {
+            Some(Some(outer)) => Some(clip_to_convex(&poly, outer)),
+            Some(None) => None,
+            None => Some(poly),
+        });
+        self.clips.push(polygon);
     }
     fn push_transparency_group(&mut self, _: f32, _: Option<SoftMask<'a>>, _: BlendMode) {}
     fn draw_glyph(
@@ -506,8 +1213,12 @@ impl<'a> Device<'a> for Collector {
         transform: Affine,
         glyph_transform: Affine,
         paint: &Paint<'a>,
-        _: &GlyphDrawMode,
+        mode: &GlyphDrawMode,
     ) {
+        // Invisible text (render mode 3, as over a scan) is not drawn.
+        if matches!(mode, GlyphDrawMode::Invisible) {
+            return;
+        }
         let Glyph::Outline(outline) = glyph else {
             return;
         };
@@ -534,20 +1245,23 @@ impl<'a> Device<'a> for Collector {
         if !self.font_order.contains(&key) {
             self.font_order.push(key);
         }
-        let bounds = outline.outline().bounding_box();
-        let glyph_top = text
-            .chars()
-            .any(|c| c.is_uppercase())
-            .then(|| bounds.y1 / 1000.0 * em);
         let origin = pt(origin);
-        let joins = self.current.as_ref().is_some_and(|run| {
-            run.font_key == key
-                && (run.em - em).abs() < 1e-6
-                && (run.text.rotation - rotation).abs() < 1e-6
-                && ((run.end[0] - origin[0]).powi(2) + (run.end[1] - origin[1]).powi(2)).sqrt()
-                    < 0.3 * em
+        // A glyph continues the run on its baseline (within half an em
+        // across it) when the gap along it is under an em, whatever its font
+        // or size; a gap of more than a few hundredths of an em reads as a
+        // space.
+        let gap = self.current.as_ref().and_then(|run| {
+            if (run.text.rotation - rotation).abs() >= 1e-6 {
+                return None;
+            }
+            let (c, s) = (rotation.cos(), rotation.sin());
+            let (dx, dy) = (origin[0] - run.end[0], origin[1] - run.end[1]);
+            let along = dx * c + dy * s;
+            let across = -dx * s + dy * c;
+            (across.abs() < 0.5 * run.em && along > -0.5 * run.em && along < run.em)
+                .then_some(along / run.em)
         });
-        if !joins {
+        if gap.is_none() {
             self.finish_text();
             self.current = Some(PendingText {
                 text: PdfText {
@@ -558,27 +1272,28 @@ impl<'a> Device<'a> for Collector {
                     width: 0.0,
                     rotation,
                     color: rgb(paint),
+                    em,
                 },
                 font_key: key,
                 end: origin,
                 em,
-                caps: Vec::new(),
+                oc: self.oc_sections,
             });
         }
         if let Some(run) = self.current.as_mut() {
-            run.text.text.push_str(&text);
-            if let Some(top) = glyph_top {
-                run.caps.push(top);
-                // Capital height: the median capital top, so round letters'
-                // overshoot (O, G) does not lift it.
-                let mut caps = run.caps.clone();
-                caps.sort_by(f64::total_cmp);
-                run.text.cap_height = caps[caps.len() / 2];
+            if gap.is_some_and(|g| g >= 0.15) && !run.text.text.ends_with(' ') {
+                run.text.text.push(' ');
             }
+            run.text.text.push_str(&text);
             run.end = [origin[0] + adv_vec.x, origin[1] + adv_vec.y];
             run.text.width = ((run.end[0] - run.text.origin[0]).powi(2)
                 + (run.end[1] - run.text.origin[1]).powi(2))
             .sqrt();
+        }
+    }
+    fn begin_marked_content(&mut self, tag: &[u8], _: Option<i32>) {
+        if tag == b"OC" {
+            self.oc_sections += 1;
         }
     }
     fn draw_image(&mut self, image: Image<'a, '_>, transform: Affine) {
@@ -629,6 +1344,7 @@ impl<'a> Device<'a> for Collector {
         );
         if let Some(image) = decoded {
             self.order.push(Drawn::Image(self.images.len()));
+            self.oc_marks.push(self.oc_sections);
             self.images.push(image);
         }
     }
@@ -636,6 +1352,7 @@ impl<'a> Device<'a> for Collector {
         if self.visible.len() > 1 {
             self.visible.pop();
         }
+        self.clips.pop();
     }
     fn pop_transparency_group(&mut self) {}
 }

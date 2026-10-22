@@ -337,7 +337,11 @@ impl Scene {
             {
                 let source = std::fs::read_to_string(value)
                     .map_err(|error| format!("CENTERLTYPEFILE: {error}"))?;
-                crate::io::linetypes::populate_document_from_source(&mut self.document, &source);
+                crate::io::linetypes::populate_document_from_source(
+                    &mut self.document,
+                    &source,
+                    std::path::Path::new(value).parent(),
+                );
             }
             #[cfg(target_arch = "wasm32")]
             return Err("CENTERLTYPEFILE is unavailable in the web build.".to_owned());

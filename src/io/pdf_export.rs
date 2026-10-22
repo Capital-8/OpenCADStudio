@@ -2154,10 +2154,17 @@ fn subset_family(
     let (ascent, descent) = (sub.ascender(), sub.descender());
     let cp_map: std::collections::BTreeMap<u32, u16> =
         gid_chars.iter().map(|(c, g)| (*c as u32, *g)).collect();
+    // A styled family (its bold / italic face) reads as a plain font name.
+    let (base, styled_bold, italic) = crate::scene::text::sysfont::split_style(family);
+    let name = format!(
+        "{base}{}{}",
+        if styled_bold { " Bold" } else { "" },
+        if italic { " Italic" } else { "" }
+    );
     let parsed = printpdf::ParsedFont::with_glyph_data(
         subset_bytes,
         0,
-        Some(family.to_string()),
+        Some(name),
         cp_map,
         width_of.clone(),
         upem,

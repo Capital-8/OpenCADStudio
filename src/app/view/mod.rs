@@ -1214,11 +1214,9 @@ bg={bg_ms:.1}ms n={view_count}"
                     &tab.scene.document,
                     session.br_handle,
                 )?;
-                let location = glam::DVec3::new(
-                    parameter.def_point.x,
-                    parameter.def_point.y,
-                    parameter.def_point.z,
-                );
+                let native_point = crate::scene::block_grips::config::locations(&tab.scene.document, session.br_handle, parameter.handle).ok()
+                    .and_then(|grips| grips.into_iter().next()).map(|grip| grip.point).unwrap_or(parameter.def_point);
+                let location = glam::DVec3::new(native_point.x, native_point.y, native_point.z);
                 let point = tab.scene.camera.borrow().project(location, vp_bounds)?;
                 let point = iced::Point::new(vp_bounds.x + point.x, vp_bounds.y + point.y);
                 (point.x.is_finite() && point.y.is_finite()).then(|| {
@@ -1282,6 +1280,9 @@ bg={bg_ms:.1}ms n={view_count}"
                             p.native.definition_base_point,
                         )
                     })
+                    .chain(crate::scene::block_point_parameter::parameters(&tab.scene.document, session.br_handle).into_iter().map(|(handle, p)| {
+                        (handle, crate::scene::block_distance_parameter::Graphic::default(), p.parameter.definition_point)
+                    }))
                     .chain(
                         crate::scene::block_orientation_parameter::parameters(
                             &tab.scene.document,
@@ -1340,6 +1341,12 @@ bg={bg_ms:.1}ms n={view_count}"
                             (handle, g, p.parameter.definition_point)
                         }),
                     )
+                    .chain(crate::scene::block_authoring::edit::items(&tab.scene.document, session.br_handle).into_iter().filter_map(|item| {
+                        let native = tab.scene.document.objects.get(&item.handle)?;
+                        if matches!(native, codec::objects::ObjectType::DynamicBlock(object) if matches!(object.data, codec::objects::DynamicBlockData::PropertiesTable(_))) {
+                            Some((item.handle, item.graphic, item.grips.first()?.1))
+                        } else { None }
+                    }))
                     .chain(
                         crate::scene::block_actions::actions(
                             &tab.scene.document,
@@ -1368,7 +1375,8 @@ bg={bg_ms:.1}ms n={view_count}"
                             (handle, g, action.display_location)
                         }),
                     )
-                    .filter_map(|(handle, graphic, marker_tail)| {
+                    .filter_map(|(handle, mut graphic, marker_tail)| {
+                        let native_grips = crate::scene::block_grips::config::apply_graphic(&tab.scene.document, session.br_handle, handle, &mut graphic);
                         let project = |p: codec::types::Vector3| {
                             let p = tab
                                 .scene
@@ -1395,7 +1403,9 @@ bg={bg_ms:.1}ms n={view_count}"
                                 Some((
                                     project(point)?,
                                     if oriented {
-                                        Some(project(marker_tail)?)
+                                        let tail = native_grips.as_ref().and_then(|grips| grips.iter().find(|grip| grip.point == point))
+                                            .and_then(|grip| grip.direction.map(|direction| point - direction)).unwrap_or(marker_tail);
+                                        Some(project(tail)?)
                                     } else {
                                         None
                                     },
@@ -1796,6 +1806,8 @@ bg={bg_ms:.1}ms n={view_count}"
                 Some(crate::snap::TrackingKind::Extension) => {
                     Some(crate::tr!("common", "extension"))
                 }
+                Some(crate::snap::TrackingKind::PlusZ) => Some("+Z".to_string()),
+                Some(crate::snap::TrackingKind::MinusZ) => Some("-Z".to_string()),
                 _ => None,
             };
 
@@ -2661,9 +2673,10 @@ bg={bg_ms:.1}ms n={view_count}"
 
         let main_ui = container({
             // Clean-screen mode drops the ribbon for a full-canvas view; the
-            // status bar stays so the mode can be toggled back off.
+            // menu bar and status bar stay so commands remain reachable and
+            // the mode can be toggled back off.
             let mut col = column![];
-            if !self.clean_screen && self.show_menu_bar {
+            if self.show_menu_bar {
                 col = col.push(crate::ui::menu_bar::view());
             }
             if !self.clean_screen && !self.ribbon_closed {
@@ -2770,6 +2783,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             annotation_all_visible: tab.scene.annotation_all_visible(),
                             annotation_auto_add: self.annotation_auto_scale > 0,
                             viewport_scale_synced: tab.scene.viewport_annotation_scale_synced(),
+                            viewport_locked: tab.scene.viewports_display_locked(),
                             lineweight_display: tab.scene.document.header.lineweight_display,
                         },
                         crate::ui::statusbar::StatusBarModes {
@@ -2778,6 +2792,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             polar_increment_deg: self.polar_increment_deg,
                             dyn_input: self.dyn_input,
                             otrack: self.snapper.otrack_enabled,
+                            dynamic_ucs: self.dynamic_ucs,
                             isometric_drafting: self.isometric_drafting,
                             iso_plane: self.iso_plane,
                             clean_screen: self.clean_screen,

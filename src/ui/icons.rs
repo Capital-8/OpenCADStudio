@@ -111,6 +111,7 @@ pub static ST_POLAR: &[u8] = include_bytes!("../../assets/icons/status/polar.svg
 pub static ST_OSNAP: &[u8] = include_bytes!("../../assets/icons/status/osnap.svg");
 pub static ST_OTRACK: &[u8] = include_bytes!("../../assets/icons/status/otrack.svg");
 pub static ST_DYN: &[u8] = include_bytes!("../../assets/icons/status/dyn.svg");
+pub static ST_DUCS: &[u8] = include_bytes!("../../assets/icons/status/ducs.svg");
 pub static ST_LWT: &[u8] = include_bytes!("../../assets/icons/status/lwt.svg");
 pub static ST_TRANSPARENCY: &[u8] = include_bytes!("../../assets/icons/status/transparency.svg");
 pub static ST_ISOLATE: &[u8] = include_bytes!("../../assets/icons/status/isolate.svg");

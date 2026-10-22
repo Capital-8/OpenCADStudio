@@ -131,6 +131,19 @@ pub(crate) fn parameters(document: &CadDocument, definition: Handle) -> Vec<Para
         .collect()
 }
 
+pub(crate) fn set_alignment_type(
+    document: &mut CadDocument, definition: Handle, handle: Handle, perpendicular: bool,
+) -> Result<bool, &'static str> {
+    if !parameters(document, definition).iter().any(|p| p.handle == handle && p.kind == Kind::Alignment) {
+        return Err("Select an Alignment parameter in the active block definition.");
+    }
+    let Some(ObjectType::DynamicBlock(object)) = document.objects.get_mut(&handle) else { unreachable!() };
+    let DynamicBlockData::AlignmentParameter(parameter) = &mut object.data else { unreachable!() };
+    if parameter.align_perpendicular == perpendicular { return Ok(false); }
+    parameter.align_perpendicular = perpendicular;
+    Ok(true)
+}
+
 pub(crate) fn placement_error(
     document: &CadDocument,
     definition: Handle,
@@ -473,6 +486,7 @@ pub(crate) fn reframe(
                 }
                 _ => continue,
             };
+            super::block_actions::reframe_value(&mut native.parameter.element.eval, native.definition_end_point.z, transform);
             native.definition_base_point = transform.apply(native.definition_base_point);
             native.definition_end_point = transform.apply(native.definition_end_point);
             for point in [

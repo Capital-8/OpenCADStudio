@@ -268,10 +268,18 @@ impl OpenCADStudio {
                     .nth(1)
                     .unwrap_or("ALL")
                     .to_uppercase();
+                // An optional third word limits the purge to matching names
+                // (`PURGE LAYERS A*,TMP`).
+                let pattern = cmd.split_whitespace().nth(2).unwrap_or("*").to_string();
+                let wanted = |name: &str| {
+                    pattern
+                        .split(',')
+                        .any(|p| crate::io::xref_model::wildcard_match(name, p.trim()))
+                };
                 let all = sub == "ALL" || sub.is_empty();
                 let do_layers = all || matches!(sub.as_str(), "LAYERS" | "LAYER" | "LA");
                 let do_styles = all || matches!(sub.as_str(), "TEXTSTYLES" | "STYLES" | "ST");
-                let do_lts = all || matches!(sub.as_str(), "LINETYPES" | "LT");
+                let do_lts = all || matches!(sub.as_str(), "LINETYPES" | "LTYPES" | "LT");
                 let do_blocks = all || matches!(sub.as_str(), "BLOCKS" | "BLOCK" | "B");
                 if !(do_layers || do_styles || do_lts || do_blocks) {
                     self.command_line.push_error(crate::tf!(
@@ -444,6 +452,14 @@ impl OpenCADStudio {
                         vec![]
                     };
 
+                    let layer_remove: Vec<String> =
+                        layer_remove.into_iter().filter(|n| wanted(n)).collect();
+                    let style_remove: Vec<String> =
+                        style_remove.into_iter().filter(|n| wanted(n)).collect();
+                    let lt_remove: Vec<String> =
+                        lt_remove.into_iter().filter(|n| wanted(n)).collect();
+                    let block_remove: Vec<String> =
+                        block_remove.into_iter().filter(|n| wanted(n)).collect();
                     if layer_remove.len()
                         + style_remove.len()
                         + lt_remove.len()
@@ -1231,7 +1247,9 @@ impl OpenCADStudio {
                     | "UOSNAP"
                     | "FIELDDISPLAY"
                     | "FILEDIA"
+                    | "SDI"
                     | "TRIMEXTENDMODE"
+                    | "PELLIPSE"
                     | "SELECTIONCYCLING"
                     | "UCSDETECT"
                     | "SURFACEASSOCIATIVITY"
@@ -1825,6 +1843,37 @@ impl OpenCADStudio {
                         }
                         return Some(self.finish_dispatch(cmd));
                     }
+                    if name == "PELLIPSE" {
+                        use crate::modules::draw::defaults;
+                        // Saved in the drawing (DWG header); ELLIPSE reads it.
+                        let header = &self.tabs[i].scene.document.header;
+                        let current = i16::from(header.create_ellipse_as_polyline);
+                        let prompt = format!("Enter new value for PELLIPSE <{current}>:");
+                        match value
+                            .as_deref()
+                            .map(|v| v.trim().parse::<i16>().ok().filter(|v| (0..=1).contains(v)))
+                        {
+                            Some(Some(mode)) => {
+                                let header = &mut self.tabs[i].scene.document.header;
+                                if header.create_ellipse_as_polyline != (mode == 1) {
+                                    header.create_ellipse_as_polyline = mode == 1;
+                                    self.tabs[i].dirty = true;
+                                }
+                                defaults::set_pellipse(mode == 1);
+                            }
+                            Some(None) => {
+                                self.command_line
+                                    .push_error(crate::t!("Requires 0 or 1 only.").as_ref());
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
                     if name == "UCSDETECT" {
                         let current = i16::from(self.dynamic_ucs);
                         let prompt = format!("Enter new value for UCSDETECT <{current}>:");
@@ -1870,6 +1919,28 @@ impl OpenCADStudio {
                                 self.command_line.push_error(&crate::tf!(
                                     "Requires an integer between {min} and {max}."
                                 ));
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    // SDI 1: one drawing at a time (OPEN closes the current one).
+                    if name == "SDI" {
+                        let current = i16::from(self.sdi);
+                        let prompt = format!("Enter new value for SDI <{current}>:");
+                        match value
+                            .as_deref()
+                            .map(|v| v.trim().parse::<i16>().ok().filter(|v| (0..=1).contains(v)))
+                        {
+                            Some(Some(mode)) => self.sdi = mode == 1,
+                            Some(None) => {
+                                self.command_line
+                                    .push_error(crate::t!("Requires 0 or 1 only.").as_ref());
                                 self.command_line.push_output(&prompt);
                                 self.pending_setvar = Some(name.clone());
                             }
@@ -3786,7 +3857,7 @@ impl OpenCADStudio {
             // Bare RENAME prompts step by step (type → old → new); the argument
             // form below both handles a fully-typed line and is the target the
             // stepped front-end dispatches to.
-            "RENAME" => {
+            "RENAME" | "-RENAME" => {
                 use crate::command::RenameCommand;
                 let c = RenameCommand::new();
                 self.command_line.push_info(&c.prompt());

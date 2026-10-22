@@ -15,6 +15,14 @@ pub struct TdsMaterial {
     pub ambient: Option<[u8; 3]>,
     pub diffuse: Option<[u8; 3]>,
     pub specular: Option<[u8; 3]>,
+    /// Shininess and transparency from 0 to 1 (single precision, as the
+    /// file's percentages give them).
+    pub shininess: Option<f32>,
+    pub transparency: Option<f32>,
+    /// The shading type (1 flat, 2 Gouraud, 3 Phong, 4 metal).
+    pub shading: Option<u16>,
+    /// The diffuse texture map: its file name and strength from 0 to 1.
+    pub map: Option<(String, f32)>,
 }
 
 pub struct TdsMesh {
@@ -124,6 +132,20 @@ impl Reader<'_> {
         }
         out
     }
+    /// A percentage chunk's value from 0 to 1: its integer (0x0030) or
+    /// float (0x0031) percentage.
+    fn percent(&self, from: usize, to: usize) -> Option<f32> {
+        self.chunks(from, to)
+            .into_iter()
+            .find_map(|(id, start, _)| self.percent_value(id, start))
+    }
+    fn percent_value(&self, id: u16, start: usize) -> Option<f32> {
+        match id {
+            0x0030 => Some(f32::from(self.u16(start)?) / 100.0),
+            0x0031 => Some(self.f32(start)? as f32 / 100.0),
+            _ => None,
+        }
+    }
     /// A colour chunk's 8-bit RGB: 24-bit or float, plain before linear.
     fn color(&self, from: usize, to: usize) -> Option<[u8; 3]> {
         let chunks = self.chunks(from, to);
@@ -165,6 +187,10 @@ pub fn read(bytes: &[u8]) -> Option<TdsScene> {
                         ambient: None,
                         diffuse: None,
                         specular: None,
+                        shininess: None,
+                        transparency: None,
+                        shading: None,
+                        map: None,
                     };
                     for (id, s, e) in r.chunks(start, stop) {
                         match id {
@@ -172,6 +198,23 @@ pub fn read(bytes: &[u8]) -> Option<TdsScene> {
                             0xA010 => material.ambient = r.color(s, e),
                             0xA020 => material.diffuse = r.color(s, e),
                             0xA030 => material.specular = r.color(s, e),
+                            0xA040 => material.shininess = r.percent(s, e),
+                            0xA050 => material.transparency = r.percent(s, e),
+                            0xA100 => material.shading = r.u16(s),
+                            0xA200 => {
+                                let mut name = String::new();
+                                let mut strength = None;
+                                for (id, s, e) in r.chunks(s, e) {
+                                    match id {
+                                        0xA300 => name = r.cstr(s, e).0,
+                                        0x0030 | 0x0031 => strength = r.percent_value(id, s),
+                                        _ => {}
+                                    }
+                                }
+                                if !name.is_empty() {
+                                    material.map = Some((name, strength.unwrap_or(1.0)));
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -423,6 +466,8 @@ pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
             continue;
         }
         if options.stop_at.as_ref() == Some(name) {
+            // The mesh the cancelled material question stopped at.
+            out.messages.push(format!("Processing object {name}"));
             out.messages.push(format!("Import stopped at {name}"));
             return out;
         }
@@ -457,6 +502,22 @@ pub fn convert(scene: &TdsScene, options: &TdsOptions) -> TdsImport {
                     if let Some(m) = &material {
                         if !out.materials.contains(m) {
                             out.messages.push(format!("Converting material {m}"));
+                            // A texture map is looked for in the search path
+                            // (the current folder), not beside the file.
+                            let map = scene
+                                .materials
+                                .iter()
+                                .find(|x| x.name == *m)
+                                .and_then(|x| x.map.as_ref());
+                            if let Some((file, _)) = map {
+                                let found = std::env::current_dir()
+                                    .is_ok_and(|dir| dir.join(file).is_file());
+                                if !found {
+                                    out.messages.push(format!(
+                                        "Cannot find texture map file \"{file}\"."
+                                    ));
+                                }
+                            }
                             out.materials.push(m.clone());
                             first_use = Some(m.clone());
                         }

@@ -284,12 +284,13 @@ pub fn wildcard_match(name: &str, pattern: &str) -> bool {
     let mut star: Option<usize> = None;
     let mut match_idx = 0usize;
     while si < n.len() {
-        if pi < p.len() && (p[pi] == '?' || p[pi] == n[si]) {
-            si += 1;
-            pi += 1;
-        } else if pi < p.len() && p[pi] == '*' {
+        // `*` first: a name may hold a literal `*` (anonymous blocks).
+        if pi < p.len() && p[pi] == '*' {
             star = Some(pi);
             match_idx = si;
+            pi += 1;
+        } else if pi < p.len() && (p[pi] == '?' || p[pi] == n[si]) {
+            si += 1;
             pi += 1;
         } else if let Some(s) = star {
             pi = s + 1;

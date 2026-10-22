@@ -13,6 +13,7 @@
 //     Dimension   → Lines (extension + dimension + arrows) + Text
 //     MText       → Text lines
 //     Region      → Lines, Arcs, Circles, Ellipses, Splines (from ACIS B-Rep loops or wires)
+//     Hatch       → Lines of its pattern, clipped to the boundary (not solid/gradient)
 //
 //   Unsupported entity types are skipped silently.
 
@@ -109,6 +110,7 @@ pub fn explode_entity(entity: &EntityType, document: &CadDocument) -> Vec<Entity
         EntityType::Dimension(dim) => explode_dimension(dim, document),
         EntityType::MText(t) => crate::entities::mtext::explode_mtext(t, document),
         EntityType::Region(region) => explode_region(region),
+        EntityType::Hatch(hatch) => explode_hatch(hatch),
         _ => vec![],
     }
 }
@@ -428,6 +430,37 @@ fn explode_mline(ml: &MLine) -> Vec<EntityType> {
     }
 
     result
+}
+
+// ── Hatch explode ──────────────────────────────────────────────────────────
+
+/// The pattern lines exactly as the renderer draws them, lifted from world XY
+/// back onto the hatch plane. Solid and gradient fills yield nothing, so they
+/// stay intact and are reported as not explodable.
+fn explode_hatch(hatch: &codec::entities::Hatch) -> Vec<EntityType> {
+    let Some(model) = crate::scene::Scene::hatch_model_from_dxf(hatch, [1.0; 4]) else {
+        return vec![];
+    };
+    let plane = crate::entities::curve::ocs_plane(hatch.normal, hatch.elevation);
+    let lift = |xy: [f64; 2]| plane.coordinates_at_xy(xy).map(|uv| plane.point_at(uv));
+    let mut common = hatch.common.clone();
+    common.handle = Handle::NULL;
+    common.owner_handle = Handle::NULL;
+    common.xdictionary_handle = None;
+    common.reactors.clear();
+    model
+        .pattern_segments()
+        .into_iter()
+        .filter_map(|[a, b]| {
+            let (a, b) = (lift(a)?, lift(b)?);
+            Some(EntityType::Line(LineEnt {
+                common: common.clone(),
+                start: Vector3::new(a[0], a[1], a[2]),
+                end: Vector3::new(b[0], b[1], b[2]),
+                ..LineEnt::new()
+            }))
+        })
+        .collect()
 }
 
 // ── Region explode ─────────────────────────────────────────────────────────
@@ -2071,6 +2104,52 @@ mod tests {
         insert.row_count = u16::MAX;
         insert.column_count = u16::MAX;
         assert!(explode_entity(&EntityType::Insert(insert), &doc).is_empty());
+    }
+
+    /// A pattern hatch explodes into its pattern lines on the hatch plane,
+    /// inside the boundary; a solid fill does not explode.
+    #[test]
+    fn pattern_hatch_explodes_to_clipped_lines() {
+        use codec::entities::hatch::{BoundaryEdge, BoundaryPath, HatchPatternLine, LineEdge};
+        use codec::types::Vector2;
+        let mut path = BoundaryPath::new();
+        for (s, e) in [((0.0, 0.0), (10.0, 0.0)), ((10.0, 0.0), (10.0, 10.0))]
+            .into_iter()
+            .chain([((10.0, 10.0), (0.0, 10.0)), ((0.0, 10.0), (0.0, 0.0))])
+        {
+            path.edges.push(BoundaryEdge::Line(LineEdge {
+                start: Vector2::new(s.0, s.1),
+                end: Vector2::new(e.0, e.1),
+            }));
+        }
+        let mut hatch = codec::entities::Hatch::new();
+        hatch.paths.push(path);
+        hatch.elevation = 3.0;
+        hatch.common.layer = "HATCH".into();
+        let doc = CadDocument::new();
+        assert!(explode_entity(&EntityType::Hatch(Box::new(hatch.clone())), &doc).is_empty());
+
+        hatch.is_solid = false;
+        hatch.pattern.name = "ANSI31".into();
+        hatch.pattern.lines = vec![HatchPatternLine {
+            angle: std::f64::consts::FRAC_PI_4,
+            base_point: Vector2::new(0.0, 0.0),
+            offset: Vector2::new(-1.0, 1.0),
+            dash_lengths: vec![],
+        }];
+        let pieces = explode_entity(&EntityType::Hatch(Box::new(hatch)), &doc);
+        assert!(pieces.len() > 5);
+        for piece in &pieces {
+            let EntityType::Line(line) = piece else {
+                panic!("hatch exploded into a non-line");
+            };
+            assert_eq!(line.common.layer, "HATCH");
+            for p in [line.start, line.end] {
+                assert!((p.z - 3.0).abs() < 1e-9);
+                assert!((-1e-6..=10.0 + 1e-6).contains(&p.x));
+                assert!((-1e-6..=10.0 + 1e-6).contains(&p.y));
+            }
+        }
     }
 
     /// EXPLODE resolves ByBlock transparency and linetype on the children it

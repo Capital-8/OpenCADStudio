@@ -41,7 +41,7 @@ fn signed_value_set_increments_preserve_negative_axis_values() {
     assert_eq!(constrain_value_set(5.0, &set), 6.0);
 }
 
-fn fixture() -> (CadDocument, Handle, Vec<Handle>) {
+pub(super) fn fixture() -> (CadDocument, Handle, Vec<Handle>) {
     let mut scene = Scene::new();
     scene.define_block_raw(
         "ACTIONS",
@@ -257,7 +257,7 @@ fn block_actions_rotate_flip_test_baseline_reversible_and_invalid_atomic() {
     let DynamicBlockData::RotateAction(a) = &mut o.data else {
         panic!()
     };
-    a.action.dependent = false;
+    a.action.offset = Vector3::UNIT_X;
     let unsupported = doc.clone();
     assert!(evaluate(&mut doc, &unsupported, def, r, DVec3::new(0., 10., 0.)).is_err());
     assert_eq!(doc, unsupported);
@@ -2481,4 +2481,153 @@ fn polar_stretch_rotates_and_extends_separate_selections_with_native_overrides()
     let DynamicBlockData::PolarStretchAction(native)=&object.data else {panic!()};
     assert!(native.handles.is_empty());
     assert_eq!(native.action.dependencies,targets[..3]);
+}
+
+#[test]
+fn block_actions_independent_bases_evaluate_save_reset_and_isolate_references() {
+    use crate::scene::block_orientation_parameter::Kind as O;
+    use crate::scene::block_authoring::edit::{self, Part};
+    for kind in [Kind::Rotate, Kind::Scale] {
+        let (mut doc, def, targets) = fixture();
+        let parameter = if kind == Kind::Rotate { orientation(&mut doc, def, O::Rotation) } else { linear(&mut doc, def) };
+        let action = create(&mut doc, def, kind, parameter, &targets[..1], DVec3::new(7., 8., 0.)).unwrap();
+        assert!(options::set_base(&mut doc, def, action, false, Some(DVec3::new(3., 2., 0.))).unwrap());
+        let item = edit::items(&doc, def).into_iter().find(|item| item.handle == action).unwrap();
+        assert!(item.grips.contains(&(Part::Base, Vector3::new(3., 2., 0.))));
+        // The pivot grip and the action display marker edit distinct native fields.
+        edit::move_part(&mut doc, def, action, Part::Base, Vector3::new(4., 2., 0.)).unwrap();
+        assert_eq!(options::base(&doc, action).unwrap().action.display_location, Vector3::new(7., 8., 0.));
+        edit::move_part(&mut doc, def, action, Part::Base, Vector3::new(3., 2., 0.)).unwrap();
+        let before = doc.clone();
+        for point in [DVec3::new(f64::INFINITY, 0., 0.), DVec3::new(3., 2., 1.)] {
+            assert!(options::set_base(&mut doc, def, action, false, Some(point)).is_err());
+            assert_eq!(doc, before);
+        }
+        assert!(options::set_base(&mut doc, Handle::NULL, action, false, None).is_err());
+        let a = doc.add_entity(EntityType::Insert(codec::entities::Insert::new("ACTIONS", Vector3::ZERO))).unwrap();
+        let b = doc.add_entity(EntityType::Insert(codec::entities::Insert::new("ACTIONS", Vector3::new(30., 0., 0.)))).unwrap();
+        let end = if kind == Kind::Rotate { DVec3::new(0., 10., 0.) } else { DVec3::new(20., 0., 0.) };
+        let expected = if kind == Kind::Rotate { Vector3::new(5., 0., 0.) } else { Vector3::new(-1., -2., 0.) };
+        doc = instance::evaluate(&doc, a, parameter, end).unwrap().unwrap();
+        assert!(instance_line(&doc, a).distance(&expected) < 1e-8);
+        for saved in [
+            doc.clone(),
+            DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap())).read().unwrap(),
+            DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap())).unwrap().read().unwrap(),
+        ] {
+            assert_eq!(options::base(&saved, action), options::base(&doc, action));
+            assert!(instance_line(&saved, a).distance(&expected) < 1e-8);
+            assert_eq!(instance_line(&saved, b), Vector3::UNIT_X);
+            assert_eq!(start(&saved, targets[0]), Vector3::UNIT_X);
+            let reset = instance::evaluate(&saved, a, parameter, DVec3::new(10., 0., 0.)).unwrap().unwrap();
+            assert!(instance_line(&reset, a).distance(&Vector3::UNIT_X) < 1e-8);
+            let again = instance::evaluate(&reset, a, parameter, end).unwrap().unwrap();
+            assert!(instance_line(&again, a).distance(&expected) < 1e-8);
+            let mut dependent = saved.clone();
+            options::set_base(&mut dependent, def, action, true, None).unwrap();
+            let refreshed = instance::refresh(&dependent, def).unwrap();
+            let expected_dependent = if kind == Kind::Rotate { Vector3::UNIT_Y } else { Vector3::new(2., 0., 0.) };
+            assert!(instance_line(&refreshed, a).distance(&expected_dependent) < 1e-8);
+        }
+    }
+}
+
+#[test]
+fn block_parameter_values_are_independent_of_display_grip_locations() {
+    use crate::scene::block_orientation_parameter::Kind as O;
+    for family in 0..5 {
+        let (mut doc, def, targets) = fixture();
+        let (parameter, kind, input) = match family {
+            0 => (point::create(&mut doc, def, Vector3::new(4., 3., 0.), Vector3::new(5., 4., 0.)).unwrap(), Kind::Move, DVec3::new(8., 5., 0.)),
+            1 => (linear(&mut doc, def), Kind::Move, DVec3::new(15., 0., 0.)),
+            2 => (distance::create(&mut doc, def, distance::Kind::Polar, Vector3::ZERO, Vector3::new(10., 0., 0.), Vector3::new(5., 2., 0.)).unwrap(), Kind::Move, DVec3::new(0., 15., 0.)),
+            3 => (distance::create(&mut doc, def, distance::Kind::XY, Vector3::ZERO, Vector3::new(10., 10., 0.), Vector3::new(5., 5., 0.)).unwrap(), Kind::Move, DVec3::new(15., 20., 0.)),
+            _ => (orientation(&mut doc, def, O::Rotation), Kind::Rotate, DVec3::new(0., 10., 0.)),
+        };
+        create(&mut doc, def, kind, parameter, &targets[..1], DVec3::ZERO).unwrap();
+        let p = parameters(&doc, def, kind).remove(0);
+        let ObjectType::DynamicBlock(object) = doc.objects.get_mut(&p.grip).unwrap() else { panic!() };
+        match &mut object.data {
+            DynamicBlockData::LinearGrip(g) => g.grip.location = Vector3::new(35., 42., 0.),
+            DynamicBlockData::XYGrip(g) | DynamicBlockData::PolarGrip(g) | DynamicBlockData::RotationGrip(g) => g.location = Vector3::new(35., 42., 0.),
+            _ => panic!(),
+        }
+        assert_eq!(current(&doc, &p), p.end);
+        let baseline = doc.clone();
+        evaluate(&mut doc, &baseline, def, parameter, input).unwrap();
+        assert_eq!(doc.objects[&p.grip], baseline.objects[&p.grip]);
+        assert!(current(&doc, &p).distance(input) < 1e-8);
+        for saved in [
+            DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&doc).unwrap())).read().unwrap(),
+            DxfReader::from_reader(Cursor::new(DxfWriter::new(&doc).write_to_vec().unwrap())).unwrap().read().unwrap(),
+        ] {
+            assert!(current(&saved, &p).distance(input) < 1e-8);
+            assert_eq!(saved.objects[&p.grip], baseline.objects[&p.grip]);
+        }
+        let translation = Vector3::new(13., -4., 7.);
+        let transform = Transform::from_translation(translation);
+        let mut reframed = doc.clone();
+        point::reframe(&mut reframed, def, &transform);
+        distance::reframe(&mut reframed, def, &transform);
+        crate::scene::block_orientation_parameter::reframe(&mut reframed, def, &transform);
+        let moved = parameters(&reframed, def, kind).remove(0);
+        assert!(current(&reframed, &moved).distance(input + v(translation)) < 1e-8);
+        evaluate(&mut doc, &baseline, def, parameter, p.end).unwrap();
+        assert!(start(&doc, targets[0]).distance(&Vector3::UNIT_X) < 1e-8);
+    }
+}
+
+#[test]
+fn block_parameters_without_grips_remain_evaluable_and_roundtrip() {
+    use crate::scene::block_orientation_parameter::Kind as O;
+    for flip in [false, true] {
+        let (mut doc, def, targets) = fixture();
+        let (parameter, kind) = if flip { (orientation(&mut doc, def, O::Flip), Kind::Flip) } else { (linear(&mut doc, def), Kind::Move) };
+        let p = parameters(&doc, def, kind).remove(0);
+        let graph_handle = authoring::graph(&doc, def).unwrap().unwrap();
+        doc.objects.remove(&p.grip);
+        let ObjectType::DynamicBlock(native) = doc.objects.get_mut(&parameter).unwrap() else { panic!() };
+        match &mut native.data {
+            DynamicBlockData::LinearParameter(p) => {
+                p.parameter.property_states = [0; 4];
+                p.parameter.properties.iter_mut().for_each(|property| property.connections.clear());
+            }
+            DynamicBlockData::FlipParameter(p) => {
+                p.flags_96 = 0;
+                p.parameter.property_states = [0; 4];
+            }
+            _ => panic!(),
+        }
+        if flip {
+            let EntityType::Line(line) = doc.get_entity_mut(targets[0]).unwrap() else { panic!() };
+            line.start = Vector3::UNIT_Y;
+            line.end = Vector3::new(1., 1., 0.);
+        }
+        let ObjectType::DynamicBlock(object) = doc.objects.get_mut(&graph_handle).unwrap() else { panic!() };
+        let DynamicBlockData::EvaluationGraph(graph) = &mut object.data else { panic!() };
+        let node = graph.nodes.iter().find(|node| node.expression == p.grip).unwrap().id;
+        let removed = graph.edges.iter().filter(|edge| edge.source_node == node || edge.destination_node == node).map(|edge| edge.id).collect::<Vec<_>>();
+        graph.nodes.retain(|node| node.expression != p.grip);
+        graph.edges.retain(|edge| !removed.contains(&edge.id));
+        for node in &mut graph.nodes { for edge in &mut node.node_data { if removed.contains(edge) { *edge = -1; } } }
+        for edge in &mut graph.edges { for link in &mut edge.outgoing_edges { if removed.contains(link) { *link = -1; } } }
+        create(&mut doc, def, kind, parameter, &targets[..1], DVec3::ZERO).unwrap();
+        assert_eq!(all_parameters(&doc, def).len(), 1);
+        assert_eq!(all_parameters(&doc, def)[0].grip, Handle::NULL);
+        let insert = doc.add_entity(EntityType::Insert(codec::entities::Insert::new("ACTIONS", Vector3::ZERO))).unwrap();
+        let input = if flip { Value::Flip(true) } else { Value::Point(DVec3::new(15., 0., 0.)) };
+        let before = doc.objects[&parameter].clone();
+        let changed = instance::evaluate_value(&doc, insert, parameter, input).unwrap().unwrap();
+        assert_eq!(changed.objects[&parameter], before);
+        let expected = if flip { -Vector3::UNIT_Y } else { Vector3::new(6., 0., 0.) };
+        for saved in [
+            changed.clone(),
+            DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&changed).unwrap())).read().unwrap(),
+            DxfReader::from_reader(Cursor::new(DxfWriter::new(&changed).write_to_vec().unwrap())).unwrap().read().unwrap(),
+        ] {
+            assert!(instance_line(&saved, insert).distance(&expected) < 1e-8);
+            assert_eq!(instance::value(&saved, insert, &all_parameters(&saved, def)[0]).unwrap(), input);
+            assert_eq!(saved.objects[&parameter], before);
+        }
+    }
 }

@@ -185,7 +185,12 @@ pub fn document_lt_segments(document: &CadDocument, name: &str) -> Option<Comple
                         .map(std::path::Path::new)
                         .and_then(|p| p.parent());
                     let resolved = (!font.is_empty())
-                        .then(|| crate::io::resolve_image_file(&font, base))
+                        .then(|| {
+                            crate::io::resolve_image_file(&font, base).or_else(|| {
+                                crate::io::font_repo::local_font_file(&font)
+                                    .map(|path| path.to_string_lossy().into_owned())
+                            })
+                        })
                         .flatten();
                     // The standard ltypeshp.shx numbers (and the bundled
                     // catalog's own) map to the LFF substitute shapes, so the
@@ -300,14 +305,14 @@ pub fn extract_pattern(desc: &str) -> String {
 
 /// Add all standard OpenCADStudio linetypes to `doc`, skipping existing ones.
 pub fn populate_document(doc: &mut CadDocument) {
-    populate_document_from_source(doc, lin_source());
+    populate_document_from_source(doc, lin_source(), None);
 }
 
 /// Repair the catalog linetypes `doc` already has (see
 /// [`populate_document_from_source`]) without adding any: an opened drawing
 /// keeps exactly its own linetypes, so a purged one stays purged.
 pub fn repair_document(doc: &mut CadDocument) {
-    populate_matching(doc, lin_source(), |_| false);
+    populate_matching(doc, lin_source(), None, |_| false);
 }
 
 /// The catalog linetypes `doc` does not have, as (name, description): what a
@@ -332,7 +337,7 @@ pub fn catalog_missing_from(doc: &CadDocument) -> Vec<(String, String)> {
 /// Returns whether it was added.
 pub fn ensure_catalog_linetype(doc: &mut CadDocument, name: &str) -> bool {
     !doc.line_types.contains(name)
-        && populate_matching(doc, lin_source(), |candidate| {
+        && populate_matching(doc, lin_source(), None, |candidate| {
             candidate.eq_ignore_ascii_case(name)
         }) > 0
 }
@@ -340,18 +345,29 @@ pub fn ensure_catalog_linetype(doc: &mut CadDocument, name: &str) -> bool {
 /// Add the linetypes of a caller-supplied `.lin` source, embedded shapes and
 /// text included, so the drawing draws them and a saved file carries them.
 /// Returns the number of definitions newly registered in the drawing.
+/// `lin_dir` is the folder the `.lin` came from: the shape files it names
+/// are looked for there.
 ///
 /// A linetype the drawing already has keeps its own definition, with one
 /// repair: a copy stripped to its dashes (as this loader used to add them,
 /// and so saved) gets its shapes and text back when its dashes match the
 /// source's exactly.
-pub fn populate_document_from_source(doc: &mut CadDocument, source: &str) -> usize {
-    populate_matching(doc, source, |_| true)
+pub fn populate_document_from_source(
+    doc: &mut CadDocument,
+    source: &str,
+    lin_dir: Option<&std::path::Path>,
+) -> usize {
+    populate_matching(doc, source, lin_dir, |_| true)
 }
 
 /// [`populate_document_from_source`], adding only the missing linetypes
 /// `add` accepts by name; existing ones are repaired either way.
-fn populate_matching(doc: &mut CadDocument, source: &str, add: impl Fn(&str) -> bool) -> usize {
+fn populate_matching(
+    doc: &mut CadDocument,
+    source: &str,
+    lin_dir: Option<&std::path::Path>,
+    add: impl Fn(&str) -> bool,
+) -> usize {
     let complex = parse_complex(source);
     let mut added = 0;
     for mut lt in parse(source) {
@@ -366,7 +382,7 @@ fn populate_matching(doc: &mut CadDocument, source: &str, add: impl Fn(&str) -> 
                     });
             if stripped {
                 if let Some(elements) =
-                    segments.and_then(|s| complex_elements(doc, s, &lt.elements))
+                    segments.and_then(|s| complex_elements(doc, s, &lt.elements, lin_dir))
                 {
                     if let Some(existing) = doc.line_types.get_mut(&lt.name) {
                         existing.elements = elements;
@@ -378,7 +394,9 @@ fn populate_matching(doc: &mut CadDocument, source: &str, add: impl Fn(&str) -> 
         if !add(&lt.name) {
             continue;
         }
-        if let Some(elements) = segments.and_then(|s| complex_elements(doc, s, &lt.elements)) {
+        if let Some(elements) =
+            segments.and_then(|s| complex_elements(doc, s, &lt.elements, lin_dir))
+        {
             lt.elements = elements;
         }
         lt.set_handle(doc.allocate_handle());
@@ -442,6 +460,26 @@ pub fn is_bundled_shape_file(file: &str) -> bool {
     BUNDLED_SHAPES.iter().any(|(f, _, _)| *f == stem)
 }
 
+/// The shape file a `.lin` names, found as written, next to the `.lin`
+/// (in any letter case, as the names in a `.lin` rarely match the files'),
+/// or in the fonts folder.
+fn find_shape_file(file: &str, lin_dir: Option<&std::path::Path>) -> Option<String> {
+    if let Some(found) = crate::io::resolve_image_file(file, lin_dir) {
+        return Some(found);
+    }
+    let name = file.rsplit(['/', '\\']).next()?;
+    lin_dir
+        .and_then(|dir| {
+            std::fs::read_dir(dir)
+                .ok()?
+                .filter_map(Result::ok)
+                .find(|entry| entry.file_name().to_string_lossy().eq_ignore_ascii_case(name))
+                .map(|entry| entry.path())
+        })
+        .or_else(|| crate::io::font_repo::local_font_file(name))
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
 /// The drawing's shape-file STYLE for `file`, added when missing (an empty
 /// name, as shape files are stored).
 fn shape_file_style(doc: &mut CadDocument, file: &str) -> codec::Handle {
@@ -467,11 +505,14 @@ fn shape_file_style(doc: &mut CadDocument, file: &str) -> codec::Handle {
 /// the plain dashes rather than a half-built pattern.
 ///
 /// The lengths come from `plain` — the same pattern parsed at full
-/// precision — rather than the catalog's `f32` segments.
+/// precision — rather than the catalog's `f32` segments. A shape the
+/// bundled substitutes don't cover is looked up by name in its shape file
+/// (see [`find_shape_file`]), and the style keeps the path it was found at.
 fn complex_elements(
     doc: &mut CadDocument,
     lt: &ComplexLt,
     plain: &[LineTypeElement],
+    lin_dir: Option<&std::path::Path>,
 ) -> Option<Vec<LineTypeElement>> {
     use codec::tables::linetype::LineTypeComplexData;
     let mut out: Vec<LineTypeElement> = Vec::new();
@@ -493,15 +534,22 @@ fn complex_elements(
                 ..
             } => {
                 let stem = shape_file_stem(shx_file);
-                let number = BUNDLED_SHAPES
+                let bundled = BUNDLED_SHAPES
                     .iter()
-                    .find(|(file, shape, _)| *file == stem && shape.eq_ignore_ascii_case(name))?
-                    .2;
+                    .find(|(file, shape, _)| *file == stem && shape.eq_ignore_ascii_case(name));
+                let (number, file) = match bundled {
+                    Some(&(_, _, number)) => (number, shx_file.clone()),
+                    None => {
+                        let path = find_shape_file(shx_file, lin_dir)?;
+                        let number = crate::scene::text::shx::shape_number(&path, name)?;
+                        (i16::try_from(number).ok()?, path)
+                    }
+                };
                 LineTypeComplexData {
                     content: LineTypeComplexContent::Shape {
                         shape_number: number,
                     },
-                    style_handle: shape_file_style(doc, shx_file),
+                    style_handle: shape_file_style(doc, &file),
                     scale: decimal(*scale),
                     rotation: decimal(*rot_deg).to_radians(),
                     absolute_rotation: *rot_mode == LtRotation::Absolute,
@@ -683,7 +731,11 @@ fn parse_complex(src: &str) -> HashMap<String, ComplexLt> {
                 continue;
             }
 
-            catalog.insert(name.to_ascii_uppercase(), ComplexLt { segments });
+            // A name defined twice keeps its first definition, as the
+            // drawing does (see `populate_matching`).
+            catalog
+                .entry(name.to_ascii_uppercase())
+                .or_insert(ComplexLt { segments });
         }
     }
     catalog
@@ -882,7 +934,7 @@ mod header_tests {
     #[test]
     fn a_linetype_without_a_description_is_loaded() {
         let mut doc = CadDocument::new();
-        let added = populate_document_from_source(&mut doc, "*PLAIN\nA,.5,-.25\n");
+        let added = populate_document_from_source(&mut doc, "*PLAIN\nA,.5,-.25\n", None);
         assert_eq!(added, 1, "the definition was dropped");
         assert!(doc.line_types.contains("PLAIN"));
 
@@ -921,5 +973,41 @@ mod rotation_tests {
             };
             assert_eq!((rot_mode, rot_deg), (mode, deg), "{inner}");
         }
+    }
+}
+
+#[cfg(test)]
+mod shape_file_tests {
+    use super::{document_complex_lt, populate_document_from_source, LtSegment};
+    use codec::CadDocument;
+
+    /// A `.lin` shape from its own shape file (not one of the bundled
+    /// substitutes) loads with the shape it names, the file found next to
+    /// the `.lin` whatever its letter case (#1982).
+    #[test]
+    fn a_shape_from_the_lin_folder_is_loaded() {
+        let dir = std::env::temp_dir().join(format!("ocs-lin-shx-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // `shapes 1.0`: first, last, count, then (number, length) and the
+        // data — NUL-terminated name, one unit vector east, end.
+        let mut shx = b"shapes 1.0\r\n\x1a".to_vec();
+        for word in [7u16, 7, 1, 7, 7] {
+            shx.extend_from_slice(&word.to_le_bytes());
+        }
+        shx.extend_from_slice(b"TICK\0\x10\0");
+        std::fs::write(dir.join("tst.shx"), shx).unwrap();
+
+        let mut doc = CadDocument::new();
+        let source = "*TICKS,ticks\nA,1,[TICK,TST.SHX,s=.5],-1\n";
+        populate_document_from_source(&mut doc, source, Some(&dir));
+        let lt = document_complex_lt(&doc, "TICKS").expect("the shape was dropped");
+        let shape = lt.segments.iter().find_map(|s| match s {
+            LtSegment::Shape { number, shx_file, .. } => Some((*number, shx_file.clone())),
+            _ => None,
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        let (number, file) = shape.expect("no shape segment");
+        assert_eq!(number, 7);
+        assert!(file.to_ascii_lowercase().ends_with("tst.shx"), "{file}");
     }
 }

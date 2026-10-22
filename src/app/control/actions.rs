@@ -530,7 +530,7 @@ impl OpenCADStudio {
     /// fields win over a layout's stored page setup; unspecified fields keep
     /// the stored setup (layouts) or the app's plot defaults (Model).
     #[cfg(not(target_arch = "wasm32"))]
-    pub(super) fn control_plot(&mut self, req: &Value) -> Result<Task<Message>, Value> {
+    pub(in crate::app) fn control_plot(&mut self, req: &Value) -> Result<Task<Message>, Value> {
         use crate::io::pdf_export::PdfPageInput;
 
         let path = string(req, "path")?;

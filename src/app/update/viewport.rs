@@ -5,7 +5,7 @@ use super::util::*;
 use super::{format_size, VIEWCUBE_HIT_SIZE};
 use crate::app::helpers::{
     axis_lock_apply, axis_lock_capture, drafting_axes, drafting_constrain, parse_coord,
-    polar_constrain_if_near, polar_constrain_near, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis,
+    polar_constrain_if_near, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis,
     CoordKind,
 };
 use crate::app::{Message, ModalKind, OpenCADStudio, POLY_START_DELAY_MS};
@@ -431,23 +431,57 @@ impl OpenCADStudio {
     fn active_construction_ray(
         &self,
         tab: usize,
+        screen: Point,
         cursor: glam::DVec3,
         base: glam::DVec3,
         view_rot: glam::Mat4,
         eye: glam::DVec3,
         bounds: iced::Rectangle,
     ) -> Option<(glam::DVec3, glam::DVec3)> {
-        let ucs = self.tabs[tab].ucs_xform();
-        let mut target = if self.ortho_mode {
-            drafting_constrain(
+        let (target, _) = self.drafting_point(tab, screen, cursor, base, view_rot, eye, bounds)?;
+        Some((base, target))
+    }
+
+    /// Ortho / polar from `base`, for the cursor, the click and grip drags
+    /// alike. In-plane the point keeps `base`'s elevation, so the band runs
+    /// parallel to the UCS XY plane. In a view that shows the UCS Z axis,
+    /// that axis is a drafting direction too (#2000): with the cursor
+    /// (`screen`, pane-local) nearer its projection than the in-plane
+    /// candidate, the point runs straight up or down from `base`. Returns
+    /// the point and whether it lies on that Z axis; `None` while neither
+    /// mode is engaged.
+    fn drafting_point(
+        &self,
+        tab: usize,
+        screen: Point,
+        cursor: glam::DVec3,
+        base: glam::DVec3,
+        view_rot: glam::Mat4,
+        eye: glam::DVec3,
+        bounds: iced::Rectangle,
+    ) -> Option<(glam::DVec3, bool)> {
+        if !self.ortho_mode && !self.polar_mode {
+            return None;
+        }
+        let xf = self.tabs[tab].ucs_xform();
+        let (_, ux, uy, uz) = xf.axes();
+        // A cursor on another level than `base` is lifted onto its plane.
+        let level = (xf.to_ucs(cursor).z - xf.to_ucs(base).z).abs();
+        let cursor = if level > 1e-9 * (1.0 + base.length()) {
+            cursor_on_plane(screen, bounds, view_rot, eye, base, uz).unwrap_or(cursor)
+        } else {
+            cursor
+        };
+        let planar = if self.ortho_mode {
+            Some(drafting_constrain(
                 cursor,
                 base,
-                &ucs,
+                &xf,
                 self.isometric_drafting,
                 self.iso_plane,
                 self.snap_angle_deg,
-            )
-        } else if self.polar_mode {
+            ))
+        } else {
             polar_constrain_if_near(
                 cursor,
                 base,
@@ -456,15 +490,55 @@ impl OpenCADStudio {
                 eye,
                 bounds,
                 self.snapper.osnap_radius_px,
-                &ucs,
-            )?
-        } else {
-            return None;
+                &xf,
+            )
         };
-        if self.tabs[tab].active_ucs.is_none() {
-            target.z = base.z;
+        let to_screen = |w: glam::DVec3| {
+            let ndc = view_rot.project_point3((w - eye).as_vec3());
+            glam::Vec2::new(
+                (ndc.x + 1.0) * 0.5 * bounds.width,
+                (1.0 - ndc.y) * 0.5 * bounds.height,
+            )
+        };
+        let at = glam::Vec2::new(screen.x, screen.y);
+        let gap = |w: glam::DVec3| to_screen(w).distance(at);
+        let along = |dir: glam::DVec3| {
+            cursor_on_projected_axis(screen, bounds, view_rot, eye, base, dir)
+        };
+        // A plan view shows the Z axis end-on: no third direction there.
+        let reach = (cursor - base).length();
+        let origin = to_screen(base);
+        let shown = |dir: glam::DVec3| to_screen(base + dir * reach).distance(origin);
+        let z_point = (reach > 0.0 && shown(uz) > 0.05 * shown(ux).max(shown(uy)))
+            .then(|| along(uz))
+            .flatten();
+        let Some(z_point) = z_point else {
+            return planar.map(|point| (point, false));
+        };
+        let z_gap = gap(z_point);
+        let planar_gap = if self.ortho_mode {
+            let (a, b, _) = drafting_axes(
+                ux,
+                uy,
+                uz,
+                self.isometric_drafting,
+                self.iso_plane,
+                self.snap_angle_deg,
+            );
+            [a, b]
+                .into_iter()
+                .filter_map(along)
+                .map(gap)
+                .fold(f32::INFINITY, f32::min)
+        } else {
+            planar.map_or(f32::INFINITY, gap)
+        };
+        let engaged = self.ortho_mode || z_gap <= self.snapper.osnap_radius_px;
+        if engaged && z_gap < planar_gap {
+            Some((z_point, true))
+        } else {
+            planar.map(|point| (point, false))
         }
-        Some((base, target))
     }
 
     fn active_axis_lock(
@@ -960,6 +1034,34 @@ impl OpenCADStudio {
         }
     }
 
+    /// Discrete snaps against the original geometry retained by STRETCH.
+    /// These stationary reference wires are separate from the moving overlay:
+    /// only endpoints/vertices/midpoints/etc. are eligible, so a nearest or
+    /// tangent snap cannot pull the cursor continuously onto its old outline.
+    pub(in crate::app) fn command_original_snap_hit(
+        &self,
+        i: usize,
+        screen: iced::Point,
+        view_rot: glam::Mat4,
+        eye: glam::DVec3,
+        bounds: iced::Rectangle,
+    ) -> Option<crate::snap::SnapResult> {
+        let originals = self.tabs[i]
+            .active_cmd
+            .as_ref()?
+            .preview_original_snap_wires();
+        if originals.is_empty() {
+            return None;
+        }
+        self.snapper
+            .snap_discrete_preview(screen, originals, view_rot, eye, bounds)
+            // Do not capture the STRETCH base point at zero displacement:
+            // it would hold the moving cursor at its starting position.
+            .filter(|hit| self.last_point.is_none_or(|base| {
+                (hit.world - base).length_squared() > 1e-16
+            }))
+    }
+
     pub(in crate::app) fn grip_edit_for_hit(
         &mut self,
         i: usize,
@@ -1314,7 +1416,6 @@ impl OpenCADStudio {
             self.tabs[i].scene.set_active_visual_style_named(
                 crate::modules::view::visual_style::style_name_for(mode),
             );
-            self.tabs[i].scene.bump_geometry_no_blocks();
             self.tabs[i].dirty = true;
             self.command_line
                 .push_output(crate::tf!("Viewport visual style: {label}").as_ref());
@@ -1353,9 +1454,8 @@ impl OpenCADStudio {
         self.tabs[i].wireframe = wf;
         self.ribbon.set_wireframe(wf);
         self.tabs[i].visual_style = label.into();
-        // Re-upload face3d fills on the next frame — the render
-        // pipeline keys its upload cache off `geometry_epoch`.
-        self.tabs[i].scene.bump_geometry_no_blocks();
+        // No geometry bump: every render pass keys on the viewport's own
+        // mode, and a bump re-tessellated and re-uploaded the whole drawing.
         self.tabs[i].dirty = true;
     }
 
@@ -1533,6 +1633,7 @@ impl OpenCADStudio {
 
             // UCS icon hover highlight (suppressed mid grip-drag).
             self.ucs_icon_hover = self.ucs_grip_drag.is_none()
+                && !self.custom_block_grip_at_cursor(i, p, svw, svh)
                 && self
                     .ucs_icon_hit_info(i, svw, svh)
                     .map(|h| over_ucs_icon(p, &h))
@@ -1615,7 +1716,9 @@ impl OpenCADStudio {
                         .active_model_tile_bounds(vp_size.0, vp_size.1);
                     drop(sel);
                     let zoom_delta = -dy * 0.03;
-                    if self.tabs[i].scene.active_viewport.is_some() {
+                    if self.tabs[i].scene.active_viewport.is_some()
+                        && !self.tabs[i].scene.navigation_locked()
+                    {
                         self.tabs[i].scene.pan_active_viewport(dx, 0.0, bounds);
                         self.tabs[i].scene.zoom_active_viewport(zoom_delta, None);
                     } else {
@@ -1672,12 +1775,14 @@ impl OpenCADStudio {
                             let scene = &self.tabs[i].scene;
                             let bounds = scene.active_model_tile_bounds(vp_size.0, vp_size.1);
                             // The surface under the pointer where the drag
-                            // began, so the model turns about what is grabbed.
+                            // began, so the model turns about what is grabbed —
+                            // even with a selection or a command picking points.
+                            // The selection centre only stands in over empty space.
                             let grabbed = iced::Point::new(last.x - bounds.x, last.y - bounds.y);
                             sel.orbit.pivot = Some(
                                 scene
-                                    .orbit_pivot()
-                                    .or_else(|| scene.surface_pivot_at(bounds, grabbed))
+                                    .surface_pivot_at(bounds, grabbed)
+                                    .or_else(|| scene.orbit_pivot())
                                     .or_else(|| scene.view_center_surface_pivot(bounds))
                                     .unwrap_or_else(|| scene.camera.borrow().target),
                             );
@@ -2004,7 +2109,7 @@ impl OpenCADStudio {
             let (go, gr) = self.drafting_grid_basis(i);
             let base = grip.origin_world;
             let construction_ray =
-                self.active_construction_ray(i, raw, base, view_rot, eye, bounds);
+                self.active_construction_ray(i, p, raw, base, view_rot, eye, bounds);
             // `raw` is already model space (viewport camera or paper→model),
             // and the wires are model space, so the snap result is model.
             // Normal snap: only the rest of the drawing participates here.
@@ -2150,27 +2255,10 @@ impl OpenCADStudio {
                 })
             {
                 let base = grip.origin_world;
-                let ucs_xf = self.tabs[i].ucs_xform();
-                if self.ortho_mode {
-                    snapped = drafting_constrain(
-                        snapped,
-                        base,
-                        &ucs_xf,
-                        self.isometric_drafting,
-                        self.iso_plane,
-                        self.snap_angle_deg,
-                    );
-                } else if self.polar_mode {
-                    snapped = polar_constrain_near(
-                        snapped,
-                        base,
-                        self.polar_increment_deg,
-                        view_rot,
-                        eye,
-                        bounds,
-                        self.snapper.osnap_radius_px,
-                        &ucs_xf,
-                    );
+                if let Some((point, _)) =
+                    self.drafting_point(i, p, snapped, base, view_rot, eye, bounds)
+                {
+                    snapped = point;
                 }
             }
 
@@ -2715,6 +2803,18 @@ impl OpenCADStudio {
                     .snap_dwell
                     .as_ref()
                     .is_some_and(|dwell| dwell.discrete_preview_due_at(Instant::now()));
+            // A command that hides its resident sources (STRETCH) must keep
+            // its edited geometry updating during the lightweight mouse path,
+            // unlike a point-only rubber band. Cap it to the same 60 Hz
+            // preview budget rather than running full snapping each event.
+            let refresh_stretch_preview = self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .is_some_and(|cmd| !cmd.preview_hidden_handles().is_empty())
+                && (run_discrete_preview
+                    || self.snap_dwell.as_ref().is_some_and(|dwell| {
+                        dwell.discrete_preview_due_at(Instant::now())
+                    }));
             // F3 off (or only continuous modes configured) means this live
             // pass cannot produce a snap. Avoid even querying the large scene
             // index; the full settled/click pass remains authoritative.
@@ -2778,6 +2878,15 @@ impl OpenCADStudio {
             } else {
                 None
             };
+            // Keep the pale, stationary STRETCH reference snappable in the
+            // capped fast path, without restoring its hidden resident wires or
+            // feeding its geometry into the main drawing interaction index.
+            let original_snap = if run_discrete_preview || refresh_stretch_preview {
+                self.command_original_snap_hit(i, p, view_rot, eye, bounds)
+            } else {
+                None
+            };
+            let snap = crate::snap::merge_snap(snap, original_snap, p);
             let world = snap.map_or(cursor_world, |hit| hit.world);
             self.tabs[i].last_cursor_world = world;
             self.tabs[i].last_cursor_screen = p_full;
@@ -2787,6 +2896,11 @@ impl OpenCADStudio {
                 hit.screen.y += tile_b.y;
             }
             self.tabs[i].snap_result = snap;
+            if refresh_stretch_preview {
+                // Rebuild only the command overlay, not the resident drawing;
+                // the full snap pass still waits for the normal dwell tick.
+                self.refresh_active_cmd_preview(i);
+            }
             // Re-arm the dwell — tick fires SNAP_DWELL_MS after the last move.
             if let Some(dwell) = self.snap_dwell.as_mut() {
                 dwell.last_move_at = Instant::now();
@@ -2794,7 +2908,7 @@ impl OpenCADStudio {
                 dwell.tab = i;
                 dwell.preview_dirty = true;
                 dwell.snap_resolved = false;
-                if run_discrete_preview {
+                if run_discrete_preview || refresh_stretch_preview {
                     dwell.last_preview_snap_at = Instant::now();
                 }
             }
@@ -2979,7 +3093,7 @@ impl OpenCADStudio {
                     None
                 } else {
                     self.last_point.and_then(|base| {
-                        self.active_construction_ray(i, snap_cursor, base, view_rot, eye, bounds)
+                        self.active_construction_ray(i, p, snap_cursor, base, view_rot, eye, bounds)
                     })
                 };
                 let additional_rays =
@@ -2998,6 +3112,12 @@ impl OpenCADStudio {
                     additional_rays.as_ref().map_or(&[], |rays| rays.as_slice()),
                 )
             };
+            // Restore discrete snap targets from STRETCH's original snapshot
+            // even though the corresponding resident objects are hidden.
+            let original_snap = self.command_original_snap_hit(i, p, view_rot, eye, bounds);
+            self.tabs[i].snap_result = crate::snap::merge_snap(
+                self.tabs[i].snap_result, original_snap, p,
+            );
             let snap_ms = crate::perf::elapsed_ms(snap_started);
             if perf_move && snap_ms >= 1.0 {
                 crate::perf_record!(
@@ -3127,6 +3247,8 @@ impl OpenCADStudio {
             }
 
             let effective = {
+                // Ortho / polar from the last point keep its elevation.
+                let mut drafted_elevation = false;
                 let mut pt: glam::DVec3 =
                     if let (Some(dir), Some(base)) = (axis_lock, self.last_point) {
                         let point = self.tabs[i]
@@ -3156,30 +3278,32 @@ impl OpenCADStudio {
                         let osnap_locked = self.tabs[i]
                             .snap_result
                             .is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid);
-                        if !osnap_locked && !is_window_corner && !uses_command_cursor_plane {
-                            if let Some(base) = self.last_point {
-                                let ucs_xf = self.tabs[i].ucs_xform();
-                                if self.ortho_mode {
-                                    pt = drafting_constrain(
-                                        pt,
-                                        base,
-                                        &ucs_xf,
-                                        self.isometric_drafting,
-                                        self.iso_plane,
-                                        self.snap_angle_deg,
-                                    );
-                                } else if self.polar_mode {
-                                    pt = polar_constrain_near(
-                                        pt,
-                                        base,
-                                        self.polar_increment_deg,
-                                        view_rot,
-                                        eye,
-                                        bounds,
-                                        self.snapper.osnap_radius_px,
-                                        &ucs_xf,
-                                    );
-                                }
+                        let drafted = (!osnap_locked
+                            && !is_window_corner
+                            && !uses_command_cursor_plane)
+                            .then_some(self.last_point)
+                            .flatten()
+                            .and_then(|base| {
+                                let hit = self
+                                    .drafting_point(i, p, pt, base, view_rot, eye, bounds)?;
+                                Some((base, hit))
+                            });
+                        if let Some((base, (point, on_z))) = drafted {
+                            pt = point;
+                            drafted_elevation = true;
+                            // Straight up or down from the last point: the
+                            // tracking ray carries typed distances and its
+                            // guide, and the tip reads +Z / -Z (#2000).
+                            let up = (point - base).dot(self.tabs[i].ucs_xform().axes().3);
+                            if on_z && up != 0.0 {
+                                self.otrack_active =
+                                    Some((base, (point - base).normalize()));
+                                self.otrack_cross = None;
+                                self.otrack_kind = Some(if up > 0.0 {
+                                    crate::snap::TrackingKind::PlusZ
+                                } else {
+                                    crate::snap::TrackingKind::MinusZ
+                                });
                             }
                         }
                         pt
@@ -3191,6 +3315,7 @@ impl OpenCADStudio {
                 if self.tabs[i].active_cmd.is_some()
                     && self.tabs[i].active_ucs.is_none()
                     && !uses_command_cursor_plane
+                    && !drafted_elevation
                     && !snap_keeps_elevation(self.tabs[i].snap_result.map(|s| s.snap_type))
                 {
                     pt.z = 0.0;
@@ -3362,6 +3487,7 @@ impl OpenCADStudio {
                         None
                     }
                 });
+                self.refresh_command_point_pick_context(i);
                 let tab = &mut self.tabs[i];
                 if let Some(cmd) = tab.active_cmd.as_mut() {
                     p.extend(cmd.on_preview_wires_with_tangent(effective, live_tangent));
@@ -3580,12 +3706,126 @@ impl OpenCADStudio {
                         None
                     }
                 });
-                self.tabs[i]
-                    .active_cmd
-                    .as_mut()
-                    .map(|c| c.on_preview_wires_with_tangent(effective, live_tangent))
-                    .unwrap_or_default()
+                self.refresh_command_point_pick_context(i);
+                let tab = &mut self.tabs[i];
+                if let Some(cmd) = tab.active_cmd.as_mut() {
+                    let mut wires = cmd.on_preview_wires_with_tangent(effective, live_tangent);
+                    // STRETCH replaces its source entities while the pointer moves.
+                    // Without the edited-entity overlay, its source hide-set makes
+                    // the selected lines disappear until the final click.
+                    let entities = cmd.preview_entities(&tab.scene.document, effective);
+                    wires.extend(tab.scene.wires_for_entities(&entities));
+                    wires
+                } else {
+                    Vec::new()
+                }
             };
+            // While a command selection box (or lasso) is being drawn,
+            // preview the operation for all touched objects before release.
+            // The actual selection/commit path remains authoritative. This
+            // opt-in only affects commands exposing a drag-selection preview.
+            let (box_anchor, box_crossing, poly_active, poly_crossing, poly_points) = {
+                let selection = self.tabs[i].scene.selection.borrow();
+                (
+                    selection.gesture.box_anchor,
+                    selection.gesture.box_crossing,
+                    selection.gesture.poly_active,
+                    selection.gesture.poly_crossing,
+                    if selection.gesture.poly_active {
+                        selection.gesture.poly_points.clone()
+                    } else {
+                        Vec::new()
+                    },
+                )
+            };
+            if self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .is_some_and(|command| command.drag_selection_preview_enabled())
+                && (box_anchor.is_some() || poly_active)
+            {
+                let (screen_fence, window, crossing) = if poly_active {
+                    let mut points = poly_points;
+                    if points.last().is_none_or(|last| {
+                        (last.x - p_full.x).abs() > f32::EPSILON
+                            || (last.y - p_full.y).abs() > f32::EPSILON
+                    }) {
+                        points.push(p_full);
+                    }
+                    if let Some(first) = points.first().copied() {
+                        points.push(first);
+                    }
+                    (points, None, poly_crossing)
+                } else {
+                    let anchor = box_anchor.unwrap();
+                    let corners = vec![
+                        anchor,
+                        iced::Point::new(anchor.x, p_full.y),
+                        p_full,
+                        iced::Point::new(p_full.x, anchor.y),
+                        anchor,
+                    ];
+                    let window = Some((
+                        [anchor.x.min(p_full.x), anchor.y.min(p_full.y)],
+                        [anchor.x.max(p_full.x), anchor.y.max(p_full.y)],
+                    ));
+                    (corners, window, box_crossing)
+                };
+                let fence: Vec<[f64; 2]> = screen_fence
+                    .iter()
+                    .map(|point| {
+                        let local = iced::Point::new(point.x - tile_b.x, point.y - tile_b.y);
+                        let world = self.cursor_model_point(i, &edit_cam, local, bounds);
+                        [world.x, world.y]
+                    })
+                    .collect();
+                if fence.len() >= 3 {
+                    let xy_min_max = fence.iter().fold(
+                        ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]),
+                        |(mut min, mut max), point| {
+                            for axis in 0..2 {
+                                min[axis] = min[axis].min(point[axis]);
+                                max[axis] = max[axis].max(point[axis]);
+                            }
+                            (min, max)
+                        },
+                    );
+                    let area = [
+                        xy_min_max.0[0], xy_min_max.0[1],
+                        xy_min_max.1[0], xy_min_max.1[1],
+                    ];
+                    // For rectangles, use model-space corners: a pixel box
+                    // may not map 1:1 onto world coordinates when rotated.
+                    let window = window.map(|_| xy_min_max);
+                    let mut nearby: Vec<_> = self.tabs[i]
+                        .scene
+                        .interaction_handles_in_world_aabb(area)
+                        .into_iter()
+                        .collect();
+                    nearby.sort_unstable_by_key(|handle| handle.value());
+                    if let Some(mut box_preview) = self.tabs[i]
+                        .active_cmd
+                        .as_mut()
+                        .and_then(|command| {
+                            command.on_drag_selection_preview(
+                                &fence, window, crossing, &nearby,
+                            )
+                        })
+                    {
+                        if wo_f != glam::DVec3::ZERO {
+                            for wire in &mut box_preview {
+                                for point in &mut wire.points {
+                                    point[0] -= wo_f.x as f32;
+                                    point[1] -= wo_f.y as f32;
+                                    point[2] -= wo_f.z as f32;
+                                }
+                            }
+                        }
+                        previews = box_preview;
+                        self.tabs[i].scene.set_hover_highlight(None);
+                    }
+                }
+            }
             // Polar tracking guide line: dotted line from last_point along
             // the snapped angle direction, extending across the drawing.
             if self.polar_mode && !needs_entity {
@@ -4446,12 +4686,19 @@ impl OpenCADStudio {
             }
         }
 
+        let custom_grip_at_cursor = self.tabs[i].active_cmd.is_none() && self.custom_block_grip_at_cursor(i, p, vw, vh);
+        if custom_grip_at_cursor {
+            self.ucs_icon_selected = false;
+            self.ucs_icon_hover = false;
+        }
+
         // UCS icon: click to select (grips appear), then drag a grip to
         // move/rotate. A click off the icon clears the selection. Works
         // in the corner too (parked icon), not just at the origin.
         if self.show_ucs_icon
             && self.tabs[i].active_cmd.is_none()
             && self.tabs[i].active_block_edit_session().is_none()
+            && !custom_grip_at_cursor
         {
             if let Some(hit) = self.ucs_icon_hit_info(i, vw, vh) {
                 // Already selected → a press on a grip starts the drag.
@@ -4500,6 +4747,49 @@ impl OpenCADStudio {
             width: vw,
             height: vh,
         };
+
+        // STRETCH: Shift+click an already selected vertex to subtract only
+        // that vertex (not its entire entity). Use the same grip hit testing
+        // as a normal click, including paper-space and viewport transforms.
+        if self.shift_down
+            && self.tabs[i].active_cmd.is_some()
+            && !self.tabs[i].selected_grips.is_empty()
+        {
+            let grip_hit = if let Some(cam) = &edit_cam {
+                find_hit_grip_rte(
+                    p, &self.tabs[i].selected_grips,
+                    cam.view_proj_rte(bounds), cam.eye(), bounds,
+                )
+            } else if self.tabs[i].scene.current_layout != "Model" {
+                let cam = self.tabs[i].scene.camera.borrow();
+                let aspect = if vh > 0.0 { vw / vh } else { 1.0 };
+                let half_h = cam.ortho_size();
+                let half_w = half_h * aspect;
+                find_hit_grip_paper(
+                    p, &self.tabs[i].selected_grips,
+                    cam.target.x as f32, cam.target.y as f32,
+                    half_w, half_h, bounds,
+                )
+            } else {
+                let cam = self.tabs[i].scene.camera.borrow();
+                find_hit_grip(p, &self.tabs[i].selected_grips, &cam, bounds)
+            };
+            if let Some((index, grip_id, _, world)) = grip_hit {
+                if let Some(&handle) = self.tabs[i].selected_grip_handles.get(index) {
+                    let removed = self.tabs[i].active_cmd.as_mut().is_some_and(|command| {
+                        command.remove_stretch_point(handle, world)
+                    });
+                    if removed {
+                        self.tabs[i].selected_grips.remove(index);
+                        self.tabs[i].selected_grip_handles.remove(index);
+                        self.tabs[i].hot_grips.remove(&(handle, grip_id));
+                        self.grip_hover = None;
+                        self.tabs[i].scene.selection.borrow_mut().clear_left_selection_gesture();
+                        return Task::none();
+                    }
+                }
+            }
+        }
 
         if self.tabs[i].active_cmd.is_none()
             && self.tabs[i].active_grip.is_none()
@@ -4852,6 +5142,10 @@ impl OpenCADStudio {
         if let Some(command) = self.tabs[i].active_cmd.as_mut() {
             command.set_ctrl(self.ctrl_down);
             command.set_shift(self.shift_down);
+            if command.consume_stretch_remove_release() {
+                self.tabs[i].scene.selection.borrow_mut().clear_left_selection_gesture();
+                return Task::none();
+            }
         }
 
         // Navigation mode: end this drag but keep the tool armed for the next
@@ -5102,6 +5396,7 @@ impl OpenCADStudio {
                         self.last_point.and_then(|base| {
                             self.active_construction_ray(
                                 i,
+                                p,
                                 snap_cursor,
                                 base,
                                 view_rot,
@@ -5168,6 +5463,14 @@ impl OpenCADStudio {
                         snap_hit = crate::snap::merge_snap(snap_hit, face_hit, p);
                     }
                 }
+                // Mouse-up must resolve the same original snap as mouse-move;
+                // otherwise the highlighted reference point and committed
+                // STRETCH destination could disagree.
+                snap_hit = crate::snap::merge_snap(
+                    snap_hit,
+                    self.command_original_snap_hit(i, p, view_rot, eye, bounds),
+                    p,
+                );
                 let click_evaluate_ms = crate::perf::elapsed_ms(click_evaluate_started);
                 if crate::perf::enabled()
                     && click_source_ms + click_query_ms + click_evaluate_ms >= 1.0
@@ -5256,29 +5559,10 @@ impl OpenCADStudio {
                 {
                     // Object snap wins over ortho/polar — a snapped point
                     // commits as-is. Grid snap still combines. (#132)
-                    if let Some(base) = self.last_point {
-                        let ucs_xf = self.tabs[i].ucs_xform();
-                        if self.ortho_mode {
-                            pt = drafting_constrain(
-                                pt,
-                                base,
-                                &ucs_xf,
-                                self.isometric_drafting,
-                                self.iso_plane,
-                                self.snap_angle_deg,
-                            );
-                        } else if self.polar_mode {
-                            pt = polar_constrain_near(
-                                pt,
-                                base,
-                                self.polar_increment_deg,
-                                view_rot,
-                                eye,
-                                bounds,
-                                self.snapper.osnap_radius_px,
-                                &ucs_xf,
-                            );
-                        }
+                    if let Some((point, _)) = self.last_point.and_then(|base| {
+                        self.drafting_point(i, p, pt, base, view_rot, eye, bounds)
+                    }) {
+                        pt = point;
                     }
                 }
                 pt = self.tabs[i]
@@ -6884,7 +7168,11 @@ properties={:.1}ms picked={}",
         // viewport height), so a tiled pane pans at the correct rate.
         let (vw, vh) = self.tabs[i].scene.selection.borrow().view.vp_size;
         let bounds = self.tabs[i].scene.active_model_tile_bounds(vw, vh);
-        if self.tabs[i].scene.active_viewport.is_some() {
+        // A display-locked viewport keeps its scale: navigating inside it
+        // pans the sheet instead.
+        if self.tabs[i].scene.active_viewport.is_some()
+            && !self.tabs[i].scene.navigation_locked()
+        {
             self.tabs[i].scene.pan_active_viewport(dx, dy, bounds);
             // Bump so the GPU re-uploads the viewport's re-culled wire set —
             // otherwise newly-revealed lines stay invisible until MSPACE is
@@ -6924,9 +7212,12 @@ properties={:.1}ms picked={}",
             width: vw,
             height: vh,
         };
-        if self.tabs[i].scene.active_viewport.is_some() {
+        if self.tabs[i].scene.active_viewport.is_some()
+            && !self.tabs[i].scene.navigation_locked()
+        {
             // In MSPACE: zoom the active viewport's model-space view,
-            // keeping the model point under the cursor stationary.
+            // keeping the model point under the cursor stationary. A
+            // display-locked viewport keeps its scale, so the sheet zooms.
             let cursor_paper = cursor.map(|cp| {
                 let pt = self.tabs[i]
                     .scene
@@ -7648,23 +7939,38 @@ properties={:.1}ms picked={}",
     }
 
     pub(super) fn on_layout_create(&mut self) -> Task<Message> {
+        self.create_layout_named(None)
+    }
+
+    /// The next free `LayoutN` name, counting from the number of layouts.
+    pub(in crate::app) fn next_layout_name(existing: &[String]) -> String {
+        (existing.len()..)
+            .map(|n| format!("Layout{n}"))
+            .find(|candidate| !existing.contains(candidate))
+            .unwrap_or_default()
+    }
+
+    /// A new layout called `name`, or the next free `LayoutN`.
+    pub(in crate::app) fn create_layout_named(&mut self, name: Option<String>) -> Task<Message> {
         let i = self.active_tab;
         if self.tabs[i].is_start {
             self.command_line
                 .push_info(crate::t!("Open or create a drawing to add a layout.").as_ref());
             return Task::none();
         }
-        let cancel_task = self.cancel_active_command_for_space_change();
         // Find a unique name (e.g. Layout2, Layout3, ...).
         let existing = self.tabs[i].scene.layout_names();
-        let mut idx = existing.len();
-        let new_name = loop {
-            let candidate = format!("Layout{}", idx);
-            if !existing.contains(&candidate) {
-                break candidate;
-            }
-            idx += 1;
-        };
+        if let Some(name) = name.as_ref().filter(|name| {
+            existing
+                .iter()
+                .any(|layout| layout.eq_ignore_ascii_case(name))
+        }) {
+            self.command_line
+                .push_error(crate::tf!("\"{}\" name already in use", name).as_ref());
+            return Task::none();
+        }
+        let cancel_task = self.cancel_active_command_for_space_change();
+        let new_name = name.unwrap_or_else(|| Self::next_layout_name(&existing));
         self.push_undo_snapshot(i, "LAYOUT");
         match self.tabs[i].scene.add_layout(&new_name) {
             Ok(_) => {
@@ -7728,15 +8034,30 @@ properties={:.1}ms picked={}",
     /// Copy layout `source` as "source (2)": its page setup and every
     /// paper-space object, viewports included. The copy opens.
     pub(super) fn on_layout_copy(&mut self, source: String) -> Task<Message> {
+        self.copy_layout_named(source, None)
+    }
+
+    /// Copy layout `source` as `name`, or as the next free "source (n)".
+    pub(in crate::app) fn copy_layout_named(
+        &mut self,
+        source: String,
+        name: Option<String>,
+    ) -> Task<Message> {
         let i = self.active_tab;
         if self.tabs[i].is_start || source == "Model" {
             return Task::none();
         }
         let existing = self.tabs[i].scene.layout_names();
-        let Some(name) = (2..)
-            .map(|n| format!("{source} ({n})"))
-            .find(|candidate| !existing.contains(candidate))
-        else {
+        if let Some(name) = name.as_ref().filter(|name| existing.contains(name)) {
+            self.command_line
+                .push_error(crate::tf!("\"{}\" name already in use", name).as_ref());
+            return Task::none();
+        }
+        let Some(name) = name.or_else(|| {
+            (2..)
+                .map(|n| format!("{source} ({n})"))
+                .find(|candidate| !existing.contains(candidate))
+        }) else {
             return Task::none();
         };
         let cancel_task = self.cancel_active_command_for_space_change();
@@ -7766,7 +8087,7 @@ properties={:.1}ms picked={}",
         Task::batch([cancel_task, switch_task])
     }
 
-    pub(super) fn on_layout_rename_commit(&mut self) -> Task<Message> {
+    pub(in crate::app) fn on_layout_rename_commit(&mut self) -> Task<Message> {
         if let Some((orig, new_name)) = self.layout_rename_state.take() {
             let new_name = new_name.trim().to_string();
             if !new_name.is_empty() && new_name != orig {
@@ -8149,6 +8470,30 @@ mod rapid_drawing_tests {
     }
 
     #[test]
+    fn ortho_in_a_3d_view_runs_up_the_z_axis_and_keeps_that_level() {
+        let mut app = drawing_app("LINE");
+        let _ = app.apply_view_preset("SWISO");
+        app.ortho_mode = true;
+        let click = |app: &mut OpenCADStudio, aim: glam::DVec3| {
+            let at = screen(app, aim);
+            let _ = app.update(Message::ViewportMove(at));
+            let _ = app.update(Message::ViewportLeftPressAt(at));
+            let _ = app.update(Message::ViewportLeftRelease);
+            app.last_point.unwrap()
+        };
+        let start = click(&mut app, glam::DVec3::ZERO);
+        // Straight up: exactly on the axis, as high as the cursor shows.
+        let up = click(&mut app, glam::DVec3::new(0.5, 0.0, 50.0));
+        assert!((up - start).truncate().length() < 1e-9, "{start:?} -> {up:?}");
+        assert!((up.z - 50.0).abs() < 0.5, "{up:?}");
+        // Then along X at that level, not back down to the ground plane.
+        let across = click(&mut app, glam::DVec3::new(30.0, 0.5, up.z));
+        assert!((across.y - up.y).abs() < 1e-9, "{across:?}");
+        assert!((across.z - up.z).abs() < 1e-6, "{across:?}");
+        assert!((across.x - 30.0).abs() < 0.5, "{across:?}");
+    }
+
+    #[test]
     fn rapid_drawing_zigzag_uses_button_positions_without_hover_or_duplicate_release() {
         for command in ["LINE", "PLINE"] {
             for pane in [false, true] {
@@ -8229,6 +8574,63 @@ mod rapid_drawing_tests {
             assert!(app.snap_dwell.as_ref().unwrap().snap_resolved);
             assert_eq!(app.tabs[i].last_cursor_world, resolved_point);
         }
+    }
+
+    #[test]
+    fn stretch_cursor_move_keeps_live_lines_visible_even_during_fast_pointer_updates() {
+        use crate::command::{CadCommand, CmdResult};
+        use crate::modules::draw::modify::stretch::StretchCommand;
+        use codec::{entities::Line, types::Vector3, EntityType};
+
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800.0, 600.0);
+        app.snapper.snap_enabled = false;
+        app.snapper.grid_snap_on = false;
+        app.snapper.otrack_enabled = false;
+        app.ortho_mode = false;
+        app.polar_mode = false;
+
+        let handle = app.tabs[i].scene.add_entity(EntityType::Line(Line::from_points(
+            Vector3::new(40.0, 30.0, 0.0),
+            Vector3::new(80.0, 30.0, 0.0),
+        )));
+        let wires = app.tabs[i].scene.wire_models_for(&[handle]);
+        let window = (
+            glam::DVec3::new(39.0, 29.0, -1.0),
+            glam::DVec3::new(81.0, 31.0, 1.0),
+        );
+        let base = glam::DVec3::new(40.0, 30.0, 0.0);
+        let mut cmd = StretchCommand::preselected(vec![handle], wires, window);
+        assert!(matches!(cmd.on_point(base), CmdResult::NeedPoint));
+        app.tabs[i].active_cmd = Some(Box::new(cmd));
+
+        let preview_has_endpoint = |app: &OpenCADStudio, x: f32, y: f32| {
+            app.tabs[i].scene.preview_wires.iter().any(|wire| {
+                wire.points.iter().any(|pt| {
+                    (pt[0] - x).abs() < 0.1 && (pt[1] - y).abs() < 0.1
+                })
+            })
+        };
+        let first = glam::DVec3::new(45.0, 40.0, 0.0);
+        let _ = app.on_viewport_move(screen(&app, first));
+        assert!(
+            preview_has_endpoint(&app, 85.0, 40.0),
+            "first cursor move must show the translated STRETCH line, not just its guide"
+        );
+
+        // A subsequent move normally takes the low-cost SnapDwell path.
+        // Make the 60 Hz overlay budget due without sleeping.
+        let dwell = app.snap_dwell.as_mut().expect("STRETCH dwell");
+        dwell.last_preview_snap_at =
+            Instant::now() - std::time::Duration::from_millis(100);
+        let second = glam::DVec3::new(48.0, 42.0, 0.0);
+        let _ = app.on_viewport_move(screen(&app, second));
+        assert!(
+            preview_has_endpoint(&app, 88.0, 42.0),
+            "fast cursor move must update the STRETCH geometry, not hide it"
+        );
     }
 }
 

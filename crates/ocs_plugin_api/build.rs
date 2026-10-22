@@ -263,6 +263,7 @@ fn generate_type_registry(out_dir: &Path) {
             "DimensionType",
             trace_simple::<codec::entities::DimensionType>,
         ),
+        ("DxfVersion", trace_simple::<codec::DxfVersion>),
         (
             "DynamicBlockData",
             trace_simple::<codec::objects::DynamicBlockData>,

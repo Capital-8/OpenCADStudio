@@ -88,7 +88,11 @@ impl OpenCADStudio {
         let drawing_mm = crate::app::properties::insunits_to_mm(
             self.tabs[i].scene.document.header.insertion_units,
         );
-        let Some(imported) = model_import::read(format, &bytes, drawing_mm) else {
+        let stem = std::path::Path::new(&path.replace('\\', "/"))
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let Some(imported) = model_import::read(format, &bytes, drawing_mm, &stem) else {
             self.command_line
                 .push_error(&format!("Import failed: {path} has no model the importer reads."));
             return Task::none();
@@ -445,6 +449,21 @@ impl OpenCADStudio {
                     material.ambient_color = color(source.and_then(|m| m.ambient));
                     material.diffuse_color = color(source.and_then(|m| m.diffuse));
                     material.specular_color = color(source.and_then(|m| m.specular));
+                    // Shininess is the gloss, transparency takes from the
+                    // opacity, and a texture map is the diffuse map's file.
+                    if let Some(shininess) = source.and_then(|m| m.shininess) {
+                        // As the reference keeps it: one less the roughness,
+                        // in single precision.
+                        material.specular_gloss_factor = f64::from(1.0 - (1.0 - shininess));
+                    }
+                    if let Some(transparency) = source.and_then(|m| m.transparency) {
+                        material.opacity_percent = f64::from(1.0 - transparency);
+                    }
+                    if let Some((file, _)) = source.and_then(|m| m.map.as_ref()) {
+                        material.diffuse_map.file_name = file.clone();
+                        material.diffuse_map.source = 1;
+                        material.diffuse_map.projection = 1;
+                    }
                     let handle = material.handle;
                     if let Some(ObjectType::Dictionary(dictionary)) = document.objects.get_mut(&dictionary) {
                         dictionary.add_entry(name.clone(), handle);
@@ -540,6 +559,7 @@ impl OpenCADStudio {
                         unit(source.and_then(|m| m.diffuse)),
                         unit(source.and_then(|m| m.specular)),
                     ];
+                    let finish = crate::io::tds_legacy::MaterialFinish::of(source);
                     let handle = materials.get(&name);
                     let handle = handle.map(|h| format!("{:X}", h.value())).unwrap_or_default();
                     let mut insert = codec::entities::Insert::new("RM_SDB", codec::types::Vector3::ZERO);
@@ -547,11 +567,17 @@ impl OpenCADStudio {
                     insert.common.extended_data.add_record(crate::io::tds_legacy::material_xdata(
                         &name,
                         colours,
+                        &finish,
                         first_material,
                         &handle,
                     ));
                     first_material = false;
-                    let values = crate::io::tds_legacy::material_values(&name, colours[1], asked);
+                    let values = crate::io::tds_legacy::material_values(
+                        &name,
+                        colours[1],
+                        finish.roughness,
+                        asked,
+                    );
                     with_attributes(&mut insert, crate::io::tds_legacy::material_block(), |tag| {
                         values.iter().find(|(t, _)| *t == tag).map(|(_, v)| v.clone())
                     });

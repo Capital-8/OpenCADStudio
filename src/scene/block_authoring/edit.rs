@@ -129,8 +129,23 @@ pub fn items(doc: &CadDocument, definition: Handle) -> Vec<Item> {
     if let Some(p) = crate::scene::block_visibility::parameter(doc, definition) {
         result.push(single(p.handle, p.name.clone(), p.def_point));
     }
+    if let Ok(Some(owner)) = graph(doc, definition) {
+        for (handle, object) in &doc.objects {
+            if let ObjectType::DynamicBlock(object) = object {
+                if object.owner == owner {
+                    if let DynamicBlockData::PropertiesTable(table) = &object.data {
+                        result.push(single(*handle, table.parameter.parameter.element.name.clone(), table.parameter.definition_point));
+                    }
+                }
+            }
+        }
+    }
     for (handle, p, _, _) in crate::scene::block_actions::actions(doc, definition) {
         let mut item = single(handle, p.element.name.clone(), p.display_location);
+        if let Some(base) = crate::scene::block_actions::options::base(doc, handle).filter(|base| !base.dependent) {
+            item.grips.push((Part::Base, base.base_point));
+            item.graphic.lines.push([p.display_location, base.base_point]);
+        }
         let frame = crate::scene::block_actions::frame_outline(doc, handle);
         if !frame.is_empty() {
             item.graphic.lines.extend(
@@ -142,6 +157,9 @@ pub fn items(doc: &CadDocument, definition: Handle) -> Vec<Item> {
             );
         }
         result.push(item);
+    }
+    for item in &mut result {
+        let _ = crate::scene::block_grips::config::apply_graphic(doc, definition, item.handle, &mut item.graphic);
     }
     result
 }
@@ -204,6 +222,8 @@ pub fn move_part(
     if (at - old).length() < 1e-10 {
         return Ok(false);
     }
+    let native_grips = if crate::scene::block_grips::config::choices(doc, definition, handle).is_empty() { vec![] }
+        else { crate::scene::block_grips::config::locations(doc, definition, handle)? };
     let mut staged = doc.clone();
     if handle == definition
         || crate::scene::block_basepoint::parameter(doc, definition)
@@ -259,6 +279,10 @@ pub fn move_part(
                     Part::Label(_) => p.definition_label_point = at,
                     _ => {}
                 },
+                DynamicBlockData::PropertiesTable(p) => {
+                    p.parameter.definition_point = at;
+                    moved_grips.push((p.parameter.property_count, at));
+                }
                 DynamicBlockData::LookupParameter(p) => {
                     p.parameter.definition_point = at;
                     moved_grips.push((p.parameter.property_count, at))
@@ -321,7 +345,12 @@ pub fn move_part(
                 DynamicBlockData::StretchAction(p) => p.action.display_location = at,
                 DynamicBlockData::FlipAction(p) => p.action.display_location = at,
                 DynamicBlockData::ScaleAction(p) | DynamicBlockData::RotateAction(p) => {
-                    p.action.action.display_location = at
+                    if part == Part::Base {
+                        crate::scene::block_actions::options::pivot(&p.action, glam::DVec3::new(at.x, at.y, at.z))?;
+                        p.action.base_point = at;
+                    } else {
+                        p.action.action.display_location = at;
+                    }
                 }
                 DynamicBlockData::AlignmentParameter(_) => {}
                 _ => return Err("This authoring object cannot be edited yet."),
@@ -386,7 +415,7 @@ pub fn move_part(
                     if o.owner == graph {
                         if let DynamicBlockData::LinearGrip(g) = &mut o.data {
                             if ids.contains(&g.grip.element.eval.node_id) {
-                                g.orientation = orientation;
+                                g.orientation = if ids[0] == g.grip.element.eval.node_id { orientation * -1.0 } else { orientation };
                             }
                         }
                     }
@@ -422,6 +451,14 @@ pub fn move_part(
     }
     if let Some(ObjectType::BlockVisibilityParameter(p)) = staged.objects.get(&handle) {
         staged.block_visibility_params.insert(handle, p.clone());
+    }
+    if !native_grips.is_empty() {
+        let updated = crate::scene::block_grips::config::locations(&staged, definition, handle)?;
+        for original in native_grips {
+            let current = updated.iter().find(|grip| grip.handle == original.handle).ok_or("The native grip binding changed during the edit.")?;
+            let point = current.key_point + (original.point - original.key_point);
+            crate::scene::block_grips::config::set_location(&mut staged, definition, handle, original.role, point)?;
+        }
     }
     if let Some(item) = items(&staged, definition)
         .into_iter()

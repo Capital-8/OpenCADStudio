@@ -19,6 +19,27 @@ fn resolve_font_reference(reference: &str) -> Option<String> {
     crate::scene::text::sysfont::family_for_reference(reference)
 }
 
+/// `font_name` naming its own bold / italic face when it is a TrueType
+/// family that has one (see `sysfont::styled_family`); `None` for a stroke
+/// font, a big-font pairing, or a family without such a face — bold stroke
+/// text keeps its wider pen, italic its slant.
+pub fn styled_font(font_name: &str, bold: bool, italic: bool) -> Option<String> {
+    if !(bold || italic) || font_name.contains(crate::scene::text::font_face::BIG_FONT_SEP) {
+        return None;
+    }
+    match Face::resolve(font_name) {
+        Face::Ttf { family, .. } => {
+            crate::scene::text::sysfont::styled_family(&family, bold, italic)
+        }
+        _ => None,
+    }
+}
+
+/// Italic bit of a text style's TrueType typeface flags.
+pub const TTF_FLAG_ITALIC: i32 = 0x0100_0000;
+/// Bold bit of a text style's TrueType typeface flags.
+pub const TTF_FLAG_BOLD: i32 = 0x0200_0000;
+
 pub struct ResolvedTextStyle {
     pub font_name: String,
     pub width_factor: f32,
@@ -106,6 +127,19 @@ pub fn resolve_text_style(style_name: &str, document: &CadDocument) -> ResolvedT
     if !lff::is_builtin(&font_name) && !lff::is_shx_name(&font_name) {
         if let Some(canonical) = crate::scene::text::sysfont::canonical_family_name(&font_name) {
             font_name = canonical;
+        }
+    }
+
+    // A TrueType style's font style (Bold / Italic) rides in its typeface
+    // flags.
+    if let Some(style) = style.filter(|s| !s.true_type_font.trim().is_empty()) {
+        let flags = style.true_type_font_flags;
+        if let Some(styled) = styled_font(
+            &font_name,
+            flags & TTF_FLAG_BOLD != 0,
+            flags & TTF_FLAG_ITALIC != 0,
+        ) {
+            font_name = styled;
         }
     }
 
@@ -436,8 +470,12 @@ pub struct RunState {
     pub underline: bool,
     pub overline: bool,
     pub strike: bool,
-    /// Bold run — rendered with a wider SDF pen (thicker strokes).
+    /// Bold run — the family's bold face, or a wider SDF pen (thicker
+    /// strokes) for a stroke font.
     pub bold: bool,
+    /// Italic run drawn with the family's own italic face (otherwise italic
+    /// is the `oblique_rad` slant).
+    pub italic: bool,
 }
 
 impl Default for RunState {
@@ -454,6 +492,7 @@ impl Default for RunState {
             overline: false,
             strike: false,
             bold: false,
+            italic: false,
         }
     }
 }
@@ -726,6 +765,15 @@ pub fn adapt_mtext_paragraphs(
         };
         for span in &para.spans {
             let p = &span.properties;
+            let font = p.font.as_ref().map(|f| font_stem(&f.name));
+            // A family with its own italic face draws it; the slant stands in
+            // for the rest.
+            let italic_face = p.font.as_ref().is_some_and(|f| f.italic)
+                && font
+                    .as_deref()
+                    .and_then(resolve_font_reference)
+                    .and_then(|family| styled_font(&family, false, true))
+                    .is_some();
             let state = RunState {
                 // Relative `\H…x;` is a factor applied directly; absolute `\H…;`
                 // is a drawing-unit height resolved against the entity height.
@@ -740,7 +788,9 @@ pub fn adapt_mtext_paragraphs(
                 // button applies, so imported italic text isn't shown upright.
                 oblique_rad: match p.oblique_angle {
                     Some(q) => (q as f32).to_radians(),
-                    None if p.font.as_ref().is_some_and(|f| f.italic) => 15.0_f32.to_radians(),
+                    None if p.font.as_ref().is_some_and(|f| f.italic) && !italic_face => {
+                        15.0_f32.to_radians()
+                    }
                     None => 0.0,
                 },
                 tracking: p.tracking.map(|t| t as f32).unwrap_or(1.0),
@@ -749,8 +799,9 @@ pub fn adapt_mtext_paragraphs(
                     Some(MTextLineAlignment::Top) => 2,
                     _ => 0,
                 },
-                font: p.font.as_ref().map(|f| font_stem(&f.name)),
+                font,
                 bold: p.font.as_ref().map(|f| f.bold).unwrap_or(false),
+                italic: italic_face,
                 color: color_of(p),
                 underline: p.stroke.underline(),
                 overline: p.stroke.overline(),
@@ -968,7 +1019,17 @@ pub fn run_scale(state: &RunState, entity_h: f32, base_wf: f32) -> f32 {
     (state.height_mul * entity_h / 9.0) * (state.width_mul * base_wf.abs())
 }
 
+/// The font a run draws with: its `\f` override (else `base`), in the bold
+/// / italic face the run asks for when the family has one.
 pub fn resolve_font<'a>(state: &'a RunState, base: &'a str) -> std::borrow::Cow<'a, str> {
+    let font = run_font(state, base);
+    match styled_font(&font, state.bold, state.italic) {
+        Some(styled) => std::borrow::Cow::Owned(styled),
+        None => font,
+    }
+}
+
+fn run_font<'a>(state: &'a RunState, base: &'a str) -> std::borrow::Cow<'a, str> {
     let Some(font) = state
         .font
         .as_deref()
@@ -3464,5 +3525,45 @@ mod v_anchor_tests {
             !s.strokes.is_empty() || !s.fill_tris.is_empty(),
             "Shaped glyphs must produce vector geometry"
         );
+    }
+}
+
+#[cfg(test)]
+mod font_style_tests {
+    use super::{resolve_font, resolve_text_style, RunState, TTF_FLAG_BOLD};
+    use crate::scene::text::sysfont;
+
+    /// Bold — inline or the style's — draws the family's own bold face, a
+    /// separate file, not the regular one (#1974). Skips where no family
+    /// with a bold file is installed.
+    #[test]
+    fn bold_draws_the_bold_face() {
+        let Some(family) = ["Liberation Sans", "DejaVu Sans", "Arial"]
+            .into_iter()
+            .find(|f| sysfont::styled_family(f, true, false).is_some())
+        else {
+            eprintln!("no family with a bold face installed; skipping");
+            return;
+        };
+        let state = RunState {
+            font: Some(family.to_string()),
+            bold: true,
+            ..Default::default()
+        };
+        let bold = resolve_font(&state, "Standard").into_owned();
+        assert_eq!(sysfont::split_style(&bold), (family, true, false));
+        let width = |f: &str| {
+            crate::scene::text::ttf_glyph::shape_run(f, "Bold text")
+                .expect("shaped")
+                .advance
+        };
+        assert!(width(&bold) > width(family), "the bold face was not used");
+
+        let mut doc = codec::CadDocument::new();
+        let mut style = codec::tables::TextStyle::with_truetype("B", family);
+        style.true_type_font_flags |= TTF_FLAG_BOLD;
+        style.handle = doc.allocate_handle();
+        doc.text_styles.add(style).unwrap();
+        assert_eq!(resolve_text_style("B", &doc).font_name, bold);
     }
 }

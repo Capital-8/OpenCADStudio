@@ -4,7 +4,7 @@
 use super::util::*;
 use super::{format_size, VIEWCUBE_HIT_SIZE};
 use crate::app::helpers::{
-    parse_coord, polar_constrain_near, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis, CoordKind,
+    parse_coord, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis, CoordKind,
 };
 use crate::app::{Message, OpenCADStudio, POLY_START_DELAY_MS};
 use crate::modules::ModuleEvent;
@@ -574,27 +574,56 @@ impl OpenCADStudio {
                 def.name = new_name.clone();
             }
         }
+        // A drawing written out from a dynamic block keeps the block's
+        // parameters and actions on its model space; the new definition
+        // takes them over, as the file's nested definitions do theirs.
+        let base_point = codec::types::Vector3::new(base.x, base.y, base.z);
+        let file_def = (!redefine)
+            .then(|| crate::scene::block_authoring::export_graph(&doc, model_br))
+            .flatten()
+            .map(|graph| crate::app::BlockDef {
+                name: name.clone(),
+                base_point,
+                entities: entities.clone(),
+                source: model_br,
+                graph: Some(graph),
+            });
         // Every mutation below belongs to the one INSERT FILE undo step.
         self.push_undo_snapshot(i, "INSERT FILE");
         self.merge_dependencies(i, &deps);
-        for def in defs {
+        for def in &defs {
             self.tabs[i]
                 .scene
-                .define_block_raw(&def.name, def.base_point, def.entities);
+                .define_block_raw(&def.name, def.base_point, def.entities.clone());
         }
         if redefine {
-            if let Err(err) = self.tabs[i].scene.redefine_block_raw(
-                &name,
-                codec::types::Vector3::new(base.x, base.y, base.z),
-                entities,
-            ) {
+            if let Err(err) = self.tabs[i].scene.redefine_block_raw(&name, base_point, entities) {
                 self.command_line.push_error(&err);
                 return Err(err);
+            }
+        } else if file_def.is_some() {
+            // The graph is in the file's model-space coordinates: keep the
+            // geometry there and put the insertion base on the block.
+            let scene = &mut self.tabs[i].scene;
+            scene.define_block_from_owned_entities(entities, &name, glam::DVec3::ZERO)?;
+            let block = scene.document.block_records.get(&name).map(|r| r.block_entity_handle);
+            if let Some(codec::EntityType::Block(block)) =
+                block.and_then(|h| scene.document.get_entity_mut(h))
+            {
+                block.base_point = base_point;
             }
         } else {
             self.tabs[i]
                 .scene
                 .define_block_from_owned_entities(entities, &name, base)?;
+        }
+        {
+            use crate::app::command_driver::clipboard::{block_record_map, import_block_def_graph};
+            let document = &mut self.tabs[i].scene.document;
+            let records = block_record_map(document, &defs);
+            for def in defs.iter().chain(file_def.iter()) {
+                import_block_def_graph(document, def, &records);
+            }
         }
         self.tabs[i].scene.populate_meshes_from_document();
         self.tabs[i].dirty = true;

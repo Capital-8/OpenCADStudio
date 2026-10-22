@@ -257,7 +257,7 @@ fn reference_row(
             {
                 return false;
             }
-            let Ok(endpoint) = super::block_actions::instance::current(document, insert, parameter)
+            let Ok(frame) = super::block_actions::instance::frame(document, insert, parameter)
             else {
                 return false;
             };
@@ -269,11 +269,11 @@ fn reference_row(
                 return false;
             };
             let actual = if is_angle {
-                (endpoint.y - parameter.base.y)
-                    .atan2(endpoint.x - parameter.base.x)
+                (frame.end.y - frame.base.y)
+                    .atan2(frame.end.x - frame.base.x)
                     .rem_euclid(std::f64::consts::TAU)
             } else {
-                endpoint.distance(parameter.base)
+                frame.end.distance(frame.base)
             };
             let difference = if is_angle {
                 (actual - expected + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
@@ -334,6 +334,13 @@ pub(crate) fn evaluate_reference_value(
     lookup_parameter: Handle,
     selected: &str,
 ) -> Result<Option<CadDocument>, &'static str> {
+    evaluate_value_context(document, None, insert, lookup_parameter, selected)
+}
+
+fn evaluate_value_context(
+    document: &CadDocument, baseline: Option<&CadDocument>, insert: Handle,
+    lookup_parameter: Handle, selected: &str,
+) -> Result<Option<CadDocument>, &'static str> {
     let definition = super::block_actions::instance::definition(document, insert)
         .ok_or("Select a uniformly scaled dynamic block reference.")?;
     let _lookup = parameters(document, definition)
@@ -358,12 +365,14 @@ pub(crate) fn evaluate_reference_value(
                 .is_some_and(|value| value.trim().eq_ignore_ascii_case(selected.trim()))
         })
         .ok_or("Choose a value from the Lookup table.")?;
-    if reference_row(document, insert, definition, &table) == Some(row) {
+    if baseline.is_none() && reference_row(document, insert, definition, &table) == Some(row) {
         return Ok(None);
     }
 
     let parameters = super::block_actions::all_parameters(document, definition);
     let mut evaluated = document.clone();
+    let frames = if baseline.is_some() { super::block_actions::instance::load_test_frames(document, &mut evaluated, insert, &parameters)? }
+        else { super::block_actions::instance::load_frames(document, &mut evaluated, insert, &parameters)? };
     let mut endpoints = std::collections::BTreeMap::new();
     for (column, property) in table.columns.iter().enumerate() {
         if property.lookup_property {
@@ -397,19 +406,20 @@ pub(crate) fn evaluate_reference_value(
         let endpoint = if let Some(endpoint) = endpoints.get_mut(&parameter.id) {
             endpoint
         } else {
-            let current = super::block_actions::instance::current(document, insert, parameter)?;
+            let current = frames[&parameter.handle].end;
             endpoints.entry(parameter.id).or_insert(current)
         };
-        let delta = *endpoint - parameter.base;
+        let base = frames[&parameter.handle].base;
+        let delta = *endpoint - base;
         if is_distance {
             let axis = delta
                 .try_normalize()
                 .or_else(|| (parameter.end - parameter.base).try_normalize())
                 .ok_or("A Lookup input parameter has no direction.")?;
-            *endpoint = parameter.base + axis * value;
+            *endpoint = base + axis * value;
         } else {
             let radius = delta.length();
-            *endpoint = parameter.base + glam::DVec3::new(value.cos(), value.sin(), 0.0) * radius;
+            *endpoint = base + glam::DVec3::new(value.cos(), value.sin(), 0.0) * radius;
         }
     }
     for parameter in &parameters {
@@ -421,11 +431,10 @@ pub(crate) fn evaluate_reference_value(
             )?;
         }
     }
-    super::block_actions::rebuild(&mut evaluated, document, definition)?;
-    let mut result =
-        super::block_actions::instance::materialize(document, insert, definition, &evaluated)?;
-    for parameter in parameters {
-        let value = super::block_actions::value(&evaluated, &parameter)?;
+    super::block_actions::rebuild_framed(&mut evaluated, baseline.unwrap_or(document), definition, &frames)?;
+    let values = parameters.iter().map(|parameter| super::block_actions::value(&evaluated, parameter)).collect::<Result<Vec<_>, _>>()?;
+    let mut result = super::block_actions::instance::materialize(document, insert, definition, &evaluated)?;
+    for (parameter, value) in parameters.into_iter().zip(values) {
         super::block_actions::instance::save(&mut result, insert, &parameter, value)?;
     }
     Ok(Some(result))
@@ -435,6 +444,18 @@ pub(crate) fn evaluate_reference_choice(
     document: &CadDocument,
     insert: Handle,
     selected: &str,
+) -> Result<Option<CadDocument>, &'static str> {
+    evaluate_choice_context(document, None, insert, selected)
+}
+
+pub(crate) fn evaluate_test_choice(
+    document: &CadDocument, baseline: &CadDocument, insert: Handle, selected: &str,
+) -> Result<Option<CadDocument>, &'static str> {
+    evaluate_choice_context(document, Some(baseline), insert, selected)
+}
+
+fn evaluate_choice_context(
+    document: &CadDocument, baseline: Option<&CadDocument>, insert: Handle, selected: &str,
 ) -> Result<Option<CadDocument>, &'static str> {
     let definition = super::block_actions::instance::definition(document, insert)
         .ok_or("Select a uniformly scaled dynamic block reference.")?;
@@ -457,7 +478,8 @@ pub(crate) fn evaluate_reference_choice(
                 .get(row * table.columns.len() + column)
                 .is_some_and(|value| value.trim().eq_ignore_ascii_case(selected.trim()))
         }) {
-            return evaluate_reference_value(document, insert, handle, selected);
+            return if baseline.is_some() { evaluate_value_context(document, baseline, insert, handle, selected) }
+                else { evaluate_reference_value(document, insert, handle, selected) };
         }
     }
     Err("Choose a value from the Lookup table.")

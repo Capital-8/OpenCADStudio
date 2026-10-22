@@ -6,11 +6,13 @@ pub(crate) fn automation_action_names() -> &'static [&'static str] {
 }
 pub(crate) mod config;
 #[cfg(not(target_arch = "wasm32"))]
-pub use automation::{export_headless, serve};
+pub use automation::{export_headless, run_batch, serve};
 mod annotation_data;
 mod block_actions;
+mod block_alignment;
 mod block_feedback;
 mod block_cycle_order;
+mod block_grip_set;
 mod block_action_bars;
 mod block_authoring_edit;
 mod block_editor;
@@ -1670,6 +1672,17 @@ pub(super) struct OpenCADStudio {
     /// all arriving at once), which makes this queue load-bearing, not polish.
     pub(super) pending_opens: std::collections::VecDeque<PathBuf>,
     pub(super) pending_startup_script_lines: Vec<String>,
+    /// Script rows still to run, one at a time: a row waits until whatever
+    /// the previous one started (an open, a save) has finished.
+    pub(super) script_queue: std::collections::VecDeque<String>,
+    /// A script row is running (the queue may already be empty).
+    pub(super) script_running: bool,
+    /// The next row waits for an open or save to finish.
+    pub(super) script_paused: bool,
+    /// SDI 1: opening a drawing closes the current one first.
+    pub(super) sdi: bool,
+    /// The app asked to exit; a headless batch run stops there.
+    pub(super) exit_requested: bool,
     /// One global interaction-index build at a time. Large drawings can each
     /// hold millions of entries, so file-open bursts must not multiply peak
     /// CPU and memory by the number of tabs.
@@ -2317,7 +2330,7 @@ impl ClipboardDeps {
             base_point,
             entities: owned,
             source: br.handle,
-            graph: doc.export_block_graph(br.handle),
+            graph: crate::scene::block_authoring::export_graph(doc, br.handle),
         })
     }
 
@@ -3194,6 +3207,8 @@ pub enum Message {
     /// dispatch, this accepts an interactive verb and all of its arguments on
     /// the same line (`BOX 0,0,0 10,10,0 10`).
     ScriptLine(String),
+    /// Run the next queued script row (see `script_queue`).
+    ScriptPump,
     /// Web SCRIPT: the picked .scr file's name and text. `None` = the
     /// browser dialog was cancelled.
     #[cfg(target_arch = "wasm32")]
@@ -3542,6 +3557,8 @@ pub enum Message {
     ToggleAnnotationVisibility,
     ToggleAnnotationAutoAdd,
     SyncViewportAnnotationScale,
+    /// Status bar: toggle the display lock of the entered or selected viewports.
+    ToggleViewportLock,
     /// Toggle the scale picker popup open/closed.
     ToggleScalePopup,
     /// Close the scale picker popup.
@@ -4393,7 +4410,8 @@ pub enum Message {
     /// Open file dialog to load a CTB/STB plot style table.
     PlotStyleLoad,
     /// LINETYPE Load: the picked `.lin` file's text, `None` when cancelled.
-    LinetypeLoaded(Option<String>),
+    /// A picked `.lin`: its folder (native only) and text.
+    LinetypeLoaded(Option<(Option<std::path::PathBuf>, String)>),
     /// Callback when the user picks (or cancels) a CTB/STB file.
     /// The Load… picker finished: a table, nothing (cancelled), or why the
     /// file could not be read.
@@ -5210,6 +5228,11 @@ impl OpenCADStudio {
             suppressed_missing_fonts: rustc_hash::FxHashSet::default(),
             pending_opens: std::collections::VecDeque::new(),
             pending_startup_script_lines: Vec::new(),
+            script_queue: std::collections::VecDeque::new(),
+            script_running: false,
+            script_paused: false,
+            sdi: false,
+            exit_requested: false,
             active_interaction_index: None,
             queued_interaction_indices: std::collections::VecDeque::new(),
             pending_close: None,
@@ -5576,19 +5599,20 @@ impl OpenCADStudio {
         // Startup command script: if files were passed to open, defer the
         // script lines until the document finishes opening. Otherwise, dispatch
         // them on the newly created drawing tab.
+        let has_script = !cfg.script_lines.is_empty();
         let script: Task<Message> = if cfg.script_lines.is_empty() {
             Task::none()
         } else if has_files {
             s.pending_startup_script_lines = cfg.script_lines;
             Task::none()
         } else {
-            Task::batch(
-                cfg.script_lines
-                    .into_iter()
-                    .map(|line| Task::done(Message::ScriptLine(line))),
-            )
+            s.script_queue.extend(cfg.script_lines);
+            Task::done(Message::ScriptPump)
         };
-        s.queue_startup_prompts();
+        // An unattended script must not stop at a startup dialog.
+        if !has_script {
+            s.queue_startup_prompts();
+        }
         // Fetch the Patreon supporters list once at boot for the Start page.
         #[cfg(not(target_arch = "wasm32"))]
         let patrons_fetch = Task::perform(

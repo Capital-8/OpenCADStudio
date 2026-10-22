@@ -1,4 +1,4 @@
-use super::{block_actions::TEST_GRIP_START, OpenCADStudio};
+use super::OpenCADStudio;
 use crate::scene::block_actions::{self as actions, feedback};
 use codec::{EntityType, Handle};
 use glam::DVec3;
@@ -42,7 +42,11 @@ impl OpenCADStudio {
                 |row| format!("{label}: {}", row + 1),
             ));
         }
+        if let Some(alignment) = self.tabs[self.active_tab].scene.alignment_grips(handle).into_iter().find(|grip| grip.id == id) {
+            return Some(crate::tf!("Alignment: {}", crate::t!(if alignment.perpendicular { "Perpendicular" } else { "Tangent" })).into_owned());
+        }
         let (parameter, value) = self.dynamic_grip_value(handle, id)?;
+        let base = match value { actions::Value::Frame { base, .. } => base, _ => parameter.base };
         let value = match value {
             actions::Value::Flip(state) => if state {
                 crate::t!("Flipped")
@@ -50,18 +54,18 @@ impl OpenCADStudio {
                 crate::t!("Not flipped")
             }
             .into_owned(),
-            actions::Value::Point(at) if parameter.point || parameter.xy => format!(
+            actions::Value::Point(at) | actions::Value::Frame { end: at, .. } if parameter.point || parameter.xy => format!(
                 "({:.4}, {:.4})",
-                at.x - parameter.base.x,
-                at.y - parameter.base.y
+                at.x - base.x,
+                at.y - base.y
             ),
-            actions::Value::Point(at) if parameter.rotation => format!(
+            actions::Value::Point(at) | actions::Value::Frame { end: at, .. } if parameter.rotation => format!(
                 "{:.4}°",
-                (at.y - parameter.base.y)
-                    .atan2(at.x - parameter.base.x)
+                (at.y - base.y)
+                    .atan2(at.x - base.x)
                     .to_degrees()
             ),
-            actions::Value::Point(at) => format!("{:.4}", at.distance(parameter.base)),
+            actions::Value::Point(at) | actions::Value::Frame { end: at, .. } => format!("{:.4}", at.distance(base)),
         };
         Some(format!("{}: {value}", parameter.name))
     }
@@ -71,20 +75,22 @@ impl OpenCADStudio {
         handle: Handle,
         id: usize,
     ) -> Option<(actions::Parameter, actions::Value)> {
-        let index = id.checked_sub(TEST_GRIP_START)?;
+        let (node, _) = crate::scene::block_grips::runtime::decode(id)?;
         let tab = &self.tabs[self.active_tab];
         if let Some(test) = tab.block_test.as_ref().filter(|test| test.insert == handle) {
             let p = actions::all_parameters(&test.baseline, test.definition)
                 .into_iter()
-                .nth(index)?;
-            let value = actions::value(&tab.scene.document, &p).ok()?;
+                .find(|p| p.id == node)?;
+            let value = actions::instance::test_value(&tab.scene.document, handle, &p).ok()?;
+            if !crate::scene::block_grips::runtime::grips(&test.baseline, test.definition, &p, value).iter().any(|grip| grip.id == id) { return None; }
             Some((p, value))
         } else {
             let definition = actions::instance::definition(&tab.scene.document, handle)?;
             let p = actions::all_parameters(&tab.scene.document, definition)
                 .into_iter()
-                .nth(index)?;
+                .find(|p| p.id == node)?;
             let value = actions::instance::value(&tab.scene.document, handle, &p).ok()?;
+            if !crate::scene::block_grips::runtime::grips(&tab.scene.document, definition, &p, value).iter().any(|grip| grip.id == id) { return None; }
             Some((p, value))
         }
     }
@@ -205,10 +211,12 @@ impl OpenCADStudio {
                                 actions::instance::definition(&tab.scene.document, handle)?,
                             )
                         };
-                    let index = actions::all_parameters(source, definition)
-                        .iter()
-                        .position(|p| p.handle == parameter)?;
-                    Some((handle, TEST_GRIP_START + index))
+                    let p = actions::all_parameters(source, definition).into_iter().find(|p| p.handle == parameter)?;
+                    let value = if tab.block_test.is_some() { actions::instance::test_value(&tab.scene.document, handle, &p).ok()? }
+                        else { actions::instance::value(&tab.scene.document, handle, &p).ok()? };
+                    let active_id = tab.active_cmd.as_ref().and_then(|command| command.block_parameter_grip_id());
+                    let grip = crate::scene::block_grips::runtime::grips(source, definition, &p, value).into_iter().find(|grip| active_id.is_none_or(|id| grip.id == id))?;
+                    Some((handle, grip.id))
                 });
             if let Some((handle, id)) = active.or(hot).or(hovered) {
                 if let Some((parameter, value)) = self.dynamic_grip_value(handle, id) {
@@ -223,7 +231,9 @@ impl OpenCADStudio {
                             &tab.scene.document,
                             reference,
                         );
-                        result.markers = feedback::value_markers(source, &parameter, value)
+                        let definition = tab.block_test.as_ref().map(|test| test.definition)
+                            .or_else(|| actions::instance::definition(&tab.scene.document, handle));
+                        result.markers = definition.map(|definition| crate::scene::block_grips::runtime::markers(source, definition, &parameter, value, id)).unwrap_or_default()
                             .into_iter()
                             .filter_map(|point| {
                                 project(actions::v(transform.apply(actions::native(point))))
@@ -344,9 +354,10 @@ mod tests {
         reference.set_z_scale(2.0);
         app.tabs[i].scene.select_entity(insert, true);
         app.tabs[i].selected_handle = Some(insert);
+        let grip_id = crate::scene::block_grips::runtime::id(actions::all_parameters(&app.tabs[i].scene.document, definition).into_iter().find(|p| p.handle == parameter).unwrap().id, 1).unwrap();
         app.grip_hover = Some(super::super::GripHover {
             handle: insert,
-            grip_id: TEST_GRIP_START,
+            grip_id: grip_id,
             screen: Point::ORIGIN,
             started: iced::time::Instant::now(),
         });
@@ -363,11 +374,11 @@ mod tests {
         }
         drop(camera);
         assert!(app
-            .dynamic_grip_tip(insert, TEST_GRIP_START)
+            .dynamic_grip_tip(insert, grip_id)
             .unwrap()
             .contains("10.0000"));
         let _ = app.dispatch_command("GRIPTIPS 0");
-        assert!(app.dynamic_grip_tip(insert, TEST_GRIP_START).is_none());
+        assert!(app.dynamic_grip_tip(insert, grip_id).is_none());
         let _ = app.dispatch_command("BTMARKDISPLAY 0");
         assert!(app.block_feedback(clip).markers.is_empty());
         assert_eq!(app.tabs[i].scene.document, before);
@@ -375,6 +386,8 @@ mod tests {
         app.grip_hover = None;
         app.tabs[i].active_cmd = Some(Box::new(
             crate::modules::block_editor::action::TestParameterCommand {
+                grip_input: None,
+                display_offset: DVec3::ZERO,
                 insert: Some(insert),
                 document: app.tabs[i].id,
                 definition,

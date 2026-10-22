@@ -37,10 +37,32 @@ pub fn stretch_entity(
     windows: &[(DVec3, DVec3)],
     delta: DVec3,
 ) -> bool {
+    stretch_entity_except(entity, Handle::NULL, windows, &[], delta)
+}
+
+/// Whether `point` of `handle` was taken out of the stretch set with Shift.
+pub(crate) fn is_excluded(excluded: &[(Handle, DVec3)], handle: Handle, point: DVec3) -> bool {
+    excluded.iter().any(|(owner, removed)| {
+        *owner == handle
+            && (removed.x - point.x).abs() <= 1e-9
+            && (removed.y - point.y).abs() <= 1e-9
+    })
+}
+
+/// [`stretch_entity`] for the entity `handle`, leaving its points listed in
+/// `excluded` in place. Exclusions affect the moved vertices, not the
+/// crossing selection itself.
+pub(crate) fn stretch_entity_except(
+    entity: &mut codec::EntityType,
+    handle: Handle,
+    windows: &[(DVec3, DVec3)],
+    excluded: &[(Handle, DVec3)],
+    delta: DVec3,
+) -> bool {
     let in_win = |x: f64, y: f64| -> bool {
         windows.iter().any(|(win_min, win_max)| {
             x >= win_min.x && x <= win_max.x && y >= win_min.y && y <= win_max.y
-        })
+        }) && !is_excluded(excluded, handle, DVec3::new(x, y, 0.0))
     };
     let (dx, dy, dz) = (delta.x, delta.y, delta.z);
     let mut stretched = false;
@@ -373,7 +395,7 @@ enum Step {
     /// Waiting for the first corner of another crossing window.
     WindowCorner1,
     /// Waiting for the opposite corner.
-    WindowCorner2(DVec3),
+    WindowCorner2(DVec3, bool),
     /// Selection is complete; waiting for the displacement base point.
     Base,
     /// Waiting for the displacement target.
@@ -385,6 +407,14 @@ pub struct StretchCommand {
     wire_models: Vec<WireModel>,
     /// Independent crossing windows accumulated during the selection stage.
     windows: Vec<(DVec3, DVec3)>,
+    excluded_points: Vec<(Handle, DVec3)>,
+    /// The objects the drag really changes. A crossing window also catches
+    /// objects that only pass through it; those stay drawn and snappable
+    /// instead of being hidden behind the preview (#1989). Resolved on the
+    /// first preview, once the windows are final.
+    moving: Option<Vec<Handle>>,
+    remove_release_pending: bool,
+    shift_down: bool,
     step: Step,
 }
 
@@ -394,6 +424,10 @@ impl StretchCommand {
             handles,
             wire_models,
             windows: Vec::new(),
+            excluded_points: Vec::new(),
+            moving: None,
+            remove_release_pending: false,
+            shift_down: false,
             step: Step::WindowCorner1,
         }
     }
@@ -409,6 +443,10 @@ impl StretchCommand {
             handles,
             wire_models,
             windows: vec![window],
+            excluded_points: Vec::new(),
+            moving: None,
+            remove_release_pending: false,
+            shift_down: false,
             step: Step::Base,
         }
     }
@@ -419,11 +457,16 @@ impl StretchCommand {
         handles: Vec<Handle>,
         wire_models: Vec<WireModel>,
         windows: Vec<(DVec3, DVec3)>,
+        excluded_points: Vec<(Handle, DVec3)>,
     ) -> Self {
         Self {
             handles,
             wire_models,
             windows,
+            excluded_points,
+            moving: None,
+            remove_release_pending: false,
+            shift_down: false,
             step: Step::WindowCorner1,
         }
     }
@@ -481,7 +524,7 @@ impl CadCommand for StretchCommand {
                     .into_owned()
                 }
             }
-            Step::WindowCorner2(_) => t!("STRETCH  Specify opposite corner:").into_owned(),
+            Step::WindowCorner2(..) => t!("STRETCH  Specify opposite corner:").into_owned(),
             Step::Base => t!("STRETCH  Specify base point:").into_owned(),
             Step::Target { base } => {
                 let bx = format!("{:.3}", base.x);
@@ -499,23 +542,33 @@ impl CadCommand for StretchCommand {
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
         match &self.step {
             Step::WindowCorner1 => {
-                self.step = Step::WindowCorner2(pt);
+                // Remember Shift at the FIRST corner. The user can release it
+                // while choosing the second corner without turning subtraction
+                // into an ordinary additive crossing window.
+                self.step = Step::WindowCorner2(pt, self.shift_down && !self.windows.is_empty());
                 CmdResult::NeedPoint
             }
 
-            Step::WindowCorner2(c1) => {
+            Step::WindowCorner2(c1, subtract) => {
                 let win_min = c1.min(pt);
                 let win_max = c1.max(pt);
 
+                // A Shift+window subtracts only currently active vertices.
+                // The host uses its filtered stretch grips, rather than
+                // reselecting whole entities or guessing tessellation points.
                 let mut windows = self.windows.clone();
-                windows.push((win_min, win_max));
+                let subtract_window = if *subtract {
+                    Some((win_min, win_max))
+                } else {
+                    windows.push((win_min, win_max));
+                    None
+                };
 
-                // Hand the accumulated selection back to the host. The host resolves
-                // the entities touched by this window and relaunches STRETCH still in
-                // the selection stage, so another crossing window can be drawn.
                 CmdResult::StretchWindow {
                     handles: self.handles.clone(),
                     windows,
+                    excluded_points: self.excluded_points.clone(),
+                    subtract_window,
                 }
             }
 
@@ -530,6 +583,7 @@ impl CadCommand for StretchCommand {
                 CmdResult::StretchEntities {
                     handles: self.handles.clone(),
                     windows: self.windows.clone(),
+                    excluded_points: self.excluded_points.clone(),
                     delta,
                 }
             }
@@ -559,10 +613,34 @@ impl CadCommand for StretchCommand {
         CmdResult::Cancel
     }
 
+    fn set_shift(&mut self, shift: bool) {
+        self.shift_down = shift;
+    }
+
+    fn remove_stretch_point(&mut self, handle: Handle, world: DVec3) -> bool {
+        if !matches!(self.step, Step::WindowCorner1)
+            || !self.handles.contains(&handle)
+            || !self.windows.iter().any(|(min, max)| {
+                world.x >= min.x && world.x <= max.x && world.y >= min.y && world.y <= max.y
+            })
+        {
+            return false;
+        }
+        if !is_excluded(&self.excluded_points, handle, world) {
+            self.excluded_points.push((handle, world));
+        }
+        self.remove_release_pending = true;
+        true
+    }
+
+    fn consume_stretch_remove_release(&mut self) -> bool {
+        std::mem::take(&mut self.remove_release_pending)
+    }
+
     fn window_corner_pick(&self) -> bool {
         // The two crossing-window corners are free points; Ortho/Polar must not
         // pin the opposite corner to an axis or the window becomes a line (#291).
-        matches!(self.step, Step::WindowCorner1 | Step::WindowCorner2(_))
+        matches!(self.step, Step::WindowCorner1 | Step::WindowCorner2(_, _))
     }
 
     fn selects_by_window(&self) -> bool {
@@ -575,22 +653,45 @@ impl CadCommand for StretchCommand {
         // Expose the first corner so the host draws a filled crossing marquee to
         // the cursor, matching a normal box selection instead of a bare outline.
         match &self.step {
-            Step::WindowCorner2(c1) => Some(*c1),
+            Step::WindowCorner2(c1, _) => Some(*c1),
             _ => None,
         }
     }
 
     fn preview_entities(&mut self, document: &codec::CadDocument, pt: DVec3) -> Vec<codec::EntityType> {
+        // The base-point step already has the final windows: resolve what
+        // moves there, so the drag starts with only those objects hidden.
+        if matches!(self.step, Step::Base | Step::Target { .. }) && self.moving.is_none() {
+            let moving: Vec<Handle> = self
+                .handles
+                .iter()
+                .copied()
+                .filter(|handle| {
+                    document.get_entity(*handle).is_some_and(|entity| {
+                        let mut probe = entity.clone();
+                        let (windows, excluded) = (&self.windows, &self.excluded_points);
+                        stretch_entity_except(&mut probe, *handle, windows, excluded, DVec3::X)
+                    })
+                })
+                .collect();
+            self.wire_models.retain(|wire| {
+                crate::scene::Scene::handle_from_wire_name(&wire.name)
+                    .is_some_and(|handle| moving.contains(&handle))
+            });
+            self.moving = Some(moving);
+        }
         let Step::Target { base } = &self.step else {
             return Vec::new();
         };
         let delta = pt - *base;
-        self.handles
+        self.moving
             .iter()
-            .filter_map(|handle| document.get_entity(*handle))
-            .map(|entity| {
+            .flatten()
+            .filter_map(|handle| document.get_entity(*handle).map(|entity| (*handle, entity)))
+            .map(|(handle, entity)| {
                 let mut entity = entity.clone();
-                stretch_entity(&mut entity, &self.windows, delta);
+                let excluded = &self.excluded_points;
+                stretch_entity_except(&mut entity, handle, &self.windows, excluded, delta);
                 entity
             })
             .collect()
@@ -598,8 +699,16 @@ impl CadCommand for StretchCommand {
 
     fn preview_hidden_handles(&self) -> &[Handle] {
         match self.step {
-            Step::Target { .. } => &self.handles,
+            Step::Target { .. } => self.moving.as_deref().unwrap_or(&self.handles),
             _ => &[],
+        }
+    }
+
+    fn preview_original_snap_wires(&self) -> &[WireModel] {
+        if matches!(self.step, Step::Target { .. }) {
+            &self.wire_models
+        } else {
+            &[]
         }
     }
 
@@ -608,20 +717,143 @@ impl CadCommand for StretchCommand {
             // The crossing-window rectangle is drawn as a filled selection
             // marquee by the host (via window_first_corner) so it matches a
             // normal box selection — nothing to draw here. (#291)
-            Step::WindowCorner2(_) => vec![],
-            // The stretched entities themselves come from `preview_entities`.
+            Step::WindowCorner2(_, _) => vec![],
+            // STRETCH hides the original resident geometry. Draw a pale,
+            // stationary ghost from its snapshot *behind* the moving geometry.
+            // Do not replace the snapshot itself: it remains the snap source.
             Step::Target { base } => {
-                vec![WireModel::solid(
+                let mut wires: Vec<WireModel> = self
+                    .wire_models
+                    .iter()
+                    .filter(|wire| wire.display_visible)
+                    .cloned()
+                    .map(|mut wire| {
+                        wire.selected = false;
+                        wire.color = [0.67, 0.79, 0.84, wire.color[3] * 0.38];
+                        wire.aci = 0;
+                        wire.reference_only = true;
+                        wire.plot_visible = false;
+                        wire
+                    })
+                    .collect();
+                wires.push(WireModel::solid_f64(
                     "rubber_band".into(),
-                    vec![
-                        [base.x as f32, base.y as f32, base.z as f32],
-                        [pt.x as f32, pt.y as f32, pt.z as f32],
-                    ],
+                    vec![[base.x, base.y, base.z], [pt.x, pt.y, pt.z]],
                     WireModel::CYAN,
                     false,
-                )]
+                ));
+                wires
             }
             _ => vec![],
         }
+    }
+}
+
+#[cfg(test)]
+mod shift_stretch_tests {
+    use super::*;
+    use codec::entities::Line;
+    use codec::types::Vector3;
+
+    #[test]
+    fn shift_window_subtracts_selected_vertices_without_adding_a_crossing_window() {
+        let original = vec![(DVec3::ZERO, DVec3::new(20.0, 20.0, 0.0))];
+        let mut cmd = StretchCommand::with_windows(
+            vec![Handle::NULL], vec![], original.clone(), vec![],
+        );
+        // The first corner latches subtraction: releasing Shift before the
+        // second click must not turn it back into an additive selection.
+        cmd.set_shift(true);
+        assert!(matches!(cmd.on_point(DVec3::new(5.0, 7.0, 0.0)), CmdResult::NeedPoint));
+        cmd.set_shift(false);
+        match cmd.on_point(DVec3::new(12.0, 15.0, 0.0)) {
+            CmdResult::StretchWindow {
+                windows,
+                subtract_window: Some((min, max)),
+                ..
+            } => {
+                assert_eq!(windows, original);
+                assert_eq!(min, DVec3::new(5.0, 7.0, 0.0));
+                assert_eq!(max, DVec3::new(12.0, 15.0, 0.0));
+            }
+            _ => panic!("Shift selection must subtract existing STRETCH vertices"),
+        }
+    }
+
+    #[test]
+    fn normal_window_still_adds_to_the_stretch_selection() {
+        let original = vec![(DVec3::ZERO, DVec3::new(20.0, 20.0, 0.0))];
+        let mut cmd = StretchCommand::with_windows(vec![], vec![], original.clone(), vec![]);
+        assert!(matches!(cmd.on_point(DVec3::new(24.0, 4.0, 0.0)), CmdResult::NeedPoint));
+        match cmd.on_point(DVec3::new(30.0, 10.0, 0.0)) {
+            CmdResult::StretchWindow {
+                windows,
+                subtract_window: None,
+                ..
+            } => {
+                assert_eq!(windows.len(), 2);
+                assert_eq!(windows[0], original[0]);
+            }
+            _ => panic!("Ordinary STRETCH crossing window must still add"),
+        }
+    }
+
+    #[test]
+    fn excluded_endpoint_stays_fixed_while_other_endpoint_stretches() {
+        let mut entity = codec::EntityType::Line(Line::from_points(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(10.0, 0.0, 0.0),
+        ));
+        let window = [(DVec3::new(-1.0, -1.0, -1.0), DVec3::new(11.0, 1.0, 1.0))];
+        let handle = Handle::new(7);
+        let excluded = [(handle, DVec3::ZERO)];
+        assert!(stretch_entity_except(
+            &mut entity,
+            handle,
+            &window,
+            &excluded,
+            DVec3::new(5.0, 0.0, 0.0),
+        ));
+        let codec::EntityType::Line(line) = entity else { panic!("line expected") };
+        assert_eq!(line.start, Vector3::new(0.0, 0.0, 0.0));
+        assert_eq!(line.end, Vector3::new(15.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn shift_removed_point_survives_command_to_commit() {
+        let handle = Handle::new(42);
+        let window = (DVec3::new(-1.0, -1.0, -1.0), DVec3::new(11.0, 1.0, 1.0));
+        let mut cmd = StretchCommand::with_windows(
+            vec![handle], vec![], vec![window], Vec::new(),
+        );
+        assert!(cmd.remove_stretch_point(handle, DVec3::ZERO));
+        assert!(cmd.consume_stretch_remove_release());
+        assert!(!cmd.consume_stretch_remove_release());
+        assert!(matches!(cmd.on_enter(), CmdResult::NeedPoint));
+        assert!(matches!(cmd.on_point(DVec3::ZERO), CmdResult::NeedPoint));
+        let CmdResult::StretchEntities { excluded_points, .. } =
+            cmd.on_point(DVec3::new(5.0, 0.0, 0.0))
+        else { panic!("expected STRETCH result") };
+        assert_eq!(excluded_points, vec![(handle, DVec3::ZERO)]);
+    }
+
+    #[test]
+    fn only_objects_the_drag_moves_are_hidden() {
+        let mut document = codec::CadDocument::new();
+        let mut add = |a: Vector3, b: Vector3| {
+            let line = codec::EntityType::Line(Line::from_points(a, b));
+            document.add_entity(line).unwrap()
+        };
+        // One end inside the window, and a line merely passing through it.
+        let moved = add(Vector3::new(5.0, 5.0, 0.0), Vector3::new(50.0, 5.0, 0.0));
+        let crossing = add(Vector3::new(-20.0, 2.0, 0.0), Vector3::new(30.0, 2.0, 0.0));
+        let window = (DVec3::new(0.0, 0.0, -1.0), DVec3::new(10.0, 10.0, 1.0));
+        let mut cmd =
+            StretchCommand::with_windows(vec![moved, crossing], vec![], vec![window], vec![]);
+        assert!(matches!(cmd.on_enter(), CmdResult::NeedPoint));
+        assert!(matches!(cmd.on_point(DVec3::ZERO), CmdResult::NeedPoint));
+        let preview = cmd.preview_entities(&document, DVec3::new(0.0, 3.0, 0.0));
+        assert_eq!(preview.len(), 1);
+        assert_eq!(cmd.preview_hidden_handles(), &[moved]);
     }
 }

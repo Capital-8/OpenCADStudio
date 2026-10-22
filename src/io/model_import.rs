@@ -90,11 +90,14 @@ fn placed_insert(block: &str, placement: &[[f64; 4]; 3]) -> EntityType {
 /// STEP: a block per product — its solids, and inserts of its components —
 /// with each top product inserted at the origin, scaled from the file's
 /// units to the drawing's. The solids take their colour from the block.
-fn step_blocks(model: crate::io::step_import::StepModel, scale: f64) -> Imported {
+fn step_blocks(model: crate::io::step_import::StepModel, scale: f64, stem: &str) -> Imported {
     // Unique names, in product order.
     let mut names: Vec<String> = Vec::new();
     for product in &model.products {
-        let base = block_name(&product.name);
+        let base = match product.numbered {
+            Some(id) => block_name(&format!("{stem}-{id}")),
+            None => block_name(&product.name),
+        };
         let mut name = base.clone();
         let mut n = 1;
         while names.iter().any(|taken| taken.eq_ignore_ascii_case(&name)) {
@@ -150,7 +153,12 @@ fn step_blocks(model: crate::io::step_import::StepModel, scale: f64) -> Imported
                 .iter()
                 .filter_map(|body| {
                     let faces: Vec<Option<Color>> = body.faces.iter().map(|c| c.map(step_colour)).collect();
-                    painted_body_entity(&body.body, body.colour.map(step_colour), &faces, false)
+                    let colour = body.colour.map(step_colour);
+                    let mut entity = painted_body_entity(&body.body, colour, &faces, false)?;
+                    if product.scale != 1.0 {
+                        entity.apply_transform(&Transform::from_scale(product.scale));
+                    }
+                    Some(entity)
                 })
                 .collect();
             entities.extend(
@@ -169,18 +177,33 @@ fn step_blocks(model: crate::io::step_import::StepModel, scale: f64) -> Imported
         })
         .collect();
     let identity = [[scale, 0.0, 0.0, 0.0], [0.0, scale, 0.0, 0.0], [0.0, 0.0, scale, 0.0]];
-    Imported {
-        blocks,
-        entities: model
-            .roots
-            .iter()
-            .map(|&k| placed_insert(&names[k], &identity))
-            .collect(),
-    }
+    // Solids placed straight into the drawing keep the colour by block
+    // they have in a block.
+    let mut direct: Vec<EntityType> = model
+        .direct
+        .iter()
+        .filter_map(|body| {
+            let faces: Vec<Option<Color>> = body.faces.iter().map(|c| c.map(step_colour)).collect();
+            let colour = body.colour.map(step_colour);
+            let mut entity = painted_body_entity(&body.body, colour, &faces, false)?;
+            if scale != 1.0 {
+                entity.apply_transform(&Transform::from_scale(scale));
+            }
+            Some(entity)
+        })
+        .collect();
+    direct.extend(model.roots.iter().map(|&k| placed_insert(&names[k], &identity)));
+    Imported { blocks, entities: direct }
 }
 
 /// `None` when the file is not of `format` or holds nothing it can read.
-pub fn read(format: ModelFormat, bytes: &[u8], drawing_mm: Option<f64>) -> Option<Imported> {
+/// `stem` names the blocks of a STEP file without products.
+pub fn read(
+    format: ModelFormat,
+    bytes: &[u8],
+    drawing_mm: Option<f64>,
+    stem: &str,
+) -> Option<Imported> {
     let imported = match format {
         ModelFormat::Sat => Imported {
             blocks: Vec::new(),
@@ -188,21 +211,35 @@ pub fn read(format: ModelFormat, bytes: &[u8], drawing_mm: Option<f64>) -> Optio
         },
         ModelFormat::Step => {
             let model = crate::io::step_import::read(bytes)?;
-            let scale = ratio(model.unit_mm, drawing_mm);
-            step_blocks(model, scale)
+            // A file that names no length unit is read in drawing units.
+            let scale = model.unit_mm.map_or(1.0, |mm| ratio(mm, drawing_mm));
+            step_blocks(model, scale, stem)
         }
         ModelFormat::Iges => {
-            // Solids, then the surfaces as surfaces however flat; faces and
-            // edges carry the object's colour.
+            // Solids, then the surfaces as surfaces however flat, then the
+            // free curves as splines; faces and edges carry the object's
+            // colour, every object its level's layer.
             let model = crate::io::iges_import::read(bytes, drawing_mm)?;
             let solids = model.bodies.iter().map(|body| (body, false));
             let sheets = model.sheets.iter().map(|body| (body, true));
+            let mut entities: Vec<EntityType> = solids
+                .chain(sheets)
+                .filter_map(|((body, color, layer), sheet)| {
+                    let mut entity = painted_body_entity(body, Some(*color), &[], sheet)?;
+                    entity.common_mut().layer = layer.clone();
+                    Some(entity)
+                })
+                .collect();
+            for (curve, color, layer) in &model.curves {
+                let mut spline = codec::entities::Spline::new();
+                crate::entities::spline::replace_with_nurbs(&mut spline, curve);
+                spline.common.color = *color;
+                spline.common.layer = layer.clone();
+                entities.push(EntityType::Spline(spline));
+            }
             Imported {
                 blocks: Vec::new(),
-                entities: solids
-                    .chain(sheets)
-                    .filter_map(|((body, color), sheet)| painted_body_entity(body, Some(*color), &[], sheet))
-                    .collect(),
+                entities,
             }
         }
     };

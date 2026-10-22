@@ -384,6 +384,7 @@ impl shader::Primitive for Primitive {
         let recovering = pipeline.gpu_error_epoch != errors_at_entry;
         if recovering {
             pipeline.wire_buffer_cache.clear();
+            pipeline.mesh_batch_cache.clear();
             pipeline.block_geometry.clear();
             pipeline.gpu_error_epoch = errors_at_entry;
         }
@@ -474,7 +475,12 @@ impl shader::Primitive for Primitive {
                 // The direct pass draws straight into `surface_dest`, so it
                 // lines up with the cached scene only when that rectangle is
                 // the whole pixel-aligned raster (not cropped off the window).
+                // Instanced block previews cannot use the direct wire overlay.
                 inner.preview_overlay_direct = placement.surface_matches_raster()
+                    && inner
+                        .gpu_preview_block_wires
+                        .iter()
+                        .all(|wire| wire.instance_count == 0)
                     && inner
                         .gpu_preview_circles
                         .iter()
@@ -1183,7 +1189,12 @@ retained_contributors={}",
                         && inner.patch_mesh_batch(device, queue, &vp.meshes[..], &patch.changes)
                 });
                 if !patched {
-                    inner.upload_mesh_batch(device, queue, &vp.meshes[..]);
+                    inner.upload_mesh_batch(
+                        device,
+                        queue,
+                        &vp.meshes,
+                        &mut pipeline.mesh_batch_cache,
+                    );
                 }
                 inner.cached_mesh_source = Some(Arc::clone(&vp.meshes));
             }

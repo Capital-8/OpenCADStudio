@@ -1,6 +1,6 @@
 cask "open-cad-studio" do
-  version "2026.41"
-  sha256 "37f61cde861510cd83202bb854c64b16e3c1fa68187aeccf09e65395fd9d0198"
+  version "2026.42"
+  sha256 "c3d92050a941908bc1308bdaf0921adfaf6a5714fcd4dcde924009195504b338"
 
   url "https://github.com/HakanSeven12/OpenCADStudio/releases/download/v#{version}/OpenCADStudio-v#{version}-macos-arm64.dmg",
       verified: "github.com/HakanSeven12/OpenCADStudio/"

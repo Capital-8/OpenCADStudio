@@ -326,41 +326,7 @@ impl Scene {
             .map_or(0.0, |depth| depth[0]);
 
         if let EntityType::Hatch(hatch) = entity {
-            if let Some(background) = crate::entities::hatch::background_color(hatch) {
-                let mut backdrop = model.clone();
-                backdrop.pattern = crate::scene::model::hatch_model::HatchPattern::Solid;
-                let (background_color, background_aci) = match background {
-                    codec::types::Color::ByLayer => {
-                        let layer = self.document.layers.get(&hatch.common.layer);
-                        let aci = layer
-                            .and_then(|layer| match &layer.color {
-                                codec::types::Color::Index(index) => Some(*index),
-                                _ => None,
-                            })
-                            .unwrap_or(0);
-                        (
-                            crate::scene::view::render::layer_render_style(
-                                &self.document,
-                                &hatch.common.layer,
-                            )
-                            .color,
-                            aci,
-                        )
-                    }
-                    codec::types::Color::ByBlock => (style.0, style.4),
-                    codec::types::Color::Index(index) => (
-                        crate::scene::convert::tess_util::aci_to_rgba(&codec::types::Color::Index(
-                            index,
-                        )),
-                        index,
-                    ),
-                    other => (crate::scene::convert::tess_util::aci_to_rgba(&other), 0),
-                };
-                backdrop.color = background_color;
-                backdrop.aci = background_aci;
-                backdrop.name = "SOLID".into();
-                models.push(backdrop);
-            }
+            models.extend(self.hatch_backdrop(hatch, &model, (style.0, style.4), None));
         }
         models.push(model);
     }

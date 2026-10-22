@@ -6,8 +6,10 @@ use crate::modules::parametric::ParametricModule;
 use crate::modules::{CadModule, IconKind, ModuleEvent, RibbonGroup, RibbonItem, ToolDef};
 
 pub mod action;
+pub(crate) mod alignment;
 pub(crate) mod action_bar;
 pub mod action_set;
+pub(crate) mod grip_set;
 pub(crate) mod associate;
 pub mod distance_parameter;
 pub mod orientation_parameter;
@@ -139,6 +141,7 @@ impl CadModule for BlockEditorModule {
                     "Editor Settings",
                     include_bytes!("../../../assets/icons/tool_palettes.svg"),
                 ));
+                manage.tools.push(command("BGRIPSET", "Parameter Grips", include_bytes!("../../../assets/icons/ui/list.svg")));
                 manage.tools.push(command(
                     "BCYCLEORDER",
                     "Grip Cycle Order",

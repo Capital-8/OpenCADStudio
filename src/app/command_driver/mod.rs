@@ -584,12 +584,16 @@ impl OpenCADStudio {
                     return task;
                 }
             }
+            result @ CmdResult::SetBlockParameterGrips { .. } => {
+                return self.set_block_parameter_grips(result);
+            }
             result @ CmdResult::EditBlockAuthoring { .. } => {
                 return self.handle_authoring_edit(result);
             }
             CmdResult::SetBlockActionBars { document,definition,mode,parameters } => {
                 return self.set_action_bars(document,definition,mode,parameters);
             }
+            result @ CmdResult::AlignBlockReference { .. } => { return self.handle_block_alignment(result); }
             result @ (CmdResult::PlaceBlockAction { .. }
             | CmdResult::EditBlockActionSet { .. }
             | CmdResult::AssociateBlockAction { .. }
@@ -1014,15 +1018,23 @@ impl OpenCADStudio {
                 self.handle_set_plot_window(p1, p2);
             }
             CmdResult::QuickPrint(handles) => return self.handle_quick_print(handles),
-            CmdResult::StretchWindow { handles, windows } => {
-                self.handle_stretch_window(handles, windows);
+            CmdResult::StretchWindow {
+                handles,
+                windows,
+                excluded_points,
+                subtract_window,
+            } => {
+                self.handle_stretch_window(handles, windows, excluded_points, subtract_window);
             }
             CmdResult::StretchEntities {
                 handles,
                 windows,
+                excluded_points,
                 delta,
             } => {
-                if let Some(task) = self.handle_stretch_entities(handles, windows, delta) {
+                if let Some(task) =
+                    self.handle_stretch_entities(handles, windows, excluded_points, delta)
+                {
                     return task;
                 }
             }
@@ -1141,8 +1153,9 @@ impl OpenCADStudio {
         }
         // When no command is running the ribbon tool button still has to
         // visually deactivate. Keyboard focus is assigned below to whichever
-        // editor currently owns typed input.
-        if self.tabs[i].active_cmd.is_none() {
+        // editor currently owns typed input. Re-read the active tab: a
+        // dispatched command (CLOSE, an SDI open) may have closed tab `i`.
+        if self.tabs[self.active_tab].active_cmd.is_none() {
             self.ribbon.deactivate_tool();
         }
         // The rich text canvas owns keyboard editing itself. Leaving the

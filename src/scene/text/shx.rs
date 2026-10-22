@@ -253,13 +253,17 @@ pub fn bigfont_glyph(path: &str, ch: char) -> Option<Arc<crate::scene::text::lff
 /// Tessellate the shape named `name` (case-insensitive) from the SHX at
 /// `path` — the `.lin` catalog references linetype shapes by name.
 pub fn shape_polylines_by_name(path: &str, name: &str) -> Option<ShapePolylines> {
-    let file = load_file(path)?;
-    let num = file
+    shape_polylines(path, shape_number(path, name)?)
+}
+
+/// The number of the shape named `name` (case-insensitive) in the SHX at
+/// `path`.
+pub fn shape_number(path: &str, name: &str) -> Option<u16> {
+    load_file(path)?
         .shapes
         .iter()
         .find(|(_, (n, _))| n.eq_ignore_ascii_case(name))
-        .map(|(&num, _)| num)?;
-    shape_polylines(path, num)
+        .map(|(&num, _)| num)
 }
 
 /// Tessellate `shape_number` from the SHX at `path` into unit-space

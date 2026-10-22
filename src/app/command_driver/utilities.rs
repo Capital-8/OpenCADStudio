@@ -966,18 +966,32 @@ impl OpenCADStudio {
             || tokens[0].eq_ignore_ascii_case("XREF")
             // `VIEW WINDOW <name> <x1,y1> <x2,y2>` takes its arguments in one line.
             || tokens[0].eq_ignore_ascii_case("VIEW")
+            // A path after OPEN / SAVEAS may hold spaces; it is one answer.
+            || tokens[0].eq_ignore_ascii_case("OPEN")
+            || tokens[0].eq_ignore_ascii_case("SAVEAS")
         {
             return self.dispatch_command(cmd);
         }
         // Close an earlier step first so only what the probe opens is dropped below.
         self.finish_pending_history(i);
-        let start_task = self.dispatch_command(tokens[0]);
+        let Some(start_task) = self.try_dispatch_command(tokens[0], false) else {
+            // The first word is no command; the whole line may still be one.
+            return self.dispatch_command(cmd);
+        };
+        self.clear_idle_tool_highlight();
         if self.tabs[i].active_cmd.is_none() {
             // Not an interactive tool — an inline-argument command (`PDMODE 3`).
             // The bare word only probed it: a step it kept without changing
             // anything is not an undo step of its own.
             self.drop_unchanged_pending_history(i);
-            return self.dispatch_command(cmd);
+            if let Some(task) = self.try_dispatch_command(cmd, false) {
+                self.clear_idle_tool_highlight();
+                return task;
+            }
+            // The command takes no words after it and has run: the rest of
+            // the line goes on to the next command, as Enter would send it.
+            let rest = tokens[1..].join(" ");
+            return Task::batch([start_task, self.run_command_line_streaming(&rest, finish)]);
         }
         let toks: Vec<String> = tokens.iter().map(|s| s.to_string()).collect();
         let finish_task = self.finish_active_command(&toks, finish);

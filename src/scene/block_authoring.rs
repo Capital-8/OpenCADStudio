@@ -375,6 +375,50 @@ pub(super) fn dynamic(
     object
 }
 
+/// `definition`'s object graph, for a copy of the definition to carry. A
+/// draw-order table or associative network beside a dynamic block's graph
+/// holds objects the export cannot move, and one of them used to drop the
+/// whole graph, parameters and actions included; leave those two behind
+/// instead.
+pub(crate) fn export_graph(
+    document: &CadDocument,
+    definition: Handle,
+) -> Option<codec::BlockGraph> {
+    if let Some(graph) = document.export_block_graph(definition) {
+        return Some(graph);
+    }
+    let root = document.extension_dictionary_handle(definition)?;
+    let Some(ObjectType::Dictionary(dictionary)) = document.objects.get(&root) else {
+        return None;
+    };
+    if !dictionary.entries.iter().any(|(key, _)| key == "ACAD_ENHANCEDBLOCK") {
+        return None;
+    }
+    let left = |key: &str| matches!(key, "ACAD_SORTENTS" | "ACAD_ASSOCNETWORK");
+    let dropped: Vec<Handle> = dictionary
+        .entries
+        .iter()
+        .filter(|(key, _)| left(key))
+        .map(|(_, handle)| *handle)
+        .collect();
+    // Other graph objects may still name them (reactors), so drop the
+    // objects themselves, not just their entries.
+    let gone: Vec<Handle> = document
+        .objects
+        .keys()
+        .copied()
+        .filter(|handle| dropped.iter().any(|top| document.owner_chain_reaches(*handle, *top)))
+        .collect();
+    let mut document = document.clone();
+    for handle in gone {
+        document.objects.remove(&handle);
+    }
+    if let Some(ObjectType::Dictionary(dictionary)) = document.objects.get_mut(&root) {
+        dictionary.entries.retain(|(key, _)| !left(key));
+    }
+    document.export_block_graph(definition)
+}
+
 pub(crate) fn members(document: &CadDocument, definition: Handle) -> Vec<Handle> {
     document
         .block_records

@@ -12,6 +12,7 @@ pub mod brep_build;
 pub mod fbx;
 pub mod file_association;
 pub mod font_repo;
+pub mod georef;
 pub(crate) mod fs_access;
 pub mod iges_import;
 pub mod iges_surfaces;
@@ -1595,7 +1596,14 @@ pub(crate) fn resolve_image_file(raw: &str, base_dir: Option<&Path>) -> Option<S
         return Some(raw.to_string());
     }
     let base_dir = base_dir?;
-    let joined = base_dir.join(raw);
+    // A relative path written on Windows (`.\images\a.tif`) keeps its
+    // backslashes on other systems, where they are not separators.
+    let relative = if cfg!(windows) {
+        std::borrow::Cow::Borrowed(raw)
+    } else {
+        std::borrow::Cow::Owned(raw.replace('\\', "/"))
+    };
+    let joined = base_dir.join(&*relative);
     if joined.is_file() {
         return Some(joined.to_string_lossy().into_owned());
     }
@@ -1973,14 +1981,19 @@ mod save_failure_tests {
 /// picked from outside the plot styles folder is copied into it (unless a
 /// file of that name is already there), so the dialog lists it from now on
 /// and page setups naming it resolve after a restart.
-/// Pick a `.lin` linetype definition file and return its text (#1588).
-pub async fn pick_linetype_file() -> Option<String> {
+/// Pick a `.lin` linetype definition file and return its folder (where the
+/// shape files it names are looked for; none on the web) and text (#1588).
+pub async fn pick_linetype_file() -> Option<(Option<std::path::PathBuf>, String)> {
     let handle = crate::sys::file_dialog()
         .set_title(crate::t!("Load Linetypes").as_ref())
         .add_filter(crate::t!("Linetype Files").as_ref(), &["lin", "LIN"])
         .pick_file()
         .await?;
-    Some(String::from_utf8_lossy(&handle.read().await).into_owned())
+    #[cfg(not(target_arch = "wasm32"))]
+    let dir = handle.path().parent().map(Path::to_path_buf);
+    #[cfg(target_arch = "wasm32")]
+    let dir = None;
+    Some((dir, String::from_utf8_lossy(&handle.read().await).into_owned()))
 }
 
 pub async fn pick_plot_style() -> Result<Option<plot_style::PlotStyleTable>, String> {

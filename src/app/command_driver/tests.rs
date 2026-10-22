@@ -120,6 +120,47 @@ mod trim_extend_history_tests {
     }
 
     #[test]
+    fn trim_command_dispatch_includes_fill_only_hatch_targets() {
+        use codec::entities::{BoundaryEdge, BoundaryPath, Hatch, PolylineEdge};
+        use codec::types::Vector2;
+        let mut app = OpenCADStudio::new_for_test();
+        let _ = app.automation_op(r#"{"op":"new"}"#);
+        let mut hatch = Hatch::new();
+        hatch.is_solid = true;
+        let mut path = BoundaryPath::new();
+        path.add_edge(BoundaryEdge::Polyline(PolylineEdge::new(
+            [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]
+                .into_iter()
+                .map(|p| Vector2::new(p[0], p[1]))
+                .collect(),
+            true,
+        )));
+        hatch.paths.push(path);
+        let i = app.active_tab;
+        let hatch_handle = app.tabs[i]
+            .scene
+            .add_entity(codec::EntityType::Hatch(Box::new(hatch)));
+        let boundary = add_line(&mut app, [5.0, -2.0], [5.0, 12.0]);
+        // Pick-first supplies a deterministic Standard-mode cutting edge,
+        // regardless of the global TRIMMODE setting from other tests.
+        app.tabs[i].scene.select_entity(boundary, false);
+        assert!(app.tabs[i]
+            .scene
+            .visible_hatch_handles_for_edit()
+            .contains(&hatch_handle));
+
+        // This exercises command dispatch, not just TrimCommand::new().
+        // A filled hatch does not appear in entity_wires(): previously the
+        // command snapshot omitted it, making every inside click a no-op.
+        let _ = app.dispatch_command("TRIM");
+        let cmd = app.tabs[i].active_cmd.as_mut().expect("TRIM command active");
+        assert_eq!(cmd.name(), "TRIM");
+        let result = cmd.on_entity_pick(hatch_handle, glam::DVec3::new(2.0, 5.0, 0.0));
+        assert!(matches!(result, CmdResult::ReplaceEntity(h, edited)
+            if h == hatch_handle && matches!(edited.first(), Some(codec::EntityType::Hatch(_)))));
+    }
+
+    #[test]
     fn trim_replacement_survives_undo_and_redo() {
         let mut app = OpenCADStudio::new_for_test();
         let _ = app.automation_op(r#"{"op":"new"}"#);

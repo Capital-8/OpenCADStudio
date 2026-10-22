@@ -15,6 +15,7 @@ pub(crate) mod block_basepoint;
 pub(crate) mod block_lookup;
 pub(crate) mod block_properties_table;
 pub(crate) mod block_actions;
+pub(crate) mod block_alignment;
 pub(crate) mod block_grips;
 pub(crate) mod block_action_bars;
 pub(crate) mod block_point_parameter;
@@ -4168,7 +4169,10 @@ impl Scene {
         }
         if !self.parametric_constraints.is_empty() || !self.named_parameters.is_empty() {
             self.refresh_dynamic_dimension_texts();
-            self.sync_native_parametric_graph();
+            // A restyle changes no constraint, so the stored graph is current.
+            if !appearance_only {
+                self.sync_native_parametric_graph();
+            }
         }
         // A modified image-bearing entity redraws its raster: an underlay's
         // display adjustments and clip live on the entity, not the image.
@@ -4524,11 +4528,11 @@ impl Scene {
         let (isolines, planar_isolines) = match self.document.get_entity(handle) {
             Some(EntityType::Surface(surface)) => (
                 crate::entities::solid3d::surface_isoline_counts(surface),
-                crate::entities::solid3d::surface_property_state(surface).isolines,
+                Some(crate::entities::solid3d::surface_property_state(surface).isolines),
             ),
             _ => (
                 [crate::entities::solid3d::clamp_header_isolines(self.document.header.isolines); 2],
-                false,
+                None,
             ),
         };
         let (mut set, wires, center) = crate::scene::model::solid_model::display_from_solid(
@@ -10310,6 +10314,44 @@ impl Scene {
         }
     }
 
+    /// Each object drawn in the current space that `keep` accepts, once, as a
+    /// `(handle, entity)` clone for a modify command's working copy. Only the
+    /// resident wire names are read and block copies stay unexpanded: one
+    /// object can own many wires, and cloning per expanded wire copied a large
+    /// drawing many times over when the command started (#1978).
+    pub fn visible_entities_for_edit(
+        &self,
+        keep: impl Fn(&EntityType) -> bool,
+    ) -> Vec<(Handle, EntityType)> {
+        let wires = self.entity_wires_arc();
+        let mut seen: HashSet<Handle> = HashSet::default();
+        wires
+            .iter()
+            .filter_map(|wire| Self::handle_from_wire_name(&wire.name))
+            .filter(|handle| seen.insert(*handle))
+            .filter_map(|handle| {
+                let entity = self.document.get_entity(handle).filter(|e| keep(e))?;
+                Some((handle, entity.clone()))
+            })
+            .collect()
+    }
+
+    /// Only the handles of editable, visible HATCH entities. Modification
+    /// commands need these in addition to the wire-based entity list: hatch
+    /// fills are rendered separately and otherwise never reach TRIM.
+    /// Unlike visible_hatches_for_click this never clones GPU hatch models.
+    pub fn visible_hatch_handles_for_edit(&self) -> Vec<Handle> {
+        self.hatches
+            .keys()
+            .copied()
+            .filter(|handle| {
+                self.hatch_visible_for_interaction(*handle)
+                    && matches!(self.document.get_entity(*handle), Some(EntityType::Hatch(_)))
+                    && !self.is_reference_only(*handle)
+            })
+            .collect()
+    }
+
     /// Hatches eligible for click / box / lasso hit-testing in the current
     /// layout. Filters out block-internal source hatches (stored in
     /// `self.hatches` at block-local coords for the block-defn position,
@@ -11991,7 +12033,9 @@ impl Scene {
             .map(|ucs| (ucs, pick))
     }
 
-    /// The nearest solid or mesh surface under `local` (relative to `bounds`).
+    /// The nearest drawn surface under `local` (relative to `bounds`): a solid
+    /// or mesh face, or a wire's shaded triangles (3DFACE, filled SOLID,
+    /// thickness walls) — drawings made only of faces must lock too.
     pub fn surface_pivot_at(
         &self,
         bounds: iced::Rectangle,
@@ -12001,8 +12045,17 @@ impl Scene {
         let view_rot = camera.view_proj_rte(bounds);
         let eye = camera.eye();
         drop(camera);
+        let (near, _) = pick::hit_test::pick_ray(local, view_rot, eye, bounds)?;
+        let wires = self.interaction_pick_candidates_near(
+            self.hit_test_wires(),
+            near,
+            view_rot,
+            eye,
+            bounds,
+            1.0,
+        );
         let meshes = self.interaction_meshes_arc();
-        pick::hit_test::mesh_click_point(
+        pick::hit_test::surface_click_point(
             local,
             meshes.iter().filter_map(|set| {
                 let handle = set.entity_handle()?;
@@ -12014,6 +12067,7 @@ impl Scene {
                     mesh_interaction_aabb(set)?,
                 ))
             }),
+            &wires,
             view_rot,
             eye,
             bounds,

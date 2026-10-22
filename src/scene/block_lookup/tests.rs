@@ -302,6 +302,53 @@ fn lookup_reverse_selection_evaluates_saved_reference_geometry() {
 }
 
 #[test]
+fn lookup_and_property_table_rows_preserve_changed_bases_in_drawing_and_test_contexts() {
+    use crate::scene::{block_actions as actions, block_properties_table as table};
+    use glam::DVec3;
+    for testing in [false, true] {
+        for lookup in [false, true] {
+            let (mut document, definition) = fixture();
+            add_distance(&mut document, definition);
+            let p = actions::all_parameters(&document, definition).remove(0);
+            let line = document.block_records.get("LOOKUP").unwrap().entity_handles[0];
+            actions::create(&mut document, definition, actions::Kind::Move, p.handle, &[line], DVec3::ZERO).unwrap();
+            if lookup {
+                let lookup = create(&mut document, definition, Vector3::ZERO).unwrap();
+                let draft = draft(&document, definition, lookup);
+                apply_table(&mut document, definition, lookup, draft).unwrap();
+            } else {
+                let columns = table::columns(&document, definition);
+                table::apply(&mut document, definition, &columns, &[vec![2.], vec![4.]], false).unwrap();
+            }
+            let insert = document.add_entity(EntityType::Insert(Insert::new("LOOKUP", Vector3::ZERO))).unwrap();
+            let baseline = document.clone();
+            let input = actions::Value::Frame { base: DVec3::new(-2., 0., 0.), end: p.end };
+            document = if testing {
+                actions::instance::evaluate_test_value(&document, &baseline, definition, insert, p.handle, input)
+            } else { actions::instance::evaluate_value(&document, insert, p.handle, input) }.unwrap().unwrap();
+            for row in [0, 1, 0] {
+                document = if lookup {
+                    let label = if row == 0 { "Small" } else { "Large" };
+                    if testing { evaluate_test_choice(&document, &baseline, insert, label) }
+                    else { evaluate_reference_choice(&document, insert, label) }
+                } else {
+                    let columns = table::table(&document, definition).unwrap().unwrap().columns;
+                    if testing { actions::instance::evaluate_test_table_row(&document, &baseline, insert, &columns, row) }
+                    else { actions::instance::evaluate_table_row(&document, insert, &columns, row) }
+                }.unwrap().unwrap();
+                let frame = actions::instance::frame(&document, insert, &p).unwrap();
+                assert_eq!(frame.base, DVec3::new(-2., 0., 0.));
+                assert_eq!(frame.end, DVec3::new(if row == 0 { 0. } else { 2. }, 0., 0.));
+                let EntityType::Insert(reference) = document.get_entity(insert).unwrap() else { panic!() };
+                let member = document.block_records.get(&reference.block_name).unwrap().entity_handles[0];
+                let EntityType::Line(line) = document.get_entity(member).unwrap() else { panic!() };
+                assert_eq!(line.start, Vector3::new(if row == 0 { -2. } else { 0. }, 0., 0.));
+            }
+        }
+    }
+}
+
+#[test]
 fn lookup_updated_angle_rotates_polar_parameter_and_materializes_action_geometry() {
     let (mut document, definition) = fixture();
     let line = document.block_records.get("LOOKUP").unwrap().entity_handles[0];

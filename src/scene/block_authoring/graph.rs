@@ -218,3 +218,31 @@ pub(crate) fn bind_ids(
     object.data = DynamicBlockData::EvaluationGraph(g);
     Ok(())
 }
+
+/// Add a directed native grip dependency without disturbing existing lists.
+pub(crate) fn link(
+    g: &mut BlockEvaluationGraph,
+    source: i32,
+    destination: i32,
+) -> Result<(), &'static str> {
+    if !valid_lists(g, source) || !valid_lists(g, destination) {
+        return Err("The authoring graph has invalid adjacency links.");
+    }
+    if g.edges
+        .iter()
+        .any(|e| e.source_node == source && e.destination_node == destination)
+    {
+        return Ok(());
+    }
+    let id = g
+        .edges
+        .iter()
+        .map(|e| e.id)
+        .max()
+        .unwrap_or(-1)
+        .checked_add(1)
+        .ok_or("The graph has no free edge IDs.")?;
+    add(g, id, source, destination, -1);
+    g.edges.last_mut().unwrap().next_id = 0;
+    Ok(())
+}

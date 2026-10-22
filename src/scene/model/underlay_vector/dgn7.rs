@@ -316,6 +316,7 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
             style: By::Own((symbology & 7) as u32),
             geom,
             filled: fill_index(e).is_some(),
+            construction: uint16(e, 32).unwrap_or(0) & 0xf == 2,
         };
         // One pixel wide, as V8 models draw: the element weight is a
         // lineweight, not shown while lineweights are off.
@@ -420,7 +421,11 @@ fn read_run(run: &[&[u8]], colors: &[[u8; 3]], d3: bool, depth: usize) -> Raw {
                     (0..n).filter_map(|k| vertex(k, 38 + k * step, n)).collect();
                 let pts: Vec<[f64; 2]> = pts3.iter().map(|p| plan(*p)).collect();
                 if pts.len() >= 2 {
-                    collect.push(element(DgnGeom::Points(pts3)));
+                    collect.push(element(if kind == 11 {
+                        DgnGeom::Curve(pts3)
+                    } else {
+                        DgnGeom::Points(pts3)
+                    }));
                     push(
                         &mut raw,
                         &mut complex,
@@ -831,6 +836,24 @@ fn level(e: &[u8]) -> u8 {
 fn level_names(all: &[&[u8]]) -> HashMap<u8, String> {
     let mut names = HashMap::new();
     for e in all.iter().filter(|e| e[1] & 0x7f == 66 && level(e) == 6) {
+        // The named-levels table: a count at 40, then 104-byte entries of
+        // the level number and its zero-terminated name (which may hold
+        // spaces, as "Level 1").
+        let byte = |at: usize| e.get(at).copied().unwrap_or(0);
+        let count = usize::from(u16::from_le_bytes([byte(40), byte(41)]));
+        if count > 0 && 42 + count * 104 <= e.len() {
+            for k in 0..count {
+                let at = 42 + k * 104;
+                let n = u16::from_le_bytes([e[at], e[at + 1]]);
+                let field = &e[at + 2..at + 104];
+                let len = field.iter().position(|c| *c == 0).unwrap_or(field.len());
+                let name: String = field[..len].iter().map(|&c| char::from(c)).collect();
+                if (1..=63).contains(&n) && !name.trim().is_empty() {
+                    names.entry(n as u8).or_insert_with(|| name.trim().to_string());
+                }
+            }
+            continue;
+        }
         for j in 36..e.len().saturating_sub(3) {
             let n = u16::from_le_bytes([e[j], e[j + 1]]);
             if !(1..=63).contains(&n) || (j > 36 && e[j - 1] != 0) || names.contains_key(&(n as u8))
@@ -1007,6 +1030,8 @@ pub fn import(bytes: &[u8]) -> Option<DgnImport> {
         sub_per_master: u.sub_per_master,
         unit_names: (unit_name(bytes, 1120), unit_name(bytes, 1122)),
         v7: true,
+        // The first view's flags (46): constructions shown at 0x1000.
+        construction_layers: uint16(bytes, 46).is_some_and(|flags| flags & 0x1000 == 0),
         ..Default::default()
     })
 }

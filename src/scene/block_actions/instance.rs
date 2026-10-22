@@ -17,6 +17,9 @@ fn cache(doc: &CadDocument, insert: Handle, id: i32) -> Result<Option<Handle>, &
     let Some(mut owner) = doc.extension_dictionary_handle(insert) else {
         return Ok(None);
     };
+    if doc.object_owner(owner) != Some(insert) {
+        return Err("The reference parameter dictionary has an invalid owner.");
+    }
     for key in [
         "AcDbBlockRepresentation",
         "AppDataCache",
@@ -25,18 +28,52 @@ fn cache(doc: &CadDocument, insert: Handle, id: i32) -> Result<Option<Handle>, &
         let Some(next) = entry(doc, owner, key)? else {
             return Ok(None);
         };
+        if doc.object_owner(next) != Some(owner) {
+            return Err("The reference parameter dictionary has an invalid owner.");
+        }
         owner = next;
     }
-    entry(doc, owner, &id.to_string())
+    let result = entry(doc, owner, &id.to_string())?;
+    if result.is_some_and(|handle| doc.object_owner(handle) != Some(owner)) {
+        return Err("The reference parameter record has an invalid owner.");
+    }
+    Ok(result)
 }
 
-pub(crate) fn current(
+/// Evaluated definition-plane coordinates, independent of display grip locations.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ParameterFrame {
+    pub base: DVec3,
+    pub end: DVec3,
+}
+
+impl ParameterFrame {
+    fn validate(self, p: &Parameter) -> Result<Self, &'static str> {
+        if !self.base.is_finite()
+            || !self.end.is_finite()
+            || (self.base.z - p.base.z).abs() > 1e-8
+            || (self.end.z - p.end.z).abs() > 1e-8
+            || (p.point && self.base.distance(p.base) > 1e-8)
+        {
+            return Err(
+                "The reference parameter frame must be finite and in its definition plane.",
+            );
+        }
+        Ok(self)
+    }
+}
+
+pub(crate) fn frame(
     doc: &CadDocument,
     insert: Handle,
     p: &Parameter,
-) -> Result<DVec3, &'static str> {
+) -> Result<ParameterFrame, &'static str> {
     let Some(h) = cache(doc, insert, p.id)? else {
-        return Ok(p.end);
+        return ParameterFrame {
+            base: p.base,
+            end: p.end,
+        }
+        .validate(p);
     };
     let Some(ObjectType::XRecord(r)) = doc.objects.get(&h) else {
         return Err("The reference contains an invalid parameter record.");
@@ -50,37 +87,83 @@ pub(crate) fn current(
         .filter_map(|e| e.value.as_point3d())
         .map(|(x, y, z)| DVec3::new(x, y, z))
         .collect::<Vec<_>>();
+    let missing = "The reference parameter cache has no finite endpoint.";
+    let a = *points.first().ok_or(missing)?;
+    let result = if p.point {
+        ParameterFrame {
+            base: p.base,
+            end: a,
+        }
+    } else {
+        let b = *points.get(1).ok_or(missing)?;
+        if p.xy {
+            // Native XY caches retain the Y and X corners, respectively.
+            ParameterFrame {
+                base: DVec3::new(a.x, b.y, a.z),
+                end: DVec3::new(b.x, a.y, b.z),
+            }
+        } else {
+            ParameterFrame { base: a, end: b }
+        }
+    };
+    let result = result.validate(p)?;
     if p.rotation
-        && points
-            .get(3)
-            .is_none_or(|r| !r.is_finite() || r.distance(p.reference) > 1e-8)
+        && points.get(3).is_none_or(|reference| {
+            !reference.is_finite() || reference.distance(p.reference + result.base - p.base) > 1e-8
+        })
     {
         return Err("The rotation reference point is unavailable or has been relocated.");
     }
-    if p.xy {
-        let (Some(a), Some(b)) = (points.first(), points.get(1)) else {
-            return Err("The XY parameter cache has no finite endpoint.");
-        };
-        if !a.is_finite()
-            || !b.is_finite()
-            || (a.x - p.base.x).abs() > 1e-8
-            || (b.y - p.base.y).abs() > 1e-8
-            || (a.z - p.base.z).abs() > 1e-8
-            || (b.z - p.end.z).abs() > 1e-8
-        {
-            return Err("This reference uses an unsupported XY parameter frame.");
+    Ok(result)
+}
+
+#[cfg(test)]
+pub(crate) fn current(
+    doc: &CadDocument,
+    insert: Handle,
+    p: &Parameter,
+) -> Result<DVec3, &'static str> {
+    let frame = frame(doc, insert, p)?;
+    Ok(frame.end)
+}
+
+fn frame_value(p: &Parameter, frame: ParameterFrame) -> Value {
+    if frame.base.distance(p.base) > 1e-10 {
+        Value::Frame {
+            base: frame.base,
+            end: frame.end,
         }
-        return Ok(DVec3::new(b.x, a.y, b.z));
+    } else {
+        Value::Point(frame.end)
     }
-    let index = usize::from(!p.point);
-    if !p.point && points.first().is_some_and(|a| a.distance(p.base) > 1e-8) {
-        return Err("This reference uses a relocated parameter base that is not supported yet.");
+}
+
+pub(crate) fn test_frame(
+    doc: &CadDocument,
+    insert: Handle,
+    p: &Parameter,
+) -> Result<ParameterFrame, &'static str> {
+    if cache(doc, insert, p.id)?.is_some() {
+        frame(doc, insert, p)
+    } else {
+        ParameterFrame {
+            base: p.base,
+            end: super::current(doc, p),
+        }
+        .validate(p)
     }
-    points
-        .get(index)
-        .copied()
-        .filter(|v| v.is_finite())
-        .ok_or("The reference parameter cache has no finite endpoint.")
+}
+
+pub(crate) fn test_value(
+    doc: &CadDocument,
+    insert: Handle,
+    p: &Parameter,
+) -> Result<Value, &'static str> {
+    if cache(doc, insert, p.id)?.is_some() {
+        value(doc, insert, p)
+    } else {
+        super::value(doc, p)
+    }
 }
 
 pub(crate) fn value(
@@ -89,7 +172,8 @@ pub(crate) fn value(
     p: &Parameter,
 ) -> Result<Value, &'static str> {
     if !p.flip {
-        return current(doc, insert, p).map(Value::Point);
+        let frame = frame(doc, insert, p)?;
+        return Ok(frame_value(p, frame));
     }
     let Some(h) = cache(doc, insert, p.id)? else {
         return Ok(Value::Flip(false));
@@ -131,7 +215,9 @@ fn ensure_dictionary(
     key: &str,
 ) -> Result<Handle, &'static str> {
     if let Some(h) = entry(doc, owner, key)? {
-        if matches!(doc.objects.get(&h), Some(ObjectType::Dictionary(_))) {
+        if matches!(doc.objects.get(&h), Some(ObjectType::Dictionary(_)))
+            && doc.object_owner(h) == Some(owner)
+        {
             return Ok(h);
         }
         return Err("The reference contains an invalid parameter dictionary.");
@@ -154,7 +240,111 @@ pub(crate) fn save(
     p: &Parameter,
     value: Value,
 ) -> Result<(), &'static str> {
+    if let Value::Frame { base, end } = value {
+        return save_frame(doc, insert, p, ParameterFrame { base, end });
+    }
+    if let Value::Point(end) = value {
+        if p.flip {
+            return Err("Use the Flip state for this parameter.");
+        }
+        let mut frame = frame(doc, insert, p)?;
+        frame.end = end;
+        return save_frame(doc, insert, p, frame);
+    }
+    if !p.flip {
+        return Err("Select a Flip parameter.");
+    }
+    let Value::Flip(state) = value else {
+        unreachable!()
+    };
+    let mut staged = doc.clone();
+    let h = ensure_cache(&mut staged, insert, p)?;
+    let Some(ObjectType::XRecord(r)) = staged.objects.get_mut(&h) else {
+        return Err("Invalid parameter record.");
+    };
+    if !r.entries_complete {
+        return Err("The reference parameter cache is incomplete.");
+    }
+    let entry = r
+        .entries
+        .iter_mut()
+        .skip(4)
+        .rev()
+        .find(|e| matches!(e.value, XRecordValue::Int16(_)))
+        .ok_or("The Flip cache has no state.")?;
+    entry.value = XRecordValue::Int16(i16::from(state));
+    r.raw_data.clear();
+    r.raw_dwg_data = None;
+    *doc = staged;
+    Ok(())
+}
+
+/// Persist both endpoints without changing the parameter or any display grip.
+pub(crate) fn save_frame(
+    doc: &mut CadDocument,
+    insert: Handle,
+    p: &Parameter,
+    frame: ParameterFrame,
+) -> Result<(), &'static str> {
+    if p.flip {
+        return Err("Use the Flip state for this parameter.");
+    }
+    let frame = frame.validate(p)?;
+    // Validate existing metadata before allocating or modifying owned records.
+    self::frame(doc, insert, p)?;
+    let mut staged = doc.clone();
+    let h = ensure_cache(&mut staged, insert, p)?;
+    let Some(ObjectType::XRecord(r)) = staged.objects.get_mut(&h) else {
+        return Err("Invalid parameter record.");
+    };
+    let mut points = r
+        .entries
+        .iter_mut()
+        .filter(|e| matches!(e.value, XRecordValue::Point3D(..)));
+    let mut put = |point: DVec3| -> Result<(), &'static str> {
+        let entry = points
+            .next()
+            .ok_or("The reference parameter cache has no endpoint.")?;
+        entry.value = XRecordValue::Point3D(point.x, point.y, point.z);
+        Ok(())
+    };
+    if p.point {
+        put(frame.end)?;
+    } else if p.xy {
+        put(DVec3::new(frame.base.x, frame.end.y, frame.base.z))?;
+        put(DVec3::new(frame.end.x, frame.base.y, frame.end.z))?;
+    } else {
+        put(frame.base)?;
+        put(frame.end)?;
+    }
+    if p.rotation {
+        let reference = r
+            .entries
+            .iter_mut()
+            .filter(|entry| matches!(entry.value, XRecordValue::Point3D(..)))
+            .nth(3)
+            .ok_or("The rotation parameter cache has no reference point.")?;
+        let point = p.reference + frame.base - p.base;
+        reference.value = XRecordValue::Point3D(point.x, point.y, point.z);
+    }
+    r.raw_data.clear();
+    r.raw_dwg_data = None;
+    *doc = staged;
+    Ok(())
+}
+
+fn ensure_cache(
+    doc: &mut CadDocument,
+    insert: Handle,
+    p: &Parameter,
+) -> Result<Handle, &'static str> {
+    if !matches!(doc.get_entity(insert), Some(EntityType::Insert(_))) {
+        return Err("Select a block reference.");
+    }
     let mut owner = doc.ensure_extension_dictionary(insert);
+    if doc.object_owner(owner) != Some(insert) {
+        return Err("The reference parameter dictionary has an invalid owner.");
+    }
     for key in [
         "AcDbBlockRepresentation",
         "AppDataCache",
@@ -164,6 +354,9 @@ pub(crate) fn save(
     }
     let key = p.id.to_string();
     let h = if let Some(h) = entry(doc, owner, &key)? {
+        if doc.object_owner(h) != Some(owner) {
+            return Err("The reference parameter record has an invalid owner.");
+        }
         h
     } else {
         let h = doc.allocate_handle();
@@ -206,52 +399,7 @@ pub(crate) fn save(
         }
         h
     };
-    let Some(ObjectType::XRecord(r)) = doc.objects.get_mut(&h) else {
-        return Err("Invalid parameter record.");
-    };
-    if let Value::Flip(state) = value {
-        let entry = r
-            .entries
-            .iter_mut()
-            .skip(4)
-            .rev()
-            .find(|e| matches!(e.value, XRecordValue::Int16(_)))
-            .ok_or("The Flip cache has no state.")?;
-        entry.value = XRecordValue::Int16(i16::from(state));
-        r.raw_data.clear();
-        r.raw_dwg_data = None;
-        return Ok(());
-    }
-    let Value::Point(position) = value else {
-        unreachable!()
-    };
-    if p.xy {
-        let mut points = r
-            .entries
-            .iter_mut()
-            .filter(|e| matches!(e.value, XRecordValue::Point3D(..)));
-        let a = points
-            .next()
-            .ok_or("The XY parameter cache has no base point.")?;
-        a.value = XRecordValue::Point3D(p.base.x, position.y, p.base.z);
-        let b = points
-            .next()
-            .ok_or("The XY parameter cache has no endpoint.")?;
-        b.value = XRecordValue::Point3D(position.x, p.base.y, position.z);
-    } else {
-        let index = usize::from(!p.point);
-        let e = r
-            .entries
-            .iter_mut()
-            .filter(|e| matches!(e.value, XRecordValue::Point3D(..)))
-            .nth(index)
-            .ok_or("The reference parameter cache has no endpoint.")?;
-        e.value = XRecordValue::Point3D(position.x, position.y, position.z);
-    }
-    // Retain unknown metadata and references, but invalidate stale raw bytes.
-    r.raw_data.clear();
-    r.raw_dwg_data = None;
-    Ok(())
+    Ok(h)
 }
 
 pub(crate) fn definition(doc: &CadDocument, insert: Handle) -> Option<Handle> {
@@ -285,6 +433,68 @@ pub(crate) fn evaluate_value(
     parameter: Handle,
     input: Value,
 ) -> Result<Option<CadDocument>, &'static str> {
+    if let Value::Frame { base, end } = input {
+        return evaluate_frame(doc, insert, parameter, ParameterFrame { base, end });
+    }
+    if let Value::Point(mut end) = input {
+        let def =
+            definition(doc, insert).ok_or("Select a uniformly scaled dynamic block reference.")?;
+        let p = all_parameters(doc, def)
+            .into_iter()
+            .find(|p| p.handle == parameter)
+            .ok_or("The reference parameter is unavailable.")?;
+        if !end.is_finite() {
+            return Err("Specify a finite parameter position.");
+        }
+        end.z = p.end.z;
+        let previous = frame(doc, insert, &p)?;
+        return evaluate_frame(doc, insert, parameter, ParameterFrame { end, ..previous });
+    }
+    evaluate_input(doc, insert, parameter, input, None)
+}
+
+pub(crate) fn evaluate_frame(
+    doc: &CadDocument,
+    insert: Handle,
+    parameter: Handle,
+    requested: ParameterFrame,
+) -> Result<Option<CadDocument>, &'static str> {
+    evaluate_input(
+        doc,
+        insert,
+        parameter,
+        Value::Point(requested.end),
+        Some(requested),
+    )
+}
+
+pub(crate) fn load_frames(
+    doc: &CadDocument,
+    evaluated: &mut CadDocument,
+    insert: Handle,
+    parameters: &[Parameter],
+) -> Result<std::collections::BTreeMap<Handle, ParameterFrame>, &'static str> {
+    let mut frames = std::collections::BTreeMap::new();
+    for p in parameters {
+        let value = if p.flip {
+            value(doc, insert, p)?
+        } else {
+            let frame = frame(doc, insert, p)?;
+            frames.insert(p.handle, frame);
+            Value::Point(frame.end)
+        };
+        super::set_value(evaluated, p, value)?;
+    }
+    Ok(frames)
+}
+
+fn evaluate_input(
+    doc: &CadDocument,
+    insert: Handle,
+    parameter: Handle,
+    input: Value,
+    requested: Option<ParameterFrame>,
+) -> Result<Option<CadDocument>, &'static str> {
     let def =
         definition(doc, insert).ok_or("Select a uniformly scaled dynamic block reference.")?;
     let parameters = all_parameters(doc, def);
@@ -293,17 +503,127 @@ pub(crate) fn evaluate_value(
         .find(|p| p.handle == parameter)
         .ok_or("The reference parameter is unavailable.")?;
     let mut evaluated = doc.clone();
-    for p in &parameters {
-        let value = value(doc, insert, p)?;
-        super::set_value(&mut evaluated, p, value)?;
+    let mut frames = load_frames(doc, &mut evaluated, insert, &parameters)?;
+    let mut base_changed = false;
+    if let Some(requested) = requested {
+        if selected.flip {
+            return Err("Use the Flip state for this parameter.");
+        }
+        let requested = requested.validate(selected)?;
+        let previous = frames
+            .get_mut(&parameter)
+            .ok_or("The parameter frame is unavailable.")?;
+        base_changed = requested.base.distance(previous.base) > 1e-10;
+        previous.base = requested.base;
     }
-    if !super::evaluate_value(&mut evaluated, doc, def, parameter, input)? {
+    if !super::evaluate_framed(
+        &mut evaluated,
+        doc,
+        def,
+        parameter,
+        input,
+        &frames,
+        base_changed,
+    )? {
         return Ok(None);
     }
     let value = super::value(&evaluated, selected)?;
     let mut result = materialize(doc, insert, def, &evaluated)?;
-    save(&mut result, insert, selected, value)?;
+    if let Value::Point(end) = value {
+        let base = frames[&parameter].base;
+        save_frame(&mut result, insert, selected, ParameterFrame { base, end })?;
+    } else {
+        save(&mut result, insert, selected, value)?;
+    }
     Ok(Some(result))
+}
+
+pub(crate) fn load_test_frames(
+    doc: &CadDocument,
+    evaluated: &mut CadDocument,
+    insert: Handle,
+    parameters: &[Parameter],
+) -> Result<std::collections::BTreeMap<Handle, ParameterFrame>, &'static str> {
+    let mut frames = std::collections::BTreeMap::new();
+    for p in parameters {
+        let value = if p.flip {
+            test_value(doc, insert, p)?
+        } else {
+            let frame = test_frame(doc, insert, p)?;
+            frames.insert(p.handle, frame);
+            Value::Point(frame.end)
+        };
+        super::set_value(evaluated, p, value)?;
+    }
+    Ok(frames)
+}
+
+/// Evaluate a scratch reference while retaining its immutable definition baseline.
+pub(crate) fn evaluate_test_value(
+    doc: &CadDocument,
+    baseline: &CadDocument,
+    definition: Handle,
+    insert: Handle,
+    parameter: Handle,
+    input: Value,
+) -> Result<Option<CadDocument>, &'static str> {
+    let parameters = all_parameters(baseline, definition);
+    let selected = parameters
+        .iter()
+        .find(|p| p.handle == parameter)
+        .ok_or("The test parameter is unavailable.")?;
+    let mut staged = doc.clone();
+    let mut frames = load_test_frames(doc, &mut staged, insert, &parameters)?;
+    let mut base_changed = false;
+    let input = match input {
+        Value::Frame { base, end } => {
+            if selected.flip {
+                return Err("Use the Flip state for this parameter.");
+            }
+            let requested = ParameterFrame { base, end }.validate(selected)?;
+            let previous = frames
+                .get_mut(&parameter)
+                .ok_or("The test frame is unavailable.")?;
+            base_changed = previous.base.distance(requested.base) > 1e-10;
+            previous.base = requested.base;
+            Value::Point(requested.end)
+        }
+        value => value,
+    };
+    if !super::evaluate_framed(
+        &mut staged,
+        baseline,
+        definition,
+        parameter,
+        input,
+        &frames,
+        base_changed,
+    )? {
+        return Ok(None);
+    }
+    let value = super::value(&staged, selected)?;
+    if let Value::Point(end) = value {
+        save_frame(
+            &mut staged,
+            insert,
+            selected,
+            ParameterFrame {
+                base: frames[&parameter].base,
+                end,
+            },
+        )?;
+    } else {
+        save(&mut staged, insert, selected, value)?;
+    }
+    let EntityType::Insert(reference) = staged
+        .get_entity(insert)
+        .ok_or("The test reference is unavailable.")?
+    else {
+        return Err("Select a test reference.");
+    };
+    let name = reference.block_name.clone();
+    super::sync_representation(&mut staged, definition, &name)?;
+    Ok(Some(staged))
 }
 
 /// Restore one reference without changing the definition or another reference.
@@ -342,7 +662,19 @@ pub(crate) fn reset(
     super::rebuild(&mut evaluated, doc, def)?;
     let mut result = materialize(doc, insert, def, &evaluated)?;
     for p in &parameters {
-        save(&mut result, insert, p, default(p))?;
+        if p.flip {
+            save(&mut result, insert, p, default(p))?;
+        } else {
+            save_frame(
+                &mut result,
+                insert,
+                p,
+                ParameterFrame {
+                    base: p.base,
+                    end: p.end,
+                },
+            )?;
+        }
     }
     if crate::scene::block_visibility::parameter(&result, def).is_some() {
         super::representation::apply_visibility(&mut result, def, insert, 0)?;
@@ -372,7 +704,19 @@ pub(crate) fn reset_test(
         };
         super::set_value(&mut result, p, value)?;
         if cache(doc, insert, p.id)?.is_some() {
-            save(&mut result, insert, p, value)?;
+            if p.flip {
+                save(&mut result, insert, p, value)?;
+            } else {
+                save_frame(
+                    &mut result,
+                    insert,
+                    p,
+                    ParameterFrame {
+                        base: p.base,
+                        end: p.end,
+                    },
+                )?;
+            }
         }
     }
     super::rebuild(&mut result, baseline, def)?;
@@ -463,6 +807,26 @@ pub(crate) fn evaluate_table_row(
     columns: &[crate::scene::block_properties_table::Column],
     row: usize,
 ) -> Result<Option<CadDocument>, &'static str> {
+    evaluate_table_row_context(doc, None, insert, columns, row)
+}
+
+pub(crate) fn evaluate_test_table_row(
+    doc: &CadDocument,
+    baseline: &CadDocument,
+    insert: Handle,
+    columns: &[crate::scene::block_properties_table::Column],
+    row: usize,
+) -> Result<Option<CadDocument>, &'static str> {
+    evaluate_table_row_context(doc, Some(baseline), insert, columns, row)
+}
+
+fn evaluate_table_row_context(
+    doc: &CadDocument,
+    baseline: Option<&CadDocument>,
+    insert: Handle,
+    columns: &[crate::scene::block_properties_table::Column],
+    row: usize,
+) -> Result<Option<CadDocument>, &'static str> {
     let def =
         definition(doc, insert).ok_or("Select a uniformly scaled dynamic block reference.")?;
     let view = crate::scene::block_properties_table::table(doc, def)?
@@ -477,15 +841,23 @@ pub(crate) fn evaluate_table_row(
             .into_iter()
             .find(|p| p.handle == column.handle)
             .ok_or("The table parameter is unavailable.")?;
+        let base = if baseline.is_some() {
+            test_frame(&staged, insert, &p)?.base
+        } else {
+            frame(&staged, insert, &p)?.base
+        };
         let input = if column.connection_name.eq_ignore_ascii_case("UpdatedAngle") {
-            Value::Point(
-                p.base + DVec3::new(value.cos(), value.sin(), 0.0) * p.end.distance(p.base),
-            )
+            Value::Point(base + DVec3::new(value.cos(), value.sin(), 0.0) * p.end.distance(p.base))
         } else {
             let axis = (p.end - p.base).normalize();
-            Value::Point(p.base + axis * *value)
+            Value::Point(base + axis * *value)
         };
-        if let Some(next) = evaluate_value(&staged, insert, p.handle, input)? {
+        let next = if let Some(baseline) = baseline {
+            evaluate_test_value(&staged, baseline, def, insert, p.handle, input)?
+        } else {
+            evaluate_value(&staged, insert, p.handle, input)?
+        };
+        if let Some(next) = next {
             staged = next;
         }
     }
@@ -585,11 +957,9 @@ pub(crate) fn refresh_after_edit(
         .collect::<Vec<_>>();
     for insert in inserts {
         let mut evaluated = staged.clone();
-        for p in all_parameters(&staged, def) {
-            let v = value(&staged, insert, &p)?;
-            super::set_value(&mut evaluated, &p, v)?;
-        }
-        super::rebuild(&mut evaluated, &staged, def)?;
+        let parameters = all_parameters(&staged, def);
+        let frames = load_frames(&staged, &mut evaluated, insert, &parameters)?;
+        super::rebuild_framed(&mut evaluated, &staged, def, &frames)?;
         let state = super::representation::visibility_state(&staged, before, def, insert);
         staged = materialize(&staged, insert, def, &evaluated)?;
         if let Some(state) = state {

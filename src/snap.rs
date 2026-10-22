@@ -26,6 +26,9 @@ pub enum TrackingKind {
     Generic,
     Extension,
     Perpendicular,
+    /// Ortho / polar along the UCS Z axis in a 3D view, up or down.
+    PlusZ,
+    MinusZ,
 }
 /// Every OSNAP mode — mirrors the OpenCADStudio list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -460,11 +463,6 @@ impl<'a> InRangeWires<'a> {
             self.heap.push(wire);
         }
         self.count += 1;
-    }
-
-    #[inline(always)]
-    fn len(&self) -> usize {
-        self.count
     }
 
     #[inline(always)]
@@ -1741,6 +1739,12 @@ impl Snapper {
         const MAX_PAIRWISE_POINTS: usize = 3_000;
         let mut in_range_pts = 0usize;
         let mut in_range_wires = InRangeWires::new();
+        // The wires the pairwise passes compare: only drawn segments or
+        // analytic curves can cross another wire. A fill-only or snap-carrier
+        // wire has no finite box, so it is in range everywhere; hundreds of
+        // thousands of them made those passes quadratic and froze (#1952).
+        let can_cross = |w: &WireModel| w.points.len() >= 2 || !w.tangent_geoms.is_empty();
+        let mut pairwise_wires: Vec<&WireModel> = Vec::new();
         // POINT wires offer only their Node; their glyph strokes stay out of
         // every geometric snap below.
         let mut in_range_nodes: Vec<&WireModel> = Vec::new();
@@ -1752,7 +1756,12 @@ impl Snapper {
                         in_range_nodes.push(w);
                     }
                 } else if !w.is_display_only() && wire_in_range(w) {
-                    in_range_pts += w.points.len();
+                    if can_cross(w) {
+                        // At least one unit each: a pair costs work even
+                        // when neither wire carries points.
+                        in_range_pts += w.points.len().max(1);
+                        pairwise_wires.push(w);
+                    }
                     in_range_wires.push(w);
                 }
             }
@@ -2055,7 +2064,10 @@ impl Snapper {
                 }
             }
             if let Some(segments) = &local_segments {
-                let local_wires: Vec<_> = wires.iter().filter(|wire| wire_in_range(wire)).collect();
+                let local_wires: Vec<_> = wires
+                    .iter()
+                    .filter(|wire| can_cross(wire) && wire_in_range(wire))
+                    .collect();
                 // The indexed segment sweep below already handles line-line
                 // intersections. Exact curve solving is needed only when at
                 // least one wire carries analytic curved geometry; testing
@@ -2163,15 +2175,9 @@ impl Snapper {
                         }
                     }
                 }
-            } else if in_range_wires.len() >= 2 {
-                for i in 0..in_range_wires.len() {
-                    let Some(wire_i) = in_range_wires.get(i) else {
-                        continue;
-                    };
-                    for j in (i + 1)..in_range_wires.len() {
-                        let Some(wire_j) = in_range_wires.get(j) else {
-                            continue;
-                        };
+            } else if pairwise_wires.len() >= 2 {
+                for (i, &wire_i) in pairwise_wires.iter().enumerate() {
+                    for &wire_j in &pairwise_wires[i + 1..] {
                         // Curved pairs are solved exactly (bug #1052); see
                         // `exact_curve_intersections`'s doc comment.
                         if let Some(pts) = exact_curve_intersections(wire_i, wire_j) {
@@ -2342,8 +2348,8 @@ impl Snapper {
                         }
                     }
                 }
-            } else if in_range_wires.len() >= 2 {
-                let screen_pts: Vec<Vec<Point>> = in_range_wires
+            } else if pairwise_wires.len() >= 2 {
+                let screen_pts: Vec<Vec<Point>> = pairwise_wires
                     .iter()
                     .map(|w| {
                         (0..w.points.len())
@@ -2352,15 +2358,9 @@ impl Snapper {
                     })
                     .collect();
 
-                for i in 0..in_range_wires.len() {
-                    let Some(wire_i) = in_range_wires.get(i) else {
-                        continue;
-                    };
+                for (i, &wire_i) in pairwise_wires.iter().enumerate() {
                     let si = &screen_pts[i];
-                    for j in (i + 1)..in_range_wires.len() {
-                        let Some(wire_j) = in_range_wires.get(j) else {
-                            continue;
-                        };
+                    for (j, &wire_j) in pairwise_wires.iter().enumerate().skip(i + 1) {
                         let sj = &screen_pts[j];
                         for ai in 0..wire_i.points.len().saturating_sub(1) {
                             let sa0 = si[ai];

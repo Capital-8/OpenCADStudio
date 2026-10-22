@@ -4,7 +4,7 @@
 use super::util::*;
 use super::{format_size, VIEWCUBE_HIT_SIZE};
 use crate::app::helpers::{
-    parse_coord, polar_constrain_near, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis, CoordKind,
+    parse_coord, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis, CoordKind,
 };
 use crate::app::TextEntryMode;
 use crate::app::{Message, OpenCADStudio, POLY_START_DELAY_MS};
@@ -2537,7 +2537,7 @@ impl OpenCADStudio {
         Task::none()
     }
 
-    pub(super) fn on_ribbon_style_changed(
+    pub(in crate::app) fn on_ribbon_style_changed(
         &mut self,
         key: crate::modules::StyleKey,
         name: String,
@@ -2668,6 +2668,7 @@ impl OpenCADStudio {
         field: &'static str,
         value: String,
     ) -> Task<Message> {
+        if field == "authoring_alignment_type" { return self.set_authoring_alignment_type(&value); }
         if field.starts_with("bedit_") {
             return self.set_block_property(field, &value);
         }
@@ -3420,11 +3421,9 @@ impl OpenCADStudio {
                     if self.tabs[i].scene.is_layer_locked(handle) {
                         continue;
                     }
-                    let result = crate::scene::block_lookup::evaluate_reference_choice(
-                        &self.tabs[i].scene.document,
-                        handle,
-                        &value,
-                    );
+                    let result = if let Some(test) = self.tabs[i].block_test.as_ref().filter(|test| test.insert == handle) {
+                        crate::scene::block_lookup::evaluate_test_choice(&self.tabs[i].scene.document, &test.baseline, handle, &value)
+                    } else { crate::scene::block_lookup::evaluate_reference_choice(&self.tabs[i].scene.document, handle, &value) };
                     match result {
                         Ok(Some(staged)) => {
                             self.apply_action_document(i, staged);
@@ -3979,6 +3978,8 @@ impl OpenCADStudio {
     }
 
     pub(super) fn on_prop_geom_commit(&mut self, field: &'static str) -> Task<Message> {
+        if field == "authoring_grip_count" { return self.commit_block_grip_count(); }
+        if field.starts_with("authoring_display_grip_") { return self.commit_native_grip_location(field); }
         if field.starts_with("authoring_action_") {
             return self.commit_authoring_action_option(field);
         }
