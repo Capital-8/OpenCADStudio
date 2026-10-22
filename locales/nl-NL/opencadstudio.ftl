@@ -6813,7 +6813,6 @@ calc =
     .leave-out-assignment = Laat het deel $naam = weg
 
 quickcalc =
-    .keypad = Toetsenblok
     .trigonometry = Goniometrie
     .function = Functie
     .type-number-first = Typ eerst een getal
@@ -6871,3 +6870,7 @@ quickcalc =
     .function-expr = Functie: __ocs_fmt_0__
     .double-click-insert = Dubbelklik om in te voegen
     .variables-hint = Dubbelklik om in te voegen. Met $naam = waarde voeg je ook een constante toe.
+    .standard-keypad = Standaardtoetsenblok
+    .scientific-keypad = Wetenschappelijk toetsenblok
+    .angles-degrees = Hoeken in graden. Overschakelen naar radialen
+    .angles-radians = Hoeken in radialen. Overschakelen naar graden

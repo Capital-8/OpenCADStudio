@@ -6810,7 +6810,6 @@ calc =
     .leave-out-assignment = Leave out the $name = part
 
 quickcalc =
-    .keypad = Keypad
     .trigonometry = Trigonometry
     .function = Function
     .type-number-first = Type a number first
@@ -6868,3 +6867,7 @@ quickcalc =
     .function-expr = Function: __ocs_fmt_0__
     .double-click-insert = Double-click to insert
     .variables-hint = Double-click to insert. Typing $name = value adds a constant too.
+    .standard-keypad = Standard keypad
+    .scientific-keypad = Scientific keypad
+    .angles-degrees = Angles in degrees. Switch to radians
+    .angles-radians = Angles in radians. Switch to degrees

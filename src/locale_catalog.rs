@@ -6210,7 +6210,6 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "QuickCalc  Specify a point:" => Some(("quickcalc", "cmd-point")),
         "QuickCalc  Specify first point:" => Some(("quickcalc", "cmd-first")),
         "QuickCalc  Specify second point:" => Some(("quickcalc", "cmd-second")),
-        "Keypad" => Some(("quickcalc", "keypad")),
         "Trigonometry" => Some(("quickcalc", "trigonometry")),
         "Function" => Some(("quickcalc", "function")),
         "Type a number first" => Some(("quickcalc", "type-number-first")),
@@ -6243,6 +6242,10 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Function: {}" => Some(("quickcalc", "function-expr")),
         "Double-click to insert" => Some(("quickcalc", "double-click-insert")),
         "Double-click to insert. Typing $name = value adds a constant too." => Some(("quickcalc", "variables-hint")),
+        "Standard keypad" => Some(("quickcalc", "standard-keypad")),
+        "Scientific keypad" => Some(("quickcalc", "scientific-keypad")),
+        "Angles in degrees. Switch to radians" => Some(("quickcalc", "angles-degrees")),
+        "Angles in radians. Switch to degrees" => Some(("quickcalc", "angles-radians")),
         _ => None,
     }
 }
