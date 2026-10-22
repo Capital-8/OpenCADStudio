@@ -5741,6 +5741,72 @@ fn block_polar_stretch_end_binding_command_scratch_and_reference_history() {
 }
 
 #[test]
+fn block_action_self_grip_selection_edits_keep_native_links_and_reference_history() {
+    use crate::scene::{block_actions as actions, block_grips::config};
+    use codec::objects::{DynamicBlockData, ObjectType};
+    use glam::DVec3;
+    for testing in [false, true] {
+        let (mut app, reference) = fixture();
+        begin(&mut app, reference);
+        let source = app.active_tab;
+        circle(&mut app, 3.);
+        let _ = app.dispatch_command("BACTIONBARMODE 0");
+        let _ = app.run_command_line("BPARAMETER POLAR 0,0 10,0 5,2");
+        let definition = app.tabs[source].active_block_edit_session().unwrap().br_handle;
+        let parameter = actions::all_parameters(&app.tabs[source].scene.document, definition).remove(0);
+        let targets = members(&app);
+        let action = actions::create_with_frame(&mut app.tabs[source].scene.document, definition, actions::Kind::PolarStretch,
+            parameter.handle, &targets[..1], DVec3::new(4., 4., 0.), Some([DVec3::new(0.5, -1., 0.), DVec3::new(1.5, 1., 0.)])).unwrap();
+        let grip = config::locations(&app.tabs[source].scene.document, definition, parameter.handle).unwrap().into_iter().find(|grip| grip.role == 1).unwrap().handle;
+        let ObjectType::DynamicBlock(object) = app.tabs[source].scene.document.objects.get_mut(&action).unwrap() else { panic!() };
+        let DynamicBlockData::PolarStretchAction(native) = &mut object.data else { panic!() };
+        native.action.dependencies.insert(0, grip);
+        let grip_before = app.tabs[source].scene.document.objects[&grip].clone();
+        let original = app.tabs[source].scene.document.objects[&action].clone();
+        edit_action_set(&mut app, action, "Add", targets[1..].to_vec());
+        edit_action_set(&mut app, action, "Remove", targets[..1].to_vec());
+        let deps = |app: &OpenCADStudio| actions::actions(&app.tabs[source].scene.document, definition).into_iter().find(|(h, ..)| *h == action).unwrap().1.dependencies.clone();
+        assert_eq!(deps(&app), vec![grip, targets[1]]);
+        app.undo_steps(2);
+        assert_eq!(app.tabs[source].scene.document.objects[&action], original);
+        app.redo_steps(2);
+        app.tabs[source].selected_authoring = Some(action);
+        let _ = app.dispatch_command("BACTIONSET"); feed(&mut app, "Frame"); feed(&mut app, "2,-1"); feed(&mut app, "4,1");
+        assert!(app.tabs[source].active_cmd.is_none());
+        edit_action_set(&mut app, action, "RotateOnly", targets[1..].to_vec());
+        assert_eq!(deps(&app), vec![grip, targets[1]]);
+        assert_eq!(app.tabs[source].scene.document.objects[&grip], grip_before);
+        if testing { let _ = app.open_block_test(source); }
+        else { let _ = app.dispatch_command("BSAVE"); let _ = app.dispatch_command("BCLOSE"); }
+        let source_before = app.tabs[source].scene.document.clone();
+        let i = app.active_tab;
+        let insert = app.tabs[i].block_test.as_ref().map_or(reference, |test| test.insert);
+        let document = app.tabs[i].id;
+        let before = app.tabs[i].scene.document.clone();
+        let _ = app.handle_block_action_result(crate::command::CmdResult::EvaluateBlockParameter {
+            insert: (!testing).then_some(insert), document, definition, parameter: parameter.handle, value: actions::Value::Point(DVec3::new(0., 15., 0.)),
+        });
+        let circle_center = |doc: &codec::CadDocument| {
+            let EntityType::Insert(reference) = doc.get_entity(insert).unwrap() else { panic!() };
+            doc.block_records.get(&reference.block_name).unwrap().entity_handles.iter().find_map(|h| match doc.get_entity(*h) {
+                Some(EntityType::Circle(circle)) => Some(circle.center), _ => None,
+            }).unwrap()
+        };
+        assert!(circle_center(&app.tabs[i].scene.document).distance(&Vector3::new(0., 3., 0.)) < 1e-8);
+        assert_eq!(app.tabs[i].scene.document.objects[&grip], grip_before);
+        app.tabs[i].scene.select_entity(insert, true); app.tabs[i].selected_handle = Some(insert);
+        app.tabs[i].selected_grips.clear(); app.tabs[i].selected_grip_handles.clear(); app.refresh_test_action_grips([0.; 3]);
+        let id = crate::scene::block_grips::runtime::id(parameter.id, 1).unwrap();
+        assert!(app.tabs[i].selected_grips.iter().find(|grip| grip.id == id).unwrap().world.distance(DVec3::new(0., 15., 0.)) < 1e-8);
+        app.undo_steps(1);
+        assert_eq!(circle_center(&app.tabs[i].scene.document), circle_center(&before));
+        app.redo_steps(1);
+        assert!(circle_center(&app.tabs[i].scene.document).distance(&Vector3::new(0., 3., 0.)) < 1e-8);
+        if testing { assert_eq!(app.tabs[source].scene.document, source_before); }
+    }
+}
+
+#[test]
 fn block_grip_count_command_and_properties_are_atomic_and_undoable() {
     use crate::scene::block_grips::config;
     let (mut app, reference) = fixture();

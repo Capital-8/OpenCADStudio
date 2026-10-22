@@ -352,6 +352,27 @@ fn block_polar_stretch_imported_end_connections_roundtrip() {
             let ObjectType::DynamicBlock(owner) = &doc.objects[handle] else {
                 panic!()
             };
+            let definition = doc
+                .block_records
+                .iter()
+                .find(|record| {
+                    authoring::graph(&doc, record.handle).ok().flatten() == Some(owner.owner)
+                })
+                .unwrap()
+                .handle;
+            let geometric = super::targets::geometry(
+                &doc,
+                definition,
+                Kind::PolarStretch,
+                action.connections[0].code,
+                &action.action.dependencies,
+            )
+            .unwrap();
+            assert_eq!(geometric.len(), 2);
+            assert_eq!(action.action.dependencies.len(), 3);
+            assert!(geometric
+                .iter()
+                .all(|handle| doc.get_entity(*handle).is_some()));
             let parameter = doc
                 .objects
                 .values()

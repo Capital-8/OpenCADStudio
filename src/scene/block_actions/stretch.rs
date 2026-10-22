@@ -210,7 +210,7 @@ pub(crate) fn validate_options(a: &BlockStretchAction) -> Result<(), &'static st
     Ok(())
 }
 
-pub(crate) fn validate(doc: &CadDocument, a: &BlockStretchAction) -> Result<(), &'static str> {
+pub(crate) fn validate(doc: &CadDocument, definition: Handle, a: &BlockStretchAction) -> Result<(), &'static str> {
     validate_options(a)?;
     if a.points.len() < 2
         || a.points
@@ -244,9 +244,9 @@ pub(crate) fn validate(doc: &CadDocument, a: &BlockStretchAction) -> Result<(), 
         }
     }
     // Selected objects without a partial vertex binding move as a whole.
-    for h in &a.action.dependencies {
+    for h in super::targets::geometry(doc, definition, Kind::Stretch, a.connections[0].code, &a.action.dependencies)? {
         control_points(
-            doc.get_entity(*h)
+            doc.get_entity(h)
                 .ok_or("A Stretch target is unavailable.")?,
         )?;
     }
@@ -269,6 +269,7 @@ pub(crate) fn polar_key_point(a: &BlockPolarStretchAction) -> Result<XyKeyPoint,
 
 pub(crate) fn validate_polar(
     doc: &CadDocument,
+    definition: Handle,
     a: &BlockPolarStretchAction,
 ) -> Result<(), &'static str> {
     polar_key_point(a)?;
@@ -284,11 +285,12 @@ pub(crate) fn validate_polar(
     {
         return Err("This Polar Stretch action uses options not supported yet.");
     }
+    let geometric = super::targets::geometry(doc, definition, Kind::PolarStretch, a.connections[0].code, &a.action.dependencies)?;
     let mut handles = a.handles.clone();
     handles.sort();
     handles.dedup();
     if handles.len() != a.handles.len()
-        || handles.iter().any(|h| !a.action.dependencies.contains(h))
+        || handles.iter().any(|h| !geometric.contains(h))
     {
         return Err("The Polar Stretch action has invalid target bindings.");
     }
@@ -316,9 +318,9 @@ pub(crate) fn validate_polar(
             return Err("A Polar Stretch vertex binding no longer matches its object.");
         }
     }
-    for h in &a.action.dependencies {
+    for h in geometric {
         control_points(
-            doc.get_entity(*h)
+            doc.get_entity(h)
                 .ok_or("A Polar Stretch target is unavailable.")?,
         )?;
     }
