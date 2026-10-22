@@ -3239,14 +3239,17 @@ fn solve_scope(
     // state whose rows are all zero needs none of them. Smooth and
     // out-of-plane Concentric refine outside this 2D system (they run in
     // the result phase after it), so scopes carrying them keep their
-    // current flow exactly. The gate only covers the entity-write /
-    // refresh routes (`retain_lengths` is exactly `true` there): the grip
-    // `solve_parametric_constraints_preview` route passes `false` and
-    // leans on the implied-axis machinery below to re-align dragged
-    // geometry, so its nearest-configuration drag doctrine is untouched.
+    // current flow exactly. The gate is route-independent (no caller-route
+    // conjuncts): a state whose user rows are all zero is a fixpoint of any
+    // iterative solver and holds for every write route — the plugin's
+    // transactions included — while the ONE live exception is an actively
+    // driven drag (`driven_refs` non-empty): the grip re-alignment the
+    // implied-axis machinery owes the cursor must still run even when the
+    // written state satisfies every user constraint, because the machinery
+    // - not the rows - carries the drag semantics there.
     let scope_is_a_fixpoint = !has_smooth
         && !has_spatial_concentric
-        && retain_lengths
+        && driven_refs.is_empty()
         && owner
             .iter()
             .all(|(constraint, _)| constraint.error(sys.store()).abs() <= FIXPOINT_TOLF);
