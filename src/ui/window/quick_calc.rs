@@ -17,7 +17,7 @@ use crate::modules::draw::inquiry::calc_pick::PickKind;
 /// The expression field, so the app can focus it.
 pub const INPUT_ID: &str = "quick-calc-input";
 
-/// How long a footer status ("Copied 870") stays.
+/// How long a status message ("Copied 870") stays in the preview line.
 const FLASH_SECS: f32 = 2.2;
 
 /// The collapsible sections below the keypad, top to bottom.
@@ -126,7 +126,7 @@ pub enum QuickCalcMsg {
     UnitSwap,
     UnitInsert,
     Var(VarMsg),
-    /// The footer status timer ran out.
+    /// The status message timer ran out.
     FlashExpired,
 }
 
@@ -141,7 +141,6 @@ pub struct QuickCalcSettings {
     pub radians: bool,
     pub scientific: bool,
 }
-
 
 /// One evaluated line. The value keeps full precision; only the view rounds.
 #[derive(Debug, Clone, PartialEq)]
@@ -331,7 +330,7 @@ impl QuickCalcPalette {
         if let Some(error) = self.assignment_error(&self.input) {
             return Preview::Err(error);
         }
-        match calc::evaluate(&self.input, &mut ctx.clone()) {
+        match calc::result_of(&self.input, ctx) {
             Ok(value) => Preview::Ok(value),
             Err(error) => Preview::Err(error),
         }
@@ -449,7 +448,7 @@ impl QuickCalcPalette {
         self.flash = Some((message, iced::time::Instant::now()));
     }
 
-    /// Drop the footer status once it has shown long enough.
+    /// Drop the status message once it has shown long enough.
     pub fn expire_flash(&mut self) {
         if self
             .flash

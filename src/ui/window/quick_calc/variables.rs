@@ -142,18 +142,17 @@ impl QuickCalcPalette {
     ) -> (CalcContext, HashMap<String, CalcError>) {
         let mut ctx = CalcContext::new(self.mode, base_unit);
         ctx.sysvars = sysvars;
-        let definitions: Vec<_> = self
+        let definitions = self
             .variables
             .iter()
-            .filter(|v| Some(v.name.as_str()) != skip)
+            .filter(move |v| Some(v.name.as_str()) != skip)
             .filter_map(|v| {
                 let definition = match v.kind {
                     VarKind::Constant => Definition::Constant(v.value?.into()),
                     VarKind::Function => Definition::Function(&v.expr),
                 };
                 Some((v.name.as_str(), definition))
-            })
-            .collect();
+            });
         let errors = calc::define_variables(&mut ctx, definitions);
         ctx.ans = self.ans;
         (ctx, errors)

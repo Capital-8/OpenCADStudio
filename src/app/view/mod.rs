@@ -3123,7 +3123,7 @@ impl OpenCADStudio {
         } else {
             Subscription::none()
         };
-        // Expire the QuickCalc footer status ("Copied 870").
+        // Expire the QuickCalc status message ("Copied 870").
         let quick_calc_flash = if self.quick_calc.flash.is_some() {
             iced::time::every(crate::ui::window::quick_calc::QuickCalcPalette::flash_interval())
                 .map(|_| {

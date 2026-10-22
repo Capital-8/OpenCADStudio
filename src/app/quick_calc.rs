@@ -75,7 +75,7 @@ fn base_unit(tab: &DocumentTab) -> f64 {
     super::properties::insunits_to_mm(tab.scene.document.header.insertion_units).unwrap_or(1.0)
 }
 
-/// The drawing unit as the footer and the preview name it.
+/// The drawing unit as the preview names it (`in mm`).
 fn unit_label(tab: &DocumentTab) -> &'static str {
     match tab.scene.document.header.insertion_units {
         1 => "in",
@@ -188,7 +188,18 @@ impl OpenCADStudio {
     }
 
     pub(in crate::app) fn on_quick_calc(&mut self, msg: QuickCalcMsg) -> Task<Message> {
-        let ctx = self.quick_calc_context();
+        // Only these evaluate the input; building the context (every
+        // variable, the drawing's system variables) for a keystroke is waste.
+        let ctx = matches!(
+            msg,
+            QuickCalcMsg::Submit
+                | QuickCalcMsg::Key(crate::ui::window::quick_calc::Key::Eval)
+                | QuickCalcMsg::PasteToCommandLine
+                | QuickCalcMsg::Copy
+                | QuickCalcMsg::Memory(_)
+        )
+        .then(|| self.quick_calc_context());
+        let ctx = || ctx.as_ref().expect("built for this message");
         let qc = &mut self.quick_calc;
         // Doing anything else in the pallet closes an open flyout.
         if !matches!(
@@ -212,13 +223,13 @@ impl OpenCADStudio {
             }
             QuickCalcMsg::Submit | QuickCalcMsg::Key(crate::ui::window::quick_calc::Key::Eval) => {
                 qc.typing = true;
-                if qc.submit(&ctx).is_some_and(|done| done.assign.is_some()) {
+                if qc.submit(ctx()).is_some_and(|done| done.assign.is_some()) {
                     self.save_quick_calc_settings();
                 }
                 focus_input()
             }
             QuickCalcMsg::PasteToCommandLine => {
-                let Some(value) = qc.current_value(&ctx) else {
+                let Some(value) = qc.current_value(ctx()) else {
                     qc.set_flash(crate::t!("Nothing to paste yet").into_owned());
                     return Task::none();
                 };
@@ -232,7 +243,7 @@ impl OpenCADStudio {
                     crate::ui::command_line::CMD_INPUT_ID,
                 ))
             }
-            QuickCalcMsg::Copy => match qc.current_value(&ctx) {
+            QuickCalcMsg::Copy => match qc.current_value(ctx()) {
                 Some(value) => {
                     qc.set_flash(crate::tf!("Copied {}", value.display()).into_owned());
                     copy_to_clipboard(full_text(&value))
@@ -299,7 +310,7 @@ impl OpenCADStudio {
                 focus_input()
             }
             QuickCalcMsg::Memory(op) => {
-                if let Some(status) = qc.memory_op(op, &ctx) {
+                if let Some(status) = qc.memory_op(op, ctx()) {
                     qc.set_flash(status);
                 }
                 qc.typing = true;
@@ -365,8 +376,10 @@ impl OpenCADStudio {
 
     fn on_quick_calc_variable(&mut self, msg: VarMsg) -> Task<Message> {
         let tab = &self.tabs[self.active_tab];
-        let (base, sys) = (base_unit(tab), Some(sysvars(tab)));
-        let ctx = self.quick_calc_context();
+        let base = base_unit(tab);
+        // Only New and Save evaluate; the snapshot of the drawing's system
+        // variables is built for them alone.
+        let sys = matches!(msg, VarMsg::New | VarMsg::Form(FormMsg::Save)).then(|| sysvars(tab));
         let qc = &mut self.quick_calc;
         let insert = |qc: &mut crate::ui::window::quick_calc::QuickCalcPalette, name: &str| {
             qc.append(&format!("${name}"));
@@ -375,6 +388,7 @@ impl OpenCADStudio {
         };
         match msg {
             VarMsg::New => {
+                let ctx = qc.context(base, sys);
                 let value = match qc.preview(&ctx) {
                     crate::ui::window::quick_calc::Preview::Ok(value) => Some(value),
                     _ => None,

@@ -198,7 +198,7 @@ impl QuickCalcPalette {
     }
 
     /// A key that needs nothing from the app (all but `Eval`). Returns a
-    /// footer status when the key has something to say.
+    /// status message when the key has something to say.
     pub fn press(&mut self, key: Key) -> Option<String> {
         if key.closes_flyout() && self.flyout != Some(Flyout::Memory) {
             self.flyout = None;

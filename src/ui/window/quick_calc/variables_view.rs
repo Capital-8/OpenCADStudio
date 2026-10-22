@@ -161,13 +161,11 @@ fn form<'a>(
             crate::t!("Constant").into_owned(),
             constant,
             QuickCalcMsg::Var(VarMsg::Form(FormMsg::Kind(VarKind::Constant))),
-            true,
         ),
         segment(
             crate::t!("Function").into_owned(),
             !constant,
             QuickCalcMsg::Var(VarMsg::Form(FormMsg::Kind(VarKind::Function))),
-            true,
         ),
     ]);
     // The name field shows a fixed `$` inside its border.

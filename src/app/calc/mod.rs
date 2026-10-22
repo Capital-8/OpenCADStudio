@@ -75,6 +75,16 @@ pub fn evaluate(input: &str, ctx: &mut CalcContext) -> Result<Value, CalcError> 
     Ok(value)
 }
 
+/// What [`evaluate`] would return for `input`, changing nothing: an
+/// assignment's value without storing it, and no `ans`.
+pub fn result_of(input: &str, ctx: &CalcContext) -> Result<Value, CalcError> {
+    match parse(input)? {
+        parser::Statement::Expr(expr) | parser::Statement::Assign { value: expr, .. } => {
+            eval::eval(&expr, ctx)
+        }
+    }
+}
+
 /// The value of an expression, changing nothing: no `ans`, and an
 /// assignment is refused (a variable's value or function is an expression,
 /// not a `$name = …` line).

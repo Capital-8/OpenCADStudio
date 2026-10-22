@@ -296,20 +296,10 @@ pub(super) fn text_button<'a>(
         .into()
 }
 
-/// One option of a segmented control.
-pub(super) fn segment<'a>(
-    label: String,
-    on: bool,
-    msg: QuickCalcMsg,
-    fill: bool,
-) -> Element<'a, Message> {
-    let label = text(label).size(10.5);
-    let content = if fill {
-        container(label).center(Fill)
-    } else {
-        container(label).center_y(Fill)
-    };
-    let b = button(content)
+/// One option of a segmented control; the options share the width.
+pub(super) fn segment<'a>(label: String, on: bool, msg: QuickCalcMsg) -> Element<'a, Message> {
+    button(container(text(label).size(10.5)).center(Fill))
+        .width(Fill)
         .height(20)
         .padding([0, 8])
         .on_press(m(msg))
@@ -328,12 +318,8 @@ pub(super) fn segment<'a>(
                 },
                 ..Default::default()
             }
-        });
-    if fill {
-        b.width(Fill).into()
-    } else {
-        b.into()
-    }
+        })
+        .into()
 }
 
 pub(super) fn segmented<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
@@ -562,7 +548,6 @@ fn units<'a>(p: &'a QuickCalcPalette) -> Element<'a, Message> {
                     cat_label(*c).into_owned(),
                     *c == p.unit_cat,
                     QuickCalcMsg::UnitCat(*c),
-                    true,
                 )
             })
             .collect(),
@@ -595,11 +580,7 @@ fn units<'a>(p: &'a QuickCalcPalette) -> Element<'a, Message> {
             button(icon(SWAP, 14.0, |t| t.muted))
                 .padding(4)
                 .on_press(m(QuickCalcMsg::UnitSwap))
-                .style(|theme: &Theme, status| {
-                    let mut s = plain_button_style(theme, status);
-                    s.border.width = 0.0;
-                    s
-                }),
+                .style(plain_button_style_borderless),
             crate::t!("Swap units").into_owned(),
         ),
         container(strong(result, 13.0, MONO_STRONG)).align_right(Length::FillPortion(1)),
