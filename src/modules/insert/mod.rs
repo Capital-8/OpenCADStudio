@@ -256,7 +256,7 @@ impl CadModule for InsertModule {
                             id: "DATALINKUPDATE",
                             label: "Download from Source",
                             icon: IconKind::Svg(include_bytes!("../../../assets/icons/sync.svg")),
-                            event: ModuleEvent::Command("DATALINKUPDATE".to_string()),
+                            event: ModuleEvent::Command("DATALINKUPDATE;_U".to_string()),
                         }),
                         RibbonItem::LabeledTool(ToolDef {
                             id: "DATALINKUPDATE_WRITE",
@@ -264,7 +264,7 @@ impl CadModule for InsertModule {
                             icon: IconKind::Svg(include_bytes!(
                                 "../../../assets/icons/ui/file_export.svg"
                             )),
-                            event: ModuleEvent::Command("DATALINKUPDATE WRITE".to_string()),
+                            event: ModuleEvent::Command("DATALINKUPDATE;_W".to_string()),
                         }),
                         RibbonItem::LabeledTool(ToolDef {
                             label: "Extract Data",
