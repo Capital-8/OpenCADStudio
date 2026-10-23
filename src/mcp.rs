@@ -147,8 +147,13 @@ fn pid_alive(pid: u64) -> bool {
 /// because enumeration broke.
 #[cfg(windows)]
 fn live_pids_snapshot() -> Option<HashSet<u64>> {
+    use std::os::windows::process::CommandExt;
+    // A GUI-subsystem process has no console to lend tasklist; without this
+    // flag Windows opens a visible one for it.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let output = Command::new("tasklist")
         .args(["/FO", "CSV", "/NH"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .ok()?;
     if !output.status.success() {
