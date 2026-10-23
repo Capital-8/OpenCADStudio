@@ -215,7 +215,6 @@ fn to_ocs(normal: P3, p: P3) -> Vector3 {
     codec::types::Matrix3::arbitrary_axis(v3(normal)).transpose() * v3(p)
 }
 
-/// True when every point is at the first one's z.
 /// The unit normal of the plane the points lie in (Newell's, turned to
 /// +z), `None` when they leave it by more than a millionth of their span.
 /// Points on one line lie in the XY plane's parallel.
@@ -240,6 +239,7 @@ fn plane_normal(points: &[P3]) -> Option<P3> {
     points.iter().all(|p| off(p) <= 1e-6 * span.max(1e-12)).then_some(n)
 }
 
+/// True when every point is at the first one's z.
 fn flat(points: &[P3]) -> bool {
     let z = points.first().map_or(0.0, |p| p[2]);
     points.iter().all(|p| (p[2] - z).abs() <= 1e-9 * z.abs().max(1.0))
