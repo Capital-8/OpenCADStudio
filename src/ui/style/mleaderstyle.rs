@@ -214,8 +214,8 @@ const ATTACHMENTS: [(&str, &str); 11] = [
     ("MiddleOfText", "Middle of text"),
     ("MiddleOfBottomLine", "Middle of bottom line"),
     ("BottomOfBottomLine", "Bottom of bottom line"),
-    // Values 5–7 labelled by their file-format meaning; the codec variant
-    // names don't match it.
+    // The codec names values 5–8 one place off from AutoCAD; the labels
+    // follow AutoCAD (see `ATTACH_LABELS` in entities/multileader.rs).
     ("BottomLine", "Underline bottom line"),
     ("BottomOfTopLineUnderlineBottomLine", "Underline top line"),
     ("BottomOfTopLineUnderlineTopLine", "Bottom of top line"),
@@ -564,9 +564,11 @@ impl canvas::Program<Message> for LeaderPreviewCanvas {
                     .min(8.0);
             let attachment_offset = if self.attachment_direction == "Horizontal" {
                 match self.left_attachment_code.as_str() {
+                    // Values 6–8 attach at the top line (see `ATTACHMENTS`).
                     "TopOfTopLine"
                     | "BottomOfTopLineUnderlineBottomLine"
-                    | "BottomOfTopLineUnderlineTopLine" => box_height * 0.5,
+                    | "BottomOfTopLineUnderlineTopLine"
+                    | "BottomOfTopLineUnderlineAll" => box_height * 0.5,
                     "MiddleOfTopLine" => box_height * 0.25,
                     "MiddleOfBottomLine" => -box_height * 0.25,
                     "BottomOfBottomLine" | "BottomLine" => -box_height * 0.5,
