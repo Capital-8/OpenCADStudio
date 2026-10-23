@@ -6753,6 +6753,17 @@ import-panel =
     .combine-text = 合并文字
     .land-xml = Land XML
     .import-file-header = 输入文件 — 按钮运行上次选择的项
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview

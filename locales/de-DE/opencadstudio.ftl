@@ -6768,6 +6768,17 @@ import-panel =
     .combine-text = Text kombinieren
     .land-xml = Land XML
     .import-file-header = Datei importieren — die Schaltfläche führt den zuletzt gewählten Eintrag aus
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview

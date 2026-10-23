@@ -6777,6 +6777,17 @@ import-panel =
     .combine-text = Kết hợp văn bản
     .land-xml = Land XML
     .import-file-header = Nhập tệp — nút chính chạy định dạng được chọn gần nhất
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = Cài đặt nhận dạng văn bản PDF
     .preview = Xem trước

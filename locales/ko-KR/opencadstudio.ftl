@@ -6769,6 +6769,17 @@ import-panel =
     .combine-text = 문자 결합
     .land-xml = Land XML
     .import-file-header = 파일 가져오기 — 버튼은 마지막으로 선택한 항목을 실행합니다
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview

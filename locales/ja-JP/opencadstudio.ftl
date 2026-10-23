@@ -6758,6 +6758,17 @@ import-panel =
     .combine-text = 文字を結合
     .land-xml = Land XML
     .import-file-header = ファイル読み込み — ボタンは最後に選んだ項目を実行します
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
