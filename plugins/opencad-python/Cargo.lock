@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "acadrust"
 version = "0.6.6"
-source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=f647216#f64721613076af70ae7db8ce53f2c53d98d5af1a"
+source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=e80d1a9#e80d1a9707c98c2f79c9a1cba4392f522f803719"
 dependencies = [
  "anyhow",
  "bitflags",
