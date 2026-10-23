@@ -912,6 +912,8 @@ fn define_transformed_block_doc(
     br.handle = br_handle;
     br.block_entity_handle = block_handle;
     br.block_end_handle = end_handle;
+    // See `Scene::define_transformed_block`.
+    br.flags.anonymous = true;
     doc.block_records.add(br).ok()?;
     let mut block = codec::entities::Block::new(&new_name, codec::types::Vector3::ZERO);
     block.common.handle = block_handle;
@@ -1684,6 +1686,22 @@ mod define_transformed_block_doc_xdict_tests {
             "shared extension dictionaries: {}",
             shared.join(", ")
         );
+    }
+
+    #[test]
+    fn clone_block_is_flagged_anonymous() {
+        let mut doc = codec::CadDocument::new();
+        let line = doc
+            .add_entity(codec::EntityType::Line(codec::entities::Line::new()))
+            .unwrap();
+        let subs = vec![doc.get_entity(line).unwrap().clone()];
+        let name = define_transformed_block_doc(
+            &mut doc,
+            &subs,
+            &crate::command::EntityTransform::Translate(glam::DVec3::ZERO),
+        )
+        .expect("clone block must be created");
+        assert!(doc.block_records.get(&name).unwrap().flags.anonymous);
     }
 
     /// Pasted/derived sub-entities must not share the source's extension
