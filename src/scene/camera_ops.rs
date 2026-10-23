@@ -90,8 +90,9 @@ fn rendered_wire_bounds(
 }
 
 /// Merge `pair` into `bounds`, dropping coordinates that are parser junk
-/// rather than geometry: DXF writes ±1e20 as its "no extents" sentinel, and
-/// past 1e16 an f32 has no resolution left to place a point with.
+/// rather than geometry: DXF writes ±1e20 as its "no extents" sentinel,
+/// past 1e16 an f32 has no resolution left to place a point with, and a
+/// NaN or infinite corner frames nothing.
 fn fold_sane_bounds(
     bounds: &mut Option<(glam::DVec3, glam::DVec3)>,
     pair: Option<(glam::DVec3, glam::DVec3)>,
@@ -100,7 +101,10 @@ fn fold_sane_bounds(
     let Some((lo, hi)) = pair else {
         return;
     };
-    if lo.abs().max_element() >= SANE_EXTENT || hi.abs().max_element() >= SANE_EXTENT {
+    if !(lo.is_finite() && hi.is_finite())
+        || lo.abs().max_element() >= SANE_EXTENT
+        || hi.abs().max_element() >= SANE_EXTENT
+    {
         return;
     }
     *bounds = Some(match *bounds {
