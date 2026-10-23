@@ -1259,6 +1259,65 @@ mod dispatched_command_task_tests {
             "Relaunch dropped the dispatched command's task"
         );
     }
+
+    #[test]
+    fn test_dispatch_move_with_handle_enter_and_points() {
+        let mut app = OpenCADStudio::new_for_test();
+        let _ = app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+
+        let handle = app.tabs[i].scene.add_entity(codec::EntityType::Line(codec::entities::Line::from_points(
+            codec::types::Vector3::new(10.0, 20.0, 0.0),
+            codec::types::Vector3::new(30.0, 40.0, 0.0),
+        )));
+
+        // Unselected entity - AutoLISP (command "_MOVE" ss "" "_NONE" pt "_NONE" '(0 0 0)) produces:
+        assert!(app.tabs[i].scene.selected_entities().is_empty());
+        let cmd = format!("_MOVE {:X} ENTER _NONE 10,20,0 _NONE 0,0,0", handle.value());
+        let task = app.apply_cmd_result(CmdResult::Script(cmd));
+        let _ = app.drive_headless_task(task);
+
+        let moved = app.tabs[i].scene.document.get_entity(handle).unwrap();
+        if let codec::EntityType::Line(l) = moved {
+            assert!((l.start.x - 0.0).abs() < 1e-4, "Expected start.x == 0, got {}", l.start.x);
+            assert!((l.start.y - 0.0).abs() < 1e-4, "Expected start.y == 0, got {}", l.start.y);
+            assert!((l.end.x - 20.0).abs() < 1e-4, "Expected end.x == 20, got {}", l.end.x);
+            assert!((l.end.y - 20.0).abs() < 1e-4, "Expected end.y == 20, got {}", l.end.y);
+        } else {
+            panic!("Expected line entity");
+        }
+    }
+
+    #[test]
+    fn test_preselection_move_with_base_and_dest_points() {
+        let mut app = OpenCADStudio::new_for_test();
+        let _ = app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+
+        let handle = app.tabs[i].scene.add_entity(codec::EntityType::Line(codec::entities::Line::from_points(
+            codec::types::Vector3::new(10.0, 20.0, 0.0),
+            codec::types::Vector3::new(30.0, 40.0, 0.0),
+        )));
+
+        // User pre-selects the entity in the GUI
+        app.tabs[i].scene.select_entity(handle, true);
+        assert_eq!(app.tabs[i].scene.selected_entities().len(), 1);
+
+        // Pre-selection MOVE command only takes base and destination points
+        let cmd = "_MOVE _NONE 10,20,0 _NONE 0,0,0";
+        let task = app.apply_cmd_result(CmdResult::Script(cmd.to_string()));
+        let _ = app.drive_headless_task(task);
+
+        let moved = app.tabs[i].scene.document.get_entity(handle).unwrap();
+        if let codec::EntityType::Line(l) = moved {
+            assert!((l.start.x - 0.0).abs() < 1e-4, "Expected start.x == 0, got {}", l.start.x);
+            assert!((l.start.y - 0.0).abs() < 1e-4, "Expected start.y == 0, got {}", l.start.y);
+            assert!((l.end.x - 20.0).abs() < 1e-4, "Expected end.x == 20, got {}", l.end.x);
+            assert!((l.end.y - 20.0).abs() < 1e-4, "Expected end.y == 20, got {}", l.end.y);
+        } else {
+            panic!("Expected line entity");
+        }
+    }
 }
 
 /// PW-1 BEDIT characterization tests.
@@ -1701,6 +1760,97 @@ mod bedit_characterization_tests {
             before_discard,
             "discard pushes no undo entry (not undoable)"
         );
+    }
+
+    #[test]
+    fn test_locked_layer_selection_rejection() {
+        use crate::command::{CadCommand, CmdResult};
+
+        let mut app = OpenCADStudio::new_for_test();
+        let _ = app.automation_op(r#"{"op":"new"}"#);
+        let tab = app.active_tab;
+
+        // Create line1 on layer "0" (unlocked)
+        let h_unlocked = app.tabs[tab]
+            .scene
+            .add_entity(codec::EntityType::Line(Line::from_points(
+                Vector3::ZERO,
+                Vector3::new(10.0, 0.0, 0.0),
+            )));
+
+        // Create line2 on layer "LOCKED_LAYER" and lock it
+        let mut line2 = Line::from_points(
+            Vector3::new(0.0, 10.0, 0.0),
+            Vector3::new(10.0, 10.0, 0.0),
+        );
+        line2.common.layer = "LOCKED_LAYER".to_string();
+        let h_locked = app.tabs[tab]
+            .scene
+            .add_entity(codec::EntityType::Line(line2));
+
+        app.tabs[tab]
+            .scene
+            .document
+            .layers
+            .get_mut("LOCKED_LAYER")
+            .expect("LOCKED_LAYER must exist")
+            .flags
+            .locked = true;
+
+        assert!(!app.tabs[tab].scene.is_layer_locked(h_unlocked));
+        assert!(app.tabs[tab].scene.is_layer_locked(h_locked));
+
+        struct MockCmd {
+            rejects: bool,
+        }
+
+        impl CadCommand for MockCmd {
+            fn name(&self) -> &'static str {
+                "MOCK_REJECT"
+            }
+            fn prompt(&self) -> String {
+                "Select objects: ".into()
+            }
+            fn on_point(&mut self, _pt: glam::DVec3) -> CmdResult {
+                CmdResult::Done
+            }
+            fn on_enter(&mut self) -> CmdResult {
+                CmdResult::Done
+            }
+            fn selection_rejects_locked_layers(&self) -> bool {
+                self.rejects
+            }
+        }
+
+        // Test 1: Command with rejects = true drops locked handles and reports count
+        app.tabs[tab].active_cmd = Some(Box::new(MockCmd { rejects: true }));
+
+        let mut handles = vec![h_unlocked, h_locked];
+        app.filter_handles_reject_locked(tab, &mut handles);
+        assert_eq!(handles, vec![h_unlocked]);
+        assert!(app
+            .command_line
+            .history
+            .last()
+            .unwrap()
+            .text
+            .contains("1 was on a locked layer."));
+
+        // Test 2: Command with rejects = false keeps all handles
+        app.tabs[tab].active_cmd = Some(Box::new(MockCmd { rejects: false }));
+
+        let mut handles2 = vec![h_unlocked, h_locked];
+        app.filter_handles_reject_locked(tab, &mut handles2);
+        assert_eq!(handles2, vec![h_unlocked, h_locked]);
+
+        // Test 3: filter_locked_layer_selection drops locked handles from SelectionComplete
+        app.tabs[tab].active_cmd = Some(Box::new(MockCmd { rejects: true }));
+        let input = StepInput::SelectionComplete(vec![h_unlocked, h_locked]);
+        let filtered = app.filter_locked_layer_selection(input);
+        match filtered {
+            StepInput::SelectionComplete(res) => assert_eq!(res, vec![h_unlocked]),
+            _ => panic!("Expected SelectionComplete"),
+        }
     }
 }
 

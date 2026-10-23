@@ -33,6 +33,12 @@ const LINETYPE_MENU_W: f32 = 220.0;
 use crate::app::Message;
 use crate::scene::model::object::{PropSection, PropValue};
 
+#[derive(Clone, Debug, PartialEq)]
+struct IndexedBlockChoice { index: usize, label: String }
+impl fmt::Display for IndexedBlockChoice {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result { formatter.write_str(&self.label) }
+}
+
 const VARIES_LABEL: &str = "*VARIES*";
 
 // ── Linetype item (name + ASCII art for combo_box) ───────────────────────
@@ -405,6 +411,7 @@ pub fn lw_options() -> Vec<LwItem> {
 pub enum FieldKey {
     /// A geometry / common editable value field, keyed by its field name.
     Geom(&'static str),
+    BlockParameter(crate::scene::model::object::BlockParameterKey),
     /// A block attribute value field, keyed by its tag.
     Attr(String),
     /// One column of one named-parameter row, keyed by its stable
@@ -420,6 +427,7 @@ impl FieldKey {
     pub fn widget_id(&self) -> iced::widget::Id {
         match self {
             FieldKey::Geom(field) => prop_geom_field_id(field),
+            FieldKey::BlockParameter(key) => iced::widget::Id::from(format!("props-block-{}-{}-{}-{}-{:?}", key.document, key.definition, key.insert, key.parameter, key.component)),
             FieldKey::Attr(tag) => prop_attr_field_id(tag),
             FieldKey::Param(index, field) => prop_param_field_id(*index, *field),
         }
@@ -487,6 +495,7 @@ pub fn build_field_key_map(sections: &[PropSection]) -> HashMap<iced::widget::Id
                     Some(FieldKey::Geom(prop.field))
                 }
                 PropValue::AttrText { tag, .. } => Some(FieldKey::Attr(tag.clone())),
+                PropValue::BlockNumber { key, .. } => Some(FieldKey::BlockParameter(*key)),
                 _ => None,
             };
             if let Some(key) = key {
@@ -933,6 +942,71 @@ impl PropertiesPanel {
         label: &'a str,
     ) -> Element<'a, Message> {
         match &prop.value {
+            PropValue::BlockNumber {
+                key,
+                value,
+                description,
+            } => {
+                let field = FieldKey::BlockParameter(*key);
+                let display = self
+                    .edit_buf
+                    .get(&field)
+                    .map(String::as_str)
+                    .unwrap_or(value);
+                let key = *key;
+                let input = text_input("", display)
+                    .id(field.widget_id())
+                    .on_input(move |value| Message::PropBlockInput { key, value })
+                    .on_submit(Message::PropBlockCommit(key))
+                    .size(FONT_SZ)
+                    .style(text_input_style)
+                    .padding([3, 6])
+                    .width(Length::Fill);
+                let row = prop_row_with_active(
+                    label,
+                    input.into(),
+                    self.active_field.as_ref() == Some(&field),
+                );
+                if description.is_empty() {
+                    row
+                } else {
+                    tooltip(row, text(description).size(FONT_SZ), tooltip::Position::Top).into()
+                }
+            }
+            PropValue::BlockChoice {
+                key,
+                selected,
+                options,
+                description,
+            } => {
+                let choices: Vec<_> = options
+                    .iter()
+                    .enumerate()
+                    .map(|(index, label)| IndexedBlockChoice {
+                        index,
+                        label: label.clone(),
+                    })
+                    .collect();
+                let current = choices.get(*selected).cloned();
+                let key = *key;
+                let picker =
+                    iced::widget::pick_list(current, choices, |choice: &IndexedBlockChoice| {
+                        choice.label.clone()
+                    })
+                    .on_select(move |choice| Message::PropBlockChoice {
+                        key,
+                        index: choice.index,
+                    })
+                    .text_size(FONT_SZ)
+                    .padding([3, 6])
+                    .width(Length::Fill);
+                let row = prop_row_widget(label, picker.into());
+                if description.is_empty() {
+                    row
+                } else {
+                    tooltip(row, text(description).size(FONT_SZ), tooltip::Position::Top).into()
+                }
+            }
             PropValue::ColorChoice(color) => self.render_color_row(label, prop.field, *color, None),
             PropValue::NamedColorChoice { color, name } => {
                 self.render_color_row(label, prop.field, *color, Some(name))
@@ -1798,7 +1872,7 @@ fn coord_group_len(props: &[crate::scene::model::object::Property], idx: usize) 
     let groupable = |p: &crate::scene::model::object::Property| {
         matches!(
             p.value,
-            PropValue::EditText(_) | PropValue::ReadOnly(_) | PropValue::ReadOnlyWithTooltip { .. }
+            PropValue::EditText(_) | PropValue::ReadOnly(_) | PropValue::ReadOnlyWithTooltip { .. } | PropValue::BlockNumber { .. }
         )
     };
     let Some((base, 0)) = coord_suffix(&props[idx].label) else {
@@ -1838,7 +1912,8 @@ fn coord_component(label: &str) -> &'static str {
 /// EditText / ReadOnly — see `coord_group_len`).
 fn prop_text_value(prop: &crate::scene::model::object::Property) -> String {
     match &prop.value {
-        PropValue::EditText(s)
+        PropValue::BlockNumber { value: s, .. }
+        | PropValue::EditText(s)
         | PropValue::ReadOnly(s)
         | PropValue::ReadOnlyWithTooltip { value: s, .. } => s.clone(),
         _ => String::new(),

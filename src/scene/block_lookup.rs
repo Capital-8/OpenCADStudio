@@ -16,7 +16,7 @@ mod tests;
 fn graph_handle(document: &CadDocument, definition: Handle) -> Option<Handle> {
     let ObjectType::Dictionary(d) = document
         .objects
-        .get(&document.extension_dictionary_handle(definition)?)?
+        .get(&super::block_authoring::definition_dictionary(document, definition)?)?
     else {
         return None;
     };
@@ -295,6 +295,7 @@ pub(crate) fn reference_property(
 ) -> Option<crate::scene::model::object::Property> {
     let definition = super::block_actions::instance::definition(document, insert)?;
     for (parameter, lookup) in parameters(document, definition) {
+        if !lookup.parameter.parameter.show_properties { continue; }
         let Some((_, table)) = table(document, definition, parameter).ok().flatten() else {
             continue;
         };

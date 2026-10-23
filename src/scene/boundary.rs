@@ -1,9 +1,9 @@
 use super::*;
 
 use kernel::geom2d::{
-    bounded_faces, closest_point, contains, distance_to, intersect, ring_nesting_depths,
-    segment_crossing, signed_area, triangulate, Curve, Line, SegmentCrossing, Tolerance,
-    Transform as CurveTransform,
+    bounded_faces, closest_point, contains, distance_to, gap_bridges, intersect,
+    ring_nesting_depths, segment_crossing, signed_area, triangulate, Curve, Line,
+    SegmentCrossing, Tolerance, Transform as CurveTransform,
 };
 
 use crate::command::WorkingPlane;
@@ -587,7 +587,7 @@ fn edge_curve(
             .values()
             .flat_map(|source| source.curves.iter())
             .filter(|curve| {
-                distance_to(curve, edge.start).min(distance_to(curve, edge.end)) <= tolerance * 4.0
+                distance_to(curve, edge.start).max(distance_to(curve, edge.end)) <= tolerance * 4.0
             })
             .collect(),
     };
@@ -1357,15 +1357,23 @@ pub(crate) fn separated_hatch_path_groups(
     groups
 }
 
+/// The faces the segments enclose once gaps up to `gap` are bridged.
+fn faces_with_gaps(mut segments: Vec<Line>, gap: f64) -> Vec<Vec<[f64; 2]>> {
+    let bridges = gap_bridges(&segments, gap, Tolerance::new(WELD_TOLERANCE));
+    segments.extend(bridges);
+    bounded_faces(&segments, Tolerance::new(WELD_TOLERANCE))
+}
+
+/// Every face the sources enclose, treating gaps up to `gap` as closed.
 pub(crate) fn boundary_faces(
     sources: &rustc_hash::FxHashMap<Handle, BoundarySource>,
-    tolerance: f64,
+    gap: f64,
 ) -> Vec<Vec<[f64; 2]>> {
     let segments: Vec<_> = sources
         .values()
         .flat_map(|source| source.segments.iter().copied())
         .collect();
-    bounded_faces(&segments, Tolerance::new(tolerance))
+    faces_with_gaps(segments, gap)
 }
 
 /// The faces a pick at `point` needs, built from the sources near it only.
@@ -1375,11 +1383,14 @@ pub(crate) fn boundary_faces(
 /// the box lies wholly outside it, so it cannot cut that face or sit in it
 /// as an island: the result matches `boundary_faces` over every source for
 /// this pick, without building the arrangement of the whole drawing (#1869).
+///
+/// Gaps up to `gap` between loose ends count as closed (`gap_bridges`).
 pub(crate) fn boundary_faces_around(
     sources: &rustc_hash::FxHashMap<Handle, BoundarySource>,
     point: [f64; 2],
-    tolerance: f64,
+    gap: f64,
 ) -> Vec<Vec<[f64; 2]>> {
+    let tolerance = gap.max(WELD_TOLERANCE);
     let boxes: Vec<([f64; 2], [f64; 2], &BoundarySource)> = sources
         .values()
         .filter_map(|source| {
@@ -1419,10 +1430,10 @@ pub(crate) fn boundary_faces_around(
             })
             .flat_map(|(_, _, source)| source.segments.iter().copied())
             .collect();
-        let faces = bounded_faces(&segments, Tolerance::new(tolerance));
+        let faces = faces_with_gaps(segments, gap);
         let innermost = faces
             .iter()
-            .filter(|face| contains(&face_curves(face), point, Tolerance::new(tolerance)))
+            .filter(|face| contains(&face_curves(face), point, Tolerance::new(WELD_TOLERANCE)))
             .min_by(|a, b| signed_area(a).abs().total_cmp(&signed_area(b).abs()));
         let settled = innermost.is_some_and(|face| {
             face.iter().all(|p| {
@@ -1659,5 +1670,31 @@ mod boundary_xline_tests {
         let room = boundary_faces_around(&sources, [51.0, 51.0], tolerance);
         assert_eq!(islands(&room), 1, "the island in the picked room is kept");
         assert!(room.len() < all.len() / 4, "only the neighbourhood is built");
+    }
+
+    #[test]
+    fn gap_tolerance_closes_a_corner_gap_that_fits() {
+        // A square whose right side stops 0.5 short of the bottom one.
+        let corners = [[0.0, 0.0], [10.0, 0.0], [10.0, 0.5], [10.0, 10.0], [0.0, 10.0]];
+        let sources: rustc_hash::FxHashMap<_, _> = [(0, 1), (2, 3), (3, 4), (4, 0)]
+            .into_iter()
+            .enumerate()
+            .map(|(k, (a, b))| {
+                let line = Line {
+                    start: corners[a],
+                    end: corners[b],
+                };
+                let source = BoundarySource {
+                    segments: vec![line],
+                    curves: vec![Curve::Line(line)],
+                };
+                (Handle::new(k as u64 + 1), source)
+            })
+            .collect();
+        assert!(boundary_faces(&sources, 0.0).is_empty());
+        assert!(boundary_faces_around(&sources, [5.0, 5.0], 0.4).is_empty());
+        let faces = boundary_faces_around(&sources, [5.0, 5.0], 0.6);
+        assert_eq!(faces.len(), 1);
+        assert!((signed_area(&faces[0]).abs() - 100.0).abs() < 1e-9);
     }
 }

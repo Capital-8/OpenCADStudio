@@ -165,6 +165,9 @@ pub(super) struct DocumentTab {
     pub(super) measurement: super::measurement::MeasurementDisplay,
     /// Remaining command tokens queued behind a PAUSE (or `\`) awaiting user interaction.
     pub(super) pending_pause_tokens: Option<Vec<String>>,
+    /// Layers the last LAYISO turned off, so LAYUNISO turns back on exactly
+    /// those and leaves layers that were already off alone (#2021).
+    pub(super) layiso_turned_off: Option<Vec<String>>,
     /// The selection set the most recent command worked on, captured when a
     /// finishing command drops the live selection — re-selectable with the
     /// "Previous" keyword at any Select objects prompt (#426).
@@ -744,6 +747,7 @@ impl DocumentTab {
             pending_action_pair: None,
             measurement: super::measurement::MeasurementDisplay::default(),
             pending_pause_tokens: None,
+            layiso_turned_off: None,
             last_cmd: None,
             last_draw_anchor: None,
             snap_result: None,

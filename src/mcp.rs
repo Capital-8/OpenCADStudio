@@ -34,7 +34,7 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 /// `grip_drag` became optional-`handle` (built-in entity grips) plus optional
 /// `plugin` (dragging a plugin-declared custom grip, routed to its owner).
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "91c033e86dce097b581c87f1066bcd4d43dbbe34f6acec62995820afacb8f82e";
+const TOOL_SCHEMA_DIGEST: &str = "bf20f6fb334fb7d205862042932f1d0132165c069d227613df15cc0f8000bc62";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
@@ -147,8 +147,13 @@ fn pid_alive(pid: u64) -> bool {
 /// because enumeration broke.
 #[cfg(windows)]
 fn live_pids_snapshot() -> Option<HashSet<u64>> {
+    use std::os::windows::process::CommandExt;
+    // A GUI-subsystem process has no console to lend tasklist; without this
+    // flag Windows opens a visible one for it.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let output = Command::new("tasklist")
         .args(["/FO", "CSV", "/NH"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .ok()?;
     if !output.status.success() {

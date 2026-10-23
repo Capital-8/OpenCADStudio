@@ -1808,6 +1808,7 @@ pub fn tessellate(
                         depth_override: None,
                         display_visible: true,
                         snap_only: false,
+                        region_boundary_click: false,
                         reference_only: false,
                         plot_visible: true,
                         fill_is_3d: false,
@@ -1975,6 +1976,7 @@ pub fn tessellate(
                         depth_override: None,
                         display_visible: true,
                         snap_only: false,
+                        region_boundary_click: false,
                         reference_only: false,
                         plot_visible: true,
                         fill_is_3d: false,
@@ -2673,7 +2675,7 @@ pub fn tessellate(
         }
         _ => (Vec::new(), Vec::new()),
     };
-    vec![WireModel {
+    let mut wires = vec![WireModel {
         bg_adapt: None,
         point_marker: None,
         taper_widths: Vec::new(),
@@ -2709,7 +2711,41 @@ pub fn tessellate(
         fill_tris_low: Vec::new(),
 
         ..Default::default()
-    }]
+    }];
+    if matches!(entity, EntityType::Region(_)) {
+        // Reuse the analytical boundary decomposition without applying EXPLODE:
+        // the document stays untouched and every piece retains the REGION's
+        // source handle. Separate wires keep holes and disconnected edges from
+        // acquiring fictitious joining segments or chord midpoint snaps.
+        for piece in crate::modules::draw::modify::explode::explode_entity(entity, document) {
+            let mut boundary = tessellate(
+                document,
+                handle,
+                &piece,
+                selected,
+                entity_color,
+                pattern_length,
+                pattern,
+                line_weight_px,
+                anno_scale,
+                annotation_scale_handle,
+                world_per_pixel,
+                bg_color,
+                force_text_strokes,
+            );
+            for wire in &mut boundary {
+                // The mesh still owns display and plotting. Exact boundary
+                // pieces supply ordinary snaps and edge-only acquisition even
+                // when a command does not accept mesh surface hits.
+                wire.display_visible = false;
+                wire.plot_visible = false;
+                wire.snap_only = true;
+                wire.region_boundary_click = true;
+            }
+            wires.extend(boundary);
+        }
+    }
+    wires
 }
 
 #[derive(Clone)]
@@ -2731,8 +2767,13 @@ pub(crate) enum ArrowKind {
         size: f32,
         filled: bool,
     },
+    /// "Origin indicator": an open circle of diameter `size` around the tip
+    /// and a stroke from the tip back along the leader. "Origin indicator 2"
+    /// (`inner`) adds a circle half that size, and its stroke starts at the
+    /// outer circle.
     Origin {
         size: f32,
+        inner: bool,
     },
     Box_ {
         size: f32,
@@ -2837,9 +2878,14 @@ fn builtin_arrow_from_block_name(name: &str, dimasz: f32) -> Option<ArrowKind> {
             size: dimasz * 0.5,
             filled: false,
         }),
-        "ORIGIN" | "ORIGIN2" | "ORIGININDICATOR" | "ORIGININDICATOR2" => {
-            Some(ArrowKind::Origin { size: dimasz })
-        }
+        "ORIGIN" | "ORIGININDICATOR" => Some(ArrowKind::Origin {
+            size: dimasz,
+            inner: false,
+        }),
+        "ORIGIN2" | "ORIGININDICATOR2" => Some(ArrowKind::Origin {
+            size: dimasz,
+            inner: true,
+        }),
         // `ArrowKind::Tick` draws the stroke `size` to either side of the tip
         // (total 2·size — its `size` is a half-length, matching DIMTSZ). The
         // block's stroke runs (-0.5,-0.5)→(0.5,0.5) scaled by DIMASZ, so its
@@ -3326,22 +3372,25 @@ pub(crate) fn append_arrow(g: &mut DimGeom, tip: Vec3, dir: Vec3, arrow: &ArrowK
                 }
             }
         }
-        ArrowKind::Origin { size } => {
-            // Small filled dot at the tip with a perpendicular tick crossing
-            // the dim line — matches "_ORIGIN" / "_ORIGIN2" blocks.
-            let r = *size * 0.25;
-            const N: usize = 12;
-            let mut ring: Vec<Vec3> = Vec::with_capacity(N + 1);
-            for i in 0..=N {
-                let a = i as f32 * std::f32::consts::TAU / N as f32;
-                ring.push(tip + Vec3::new(a.cos() * r, a.sin() * r, 0.0));
+        ArrowKind::Origin { size, inner } => {
+            // The "_Origin" / "_Origin2" blocks at unit size: an open circle
+            // of radius 0.5 (plus 0.25 for "_Origin2") around the tip and a
+            // stroke back along the leader to 1.0, starting at the centre
+            // ("_Origin") or at the outer circle ("_Origin2").
+            const N: usize = 16;
+            let radii: &[f32] = if *inner { &[0.5, 0.25] } else { &[0.5] };
+            for &k in radii {
+                let r = *size * k;
+                let ring: Vec<Vec3> = (0..=N)
+                    .map(|i| {
+                        let a = i as f32 * std::f32::consts::TAU / N as f32;
+                        tip + Vec3::new(a.cos() * r, a.sin() * r, 0.0)
+                    })
+                    .collect();
+                add_polyline(&mut g.dim_lines, &ring);
             }
-            add_polyline(&mut g.dim_lines, &ring);
-            for i in 0..N {
-                push_tri(&mut g.arrow_fill, tip, ring[i], ring[i + 1]);
-            }
-            let half = *size * 0.5;
-            add_segment(&mut g.dim_lines, tip - perp * half, tip + perp * half);
+            let start = if *inner { *size * 0.5 } else { 0.0 };
+            add_segment(&mut g.dim_lines, tip + dir * start, tip + dir * *size);
         }
         ArrowKind::Box_ { size, filled } => {
             let half = *size * 0.5;
@@ -3467,6 +3516,56 @@ mod tests {
             arrow_from_block_name(None, 1.0),
             ArrowKind::Triangle { filled: true, .. }
         ));
+    }
+
+    #[test]
+    fn origin_arrows_draw_their_blocks() {
+        // The "_Origin" / "_Origin2" blocks AutoCAD 2025 writes, at unit size:
+        //   _Origin:  CIRCLE r=0.5, LINE (0,0)->(-1,0)
+        //   _Origin2: CIRCLE r=0.5, CIRCLE r=0.25, LINE (-0.5,0)->(-1,0)
+        // Open circles, no fill; the block's -X runs back along the leader.
+        let runs = |name: &str| {
+            let mut g = DimGeom::new();
+            append_arrow(
+                &mut g,
+                Vec3::ZERO,
+                Vec3::X,
+                &arrow_from_block_name(Some(name), 100.0),
+            );
+            assert!(g.arrow_fill.is_empty(), "{name} is not filled");
+            g.dim_lines
+                .split(|p| p[0].is_nan())
+                .map(|run| run.to_vec())
+                .collect::<Vec<_>>()
+        };
+        let is_circle = |run: &[[f32; 3]], r: f32| {
+            run.len() > 8 && run.iter().all(|p| ((p[0].hypot(p[1])) - r).abs() < 1.0e-3)
+        };
+        let is_stroke = |run: &[[f32; 3]], from: f32, to: f32| {
+            run.len() == 2
+                && (run[0][0] - from).abs() < 1.0e-3
+                && (run[1][0] - to).abs() < 1.0e-3
+                && run.iter().all(|p| p[1].abs() < 1.0e-3)
+        };
+
+        let origin = runs("_Origin");
+        assert_eq!(origin.len(), 2, "_Origin: one circle and one stroke");
+        assert!(
+            is_circle(&origin[0], 50.0),
+            "_Origin circle has radius 0.5 × size"
+        );
+        assert!(
+            is_stroke(&origin[1], 0.0, 100.0),
+            "_Origin stroke runs centre → 1.0"
+        );
+
+        let origin2 = runs("_Origin2");
+        assert_eq!(origin2.len(), 3, "_Origin2: two circles and one stroke");
+        assert!(is_circle(&origin2[0], 50.0) && is_circle(&origin2[1], 25.0));
+        assert!(
+            is_stroke(&origin2[2], 50.0, 100.0),
+            "_Origin2 stroke runs 0.5 → 1.0"
+        );
     }
 
     #[test]

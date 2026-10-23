@@ -539,6 +539,7 @@ impl OpenCADStudio {
                         self.sync_ribbon_layers();
                         self.show_layers = true;
                     }
+                    PanelId::QuickCalc => self.quick_calc.show = true,
                 }
             }
             self.dock_reveal(id);
@@ -573,6 +574,7 @@ impl OpenCADStudio {
                 self.show_layers = false;
                 self.ribbon.deactivate_tool_if("LAYERS");
             }
+            PanelId::QuickCalc => self.quick_calc.show = false,
             PanelId::GraphicAttributes => {
                 self.show_graphic_attributes = false;
                 self.ribbon.set_graphic_attributes(false);
@@ -655,6 +657,7 @@ impl OpenCADStudio {
             PanelId::Count => self.count_palette.show,
             PanelId::SheetSetManager => self.sheet_set.show,
             PanelId::Layers => self.show_layers,
+            PanelId::QuickCalc => self.quick_calc.show,
             PanelId::GraphicAttributes => self.show_graphic_attributes,
         }
     }
@@ -867,10 +870,12 @@ impl OpenCADStudio {
             return (f.w, f.h);
         }
         let (_, avail) = self.dock_workspace_size();
-        (
-            self.dock.width(id, self.win_size.0),
-            (avail * 0.6).clamp(crate::ui::dock::FLOAT_MIN_H, 520.0),
-        )
+        let mut h = (avail * 0.6).clamp(crate::ui::dock::FLOAT_MIN_H, 520.0);
+        // QuickCalc opens tall enough for its keypad and section headers.
+        if id == crate::ui::dock::PanelId::QuickCalc {
+            h = h.max(crate::ui::window::quick_calc::float_height().min(avail));
+        }
+        (self.dock.width(id, self.win_size.0), h)
     }
 
     /// Where a dragged pallet lands if released at workspace point `p`:

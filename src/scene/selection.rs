@@ -835,7 +835,9 @@ impl Scene {
                                     QSelectValueEditor::Choice(vec!["false".into(), "true".into()])
                                 }
                                 PropValue::AttrText { .. } => QSelectValueEditor::Text,
-                                PropValue::Stepper { .. }
+                                PropValue::BlockNumber { .. }
+                                | PropValue::BlockChoice { .. }
+                                | PropValue::Stepper { .. }
                                 | PropValue::ColorVaries
                                 | PropValue::LwVaries
                                 | PropValue::FieldLwVaries { .. }
@@ -1025,7 +1027,9 @@ impl Scene {
                     PropValue::BoolToggle { value, .. } => value.to_string(),
                     PropValue::AttrText { value, .. } => value,
                     PropValue::Stepper { display, .. } => display,
-                    PropValue::ColorVaries
+                    PropValue::BlockNumber { .. }
+                    | PropValue::BlockChoice { .. }
+                    | PropValue::ColorVaries
                     | PropValue::LwVaries
                     | PropValue::FieldLwVaries { .. }
                     | PropValue::EntityLink { .. }

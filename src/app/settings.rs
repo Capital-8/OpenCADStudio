@@ -450,6 +450,7 @@ pub struct BlockEditorPreferences {
     pub dynamic_grip_color: u8,
     pub grip_tips: bool,
     pub action_bars: bool,
+    pub constraint_colors: [String; 4],
 }
 
 impl Default for BlockEditorPreferences {
@@ -468,6 +469,7 @@ impl Default for BlockEditorPreferences {
             dynamic_grip_color: 140,
             grip_tips: true,
             action_bars: true,
+            constraint_colors: ["8".into(), "2".into(), "3".into(), "1".into()],
         }
     }
 }
@@ -594,6 +596,8 @@ pub struct UserSettings {
     pub aperture: f32,
     /// HPASSOC: new hatches follow their boundary objects.
     pub hatch_associative: bool,
+    /// HPGAPTOL: largest boundary gap HATCH/BOUNDARY picks treat as closed.
+    pub hatch_gap_tolerance: f64,
     /// MENUBAR: the classic pull-down menus show above the ribbon.
     pub show_menu_bar: bool,
     /// RIBBONCLOSE hid the ribbon; RIBBON brings it back.
@@ -897,6 +901,9 @@ pub struct UserSettings {
     /// SSMAUTOOPEN, SSLOCATE, SSMPOLLTIME, SSMSHEETSTATUS.
     #[serde(default)]
     pub sheet_set: crate::ui::window::sheet_set::SheetSetSettings,
+    /// QuickCalc: the global variables, the open sections and the angle mode.
+    #[serde(default)]
+    pub quick_calc: crate::ui::window::quick_calc::QuickCalcSettings,
 }
 
 /// A block the Blocks palette lists from outside the current drawing (a
@@ -1106,6 +1113,7 @@ impl Default for UserSettings {
             pick_box: 3,
             aperture: crate::snap::DEFAULT_OSNAP_RADIUS_PX,
             hatch_associative: true,
+            hatch_gap_tolerance: 0.0,
             show_menu_bar: false,
             ribbon_closed: false,
             options_tab: crate::ui::window::options::OptionsTab::General,
@@ -1213,6 +1221,7 @@ impl Default for UserSettings {
             count_service: true,
             count_invalid_area: 0,
             sheet_set: Default::default(),
+            quick_calc: Default::default(),
         }
     }
 }

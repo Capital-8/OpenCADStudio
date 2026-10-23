@@ -1682,6 +1682,8 @@ impl Scene {
             self.bg_color
         };
         let depth_map = self.draw_depth_map();
+        let constraint_display = (self.constraint_shading_active() && self.block_edit_block == Some(target_block))
+            .then(|| (self.block_constraint_report(target_block), self.constraint_palette()));
         let mut models: Vec<HatchModel> = self
             .hatches
             .iter()
@@ -1695,7 +1697,7 @@ impl Scene {
                 )
             })
             .flat_map(|(&handle, model)| {
-                let (backdrop, model) = self.synced_hatch_model(
+                let (backdrop, mut model) = self.synced_hatch_model(
                     handle,
                     model,
                     annotation_scale_handle,
@@ -1704,6 +1706,13 @@ impl Scene {
                     &depth_map,
                     tint_selected,
                 );
+                if let Some((report, palette)) = &constraint_display {
+                    if let Some(mut color) = self.constraint_display_color(report, handle, palette) {
+                        color[3] = model.color[3];
+                        model.color = color;
+                        if let crate::scene::model::hatch_model::HatchPattern::Gradient { color2, .. } = &mut model.pattern { *color2 = color; }
+                    }
+                }
                 backdrop.into_iter().chain(std::iter::once(model))
             })
             .collect();
@@ -1864,6 +1873,8 @@ impl Scene {
         include_preview_hidden: bool,
         plot_only: bool,
     ) -> Vec<HatchModel> {
+        let constraint_display = (!plot_only && self.constraint_shading_active() && self.block_edit_block == Some(layout_block))
+            .then(|| (self.block_constraint_report(layout_block), self.constraint_palette()));
         let depth_map = self.draw_depth_map();
         let visibility_reveal = if plot_only {
             rustc_hash::FxHashSet::default()
@@ -1954,6 +1965,13 @@ impl Scene {
                 let Some(mut model) = Self::hatch_model_from_dxf(&hatch, color) else {
                     return;
                 };
+                if let Some((report, palette)) = &constraint_display {
+                    if let Some(mut color) = self.constraint_display_color(report, context.root_handle, palette) {
+                        color[3] = model.color[3];
+                        model.color = color;
+                        if let crate::scene::model::hatch_model::HatchPattern::Gradient { color2, .. } = &mut model.pattern { *color2 = color; }
+                    }
+                }
                 model.aci = style.4;
                 model.line_weight_px = style.3;
                 model.draw_depth =
@@ -3333,11 +3351,25 @@ impl Scene {
         // large until the first CANNOSCALE change shrank them. (#1674)
         self.sync_annotation_scale_from_header();
         for obj in self.document.objects.values_mut() {
-            if let codec::objects::ObjectType::Layout(l) = obj {
-                if l.name != "Model" {
+            match obj {
+                codec::objects::ObjectType::Layout(l) if l.name != "Model" => {
                     crate::scene::apply_default_page_setup(l, "");
                     self.unopened_layouts.insert(l.name.clone());
                 }
+                // The codec's Standard multileader style is sized in inches;
+                // the metric template's is in millimetres. Left as-is, a new
+                // leader's arrow and landing were a fraction of a millimetre,
+                // invisible on a sheet. (#2027)
+                codec::objects::ObjectType::MultiLeaderStyle(s)
+                    if s.name.eq_ignore_ascii_case("Standard") =>
+                {
+                    s.text_height = 4.0;
+                    s.arrowhead_size = 4.0;
+                    s.landing_gap = 2.0;
+                    s.landing_distance = 8.0;
+                    s.break_gap_size = 3.75;
+                }
+                _ => {}
             }
         }
     }

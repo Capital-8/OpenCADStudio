@@ -114,6 +114,7 @@ pub(super) const NAMES: &[&str] = &[
     "dgn_import_dialog",
     "tds_import_dialog",
     "tds_material_dialog",
+    "tds_map_dialog",
     "refedit_dialog",
     "pdf_password_dialog",
     "pdf_shx_settings",
@@ -2475,6 +2476,18 @@ impl OpenCADStudio {
                     "cancel" => return Ok(Task::done(Message::CloseModal)),
                     _ => return Err(bad()),
                 })
+            }
+            // The missing texture map window of a 3D Studio import: "ok"
+            // (or "close") dismisses the shown map; the next one follows.
+            "tds_map_dialog" => {
+                if self.active_modal != Some(crate::app::ModalKind::TdsMissingMap) {
+                    return Err(failure("no_dialog", "The missing texture map window is not open"));
+                }
+                let spec = string(req, "value")?;
+                match spec {
+                    "ok" | "close" => Message::CloseModal,
+                    _ => return Err(failure("invalid_value", spec)),
+                }
             }
             // The DGN Import window, one field per call: "path=<file>" (as
             // Change… picks it), "model=<n>", "target=new|current",

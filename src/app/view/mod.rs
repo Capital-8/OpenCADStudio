@@ -1484,15 +1484,19 @@ bg={bg_ms:.1}ms n={view_count}"
                         .active_cmd
                         .as_ref()
                         .is_some_and(|c| c.name() == "MATCHPROP"),
-                    // An infinite-line preview runs along the arms; drop them
-                    // so the preview stays visible (#1437). A command asking
-                    // for objects shows the pickbox alone, so picking reads
-                    // apart from both idle and point input (#1661).
-                    hide_arms: tab.active_cmd.as_ref().is_some_and(|c| {
-                        matches!(c.name(), "XLINE" | "RAY")
-                            || c.needs_entity_pick()
-                            || c.is_selection_gathering()
-                    }),
+                    // A command asking for objects shows the pickbox alone, so
+                    // picking reads apart from both idle and point input (#1661).
+                    hide_arms: tab
+                        .active_cmd
+                        .as_ref()
+                        .is_some_and(|c| c.needs_entity_pick() || c.is_selection_gathering()),
+                    // An infinite-line preview runs along the arms; keep them
+                    // short so the preview stays visible past them (#1437)
+                    // without hiding the cursor itself.
+                    short_arms: tab
+                        .active_cmd
+                        .as_ref()
+                        .is_some_and(|c| matches!(c.name(), "XLINE" | "RAY")),
                     snap_color: self.snap_marker_color,
                     snap_size: self.model_space.snap_marker_size as f32,
                 },
@@ -2785,6 +2789,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             viewport_scale_synced: tab.scene.viewport_annotation_scale_synced(),
                             viewport_locked: tab.scene.viewports_display_locked(),
                             lineweight_display: tab.scene.document.header.lineweight_display,
+                            constraint_status: tab.active_block_edit_session().map(|_| tab.scene.block_constraint_status_mode),
                         },
                         crate::ui::statusbar::StatusBarModes {
                             ortho_mode: self.ortho_mode,
@@ -3138,6 +3143,15 @@ impl OpenCADStudio {
         } else {
             Subscription::none()
         };
+        // Expire the QuickCalc status message ("Copied 870").
+        let quick_calc_flash = if self.quick_calc.flash.is_some() {
+            iced::time::every(crate::ui::window::quick_calc::QuickCalcPalette::flash_interval())
+                .map(|_| {
+                    Message::QuickCalc(crate::ui::window::quick_calc::QuickCalcMsg::FlashExpired)
+                })
+        } else {
+            Subscription::none()
+        };
         // Blink the MText preview caret while the editor is open.
         let caret_blink = if self.mtext_editor.is_some() {
             iced::time::every(std::time::Duration::from_millis(530))
@@ -3426,6 +3440,7 @@ impl OpenCADStudio {
             thumbnail_capture,
             capture_frame,
             caret_blink,
+            quick_calc_flash,
             web_fonts,
             autosave,
             plugin_drain,

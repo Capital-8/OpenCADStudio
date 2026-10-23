@@ -18,6 +18,7 @@ impl OpenCADStudio {
             Some(K::BlockCycleOrder) => crate::t!("Grip Cycle Order").into_owned(),
             Some(K::Options) => crate::tr!("action", "options"),
             Some(K::FindReplace) => crate::tr!("modal", "find-replace"),
+            Some(K::Overkill) => crate::t!("Delete Duplicate Objects").into_owned(),
             Some(K::PluginManager) => crate::tr!("modal", "plugin-manager"),
             Some(K::UpdateNotice) => crate::tr!("modal", "update-available"),
             Some(K::DonationPrompt) => crate::tr!("donation", "title"),
@@ -56,6 +57,7 @@ impl OpenCADStudio {
             Some(K::DgnImport) => crate::t!("DGN Import").into_owned(),
             Some(K::TdsImport) => crate::tr!("import-3ds", "title"),
             Some(K::TdsMaterial) => crate::tr!("import-3ds-alert", "title"),
+            Some(K::TdsMissingMap) => crate::tr!("import-3ds", "title"),
             Some(K::XrefAttach) => crate::t!("Attach External Reference").into_owned(),
             Some(K::WriteBlock) => crate::t!("Write Block").into_owned(),
             Some(K::GeometricTolerance) => crate::t!("Geometric Tolerance").into_owned(),
@@ -304,11 +306,17 @@ impl OpenCADStudio {
                     flow,
                 )
             }),
+            super::super::ModalKind::Overkill => {
+                let state = self.overkill_dialog.as_ref()?;
+                automatic_flow(ex, |flow| crate::ui::window::overkill::view_window(state, flow))
+            }
             super::super::ModalKind::FindReplace => automatic_flow(ex, |flow| {
                 crate::ui::window::find_replace::view_window(
                     &self.find_replace.search,
                     &self.find_replace.replacement,
                     &self.find_replace.status,
+                    &self.find_replace.results,
+                    self.find_replace.current_match,
                     flow,
                 )
             }),
@@ -506,6 +514,12 @@ impl OpenCADStudio {
                 let state = self.import_dialogs.tds_material.as_ref()?;
                 sized_flow(ex, 460, 420, |flow| {
                     crate::ui::window::import_dialogs::view_tds_material(state, flow)
+                })
+            }
+            super::super::ModalKind::TdsMissingMap => {
+                let map = self.import_dialogs.tds_maps.first()?;
+                sized_flow(ex, 460, 240, |flow| {
+                    crate::ui::window::import_dialogs::view_tds_map(map, flow)
                 })
             }
             super::super::ModalKind::DgnImport => {
