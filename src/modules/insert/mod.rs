@@ -209,6 +209,68 @@ impl CadModule for InsertModule {
                         }),
                     ],
                 },
+                // ── Data ─────────────────────────────────────────────────────────
+                RibbonGroup {
+                    title: "Data",
+                    tools: vec![
+                        RibbonItem::LargeTool(ToolDef {
+                            id: "FIELD",
+                            label: "Field",
+                            icon: IconKind::Svg(include_bytes!("../../../assets/icons/text.svg")),
+                            event: ModuleEvent::Command("FIELD".to_string()),
+                        }),
+                        RibbonItem::LabeledTool(ToolDef {
+                            id: "UPDATEFIELD",
+                            label: "Update Fields",
+                            icon: IconKind::Svg(include_bytes!(
+                                "../../../assets/icons/ui/refresh.svg"
+                            )),
+                            event: ModuleEvent::Command("UPDATEFIELD".to_string()),
+                        }),
+                        RibbonItem::LabeledTool(ToolDef {
+                            id: "INSERTOBJ",
+                            label: "OLE Object",
+                            icon: IconKind::Svg(include_bytes!("../../../assets/icons/paste.svg")),
+                            event: ModuleEvent::Command("INSERTOBJ".to_string()),
+                        }),
+                        RibbonItem::LabeledTool(ToolDef {
+                            id: "HYPERLINK",
+                            label: "Hyperlink",
+                            icon: IconKind::Svg(include_bytes!(
+                                "../../../assets/icons/ui/arrow_long_right.svg"
+                            )),
+                            event: ModuleEvent::Command("HYPERLINK".to_string()),
+                        }),
+                    ],
+                },
+                // ── Linking & Extraction ─────────────────────────────────────────
+                RibbonGroup {
+                    title: "Linking & Extraction",
+                    tools: vec![
+                        RibbonItem::LargeTool(ToolDef {
+                            label: "Data\nLink",
+                            ..crate::modules::annotate::data_link::tool()
+                        }),
+                        RibbonItem::LabeledTool(ToolDef {
+                            id: "DATALINKUPDATE",
+                            label: "Download from Source",
+                            icon: IconKind::Svg(include_bytes!("../../../assets/icons/sync.svg")),
+                            event: ModuleEvent::Command("DATALINKUPDATE".to_string()),
+                        }),
+                        RibbonItem::LabeledTool(ToolDef {
+                            id: "DATALINKUPDATE_WRITE",
+                            label: "Upload to Source",
+                            icon: IconKind::Svg(include_bytes!(
+                                "../../../assets/icons/ui/file_export.svg"
+                            )),
+                            event: ModuleEvent::Command("DATALINKUPDATE WRITE".to_string()),
+                        }),
+                        RibbonItem::LabeledTool(ToolDef {
+                            label: "Extract Data",
+                            ..crate::modules::annotate::data_extract::tool()
+                        }),
+                    ],
+                },
                 // ── Content ───────────────────────────────────────────────────────
                 RibbonGroup {
                     title: "Content",
