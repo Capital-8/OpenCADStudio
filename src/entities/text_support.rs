@@ -634,35 +634,24 @@ pub fn adapt_mtext_paragraphs(
 
     let entity_height = entity_height.max(1e-6);
     let doc = parse_mtext(s, true);
-    // Paragraph indents and tab stops: the extended `\pxi…;` form measures
-    // them in text heights (#876513d0), but the standard AutoCAD / bare
-    // `\pi…;` form (and any paragraph using drawing units) stores absolute
-    // drawing units (#1918).
-    //
-    // Distinguish them:
-    // 1. `\pxq<l|c|r|j>;` is paragraph alignment, not an indent code, so
-    //    `s.contains("\\px")` must not false-trigger on alignment.
-    // 2. A bare `\p...;` block may start with alignment (`\pqc,l500;`),
-    //    spacing (`\pb0.25,l500;`), or indents (`\pi-250,l500;`).
-    // 3. Only explicit `\pxi`, `\pxl`, `\pxr`, or `\pxt` specify indents
-    //    in text-height units.
-    let has_px_indent = s.contains("\\pxi")
-        || s.contains("\\pxl")
-        || s.contains("\\pxr")
-        || s.contains("\\pxt");
-    let has_bare_p_indent = s.match_indices("\\p").any(|(i, _)| {
-        let after = &s[i + 2..];
-        !after.starts_with('x')
-            && after
-                .split(';')
-                .next()
-                .map_or(false, |props| {
-                    props.contains('i')
-                        || props.contains('l')
-                        || props.contains('r')
-                        || props.contains('t')
-                })
-    });
+    // Paragraph indents and tab stops: the extended `\px…;` form measures
+    // them in text heights, the bare `\p…;` form (older editors and
+    // text-to-MTEXT converters, which centre each line with it) in drawing
+    // units (#1918). A block sets them when one of its comma-separated codes
+    // starts with i, l, r or t; alignment (`ql`, `qc`, …) and spacing codes
+    // don't.
+    let sets_indent = |props: &str| {
+        props.split(';').next().unwrap_or("").split(',').any(|code| {
+            code.starts_with(['i', 'l', 'r', 't'])
+        })
+    };
+    let (mut has_px_indent, mut has_bare_p_indent) = (false, false);
+    for (i, _) in s.match_indices("\\p") {
+        match s[i + 2..].strip_prefix('x') {
+            Some(extended) => has_px_indent |= sets_indent(extended),
+            None => has_bare_p_indent |= sets_indent(&s[i + 2..]),
+        }
+    }
     let para_unit = if has_bare_p_indent || !has_px_indent {
         1.0
     } else {
@@ -3458,6 +3447,10 @@ mod v_anchor_tests {
         assert_eq!(doc3.len(), 1);
         assert!((doc3[0].indent_first - 250.0).abs() < 1e-3, "first indent should be 250, got {}", doc3[0].indent_first);
         assert!((doc3[0].indent_left - 500.0).abs() < 1e-3, "left margin should be 500, got {}", doc3[0].indent_left);
+
+        // Case 4: left alignment beside the extended form keeps text heights.
+        let doc4 = adapt_mtext_paragraphs("\\pql;\\pxi-1,l2;SB5", 250.0, true);
+        assert!((doc4[0].indent_left - 500.0).abs() < 1e-3, "got {}", doc4[0].indent_left);
     }
 
     #[test]
