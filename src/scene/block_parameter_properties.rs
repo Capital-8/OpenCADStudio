@@ -192,6 +192,7 @@ pub(crate) fn properties(
         }
     }
     rows.extend(table::property(doc, baseline, document, insert, definition));
+    rows.extend(super::block_lookup::reference_properties(doc, baseline, document, insert));
     rows
 }
 #[derive(Clone, Copy)]
@@ -213,6 +214,9 @@ pub(crate) fn evaluate(
     let source = baseline.unwrap_or(doc);
     if let Component::TableRow(revision) = key.component {
         return table::evaluate(doc, baseline, key, revision, input);
+    }
+    if let Component::LookupOutput { column, revision } = key.component {
+        return super::block_lookup::evaluate_property(doc, baseline, key, column, revision, input);
     }
     let p = actions::all_parameters(source, key.definition)
         .into_iter()
@@ -254,7 +258,7 @@ pub(crate) fn evaluate(
                     frame.end =
                         frame.base + DVec3::new(angle.cos(), angle.sin(), 0.) * delta.length();
                 }
-                Component::Flip | Component::TableRow(_) => unreachable!(),
+                Component::Flip | Component::TableRow(_) | Component::LookupOutput { .. } => unreachable!(),
             }
             if !frame.end.is_finite() {
                 return Err("Specify a finite parameter value.");

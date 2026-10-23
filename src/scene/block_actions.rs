@@ -1791,7 +1791,7 @@ pub(crate) fn constrain_angle(value: f64, set: &codec::objects::BlockParameterVa
     constrain_value_set(angle, set)
 }
 
-fn constrain_parameter_position(
+pub(super) fn constrain_parameter_position(
     doc: &CadDocument,
     p: &Parameter,
     mut position: DVec3,

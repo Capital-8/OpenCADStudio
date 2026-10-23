@@ -968,9 +968,6 @@ impl OpenCADStudio {
                     }
                 }
                 custom_properties.extend(Self::visibility_property(doc, handle));
-                if let Some(row) = crate::scene::block_lookup::reference_property(doc, handle) {
-                    custom_properties.push(row);
-                }
                 if !custom_properties.is_empty() {
                     sections.push(crate::scene::model::object::PropSection {
                         title: t!("Custom").into_owned(),

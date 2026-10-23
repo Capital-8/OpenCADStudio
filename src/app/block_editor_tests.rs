@@ -5,6 +5,7 @@ use codec::{EntityType, Handle};
 
 mod retained_save_as;
 mod table_properties;
+mod lookup_properties;
 
 fn fixture() -> (OpenCADStudio, Handle) {
     let mut app = OpenCADStudio::new_for_test();

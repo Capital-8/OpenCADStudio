@@ -20,6 +20,7 @@ pub enum BlockParameterComponent {
     Angle,
     Flip,
     TableRow(u64),
+    LookupOutput { column: usize, revision: u64 },
 }
 
 /// The kind of value held by a property row.
