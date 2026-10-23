@@ -5312,9 +5312,13 @@ fn append_linear_dimension(
     // When oblique, lengths are measured along ext_dir instead of perp.
     let (ext1_start, ext1_end, ext2_start, ext2_end) = if params.dimfxlon {
         let fxl = params.dimfxl.max(0.0);
-        let s1 = d1 - ext_dir * (sign1 * fxl);
+        // Never past the DIMEXO gap at the definition point: a length longer
+        // than the line itself would otherwise shoot far beyond the object.
+        let fxl1 = fxl.min((offset1.abs() - params.dimexo).max(0.0));
+        let fxl2 = fxl.min((offset2.abs() - params.dimexo).max(0.0));
+        let s1 = d1 - ext_dir * (sign1 * fxl1);
         let e1 = d1 + ext_dir * (sign1 * params.dimexe);
-        let s2 = d2 - ext_dir * (sign2 * fxl);
+        let s2 = d2 - ext_dir * (sign2 * fxl2);
         let e2 = d2 + ext_dir * (sign2 * params.dimexe);
         (s1, e1, s2, e2)
     } else {
@@ -6118,8 +6122,10 @@ fn append_angular_dimension(
     let arc_end = vertex + dir2 * radius;
     let extension = |origin: Vec3, endpoint: Vec3, direction: Vec3| {
         if params.dimfxlon {
+            // Never past the DIMEXO gap at the measured point.
+            let free = (endpoint.distance(origin) - params.dimexo).max(0.0);
             (
-                endpoint - direction * params.dimfxl.max(0.0),
+                endpoint - direction * params.dimfxl.max(0.0).min(free),
                 endpoint + direction * params.dimexe,
             )
         } else {
