@@ -1997,7 +1997,14 @@ impl OpenCADStudio {
             }
         };
         let stored_path = match self.data_link_manager.path_type {
-            LinkPathType::Full => std::fs::canonicalize(&input_path).unwrap_or(input_path.clone()),
+            // A full path as the user knows it, without the verbatim prefix
+            // Windows canonical paths carry.
+            LinkPathType::Full => std::fs::canonicalize(&input_path)
+                .map(|path| {
+                    let text = path.to_string_lossy().into_owned();
+                    PathBuf::from(text.strip_prefix(r"\\?\").unwrap_or(&text).to_string())
+                })
+                .unwrap_or(input_path.clone()),
             LinkPathType::Relative => self.tabs[i]
                 .scene
                 .document
