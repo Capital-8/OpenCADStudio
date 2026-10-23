@@ -7699,6 +7699,7 @@ fn text_on_dim_line(
     dimjust: i16,
     perp_off: f64,
     text_w: f64,
+    gap: f64,
     arrow: f64,
     dimtix: bool,
     dimatfit: i16,
@@ -7736,10 +7737,16 @@ fn text_on_dim_line(
     // Along-axis positions of the extension points relative to the dim line.
     let t1 = (first.x - defpt.x) * ax + (first.y - defpt.y) * ay;
     let t2 = (second.x - defpt.x) * ax + (second.y - defpt.y) * ay;
-    // DIMJUST: 0=centred, 1/3=near first ext, 2/4=near second ext.
+    // DIMJUST: 0=centred, 1/3=near first ext, 2/4=near second ext. Beside
+    // an extension line (1/2) the text starts an arrow and two gaps from it,
+    // towards the other one; `text_w` already carries a gap each side.
+    let inward = if t2 >= t1 { 1.0 } else { -1.0 };
+    let beside = arrow + gap + (text_w * 0.5).max(0.0);
     let mut along = match dimjust {
-        1 | 3 => t1,
-        2 | 4 => t2,
+        1 => t1 + inward * beside,
+        2 => t2 - inward * beside,
+        3 => t1,
+        4 => t2,
         _ => (t1 + t2) * 0.5,
     };
     // DIMATFIT / DIMTIX fit: move text according to the selected priority when
@@ -8045,6 +8052,7 @@ fn dimension_text_pos_f64(
                 dimjust,
                 perp_off,
                 text_w,
+                dimgap,
                 arrow,
                 dimtix,
                 dimatfit,
@@ -8065,6 +8073,7 @@ fn dimension_text_pos_f64(
                 dimjust,
                 perp_off,
                 text_w,
+                dimgap,
                 arrow,
                 dimtix,
                 dimatfit,
@@ -8085,8 +8094,20 @@ fn dimension_text_pos_f64(
                     1 | 3 => text_w > span,
                     _ => text_w > span,
                 };
+            // Beside an extension line the text starts an arrow and three
+            // gaps along the arc from it when it breaks the arc (one gap off
+            // the arc): DIMJUST 1 by the second line, 2 by the first
+            // (`text_w` carries a gap each side).
+            let gaps = if dimtad == 0 { 2.0 } else { 0.0 };
+            let beside =
+                (arrow + gaps * dimgap + text_w * 0.5) / (radius as f64).max(1.0e-12);
+            let toward_end = if end >= start { 1.0 } else { -1.0 };
             let angle = if move_outside {
                 end as f64 + (text_w * 0.5 + dimgap + arrow) / (radius as f64).max(1.0e-12)
+            } else if dimjust == 1 {
+                end as f64 - toward_end * beside
+            } else if dimjust == 2 {
+                start as f64 + toward_end * beside
             } else {
                 ((start + end) * 0.5) as f64
             };
@@ -8167,9 +8188,11 @@ fn dimension_text_pos_f64(
                 d.angle_vertex,
                 dx / len,
                 dy / len,
-                dimjust,
+                // DIMJUST places linear and angular text only.
+                0,
                 perp_off,
                 text_w,
+                dimgap,
                 arrow,
                 dimtix,
                 dimatfit,
@@ -8445,15 +8468,15 @@ mod dimtad_tests {
         let (first, second, defpt) = (v(0.0, 10.0), v(20.0, 10.0), v(0.0, 0.0));
         let perp = 5.0;
         let fwd = text_on_dim_line(
-            first, second, defpt, 1.0, 0.0, 0, perp, 0.0, 1.0, false, 3, 1, false,
+            first, second, defpt, 1.0, 0.0, 0, perp, 0.0, 0.0, 1.0, false, 3, 1, false,
         );
         let rev = text_on_dim_line(
-            first, second, defpt, -1.0, 0.0, 0, perp, 0.0, 1.0, false, 3, 1, false,
+            first, second, defpt, -1.0, 0.0, 0, perp, 0.0, 0.0, 1.0, false, 3, 1, false,
         );
         assert!(fwd.y > 0.0, "above must be +Y, got {}", fwd.y);
         assert!(rev.y > 0.0, "above must be +Y even reversed, got {}", rev.y);
         let below = text_on_dim_line(
-            first, second, defpt, 1.0, 0.0, 0, perp, 0.0, 1.0, false, 3, 4, false,
+            first, second, defpt, 1.0, 0.0, 0, perp, 0.0, 0.0, 1.0, false, 3, 4, false,
         );
         assert!(below.y < 0.0, "below must be -Y, got {}", below.y);
     }
@@ -8472,6 +8495,7 @@ mod dimtad_tests {
             0.0,
             0,
             perp,
+            0.0,
             0.0,
             1.0,
             false,
@@ -8493,6 +8517,7 @@ mod dimtad_tests {
             0.0,
             0,
             perp,
+            0.0,
             0.0,
             1.0,
             false,
