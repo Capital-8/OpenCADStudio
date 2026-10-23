@@ -1803,6 +1803,7 @@ common =
     .continued-dimension = Kóta k pokračování
     .island-style = Styl ostrovů
     .internal-points = Vnitřní body
+    .gap-tolerance = Tolerance mezer
     .polygon = Mnohoúhelník
     .align = Zarovnat
     .draft-angle = Úhel úkosu

@@ -1802,6 +1802,7 @@ common =
     .continued-dimension = Voort te zetten maat
     .island-style = Eilandstijl
     .internal-points = Binnenpunten
+    .gap-tolerance = Openingstolerantie
     .polygon = Veelhoek
     .align = Uitlijnen
     .draft-angle = Lossingshoek

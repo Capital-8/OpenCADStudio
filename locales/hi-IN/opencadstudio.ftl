@@ -1792,6 +1792,7 @@ common =
     .continued-dimension = जारी रखा जाने वाला आयाम
     .island-style = द्वीप शैली
     .internal-points = आंतरिक बिंदु
+    .gap-tolerance = अंतराल सहनशीलता
     .polygon = बहुभुज
     .align = संरेखित करें
     .draft-angle = ढाल कोण

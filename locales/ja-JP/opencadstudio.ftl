@@ -1794,6 +1794,7 @@ common =
     .continued-dimension = 続行する寸法
     .island-style = 島のスタイル
     .internal-points = 内部点
+    .gap-tolerance = ギャップ許容差
     .polygon = ポリゴン
     .align = 位置合わせ
     .draft-angle = 勾配角度

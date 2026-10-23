@@ -1181,6 +1181,7 @@ impl OpenCADStudio {
                     | "PICKBOX"
                     | "APERTURE"
                     | "HPASSOC"
+                    | "HPGAPTOL"
                     | "COMMANDLINEOPACITY"
                     | "MENUBAR"
                     | "CURSORTYPE"
@@ -2622,6 +2623,22 @@ impl OpenCADStudio {
                                     false,
                                 )),
                             },
+                            "HPGAPTOL" => {
+                                let max = crate::modules::draw::draw::hatch::MAX_GAP_TOLERANCE;
+                                match value.as_deref().map(|v| v.replace(',', ".").parse::<f64>()) {
+                                    Some(Ok(v)) if (0.0..=max).contains(&v) => {
+                                        self.hatch_gap_tolerance = v;
+                                        Ok((format!("HPGAPTOL = {v}"), true))
+                                    }
+                                    Some(_) => {
+                                        Err(format!("SETVAR: value must be between 0 and {max}."))
+                                    }
+                                    None => Ok((
+                                        format!("HPGAPTOL = {}", self.hatch_gap_tolerance),
+                                        false,
+                                    )),
+                                }
+                            }
                             "CURSORTYPE" => match &value {
                                 Some(v) => match v.as_str() {
                                     "0" => {
@@ -3598,6 +3615,7 @@ impl OpenCADStudio {
                                         | "PICKBOX"
                                         | "APERTURE"
                                         | "HPASSOC"
+                                        | "HPGAPTOL"
                                         | "COMMANDLINEOPACITY"
                                         | "MENUBAR"
                                         | "CURSORTYPE"

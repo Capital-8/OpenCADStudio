@@ -1805,6 +1805,7 @@ common =
     .continued-dimension = Continued dimension
     .island-style = Island style
     .internal-points = Internal points
+    .gap-tolerance = Gap tolerance
     .polygon = Polygon
     .align = Align
     .draft-angle = Draft angle

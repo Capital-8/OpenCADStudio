@@ -1809,6 +1809,7 @@ common =
     .continued-dimension = Folytatott méret
     .island-style = Szigetek stílusa
     .internal-points = Belső pontok
+    .gap-tolerance = Réstűrés
     .polygon = Sokszög
     .align = Igazítás
     .draft-angle = Kúpszög

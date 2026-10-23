@@ -1790,6 +1790,7 @@ common =
     .continued-dimension = Devam ettirilecek ölçü
     .island-style = Ada stili
     .internal-points = İç noktalar
+    .gap-tolerance = Boşluk toleransı
     .polygon = Çokgen
     .align = Hizala
     .draft-angle = Eğim açısı

@@ -1804,6 +1804,7 @@ common =
     .continued-dimension = Fortzusetzende Bemaßung
     .island-style = Inselstil
     .internal-points = Innenpunkte
+    .gap-tolerance = Lückentoleranz
     .polygon = Polygon
     .align = Ausrichten
     .draft-angle = Entformungswinkel

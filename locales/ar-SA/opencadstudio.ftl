@@ -1816,6 +1816,7 @@ common =
     .continued-dimension = البعد المراد متابعته
     .island-style = نمط الجزر
     .internal-points = النقاط الداخلية
+    .gap-tolerance = تفاوت الفجوة
     .polygon = مضلع
     .align = محاذاة
     .draft-angle = زاوية الميل

@@ -5405,6 +5405,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Continued dimension" => Some(("common", "continued-dimension")),
         "Island style" => Some(("common", "island-style")),
         "Internal points" => Some(("common", "internal-points")),
+        "Gap tolerance" => Some(("common", "gap-tolerance")),
         "Polygon" => Some(("common", "polygon")),
         "Align" => Some(("common", "align")),
         "Draft angle" => Some(("common", "draft-angle")),

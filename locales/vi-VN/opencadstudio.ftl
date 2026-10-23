@@ -1807,6 +1807,7 @@ common =
     .continued-dimension = Kích thước nối tiếp
     .island-style = Kiểu đảo
     .internal-points = Điểm bên trong
+    .gap-tolerance = Dung sai khe hở
     .polygon = Đa giác
     .align = Căn chỉnh
     .draft-angle = Góc thoát khuôn

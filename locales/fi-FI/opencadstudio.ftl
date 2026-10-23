@@ -1803,6 +1803,7 @@ common =
     .continued-dimension = Jatkettava mitta
     .island-style = Saarekkeiden tyyli
     .internal-points = Sisäpisteet
+    .gap-tolerance = Aukkotoleranssi
     .polygon = Monikulmio
     .align = Kohdista
     .draft-angle = Päästökulma

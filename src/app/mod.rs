@@ -753,6 +753,9 @@ pub(super) struct OpenCADStudio {
     pick_box: i32,
     /// HPASSOC: new hatches follow their boundary objects.
     hatch_associative: bool,
+    /// HPGAPTOL: gaps up to this size count as closed for HATCH/BOUNDARY
+    /// internal-point picks (0 = exact).
+    hatch_gap_tolerance: f64,
     /// MENUBAR: the classic pull-down menus show above the ribbon.
     show_menu_bar: bool,
     /// RIBBONCLOSE hid the ribbon; RIBBON brings it back.
@@ -4922,6 +4925,7 @@ impl OpenCADStudio {
             cursor_size: 5,
             pick_box: 3,
             hatch_associative: true,
+            hatch_gap_tolerance: 0.0,
             show_menu_bar: false,
             ribbon_closed: false,
             double_click_block_refedit: false,

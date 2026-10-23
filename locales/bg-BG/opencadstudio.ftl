@@ -1803,6 +1803,7 @@ common =
     .continued-dimension = Размер за продължаване
     .island-style = Стил на островите
     .internal-points = Вътрешни точки
+    .gap-tolerance = Допуск на пролуките
     .polygon = Многоъгълник
     .align = Подравняване
     .draft-angle = Ъгъл на наклона

@@ -1791,6 +1791,7 @@ common =
     .continued-dimension = 要连续标注的尺寸
     .island-style = 孤岛样式
     .internal-points = 内部点
+    .gap-tolerance = 间隙公差
     .polygon = 多边形
     .align = 对齐
     .draft-angle = 拔模角度

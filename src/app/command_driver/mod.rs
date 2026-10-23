@@ -145,6 +145,16 @@ impl OpenCADStudio {
                 tab.dirty = true;
             }
         }
+        let gap_tolerance = self.tabs[self.active_tab]
+            .active_cmd
+            .as_ref()
+            .and_then(|command| command.hatch_gap_tolerance());
+        if let Some(gap_tolerance) = gap_tolerance {
+            if gap_tolerance != self.hatch_gap_tolerance {
+                self.hatch_gap_tolerance = gap_tolerance;
+                self.persist_settings_if_changed();
+            }
+        }
         let mline_settings = self.tabs[self.active_tab]
             .active_cmd
             .as_ref()

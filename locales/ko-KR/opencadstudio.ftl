@@ -1803,6 +1803,7 @@ common =
     .continued-dimension = 계속할 치수
     .island-style = 아일랜드 스타일
     .internal-points = 내부 점
+    .gap-tolerance = 간격 허용 오차
     .polygon = 다각형
     .align = 정렬
     .draft-angle = 구배 각도

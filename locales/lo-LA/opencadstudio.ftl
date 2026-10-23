@@ -1810,6 +1810,7 @@ common =
     .continued-dimension = ເສັ້ນບອກຂະໜາດຕໍ່ເນື່ອງ
     .island-style = ຮູບແບບເກາະດອນ (Island style)
     .internal-points = ຈຸດພາຍໃນ
+    .gap-tolerance = ຄວາມຄາດເຄື່ອນຂອງຊ່ອງຫວ່າງ
     .polygon = ຮູບຫຼາຍແຈ
     .align = ຈັດແນວ
     .draft-angle = ມຸມລາດ

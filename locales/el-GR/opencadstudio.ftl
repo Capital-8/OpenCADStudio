@@ -1805,6 +1805,7 @@ common =
     .continued-dimension = Διάσταση προς συνέχιση
     .island-style = Στυλ νησίδων
     .internal-points = Εσωτερικά σημεία
+    .gap-tolerance = Ανοχή κενού
     .polygon = Πολύγωνο
     .align = Στοίχιση
     .draft-angle = Γωνία κλίσης

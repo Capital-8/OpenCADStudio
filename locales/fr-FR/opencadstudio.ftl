@@ -1804,6 +1804,7 @@ common =
     .continued-dimension = Cote à continuer
     .island-style = Style des îlots
     .internal-points = Points intérieurs
+    .gap-tolerance = Tolérance d'écart
     .polygon = Polygone
     .align = Aligner
     .draft-angle = Angle de dépouille

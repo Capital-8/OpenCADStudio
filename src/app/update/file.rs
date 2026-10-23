@@ -822,6 +822,7 @@ impl OpenCADStudio {
             pick_box: self.pick_box,
             aperture: self.snapper.osnap_radius_px,
             hatch_associative: self.hatch_associative,
+            hatch_gap_tolerance: self.hatch_gap_tolerance,
             show_menu_bar: self.show_menu_bar,
             ribbon_closed: self.ribbon_closed,
             options_tab: self.options_tab,
@@ -974,6 +975,11 @@ impl OpenCADStudio {
             crate::snap::DEFAULT_OSNAP_RADIUS_PX
         };
         self.hatch_associative = s.hatch_associative;
+        let max_gap = crate::modules::draw::draw::hatch::MAX_GAP_TOLERANCE;
+        self.hatch_gap_tolerance = s.hatch_gap_tolerance;
+        if !(0.0..=max_gap).contains(&self.hatch_gap_tolerance) {
+            self.hatch_gap_tolerance = 0.0;
+        }
         self.show_menu_bar = s.show_menu_bar;
         self.ribbon_closed = s.ribbon_closed;
         self.options_tab = s.options_tab;
