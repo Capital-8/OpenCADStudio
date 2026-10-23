@@ -2197,6 +2197,8 @@ pub enum CmdResult {
     },
     /// Cancel: discard any preview and end the command.
     Cancel,
+    /// Cleanly end the command without reporting cancellation.
+    Done,
     /// End the command and begin in-place editing of the table cell under
     /// `point` on table `handle` (TABLEDIT). The host resolves the cell —
     /// it owns the document needed for the table-style lookup — honors
@@ -3449,6 +3451,11 @@ pub trait CadCommand: Send {
 
     /// Exclude locked-layer entities from injected selection geometry.
     fn selection_entities_exclude_locked(&self) -> bool {
+        false
+    }
+
+    /// Exclude locked-layer entities from interactive selection (e.g. ssget ":L").
+    fn selection_rejects_locked_layers(&self) -> bool {
         false
     }
 

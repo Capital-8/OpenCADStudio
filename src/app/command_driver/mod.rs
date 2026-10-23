@@ -901,6 +901,9 @@ impl OpenCADStudio {
             CmdResult::RemoveLiveEntity(handle) => {
                 self.handle_remove_live_entity(handle);
             }
+            CmdResult::Done => {
+                self.handle_done();
+            }
             cancel @ (CmdResult::Cancel | CmdResult::CancelForSpaceChange) => {
                 self.handle_cancel(cancel);
             }
@@ -1238,6 +1241,30 @@ impl OpenCADStudio {
         }
     }
 
+    fn handle_done(&mut self) {
+        let i = self.active_tab;
+        self.tabs[i].scene.clear_preview_wire();
+        if self.tabs[i].suspended_cmd.is_some() {
+            self.tabs[i].active_cmd = self.tabs[i].suspended_cmd.take();
+            let prompt = self.tabs[i].active_cmd.as_ref().map(|c| c.prompt());
+            if let Some(p) = prompt {
+                self.command_line.push_info(&p);
+            }
+            let opts = self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .map(|c| c.options())
+                .unwrap_or_default();
+            self.command_line.set_step_options(opts);
+            self.refresh_active_cmd_preview(i);
+        } else {
+            self.tabs[i].suspended_cmd = None;
+            self.tabs[i].active_cmd = None;
+            self.tabs[i].snap_result = None;
+            self.restore_pre_cmd_tangent();
+        }
+    }
+
     fn handle_cancel(&mut self, cancel: CmdResult) {
         let i = self.active_tab;
         self.tabs[i].pending_parameter_set_follow_up = None;
@@ -1391,11 +1418,26 @@ impl OpenCADStudio {
                 _ => {}
             }
         }
+        let is_plugin = self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .is_some_and(|c| c.name() == "PLUGIN");
+        if is_plugin {
+            self.tabs[i].scene.deselect_all();
+        }
         self.tabs[i].active_cmd = None;
         self.tabs[i].snap_result = None;
         self.tabs[i].scene.clear_preview_wire();
         self.restore_pre_cmd_tangent();
-        self.dispatch_command(&cmd)
+        let last_task = Task::none();
+        for line in cmd.lines() {
+            let line = line.trim();
+            if !line.is_empty() {
+                let task = self.run_command_line_streaming(line, true);
+                let _ = self.drive_headless_task(task);
+            }
+        }
+        last_task
     }
 
     fn handle_measurement(&mut self, msg: String) {
