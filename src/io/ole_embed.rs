@@ -43,7 +43,8 @@ pub fn insert_object_dialog() -> Result<std::path::PathBuf, String> {
         IOF_DISABLELINK, IOF_SELECTCREATEFROMFILE, OLEUIINSERTOBJECTW, OLEUI_OK,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-    let mut file = vec![0u16; 1024];
+    // The window takes at most MAX_PATH characters.
+    let mut file = vec![0u16; 260];
     // SAFETY: the window runs on this thread's own OLE apartment; the
     // structure and the file buffer outlive the call.
     unsafe {
@@ -57,8 +58,12 @@ pub fn insert_object_dialog() -> Result<std::path::PathBuf, String> {
         let result = OleUIInsertObjectW(&info);
         let from_file = info.dwFlags & IOF_SELECTCREATEFROMFILE != 0;
         OleUninitialize();
-        if result != OLEUI_OK {
+        // OLEUI_CANCEL is 2; anything else is the window's error code.
+        if result == 2 {
             return Err("Cancelled".into());
+        }
+        if result != OLEUI_OK {
+            return Err(format!("Insert Object window error {result}"));
         }
         if !from_file {
             return Err(crate::tr!("ole-props", "create-new"));
