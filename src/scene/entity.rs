@@ -3333,11 +3333,25 @@ impl Scene {
         // large until the first CANNOSCALE change shrank them. (#1674)
         self.sync_annotation_scale_from_header();
         for obj in self.document.objects.values_mut() {
-            if let codec::objects::ObjectType::Layout(l) = obj {
-                if l.name != "Model" {
+            match obj {
+                codec::objects::ObjectType::Layout(l) if l.name != "Model" => {
                     crate::scene::apply_default_page_setup(l, "");
                     self.unopened_layouts.insert(l.name.clone());
                 }
+                // The codec's Standard multileader style is sized in inches;
+                // the metric template's is in millimetres. Left as-is, a new
+                // leader's arrow and landing were a fraction of a millimetre,
+                // invisible on a sheet. (#2027)
+                codec::objects::ObjectType::MultiLeaderStyle(s)
+                    if s.name.eq_ignore_ascii_case("Standard") =>
+                {
+                    s.text_height = 4.0;
+                    s.arrowhead_size = 4.0;
+                    s.landing_gap = 2.0;
+                    s.landing_distance = 8.0;
+                    s.break_gap_size = 3.75;
+                }
+                _ => {}
             }
         }
     }
