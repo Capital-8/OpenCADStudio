@@ -10,6 +10,33 @@ use crate::entities::text_support::{
 };
 use crate::t;
 
+/// How far an underlined text line sits above its underline, as a fraction of
+/// the text height. AutoCAD keeps the underlined line's baseline 0.2 × height
+/// above the landing that underlines it, whatever the landing gap.
+pub(crate) const MLEADER_UNDERLINE_GAP: f32 = 0.2;
+
+/// The text line the landing underlines, or `None` when the attachment draws
+/// no underline. The codec names values 5–8 one place off from AutoCAD's:
+///
+/// | value | codec variant                        | AutoCAD                |
+/// |-------|--------------------------------------|------------------------|
+/// | 5     | `BottomLine`                         | Underline bottom line  |
+/// | 6     | `BottomOfTopLineUnderlineBottomLine` | Underline top line     |
+/// | 7     | `BottomOfTopLineUnderlineTopLine`    | Bottom of top line     |
+/// | 8     | `BottomOfTopLineUnderlineAll`        | Underline all text     |
+///
+/// AutoCAD draws a single underline, the landing continued under the text.
+/// "Underline all text" underlines the remaining lines through `\L` in the
+/// text itself, not with extra rules.
+pub(crate) fn underlined_line(attach: TextAttachmentType, line_count: usize) -> Option<usize> {
+    match attach {
+        TextAttachmentType::BottomLine => Some(line_count.saturating_sub(1)),
+        TextAttachmentType::BottomOfTopLineUnderlineBottomLine
+        | TextAttachmentType::BottomOfTopLineUnderlineAll => Some(0),
+        _ => None,
+    }
+}
+
 /// Map MLEADER's vertical attachment enum onto the shared `MTextVAnchor`
 /// used by `layout_mtext`. Replaces the old `v_offset_for_attachment`
 /// (which inlined the offset math); the shared pipeline now derives the
@@ -71,23 +98,6 @@ pub(crate) fn active_vertical_attachment(ml: &MultiLeader) -> TextAttachmentType
                 ctx.text_right_attachment
             }
         }
-    }
-}
-
-/// Distance from a text line's baseline down to its underline, as a factor
-/// of the text height. Underline attachments put this underline on the
-/// landing, so the text sits that much above the leader.
-const UNDERLINE_DROP: f32 = 0.2;
-
-/// Text lines an attachment underlines (`None` when it draws no underline).
-/// Values follow the file format: 5 underlines the bottom line, 6 the top
-/// line, 8 every line; 7 attaches at the bottom of the top line without one.
-fn underlined_lines(attach: TextAttachmentType, line_count: usize) -> Option<Vec<usize>> {
-    match attach {
-        TextAttachmentType::BottomLine => Some(vec![line_count.saturating_sub(1)]),
-        TextAttachmentType::BottomOfTopLineUnderlineBottomLine => Some(vec![0]),
-        TextAttachmentType::BottomOfTopLineUnderlineAll => Some((0..line_count).collect()),
-        _ => None,
     }
 }
 
@@ -1894,6 +1904,8 @@ impl MultiLeaderTess for MultiLeader {
         // Which side the text grip sits on, recomputed every frame so the text
         // alignment and the landing mirror live when the arrow or text moves.
         let mut text_loc_w = ml.context.text_location;
+        // Where the first root's landing (dogleg) ends; an underline starts here.
+        let mut landing_end_w: Option<[f32; 2]> = None;
 
         // Scale the annotation-side offset around the fixed elbow.
         if annotative && (context_scale_correction - 1.0).abs() > 1.0e-6 {
@@ -2032,6 +2044,7 @@ impl MultiLeaderTess for MultiLeader {
                     })
                     .unwrap_or((text_sign_w, 0.0));
                 let landing_end = [(cp.x + ux * d) as f32, (cp.y + uy * d) as f32, cp_f[2]];
+                landing_end_w.get_or_insert([landing_end[0], landing_end[1]]);
                 points.push(nan);
                 points.push(cp_f);
                 points.push(landing_end);
@@ -2169,6 +2182,12 @@ impl MultiLeaderTess for MultiLeader {
                 rot += std::f32::consts::PI;
             }
 
+            let vertical_attach = active_vertical_attachment(ml);
+            let underline_lift = if underlined_line(vertical_attach, 1).is_some() {
+                height * MLEADER_UNDERLINE_GAP
+            } else {
+                0.0
+            };
             // Horizontal leaders attach at the connection point: the dogleg runs
             // horizontally at connection_point.y, and the text's attachment line
             // (bottom/middle/top per text_left_attachment) sits there. Anchor the
@@ -2177,14 +2196,7 @@ impl MultiLeaderTess for MultiLeader {
             // few percent because our MText line height need not match the writer's.
             // Only for UNROTATED text: an angled context stores its true anchor in
             // text_location, and snapping Y alone would shear it off its baseline.
-            // Underline attachments lift the text so its underline, not its
-            // baseline, lies on the landing.
-            let vertical_attach = active_vertical_attachment(ml);
-            let underline_lift = if underlined_lines(vertical_attach, 1).is_some() {
-                height * UNDERLINE_DROP
-            } else {
-                0.0
-            };
+            // An underlined line sits its underline gap above that connection.
             let local_ins_y = match ml.text_attachment_direction {
                 TextAttachmentDirectionType::Horizontal if rot.abs() < 1e-3 => ml
                     .context
@@ -2438,82 +2450,66 @@ impl MultiLeaderTess for MultiLeader {
             }
 
             // Underline attachments: the leader visually continues under the
-            // text, so draw a rule the full text width at each underlined line,
-            // in the leader's colour. The attached line's rule also spans the
-            // landing gap so it joins the landing.
-            {
-                if let Some(lines) = underlined_lines(vertical_attach, layout.line_count) {
-                    let mut pts: Vec<[f32; 3]> = Vec::new();
-                    let gap = (ml.context.landing_gap.max(0.0) as f32) * context_scale_correction;
-                    let leader_on_left = ml.context.leader_roots.first().map_or(true, |r| {
-                        let dx = (r.connection_point.x - ins.x) as f32;
-                        let dy = (r.connection_point.y - ins.y) as f32;
-                        dx * cos_r + dy * sin_r < 0.0
-                    });
-                    let attached = lines[0];
-                    for li in lines {
-                        let (mut x0, mut x1) =
-                            (-max_line_w * h_anchor, max_line_w * (1.0 - h_anchor));
-                        if li == attached {
-                            if leader_on_left {
-                                x0 -= gap;
-                            } else {
-                                x1 += gap;
-                            }
-                        }
-                        let y = v_offset - li as f32 * line_h - height * UNDERLINE_DROP;
-                        let (ax, ay) = (
-                            local_ins_x + x0 * cos_r - y * sin_r,
-                            local_ins_y + x0 * sin_r + y * cos_r,
-                        );
-                        let (bx, by) = (
-                            local_ins_x + x1 * cos_r - y * sin_r,
-                            local_ins_y + x1 * sin_r + y * cos_r,
-                        );
-                        if !pts.is_empty() {
-                            pts.push([f32::NAN; 3]);
-                        }
-                        pts.push([ax, ay, z]);
-                        pts.push([bx, by, z]);
-                    }
-                    wires.push(WireModel {
-                        bg_adapt: None,
-                        point_marker: None,
-                        taper_widths: Vec::new(),
-                        pattern_stations: Vec::new(),
-                        world_width: 0.0,
-                        depth_override: None,
-                        display_visible: true,
-                        snap_only: false,
-                        plot_visible: true,
-                        fill_is_3d: false,
-                        fill_is_2d_solid: false,
-                        render_instance: None,
-                        pick_tris: Vec::new(),
-                        pick_tris_low: Vec::new(),
-                        dash_from_start: false,
-                        dash_align_end: None,
-                        text_verts: Vec::new(),
-                        name: name.clone(),
-                        points: pts,
-                        points_low: Vec::new(),
-                        color: line_color,
-                        selected,
-                        aci: 0,
-                        pattern_length: 0.0,
-                        pattern: [0.0; 8],
-                        line_weight_px,
-                        snap_pts: vec![],
-                        tangent_geoms: vec![],
-                        key_vertices: vec![],
-                        aabb: WireModel::UNBOUNDED_AABB,
-                        plinegen: true,
-                        fill_tris: vec![],
-                        fill_tris_low: Vec::new(),
-
-                        ..Default::default()
-                    });
+            // text, so draw the landing on under the underlined line, from the
+            // landing's end across the gap to the far end of the widest line,
+            // in the leader's colour.
+            if let Some(li) = underlined_line(vertical_attach, layout.line_count) {
+                let (mut x0, mut x1) = (-max_line_w * h_anchor, max_line_w * (1.0 - h_anchor));
+                if let Some([x, y]) = landing_end_w {
+                    let lx = (x - local_ins_x) * cos_r + (y - local_ins_y) * sin_r;
+                    x0 = x0.min(lx);
+                    x1 = x1.max(lx);
                 }
+                let y = v_offset - li as f32 * line_h - height * MLEADER_UNDERLINE_GAP;
+                let pts = vec![
+                    [
+                        local_ins_x + x0 * cos_r - y * sin_r,
+                        local_ins_y + x0 * sin_r + y * cos_r,
+                        z,
+                    ],
+                    [
+                        local_ins_x + x1 * cos_r - y * sin_r,
+                        local_ins_y + x1 * sin_r + y * cos_r,
+                        z,
+                    ],
+                ];
+                wires.push(WireModel {
+                    bg_adapt: None,
+                    point_marker: None,
+                    taper_widths: Vec::new(),
+                    pattern_stations: Vec::new(),
+                    world_width: 0.0,
+                    depth_override: None,
+                    display_visible: true,
+                    snap_only: false,
+                    plot_visible: true,
+                    fill_is_3d: false,
+                    fill_is_2d_solid: false,
+                    render_instance: None,
+                    pick_tris: Vec::new(),
+                    pick_tris_low: Vec::new(),
+                    dash_from_start: false,
+                    dash_align_end: None,
+                    text_verts: Vec::new(),
+                    name: name.clone(),
+                    points: pts,
+                    points_low: Vec::new(),
+                    color: line_color,
+                    selected,
+                    aci: 0,
+                    pattern_length: 0.0,
+                    pattern: [0.0; 8],
+                    line_weight_px,
+                    snap_pts: vec![],
+                    tangent_geoms: vec![],
+                    key_vertices: vec![],
+                    aabb: WireModel::UNBOUNDED_AABB,
+                    plinegen: true,
+                    fill_tris: vec![],
+                    fill_tris_low: Vec::new(),
+
+                    ..Default::default()
+                });
             }
 
             // Text frame / background-fill rectangle in local frame, then rotated to WCS.
@@ -2846,6 +2842,173 @@ mod tests {
         }
         let right = underline.points[0][0].max(underline.points[1][0]);
         assert!((right - 8.0).abs() < 1.0e-3, "underline stops short of the landing: {right}");
+    }
+
+    use crate::scene::model::wire_model::WireModel;
+    use codec::entities::multileader::TextAttachmentType;
+
+    const H: f64 = 125.0;
+    const GAP: f64 = 25.0;
+    const DOGLEG: f64 = 18.0;
+
+    /// A text-right MLEADER whose landing runs from (0,0) to (DOGLEG,0).
+    fn landed_leader(text: &str, attach: TextAttachmentType) -> MultiLeader {
+        use codec::entities::multileader::{LeaderLine, LeaderRoot, TextAttachmentPointType};
+        use codec::types::Vector3;
+
+        let mut ml = MultiLeader::default();
+        ml.content_type = LeaderContentType::MText;
+        ml.path_type = MultiLeaderPathType::StraightLineSegments;
+        ml.context.text_string = text.to_string();
+        ml.context.text_height = H;
+        ml.context.landing_gap = GAP;
+        ml.context.text_attachment_point = TextAttachmentPointType::Left;
+        ml.context.text_left_attachment = attach;
+        ml.context.text_location = Vector3::new(DOGLEG + GAP, 1.2 * H, 0.0);
+        let mut line = LeaderLine::default();
+        line.points = vec![Vector3::new(-341.0, -387.0, 0.0)];
+        let mut root = LeaderRoot::default();
+        root.connection_point = Vector3::new(0.0, 0.0, 0.0);
+        root.direction = Vector3::new(1.0, 0.0, 0.0);
+        root.landing_distance = DOGLEG;
+        root.lines = vec![line];
+        ml.context.leader_roots = vec![root];
+        ml
+    }
+
+    fn tess(ml: &MultiLeader) -> Vec<WireModel> {
+        ml.tessellate(
+            &CadDocument::default(),
+            codec::Handle::default(),
+            false,
+            [1.0, 1.0, 1.0, 1.0],
+            1.0,
+            1.0,
+            None,
+            None,
+            None,
+            None,
+            None,
+            [0.0, 0.0, 0.0, 1.0],
+        )
+    }
+
+    fn text_bottom(wires: &[WireModel]) -> f32 {
+        wires
+            .iter()
+            .flat_map(|w| w.text_verts.iter().map(|v| v.pos[1]))
+            .fold(f32::MAX, f32::min)
+    }
+
+    /// The landing's underline: the only bare two-point rule.
+    fn underline(wires: &[WireModel]) -> Option<[[f32; 3]; 2]> {
+        wires
+            .iter()
+            .find(|w| w.points.len() == 2 && w.text_verts.is_empty() && w.fill_tris.is_empty())
+            .map(|w| [w.points[0], w.points[1]])
+    }
+
+    #[test]
+    fn test_underline_attachment_runs_from_landing_end() {
+        // Measured on AutoCAD 2025 by exploding an MLEADER with "underline"
+        // attachment: the underline is the landing continued under the text,
+        // from the dogleg's end to the far end of the text, and the text's
+        // baseline sits 0.2 × height above it.
+        let (h, gap, dogleg) = (H, GAP, DOGLEG);
+        let ml = landed_leader(
+            "fsfsdfs",
+            TextAttachmentType::BottomOfTopLineUnderlineBottomLine,
+        );
+        let wires = tess(&ml);
+
+        // Single-line text: "bottom of bottom line" puts the same baseline on
+        // the landing without an underline, so the lift is the difference.
+        let plain = landed_leader("fsfsdfs", TextAttachmentType::BottomOfBottomLine);
+        let lift = text_bottom(&wires) - text_bottom(&tess(&plain));
+        assert!(
+            (lift - 0.2 * h as f32).abs() < 1.0e-2,
+            "underlined text sits 0.2 × height above the landing, got {lift}"
+        );
+
+        let [a, b] = underline(&wires).expect("an underline rule");
+        assert!(
+            (a[0] - dogleg as f32).abs() < 1.0e-3,
+            "underline starts at the landing end, got x = {}",
+            a[0]
+        );
+        assert!(
+            a[1].abs() < 1.0e-3 && b[1].abs() < 1.0e-3,
+            "underline runs at the landing level, got y = {} / {}",
+            a[1],
+            b[1]
+        );
+        assert!(b[0] > (dogleg + gap) as f32, "underline spans the text");
+    }
+
+    #[test]
+    fn test_underline_attachment_values_match_autocad() {
+        // AutoCAD 2025, three-line text, one MLEADER per attachment value
+        // (see `underlined_line`): 5 underlines the bottom line, 6 and 8 the
+        // top line, 7 draws no underline. The underlined line meets the
+        // landing, so the text sits above it (5) or hangs below it (6, 8).
+        let text = "rand unu\\Prand doi\\Prand trei";
+        let cases = [
+            (TextAttachmentType::BottomLine, true, true),
+            (
+                TextAttachmentType::BottomOfTopLineUnderlineBottomLine,
+                true,
+                false,
+            ),
+            (
+                TextAttachmentType::BottomOfTopLineUnderlineTopLine,
+                false,
+                false,
+            ),
+            (TextAttachmentType::BottomOfTopLineUnderlineAll, true, false),
+        ];
+        for (attach, underlined, text_above) in cases {
+            let wires = tess(&landed_leader(text, attach));
+            match underline(&wires) {
+                Some([a, b]) => {
+                    assert!(underlined, "{attach:?} must not draw an underline");
+                    assert!(
+                        (a[0] - DOGLEG as f32).abs() < 1.0e-3 && a[1].abs() < 1.0e-3,
+                        "{attach:?}: underline starts at the landing end, got {a:?}"
+                    );
+                    assert!(b[1].abs() < 1.0e-3, "{attach:?}: underline stays level");
+                }
+                None => assert!(!underlined, "{attach:?} must draw an underline"),
+            }
+            let bottom = text_bottom(&wires);
+            if text_above {
+                assert!(
+                    bottom > 0.0,
+                    "{attach:?}: text sits above the landing, got {bottom}"
+                );
+            } else {
+                assert!(
+                    bottom < -H as f32,
+                    "{attach:?}: text hangs below the landing, got {bottom}"
+                );
+            }
+        }
+    }
+}
+
+/// Put the text on the right (`to_right`) or left of its landing: the text
+/// block attaches by its near edge, and left- or right-justified text turns
+/// to read away from the leader. Centred text stays centred.
+pub(crate) fn set_mleader_text_side(ml: &mut MultiLeader, to_right: bool) {
+    use codec::entities::multileader::TextAttachmentPointType;
+    let (attachment, alignment) = if to_right {
+        (TextAttachmentPointType::Left, TextAlignmentType::Left)
+    } else {
+        (TextAttachmentPointType::Right, TextAlignmentType::Right)
+    };
+    ml.text_attachment_point = attachment;
+    ml.context.text_attachment_point = attachment;
+    if ml.context.text_alignment != TextAlignmentType::Center {
+        ml.context.text_alignment = alignment;
     }
 }
 
