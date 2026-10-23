@@ -930,9 +930,9 @@ impl OpenCADStudio {
     /// `panel` floating at workspace point `p`, held at `grab` from its
     /// top-left corner (kept on the workspace). Its title bar stays on `bar`
     /// and only moves to the side whose edge the frame touches: the docked
-    /// pallets there, or, with docking off for the panel, the workspace edge.
-    /// An edge without docked pallets moves it only once the drop preview
-    /// shows there (see `dock_drag_move`).
+    /// pallets there (unless docking is off for the panel), else the
+    /// workspace edge. A drop preview on an edge moves it too (see
+    /// `dock_drag_move`).
     pub(crate) fn dock_float_target(
         &self,
         panel: crate::ui::dock::PanelId,
@@ -948,16 +948,15 @@ impl OpenCADStudio {
         let right = x + w + crate::ui::dock::DOCK_FLOAT_BAR_W;
         let docking = self.dock.float_rect(panel).is_none_or(|f| f.docking);
         // How far in from the workspace edge `side` the frame has to come to
-        // touch it, if anything there counts.
-        let reach = |side: DockSide| -> Option<f32> {
-            if !docking {
-                return Some(0.0);
+        // touch it: the docked pallets there, else the edge itself.
+        let reach = |side: DockSide| -> f32 {
+            match self.dock_shown_group(side) {
+                Some(_) if docking => crate::ui::dock::DOCK_STRIP_W + self.dock_column_width(side),
+                _ => 0.0,
             }
-            self.dock_shown_group(side)?;
-            Some(crate::ui::dock::DOCK_STRIP_W + self.dock_column_width(side))
         };
-        let touches_left = reach(DockSide::Left).is_some_and(|r| x <= r);
-        let touches_right = reach(DockSide::Right).is_some_and(|r| right >= ww - r);
+        let touches_left = x <= reach(DockSide::Left);
+        let touches_right = right >= ww - reach(DockSide::Right);
         let bar = match (touches_left, touches_right) {
             (true, false) => DockSide::Left,
             (false, true) => DockSide::Right,

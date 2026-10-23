@@ -713,9 +713,9 @@ impl OpenCADStudio {
             .and_then(|(_, g, _)| g);
         let marks_side = match target {
             DropTarget::Edge { side, .. } | DropTarget::Join { side, .. } => Some(side),
-            DropTarget::Float { x, y, .. } => {
+            DropTarget::Float { x, y, bar } => {
                 let (w, h) = self.dock_float_size(id);
-                layers.push(place_at(dock_ghost(id, w + DOCK_FLOAT_BAR_W, h), x, y));
+                layers.push(place_at(dock_float_ghost(id, w, h, bar), x, y));
                 None
             }
         };
@@ -1233,6 +1233,47 @@ fn dock_ghost(id: crate::ui::dock::PanelId, w: f32, h: f32) -> Element<'static, 
             }
         })
         .into()
+}
+
+/// The drop ghost of a floating landing: [`dock_ghost`] beside a vertical
+/// title bar on `bar`, so the side the title lands on shows while dragging.
+fn dock_float_ghost(
+    id: crate::ui::dock::PanelId,
+    w: f32,
+    h: f32,
+    bar: crate::app::config::DockSide,
+) -> Element<'static, Message> {
+    let title = canvas(crate::ui::dock::VerticalLabel {
+        text: t!(id.title()).into_owned(),
+    })
+    .width(Fill)
+    .height(Fill);
+    let strip = container(
+        column![
+            container(title).width(Fill).height(Fill).padding([6, 0]),
+            container(crate::ui::icons::themed(id.icon(), 16.0)).center_x(Fill),
+        ]
+        .padding([4, 0]),
+    )
+    .width(Length::Fixed(DOCK_FLOAT_BAR_W))
+    .height(Length::Fixed(h.max(1.0)))
+    .style(|theme: &Theme| {
+        let palette = theme.palette();
+        container::Style {
+            background: Some(Background::Color(palette.primary.weak.color)),
+            border: Border {
+                color: palette.primary.base.color,
+                width: 2.0,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        }
+    });
+    let body = dock_ghost(id, w, h);
+    match bar {
+        crate::app::config::DockSide::Left => row![strip, body].into(),
+        crate::app::config::DockSide::Right => row![body, strip].into(),
+    }
 }
 
 /// Position `content` with its top-left corner at workspace point (`x`, `y`).

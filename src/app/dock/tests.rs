@@ -531,7 +531,7 @@ fn floating_title_bar_only_flips_against_docked_pallets() {
 }
 
 #[test]
-fn floating_title_bar_without_docked_pallets_flips_on_the_drop_preview() {
+fn floating_title_bar_without_docked_pallets_flips_at_the_screen_edge() {
     use crate::app::config::DockSide;
     use crate::ui::dock::{DockMsg, DropTarget, FloatPanel, PanelId};
     let mut app = dock_app();
@@ -542,18 +542,50 @@ fn floating_title_bar_without_docked_pallets_flips_on_the_drop_preview() {
         bar: DockSide::Right,
         ..FloatPanel::new(PanelId::Properties, 400.0, 100.0, 250.0, 300.0)
     });
-    // The frame at the screen's left edge, pointer outside the edge zone:
-    // no preview, no flip.
+    // Near the left edge, not touching it: no flip.
     let target = drag_panel(
         &mut app,
         PanelId::Properties,
         iced::Point::new(500.0, 110.0),
-        iced::Point::new(100.0, 110.0),
+        iced::Point::new(150.0, 110.0),
     );
     assert!(
-        matches!(target, Some(DropTarget::Float { x, bar: DockSide::Right, .. }) if x == 0.0),
+        matches!(target, Some(DropTarget::Float { x, bar: DockSide::Right, .. }) if x == 50.0),
         "{target:?}"
     );
+    // The frame touching the screen's left edge flips it, before the
+    // pointer reaches the edge zone (no drop preview yet).
+    let target = drag_panel(
+        &mut app,
+        PanelId::Properties,
+        iced::Point::new(150.0, 110.0),
+        iced::Point::new(90.0, 110.0),
+    );
+    assert!(
+        matches!(target, Some(DropTarget::Float { x, bar: DockSide::Left, .. }) if x == 0.0),
+        "{target:?}"
+    );
+    // Against the right edge's docked pallets it flips back.
+    let target = drag_panel(
+        &mut app,
+        PanelId::Properties,
+        iced::Point::new(100.0, 110.0),
+        iced::Point::new(1150.0, 110.0),
+    );
+    assert!(
+        matches!(
+            target,
+            Some(DropTarget::Float {
+                bar: DockSide::Right,
+                ..
+            })
+        ),
+        "{target:?}"
+    );
+    app.dock.float(FloatPanel {
+        bar: DockSide::Right,
+        ..FloatPanel::new(PanelId::Properties, 0.0, 100.0, 250.0, 300.0)
+    });
     // The pointer in the edge zone shows the preview; backing out of it
     // keeps the flipped side.
     let _ = app.on_dock(DockMsg::DockGrab(PanelId::Properties));
