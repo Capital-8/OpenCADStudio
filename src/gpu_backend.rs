@@ -485,15 +485,15 @@ fn failover_reason(failed: &[&String], excluded: &[String], chosen: &str) -> Str
 pub fn fallback_notice(reason: &str) -> String {
     format!(
         "Graphics compatibility mode: {reason}. \
-         If drawings render slowly, update the GPU driver; \
-         override with --backend <dx12|vulkan|gl>."
+         If drawings render slowly, update the GPU driver, \
+         or choose another backend in Options > Graphics."
     )
 }
 
 /// Notice text when the packed compatibility renderer was auto-enabled.
 pub fn compat_notice() -> String {
     "Older GPU detected: using the packed compatibility renderer \
-     (no shader storage buffers). Override with --compat-renderer / --backend."
+     (no shader storage buffers). Change it in Options > Graphics."
         .to_string()
 }
 
@@ -1310,7 +1310,7 @@ mod tests {
         let reason = d.reason.unwrap();
         assert!(reason.contains("dx12"), "{reason}");
         let notice = fallback_notice(&reason);
-        assert!(notice.contains("--backend"), "{notice}");
+        assert!(notice.contains("Options > Graphics"), "{notice}");
     }
 
     #[test]
