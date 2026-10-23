@@ -802,6 +802,14 @@ impl OpenCADStudio {
 
             // ── FLATTEN — move selected (or all) entities to Z=0 ─────────────
             "FLATTEN" => {
+                // Without a selection, ask for the objects first.
+                if self.tabs[i].scene.selected_entities().is_empty() {
+                    use crate::modules::draw::select::SelectObjectsCommand;
+                    let cmd = SelectObjectsCommand::new("FLATTEN");
+                    self.command_line.push_info(&cmd.prompt());
+                    self.tabs[i].active_cmd = Some(Box::new(cmd));
+                    return Some(Task::none());
+                }
                 let scene = &self.tabs[i].scene;
                 let handles = crate::modules::draw::modify::flatten::collect_flatten_handles(scene);
                 if handles.is_empty() {
