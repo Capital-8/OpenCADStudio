@@ -22,6 +22,8 @@ mod inquiry;
 mod layerprops;
 mod layers;
 mod model_import;
+mod ole;
+pub(crate) use ole::{ole_quality, set_ole_quality};
 mod pc_colormap;
 mod pc_extract;
 mod pdf_dialogs;
@@ -534,6 +536,9 @@ impl OpenCADStudio {
             return Some(t);
         }
         if let Some(t) = self.dispatch_attdef(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_ole(cmd, i) {
             return Some(t);
         }
         if let Some(t) = self.dispatch_sheet_set(cmd, i) {

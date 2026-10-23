@@ -256,6 +256,8 @@ pub(super) struct DocumentTab {
     /// handle numbering, so an app-global set keyed by raw handle leaks one
     /// tab's opt-out into another tab reusing the value (#47).
     pub(super) props_asym_scale: std::collections::HashSet<u64>,
+    /// OLE objects' scale base and aspect lock, by handle.
+    pub(super) ole_frames: std::collections::HashMap<u64, crate::entities::ole2frame::FrameState>,
     /// Node graph shown by the command line's graph button.
     pub(super) graph: crate::ui::node_graph::Graph,
     /// Currently active UCS. `None` means WCS (identity transform).
@@ -782,6 +784,7 @@ impl DocumentTab {
             block_test: None,
             active_layer: "0".to_string(),
             props_asym_scale: std::collections::HashSet::new(),
+            ole_frames: std::collections::HashMap::new(),
             graph: Default::default(),
             active_ucs: None,
             sketch_session: None,

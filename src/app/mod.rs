@@ -4671,6 +4671,8 @@ pub enum Message {
     ImageEmbedPick,
     /// Result of the embedded-image picker: bytes prepared for an OLE2FRAME.
     ImageEmbedPickResult(Result<crate::io::ole_embed::EmbeddedImage, String>),
+    /// INSERTOBJ: the picture chosen in the Insert Object window.
+    InsertObjectResult(Result<crate::io::ole_embed::EmbeddedImage, String>),
     // ── Missing fonts ─────────────────────────────────────────────────────
     /// Download the offered missing fonts from the community repository.
     MissingFontsDownload,
