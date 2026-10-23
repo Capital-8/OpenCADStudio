@@ -3111,7 +3111,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  Zadejte poloměr oblouku:
     .chord-length = Délka tětivy
 
-
 modify =
     .add-vertex = Přidat vrchol
     .closed-cross = Uzavřený kříž
@@ -4557,7 +4556,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2-bodový
     .cube = Krychle
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Vyberte objekty k odstranění:
@@ -6811,6 +6809,88 @@ pdf-password =
         { $path }
         Tento soubor PDF nelze otevřít.
         Je šifrovaný a vyžaduje heslo.
+
+calc =
+    .invalid-number = neplatné číslo '__ocs_fmt_0__'
+    .unexpected-character = neočekávaný znak '__ocs_fmt_0__'
+    .empty = prázdný výraz
+    .too-deep = výraz je příliš hluboko vnořený
+    .missing-paren = chybí ')'
+    .missing-bracket = chybí ']'
+    .unexpected-end = neočekávaný konec výrazu
+    .point-coordinates = bod potřebuje 2 nebo 3 souřadnice
+    .unknown-unit = neznámá jednotka '__ocs_fmt_0__'
+    .unknown-variable = Neznámá proměnná $__ocs_fmt_0__
+    .no-ans = zatím žádný předchozí výsledek
+    .division-by-zero = dělení nulou
+    .expected-number = očekáváno číslo, nalezen bod
+    .not-real = výsledek není reálné číslo
+    .point-and-number = '__ocs_fmt_0__' nelze použít na bod a číslo
+    .point-times-point = dva body nelze násobit
+    .arg-count = __ocs_fmt_0__() očekává argumentů: __ocs_fmt_1__, nalezeno: __ocs_fmt_2__
+    .expected-point = očekáván bod, nalezeno číslo
+    .unknown-function = neznámá funkce '__ocs_fmt_0__'
+    .too-long = výraz je příliš dlouhý
+    .var-name-after-dollar = Za $ zadejte název proměnné
+    .var-assign-needs-dollar = Názvy proměnných začínají znakem $: $__ocs_fmt_0__ = …
+    .var-needs-dollar = Proměnné začínají znakem $: použijte $__ocs_fmt_0__
+    .unknown-name = Neznámý název __ocs_fmt_0__
+    .getvar-needs-name = getvar vyžaduje název systémové proměnné, např. getvar(luprec)
+    .getvar-not-number = getvar(__ocs_fmt_0__) není číslo
+    .unknown-sysvar = Neznámá systémová proměnná __ocs_fmt_0__
+    .leave-out-assignment = Vynechte část $nazev =
+
+quickcalc =
+    .trigonometry = Goniometrie
+    .function = Funkce
+    .type-number-first = Nejprve zadejte číslo
+    .clear-memory = Vymazat celou paměť
+    .title = QuickCalc
+    .get-point = Získat bod
+    .copy-result = Kopírovat výsledek
+    .point-prompt = Zadejte bod ve výkresu
+    .first-prompt = Zadejte první bod ve výkresu
+    .second-prompt = Zadejte druhý bod ve výkresu
+    .step = krok __ocs_fmt_0__ z __ocs_fmt_1__
+    .placeholder-first = Výraz, např. 2*300 + 90
+    .placeholder = Výraz, nebo začněte znakem * pro použití ans
+    .sets = nastaví $__ocs_fmt_0__
+    .in-unit = v __ocs_fmt_0__
+    .variables = Proměnné
+    .swap-units = Prohodit jednotky
+    .from = Z
+    .to = Na
+    .new-variable = Nová proměnná
+    .copied = Zkopírováno: __ocs_fmt_0__
+    .sent = __ocs_fmt_0__ odesláno do příkazového řádku
+    .nothing-to-copy = Zatím není co kopírovat
+    .nothing-to-paste = Zatím není co vložit
+    .nothing-to-store = Zatím není co uložit
+    .memory-numbers-only = Paměť uchovává pouze čísla
+    .finish-command = Nejprve dokončete aktuální příkaz
+    .cmd-point = QuickCalc  Zadejte bod:
+    .cmd-first = QuickCalc  Zadejte první bod:
+    .cmd-second = QuickCalc  Zadejte druhý bod:
+    .var-is-function = $__ocs_fmt_0__ je funkce. Upravte ji v části Proměnné
+    .var-exists = $__ocs_fmt_0__ již existuje
+    .var-uses-itself = Funkce nemůže používat sama sebe
+    .var-name-rule = Název začněte písmenem; použijte písmena, číslice a _
+    .var-name-category = Pojmenujte novou kategorii
+    .var-type-value = Zadejte hodnotu
+    .var-type-expression = Zadejte výraz
+    .var-deleted = Odstraněno: $__ocs_fmt_0__
+    .edit-variable = Upravit proměnnou
+    .delete-variable = Odstranit proměnnou
+    .return-variable = Vrátit proměnnou do vstupu
+    .new-category-chip = + Nová
+    .new-category = Nová kategorie
+    .category-placeholder = např. Schodiště
+    .description-placeholder = Volitelné, zobrazí se jako popisek
+    .stored-fixed = uloženo jako pevná hodnota
+    .recalculated = nyní, přepočítá se při každém použití
+    .function-expr = Funkce: __ocs_fmt_0__
+    .double-click-insert = Dvojitým kliknutím vložíte
+    .variables-hint = Dvojitým kliknutím vložíte. Zápisem $nazev = hodnota přidáte i konstantu.
 
 dash-command =
     .layer-option = -LAYER  Zadejte volbu [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

@@ -3725,7 +3725,6 @@ annotate =
     .text-specify-second-endpoint = TEXT  ກໍານົດຈຸດປາຍທີສອງ:
     .tolerance-specify-insertion-point = TOLERANCE  ກໍານົດຈຸດແຊກ:
 
-
 insert =
     .pastespec-specify-insertion-point = PASTESPEC  ກຳນົດຈຸດແຊກ:
     .pastespec-paste-as = PASTESPEC  ວາງເປັນ [Objects/Block/Text]:
@@ -6814,6 +6813,88 @@ pdf-password =
         { $path }
         ບໍ່ສາມາດເປີດໄຟລ໌ PDF ນີ້ໄດ້.
         ມັນຖືກເຂົ້າລະຫັດ ແລະ ຕ້ອງໃຊ້ລະຫັດຜ່ານ.
+
+calc =
+    .invalid-number = ຕົວເລກບໍ່ຖືກຕ້ອງ '__ocs_fmt_0__'
+    .unexpected-character = ຕົວອັກສອນທີ່ບໍ່ຄາດຄິດ '__ocs_fmt_0__'
+    .empty = ສຳນວນຫວ່າງເປົ່າ
+    .too-deep = ສຳນວນຊ້ອນກັນເລິກເກີນໄປ
+    .missing-paren = ຂາດ ')'
+    .missing-bracket = ຂາດ ']'
+    .unexpected-end = ສຳນວນສິ້ນສຸດໂດຍບໍ່ຄາດຄິດ
+    .point-coordinates = ຈຸດຕ້ອງການ 2 ຫຼື 3 ພິກັດ
+    .unknown-unit = ຫົວໜ່ວຍທີ່ບໍ່ຮູ້ຈັກ '__ocs_fmt_0__'
+    .unknown-variable = ຕົວປ່ຽນທີ່ບໍ່ຮູ້ຈັກ $__ocs_fmt_0__
+    .no-ans = ຍັງບໍ່ມີຜົນລັບກ່ອນໜ້າ
+    .division-by-zero = ການຫານດ້ວຍສູນ
+    .expected-number = ຕ້ອງການຕົວເລກ, ພົບຈຸດ
+    .not-real = ຜົນລັບບໍ່ແມ່ນຈຳນວນຈິງ
+    .point-and-number = '__ocs_fmt_0__' ໃຊ້ກັບຈຸດ ແລະ ຕົວເລກບໍ່ໄດ້
+    .point-times-point = ບໍ່ສາມາດຄູນສອງຈຸດໄດ້
+    .arg-count = __ocs_fmt_0__() ຕ້ອງການ __ocs_fmt_1__ ອາກິວເມັນ, ພົບ __ocs_fmt_2__
+    .expected-point = ຕ້ອງການຈຸດ, ພົບຕົວເລກ
+    .unknown-function = ຟັງຊັນທີ່ບໍ່ຮູ້ຈັກ '__ocs_fmt_0__'
+    .too-long = ສຳນວນຍາວເກີນໄປ
+    .var-name-after-dollar = ພິມຊື່ຕົວປ່ຽນຫຼັງ $
+    .var-assign-needs-dollar = ຊື່ຕົວປ່ຽນເລີ່ມດ້ວຍ $: $__ocs_fmt_0__ = …
+    .var-needs-dollar = ຕົວປ່ຽນເລີ່ມດ້ວຍ $: ໃຊ້ $__ocs_fmt_0__
+    .unknown-name = ຊື່ທີ່ບໍ່ຮູ້ຈັກ __ocs_fmt_0__
+    .getvar-needs-name = getvar ຕ້ອງການຊື່ຕົວປ່ຽນລະບົບ ເຊັ່ນ getvar(luprec)
+    .getvar-not-number = getvar(__ocs_fmt_0__) ບໍ່ແມ່ນຕົວເລກ
+    .unknown-sysvar = ຕົວປ່ຽນລະບົບທີ່ບໍ່ຮູ້ຈັກ __ocs_fmt_0__
+    .leave-out-assignment = ເອົາສ່ວນ $name = ອອກ
+
+quickcalc =
+    .trigonometry = ຕີໂກນະມິຕິ
+    .function = ຟັງຊັນ
+    .type-number-first = ພິມຕົວເລກກ່ອນ
+    .clear-memory = ລຶບໜ່ວຍຄວາມຈຳທັງໝົດ
+    .title = QuickCalc
+    .get-point = ເອົາຈຸດ
+    .copy-result = ຄັດລອກຜົນ
+    .point-prompt = ກຳນົດຈຸດໃນຮູບແຕ້ມ
+    .first-prompt = ກຳນົດຈຸດທຳອິດໃນຮູບແຕ້ມ
+    .second-prompt = ກຳນົດຈຸດທີສອງໃນຮູບແຕ້ມ
+    .step = ຂັ້ນຕອນ __ocs_fmt_0__ ຈາກ __ocs_fmt_1__
+    .placeholder-first = ນິພົດ, ເຊັ່ນ 2*300 + 90
+    .placeholder = ນິພົດ, ຫຼື ເລີ່ມດ້ວຍ * ເພື່ອໃຊ້ ans ຄືນ
+    .sets = ຕັ້ງ $__ocs_fmt_0__
+    .in-unit = ເປັນ __ocs_fmt_0__
+    .variables = ຕົວປ່ຽນ
+    .swap-units = ສະຫຼັບຫົວໜ່ວຍ
+    .from = ຈາກ
+    .to = ເປັນ
+    .new-variable = ຕົວປ່ຽນໃໝ່
+    .copied = ຄັດລອກ __ocs_fmt_0__ ແລ້ວ
+    .sent = ສົ່ງ __ocs_fmt_0__ ໄປແຖວຄຳສັ່ງແລ້ວ
+    .nothing-to-copy = ຍັງບໍ່ມີຫຍັງໃຫ້ຄັດລອກ
+    .nothing-to-paste = ຍັງບໍ່ມີຫຍັງໃຫ້ວາງ
+    .nothing-to-store = ຍັງບໍ່ມີຫຍັງໃຫ້ເກັບ
+    .memory-numbers-only = ໜ່ວຍຄວາມຈຳເກັບໄດ້ສະເພາະຕົວເລກ
+    .finish-command = ໃຫ້ສຳເລັດຄຳສັ່ງປັດຈຸບັນກ່ອນ
+    .cmd-point = QuickCalc  ກຳນົດຈຸດ:
+    .cmd-first = QuickCalc  ກຳນົດຈຸດທຳອິດ:
+    .cmd-second = QuickCalc  ກຳນົດຈຸດທີສອງ:
+    .var-is-function = $__ocs_fmt_0__ ເປັນຟັງຊັນ. ແກ້ໄຂໃນ ຕົວປ່ຽນ
+    .var-exists = $__ocs_fmt_0__ ມີຢູ່ແລ້ວ
+    .var-uses-itself = ຟັງຊັນບໍ່ສາມາດໃຊ້ຕົວມັນເອງໄດ້
+    .var-name-rule = ເລີ່ມຊື່ດ້ວຍຕົວອັກສອນ; ໃຊ້ຕົວອັກສອນ, ຕົວເລກ ແລະ _
+    .var-name-category = ຕັ້ງຊື່ໝວດໝູ່ໃໝ່
+    .var-type-value = ພິມຄ່າ
+    .var-type-expression = ພິມນິພົດ
+    .var-deleted = ລຶບ $__ocs_fmt_0__ ແລ້ວ
+    .edit-variable = ແກ້ໄຂຕົວປ່ຽນ
+    .delete-variable = ລຶບຕົວປ່ຽນ
+    .return-variable = ສົ່ງຕົວປ່ຽນຄືນສູ່ຊ່ອງປ້ອນ
+    .new-category-chip = + ໃໝ່
+    .new-category = ໝວດໝູ່ໃໝ່
+    .category-placeholder = ເຊັ່ນ ຂັ້ນໄດ
+    .description-placeholder = ບໍ່ບັງຄັບ, ສະແດງເປັນຄຳແນະນຳ
+    .stored-fixed = ເກັບເປັນຄ່າຄົງທີ່
+    .recalculated = ດຽວນີ້, ຄຳນວນຄືນທຸກຄັ້ງທີ່ໃຊ້
+    .function-expr = ຟັງຊັນ: __ocs_fmt_0__
+    .double-click-insert = ຄລິກສອງເທື່ອເພື່ອແຊກ
+    .variables-hint = ຄລິກສອງເທື່ອເພື່ອແຊກ. ການພິມ $name = ຄ່າ ຈະເພີ່ມຄ່າຄົງທີ່ນຳ.
 
 dash-command =
     .layer-option = -LAYER  ປ້ອນຕົວເລືອກ [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

@@ -3143,6 +3143,15 @@ impl OpenCADStudio {
         } else {
             Subscription::none()
         };
+        // Expire the QuickCalc status message ("Copied 870").
+        let quick_calc_flash = if self.quick_calc.flash.is_some() {
+            iced::time::every(crate::ui::window::quick_calc::QuickCalcPalette::flash_interval())
+                .map(|_| {
+                    Message::QuickCalc(crate::ui::window::quick_calc::QuickCalcMsg::FlashExpired)
+                })
+        } else {
+            Subscription::none()
+        };
         // Blink the MText preview caret while the editor is open.
         let caret_blink = if self.mtext_editor.is_some() {
             iced::time::every(std::time::Duration::from_millis(530))
@@ -3431,6 +3440,7 @@ impl OpenCADStudio {
             thumbnail_capture,
             capture_frame,
             caret_blink,
+            quick_calc_flash,
             web_fonts,
             autosave,
             plugin_drain,

@@ -3111,7 +3111,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  Määritä kaaren säde:
     .chord-length = Jänteen pituus
 
-
 modify =
     .add-vertex = Lisää kärkipiste
     .closed-cross = Suljettu risteys
@@ -4559,7 +4558,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2-piste
     .cube = Kuutio
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Valitse poistettavat objektit:
@@ -6811,6 +6809,88 @@ pdf-password =
         { $path }
         Tätä PDF-tiedostoa ei voi avata.
         Se on salattu ja vaatii salasanan.
+
+calc =
+    .invalid-number = virheellinen luku '__ocs_fmt_0__'
+    .unexpected-character = odottamaton merkki '__ocs_fmt_0__'
+    .empty = tyhjä lauseke
+    .too-deep = lauseke on sisäkkäistetty liian syvälle
+    .missing-paren = ')' puuttuu
+    .missing-bracket = ']' puuttuu
+    .unexpected-end = lauseke päättyi odottamatta
+    .point-coordinates = pisteellä on oltava 2 tai 3 koordinaattia
+    .unknown-unit = tuntematon yksikkö '__ocs_fmt_0__'
+    .unknown-variable = Tuntematon muuttuja $__ocs_fmt_0__
+    .no-ans = edellistä tulosta ei vielä ole
+    .division-by-zero = jako nollalla
+    .expected-number = odotettiin lukua, löytyi piste
+    .not-real = tulos ei ole reaaliluku
+    .point-and-number = '__ocs_fmt_0__' ei toimi pisteen ja luvun välillä
+    .point-times-point = kahta pistettä ei voi kertoa keskenään
+    .arg-count = __ocs_fmt_0__() odottaa __ocs_fmt_1__ argumenttia, löytyi __ocs_fmt_2__
+    .expected-point = odotettiin pistettä, löytyi luku
+    .unknown-function = tuntematon funktio '__ocs_fmt_0__'
+    .too-long = lauseke on liian pitkä
+    .var-name-after-dollar = Kirjoita muuttujan nimi $-merkin jälkeen
+    .var-assign-needs-dollar = Muuttujien nimet alkavat $-merkillä: $__ocs_fmt_0__ = …
+    .var-needs-dollar = Muuttujat alkavat $-merkillä: käytä $__ocs_fmt_0__
+    .unknown-name = Tuntematon nimi __ocs_fmt_0__
+    .getvar-needs-name = getvar tarvitsee järjestelmämuuttujan nimen, esim. getvar(luprec)
+    .getvar-not-number = getvar(__ocs_fmt_0__) ei ole luku
+    .unknown-sysvar = Tuntematon järjestelmämuuttuja __ocs_fmt_0__
+    .leave-out-assignment = Jätä pois osa $nimi =
+
+quickcalc =
+    .trigonometry = Trigonometria
+    .function = Funktio
+    .type-number-first = Kirjoita ensin luku
+    .clear-memory = Tyhjennä koko muisti
+    .title = QuickCalc
+    .get-point = Hae piste
+    .copy-result = Kopioi tulos
+    .point-prompt = Määritä piste piirustuksessa
+    .first-prompt = Määritä ensimmäinen piste piirustuksessa
+    .second-prompt = Määritä toinen piste piirustuksessa
+    .step = vaihe __ocs_fmt_0__/__ocs_fmt_1__
+    .placeholder-first = Lauseke, esim. 2*300 + 90
+    .placeholder = Lauseke, tai aloita merkillä * käyttääksesi ans-arvoa
+    .sets = asettaa $__ocs_fmt_0__
+    .in-unit = yksikössä __ocs_fmt_0__
+    .variables = Muuttujat
+    .swap-units = Vaihda yksiköt
+    .from = Mistä
+    .to = Mihin
+    .new-variable = Uusi muuttuja
+    .copied = Kopioitu __ocs_fmt_0__
+    .sent = __ocs_fmt_0__ lähetetty komentoriville
+    .nothing-to-copy = Ei vielä mitään kopioitavaa
+    .nothing-to-paste = Ei vielä mitään liitettävää
+    .nothing-to-store = Ei vielä mitään tallennettavaa
+    .memory-numbers-only = Muistiin voi tallentaa vain lukuja
+    .finish-command = Lopeta ensin nykyinen komento
+    .cmd-point = QuickCalc  Määritä piste:
+    .cmd-first = QuickCalc  Määritä ensimmäinen piste:
+    .cmd-second = QuickCalc  Määritä toinen piste:
+    .var-is-function = $__ocs_fmt_0__ on funktio. Muokkaa sitä kohdassa Muuttujat
+    .var-exists = $__ocs_fmt_0__ on jo olemassa
+    .var-uses-itself = Funktio ei voi käyttää itseään
+    .var-name-rule = Aloita nimi kirjaimella; käytä kirjaimia, numeroita ja _
+    .var-name-category = Nimeä uusi luokka
+    .var-type-value = Kirjoita arvo
+    .var-type-expression = Kirjoita lauseke
+    .var-deleted = $__ocs_fmt_0__ poistettu
+    .edit-variable = Muokkaa muuttujaa
+    .delete-variable = Poista muuttuja
+    .return-variable = Palauta muuttuja syötteeseen
+    .new-category-chip = + Uusi
+    .new-category = Uusi luokka
+    .category-placeholder = esim. Portaat
+    .description-placeholder = Valinnainen, näytetään työkaluvihjeenä
+    .stored-fixed = tallennettu kiinteänä arvona
+    .recalculated = nyt, lasketaan uudelleen joka käytöllä
+    .function-expr = Funktio: __ocs_fmt_0__
+    .double-click-insert = Lisää kaksoisnapsauttamalla
+    .variables-hint = Lisää kaksoisnapsauttamalla. Kirjoittamalla $nimi = arvo lisäät myös vakion.
 
 dash-command =
     .layer-option = -LAYER  Anna vaihtoehto [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

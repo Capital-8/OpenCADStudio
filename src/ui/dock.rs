@@ -121,11 +121,13 @@ pub enum PanelId {
     SheetSetManager,
     /// The Layer Manager (LAYERS).
     Layers,
+    /// The calculator (QUICKCALC).
+    QuickCalc,
 }
 
 impl PanelId {
     /// Every panel, in the order the pallet menu lists them.
-    pub const ALL: [PanelId; 11] = [
+    pub const ALL: [PanelId; 12] = [
         PanelId::Properties,
         PanelId::GraphicAttributes,
         PanelId::BlockPalette,
@@ -137,6 +139,7 @@ impl PanelId {
         PanelId::Count,
         PanelId::SheetSetManager,
         PanelId::Layers,
+        PanelId::QuickCalc,
     ];
 
     /// Localized-friendly display name used by the collapsed/edge chrome.
@@ -153,6 +156,7 @@ impl PanelId {
             PanelId::Count => "Count",
             PanelId::SheetSetManager => "Sheet Set Manager",
             PanelId::Layers => "Layer Manager",
+            PanelId::QuickCalc => "QuickCalc",
         }
     }
 
@@ -172,6 +176,7 @@ impl PanelId {
             PanelId::Count => include_bytes!("../../assets/icons/data_extract.svg"),
             PanelId::SheetSetManager => include_bytes!("../../assets/icons/sheetset.svg"),
             PanelId::Layers => include_bytes!("../../assets/icons/layers/panel.svg"),
+            PanelId::QuickCalc => crate::ui::window::quick_calc::ICON,
         }
     }
 
@@ -189,6 +194,7 @@ impl PanelId {
             PanelId::Count => 280.0,
             PanelId::SheetSetManager => 280.0,
             PanelId::Layers => 560.0,
+            PanelId::QuickCalc => 320.0,
         }
     }
 

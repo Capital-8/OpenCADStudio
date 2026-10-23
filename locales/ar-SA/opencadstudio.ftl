@@ -3124,7 +3124,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  حدد نصف قطر القوس:
     .chord-length = طول الوتر
 
-
 modify =
     .add-vertex = إضافة رأس
     .closed-cross = تقاطع مغلق
@@ -4572,7 +4571,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = نقطتان
     .cube = مكعب
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  حدد الكائنات المراد حذفها:
@@ -6826,6 +6824,88 @@ pdf-password =
         { $path }
         تعذر فتح ملف PDF هذا.
         إنه مشفر ويتطلب كلمة مرور.
+
+calc =
+    .invalid-number = رقم غير صالح '__ocs_fmt_0__'
+    .unexpected-character = حرف غير متوقع '__ocs_fmt_0__'
+    .empty = تعبير فارغ
+    .too-deep = التعبير متداخل بعمق زائد
+    .missing-paren = ')' مفقود
+    .missing-bracket = ']' مفقود
+    .unexpected-end = نهاية غير متوقعة للتعبير
+    .point-coordinates = تحتاج النقطة إلى إحداثيين أو ثلاثة
+    .unknown-unit = وحدة غير معروفة '__ocs_fmt_0__'
+    .unknown-variable = متغير غير معروف $__ocs_fmt_0__
+    .no-ans = لا توجد نتيجة سابقة بعد
+    .division-by-zero = القسمة على صفر
+    .expected-number = كان متوقعًا رقم، وُجدت نقطة
+    .not-real = النتيجة ليست عددًا حقيقيًا
+    .point-and-number = '__ocs_fmt_0__' لا يعمل على نقطة ورقم
+    .point-times-point = لا يمكن ضرب نقطتين
+    .arg-count = تتوقع __ocs_fmt_0__() عدد __ocs_fmt_1__ من الوسائط، وُجد __ocs_fmt_2__
+    .expected-point = كانت متوقعة نقطة، وُجد رقم
+    .unknown-function = دالة غير معروفة '__ocs_fmt_0__'
+    .too-long = التعبير طويل جدًا
+    .var-name-after-dollar = اكتب اسم متغير بعد $
+    .var-assign-needs-dollar = تبدأ أسماء المتغيرات بـ $: $__ocs_fmt_0__ = …
+    .var-needs-dollar = تبدأ المتغيرات بـ $: استخدم $__ocs_fmt_0__
+    .unknown-name = اسم غير معروف __ocs_fmt_0__
+    .getvar-needs-name = تحتاج getvar إلى اسم متغير نظام، مثل getvar(luprec)
+    .getvar-not-number = getvar(__ocs_fmt_0__) ليس رقمًا
+    .unknown-sysvar = متغير نظام غير معروف __ocs_fmt_0__
+    .leave-out-assignment = احذف الجزء $name =
+
+quickcalc =
+    .trigonometry = حساب المثلثات
+    .function = دالة
+    .type-number-first = اكتب رقمًا أولًا
+    .clear-memory = مسح كل الذاكرة
+    .title = QuickCalc
+    .get-point = الحصول على نقطة
+    .copy-result = نسخ النتيجة
+    .point-prompt = حدد نقطة في الرسم
+    .first-prompt = حدد النقطة الأولى في الرسم
+    .second-prompt = حدد النقطة الثانية في الرسم
+    .step = الخطوة __ocs_fmt_0__ من __ocs_fmt_1__
+    .placeholder-first = تعبير، مثلًا 2*300 + 90
+    .placeholder = تعبير، أو ابدأ بـ * لإعادة استخدام ans
+    .sets = يعيّن $__ocs_fmt_0__
+    .in-unit = بوحدة __ocs_fmt_0__
+    .variables = المتغيرات
+    .swap-units = تبديل الوحدات
+    .from = من
+    .to = إلى
+    .new-variable = متغير جديد
+    .copied = تم نسخ __ocs_fmt_0__
+    .sent = تم إرسال __ocs_fmt_0__ إلى سطر الأوامر
+    .nothing-to-copy = لا يوجد ما يُنسخ بعد
+    .nothing-to-paste = لا يوجد ما يُلصق بعد
+    .nothing-to-store = لا يوجد ما يُخزَّن بعد
+    .memory-numbers-only = تحفظ الذاكرة الأرقام فقط
+    .finish-command = أنهِ الأمر الحالي أولًا
+    .cmd-point = QuickCalc  حدد نقطة:
+    .cmd-first = QuickCalc  حدد النقطة الأولى:
+    .cmd-second = QuickCalc  حدد النقطة الثانية:
+    .var-is-function = $__ocs_fmt_0__ دالة. حرّرها في المتغيرات
+    .var-exists = $__ocs_fmt_0__ موجود بالفعل
+    .var-uses-itself = لا يمكن للدالة أن تستخدم نفسها
+    .var-name-rule = ابدأ الاسم بحرف؛ استخدم الحروف والأرقام و_
+    .var-name-category = سمِّ الفئة الجديدة
+    .var-type-value = اكتب قيمة
+    .var-type-expression = اكتب تعبيرًا
+    .var-deleted = تم حذف $__ocs_fmt_0__
+    .edit-variable = تحرير المتغير
+    .delete-variable = حذف المتغير
+    .return-variable = إعادة المتغير إلى الإدخال
+    .new-category-chip = + جديد
+    .new-category = فئة جديدة
+    .category-placeholder = مثلًا: السلالم
+    .description-placeholder = اختياري، يظهر كتلميح
+    .stored-fixed = مخزَّن كقيمة ثابتة
+    .recalculated = الآن، يُعاد حسابه في كل مرة يُستخدم فيها
+    .function-expr = دالة: __ocs_fmt_0__
+    .double-click-insert = انقر نقرًا مزدوجًا للإدراج
+    .variables-hint = انقر نقرًا مزدوجًا للإدراج. كتابة $name = value تضيف ثابتًا أيضًا.
 
 dash-command =
     .layer-option = -LAYER  أدخل خيارًا [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

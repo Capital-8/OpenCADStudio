@@ -3111,7 +3111,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  指定弧的半徑:
     .chord-length = 弦長
 
-
 modify =
     .add-vertex = 新增頂點
     .closed-cross = 閉合十字
@@ -4555,7 +4554,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 兩點
     .cube = 立方體
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  選擇要刪除的物件:
@@ -6809,6 +6807,88 @@ pdf-password =
         { $path }
         無法開啟此 PDF 檔案。
         此檔案已加密，需要密碼。
+
+calc =
+    .invalid-number = 無效數字 '__ocs_fmt_0__'
+    .unexpected-character = 非預期的字元 '__ocs_fmt_0__'
+    .empty = 運算式為空
+    .too-deep = 運算式巢狀過深
+    .missing-paren = 缺少 ')'
+    .missing-bracket = 缺少 ']'
+    .unexpected-end = 運算式意外結束
+    .point-coordinates = 點需要 2 個或 3 個座標
+    .unknown-unit = 未知單位 '__ocs_fmt_0__'
+    .unknown-variable = 未知變數 $__ocs_fmt_0__
+    .no-ans = 尚無上一個結果
+    .division-by-zero = 除以零
+    .expected-number = 需要數字，但找到的是點
+    .not-real = 結果不是實數
+    .point-and-number = '__ocs_fmt_0__' 不能用於點和數字
+    .point-times-point = 兩個點不能相乘
+    .arg-count = __ocs_fmt_0__() 需要 __ocs_fmt_1__ 個引數，找到 __ocs_fmt_2__ 個
+    .expected-point = 需要點，但找到的是數字
+    .unknown-function = 未知函式 '__ocs_fmt_0__'
+    .too-long = 運算式過長
+    .var-name-after-dollar = 請在 $ 後輸入變數名稱
+    .var-assign-needs-dollar = 變數名稱以 $ 開頭：$__ocs_fmt_0__ = …
+    .var-needs-dollar = 變數以 $ 開頭：請使用 $__ocs_fmt_0__
+    .unknown-name = 未知名稱 __ocs_fmt_0__
+    .getvar-needs-name = getvar 需要系統變數名稱，例如 getvar(luprec)
+    .getvar-not-number = getvar(__ocs_fmt_0__) 不是數字
+    .unknown-sysvar = 未知系統變數 __ocs_fmt_0__
+    .leave-out-assignment = 移除 $name = 部分
+
+quickcalc =
+    .trigonometry = 三角函數
+    .function = 函數
+    .type-number-first = 請先輸入數字
+    .clear-memory = 清除所有記憶體
+    .title = QuickCalc
+    .get-point = 取得點
+    .copy-result = 複製結果
+    .point-prompt = 在圖面中指定一個點
+    .first-prompt = 在圖面中指定第一點
+    .second-prompt = 在圖面中指定第二點
+    .step = 第 __ocs_fmt_0__ 步，共 __ocs_fmt_1__ 步
+    .placeholder-first = 運算式，例如 2*300 + 90
+    .placeholder = 運算式，或以 * 開頭以重複使用 ans
+    .sets = 設定 $__ocs_fmt_0__
+    .in-unit = 單位：__ocs_fmt_0__
+    .variables = 變數
+    .swap-units = 交換單位
+    .from = 從
+    .to = 到
+    .new-variable = 新增變數
+    .copied = 已複製 __ocs_fmt_0__
+    .sent = 已將 __ocs_fmt_0__ 傳送到命令列
+    .nothing-to-copy = 尚無可複製的內容
+    .nothing-to-paste = 尚無可貼上的內容
+    .nothing-to-store = 尚無可儲存的內容
+    .memory-numbers-only = 記憶體只能儲存數字
+    .finish-command = 請先完成目前的命令
+    .cmd-point = QuickCalc  指定點：
+    .cmd-first = QuickCalc  指定第一點：
+    .cmd-second = QuickCalc  指定第二點：
+    .var-is-function = $__ocs_fmt_0__ 是函數。請在「變數」中編輯
+    .var-exists = $__ocs_fmt_0__ 已存在
+    .var-uses-itself = 函數不能引用自身
+    .var-name-rule = 名稱須以字母開頭；可使用字母、數字和 _
+    .var-name-category = 為新類別命名
+    .var-type-value = 請輸入值
+    .var-type-expression = 請輸入運算式
+    .var-deleted = 已刪除 $__ocs_fmt_0__
+    .edit-variable = 編輯變數
+    .delete-variable = 刪除變數
+    .return-variable = 將變數傳回輸入框
+    .new-category-chip = + 新增
+    .new-category = 新增類別
+    .category-placeholder = 例如：樓梯
+    .description-placeholder = 選用，顯示為工具提示
+    .stored-fixed = 儲存為固定值
+    .recalculated = 目前值，每次使用時重新計算
+    .function-expr = 函數：__ocs_fmt_0__
+    .double-click-insert = 按兩下以插入
+    .variables-hint = 按兩下以插入。輸入 $name = 值 也可新增常數。
 
 dash-command =
     .layer-option = -LAYER  輸入選項 [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

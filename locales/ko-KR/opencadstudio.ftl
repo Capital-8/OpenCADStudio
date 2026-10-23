@@ -3111,7 +3111,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  호의 반지름 지정:
     .chord-length = 현 길이
 
-
 modify =
     .add-vertex = 정점 추가
     .closed-cross = 닫힌 십자
@@ -4559,7 +4558,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2점
     .cube = 정육면체
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  삭제할 객체 선택:
@@ -6813,6 +6811,88 @@ pdf-password =
         { $path }
         이 PDF 파일을 열 수 없습니다.
         암호화되어 있어 암호가 필요합니다.
+
+calc =
+    .invalid-number = 잘못된 숫자 '__ocs_fmt_0__'
+    .unexpected-character = 예기치 않은 문자 '__ocs_fmt_0__'
+    .empty = 빈 식
+    .too-deep = 식의 중첩이 너무 깊습니다
+    .missing-paren = ')'가 없습니다
+    .missing-bracket = ']'가 없습니다
+    .unexpected-end = 식이 예기치 않게 끝났습니다
+    .point-coordinates = 점에는 좌표가 2개 또는 3개 필요합니다
+    .unknown-unit = 알 수 없는 단위 '__ocs_fmt_0__'
+    .unknown-variable = 알 수 없는 변수 $__ocs_fmt_0__
+    .no-ans = 아직 이전 결과가 없습니다
+    .division-by-zero = 0으로 나누기
+    .expected-number = 숫자가 필요하지만 점이 있습니다
+    .not-real = 결과가 실수가 아닙니다
+    .point-and-number = '__ocs_fmt_0__'은(는) 점과 숫자에 사용할 수 없습니다
+    .point-times-point = 두 점은 곱할 수 없습니다
+    .arg-count = __ocs_fmt_0__()에는 인수 __ocs_fmt_1__개가 필요하지만 __ocs_fmt_2__개가 있습니다
+    .expected-point = 점이 필요하지만 숫자가 있습니다
+    .unknown-function = 알 수 없는 함수 '__ocs_fmt_0__'
+    .too-long = 식이 너무 깁니다
+    .var-name-after-dollar = $ 뒤에 변수 이름을 입력하십시오
+    .var-assign-needs-dollar = 변수 이름은 $로 시작합니다: $__ocs_fmt_0__ = …
+    .var-needs-dollar = 변수는 $로 시작합니다: $__ocs_fmt_0__ 사용
+    .unknown-name = 알 수 없는 이름 __ocs_fmt_0__
+    .getvar-needs-name = getvar에는 시스템 변수 이름이 필요합니다(예: getvar(luprec))
+    .getvar-not-number = getvar(__ocs_fmt_0__)는 숫자가 아닙니다
+    .unknown-sysvar = 알 수 없는 시스템 변수 __ocs_fmt_0__
+    .leave-out-assignment = $name = 부분을 빼십시오
+
+quickcalc =
+    .trigonometry = 삼각법
+    .function = 함수
+    .type-number-first = 먼저 숫자를 입력하십시오
+    .clear-memory = 메모리 모두 지우기
+    .title = QuickCalc
+    .get-point = 점 가져오기
+    .copy-result = 결과 복사
+    .point-prompt = 도면에서 점 지정
+    .first-prompt = 도면에서 첫 번째 점 지정
+    .second-prompt = 도면에서 두 번째 점 지정
+    .step = __ocs_fmt_1__단계 중 __ocs_fmt_0__단계
+    .placeholder-first = 표현식(예: 2*300 + 90)
+    .placeholder = 표현식 또는 *로 시작하여 ans 재사용
+    .sets = $__ocs_fmt_0__ 설정
+    .in-unit = 단위: __ocs_fmt_0__
+    .variables = 변수
+    .swap-units = 단위 바꾸기
+    .from = 변환 전
+    .to = 변환 후
+    .new-variable = 새 변수
+    .copied = __ocs_fmt_0__ 복사됨
+    .sent = __ocs_fmt_0__을(를) 명령행으로 보냄
+    .nothing-to-copy = 아직 복사할 항목이 없습니다
+    .nothing-to-paste = 아직 붙여넣을 항목이 없습니다
+    .nothing-to-store = 아직 저장할 항목이 없습니다
+    .memory-numbers-only = 메모리에는 숫자만 저장됩니다
+    .finish-command = 먼저 현재 명령을 완료하십시오
+    .cmd-point = QuickCalc  점 지정:
+    .cmd-first = QuickCalc  첫 번째 점 지정:
+    .cmd-second = QuickCalc  두 번째 점 지정:
+    .var-is-function = $__ocs_fmt_0__은(는) 함수입니다. 변수에서 편집하십시오
+    .var-exists = $__ocs_fmt_0__이(가) 이미 있습니다
+    .var-uses-itself = 함수는 자신을 사용할 수 없습니다
+    .var-name-rule = 이름은 문자로 시작하고 문자, 숫자, _를 사용하십시오
+    .var-name-category = 새 범주 이름 입력
+    .var-type-value = 값을 입력하십시오
+    .var-type-expression = 표현식을 입력하십시오
+    .var-deleted = $__ocs_fmt_0__ 삭제됨
+    .edit-variable = 변수 편집
+    .delete-variable = 변수 삭제
+    .return-variable = 변수를 입력란으로 되돌리기
+    .new-category-chip = + 새로 만들기
+    .new-category = 새 범주
+    .category-placeholder = 예: 계단
+    .description-placeholder = 선택 사항, 툴팁으로 표시
+    .stored-fixed = 고정값으로 저장됨
+    .recalculated = 현재 값, 사용할 때마다 다시 계산
+    .function-expr = 함수: __ocs_fmt_0__
+    .double-click-insert = 두 번 클릭하여 삽입
+    .variables-hint = 두 번 클릭하여 삽입합니다. $name = 값을 입력해도 상수가 추가됩니다.
 
 dash-command =
     .layer-option = -LAYER  옵션 입력 [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

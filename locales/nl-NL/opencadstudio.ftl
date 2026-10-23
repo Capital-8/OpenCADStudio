@@ -3112,7 +3112,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  Geef straal van boog op:
     .chord-length = Koordelengte
 
-
 modify =
     .add-vertex = Hoekpunt toevoegen
     .closed-cross = Gesloten kruis
@@ -4558,7 +4557,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2-punt
     .cube = Kubus
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Selecteer de te verwijderen objecten:
@@ -6812,6 +6810,88 @@ pdf-password =
         { $path }
         Kan dit PDF-bestand niet openen.
         Het is versleuteld en vereist een wachtwoord.
+
+calc =
+    .invalid-number = ongeldig getal '__ocs_fmt_0__'
+    .unexpected-character = onverwacht teken '__ocs_fmt_0__'
+    .empty = lege expressie
+    .too-deep = expressie is te diep genest
+    .missing-paren = ')' ontbreekt
+    .missing-bracket = ']' ontbreekt
+    .unexpected-end = onverwacht einde van de expressie
+    .point-coordinates = een punt heeft 2 of 3 coördinaten nodig
+    .unknown-unit = onbekende eenheid '__ocs_fmt_0__'
+    .unknown-variable = Onbekende variabele $__ocs_fmt_0__
+    .no-ans = nog geen vorig resultaat
+    .division-by-zero = deling door nul
+    .expected-number = getal verwacht, punt gevonden
+    .not-real = resultaat is geen reëel getal
+    .point-and-number = '__ocs_fmt_0__' werkt niet op een punt en een getal
+    .point-times-point = twee punten kunnen niet worden vermenigvuldigd
+    .arg-count = __ocs_fmt_0__() verwacht __ocs_fmt_1__ argument(en), __ocs_fmt_2__ gevonden
+    .expected-point = punt verwacht, getal gevonden
+    .unknown-function = onbekende functie '__ocs_fmt_0__'
+    .too-long = expressie is te lang
+    .var-name-after-dollar = Typ een variabelenaam na $
+    .var-assign-needs-dollar = Variabelenamen beginnen met $: $__ocs_fmt_0__ = …
+    .var-needs-dollar = Variabelen beginnen met $: gebruik $__ocs_fmt_0__
+    .unknown-name = Onbekende naam __ocs_fmt_0__
+    .getvar-needs-name = getvar heeft de naam van een systeemvariabele nodig, zoals getvar(luprec)
+    .getvar-not-number = getvar(__ocs_fmt_0__) is geen getal
+    .unknown-sysvar = Onbekende systeemvariabele __ocs_fmt_0__
+    .leave-out-assignment = Laat het deel $naam = weg
+
+quickcalc =
+    .trigonometry = Goniometrie
+    .function = Functie
+    .type-number-first = Typ eerst een getal
+    .clear-memory = Heel het geheugen wissen
+    .title = QuickCalc
+    .get-point = Punt ophalen
+    .copy-result = Resultaat kopiëren
+    .point-prompt = Geef een punt in de tekening op
+    .first-prompt = Geef het eerste punt in de tekening op
+    .second-prompt = Geef het tweede punt in de tekening op
+    .step = stap __ocs_fmt_0__ van __ocs_fmt_1__
+    .placeholder-first = Expressie, bijv. 2*300 + 90
+    .placeholder = Expressie, of begin met * om ans te hergebruiken
+    .sets = zet $__ocs_fmt_0__
+    .in-unit = in __ocs_fmt_0__
+    .variables = Variabelen
+    .swap-units = Eenheden omwisselen
+    .from = Van
+    .to = Naar
+    .new-variable = Nieuwe variabele
+    .copied = __ocs_fmt_0__ gekopieerd
+    .sent = __ocs_fmt_0__ naar de opdrachtregel gestuurd
+    .nothing-to-copy = Nog niets om te kopiëren
+    .nothing-to-paste = Nog niets om te plakken
+    .nothing-to-store = Nog niets om op te slaan
+    .memory-numbers-only = Het geheugen bewaart alleen getallen
+    .finish-command = Voltooi eerst de huidige opdracht
+    .cmd-point = QuickCalc  Geef een punt op:
+    .cmd-first = QuickCalc  Geef het eerste punt op:
+    .cmd-second = QuickCalc  Geef het tweede punt op:
+    .var-is-function = $__ocs_fmt_0__ is een functie. Bewerk deze bij Variabelen
+    .var-exists = $__ocs_fmt_0__ bestaat al
+    .var-uses-itself = Een functie kan zichzelf niet gebruiken
+    .var-name-rule = Begin de naam met een letter; gebruik letters, cijfers en _
+    .var-name-category = Geef de nieuwe categorie een naam
+    .var-type-value = Typ een waarde
+    .var-type-expression = Typ een expressie
+    .var-deleted = $__ocs_fmt_0__ verwijderd
+    .edit-variable = Variabele bewerken
+    .delete-variable = Variabele verwijderen
+    .return-variable = Variabele naar de invoer terugzetten
+    .new-category-chip = + Nieuw
+    .new-category = Nieuwe categorie
+    .category-placeholder = bijv. Trappen
+    .description-placeholder = Optioneel, wordt als tooltip getoond
+    .stored-fixed = opgeslagen als vaste waarde
+    .recalculated = nu, wordt bij elk gebruik opnieuw berekend
+    .function-expr = Functie: __ocs_fmt_0__
+    .double-click-insert = Dubbelklik om in te voegen
+    .variables-hint = Dubbelklik om in te voegen. Met $naam = waarde voeg je ook een constante toe.
 
 dash-command =
     .layer-option = -LAYER  Voer een optie in [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

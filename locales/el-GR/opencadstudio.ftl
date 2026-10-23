@@ -3112,7 +3112,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  Ορίστε ακτίνα τόξου:
     .chord-length = Μήκος χορδής
 
-
 modify =
     .count-objects = (__ocs_arg_count__ αντικείμενα)
     .edge-extend-indented-title-case = [Ακμή: Επέκταση]
@@ -4560,7 +4559,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2 σημείων
     .cube = Κύβος
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Επιλέξτε τα αντικείμενα για διαγραφή:
@@ -6814,6 +6812,88 @@ pdf-password =
         { $path }
         Δεν είναι δυνατό το άνοιγμα αυτού του αρχείου PDF.
         Είναι κρυπτογραφημένο και απαιτεί κωδικό.
+
+calc =
+    .invalid-number = μη έγκυρος αριθμός '__ocs_fmt_0__'
+    .unexpected-character = μη αναμενόμενος χαρακτήρας '__ocs_fmt_0__'
+    .empty = κενή έκφραση
+    .too-deep = η έκφραση είναι υπερβολικά εμφωλευμένη
+    .missing-paren = λείπει ')'
+    .missing-bracket = λείπει ']'
+    .unexpected-end = μη αναμενόμενο τέλος έκφρασης
+    .point-coordinates = ένα σημείο χρειάζεται 2 ή 3 συντεταγμένες
+    .unknown-unit = άγνωστη μονάδα '__ocs_fmt_0__'
+    .unknown-variable = Άγνωστη μεταβλητή $__ocs_fmt_0__
+    .no-ans = δεν υπάρχει ακόμη προηγούμενο αποτέλεσμα
+    .division-by-zero = διαίρεση με το μηδέν
+    .expected-number = αναμενόταν αριθμός, βρέθηκε σημείο
+    .not-real = το αποτέλεσμα δεν είναι πραγματικός αριθμός
+    .point-and-number = το '__ocs_fmt_0__' δεν εφαρμόζεται σε σημείο και αριθμό
+    .point-times-point = δύο σημεία δεν μπορούν να πολλαπλασιαστούν
+    .arg-count = η __ocs_fmt_0__() αναμένει __ocs_fmt_1__ όρισμα(τα), βρέθηκαν __ocs_fmt_2__
+    .expected-point = αναμενόταν σημείο, βρέθηκε αριθμός
+    .unknown-function = άγνωστη συνάρτηση '__ocs_fmt_0__'
+    .too-long = η έκφραση είναι πολύ μεγάλη
+    .var-name-after-dollar = Πληκτρολογήστε όνομα μεταβλητής μετά το $
+    .var-assign-needs-dollar = Τα ονόματα μεταβλητών ξεκινούν με $: $__ocs_fmt_0__ = …
+    .var-needs-dollar = Οι μεταβλητές ξεκινούν με $: χρησιμοποιήστε $__ocs_fmt_0__
+    .unknown-name = Άγνωστο όνομα __ocs_fmt_0__
+    .getvar-needs-name = Η getvar χρειάζεται όνομα μεταβλητής συστήματος, π.χ. getvar(luprec)
+    .getvar-not-number = Η getvar(__ocs_fmt_0__) δεν είναι αριθμός
+    .unknown-sysvar = Άγνωστη μεταβλητή συστήματος __ocs_fmt_0__
+    .leave-out-assignment = Παραλείψτε το τμήμα $name =
+
+quickcalc =
+    .trigonometry = Τριγωνομετρία
+    .function = Συνάρτηση
+    .type-number-first = Πληκτρολογήστε πρώτα έναν αριθμό
+    .clear-memory = Απαλοιφή όλης της μνήμης
+    .title = QuickCalc
+    .get-point = Λήψη σημείου
+    .copy-result = Αντιγραφή αποτελέσματος
+    .point-prompt = Ορίστε ένα σημείο στο σχέδιο
+    .first-prompt = Ορίστε το πρώτο σημείο στο σχέδιο
+    .second-prompt = Ορίστε το δεύτερο σημείο στο σχέδιο
+    .step = βήμα __ocs_fmt_0__ από __ocs_fmt_1__
+    .placeholder-first = Έκφραση, π.χ. 2*300 + 90
+    .placeholder = Έκφραση, ή ξεκινήστε με * για επαναχρησιμοποίηση του ans
+    .sets = ορίζει $__ocs_fmt_0__
+    .in-unit = σε __ocs_fmt_0__
+    .variables = Μεταβλητές
+    .swap-units = Εναλλαγή μονάδων
+    .from = Από
+    .to = Σε
+    .new-variable = Νέα μεταβλητή
+    .copied = Αντιγράφηκε: __ocs_fmt_0__
+    .sent = Το __ocs_fmt_0__ στάλθηκε στη γραμμή εντολών
+    .nothing-to-copy = Δεν υπάρχει ακόμη κάτι για αντιγραφή
+    .nothing-to-paste = Δεν υπάρχει ακόμη κάτι για επικόλληση
+    .nothing-to-store = Δεν υπάρχει ακόμη κάτι για αποθήκευση
+    .memory-numbers-only = Η μνήμη δέχεται μόνο αριθμούς
+    .finish-command = Ολοκληρώστε πρώτα την τρέχουσα εντολή
+    .cmd-point = QuickCalc  Ορίστε σημείο:
+    .cmd-first = QuickCalc  Ορίστε πρώτο σημείο:
+    .cmd-second = QuickCalc  Ορίστε δεύτερο σημείο:
+    .var-is-function = Το $__ocs_fmt_0__ είναι συνάρτηση. Επεξεργαστείτε το στις Μεταβλητές
+    .var-exists = Το $__ocs_fmt_0__ υπάρχει ήδη
+    .var-uses-itself = Μια συνάρτηση δεν μπορεί να χρησιμοποιεί τον εαυτό της
+    .var-name-rule = Ξεκινήστε το όνομα με γράμμα· χρησιμοποιήστε γράμματα, ψηφία και _
+    .var-name-category = Δώστε όνομα στη νέα κατηγορία
+    .var-type-value = Πληκτρολογήστε μια τιμή
+    .var-type-expression = Πληκτρολογήστε μια έκφραση
+    .var-deleted = Διαγράφηκε: $__ocs_fmt_0__
+    .edit-variable = Επεξεργασία μεταβλητής
+    .delete-variable = Διαγραφή μεταβλητής
+    .return-variable = Επιστροφή μεταβλητής στην είσοδο
+    .new-category-chip = + Νέα
+    .new-category = Νέα κατηγορία
+    .category-placeholder = π.χ. Σκάλες
+    .description-placeholder = Προαιρετικό, εμφανίζεται ως επεξήγηση
+    .stored-fixed = αποθηκεύτηκε ως σταθερή τιμή
+    .recalculated = τώρα, υπολογίζεται εκ νέου σε κάθε χρήση
+    .function-expr = Συνάρτηση: __ocs_fmt_0__
+    .double-click-insert = Διπλό κλικ για εισαγωγή
+    .variables-hint = Διπλό κλικ για εισαγωγή. Με $name = τιμή προσθέτετε επίσης μια σταθερά.
 
 dash-command =
     .layer-option = -LAYER  Εισαγάγετε επιλογή [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

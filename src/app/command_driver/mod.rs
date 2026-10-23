@@ -456,6 +456,15 @@ impl OpenCADStudio {
             } => {
                 self.finish_qselect_sample(*state, tab_id, handle);
             }
+            CmdResult::QuickCalcPick(value) => {
+                self.tabs[i].active_cmd = None;
+                self.tabs[i].snap_result = None;
+                self.tabs[i].scene.clear_preview_wire();
+                self.restore_pre_cmd_tangent();
+                dispatched = Task::done(Message::QuickCalc(
+                    crate::ui::window::quick_calc::QuickCalcMsg::Picked(value),
+                ));
+            }
             CmdResult::OpenTxt2MtxtSettings => self.open_txt2mtxt_settings(),
             CmdResult::OpenAutoConstrainSettings => {
                 self.handle_open_auto_constrain_settings();

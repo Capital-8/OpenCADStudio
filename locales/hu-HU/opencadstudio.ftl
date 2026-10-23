@@ -3114,7 +3114,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  Adja meg az ív sugarát:
     .chord-length = Húrhossz
 
-
 modify =
     .add-vertex = Csúcspont beszúrása
     .closed-cross = Zárt kereszt
@@ -4557,7 +4556,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2-pont
     .cube = Kocka
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Válassza ki a törlendő objektumokat:
@@ -6798,6 +6796,88 @@ pdf-password =
         { $path }
         Ez a PDF-fájl nem nyitható meg.
         Titkosított, és jelszót igényel.
+
+calc =
+    .invalid-number = érvénytelen szám: '__ocs_fmt_0__'
+    .unexpected-character = váratlan karakter: '__ocs_fmt_0__'
+    .empty = üres kifejezés
+    .too-deep = a kifejezés túl mélyen egymásba ágyazott
+    .missing-paren = hiányzó ')'
+    .missing-bracket = hiányzó ']'
+    .unexpected-end = a kifejezés váratlanul véget ért
+    .point-coordinates = egy ponthoz 2 vagy 3 koordináta kell
+    .unknown-unit = ismeretlen mértékegység: '__ocs_fmt_0__'
+    .unknown-variable = Ismeretlen változó: $__ocs_fmt_0__
+    .no-ans = még nincs előző eredmény
+    .division-by-zero = osztás nullával
+    .expected-number = számot vártunk, pontot találtunk
+    .not-real = az eredmény nem valós szám
+    .point-and-number = '__ocs_fmt_0__' nem működik pont és szám között
+    .point-times-point = két pont nem szorozható
+    .arg-count = __ocs_fmt_0__() __ocs_fmt_1__ argumentumot vár, __ocs_fmt_2__ érkezett
+    .expected-point = pontot vártunk, számot találtunk
+    .unknown-function = ismeretlen függvény: '__ocs_fmt_0__'
+    .too-long = a kifejezés túl hosszú
+    .var-name-after-dollar = Írjon be egy változónevet a $ után
+    .var-assign-needs-dollar = A változónevek $ jellel kezdődnek: $__ocs_fmt_0__ = …
+    .var-needs-dollar = A változók $ jellel kezdődnek: használja a $__ocs_fmt_0__ alakot
+    .unknown-name = Ismeretlen név: __ocs_fmt_0__
+    .getvar-needs-name = A getvar rendszerváltozó-nevet vár, például getvar(luprec)
+    .getvar-not-number = A getvar(__ocs_fmt_0__) nem szám
+    .unknown-sysvar = Ismeretlen rendszerváltozó: __ocs_fmt_0__
+    .leave-out-assignment = Hagyja el a $nev = részt
+
+quickcalc =
+    .trigonometry = Trigonometria
+    .function = Függvény
+    .type-number-first = Előbb írjon be egy számot
+    .clear-memory = Teljes memória törlése
+    .title = QuickCalc
+    .get-point = Pont lekérése
+    .copy-result = Eredmény másolása
+    .point-prompt = Adjon meg egy pontot a rajzon
+    .first-prompt = Adja meg az első pontot a rajzon
+    .second-prompt = Adja meg a második pontot a rajzon
+    .step = __ocs_fmt_0__/__ocs_fmt_1__. lépés
+    .placeholder-first = Kifejezés, pl. 2*300 + 90
+    .placeholder = Kifejezés, vagy kezdje *-gal az ans újrahasználatához
+    .sets = beállítja: $__ocs_fmt_0__
+    .in-unit = __ocs_fmt_0__ egységben
+    .variables = Változók
+    .swap-units = Egységek felcserélése
+    .from = Miből
+    .to = Mibe
+    .new-variable = Új változó
+    .copied = Másolva: __ocs_fmt_0__
+    .sent = __ocs_fmt_0__ elküldve a parancssorba
+    .nothing-to-copy = Még nincs mit másolni
+    .nothing-to-paste = Még nincs mit beilleszteni
+    .nothing-to-store = Még nincs mit tárolni
+    .memory-numbers-only = A memória csak számokat tárol
+    .finish-command = Előbb fejezze be az aktuális parancsot
+    .cmd-point = QuickCalc  Adjon meg egy pontot:
+    .cmd-first = QuickCalc  Adja meg az első pontot:
+    .cmd-second = QuickCalc  Adja meg a második pontot:
+    .var-is-function = $__ocs_fmt_0__ egy függvény. A Változók között szerkesztheti
+    .var-exists = $__ocs_fmt_0__ már létezik
+    .var-uses-itself = Egy függvény nem használhatja önmagát
+    .var-name-rule = A név betűvel kezdődjön; betűk, számjegyek és _ használható
+    .var-name-category = Nevezze el az új kategóriát
+    .var-type-value = Írjon be egy értéket
+    .var-type-expression = Írjon be egy kifejezést
+    .var-deleted = $__ocs_fmt_0__ törölve
+    .edit-variable = Változó szerkesztése
+    .delete-variable = Változó törlése
+    .return-variable = Változó visszaadása a bevitelbe
+    .new-category-chip = + Új
+    .new-category = Új kategória
+    .category-placeholder = pl. Lépcsők
+    .description-placeholder = Nem kötelező, elemleírásként jelenik meg
+    .stored-fixed = rögzített értékként tárolva
+    .recalculated = most, minden használatkor újraszámolva
+    .function-expr = Függvény: __ocs_fmt_0__
+    .double-click-insert = Dupla kattintással beszúrás
+    .variables-hint = Dupla kattintással beszúrás. A $nev = ertek beírása konstanst is felvesz.
 
 dash-command =
     .layer-option = -LAYER  Adjon meg egy opciót [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

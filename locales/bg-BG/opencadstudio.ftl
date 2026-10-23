@@ -3111,7 +3111,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  Задайте радиус на дъгата:
     .chord-length = Дължина на хордата
 
-
 modify =
     .add-vertex = Добавяне на връх
     .closed-cross = Затворен кръст
@@ -4559,7 +4558,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2 точки
     .cube = Куб
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Изберете обектите за изтриване:
@@ -6814,6 +6812,88 @@ pdf-password =
         { $path }
         Този PDF файл не може да бъде отворен.
         Той е шифрован и изисква парола.
+
+calc =
+    .invalid-number = невалидно число '__ocs_fmt_0__'
+    .unexpected-character = неочакван знак '__ocs_fmt_0__'
+    .empty = празен израз
+    .too-deep = изразът е твърде дълбоко вложен
+    .missing-paren = липсва ')'
+    .missing-bracket = липсва ']'
+    .unexpected-end = неочакван край на израза
+    .point-coordinates = точката изисква 2 или 3 координати
+    .unknown-unit = непозната единица '__ocs_fmt_0__'
+    .unknown-variable = Неизвестна променлива $__ocs_fmt_0__
+    .no-ans = все още няма предишен резултат
+    .division-by-zero = деление на нула
+    .expected-number = очаква се число, намерена е точка
+    .not-real = резултатът не е реално число
+    .point-and-number = '__ocs_fmt_0__' не работи с точка и число
+    .point-times-point = две точки не могат да се умножават
+    .arg-count = __ocs_fmt_0__() очаква аргументи: __ocs_fmt_1__, намерени: __ocs_fmt_2__
+    .expected-point = очаква се точка, намерено е число
+    .unknown-function = непозната функция '__ocs_fmt_0__'
+    .too-long = изразът е твърде дълъг
+    .var-name-after-dollar = Въведете име на променлива след $
+    .var-assign-needs-dollar = Имената на променливите започват с $: $__ocs_fmt_0__ = …
+    .var-needs-dollar = Променливите започват с $: използвайте $__ocs_fmt_0__
+    .unknown-name = Неизвестно име __ocs_fmt_0__
+    .getvar-needs-name = getvar изисква име на системна променлива, напр. getvar(luprec)
+    .getvar-not-number = getvar(__ocs_fmt_0__) не е число
+    .unknown-sysvar = Неизвестна системна променлива __ocs_fmt_0__
+    .leave-out-assignment = Пропуснете частта $name =
+
+quickcalc =
+    .trigonometry = Тригонометрия
+    .function = Функция
+    .type-number-first = Първо въведете число
+    .clear-memory = Изчистване на цялата памет
+    .title = QuickCalc
+    .get-point = Вземи точка
+    .copy-result = Копирай резултата
+    .point-prompt = Посочете точка в чертежа
+    .first-prompt = Посочете първа точка в чертежа
+    .second-prompt = Посочете втора точка в чертежа
+    .step = стъпка __ocs_fmt_0__ от __ocs_fmt_1__
+    .placeholder-first = Израз, напр. 2*300 + 90
+    .placeholder = Израз, или започнете с *, за да използвате ans
+    .sets = задава $__ocs_fmt_0__
+    .in-unit = в __ocs_fmt_0__
+    .variables = Променливи
+    .swap-units = Размени единиците
+    .from = От
+    .to = До
+    .new-variable = Нова променлива
+    .copied = Копирано: __ocs_fmt_0__
+    .sent = __ocs_fmt_0__ е изпратено в командния ред
+    .nothing-to-copy = Все още няма какво да се копира
+    .nothing-to-paste = Все още няма какво да се постави
+    .nothing-to-store = Все още няма какво да се запази
+    .memory-numbers-only = Паметта съхранява само числа
+    .finish-command = Първо завършете текущата команда
+    .cmd-point = QuickCalc  Посочи точка:
+    .cmd-first = QuickCalc  Посочи първа точка:
+    .cmd-second = QuickCalc  Посочи втора точка:
+    .var-is-function = $__ocs_fmt_0__ е функция. Редактирайте я в Променливи
+    .var-exists = $__ocs_fmt_0__ вече съществува
+    .var-uses-itself = Функцията не може да използва сама себе си
+    .var-name-rule = Започнете името с буква; използвайте букви, цифри и _
+    .var-name-category = Дайте име на новата категория
+    .var-type-value = Въведете стойност
+    .var-type-expression = Въведете израз
+    .var-deleted = Изтрито: $__ocs_fmt_0__
+    .edit-variable = Редактирай променливата
+    .delete-variable = Изтрий променливата
+    .return-variable = Върни променливата във входа
+    .new-category-chip = + Нова
+    .new-category = Нова категория
+    .category-placeholder = напр. Стълби
+    .description-placeholder = По избор, показва се като подсказка
+    .stored-fixed = съхранено като фиксирана стойност
+    .recalculated = сега, преизчислява се при всяко използване
+    .function-expr = Функция: __ocs_fmt_0__
+    .double-click-insert = Щракнете двукратно за вмъкване
+    .variables-hint = Щракнете двукратно за вмъкване. С $name = стойност добавяте и константа.
 
 dash-command =
     .layer-option = -LAYER  Въведете опция [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

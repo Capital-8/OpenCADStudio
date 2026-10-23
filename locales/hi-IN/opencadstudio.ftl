@@ -3100,7 +3100,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  चाप की त्रिज्या निर्दिष्ट करें:
     .chord-length = जीवा की लंबाई
 
-
 modify =
     .add-vertex = शीर्ष जोड़ें
     .closed-cross = बंद क्रॉस
@@ -4548,7 +4547,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2-पॉइंट
     .cube = घन
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  हटाने के लिए ऑब्जेक्ट चुनें:
@@ -6802,6 +6800,88 @@ pdf-password =
         { $path }
         यह PDF फ़ाइल नहीं खोली जा सकी।
         यह एन्क्रिप्टेड है और इसके लिए पासवर्ड चाहिए।
+
+calc =
+    .invalid-number = अमान्य संख्या '__ocs_fmt_0__'
+    .unexpected-character = अप्रत्याशित वर्ण '__ocs_fmt_0__'
+    .empty = खाली व्यंजक
+    .too-deep = व्यंजक बहुत गहराई तक नेस्टेड है
+    .missing-paren = ')' नहीं है
+    .missing-bracket = ']' नहीं है
+    .unexpected-end = व्यंजक का अप्रत्याशित अंत
+    .point-coordinates = एक बिंदु को 2 या 3 निर्देशांक चाहिए
+    .unknown-unit = अज्ञात इकाई '__ocs_fmt_0__'
+    .unknown-variable = अज्ञात चर $__ocs_fmt_0__
+    .no-ans = अभी कोई पिछला परिणाम नहीं है
+    .division-by-zero = शून्य से भाग
+    .expected-number = संख्या अपेक्षित थी, बिंदु मिला
+    .not-real = परिणाम वास्तविक संख्या नहीं है
+    .point-and-number = '__ocs_fmt_0__' बिंदु और संख्या पर काम नहीं करता
+    .point-times-point = दो बिंदुओं का गुणा नहीं किया जा सकता
+    .arg-count = __ocs_fmt_0__() को __ocs_fmt_1__ आर्ग्युमेंट चाहिए, __ocs_fmt_2__ मिले
+    .expected-point = बिंदु अपेक्षित था, संख्या मिली
+    .unknown-function = अज्ञात फ़ंक्शन '__ocs_fmt_0__'
+    .too-long = व्यंजक बहुत लंबा है
+    .var-name-after-dollar = $ के बाद चर का नाम लिखें
+    .var-assign-needs-dollar = चर के नाम $ से शुरू होते हैं: $__ocs_fmt_0__ = …
+    .var-needs-dollar = चर $ से शुरू होते हैं: $__ocs_fmt_0__ उपयोग करें
+    .unknown-name = अज्ञात नाम __ocs_fmt_0__
+    .getvar-needs-name = getvar को सिस्टम चर का नाम चाहिए, जैसे getvar(luprec)
+    .getvar-not-number = getvar(__ocs_fmt_0__) संख्या नहीं है
+    .unknown-sysvar = अज्ञात सिस्टम चर __ocs_fmt_0__
+    .leave-out-assignment = $name = वाला भाग हटा दें
+
+quickcalc =
+    .trigonometry = त्रिकोणमिति
+    .function = फ़ंक्शन
+    .type-number-first = पहले कोई संख्या लिखें
+    .clear-memory = सारी मेमोरी साफ़ करें
+    .title = QuickCalc
+    .get-point = बिंदु लें
+    .copy-result = परिणाम कॉपी करें
+    .point-prompt = ड्रॉइंग में एक बिंदु निर्दिष्ट करें
+    .first-prompt = ड्रॉइंग में पहला बिंदु निर्दिष्ट करें
+    .second-prompt = ड्रॉइंग में दूसरा बिंदु निर्दिष्ट करें
+    .step = चरण __ocs_fmt_0__ / __ocs_fmt_1__
+    .placeholder-first = व्यंजक, जैसे 2*300 + 90
+    .placeholder = व्यंजक, या ans दोबारा उपयोग करने के लिए * से शुरू करें
+    .sets = $__ocs_fmt_0__ सेट करता है
+    .in-unit = __ocs_fmt_0__ में
+    .variables = चर
+    .swap-units = इकाइयाँ अदला-बदली करें
+    .from = से
+    .to = तक
+    .new-variable = नया चर
+    .copied = __ocs_fmt_0__ कॉपी किया गया
+    .sent = __ocs_fmt_0__ कमांड लाइन पर भेजा गया
+    .nothing-to-copy = अभी कॉपी करने के लिए कुछ नहीं है
+    .nothing-to-paste = अभी चिपकाने के लिए कुछ नहीं है
+    .nothing-to-store = अभी सहेजने के लिए कुछ नहीं है
+    .memory-numbers-only = मेमोरी में केवल संख्याएँ रखी जा सकती हैं
+    .finish-command = पहले वर्तमान कमांड पूरा करें
+    .cmd-point = QuickCalc  एक बिंदु निर्दिष्ट करें:
+    .cmd-first = QuickCalc  पहला बिंदु निर्दिष्ट करें:
+    .cmd-second = QuickCalc  दूसरा बिंदु निर्दिष्ट करें:
+    .var-is-function = $__ocs_fmt_0__ एक फ़ंक्शन है। इसे चर में संपादित करें
+    .var-exists = $__ocs_fmt_0__ पहले से मौजूद है
+    .var-uses-itself = फ़ंक्शन स्वयं का उपयोग नहीं कर सकता
+    .var-name-rule = नाम अक्षर से शुरू करें; अक्षर, अंक और _ उपयोग करें
+    .var-name-category = नई श्रेणी का नाम दें
+    .var-type-value = कोई मान लिखें
+    .var-type-expression = कोई व्यंजक लिखें
+    .var-deleted = $__ocs_fmt_0__ हटाया गया
+    .edit-variable = चर संपादित करें
+    .delete-variable = चर हटाएँ
+    .return-variable = चर को इनपुट में लौटाएँ
+    .new-category-chip = + नया
+    .new-category = नई श्रेणी
+    .category-placeholder = जैसे सीढ़ियाँ
+    .description-placeholder = वैकल्पिक, टूलटिप के रूप में दिखाया जाता है
+    .stored-fixed = स्थिर मान के रूप में सहेजा गया
+    .recalculated = अभी, हर उपयोग पर फिर से गणना होती है
+    .function-expr = फ़ंक्शन: __ocs_fmt_0__
+    .double-click-insert = सम्मिलित करने के लिए डबल-क्लिक करें
+    .variables-hint = सम्मिलित करने के लिए डबल-क्लिक करें। $name = value लिखने से भी स्थिरांक जुड़ता है।
 
 dash-command =
     .layer-option = -LAYER  कोई विकल्प दर्ज करें [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

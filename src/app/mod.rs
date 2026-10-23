@@ -31,6 +31,7 @@ mod block_test;
 #[cfg(test)]
 mod block_test_tests;
 mod block_visibility;
+pub(crate) mod calc;
 mod command_driver;
 pub(crate) use command_driver::{
     copy_to_clipboard_kernel, define_block_raw_doc, paste_entities_kernel, PasteSpace,
@@ -57,6 +58,7 @@ mod options_session;
 pub mod plugin_host;
 mod presspull_ops;
 mod properties;
+mod quick_calc;
 mod recent;
 mod record_api;
 pub(crate) mod settings;
@@ -1078,6 +1080,8 @@ pub(super) struct OpenCADStudio {
     /// Point Cloud Manager palette (POINTCLOUDMANAGER).
     pub(crate) pc_manager: crate::ui::window::pc_manager::PcManager,
     pub(crate) count_palette: crate::ui::window::count_palette::CountPalette,
+    /// The QuickCalc pallet (QUICKCALC / QC).
+    pub(crate) quick_calc: crate::ui::window::quick_calc::QuickCalcPalette,
     /// Sheet Set Manager palette, the open sheet sets and their dialogs.
     pub(crate) sheet_set: crate::ui::window::sheet_set::SheetSetManager,
     /// A sheet opened from the manager: its drawing (path key) and layout,
@@ -1611,6 +1615,10 @@ pub(super) struct OpenCADStudio {
     /// it on Apply (`apply_named_parameter_editor_rows`,
     /// `src/app/named_parameters.rs`).
     named_parameter_editor_rows: Vec<crate::ui::window::named_parameters::ParamEditorRow>,
+
+    // ── CAL ───────────────────────────────────────────────────────────────
+    /// Variables and `ans` kept between CAL evaluations for this session.
+    cal_context: calc::CalcContext,
 
     // ── Layout Manager Panel ──────────────────────────────────────────────
     layout_manager_selected: String,
@@ -4692,6 +4700,8 @@ pub enum Message {
     /// A click or search in the Point Cloud Manager.
     PcManager(crate::ui::window::pc_manager::PcManagerMsg),
     Count(crate::ui::window::count_palette::CountMsg),
+    /// The QuickCalc pallet.
+    QuickCalc(crate::ui::window::quick_calc::QuickCalcMsg),
     SheetSet(crate::ui::window::sheet_set::SheetSetMsg),
     PdfImportPickResult(Result<(std::path::PathBuf, std::sync::Arc<Vec<u8>>), String>),
     /// Result of the PDFATTACH file picker.
@@ -5089,6 +5099,7 @@ impl OpenCADStudio {
             show_browser: false,
             pc_manager: Default::default(),
             count_palette: Default::default(),
+            quick_calc: Default::default(),
             sheet_set: Default::default(),
             sheet_set_pending_layout: None,
             sheet_set_import_parent: None,
@@ -5312,6 +5323,7 @@ impl OpenCADStudio {
             alias_close_confirm: false,
             alias_import_report: String::new(),
             named_parameter_editor_rows: Vec::new(),
+            cal_context: calc::CalcContext::default(),
             // Layout Manager
             layout_manager_selected: "Model".to_string(),
             layer_state_selected: None,

@@ -3112,7 +3112,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  Especifique o raio do arco:
     .chord-length = Comprimento da corda
 
-
 modify =
     .add-vertex = Adicionar vértice
     .closed-cross = Cruz fechada
@@ -4560,7 +4559,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2 pontos
     .cube = Cubo
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  Selecione os objetos a excluir:
@@ -6814,6 +6812,88 @@ pdf-password =
         { $path }
         Não é possível abrir este arquivo PDF.
         Ele está criptografado e requer uma senha.
+
+calc =
+    .invalid-number = número inválido '__ocs_fmt_0__'
+    .unexpected-character = caractere inesperado '__ocs_fmt_0__'
+    .empty = expressão vazia
+    .too-deep = expressão aninhada demais
+    .missing-paren = falta ')'
+    .missing-bracket = falta ']'
+    .unexpected-end = fim inesperado da expressão
+    .point-coordinates = um ponto precisa de 2 ou 3 coordenadas
+    .unknown-unit = unidade desconhecida '__ocs_fmt_0__'
+    .unknown-variable = Variável desconhecida $__ocs_fmt_0__
+    .no-ans = ainda não há resultado anterior
+    .division-by-zero = divisão por zero
+    .expected-number = esperado um número, encontrado um ponto
+    .not-real = o resultado não é um número real
+    .point-and-number = '__ocs_fmt_0__' não funciona com um ponto e um número
+    .point-times-point = dois pontos não podem ser multiplicados
+    .arg-count = __ocs_fmt_0__() espera __ocs_fmt_1__ argumento(s), encontrou __ocs_fmt_2__
+    .expected-point = esperado um ponto, encontrado um número
+    .unknown-function = função desconhecida '__ocs_fmt_0__'
+    .too-long = expressão longa demais
+    .var-name-after-dollar = Digite um nome de variável após $
+    .var-assign-needs-dollar = Nomes de variável começam com $: $__ocs_fmt_0__ = …
+    .var-needs-dollar = Variáveis começam com $: use $__ocs_fmt_0__
+    .unknown-name = Nome desconhecido __ocs_fmt_0__
+    .getvar-needs-name = getvar precisa do nome de uma variável de sistema, como em getvar(luprec)
+    .getvar-not-number = getvar(__ocs_fmt_0__) não é um número
+    .unknown-sysvar = Variável de sistema desconhecida __ocs_fmt_0__
+    .leave-out-assignment = Remova a parte $nome =
+
+quickcalc =
+    .trigonometry = Trigonometria
+    .function = Função
+    .type-number-first = Digite um número primeiro
+    .clear-memory = Limpar toda a memória
+    .title = QuickCalc
+    .get-point = Obter ponto
+    .copy-result = Copiar resultado
+    .point-prompt = Especifique um ponto no desenho
+    .first-prompt = Especifique o primeiro ponto no desenho
+    .second-prompt = Especifique o segundo ponto no desenho
+    .step = etapa __ocs_fmt_0__ de __ocs_fmt_1__
+    .placeholder-first = Expressão, ex.: 2*300 + 90
+    .placeholder = Expressão, ou comece com * para reutilizar ans
+    .sets = define $__ocs_fmt_0__
+    .in-unit = em __ocs_fmt_0__
+    .variables = Variáveis
+    .swap-units = Trocar unidades
+    .from = De
+    .to = Para
+    .new-variable = Nova variável
+    .copied = __ocs_fmt_0__ copiado
+    .sent = __ocs_fmt_0__ enviado para a linha de comando
+    .nothing-to-copy = Nada para copiar ainda
+    .nothing-to-paste = Nada para colar ainda
+    .nothing-to-store = Nada para armazenar ainda
+    .memory-numbers-only = A memória guarda apenas números
+    .finish-command = Conclua o comando atual primeiro
+    .cmd-point = QuickCalc  Especifique um ponto:
+    .cmd-first = QuickCalc  Especifique o primeiro ponto:
+    .cmd-second = QuickCalc  Especifique o segundo ponto:
+    .var-is-function = $__ocs_fmt_0__ é uma função. Edite-a em Variáveis
+    .var-exists = $__ocs_fmt_0__ já existe
+    .var-uses-itself = Uma função não pode usar a si mesma
+    .var-name-rule = Comece o nome com uma letra; use letras, dígitos e _
+    .var-name-category = Dê um nome à nova categoria
+    .var-type-value = Digite um valor
+    .var-type-expression = Digite uma expressão
+    .var-deleted = $__ocs_fmt_0__ excluída
+    .edit-variable = Editar variável
+    .delete-variable = Excluir variável
+    .return-variable = Devolver variável à entrada
+    .new-category-chip = + Nova
+    .new-category = Nova categoria
+    .category-placeholder = ex.: Escadas
+    .description-placeholder = Opcional, exibido como dica de ferramenta
+    .stored-fixed = armazenado como valor fixo
+    .recalculated = agora, recalculado a cada uso
+    .function-expr = Função: __ocs_fmt_0__
+    .double-click-insert = Clique duas vezes para inserir
+    .variables-hint = Clique duas vezes para inserir. Digitar $nome = valor também adiciona uma constante.
 
 dash-command =
     .layer-option = -LAYER  Insira uma opção [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:

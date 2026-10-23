@@ -3102,7 +3102,6 @@ draw =
     .arc-specify-radius-of-arc = ARC  円弧の半径を指定:
     .chord-length = 弦の長さ
 
-
 modify =
     .add-vertex = 頂点を追加
     .closed-cross = 閉じた交差
@@ -4548,7 +4547,6 @@ model =
     .torus-specify-second-end-point-of-tube-diameter = TORUS  { common.specify }: { common.tube } · { common.diameter } · { common.endpoint-2 }:
     .value-2point = 2 点
     .cube = 立方体
-
 
 layout =
     .mvsetup-select-objects-to-delete = MVSETUP  削除するオブジェクトを選択:
@@ -6802,6 +6800,88 @@ pdf-password =
         { $path }
         この PDF ファイルを開けません。
         暗号化されており、パスワードが必要です。
+
+calc =
+    .invalid-number = 無効な数値 '__ocs_fmt_0__'
+    .unexpected-character = 予期しない文字 '__ocs_fmt_0__'
+    .empty = 式が空です
+    .too-deep = 式の入れ子が深すぎます
+    .missing-paren = ')' がありません
+    .missing-bracket = ']' がありません
+    .unexpected-end = 式が途中で終わっています
+    .point-coordinates = 点には 2 つまたは 3 つの座標が必要です
+    .unknown-unit = 不明な単位 '__ocs_fmt_0__'
+    .unknown-variable = 不明な変数 $__ocs_fmt_0__
+    .no-ans = 前回の結果はまだありません
+    .division-by-zero = 0 による除算
+    .expected-number = 数値が必要ですが、点が見つかりました
+    .not-real = 結果が実数ではありません
+    .point-and-number = '__ocs_fmt_0__' は点と数値には使えません
+    .point-times-point = 2 つの点は乗算できません
+    .arg-count = __ocs_fmt_0__() には __ocs_fmt_1__ 個の引数が必要ですが、__ocs_fmt_2__ 個あります
+    .expected-point = 点が必要ですが、数値が見つかりました
+    .unknown-function = 不明な関数 '__ocs_fmt_0__'
+    .too-long = 式が長すぎます
+    .var-name-after-dollar = $ の後に変数名を入力してください
+    .var-assign-needs-dollar = 変数名は $ で始まります: $__ocs_fmt_0__ = …
+    .var-needs-dollar = 変数は $ で始まります: $__ocs_fmt_0__ を使用してください
+    .unknown-name = 不明な名前 __ocs_fmt_0__
+    .getvar-needs-name = getvar にはシステム変数名が必要です (例: getvar(luprec))
+    .getvar-not-number = getvar(__ocs_fmt_0__) は数値ではありません
+    .unknown-sysvar = 不明なシステム変数 __ocs_fmt_0__
+    .leave-out-assignment = $name = の部分を省いてください
+
+quickcalc =
+    .trigonometry = 三角関数
+    .function = 関数
+    .type-number-first = 先に数値を入力してください
+    .clear-memory = メモリをすべてクリア
+    .title = QuickCalc
+    .get-point = 点を取得
+    .copy-result = 結果をコピー
+    .point-prompt = 図面上で点を指定
+    .first-prompt = 図面上で 1 点目を指定
+    .second-prompt = 図面上で 2 点目を指定
+    .step = ステップ __ocs_fmt_0__/__ocs_fmt_1__
+    .placeholder-first = 式 (例: 2*300 + 90)
+    .placeholder = 式、または * で始めて ans を再利用
+    .sets = $__ocs_fmt_0__ に設定
+    .in-unit = __ocs_fmt_0__ 単位
+    .variables = 変数
+    .swap-units = 単位を入れ替え
+    .from = 変換元
+    .to = 変換先
+    .new-variable = 新しい変数
+    .copied = __ocs_fmt_0__ をコピーしました
+    .sent = __ocs_fmt_0__ をコマンドラインに送りました
+    .nothing-to-copy = コピーするものがまだありません
+    .nothing-to-paste = 貼り付けるものがまだありません
+    .nothing-to-store = 保存するものがまだありません
+    .memory-numbers-only = メモリには数値のみ保存できます
+    .finish-command = 先に現在のコマンドを終了してください
+    .cmd-point = QuickCalc  点を指定:
+    .cmd-first = QuickCalc  1 点目を指定:
+    .cmd-second = QuickCalc  2 点目を指定:
+    .var-is-function = $__ocs_fmt_0__ は関数です。変数で編集してください
+    .var-exists = $__ocs_fmt_0__ は既に存在します
+    .var-uses-itself = 関数は自分自身を使用できません
+    .var-name-rule = 名前は文字で始め、文字、数字、_ を使用してください
+    .var-name-category = 新しいカテゴリの名前を入力
+    .var-type-value = 値を入力してください
+    .var-type-expression = 式を入力してください
+    .var-deleted = $__ocs_fmt_0__ を削除しました
+    .edit-variable = 変数を編集
+    .delete-variable = 変数を削除
+    .return-variable = 変数を入力欄に戻す
+    .new-category-chip = + 新規
+    .new-category = 新しいカテゴリ
+    .category-placeholder = 例: 階段
+    .description-placeholder = 省略可、ツールチップとして表示
+    .stored-fixed = 固定値として保存
+    .recalculated = 現在の値、使用するたびに再計算
+    .function-expr = 関数: __ocs_fmt_0__
+    .double-click-insert = ダブルクリックで挿入
+    .variables-hint = ダブルクリックで挿入。$name = 値 と入力して定数を追加することもできます。
 
 dash-command =
     .layer-option = -LAYER  オプションを入力 [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:
