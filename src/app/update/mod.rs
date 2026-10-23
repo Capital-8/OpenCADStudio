@@ -6868,7 +6868,9 @@ impl OpenCADStudio {
                 if self.tabs[self.active_tab].is_start {
                     self.ribbon.close_dropdown();
                 } else {
-                    if id == crate::modules::insert::insert_block::GALLERY_ID {
+                    if id == crate::modules::insert::insert_block::GALLERY_ID
+                        && self.block_palette_stale()
+                    {
                         self.refresh_block_palette();
                     }
                     // The per-viewport freeze column follows the active viewport.

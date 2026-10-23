@@ -1915,6 +1915,35 @@ mod tests {
     }
 
     #[test]
+    fn blockpalette_click_on_a_drawing_block_keeps_the_previews() {
+        let mut app = fresh_app();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        let mut line = codec::entities::Line::new();
+        line.end = codec::types::Vector3::new(10.0, 0.0, 0.0);
+        app.tabs[i]
+            .scene
+            .define_block_from_owned_entities(
+                vec![codec::EntityType::Line(line)],
+                "Widget",
+                glam::DVec3::ZERO,
+            )
+            .unwrap();
+        app.refresh_block_palette();
+        let before = std::rc::Rc::clone(&app.block_palette.blocks[0].preview);
+        let _ = app.palette_insert(
+            crate::ui::window::block_palette::Item::Current("Widget".into()),
+            None,
+        );
+        assert_eq!(app.block_palette.placing.as_deref(), Some("Widget"));
+        // No rebuild: the same preview (and its drawn thumbnail) stays.
+        assert!(std::rc::Rc::ptr_eq(
+            &app.block_palette.blocks[0].preview,
+            &before
+        ));
+    }
+
+    #[test]
     fn xref_dash_alias_lists_like_xref() {
         // `-XREF` asks on the command line: `?` then Enter prints the
         // reference table; `XREF ?` keeps the legacy list output for scripts.

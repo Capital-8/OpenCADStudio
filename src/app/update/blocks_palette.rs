@@ -165,6 +165,9 @@ impl OpenCADStudio {
                 }
             }
             BlockPaletteMsg::Menu(item, action) => return self.on_block_menu(item, action),
+            BlockPaletteMsg::Scrolled { offset, height } => {
+                self.block_palette.scroll = (offset, height);
+            }
         }
         Task::none()
     }
@@ -187,7 +190,13 @@ impl OpenCADStudio {
                 self.list_block_library(dir);
             }
         }
-        self.refresh_block_palette();
+        // Rebuilt only when the drawing's blocks changed since the last
+        // build; Recent / Favorites may still need a drawing's thumbnail.
+        if self.block_palette_stale() {
+            self.refresh_block_palette();
+        } else {
+            self.load_palette_drawing_thumbs();
+        }
     }
 
     fn open_block_library(&mut self, root: PathBuf) {
@@ -340,8 +349,12 @@ impl OpenCADStudio {
         drop_at: Option<glam::DVec3>,
     ) -> Task<Message> {
         match self.resolve_palette_block(&item) {
-            Ok(name) => {
-                self.refresh_block_palette();
+            Ok((name, imported)) => {
+                // Only an import changed the drawing's blocks; a block that
+                // was already there needs no rebuild of every preview.
+                if imported {
+                    self.refresh_block_palette();
+                }
                 self.start_palette_insert(&name, drop_at)
             }
             Err(e) => {
@@ -370,14 +383,16 @@ impl OpenCADStudio {
             .unwrap_or_default()
     }
 
-    fn resolve_palette_block(&mut self, item: &Item) -> Result<String, String> {
+    /// The drawing's block for `item`, and whether it had to be imported
+    /// (or redefined) to get it.
+    fn resolve_palette_block(&mut self, item: &Item) -> Result<(String, bool), String> {
         match item {
-            Item::Current(name) => Ok(name.clone()),
+            Item::Current(name) => Ok((name.clone(), false)),
             Item::Ref(r) if r.drawing => self.block_from_drawing(PathBuf::from(&r.source)),
             Item::Ref(r) => {
                 let elsewhere = !r.source.is_empty() && r.source != self.current_drawing_path();
                 if self.block_exists(&r.name) && !(elsewhere && self.block_redefine_mode == 2) {
-                    return Ok(r.name.clone());
+                    return Ok((r.name.clone(), false));
                 }
                 if !elsewhere {
                     return Err(crate::tf!("Block \"{}\" not found.", r.name).into_owned());
@@ -385,7 +400,7 @@ impl OpenCADStudio {
                 let doc = crate::io::load_file(Path::new(&r.source)).map_err(|e| e.to_string())?;
                 let redefine = self.block_exists(&r.name);
                 self.import_block_definition(&doc, &r.name, redefine)?;
-                Ok(r.name.clone())
+                Ok((r.name.clone(), true))
             }
             Item::File(path) => self.block_from_drawing(path.clone()),
             Item::Folder(_) => Err(String::new()),
@@ -395,17 +410,18 @@ impl OpenCADStudio {
     /// The block standing for drawing `path`: the drawing's own block when
     /// the drawing already has one of that name (redefined from the file
     /// under BLOCKREDEFINEMODE 2), else the file inserted as a new block.
-    fn block_from_drawing(&mut self, path: PathBuf) -> Result<String, String> {
+    /// Whether it was imported comes with the name.
+    fn block_from_drawing(&mut self, path: PathBuf) -> Result<(String, bool), String> {
         let stem = file_stem(&path);
-        let name = if self.block_exists(&stem) && self.block_redefine_mode != 2 {
-            stem
+        let (name, imported) = if self.block_exists(&stem) && self.block_redefine_mode != 2 {
+            (stem, false)
         } else {
-            self.import_drawing_block(path.clone(), true)?
+            (self.import_drawing_block(path.clone(), true)?, true)
         };
         self.block_palette
             .file_sources
             .insert(name.to_ascii_uppercase(), path.display().to_string());
-        Ok(name)
+        Ok((name, imported))
     }
 
     /// Bring block `name` (and what it needs) from `source` into the active
@@ -515,7 +531,9 @@ impl OpenCADStudio {
                     favorites.retain(|f| !same(f, &r));
                     favorites.insert(0, r);
                     self.persist_settings_if_changed();
-                    self.refresh_block_palette();
+                    // The blocks didn't change; only a favorite drawing's
+                    // thumbnail may be new.
+                    self.load_palette_drawing_thumbs();
                 }
             }
             MenuAction::Unfavorite => {
@@ -668,6 +686,12 @@ impl OpenCADStudio {
                 .insert(key, std::rc::Rc::clone(&entry.preview));
         }
         self.block_palette.set_blocks(entries);
+        self.load_palette_drawing_thumbs();
+    }
+
+    /// Read the thumbnails of the drawings Recent / Favorites point at that
+    /// are not read yet.
+    fn load_palette_drawing_thumbs(&mut self) {
         let drawings: Vec<String> = self
             .block_palette
             .recent
@@ -685,15 +709,17 @@ impl OpenCADStudio {
     /// Cheap per-update check: rebuild when the active drawing's definitions
     /// changed, even when their names happen to stay the same.
     pub(crate) fn refresh_block_palette_if_stale(&mut self) {
-        if !self.show_block_palette {
-            return;
-        }
-        let i = self.active_tab;
-        if self.block_palette.source_tab_id != Some(self.tabs[i].id)
-            || self.block_palette.source_block_epoch != self.tabs[i].scene.block_epoch
-        {
+        if self.show_block_palette && self.block_palette_stale() {
             self.refresh_block_palette();
         }
+    }
+
+    /// Whether the palette's blocks were built for another drawing, or
+    /// before the active drawing's block definitions last changed.
+    pub(crate) fn block_palette_stale(&self) -> bool {
+        let i = self.active_tab;
+        self.block_palette.source_tab_id != Some(self.tabs[i].id)
+            || self.block_palette.source_block_epoch != self.tabs[i].scene.block_epoch
     }
 
     /// What `-INSERT`'s name step knows about the drawing's blocks.

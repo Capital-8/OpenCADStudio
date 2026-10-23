@@ -25,6 +25,15 @@ const TOOL_H: f32 = 22.0;
 /// Fixed single-line height of a card's label so every cell in a row
 /// shares the same height.
 const LABEL_LINE_H: f32 = 16.0;
+/// Padding inside a card of the icon views.
+const GRID_CARD_PAD: f32 = 6.0;
+/// Space between a card's thumbnail and its label.
+const GRID_LABEL_GAP: f32 = 4.0;
+/// Space between the list's rows.
+const LIST_SPACING: f32 = 4.0;
+/// Rows built beyond each end of the visible ones, so a fast scroll doesn't
+/// show an empty row before the list catches up.
+const SPARE_ROWS: usize = 2;
 
 /// The palette's tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -183,6 +192,12 @@ pub enum BlockPaletteMsg {
     Press(Item),
     Release(Item),
     Menu(Item, MenuAction),
+    /// The list scrolled to `offset` (from its top) in a viewport `height`
+    /// tall.
+    Scrolled {
+        offset: f32,
+        height: f32,
+    },
 }
 
 /// One block of the current drawing with its cached preview.
@@ -250,6 +265,10 @@ pub struct BlockPalette {
     pub options_collapsed: bool,
     /// The item a press started on (a drag until released on it).
     pub pressed: Option<Item>,
+    /// Where the list is scrolled to and how tall its viewport is (0 until
+    /// the list first reports it), so the icon views only build the rows
+    /// that can be seen.
+    pub scroll: (f32, f32),
     /// Blocks brought in from drawings this session (upper name → file),
     /// so the Recent list remembers the drawing.
     pub file_sources: std::collections::HashMap<String, String>,
@@ -658,7 +677,7 @@ fn item_view<'a>(palette: &'a BlockPalette, item: Item) -> Element<'a, Message> 
                 .height(Length::Fixed(LABEL_LINE_H))
                 .center(),
         ]
-        .spacing(4)
+        .spacing(GRID_LABEL_GAP)
         .into(),
         None => match palette.view {
             ViewMode::Small => row![
@@ -689,7 +708,11 @@ fn item_view<'a>(palette: &'a BlockPalette, item: Item) -> Element<'a, Message> 
         },
     };
     let card = container(body)
-        .padding(if palette.view.grid().is_some() { 6 } else { 3 })
+        .padding(if palette.view.grid().is_some() {
+            GRID_CARD_PAD
+        } else {
+            3.0
+        })
         .width(Fill)
         .style(move |theme: &Theme| {
             let (bg, fg) = block_card_colors(theme, placing, button::Status::Active);
@@ -995,18 +1018,32 @@ pub fn view(
             .height(Fill)
             .into()
     } else {
-        let mut col = column![].spacing(4);
+        let mut col = column![].spacing(LIST_SPACING);
         match palette.view.grid() {
-            Some((per_row, _)) => {
-                for chunk in items.chunks(per_row) {
+            Some((per_row, size)) => {
+                // Every row is equally tall, so only the rows in view (and
+                // a few spare) are built; spaces stand in for the others,
+                // keeping the list's height and scroll position.
+                let rows: Vec<&[Item]> = items.chunks(per_row).collect();
+                let pitch = grid_row_h(size) + LIST_SPACING;
+                let (offset, height) = palette.scroll;
+                let shown = visible_rows(rows.len(), pitch, offset, height);
+                if shown.start > 0 {
+                    col = col.push(Space::new().height(shown.start as f32 * pitch - LIST_SPACING));
+                }
+                for chunk in &rows[shown.clone()] {
                     let mut r = row![].spacing(6).width(Fill);
-                    for item in chunk {
+                    for item in chunk.iter() {
                         r = r.push(item_view(palette, item.clone()));
                     }
                     for _ in chunk.len()..per_row {
                         r = r.push(Space::new().width(Fill));
                     }
                     col = col.push(r);
+                }
+                let after = rows.len() - shown.end;
+                if after > 0 {
+                    col = col.push(Space::new().height(after as f32 * pitch - LIST_SPACING));
                 }
             }
             None if palette.view == ViewMode::Small => {
@@ -1052,6 +1089,12 @@ pub fn view(
             bottom: 6.0,
             left: 0.0,
         }))
+        .on_scroll(|viewport| {
+            pm(BlockPaletteMsg::Scrolled {
+                offset: viewport.absolute_offset().y,
+                height: viewport.bounds().height,
+            })
+        })
         .width(Fill)
         .height(Fill)
         .into()
@@ -1062,6 +1105,26 @@ pub fn view(
         column![top, body, options_card(palette)].spacing(6),
         width,
     )
+}
+
+/// Height of a row of cards in an icon view with `size` tall thumbnails.
+fn grid_row_h(size: f32) -> f32 {
+    2.0 * GRID_CARD_PAD + size + GRID_LABEL_GAP + LABEL_LINE_H
+}
+
+/// The rows of a `rows` long list, `pitch` apart, to build for a viewport
+/// `height` tall scrolled `offset` down: those in view plus [`SPARE_ROWS`]
+/// either side. All of them while the viewport's height is not known yet.
+fn visible_rows(rows: usize, pitch: f32, offset: f32, height: f32) -> std::ops::Range<usize> {
+    if height <= 0.0 || pitch <= 0.0 {
+        return 0..rows;
+    }
+    // The list scrolls no further than its end, whatever was reported for
+    // a longer list before.
+    let offset = offset.clamp(0.0, (rows as f32 * pitch - height).max(0.0));
+    let first = ((offset / pitch).floor() as usize).saturating_sub(SPARE_ROWS);
+    let end = ((offset + height) / pitch).ceil() as usize + SPARE_ROWS;
+    first.min(rows)..end.min(rows)
 }
 
 /// Width of the ribbon's block gallery.
@@ -1222,5 +1285,72 @@ mod tests {
         palette.set_blocks(vec![entry("Wall")]);
         assert!(palette.current_entry("door").is_none());
         assert_eq!(palette.current_entry("wall").unwrap().name, "Wall");
+    }
+
+    #[test]
+    fn visible_rows_covers_the_viewport_with_spare_rows() {
+        // 100 rows, 50 px apart, a 200 px viewport.
+        assert_eq!(visible_rows(100, 50.0, 0.0, 200.0), 0..6);
+        assert_eq!(visible_rows(100, 50.0, 1000.0, 200.0), 18..26);
+        // Scrolled past the end (a longer list before): clamped to the end.
+        assert_eq!(visible_rows(100, 50.0, 1e6, 200.0), 94..100);
+        assert_eq!(visible_rows(3, 50.0, 1e6, 200.0), 0..3);
+        // The viewport is not known yet: everything.
+        assert_eq!(visible_rows(100, 50.0, 0.0, 0.0), 0..100);
+        assert_eq!(visible_rows(0, 50.0, 0.0, 200.0), 0..0);
+    }
+
+    /// Centre of text `label` in `palette`'s view laid out very tall, so
+    /// the whole list fits on screen.
+    fn label_at(palette: &BlockPalette, label: &str) -> Option<iced::Point> {
+        use iced_test::core::widget;
+        use iced_test::runtime::user_interface::{Cache, UserInterface};
+        use iced_test::Selector;
+        let mut renderer = iced_test::futures::futures::executor::block_on(
+            <iced::Renderer as iced_test::core::renderer::Headless>::new(
+                iced_test::core::renderer::Settings::default(),
+                None,
+            ),
+        )
+        .expect("headless renderer");
+        let size = iced::Size::new(300.0, 100_000.0);
+        let mut ui = UserInterface::build(
+            view(palette, 300.0, Default::default()),
+            size,
+            Cache::default(),
+            &mut renderer,
+        );
+        let mut find = Selector::find(label);
+        ui.operate(&renderer, &mut widget::operation::black_box(&mut find));
+        match widget::Operation::finish(&find) {
+            widget::operation::Outcome::Some(Some(target)) => {
+                target.visible_bounds().map(|b| b.center())
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn icon_views_only_build_the_rows_in_view_at_their_real_place() {
+        let mut palette = BlockPalette::default();
+        palette.set_blocks((0..300).map(|i| entry(&format!("B{i:03}"))).collect());
+        for mode in [ViewMode::ExtraLarge, ViewMode::Large, ViewMode::Medium] {
+            palette.view = mode;
+            let (per_row, size) = mode.grid().unwrap();
+            let pitch = grid_row_h(size) + LIST_SPACING;
+            let label = |row: usize| format!("B{:03}", row * per_row);
+            // Everything built: the rows really are `pitch` apart.
+            palette.scroll = (0.0, 0.0);
+            let first = label_at(&palette, &label(0)).unwrap();
+            let next = label_at(&palette, &label(1)).unwrap();
+            assert!((next.y - first.y - pitch).abs() < 0.01, "{mode:?}");
+            let far = label_at(&palette, &label(30)).unwrap();
+            // Scrolled to row 30 of a 3-row viewport: rows far above are
+            // not built, and the ones in view sit where they always did.
+            palette.scroll = (30.0 * pitch, 3.0 * pitch);
+            assert!(label_at(&palette, &label(0)).is_none(), "{mode:?}");
+            assert!(label_at(&palette, &label(40)).is_none(), "{mode:?}");
+            assert_eq!(label_at(&palette, &label(30)), Some(far), "{mode:?}");
+        }
     }
 }
