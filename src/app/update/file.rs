@@ -1305,6 +1305,7 @@ impl OpenCADStudio {
         tab.scene.selection_color = self.model_space.resolve_selection_color();
         tab.scene.selection_effect = self.model_space.selection_effect;
         tab.scene.selection_widen = f32::from(self.model_space.selection_highlight_widen.min(6));
+        tab.scene.desk_bg_color = self.model_space.resolve_desk_bg();
         if bg.is_none() && paper_bg.is_none() {
             return;
         }
@@ -1576,6 +1577,7 @@ impl OpenCADStudio {
     pub(in crate::app) fn sync_model_space_theme(&mut self, geometry_changed: bool) {
         let model_bg = self.model_space.resolve_model_bg(&self.active_theme);
         let paper_bg = self.model_space.resolve_paper_bg();
+        let desk_bg = self.model_space.resolve_desk_bg();
         let sel_color = self.model_space.resolve_selection_color();
         let sel_effect = self.model_space.selection_effect;
         let sel_widen = f32::from(self.model_space.selection_highlight_widen.min(6));
@@ -1585,6 +1587,7 @@ impl OpenCADStudio {
         for tab in &mut self.tabs {
             let old_bg = tab.scene.bg_color;
             let old_paper = tab.scene.paper_bg_color;
+            let old_desk = std::mem::replace(&mut tab.scene.desk_bg_color, desk_bg);
             let old_sel_color = tab.scene.selection_color;
             let old_sel_effect = tab.scene.selection_effect;
             tab.scene.bg_color = model_bg;
@@ -1602,7 +1605,11 @@ impl OpenCADStudio {
                 tab.scene.selection_generation = tab.scene.selection_generation.wrapping_add(1);
             }
 
-            if geometry_changed || old_bg != model_bg || old_paper != paper_bg {
+            if geometry_changed
+                || old_bg != model_bg
+                || old_paper != paper_bg
+                || old_desk != desk_bg
+            {
                 tab.scene.recolor_meshes();
                 tab.scene.bump_geometry();
             }

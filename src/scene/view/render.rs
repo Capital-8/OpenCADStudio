@@ -2768,7 +2768,7 @@ impl Scene {
         // paints no canvas at all; anything else would erase the page beneath
         // it. Only model space clears to the editor background.
         let canvas_background = if viewport.paper_sheet {
-            crate::scene::PAPER_DESK_COLOR
+            self.desk_bg_color
         } else if self.current_layout != "Model" {
             // This viewport paints no canvas of its own (`skip_background`),
             // but shading and fog still blend toward whatever is behind it —

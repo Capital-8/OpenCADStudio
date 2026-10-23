@@ -2727,6 +2727,8 @@ pub struct Scene {
     pub bg_color: [f32; 4],
     /// Custom paper-space background fill color for Wipeout entities.
     pub paper_bg_color: [f32; 4],
+    /// The desk around a layout's sheet (Options › Display).
+    pub desk_bg_color: [f32; 4],
     /// Dense model-space cluster half-span used for viewport recovery.
     pub local_extent_max: f32,
     /// Dense model-space cluster median used for viewport recovery.
@@ -3192,6 +3194,7 @@ impl Scene {
             active_viewport: None,
             bg_color: [33.0 / 255.0, 40.0 / 255.0, 48.0 / 255.0, 1.0],
             paper_bg_color: [1.0, 1.0, 1.0, 1.0],
+            desk_bg_color: PAPER_DESK_COLOR,
             local_extent_max: 1e9,
             local_center: [0.0, 0.0],
             annotation_scale: 1.0,
