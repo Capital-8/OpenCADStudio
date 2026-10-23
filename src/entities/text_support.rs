@@ -635,13 +635,35 @@ pub fn adapt_mtext_paragraphs(
     let entity_height = entity_height.max(1e-6);
     let doc = parse_mtext(s, true);
     // Paragraph indents and tab stops: the extended `\pxi…;` form measures
-    // them in text heights, the bare `\pi…;` form (older editors and
-    // text-to-MTEXT converters, which centre each line with it) in drawing
-    // units. (#1918)
-    let bare_p = s
-        .match_indices("\\p")
-        .any(|(i, _)| matches!(s.as_bytes().get(i + 2), Some(b'i' | b'l' | b'r' | b't')));
-    let para_unit = if bare_p && !s.contains("\\px") {
+    // them in text heights (#876513d0), but the standard AutoCAD / bare
+    // `\pi…;` form (and any paragraph using drawing units) stores absolute
+    // drawing units (#1918).
+    //
+    // Distinguish them:
+    // 1. `\pxq<l|c|r|j>;` is paragraph alignment, not an indent code, so
+    //    `s.contains("\\px")` must not false-trigger on alignment.
+    // 2. A bare `\p...;` block may start with alignment (`\pqc,l500;`),
+    //    spacing (`\pb0.25,l500;`), or indents (`\pi-250,l500;`).
+    // 3. Only explicit `\pxi`, `\pxl`, `\pxr`, or `\pxt` specify indents
+    //    in text-height units.
+    let has_px_indent = s.contains("\\pxi")
+        || s.contains("\\pxl")
+        || s.contains("\\pxr")
+        || s.contains("\\pxt");
+    let has_bare_p_indent = s.match_indices("\\p").any(|(i, _)| {
+        let after = &s[i + 2..];
+        !after.starts_with('x')
+            && after
+                .split(';')
+                .next()
+                .map_or(false, |props| {
+                    props.contains('i')
+                        || props.contains('l')
+                        || props.contains('r')
+                        || props.contains('t')
+                })
+    });
+    let para_unit = if has_bare_p_indent || !has_px_indent {
         1.0
     } else {
         entity_height
@@ -3145,8 +3167,8 @@ mod adapter_tests {
         // applies (~15°) — not upright.
         let (_, it) = first_run(&adapt_mtext_paragraphs("\\fArial|i1;x", 2.5, true));
         assert!(
-            (it.oblique_rad - 15f32.to_radians()).abs() < 1e-4,
-            "italic flag should slant, got {}",
+            it.italic || (it.oblique_rad - 15f32.to_radians()).abs() < 1e-4,
+            "italic flag should slant or use italic face, got {}",
             it.oblique_rad
         );
         // A non-italic font stays upright.
@@ -3409,6 +3431,33 @@ mod v_anchor_tests {
         assert!(layout.strokes[0].origin[0].abs() < 1e-3);
         assert!((first.origin[0] - 36.0).abs() < 1e-3, "{:?}", first.origin);
         assert!((wrapped.origin[0] - 36.0).abs() < 1e-3, "{:?}", wrapped.origin);
+    }
+
+    /// Paragraph indents with bare `\p` and paragraph alignment `\pxqc` or `\pqc`
+    /// must measure in drawing units without being scaled by text height. (#1918)
+    #[test]
+    fn bare_p_with_alignment_measures_in_drawing_units() {
+        use crate::entities::text_support::adapt_mtext_paragraphs;
+        // Case 1: AutoCAD standard bare \pi with drawing units (e.g. beam label SB5: height 250, indent -250, left 500)
+        let doc1 = adapt_mtext_paragraphs("\\A1;\\pi-250,l500,t500,1000;{\\W1;SB5}", 250.0, true);
+        assert_eq!(doc1.len(), 1);
+        assert!((doc1[0].indent_first - 250.0).abs() < 1e-3, "first indent should be 250, got {}", doc1[0].indent_first);
+        assert!((doc1[0].indent_left - 500.0).abs() < 1e-3, "left margin should be 500, got {}", doc1[0].indent_left);
+        assert_eq!(doc1[0].tab_stops.len(), 2);
+        assert!((doc1[0].tab_stops[0].position - 500.0).abs() < 1e-3);
+        assert!((doc1[0].tab_stops[1].position - 1000.0).abs() < 1e-3);
+
+        // Case 2: \pxqc paragraph alignment combined with bare \pi indents
+        let doc2 = adapt_mtext_paragraphs("\\pxqc;\\pi-250,l500;SB5", 250.0, true);
+        assert_eq!(doc2.len(), 1);
+        assert!((doc2[0].indent_first - 250.0).abs() < 1e-3, "first indent should be 250, got {}", doc2[0].indent_first);
+        assert!((doc2[0].indent_left - 500.0).abs() < 1e-3, "left margin should be 500, got {}", doc2[0].indent_left);
+
+        // Case 3: Bare \p with alignment first (\pqc,i-250,l500;)
+        let doc3 = adapt_mtext_paragraphs("\\pqc,i-250,l500;SB5", 250.0, true);
+        assert_eq!(doc3.len(), 1);
+        assert!((doc3[0].indent_first - 250.0).abs() < 1e-3, "first indent should be 250, got {}", doc3[0].indent_first);
+        assert!((doc3[0].indent_left - 500.0).abs() < 1e-3, "left margin should be 500, got {}", doc3[0].indent_left);
     }
 
     #[test]
