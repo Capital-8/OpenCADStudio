@@ -265,8 +265,19 @@ impl Scene {
         // block, and the render draws those sub-entities directly (not the
         // definition points). Transform them with the dimension, or it would
         // stay drawn in place while only its def points move.
+        // Turning or mirroring a dimension lays its text out again (it keeps
+        // reading upright), which moving the baked picture can't do: those
+        // detach the picture, so the dimension draws from its definition and
+        // the next save bakes it anew.
+        let relayout = matches!(
+            t,
+            EntityTransform::Rotate { .. }
+                | EntityTransform::Mirror { .. }
+                | EntityTransform::Affine(_)
+        );
         let dim_block_subs: Vec<(Handle, Option<EntityTransform>)> = handles
             .iter()
+            .filter(|_| !relayout)
             .filter_map(|&h| match self.document.get_entity(h) {
                 Some(entity @ EntityType::Dimension(d)) => {
                     let bn = d.base().block_name.clone();
@@ -304,6 +315,13 @@ impl Scene {
                 render_graph::clear_dim_picture_placement(entity);
                 if mirror_true {
                     mirror_true_text_flags(entity);
+                }
+            }
+            // Only the reference goes: the old picture stays a block of its
+            // own, which an undo points back to, and is not saved again.
+            if relayout {
+                if let Some(EntityType::Dimension(d)) = self.document.get_entity_mut(h) {
+                    d.base_mut().block_name.clear();
                 }
             }
             let rebuilt_history = self.transform_solid_history(h, t);

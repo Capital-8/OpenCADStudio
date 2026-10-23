@@ -1959,6 +1959,47 @@ fn sync_dimension_base_points_and_collect_pending(doc: &mut CadDocument) -> Vec<
     pending
 }
 
+/// Remove `*D` pictures no dimension or insert names any more: a rotated
+/// or mirrored dimension detaches its old one (kept in the open drawing so an
+/// undo can point back to it), which a saved file should not carry.
+fn drop_detached_dimension_blocks(doc: &mut CadDocument) {
+    let named: std::collections::HashSet<String> = doc
+        .entities()
+        .chain(
+            doc.block_records
+                .iter()
+                .flat_map(|record| record.entity_handles.iter())
+                .filter_map(|handle| doc.get_entity(*handle)),
+        )
+        .filter_map(|entity| match entity {
+            EntityType::Dimension(d) => Some(d.base().block_name.to_ascii_uppercase()),
+            EntityType::Insert(insert) => Some(insert.block_name.to_ascii_uppercase()),
+            _ => None,
+        })
+        .collect();
+    let detached: Vec<String> = doc
+        .block_records
+        .iter()
+        .map(|record| record.name.clone())
+        .filter(|name| {
+            let upper = name.to_ascii_uppercase();
+            upper.starts_with("*D") && !named.contains(&upper)
+        })
+        .collect();
+    for name in detached {
+        if let Some(record) = doc.block_records.remove(&name) {
+            let mut owned = record.entity_handles.clone();
+            owned.push(record.block_entity_handle);
+            owned.push(record.block_end_handle);
+            for handle in owned {
+                if !handle.is_null() {
+                    doc.remove_entity(handle);
+                }
+            }
+        }
+    }
+}
+
 /// Smallest free `*D<n>` anonymous block name in `doc`.
 fn next_dimension_block_name(doc: &CadDocument, next: &mut u64) -> String {
     loop {
@@ -1973,6 +2014,7 @@ fn next_dimension_block_name(doc: &CadDocument, next: &mut u64) -> String {
 
 /// Build missing anonymous dimension geometry blocks before writing.
 pub fn bake_dimension_blocks(doc: &mut CadDocument) {
+    drop_detached_dimension_blocks(doc);
     // Keep group-10 in step and find missing blocks in one entity pass. Existing
     // `*D` blocks are the save cache: only invalidated/new dimensions enter the
     // relatively expensive geometry generation below.

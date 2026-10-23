@@ -797,6 +797,7 @@ async fn load_web_bytes(
         fix_dxf_layout_plot_settings(&mut doc);
     }
     fix_viewport_status_flags(&mut doc);
+    fix_double_placed_dimension_pictures(&mut doc);
     fix_current_style_names(&mut doc);
     crate::entities::field::local_header_dates(&mut doc);
     // Opening is a field evaluation event (FIELDEVAL bit 1), as on the
@@ -838,6 +839,7 @@ async fn parse_web_document(name: &str, bytes: &[u8]) -> Result<CadDocument, Str
         fix_dxf_layout_plot_settings(&mut doc);
     }
     fix_viewport_status_flags(&mut doc);
+    fix_double_placed_dimension_pictures(&mut doc);
     fix_current_style_names(&mut doc);
     Ok(doc)
 }
@@ -969,6 +971,7 @@ pub fn load_bytes(name: &str, bytes: Vec<u8>) -> Result<CadDocument, String> {
                 .read()
                 .map_err(|e| e.to_string())?;
             fix_viewport_status_flags(&mut doc);
+            fix_double_placed_dimension_pictures(&mut doc);
             fix_current_style_names(&mut doc);
             crate::entities::field::local_header_dates(&mut doc);
             Ok(doc)
@@ -981,6 +984,7 @@ pub fn load_bytes(name: &str, bytes: Vec<u8>) -> Result<CadDocument, String> {
             fix_dxf_dimension_rotations(&mut doc);
             fix_dxf_layout_plot_settings(&mut doc);
             fix_viewport_status_flags(&mut doc);
+            fix_double_placed_dimension_pictures(&mut doc);
             fix_current_style_names(&mut doc);
             crate::entities::field::local_header_dates(&mut doc);
             Ok(doc)
@@ -1253,6 +1257,7 @@ fn finalize_loaded_outcome(
         fix_dxf_layout_plot_settings(doc);
     }
     fix_viewport_status_flags(doc);
+    fix_double_placed_dimension_pictures(doc);
     fix_current_style_names(doc);
     crate::entities::field::local_header_dates(doc);
     resolve_raster_image_paths(doc, path.parent());
@@ -2724,6 +2729,69 @@ pub(crate) fn repair_drawing(doc: &mut CadDocument) {
             codec::notification::NotificationType::Warning,
             format!("Recovery left unresolved: {}", issue.message),
         );
+    }
+}
+
+/// Dimensions an older build rotated kept the rotation twice: in their
+/// picture block's geometry and again as the picture's insertion rotation
+/// (DXF 54), so the picture drew turned about the origin, away from the
+/// dimension. A picture that lies at the definition point as stored, and
+/// far from it once placed, drops its placement.
+fn fix_double_placed_dimension_pictures(doc: &mut CadDocument) {
+    let mut doubled = Vec::new();
+    for entity in doc.entities() {
+        let EntityType::Dimension(dimension) = entity else {
+            continue;
+        };
+        let base = dimension.base();
+        let Some(placement) = crate::scene::render_graph::dimension_picture_placement(base)
+        else {
+            continue;
+        };
+        let Some(record) = doc.block_records.get(&base.block_name) else {
+            continue;
+        };
+        let target = base.definition_point;
+        // The picture's lines (a point as a zero-length one).
+        let segments: Vec<[codec::types::Vector3; 2]> = record
+            .entity_handles
+            .iter()
+            .filter_map(|handle| match doc.get_entity(*handle) {
+                Some(EntityType::Line(line)) => Some([line.start, line.end]),
+                Some(EntityType::Point(point)) => Some([point.location, point.location]),
+                _ => None,
+            })
+            .collect();
+        // The picture's nearest approach to the definition point.
+        let gap = |placed: bool| {
+            segments
+                .iter()
+                .map(|[a, b]| {
+                    let (a, b) = if placed {
+                        (placement.apply(*a), placement.apply(*b))
+                    } else {
+                        (*a, *b)
+                    };
+                    let along = b - a;
+                    let length = along.dot(&along);
+                    let t = if length > 0.0 {
+                        ((target - a).dot(&along) / length).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    };
+                    (a + along * t).distance(&target)
+                })
+                .fold(f64::INFINITY, f64::min)
+        };
+        let (stored, placed) = (gap(false), gap(true));
+        if stored.is_finite() && stored * 10.0 < placed {
+            doubled.push(base.common.handle);
+        }
+    }
+    for handle in doubled {
+        if let Some(entity) = doc.get_entity_mut(handle) {
+            crate::scene::render_graph::clear_dim_picture_placement(entity);
+        }
     }
 }
 

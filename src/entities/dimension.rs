@@ -6574,8 +6574,8 @@ fn attachment_to_text_align(
 
 /// Reading rotation for a dimension's measurement text, resolving the style
 /// flags the same way the live renderer does: explicit text_rotation, then
-/// horizontal_direction, then DIMTIH/DIMTOH force-horizontal, else the natural
-/// dim-line angle (+90° for DIMJUST 3/4). Shared by the live text entity and
+/// DIMTIH/DIMTOH force-horizontal (along horizontal_direction), else the
+/// natural dim-line angle (+90° for DIMJUST 3/4). Shared by the live text entity and
 /// the bake so a reloaded dimension's text reads at the same angle. (#181)
 fn dimension_text_rotation(dim: &Dimension, style: Option<&DimStyle>) -> f64 {
     let base = dim.base();
@@ -6587,10 +6587,10 @@ fn dimension_text_rotation(dim: &Dimension, style: Option<&DimStyle>) -> f64 {
         base.text_rotation
     } else if matches!(dim, Dimension::Ordinate(_)) {
         dimension_text_natural_rotation(dim)
-    } else if base.horizontal_direction.abs() > 1e-9 {
-        base.horizontal_direction
     } else if (outside && dimtoh) || (!outside && dimtih) {
-        0.0
+        // Text forced horizontal reads along the dimension's horizontal
+        // direction; text aligned with the dimension line ignores it.
+        base.horizontal_direction
     } else {
         let mut r = dimension_text_natural_rotation(dim);
         if dimjust == 3 || dimjust == 4 {
