@@ -8,7 +8,8 @@ use crate::app::settings::PaletteBlockRef;
 use crate::app::{Message, OpenCADStudio};
 use crate::modules::insert::insert_block::{BlockCatalog, InsertBlockCommand};
 use crate::ui::window::block_palette::{
-    BlockEntry, BlockPaletteMsg, BlockPreview, Item, LibraryEntry, MenuAction, OptionMsg, Tab,
+    BlockEntry, BlockPaletteMsg, BlockPreview, ChangeHint, Item, LibraryEntry, MenuAction,
+    OptionMsg, Tab,
 };
 use iced::Task;
 
@@ -659,25 +660,50 @@ impl OpenCADStudio {
 
     /// Rebuild the Current Drawing list, and the previews kept for blocks
     /// of other drawings and for whole drawings.
+    ///
+    /// When the message being handled is known to have changed only some
+    /// blocks ([`Self::note_block_changes`]), the others keep their
+    /// previews; only those blocks and the blocks holding them (directly or
+    /// nested) are drawn again.
     pub(crate) fn refresh_block_palette(&mut self) {
         let i = self.active_tab;
+        let tab_id = self.tabs[i].id;
         let names = self.tabs[i].scene.custom_block_names();
-        self.block_palette.cached_names = names.clone();
-        self.block_palette.source_tab_id = Some(self.tabs[i].id);
-        self.block_palette.source_block_epoch = self.tabs[i].scene.block_epoch;
         let doc = &self.tabs[i].scene.document;
+        let changed = match std::mem::take(&mut self.block_palette.change_hint) {
+            ChangeHint::Blocks(tab, changed)
+                if tab == tab_id && self.block_palette.source_tab_id == Some(tab_id) =>
+            {
+                Some(with_holding_blocks(doc, changed))
+            }
+            _ => None,
+        };
+        let kept = |name: &str| {
+            let changed = changed.as_ref()?;
+            if changed.contains(&name.to_ascii_uppercase()) {
+                return None;
+            }
+            self.block_palette
+                .current_entry(name)
+                .map(|entry| std::rc::Rc::clone(&entry.preview))
+        };
         let annotative = |name: &str| crate::scene::annotative::block_is_annotative(doc, name);
         let entries: Vec<BlockEntry> = names
-            .into_iter()
+            .iter()
             .map(|name| BlockEntry {
-                preview: std::rc::Rc::new(BlockPreview::new(
-                    self.tabs[i].scene.block_preview_wires(&name),
-                )),
-                annotative: annotative(&name),
+                preview: kept(name).unwrap_or_else(|| {
+                    std::rc::Rc::new(BlockPreview::new(
+                        self.tabs[i].scene.block_preview_wires(name),
+                    ))
+                }),
+                annotative: annotative(name),
                 dynamic: false,
-                name,
+                name: name.clone(),
             })
             .collect();
+        self.block_palette.cached_names = names;
+        self.block_palette.source_tab_id = Some(tab_id);
+        self.block_palette.source_block_epoch = self.tabs[i].scene.block_epoch;
         let here = self.current_drawing_path();
         for entry in &entries {
             let key = format!("{here}|{}", entry.name.to_ascii_uppercase());
@@ -711,6 +737,35 @@ impl OpenCADStudio {
     pub(crate) fn refresh_block_palette_if_stale(&mut self) {
         if self.show_block_palette && self.block_palette_stale() {
             self.refresh_block_palette();
+        }
+    }
+
+    /// Tell the palette that the message being handled changed only the
+    /// blocks `names` of the active drawing. `fresh` is whether the palette
+    /// was up to date before the change ([`Self::block_palette_stale`]
+    /// read before it); when it wasn't, the next refresh rebuilds
+    /// everything as usual.
+    pub(crate) fn note_block_changes<I>(&mut self, fresh: bool, names: I)
+    where
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        let tab = self.tabs[self.active_tab].id;
+        let hint = &mut self.block_palette.change_hint;
+        match hint {
+            _ if !fresh => *hint = ChangeHint::Spoiled,
+            ChangeHint::Spoiled => {}
+            ChangeHint::Blocks(t, set) if *t == tab => {
+                set.extend(names.into_iter().map(|n| n.as_ref().to_ascii_uppercase()));
+            }
+            ChangeHint::Blocks(..) => *hint = ChangeHint::Spoiled,
+            ChangeHint::Unknown => {
+                let set = names
+                    .into_iter()
+                    .map(|n| n.as_ref().to_ascii_uppercase())
+                    .collect();
+                *hint = ChangeHint::Blocks(tab, set);
+            }
         }
     }
 
@@ -768,4 +823,58 @@ impl OpenCADStudio {
             insertion_points,
         }
     }
+}
+
+/// `changed` (upper-cased block names) plus every block of `doc` holding one
+/// of them, directly or through other blocks.
+fn with_holding_blocks(
+    doc: &codec::CadDocument,
+    mut changed: std::collections::HashSet<String>,
+) -> std::collections::HashSet<String> {
+    let uses: Vec<(String, Vec<String>)> = doc
+        .block_records
+        .iter()
+        .map(|br| {
+            let used = doc
+                .entities_in_block(&br.name)
+                .filter_map(|e| match e {
+                    codec::EntityType::Insert(insert) => {
+                        Some(insert.block_name.to_ascii_uppercase())
+                    }
+                    _ => None,
+                })
+                .collect();
+            (br.name.to_ascii_uppercase(), used)
+        })
+        .collect();
+    loop {
+        let before = changed.len();
+        for (name, used) in &uses {
+            if !changed.contains(name) && used.iter().any(|u| changed.contains(u)) {
+                changed.insert(name.clone());
+            }
+        }
+        if changed.len() == before {
+            return changed;
+        }
+    }
+}
+
+/// The blocks of `after` whose record or contents differ from `before`'s
+/// (new ones included).
+pub(crate) fn changed_block_names(
+    before: &codec::CadDocument,
+    after: &codec::CadDocument,
+) -> Vec<String> {
+    after
+        .block_records
+        .iter()
+        .filter(|br| {
+            before.block_records.get(&br.name) != Some(*br)
+                || !before
+                    .entities_in_block(&br.name)
+                    .eq(after.entities_in_block(&br.name))
+        })
+        .map(|br| br.name.clone())
+        .collect()
 }

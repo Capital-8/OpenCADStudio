@@ -200,6 +200,20 @@ pub enum BlockPaletteMsg {
     },
 }
 
+/// Which block definitions a change touched, as far as it is known.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub enum ChangeHint {
+    /// Nothing is known: a refresh rebuilds every preview.
+    #[default]
+    Unknown,
+    /// Only these blocks (upper-cased) of the drawing with this tab id
+    /// changed, and the palette was up to date before.
+    Blocks(u64, std::collections::HashSet<String>),
+    /// A change was made while the palette was already out of date, so
+    /// nothing else is known after all.
+    Spoiled,
+}
+
 /// One block of the current drawing with its cached preview.
 pub struct BlockEntry {
     pub name: String,
@@ -269,6 +283,10 @@ pub struct BlockPalette {
     /// the list first reports it), so the icon views only build the rows
     /// that can be seen.
     pub scroll: (f32, f32),
+    /// What the message being handled is known to have changed, so the
+    /// refresh after it can keep the previews of the other blocks. Cleared
+    /// once the message is handled.
+    pub change_hint: ChangeHint,
     /// Blocks brought in from drawings this session (upper name → file),
     /// so the Recent list remembers the drawing.
     pub file_sources: std::collections::HashMap<String, String>,

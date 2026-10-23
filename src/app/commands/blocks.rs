@@ -1944,6 +1944,73 @@ mod tests {
     }
 
     #[test]
+    fn blockpalette_refresh_keeps_previews_of_blocks_a_change_did_not_touch() {
+        use std::rc::Rc;
+        let mut app = fresh_app();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        let line = |x: f64| {
+            let mut line = codec::entities::Line::new();
+            line.end = codec::types::Vector3::new(x, 0.0, 0.0);
+            codec::EntityType::Line(line)
+        };
+        let insert = |name: &str| {
+            codec::EntityType::Insert(codec::entities::Insert::new(
+                name.to_string(),
+                codec::types::Vector3::ZERO,
+            ))
+        };
+        let scene = &mut app.tabs[i].scene;
+        scene.define_block_raw("Part", codec::types::Vector3::ZERO, vec![line(1.0)]);
+        scene.define_block_raw("Holder", codec::types::Vector3::ZERO, vec![insert("Part")]);
+        scene.define_block_raw("Outer", codec::types::Vector3::ZERO, vec![insert("Holder")]);
+        scene.define_block_raw("Other", codec::types::Vector3::ZERO, vec![line(2.0)]);
+        app.refresh_block_palette();
+        let preview = |app: &crate::app::OpenCADStudio, name: &str| {
+            Rc::clone(&app.block_palette.current_entry(name).unwrap().preview)
+        };
+        let before: Vec<_> = ["Part", "Holder", "Outer", "Other"]
+            .iter()
+            .map(|n| preview(&app, n))
+            .collect();
+        // Redefining Part redraws it and the blocks holding it, directly or
+        // nested; Other keeps its preview.
+        let fresh = !app.block_palette_stale();
+        app.tabs[i]
+            .scene
+            .redefine_block_raw("Part", codec::types::Vector3::ZERO, vec![line(5.0)])
+            .unwrap();
+        app.note_block_changes(fresh, ["Part"]);
+        app.refresh_block_palette();
+        let after: Vec<_> = ["Part", "Holder", "Outer", "Other"]
+            .iter()
+            .map(|n| preview(&app, n))
+            .collect();
+        for k in 0..3 {
+            assert!(!Rc::ptr_eq(&before[k], &after[k]), "{k}");
+        }
+        assert!(Rc::ptr_eq(&before[3], &after[3]));
+        // A change made while the palette was out of date rebuilds all.
+        app.note_block_changes(false, ["Part"]);
+        app.refresh_block_palette();
+        assert!(!Rc::ptr_eq(&preview(&app, "Other"), &after[3]));
+        // Without a hint every preview is rebuilt, as before.
+        let other = preview(&app, "Other");
+        app.refresh_block_palette();
+        assert!(!Rc::ptr_eq(&preview(&app, "Other"), &other));
+        // A hint only lives for the message that made it.
+        let fresh = !app.block_palette_stale();
+        app.note_block_changes(fresh, ["Part"]);
+        let _ = app.update(crate::app::Message::Dock(
+            crate::ui::dock::DockMsg::HoverExit,
+        ));
+        assert_eq!(
+            app.block_palette.change_hint,
+            crate::ui::window::block_palette::ChangeHint::Unknown
+        );
+    }
+
+    #[test]
     fn xref_dash_alias_lists_like_xref() {
         // `-XREF` asks on the command line: `?` then Enter prints the
         // reference table; `XREF ?` keeps the legacy list output for scripts.
