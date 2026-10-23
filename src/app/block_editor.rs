@@ -564,6 +564,7 @@ impl OpenCADStudio {
         session.block_name = name.clone();
         session.unpersisted_pre_document = None;
         self.tabs[i].scene.block_edit_block = Some(copied.record);
+        self.reset_block_constraint_display(i);
         self.tabs[i].scene.deselect_all();
         self.tabs[i].active_grip = None;
         self.grip_hover = None;

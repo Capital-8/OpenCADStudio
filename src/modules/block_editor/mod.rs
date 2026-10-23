@@ -143,6 +143,7 @@ impl CadModule for BlockEditorModule {
                     include_bytes!("../../../assets/icons/tool_palettes.svg"),
                 ));
                 manage.tools.push(command("BGRIPSET", "Parameter Grips", include_bytes!("../../../assets/icons/ui/list.svg")));
+                manage.tools.push(command("BCONSTATUSMODE TOGGLE", "Constraint Status", include_bytes!("../../../assets/icons/constrain/fixed.svg")));
                 manage.tools.push(RibbonItem::LargeDropdown {
                     id: "BLOCK_CONSTRUCTION", label: "Construction Geometry",
                     icon: IconKind::Svg(include_bytes!("../../../assets/icons/constrain/show.svg")),

@@ -203,6 +203,9 @@ struct CachedExpansion {
 }
 
 impl BlockCache {
+    pub(crate) fn disable_prototypes(&mut self) {
+        self.prototype_blocks.clear();
+    }
     pub fn clip_source_id(
         &self,
         source_id: u64,

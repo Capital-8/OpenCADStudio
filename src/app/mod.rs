@@ -15,6 +15,7 @@ mod block_feedback;
 mod block_cycle_order;
 mod block_grip_set;
 mod block_construction;
+mod block_constraint_status;
 mod block_action_bars;
 mod block_authoring_edit;
 mod block_editor;
@@ -4056,6 +4057,8 @@ pub enum Message {
     /// `Scene::named_parameters`.
     NamedParametersOpen,
     BlockEditorSettingsInput(usize, String),
+    BlockConstraintColorInput(usize, String),
+    ToggleBlockConstraintStatus,
     BlockEditorSettingsReset,
     BlockEditorSettingsApply,
     BlockCycleSelect(usize),

@@ -70,6 +70,77 @@ fn edit_action_set(app: &mut OpenCADStudio, action: Handle, mode: &str, targets:
 }
 
 #[test]
+fn block_constraint_display_variable_is_transient_validated_and_resets_on_entry() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let doc = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let dirty = app.tabs[i].dirty;
+    assert!(!app.tabs[i].scene.block_constraint_status_mode);
+    let _ = app.dispatch_command("BCONSTATUSMODE 1");
+    assert!(app.tabs[i].scene.block_constraint_status_mode);
+    for input in ["2", "-1", "1.5", "invalid"] {
+        let _ = app.dispatch_command(&format!("SETVAR BCONSTATUSMODE {input}"));
+        assert!(app.tabs[i].scene.block_constraint_status_mode);
+    }
+    let _ = app.dispatch_command("SETVAR BCONSTATUSMODE");
+    feed(&mut app, "0");
+    assert!(!app.tabs[i].scene.block_constraint_status_mode);
+    let _ = app.update(Message::ToggleBlockConstraintStatus);
+    assert!(app.tabs[i].scene.block_constraint_status_mode);
+    assert_eq!(app.tabs[i].scene.document, doc);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    assert_eq!(app.tabs[i].dirty, dirty);
+    let _ = app.open_block_test(i);
+    assert!(!app.tabs[app.active_tab].scene.block_constraint_status_mode);
+    let _ = app.dispatch_command("BCLOSETESTBLOCK");
+    assert!(app.tabs[i].scene.block_constraint_status_mode);
+    let _ = app.dispatch_command("BCLOSE");
+    begin(&mut app, reference);
+    assert!(!app.tabs[i].scene.block_constraint_status_mode);
+}
+
+#[test]
+fn block_constraint_colors_are_staged_validated_and_do_not_write_drawing_history() {
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let handle = members(&app)[0];
+    app.tabs[i].scene.parametric_constraint_set_mut(crate::scene::parametric_constraints::ParametricScope::Block(definition))
+        .add(crate::scene::parametric_constraints::ConstraintKind::Fixed,
+            vec![crate::scene::parametric_constraints::ParametricRef::whole(handle)], None);
+    let _ = app.dispatch_command("BCONSTATUSMODE 1");
+    let report = app.tabs[i].scene.block_constraint_report(definition);
+    let _ = app.tabs[i].scene.entity_wires();
+    let original = app.block_editor_preferences.clone();
+    let doc = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let _ = app.dispatch_command("BESETTINGS");
+    let _ = app.update(Message::BlockConstraintColorInput(2, "RGB:10,20,30".into()));
+    let _ = app.update(Message::CloseModal);
+    assert_eq!(app.block_editor_preferences, original);
+    let _ = app.dispatch_command("BESETTINGS");
+    let _ = app.update(Message::BlockConstraintColorInput(2, "BYLAYER".into()));
+    let _ = app.update(Message::BlockEditorSettingsApply);
+    assert_eq!(app.block_editor_preferences, original);
+    assert!(app.block_editor_settings.as_ref().unwrap().error.is_some());
+    let _ = app.update(Message::BlockConstraintColorInput(2, "RGB:10,20,30".into()));
+    let _ = app.update(Message::BlockEditorSettingsApply);
+    assert_eq!(app.block_editor_preferences.constraint_colors[2], "RGB:10,20,30");
+    assert!(std::sync::Arc::ptr_eq(&report, &app.tabs[i].scene.block_constraint_report(definition)));
+    assert!(app.tabs[i].scene.entity_wires().iter().filter(|wire| wire.name == handle.value().to_string())
+        .any(|wire| wire.color == [10. / 255., 20. / 255., 30. / 255., 1.]));
+    assert!(app.tabs[i].scene.block_constraint_status_mode);
+    assert_eq!(app.tabs[i].scene.document, doc);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    let json = serde_json::to_value(&app.block_editor_preferences).unwrap();
+    assert!(json.get("constraint_colors").is_some());
+    assert!(json.get("constraint_status_mode").is_none());
+}
+
+#[test]
 fn block_constraint_status_properties_are_scope_local_read_only_and_refresh_after_changes() {
     use crate::scene::parametric_constraints::{ConstraintKind, ParametricRef, ParametricScope};
     let (mut app, reference) = fixture();

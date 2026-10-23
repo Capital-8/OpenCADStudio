@@ -19,9 +19,221 @@ impl Status {
             Self::Unavailable => "Unavailable",
         }
     }
+    fn color_slot(self) -> Option<usize> {
+        match self {
+            Self::Unconstrained => Some(0),
+            Self::Partial => Some(1),
+            Self::Full => Some(2),
+            Self::Over => Some(3),
+            Self::Unavailable => None,
+        }
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct Cache {
+    entry: Option<CacheEntry>,
+}
+
+struct CacheEntry {
+    definition: Handle,
+    epoch: u64,
+    constraints: Vec<ParametricConstraint>,
+    parameters: ParameterTable,
+    local: ParameterTable,
+    report: std::sync::Arc<HashMap<Handle, Status>>,
+}
+
+pub(in crate::scene) struct Suppress<'a>(&'a std::cell::Cell<bool>, bool);
+impl Drop for Suppress<'_> {
+    fn drop(&mut self) {
+        self.0.set(self.1);
+    }
 }
 
 impl Scene {
+    pub(crate) fn constraint_shading_active(&self) -> bool {
+        self.block_constraint_status_mode
+            && self.block_edit_block.is_some()
+            && !self.constraint_status_suppressed.get()
+    }
+
+    pub(in crate::scene) fn suppress_constraint_shading(&self) -> Suppress<'_> {
+        Suppress(
+            &self.constraint_status_suppressed,
+            self.constraint_status_suppressed.replace(true),
+        )
+    }
+
+    fn invalidate_constraint_display(&self) {
+        self.resident_wire_sets.borrow_mut().clear();
+        self.tess_memo.borrow_mut().clear();
+        self.resident_tess_memo.borrow_mut().clear();
+        self.block_defn_cache.borrow_mut().clear();
+        self.hatch_cache.borrow_mut().clear();
+        self.frozen_hatch_cache.borrow_mut().clear();
+        self.mesh_cache.borrow_mut().clear();
+        self.frozen_mesh_cache.borrow_mut().clear();
+    }
+
+    pub(crate) fn set_block_constraint_display(&mut self, enabled: bool, colors: [String; 4]) {
+        if self.block_constraint_status_mode != enabled
+            || self.block_constraint_status_colors != colors
+        {
+            self.block_constraint_status_mode = enabled;
+            self.block_constraint_status_colors = colors;
+            self.invalidate_constraint_display();
+        }
+    }
+
+    pub(crate) fn block_constraint_report(
+        &self,
+        definition: Handle,
+    ) -> std::sync::Arc<HashMap<Handle, Status>> {
+        let scope = super::super::parametric_constraints::ParametricScope::Block(definition);
+        let empty = super::super::parametric_constraints::ParametricConstraintSet::new(scope);
+        let set = self
+            .parametric_constraints
+            .iter()
+            .find(|set| set.scope == scope)
+            .unwrap_or(&empty);
+        {
+            let cache = self.constraint_status_cache.borrow();
+            if let Some(entry) = &cache.entry {
+                if entry.definition == definition
+                    && entry.epoch == self.geometry_epoch
+                    && entry.constraints == set.constraints
+                    && entry.parameters == self.named_parameters
+                    && entry.local == set.local_parameters
+                {
+                    return std::sync::Arc::clone(&entry.report);
+                }
+            }
+        }
+        let report = std::sync::Arc::new(analyze(&self.document, &self.named_parameters, set));
+        let changed = self
+            .constraint_status_cache
+            .borrow()
+            .entry
+            .as_ref()
+            .is_none_or(|old| {
+                old.definition != definition || old.report.as_ref() != report.as_ref()
+            });
+        if changed && self.constraint_shading_active() {
+            self.invalidate_constraint_display();
+        }
+        self.constraint_status_cache.borrow_mut().entry = Some(CacheEntry {
+            definition,
+            epoch: self.geometry_epoch,
+            constraints: set.constraints.clone(),
+            parameters: self.named_parameters.clone(),
+            local: set.local_parameters.clone(),
+            report: std::sync::Arc::clone(&report),
+        });
+        report
+    }
+
+    pub(in crate::scene) fn constraint_palette(&self) -> [[f32; 4]; 4] {
+        let bg = self.current_bg();
+        let foreground = if bg[0] + bg[1] + bg[2] < 1.5 {
+            iced::Color::WHITE
+        } else {
+            iced::Color::BLACK
+        };
+        std::array::from_fn(|index| {
+            let color = crate::ui::overlay::authoring::display_color(
+                &self.block_constraint_status_colors[index],
+                foreground,
+                foreground,
+            );
+            [color.r, color.g, color.b, color.a]
+        })
+    }
+
+    pub(in crate::scene) fn constraint_display_color(
+        &self,
+        report: &HashMap<Handle, Status>,
+        handle: Handle,
+        palette: &[[f32; 4]; 4],
+    ) -> Option<[f32; 4]> {
+        let definition = self.block_edit_block?;
+        if !self.constraint_shading_active()
+            || self.document.get_entity(handle)?.common().owner_handle != definition
+        {
+            return None;
+        }
+        report.get(&handle)?.color_slot().map(|slot| palette[slot])
+    }
+
+    pub(in crate::scene) fn shade_constraint_wires(
+        &self,
+        block: Handle,
+        wires: &mut [super::super::WireModel],
+    ) {
+        if !self.constraint_shading_active() || self.block_edit_block != Some(block) {
+            return;
+        }
+        let report = self.block_constraint_report(block);
+        let palette = self.constraint_palette();
+        for wire in wires {
+            if wire
+                .bg_adapt
+                .as_ref()
+                .is_some_and(|style| style.canvas_color)
+            {
+                continue;
+            }
+            if let Some(mut color) = Self::handle_from_wire_name(&wire.name)
+                .and_then(|handle| self.constraint_display_color(&report, handle, &palette))
+            {
+                color[3] = wire.color[3];
+                wire.color = color;
+                wire.bg_adapt = None;
+                wire.render_instance = None;
+                for vertex in &mut wire.text_verts {
+                    vertex.color = [color[0], color[1], color[2], vertex.color[3]];
+                }
+            }
+        }
+    }
+
+    pub(in crate::scene) fn shade_constraint_meshes(
+        &self,
+        block: Handle,
+        models: &mut [super::super::MeshLodSet],
+    ) {
+        if !self.constraint_shading_active() || self.block_edit_block != Some(block) {
+            return;
+        }
+        let report = self.block_constraint_report(block);
+        let palette = self.constraint_palette();
+        for model in models {
+            let handle = model.instance_handle.or_else(|| {
+                model
+                    .lods
+                    .first()
+                    .and_then(|lod| Self::handle_from_wire_name(&lod.name))
+            });
+            let Some(mut color) =
+                handle.and_then(|handle| self.constraint_display_color(&report, handle, &palette))
+            else {
+                continue;
+            };
+            color[3] = model.display_color().map_or(1.0, |color| color[3]);
+            model.instance_color = Some(color);
+            model.edge_color = Some(color);
+            model.face_materials.clear();
+            if let Some(material) = &mut model.material {
+                material.diffuse = color;
+            }
+            for lod in &mut model.lods {
+                lod.color = color;
+                lod.triangle_colors.clear();
+                lod.triangle_material_handles.clear();
+            }
+        }
+    }
+
     pub(crate) fn block_constraint_entity_status(
         &self,
         definition: Handle,
@@ -34,17 +246,10 @@ impl Scene {
         {
             return Status::Unavailable;
         }
-        let scope = super::super::parametric_constraints::ParametricScope::Block(definition);
-        self.parametric_constraints
-            .iter()
-            .find(|set| set.scope == scope)
-            .map(|set| {
-                analyze(&self.document, &self.named_parameters, set)
-                    .get(&entity)
-                    .copied()
-                    .unwrap_or(Status::Unavailable)
-            })
-            .unwrap_or(Status::Unconstrained)
+        self.block_constraint_report(definition)
+            .get(&entity)
+            .copied()
+            .unwrap_or(Status::Unavailable)
     }
 }
 

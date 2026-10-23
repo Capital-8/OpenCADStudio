@@ -2423,6 +2423,10 @@ pub struct Scene {
     pub visibility_states: HashMap<Handle, usize>,
     pub(crate) block_visibility_reveal: bool,
     pub(crate) block_construction_hidden: rustc_hash::FxHashSet<Handle>,
+    pub(crate) block_constraint_status_mode: bool,
+    block_constraint_status_colors: [String; 4],
+    constraint_status_cache: RefCell<parametric_solve::status::Cache>,
+    constraint_status_suppressed: std::cell::Cell<bool>,
     /// Currently selected entity handles.
     pub selected: HashSet<Handle>,
     /// Polylines only part of which is selected (Ctrl+click): the picked
@@ -3173,6 +3177,10 @@ impl Scene {
             block_edit_block: None,
             block_visibility_reveal: false,
             block_construction_hidden: Default::default(),
+            block_constraint_status_mode: false,
+            block_constraint_status_colors: ["8".into(), "2".into(), "3".into(), "1".into()],
+            constraint_status_cache: Default::default(),
+            constraint_status_suppressed: std::cell::Cell::new(false),
             viewcube_ucs: glam::Mat4::IDENTITY,
             hatches: HashMap::default(),
             meshes: HashMap::default(),
@@ -3380,7 +3388,7 @@ impl Scene {
         // 1.0). An annotative block scales as ONE unit at the INSERT level, so
         // its internal geometry / text / attributes must NOT be scaled
         // individually because that would apply the same scale twice.
-        let built = cache::block_cache::BlockCache::build(
+        let mut built = cache::block_cache::BlockCache::build(
             &self.document,
             1.0,
             annotation_scale_handle,
@@ -3389,6 +3397,7 @@ impl Scene {
             viewport,
             &self.draw_depth_map(),
         );
+        if self.constraint_shading_active() { built.disable_prototypes(); }
         let arc = Arc::new(built);
         let mut cache = self.block_defn_cache.borrow_mut();
         cache.retain(|_, (epoch, _)| *epoch == self.block_epoch);
@@ -7476,6 +7485,9 @@ impl Scene {
         frozen_layers: Option<&HashSet<Handle>>,
         style_viewport: Option<Handle>,
     ) -> Arc<Vec<WireModel>> {
+        if self.constraint_shading_active() && self.block_edit_block == Some(block) {
+            let _ = self.block_constraint_report(block);
+        }
         // Normalize an inert anno override away so distinct viewport scales
         // share one resident set when annotation can't change the wires.
         let anno_scale_override = if self.annotation_affects_wires() {
@@ -7499,7 +7511,7 @@ impl Scene {
             all_visible,
             frozen_layers,
             style_viewport,
-        );
+        ) ^ if self.constraint_shading_active() { 0xC057_A705_0000_0001 } else { 0 };
         {
             let sets = self.resident_wire_sets.borrow();
             if let Some(set) = sets.get(&key) {
@@ -7517,7 +7529,7 @@ impl Scene {
         // solid, even when the delta journal contains only the section entity.
         // Rebuild the resident set in that case so an incremental patch cannot
         // retain the source solid's uncut edge cache.
-        if self.active_live_section(block).is_none() {
+        if self.active_live_section(block).is_none() && !self.constraint_shading_active() {
             if let Some(arc) = self.try_resident_patch(
                 key,
                 block,
@@ -8428,6 +8440,7 @@ impl Scene {
         &self,
         render_mode_override: Option<codec::entities::ViewportRenderMode>,
     ) -> (Vec<WireModel>, Vec<WireModel>) {
+        let _constraint_display = self.suppress_constraint_shading();
         let apply_mode = |wires: &mut Vec<WireModel>, mode| {
             let flags = view::render::render_mode_flags(mode);
             for wire in wires.iter_mut().filter(|wire| wire.fill_is_3d) {
@@ -8711,6 +8724,9 @@ impl Scene {
     }
 
     fn hatch_models_arc_for_view(&self, requested_tint_selected: bool) -> Arc<Vec<HatchModel>> {
+        if self.constraint_shading_active() {
+            let _ = self.block_constraint_report(self.block_edit_block.unwrap());
+        }
         // Model-space selection is rendered as a tiny overlay. Keep the
         // resident model set stable across select/deselect so its expensive
         // tessellation/style sync and GPU buffers remain warm.
@@ -8725,7 +8741,9 @@ impl Scene {
             0
         };
         let target_block = self.content_render_block_handle();
-        let key = (target_block, self.current_layout.clone());
+        let key = (target_block, if self.constraint_shading_active() {
+            format!("{}:constraint-status", self.current_layout)
+        } else { self.current_layout.clone() });
         {
             let reuse = {
                 let cache = self.hatch_cache.borrow();
@@ -8765,14 +8783,15 @@ impl Scene {
             self.paper_annotation_scale_handle()
         };
         let build_started = crate::perf::enabled().then(iced::time::Instant::now);
-        let arc = Arc::new(self.synced_hatch_models(
+        let models = self.synced_hatch_models(
             target_block,
             None,
             scale,
             self.annotation_all_visible(),
             None,
             tint_selected,
-        ));
+        );
+        let arc = Arc::new(models);
         let build_ms = crate::perf::elapsed_ms(build_started);
         if build_ms >= 1.0 {
             crate::perf_record!(
@@ -9109,8 +9128,13 @@ impl Scene {
     }
 
     pub(super) fn meshes_arc(&self) -> Arc<Vec<MeshLodSet>> {
+        if self.constraint_shading_active() {
+            let _ = self.block_constraint_report(self.block_edit_block.unwrap());
+        }
         let target_block = self.content_render_block_handle();
-        let key = (target_block, self.current_layout.clone());
+        let key = (target_block, if self.constraint_shading_active() {
+            format!("{}:constraint-status", self.current_layout)
+        } else { self.current_layout.clone() });
         {
             let reuse = {
                 let cache = self.mesh_cache.borrow();
@@ -9149,13 +9173,15 @@ impl Scene {
         } else {
             self.paper_annotation_scale_handle()
         };
-        let arc = Arc::new(self.mesh_models(
+        let mut models = self.mesh_models(
             target_block,
             None,
             scale,
             self.annotation_all_visible(),
             None,
-        ));
+        );
+        self.shade_constraint_meshes(target_block, &mut models);
+        let arc = Arc::new(models);
         self.mesh_cache
             .borrow_mut()
             .insert(key, (self.geometry_epoch, Arc::clone(&arc)));
@@ -12676,7 +12702,7 @@ impl Scene {
                 all_visible,
                 bg,
                 avp,
-            );
+            ) ^ if self.constraint_shading_active() { 0xC057_A705_0000_0001 } else { 0 };
             let (memo_cell, guard_cell) = if resident {
                 (&self.resident_tess_memo, &self.resident_tess_guard)
             } else {
@@ -12832,6 +12858,7 @@ impl Scene {
         // mixed set lands in the same place either way.
         let t_colors = perf.then(iced::time::Instant::now);
         crate::scene::view::render::resolve_colors_for_bg(&mut wires, bg);
+        self.shade_constraint_wires(block_handle, &mut wires);
         let colors_ms = crate::perf::elapsed_ms(t_colors);
 
         // Apply draw order via the cached index (O(1) block lookup).
@@ -13837,6 +13864,7 @@ vis_index={:.1} visible_probe={:.1}",
         // Same solid-corner snaps as the resident paths, so one-off consumers
         // (overlay changed-wires, edit previews) agree with hit-test/snap.
         self.attach_solid_snaps(e.common().handle, &mut wires);
+        self.shade_constraint_wires(e.common().owner_handle, &mut wires);
         wires
     }
 

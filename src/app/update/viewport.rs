@@ -7880,6 +7880,7 @@ properties={:.1}ms picked={}",
         self.tabs[i].scene.active_viewport = None;
         self.tabs[i].scene.set_current_layout("Model".to_string());
         self.tabs[i].scene.block_edit_block = Some(br_handle);
+        self.reset_block_constraint_display(i);
         self.tabs[i].active_block_edit = Some(target_index);
         *self.tabs[i].scene.camera.borrow_mut() = editor_camera;
         self.tabs[i].scene.camera_generation += 1;

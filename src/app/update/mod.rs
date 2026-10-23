@@ -9150,6 +9150,14 @@ impl OpenCADStudio {
                 }
                 Task::none()
             }
+            Message::BlockConstraintColorInput(index, value) => {
+                if let Some(state) = &mut self.block_editor_settings {
+                    if let Some(color) = state.constraint_colors.get_mut(index) { *color = value; }
+                    state.error = None;
+                }
+                Task::none()
+            }
+            Message::ToggleBlockConstraintStatus => self.dispatch_command("BCONSTATUSMODE TOGGLE"),
             Message::BlockEditorSettingsReset => {
                 if self.block_editor_settings.is_some() {
                     self.block_editor_settings = Some(crate::ui::window::block_editor_settings::State::new(&super::settings::BlockEditorPreferences::default()));
@@ -9166,7 +9174,16 @@ impl OpenCADStudio {
                                 return Task::none();
                             }
                         }
+                        for (index, value) in state.constraint_colors.iter().enumerate() {
+                            let normalized = crate::ui::overlay::authoring::normalize_color(value);
+                            let Some(color) = normalized.filter(|value| value != "BYLAYER" && value != "BYBLOCK") else {
+                                state.error = Some(crate::t!("Constraint colors require an index from 1 to 255 or RGB:r,g,b.").into_owned());
+                                return Task::none();
+                            };
+                            staged.constraint_colors[index] = color;
+                        }
                         self.block_editor_preferences = staged;
+                        self.sync_block_constraint_colors();
                         self.refresh_properties();
                         self.persist_settings_if_changed();
                         self.block_editor_settings = None;

@@ -1046,6 +1046,7 @@ impl OpenCADStudio {
             self.tabs[i].scene.set_current_layout("Model".to_string());
         }
         self.tabs[i].scene.block_edit_block = Some(br_handle);
+        self.reset_block_constraint_display(i);
         self.tabs[i].block_edits.push(BlockEditSession {
             block_name: block_name.clone(),
             br_handle,
@@ -1121,6 +1122,7 @@ impl OpenCADStudio {
             };
             self.tabs[i].scene.set_current_layout("Model".to_string());
             self.tabs[i].scene.block_edit_block = Some(br_handle);
+            self.reset_block_constraint_display(i);
             self.tabs[i].active_block_edit = Some(parent_index);
             *self.tabs[i].scene.camera.borrow_mut() = editor_camera;
         } else {

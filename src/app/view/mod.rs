@@ -2789,6 +2789,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             viewport_scale_synced: tab.scene.viewport_annotation_scale_synced(),
                             viewport_locked: tab.scene.viewports_display_locked(),
                             lineweight_display: tab.scene.document.header.lineweight_display,
+                            constraint_status: tab.active_block_edit_session().map(|_| tab.scene.block_constraint_status_mode),
                         },
                         crate::ui::statusbar::StatusBarModes {
                             ortho_mode: self.ortho_mode,

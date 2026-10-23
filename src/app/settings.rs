@@ -450,6 +450,7 @@ pub struct BlockEditorPreferences {
     pub dynamic_grip_color: u8,
     pub grip_tips: bool,
     pub action_bars: bool,
+    pub constraint_colors: [String; 4],
 }
 
 impl Default for BlockEditorPreferences {
@@ -468,6 +469,7 @@ impl Default for BlockEditorPreferences {
             dynamic_grip_color: 140,
             grip_tips: true,
             action_bars: true,
+            constraint_colors: ["8".into(), "2".into(), "3".into(), "1".into()],
         }
     }
 }
