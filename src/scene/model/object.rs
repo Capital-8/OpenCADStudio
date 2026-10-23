@@ -58,6 +58,12 @@ pub enum PropValue {
         selected: String,
         options: Vec<String>,
     },
+    /// String choice retaining authored help text in editable and read-only views.
+    ChoiceWithTooltip {
+        selected: String,
+        options: Vec<String>,
+        tooltip: String,
+    },
     /// Editable text plus a dropdown of existing options (block reference
     /// Name row): picking an option re-points the reference, submitting a
     /// new name renames the definition.

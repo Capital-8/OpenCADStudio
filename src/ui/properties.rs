@@ -1024,6 +1024,14 @@ impl PropertiesPanel {
             PropValue::Choice { selected, options } => {
                 self.render_choice_row(label, prop.field, selected, options)
             }
+            PropValue::ChoiceWithTooltip { selected, options, tooltip: description } => {
+                let row = self.render_choice_row(label, prop.field, selected, options);
+                if description.is_empty() {
+                    row
+                } else {
+                    tooltip(row, text(description).size(FONT_SZ), tooltip::Position::Top).into()
+                }
+            }
             PropValue::EditChoice { value, options } => {
                 self.render_edit_choice_row(label, prop.field, value, options)
             }

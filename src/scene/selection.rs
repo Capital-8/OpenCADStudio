@@ -780,7 +780,7 @@ impl Scene {
                                 PropValue::LayerChoice(_) => {
                                     QSelectValueEditor::Choice(layer_options.clone())
                                 }
-                                PropValue::Choice { ref options, .. } => {
+                                PropValue::Choice { ref options, .. } | PropValue::ChoiceWithTooltip { ref options, .. } => {
                                     QSelectValueEditor::Choice(options.clone())
                                 }
                                 PropValue::EditChoice {
@@ -1004,7 +1004,7 @@ impl Scene {
                     | PropValue::PlainText(s)
                     | PropValue::Hyperlink(s) => s,
                     PropValue::LayerChoice(s) => s,
-                    PropValue::Choice { selected, .. } => selected,
+                    PropValue::Choice { selected, .. } | PropValue::ChoiceWithTooltip { selected, .. } => selected,
                     PropValue::EditChoice { value, .. } => value,
                     PropValue::ColorChoice(c) => Self::format_color(c),
                     PropValue::NamedColorChoice { name, .. } => name,

@@ -32,7 +32,7 @@ fn property_choice_combos(
         .iter()
         .flat_map(|section| section.props.iter())
         .filter_map(|prop| match &prop.value {
-            PropValue::Choice { options, .. } => Some((
+            PropValue::Choice { options, .. } | PropValue::ChoiceWithTooltip { options, .. } => Some((
                 prop.field.to_string(),
                 iced::widget::combo_box::State::new(
                     options
@@ -3776,7 +3776,7 @@ fn make_sections_read_only(
             | PropValue::HatchPatternChoice(value) => value.clone(),
             PropValue::BlockNumber { value, .. } => value.clone(),
             PropValue::BlockChoice { selected, options, .. } => options.get(*selected).cloned().unwrap_or_default(),
-            PropValue::Choice { selected, .. } => selected.clone(),
+            PropValue::Choice { selected, .. } | PropValue::ChoiceWithTooltip { selected, .. } => selected.clone(),
             PropValue::EditChoice { value, .. } => value.clone(),
             PropValue::ColorChoice(color) => match color {
                 codec::types::Color::None => "None".to_string(),
@@ -3812,7 +3812,11 @@ fn make_sections_read_only(
             }
         };
         property.field = "locked_read_only";
-        property.value = PropValue::ReadOnly(text);
+        property.value = if let PropValue::ChoiceWithTooltip { tooltip, .. } = &property.value {
+            PropValue::ReadOnlyWithTooltip { value: text, tooltip: tooltip.clone() }
+        } else {
+            PropValue::ReadOnly(text)
+        };
     }
 }
 
@@ -4115,6 +4119,19 @@ fn merge_prop_value(
     }
 
     match (left, right) {
+        (
+            PropValue::ChoiceWithTooltip { options, tooltip, .. },
+            PropValue::ChoiceWithTooltip { options: other_options, tooltip: other_tooltip, .. },
+        ) => {
+            let mut merged_options = options.clone();
+            for option in other_options {
+                if !merged_options.contains(option) { merged_options.push(option.clone()); }
+            }
+            PropValue::ChoiceWithTooltip {
+                selected: VARIES_LABEL.into(), options: merged_options,
+                tooltip: if tooltip == other_tooltip { tooltip.clone() } else { String::new() },
+            }
+        }
         (PropValue::LayerChoice(_), PropValue::LayerChoice(_)) => {
             PropValue::LayerChoice(VARIES_LABEL.into())
         }
@@ -4495,7 +4512,7 @@ fn update_row_text(
             | PropValue::PlainText(current)
             | PropValue::Hyperlink(current) => *current = value,
             PropValue::ReadOnlyWithTooltip { value: current, .. } => *current = value,
-            PropValue::Choice { selected, .. } => *selected = value,
+            PropValue::Choice { selected, .. } | PropValue::ChoiceWithTooltip { selected, .. } => *selected = value,
             _ => {}
         }
         return;

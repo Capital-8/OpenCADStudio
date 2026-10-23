@@ -299,11 +299,12 @@ impl OpenCADStudio {
         Some(crate::scene::model::object::Property {
             label,
             field: "dyn_visibility",
-            value: crate::scene::model::object::PropValue::Choice {
+            value: crate::scene::model::object::PropValue::ChoiceWithTooltip {
                 selected: current
                     .and_then(|c| options.get(c).cloned())
                     .unwrap_or_default(),
                 options,
+                tooltip: param.description.clone(),
             },
         })
     }

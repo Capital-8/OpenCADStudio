@@ -36,7 +36,7 @@ fn resolve_visibility_state(
     evaluated_def: Option<Handle>,
 ) -> Option<(String, String)> {
     if let Some(prop) = OpenCADStudio::visibility_property(doc, insert_handle) {
-        if let PropValue::Choice { selected, .. } = prop.value {
+        if let PropValue::Choice { selected, .. } | PropValue::ChoiceWithTooltip { selected, .. } = prop.value {
             if !selected.is_empty() {
                 return Some((prop.label, selected));
             }
@@ -738,7 +738,7 @@ impl OpenCADStudio {
                         dyn_props.insert(prop.label, json!(opt));
                     }
                 }
-                PropValue::Choice { selected, .. } => {
+                PropValue::Choice { selected, .. } | PropValue::ChoiceWithTooltip { selected, .. } => {
                     dyn_props.insert(prop.label, json!(selected));
                 }
                 PropValue::ReadOnly(val) | PropValue::PlainText(val) | PropValue::EditText(val) => {
