@@ -319,6 +319,9 @@ impl OpenCADStudio {
                 // its title bar. Its title bar starts on the side it floats
                 // with, or the side it was docked on.
                 let (grab, bar) = if target.is_none() && started {
+                    // The title bar under the pointer stops counting as
+                    // hovered: its buttons must not ride along.
+                    self.dock_title_hover = None;
                     match self.dock.float_rect(panel) {
                         Some(f) => (iced::Vector::new(origin.x - f.x, origin.y - f.y), f.bar),
                         None => (

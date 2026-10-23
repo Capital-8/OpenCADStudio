@@ -807,6 +807,11 @@ const VIEW_SIZE: iced::Size = iced::Size::new(1600.0, 900.0);
 
 /// Centre of the first text `label` in the real view.
 fn find_in_view(app: &OpenCADStudio, label: &str) -> iced::Point {
+    try_find_in_view(app, label).unwrap_or_else(|| panic!("{label} not found"))
+}
+
+/// Centre of the first text `label` in the real view, if it is there.
+fn try_find_in_view(app: &OpenCADStudio, label: &str) -> Option<iced::Point> {
     use iced_test::core::widget;
     use iced_test::runtime::user_interface::{Cache, UserInterface};
     use iced_test::Selector;
@@ -816,9 +821,9 @@ fn find_in_view(app: &OpenCADStudio, label: &str) -> iced::Point {
     ui.operate(&renderer, &mut widget::operation::black_box(&mut find));
     match widget::Operation::finish(&find) {
         widget::operation::Outcome::Some(Some(target)) => {
-            target.visible_bounds().expect("visible").center()
+            target.visible_bounds().map(|b| b.center())
         }
-        _ => panic!("{label} not found"),
+        _ => None,
     }
 }
 
@@ -1009,6 +1014,73 @@ fn docked_title_bar_double_click_floats_the_pallet_in_the_real_view() {
             app.dock.float_rect(PanelId::BlockPalette).is_some(),
             "a double-click on a docked title bar floats the pallet"
         );
+    });
+}
+
+#[test]
+fn dragging_a_floating_pallet_moves_the_real_window_in_the_real_view() {
+    // Building the real view is deeper than a default test thread's stack.
+    with_stack(|| {
+        use crate::app::config::DockSide;
+        use crate::ui::dock::{DockMsg, DropTarget, FloatPanel, PanelId};
+        let mut app = dock_app();
+        app.dock.float(FloatPanel::new(
+            PanelId::BlockPalette,
+            500.0,
+            200.0,
+            260.0,
+            400.0,
+        ));
+        let saved = app.dock.float_rect(PanelId::BlockPalette).unwrap();
+        // Some text inside the pallet marks where its window is drawn.
+        let label = "Current Drawing";
+        let before = find_in_view(&app, label);
+        let _ = app.on_dock(DockMsg::DockGrab(PanelId::BlockPalette));
+        let _ = app.on_dock(DockMsg::DragMove(iced::Point::new(510.0, 210.0)));
+        let _ = app.on_dock(DockMsg::DragMove(iced::Point::new(610.0, 260.0)));
+        assert!(matches!(
+            drag_target(&app),
+            Some(DropTarget::Float { x, y, .. }) if x == 600.0 && y == 250.0
+        ));
+        // The window itself follows the pointer; no ghost with its title.
+        let during = find_in_view(&app, label);
+        assert_eq!(
+            (during.x - before.x, during.y - before.y),
+            (100.0, 50.0),
+            "the real window moves with the pointer"
+        );
+        assert!(
+            try_find_in_view(&app, "Block Palette").is_none(),
+            "no drop ghost for a pallet that already floats"
+        );
+        // The layout only changes on release.
+        assert_eq!(app.dock.float_rect(PanelId::BlockPalette), Some(saved));
+        // Over a dock zone the window hides and the column preview shows.
+        let _ = app.on_dock(DockMsg::DragMove(iced::Point::new(20.0, 300.0)));
+        assert!(matches!(
+            drag_target(&app),
+            Some(
+                DropTarget::Join {
+                    side: DockSide::Left,
+                    ..
+                } | DropTarget::Edge {
+                    side: DockSide::Left,
+                    ..
+                }
+            )
+        ));
+        assert!(try_find_in_view(&app, label).is_none());
+        assert!(
+            try_find_in_view(&app, "Block Palette").is_some(),
+            "column ghost"
+        );
+        // Back in the open it shows again, and lands where it was drawn.
+        let _ = app.on_dock(DockMsg::DragMove(iced::Point::new(610.0, 260.0)));
+        let during = find_in_view(&app, label);
+        let _ = app.on_dock(DockMsg::DragRelease);
+        assert_eq!(find_in_view(&app, label), during);
+        let f = app.dock.float_rect(PanelId::BlockPalette).unwrap();
+        assert_eq!((f.x, f.y), (600.0, 250.0));
     });
 }
 

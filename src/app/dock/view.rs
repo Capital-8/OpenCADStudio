@@ -41,15 +41,25 @@ impl OpenCADStudio {
                 );
             }
         }
+        let movement = self.dock_drag.and_then(|d| d.movement());
         for f in &self.dock.floating {
-            // Once a drag is under way only its preview shows the panel.
-            let dragged = self
-                .dock_drag
-                .and_then(|d| d.movement())
-                .is_some_and(|(panel, _, target)| panel == f.id && target.is_some());
-            if self.dock_panel_visible(f.id) && !dragged {
-                layers.push(self.floating_panel(*f, tab));
+            if !self.dock_panel_visible(f.id) {
+                continue;
             }
+            // A floating pallet being dragged moves itself: it draws where it
+            // would land, its title bar on the side it would land on. Over a
+            // dock zone it hides and the preview in the column shows instead.
+            // Its layout only changes on release.
+            let f = match movement {
+                Some((panel, _, Some(target))) if panel == f.id => match target {
+                    crate::ui::dock::DropTarget::Float { x, y, bar } => {
+                        crate::ui::dock::FloatPanel { x, y, bar, ..*f }
+                    }
+                    _ => continue,
+                },
+                _ => *f,
+            };
+            layers.push(self.floating_panel(f, tab));
         }
         // An open pallet menu hangs beside its edge's + button, over a
         // catcher that closes it on any click elsewhere.
@@ -99,9 +109,17 @@ impl OpenCADStudio {
             );
             layers.push(menu);
         }
-        // While a panel is dragged, preview where it lands.
-        if let Some((id, _, Some(target))) = self.dock_drag.and_then(|d| d.movement()) {
+        // While a panel is dragged, preview where it lands, then cover
+        // everything with a layer that takes the pointer: the moving window
+        // must not react to it (hover highlights, its title bar's buttons,
+        // their cursors) and the cursor stays a closed hand.
+        if let Some((id, _, Some(target))) = movement {
             layers.push(self.dock_drop_preview(id, target));
+            layers.push(
+                mouse_area(Space::new().width(Fill).height(Fill))
+                    .interaction(iced::mouse::Interaction::Grabbing)
+                    .into(),
+            );
         }
         // Always a stack (and, below, always a mouse area), even with nothing
         // on top: iced keeps a widget's state only while the tree keeps its
@@ -677,7 +695,8 @@ impl OpenCADStudio {
     /// The live drop preview for dragged panel `id`: a tint over the target
     /// edge plus a panel-sized ghost where it lands — stacked into a group
     /// (sized as that group will be), as a new group of its own (full
-    /// height), or as a floating window.
+    /// height), or as a floating window (a pallet that already floats draws
+    /// itself there instead, see `dock_overlay`).
     fn dock_drop_preview(
         &self,
         id: crate::ui::dock::PanelId,
@@ -714,8 +733,10 @@ impl OpenCADStudio {
         let marks_side = match target {
             DropTarget::Edge { side, .. } | DropTarget::Join { side, .. } => Some(side),
             DropTarget::Float { x, y, bar } => {
-                let (w, h) = self.dock_float_size(id);
-                layers.push(place_at(dock_float_ghost(id, w, h, bar), x, y));
+                if self.dock.float_rect(id).is_none() {
+                    let (w, h) = self.dock_float_size(id);
+                    layers.push(place_at(dock_float_ghost(id, w, h, bar), x, y));
+                }
                 None
             }
         };
@@ -1235,8 +1256,9 @@ fn dock_ghost(id: crate::ui::dock::PanelId, w: f32, h: f32) -> Element<'static, 
         .into()
 }
 
-/// The drop ghost of a floating landing: [`dock_ghost`] beside a vertical
-/// title bar on `bar`, so the side the title lands on shows while dragging.
+/// The drop ghost of a docked pallet dragged out to float: [`dock_ghost`]
+/// beside a vertical title bar on `bar`, so the side the title lands on
+/// shows while dragging.
 fn dock_float_ghost(
     id: crate::ui::dock::PanelId,
     w: f32,
