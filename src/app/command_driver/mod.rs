@@ -1403,7 +1403,8 @@ impl OpenCADStudio {
     fn handle_dispatch(&mut self, cmd: String) -> Task<Message> {
         let i = self.active_tab;
         // End this interactive front-end, then run the assembled command
-        // through the normal dispatcher. Selection is left untouched.
+        // through the normal dispatcher. Selection is left untouched except
+        // after a plugin's command.
         // The option picked in DIMCONSTRAINT becomes its next default;
         // the same command run on its own leaves the default alone.
         let from_menu = self.tabs[i]
@@ -1422,6 +1423,7 @@ impl OpenCADStudio {
             .active_cmd
             .as_ref()
             .is_some_and(|c| c.name() == "PLUGIN");
+        // A plugin's dispatched command starts from an empty selection.
         if is_plugin {
             self.tabs[i].scene.deselect_all();
         }
@@ -1429,7 +1431,11 @@ impl OpenCADStudio {
         self.tabs[i].snap_result = None;
         self.tabs[i].scene.clear_preview_wire();
         self.restore_pre_cmd_tangent();
-        let last_task = Task::none();
+        if !cmd.contains('\n') {
+            return self.dispatch_command(&cmd);
+        }
+        // A multi-line script (a plugin's queued command calls) runs line by
+        // line, each answering the prompts the previous one left open.
         for line in cmd.lines() {
             let line = line.trim();
             if !line.is_empty() {
@@ -1437,7 +1443,7 @@ impl OpenCADStudio {
                 let _ = self.drive_headless_task(task);
             }
         }
-        last_task
+        Task::none()
     }
 
     fn handle_measurement(&mut self, msg: String) {
