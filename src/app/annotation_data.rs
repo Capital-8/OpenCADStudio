@@ -26,6 +26,8 @@ struct ExtractionRecord {
     linetype: String,
     details: String,
     position: Option<codec::types::Vector3>,
+    /// Rotation in degrees, for the objects the Properties palette shows one for.
+    rotation: Option<f64>,
 }
 
 // ── In-session picked-file registries (web) ───────────────────────────────
@@ -169,6 +171,7 @@ impl ExtractionRecord {
             "position_x" => self.position.map_or_else(String::new, |p| format!("{:.3}", p.x)),
             "position_y" => self.position.map_or_else(String::new, |p| format!("{:.3}", p.y)),
             "position_z" => self.position.map_or_else(String::new, |p| format!("{:.3}", p.z)),
+            "rotation" => self.rotation.map_or_else(String::new, |r| format!("{r:.3}")),
             _ => String::new(),
         }
     }
@@ -652,6 +655,16 @@ fn entity_position(entity: &EntityType) -> Option<codec::types::Vector3> {
     }
 }
 
+fn entity_rotation(entity: &EntityType) -> Option<f64> {
+    let radians = match entity {
+        EntityType::Insert(value) => value.rotation,
+        EntityType::Text(value) => value.rotation,
+        EntityType::MText(value) => value.rotation,
+        _ => return None,
+    };
+    Some(radians.to_degrees())
+}
+
 fn collect_records(
     doc: &CadDocument,
     allowed_handles: Option<&BTreeSet<Handle>>,
@@ -677,6 +690,7 @@ fn collect_records(
             linetype: entity.common().linetype.clone(),
             details: entity_details(entity),
             position: entity_position(entity),
+            rotation: entity_rotation(entity),
         });
     }
 }
