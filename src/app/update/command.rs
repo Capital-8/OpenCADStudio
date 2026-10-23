@@ -4321,18 +4321,12 @@ impl OpenCADStudio {
                                 }
                             }
                             "hyperlink" => {
-                                // Stored in the standard PE_URL XDATA
-                                // record; an empty value clears it.
-                                let vals = if val.trim().is_empty() {
-                                    None
-                                } else {
-                                    Some(vec![codec::xdata::XDataValue::String(val.clone())])
-                                };
-                                crate::scene::view::dispatch::set_entity_xdata(
+                                // The address of the PE_URL record; its
+                                // text and named location stay.
+                                crate::scene::hyperlink::set_url(
                                     &mut self.tabs[i].scene.document,
                                     handle,
-                                    "PE_URL",
-                                    vals,
+                                    &val,
                                 );
                             }
                             "arrow_size" | "text_offset" | "dim_scale_overall" => {

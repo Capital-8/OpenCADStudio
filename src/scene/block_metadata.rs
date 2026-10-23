@@ -16,18 +16,8 @@ fn flag(data: Option<&ExtendedData>, app: &str) -> Option<bool> {
 }
 
 fn link(data: Option<&ExtendedData>) -> Option<(String, String)> {
-    let mut strings = data?
-        .get_record("PE_URL")?
-        .values
-        .iter()
-        .filter_map(|value| match value {
-            XDataValue::String(text) => Some(text.trim().to_string()),
-            _ => None,
-        });
-    Some((
-        strings.next().unwrap_or_default(),
-        strings.next().unwrap_or_default(),
-    ))
+    let link = super::hyperlink::Link::from_values(&data?.get_record(super::hyperlink::APP)?.values)?;
+    Some((link.url.trim().to_string(), link.text.trim().to_string()))
 }
 
 pub(crate) fn hyperlink(document: &CadDocument, name: &str) -> (String, String) {
@@ -66,22 +56,19 @@ pub(crate) fn set_hyperlink(
         document.remove_object_xdata_record(definition, "PE_URL");
     } else {
         ensure_application(document, "PE_URL");
+        // A named location the record already had stays.
+        let current = document
+            .object_xdata(definition)
+            .and_then(|data| data.get_record(super::hyperlink::APP))
+            .and_then(|record| super::hyperlink::Link::from_values(&record.values))
+            .unwrap_or_default();
+        let link = super::hyperlink::Link {
+            url: url.trim().into(),
+            text: description.trim().into(),
+            ..current
+        };
         let mut record = ExtendedDataRecord::new("PE_URL");
-        record.values = vec![
-            XDataValue::String(url.trim().into()),
-            XDataValue::ControlString("{".into()),
-        ];
-        if !description.trim().is_empty() {
-            record
-                .values
-                .push(XDataValue::String(description.trim().into()));
-        }
-        record.values.extend([
-            XDataValue::ControlString("{".into()),
-            XDataValue::Integer32(0),
-            XDataValue::ControlString("}".into()),
-            XDataValue::ControlString("}".into()),
-        ]);
+        record.values = link.values();
         document.set_object_xdata_record(definition, record);
     }
     let marker = document

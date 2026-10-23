@@ -18,6 +18,8 @@ pub(crate) mod display;
 mod draw;
 mod field;
 mod fileops;
+mod hyperlink;
+pub(crate) use hyperlink::{hyperlink_options, set_hyperlink_options};
 mod inquiry;
 mod layerprops;
 mod layers;
@@ -540,6 +542,9 @@ impl OpenCADStudio {
             return Some(t);
         }
         if let Some(t) = self.dispatch_field(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_hyperlink(cmd, i) {
             return Some(t);
         }
         if let Some(t) = self.dispatch_count(cmd, i) {

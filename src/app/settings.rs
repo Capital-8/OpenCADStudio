@@ -633,6 +633,8 @@ pub struct UserSettings {
     pub wblock_object_mode: u8,
     /// FIELDDISPLAY: fields show on a gray background.
     pub field_display: bool,
+    /// HYPERLINKOPTIONS: the hyperlink cursor, tooltip and shortcut menu.
+    pub hyperlink_options: bool,
     /// XDWGFADECTL: how much referenced drawings fade (-90..=90; negative is off).
     pub xref_fade: i32,
     /// FILEDIA: file dialogs of commands that have a command-line form.
@@ -1130,6 +1132,7 @@ impl Default for UserSettings {
             block_open_in_editor: false,
             wblock_object_mode: 0,
             field_display: true,
+            hyperlink_options: true,
             xref_fade: 50,
             file_dia: true,
             trim_extend_quick: true,

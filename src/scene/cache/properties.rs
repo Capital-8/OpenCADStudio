@@ -30,10 +30,9 @@ pub fn general_section(entity: &EntityType) -> PropSection {
         },
     );
 
-    let hyperlink = crate::scene::pe_url_description_of(entity)
-        .or_else(|| crate::scene::pe_url_of(entity))
-        .unwrap_or_default()
-        .to_owned();
+    let hyperlink = crate::scene::hyperlink::Link::of(entity)
+        .map(|link| link.label())
+        .unwrap_or_default();
 
     let section = PropSection {
         title: t!("General").into_owned(),

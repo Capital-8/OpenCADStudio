@@ -8,6 +8,7 @@
 pub mod annotative;
 pub mod assoc_array;
 pub(crate) mod block_metadata;
+pub(crate) mod hyperlink;
 pub mod block_service;
 pub mod block_visibility;
 pub(crate) mod block_construction;
@@ -83,7 +84,7 @@ mod scene_markers;
 mod selection;
 pub mod viewport_dimension_pick;
 pub mod viewport_ref;
-pub(crate) use selection::{pe_url_description_of, pe_url_of};
+pub(crate) use selection::pe_url_of;
 pub mod parametric_constraints;
 mod parametric_solve;
 
