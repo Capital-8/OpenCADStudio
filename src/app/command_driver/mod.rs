@@ -180,6 +180,7 @@ impl OpenCADStudio {
             &result,
             CmdResult::Relaunch(..)
                 | CmdResult::Dispatch(..)
+                | CmdResult::Script(..)
                 | CmdResult::QSelectSample { .. }
                 | CmdResult::SolidEdgeBlend { .. }
                 | CmdResult::SolidSubtract { .. }
@@ -918,6 +919,9 @@ impl OpenCADStudio {
             CmdResult::Dispatch(cmd) => {
                 dispatched = self.handle_dispatch(cmd);
             }
+            CmdResult::Script(script) => {
+                dispatched = self.handle_script(script);
+            }
             CmdResult::EditTableCell { handle, point } => {
                 if let Some(task) = self.handle_edit_table_cell(handle, point) {
                     return task;
@@ -1403,8 +1407,7 @@ impl OpenCADStudio {
     fn handle_dispatch(&mut self, cmd: String) -> Task<Message> {
         let i = self.active_tab;
         // End this interactive front-end, then run the assembled command
-        // through the normal dispatcher. Selection is left untouched except
-        // after a plugin's command.
+        // through the normal dispatcher. Selection is left untouched.
         // The option picked in DIMCONSTRAINT becomes its next default;
         // the same command run on its own leaves the default alone.
         let from_menu = self.tabs[i]
@@ -1419,24 +1422,29 @@ impl OpenCADStudio {
                 _ => {}
             }
         }
-        let is_plugin = self.tabs[i]
+        self.tabs[i].active_cmd = None;
+        self.tabs[i].snap_result = None;
+        self.tabs[i].scene.clear_preview_wire();
+        self.restore_pre_cmd_tangent();
+        self.dispatch_command(&cmd)
+    }
+
+    fn handle_script(&mut self, script: String) -> Task<Message> {
+        let i = self.active_tab;
+        // A plugin command's script starts from an empty selection.
+        if self.tabs[i]
             .active_cmd
             .as_ref()
-            .is_some_and(|c| c.name() == "PLUGIN");
-        // A plugin's dispatched command starts from an empty selection.
-        if is_plugin {
+            .is_some_and(|c| c.name() == "PLUGIN")
+        {
             self.tabs[i].scene.deselect_all();
         }
         self.tabs[i].active_cmd = None;
         self.tabs[i].snap_result = None;
         self.tabs[i].scene.clear_preview_wire();
         self.restore_pre_cmd_tangent();
-        if !cmd.contains('\n') {
-            return self.dispatch_command(&cmd);
-        }
-        // A multi-line script (a plugin's queued command calls) runs line by
-        // line, each answering the prompts the previous one left open.
-        for line in cmd.lines() {
+        // Each line answers the prompts the previous one left open.
+        for line in script.lines() {
             let line = line.trim();
             if !line.is_empty() {
                 let task = self.run_command_line_streaming(line, true);

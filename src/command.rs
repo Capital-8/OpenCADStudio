@@ -2229,6 +2229,11 @@ pub enum CmdResult {
     /// collecting an option + value, then running `UCS Z 90`). Unlike
     /// `Relaunch` it does not touch the selection.
     Dispatch(String),
+    /// End the command and run `script` as typed command-line input, one
+    /// line after another (a plugin's `CommandStep::Dispatch`, e.g. the
+    /// command calls of a script). A plugin command's script starts from an
+    /// empty selection.
+    Script(String),
     /// Move `dest` entities to the layer of the `src` entity; end command.
     MatchEntityLayer {
         dest: Vec<Handle>,

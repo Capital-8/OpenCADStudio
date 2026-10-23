@@ -1274,7 +1274,7 @@ mod dispatched_command_task_tests {
         // Unselected entity - AutoLISP (command "_MOVE" ss "" "_NONE" pt "_NONE" '(0 0 0)) produces:
         assert!(app.tabs[i].scene.selected_entities().is_empty());
         let cmd = format!("_MOVE {:X} ENTER _NONE 10,20,0 _NONE 0,0,0", handle.value());
-        let task = app.apply_cmd_result(CmdResult::Dispatch(cmd));
+        let task = app.apply_cmd_result(CmdResult::Script(cmd));
         let _ = app.drive_headless_task(task);
 
         let moved = app.tabs[i].scene.document.get_entity(handle).unwrap();
@@ -1305,7 +1305,7 @@ mod dispatched_command_task_tests {
 
         // Pre-selection MOVE command only takes base and destination points
         let cmd = "_MOVE _NONE 10,20,0 _NONE 0,0,0";
-        let task = app.apply_cmd_result(CmdResult::Dispatch(cmd.to_string()));
+        let task = app.apply_cmd_result(CmdResult::Script(cmd.to_string()));
         let _ = app.drive_headless_task(task);
 
         let moved = app.tabs[i].scene.document.get_entity(handle).unwrap();

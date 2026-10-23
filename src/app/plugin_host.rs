@@ -4216,7 +4216,7 @@ impl crate::command::CadCommand for PluginProcessInteractiveAdapter {
             crate::command::CmdResult::CommitAndExit(_)
                 | crate::command::CmdResult::CommitEntitiesAndExit(_)
                 | crate::command::CmdResult::Done
-                | crate::command::CmdResult::Dispatch(_)
+                | crate::command::CmdResult::Script(_)
                 | crate::command::CmdResult::Cancel
         ) {
             self.is_done = true;
@@ -4237,7 +4237,7 @@ impl crate::command::CadCommand for PluginProcessInteractiveAdapter {
             crate::command::CmdResult::CommitAndExit(_)
                 | crate::command::CmdResult::CommitEntitiesAndExit(_)
                 | crate::command::CmdResult::Done
-                | crate::command::CmdResult::Dispatch(_)
+                | crate::command::CmdResult::Script(_)
                 | crate::command::CmdResult::Cancel
         ) {
             self.is_done = true;
@@ -4271,7 +4271,7 @@ impl crate::command::CadCommand for PluginProcessInteractiveAdapter {
             crate::command::CmdResult::CommitAndExit(_)
                 | crate::command::CmdResult::CommitEntitiesAndExit(_)
                 | crate::command::CmdResult::Done
-                | crate::command::CmdResult::Dispatch(_)
+                | crate::command::CmdResult::Script(_)
                 | crate::command::CmdResult::Cancel
         ) {
             self.is_done = true;
@@ -4308,7 +4308,7 @@ impl crate::command::CadCommand for PluginProcessInteractiveAdapter {
             crate::command::CmdResult::CommitAndExit(_)
                 | crate::command::CmdResult::CommitEntitiesAndExit(_)
                 | crate::command::CmdResult::Done
-                | crate::command::CmdResult::Dispatch(_)
+                | crate::command::CmdResult::Script(_)
                 | crate::command::CmdResult::Cancel
         ) {
             self.is_done = true;
@@ -4418,7 +4418,7 @@ fn plugin_step_to_result(step: ocs_plugin_api::host::CommandStep) -> crate::comm
         CommandStep::CommitAndEnd(e) => CmdResult::CommitAndExit(e),
         CommandStep::CommitManyAndEnd(es) => CmdResult::CommitEntitiesAndExit(es),
         CommandStep::Done => CmdResult::Done,
-        CommandStep::Dispatch(cmd) => CmdResult::Dispatch(cmd),
+        CommandStep::Dispatch(script) => CmdResult::Script(script),
         CommandStep::Cancel => CmdResult::Cancel,
     }
 }
