@@ -1748,7 +1748,7 @@ impl OpenCADStudio {
                     flow,
                 )
             }),
-            super::super::ModalKind::Hyperlink => sized_flow(ex, 520, 430, |flow| {
+            super::super::ModalKind::Hyperlink => sized_flow(ex, 520, 380, |flow| {
                 crate::ui::window::hyperlink_dialog::view(
                     &self.hyperlink_editor_url,
                     &self.hyperlink_editor_description,
