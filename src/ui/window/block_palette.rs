@@ -31,6 +31,11 @@ const GRID_CARD_PAD: f32 = 6.0;
 const GRID_LABEL_GAP: f32 = 4.0;
 /// Space between the list's rows.
 const LIST_SPACING: f32 = 4.0;
+/// Height of a row's content in Small Icons, Details and List (and of the
+/// Details header): the 16 px thumbnail, with the one-line name centred.
+const LIST_ROW_H: f32 = 16.0;
+/// Padding inside a card of Small Icons, Details and List.
+const LIST_CARD_PAD: f32 = 3.0;
 /// Rows built beyond each end of the visible ones, so a fast scroll doesn't
 /// show an empty row before the list catches up.
 const SPARE_ROWS: usize = 2;
@@ -106,6 +111,19 @@ impl ViewMode {
             ViewMode::List => crate::t!("List"),
         }
         .into_owned()
+    }
+
+    /// How the list is laid out: cards per row, the height of a row, and
+    /// the height above the first row (the Details header and its gap).
+    /// Every row is exactly this tall, so only the rows in view are built.
+    fn rows(self) -> (usize, f32, f32) {
+        let list_row_h = LIST_ROW_H + 2.0 * LIST_CARD_PAD;
+        match (self.grid(), self) {
+            (Some((per_row, size)), _) => (per_row, grid_row_h(size), 0.0),
+            (None, ViewMode::Small) => (2, list_row_h, 0.0),
+            (None, ViewMode::Details) => (1, list_row_h, LIST_ROW_H + LIST_SPACING),
+            (None, _) => (1, list_row_h, 0.0),
+        }
     }
 
     /// Cards per row and thumbnail height for the icon views.
@@ -380,24 +398,20 @@ impl BlockPalette {
 
     /// The blocks whose previews the list shows with the current scroll
     /// position: the rows in view (or the first screenful, before the list
-    /// reported its viewport) in the icon views, every row of Small Icons
-    /// and Details, none in List. Blocks of the drawing and recent /
-    /// favorite blocks that may be in it.
+    /// reported its viewport), none in List, which has no thumbnails.
+    /// Blocks of the drawing and recent / favorite blocks that may be in it.
     pub fn shown_preview_names(&self) -> Vec<String> {
+        if self.view == ViewMode::List {
+            return Vec::new();
+        }
         let items = self.items();
-        let shown: &[Item] = match self.view.grid() {
-            Some((per_row, size)) => {
-                let (offset, height) = self.scroll;
-                let height = if height > 0.0 { height } else { FIRST_SCREEN_H };
-                let rows = items.len().div_ceil(per_row);
-                let pitch = grid_row_h(size) + LIST_SPACING;
-                let range = visible_rows(rows, pitch, offset, height);
-                let end = (range.end * per_row).min(items.len());
-                &items[(range.start * per_row).min(end)..end]
-            }
-            None if self.view == ViewMode::List => &[],
-            None => &items,
-        };
+        let (per_row, row_h, lead) = self.view.rows();
+        let (offset, height) = self.scroll;
+        let height = if height > 0.0 { height } else { FIRST_SCREEN_H };
+        let rows = items.len().div_ceil(per_row);
+        let range = visible_rows(rows, row_h + LIST_SPACING, offset - lead, height);
+        let end = (range.end * per_row).min(items.len());
+        let shown = &items[(range.start * per_row).min(end)..end];
         shown
             .iter()
             .filter_map(|item| match item {
@@ -761,12 +775,15 @@ fn item_view<'a>(palette: &'a BlockPalette, item: Item) -> Element<'a, Message> 
         ]
         .spacing(GRID_LABEL_GAP)
         .into(),
+        // One line per name, cut with "…" where it runs out of room, so every
+        // row is exactly `LIST_ROW_H` tall.
         None => match palette.view {
             ViewMode::Small => row![
                 container(thumb(palette, &item, 16.0)).width(Length::Fixed(20.0)),
-                text(crate::ui::text_util::elide(&name, 16)).size(11),
+                one_line(text(crate::ui::text_util::elide(&name, 16)).size(11)),
             ]
             .spacing(4)
+            .height(Length::Fixed(LIST_ROW_H))
             .align_y(iced::Center)
             .into(),
             ViewMode::Details => {
@@ -777,23 +794,27 @@ fn item_view<'a>(palette: &'a BlockPalette, item: Item) -> Element<'a, Message> 
                     |v: bool| if v { crate::t!("Yes") } else { crate::t!("No") }.into_owned();
                 row![
                     container(thumb(palette, &item, 16.0)).width(Length::Fixed(40.0)),
-                    text(name.clone()).size(11).width(Fill),
+                    one_line(text(name.clone()).size(11)),
                     text(format!("{} / {}", yes_no(ann), yes_no(dynamic)))
                         .size(11)
                         .width(Length::Fixed(140.0)),
                 ]
                 .spacing(4)
+                .height(Length::Fixed(LIST_ROW_H))
                 .align_y(iced::Center)
                 .into()
             }
-            _ => text(name.clone()).size(11).width(Fill).into(),
+            _ => one_line(text(name.clone()).size(11))
+                .height(Length::Fixed(LIST_ROW_H))
+                .align_y(iced::alignment::Vertical::Center)
+                .into(),
         },
     };
     let card = container(body)
         .padding(if palette.view.grid().is_some() {
             GRID_CARD_PAD
         } else {
-            3.0
+            LIST_CARD_PAD
         })
         .width(Fill)
         .style(move |theme: &Theme| {
@@ -1101,69 +1122,50 @@ pub fn view(
             .into()
     } else {
         let mut col = column![].spacing(LIST_SPACING);
-        match palette.view.grid() {
-            Some((per_row, size)) => {
-                // Every row is equally tall, so only the rows in view (and
-                // a few spare) are built; spaces stand in for the others,
-                // keeping the list's height and scroll position.
-                let rows: Vec<&[Item]> = items.chunks(per_row).collect();
-                let pitch = grid_row_h(size) + LIST_SPACING;
-                let (offset, height) = palette.scroll;
-                let shown = visible_rows(rows.len(), pitch, offset, height);
-                if shown.start > 0 {
-                    col = col.push(Space::new().height(shown.start as f32 * pitch - LIST_SPACING));
-                }
-                for chunk in &rows[shown.clone()] {
-                    let mut r = row![].spacing(6).width(Fill);
-                    for item in chunk.iter() {
-                        r = r.push(item_view(palette, item.clone()));
-                    }
-                    for _ in chunk.len()..per_row {
-                        r = r.push(Space::new().width(Fill));
-                    }
-                    col = col.push(r);
-                }
-                let after = rows.len() - shown.end;
-                if after > 0 {
-                    col = col.push(Space::new().height(after as f32 * pitch - LIST_SPACING));
-                }
+        let (per_row, row_h, lead) = palette.view.rows();
+        if palette.view == ViewMode::Details {
+            col = col.push(
+                row![
+                    text(crate::t!("Icon"))
+                        .size(11)
+                        .style(muted_style)
+                        .width(Length::Fixed(40.0)),
+                    text(crate::t!("Name"))
+                        .size(11)
+                        .style(muted_style)
+                        .width(Fill),
+                    text(crate::t!("Annotative / Dynamic"))
+                        .size(11)
+                        .style(muted_style)
+                        .width(Length::Fixed(140.0)),
+                ]
+                .spacing(4)
+                .height(Length::Fixed(LIST_ROW_H)),
+            );
+        }
+        // Every row is equally tall, so only the rows in view (and a few
+        // spare) are built; spaces stand in for the others, keeping the
+        // list's height and scroll position.
+        let rows: Vec<&[Item]> = items.chunks(per_row).collect();
+        let pitch = row_h + LIST_SPACING;
+        let (offset, height) = palette.scroll;
+        let shown = visible_rows(rows.len(), pitch, offset - lead, height);
+        if shown.start > 0 {
+            col = col.push(Space::new().height(shown.start as f32 * pitch - LIST_SPACING));
+        }
+        for chunk in &rows[shown.clone()] {
+            let mut r = row![].spacing(6).width(Fill);
+            for item in chunk.iter() {
+                r = r.push(item_view(palette, item.clone()));
             }
-            None if palette.view == ViewMode::Small => {
-                for chunk in items.chunks(2) {
-                    let mut r = row![].spacing(6).width(Fill);
-                    for item in chunk {
-                        r = r.push(item_view(palette, item.clone()));
-                    }
-                    if chunk.len() < 2 {
-                        r = r.push(Space::new().width(Fill));
-                    }
-                    col = col.push(r);
-                }
+            for _ in chunk.len()..per_row {
+                r = r.push(Space::new().width(Fill));
             }
-            None => {
-                if palette.view == ViewMode::Details {
-                    col = col.push(
-                        row![
-                            text(crate::t!("Icon"))
-                                .size(11)
-                                .style(muted_style)
-                                .width(Length::Fixed(40.0)),
-                            text(crate::t!("Name"))
-                                .size(11)
-                                .style(muted_style)
-                                .width(Fill),
-                            text(crate::t!("Annotative / Dynamic"))
-                                .size(11)
-                                .style(muted_style)
-                                .width(Length::Fixed(140.0)),
-                        ]
-                        .spacing(4),
-                    );
-                }
-                for item in items {
-                    col = col.push(item_view(palette, item));
-                }
-            }
+            col = col.push(r);
+        }
+        let after = rows.len() - shown.end;
+        if after > 0 {
+            col = col.push(Space::new().height(after as f32 * pitch - LIST_SPACING));
         }
         scrollable(container(col).padding(iced::Padding {
             top: 0.0,
@@ -1189,13 +1191,22 @@ pub fn view(
     )
 }
 
+/// `name` on one line the width of what is left, cut with "…" when it
+/// does not fit.
+fn one_line(name: iced::widget::Text<'_>) -> iced::widget::Text<'_> {
+    name.width(Fill)
+        .wrapping(iced::widget::text::Wrapping::None)
+        .ellipsis(iced::advanced::text::Ellipsis::End)
+}
+
 /// Height of a row of cards in an icon view with `size` tall thumbnails.
 fn grid_row_h(size: f32) -> f32 {
     2.0 * GRID_CARD_PAD + size + GRID_LABEL_GAP + LABEL_LINE_H
 }
 
 /// The rows of a `rows` long list, `pitch` apart, to build for a viewport
-/// `height` tall scrolled `offset` down: those in view plus [`SPARE_ROWS`]
+/// `height` tall scrolled `offset` down from the first row (negative while
+/// something above the rows is in view): those in view plus [`SPARE_ROWS`]
 /// either side. All of them while the viewport's height is not known yet.
 fn visible_rows(rows: usize, pitch: f32, offset: f32, height: f32) -> std::ops::Range<usize> {
     if height <= 0.0 || pitch <= 0.0 {
@@ -1413,26 +1424,47 @@ mod tests {
     }
 
     #[test]
-    fn icon_views_only_build_the_rows_in_view_at_their_real_place() {
-        let mut palette = BlockPalette::default();
-        palette.set_blocks((0..300).map(|i| entry(&format!("B{i:03}"))).collect());
-        for mode in [ViewMode::ExtraLarge, ViewMode::Large, ViewMode::Medium] {
+    fn every_view_only_builds_the_rows_in_view_at_their_real_place() {
+        for mode in ViewMode::ALL {
+            let (per_row, row_h, lead) = mode.rows();
+            let pitch = row_h + LIST_SPACING;
+            // Row 1 starts with a name far too long for the list: it stays
+            // on one line, so its row is as tall as any other.
+            let long = "L".repeat(200);
+            let mut palette = BlockPalette::default();
             palette.view = mode;
-            let (per_row, size) = mode.grid().unwrap();
-            let pitch = grid_row_h(size) + LIST_SPACING;
+            palette.set_blocks(
+                (0..300)
+                    .map(|i| {
+                        if i == per_row {
+                            entry(&long)
+                        } else {
+                            entry(&format!("B{i:03}"))
+                        }
+                    })
+                    .collect(),
+            );
             let label = |row: usize| format!("B{:03}", row * per_row);
             // Everything built: the rows really are `pitch` apart.
             palette.scroll = (0.0, 0.0);
             let first = label_at(&palette, &label(0)).unwrap();
-            let next = label_at(&palette, &label(1)).unwrap();
-            assert!((next.y - first.y - pitch).abs() < 0.01, "{mode:?}");
+            let third = label_at(&palette, &label(2)).unwrap();
+            assert!((third.y - first.y - 2.0 * pitch).abs() < 0.01, "{mode:?}");
             let far = label_at(&palette, &label(30)).unwrap();
             // Scrolled to row 30 of a 3-row viewport: rows far above are
             // not built, and the ones in view sit where they always did.
-            palette.scroll = (30.0 * pitch, 3.0 * pitch);
+            palette.scroll = (lead + 30.0 * pitch, 3.0 * pitch);
             assert!(label_at(&palette, &label(0)).is_none(), "{mode:?}");
             assert!(label_at(&palette, &label(40)).is_none(), "{mode:?}");
             assert_eq!(label_at(&palette, &label(30)), Some(far), "{mode:?}");
+            // Only the previews in view are worked out (List has none).
+            let shown = palette.shown_preview_names();
+            assert_eq!(
+                shown.contains(&label(30)),
+                mode != ViewMode::List,
+                "{mode:?}"
+            );
+            assert!(!shown.contains(&label(0)), "{mode:?}");
         }
     }
 }
