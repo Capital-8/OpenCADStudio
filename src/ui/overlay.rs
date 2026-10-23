@@ -1,6 +1,6 @@
 //! Viewport overlay widgets.
 
-pub(crate) mod authoring;
+pub mod authoring;
 
 use std::cell::RefCell;
 
@@ -1025,7 +1025,7 @@ impl canvas::Program<Message> for GridCanvas {
     }
 }
 
-pub(crate) fn selection_overlay<'a>(
+pub fn selection_overlay<'a>(
     selection: Arc<RefCell<SelectionState>>,
     snap: Option<(Point, SnapType)>,
     snap_ext_base: Option<Point>,
