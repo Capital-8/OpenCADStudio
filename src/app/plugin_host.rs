@@ -311,38 +311,6 @@ impl<'a> HostSession<'a> {
         Ok(())
     }
 
-    /// The `ACAD_IMAGE_DICT` dictionary under the named-objects root, created
-    /// when the drawing has none. `None` when the drawing has no root dictionary.
-    fn ensure_image_dictionary(&mut self) -> Option<Handle> {
-        use codec::objects::{Dictionary, ObjectType};
-        let root = self.document().header.named_objects_dict_handle;
-        let Some(ObjectType::Dictionary(root_dictionary)) = self.document().objects.get(&root)
-        else {
-            return None;
-        };
-        if let Some(existing) = root_dictionary.get("ACAD_IMAGE_DICT") {
-            if matches!(
-                self.document().objects.get(&existing),
-                Some(ObjectType::Dictionary(_))
-            ) {
-                return Some(existing);
-            }
-        }
-        let handle = self.document_mut().allocate_handle();
-        let mut dictionary = Dictionary::new();
-        dictionary.handle = handle;
-        dictionary.owner = root;
-        self.document_mut()
-            .objects
-            .insert(handle, ObjectType::Dictionary(dictionary));
-        if let Some(ObjectType::Dictionary(root_dictionary)) =
-            self.document_mut().objects.get_mut(&root)
-        {
-            root_dictionary.add_entry("ACAD_IMAGE_DICT", handle);
-        }
-        Some(handle)
-    }
-
     /// A scripted RasterImage names a file; the host creates the image
     /// definition object it needs (pixel size read from the file) and links it.
     fn prepare_scripted_raster_image(&mut self, entity: &mut EntityType) -> Result<(), String> {
@@ -381,27 +349,14 @@ impl<'a> HostSession<'a> {
                 );
                 definition.handle = handle;
                 definition.is_loaded = true;
-                // Register it in ACAD_IMAGE_DICT under the file's name, and let
-                // that dictionary own it, like an image AutoCAD attached.
-                let stem = std::path::Path::new(&image.file_path)
-                    .file_stem()
-                    .and_then(|name| name.to_str())
-                    .filter(|name| !name.is_empty())
-                    .unwrap_or("IMAGE")
-                    .to_owned();
-                if let Some(dictionary) = self.ensure_image_dictionary() {
+                if let Some(dictionary) =
+                    crate::app::command_driver::clipboard::register_image_definition(
+                        self.document_mut(),
+                        handle,
+                        &image.file_path,
+                    )
+                {
                     definition.owner = dictionary;
-                    if let Some(codec::objects::ObjectType::Dictionary(entries)) =
-                        self.document_mut().objects.get_mut(&dictionary)
-                    {
-                        let mut key = stem.clone();
-                        let mut suffix = 1;
-                        while entries.get(&key).is_some() {
-                            suffix += 1;
-                            key = format!("{stem}_{suffix}");
-                        }
-                        entries.add_entry(key, handle);
-                    }
                 }
                 self.document_mut().objects.insert(
                     handle,
