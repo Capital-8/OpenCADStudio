@@ -4,6 +4,7 @@ use codec::{EntityType, Handle};
 use glam::DVec3;
 use iced::{Point, Rectangle};
 use std::sync::Arc;
+mod grip_tips;
 
 pub(super) struct DependencyCache {
     key: (u64, u64, Handle),
@@ -11,7 +12,7 @@ pub(super) struct DependencyCache {
 }
 
 impl OpenCADStudio {
-    pub(super) fn dynamic_grip_tip(&self, handle: Handle, id: usize) -> Option<String> {
+    fn dynamic_grip_summary(&self, handle: Handle, id: usize) -> Option<String> {
         if !self.block_editor_preferences.grip_tips {
             return None;
         }
@@ -356,6 +357,7 @@ mod tests {
         app.tabs[i].selected_handle = Some(insert);
         let grip_id = crate::scene::block_grips::runtime::id(actions::all_parameters(&app.tabs[i].scene.document, definition).into_iter().find(|p| p.handle == parameter).unwrap().id, 1).unwrap();
         app.grip_hover = Some(super::super::GripHover {
+            document: app.tabs[i].id,
             handle: insert,
             grip_id: grip_id,
             screen: Point::ORIGIN,

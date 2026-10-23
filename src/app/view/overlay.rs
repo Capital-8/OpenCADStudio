@@ -949,6 +949,30 @@ pub(super) fn position_canvas_overlay_near_cursor<'a>(
     })
 }
 
+/// Native parameter help stays within the viewport and passes input through.
+pub(super) fn grip_tip_overlay<'a>(
+    anchor: iced::Point,
+    bottom_inset: f32,
+    value: String,
+) -> Element<'a, Message> {
+    let panel = container(
+        text(value)
+            .size(12)
+            .shaping(iced::advanced::text::Shaping::Advanced),
+    )
+    .padding(6)
+    .width(Length::Fit.max(420.0))
+    .style(container::bordered_box);
+    Element::new(ClampedPin {
+        content: panel.into(),
+        anchor,
+        bottom_inset: bottom_inset.max(0.0),
+        gap: 12.0,
+        offset: Vector::ZERO,
+        passive: true,
+    })
+}
+
 /// Measured, wrapping text in the existing clamped panel layout. Input goes
 /// straight through, including clicks directly on the result text.
 pub(super) fn measurement_overlay<'a>(
@@ -1940,59 +1964,69 @@ mod measurement_tests {
     use super::*;
     #[test]
     fn measurement_overlay_passes_all_clicks_on_text() {
-        let underlay = mouse_area(Space::new().width(Fill).height(Fill))
-            .on_press(Message::ViewportLeftPress)
-            .on_right_press(Message::ViewportRightPress)
-            .on_middle_press(Message::ViewportMiddlePress);
-        let mut ui = iced_test::simulator(stack![
-            underlay,
-            measurement_overlay(
-                iced::Point::new(400.0, 300.0),
-                60.0,
-                "measurement-result".into()
-            )
-        ]);
-        let center = ui
-            .find("measurement-result")
-            .unwrap()
-            .visible_bounds()
-            .unwrap()
-            .center();
-        ui.point_at(center);
-        for button in [
-            iced::mouse::Button::Left,
-            iced::mouse::Button::Right,
-            iced::mouse::Button::Middle,
+        for make_overlay in [
+            measurement_overlay as fn(iced::Point, f32, String) -> Element<'static, Message>,
+            grip_tip_overlay,
         ] {
-            ui.simulate([Event::Mouse(iced::mouse::Event::ButtonPressed(button))]);
-            ui.simulate([Event::Mouse(iced::mouse::Event::ButtonReleased(button))]);
-        }
-        let messages: Vec<_> = ui.into_messages().collect();
-        assert!(messages
-            .iter()
-            .any(|m| matches!(m, Message::ViewportLeftPress)));
-        assert!(messages
-            .iter()
-            .any(|m| matches!(m, Message::ViewportRightPress)));
-        assert!(messages
-            .iter()
-            .any(|m| matches!(m, Message::ViewportMiddlePress)));
-    }
-    #[test]
-    fn measurement_overlay_stays_inside_canvas_above_command_line() {
-        for anchor in [iced::Point::new(5.0, 5.0), iced::Point::new(790.0, 595.0)] {
-            let mut ui = iced_test::simulator::Simulator::with_size(
-                Default::default(),
-                iced::Size::new(800.0, 600.0),
-                measurement_overlay(anchor, 90.0, "measurement-result".into()),
-            );
-            let bounds = ui
+            let underlay = mouse_area(Space::new().width(Fill).height(Fill))
+                .on_press(Message::ViewportLeftPress)
+                .on_right_press(Message::ViewportRightPress)
+                .on_middle_press(Message::ViewportMiddlePress);
+            let mut ui = iced_test::simulator(stack![
+                underlay,
+                make_overlay(
+                    iced::Point::new(400.0, 300.0),
+                    60.0,
+                    "measurement-result".into()
+                )
+            ]);
+            let center = ui
                 .find("measurement-result")
                 .unwrap()
                 .visible_bounds()
-                .unwrap();
-            assert!(bounds.x >= 4.0 && bounds.y >= 4.0);
-            assert!(bounds.x + bounds.width <= 796.0 && bounds.y + bounds.height <= 506.0);
+                .unwrap()
+                .center();
+            ui.point_at(center);
+            for button in [
+                iced::mouse::Button::Left,
+                iced::mouse::Button::Right,
+                iced::mouse::Button::Middle,
+            ] {
+                ui.simulate([Event::Mouse(iced::mouse::Event::ButtonPressed(button))]);
+                ui.simulate([Event::Mouse(iced::mouse::Event::ButtonReleased(button))]);
+            }
+            let messages: Vec<_> = ui.into_messages().collect();
+            assert!(messages
+                .iter()
+                .any(|m| matches!(m, Message::ViewportLeftPress)));
+            assert!(messages
+                .iter()
+                .any(|m| matches!(m, Message::ViewportRightPress)));
+            assert!(messages
+                .iter()
+                .any(|m| matches!(m, Message::ViewportMiddlePress)));
+        }
+    }
+    #[test]
+    fn measurement_overlay_stays_inside_canvas_above_command_line() {
+        for make_overlay in [
+            measurement_overlay as fn(iced::Point, f32, String) -> Element<'static, Message>,
+            grip_tip_overlay,
+        ] {
+            for anchor in [iced::Point::new(5.0, 5.0), iced::Point::new(790.0, 595.0)] {
+                let mut ui = iced_test::simulator::Simulator::with_size(
+                    Default::default(),
+                    iced::Size::new(800.0, 600.0),
+                    make_overlay(anchor, 90.0, "measurement-result".into()),
+                );
+                let bounds = ui
+                    .find("measurement-result")
+                    .unwrap()
+                    .visible_bounds()
+                    .unwrap();
+                assert!(bounds.x >= 4.0 && bounds.y >= 4.0);
+                assert!(bounds.x + bounds.width <= 796.0 && bounds.y + bounds.height <= 506.0);
+            }
         }
     }
 }

@@ -1327,9 +1327,10 @@ impl OpenCADStudio {
                 let same = self
                     .grip_hover
                     .as_ref()
-                    .map_or(false, |h| h.handle == handle && h.grip_id == grip_id);
+                    .map_or(false, |h| h.document == self.tabs[i].id && h.handle == handle && h.grip_id == grip_id);
                 if !same {
                     self.grip_hover = Some(crate::app::GripHover {
+                        document: self.tabs[i].id,
                         handle,
                         grip_id,
                         screen: p,

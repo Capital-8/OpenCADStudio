@@ -107,6 +107,7 @@ pub enum UcsGripKind {
 /// threshold the multi-functional menu opens (`grip_popup`).
 #[derive(Clone, Debug)]
 pub struct GripHover {
+    pub document: u64,
     pub handle: codec::Handle,
     pub grip_id: usize,
     pub screen: iced::Point,

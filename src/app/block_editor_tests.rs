@@ -7,6 +7,7 @@ mod retained_save_as;
 mod table_properties;
 mod lookup_properties;
 mod visibility_properties;
+mod grip_descriptions;
 
 fn fixture() -> (OpenCADStudio, Handle) {
     let mut app = OpenCADStudio::new_for_test();

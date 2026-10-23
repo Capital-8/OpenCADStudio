@@ -2108,14 +2108,6 @@ bg={bg_ms:.1}ms n={view_count}"
                 let bar=crate::ui::window::block_action_bars::view(group,tab.selected_authoring,offset,width,tab.active_cmd.is_none(),bar_color);
                 viewport_stack=viewport_stack.push(position_canvas_overlay(point,bar));
             }
-            if let Some(hover) = self.grip_hover.as_ref().filter(|hover|
-                hover.started.elapsed().as_millis() >= 500 && self.grip_popup.is_none()) {
-                if let Some(tip) = self.dynamic_grip_tip(hover.handle,hover.grip_id) {
-                    let panel = container(text(tip).size(12)).padding(6).style(container::bordered_box);
-                    viewport_stack = viewport_stack.push(position_canvas_overlay(
-                        iced::Point::new(hover.screen.x+12.0,hover.screen.y+16.0),panel.into()));
-                }
-            }
             if let Some(popup) = self.grip_popup.as_ref() {
                 if !tab.is_start {
                     let labels: Vec<String> = popup
@@ -2367,6 +2359,9 @@ bg={bg_ms:.1}ms n={view_count}"
             } else {
                 34.0 + self.command_line.overlay_lines_height()
             };
+            if let Some((cursor, tip)) = self.hovered_dynamic_grip_tip() {
+                viewport_stack = viewport_stack.push(overlay::grip_tip_overlay(cursor, command_line_inset, tip));
+            }
             if !tab.is_start {
                 if let Some(readout) = self.measurement_readout(self.active_tab) {
                     viewport_stack = viewport_stack.push(overlay::measurement_overlay(
