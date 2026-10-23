@@ -5943,14 +5943,23 @@ manage =
     .application = Ứng dụng
     .audit = Kiểm tra lỗi
     .cleanup = Dọn dẹp
+    .combine-co-linear-objects-that-partially-overlap = Gộp các đối tượng thẳng hàng chồng lấn một phần
+    .combine-co-linear-objects-when-aligned-end-to-end = Gộp các đối tượng thẳng hàng nối đầu với đuôi
     .customization = Tùy chỉnh
+    .delete-duplicate-objects = Xóa đối tượng trùng lặp
     .edit-aliases = Chỉnh sửa bí danh
     .export = Xuất
     .find-non-purgeable-items =
         Tìm mục
         không thể dọn
+    .ignore-object-property = Bỏ qua thuộc tính đối tượng
     .load-partial-cui = Tải CUI bổ sung
+    .maintain-associative-objects = Giữ các đối tượng liên kết
+    .object-comparison-settings = Cài đặt so sánh đối tượng
+    .optimize-segments-within-polylines = Tối ưu các đoạn trong đa tuyến
     .overkill = Xóa trùng lặp (Overkill)
+    .overkill-checked-no-duplicates = OVERKILL: đã kiểm tra __ocs_fmt_0__ đối tượng, không tìm thấy trùng lặp.
+    .overkill-checked-removed-modified = OVERKILL: đã kiểm tra __ocs_fmt_0__ đối tượng, xóa __ocs_fmt_1__, sửa __ocs_fmt_2__.
     .purge = Dọn dẹp (Purge)
     .user-interface =
         Giao diện

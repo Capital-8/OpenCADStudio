@@ -5938,14 +5938,23 @@ manage =
     .application = Εφαρμογή
     .audit = Έλεγχος
     .cleanup = Εκκαθάριση
+    .combine-co-linear-objects-that-partially-overlap = Συνδυασμός συγγραμμικών αντικειμένων που επικαλύπτονται μερικώς
+    .combine-co-linear-objects-when-aligned-end-to-end = Συνδυασμός συγγραμμικών αντικειμένων στοιχισμένων άκρο με άκρο
     .customization = Προσαρμογή
+    .delete-duplicate-objects = Διαγραφή διπλότυπων αντικειμένων
     .edit-aliases = Επεξεργασία ψευδωνύμων
     .export = Εξαγωγή
     .find-non-purgeable-items =
         Εύρεση μη
         εκκαθαρίσιμων στοιχείων
+    .ignore-object-property = Παράβλεψη ιδιότητας αντικειμένου
     .load-partial-cui = Φόρτωση μερικού CUI
+    .maintain-associative-objects = Διατήρηση συσχετιστικών αντικειμένων
+    .object-comparison-settings = Ρυθμίσεις σύγκρισης αντικειμένων
+    .optimize-segments-within-polylines = Βελτιστοποίηση τμημάτων σε πολυγραμμές
     .overkill = Overkill
+    .overkill-checked-no-duplicates = OVERKILL: ελέγχθηκαν __ocs_fmt_0__ αντικείμενα, δεν βρέθηκαν διπλότυπα.
+    .overkill-checked-removed-modified = OVERKILL: ελέγχθηκαν __ocs_fmt_0__ αντικείμενα, αφαιρέθηκαν __ocs_fmt_1__, τροποποιήθηκαν __ocs_fmt_2__.
     .purge = Εκκαθάριση
     .user-interface =
         Περιβάλλον

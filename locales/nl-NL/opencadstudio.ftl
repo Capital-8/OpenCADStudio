@@ -5936,14 +5936,23 @@ manage =
     .application = Toepassing
     .audit = Controle
     .cleanup = Opruimen
+    .combine-co-linear-objects-that-partially-overlap = Collineaire objecten die gedeeltelijk overlappen combineren
+    .combine-co-linear-objects-when-aligned-end-to-end = Collineaire objecten die eind aan eind liggen combineren
     .customization = Aanpassen
+    .delete-duplicate-objects = Dubbele objecten verwijderen
     .edit-aliases = Aliassen bewerken
     .export = Uitvoer
     .find-non-purgeable-items =
         Zoek niet-
         Zuiverbare items
+    .ignore-object-property = Objecteigenschap negeren
     .load-partial-cui = Gedeeltelijke belasting CUI
+    .maintain-associative-objects = Associatieve objecten behouden
+    .object-comparison-settings = Instellingen voor objectvergelijking
+    .optimize-segments-within-polylines = Segmenten in polylijnen optimaliseren
     .overkill = Duplicaten verwijderen
+    .overkill-checked-no-duplicates = OVERKILL: __ocs_fmt_0__ object(en) gecontroleerd, geen duplicaten gevonden.
+    .overkill-checked-removed-modified = OVERKILL: __ocs_fmt_0__ object(en) gecontroleerd, __ocs_fmt_1__ verwijderd, __ocs_fmt_2__ gewijzigd.
     .purge = Opschonen
     .user-interface =
         Gebruiker

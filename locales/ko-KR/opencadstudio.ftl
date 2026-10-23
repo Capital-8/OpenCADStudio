@@ -5937,14 +5937,23 @@ manage =
     .application = 신청
     .audit = 감사
     .cleanup = 정리
+    .combine-co-linear-objects-that-partially-overlap = 부분적으로 겹치는 동일선상 객체 결합
+    .combine-co-linear-objects-when-aligned-end-to-end = 끝과 끝이 맞닿은 동일선상 객체 결합
     .customization = 맞춤화
+    .delete-duplicate-objects = 중복 객체 삭제
     .edit-aliases = 별칭 편집
     .export = 수출
     .find-non-purgeable-items =
         비 찾기
         제거 가능한 항목
+    .ignore-object-property = 무시할 객체 특성
     .load-partial-cui = 부분 CUI 로드
+    .maintain-associative-objects = 연관 객체 유지
+    .object-comparison-settings = 객체 비교 설정
+    .optimize-segments-within-polylines = 폴리선 내 세그먼트 최적화
     .overkill = 과잉
+    .overkill-checked-no-duplicates = OVERKILL: 객체 __ocs_fmt_0__개 확인, 중복 없음.
+    .overkill-checked-removed-modified = OVERKILL: 객체 __ocs_fmt_0__개 확인, __ocs_fmt_1__개 제거, __ocs_fmt_2__개 수정.
     .purge = 퍼지
     .user-interface =
         사용자

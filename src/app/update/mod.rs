@@ -7422,6 +7422,25 @@ impl OpenCADStudio {
                 self.find_replace_all();
                 Task::none()
             }
+            Message::OverkillSettingsChanged(settings) => {
+                if let Some(state) = &mut self.overkill_dialog {
+                    state.settings = settings;
+                }
+                Task::none()
+            }
+            Message::OverkillToleranceChanged(value) => {
+                if let Some(state) = &mut self.overkill_dialog {
+                    state.tolerance = value;
+                }
+                Task::none()
+            }
+            Message::OverkillOk => {
+                let Some(settings) = self.overkill_dialog.take().and_then(|s| s.parsed()) else {
+                    return Task::none();
+                };
+                self.close_active_modal();
+                self.dispatch_command(&settings.apply_command())
+            }
             Message::MTextPasteClip(text) => {
                 if let Some(text) = text.filter(|t| !t.is_empty()) {
                     // CR/LF arrive as line breaks; MText keeps "\n", drop "\r".

@@ -5950,14 +5950,23 @@ manage =
     .application = التطبيق
     .audit = تدقيق
     .cleanup = تنظيف
+    .combine-co-linear-objects-that-partially-overlap = دمج الكائنات المتسامتة المتداخلة جزئيًا
+    .combine-co-linear-objects-when-aligned-end-to-end = دمج الكائنات المتسامتة عند محاذاتها طرفًا لطرف
     .customization = التخصيص
+    .delete-duplicate-objects = حذف الكائنات المكررة
     .edit-aliases = تحرير الأسماء البديلة
     .export = تصدير
     .find-non-purgeable-items =
         البحث عن العناصر غير
         القابلة للتنظيف
+    .ignore-object-property = تجاهل خاصية الكائن
     .load-partial-cui = تحميل CUI جزئي
+    .maintain-associative-objects = الحفاظ على الكائنات الترابطية
+    .object-comparison-settings = إعدادات مقارنة الكائنات
+    .optimize-segments-within-polylines = تحسين المقاطع داخل الخطوط المتعددة
     .overkill = إزالة التكرار
+    .overkill-checked-no-duplicates = OVERKILL: تم فحص __ocs_fmt_0__ كائن، ولم يُعثر على تكرارات.
+    .overkill-checked-removed-modified = OVERKILL: تم فحص __ocs_fmt_0__ كائن، وحذف __ocs_fmt_1__، وتعديل __ocs_fmt_2__.
     .purge = تنظيف
     .user-interface =
         واجهة

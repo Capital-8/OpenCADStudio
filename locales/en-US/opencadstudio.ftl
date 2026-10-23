@@ -5937,14 +5937,23 @@ manage =
     .application = Application
     .audit = Audit
     .cleanup = Cleanup
+    .combine-co-linear-objects-that-partially-overlap = Combine co-linear objects that partially overlap
+    .combine-co-linear-objects-when-aligned-end-to-end = Combine co-linear objects when aligned end to end
     .customization = Customization
+    .delete-duplicate-objects = Delete Duplicate Objects
     .edit-aliases = Edit Aliases
     .export = Export
     .find-non-purgeable-items =
         Find Non-
         Purgeable Items
+    .ignore-object-property = Ignore object property
     .load-partial-cui = Load Partial CUI
+    .maintain-associative-objects = Maintain associative objects
+    .object-comparison-settings = Object Comparison Settings
+    .optimize-segments-within-polylines = Optimize segments within polylines
     .overkill = Overkill
+    .overkill-checked-no-duplicates = OVERKILL: __ocs_fmt_0__ object(s) checked, no duplicates found.
+    .overkill-checked-removed-modified = OVERKILL: __ocs_fmt_0__ object(s) checked, __ocs_fmt_1__ removed, __ocs_fmt_2__ modified.
     .purge = Purge
     .user-interface =
         User

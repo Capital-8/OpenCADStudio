@@ -5936,14 +5936,23 @@ manage =
     .application = Antragstellung
     .audit = Prüfen
     .cleanup = Reinigung
+    .combine-co-linear-objects-that-partially-overlap = Kollineare Objekte zusammenfassen, die sich teilweise überlappen
+    .combine-co-linear-objects-when-aligned-end-to-end = Kollineare Objekte zusammenfassen, die Ende an Ende liegen
     .customization = Anpassung
+    .delete-duplicate-objects = Doppelte Objekte löschen
     .edit-aliases = Edit Aliasnamen
     .export = Ausfuhr
     .find-non-purgeable-items =
         Nicht- finden-
         Spülbare Gegenstände
+    .ignore-object-property = Objekteigenschaft ignorieren
     .load-partial-cui = Teillast CUI
+    .maintain-associative-objects = Assoziative Objekte beibehalten
+    .object-comparison-settings = Einstellungen für Objektvergleich
+    .optimize-segments-within-polylines = Segmente in Polylinien optimieren
     .overkill = Duplikate entfernen
+    .overkill-checked-no-duplicates = OVERKILL: __ocs_fmt_0__ Objekt(e) geprüft, keine Duplikate gefunden.
+    .overkill-checked-removed-modified = OVERKILL: __ocs_fmt_0__ Objekt(e) geprüft, __ocs_fmt_1__ entfernt, __ocs_fmt_2__ geändert.
     .purge = Spülung
     .user-interface =
         Nutzer

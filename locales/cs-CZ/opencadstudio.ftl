@@ -5935,14 +5935,23 @@ manage =
     .application = Aplikace
     .audit = Audit
     .cleanup = Čištění
+    .combine-co-linear-objects-that-partially-overlap = Sloučit kolineární objekty, které se částečně překrývají
+    .combine-co-linear-objects-when-aligned-end-to-end = Sloučit kolineární objekty navazující koncem na konec
     .customization = Přizpůsobení
+    .delete-duplicate-objects = Odstranit duplicitní objekty
     .edit-aliases = Upravit aliasy
     .export = Exportovat
     .find-non-purgeable-items =
         Najít jiné
         Vymazatelné položky
+    .ignore-object-property = Ignorovat vlastnost objektu
     .load-partial-cui = Načíst částečné CUI
+    .maintain-associative-objects = Zachovat asociativní objekty
+    .object-comparison-settings = Nastavení porovnání objektů
+    .optimize-segments-within-polylines = Optimalizovat segmenty v křivkách
     .overkill = Přehnané
+    .overkill-checked-no-duplicates = OVERKILL: zkontrolováno objektů: __ocs_fmt_0__, žádné duplikáty nenalezeny.
+    .overkill-checked-removed-modified = OVERKILL: zkontrolováno objektů: __ocs_fmt_0__, odstraněno: __ocs_fmt_1__, upraveno: __ocs_fmt_2__.
     .purge = Vyčistit
     .user-interface =
         Uživatel

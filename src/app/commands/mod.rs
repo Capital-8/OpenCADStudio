@@ -705,6 +705,7 @@ inventory::submit!(crate::command::CommandRegistration {
         // Script forms of the table commands.
         "-LAYER",
         "-PURGE",
+        "-OVERKILL",
         "-STYLE",
         "-RENAME",
         "-DIMSTYLE",

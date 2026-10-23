@@ -1223,6 +1223,7 @@ pub(super) struct OpenCADStudio {
     plotstyle_parent_plot_geometry: Option<(iced::Vector, iced::Vector)>,
     /// FIND dialog inputs and current result cursor.
     find_replace: FindReplaceState,
+    overkill_dialog: Option<crate::ui::window::overkill::State>,
     /// Set once the user acknowledges the AEC-drop warning, so re-entering the
     /// save path proceeds instead of re-showing the warning.
     aec_drop_acknowledged: bool,
@@ -2402,6 +2403,8 @@ pub enum ModalKind {
     RecoveryPrompt,
     Options,
     FindReplace,
+    /// OVERKILL settings for the selected objects.
+    Overkill,
     AecDropWarning,
     #[cfg(not(target_arch = "wasm32"))]
     FileInUse,
@@ -2646,6 +2649,9 @@ pub enum Message {
     FindReplaceNext,
     FindReplaceOne,
     FindReplaceAll,
+    OverkillSettingsChanged(crate::modules::draw::modify::overkill::Settings),
+    OverkillToleranceChanged(String),
+    OverkillOk,
     /// System-clipboard text read for the MText editor (`None` = empty/denied).
     MTextPasteClip(Option<String>),
     /// System-clipboard text read for the single-line TEXT editor.
@@ -5131,6 +5137,7 @@ impl OpenCADStudio {
             gpu_warning_silenced: String::new(),
             plotstyle_parent_plot_geometry: None,
             find_replace: FindReplaceState::default(),
+            overkill_dialog: None,
             aec_drop_acknowledged: false,
             aec_drop_count: 0,
             layer_delete_pending: None,

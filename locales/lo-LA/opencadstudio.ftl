@@ -5938,14 +5938,23 @@ manage =
     .application = ແອັບພລິເຄຊັນ
     .audit = ກວດສອບຄວາມຖືກຕ້ອງ
     .cleanup = ອະນາໄມໄຟລ໌
+    .combine-co-linear-objects-that-partially-overlap = ລວມວັດຖຸທີ່ຢູ່ແນວດຽວກັນທີ່ທັບກັນບາງສ່ວນ
+    .combine-co-linear-objects-when-aligned-end-to-end = ລວມວັດຖຸທີ່ຢູ່ແນວດຽວກັນເມື່ອຕໍ່ປາຍກັນ
     .customization = ການປັບແຕ່ງ
+    .delete-duplicate-objects = ລຶບວັດຖຸທີ່ຊ້ຳກັນ
     .edit-aliases = ແກ້ໄຂຄຳສັ່ງຫຍໍ້
     .export = ສົ່ງອອກ
     .find-non-purgeable-items =
         ຊອກຫາລາຍການທີ່
         ບໍ່ສາມາດລຶບອອກໄດ້
+    .ignore-object-property = ບໍ່ສົນໃຈຄຸນສົມບັດຂອງວັດຖຸ
     .load-partial-cui = ໂຫຼດ CUI ບາງສ່ວນ
+    .maintain-associative-objects = ຮັກສາວັດຖຸທີ່ເຊື່ອມໂຍງ
+    .object-comparison-settings = ການຕັ້ງຄ່າການປຽບທຽບວັດຖຸ
+    .optimize-segments-within-polylines = ປັບປຸງສ່ວນພາຍໃນເສັ້ນຫຼາຍຈຸດ
     .overkill = ລຶບວັດຖຸຊ້ອນທັບ
+    .overkill-checked-no-duplicates = OVERKILL: ກວດ __ocs_fmt_0__ ວັດຖຸ, ບໍ່ພົບລາຍການຊ້ຳ.
+    .overkill-checked-removed-modified = OVERKILL: ກວດ __ocs_fmt_0__ ວັດຖຸ, ລຶບ __ocs_fmt_1__, ແກ້ໄຂ __ocs_fmt_2__.
     .purge = ລຶບສິ່ງທີ່ບໍ່ໄດ້ໃຊ້
     .user-interface =
         ສ່ວນຕິດຕໍ່

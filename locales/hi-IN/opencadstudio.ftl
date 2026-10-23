@@ -5926,14 +5926,23 @@ manage =
     .application = आवेदन
     .audit = लेखा
     .cleanup = क्लीनअप
+    .combine-co-linear-objects-that-partially-overlap = आंशिक रूप से ओवरलैप होने वाले संरेखी ऑब्जेक्ट मिलाएँ
+    .combine-co-linear-objects-when-aligned-end-to-end = सिरे से सिरे तक संरेखित संरेखी ऑब्जेक्ट मिलाएँ
     .customization = अनुकूलन
+    .delete-duplicate-objects = डुप्लिकेट ऑब्जेक्ट हटाएँ
     .edit-aliases = उपनाम संपादित करें
     .export = निर्यात
     .find-non-purgeable-items =
         गैर खोजें
         प्रशंसनीय आइटम
+    .ignore-object-property = ऑब्जेक्ट गुण अनदेखा करें
     .load-partial-cui = लोड आंशिक CUI
+    .maintain-associative-objects = सहयोगी ऑब्जेक्ट बनाए रखें
+    .object-comparison-settings = ऑब्जेक्ट तुलना सेटिंग्स
+    .optimize-segments-within-polylines = पॉलीलाइन के भीतर खंड अनुकूलित करें
     .overkill = ओवरकिल
+    .overkill-checked-no-duplicates = OVERKILL: __ocs_fmt_0__ ऑब्जेक्ट जाँचे गए, कोई डुप्लिकेट नहीं मिला।
+    .overkill-checked-removed-modified = OVERKILL: __ocs_fmt_0__ ऑब्जेक्ट जाँचे गए, __ocs_fmt_1__ हटाए गए, __ocs_fmt_2__ संशोधित किए गए।
     .purge = पृग
     .user-interface =
         उपयोगकर्ता

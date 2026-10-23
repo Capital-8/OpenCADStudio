@@ -5926,14 +5926,23 @@ manage =
     .application = アプリケーション
     .audit = 監査
     .cleanup = クリーンアップ
+    .combine-co-linear-objects-that-partially-overlap = 部分的に重なる同一直線上のオブジェクトを結合
+    .combine-co-linear-objects-when-aligned-end-to-end = 端点がそろった同一直線上のオブジェクトを結合
     .customization = カスタマイズ
+    .delete-duplicate-objects = 重複オブジェクトを削除
     .edit-aliases = エイリアスを編集
     .export = 書き出し
     .find-non-purgeable-items =
         パージ不可項目を
         検索
+    .ignore-object-property = 無視するオブジェクト プロパティ
     .load-partial-cui = 部分 CUI を読み込む
+    .maintain-associative-objects = 自動調整オブジェクトを維持
+    .object-comparison-settings = オブジェクト比較設定
+    .optimize-segments-within-polylines = ポリライン内のセグメントを最適化
     .overkill = 重複削除
+    .overkill-checked-no-duplicates = OVERKILL: __ocs_fmt_0__ 個のオブジェクトを確認しました。重複は見つかりませんでした。
+    .overkill-checked-removed-modified = OVERKILL: __ocs_fmt_0__ 個のオブジェクトを確認、__ocs_fmt_1__ 個を削除、__ocs_fmt_2__ 個を変更しました。
     .purge = パージ
     .user-interface =
         ユーザー

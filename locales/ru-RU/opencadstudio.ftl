@@ -5939,14 +5939,23 @@ manage =
     .application = Применение
     .audit = Аудит
     .cleanup = Уборка
+    .combine-co-linear-objects-that-partially-overlap = Объединять коллинеарные объекты, частично перекрывающие друг друга
+    .combine-co-linear-objects-when-aligned-end-to-end = Объединять коллинеарные объекты, примыкающие концами
     .customization = кастомизация
+    .delete-duplicate-objects = Удаление повторяющихся объектов
     .edit-aliases = Редактировать Aliases
     .export = Экспорт
     .find-non-purgeable-items =
         Найти не-
         Чистоплотные предметы
+    .ignore-object-property = Игнорировать свойство объекта
     .load-partial-cui = Загрузка Частично CUI
+    .maintain-associative-objects = Сохранять ассоциативные объекты
+    .object-comparison-settings = Параметры сравнения объектов
+    .optimize-segments-within-polylines = Оптимизировать сегменты в полилиниях
     .overkill = Чрезмерное убийство
+    .overkill-checked-no-duplicates = OVERKILL: проверено объектов: __ocs_fmt_0__, дубликаты не найдены.
+    .overkill-checked-removed-modified = OVERKILL: проверено объектов: __ocs_fmt_0__, удалено: __ocs_fmt_1__, изменено: __ocs_fmt_2__.
     .purge = чистка
     .user-interface =
         Пользователь

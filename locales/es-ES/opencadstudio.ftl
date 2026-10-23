@@ -5938,14 +5938,23 @@ manage =
     .application = Aplicación
     .audit = Auditoría
     .cleanup = Limpiar
+    .combine-co-linear-objects-that-partially-overlap = Combinar objetos colineales que se solapan parcialmente
+    .combine-co-linear-objects-when-aligned-end-to-end = Combinar objetos colineales alineados extremo con extremo
     .customization = Personalización
+    .delete-duplicate-objects = Eliminar objetos duplicados
     .edit-aliases = Editar alias
     .export = Exportar
     .find-non-purgeable-items =
         Buscar elementos
         no limpiables
+    .ignore-object-property = Ignorar propiedad de objeto
     .load-partial-cui = Cargar CUI parcial
+    .maintain-associative-objects = Mantener objetos asociativos
+    .object-comparison-settings = Parámetros de comparación de objetos
+    .optimize-segments-within-polylines = Optimizar segmentos en polilíneas
     .overkill = Eliminar duplicados
+    .overkill-checked-no-duplicates = OVERKILL: __ocs_fmt_0__ objeto(s) comprobado(s), no se encontraron duplicados.
+    .overkill-checked-removed-modified = OVERKILL: __ocs_fmt_0__ objeto(s) comprobado(s), __ocs_fmt_1__ eliminado(s), __ocs_fmt_2__ modificado(s).
     .purge = Limpiar
     .user-interface =
         Interfaz de

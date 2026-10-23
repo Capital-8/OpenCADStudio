@@ -5933,14 +5933,23 @@ manage =
     .application = 應用程式
     .audit = 核查
     .cleanup = 清理
+    .combine-co-linear-objects-that-partially-overlap = 結合部分重疊的共線物件
+    .combine-co-linear-objects-when-aligned-end-to-end = 結合端點對齊的共線物件
     .customization = 自訂
+    .delete-duplicate-objects = 刪除重複物件
     .edit-aliases = 編輯別名
     .export = 匯出
     .find-non-purgeable-items =
         查找不可
         清理項目
+    .ignore-object-property = 忽略物件性質
     .load-partial-cui = 載入局部 CUI
+    .maintain-associative-objects = 保留關聯式物件
+    .object-comparison-settings = 物件比較設定
+    .optimize-segments-within-polylines = 最佳化聚合線內的線段
     .overkill = 刪除重復物件
+    .overkill-checked-no-duplicates = OVERKILL: 已檢查 __ocs_fmt_0__ 個物件，未找到重複項。
+    .overkill-checked-removed-modified = OVERKILL: 已檢查 __ocs_fmt_0__ 個物件，刪除 __ocs_fmt_1__ 個，修改 __ocs_fmt_2__ 個。
     .purge = 清理
     .user-interface =
         使用者

@@ -5876,13 +5876,22 @@ manage =
     .application = Uygulama
     .audit = Denetle
     .cleanup = Temizleme
+    .combine-co-linear-objects-that-partially-overlap = Kısmen çakışan eşdoğrusal nesneleri birleştir
+    .combine-co-linear-objects-when-aligned-end-to-end = Uç uca hizalı eşdoğrusal nesneleri birleştir
     .customization = Özelleştirme
+    .delete-duplicate-objects = Yinelenen Nesneleri Sil
     .edit-aliases = Kısaltmaları Düzenle
     .export = Dışa Aktar
     .find-non-purgeable-items = Temizlenemeyen
             Öğeleri Bul
+    .ignore-object-property = Nesne özelliğini yoksay
     .load-partial-cui = Kısmi CUI Yükle
+    .maintain-associative-objects = İlişkisel nesneleri koru
+    .object-comparison-settings = Nesne Karşılaştırma Ayarları
+    .optimize-segments-within-polylines = Çoklu çizgilerdeki parçaları iyileştir
     .overkill = Çakışanları Temizle
+    .overkill-checked-no-duplicates = OVERKILL: __ocs_fmt_0__ nesne denetlendi, yinelenen bulunamadı.
+    .overkill-checked-removed-modified = OVERKILL: __ocs_fmt_0__ nesne denetlendi, __ocs_fmt_1__ silindi, __ocs_fmt_2__ değiştirildi.
     .purge = Kullanılmayanları Temizle
     .user-interface = Kullanıcı Arayüzü
 

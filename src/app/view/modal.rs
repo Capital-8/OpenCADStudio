@@ -18,6 +18,7 @@ impl OpenCADStudio {
             Some(K::BlockCycleOrder) => crate::t!("Grip Cycle Order").into_owned(),
             Some(K::Options) => crate::tr!("action", "options"),
             Some(K::FindReplace) => crate::tr!("modal", "find-replace"),
+            Some(K::Overkill) => crate::t!("Delete Duplicate Objects").into_owned(),
             Some(K::PluginManager) => crate::tr!("modal", "plugin-manager"),
             Some(K::UpdateNotice) => crate::tr!("modal", "update-available"),
             Some(K::DonationPrompt) => crate::tr!("donation", "title"),
@@ -304,6 +305,10 @@ impl OpenCADStudio {
                     flow,
                 )
             }),
+            super::super::ModalKind::Overkill => {
+                let state = self.overkill_dialog.as_ref()?;
+                automatic_flow(ex, |flow| crate::ui::window::overkill::view_window(state, flow))
+            }
             super::super::ModalKind::FindReplace => automatic_flow(ex, |flow| {
                 crate::ui::window::find_replace::view_window(
                     &self.find_replace.search,

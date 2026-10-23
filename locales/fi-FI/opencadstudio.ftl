@@ -5937,14 +5937,23 @@ manage =
     .application = Sovellus
     .audit = Tarkastaa
     .cleanup = Puhdistus
+    .combine-co-linear-objects-that-partially-overlap = Yhdistä osittain päällekkäiset samansuuntaiset objektit
+    .combine-co-linear-objects-when-aligned-end-to-end = Yhdistä peräkkäin päittäin olevat samansuuntaiset objektit
     .customization = Räätälöinti
+    .delete-duplicate-objects = Poista päällekkäiset objektit
     .edit-aliases = Muokkaa aliaksia
     .export = Vie
     .find-non-purgeable-items =
         Etsi ei-
         Puhdistettavat tuotteet
+    .ignore-object-property = Ohita objektin ominaisuus
     .load-partial-cui = Kuorma osittainen CUI
+    .maintain-associative-objects = Säilytä assosiatiiviset objektit
+    .object-comparison-settings = Objektien vertailuasetukset
+    .optimize-segments-within-polylines = Optimoi moniviivojen segmentit
     .overkill = Ylilyönti
+    .overkill-checked-no-duplicates = OVERKILL: tarkistettu __ocs_fmt_0__ objektia, kaksoiskappaleita ei löytynyt.
+    .overkill-checked-removed-modified = OVERKILL: tarkistettu __ocs_fmt_0__ objektia, poistettu __ocs_fmt_1__, muutettu __ocs_fmt_2__.
     .purge = Puhdistus
     .user-interface =
         Käyttäjä

@@ -5921,14 +5921,23 @@ manage =
     .application = 应用程序
     .audit = 核查
     .cleanup = 清理
+    .combine-co-linear-objects-that-partially-overlap = 合并局部重叠的共线对象
+    .combine-co-linear-objects-when-aligned-end-to-end = 合并端点对齐的共线对象
     .customization = 自定义
+    .delete-duplicate-objects = 删除重复对象
     .edit-aliases = 编辑别名
     .export = 导出
     .find-non-purgeable-items =
         查找不可
         清理项目
+    .ignore-object-property = 忽略对象特性
     .load-partial-cui = 加载局部 CUI
+    .maintain-associative-objects = 保持关联对象
+    .object-comparison-settings = 对象比较设置
+    .optimize-segments-within-polylines = 优化多段线中的线段
     .overkill = 删除重复对象
+    .overkill-checked-no-duplicates = OVERKILL: 已检查 __ocs_fmt_0__ 个对象，未找到重复项。
+    .overkill-checked-removed-modified = OVERKILL: 已检查 __ocs_fmt_0__ 个对象，删除 __ocs_fmt_1__ 个，修改 __ocs_fmt_2__ 个。
     .purge = 清理
     .user-interface =
         用户
