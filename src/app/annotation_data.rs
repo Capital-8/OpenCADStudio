@@ -194,19 +194,190 @@ fn table_styles(doc: &CadDocument) -> Vec<String> {
     styles
 }
 
-fn link_display_name(link: &DataLink) -> String {
+/// Named-objects dictionary that holds the drawing's data links, keyed by
+/// link name.
+pub(crate) const DATA_LINK_DICTIONARY: &str = "ACAD_DATALINK";
+/// Data adapter of spreadsheet links.
+pub(crate) const EXCEL_LINK_ADAPTER: &str = "AcExcel";
+/// Data adapter of the links a data extraction table keeps to its settings.
+pub(crate) const EXTRACTION_LINK_ADAPTER: &str =
+    "Autodesk.AutoCAD.DataExtraction.DxDataLinkAdapter";
+/// Data-link option: keep a cached copy of the source data.
+pub(crate) const LINK_OPTION_PERSIST_CACHE: i32 = 0x1;
+/// Update-option bits.
+pub(crate) const UPDATE_SKIP_FORMAT: i32 = 0x2_0000;
+pub(crate) const UPDATE_ALLOW_SOURCE_UPDATE: i32 = 0x10_0000;
+pub(crate) const UPDATE_SKIP_FORMAT_AFTER_FIRST: i32 = 0x100_0000;
+
+/// Every data link of the drawing as `(name, handle)`: the entries of the
+/// data-link dictionary first, then links stored outside it (older OpenCAD
+/// drawings) under their description or file name.
+pub(crate) fn data_link_entries(doc: &CadDocument) -> Vec<(String, Handle)> {
+    let mut entries = Vec::new();
+    if let Some(dictionary) = data_link_dictionary(doc) {
+        if let Some(ObjectType::Dictionary(dictionary)) = doc.objects.get(&dictionary) {
+            for (name, handle) in &dictionary.entries {
+                if data_link(doc, *handle).is_some() {
+                    entries.push((name.clone(), *handle));
+                }
+            }
+        }
+    }
+    for (handle, object) in &doc.objects {
+        if let ObjectType::ClassObject(object) = object {
+            if let ClassObjectData::DataLink(link) = &object.data {
+                if !entries.iter().any(|(_, known)| known == handle) {
+                    entries.push((link_fallback_name(link), *handle));
+                }
+            }
+        }
+    }
+    entries
+}
+
+fn data_link_dictionary(doc: &CadDocument) -> Option<Handle> {
+    let Some(ObjectType::Dictionary(root)) =
+        doc.objects.get(&doc.header.named_objects_dict_handle)
+    else {
+        return None;
+    };
+    root.get(DATA_LINK_DICTIONARY)
+        .filter(|handle| matches!(doc.objects.get(handle), Some(ObjectType::Dictionary(_))))
+}
+
+fn link_fallback_name(link: &DataLink) -> String {
     if !link.description.trim().is_empty() && link.description != link.connection_string {
         return link.description.clone();
     }
-    Path::new(&link.connection_string)
+    Path::new(&split_connection(&link.connection_string).0)
         .file_stem()
         .map(|value| value.to_string_lossy().into_owned())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "Data Link".into())
 }
 
+/// Stores a data link under `name` in the data-link dictionary (created when
+/// the drawing has none) and returns its handle.
+pub(crate) fn add_data_link(doc: &mut CadDocument, name: &str, mut link: DataLink) -> Handle {
+    stamp_data_link(&mut link);
+    let handle = doc.allocate_handle();
+    let mut object = ClassObject::new(ClassObjectData::DataLink(link));
+    object.handle = handle;
+    doc.objects.insert(handle, ObjectType::ClassObject(object));
+    put_data_link_entry(doc, handle, name);
+    handle
+}
+
+/// Files a link under `name` in the data-link dictionary, replacing the
+/// entry it had, and makes the dictionary its owner.
+fn put_data_link_entry(doc: &mut CadDocument, handle: Handle, name: &str) {
+    let dictionary = data_link_dictionary(doc).or_else(|| {
+        let root = doc.header.named_objects_dict_handle;
+        if !matches!(doc.objects.get(&root), Some(ObjectType::Dictionary(_))) {
+            return None;
+        }
+        let dictionary_handle = doc.allocate_handle();
+        let mut dictionary = codec::objects::Dictionary::new();
+        dictionary.handle = dictionary_handle;
+        dictionary.owner = root;
+        dictionary.hard_owner = true;
+        dictionary.reactors = vec![root];
+        doc.objects
+            .insert(dictionary_handle, ObjectType::Dictionary(dictionary));
+        if let Some(ObjectType::Dictionary(root)) = doc.objects.get_mut(&root) {
+            root.add_entry(DATA_LINK_DICTIONARY, dictionary_handle);
+        }
+        Some(dictionary_handle)
+    });
+    let Some(dictionary) = dictionary else {
+        return;
+    };
+    if let Some(ObjectType::Dictionary(entries)) = doc.objects.get_mut(&dictionary) {
+        let old: Vec<String> = entries
+            .entries
+            .iter()
+            .filter(|(_, h)| *h == handle)
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in old {
+            entries.set_entry_hard_owner(&key, false);
+        }
+        entries.entries.retain(|(_, h)| *h != handle);
+        entries.add_entry(name, handle);
+        entries.set_entry_hard_owner(name, true);
+    }
+    if let Some(ObjectType::ClassObject(object)) = doc.objects.get_mut(&handle) {
+        object.owner = dictionary;
+        object.reactors = vec![dictionary];
+    }
+}
+
+/// The link's last-update time (UTC).
+pub(crate) fn stamp_data_link(link: &mut DataLink) {
+    let elapsed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let seconds = elapsed.as_secs() as i64;
+    let (year, month, day) = crate::patreon::civil_from_days(seconds.div_euclid(86_400));
+    let of_day = seconds.rem_euclid(86_400);
+    link.year = year as i16;
+    link.month = month as i16;
+    link.day = day as i16;
+    link.hour = (of_day / 3_600) as i16;
+    link.minute = (of_day / 60 % 60) as i16;
+    link.second = (of_day % 60) as i16;
+    link.millisecond = elapsed.subsec_millis() as i16;
+}
+
+/// Renames a link (filing it in the dictionary when it was outside it).
+fn rename_data_link(doc: &mut CadDocument, handle: Handle, name: &str) {
+    put_data_link_entry(doc, handle, name);
+}
+
+/// Removes a link and its dictionary entry.
+fn remove_data_link(doc: &mut CadDocument, handle: Handle) {
+    if let Some(dictionary) = data_link_dictionary(doc) {
+        if let Some(ObjectType::Dictionary(entries)) = doc.objects.get_mut(&dictionary) {
+            entries.entries.retain(|(_, h)| *h != handle);
+        }
+    }
+    doc.objects.remove(&handle);
+}
+
+/// Splits a spreadsheet connection string `file!sheet!range` (or
+/// `file!named-range`) into the file and the parts after it.
+pub(crate) fn split_connection(connection: &str) -> (String, Vec<String>) {
+    let name_start = connection.rfind(['/', '\\']).map_or(0, |at| at + 1);
+    match connection[name_start..].find('!') {
+        Some(at) => {
+            let split = name_start + at;
+            (
+                connection[..split].to_string(),
+                connection[split + 1..]
+                    .split('!')
+                    .map(str::to_string)
+                    .collect(),
+            )
+        }
+        None => (connection.to_string(), Vec::new()),
+    }
+}
+
+/// Builds the connection string of a spreadsheet link.
+fn join_connection(path: &str, sheet: &str, kind: LinkRange, range: Option<&str>) -> String {
+    let range = range.map(str::trim).filter(|value| !value.is_empty());
+    match (kind, range) {
+        (LinkRange::NamedRange, Some(name)) => format!("{path}!{name}"),
+        (LinkRange::CellRange, Some(cells)) if !sheet.trim().is_empty() => {
+            format!("{path}!{}!{cells}", sheet.trim())
+        }
+        _ if !sheet.trim().is_empty() => format!("{path}!{}", sheet.trim()),
+        _ => path.to_string(),
+    }
+}
+
 fn resolve_link_path(doc: &CadDocument, link: &DataLink) -> PathBuf {
-    let stored = PathBuf::from(&link.connection_string);
+    let stored = PathBuf::from(split_connection(&link.connection_string).0);
     if stored.is_absolute() || link.path_option == 1 {
         return stored;
     }
@@ -218,28 +389,39 @@ fn resolve_link_path(doc: &CadDocument, link: &DataLink) -> PathBuf {
         .unwrap_or(stored)
 }
 
+/// What a link takes from its source, as the manager describes it.
+fn link_details(doc: &CadDocument, link: &DataLink) -> String {
+    if link.data_adapter == EXTRACTION_LINK_ADAPTER {
+        return crate::t!("Data extraction settings").into_owned();
+    }
+    let (sheet, kind, range) = link_selection(doc, link);
+    let sheet = sheet.unwrap_or_default();
+    match (kind, range) {
+        (LinkRange::NamedRange, Some(name)) => crate::tf!("Named range: {name}").into_owned(),
+        (LinkRange::CellRange, Some(cells)) => {
+            crate::tf!("Range: {sheet}!{cells}").into_owned()
+        }
+        _ => crate::tf!("Entire sheet: {sheet}").into_owned(),
+    }
+}
+
 fn data_link_choices(doc: &CadDocument) -> Vec<DataLinkChoice> {
-    let mut links = doc
-        .objects
-        .iter()
-        .filter_map(|(handle, object)| match object {
-            ObjectType::ClassObject(object) => match &object.data {
-                ClassObjectData::DataLink(link) => {
-                    let path = resolve_link_path(doc, link);
-                    let path_text = path.to_string_lossy().into_owned();
-                    // The web has no filesystem: a link is valid when its
-                    // picked bytes are still registered in-session.
-                    let valid = path.is_file() || picked_source_bytes(&path_text).is_some();
-                    Some(DataLinkChoice {
-                        handle: *handle,
-                        name: link_display_name(link),
-                        path: path_text,
-                        valid,
-                    })
-                }
-                _ => None,
-            },
-            _ => None,
+    let mut links = data_link_entries(doc)
+        .into_iter()
+        .filter_map(|(name, handle)| {
+            let link = data_link(doc, handle)?;
+            let path = resolve_link_path(doc, link);
+            let path_text = path.to_string_lossy().into_owned();
+            // The web has no filesystem: a link is valid when its
+            // picked bytes are still registered in-session.
+            let valid = path.is_file() || picked_source_bytes(&path_text).is_some();
+            Some(DataLinkChoice {
+                handle,
+                name,
+                path: path_text,
+                details: link_details(doc, link),
+                valid,
+            })
         })
         .collect::<Vec<_>>();
     links.sort_by_key(|link| link.name.to_ascii_lowercase());
@@ -513,14 +695,22 @@ fn build_table(
     table
 }
 
-fn link_selection(link: &DataLink) -> (Option<String>, LinkRange, Option<String>) {
+/// The sheet, range kind and range a link reads: from its connection string,
+/// or from the custom data older OpenCAD drawings kept them in.
+fn link_selection(
+    doc: &CadDocument,
+    link: &DataLink,
+) -> (Option<String>, LinkRange, Option<String>) {
     let mut sheet = None;
     let mut kind = LinkRange::EntireSheet;
     let mut range = None;
+    let mut legacy = false;
     for item in &link.custom_data {
         if let Some(value) = item.value.strip_prefix("sheet:") {
+            legacy = true;
             sheet = (!value.is_empty()).then(|| value.to_string());
         } else if let Some(value) = item.value.strip_prefix("range-kind:") {
+            legacy = true;
             kind = if value.eq_ignore_ascii_case("named") {
                 LinkRange::NamedRange
             } else if value.eq_ignore_ascii_case("cell") {
@@ -529,47 +719,107 @@ fn link_selection(link: &DataLink) -> (Option<String>, LinkRange, Option<String>
                 LinkRange::EntireSheet
             };
         } else if let Some(value) = item.value.strip_prefix("range:") {
+            legacy = true;
             range = (!value.is_empty()).then(|| value.to_string());
             if kind == LinkRange::EntireSheet {
                 kind = LinkRange::CellRange;
             }
         }
     }
-    (sheet, kind, range)
+    if legacy {
+        return (sheet, kind, range);
+    }
+    let (_, parts) = split_connection(&link.connection_string);
+    match parts.as_slice() {
+        [] => (None, LinkRange::EntireSheet, None),
+        [sheet, cells, ..] => (
+            Some(sheet.clone()),
+            LinkRange::CellRange,
+            Some(cells.clone()),
+        ),
+        [single] => {
+            // One part names a sheet, or a named range when the workbook has
+            // no sheet by that name.
+            let sheets = workbook_metadata(&resolve_link_path(doc, link))
+                .map(|(sheets, _)| sheets)
+                .unwrap_or_default();
+            if sheets.is_empty() || sheets.iter().any(|name| name.eq_ignore_ascii_case(single)) {
+                (Some(single.clone()), LinkRange::EntireSheet, None)
+            } else {
+                (None, LinkRange::NamedRange, Some(single.clone()))
+            }
+        }
+    }
 }
 
-fn link_custom_data(sheet: &str, kind: LinkRange, range: Option<&str>) -> Vec<DataLinkCustomData> {
-    let mut values = Vec::new();
-    if !sheet.trim().is_empty() {
-        values.push(DataLinkCustomData {
-            target: Handle::NULL,
-            value: format!("sheet:{}", sheet.trim()),
-        });
+/// Spreadsheet-link settings as the manager edits them.
+pub(crate) struct SpreadsheetLinkSettings<'a> {
+    pub path: &'a str,
+    pub stored_path: &'a str,
+    pub sheet: &'a str,
+    pub kind: LinkRange,
+    pub range: Option<&'a str>,
+    pub path_option: i16,
+    pub allow_write: bool,
+    pub use_source_formatting: bool,
+    pub keep_source_formatting: bool,
+}
+
+/// Writes spreadsheet-link settings into a link: the file, sheet and range in
+/// the connection string, the editing options in the update options.
+pub(crate) fn set_spreadsheet_link(link: &mut DataLink, settings: &SpreadsheetLinkSettings) {
+    link.data_adapter = EXCEL_LINK_ADAPTER.into();
+    link.description.clear();
+    link.tooltip = settings.path.to_string();
+    link.connection_string = join_connection(
+        settings.stored_path,
+        settings.sheet,
+        settings.kind,
+        settings.range,
+    );
+    link.path_option = settings.path_option;
+    link.option = LINK_OPTION_PERSIST_CACHE;
+    link.flags = 1;
+    let mut update = 0;
+    if !settings.use_source_formatting {
+        update |= UPDATE_SKIP_FORMAT;
     }
-    if kind != LinkRange::EntireSheet {
-        values.push(DataLinkCustomData {
-            target: Handle::NULL,
-            value: format!(
-                "range-kind:{}",
-                if kind == LinkRange::NamedRange {
-                    "named"
-                } else {
-                    "cell"
-                }
-            ),
-        });
-        if let Some(range) = range.filter(|value| !value.trim().is_empty()) {
-            values.push(DataLinkCustomData {
-                target: Handle::NULL,
-                value: format!("range:{}", range.trim()),
+    if settings.allow_write {
+        update |= UPDATE_ALLOW_SOURCE_UPDATE;
+    }
+    if !settings.keep_source_formatting {
+        update |= UPDATE_SKIP_FORMAT_AFTER_FIRST;
+    }
+    link.update_option = update;
+    link.status_flags = 0;
+    link.update_status.clear();
+    link.custom_data.retain(|item| {
+        !(item.value.starts_with("sheet:")
+            || item.value.starts_with("range-kind:")
+            || item.value.starts_with("range:"))
+    });
+}
+
+/// Lists an object a link feeds among the link's connected objects.
+pub(crate) fn connect_data_link(doc: &mut CadDocument, link: Handle, target: Handle) {
+    if let Some(link) = data_link_mut(doc, link) {
+        if !link.custom_data.iter().any(|item| item.target == target) {
+            link.custom_data.push(DataLinkCustomData {
+                target,
+                value: String::new(),
             });
         }
     }
-    values
+}
+
+/// Whether the link lets tables write their data back to the source.
+pub(crate) fn data_link_allows_write(doc: &CadDocument, handle: Handle) -> bool {
+    data_link(doc, handle)
+        .is_some_and(|link| link.update_option & UPDATE_ALLOW_SOURCE_UPDATE != 0)
 }
 
 fn read_link_rows(doc: &CadDocument, link: &DataLink) -> Result<Vec<Vec<String>>, String> {
-    let (sheet, kind, range) = link_selection(link);
+    let (sheet, kind, range) = link_selection(doc, link);
     read_tabular_file(
         &resolve_link_path(doc, link),
         sheet.as_deref(),
@@ -590,7 +840,7 @@ pub(crate) fn read_data_link(
 pub(crate) fn data_link_write_path(doc: &CadDocument, handle: Handle) -> Result<PathBuf, String> {
     let link = data_link(doc, handle)
         .ok_or_else(|| crate::t!("The data link no longer exists.").into_owned())?;
-    if link.option & 1 == 0 {
+    if link.update_option & UPDATE_ALLOW_SOURCE_UPDATE == 0 {
         return Err(crate::t!("Writing to this data link is disabled.").into_owned());
     }
     let path = resolve_link_path(doc, link);
@@ -1237,20 +1487,7 @@ impl OpenCADStudio {
     }
 
     pub(super) fn on_data_link_new(&mut self) -> Task<Message> {
-        let mut n = 1usize;
-        loop {
-            let name = format!("Data Link {n}");
-            if !self
-                .data_link_manager
-                .links
-                .iter()
-                .any(|link| link.name.eq_ignore_ascii_case(&name))
-            {
-                self.data_link_manager.name = name;
-                break;
-            }
-            n += 1;
-        }
+        self.data_link_manager.name.clear();
         self.data_link_manager.path.clear();
         self.data_link_manager.path_type = LinkPathType::Full;
         self.data_link_manager.editing_handle = None;
@@ -1284,7 +1521,7 @@ impl OpenCADStudio {
         };
         self.data_link_manager.editing = true;
         self.data_link_manager.editing_handle = Some(choice.handle);
-        self.data_link_manager.name = link_display_name(link);
+        self.data_link_manager.name = choice.name.clone();
         let path = resolve_link_path(&self.tabs[self.active_tab].scene.document, link);
         self.data_link_manager.path = path.to_string_lossy().into_owned();
         self.data_link_manager.path_type = match link.path_option {
@@ -1292,7 +1529,8 @@ impl OpenCADStudio {
             3 => LinkPathType::FileName,
             _ => LinkPathType::Full,
         };
-        let (sheet, range_kind, range) = link_selection(link);
+        let (sheet, range_kind, range) =
+            link_selection(&self.tabs[self.active_tab].scene.document, link);
         let (sheets, named_ranges) = workbook_metadata(&path).unwrap_or_default();
         self.data_link_manager.sheets = sheets;
         self.data_link_manager.named_ranges = named_ranges;
@@ -1307,9 +1545,10 @@ impl OpenCADStudio {
             .unwrap_or_default();
         self.data_link_manager.range = range.unwrap_or_default();
         self.data_link_manager.range_kind = range_kind;
-        self.data_link_manager.allow_write = link.option & 1 != 0;
-        self.data_link_manager.use_source_formatting = link.flags & 1 != 0;
-        self.data_link_manager.update_source_formatting = link.flags & 2 != 0;
+        self.data_link_manager.allow_write = link.update_option & UPDATE_ALLOW_SOURCE_UPDATE != 0;
+        self.data_link_manager.use_source_formatting = link.update_option & UPDATE_SKIP_FORMAT == 0;
+        self.data_link_manager.update_source_formatting =
+            link.update_option & UPDATE_SKIP_FORMAT_AFTER_FIRST == 0;
         self.data_link_manager.status.clear();
         Task::none()
     }
@@ -1490,69 +1729,38 @@ impl OpenCADStudio {
                 .map(PathBuf::from)
                 .unwrap_or(input_path.clone()),
         };
+        let path_option = match self.data_link_manager.path_type {
+            LinkPathType::Full => 1,
+            LinkPathType::Relative => 2,
+            LinkPathType::FileName => 3,
+        };
+        let input_text = input_path.to_string_lossy().into_owned();
+        let stored_text = stored_path.to_string_lossy().into_owned();
+        let sheet = self.data_link_manager.sheet.clone();
+        let settings = SpreadsheetLinkSettings {
+            path: &input_text,
+            stored_path: &stored_text,
+            sheet: &sheet,
+            kind: self.data_link_manager.range_kind,
+            range: range.as_deref(),
+            path_option,
+            allow_write: self.data_link_manager.allow_write,
+            use_source_formatting: self.data_link_manager.use_source_formatting,
+            keep_source_formatting: self.data_link_manager.update_source_formatting,
+        };
         self.push_undo_snapshot(i, "DATALINK");
+        let document = &mut self.tabs[i].scene.document;
         let handle = if let Some(handle) = self.data_link_manager.editing_handle {
-            if let Some(link) = data_link_mut(&mut self.tabs[i].scene.document, handle) {
-                link.description = name;
-                link.tooltip = input_path.to_string_lossy().into_owned();
-                link.connection_string = stored_path.to_string_lossy().into_owned();
-                link.path_option = match self.data_link_manager.path_type {
-                    LinkPathType::Full => 1,
-                    LinkPathType::Relative => 2,
-                    LinkPathType::FileName => 3,
-                };
-                link.option = i32::from(self.data_link_manager.allow_write);
-                link.flags = i32::from(self.data_link_manager.use_source_formatting)
-                    | (i32::from(self.data_link_manager.update_source_formatting) << 1);
-                link.status_flags = 1;
-                link.update_status = "Linked".into();
-                link.custom_data = link_custom_data(
-                    &self.data_link_manager.sheet,
-                    self.data_link_manager.range_kind,
-                    range.as_deref(),
-                );
+            if let Some(link) = data_link_mut(document, handle) {
+                set_spreadsheet_link(link, &settings);
+                stamp_data_link(link);
             }
+            rename_data_link(document, handle, &name);
             handle
         } else {
-            let handle = self.tabs[i].scene.document.allocate_handle();
-            let mut object = ClassObject::new(ClassObjectData::DataLink(DataLink {
-                data_adapter: if input_path
-                    .extension()
-                    .and_then(|value| value.to_str())
-                    .is_some_and(|value| {
-                        value.eq_ignore_ascii_case("csv") || value.eq_ignore_ascii_case("txt")
-                    }) {
-                    "CSV".into()
-                } else {
-                    "Spreadsheet".into()
-                },
-                description: name,
-                tooltip: input_path.to_string_lossy().into_owned(),
-                connection_string: stored_path.to_string_lossy().into_owned(),
-                option: i32::from(self.data_link_manager.allow_write),
-                flags: i32::from(self.data_link_manager.use_source_formatting)
-                    | (i32::from(self.data_link_manager.update_source_formatting) << 1),
-                path_option: match self.data_link_manager.path_type {
-                    LinkPathType::Full => 1,
-                    LinkPathType::Relative => 2,
-                    LinkPathType::FileName => 3,
-                },
-                status_flags: 1,
-                update_status: "Linked".into(),
-                custom_data: link_custom_data(
-                    &self.data_link_manager.sheet,
-                    self.data_link_manager.range_kind,
-                    range.as_deref(),
-                ),
-                ..DataLink::default()
-            }));
-            object.handle = handle;
-            self.tabs[i]
-                .scene
-                .document
-                .objects
-                .insert(handle, ObjectType::ClassObject(object));
-            handle
+            let mut link = DataLink::default();
+            set_spreadsheet_link(&mut link, &settings);
+            add_data_link(document, &name, link)
         };
         self.tabs[i].dirty = true;
         self.data_link_manager.editing = false;
@@ -1605,7 +1813,7 @@ impl OpenCADStudio {
                 }
             }
         }
-        self.tabs[i].scene.document.objects.remove(&handle);
+        remove_data_link(&mut self.tabs[i].scene.document, handle);
         self.tabs[i].dirty = true;
         self.data_link_manager.selected = None;
         self.refresh_data_link_manager(None);

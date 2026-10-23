@@ -1,6 +1,6 @@
 // DATALINK command — manages persistent links to external tabular data.
 
-use crate::command::{CadCommand, CmdResult, WorkingPlane};
+use crate::command::{CadCommand, CmdOption, CmdResult, WorkingPlane};
 use crate::modules::{IconKind, ModuleEvent, ToolDef};
 use crate::scene::model::wire_model::WireModel;
 use crate::t;
@@ -182,5 +182,183 @@ impl CadCommand for DataLinkPlaceCommand {
 
     fn on_mouse_move(&mut self, point: DVec3) -> Option<WireModel> {
         Some(self.preview(point))
+    }
+}
+
+/// Whether a table takes any of its cells from a data link.
+pub fn is_linked_table(entity: &EntityType) -> bool {
+    matches!(entity, EntityType::Table(table) if table
+        .rows
+        .iter()
+        .flat_map(|row| row.cells.iter())
+        .any(|cell| cell.data_link_handle.is_some()))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum UpdateStep {
+    Option,
+    Select { write: bool },
+    LinkName,
+}
+
+/// DATALINKUPDATE: choose to update tables from their sources or write them
+/// back, pick the linked tables (or, when updating, name a link or take them
+/// all), then hand the choice to the inline `DATALINKUPDATE _RUN …` handler.
+pub struct DataLinkUpdateCommand {
+    links: Vec<String>,
+    step: UpdateStep,
+    selected: Vec<codec::Handle>,
+}
+
+impl DataLinkUpdateCommand {
+    /// `links` are the drawing's data link names.
+    pub fn new(links: Vec<String>) -> Self {
+        Self {
+            links,
+            step: UpdateStep::Option,
+            selected: Vec::new(),
+        }
+    }
+
+    fn link_list(&self) -> String {
+        let mut lines = vec![
+            t!("Data links in Drawing:").into_owned(),
+            "----------------------".to_string(),
+        ];
+        lines.extend(self.links.iter().map(|name| format!(" {name}")));
+        lines.join("\n")
+    }
+
+    fn choose(&mut self, write: bool) -> CmdResult {
+        if self.links.is_empty() {
+            return CmdResult::Dispatch("DATALINKUPDATE _RUN NONE".into());
+        }
+        self.step = UpdateStep::Select { write };
+        CmdResult::NeedPoint
+    }
+}
+
+impl CadCommand for DataLinkUpdateCommand {
+    fn name(&self) -> &'static str {
+        "DATALINKUPDATE"
+    }
+
+    fn prompt(&self) -> String {
+        let text = match self.step {
+            UpdateStep::Option => {
+                t!("Select an option [Update data link/Write data link] <Update data link>:")
+            }
+            UpdateStep::Select { write: false } => {
+                t!("Select objects or [Data link/all data linKs]:")
+            }
+            UpdateStep::Select { write: true } => t!("Select objects:"),
+            UpdateStep::LinkName => t!("Enter data link name or [?]:"),
+        };
+        format!("DATALINKUPDATE  {text}")
+    }
+
+    fn options(&self) -> Vec<CmdOption> {
+        match self.step {
+            UpdateStep::Option => vec![
+                CmdOption::new("Update data link", "U"),
+                CmdOption::new("Write data link", "W"),
+            ],
+            UpdateStep::Select { write: false } => vec![
+                CmdOption::new("Data link", "D"),
+                CmdOption::new("all data linKs", "K"),
+            ],
+            UpdateStep::Select { write: true } => Vec::new(),
+            UpdateStep::LinkName => vec![CmdOption::new("?", "?")],
+        }
+    }
+
+    fn wants_text_input(&self) -> bool {
+        true
+    }
+
+    fn is_selection_gathering(&self) -> bool {
+        matches!(self.step, UpdateStep::Select { .. })
+    }
+
+    fn selection_entity_filter(&self) -> Option<fn(&EntityType) -> bool> {
+        matches!(self.step, UpdateStep::Select { .. }).then_some(is_linked_table as fn(&EntityType) -> bool)
+    }
+
+    fn selection_entity_filter_reports(&self) -> bool {
+        true
+    }
+
+    fn on_selection_complete(&mut self, handles: Vec<codec::Handle>) -> CmdResult {
+        self.selected = handles;
+        CmdResult::NeedPoint
+    }
+
+    fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        let raw = text.trim();
+        let word = raw.trim_start_matches('_').to_uppercase();
+        match self.step {
+            UpdateStep::Option => {
+                if word.is_empty() {
+                    return None;
+                }
+                if "UPDATE".starts_with(&word) {
+                    Some(self.choose(false))
+                } else if "WRITE".starts_with(&word) {
+                    Some(self.choose(true))
+                } else {
+                    Some(CmdResult::ReportMeasurement(
+                        t!("Invalid option keyword.").into_owned(),
+                    ))
+                }
+            }
+            UpdateStep::Select { write: false } => match word.as_str() {
+                "D" | "DATA" | "DATALINK" => {
+                    self.step = UpdateStep::LinkName;
+                    Some(CmdResult::NeedPoint)
+                }
+                "K" | "ALLDATALINKS" | "LINKS" => {
+                    Some(CmdResult::Dispatch("DATALINKUPDATE _RUN U ALL".into()))
+                }
+                _ => None,
+            },
+            UpdateStep::Select { write: true } => None,
+            UpdateStep::LinkName => {
+                if raw.is_empty() || raw == "?" {
+                    return Some(CmdResult::ReportMeasurement(self.link_list()));
+                }
+                match self
+                    .links
+                    .iter()
+                    .find(|name| name.eq_ignore_ascii_case(raw))
+                {
+                    Some(name) => Some(CmdResult::Dispatch(format!(
+                        "DATALINKUPDATE _RUN U NAME {name}"
+                    ))),
+                    None => Some(CmdResult::ReportMeasurement(
+                        crate::tf!("Data link {raw} does not exist.").into_owned(),
+                    )),
+                }
+            }
+        }
+    }
+
+    fn on_point(&mut self, _point: DVec3) -> CmdResult {
+        CmdResult::NeedPoint
+    }
+
+    fn on_enter(&mut self) -> CmdResult {
+        match self.step {
+            UpdateStep::Option => self.choose(false),
+            UpdateStep::Select { write } => {
+                if self.selected.is_empty() {
+                    return CmdResult::Cancel;
+                }
+                CmdResult::Relaunch(
+                    format!("DATALINKUPDATE _RUN {} SEL", if write { "W" } else { "U" }),
+                    std::mem::take(&mut self.selected),
+                )
+            }
+            UpdateStep::LinkName => CmdResult::ReportMeasurement(self.link_list()),
+        }
     }
 }

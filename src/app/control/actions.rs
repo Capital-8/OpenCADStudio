@@ -115,6 +115,7 @@ pub(super) const NAMES: &[&str] = &[
     "tds_import_dialog",
     "tds_material_dialog",
     "tds_map_dialog",
+    "data_link_manager",
     "refedit_dialog",
     "pdf_password_dialog",
     "pdf_shx_settings",
@@ -2476,6 +2477,58 @@ impl OpenCADStudio {
                     "cancel" => return Ok(Task::done(Message::CloseModal)),
                     _ => return Err(bad()),
                 })
+            }
+            // The Data Link Manager, one step per call: "new", "name=<text>",
+            // "path=<file>" (as the file picker sets it), "sheet=<name>",
+            // "range=entire|named|cell", "cells=<A1:C4 or name>",
+            // "write=on|off", "insert_after=on|off", "save", "cancel_edit",
+            // "select=<link name>", "edit", "delete", "insert" or "close".
+            "data_link_manager" => {
+                use crate::ui::window::annotation_data::{DataLinkField as F, LinkRange};
+                if self.active_modal != Some(crate::app::ModalKind::DataLinkManager) {
+                    return Err(failure("no_dialog", "The Data Link Manager is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                let on = |v: &str| match v {
+                    "on" | "1" | "true" => Ok(true),
+                    "off" | "0" | "false" => Ok(false),
+                    _ => Err(bad()),
+                };
+                match key {
+                    "new" => Message::DataLinkNew,
+                    "name" => Message::DataLinkField(F::Name(value.to_string())),
+                    "path" => Message::DataLinkBrowseResult(Some(value.into())),
+                    "sheet" => Message::DataLinkField(F::Sheet(value.to_string())),
+                    "range" => Message::DataLinkField(F::RangeKind(match value {
+                        "entire" => LinkRange::EntireSheet,
+                        "named" => LinkRange::NamedRange,
+                        "cell" => LinkRange::CellRange,
+                        _ => return Err(bad()),
+                    })),
+                    "cells" => Message::DataLinkField(F::Range(value.to_string())),
+                    "write" => {
+                        self.data_link_manager.more_options = true;
+                        Message::DataLinkField(F::AllowWrite(on(value)?))
+                    }
+                    "insert_after" => Message::DataLinkField(F::InsertTable(on(value)?)),
+                    "save" => Message::DataLinkSave,
+                    "cancel_edit" => Message::DataLinkEditCancel,
+                    "select" => Message::DataLinkSelect(
+                        self.data_link_manager
+                            .links
+                            .iter()
+                            .find(|link| link.name.eq_ignore_ascii_case(value))
+                            .map(|link| link.handle)
+                            .ok_or_else(bad)?,
+                    ),
+                    "edit" => Message::DataLinkEdit,
+                    "delete" => Message::DataLinkDelete,
+                    "insert" => Message::DataLinkInsert,
+                    "close" => Message::DataLinkClose,
+                    _ => return Err(bad()),
+                }
             }
             // The missing texture map window of a 3D Studio import: "ok"
             // (or "close") dismisses the shown map; the next one follows.

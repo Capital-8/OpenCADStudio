@@ -3439,6 +3439,12 @@ pub trait CadCommand: Send {
         None
     }
 
+    /// Whether the host says how many objects the entity filter dropped
+    /// (`N were filtered out.`) instead of dropping them silently.
+    fn selection_entity_filter_reports(&self) -> bool {
+        false
+    }
+
     /// The command takes block references only (XCLIP): the host drops the
     /// rest and says how many were ineligible.
     fn selection_keeps_block_references(&self) -> bool {

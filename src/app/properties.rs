@@ -3466,22 +3466,35 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
             const PREFIX: &str = "__OPENCAD_LINK_PENDING__";
             if let Some(path) = table.name.strip_prefix(PREFIX).map(str::to_string) {
                 use codec::entities::table::CellStateFlags;
-                use codec::objects::{ClassObject, ClassObjectData, DataLink, ObjectType};
                 let document = &mut self.tabs[i].scene.document;
-                let link_handle = document.allocate_handle();
-                let mut object = ClassObject::new(ClassObjectData::DataLink(DataLink {
-                    data_adapter: "CSV".to_string(),
-                    description: path.clone(),
-                    tooltip: path.clone(),
-                    connection_string: path.clone(),
-                    status_flags: 1,
-                    update_status: "Linked".to_string(),
-                    ..DataLink::default()
-                }));
-                object.handle = link_handle;
-                document
-                    .objects
-                    .insert(link_handle, ObjectType::ClassObject(object));
+                let stem = std::path::Path::new(&path)
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("Data Link")
+                    .to_string();
+                let names = crate::app::annotation_data::data_link_entries(document);
+                let mut name = stem.clone();
+                let mut n = 1;
+                while names.iter().any(|(known, _)| known.eq_ignore_ascii_case(&name)) {
+                    n += 1;
+                    name = format!("{stem} ({n})");
+                }
+                let mut link = codec::objects::DataLink::default();
+                crate::app::annotation_data::set_spreadsheet_link(
+                    &mut link,
+                    &crate::app::annotation_data::SpreadsheetLinkSettings {
+                        path: &path,
+                        stored_path: &path,
+                        sheet: "",
+                        kind: crate::ui::window::annotation_data::LinkRange::EntireSheet,
+                        range: None,
+                        path_option: 1,
+                        allow_write: false,
+                        use_source_formatting: true,
+                        keep_source_formatting: true,
+                    },
+                );
+                let link_handle = crate::app::annotation_data::add_data_link(document, &name, link);
                 let rows = table.row_count() as i32;
                 let columns = table.column_count() as i32;
                 for row in &mut table.rows {
@@ -3699,6 +3712,25 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
         } else {
             Some(self.tabs[i].scene.add_entity(entity))
         };
+
+        // A linked table is one of its data link's connected objects.
+        if let Some(handle) = new_handle {
+            let link = match self.tabs[i].scene.document.get_entity(handle) {
+                Some(codec::EntityType::Table(table)) => table
+                    .rows
+                    .iter()
+                    .flat_map(|row| row.cells.iter())
+                    .find_map(|cell| cell.data_link_handle),
+                _ => None,
+            };
+            if let Some(link) = link {
+                crate::app::annotation_data::connect_data_link(
+                    &mut self.tabs[i].scene.document,
+                    link,
+                    handle,
+                );
+            }
+        }
 
         if needs_annotation_context {
             if let (Some(handle), Some(scale)) = (

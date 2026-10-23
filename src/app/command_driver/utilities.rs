@@ -540,6 +540,10 @@ impl OpenCADStudio {
         else {
             return StepInput::SelectionComplete(handles);
         };
+        let reports = self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .is_some_and(|command| command.selection_entity_filter_reports());
         let (kept, dropped): (Vec<Handle>, Vec<Handle>) = handles
             .into_iter()
             .partition(|h| self.tabs[i].scene.document.get_entity(*h).is_some_and(keep));
@@ -547,6 +551,17 @@ impl OpenCADStudio {
             self.tabs[i].scene.deselect_entity(*handle);
         }
         if !dropped.is_empty() {
+            if reports {
+                let count = dropped.len();
+                self.command_line.push_info(
+                    if count == 1 {
+                        crate::t!("1 was filtered out.")
+                    } else {
+                        crate::tf!("{count} were filtered out.")
+                    }
+                    .as_ref(),
+                );
+            }
             self.refresh_properties();
         }
         StepInput::SelectionComplete(kept)

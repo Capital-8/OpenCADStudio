@@ -58,6 +58,8 @@ pub struct DataLinkChoice {
     pub handle: Handle,
     pub name: String,
     pub path: String,
+    /// What the link takes from its source (sheet, range…).
+    pub details: String,
     pub valid: bool,
 }
 
@@ -665,9 +667,9 @@ pub fn data_link_view(
     state: &DataLinkManagerState,
     sizing: crate::ui::modal::ModalSizing,
 ) -> Element<'_, Message> {
-    let mut links = column![text(t!("Spreadsheet Links")).size(11).style(muted)].spacing(2);
+    let mut links = column![text(t!("Excel Links")).size(11).style(muted)].spacing(2);
     links = links.push(
-        button(text(t!("Create a New Data Link")).size(12))
+        button(text(t!("Create a new Excel Data Link")).size(12))
             .on_press(Message::DataLinkNew)
             .padding([5, 7])
             .style(button::text)
@@ -824,8 +826,9 @@ pub fn data_link_view(
             group(
                 t!("Details"),
                 column![
-                    text(format!("{}: {}", t!("Name"), link.name)).size(11),
-                    text(format!("{}: {}", t!("File"), link.path)).size(11),
+                    text(format!("{} {}", t!("Link name:"), link.name)).size(11),
+                    text(format!("{} {}", t!("File name:"), link.path)).size(11),
+                    text(format!("{} {}", t!("Link details:"), link.details)).size(11),
                     text(if link.valid {
                         t!("Status: Linked")
                     } else {
