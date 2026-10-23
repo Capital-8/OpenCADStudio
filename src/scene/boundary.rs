@@ -1,9 +1,9 @@
 use super::*;
 
 use kernel::geom2d::{
-    bounded_faces, closest_point, contains, distance_to, intersect, ring_nesting_depths,
-    segment_crossing, signed_area, triangulate, Curve, Line, SegmentCrossing, Tolerance,
-    Transform as CurveTransform,
+    bounded_faces, closest_point, contains, distance_to, gap_bridges, intersect,
+    ring_nesting_depths, segment_crossing, signed_area, triangulate, Curve, Line,
+    SegmentCrossing, Tolerance, Transform as CurveTransform,
 };
 
 use crate::command::WorkingPlane;
@@ -1357,86 +1357,9 @@ pub(crate) fn separated_hatch_path_groups(
     groups
 }
 
-/// Straight bridges across the gaps of at most `gap` between loose segment
-/// ends, so a boundary that almost closes is found as closed (HPGAPTOL).
-///
-/// A loose end touches no other segment. Each is bridged once, to another
-/// loose end, the closest pairs first; the drawing itself is not changed.
-fn gap_bridges(segments: &[Line], gap: f64) -> Vec<Line> {
-    if !(gap > WELD_TOLERANCE) || !gap.is_finite() {
-        return Vec::new();
-    }
-    type Grid = rustc_hash::FxHashMap<(i64, i64), Vec<usize>>;
-    let cell = |p: [f64; 2]| ((p[0] / gap).floor() as i64, (p[1] / gap).floor() as i64);
-    let around = |grid: &Grid, p: [f64; 2]| {
-        let (x, y) = cell(p);
-        (x - 1..=x + 1)
-            .flat_map(move |x| (y - 1..=y + 1).map(move |y| (x, y)))
-            .filter_map(|key| grid.get(&key))
-            .flatten()
-            .copied()
-            .collect::<Vec<_>>()
-    };
-    let distance = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).hypot(a[1] - b[1]);
-    // Segment end `k` is `segments[k / 2]`, its start when `k` is even.
-    let end = |k: usize| {
-        let segment = segments[k / 2];
-        if k % 2 == 0 {
-            segment.start
-        } else {
-            segment.end
-        }
-    };
-    let mut ends = Grid::default();
-    for k in 0..segments.len() * 2 {
-        ends.entry(cell(end(k))).or_default().push(k);
-    }
-    let loose: Vec<usize> = (0..segments.len() * 2)
-        .filter(|&k| {
-            let p = end(k);
-            // Cheap test first: most ends meet another segment's end.
-            !around(&ends, p)
-                .into_iter()
-                .any(|other| other / 2 != k / 2 && distance(p, end(other)) <= WELD_TOLERANCE)
-                && !segments.iter().enumerate().any(|(index, segment)| {
-                    index != k / 2 && distance_to(&Curve::Line(*segment), p) <= WELD_TOLERANCE
-                })
-        })
-        .collect();
-    let mut loose_grid = Grid::default();
-    for (index, &k) in loose.iter().enumerate() {
-        loose_grid.entry(cell(end(k))).or_default().push(index);
-    }
-    let mut pairs = Vec::new();
-    for (a, &k) in loose.iter().enumerate() {
-        for b in around(&loose_grid, end(k)) {
-            let gap_length = distance(end(k), end(loose[b]));
-            if b > a && loose[b] / 2 != k / 2 && gap_length <= gap {
-                pairs.push((gap_length, a, b));
-            }
-        }
-    }
-    pairs.sort_by(|left, right| left.0.total_cmp(&right.0));
-    let mut bridged = vec![false; loose.len()];
-    pairs
-        .into_iter()
-        .filter_map(|(_, a, b)| {
-            if bridged[a] || bridged[b] {
-                return None;
-            }
-            bridged[a] = true;
-            bridged[b] = true;
-            Some(Line {
-                start: end(loose[a]),
-                end: end(loose[b]),
-            })
-        })
-        .collect()
-}
-
 /// The faces the segments enclose once gaps up to `gap` are bridged.
 fn faces_with_gaps(mut segments: Vec<Line>, gap: f64) -> Vec<Vec<[f64; 2]>> {
-    let bridges = gap_bridges(&segments, gap);
+    let bridges = gap_bridges(&segments, gap, Tolerance::new(WELD_TOLERANCE));
     segments.extend(bridges);
     bounded_faces(&segments, Tolerance::new(WELD_TOLERANCE))
 }
