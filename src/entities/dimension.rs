@@ -7650,6 +7650,10 @@ fn strip_trailing_zeros(s: &str) -> String {
     if !s.contains('.') {
         return s.to_string();
     }
+    // Engineering units end in the inch mark: the inches lose their zeros.
+    if let Some(number) = s.strip_suffix('"') {
+        return format!("{}\"", strip_trailing_zeros(number));
+    }
     let trimmed = s.trim_end_matches('0').trim_end_matches('.');
     if trimmed.is_empty() || trimmed == "-" {
         "0".to_string()
