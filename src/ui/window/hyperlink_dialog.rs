@@ -128,7 +128,8 @@ fn file_card<'a>(address: &'a str, options: &'a HyperlinkOptions) -> Element<'a,
     .style(button_style(false))
     .padding([4, 9]);
     let path = resolved_path(address, &options.base);
-    // Without a base folder the switch shows off and does nothing.
+    // Without a base folder (HYPERLINKBASE, or a saved drawing) the switch
+    // keeps its state but cannot be changed.
     let relative: Element<'a, Message> = if options.relative_enabled {
         chip(
             crate::tr!("hyperlink-dialog", "relative"),
@@ -137,7 +138,7 @@ fn file_card<'a>(address: &'a str, options: &'a HyperlinkOptions) -> Element<'a,
         )
     } else {
         button(text(crate::tr!("hyperlink-dialog", "relative")).size(11))
-            .style(button_style(false))
+            .style(button_style(options.relative))
             .padding([4, 10])
             .into()
     };

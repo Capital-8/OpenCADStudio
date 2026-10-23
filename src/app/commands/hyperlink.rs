@@ -348,7 +348,7 @@ impl OpenCADStudio {
             ]);
             rectangle.close();
             rectangle.common.layer = AREA_LAYER.to_string();
-            if let Some(handle) = self.commit_entity_handle(codec::EntityType::Polyline3D(rectangle)) {
+            if let Some(handle) = self.commit_entity_handle_preserve_layer(codec::EntityType::Polyline3D(rectangle)) {
                 handles = vec![handle];
             }
         }
