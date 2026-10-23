@@ -7035,3 +7035,14 @@ script-files =
     .exit-save = EXIT  Wijzigingen in __ocs_arg_name__ opslaan? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" heeft nog geen bestandspad; gebruik eerst SAVEAS.
     .sdi-dirty = SDI: sla "__ocs_fmt_0__" op of sluit deze voordat u een andere tekening opent.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Zichtbaarheidsstatus
+    .visibility-value = Zichtbaarheidsstatus: { $state }
+    .table-label = Blokeigenschappen
+    .table-row = Blokeigenschappen: { $row }
+    .alignment = Uitlijning: { $mode }
+    .flipped = Omgekeerd
+    .not-flipped = Niet omgekeerd

@@ -7034,3 +7034,14 @@ script-files =
     .exit-save = EXIT  Tallennetaanko muutokset kohteeseen __ocs_arg_name__? [Yes/No] <Yes>:
     .exit-no-path = EXIT: kohteella "__ocs_fmt_0__" ei ole vielä tiedostopolkua; käytä ensin SAVEAS-komentoa.
     .sdi-dirty = SDI: tallenna tai sulje "__ocs_fmt_0__" ennen toisen piirustuksen avaamista.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Näkyvyystila
+    .visibility-value = Näkyvyystila: { $state }
+    .table-label = Lohkon ominaisuudet
+    .table-row = Lohkon ominaisuudet: { $row }
+    .alignment = Kohdistus: { $mode }
+    .flipped = Käännetty
+    .not-flipped = Ei käännetty

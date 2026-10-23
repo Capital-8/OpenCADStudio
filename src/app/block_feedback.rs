@@ -17,7 +17,6 @@ impl OpenCADStudio {
             return None;
         }
         if id == super::visibility::VIS_GRIP_ID {
-            let label = crate::t!("Visibility state");
             let state = self.tabs[self.active_tab]
                 .visibility_grip
                 .as_ref()
@@ -26,47 +25,62 @@ impl OpenCADStudio {
                     grip.current
                         .and_then(|current| grip.state_names.get(current))
                 });
-            return Some(state.map_or_else(
-                || label.clone().into_owned(),
-                |state| format!("{label}: {state}"),
-            ));
+            return Some(match state {
+                Some(state) => crate::tr!("block-grip", "visibility-value", state = state.clone()),
+                None => crate::tr!("block-grip", "visibility-label"),
+            });
         }
         if id == super::visibility::TABLE_GRIP_ID {
-            let label = crate::t!("Block properties");
             let row = self.tabs[self.active_tab]
                 .table_grip
                 .as_ref()
                 .filter(|grip| grip.insert_handle == handle)
                 .and_then(|grip| grip.current);
-            return Some(row.map_or_else(
-                || label.clone().into_owned(),
-                |row| format!("{label}: {}", row + 1),
-            ));
+            return Some(match row {
+                Some(row) => crate::tr!("block-grip", "table-row", row = (row + 1).to_string()),
+                None => crate::tr!("block-grip", "table-label"),
+            });
         }
-        if let Some(alignment) = self.tabs[self.active_tab].scene.alignment_grips(handle).into_iter().find(|grip| grip.id == id) {
-            return Some(crate::tf!("Alignment: {}", crate::t!(if alignment.perpendicular { "Perpendicular" } else { "Tangent" })).into_owned());
+        if let Some(alignment) = self.tabs[self.active_tab]
+            .scene
+            .alignment_grips(handle)
+            .into_iter()
+            .find(|grip| grip.id == id)
+        {
+            let mode = crate::t!(if alignment.perpendicular {
+                "Perpendicular"
+            } else {
+                "Tangent"
+            })
+            .into_owned();
+            return Some(crate::tr!("block-grip", "alignment", mode = mode));
         }
         let (parameter, value) = self.dynamic_grip_value(handle, id)?;
-        let base = match value { actions::Value::Frame { base, .. } => base, _ => parameter.base };
+        let base = match value {
+            actions::Value::Frame { base, .. } => base,
+            _ => parameter.base,
+        };
         let value = match value {
-            actions::Value::Flip(state) => if state {
-                crate::t!("Flipped")
-            } else {
-                crate::t!("Not flipped")
+            actions::Value::Flip(state) => {
+                if state {
+                    crate::tr!("block-grip", "flipped")
+                } else {
+                    crate::tr!("block-grip", "not-flipped")
+                }
             }
-            .into_owned(),
-            actions::Value::Point(at) | actions::Value::Frame { end: at, .. } if parameter.point || parameter.xy => format!(
-                "({:.4}, {:.4})",
-                at.x - base.x,
-                at.y - base.y
-            ),
-            actions::Value::Point(at) | actions::Value::Frame { end: at, .. } if parameter.rotation => format!(
-                "{:.4}°",
-                (at.y - base.y)
-                    .atan2(at.x - base.x)
-                    .to_degrees()
-            ),
-            actions::Value::Point(at) | actions::Value::Frame { end: at, .. } => format!("{:.4}", at.distance(base)),
+            actions::Value::Point(at) | actions::Value::Frame { end: at, .. }
+                if parameter.point || parameter.xy =>
+            {
+                format!("({:.4}, {:.4})", at.x - base.x, at.y - base.y)
+            }
+            actions::Value::Point(at) | actions::Value::Frame { end: at, .. }
+                if parameter.rotation =>
+            {
+                format!("{:.4}°", (at.y - base.y).atan2(at.x - base.x).to_degrees())
+            }
+            actions::Value::Point(at) | actions::Value::Frame { end: at, .. } => {
+                format!("{:.4}", at.distance(base))
+            }
         };
         Some(format!("{}: {value}", parameter.name))
     }

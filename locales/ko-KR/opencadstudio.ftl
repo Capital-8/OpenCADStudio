@@ -7036,3 +7036,14 @@ script-files =
     .exit-save = EXIT  __ocs_arg_name__의 변경 사항을 저장하시겠습니까? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__"에는 아직 파일 경로가 없습니다. 먼저 SAVEAS를 사용하십시오.
     .sdi-dirty = SDI: 다른 도면을 열기 전에 "__ocs_fmt_0__"을(를) 저장하거나 닫으십시오.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = 가시성 상태
+    .visibility-value = 가시성 상태: { $state }
+    .table-label = 블록 특성
+    .table-row = 블록 특성: { $row }
+    .alignment = 정렬: { $mode }
+    .flipped = 반전됨
+    .not-flipped = 반전되지 않음

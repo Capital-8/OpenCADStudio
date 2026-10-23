@@ -7044,3 +7044,14 @@ quickcalc =
     .function-expr = Hàm: __ocs_fmt_0__
     .double-click-insert = Nhấp đúp để chèn
     .variables-hint = Nhấp đúp để chèn. Nhập $name = giá trị cũng thêm một hằng số.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Trạng thái hiển thị
+    .visibility-value = Trạng thái hiển thị: { $state }
+    .table-label = Thuộc tính khối
+    .table-row = Thuộc tính khối: { $row }
+    .alignment = Căn chỉnh: { $mode }
+    .flipped = Đã lật
+    .not-flipped = Chưa lật

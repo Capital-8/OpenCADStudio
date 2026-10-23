@@ -7038,3 +7038,14 @@ script-files =
     .exit-save = EXIT  ບັນທຶກການປ່ຽນແປງໃນ __ocs_arg_name__ ບໍ? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" ຍັງບໍ່ມີເສັ້ນທາງໄຟລ໌; ໃຊ້ SAVEAS ກ່ອນ.
     .sdi-dirty = SDI: ບັນທຶກ ຫຼື ປິດ "__ocs_fmt_0__" ກ່ອນເປີດແຜ່ນແຕ້ມອື່ນ.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = ສະຖານະການເບິ່ງເຫັນ
+    .visibility-value = ສະຖານະການເບິ່ງເຫັນ: { $state }
+    .table-label = ຄຸນສົມບັດບລັອກ
+    .table-row = ຄຸນສົມບັດບລັອກ: { $row }
+    .alignment = ການຈັດແນວ: { $mode }
+    .flipped = ປີ້ນແລ້ວ
+    .not-flipped = ຍັງບໍ່ປີ້ນ

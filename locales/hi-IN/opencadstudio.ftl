@@ -7025,3 +7025,14 @@ script-files =
     .exit-save = EXIT  __ocs_arg_name__ में परिवर्तन सहेजें? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" का अभी कोई फ़ाइल पथ नहीं है; पहले SAVEAS का उपयोग करें।
     .sdi-dirty = SDI: कोई दूसरी ड्रॉइंग खोलने से पहले "__ocs_fmt_0__" को सहेजें या बंद करें।
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = दृश्यता स्थिति
+    .visibility-value = दृश्यता स्थिति: { $state }
+    .table-label = ब्लॉक गुण
+    .table-row = ब्लॉक गुण: { $row }
+    .alignment = संरेखण: { $mode }
+    .flipped = पलटा हुआ
+    .not-flipped = नहीं पलटा हुआ

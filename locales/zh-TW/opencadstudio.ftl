@@ -7032,3 +7032,14 @@ script-files =
     .exit-save = EXIT  是否儲存對 __ocs_arg_name__ 的變更? [Yes/No] <Yes>:
     .exit-no-path = EXIT: 「__ocs_fmt_0__」尚無檔案路徑；請先使用 SAVEAS。
     .sdi-dirty = SDI: 開啟其他圖面前，請儲存或關閉「__ocs_fmt_0__」。
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = 可見性狀態
+    .visibility-value = 可見性狀態: { $state }
+    .table-label = 圖塊性質
+    .table-row = 圖塊性質: { $row }
+    .alignment = 對齊: { $mode }
+    .flipped = 已翻轉
+    .not-flipped = 未翻轉

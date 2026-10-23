@@ -7,8 +7,9 @@ use crate::scene::{
     block_orientation_parameter as orientation,
 };
 
-const PRIMARY: &str = "  Façade — مسافة — 距離 ";
-const SECONDARY: &str = "Angle help \\ literal";
+// Drawing-authored test data, not UI labels or Fluent translations.
+const AUTHORED_DESCRIPTION: &str = "  Façade — مسافة — 距離 ";
+const AUTHORED_SECONDARY_DESCRIPTION: &str = "Angle help \\ literal";
 
 fn numeric_fixture(kind: &str, testing: bool) -> (OpenCADStudio, usize, Handle, Handle, Handle) {
     let (mut app, reference) = fixture();
@@ -73,7 +74,7 @@ fn numeric_fixture(kind: &str, testing: bool) -> (OpenCADStudio, usize, Handle, 
         definition,
         parameter,
         metadata::Field::Description,
-        PRIMARY,
+        AUTHORED_DESCRIPTION,
     )
     .unwrap();
     if matches!(kind, "XY" | "Polar") {
@@ -82,7 +83,7 @@ fn numeric_fixture(kind: &str, testing: bool) -> (OpenCADStudio, usize, Handle, 
             definition,
             parameter,
             metadata::Field::SecondaryDescription,
-            SECONDARY,
+            AUTHORED_SECONDARY_DESCRIPTION,
         )
         .unwrap();
     }
@@ -126,20 +127,20 @@ fn block_parameter_grip_descriptions_follow_components_in_drawing_and_test_block
                 let tip = app.dynamic_grip_tip(insert, grip.id).unwrap();
                 assert!(
                     tip.contains(if kind == "XY" && role == 3 {
-                        SECONDARY
+                        AUTHORED_SECONDARY_DESCRIPTION
                     } else {
-                        PRIMARY
+                        AUTHORED_DESCRIPTION
                     }),
                     "{kind}, role {role}: {tip}"
                 );
                 if kind == "XY" && role == 2 {
-                    assert!(!tip.contains(SECONDARY));
+                    assert!(!tip.contains(AUTHORED_SECONDARY_DESCRIPTION));
                 }
                 if kind == "XY" && role == 3 {
-                    assert!(!tip.contains(PRIMARY));
+                    assert!(!tip.contains(AUTHORED_DESCRIPTION));
                 }
                 if kind == "Polar" || (kind == "XY" && role == 1) {
-                    assert!(tip.contains(SECONDARY));
+                    assert!(tip.contains(AUTHORED_SECONDARY_DESCRIPTION));
                 }
             }
             assert!(before.objects.contains_key(&parameter));
@@ -172,7 +173,7 @@ fn block_grip_description_hover_dwell_guards_and_native_visibility_are_independe
     assert!(app.hovered_dynamic_grip_tip().is_none());
     hover.started -= std::time::Duration::from_millis(600);
     app.grip_hover = Some(hover.clone());
-    assert!(app.hovered_dynamic_grip_tip().unwrap().1.contains(PRIMARY));
+    assert!(app.hovered_dynamic_grip_tip().unwrap().1.contains(AUTHORED_DESCRIPTION));
     metadata::set_visible(
         &mut app.tabs[i].scene.document,
         definition,
@@ -181,7 +182,7 @@ fn block_grip_description_hover_dwell_guards_and_native_visibility_are_independe
     )
     .unwrap();
     assert!(
-        app.hovered_dynamic_grip_tip().unwrap().1.contains(PRIMARY),
+        app.hovered_dynamic_grip_tip().unwrap().1.contains(AUTHORED_DESCRIPTION),
         "Show Properties does not hide an enabled grip's help"
     );
     app.grip_hover.as_mut().unwrap().document += 1;
@@ -208,7 +209,7 @@ fn block_grip_description_hover_dwell_guards_and_native_visibility_are_independe
     )
     .unwrap();
     let tip = app.dynamic_grip_tip(insert, grip.id).unwrap();
-    assert!(!tip.contains(PRIMARY));
+    assert!(!tip.contains(AUTHORED_DESCRIPTION));
     assert!(
         !tip.contains('\n'),
         "empty descriptions retain the existing value summary"
@@ -251,7 +252,7 @@ fn block_editor_lookup_visibility_and_component_grips_use_owned_description_text
             definition,
             parameter,
             metadata::Field::Description,
-            PRIMARY,
+            AUTHORED_DESCRIPTION,
         )
         .unwrap();
     }
@@ -260,7 +261,7 @@ fn block_editor_lookup_visibility_and_component_grips_use_owned_description_text
         definition,
         xy,
         metadata::Field::SecondaryDescription,
-        SECONDARY,
+        AUTHORED_SECONDARY_DESCRIPTION,
     )
     .unwrap();
     for parameter in [lookup, visibility, xy] {
@@ -280,10 +281,10 @@ fn block_editor_lookup_visibility_and_component_grips_use_owned_description_text
                 .unwrap();
             let tip = app.dynamic_grip_tip(parameter, grip.id).unwrap();
             if *part == edit::Part::Label(1) {
-                assert!(tip.contains(SECONDARY));
-                assert!(!tip.contains(PRIMARY));
+                assert!(tip.contains(AUTHORED_SECONDARY_DESCRIPTION));
+                assert!(!tip.contains(AUTHORED_DESCRIPTION));
             } else {
-                assert!(tip.contains(PRIMARY));
+                assert!(tip.contains(AUTHORED_DESCRIPTION));
             }
             assert!(
                 app.dynamic_grip_tip(reference, grip.id).is_none(),
@@ -301,6 +302,6 @@ fn block_editor_lookup_visibility_and_component_grips_use_owned_description_text
     assert!(app
         .dynamic_grip_tip(insert, super::super::visibility::VIS_GRIP_ID)
         .unwrap()
-        .contains(PRIMARY));
+        .contains(AUTHORED_DESCRIPTION));
     assert_eq!(app.tabs[i].scene.document, source_before);
 }

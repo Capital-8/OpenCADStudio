@@ -7025,3 +7025,14 @@ script-files =
     .exit-save = EXIT  __ocs_arg_name__ の変更を保存しますか? [Yes/No] <Yes>:
     .exit-no-path = EXIT: 「__ocs_fmt_0__」にはまだファイル パスがありません。先に SAVEAS を使用してください。
     .sdi-dirty = SDI: 別の図面を開く前に「__ocs_fmt_0__」を保存するか閉じてください。
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = 表示状態
+    .visibility-value = 表示状態: { $state }
+    .table-label = ブロック プロパティ
+    .table-row = ブロック プロパティ: { $row }
+    .alignment = 位置合わせ: { $mode }
+    .flipped = 反転
+    .not-flipped = 未反転

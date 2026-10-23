@@ -7037,3 +7037,14 @@ script-files =
     .exit-save = EXIT  Αποθήκευση αλλαγών στο __ocs_arg_name__; [Yes/No] <Yes>:
     .exit-no-path = EXIT: το "__ocs_fmt_0__" δεν έχει ακόμη διαδρομή αρχείου· χρησιμοποιήστε πρώτα SAVEAS.
     .sdi-dirty = SDI: αποθηκεύστε ή κλείστε το "__ocs_fmt_0__" πριν ανοίξετε άλλο σχέδιο.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Κατάσταση ορατότητας
+    .visibility-value = Κατάσταση ορατότητας: { $state }
+    .table-label = Ιδιότητες μπλοκ
+    .table-row = Ιδιότητες μπλοκ: { $row }
+    .alignment = Ευθυγράμμιση: { $mode }
+    .flipped = Ανεστραμμένο
+    .not-flipped = Μη ανεστραμμένο

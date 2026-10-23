@@ -7021,3 +7021,14 @@ script-files =
     .exit-save = EXIT  Menti a(z) __ocs_arg_name__ módosításait? [Yes/No] <Yes>:
     .exit-no-path = EXIT: a(z) "__ocs_fmt_0__" rajznak még nincs fájlútvonala; először használja a SAVEAS parancsot.
     .sdi-dirty = SDI: mentse vagy zárja be a(z) "__ocs_fmt_0__" rajzot, mielőtt másikat nyit meg.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Láthatósági állapot
+    .visibility-value = Láthatósági állapot: { $state }
+    .table-label = Blokk tulajdonságai
+    .table-row = Blokk tulajdonságai: { $row }
+    .alignment = Igazítás: { $mode }
+    .flipped = Átfordítva
+    .not-flipped = Nincs átfordítva

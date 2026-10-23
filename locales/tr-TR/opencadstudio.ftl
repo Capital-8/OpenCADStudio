@@ -6958,3 +6958,14 @@ script-files =
     .exit-save = EXIT  __ocs_arg_name__ üzerindeki değişiklikler kaydedilsin mi? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" için henüz dosya yolu yok; önce SAVEAS kullanın.
     .sdi-dirty = SDI: başka bir çizim açmadan önce "__ocs_fmt_0__" çizimini kaydedin veya kapatın.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Görünürlük durumu
+    .visibility-value = Görünürlük durumu: { $state }
+    .table-label = Blok özellikleri
+    .table-row = Blok özellikleri: { $row }
+    .alignment = Hizalama: { $mode }
+    .flipped = Çevrilmiş
+    .not-flipped = Çevrilmemiş

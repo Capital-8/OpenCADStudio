@@ -7036,3 +7036,14 @@ script-files =
     .exit-save = EXIT  Zapisać zmiany w __ocs_arg_name__? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" nie ma jeszcze ścieżki pliku; najpierw użyj SAVEAS.
     .sdi-dirty = SDI: zapisz lub zamknij "__ocs_fmt_0__" przed otwarciem innego rysunku.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Stan widoczności
+    .visibility-value = Stan widoczności: { $state }
+    .table-label = Właściwości bloku
+    .table-row = Właściwości bloku: { $row }
+    .alignment = Wyrównanie: { $mode }
+    .flipped = Odwrócony
+    .not-flipped = Nieodwrócony

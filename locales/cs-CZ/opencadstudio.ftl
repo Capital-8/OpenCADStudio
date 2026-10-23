@@ -7034,3 +7034,14 @@ script-files =
     .exit-save = EXIT  Uložit změny výkresu __ocs_arg_name__? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" zatím nemá cestu k souboru; nejprve použijte SAVEAS.
     .sdi-dirty = SDI: před otevřením jiného výkresu uložte nebo zavřete "__ocs_fmt_0__".
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Stav viditelnosti
+    .visibility-value = Stav viditelnosti: { $state }
+    .table-label = Vlastnosti bloku
+    .table-row = Vlastnosti bloku: { $row }
+    .alignment = Zarovnání: { $mode }
+    .flipped = Převráceno
+    .not-flipped = Nepřevráceno
