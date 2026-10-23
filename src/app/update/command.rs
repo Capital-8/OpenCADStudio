@@ -422,6 +422,15 @@ impl OpenCADStudio {
             return Task::none();
         }
         let i = self.active_tab;
+        // A Mac keyboard's Delete key sends Backspace: with nothing typed and
+        // no command running it erases the selection, as Delete does.
+        if cfg!(target_os = "macos")
+            && self.command_line.input.is_empty()
+            && self.tabs[i].active_cmd.is_none()
+            && !self.tabs[i].scene.selected.is_empty()
+        {
+            return Task::done(Message::DeleteSelected);
+        }
         // Backspace edits the focused dynamic-input field first;
         // emptying it unlocks the field (back to cursor tracking).
         if self.dyn_input && !self.tabs[i].dyn_fields.is_empty() {
