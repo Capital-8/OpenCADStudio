@@ -865,7 +865,8 @@ impl OpenCADStudio {
                     .collect();
                 let dialog = cmd == "OVERKILL";
                 if dialog && !handles.is_empty() {
-                    let settings = *overkill::remembered().lock().unwrap_or_else(|e| e.into_inner());
+                    let settings =
+                        *overkill::remembered().lock().unwrap_or_else(|e| e.into_inner());
                     self.overkill_dialog = Some(crate::ui::window::overkill::State::new(settings));
                     self.active_modal = Some(crate::app::ModalKind::Overkill);
                 } else {
