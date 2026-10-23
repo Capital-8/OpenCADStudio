@@ -212,7 +212,8 @@ pub struct DataLinkUpdateCommand {
 
 impl DataLinkUpdateCommand {
     /// `links` are the drawing's data link names.
-    pub fn new(links: Vec<String>) -> Self {
+    pub fn new(mut links: Vec<String>) -> Self {
+        links.sort_by_key(|name| name.to_lowercase());
         Self {
             links,
             step: UpdateStep::Option,
