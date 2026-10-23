@@ -997,6 +997,7 @@ impl PropertiesPanel {
                         key,
                         index: choice.index,
                     })
+                    .placeholder(t!("Custom"))
                     .text_size(FONT_SZ)
                     .padding([3, 6])
                     .width(Length::Fill);

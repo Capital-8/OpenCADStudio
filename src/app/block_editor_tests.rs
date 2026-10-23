@@ -4,6 +4,7 @@ use codec::types::Vector3;
 use codec::{EntityType, Handle};
 
 mod retained_save_as;
+mod table_properties;
 
 fn fixture() -> (OpenCADStudio, Handle) {
     let mut app = OpenCADStudio::new_for_test();

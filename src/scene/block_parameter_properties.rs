@@ -7,6 +7,14 @@ use codec::objects::{DynamicBlockData as Data, ObjectType};
 use codec::{CadDocument, EntityType, Handle};
 use glam::DVec3;
 
+mod table;
+
+pub(crate) fn current_table_row(doc: &CadDocument, baseline: Option<&CadDocument>, insert: Handle) -> Option<usize> {
+    let definition = instance::definition(doc, insert)?;
+    let view = super::block_properties_table::table(baseline.unwrap_or(doc), definition).ok()??;
+    table::current_row(doc, baseline, insert, definition, &view).ok().flatten()
+}
+
 struct Descriptor<'a> {
     component: Component,
     label: String,
@@ -183,6 +191,7 @@ pub(crate) fn properties(
             });
         }
     }
+    rows.extend(table::property(doc, baseline, document, insert, definition));
     rows
 }
 #[derive(Clone, Copy)]
@@ -202,6 +211,9 @@ pub(crate) fn evaluate(
         return Err("The reference parameter property is stale.");
     }
     let source = baseline.unwrap_or(doc);
+    if let Component::TableRow(revision) = key.component {
+        return table::evaluate(doc, baseline, key, revision, input);
+    }
     let p = actions::all_parameters(source, key.definition)
         .into_iter()
         .find(|p| p.handle == key.parameter)
@@ -242,7 +254,7 @@ pub(crate) fn evaluate(
                     frame.end =
                         frame.base + DVec3::new(angle.cos(), angle.sin(), 0.) * delta.length();
                 }
-                Component::Flip => unreachable!(),
+                Component::Flip | Component::TableRow(_) => unreachable!(),
             }
             if !frame.end.is_finite() {
                 return Err("Specify a finite parameter value.");

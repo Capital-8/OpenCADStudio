@@ -19,6 +19,7 @@ pub enum BlockParameterComponent {
     Distance,
     Angle,
     Flip,
+    TableRow(u64),
 }
 
 /// The kind of value held by a property row.
