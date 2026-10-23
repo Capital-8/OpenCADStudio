@@ -1271,6 +1271,10 @@ impl OpenCADStudio {
 
     pub(in crate::app) fn on_command_escape(&mut self) -> Task<Message> {
         self.tabs[self.active_tab].measurement.clear();
+        // Escape also closes the overlapping-objects list.
+        if self.cycle_candidates.take().is_some() {
+            self.tabs[self.active_tab].scene.set_hover_highlight(None);
+        }
         // Escape answers a pending client getpoint request first: no point.
         if self.control.get_point.is_some() {
             self.resolve_get_point(None);

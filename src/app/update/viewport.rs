@@ -6490,6 +6490,11 @@ properties={:.1}ms picked={}",
                             .filter(|&h| self.tabs[i].scene.passes_selection_filter(h))
                             .filter(|&h| !self.tabs[i].scene.is_reference_only(h))
                             .collect();
+                            // An object drawn by several wires (a dimension's
+                            // lines, arrows and text) is one candidate.
+                            let mut seen = std::collections::HashSet::new();
+                            let cands: Vec<Handle> =
+                                cands.into_iter().filter(|h| seen.insert(*h)).collect();
                             if cands.len() >= 2 {
                                 // Overlap: open the list box at the cursor.
                                 self.cycle_candidates = Some((p_full, cands));
