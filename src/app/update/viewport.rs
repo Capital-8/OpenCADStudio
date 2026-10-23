@@ -461,7 +461,10 @@ impl OpenCADStudio {
         eye: glam::DVec3,
         bounds: iced::Rectangle,
     ) -> Option<(glam::DVec3, bool)> {
-        if !self.ortho_mode && !self.polar_mode {
+        // Holding Shift turns ortho off for as long as it is held; with
+        // ortho off it is the axis lock instead (`active_axis_lock`).
+        let ortho = self.ortho_mode && !self.shift_down;
+        if !ortho && !self.polar_mode {
             return None;
         }
         let xf = self.tabs[tab].ucs_xform();
@@ -473,7 +476,7 @@ impl OpenCADStudio {
         } else {
             cursor
         };
-        let planar = if self.ortho_mode {
+        let planar = if ortho {
             Some(drafting_constrain(
                 cursor,
                 base,
@@ -517,7 +520,7 @@ impl OpenCADStudio {
             return planar.map(|point| (point, false));
         };
         let z_gap = gap(z_point);
-        let planar_gap = if self.ortho_mode {
+        let planar_gap = if ortho {
             let (a, b, _) = drafting_axes(
                 ux,
                 uy,
@@ -534,7 +537,7 @@ impl OpenCADStudio {
         } else {
             planar.map_or(f32::INFINITY, gap)
         };
-        let engaged = self.ortho_mode || z_gap <= self.snapper.osnap_radius_px;
+        let engaged = ortho || z_gap <= self.snapper.osnap_radius_px;
         if engaged && z_gap < planar_gap {
             Some((z_point, true))
         } else {
@@ -553,7 +556,7 @@ impl OpenCADStudio {
             self.axis_lock_dir = Some(direction);
             return self.axis_lock_dir;
         }
-        if self.shift_down && allowed {
+        if self.shift_down && allowed && !self.ortho_mode {
             if self.axis_lock_dir.is_none() {
                 let ucs = self.tabs[tab].ucs_xform();
                 self.axis_lock_dir = axis_lock_capture(
@@ -619,7 +622,7 @@ impl OpenCADStudio {
             step,
             base,
             required_crossing_ray,
-            self.ortho_mode && drafting,
+            self.ortho_mode && !self.shift_down && drafting,
             ucs_x.as_dvec3(),
             ucs_y.as_dvec3(),
         )?;
@@ -8847,7 +8850,8 @@ mod rapid_drawing_tests {
         for explicit_angle in [false, true] {
             let exercise = |force_full: bool| {
                 let mut app = drawing_app("LINE");
-                app.ortho_mode = true;
+                // Shift is the axis lock with ortho off; with it on, Shift frees.
+                app.ortho_mode = explicit_angle;
                 let i = app.active_tab;
                 let start = screen(&app, glam::DVec3::ZERO);
                 let _ = app.update(Message::ViewportLeftPressAt(start));
