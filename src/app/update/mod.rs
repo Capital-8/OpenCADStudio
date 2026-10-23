@@ -455,6 +455,9 @@ impl OpenCADStudio {
             }
         }
         let mut task = self.update_message(msg);
+        // What a message changed is only known while it is handled, also when
+        // it returned early.
+        self.block_palette.change_hint = Default::default();
         // A dock change leaves the drawing where it was on screen, and the
         // viewport's size follows dock and window changes at once.
         self.dock_keep_view();

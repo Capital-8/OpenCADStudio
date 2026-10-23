@@ -666,7 +666,12 @@ fn thumb<'a>(palette: &'a BlockPalette, item: &Item, size: f32) -> Element<'a, M
                     palette
                         .ref_wires
                         .get(&format!("{}|{}", r.source, r.name.to_ascii_uppercase()));
-                if let Some(p) = seen.map(|p| &**p).or_else(|| preview(&r.name)) {
+                // A kept preview not built yet falls back to this drawing's.
+                if let Some(p) = seen
+                    .map(|p| &**p)
+                    .filter(|p| p.wires().is_some())
+                    .or_else(|| preview(&r.name))
+                {
                     return canvas(BlockPreviewCanvas::cached(p))
                         .width(Fill)
                         .height(Length::Fixed(size))

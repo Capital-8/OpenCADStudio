@@ -533,6 +533,9 @@ impl OpenCADStudio {
             }
             MenuAction::Favorite => {
                 if let Some(r) = self.palette_ref(&item) {
+                    if !r.drawing && r.source == self.current_drawing_path() {
+                        self.build_block_preview(&r.name);
+                    }
                     let favorites = &mut self.block_palette.favorites;
                     favorites.retain(|f| !same(f, &r));
                     favorites.insert(0, r);
@@ -655,6 +658,11 @@ impl OpenCADStudio {
         recent.retain(|r| !(r.name.eq_ignore_ascii_case(&entry.name) && r.source == entry.source));
         recent.insert(0, entry);
         self.trim_recent_blocks();
+        // Previews are built for rows on screen only; Recent shows this one
+        // in other drawings too, so build it now.
+        if !drawing {
+            self.build_block_preview(name);
+        }
     }
 
     pub(crate) fn trim_recent_blocks(&mut self) {
