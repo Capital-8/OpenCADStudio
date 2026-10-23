@@ -224,6 +224,16 @@ pub enum BlockPaletteMsg {
     Thumbnails(Vec<(PathBuf, Option<image::Handle>)>),
 }
 
+/// What [`BlockPalette::shown_previews_changed`] compares.
+struct PreviewsShownFor {
+    scroll: (f32, f32),
+    view: ViewMode,
+    tab: Tab,
+    search: String,
+    recent: Vec<PaletteBlockRef>,
+    favorites: Vec<PaletteBlockRef>,
+}
+
 /// Which block definitions a change touched, as far as it is known.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub enum ChangeHint {
@@ -260,12 +270,6 @@ pub struct BlockPreview {
 }
 
 impl BlockPreview {
-    pub fn new(wires: Vec<WireModel>) -> Self {
-        let preview = Self::pending();
-        preview.fill(wires);
-        preview
-    }
-
     /// A preview whose wires are not worked out yet.
     pub fn pending() -> Self {
         Self {
@@ -338,6 +342,9 @@ pub struct BlockPalette {
     /// Drawings whose thumbnails are wanted but not asked for yet; they are
     /// read in the background once the message is handled.
     pub thumb_requests: Vec<PathBuf>,
+    /// What the shown previews were last worked out for; `None` once the
+    /// blocks are replaced.
+    previews_shown_for: Option<PreviewsShownFor>,
     /// Blocks brought in from drawings this session (upper name → file),
     /// so the Recent list remembers the drawing.
     pub file_sources: std::collections::HashMap<String, String>,
@@ -422,6 +429,32 @@ impl BlockPalette {
             .collect()
     }
 
+    /// Whether what decides the shown previews (scroll position, view, tab,
+    /// filter, Recent / Favorites, the blocks themselves) changed since the
+    /// last call, which remembers it. Checked after every message, so it
+    /// copies nothing while nothing changed.
+    pub fn shown_previews_changed(&mut self) -> bool {
+        let same = self.previews_shown_for.as_ref().is_some_and(|last| {
+            last.scroll == self.scroll
+                && last.view == self.view
+                && last.tab == self.tab
+                && last.search == self.search
+                && last.recent == self.recent
+                && last.favorites == self.favorites
+        });
+        if !same {
+            self.previews_shown_for = Some(PreviewsShownFor {
+                scroll: self.scroll,
+                view: self.view,
+                tab: self.tab,
+                search: self.search.clone(),
+                recent: self.recent.clone(),
+                favorites: self.favorites.clone(),
+            });
+        }
+        !same
+    }
+
     /// Replace the Current Drawing blocks.
     pub fn set_blocks(&mut self, blocks: Vec<BlockEntry>) {
         let mut index = std::collections::HashMap::with_capacity(blocks.len());
@@ -430,6 +463,8 @@ impl BlockPalette {
         }
         self.blocks = blocks;
         self.block_index = index;
+        // New previews, all pending.
+        self.previews_shown_for = None;
     }
 
     /// The Current Drawing block named `name`, ignoring ASCII case.
@@ -1360,7 +1395,7 @@ mod tests {
     fn entry(name: &str) -> BlockEntry {
         BlockEntry {
             name: name.to_string(),
-            preview: Rc::new(BlockPreview::new(Vec::new())),
+            preview: Rc::new(BlockPreview::pending()),
             annotative: false,
             dynamic: false,
         }

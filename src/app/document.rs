@@ -306,7 +306,8 @@ pub(super) struct DocumentTab {
     pub(super) is_start: bool,
     /// Room the docked edges took beside the viewport (left, right) when
     /// this drawing was last on screen, and the window size then. A dock
-    /// change pans the view by the difference so the drawing stays put.
+    /// change pans the view by the difference so the drawing stays put,
+    /// and either change sets the viewport's new size right away.
     pub(super) dock_inset: Option<(f32, f32, (f32, f32))>,
     /// Interactive PAN mode (the PAN command / tool). While active, a left-
     /// button drag pans the view instead of selecting — the only pan path on a

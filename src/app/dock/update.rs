@@ -792,17 +792,16 @@ impl OpenCADStudio {
     /// auto-hides (a revealed auto-hide group draws over the drawing).
     pub(crate) fn dock_edge_insets(&self) -> (f32, f32) {
         use crate::app::config::DockSide;
-        let inset = |side: DockSide| {
-            if self.dock_shown_group(side).is_none() {
-                return 0.0;
+        // Runs after every message: the shown group is looked up once. An
+        // edge that doesn't auto-hide always shows it.
+        let inset = |side: DockSide| match self.dock_shown_group(side) {
+            None => 0.0,
+            Some(_) if self.dock.edge_auto_hide(side) => crate::ui::dock::DOCK_STRIP_W,
+            Some(gi) => {
+                crate::ui::dock::DOCK_STRIP_W
+                    + self.dock_group_width(side, gi)
+                    + crate::ui::dock::DOCK_DIVIDER_W
             }
-            let column = match self.dock_column_width(side) {
-                w if w > 0.0 && !self.dock.edge_auto_hide(side) => {
-                    w + crate::ui::dock::DOCK_DIVIDER_W
-                }
-                _ => 0.0,
-            };
-            crate::ui::dock::DOCK_STRIP_W + column
         };
         (inset(DockSide::Left), inset(DockSide::Right))
     }

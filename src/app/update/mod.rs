@@ -444,7 +444,8 @@ impl OpenCADStudio {
             }
         }
         let mut task = self.update_message(msg);
-        // A dock change leaves the drawing where it was on screen.
+        // A dock change leaves the drawing where it was on screen, and the
+        // viewport's size follows dock and window changes at once.
         self.dock_keep_view();
         // Thumbnails the block palette asked for are read in the background.
         task = Task::batch([task, self.palette_thumbnail_task()]);

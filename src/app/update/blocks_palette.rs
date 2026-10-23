@@ -789,6 +789,9 @@ impl OpenCADStudio {
     /// Work out the previews the palette is about to show that are still
     /// pending.
     pub(crate) fn ensure_block_previews(&mut self) {
+        if !self.block_palette.shown_previews_changed() {
+            return;
+        }
         for name in self.block_palette.shown_preview_names() {
             self.build_block_preview(&name);
         }
@@ -906,15 +909,23 @@ impl OpenCADStudio {
     }
 }
 
+/// The block records of `doc` the palette lists (as `custom_block_names`):
+/// not model space, paper space or a layout's, whose contents are the
+/// drawing itself and can be large.
+fn palette_records(doc: &codec::CadDocument) -> impl Iterator<Item = &codec::tables::BlockRecord> {
+    use codec::TableEntry;
+    doc.block_records
+        .iter()
+        .filter(|br| !br.is_standard() && !br.is_layout())
+}
+
 /// `changed` (upper-cased block names) plus every block of `doc` holding one
 /// of them, directly or through other blocks.
 fn with_holding_blocks(
     doc: &codec::CadDocument,
     mut changed: std::collections::HashSet<String>,
 ) -> std::collections::HashSet<String> {
-    let uses: Vec<(String, Vec<String>)> = doc
-        .block_records
-        .iter()
+    let uses: Vec<(String, Vec<String>)> = palette_records(doc)
         .map(|br| {
             let used = doc
                 .entities_in_block(&br.name)
@@ -941,15 +952,13 @@ fn with_holding_blocks(
     }
 }
 
-/// The blocks of `after` whose record or contents differ from `before`'s
-/// (new ones included).
+/// The blocks of `after` the palette lists whose record or contents differ
+/// from `before`'s (new ones included).
 pub(crate) fn changed_block_names(
     before: &codec::CadDocument,
     after: &codec::CadDocument,
 ) -> Vec<String> {
-    after
-        .block_records
-        .iter()
+    palette_records(after)
         .filter(|br| {
             before.block_records.get(&br.name) != Some(*br)
                 || !before

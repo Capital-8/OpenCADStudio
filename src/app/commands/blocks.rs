@@ -1878,46 +1878,6 @@ mod tests {
     }
 
     #[test]
-    fn blockpalette_refresh_shares_previews_and_makes_new_ones() {
-        let mut app = fresh_app();
-        app.automation_op(r#"{"op":"new"}"#);
-        let i = app.active_tab;
-        let mut line = codec::entities::Line::new();
-        line.end = codec::types::Vector3::new(10.0, 0.0, 0.0);
-        app.tabs[i]
-            .scene
-            .define_block_from_owned_entities(
-                vec![codec::EntityType::Line(line)],
-                "Widget",
-                glam::DVec3::ZERO,
-            )
-            .unwrap();
-        app.refresh_block_palette();
-        let first = std::rc::Rc::clone(&app.block_palette.blocks[0].preview);
-        // Worked out once shown.
-        assert!(first.wires().is_none());
-        app.ensure_block_previews();
-        assert!(first.wires().is_some_and(|w| !w.is_empty()));
-        // The preview kept for Recent / Favorites is the same one, not a copy.
-        let kept = |app: &crate::app::OpenCADStudio| {
-            let mut kept = app.block_palette.ref_wires.iter();
-            let (key, preview) = kept.next().expect("kept preview");
-            assert!(key.ends_with("|WIDGET") && kept.next().is_none());
-            std::rc::Rc::clone(preview)
-        };
-        assert!(std::rc::Rc::ptr_eq(&kept(&app), &first));
-        // Lookups ignore case, through the index.
-        assert!(app.block_palette.current_entry("widget").is_some());
-        assert!(app.block_palette.current_entry("Gadget").is_none());
-        // A refresh makes new previews (an empty cache), so a changed block
-        // never keeps its old thumbnail.
-        app.refresh_block_palette();
-        let second = &app.block_palette.blocks[0].preview;
-        assert!(!std::rc::Rc::ptr_eq(second, &first));
-        assert!(std::rc::Rc::ptr_eq(&kept(&app), second));
-    }
-
-    #[test]
     fn blockpalette_click_on_a_drawing_block_keeps_the_previews() {
         let mut app = fresh_app();
         app.automation_op(r#"{"op":"new"}"#);
@@ -1972,6 +1932,21 @@ mod tests {
         let preview = |app: &crate::app::OpenCADStudio, name: &str| {
             Rc::clone(&app.block_palette.current_entry(name).unwrap().preview)
         };
+        // A preview is worked out once shown, and the one kept for Recent /
+        // Favorites is the same, not a copy.
+        let kept = |app: &crate::app::OpenCADStudio, name: &str| {
+            let key = format!("|{}", name.to_ascii_uppercase());
+            app.block_palette
+                .ref_wires
+                .iter()
+                .find(|(k, _)| k.ends_with(&key))
+                .map(|(_, p)| Rc::clone(p))
+                .expect("kept preview")
+        };
+        assert!(preview(&app, "Part").wires().is_none());
+        app.ensure_block_previews();
+        assert!(preview(&app, "Part").wires().is_some_and(|w| !w.is_empty()));
+        assert!(Rc::ptr_eq(&kept(&app, "Part"), &preview(&app, "Part")));
         let before: Vec<_> = ["Part", "Holder", "Outer", "Other"]
             .iter()
             .map(|n| preview(&app, n))
@@ -1993,6 +1968,7 @@ mod tests {
             assert!(!Rc::ptr_eq(&before[k], &after[k]), "{k}");
         }
         assert!(Rc::ptr_eq(&before[3], &after[3]));
+        assert!(Rc::ptr_eq(&kept(&app, "Part"), &after[0]));
         // A change made while the palette was out of date rebuilds all.
         app.note_block_changes(false, ["Part"]);
         app.refresh_block_palette();
