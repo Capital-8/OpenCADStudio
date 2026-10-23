@@ -62,9 +62,12 @@ pub(crate) fn set_hyperlink(
             .and_then(|data| data.get_record(super::hyperlink::APP))
             .and_then(|record| super::hyperlink::Link::from_values(&record.values))
             .unwrap_or_default();
+        // `file#location` names the location too.
+        let (url, location) = super::hyperlink::Link::split_address(url);
         let link = super::hyperlink::Link {
-            url: url.trim().into(),
+            url,
             text: description.trim().into(),
+            location: if location.is_empty() { current.location.clone() } else { location },
             ..current
         };
         let mut record = ExtendedDataRecord::new("PE_URL");

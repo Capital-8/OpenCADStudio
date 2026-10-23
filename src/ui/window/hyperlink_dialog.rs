@@ -45,6 +45,9 @@ pub struct HyperlinkOptions {
     pub edit: bool,
     pub selected: usize,
     pub with_links: usize,
+    /// A block definition's link: an address and text only (no view
+    /// target, relative path or DWF switch, which its record doesn't keep).
+    pub address_only: bool,
 }
 
 /// The full path an address resolves to, as the window shows it.
@@ -142,17 +145,19 @@ fn file_card<'a>(address: &'a str, options: &'a HyperlinkOptions) -> Element<'a,
             .padding([4, 10])
             .into()
     };
-    card(
-        crate::tr!("hyperlink-dialog", "link"),
-        column![
-            row![label(crate::tr!("hyperlink-dialog", "address")), input, browse]
-                .spacing(6)
-                .align_y(iced::Center),
-            row![
-                label(crate::tr!("hyperlink-dialog", "path")),
-                text(path).size(11).style(muted_style).width(Fill)
-            ]
-            .spacing(6),
+    let mut rows = column![
+        row![label(crate::tr!("hyperlink-dialog", "address")), input, browse]
+            .spacing(6)
+            .align_y(iced::Center),
+        row![
+            label(crate::tr!("hyperlink-dialog", "path")),
+            text(path).size(11).style(muted_style).width(Fill)
+        ]
+        .spacing(6),
+    ]
+    .spacing(8);
+    if !options.address_only {
+        rows = rows.push(
             row![
                 relative,
                 chip(
@@ -162,9 +167,9 @@ fn file_card<'a>(address: &'a str, options: &'a HyperlinkOptions) -> Element<'a,
                 ),
             ]
             .spacing(6),
-        ]
-        .spacing(8),
-    )
+        );
+    }
+    card(crate::tr!("hyperlink-dialog", "link"), rows)
 }
 
 fn view_card<'a>(options: &'a HyperlinkOptions) -> Element<'a, Message> {
@@ -230,7 +235,12 @@ pub fn view<'a>(
             .width(Fill)
             .style(field_style),
     );
-    let mut body = column![target_switch(options.view_target), target, shown].spacing(10);
+    let mut body = if options.address_only {
+        column![target, shown]
+    } else {
+        column![target_switch(options.view_target), target, shown]
+    }
+    .spacing(10);
     if mixed {
         body = body.push(
             text(crate::t!("Selected objects have different hyperlink values."))

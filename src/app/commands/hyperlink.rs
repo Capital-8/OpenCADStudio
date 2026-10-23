@@ -242,6 +242,7 @@ impl OpenCADStudio {
             edit: with_links > 0,
             selected: self.hyperlink_editor_handles.len(),
             with_links,
+            address_only: false,
         };
         self.active_modal = Some(crate::app::ModalKind::Hyperlink);
     }

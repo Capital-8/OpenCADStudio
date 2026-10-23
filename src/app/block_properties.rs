@@ -35,6 +35,7 @@ impl OpenCADStudio {
         self.hyperlink_options = crate::ui::window::hyperlink_dialog::HyperlinkOptions {
             edit: !self.hyperlink_editor_url.is_empty(),
             dwf: true,
+            address_only: true,
             ..Default::default()
         };
         self.active_modal = Some(super::ModalKind::Hyperlink);
