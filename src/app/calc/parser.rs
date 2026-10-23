@@ -343,7 +343,15 @@ impl<'a> Parser<'a> {
         if t.kind != TokKind::Feet {
             return Ok(feet);
         }
-        // `2'9"`: a number with an inch mark straight after the feet.
+        // `2'9"` or `2'-9"`: a number with an inch mark after the feet, the
+        // dash between them a separator, not a subtraction.
+        let dash = usize::from(matches!(
+            self.tokens.get(self.pos),
+            Some(Token {
+                kind: TokKind::Minus,
+                ..
+            })
+        ));
         if let (
             Some(Token {
                 kind: TokKind::Number(inches),
@@ -353,13 +361,15 @@ impl<'a> Parser<'a> {
                 kind: TokKind::Inches,
                 span: i_span,
             }),
-        ) = (self.tokens.get(self.pos), self.tokens.get(self.pos + 1))
-        {
+        ) = (
+            self.tokens.get(self.pos + dash),
+            self.tokens.get(self.pos + dash + 1),
+        ) {
             let inch = node(
                 ExprKind::Quantity(*inches, units::lookup("\"").expect("inch unit")),
                 n_span.start..i_span.end,
             );
-            self.pos += 2;
+            self.pos += dash + 2;
             return Ok(binary(ExprKind::Add, feet, inch));
         }
         Ok(feet)

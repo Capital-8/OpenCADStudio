@@ -1,4 +1,4 @@
-//! QuickCalc's variables, as in AutoCAD's QuickCalc: every one is global
+//! QuickCalc's variables: every one is global
 //! (kept in the user settings, shared by all drawings), named with a `$`,
 //! and either a constant (calculated once, stored as a value) or a function
 //! (stored as an expression, recalculated each time it is used).

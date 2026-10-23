@@ -16,7 +16,7 @@ use crate::ui::dock::PanelId;
 use crate::ui::window::quick_calc::{full_text, FormMsg, QuickCalcMsg, VarMsg, INPUT_ID};
 
 /// The drawing's system variables `getvar` can read, as of now.
-fn sysvars(tab: &DocumentTab) -> SysVars {
+pub(super) fn sysvars(tab: &DocumentTab) -> SysVars {
     let h = &tab.scene.document.header;
     let n = |v: f64| SysVar::Number(v);
     let i = |v: i16| SysVar::Number(f64::from(v));
@@ -71,7 +71,7 @@ fn sysvars(tab: &DocumentTab) -> SysVars {
 }
 
 /// Millimetres per drawing unit; a unitless drawing counts as millimetres.
-fn base_unit(tab: &DocumentTab) -> f64 {
+pub(super) fn base_unit(tab: &DocumentTab) -> f64 {
     super::properties::insunits_to_mm(tab.scene.document.header.insertion_units).unwrap_or(1.0)
 }
 

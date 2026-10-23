@@ -1003,6 +1003,10 @@ impl OpenCADStudio {
             // A path after OPEN / SAVEAS may hold spaces; it is one answer.
             || tokens[0].eq_ignore_ascii_case("OPEN")
             || tokens[0].eq_ignore_ascii_case("SAVEAS")
+            // A calculator expression may hold spaces; it is one answer.
+            || tokens[0].eq_ignore_ascii_case("CAL")
+            || tokens[0].eq_ignore_ascii_case("QUICKCALC")
+            || tokens[0].eq_ignore_ascii_case("QC")
         {
             return self.dispatch_command(cmd);
         }

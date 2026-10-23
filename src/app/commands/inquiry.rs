@@ -145,10 +145,9 @@ impl OpenCADStudio {
                         crate::t!("Usage: CAL <expression>   e.g. CAL (2+3)*4").as_ref(),
                     );
                 } else {
-                    let header = &self.tabs[i].scene.document.header;
-                    self.cal_context.base_unit =
-                        crate::app::properties::insunits_to_mm(header.insertion_units)
-                            .unwrap_or(1.0);
+                    self.cal_context.base_unit = crate::app::quick_calc::base_unit(&self.tabs[i]);
+                    self.cal_context.sysvars =
+                        Some(crate::app::quick_calc::sysvars(&self.tabs[i]));
                     match crate::app::calc::evaluate(expr, &mut self.cal_context) {
                         Ok(v) => {
                             let v = v.display();

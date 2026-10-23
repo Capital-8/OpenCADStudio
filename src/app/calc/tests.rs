@@ -238,7 +238,7 @@ fn units() {
     );
     numbers(
         &mut CalcContext::new(AngleMode::Degrees, 25.4),
-        &[("2'9\"", 33.0), ("2'9\" + 3\"", 36.0)],
+        &[("2'9\"", 33.0), ("2'-9\"", 33.0), ("2'9\" + 3\"", 36.0)],
     );
     numbers(&mut radians(), &[("180deg", PI), ("sin(30deg)", 0.5)]);
     errors(&mut ctx(), &[("2x", "x"), ("2 x", "x")]);
