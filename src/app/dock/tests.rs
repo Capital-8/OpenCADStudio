@@ -38,10 +38,7 @@ fn blockpalette_pin_toggles_autocollapse_and_close_hides() {
 /// building and driving the real view is deeper than a default test thread.
 /// One at a time: two headless renderers made in parallel crash the process.
 fn with_stack(f: impl FnOnce() + Send + 'static) {
-    static REAL_VIEW: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _one = REAL_VIEW
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _one = crate::headless_ui_lock();
     std::thread::Builder::new()
         .stack_size(32 * 1024 * 1024)
         .spawn(f)

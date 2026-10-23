@@ -1439,6 +1439,7 @@ mod tests {
         use iced_test::core::widget;
         use iced_test::runtime::user_interface::{Cache, UserInterface};
         use iced_test::Selector;
+        let _one = crate::headless_ui_lock();
         let mut renderer = iced_test::futures::futures::executor::block_on(
             <iced::Renderer as iced_test::core::renderer::Headless>::new(
                 iced_test::core::renderer::Settings::default(),
