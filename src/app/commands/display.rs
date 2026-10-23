@@ -2023,10 +2023,30 @@ impl OpenCADStudio {
                 let mut updates = Vec::new();
                 let mut failed = 0usize;
                 for (table_handle, link_handle) in &jobs {
-                    match crate::app::annotation_data::read_data_link(
-                        &self.tabs[i].scene.document,
+                    let document = &self.tabs[i].scene.document;
+                    // An extraction table is refreshed by running its saved
+                    // extraction again, under its title row.
+                    let read = match crate::app::annotation_data::extraction_link_settings(
+                        document,
                         *link_handle,
                     ) {
+                        Some(settings) => crate::app::annotation_data::rerun_extraction(
+                            document,
+                            self.tabs[i].current_path.as_deref(),
+                            &settings,
+                        )
+                        .map(|rows| {
+                            let title = match document.get_entity(*table_handle) {
+                                Some(codec::EntityType::Table(table)) => {
+                                    table.cell_text(0, 0).unwrap_or_default().to_string()
+                                }
+                                _ => String::new(),
+                            };
+                            std::iter::once(vec![title]).chain(rows).collect()
+                        }),
+                        None => crate::app::annotation_data::read_data_link(document, *link_handle),
+                    };
+                    match read {
                         Ok(rows) if !rows.is_empty() => {
                             updates.push((*table_handle, *link_handle, rows))
                         }
@@ -2253,6 +2273,26 @@ pub(crate) fn parse_csv_table(text: &str) -> Vec<Vec<String>> {
         }
     }
     rows
+}
+
+/// Ties every cell of a table to a data link and locks it.
+pub(crate) fn lock_to_link(table: &mut codec::entities::Table, link_handle: codec::Handle) {
+    use codec::entities::table::CellStateFlags;
+    let rows = table.row_count() as i32;
+    let columns = table.column_count() as i32;
+    for row in &mut table.rows {
+        for cell in &mut row.cells {
+            cell.has_linked_data = true;
+            cell.data_link_handle = Some(link_handle);
+            cell.data_link_rows = rows;
+            cell.data_link_columns = columns;
+            cell.state.insert(
+                CellStateFlags::LINKED
+                    | CellStateFlags::CONTENT_LOCKED
+                    | CellStateFlags::FORMAT_LOCKED,
+            );
+        }
+    }
 }
 
 /// Replaces a linked table's cells with the rows read from its link, growing

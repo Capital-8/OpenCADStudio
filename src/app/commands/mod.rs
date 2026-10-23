@@ -1077,6 +1077,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "COLORSCHEME",
         "COUNT",
         "DATAEXTRACTION",
+        "-DATAEXTRACTION",
         "DE",
         "DESELALL",
         "DESELECT",
