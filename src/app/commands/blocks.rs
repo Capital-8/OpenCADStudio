@@ -1878,6 +1878,43 @@ mod tests {
     }
 
     #[test]
+    fn blockpalette_refresh_shares_previews_and_makes_new_ones() {
+        let mut app = fresh_app();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        let mut line = codec::entities::Line::new();
+        line.end = codec::types::Vector3::new(10.0, 0.0, 0.0);
+        app.tabs[i]
+            .scene
+            .define_block_from_owned_entities(
+                vec![codec::EntityType::Line(line)],
+                "Widget",
+                glam::DVec3::ZERO,
+            )
+            .unwrap();
+        app.refresh_block_palette();
+        let first = std::rc::Rc::clone(&app.block_palette.blocks[0].preview);
+        assert!(!first.wires.is_empty());
+        // The preview kept for Recent / Favorites is the same one, not a copy.
+        let kept = |app: &crate::app::OpenCADStudio| {
+            let mut kept = app.block_palette.ref_wires.iter();
+            let (key, preview) = kept.next().expect("kept preview");
+            assert!(key.ends_with("|WIDGET") && kept.next().is_none());
+            std::rc::Rc::clone(preview)
+        };
+        assert!(std::rc::Rc::ptr_eq(&kept(&app), &first));
+        // Lookups ignore case, through the index.
+        assert!(app.block_palette.current_entry("widget").is_some());
+        assert!(app.block_palette.current_entry("Gadget").is_none());
+        // A refresh makes new previews (an empty cache), so a changed block
+        // never keeps its old thumbnail.
+        app.refresh_block_palette();
+        let second = &app.block_palette.blocks[0].preview;
+        assert!(!std::rc::Rc::ptr_eq(second, &first));
+        assert!(std::rc::Rc::ptr_eq(&kept(&app), second));
+    }
+
+    #[test]
     fn xref_dash_alias_lists_like_xref() {
         // `-XREF` asks on the command line: `?` then Enter prints the
         // reference table; `XREF ?` keeps the legacy list output for scripts.

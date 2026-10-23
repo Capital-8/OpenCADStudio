@@ -8,7 +8,7 @@ use crate::app::settings::PaletteBlockRef;
 use crate::app::{Message, OpenCADStudio};
 use crate::modules::insert::insert_block::{BlockCatalog, InsertBlockCommand};
 use crate::ui::window::block_palette::{
-    BlockEntry, BlockPaletteMsg, Item, LibraryEntry, MenuAction, OptionMsg, Tab,
+    BlockEntry, BlockPaletteMsg, BlockPreview, Item, LibraryEntry, MenuAction, OptionMsg, Tab,
 };
 use iced::Task;
 
@@ -292,10 +292,8 @@ impl OpenCADStudio {
         let i = self.active_tab;
         let wires = self
             .block_palette
-            .blocks
-            .iter()
-            .find(|b| b.name.eq_ignore_ascii_case(name))
-            .map(|b| b.wires.clone())
+            .current_entry(name)
+            .map(|b| b.preview.wires.clone())
             .unwrap_or_else(|| self.tabs[i].scene.block_preview_wires(name));
         let mut options = self.block_palette.options.clone();
         if drop_at.is_some() {
@@ -654,7 +652,9 @@ impl OpenCADStudio {
         let entries: Vec<BlockEntry> = names
             .into_iter()
             .map(|name| BlockEntry {
-                wires: self.tabs[i].scene.block_preview_wires(&name),
+                preview: std::rc::Rc::new(BlockPreview::new(
+                    self.tabs[i].scene.block_preview_wires(&name),
+                )),
                 annotative: annotative(&name),
                 dynamic: false,
                 name,
@@ -665,9 +665,9 @@ impl OpenCADStudio {
             let key = format!("{here}|{}", entry.name.to_ascii_uppercase());
             self.block_palette
                 .ref_wires
-                .insert(key, entry.wires.clone());
+                .insert(key, std::rc::Rc::clone(&entry.preview));
         }
-        self.block_palette.blocks = entries;
+        self.block_palette.set_blocks(entries);
         let drawings: Vec<String> = self
             .block_palette
             .recent

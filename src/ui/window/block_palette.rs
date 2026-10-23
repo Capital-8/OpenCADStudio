@@ -4,6 +4,7 @@
 //! a block dragged onto the drawing goes in where it is dropped.
 
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use crate::app::settings::{BlockInsertOptions, PaletteBlockRef};
 use crate::app::Message;
@@ -187,9 +188,27 @@ pub enum BlockPaletteMsg {
 /// One block of the current drawing with its cached preview.
 pub struct BlockEntry {
     pub name: String,
-    pub wires: Vec<WireModel>,
+    pub preview: Rc<BlockPreview>,
     pub annotative: bool,
     pub dynamic: bool,
+}
+
+/// A block's preview wires, with its thumbnail's tessellated geometry kept
+/// across frames: it is only drawn again when the thumbnail's size changes,
+/// and a refresh of the palette makes new previews. Shared between the
+/// Current Drawing list and the previews kept for Recent / Favorites.
+pub struct BlockPreview {
+    pub wires: Vec<WireModel>,
+    cache: canvas::Cache,
+}
+
+impl BlockPreview {
+    pub fn new(wires: Vec<WireModel>) -> Self {
+        Self {
+            wires,
+            cache: canvas::Cache::new(),
+        }
+    }
 }
 
 /// A library folder entry.
@@ -205,8 +224,12 @@ pub struct BlockPalette {
     pub tab: Tab,
     pub search: String,
     pub view: ViewMode,
-    /// Current drawing blocks, rebuilt on refresh.
+    /// Current drawing blocks, rebuilt on refresh (set with
+    /// [`BlockPalette::set_blocks`], which keeps `block_index` in step).
     pub blocks: Vec<BlockEntry>,
+    /// Position in `blocks` of each upper-cased block name (the first, when
+    /// two differ only in case), so a lookup doesn't scan the list.
+    block_index: std::collections::HashMap<String, usize>,
     /// Block name currently being placed, for the highlight.
     pub placing: Option<String>,
     pub cached_names: Vec<String>,
@@ -232,7 +255,7 @@ pub struct BlockPalette {
     pub file_sources: std::collections::HashMap<String, String>,
     /// Previews of blocks seen this session, keyed `source|NAME`, for
     /// recent / favorite blocks of other drawings.
-    pub ref_wires: std::collections::HashMap<String, Vec<WireModel>>,
+    pub ref_wires: std::collections::HashMap<String, Rc<BlockPreview>>,
 }
 
 impl BlockPalette {
@@ -285,10 +308,22 @@ impl BlockPalette {
         }
     }
 
-    fn current_entry(&self, name: &str) -> Option<&BlockEntry> {
-        self.blocks
-            .iter()
-            .find(|b| b.name.eq_ignore_ascii_case(name))
+    /// Replace the Current Drawing blocks.
+    pub fn set_blocks(&mut self, blocks: Vec<BlockEntry>) {
+        let mut index = std::collections::HashMap::with_capacity(blocks.len());
+        for (i, b) in blocks.iter().enumerate() {
+            index.entry(b.name.to_ascii_uppercase()).or_insert(i);
+        }
+        self.blocks = blocks;
+        self.block_index = index;
+    }
+
+    /// The Current Drawing block named `name`, ignoring ASCII case.
+    pub(crate) fn current_entry(&self, name: &str) -> Option<&BlockEntry> {
+        self.block_index
+            .get(&name.to_ascii_uppercase())
+            .and_then(|&i| self.blocks.get(i))
+            .filter(|b| b.name.eq_ignore_ascii_case(name))
     }
 }
 
@@ -303,9 +338,21 @@ fn display_name(path: &std::path::Path) -> String {
         .unwrap_or_default()
 }
 
-/// Canvas program that draws a block's wires fit-to-box inside its bounds.
+/// Canvas program that draws a block's wires fit-to-box inside its bounds,
+/// through `cache` when the preview has one.
 struct BlockPreviewCanvas<'a> {
     wires: &'a [WireModel],
+    cache: Option<&'a canvas::Cache>,
+}
+
+impl<'a> BlockPreviewCanvas<'a> {
+    /// The canvas of a palette preview, drawn through its cache.
+    fn cached(preview: &'a BlockPreview) -> Self {
+        Self {
+            wires: &preview.wires,
+            cache: Some(&preview.cache),
+        }
+    }
 }
 
 impl<'a> Program<Message> for BlockPreviewCanvas<'a> {
@@ -319,107 +366,119 @@ impl<'a> Program<Message> for BlockPreviewCanvas<'a> {
         bounds: iced::Rectangle,
         _cursor: iced::mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        let mut frame = Frame::new(renderer, bounds.size());
-        let pad = 4.0;
-        let inner_w = (bounds.width - 2.0 * pad).max(1.0);
-        let inner_h = (bounds.height - 2.0 * pad).max(1.0);
-        let (mut minx, mut miny, mut maxx, mut maxy) = (
-            f32::INFINITY,
-            f32::INFINITY,
-            f32::NEG_INFINITY,
-            f32::NEG_INFINITY,
+        let size = bounds.size();
+        match self.cache {
+            Some(cache) => vec![cache.draw(renderer, size, |frame| {
+                draw_preview(frame, self.wires, size)
+            })],
+            None => {
+                let mut frame = Frame::new(renderer, size);
+                draw_preview(&mut frame, self.wires, size);
+                vec![frame.into_geometry()]
+            }
+        }
+    }
+}
+
+/// Draw `wires` fit-to-box into `frame`, `bounds` in size.
+fn draw_preview(frame: &mut Frame, wires: &[WireModel], bounds: iced::Size) {
+    let pad = 4.0;
+    let inner_w = (bounds.width - 2.0 * pad).max(1.0);
+    let inner_h = (bounds.height - 2.0 * pad).max(1.0);
+    let (mut minx, mut miny, mut maxx, mut maxy) = (
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+    );
+    let mut any = false;
+    for w in wires {
+        for p in &w.points {
+            if p[0].is_finite() && p[1].is_finite() {
+                minx = minx.min(p[0]);
+                miny = miny.min(p[1]);
+                maxx = maxx.max(p[0]);
+                maxy = maxy.max(p[1]);
+                any = true;
+            }
+        }
+    }
+    if !any {
+        let rect = Path::rectangle(
+            iced::Point::new(pad, pad),
+            iced::Size::new(inner_w, inner_h),
         );
-        let mut any = false;
-        for w in self.wires {
-            for p in &w.points {
-                if p[0].is_finite() && p[1].is_finite() {
-                    minx = minx.min(p[0]);
-                    miny = miny.min(p[1]);
-                    maxx = maxx.max(p[0]);
-                    maxy = maxy.max(p[1]);
-                    any = true;
-                }
-            }
-        }
-        if !any {
-            let rect = Path::rectangle(
-                iced::Point::new(pad, pad),
-                iced::Size::new(inner_w, inner_h),
-            );
-            frame.fill(
-                &rect,
-                Color {
-                    r: 0.10,
-                    g: 0.10,
-                    b: 0.10,
-                    a: 1.0,
-                },
-            );
-            return vec![frame.into_geometry()];
-        }
-        let span_x = (maxx - minx).max(1e-6);
-        let span_y = (maxy - miny).max(1e-6);
-        let scale = (inner_w / span_x).min(inner_h / span_y);
-        let ox = (bounds.width - span_x * scale) * 0.5;
-        let oy = (bounds.height - span_y * scale) * 0.5;
-        let map =
-            |x: f32, y: f32| iced::Point::new(ox + (x - minx) * scale, oy + (maxy - y) * scale);
-        for w in self.wires {
-            let col = Color {
-                r: w.color[0],
-                g: w.color[1],
-                b: w.color[2],
-                a: 0.55,
-            };
-            for tri in w.fill_tris.chunks(3) {
-                if tri.len() == 3 {
-                    let path = Path::new(|p| {
-                        p.move_to(map(tri[0][0], tri[0][1]));
-                        p.line_to(map(tri[1][0], tri[1][1]));
-                        p.line_to(map(tri[2][0], tri[2][1]));
-                        p.close();
-                    });
-                    frame.fill(&path, col);
-                }
-            }
-        }
-        for w in self.wires {
-            let col = Color {
-                r: w.color[0],
-                g: w.color[1],
-                b: w.color[2],
+        frame.fill(
+            &rect,
+            Color {
+                r: 0.10,
+                g: 0.10,
+                b: 0.10,
                 a: 1.0,
-            };
-            let width = if w.line_weight_px > 1.5 { 2.0 } else { 1.0 };
-            let mut run: Vec<iced::Point> = Vec::new();
-            let flush = |frame: &mut Frame, run: &mut Vec<iced::Point>| {
-                if run.len() >= 2 {
-                    let path = Path::new(|p| {
-                        p.move_to(run[0]);
-                        for &pt in &run[1..] {
-                            p.line_to(pt);
-                        }
-                    });
-                    frame.stroke(&path, Stroke::default().with_color(col).with_width(width));
-                }
-                run.clear();
-            };
-            for p in &w.points {
-                if p[0].is_finite() && p[1].is_finite() {
-                    run.push(map(p[0], p[1]));
-                } else {
-                    flush(&mut frame, &mut run);
-                }
+            },
+        );
+        return;
+    }
+    let span_x = (maxx - minx).max(1e-6);
+    let span_y = (maxy - miny).max(1e-6);
+    let scale = (inner_w / span_x).min(inner_h / span_y);
+    let ox = (bounds.width - span_x * scale) * 0.5;
+    let oy = (bounds.height - span_y * scale) * 0.5;
+    let map = |x: f32, y: f32| iced::Point::new(ox + (x - minx) * scale, oy + (maxy - y) * scale);
+    for w in wires {
+        let col = Color {
+            r: w.color[0],
+            g: w.color[1],
+            b: w.color[2],
+            a: 0.55,
+        };
+        for tri in w.fill_tris.chunks(3) {
+            if tri.len() == 3 {
+                let path = Path::new(|p| {
+                    p.move_to(map(tri[0][0], tri[0][1]));
+                    p.line_to(map(tri[1][0], tri[1][1]));
+                    p.line_to(map(tri[2][0], tri[2][1]));
+                    p.close();
+                });
+                frame.fill(&path, col);
             }
-            flush(&mut frame, &mut run);
         }
-        vec![frame.into_geometry()]
+    }
+    for w in wires {
+        let col = Color {
+            r: w.color[0],
+            g: w.color[1],
+            b: w.color[2],
+            a: 1.0,
+        };
+        let width = if w.line_weight_px > 1.5 { 2.0 } else { 1.0 };
+        let mut run: Vec<iced::Point> = Vec::new();
+        let flush = |frame: &mut Frame, run: &mut Vec<iced::Point>| {
+            if run.len() >= 2 {
+                let path = Path::new(|p| {
+                    p.move_to(run[0]);
+                    for &pt in &run[1..] {
+                        p.line_to(pt);
+                    }
+                });
+                frame.stroke(&path, Stroke::default().with_color(col).with_width(width));
+            }
+            run.clear();
+        };
+        for p in &w.points {
+            if p[0].is_finite() && p[1].is_finite() {
+                run.push(map(p[0], p[1]));
+            } else {
+                flush(frame, &mut run);
+            }
+        }
+        flush(frame, &mut run);
     }
 }
 
 /// A block preview (the palette's canvas) for other dialogs.
 pub(crate) fn preview_canvas<'a>(wires: &'a [WireModel], height: f32) -> Element<'a, Message> {
-    canvas(BlockPreviewCanvas { wires })
+    canvas(BlockPreviewCanvas { wires, cache: None })
         .width(Fill)
         .height(Length::Fixed(height))
         .into()
@@ -441,11 +500,11 @@ fn thumb<'a>(palette: &'a BlockPalette, item: &Item, size: f32) -> Element<'a, M
             })
             .into()
     };
-    let wires = |name: &str| palette.current_entry(name).map(|e| &e.wires[..]);
+    let preview = |name: &str| palette.current_entry(name).map(|e| &*e.preview);
     let file_thumb = |path: &str| palette.file_thumbs.get(path).cloned().flatten();
     match item {
-        Item::Current(name) => match wires(name) {
-            Some(w) => canvas(BlockPreviewCanvas { wires: w })
+        Item::Current(name) => match preview(name) {
+            Some(p) => canvas(BlockPreviewCanvas::cached(p))
                 .width(Fill)
                 .height(Length::Fixed(size))
                 .into(),
@@ -457,8 +516,8 @@ fn thumb<'a>(palette: &'a BlockPalette, item: &Item, size: f32) -> Element<'a, M
                     palette
                         .ref_wires
                         .get(&format!("{}|{}", r.source, r.name.to_ascii_uppercase()));
-                if let Some(w) = seen.map(|w| &w[..]).or_else(|| wires(&r.name)) {
-                    return canvas(BlockPreviewCanvas { wires: w })
+                if let Some(p) = seen.map(|p| &**p).or_else(|| preview(&r.name)) {
+                    return canvas(BlockPreviewCanvas::cached(p))
                         .width(Fill)
                         .height(Length::Fixed(size))
                         .into();
@@ -1020,11 +1079,9 @@ pub fn gallery(palette: &BlockPalette) -> Element<'_, Message> {
         let mut r = row![].spacing(4).width(Fill);
         for block in chunk {
             let card = column![
-                canvas(BlockPreviewCanvas {
-                    wires: &block.wires
-                })
-                .width(Fill)
-                .height(Length::Fixed(48.0)),
+                canvas(BlockPreviewCanvas::cached(&block.preview))
+                    .width(Fill)
+                    .height(Length::Fixed(48.0)),
                 text(crate::ui::text_util::elide(&block.name, 10))
                     .size(10)
                     .width(Fill)
@@ -1137,5 +1194,33 @@ pub(crate) fn block_icon_button_text_color(theme: &Theme, status: button::Status
     match status {
         button::Status::Hovered | button::Status::Pressed => palette.background.strong.text,
         _ => palette.background.base.text,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(name: &str) -> BlockEntry {
+        BlockEntry {
+            name: name.to_string(),
+            preview: Rc::new(BlockPreview::new(Vec::new())),
+            annotative: false,
+            dynamic: false,
+        }
+    }
+
+    #[test]
+    fn current_entry_ignores_case_and_takes_the_first_match() {
+        let mut palette = BlockPalette::default();
+        palette.set_blocks(vec![entry("Door"), entry("DOOR"), entry("Window")]);
+        let door = palette.current_entry("door").unwrap();
+        assert!(std::ptr::eq(door, &palette.blocks[0]));
+        assert_eq!(palette.current_entry("WINDOW").unwrap().name, "Window");
+        assert!(palette.current_entry("Wall").is_none());
+        // A new list replaces the index with it.
+        palette.set_blocks(vec![entry("Wall")]);
+        assert!(palette.current_entry("door").is_none());
+        assert_eq!(palette.current_entry("wall").unwrap().name, "Wall");
     }
 }
