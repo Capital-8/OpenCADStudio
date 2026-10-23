@@ -2161,15 +2161,34 @@ pub(super) fn native_constraint_set(
             _ => None,
         })
         .collect();
-    if groups.is_empty() {
-        return None;
-    }
     let scope = if owner == document.header.model_space_block_handle {
         ParametricScope::ModelSpace
     } else {
         ParametricScope::Block(owner)
     };
     let mut set = ParametricConstraintSet::new(scope);
+    if matches!(scope, ParametricScope::Block(_)) {
+        if let Some(network) = native_scope_network_handle(document, owner) {
+            let mut variables: Vec<_> = document.objects.iter().filter_map(|(handle, object)| {
+                match object {
+                    ObjectType::Associative(AssociativeObject { data: AssociativeData::Variable(variable), .. })
+                        if variable.action.owning_network == network => Some((*handle, variable)),
+                    _ => None,
+                }
+            }).collect();
+            variables.sort_by_key(|(handle, _)| *handle);
+            for (_, variable) in variables {
+                let source = if variable.expression.trim().is_empty() {
+                    numeric_value(&variable.value).map(|value| value.to_string())
+                } else { Some(variable.expression.clone()) };
+                if let Some(source) = source {
+                    if set.local_parameters.set(&variable.name, &source).is_ok() {
+                        set.local_parameters.set_description(&variable.name, &variable.description);
+                    }
+                }
+            }
+        }
+    }
     for (group_handle, group, retained) in groups {
         if retained {
             set.retained_standard_groups.push(group_handle);
@@ -2455,7 +2474,8 @@ pub(super) fn native_constraint_set(
             }
         }
     }
-    (!set.constraints.is_empty() || !set.retained_standard_groups.is_empty()).then_some(set)
+    (!set.constraints.is_empty() || !set.retained_standard_groups.is_empty()
+        || !set.local_parameters.is_empty()).then_some(set)
 }
 
 fn sync_retained_group_constraints(document: &mut CadDocument, set: &ParametricConstraintSet) {
@@ -2624,6 +2644,27 @@ fn detach_preserved_scope(
             };
             let handle = value.dependency.dependent_on;
             if !handle.is_null() && !variable_handles.contains(&handle) {
+                variable_handles.push(handle);
+            }
+        }
+    }
+
+    // A retained variable can itself read other variables through owned value
+    // dependencies. Keep that transitive closure before removing the network.
+    let mut index = 0;
+    while index < variable_handles.len() {
+        let variable = variable_handles[index];
+        index += 1;
+        for object in document.objects.values() {
+            let ObjectType::Associative(AssociativeObject {
+                owner, data: AssociativeData::ValueDependency(value), ..
+            }) = object else { continue };
+            if *owner != variable { continue; }
+            let handle = value.dependency.dependent_on;
+            if matches!(document.objects.get(&handle), Some(ObjectType::Associative(AssociativeObject {
+                data: AssociativeData::Variable(value), ..
+            })) if value.action.owning_network == network_handle)
+                && !variable_handles.contains(&handle) {
                 variable_handles.push(handle);
             }
         }
@@ -3822,7 +3863,7 @@ fn materialize_scope(
         }
     }
 
-    if materialize_all_parameters {
+    if materialize_all_parameters || !set.local_parameters.is_empty() {
         for parameter in parameters.iter() {
             let resolved = parameters.resolve(&parameter.name).unwrap_or(0.0);
             allocator.variable(
@@ -4048,6 +4089,62 @@ fn materialize_scope(
 }
 
 impl Scene {
+    /// Attach staged copied scope networks to this document's global network.
+    /// Existing scopes retain their objects and action indices.
+    pub(crate) fn register_copied_constraint_networks(
+        document: &mut CadDocument,
+        handles: &FxHashMap<Handle, Handle>,
+    ) -> Result<(), String> {
+        let mut scopes: Vec<_> = handles.values().copied().filter(|handle| {
+            matches!(document.objects.get(handle), Some(ObjectType::Associative(AssociativeObject {
+                data: AssociativeData::Network(network), ..
+            })) if network.action.owning_network.is_null())
+        }).collect();
+        if scopes.is_empty() { return Ok(()); }
+        scopes.sort();
+        let dictionary = ensure_global_network_dictionary(document);
+        let root = match document.objects.get(&dictionary) {
+            Some(ObjectType::Dictionary(value)) => value.get(NETWORK_DICTIONARY_KEY),
+            _ => unreachable!(),
+        };
+        let root = if let Some(root) = root {
+            if !matches!(document.objects.get(&root), Some(ObjectType::Associative(AssociativeObject {
+                data: AssociativeData::Network(_), ..
+            }))) {
+                return Err("The drawing's associative root network is invalid.".into());
+            }
+            root
+        } else {
+            let root = document.allocate_handle();
+            let mut object = AssociativeObject::new("ASSOCNETWORK", "AcDbAssocNetwork");
+            object.handle = root;
+            object.owner = dictionary;
+            object.reactors.push(dictionary);
+            object.data = AssociativeData::Network(AssocNetwork {
+                action: AssocAction { class_version: 2, ..Default::default() },
+                ..Default::default()
+            });
+            document.objects.insert(root, ObjectType::Associative(object));
+            set_dictionary_entry(document, dictionary, NETWORK_DICTIONARY_KEY, root);
+            root
+        };
+        for scope in scopes {
+            let Some(ObjectType::Associative(AssociativeObject {
+                data: AssociativeData::Network(network), ..
+            })) = document.objects.get_mut(&root) else { unreachable!() };
+            network.network_action_index = network.network_action_index.checked_add(1)
+                .ok_or("The drawing's associative action index is exhausted.")?;
+            let index = network.network_action_index;
+            network.actions.push(AssocActionDependency { is_owned: false, dependency: scope });
+            let Some(ObjectType::Associative(AssociativeObject {
+                data: AssociativeData::Network(network), ..
+            })) = document.objects.get_mut(&scope) else { unreachable!() };
+            network.action.owning_network = root;
+            network.action.action_index = index;
+        }
+        Ok(())
+    }
+
     pub(crate) fn load_named_parameters_from_document(&mut self) {
         self.named_parameters = ParameterTable::new();
         let mut variables: Vec<_> = self

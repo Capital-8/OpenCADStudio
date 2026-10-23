@@ -3,6 +3,8 @@ use codec::entities::{Insert, Line};
 use codec::types::Vector3;
 use codec::{EntityType, Handle};
 
+mod retained_save_as;
+
 fn fixture() -> (OpenCADStudio, Handle) {
     let mut app = OpenCADStudio::new_for_test();
     app.automation_op(r#"{"op":"new"}"#);
@@ -3437,7 +3439,6 @@ fn local_undo_preserves_imported_native_networks_when_constraints_are_unchanged(
     begin(&mut app, reference);
     let original_objects = app.tabs[i].scene.document.objects.clone();
     circle(&mut app, 1.0);
-    assert!(!app.save_block_edit_as(i, "COPY"));
     assert_eq!(app.tabs[i].scene.document.objects, original_objects);
     app.undo_steps(1);
     assert_eq!(members(&app).len(), 1);
@@ -3445,6 +3446,18 @@ fn local_undo_preserves_imported_native_networks_when_constraints_are_unchanged(
     app.redo_steps(1);
     assert_eq!(members(&app).len(), 2);
     assert_eq!(app.tabs[i].scene.document.objects, original_objects);
+    assert!(app.save_block_edit_as(i, "COPY"));
+    for (handle, object) in original_objects {
+        let mut actual = app.tabs[i].scene.document.objects[&handle].clone();
+        if handle == app.tabs[i].scene.document.header.named_objects_dict_handle {
+            // Copying the first scope installs the drawing's root network.
+            let ObjectType::Dictionary(dictionary) = &mut actual else { panic!() };
+            dictionary.entries.retain(|(key, _)| key != "ACAD_ASSOCNETWORK");
+        }
+        assert_eq!(actual, object);
+    }
+    assert_eq!(members(&app).len(), 1);
+    assert_eq!(app.tabs[i].scene.document.block_records.get("COPY").unwrap().entity_handles.len(), 2);
 }
 
 #[test]

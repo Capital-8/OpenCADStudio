@@ -499,13 +499,23 @@ impl OpenCADStudio {
         for mut set in self.tabs[i].scene.parametric_constraints.iter().filter(|set| {
             matches!(set.scope, crate::scene::parametric_constraints::ParametricScope::Block(handle) if copied.handles.contains_key(&handle))
         }).cloned() {
-            if !set.retained_standard_groups.is_empty() || set.constraints.iter().any(|c| c.native_origin.is_some()) {
-                self.command_line.push_error(crate::t!("Save Block As cannot copy retained native constraints yet.").as_ref());
-                return false;
+            for group in &mut set.retained_standard_groups {
+                let Some(new) = copied.handles.get(group) else {
+                    self.command_line.push_error(crate::t!("A retained block constraint group is missing.").as_ref());
+                    return false;
+                };
+                *group = *new;
             }
             let crate::scene::parametric_constraints::ParametricScope::Block(old) = set.scope else { unreachable!() };
             set.scope = crate::scene::parametric_constraints::ParametricScope::Block(copied.handles[&old]);
             for constraint in &mut set.constraints {
+                if let Some(origin) = &mut constraint.native_origin {
+                    let Some(new) = copied.handles.get(&origin.group) else {
+                        self.command_line.push_error(crate::t!("A retained block constraint group is missing.").as_ref());
+                        return false;
+                    };
+                    origin.group = *new;
+                }
                 for reference in constraint.refs.iter_mut().chain(constraint.rigid_points.iter_mut().map(|(r, _)| r)) {
                     let Some(new) = copied.handles.get(&reference.entity) else {
                         self.command_line.push_error(crate::t!("A block constraint refers to geometry outside the definition.").as_ref());
