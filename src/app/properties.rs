@@ -445,7 +445,12 @@ impl OpenCADStudio {
             let xd = &source_entity.common().extended_data;
             if !xd.is_empty() && !matches!(source_entity, codec::EntityType::Ole2Frame(_)) {
                 let mut xd_props = Vec::new();
-                for rec in xd.records() {
+                // A hyperlink shows on its own row.
+                for rec in xd
+                    .records()
+                    .iter()
+                    .filter(|rec| rec.application_name != crate::scene::hyperlink::APP)
+                {
                     let value_text = rec
                         .values
                         .iter()
@@ -458,10 +463,12 @@ impl OpenCADStudio {
                         format!("{}: {value_text}", rec.application_name),
                     ));
                 }
-                sections.push(crate::scene::model::object::PropSection {
-                    title: t!("Extended Data").into_owned(),
-                    props: xd_props,
-                });
+                if !xd_props.is_empty() {
+                    sections.push(crate::scene::model::object::PropSection {
+                        title: t!("Extended Data").into_owned(),
+                        props: xd_props,
+                    });
+                }
             }
         }
 

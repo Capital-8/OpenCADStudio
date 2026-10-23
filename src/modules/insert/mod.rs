@@ -11,6 +11,7 @@ mod design_center;
 pub(crate) mod dgn_import;
 pub(crate) mod tds_import;
 pub(crate) mod edit_block;
+pub(crate) mod hyperlink_cmd;
 pub(crate) mod image_transparency;
 pub(crate) mod insert_block;
 pub mod minsert;

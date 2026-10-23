@@ -1226,6 +1226,7 @@ pub(super) struct OpenCADStudio {
     hyperlink_editor_description: String,
     hyperlink_editor_mixed: bool,
     hyperlink_editor_dirty: bool,
+    hyperlink_options: crate::ui::window::hyperlink_dialog::HyperlinkOptions,
     pending_startup_modals: std::collections::VecDeque<ModalKind>,
     /// What is drawing the scene, once the first frame has told us. Drives
     /// the graphics warning (popup, status-bar pill, command line).
@@ -4698,6 +4699,7 @@ pub enum Message {
     RefEditDialog(crate::ui::window::refedit_dialog::RefEditDialogMsg),
     /// An edit in the Password Protected PDF window.
     PdfPassword(crate::ui::window::pdf_password_dialog::PdfPasswordMsg),
+    HyperlinkDialog(crate::ui::window::hyperlink_dialog::HyperlinkMsg),
     PdfShxDialog(crate::ui::window::pdf_shx_dialog::ShxDialogMsg),
     /// A click or search in the Point Cloud Manager.
     PcManager(crate::ui::window::pc_manager::PcManagerMsg),
@@ -5163,6 +5165,7 @@ impl OpenCADStudio {
             hyperlink_editor_description: String::new(),
             hyperlink_editor_mixed: false,
             hyperlink_editor_dirty: false,
+            hyperlink_options: Default::default(),
             pending_startup_modals: std::collections::VecDeque::new(),
             gpu_status: crate::scene::pipeline::GpuStatus::Unknown,
             gpu_status_generation: 0,

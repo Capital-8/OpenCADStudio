@@ -1,32 +1,21 @@
 use super::*;
 
-/// The first PE_URL string is the URL; later strings describe the link.
+/// The address of the object's hyperlink.
 pub(crate) fn pe_url_of(entity: &EntityType) -> Option<&str> {
+    pe_url_strings(entity).next().filter(|text| !text.is_empty())
+}
+
+fn pe_url_strings(entity: &EntityType) -> impl Iterator<Item = &str> {
     entity
         .common()
         .extended_data
-        .get_record("PE_URL")
-        .and_then(|record| {
-            record.values.iter().find_map(|value| match value {
-                codec::xdata::XDataValue::String(text) => Some(text.trim()),
-                _ => None,
-            })
-        })
-        .filter(|text| !text.is_empty())
-}
-
-/// Optional description stored after the URL in the standard PE_URL record.
-pub(crate) fn pe_url_description_of(entity: &EntityType) -> Option<&str> {
-    let record = entity.common().extended_data.get_record("PE_URL")?;
-    record
-        .values
-        .iter()
+        .get_record(super::hyperlink::APP)
+        .into_iter()
+        .flat_map(|record| record.values.iter())
         .filter_map(|value| match value {
             codec::xdata::XDataValue::String(text) => Some(text.trim()),
             _ => None,
         })
-        .nth(1)
-        .filter(|text| !text.is_empty())
 }
 
 impl Scene {

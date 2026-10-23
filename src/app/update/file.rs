@@ -848,6 +848,7 @@ impl OpenCADStudio {
                 block_defaults.wblock_mode,
             ),
             field_display: crate::entities::field::display(),
+            hyperlink_options: crate::app::commands::hyperlink_options(),
             xref_fade: crate::scene::cache::block_cache::xref_fade_ctl(),
             file_dia: crate::sys::file_dia(),
             ole_hide: crate::entities::ole2frame::hide_mode(),
@@ -1013,6 +1014,7 @@ impl OpenCADStudio {
             remembered.wblock_mode = bc::mode_from_code(s.wblock_object_mode);
         }
         crate::entities::field::set_display(s.field_display);
+        crate::app::commands::set_hyperlink_options(s.hyperlink_options);
         crate::scene::cache::block_cache::set_xref_fade_ctl(s.xref_fade);
         self.ribbon.xref_fade = crate::scene::cache::block_cache::xref_fade_ctl();
         crate::sys::set_file_dia(s.file_dia);

@@ -6758,6 +6758,43 @@ pdf-password =
         { $path }
         Bu PDF dosyası açılamıyor.
         Dosya şifreli ve parola gerektiriyor.
+hyperlink-dialog =
+    .title-insert = Köprü Ekle
+    .title-edit = Köprüyü Düzenle
+    .target-file = Dosya veya web sayfası
+    .target-view = Bu çizimin görünümü
+    .link = Bağlantı
+    .address = Adres
+    .address-hint = dosya, web adresi veya dosya#konum
+    .browse = Dosya...
+    .path = Yol
+    .relative = Göreli yol
+    .dwf = DWG bağlantıları DWF'i açar
+    .views = Görünümler ve düzenler
+    .text = Görüntülenecek metin
+    .selected-one = 1 nesne seçili.
+    .selected-many = nesne seçili.
+    .linked-one = Köprülü 1 nesne.
+    .linked-many = köprülü nesne.
+    .remove = Bağlantıyı Kaldır
+    .help = HYPERLINK: seçili nesneleri bir dosyaya veya web adresine (bir görünümünü ya da düzenini açmak için #konum ekleyin) veya bu çizimin bir görünümüne bağlar; görüntülenecek metin bağlantının gösterdiği yazıdır.
+hyperlink-cmd =
+    .option = Bir seçenek girin [Remove/Insert] <Insert>:
+    .insert-option = Köprü ekleme seçeneğini girin [Area/Object] <Object>:
+    .first-corner = İlk köşe:
+    .other-corner = Diğer köşe:
+    .url = Köprüyü girin <geçerli çizim>:
+    .location = Adlandırılmış konumu girin <yok>:
+    .description = Açıklamayı girin <yok>:
+    .remove-pick = Numara, köprü veya tümü için * girin:
+    .not-valid = Geçerli bir seçim değil, yeniden deneyin.
+    .deleted-one = 1 köprü silindi.
+    .deleted-many = köprü silindi.
+    .selection-error = Seçimde hata.
+    .invalid-keyword = Geçersiz seçenek anahtar sözcüğü.
+    .options-yes = Köprü imleci, ipucu ve kısayol menüsü gösterilsin mi? [Yes/No] <Yes>:
+    .options-no = Köprü imleci, ipucu ve kısayol menüsü gösterilsin mi? [Yes/No] <No>:
+    .base-prompt = HYPERLINKBASE için yeni değeri girin veya hiçbiri için .
 
 calc =
     .invalid-number = geçersiz sayı '__ocs_fmt_0__'
