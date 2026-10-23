@@ -14,6 +14,7 @@ mod block_alignment;
 mod block_feedback;
 mod block_cycle_order;
 mod block_grip_set;
+mod block_construction;
 mod block_action_bars;
 mod block_authoring_edit;
 mod block_editor;

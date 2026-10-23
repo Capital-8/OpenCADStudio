@@ -1751,6 +1751,12 @@ pub enum CmdResult {
         displacement_overrides: Option<(f64, f64)>,
         rotate_only: Vec<Handle>,
     },
+    SetBlockConstruction {
+        document: u64,
+        definition: Handle,
+        handles: Vec<Handle>,
+        operation: crate::modules::block_editor::construction::Operation,
+    },
     AlignBlockReference {
         document: u64,
         alignment: Box<crate::scene::block_alignment::Alignment>,

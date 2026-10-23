@@ -3728,6 +3728,9 @@ pub(crate) fn render_style_for_common_viewport(
     common: &codec::entities::EntityCommon,
     viewport: Option<Handle>,
 ) -> ([f32; 4], f32, [f32; 8], f32, u8) {
+    if crate::scene::block_construction::is_construction(common) {
+        return crate::scene::block_construction::display_style();
+    }
     let layer_name = &common.layer;
     let (entity_color, aci) = {
         let book_color = common

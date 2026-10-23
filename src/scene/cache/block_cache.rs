@@ -560,7 +560,7 @@ fn build_defn(
         // anonymous block and mark all but the active state's entities
         // invisible — honouring the flag is what shows a single profile
         // instead of every variant stacked on top of each other.
-        if entity.common().invisible {
+        if entity.common().invisible || crate::scene::block_construction::is_construction(entity.common()) {
             continue;
         }
         // A sub-entity on a layer that is off or frozen must not render, same
@@ -1073,7 +1073,8 @@ pub fn expand_insert(
         LocalSub::Nested(_) => false,
     });
     let prototype_key =
-        if !ins.is_array() && !has_masks && cache.prototype_blocks.contains(&ins.block_name) {
+        if !crate::scene::block_construction::is_construction(&ins.common)
+            && !ins.is_array() && !has_masks && cache.prototype_blocks.contains(&ins.block_name) {
             Some(expansion_prototype_key(
                 ins,
                 &xform,

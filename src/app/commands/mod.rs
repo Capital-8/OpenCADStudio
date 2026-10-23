@@ -199,6 +199,10 @@ impl OpenCADStudio {
         if cmd.trim_start_matches(['_', '.']) == "BGRIPSET" {
             return Some(self.start_block_grip_set());
         }
+        let construction = cmd.trim_start_matches(['_', '.']);
+        if construction == "BCONSTRUCTION" || construction.starts_with("BCONSTRUCTION ") {
+            return Some(self.start_block_construction(construction.strip_prefix("BCONSTRUCTION").unwrap().trim()));
+        }
         if cmd.trim_start_matches(['_', '.']) == "BCYCLEORDER" {
             return Some(self.open_block_cycle_order());
         }

@@ -588,6 +588,9 @@ impl OpenCADStudio {
             result @ CmdResult::SetBlockParameterGrips { .. } => {
                 return self.set_block_parameter_grips(result);
             }
+            result @ CmdResult::SetBlockConstruction { .. } => {
+                return self.set_block_construction(result);
+            }
             result @ CmdResult::EditBlockAuthoring { .. } => {
                 return self.handle_authoring_edit(result);
             }

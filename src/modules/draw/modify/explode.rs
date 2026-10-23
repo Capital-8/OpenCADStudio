@@ -104,6 +104,7 @@ pub fn explode_entity(entity: &EntityType, document: &CadDocument) -> Vec<Entity
         EntityType::Insert(ins) => ins
             .explode_from_document(document)
             .into_iter()
+            .filter(|entity| !crate::scene::block_construction::is_construction(entity.common()))
             .map(normalize_insert_entity)
             .collect(),
         EntityType::MLine(ml) => explode_mline(ml),

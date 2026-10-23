@@ -721,6 +721,10 @@ pub(crate) fn tessellate_entity(
         }
     }
 
+    if crate::scene::block_construction::is_construction(e.common()) {
+        crate::scene::block_construction::style_wires(&mut wires);
+    }
+
     wires
 }
 #[allow(clippy::too_many_arguments)]

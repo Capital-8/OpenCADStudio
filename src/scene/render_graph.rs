@@ -255,6 +255,9 @@ impl InstanceContext {
     }
 
     pub fn style_for(&self, document: &CadDocument, entity: &EntityType) -> ResolvedStyle {
+        if self.insert_path.iter().any(|insert| crate::scene::block_construction::is_construction(&insert.common)) {
+            return crate::scene::block_construction::display_style();
+        }
         self.block_style
             .map(|style| style.resolve(document, entity, self.viewport))
             .unwrap_or_else(|| render_style_for_viewport(document, entity, self.viewport))
@@ -596,6 +599,9 @@ impl<'a> RenderSceneGraph<'a> {
     /// layer of the reference that places it.
     fn document_visible(&self, entity: &EntityType, member: bool) -> bool {
         let common = entity.common();
+        if crate::scene::block_construction::is_construction(common) {
+            if member || !self.visibility_reveal.is_some_and(|handles| handles.contains(&common.handle)) { return false; }
+        }
         if common.invisible
             && !self
                 .visibility_reveal

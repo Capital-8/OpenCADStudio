@@ -2821,6 +2821,13 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                 && property_handles
                     .iter()
                     .all(|handle| self.tabs[i].scene.is_layer_locked(*handle));
+            if property_handles.iter().any(|handle| self.tabs[i].scene.document.get_entity(*handle)
+                .is_some_and(|entity| crate::scene::block_construction::is_construction(entity.common()))) {
+                set_row(&mut panel.sections, "color", crate::t!("Construction geometry").into_owned());
+                set_row(&mut panel.sections, "layer", crate::t!("Construction geometry").into_owned());
+                set_row(&mut panel.sections, "linetype", crate::t!("Dashed").into_owned());
+                panel.field_key_by_id = crate::ui::properties::build_field_key_map(&panel.sections);
+            }
             if locked_only {
                 // A point cloud locked on its own (not by its layer) still
                 // takes its Locked row, the way it is unlocked.

@@ -70,6 +70,98 @@ fn edit_action_set(app: &mut OpenCADStudio, action: Handle, mode: &str, targets:
 }
 
 #[test]
+fn block_construction_command_history_display_cancel_and_stale_session() {
+    use crate::scene::block_construction as construction;
+    use crate::modules::block_editor::construction::Operation;
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    let _ = app.dispatch_command("LINE");
+    let _ = app.dispatch_command("BCONSTRUCTION CONVERT");
+    assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().name(), "LINE");
+    let _ = app.update(Message::CommandEscape);
+    begin(&mut app, reference);
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let handles = members(&app);
+    let before = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let _ = app.dispatch_command("BCONSTRUCTION");
+    let _ = app.feed_command(crate::command::StepInput::SelectionComplete(handles.clone()));
+    let _ = app.update(Message::CommandEscape);
+    assert_eq!(app.tabs[i].scene.document, before);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    app.tabs[i].scene.select_entity(handles[0], true);
+    app.refresh_properties();
+    let _ = app.dispatch_command("BCONSTRUCTION CONVERT");
+    assert!(app.tabs[i].active_cmd.is_none());
+    assert!(construction::is_construction(app.tabs[i].scene.document.get_entity(handles[0]).unwrap().common()));
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    let changed = app.tabs[i].scene.document.clone();
+    for command in ["BCONSTRUCTION HIDE", "BCONSTRUCTION SHOW ALL"] {
+        let _ = app.dispatch_command(command);
+        assert_eq!(app.tabs[i].scene.document, changed);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    }
+    app.tabs[i].scene.select_entity(handles[0], true);
+    app.refresh_properties();
+    for field in ["layer", "color", "linetype"] {
+        assert!(app.tabs[i].properties.sections.iter().flat_map(|s| &s.props)
+            .filter(|p| p.field == field).all(|p| matches!(p.value, crate::scene::model::object::PropValue::ReadOnly(_))));
+    }
+    let _ = app.dispatch_command("BCONSTRUCTION CONVERT");
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    let _ = app.set_block_construction(crate::command::CmdResult::SetBlockConstruction {
+        document: app.tabs[i].id + 1, definition, handles: handles.clone(), operation: Operation::Revert });
+    assert_eq!(app.tabs[i].scene.document, changed);
+    let _ = app.dispatch_command("BCONSTRUCTION REVERT");
+    assert!(!construction::is_construction(app.tabs[i].scene.document.get_entity(handles[0]).unwrap().common()));
+    app.undo_steps(1);
+    assert!(construction::is_construction(app.tabs[i].scene.document.get_entity(handles[0]).unwrap().common()));
+    app.undo_steps(1);
+    assert!(!construction::is_construction(app.tabs[i].scene.document.get_entity(handles[0]).unwrap().common()));
+    app.redo_steps(2);
+    assert!(!construction::is_construction(app.tabs[i].scene.document.get_entity(handles[0]).unwrap().common()));
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    let closed = app.tabs[i].scene.document.clone();
+    let _ = app.set_block_construction(crate::command::CmdResult::SetBlockConstruction {
+        document: app.tabs[i].id, definition, handles, operation: Operation::Convert });
+    assert_eq!(app.tabs[i].scene.document, closed);
+}
+
+#[test]
+fn block_construction_save_discard_test_block_and_reopen_preserve_membership() {
+    use crate::scene::block_construction as construction;
+    for save in [false, true] {
+        let (mut app, reference) = fixture();
+        begin(&mut app, reference);
+        let i = app.active_tab;
+        let handle = members(&app)[0];
+        app.tabs[i].scene.select_entity(handle, true);
+        let _ = app.dispatch_command("BCONSTRUCTION CONVERT");
+        let source = app.tabs[i].scene.document.clone();
+        let _ = app.open_block_test(i);
+        let test = app.active_tab;
+        assert!(app.tabs[test].block_test.is_some());
+        assert!(app.tabs[test].scene.block_edit_block.is_none());
+        assert!(app.tabs[test].scene.display_entity_invisible(app.tabs[test].scene.document.get_entity(handle).unwrap().common()));
+        assert_eq!(app.tabs[i].scene.document, source);
+        let _ = app.dispatch_command("BCLOSETESTBLOCK");
+        assert_eq!(app.active_tab, i);
+        if save { let _ = app.dispatch_command("BSAVE"); let _ = app.dispatch_command("BCLOSE"); }
+        else { let _ = app.dispatch_command("BEDIT_DISCARD"); }
+        assert_eq!(construction::is_construction(app.tabs[i].scene.document.get_entity(handle).unwrap().common()), save);
+        if save {
+            for extension in ["dwg", "dxf"] {
+                let doc = &app.tabs[i].scene.document;
+                let data = crate::io::save_to_bytes(doc, extension, doc.version).unwrap();
+                let reopened = crate::io::load_bytes(&format!("construction-editor.{extension}"), data).unwrap();
+                assert!(construction::is_construction(reopened.get_entity(handle).unwrap().common()));
+                assert!(reopened.get_entity(handle).unwrap().common().invisible);
+            }
+        }
+    }
+}
+
+#[test]
 fn block_actions_topology_save_updates_values_members_properties_and_history() {
     use crate::scene::block_actions::{self as actions, Kind};
     let (mut app, reference) = fixture();

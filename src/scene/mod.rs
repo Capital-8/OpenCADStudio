@@ -10,6 +10,7 @@ pub mod assoc_array;
 pub(crate) mod block_metadata;
 pub mod block_service;
 pub mod block_visibility;
+pub(crate) mod block_construction;
 pub(crate) mod block_authoring;
 pub(crate) mod block_basepoint;
 pub(crate) mod block_lookup;
@@ -2421,6 +2422,7 @@ pub struct Scene {
     /// by block record.
     pub visibility_states: HashMap<Handle, usize>,
     pub(crate) block_visibility_reveal: bool,
+    pub(crate) block_construction_hidden: rustc_hash::FxHashSet<Handle>,
     /// Currently selected entity handles.
     pub selected: HashSet<Handle>,
     /// Polylines only part of which is selected (Ctrl+click): the picked
@@ -3170,6 +3172,7 @@ impl Scene {
             current_layout: "Model".to_string(),
             block_edit_block: None,
             block_visibility_reveal: false,
+            block_construction_hidden: Default::default(),
             viewcube_ucs: glam::Mat4::IDENTITY,
             hatches: HashMap::default(),
             meshes: HashMap::default(),
