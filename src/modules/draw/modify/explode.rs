@@ -101,8 +101,12 @@ pub fn explode_entity(entity: &EntityType, document: &CadDocument) -> Vec<Entity
         {
             vec![]
         }
+        // The codec's explode_from_document refuses a MINSERT; expand it cell
+        // by cell from the block's entities instead.
         EntityType::Insert(ins) => ins
-            .explode_from_document(document)
+            .block_entities_from_document(document)
+            .map(|entities| ins.explode(&entities))
+            .unwrap_or_default()
             .into_iter()
             .filter(|entity| !crate::scene::block_construction::is_construction(entity.common()))
             .map(normalize_insert_entity)

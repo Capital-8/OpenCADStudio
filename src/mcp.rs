@@ -34,7 +34,7 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 /// `grip_drag` became optional-`handle` (built-in entity grips) plus optional
 /// `plugin` (dragging a plugin-declared custom grip, routed to its owner).
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "91c033e86dce097b581c87f1066bcd4d43dbbe34f6acec62995820afacb8f82e";
+const TOOL_SCHEMA_DIGEST: &str = "bf20f6fb334fb7d205862042932f1d0132165c069d227613df15cc0f8000bc62";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
