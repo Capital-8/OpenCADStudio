@@ -189,6 +189,10 @@ impl OpenCADStudio {
         );
         let task = self.apply_cmd_result_inner(result);
         let i = self.active_tab;
+        // A typed `<angle` does not outlive the command it was typed in.
+        if self.tabs[i].active_cmd.is_none() {
+            self.angle_override = None;
+        }
         // A transparent zoom that just finished hands control back to the
         // command it interrupted before the "command ended" bookkeeping below.
         self.resume_transparent_parent(i);
