@@ -1003,6 +1003,19 @@ impl MemoHit {
             MemoHit::Slice(set, start, len) => &set[*start..*start + *len],
         }
     }
+
+    /// The wire at `ordinal` as a shared run reference — the run `Arc` plus
+    /// the wire's index inside it — so an overlay gather can share
+    /// memoized geometry instead of cloning it per query.
+    fn shared_at(&self, ordinal: usize) -> Option<(Arc<Vec<WireModel>>, u32)> {
+        match self {
+            MemoHit::Owned(wires) => wires
+                .get(ordinal)
+                .map(|_| (Arc::clone(wires), ordinal as u32)),
+            MemoHit::Slice(set, start, len) => (ordinal < *len)
+                .then(|| (Arc::clone(set), (start + ordinal) as u32)),
+        }
+    }
 }
 
 /// Hands the set an abandoned resident patch was taking apart back to the
@@ -1022,6 +1035,26 @@ impl Drop for ReclaimOnDecline<'_> {
         }
     }
 }
+
+/// Coalesced geometry-journal replay for the overlay base, keyed by (base
+/// epoch, geometry epoch, space key): the journal changes themselves.
+type OverlayChanges = (u64, u64, u64, Arc<Vec<(Handle, ChangeKind)>>);
+
+/// What a query needs from the immutable overlay base: (base epoch, base
+/// index, geometry-journal changes since it).
+type OverlayBase = (
+    u64,
+    Arc<crate::scene::pick::interaction_index::InteractionIndex>,
+    Arc<Vec<(Handle, ChangeKind)>>,
+);
+
+/// A zero-copy overlay gather: shared wire runs plus the base and changed
+/// slot maps remapping `(handle, ordinal)` keys onto run slots.
+type OverlayGather = (
+    Arc<crate::scene::pick::interaction_index::SharedWireRuns>,
+    HashMap<(u64, u32), u32>,
+    HashMap<(u64, u32), u32>,
+);
 
 /// Kill-switch: `OCS_NO_RESIDENT_MEMO` reverts the resident set to the old
 /// full re-tessellation on every edit, in case a mutation site is ever found
@@ -2532,6 +2565,11 @@ pub struct Scene {
             Arc<crate::scene::pick::interaction_index::InteractionIndex>,
         )>,
     >,
+    /// Geometry-journal replay for the overlay base, keyed on (base epoch,
+    /// geometry epoch, space key). Pointer moves consult the overlay base
+    /// several times per gesture; replay the journal once per key instead
+    /// of once per consult.
+    interaction_overlay_changes: RefCell<Option<OverlayChanges>>,
     /// Auxiliary broad phase for hatch-only objects.
     interaction_handle_index_cache: RefCell<
         Option<(
@@ -3100,6 +3138,7 @@ impl Scene {
             interaction_index_pending_key: std::cell::Cell::new(None),
             interaction_base_index_cache: RefCell::new(None),
             interaction_overlay_index_cache: RefCell::new(None),
+            interaction_overlay_changes: RefCell::new(None),
             interaction_handle_index_cache: RefCell::new(None),
             sort_cache: RefCell::new(None),
             draw_depth_cache: RefCell::new(None),
@@ -10736,13 +10775,7 @@ impl Scene {
 
     const INTERACTION_OVERLAY_MAX_HANDLES: usize = 2_048;
 
-    fn interaction_overlay_base(
-        &self,
-    ) -> Option<(
-        u64,
-        Arc<crate::scene::pick::interaction_index::InteractionIndex>,
-        Vec<(Handle, ChangeKind)>,
-    )> {
+    fn interaction_overlay_base(&self) -> Option<OverlayBase> {
         let space_key = self.interaction_space_key();
         let (epoch, index) = {
             let cache = self.interaction_base_index_cache.borrow();
@@ -10752,7 +10785,21 @@ impl Scene {
             }
             (*epoch, Arc::clone(index))
         };
-        let changes = self.replay_since(epoch)?;
+        {
+            let cached = self.interaction_overlay_changes.borrow();
+            if let Some((base_epoch, geometry_epoch, cached_space, changes)) = cached.as_ref() {
+                if *base_epoch == epoch
+                    && *geometry_epoch == self.geometry_epoch
+                    && *cached_space == space_key
+                {
+                    return (changes.len() <= Self::INTERACTION_OVERLAY_MAX_HANDLES)
+                        .then_some((epoch, index, Arc::clone(changes)));
+                }
+            }
+        }
+        let changes = Arc::new(self.replay_since(epoch)?);
+        *self.interaction_overlay_changes.borrow_mut() =
+            Some((epoch, self.geometry_epoch, space_key, Arc::clone(&changes)));
         (changes.len() <= Self::INTERACTION_OVERLAY_MAX_HANDLES).then_some((epoch, index, changes))
     }
 
@@ -10836,15 +10883,11 @@ impl Scene {
         base_keys: impl IntoIterator<Item = (u64, u32)>,
         changed_keys: impl IntoIterator<Item = (u64, u32)>,
         changes: &[(Handle, ChangeKind)],
-        changed_wires: &[WireModel],
-    ) -> (
-        Arc<Vec<WireModel>>,
-        HashMap<(u64, u32), u32>,
-        HashMap<(u64, u32), u32>,
-    ) {
+        changed_wires: &Arc<Vec<WireModel>>,
+    ) -> OverlayGather {
         let changed: HashSet<Handle> = changes.iter().map(|(handle, _)| *handle).collect();
         let memo = self.resident_tess_memo.borrow();
-        let mut wires = Vec::new();
+        let mut wires = crate::scene::pick::interaction_index::SharedWireRuns::default();
         let mut base_slots = HashMap::default();
         let mut misses: HashMap<Handle, Vec<u32>> = HashMap::default();
         for (handle_value, ordinal) in base_keys {
@@ -10855,12 +10898,12 @@ impl Scene {
             let hit = memo
                 .get(&handle)
                 .and_then(|run| self.resolve_memo_run(handle, run));
-            if let Some(wire) = hit
+            if let Some((run, index)) = hit
                 .as_ref()
-                .and_then(|hit| hit.wires().get(ordinal as usize))
+                .and_then(|hit| hit.shared_at(ordinal as usize))
             {
                 base_slots.insert((handle_value, ordinal), wires.len() as u32);
-                wires.push(wire.clone());
+                wires.push(&run, index);
             } else {
                 misses.entry(handle).or_default().push(ordinal);
             }
@@ -10871,24 +10914,24 @@ impl Scene {
         // handle, then retain only the exact wire ordinals the base index
         // reported.
         for (handle, ordinals) in misses {
-            let entity_wires = self.wire_models_for(&[handle]);
+            let entity_wires = Arc::new(self.wire_models_for(&[handle]));
             for ordinal in ordinals {
-                if let Some(wire) = entity_wires.get(ordinal as usize) {
+                if entity_wires.get(ordinal as usize).is_some() {
                     base_slots.insert((handle.value(), ordinal), wires.len() as u32);
-                    wires.push(wire.clone());
+                    wires.push(&entity_wires, ordinal);
                 }
             }
         }
         let changed_keys: HashSet<(u64, u32)> = changed_keys.into_iter().collect();
         let mut changed_slots = HashMap::default();
         let mut next_ordinal: HashMap<u64, u32> = HashMap::default();
-        for wire in changed_wires {
+        for (position, wire) in changed_wires.iter().enumerate() {
             if let Some(handle) = pipeline::wire_gpu::fast_parse_u64(&wire.name) {
                 let ordinal = next_ordinal.entry(handle).or_default();
                 let key = (handle, *ordinal);
                 if changed_keys.contains(&key) {
                     changed_slots.insert(key, wires.len() as u32);
-                    wires.push(wire.clone());
+                    wires.push(changed_wires, position as u32);
                 }
                 *ordinal += 1;
             }
