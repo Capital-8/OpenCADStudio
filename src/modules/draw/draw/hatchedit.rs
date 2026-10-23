@@ -334,6 +334,9 @@ impl CadCommand for HatcheditCommand {
     fn is_selection_gathering(&self) -> bool {
         self.input == Some("associate-select")
     }
+    fn wants_raw_point(&self) -> bool {
+        self.input == Some("associate-point")
+    }
     fn on_selection_complete(&mut self, handles: Vec<Handle>) -> CmdResult {
         if let Some((_, sources)) = &self.association_sources {
             let sources = sources

@@ -786,6 +786,10 @@ impl CadCommand for HatchCommand {
         }
     }
 
+    fn wants_raw_point(&self) -> bool {
+        self.mode == HatchMode::PickInside
+    }
+
     fn is_selection_gathering(&self) -> bool {
         matches!(self.mode, HatchMode::SelectObjects)
     }
@@ -1132,6 +1136,10 @@ impl CadCommand for GradientCommand {
 
     fn on_escape(&mut self) -> CmdResult {
         CmdResult::Cancel
+    }
+
+    fn wants_raw_point(&self) -> bool {
+        matches!(self.mode, Mode::PickInside)
     }
 
     fn wants_text_input(&self) -> bool {
@@ -1576,6 +1584,10 @@ impl CadCommand for BoundaryCommand {
             _ => return None,
         }
         Some(CmdResult::NeedPoint)
+    }
+
+    fn wants_raw_point(&self) -> bool {
+        self.mode == BoundaryMode::PickInside
     }
 
     fn is_selection_gathering(&self) -> bool {

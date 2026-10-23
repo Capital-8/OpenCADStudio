@@ -2779,6 +2779,7 @@ impl OpenCADStudio {
                     && !command.needs_tangent_pick()
                     && !command.is_selection_gathering()
                     && !command.window_corner_pick()
+                    && !command.wants_raw_point()
                     && command.cursor_axis().is_none()
             })
             && !self.shift_down
@@ -3077,6 +3078,13 @@ impl OpenCADStudio {
                 .as_ref()
                 .map(|c| c.window_corner_pick())
                 .unwrap_or(false);
+            // An internal-point pick (HATCH/BOUNDARY) takes the bare cursor:
+            // no object snap, tracking or Ortho/Polar (#2009).
+            let raw_pick = self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .is_some_and(|c| c.wants_raw_point());
+            let free_point = is_window_corner || raw_pick;
             let needs_tan = self.tabs[i]
                 .active_cmd
                 .as_ref()
@@ -3105,13 +3113,13 @@ impl OpenCADStudio {
                     i,
                     cursor_world,
                     base,
-                    wants_point && !is_window_corner && !uses_command_cursor_plane,
+                    wants_point && !free_point && !uses_command_cursor_plane,
                 )
             } else {
                 self.axis_lock_dir = None;
                 None
             };
-            let tracking_probe = (axis_lock.is_none() && !is_window_corner)
+            let tracking_probe = (axis_lock.is_none() && !free_point)
                 .then(|| {
                     self.active_otrack_hit(
                         i,
@@ -3129,6 +3137,7 @@ impl OpenCADStudio {
             self.tabs[i].snap_result = if (needs_entity && !entity_pick_takes_points)
                 || is_gathering
                 || needs_structure
+                || raw_pick
             {
                 None
             } else if needs_tan {
@@ -3146,7 +3155,7 @@ impl OpenCADStudio {
                 // in full f64 precision.
                 self.snapper.from_point = self.last_point;
 
-                let construction_ray = if is_window_corner {
+                let construction_ray = if free_point {
                     None
                 } else {
                     self.last_point.and_then(|base| {
@@ -3195,6 +3204,7 @@ impl OpenCADStudio {
                 && !is_gathering
                 && !needs_structure
                 && !needs_tan
+                && !raw_pick
             {
                 if let Some((vp_hit, frame)) =
                     self.paper_viewport_snap(i, p_full, vp_size, cursor_world)
@@ -3216,7 +3226,7 @@ impl OpenCADStudio {
                 && !is_gathering
                 && !needs_structure
                 && !needs_tan
-                && !is_window_corner
+                && !free_point
                 && (self
                     .snapper
                     .is_on_3d(crate::snap::SnapType::FacePerpendicular)
@@ -3265,7 +3275,7 @@ impl OpenCADStudio {
                     cursor_world,
                     self.tabs[i].snap_result,
                     self.last_point,
-                    !is_window_corner,
+                    !free_point,
                     view_rot,
                     eye,
                     bounds,
@@ -3281,7 +3291,11 @@ impl OpenCADStudio {
             // the point onto the line through last_point parallel to the
             // acquired reference, and drive the alignment guide off it.
             // (#277)
-            if axis_lock.is_none() && self.tabs[i].snap_result.is_none() && otrack_hit.is_none() {
+            if axis_lock.is_none()
+                && !raw_pick
+                && self.tabs[i].snap_result.is_none()
+                && otrack_hit.is_none()
+            {
                 if let Some(par) =
                     self.snapper
                         .parallel_snap(cursor_world, self.last_point, view_rot, eye, bounds)
@@ -3336,7 +3350,7 @@ impl OpenCADStudio {
                             .snap_result
                             .is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid);
                         let drafted = (!osnap_locked
-                            && !is_window_corner
+                            && !free_point
                             && !uses_command_cursor_plane)
                             .then_some(self.last_point)
                             .flatten()
@@ -5356,6 +5370,12 @@ impl OpenCADStudio {
             .as_ref()
             .map(|c| c.window_corner_pick())
             .unwrap_or(false);
+        // An internal-point pick commits the bare cursor position (#2009).
+        let raw_pick = self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .is_some_and(|c| c.wants_raw_point());
+        let free_point = is_window_corner || raw_pick;
 
         if is_down
             && is_click
@@ -5429,7 +5449,7 @@ impl OpenCADStudio {
                         .is_some_and(|command| command.entity_pick_accepts_points());
                 // Probe the active OTRACK ray before snapping so its geometry
                 // intersection can be tested in the same candidate pass.
-                let tracking_probe = if !needs_entity_click && !needs_tan && !is_window_corner {
+                let tracking_probe = if !needs_entity_click && !needs_tan && !free_point {
                     self.active_otrack_hit(
                         i,
                         raw,
@@ -5458,7 +5478,7 @@ impl OpenCADStudio {
                     let (go, gr) = self.drafting_grid_basis(i);
                     self.snapper.from_point = self.last_point;
 
-                    let construction_ray = if is_window_corner {
+                    let construction_ray = if free_point {
                         None
                     } else {
                         self.last_point.and_then(|base| {
@@ -5510,7 +5530,7 @@ impl OpenCADStudio {
                 // before the accepted-snap record so face sources associate.
                 if !needs_entity_click
                     && !needs_tan
-                    && !is_window_corner
+                    && !free_point
                     && (self
                         .snapper
                         .is_on_3d(crate::snap::SnapType::FacePerpendicular)
@@ -5550,6 +5570,9 @@ impl OpenCADStudio {
                         self.snapper.snap3d_enabled,
                     );
                 }
+                if raw_pick {
+                    snap_hit = None;
+                }
                 self.pending_click_snap = snap_hit.map(|hit| (hit, click_frame));
                 snapped = snap_hit.is_some();
                 tangent_obj_at_click = snap_hit.and_then(|hit| hit.tangent_obj);
@@ -5577,7 +5600,7 @@ impl OpenCADStudio {
                         base,
                         !needs_entity_click
                             && !needs_tan
-                            && !is_window_corner
+                            && !free_point
                             && !uses_command_cursor_plane,
                     )
                 } else {
@@ -5596,7 +5619,7 @@ impl OpenCADStudio {
                         raw,
                         snap_hit,
                         self.last_point,
-                        !is_window_corner,
+                        !free_point,
                         view_rot,
                         eye,
                         bounds,
@@ -5621,7 +5644,7 @@ impl OpenCADStudio {
                         pt.z = 0.0;
                     }
                 } else if axis_lock.is_none()
-                    && !is_window_corner
+                    && !free_point
                     && !uses_command_cursor_plane
                     && !snap_hit.is_some_and(|s| s.snap_type != crate::snap::SnapType::Grid)
                 {

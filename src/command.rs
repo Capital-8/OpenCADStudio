@@ -3466,6 +3466,15 @@ pub trait CadCommand: Send {
         false
     }
 
+    /// The step takes the bare cursor position: an internal point picked
+    /// inside an area (HATCH, BOUNDARY). Object snap, tracking and the
+    /// Ortho/Polar lock would move the pick onto a nearby edge and select the
+    /// neighbouring area, so the host skips them all for this step. Default
+    /// `false`. (#2009)
+    fn wants_raw_point(&self) -> bool {
+        false
+    }
+
     /// The step draws a window that selects objects rather than placing
     /// geometry: no coordinate boxes at the cursor. Default `false`.
     fn selects_by_window(&self) -> bool {
