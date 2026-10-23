@@ -264,6 +264,7 @@ impl BlockCache {
         depth_map: &HashMap<u64, [f32; 2]>,
     ) -> Self {
         use crate::par::prelude::*;
+        let _owners = crate::scene::block_authoring::DictionaryOwners::publish(doc);
         let mut cache = Self::new();
         let referenced = collect_referenced_blocks(doc, anno_scale);
         let mut reference_counts: HashMap<String, usize> = HashMap::default();
@@ -319,6 +320,7 @@ impl BlockCache {
         depth_map: &HashMap<u64, [f32; 2]>,
     ) -> Self {
         use crate::par::prelude::*;
+        let _owners = crate::scene::block_authoring::DictionaryOwners::publish(doc);
         let mut cache = Self::new();
         let referenced = referenced_block_tree(doc, block_name, anno_scale);
         cache.defns = referenced
@@ -360,10 +362,10 @@ impl BlockCache {
             .collect();
         for (name, metrics, inline_point_cost) in resolved {
             if let Some(defn_arc) = self.defns.get_mut(name) {
-                let mut defn = (**defn_arc).clone();
+                // Unshared while the cache is being built: no deep copy.
+                let defn = Arc::make_mut(defn_arc);
                 defn.metrics = metrics;
                 defn.inline_point_cost = inline_point_cost;
-                *defn_arc = Arc::new(defn);
             }
         }
     }

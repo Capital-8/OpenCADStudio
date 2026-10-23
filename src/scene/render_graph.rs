@@ -281,6 +281,9 @@ pub struct RenderSceneGraph<'a> {
     depths: &'a FxHashMap<u64, [f32; 2]>,
     viewport: Option<Handle>,
     visibility_reveal: Option<&'a FxHashSet<Handle>>,
+    /// Published on the first INSERT: every placement asks for its block's
+    /// base point.
+    dictionary_owners: std::sync::OnceLock<super::block_authoring::DictionaryOwners<'a>>,
 }
 
 impl<'a> RenderSceneGraph<'a> {
@@ -300,6 +303,7 @@ impl<'a> RenderSceneGraph<'a> {
             depths,
             viewport: None,
             visibility_reveal: None,
+            dictionary_owners: std::sync::OnceLock::new(),
         }
     }
 
@@ -430,6 +434,8 @@ impl<'a> RenderSceneGraph<'a> {
         V: FnMut(&EntityType, &InstanceContext) -> bool,
         F: FnMut(&EntityType, &InstanceContext),
     {
+        self.dictionary_owners
+            .get_or_init(|| super::block_authoring::DictionaryOwners::publish(self.document));
         let insert_entity = EntityType::Insert(insert.clone());
         let block_style = parent
             .block_style
@@ -630,10 +636,7 @@ pub(crate) fn block_member_layer_hidden(document: &CadDocument, layer: &str) -> 
 }
 
 pub fn block_base_point(document: &CadDocument, block_name: &str) -> Vector3 {
-    document
-        .block_records
-        .iter()
-        .find(|record| record.name.eq_ignore_ascii_case(block_name))
+    block_record_by_name(document, block_name)
         .map(|record| {
             if let Some((_, parameter)) = super::block_basepoint::parameter(document, record.handle)
             {

@@ -1632,7 +1632,7 @@ fn native_group_handles(document: &CadDocument, owner: Handle) -> Vec<Handle> {
 }
 
 fn native_scope_network_handle(document: &CadDocument, owner: Handle) -> Option<Handle> {
-    let dictionary = document.extension_dictionary_handle(owner)?;
+    let dictionary = super::block_authoring::definition_dictionary(document, owner)?;
     let ObjectType::Dictionary(dictionary) = document.objects.get(&dictionary)? else {
         return None;
     };
@@ -4094,6 +4094,7 @@ impl Scene {
             .iter()
             .map(|record| record.handle)
             .collect();
+        let dictionary_owners = super::block_authoring::DictionaryOwners::publish(&self.document);
         for owner in owners {
             if let Some(set) =
                 native_constraint_set(&self.document, owner, &mut self.named_parameters)
@@ -4101,6 +4102,7 @@ impl Scene {
                 self.parametric_constraints.push(set);
             }
         }
+        drop(dictionary_owners);
         // Whole-set replace (file open / reload): covers the DWG-import
         // `enabled` / `axis_direction` / `distance_direction` / `angle_sector`
         // writes, which happen on the local set during decode.

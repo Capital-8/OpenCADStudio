@@ -10398,11 +10398,12 @@ impl Scene {
     /// fills are rendered separately and otherwise never reach TRIM.
     /// Unlike visible_hatches_for_click this never clones GPU hatch models.
     pub fn visible_hatch_handles_for_edit(&self) -> Vec<Handle> {
+        let interactive = self.hatch_interaction_filter();
         self.hatches
             .keys()
             .copied()
             .filter(|handle| {
-                self.hatch_visible_for_interaction(*handle)
+                interactive(*handle)
                     && matches!(self.document.get_entity(*handle), Some(EntityType::Hatch(_)))
                     && !self.is_reference_only(*handle)
             })
@@ -10418,10 +10419,8 @@ impl Scene {
         &self,
         candidate_handles: Option<&HashSet<Handle>>,
     ) -> HashMap<Handle, HatchModel> {
-        let visible = |h: Handle, m: &HatchModel| {
-            self.hatch_visible_for_interaction(h)
-                .then(|| (h, m.clone()))
-        };
+        let interactive = self.hatch_interaction_filter();
+        let visible = |h: Handle, m: &HatchModel| interactive(h).then(|| (h, m.clone()));
         if let Some(handles) = candidate_handles {
             handles
                 .iter()
@@ -10439,31 +10438,39 @@ impl Scene {
         }
     }
 
-    fn hatch_visible_for_interaction(&self, handle: Handle) -> bool {
-        let Some(entity) = self.document.get_entity(handle) else {
-            return false;
-        };
-        // Use the SOLID's WCS-aware wire fill for interaction as well as
-        // drawing. Its cached HatchModel is flattened to XY for plotting and
-        // must not leave an invisible selection target at z=0 (#617).
-        if matches!(entity, EntityType::Solid(_)) {
-            return false;
+    /// Whether a fill takes part in picking. The layout block and annotation
+    /// state each search the document's objects, so they are resolved once
+    /// per filter, not once per fill (#2023).
+    fn hatch_interaction_filter(&self) -> impl Fn(Handle) -> bool + '_ {
+        let scale = self.displayed_annotation_scale_handle();
+        let all_visible = self.annotation_all_visible();
+        let block = self.interaction_block_handle();
+        move |handle| {
+            let Some(entity) = self.document.get_entity(handle) else {
+                return false;
+            };
+            // Use the SOLID's WCS-aware wire fill for interaction as well as
+            // drawing. Its cached HatchModel is flattened to XY for plotting
+            // and must not leave an invisible selection target at z=0 (#617).
+            if matches!(entity, EntityType::Solid(_)) {
+                return false;
+            }
+            let common = entity.common();
+            if self.display_entity_invisible(common)
+                || self.entity_temporarily_hidden(handle)
+                || self.layer_hidden(&common.layer)
+                || self.interaction_layer_frozen(&common.layer)
+                || crate::scene::annotative::annotative_offscale_for(
+                    &self.document,
+                    common,
+                    scale,
+                    all_visible,
+                )
+            {
+                return false;
+            }
+            self.belongs_to_visible_block(handle, common.owner_handle, block)
         }
-        let common = entity.common();
-        if self.display_entity_invisible(common)
-            || self.entity_temporarily_hidden(handle)
-            || self.layer_hidden(&common.layer)
-            || self.interaction_layer_frozen(&common.layer)
-            || crate::scene::annotative::annotative_offscale_for(
-                &self.document,
-                common,
-                self.displayed_annotation_scale_handle(),
-                self.annotation_all_visible(),
-            )
-        {
-            return false;
-        }
-        self.belongs_to_visible_block(handle, common.owner_handle, self.interaction_block_handle())
     }
 
     /// Instanced hatch models keyed by their block-backed host handle.
@@ -11345,8 +11352,9 @@ impl Scene {
             }
         }
         let mut entries: Vec<(u64, [f64; 6])> = Vec::new();
+        let interactive = self.hatch_interaction_filter();
         for (&handle, hatch) in &self.hatches {
-            if !self.hatch_visible_for_interaction(handle) {
+            if !interactive(handle) {
                 continue;
             }
             if let Some([min_x, min_y, max_x, max_y]) = hatch_interaction_aabb(hatch) {
@@ -11675,14 +11683,14 @@ impl Scene {
             .collect();
         let insert_hatches = self.insert_hatches_for_click();
         let meshes = self.interaction_meshes_arc();
+        let interactive = self.hatch_interaction_filter();
         handles.extend(
             self.interaction_handle_index()
                 .query_xy(aabb)
                 .into_iter()
                 .filter_map(|value| {
                     let handle = Handle::new(value);
-                    (self.hatch_visible_for_interaction(handle)
-                        || insert_hatches.contains_key(&handle))
+                    (interactive(handle) || insert_hatches.contains_key(&handle))
                     .then_some(handle)
                 }),
         );
@@ -12407,6 +12415,8 @@ impl Scene {
     ) -> Vec<WireModel> {
         use codec::objects::ObjectType;
 
+        // Each INSERT tessellated below resolves its block's base point.
+        let _owners = block_authoring::DictionaryOwners::publish(&self.document);
         // Skip diagnostic clock reads when PERF is disabled.
         let perf = crate::perf::enabled();
         let t_fn = perf.then(iced::time::Instant::now);
