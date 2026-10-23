@@ -2103,6 +2103,31 @@ pub async fn pick_image_file() -> Result<(PathBuf, u32, u32), String> {
     Ok((path, decoded.source_width, decoded.source_height))
 }
 
+/// INSERTOBJ: the system Insert Object window, then the file it names is
+/// prepared for embedding. A picture from a file is what can be embedded;
+/// elsewhere than Windows the file picker stands in for the window.
+pub async fn pick_insert_object() -> Result<ole_embed::EmbeddedImage, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let (tx, rx) = iced::futures::channel::oneshot::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(ole_embed::insert_object_dialog());
+        });
+        let path = rx.await.map_err(|_| "Cancelled".to_string())??;
+        ole_embed::EmbeddedImage::from_file(&path).map_err(|_| {
+            format!(
+                "\"{}\" {}",
+                path.display(),
+                crate::tr!("ole-props", "not-embeddable")
+            )
+        })
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        pick_embedded_image_file().await
+    }
+}
+
 /// Pick an image file and prepare it for embedding (IMAGEEMBED). The bytes
 /// are read before returning so the OLE2FRAME payload is ready to place.
 pub async fn pick_embedded_image_file() -> Result<ole_embed::EmbeddedImage, String> {

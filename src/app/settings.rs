@@ -637,6 +637,10 @@ pub struct UserSettings {
     pub xref_fade: i32,
     /// FILEDIA: file dialogs of commands that have a command-line form.
     pub file_dia: bool,
+    /// OLEHIDE: which OLE objects show (0 all, 1 paper space, 2 model space, 3 none).
+    pub ole_hide: i16,
+    /// OLEQUALITY: the plot quality of new OLE objects (3 automatic).
+    pub ole_quality: i16,
     /// TRIMEXTENDMODE: TRIM and EXTEND start in Quick mode (else Standard).
     pub trim_extend_quick: bool,
     /// Fonts and plot styles kept in a chosen folder (`None`: the default).
@@ -1132,6 +1136,8 @@ impl Default for UserSettings {
             field_display: true,
             xref_fade: 50,
             file_dia: true,
+            ole_hide: 0,
+            ole_quality: 3,
             trim_extend_quick: true,
             fonts_folder: None,
             plot_styles_folder: None,

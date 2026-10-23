@@ -850,6 +850,8 @@ impl OpenCADStudio {
             field_display: crate::entities::field::display(),
             xref_fade: crate::scene::cache::block_cache::xref_fade_ctl(),
             file_dia: crate::sys::file_dia(),
+            ole_hide: crate::entities::ole2frame::hide_mode(),
+            ole_quality: crate::app::commands::ole_quality(),
             trim_extend_quick: crate::modules::draw::modify::trim::quick_mode(),
             #[cfg(not(target_arch = "wasm32"))]
             fonts_folder: crate::io::font_repo::fonts_folder().map(|p| p.display().to_string()),
@@ -1013,6 +1015,8 @@ impl OpenCADStudio {
         crate::scene::cache::block_cache::set_xref_fade_ctl(s.xref_fade);
         self.ribbon.xref_fade = crate::scene::cache::block_cache::xref_fade_ctl();
         crate::sys::set_file_dia(s.file_dia);
+        crate::entities::ole2frame::set_hide_mode(s.ole_hide);
+        crate::app::commands::set_ole_quality(s.ole_quality);
         crate::modules::draw::modify::trim::set_quick_mode(s.trim_extend_quick);
         #[cfg(not(target_arch = "wasm32"))]
         {

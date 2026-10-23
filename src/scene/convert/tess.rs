@@ -1382,6 +1382,10 @@ fn tessellate_entity_inner(
             b.display_visible = mode != 0;
             b.plot_visible = mode == 1;
         }
+        // OLEFRAME 2 shows an OLE object's frame without plotting it.
+        if matches!(e, EntityType::Ole2Frame(_)) {
+            b.plot_visible = crate::entities::ole2frame::frame_mode(document) == 1;
+        }
         if matches!(e, EntityType::Wipeout(_)) {
             b.depth_override = Some(0.5);
             b.set_fixed_screen_width(2.0);

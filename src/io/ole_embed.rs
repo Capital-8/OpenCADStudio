@@ -33,6 +33,41 @@ const PORTABLE_FORMATS: [image::ImageFormat; 3] = [
     image::ImageFormat::Bmp,
 ];
 
+/// The system Insert Object window, opened on Create from File (links and
+/// icons off). The chosen file, or `Err("Cancelled")`; choosing Create New
+/// reports that a new object needs its own application.
+#[cfg(target_os = "windows")]
+pub fn insert_object_dialog() -> Result<std::path::PathBuf, String> {
+    use windows_sys::Win32::System::Ole::{
+        OleInitialize, OleUIInsertObjectW, OleUninitialize, IOF_DISABLEDISPLAYASICON,
+        IOF_DISABLELINK, IOF_SELECTCREATEFROMFILE, OLEUIINSERTOBJECTW, OLEUI_OK,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    let mut file = vec![0u16; 1024];
+    // SAFETY: the window runs on this thread's own OLE apartment; the
+    // structure and the file buffer outlive the call.
+    unsafe {
+        OleInitialize(std::ptr::null());
+        let mut info: OLEUIINSERTOBJECTW = std::mem::zeroed();
+        info.cbStruct = std::mem::size_of::<OLEUIINSERTOBJECTW>() as u32;
+        info.dwFlags = IOF_SELECTCREATEFROMFILE | IOF_DISABLELINK | IOF_DISABLEDISPLAYASICON;
+        info.hWndOwner = GetForegroundWindow();
+        info.lpszFile = file.as_mut_ptr();
+        info.cchFile = file.len() as u32;
+        let result = OleUIInsertObjectW(&info);
+        let from_file = info.dwFlags & IOF_SELECTCREATEFROMFILE != 0;
+        OleUninitialize();
+        if result != OLEUI_OK {
+            return Err("Cancelled".into());
+        }
+        if !from_file {
+            return Err(crate::tr!("ole-props", "create-new"));
+        }
+    }
+    let len = file.iter().position(|&c| c == 0).unwrap_or(file.len());
+    Ok(std::path::PathBuf::from(String::from_utf16_lossy(&file[..len])))
+}
+
 /// A raster image prepared for embedding: encoded bytes plus the metadata the
 /// placement prompts need.
 #[derive(Clone, Debug, PartialEq)]

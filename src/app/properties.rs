@@ -443,7 +443,7 @@ impl OpenCADStudio {
         {
             use crate::entities::common::ro_prop;
             let xd = &source_entity.common().extended_data;
-            if !xd.is_empty() {
+            if !xd.is_empty() && !matches!(source_entity, codec::EntityType::Ole2Frame(_)) {
                 let mut xd_props = Vec::new();
                 for rec in xd.records() {
                     let value_text = rec
@@ -1719,6 +1719,9 @@ impl OpenCADStudio {
         if compact_solid {
             retain_compact_solid_sections(&mut sections);
         }
+        if let codec::EntityType::Ole2Frame(ole) = entity {
+            self.fill_ole_rows(i, handle, ole, &mut sections);
+        }
         let title = match entity {
             codec::EntityType::Insert(ins) => {
                 let is_xref = self.tabs[i]
@@ -1763,6 +1766,7 @@ impl OpenCADStudio {
                 codec::entities::UnderlayType::Dgn => t!("DGN Underlay"),
             }
             .into_owned(),
+            codec::EntityType::Ole2Frame(_) => "OLE".to_string(),
             _ => entity_type_label(entity),
         };
         // A dynamic dimension shows only its constraint and text

@@ -2676,6 +2676,11 @@ impl OpenCADStudio {
             return self.on_dynamic_dimension_choice(field, &value);
         }
         let i = self.active_tab;
+        if field == "ole_lock_aspect" {
+            self.set_ole_lock_aspect(i, &value);
+            self.tabs[i].properties.edit_choice_open = false;
+            return Task::none();
+        }
         if field == "ext_pcx_locked" {
             let handles = self.point_cloud_lock_targets(i);
             self.apply_property_op(i, "CHPROP", &handles, |app, handle| {
@@ -4065,6 +4070,19 @@ impl OpenCADStudio {
                         crate::entities::extended::validate_point_cloud_property(field, &val)
                     {
                         self.command_line.push_error(message);
+                        return Task::none();
+                    }
+                }
+                if field.starts_with("ole_") {
+                    if let Err(message) = crate::entities::ole2frame::validate_property(field, &val) {
+                        self.command_line.push_error(message);
+                        return Task::none();
+                    }
+                    if matches!(
+                        field,
+                        "ole_width" | "ole_height" | "ole_scale_width" | "ole_scale_height"
+                    ) {
+                        self.resize_ole_frames(i, &handles, field, &val);
                         return Task::none();
                     }
                 }
