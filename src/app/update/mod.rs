@@ -762,6 +762,9 @@ impl OpenCADStudio {
         if self.show_block_palette {
             self.ensure_block_previews();
         }
+        if self.block_gallery_open() {
+            self.ensure_gallery_previews();
+        }
         // What this message changed is only known while it is handled.
         self.block_palette.change_hint = Default::default();
         // The Reference Manager watches the active drawing and re-scans when
@@ -6891,15 +6894,19 @@ impl OpenCADStudio {
 
             // ── Ribbon dropdowns ──────────────────────────────────────────
             Message::ToggleRibbonDropdown(id) => {
+                let mut task = Task::none();
                 if self.tabs[self.active_tab].is_start {
                     self.ribbon.close_dropdown();
                 } else {
-                    if id == crate::modules::insert::insert_block::GALLERY_ID {
+                    if id == crate::modules::insert::insert_block::GALLERY_ID
+                        && self.ribbon.open_dropdown.as_deref() != Some(id.as_str())
+                    {
                         if self.block_palette_stale() {
                             self.refresh_block_palette();
                         }
-                        // The gallery shows every block.
-                        self.ensure_all_block_previews();
+                        // Its previews in view are worked out after this
+                        // message, like the palette's.
+                        task = self.block_palette.open_gallery();
                     }
                     // The per-viewport freeze column follows the active viewport.
                     if id == crate::ui::ribbon::widgets::LAYER_COMBO_ID {
@@ -6907,7 +6914,7 @@ impl OpenCADStudio {
                     }
                     self.ribbon.toggle_dropdown(&id);
                 }
-                Task::none()
+                task
             }
             Message::ToggleRibbonPanel(id) => {
                 if self.tabs[self.active_tab].is_start {
