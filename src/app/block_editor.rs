@@ -471,6 +471,7 @@ impl OpenCADStudio {
         };
         let source_name = session.block_name.clone();
         let source_handle = session.br_handle;
+        let fresh = !self.block_palette_stale();
         let name = match self.validate_block_save_as_name(i, raw) {
             Ok(name) => name,
             Err(error) => {
@@ -554,7 +555,12 @@ impl OpenCADStudio {
         }
         let parameters = self.tabs[i].scene.named_parameters.clone();
         let active_layer = self.tabs[i].active_layer.clone();
-        self.tabs[i].scene.document = copied.document;
+        let before = std::mem::replace(&mut self.tabs[i].scene.document, copied.document);
+        let touched = crate::app::update::blocks_palette::changed_block_names(
+            &before,
+            &self.tabs[i].scene.document,
+        );
+        drop(before);
         self.tabs[i].scene.parametric_constraints = constraints;
         self.tabs[i].scene.named_parameters = parameters;
         self.tabs[i].active_layer = active_layer;
@@ -585,6 +591,7 @@ impl OpenCADStudio {
         self.tabs[i].block_edit_history = Some(history);
         self.tabs[i].scene.bump_geometry();
         self.tabs[i].refresh_active_ucs();
+        self.note_block_changes(fresh, &touched);
         self.refresh_block_palette();
         self.refresh_properties();
         self.sync_ribbon_layers();
@@ -643,6 +650,10 @@ impl OpenCADStudio {
             return false;
         };
         let name = session.block_name.clone();
+        // The palette keeps the other blocks' previews when it was up to
+        // date before the save.
+        let fresh = !self.block_palette_stale();
+        let mut touched = vec![name.clone()];
         if let Err(error) = crate::scene::block_service::validate_block_name(&name) {
             // Existing anonymous definitions are editable; name validation
             // applies to named definitions rather than generated variants.
@@ -694,6 +705,11 @@ impl OpenCADStudio {
                 Ok(document) => {
                     self.apply_action_document(i, document);
                     self.coalesce_saved_representations(i, &before_sync);
+                    // A dynamic block's references are drawn again too.
+                    touched.extend(crate::app::update::blocks_palette::changed_block_names(
+                        &before_sync,
+                        &self.tabs[i].scene.document,
+                    ));
                 }
                 Err(error) => {
                     self.command_line.push_error(crate::t!(error).as_ref());
@@ -711,6 +727,7 @@ impl OpenCADStudio {
             history.checkpoint = self.block_edit_checkpoint(i);
             self.tabs[i].block_edit_history = Some(history);
             self.tabs[i].scene.bump_geometry();
+            self.note_block_changes(fresh, &touched);
         }
         if let Some(session) = self.tabs[i].active_block_edit_session_mut() {
             session.unpersisted_pre_document = None;

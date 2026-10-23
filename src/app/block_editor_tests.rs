@@ -73,6 +73,33 @@ fn edit_action_set(app: &mut OpenCADStudio, action: Handle, mode: &str, targets:
 }
 
 #[test]
+fn block_editor_save_redraws_only_the_saved_blocks_palette_preview() {
+    let (mut app, reference) = fixture();
+    let i = app.active_tab;
+    app.tabs[i].scene.define_block_raw(
+        "OTHER",
+        Vector3::ZERO,
+        vec![EntityType::Line(Line::from_points(
+            Vector3::ZERO,
+            Vector3::UNIT_Y,
+        ))],
+    );
+    app.show_block_palette = true;
+    let preview = |app: &OpenCADStudio, name: &str| {
+        std::rc::Rc::clone(&app.block_palette.current_entry(name).unwrap().preview)
+    };
+    begin(&mut app, reference);
+    circle(&mut app, 3.);
+    // Up to date right before the save, as after any handled message.
+    app.refresh_block_palette_if_stale();
+    let (edited, other) = (preview(&app, "EDIT_ME"), preview(&app, "OTHER"));
+    let _ = app.dispatch_command("BSAVE");
+    app.refresh_block_palette_if_stale();
+    assert!(!std::rc::Rc::ptr_eq(&preview(&app, "EDIT_ME"), &edited));
+    assert!(std::rc::Rc::ptr_eq(&preview(&app, "OTHER"), &other));
+}
+
+#[test]
 fn block_constraint_display_variable_is_transient_validated_and_resets_on_entry() {
     let (mut app, reference) = fixture();
     begin(&mut app, reference);
