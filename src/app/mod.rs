@@ -2457,6 +2457,8 @@ pub enum ModalKind {
     TdsImport,
     /// A 3D Studio import set to ask: one mesh with several materials.
     TdsMaterial,
+    /// A texture map a 3D Studio import did not find, one window per map.
+    TdsMissingMap,
     /// Web: a crash-recovery autosave snapshot newer than the drawing's last
     /// save awaits a restore/discard decision. Distinct from the corrupt-file
     /// `RecoveryPrompt` — nothing is wrong with the drawing itself.
