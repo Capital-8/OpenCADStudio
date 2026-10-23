@@ -4299,7 +4299,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Middle of text" => Some(("style-manager", "middle-of-text")),
         "Middle of bottom line" => Some(("style-manager", "middle-of-bottom-line")),
         "Bottom of bottom line" => Some(("style-manager", "bottom-of-bottom-line")),
-        "Bottom line" => Some(("style-manager", "bottom-line")),
+        "Bottom of top line" => Some(("style-manager", "bottom-of-top-line")),
         "Underline bottom line" => Some(("style-manager", "underline-bottom-line")),
         "Underline top line" => Some(("style-manager", "underline-top-line")),
         "Underline all text" => Some(("style-manager", "underline-all-text")),
