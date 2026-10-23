@@ -814,8 +814,11 @@ impl OpenCADStudio {
         if !self.block_palette.gallery_previews_changed() {
             return;
         }
-        for name in self.block_palette.gallery_preview_names() {
-            self.build_block_preview(&name);
+        let scene = &self.tabs[self.active_tab].scene;
+        for entry in self.block_palette.gallery_shown().1 {
+            entry
+                .preview
+                .fill_with(|| scene.block_preview_wires(&entry.name));
         }
     }
 
@@ -832,10 +835,8 @@ impl OpenCADStudio {
         let Some(entry) = self.block_palette.current_entry(name) else {
             return;
         };
-        if entry.preview.wires().is_none() {
-            let wires = self.tabs[self.active_tab].scene.block_preview_wires(name);
-            entry.preview.fill(wires);
-        }
+        let scene = &self.tabs[self.active_tab].scene;
+        entry.preview.fill_with(|| scene.block_preview_wires(name));
     }
 
     /// Cheap per-update check: rebuild when the active drawing's definitions

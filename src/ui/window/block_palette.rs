@@ -280,9 +280,10 @@ pub struct BlockEntry {
 /// cache holds one size, so sharing it would draw both thumbnails again on
 /// every frame, and both would show whichever was uploaded last.
 ///
-/// The wires are worked out only once the palette is about to show the
-/// block ([`BlockPalette::shown_preview_names`]); until then it draws as an
-/// empty thumbnail.
+/// The wires are worked out only once the palette or the ribbon gallery is
+/// about to show the block ([`BlockPalette::shown_preview_names`],
+/// [`BlockPalette::gallery_shown`]); until then it draws as an empty
+/// thumbnail.
 pub struct BlockPreview {
     wires: std::cell::OnceCell<Vec<WireModel>>,
     cache: canvas::Cache,
@@ -310,6 +311,13 @@ impl BlockPreview {
             // Whatever was drawn while pending is not the block.
             self.cache.clear();
             self.gallery_cache.clear();
+        }
+    }
+
+    /// Set the wires of a pending preview, working them out only then.
+    pub fn fill_with(&self, wires: impl FnOnce() -> Vec<WireModel>) {
+        if self.wires.get().is_none() {
+            self.fill(wires());
         }
     }
 }
@@ -506,27 +514,20 @@ impl BlockPalette {
         )
     }
 
-    /// The rows of the ribbon gallery in view, plus spare ones. Its height
-    /// is set by the number of blocks, so it is known before it is drawn.
-    fn gallery_rows(&self) -> std::ops::Range<usize> {
+    /// The rows of the ribbon gallery in view, plus spare ones, and their
+    /// blocks: what it builds and whose previews it shows. Its height is set
+    /// by the number of blocks, so it is known before it is drawn.
+    pub fn gallery_shown(&self) -> (std::ops::Range<usize>, &[BlockEntry]) {
         let n = self.blocks.len();
-        visible_rows(
+        let rows = visible_rows(
             n.div_ceil(GALLERY_PER_ROW),
             gallery_pitch(),
             self.gallery_offset,
             gallery_list_h(n),
-        )
-    }
-
-    /// The blocks whose previews the ribbon gallery shows.
-    pub fn gallery_preview_names(&self) -> Vec<String> {
-        let rows = self.gallery_rows();
-        let end = (rows.end * GALLERY_PER_ROW).min(self.blocks.len());
+        );
+        let end = (rows.end * GALLERY_PER_ROW).min(n);
         let start = (rows.start * GALLERY_PER_ROW).min(end);
-        self.blocks[start..end]
-            .iter()
-            .map(|b| b.name.clone())
-            .collect()
+        (rows, &self.blocks[start..end])
     }
 
     /// Whether the gallery's scroll position or blocks changed since the
@@ -1362,13 +1363,12 @@ pub fn gallery(palette: &BlockPalette) -> Element<'_, Message> {
     // Like the palette's lists, only the rows in view (and a few spare) are
     // built; spaces stand in for the others.
     let mut grid = column![].spacing(GALLERY_SPACING);
-    let rows: Vec<&[BlockEntry]> = palette.blocks.chunks(GALLERY_PER_ROW).collect();
-    let shown = palette.gallery_rows();
+    let (shown, shown_blocks) = palette.gallery_shown();
     let pitch = gallery_pitch();
     if shown.start > 0 {
         grid = grid.push(Space::new().height(shown.start as f32 * pitch - GALLERY_SPACING));
     }
-    for chunk in &rows[shown.clone()] {
+    for chunk in shown_blocks.chunks(GALLERY_PER_ROW) {
         let mut r = row![].spacing(GALLERY_SPACING).width(Fill);
         for block in chunk.iter() {
             let card = column![
@@ -1395,7 +1395,7 @@ pub fn gallery(palette: &BlockPalette) -> Element<'_, Message> {
         }
         grid = grid.push(r);
     }
-    let after = rows.len() - shown.end;
+    let after = palette.blocks.len().div_ceil(GALLERY_PER_ROW) - shown.end;
     if after > 0 {
         grid = grid.push(Space::new().height(after as f32 * pitch - GALLERY_SPACING));
     }
@@ -1643,9 +1643,10 @@ mod tests {
         let row30 = at(&palette, 30).unwrap();
         assert!((row30.y - first.y - 30.0 * pitch).abs() < 0.01);
         // Only the previews of those rows are worked out.
-        let shown = palette.gallery_preview_names();
-        assert!(shown.contains(&label(30)));
-        assert!(!shown.contains(&label(0)));
+        let (_, blocks) = palette.gallery_shown();
+        let shown: Vec<&str> = blocks.iter().map(|b| b.name.as_str()).collect();
+        assert!(shown.contains(&label(30).as_str()));
+        assert!(!shown.contains(&label(0).as_str()));
     }
 
     #[test]
