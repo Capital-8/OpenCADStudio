@@ -2961,6 +2961,12 @@ fn pick_trim_at(
             Some(trim_spline(s, &ts, t_click))
         }
         Some(EntityType::LwPolyline(p)) => trim_lwpolyline(p, px, py, geos),
+        Some(EntityType::MLine(m)) => {
+            super::mledit::trim_mline_at(m, DVec3::new(px, py, 0.0), |a, b| {
+                line_seg_ts(a.x, a.y, b.x, b.y, handle, geos)
+            })
+            .map(|trimmed| vec![EntityType::MLine(trimmed)])
+        }
         Some(EntityType::Hatch(hatch)) => trim_hatch_at(hatch, geos, px, py)
             .map(|result| vec![EntityType::Hatch(Box::new(result))]),
         _ => None,
