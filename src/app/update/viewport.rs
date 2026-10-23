@@ -1063,6 +1063,34 @@ impl OpenCADStudio {
             }))
     }
 
+    /// Filters out handles on locked layers if the active command rejects them,
+    /// reporting the dropped count to the command line.
+    pub(in crate::app) fn filter_handles_reject_locked(
+        &mut self,
+        i: usize,
+        handles: &mut Vec<Handle>,
+    ) {
+        if !self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .is_some_and(|c| c.selection_rejects_locked_layers())
+        {
+            return;
+        }
+        let (kept, dropped): (Vec<Handle>, Vec<Handle>) = handles
+            .drain(..)
+            .partition(|h| !self.tabs[i].scene.is_layer_locked(*h));
+        *handles = kept;
+        if !dropped.is_empty() {
+            let count = dropped.len();
+            self.command_line.push_info(&if count == 1 {
+                "1 was on a locked layer.".to_string()
+            } else {
+                format!("{count} were on a locked layer.")
+            });
+        }
+    }
+
     pub(in crate::app) fn grip_edit_for_hit(
         &mut self,
         i: usize,
@@ -2740,10 +2768,14 @@ impl OpenCADStudio {
         // O(N) per frame and stalls the cursor on large drawings,
         // so each move resets the dwell timer — `HoverDwellTick` runs the hit-test only
         // once the cursor has been still for `HOVER_DWELL_MS`.
+        let is_gathering_cmd = self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .is_some_and(|c| c.is_selection_gathering());
         let deferred_command_hover = self.tabs[i].active_cmd.as_ref().is_some_and(|command| {
             command.needs_entity_pick() && command.entity_pick_deferred_hover()
         });
-        if !dragging && (self.tabs[i].active_cmd.is_none() || deferred_command_hover) {
+        if !dragging && (self.tabs[i].active_cmd.is_none() || deferred_command_hover || is_gathering_cmd) {
             // On dense drawings, clearing a rollover immediately schedules a
             // second full scene frame just as motion resumes. Keep the previous
             // highlight until the next settled pick replaces it.
@@ -3269,7 +3301,7 @@ impl OpenCADStudio {
                 bounds,
                 Instant::now(),
             );
-            let otrack_hit = if axis_lock.is_none() {
+            let otrack_hit = if axis_lock.is_none() && !is_gathering {
                 self.active_otrack_hit(
                     i,
                     cursor_world,
@@ -3293,6 +3325,7 @@ impl OpenCADStudio {
             // (#277)
             if axis_lock.is_none()
                 && !raw_pick
+                && !is_gathering
                 && self.tabs[i].snap_result.is_none()
                 && otrack_hit.is_none()
             {
@@ -5437,6 +5470,11 @@ impl OpenCADStudio {
                     .as_ref()
                     .map(|c| c.needs_tangent_pick())
                     .unwrap_or(false);
+                let is_gathering = self.tabs[i]
+                    .active_cmd
+                    .as_ref()
+                    .map(|c| c.is_selection_gathering())
+                    .unwrap_or(false);
                 let needs_entity_click = self.tabs[i]
                     .active_cmd
                     .as_ref()
@@ -5463,7 +5501,7 @@ impl OpenCADStudio {
                 } else {
                     None
                 };
-                let mut snap_hit = if needs_entity_click && !entity_click_takes_points {
+                let mut snap_hit = if (needs_entity_click && !entity_click_takes_points) || is_gathering {
                     None
                 } else if needs_tan {
                     self.snapper.snap_tangent_only(
@@ -6292,6 +6330,7 @@ impl OpenCADStudio {
                             self.box_selection_handles(i, &edit_cam, bounds, a, p, crossing);
                         // The drag gesture applies the selection filter as the click one does.
                         handles.retain(|&h| self.tabs[i].scene.passes_selection_filter(h));
+                        self.filter_handles_reject_locked(i, &mut handles);
                         let cand_ms = timing.candidates;
                         // Box/lasso accumulates like individual picks
                         // (issue #83): a plain box adds to the current
@@ -6340,7 +6379,7 @@ properties={:.1}ms picked={}",
                         (pts, sel.gesture.poly_crossing)
                     };
                     let (view_rot, eye, all_wires) = self.pick_view(i, &edit_cam, bounds);
-                    let handles = self.tabs[i].scene.path_hit_handles(
+                    let mut handles = self.tabs[i].scene.path_hit_handles(
                         &poly_pts,
                         crossing,
                         false,
@@ -6350,6 +6389,8 @@ properties={:.1}ms picked={}",
                         bounds,
                         |point| self.cursor_model_point(i, &edit_cam, point, bounds),
                     );
+                    handles.retain(|&h| self.tabs[i].scene.passes_selection_filter(h));
+                    self.filter_handles_reject_locked(i, &mut handles);
                     // Accumulate like the box path (issue #83): plain
                     // lasso adds, Shift+lasso removes. An empty lasso
                     // leaves the current selection untouched so a stray
@@ -6541,33 +6582,42 @@ properties={:.1}ms picked={}",
                                         self.shift_down || self.select_remove_mode,
                                     ));
                                 }
-                                // Individual picks accumulate (issue #47):
-                                // each plain click adds to the selection,
-                                // Shift+click removes the picked entity.
-                                // PICKADD 0 (#226): a plain click
-                                // REPLACES the selection instead and
-                                // Shift+click toggles membership.
-                                if self.shift_down || self.select_remove_mode {
-                                    // Remove was asked for by name, so it only
-                                    // ever takes away — the toggle below is
-                                    // Shift's PICKADD-0 behaviour, not its.
-                                    if !self.select_remove_mode
-                                        && !selection_pick_add
-                                        && !self.tabs[i].scene.selected.contains(&handle)
-                                    {
-                                        self.tabs[i].scene.select_entity(handle, false);
-                                        self.tabs[i].scene.expand_selection_for_groups(&[handle]);
-                                    } else {
-                                        self.tabs[i].scene.deselect_entity(handle);
-                                    }
+                                if self.tabs[i]
+                                    .active_cmd
+                                    .as_ref()
+                                    .is_some_and(|c| c.selection_rejects_locked_layers())
+                                    && self.tabs[i].scene.is_layer_locked(handle)
+                                {
+                                    self.command_line.push_info("1 was on a locked layer.");
                                 } else {
-                                    self.tabs[i]
-                                        .scene
-                                        .select_entity(handle, !selection_pick_add);
-                                    self.tabs[i].scene.expand_selection_for_groups(&[handle]);
+                                    // Individual picks accumulate (issue #47):
+                                    // each plain click adds to the selection,
+                                    // Shift+click removes the picked entity.
+                                    // PICKADD 0 (#226): a plain click
+                                    // REPLACES the selection instead and
+                                    // Shift+click toggles membership.
+                                    if self.shift_down || self.select_remove_mode {
+                                        // Remove was asked for by name, so it only
+                                        // ever takes away — the toggle below is
+                                        // Shift's PICKADD-0 behaviour, not its.
+                                        if !self.select_remove_mode
+                                            && !selection_pick_add
+                                            && !self.tabs[i].scene.selected.contains(&handle)
+                                        {
+                                            self.tabs[i].scene.select_entity(handle, false);
+                                            self.tabs[i].scene.expand_selection_for_groups(&[handle]);
+                                        } else {
+                                            self.tabs[i].scene.deselect_entity(handle);
+                                        }
+                                    } else {
+                                        self.tabs[i]
+                                            .scene
+                                            .select_entity(handle, !selection_pick_add);
+                                        self.tabs[i].scene.expand_selection_for_groups(&[handle]);
+                                    }
+                                    self.refresh_properties();
+                                    selection_just_completed = true;
                                 }
-                                self.refresh_properties();
-                                selection_just_completed = true;
                             } else {
                                 // Empty-space click only ARMS a box here; it
                                 // no longer clears the selection, so a box can
@@ -6670,6 +6720,7 @@ was_selected={}",
                     let t_filter = crate::perf::enabled().then(Instant::now);
                     // Selection filter: keep only allowed types.
                     handles.retain(|&h| self.tabs[i].scene.passes_selection_filter(h));
+                    self.filter_handles_reject_locked(i, &mut handles);
                     let filter_ms = t_filter.map_or(0.0, |t| t.elapsed().as_secs_f64() * 1000.0);
                     let t_apply = crate::perf::enabled().then(Instant::now);
                     // Accumulate (issue #83): a plain box adds to the
@@ -7553,8 +7604,12 @@ properties={:.1}ms picked={}",
         let deferred_command = self.tabs[i].active_cmd.as_ref().is_some_and(|command| {
             command.needs_entity_pick() && command.entity_pick_deferred_hover()
         });
+        let is_gathering = self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .is_some_and(|command| command.is_selection_gathering());
         let navigating = self.tabs[i].scene.selection.borrow().input.middle_down;
-        if (self.tabs[i].active_cmd.is_some() && !deferred_command) || navigating {
+        if (self.tabs[i].active_cmd.is_some() && !deferred_command && !is_gathering) || navigating {
             self.clear_navigation_hover(i);
             return Task::none();
         }
@@ -7716,8 +7771,23 @@ properties={:.1}ms picked={}",
             self.hover_dwell = None;
             return Task::none();
         }
-        let preview_idle = (self.model_space.selection_preview & 1) != 0;
-        if preview_idle {
+        let preview_enabled = if self.tabs[i].active_cmd.is_none() {
+            (self.model_space.selection_preview & 1) != 0
+        } else {
+            (self.model_space.selection_preview & 2) != 0
+        };
+        if self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .is_some_and(|c| c.selection_rejects_locked_layers())
+        {
+            if let Some(h) = hovered {
+                if self.tabs[i].scene.is_layer_locked(h) {
+                    hovered = None;
+                }
+            }
+        }
+        if preview_enabled {
             self.tabs[i].scene.set_hover_highlight(hovered);
         } else {
             self.tabs[i].scene.set_hover_highlight(None);

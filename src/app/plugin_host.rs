@@ -4102,6 +4102,34 @@ impl crate::command::CadCommand for PluginInteractiveAdapter {
         .unwrap_or_default();
         convert_preview_wires(raw_wires)
     }
+    fn is_selection_gathering(&self) -> bool {
+        crate::plugin::guard("InteractiveCommand::is_selection_gathering", || {
+            self.inner.is_selection_gathering()
+        })
+        .unwrap_or(false)
+    }
+    fn accepts_drag_selection(&self) -> bool {
+        crate::plugin::guard("InteractiveCommand::accepts_drag_selection", || {
+            self.inner.accepts_drag_selection()
+        })
+        .unwrap_or(false)
+    }
+    fn on_selection_complete(&mut self, handles: Vec<Handle>) -> crate::command::CmdResult {
+        crate::plugin::guard("InteractiveCommand::on_selection_complete", || {
+            self.inner.on_selection_complete(handles)
+        })
+        .map(plugin_step_to_result)
+        .unwrap_or(crate::command::CmdResult::Cancel)
+    }
+    fn selection_rejects_locked_layers(&self) -> bool {
+        crate::plugin::guard("InteractiveCommand::selection_rejects_locked_layers", || {
+            self.inner.selection_rejects_locked_layers()
+        })
+        .unwrap_or(false)
+    }
+    fn entity_pick_highlights_hover(&self) -> bool {
+        self.needs_entity_pick() || self.is_selection_gathering()
+    }
 }
 
 /// Bridges an out-of-process plugin's interactive command to the host's
@@ -4113,6 +4141,9 @@ pub(crate) struct PluginProcessInteractiveAdapter {
     pub command_id: u64,
     prompt: Option<String>,
     needs_entity_pick: Option<bool>,
+    is_selection_gathering: Option<bool>,
+    accepts_drag_selection: Option<bool>,
+    selection_rejects_locked_layers: Option<bool>,
     is_done: bool,
 }
 
@@ -4123,11 +4154,17 @@ impl PluginProcessInteractiveAdapter {
     ) -> Self {
         let prompt = process.get_prompt(command_id).ok();
         let needs_entity_pick = process.needs_entity_pick(command_id).ok();
+        let is_selection_gathering = process.is_selection_gathering(command_id).ok();
+        let accepts_drag_selection = process.accepts_drag_selection(command_id).ok();
+        let selection_rejects_locked_layers = process.selection_rejects_locked_layers(command_id).ok();
         Self {
             process,
             command_id,
             prompt,
             needs_entity_pick,
+            is_selection_gathering,
+            accepts_drag_selection,
+            selection_rejects_locked_layers,
             is_done: false,
         }
     }
@@ -4135,6 +4172,9 @@ impl PluginProcessInteractiveAdapter {
     fn refresh(&mut self) {
         self.prompt = self.process.get_prompt(self.command_id).ok();
         self.needs_entity_pick = self.process.needs_entity_pick(self.command_id).ok();
+        self.is_selection_gathering = self.process.is_selection_gathering(self.command_id).ok();
+        self.accepts_drag_selection = self.process.accepts_drag_selection(self.command_id).ok();
+        self.selection_rejects_locked_layers = self.process.selection_rejects_locked_layers(self.command_id).ok();
     }
 
     fn cancel(&mut self) {
@@ -4175,11 +4215,14 @@ impl crate::command::CadCommand for PluginProcessInteractiveAdapter {
             result,
             crate::command::CmdResult::CommitAndExit(_)
                 | crate::command::CmdResult::CommitEntitiesAndExit(_)
+                | crate::command::CmdResult::Done
+                | crate::command::CmdResult::Dispatch(_)
                 | crate::command::CmdResult::Cancel
         ) {
             self.is_done = true;
+        } else {
+            self.refresh();
         }
-        self.refresh();
         result
     }
     fn on_enter(&mut self) -> crate::command::CmdResult {
@@ -4193,11 +4236,14 @@ impl crate::command::CadCommand for PluginProcessInteractiveAdapter {
             result,
             crate::command::CmdResult::CommitAndExit(_)
                 | crate::command::CmdResult::CommitEntitiesAndExit(_)
+                | crate::command::CmdResult::Done
+                | crate::command::CmdResult::Dispatch(_)
                 | crate::command::CmdResult::Cancel
         ) {
             self.is_done = true;
+        } else {
+            self.refresh();
         }
-        self.refresh();
         result
     }
     fn on_escape(&mut self) -> crate::command::CmdResult {
@@ -4224,11 +4270,14 @@ impl crate::command::CadCommand for PluginProcessInteractiveAdapter {
             result,
             crate::command::CmdResult::CommitAndExit(_)
                 | crate::command::CmdResult::CommitEntitiesAndExit(_)
+                | crate::command::CmdResult::Done
+                | crate::command::CmdResult::Dispatch(_)
                 | crate::command::CmdResult::Cancel
         ) {
             self.is_done = true;
+        } else {
+            self.refresh();
         }
-        self.refresh();
         result
     }
     fn on_preview_wires(
@@ -4240,6 +4289,39 @@ impl crate::command::CadCommand for PluginProcessInteractiveAdapter {
             .on_cursor_move(self.command_id, [pt.x as f64, pt.y as f64, pt.z as f64])
             .unwrap_or_default();
         convert_preview_wires(raw_wires)
+    }
+    fn is_selection_gathering(&self) -> bool {
+        self.is_selection_gathering.unwrap_or(false)
+    }
+    fn accepts_drag_selection(&self) -> bool {
+        self.accepts_drag_selection.unwrap_or(false)
+    }
+    fn on_selection_complete(&mut self, handles: Vec<Handle>) -> crate::command::CmdResult {
+        use ocs_plugin_api::ipc::protocol::InteractiveEvent;
+        let result = self
+            .process
+            .interactive_event(self.command_id, InteractiveEvent::SelectionComplete(handles))
+            .map(plugin_step_to_result)
+            .unwrap_or(crate::command::CmdResult::Cancel);
+        if matches!(
+            result,
+            crate::command::CmdResult::CommitAndExit(_)
+                | crate::command::CmdResult::CommitEntitiesAndExit(_)
+                | crate::command::CmdResult::Done
+                | crate::command::CmdResult::Dispatch(_)
+                | crate::command::CmdResult::Cancel
+        ) {
+            self.is_done = true;
+        } else {
+            self.refresh();
+        }
+        result
+    }
+    fn entity_pick_highlights_hover(&self) -> bool {
+        self.needs_entity_pick.unwrap_or(false) || self.is_selection_gathering.unwrap_or(false)
+    }
+    fn selection_rejects_locked_layers(&self) -> bool {
+        self.selection_rejects_locked_layers.unwrap_or(false)
     }
 }
 
@@ -4335,7 +4417,9 @@ fn plugin_step_to_result(step: ocs_plugin_api::host::CommandStep) -> crate::comm
         CommandStep::CommitMany(es) => CmdResult::CommitEntities(es),
         CommandStep::CommitAndEnd(e) => CmdResult::CommitAndExit(e),
         CommandStep::CommitManyAndEnd(es) => CmdResult::CommitEntitiesAndExit(es),
-        CommandStep::Done | CommandStep::Cancel => CmdResult::Cancel,
+        CommandStep::Done => CmdResult::Done,
+        CommandStep::Dispatch(cmd) => CmdResult::Dispatch(cmd),
+        CommandStep::Cancel => CmdResult::Cancel,
     }
 }
 
