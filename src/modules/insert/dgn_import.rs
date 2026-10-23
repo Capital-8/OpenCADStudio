@@ -216,6 +216,30 @@ fn to_ocs(normal: P3, p: P3) -> Vector3 {
 }
 
 /// True when every point is at the first one's z.
+/// The unit normal of the plane the points lie in (Newell's, turned to
+/// +z), `None` when they leave it by more than a millionth of their span.
+/// Points on one line lie in the XY plane's parallel.
+fn plane_normal(points: &[P3]) -> Option<P3> {
+    let mut n = [0.0; 3];
+    for (k, p) in points.iter().enumerate() {
+        let q = points[(k + 1) % points.len()];
+        n[0] += (p[1] - q[1]) * (p[2] + q[2]);
+        n[1] += (p[2] - q[2]) * (p[0] + q[0]);
+        n[2] += (p[0] - q[0]) * (p[1] + q[1]);
+    }
+    let len = norm(n);
+    let span = points.iter().map(|p| norm(sub(*p, points[0]))).fold(0.0, f64::max);
+    if !(len > 1e-12 * span * span) {
+        return flat(points).then_some([0.0, 0.0, 1.0]);
+    }
+    let mut n = [n[0] / len, n[1] / len, n[2] / len];
+    if n[2] < 0.0 || (n[2] == 0.0 && (n[1] < 0.0 || (n[1] == 0.0 && n[0] < 0.0))) {
+        n = [-n[0], -n[1], -n[2]];
+    }
+    let off = |p: &P3| dot(sub(*p, points[0]), n).abs();
+    points.iter().all(|p| off(p) <= 1e-6 * span.max(1e-12)).then_some(n)
+}
+
 fn flat(points: &[P3]) -> bool {
     let z = points.first().map_or(0.0, |p| p[2]);
     points.iter().all(|p| (p[2] - z).abs() <= 1e-9 * z.abs().max(1.0))
@@ -1072,7 +1096,15 @@ impl<'a> Converter<'a> {
                 let mut s = Spline::new();
                 s.degree = 3;
                 s.fit_points = fit.iter().map(|p| v3(*p)).collect();
-                s.flags.planar = true;
+                // A curve through points in one plane is planar about that
+                // plane's normal; a 3D curve off any plane is not.
+                match plane_normal(&fit) {
+                    Some(n) => {
+                        s.flags.planar = true;
+                        s.normal = v3(n);
+                    }
+                    None => s.flags.planar = false,
+                }
                 vec![EntityType::Spline(s)]
             }
             DgnGeom::Dimension {
