@@ -70,6 +70,40 @@ fn edit_action_set(app: &mut OpenCADStudio, action: Handle, mode: &str, targets:
 }
 
 #[test]
+fn block_constraint_status_properties_are_scope_local_read_only_and_refresh_after_changes() {
+    use crate::scene::parametric_constraints::{ConstraintKind, ParametricRef, ParametricScope};
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let i = app.active_tab;
+    let definition = app.tabs[i].active_block_edit_session().unwrap().br_handle;
+    let handle = members(&app)[0];
+    app.tabs[i].scene.select_entity(handle, true);
+    let value = |app: &OpenCADStudio| app.tabs[i].properties.sections.iter().flat_map(|s| &s.props)
+        .find_map(|p| if p.field == "block_constraint_status" {
+            match &p.value { crate::scene::model::object::PropValue::ReadOnly(value) => Some(value.clone()), _ => panic!("status must be read-only") }
+        } else { None }).unwrap();
+    app.refresh_properties();
+    assert_eq!(value(&app), "Unconstrained");
+    app.tabs[i].scene.parametric_constraint_set_mut(ParametricScope::Block(definition))
+        .add(ConstraintKind::Fixed, vec![ParametricRef::whole(handle)], None);
+    let before = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    app.refresh_properties();
+    assert_eq!(value(&app), "Fully constrained");
+    assert_eq!(app.tabs[i].scene.document, before);
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+    for set in &mut app.tabs[i].scene.parametric_constraints {
+        for constraint in &mut set.constraints { constraint.enabled = false; }
+    }
+    app.refresh_properties();
+    assert_eq!(value(&app), "Unconstrained");
+    let _ = app.dispatch_command("BEDIT_DISCARD");
+    app.tabs[i].scene.select_entity(reference, true);
+    app.refresh_properties();
+    assert!(!app.tabs[i].properties.sections.iter().flat_map(|s| &s.props).any(|p| p.field == "block_constraint_status"));
+}
+
+#[test]
 fn block_construction_command_history_display_cancel_and_stale_session() {
     use crate::scene::block_construction as construction;
     use crate::modules::block_editor::construction::Operation;

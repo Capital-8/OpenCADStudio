@@ -2349,7 +2349,7 @@ impl OpenCADStudio {
                 }
                 1 => {
                     let (handle, source_entity) = selected[0];
-                    let (sections, title) = self.entity_property_sections(
+                    let (mut sections, title) = self.entity_property_sections(
                         i,
                         handle,
                         source_entity,
@@ -2357,6 +2357,18 @@ impl OpenCADStudio {
                         annotation_scale_handle,
                         prop_vertex,
                     );
+                    if let Some(definition) = self.tabs[i].active_block_edit_session().map(|s| s.br_handle) {
+                        if source_entity.common().owner_handle == definition {
+                            let status = self.tabs[i].scene.block_constraint_entity_status(definition, handle);
+                            sections.push(crate::scene::model::object::PropSection {
+                                title: crate::t!("Constraints").into_owned(),
+                                props: vec![crate::scene::model::object::Property {
+                                    label: crate::t!("Constraint status").into_owned(), field: "block_constraint_status",
+                                    value: PropValue::ReadOnly(crate::t!(status.label()).into_owned()),
+                                }],
+                            });
+                        }
+                    }
                     ui::PropertiesPanel {
                         choice_combos: property_choice_combos(&sections),
                         sections,

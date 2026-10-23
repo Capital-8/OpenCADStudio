@@ -37,6 +37,8 @@ use super::parametric_constraints::{
 };
 use super::{ChangeKind, Scene};
 
+pub(crate) mod status;
+
 /// One referenced entity's geometry, registered into an `kernel_constraints::System`'s
 /// parameter store.
 #[derive(Clone)]
@@ -3019,52 +3021,7 @@ fn solve_scope(
     // its endpoint. Not tracked in `owner`: these are solver-internal
     // bookkeeping, never redundant with anything a user-facing constraint
     // could name, so there's no `ConstraintId` for them to report against.
-    let add_arc_rules = |sys: &mut System, arc: GArc, sweep: Option<f64>| {
-        let curve = Rc::new(arc);
-        sys.add_constraint(Rc::new(CurveValue::new(
-            arc.start,
-            arc.start.x,
-            curve.clone(),
-            arc.start_angle,
-        )));
-        sys.add_constraint(Rc::new(CurveValue::new(
-            arc.start,
-            arc.start.y,
-            curve.clone(),
-            arc.start_angle,
-        )));
-        sys.add_constraint(Rc::new(CurveValue::new(
-            arc.end,
-            arc.end.x,
-            curve.clone(),
-            arc.end_angle,
-        )));
-        sys.add_constraint(Rc::new(CurveValue::new(
-            arc.end,
-            arc.end.y,
-            curve,
-            arc.end_angle,
-        )));
-        if let Some(sweep) = sweep {
-            let target = sys.add_param(sweep, true);
-            sys.add_constraint(Rc::new(Difference::new(
-                arc.start_angle,
-                arc.end_angle,
-                target,
-            )));
-        }
-    };
-    for geom in cache.values() {
-        match geom {
-            EntityGeom::Arc(arc) => add_arc_rules(&mut sys, *arc, None),
-            EntityGeom::Polyline { arcs, .. } => {
-                for segment in arcs.iter().flatten() {
-                    add_arc_rules(&mut sys, segment.arc, Some(segment.sweep));
-                }
-            }
-            _ => {}
-        }
-    }
+    status::add_intrinsic_arc_rules(&mut sys, &cache);
 
     // Ellipse rules (same motivation as arc rules, different mechanism):
     // `kernel_constraints::geo::Ellipse` stores `focus1` as an absolute point, not an
