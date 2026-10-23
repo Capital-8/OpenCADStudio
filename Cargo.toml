@@ -295,4 +295,4 @@ name = "integration"
 path = "tests/integration.rs"
 
 [patch."https://github.com/HakanSeven12/opencadcodec.git"]
-acadrust = { git = "https://github.com/ramox81/cadcodec.git", rev = "80bc42b" }
+acadrust = { git = "https://github.com/ramox81/cadcodec.git", rev = "830e1a1" }
