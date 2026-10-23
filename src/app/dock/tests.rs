@@ -473,6 +473,47 @@ fn dock_float_resize_grows_the_panel() {
 }
 
 #[test]
+fn dock_and_window_changes_set_the_viewport_size_before_layout() {
+    use crate::app::config::DockSide;
+    use crate::ui::dock::{DockMsg, PanelId};
+    let mut app = dock_app();
+    let i = app.active_tab;
+    let vp = |app: &OpenCADStudio| app.tabs[i].scene.selection.borrow().view.vp_size;
+    let room = |app: &OpenCADStudio| {
+        let (l, r) = app.dock_edge_insets();
+        l + r
+    };
+    let _ = app.update(Message::Dock(DockMsg::HoverExit));
+    // Sizing a docked group's width: the viewport loses what the group gains.
+    let (w0, h0) = vp(&app);
+    let room0 = room(&app);
+    let _ = app.update(Message::Dock(DockMsg::ResizeGrab(PanelId::BlockPalette)));
+    let _ = app.update(Message::Dock(DockMsg::DragMove(iced::Point::new(
+        1300.0, 300.0,
+    ))));
+    let _ = app.update(Message::Dock(DockMsg::DragMove(iced::Point::new(
+        1240.0, 300.0,
+    ))));
+    assert_eq!(room(&app) - room0, 60.0);
+    assert_eq!(vp(&app), (w0 - 60.0, h0));
+    let _ = app.update(Message::Dock(DockMsg::DragRelease));
+    // Auto-hide on the left: the viewport gains the group's width.
+    let (w1, _) = vp(&app);
+    let room1 = room(&app);
+    let _ = app.update(Message::Dock(DockMsg::AutoCollapseToggle(
+        PanelId::Properties,
+    )));
+    assert!(app.dock.edge_auto_hide(DockSide::Left));
+    assert_eq!(vp(&app), (w1 + room1 - room(&app), h0));
+    // A window resize changes it by as much as the window (no pan there).
+    let (w2, h2) = vp(&app);
+    let target = app.tabs[i].scene.camera.borrow().target;
+    let _ = app.update(Message::WindowResized(1500.0, 850.0));
+    assert_eq!(vp(&app), (w2 - 100.0, h2 - 50.0));
+    assert_eq!(app.tabs[i].scene.camera.borrow().target, target);
+}
+
+#[test]
 fn floating_title_bar_starts_on_the_docked_side() {
     use crate::app::config::DockSide;
     use crate::ui::dock::{DockMsg, PanelId};

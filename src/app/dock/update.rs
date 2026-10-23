@@ -811,27 +811,48 @@ impl OpenCADStudio {
     /// more or less room beside the viewport (a pallet docks or undocks, an
     /// edge switches to auto-hide, a group is resized): the viewport's
     /// centre moves, so the view pans by as much. Runs after every message;
-    /// a window resize only records the new layout.
+    /// a window resize doesn't pan.
+    ///
+    /// Either way the viewport's new size is set here too. It is otherwise
+    /// only measured during layout, after `view()` has built the overlays
+    /// from the old size (the ViewCube's controls, the UCS icon, the grid),
+    /// which then trail the drawing by a frame while the size keeps changing.
+    /// Layout still measures it afterwards, so a guess that is off (a ribbon
+    /// that wraps as the window narrows) only lasts that one frame.
     pub(crate) fn dock_keep_view(&mut self) {
         let (left, right) = self.dock_edge_insets();
-        let win_w = self.win_size.0;
+        let win = self.win_size;
         let Some(tab) = self.tabs.get_mut(self.active_tab) else {
             return;
         };
         if tab.is_start {
             return;
         }
-        let Some((was_left, was_right, was_w)) = tab.dock_inset.replace((left, right, win_w))
+        let Some((was_left, was_right, was_win)) = tab.dock_inset.replace((left, right, win))
         else {
             return;
         };
-        if was_w != win_w || (was_left == left && was_right == right) {
+        let resized = was_win != win;
+        if !resized && was_left == left && was_right == right {
             return;
         }
         let (vw, vh) = tab.scene.selection.borrow().view.vp_size;
+        if vw < 1.0 || vh < 1.0 {
+            return;
+        }
+        let w = vw + (win.0 - was_win.0) - ((left - was_left) + (right - was_right));
+        let h = vh + (win.1 - was_win.1);
+        if w >= 1.0 && h >= 1.0 {
+            tab.scene.selection.borrow_mut().view.vp_size = (w, h);
+            tab.scene.sync_tiles_from_panes(w, h);
+        }
+        if resized {
+            return;
+        }
         // Tiled model viewports each have their own view; they are left be.
+        let (vw, vh) = tab.scene.selection.borrow().view.vp_size;
         let tile = tab.scene.active_model_tile_bounds(vw, vh);
-        if vh <= 0.0 || tile.width < vw - 0.5 || tile.height < vh - 0.5 {
+        if tile.width < vw - 0.5 || tile.height < vh - 0.5 {
             return;
         }
         // How far right the viewport's centre moved.
