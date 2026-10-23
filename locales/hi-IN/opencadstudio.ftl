@@ -6003,6 +6003,8 @@ ui =
     .build = बिल्ड
     .commit-date = कमिट तिथि
     .count-steps-available = __ocs_arg_count__ उपलब्ध चरणों
+    .find-all = सभी खोजें
+    .find-matches-found = __ocs_fmt_0__ मिलान मिले।
     .label-history = __ocs_arg_label__ इतिहास
     .n-vp = __ocs_arg_n__ व्यूपोर्ट
     .a-newer-open-cad-studio-version-is-published-o = एक नया Open CAD Studio संस्करण गिटहब पर प्रकाशित किया गया है।
@@ -6111,6 +6113,7 @@ ui =
     .replace-with = इसके साथ बदलें:
     .searches-text-mtext-attribute-definitions-and = Text, MText, एट्रिब्यूट परिभाषाओं और ब्लॉक एट्रिब्यूट मानों में खोजता है।
     .select-similar = इसी तरह का चयन करें
+    .selected-match-no-longer-in-drawing = चयनित मिलान अब ड्रॉइंग में नहीं है।
     .selection-cycling = साइकिलिंग
     .selection-cycling-repeat-click-to-step-through =
         चयन चक्र

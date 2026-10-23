@@ -6015,6 +6015,8 @@ ui =
     .build = Build
     .commit-date = Ημερομηνία commit
     .count-steps-available = __ocs_arg_count__ διαθέσιμα βήματα
+    .find-all = Εύρεση όλων
+    .find-matches-found = Βρέθηκαν __ocs_fmt_0__ αποτελέσματα.
     .label-history = Ιστορικό: __ocs_arg_label__
     .n-vp = __ocs_arg_n__ ΘΠ
     .a-newer-open-cad-studio-version-is-published-o = Μια νεότερη έκδοση του Open CAD Studio έχει δημοσιευτεί στο GitHub.
@@ -6123,6 +6125,7 @@ ui =
     .replace-with = Αντικατάσταση με:
     .searches-text-mtext-attribute-definitions-and = Αναζητά σε Text, MText, ορισμούς χαρακτηριστικών και τιμές χαρακτηριστικών μπλοκ.
     .select-similar = Επιλογή παρόμοιων
+    .selected-match-no-longer-in-drawing = Το επιλεγμένο αποτέλεσμα δεν υπάρχει πλέον στο σχέδιο.
     .selection-cycling = Εναλλαγή επιλογής
     .selection-cycling-repeat-click-to-step-through =
         Εναλλαγή επιλογής

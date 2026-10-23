@@ -6003,6 +6003,8 @@ ui =
     .build = ビルド
     .commit-date = コミット日
     .count-steps-available = __ocs_arg_count__ ステップ利用可能
+    .find-all = すべて検索
+    .find-matches-found = __ocs_fmt_0__ 件見つかりました。
     .label-history = __ocs_arg_label__ の履歴
     .n-vp = __ocs_arg_n__ 個の VP
     .a-newer-open-cad-studio-version-is-published-o = 新しいバージョンの Open CAD Studio が GitHub で公開されています。
@@ -6111,6 +6113,7 @@ ui =
     .replace-with = 置換後:
     .searches-text-mtext-attribute-definitions-and = 文字、マルチテキスト、属性定義、ブロック属性値を検索します。
     .select-similar = 類似選択
+    .selected-match-no-longer-in-drawing = 選択した項目は図面にもうありません。
     .selection-cycling = 選択循環
     .selection-cycling-repeat-click-to-step-through =
         選択循環

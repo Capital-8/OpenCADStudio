@@ -6014,6 +6014,8 @@ ui =
     .build = Kompilacja
     .commit-date = Data commita
     .count-steps-available = Dostępne stopnie __ocs_arg_count__
+    .find-all = Znajdź wszystko
+    .find-matches-found = Znaleziono dopasowań: __ocs_fmt_0__.
     .label-history = Historia __ocs_arg_label__
     .n-vp = __ocs_arg_n__ VP
     .a-newer-open-cad-studio-version-is-published-o = A nowsza wersja Open CAD Studio została opublikowana na GitHub.
@@ -6122,6 +6124,7 @@ ui =
     .replace-with = Zamień na:
     .searches-text-mtext-attribute-definitions-and = Przeszukuje tekst, tekst wielowierszowy, definicje atrybutów i wartości atrybutów bloków.
     .select-similar = Wybierz opcję Podobne
+    .selected-match-no-longer-in-drawing = Wybrane dopasowanie nie znajduje się już w rysunku.
     .selection-cycling = Wybór na rowerze
     .selection-cycling-repeat-click-to-step-through =
         Wybór na rowerze

@@ -6015,6 +6015,8 @@ ui =
     .build = Компилация
     .commit-date = Дата на комита
     .count-steps-available = налични __ocs_arg_count__ стъпки
+    .find-all = Намери всички
+    .find-matches-found = Намерени съвпадения: __ocs_fmt_0__.
     .label-history = история на __ocs_arg_label__
     .n-vp = __ocs_arg_n__ VP
     .a-newer-open-cad-studio-version-is-published-o = Публикувана е по-нова версия на Open CAD Studio в GitHub.
@@ -6123,6 +6125,7 @@ ui =
     .replace-with = Замени с:
     .searches-text-mtext-attribute-definitions-and = Търси в текст, многореден текст, дефиниции на атрибути, и стойности на атрибути на блокове.
     .select-similar = Избери подобни
+    .selected-match-no-longer-in-drawing = Избраното съвпадение вече не е в чертежа.
     .selection-cycling = Циклично превключване на избора
     .selection-cycling-repeat-click-to-step-through =
         Циклично превключване на избора

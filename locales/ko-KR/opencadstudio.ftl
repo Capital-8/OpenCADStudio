@@ -6014,6 +6014,8 @@ ui =
     .build = 빌드
     .commit-date = 커밋 날짜
     .count-steps-available = __ocs_arg_count__ 단계 사용 가능
+    .find-all = 모두 찾기
+    .find-matches-found = __ocs_fmt_0__개 일치 항목을 찾았습니다.
     .label-history = __ocs_arg_label__ 역사
     .n-vp = __ocs_arg_n__ VP
     .a-newer-open-cad-studio-version-is-published-o = A 최신 Open CAD Studio 버전은 GitHub에 게시되었습니다.
@@ -6122,6 +6124,7 @@ ui =
     .replace-with = 다음으로 교체:
     .searches-text-mtext-attribute-definitions-and = 문자, 여러 줄 문자, 속성 정의 및 블록 속성 값을 검색합니다.
     .select-similar = 유사 선택
+    .selected-match-no-longer-in-drawing = 선택한 항목이 더 이상 도면에 없습니다.
     .selection-cycling = 선택 사이클링
     .selection-cycling-repeat-click-to-step-through =
         선택 사이클링

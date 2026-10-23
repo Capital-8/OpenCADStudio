@@ -6020,6 +6020,8 @@ ui =
     .build = Bản dựng
     .commit-date = Ngày cam kết
     .count-steps-available = __ocs_arg_count__ bước có sẵn
+    .find-all = Tìm tất cả
+    .find-matches-found = Tìm thấy __ocs_fmt_0__ kết quả.
     .label-history = Lịch sử __ocs_arg_label__
     .n-vp = __ocs_arg_n__ khung nhìn
     .a-newer-open-cad-studio-version-is-published-o = Phiên bản Open CAD Studio mới hơn được xuất bản trên GitHub.
@@ -6128,6 +6130,7 @@ ui =
     .replace-with = Thay thế bằng:
     .searches-text-mtext-attribute-definitions-and = Tìm kiếm Văn bản, MText, Định nghĩa thuộc tính và giá trị thuộc tính khối.
     .select-similar = Chọn tương tự
+    .selected-match-no-longer-in-drawing = Kết quả đã chọn không còn trong bản vẽ.
     .selection-cycling = Chọn xoay vòng
     .selection-cycling-repeat-click-to-step-through =
         Chọn xoay vòng

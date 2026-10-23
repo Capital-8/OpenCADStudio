@@ -6014,6 +6014,8 @@ ui =
     .build = Build
     .commit-date = Commit date
     .count-steps-available = __ocs_arg_count__ steps available
+    .find-all = Find All
+    .find-matches-found = __ocs_fmt_0__ match(es) found.
     .label-history = __ocs_arg_label__ history
     .n-vp = __ocs_arg_n__ VP
     .a-newer-open-cad-studio-version-is-published-o = A newer Open CAD Studio version is published on GitHub.
@@ -6122,6 +6124,7 @@ ui =
     .replace-with = Replace with:
     .searches-text-mtext-attribute-definitions-and = Searches Text, MText, Attribute Definitions, and block attribute values.
     .select-similar = Select Similar
+    .selected-match-no-longer-in-drawing = The selected match is no longer in the drawing.
     .selection-cycling = Selection Cycling
     .selection-cycling-repeat-click-to-step-through =
         Selection Cycling

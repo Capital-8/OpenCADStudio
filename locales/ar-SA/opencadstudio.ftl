@@ -6027,6 +6027,8 @@ ui =
     .build = البناء
     .commit-date = تاريخ الإيداع
     .count-steps-available = تتوفر __ocs_arg_count__ خطوات
+    .find-all = بحث عن الكل
+    .find-matches-found = تم العثور على __ocs_fmt_0__ تطابق.
     .label-history = سجل __ocs_arg_label__
     .n-vp = __ocs_arg_n__ منفذ عرض
     .a-newer-open-cad-studio-version-is-published-o = نُشر إصدار أحدث من Open CAD Studio على GitHub.
@@ -6135,6 +6137,7 @@ ui =
     .replace-with = الاستبدال بـ:
     .searches-text-mtext-attribute-definitions-and = يبحث في النص والنص متعدد الأسطر وتعريفات السمات وقيم سمات الكتل.
     .select-similar = تحديد المشابه
+    .selected-match-no-longer-in-drawing = لم يعد التطابق المحدد موجودًا في الرسم.
     .selection-cycling = تدوير التحديد
     .selection-cycling-repeat-click-to-step-through =
         تدوير التحديد

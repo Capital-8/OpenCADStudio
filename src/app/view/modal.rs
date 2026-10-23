@@ -314,6 +314,8 @@ impl OpenCADStudio {
                     &self.find_replace.search,
                     &self.find_replace.replacement,
                     &self.find_replace.status,
+                    &self.find_replace.results,
+                    self.find_replace.current_match,
                     flow,
                 )
             }),

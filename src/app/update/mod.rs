@@ -7422,6 +7422,14 @@ impl OpenCADStudio {
                 self.find_replace_all();
                 Task::none()
             }
+            Message::FindReplaceFindAll => {
+                self.find_replace_find_all();
+                Task::none()
+            }
+            Message::FindReplaceSelectResult(index) => {
+                self.find_replace_select_result(index);
+                Task::none()
+            }
             Message::OverkillSettingsChanged(settings) => {
                 if let Some(state) = &mut self.overkill_dialog {
                     state.settings = settings;

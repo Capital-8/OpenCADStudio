@@ -6014,6 +6014,8 @@ ui =
     .build = Koontiversio
     .commit-date = Commitin päivämäärä
     .count-steps-available = __ocs_arg_count__ portaat saatavilla
+    .find-all = Etsi kaikki
+    .find-matches-found = Löytyi __ocs_fmt_0__ osumaa.
     .label-history = __ocs_arg_label__ historia
     .n-vp = __ocs_arg_n__ VP
     .a-newer-open-cad-studio-version-is-published-o = A uudempi Open CAD Studio-versio on julkaistu GitHub:ssä.
@@ -6120,6 +6122,7 @@ ui =
     .replace-with = Korvaa seuraavalla:
     .searches-text-mtext-attribute-definitions-and = Hakee tekstiä, MTextiä, attribuuttimäärityksiä ja lohkomääritteiden arvoja.
     .select-similar = Valitse Samanlainen
+    .selected-match-no-longer-in-drawing = Valittu osuma ei ole enää piirustuksessa.
     .selection-cycling = Valinta Pyöräily
     .selection-cycling-repeat-click-to-step-through =
         Valinta Pyöräily

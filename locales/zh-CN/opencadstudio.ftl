@@ -5998,6 +5998,8 @@ ui =
     .build = 构建
     .commit-date = 提交日期
     .count-steps-available = 可用 __ocs_arg_count__ 步
+    .find-all = 全部查找
+    .find-matches-found = 找到 __ocs_fmt_0__ 个匹配项。
     .label-history = __ocs_arg_label__ 历史
     .n-vp = __ocs_arg_n__ 个视口
     .a-newer-open-cad-studio-version-is-published-o = GitHub 上发布了更新的 Open CAD Studio 版本。
@@ -6106,6 +6108,7 @@ ui =
     .replace-with = 替换为：
     .searches-text-mtext-attribute-definitions-and = 搜索文字、多行文字、属性定义和块属性值。
     .select-similar = 选择类似对象
+    .selected-match-no-longer-in-drawing = 所选匹配项已不在图形中。
     .selection-cycling = 选择循环
     .selection-cycling-repeat-click-to-step-through =
         选择循环

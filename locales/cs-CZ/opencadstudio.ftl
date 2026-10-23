@@ -6012,6 +6012,8 @@ ui =
     .build = Sestavení
     .commit-date = Datum commitu
     .count-steps-available = K dispozici jsou kroky __ocs_arg_count__
+    .find-all = Najít vše
+    .find-matches-found = Nalezené shody: __ocs_fmt_0__.
     .label-history = Historie __ocs_arg_label__
     .n-vp = __ocs_arg_n__ VP
     .a-newer-open-cad-studio-version-is-published-o = A novější verze Open CAD Studio je zveřejněna na GitHub.
@@ -6120,6 +6122,7 @@ ui =
     .replace-with = Nahradit za:
     .searches-text-mtext-attribute-definitions-and = Prohledává text, MText, definice atributů a hodnoty atributů bloku.
     .select-similar = Vyberte možnost Podobné
+    .selected-match-no-longer-in-drawing = Vybraná shoda už ve výkresu není.
     .selection-cycling = Výběr Cyklistika
     .selection-cycling-repeat-click-to-step-through =
         Výběr Cyklistika

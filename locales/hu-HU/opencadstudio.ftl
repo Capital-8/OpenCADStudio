@@ -5997,6 +5997,9 @@ plugins =
     .no-releases = nincs kiadás
 
 ui =
+    .find-all = Összes keresése
+    .find-matches-found = __ocs_fmt_0__ találat.
+    .selected-match-no-longer-in-drawing = A kijelölt találat már nincs a rajzban.
     .window-gpu-backend = GPU (háttérrendszer)
     .window-click-add-alias-type-the-alias-and-command-accep = Kattintson a „+ Álnév hozzáadása” gombra, adja meg az álnevet és a parancsot, majd fogadja el a sort és kattintson az Alkalmaz gombra. Az Esc megszakítja a hozzáadást.
     .window-number-of-aliases = Álnevek száma

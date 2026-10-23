@@ -6013,6 +6013,8 @@ ui =
     .build = Build
     .commit-date = Commitdatum
     .count-steps-available = __ocs_arg_count__ stappen beschikbaar
+    .find-all = Alles zoeken
+    .find-matches-found = __ocs_fmt_0__ overeenkomst(en) gevonden.
     .label-history = __ocs_arg_label__ geschiedenis
     .n-vp = __ocs_arg_n__ weergavevenster
     .a-newer-open-cad-studio-version-is-published-o = Een nieuwere Open CAD Studio versie wordt gepubliceerd op GitHub.
@@ -6121,6 +6123,7 @@ ui =
     .replace-with = Vervangen door:
     .searches-text-mtext-attribute-definitions-and = Zoekt Tekst, MText, Attribuut Definities, en symbool attribuut waarden.
     .select-similar = Gelijkaardig selecteren
+    .selected-match-no-longer-in-drawing = De geselecteerde overeenkomst staat niet meer in de tekening.
     .selection-cycling = Selectie Fietsen
     .selection-cycling-repeat-click-to-step-through =
         Selectie doorlopen

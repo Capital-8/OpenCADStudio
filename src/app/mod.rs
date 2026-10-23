@@ -398,6 +398,17 @@ pub(crate) struct FindReplaceState {
     pub replacement: String,
     pub status: String,
     pub current_match: Option<FindMatchKey>,
+    /// The last Find All list; picking a row visits it without searching again.
+    pub results: Vec<FindResult>,
+}
+
+/// One Find All row: the match plus enough context to tell repeats apart.
+#[derive(Clone, Debug)]
+pub(crate) struct FindResult {
+    pub key: FindMatchKey,
+    pub text: String,
+    pub kind: String,
+    pub layer: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2649,6 +2660,8 @@ pub enum Message {
     FindReplaceNext,
     FindReplaceOne,
     FindReplaceAll,
+    FindReplaceFindAll,
+    FindReplaceSelectResult(usize),
     OverkillSettingsChanged(crate::modules::draw::modify::overkill::Settings),
     OverkillToleranceChanged(String),
     OverkillOk,

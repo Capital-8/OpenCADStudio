@@ -5950,6 +5950,8 @@ ui =
     .build = Derleme
     .commit-date = Commit tarihi
     .count-steps-available = __ocs_arg_count__ adım kullanılabilir
+    .find-all = Tümünü Bul
+    .find-matches-found = __ocs_fmt_0__ eşleşme bulundu.
     .label-history = __ocs_arg_label__ geçmişi
     .n-vp = __ocs_arg_n__ görünüm alanı
     .a-newer-open-cad-studio-version-is-published-o = GitHub'da daha yeni bir Open CAD Studio sürümü yayımlandı.
@@ -6048,6 +6050,7 @@ ui =
     .replace-with = Şununla değiştir:
     .searches-text-mtext-attribute-definitions-and = Metin, Çok Satırlı Metin, Öznitelik Tanımları ve blok özniteliği değerlerinde arar.
     .select-similar = Benzerini Seç
+    .selected-match-no-longer-in-drawing = Seçilen eşleşme artık çizimde değil.
     .selection-cycling = Seçim Döngüsü
     .selection-cycling-repeat-click-to-step-through = Seçim Döngüsü
             Üst üste binen nesneler arasında ilerlemek için art arda tıklayın

@@ -6015,6 +6015,8 @@ ui =
     .build = ຮຸ່ນບິວຕ໌ (Build)
     .commit-date = ວັນທີຄອມມິດ
     .count-steps-available = ມີ __ocs_arg_count__ ຂັ້ນຕອນໃຫ້ໃຊ້
+    .find-all = ຊອກຫາທັງໝົດ
+    .find-matches-found = ພົບ __ocs_fmt_0__ ລາຍການທີ່ກົງກັນ.
     .label-history = ປະຫວັດ __ocs_arg_label__
     .n-vp = __ocs_arg_n__ ຊ່ອງມຸມມອງ
     .a-newer-open-cad-studio-version-is-published-o = ມີ Open CAD Studio ເວີຊັນໃໝ່ກວ່າເຜີຍແຜ່ຢູ່ GitHub.
@@ -6123,6 +6125,7 @@ ui =
     .replace-with = ປ່ຽນແທນດ້ວຍ:
     .searches-text-mtext-attribute-definitions-and = ຄົ້ນຫາ Text, MText, Attribute Definitions ແລະ ຄ່າຄຸນລັກສະນະຂອງບລັອກ.
     .select-similar = ເລືອກວັດຖຸທີ່ຄ້າຍກັນ
+    .selected-match-no-longer-in-drawing = ລາຍການທີ່ເລືອກບໍ່ມີຢູ່ໃນແບບແຕ້ມອີກແລ້ວ.
     .selection-cycling = ການສະຫຼັບເລືອກວັດຖຸ
     .selection-cycling-repeat-click-to-step-through =
         ການສະຫຼັບເລືອກວັດຖຸ
