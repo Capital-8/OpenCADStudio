@@ -446,6 +446,8 @@ impl OpenCADStudio {
         let mut task = self.update_message(msg);
         // A dock change leaves the drawing where it was on screen.
         self.dock_keep_view();
+        // Thumbnails the block palette asked for are read in the background.
+        task = Task::batch([task, self.palette_thumbnail_task()]);
         // A script waiting on an open or a save goes on once it is done,
         // however that open or save ended.
         if self.script_paused && !self.script_busy() {
@@ -741,6 +743,9 @@ impl OpenCADStudio {
         // The block panel watches the drawing's block list and rebuilds its
         // thumbnails whenever the names change (BLOCK define, file open, …).
         self.refresh_block_palette_if_stale();
+        if self.show_block_palette {
+            self.ensure_block_previews();
+        }
         // What this message changed is only known while it is handled.
         self.block_palette.change_hint = Default::default();
         // The Reference Manager watches the active drawing and re-scans when
@@ -6870,10 +6875,12 @@ impl OpenCADStudio {
                 if self.tabs[self.active_tab].is_start {
                     self.ribbon.close_dropdown();
                 } else {
-                    if id == crate::modules::insert::insert_block::GALLERY_ID
-                        && self.block_palette_stale()
-                    {
-                        self.refresh_block_palette();
+                    if id == crate::modules::insert::insert_block::GALLERY_ID {
+                        if self.block_palette_stale() {
+                            self.refresh_block_palette();
+                        }
+                        // The gallery shows every block.
+                        self.ensure_all_block_previews();
                     }
                     // The per-viewport freeze column follows the active viewport.
                     if id == crate::ui::ribbon::widgets::LAYER_COMBO_ID {

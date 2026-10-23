@@ -169,6 +169,7 @@ impl OpenCADStudio {
             BlockPaletteMsg::Scrolled { offset, height } => {
                 self.block_palette.scroll = (offset, height);
             }
+            BlockPaletteMsg::Thumbnails(read) => self.apply_palette_thumbnails(read),
         }
         Task::none()
     }
@@ -229,11 +230,11 @@ impl OpenCADStudio {
                         thumb: None,
                     })
                 } else if is_drawing(&path) {
-                    let thumb = crate::io::thumbnail::read_handle(&path);
+                    // The thumbnail is read in the background.
                     Some(LibraryEntry {
                         path,
                         folder: false,
-                        thumb,
+                        thumb: None,
                     })
                 } else {
                     None
@@ -248,6 +249,9 @@ impl OpenCADStudio {
                     .map(|n| n.to_string_lossy().to_lowercase()),
             )
         });
+        self.block_palette
+            .thumb_requests
+            .extend(entries.iter().filter(|e| !e.folder).map(|e| e.path.clone()));
         self.block_palette.library_dir = Some(dir);
         self.block_palette.library_entries = entries;
     }
@@ -300,10 +304,11 @@ impl OpenCADStudio {
     fn start_palette_insert(&mut self, name: &str, drop_at: Option<glam::DVec3>) -> Task<Message> {
         use crate::command::CadCommand;
         let i = self.active_tab;
+        self.build_block_preview(name);
         let wires = self
             .block_palette
             .current_entry(name)
-            .map(|b| b.preview.wires.clone())
+            .and_then(|b| b.preview.wires().map(<[_]>::to_vec))
             .unwrap_or_else(|| self.tabs[i].scene.block_preview_wires(name));
         let mut options = self.block_palette.options.clone();
         if drop_at.is_some() {
@@ -691,11 +696,8 @@ impl OpenCADStudio {
         let entries: Vec<BlockEntry> = names
             .iter()
             .map(|name| BlockEntry {
-                preview: kept(name).unwrap_or_else(|| {
-                    std::rc::Rc::new(BlockPreview::new(
-                        self.tabs[i].scene.block_preview_wires(name),
-                    ))
-                }),
+                // Worked out once shown (`ensure_block_previews`).
+                preview: kept(name).unwrap_or_else(|| std::rc::Rc::new(BlockPreview::pending())),
                 annotative: annotative(name),
                 dynamic: false,
                 name: name.clone(),
@@ -712,11 +714,24 @@ impl OpenCADStudio {
                 .insert(key, std::rc::Rc::clone(&entry.preview));
         }
         self.block_palette.set_blocks(entries);
+        // Recent / Favorites keep this drawing's blocks' previews for other
+        // drawings, so theirs are worked out now rather than when shown.
+        let listed: Vec<String> = self
+            .block_palette
+            .recent
+            .iter()
+            .chain(&self.block_palette.favorites)
+            .filter(|r| !r.drawing && r.source == here)
+            .map(|r| r.name.clone())
+            .collect();
+        for name in listed {
+            self.build_block_preview(&name);
+        }
         self.load_palette_drawing_thumbs();
     }
 
-    /// Read the thumbnails of the drawings Recent / Favorites point at that
-    /// are not read yet.
+    /// Ask for the thumbnails of the drawings Recent / Favorites point at
+    /// that are not read (or being read) yet.
     fn load_palette_drawing_thumbs(&mut self) {
         let drawings: Vec<String> = self
             .block_palette
@@ -727,8 +742,74 @@ impl OpenCADStudio {
             .map(|r| r.source.clone())
             .collect();
         for source in drawings {
-            let thumb = crate::io::thumbnail::read_handle(Path::new(&source));
-            self.block_palette.file_thumbs.insert(source, thumb);
+            // Marked as asked for; the thumbnail arrives with
+            // `BlockPaletteMsg::Thumbnails`.
+            self.block_palette
+                .thumb_requests
+                .push(PathBuf::from(&source));
+            self.block_palette.file_thumbs.insert(source, None);
+        }
+    }
+
+    /// Thumbnails read in the background: put each on the library entry
+    /// and the recent / favorite drawing it belongs to (a folder left
+    /// meanwhile has no entry for it any more).
+    fn apply_palette_thumbnails(
+        &mut self,
+        read: Vec<(PathBuf, Option<iced::widget::image::Handle>)>,
+    ) {
+        for (path, thumb) in read {
+            let Some(thumb) = thumb else { continue };
+            for entry in &mut self.block_palette.library_entries {
+                if entry.path == path {
+                    entry.thumb = Some(thumb.clone());
+                }
+            }
+            if let Some(slot) = self
+                .block_palette
+                .file_thumbs
+                .get_mut(path.to_string_lossy().as_ref())
+            {
+                *slot = Some(thumb);
+            }
+        }
+    }
+
+    /// Start reading the asked-for thumbnails in the background.
+    pub(crate) fn palette_thumbnail_task(&mut self) -> Task<Message> {
+        let paths = std::mem::take(&mut self.block_palette.thumb_requests);
+        if paths.is_empty() {
+            return Task::none();
+        }
+        Task::run(read_thumbnails(paths), |read| {
+            Message::BlockPalette(BlockPaletteMsg::Thumbnails(read))
+        })
+    }
+
+    /// Work out the previews the palette is about to show that are still
+    /// pending.
+    pub(crate) fn ensure_block_previews(&mut self) {
+        for name in self.block_palette.shown_preview_names() {
+            self.build_block_preview(&name);
+        }
+    }
+
+    /// Work out every pending preview of the drawing's blocks.
+    pub(crate) fn ensure_all_block_previews(&mut self) {
+        for name in self.block_palette.cached_names.clone() {
+            self.build_block_preview(&name);
+        }
+    }
+
+    /// Work out block `name`'s preview if it is a block of the drawing whose
+    /// preview is pending.
+    fn build_block_preview(&mut self, name: &str) {
+        let Some(entry) = self.block_palette.current_entry(name) else {
+            return;
+        };
+        if entry.preview.wires().is_none() {
+            let wires = self.tabs[self.active_tab].scene.block_preview_wires(name);
+            entry.preview.fill(wires);
         }
     }
 
@@ -877,4 +958,35 @@ pub(crate) fn changed_block_names(
         })
         .map(|br| br.name.clone())
         .collect()
+}
+
+/// Read the thumbnails of `paths` off the UI thread, a few at a time so they
+/// show as they come (the web build has no threads and reads them at once).
+fn read_thumbnails(
+    paths: Vec<PathBuf>,
+) -> impl iced::futures::Stream<Item = Vec<(PathBuf, Option<iced::widget::image::Handle>)>> {
+    const BATCH: usize = 8;
+    let read = |paths: &[PathBuf]| -> Vec<_> {
+        paths
+            .iter()
+            .map(|p| (p.clone(), crate::io::thumbnail::read_handle(p)))
+            .collect()
+    };
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let (tx, rx) = iced::futures::channel::mpsc::unbounded();
+        std::thread::spawn(move || {
+            for chunk in paths.chunks(BATCH) {
+                if tx.unbounded_send(read(chunk)).is_err() {
+                    return;
+                }
+            }
+        });
+        rx
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let all: Vec<_> = paths.chunks(BATCH).map(read).collect();
+        iced::futures::stream::iter(all)
+    }
 }

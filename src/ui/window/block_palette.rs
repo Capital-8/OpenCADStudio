@@ -34,6 +34,9 @@ const LIST_SPACING: f32 = 4.0;
 /// Rows built beyond each end of the visible ones, so a fast scroll doesn't
 /// show an empty row before the list catches up.
 const SPARE_ROWS: usize = 2;
+/// How tall the list is taken to be for its previews before it reports its
+/// viewport (it does on the first frame it is drawn).
+const FIRST_SCREEN_H: f32 = 1200.0;
 
 /// The palette's tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -198,6 +201,9 @@ pub enum BlockPaletteMsg {
         offset: f32,
         height: f32,
     },
+    /// Thumbnails read in the background, by drawing path (`None` when the
+    /// drawing has none).
+    Thumbnails(Vec<(PathBuf, Option<image::Handle>)>),
 }
 
 /// Which block definitions a change touched, as far as it is known.
@@ -226,16 +232,40 @@ pub struct BlockEntry {
 /// across frames: it is only drawn again when the thumbnail's size changes,
 /// and a refresh of the palette makes new previews. Shared between the
 /// Current Drawing list and the previews kept for Recent / Favorites.
+///
+/// The wires are worked out only once the palette is about to show the
+/// block ([`BlockPalette::shown_preview_names`]); until then it draws as an
+/// empty thumbnail.
 pub struct BlockPreview {
-    pub wires: Vec<WireModel>,
+    wires: std::cell::OnceCell<Vec<WireModel>>,
     cache: canvas::Cache,
 }
 
 impl BlockPreview {
     pub fn new(wires: Vec<WireModel>) -> Self {
+        let preview = Self::pending();
+        preview.fill(wires);
+        preview
+    }
+
+    /// A preview whose wires are not worked out yet.
+    pub fn pending() -> Self {
         Self {
-            wires,
+            wires: std::cell::OnceCell::new(),
             cache: canvas::Cache::new(),
+        }
+    }
+
+    /// The wires, once worked out.
+    pub fn wires(&self) -> Option<&[WireModel]> {
+        self.wires.get().map(Vec::as_slice)
+    }
+
+    /// Set the wires of a pending preview (a built one keeps its own).
+    pub fn fill(&self, wires: Vec<WireModel>) {
+        if self.wires.set(wires).is_ok() {
+            // Whatever was drawn while pending is not the block.
+            self.cache.clear();
         }
     }
 }
@@ -287,6 +317,9 @@ pub struct BlockPalette {
     /// refresh after it can keep the previews of the other blocks. Cleared
     /// once the message is handled.
     pub change_hint: ChangeHint,
+    /// Drawings whose thumbnails are wanted but not asked for yet; they are
+    /// read in the background once the message is handled.
+    pub thumb_requests: Vec<PathBuf>,
     /// Blocks brought in from drawings this session (upper name → file),
     /// so the Recent list remembers the drawing.
     pub file_sources: std::collections::HashMap<String, String>,
@@ -345,6 +378,36 @@ impl BlockPalette {
         }
     }
 
+    /// The blocks whose previews the list shows with the current scroll
+    /// position: the rows in view (or the first screenful, before the list
+    /// reported its viewport) in the icon views, every row of Small Icons
+    /// and Details, none in List. Blocks of the drawing and recent /
+    /// favorite blocks that may be in it.
+    pub fn shown_preview_names(&self) -> Vec<String> {
+        let items = self.items();
+        let shown: &[Item] = match self.view.grid() {
+            Some((per_row, size)) => {
+                let (offset, height) = self.scroll;
+                let height = if height > 0.0 { height } else { FIRST_SCREEN_H };
+                let rows = items.len().div_ceil(per_row);
+                let pitch = grid_row_h(size) + LIST_SPACING;
+                let range = visible_rows(rows, pitch, offset, height);
+                let end = (range.end * per_row).min(items.len());
+                &items[(range.start * per_row).min(end)..end]
+            }
+            None if self.view == ViewMode::List => &[],
+            None => &items,
+        };
+        shown
+            .iter()
+            .filter_map(|item| match item {
+                Item::Current(name) => Some(name.clone()),
+                Item::Ref(r) if !r.drawing => Some(r.name.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Replace the Current Drawing blocks.
     pub fn set_blocks(&mut self, blocks: Vec<BlockEntry>) {
         let mut index = std::collections::HashMap::with_capacity(blocks.len());
@@ -383,10 +446,11 @@ struct BlockPreviewCanvas<'a> {
 }
 
 impl<'a> BlockPreviewCanvas<'a> {
-    /// The canvas of a palette preview, drawn through its cache.
+    /// The canvas of a palette preview, drawn through its cache (empty
+    /// while the preview is pending).
     fn cached(preview: &'a BlockPreview) -> Self {
         Self {
-            wires: &preview.wires,
+            wires: preview.wires().unwrap_or_default(),
             cache: Some(&preview.cache),
         }
     }

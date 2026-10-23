@@ -1894,7 +1894,10 @@ mod tests {
             .unwrap();
         app.refresh_block_palette();
         let first = std::rc::Rc::clone(&app.block_palette.blocks[0].preview);
-        assert!(!first.wires.is_empty());
+        // Worked out once shown.
+        assert!(first.wires().is_none());
+        app.ensure_block_previews();
+        assert!(first.wires().is_some_and(|w| !w.is_empty()));
         // The preview kept for Recent / Favorites is the same one, not a copy.
         let kept = |app: &crate::app::OpenCADStudio| {
             let mut kept = app.block_palette.ref_wires.iter();
@@ -2008,6 +2011,103 @@ mod tests {
             app.block_palette.change_hint,
             crate::ui::window::block_palette::ChangeHint::Unknown
         );
+    }
+
+    #[test]
+    fn blockpalette_works_out_only_the_previews_it_shows() {
+        use crate::ui::window::block_palette::{BlockPaletteMsg, ViewMode};
+        let mut app = fresh_app();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        for k in 0..300 {
+            let mut line = codec::entities::Line::new();
+            line.end = codec::types::Vector3::new(1.0 + k as f64, 0.0, 0.0);
+            app.tabs[i].scene.define_block_raw(
+                &format!("B{k:03}"),
+                codec::types::Vector3::ZERO,
+                vec![codec::EntityType::Line(line)],
+            );
+        }
+        app.show_block_palette = true;
+        app.block_palette.view = ViewMode::Large;
+        let built = |app: &crate::app::OpenCADStudio| {
+            app.block_palette
+                .blocks
+                .iter()
+                .filter(|b| b.preview.wires().is_some())
+                .map(|b| b.name.clone())
+                .collect::<Vec<_>>()
+        };
+        // Before the list reports its viewport: about a screenful.
+        let _ = app.update(crate::app::Message::BlockPalette(
+            BlockPaletteMsg::Scrolled {
+                offset: 0.0,
+                height: 0.0,
+            },
+        ));
+        let first = built(&app);
+        assert!(first.contains(&"B000".to_string()));
+        assert!(first.len() < 100, "{}", first.len());
+        // Scrolled far down: those rows are worked out too, the rest not.
+        let _ = app.update(crate::app::Message::BlockPalette(
+            BlockPaletteMsg::Scrolled {
+                offset: 5000.0,
+                height: 400.0,
+            },
+        ));
+        let now = built(&app);
+        assert!(now.len() > first.len() && now.len() < 150, "{}", now.len());
+        assert!(!now.contains(&"B299".to_string()));
+        // The List view shows no thumbnails and works out none.
+        app.refresh_block_palette();
+        app.block_palette.view = ViewMode::List;
+        let _ = app.update(crate::app::Message::BlockPalette(BlockPaletteMsg::Refresh));
+        assert!(built(&app).is_empty());
+        // Placing a block works out its preview for the drag.
+        let _ = app.palette_insert(
+            crate::ui::window::block_palette::Item::Current("B299".into()),
+            None,
+        );
+        assert_eq!(built(&app), vec!["B299".to_string()]);
+    }
+
+    #[test]
+    fn blockpalette_library_thumbnails_arrive_in_the_background() {
+        use crate::ui::window::block_palette::BlockPaletteMsg;
+        let dir = std::env::temp_dir().join(format!(
+            "ocs_palette_thumbs_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let drawing = dir.join("part.dwg");
+        std::fs::write(&drawing, b"not a drawing").unwrap();
+        let mut app = fresh_app();
+        app.automation_op(r#"{"op":"new"}"#);
+        let _ = app.update(crate::app::Message::BlockPalette(
+            BlockPaletteMsg::LibrarySelect(dir.display().to_string()),
+        ));
+        // Listed at once, without its thumbnail: that is read in the
+        // background once the message is handled.
+        let entry = |app: &crate::app::OpenCADStudio| {
+            app.block_palette
+                .library_entries
+                .iter()
+                .find(|e| e.path == drawing)
+                .map(|e| e.thumb.is_some())
+        };
+        assert_eq!(entry(&app), Some(false));
+        assert!(app.block_palette.thumb_requests.is_empty());
+        // The read thumbnail lands on its entry.
+        let handle = iced::widget::image::Handle::from_rgba(1, 1, vec![0; 4]);
+        let _ = app.update(crate::app::Message::BlockPalette(
+            BlockPaletteMsg::Thumbnails(vec![(drawing.clone(), Some(handle))]),
+        ));
+        assert_eq!(entry(&app), Some(true));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
