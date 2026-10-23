@@ -274,6 +274,22 @@ harness = false
 name = "selection_overlay_frame"
 harness = false
 
+[[bench]]
+name = "model_space_handle_lookup"
+harness = false
+
+[[bench]]
+name = "parametric_presolve_fixpoint"
+harness = false
+
+[[bench]]
+name = "transform_entities_dedup"
+harness = false
+
+[[bench]]
+name = "tds_material_groups"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
