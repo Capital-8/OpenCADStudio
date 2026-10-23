@@ -635,7 +635,7 @@ fn entity_details(entity: &EntityType) -> String {
         EntityType::Polyline2D(value) => format!("{} vertices", value.vertices.len()),
         EntityType::Polyline3D(value) => format!("{} vertices", value.vertices.len()),
         EntityType::Hatch(value) => value.pattern.name.clone(),
-        EntityType::Dimension(value) => format!("{:.3}", value.base().actual_measurement),
+        EntityType::Dimension(value) => format!("{:.3}", value.measurement()),
         EntityType::Spline(value) => format!("{} control points", value.control_points.len()),
         _ => String::new(),
     }

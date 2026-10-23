@@ -48,7 +48,10 @@ fn dimension_definition_point(dim: &Dimension) -> codec::types::Vector3 {
     }
 }
 
-fn base_props(base: &DimensionBase) -> Vec<crate::scene::model::object::Property> {
+fn base_props(
+    base: &DimensionBase,
+    measurement: f64,
+) -> Vec<crate::scene::model::object::Property> {
     vec![
         crate::scene::model::object::Property {
             label: t!("Text").into_owned(),
@@ -88,7 +91,7 @@ fn base_props(base: &DimensionBase) -> Vec<crate::scene::model::object::Property
         ro(
             t!("Measurement").as_ref(),
             "measurement",
-            format!("{:.4}", base.actual_measurement),
+            format!("{:.4}", measurement),
         ),
     ]
 }
@@ -194,7 +197,8 @@ fn properties(dim: &Dimension) -> Vec<PropSection> {
             }],
         }];
     }
-    let mut props = base_props(dim.base());
+    // The measurement in display units: an angular one stores radians.
+    let mut props = base_props(dim.base(), dim.measurement());
     match dim {
         Dimension::Aligned(d) => {
             props.extend(linear_like_props(
