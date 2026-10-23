@@ -1466,8 +1466,10 @@ mod tests {
             // Row 1 starts with a name far too long for the list: it stays
             // on one line, so its row is as tall as any other.
             let long = "L".repeat(200);
-            let mut palette = BlockPalette::default();
-            palette.view = mode;
+            let mut palette = BlockPalette {
+                view: mode,
+                ..Default::default()
+            };
             palette.set_blocks(
                 (0..300)
                     .map(|i| {
