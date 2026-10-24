@@ -114,6 +114,8 @@ pub(in crate::app) use file::native_paths_match;
 mod page_setup_import;
 #[cfg(not(target_arch = "wasm32"))]
 mod plugin_grips;
+#[cfg(not(target_arch = "wasm32"))]
+pub(in crate::app) use plugin_grips::SETTLE_WATCHDOG;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod plugin_grips_tests;
 mod qselect;

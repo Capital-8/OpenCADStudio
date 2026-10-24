@@ -2153,6 +2153,12 @@ fn apply_smooth_constraints(
 }
 
 const MOVE_EPS: f64 = 1e-9;
+/// The fixpoint gate for `solve_scope`: a scope whose every constraint row
+/// already evaluates to zero at the current values is not iterated at all.
+/// Mirrors the kernel solvers' own convergence tolerance (`TOLF = 1e-10` in
+/// `kernel_constraints::solvers::dogleg`, the bound `solve_dl` exits on) so
+/// "already converged" means exactly what the solver itself would conclude.
+const FIXPOINT_TOLF: f64 = 1.0e-10;
 type SolveResult = (
     Vec<(Handle, EntityType)>,
     usize,
@@ -3194,9 +3200,40 @@ fn solve_scope(
     }
 
     let partitions = sys.partition();
-    for sub in &partitions {
-        if solve_dl(sub, sys.store_mut()) == SolveStatus::Failed {
-            solve_lm(sub, sys.store_mut());
+    // Fixpoint guarantee: a transaction whose resulting document state
+    // satisfies every constraint of the scope within the solver's own
+    // convergence tolerance is a fixpoint of any correct iterative solver.
+    // The solve such a write triggers must be a no-op — never a
+    // re-projection of the written state onto a different (e.g. the
+    // retained pre-edit) valid configuration, which is how a
+    // two-valued tangency could displace a consistent write by the
+    // distance between its two solutions. Only the scope's own rows
+    // (`owner` — the rows compiled from the scope's parametric
+    // constraints) decide this: the temporary pins, size/length
+    // retentions and Equal-follow datums below are the solver's
+    // instrumentation for genuinely violated interactive solves, and a
+    // state whose rows are all zero needs none of them. Smooth and
+    // out-of-plane Concentric refine outside this 2D system (they run in
+    // the result phase after it), so scopes carrying them keep their
+    // current flow exactly. The gate is route-independent (no caller-route
+    // conjuncts): a state whose user rows are all zero is a fixpoint of any
+    // iterative solver and holds for every write route — the plugin's
+    // transactions included — while the ONE live exception is an actively
+    // driven drag (`driven_refs` non-empty): the grip re-alignment the
+    // implied-axis machinery owes the cursor must still run even when the
+    // written state satisfies every user constraint, because the machinery
+    // - not the rows - carries the drag semantics there.
+    let scope_is_a_fixpoint = !has_smooth
+        && !has_spatial_concentric
+        && driven_refs.is_empty()
+        && owner
+            .iter()
+            .all(|(constraint, _)| constraint.error(sys.store()).abs() <= FIXPOINT_TOLF);
+    if !scope_is_a_fixpoint {
+        for sub in &partitions {
+            if solve_dl(sub, sys.store_mut()) == SolveStatus::Failed {
+                solve_lm(sub, sys.store_mut());
+            }
         }
     }
     // DOF/conflict diagnostics feed only the commit path, which stores them
