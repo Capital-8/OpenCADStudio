@@ -3922,7 +3922,10 @@ mod copy_viewport_clip_tests {
             .expect("copied boundary");
         assert_eq!(clip_of(&scene, copied_viewport), copied_boundary);
         assert_eq!(clip_of(&scene, viewport), boundary);
+    }
+}
 
+#[cfg(test)]
 mod copy_field_tests {
     use super::*;
     use crate::command::EntityTransform;
