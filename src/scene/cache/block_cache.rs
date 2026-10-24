@@ -85,6 +85,10 @@ pub struct LocalWire {
     /// Block-local; the expand-time transform scales it by the insert so the
     /// shader band grows with a scaled insert. `0.0` = a normal wire.
     pub world_width: f32,
+    /// Per-point band width of a tapered polyline (see
+    /// `WireModel.taper_widths`), block-local and aligned with `points`.
+    /// Scaled with `world_width` at expand time. Empty = a constant band.
+    pub taper_widths: Vec<f32>,
     pub plinegen: bool,
     /// Hidden reference geometry must retain its snap-only role in INSERTs.
     pub snap_only: bool,
@@ -910,6 +914,7 @@ fn tessellate_sub_local(
             line_weight_px: lw_px,
             pattern_stations: wire.pattern_stations,
             world_width: wire.world_width,
+            taper_widths: wire.taper_widths,
             plinegen: wire.plinegen,
             snap_only: wire.snap_only,
             region_boundary_click: wire.region_boundary_click,
@@ -1648,6 +1653,10 @@ struct BatchEntry {
     pattern_station_pieces: Vec<PatternStationPiece>,
     source_length: f32,
     world_width: f32,
+    /// Per-point band widths, aligned with `points`, once any member of the
+    /// batch tapers; members appended before that are back-filled with the
+    /// batch's constant `world_width`. Empty = every member is a constant band.
+    taper_widths: Vec<f32>,
     point_marker: Option<PointMarker>,
     aci: u8,
     plinegen: bool,
@@ -1848,7 +1857,7 @@ impl Batches {
                 WireModel {
                     bg_adapt,
                     point_marker: b.point_marker,
-                    taper_widths: Vec::new(),
+                    taper_widths: b.taper_widths,
                     pattern_stations: b.pattern_stations,
                     world_width: b.world_width,
                     depth_override: b.local_depth,
@@ -2557,6 +2566,33 @@ fn emit_wire(
         lw.line_weight_px
     };
 
+    // A wide polyline's band width is baked in block-local units; scale it by
+    // the insert transform so the shader band matches the scaled geometry.
+    // Average the X and Y axis image lengths — exact for a uniform insert, a
+    // sensible mean for a non-uniform one (the band carries one width).
+    // A taper's per-point widths scale the same way.
+    let band_scale = || {
+        let o = accum_xform.apply(Vector3::new(0.0, 0.0, 0.0));
+        let ax = accum_xform.apply(Vector3::new(1.0, 0.0, 0.0));
+        let ay = accum_xform.apply(Vector3::new(0.0, 1.0, 0.0));
+        let sx = ((ax.x - o.x).powi(2) + (ax.y - o.y).powi(2) + (ax.z - o.z).powi(2)).sqrt();
+        let sy = ((ay.x - o.x).powi(2) + (ay.y - o.y).powi(2) + (ay.z - o.z).powi(2)).sqrt();
+        ((sx + sy) * 0.5) as f32
+    };
+    let final_world_width = if lw.world_width > 0.0 {
+        lw.world_width * band_scale()
+    } else if lw.world_width < 0.0 {
+        lw.world_width
+    } else {
+        0.0
+    };
+    let final_taper_widths: Vec<f32> = if lw.taper_widths.is_empty() {
+        Vec::new()
+    } else {
+        let scale = band_scale();
+        lw.taper_widths.iter().map(|width| width * scale).collect()
+    };
+
     // Analytical GPU circle / arc / ellipse fast path:
     // If this LocalWire is a pure analytical curve (single tangent geometry, no fills/text/pick),
     // and transforms cleanly with accum_xform into an analytical curve, emit it as a standalone
@@ -2653,12 +2689,14 @@ fn emit_wire(
                     None
                 };
 
+                // A wide or tapered polyline arc keeps its band: the
+                // analytical arc pipeline draws both (`circle_gpu`).
                 let wire = WireModel {
                     bg_adapt,
                     point_marker: lw.point_marker,
-                    taper_widths: Vec::new(),
+                    taper_widths: final_taper_widths,
                     pattern_stations: Vec::new(),
-                    world_width: 0.0,
+                    world_width: final_world_width,
                     depth_override: local_depth,
                     display_visible: !lw.snap_only && (!lw.hide_unselected || ctx.selected),
                     snap_only: lw.snap_only,
@@ -2730,22 +2768,6 @@ fn emit_wire(
         |data| data.source_length,
     );
 
-    // A wide polyline's band width is baked in block-local units; scale it by
-    // the insert transform so the shader band matches the scaled geometry.
-    // Average the X and Y axis image lengths — exact for a uniform insert, a
-    // sensible mean for a non-uniform one (the band carries one width).
-    let final_world_width = if lw.world_width > 0.0 {
-        let o = accum_xform.apply(Vector3::new(0.0, 0.0, 0.0));
-        let ax = accum_xform.apply(Vector3::new(1.0, 0.0, 0.0));
-        let ay = accum_xform.apply(Vector3::new(0.0, 1.0, 0.0));
-        let sx = ((ax.x - o.x).powi(2) + (ax.y - o.y).powi(2) + (ax.z - o.z).powi(2)).sqrt();
-        let sy = ((ay.x - o.x).powi(2) + (ay.y - o.y).powi(2) + (ay.z - o.z).powi(2)).sqrt();
-        lw.world_width * ((sx + sy) * 0.5) as f32
-    } else if lw.world_width < 0.0 {
-        lw.world_width
-    } else {
-        0.0
-    };
     let marker_transform = lw
         .point_marker
         .map(|marker| transformed_point_marker(marker, accum_xform));
@@ -2856,10 +2878,20 @@ fn emit_wire(
     let needs_sep =
         !entry.points.is_empty() && !entry.points.last().map(|p| p[0].is_nan()).unwrap_or(false);
 
+    // Once a member tapers, the batch carries a width per point: back-fill
+    // the members already in it with their constant band.
+    let tapered = !final_taper_widths.is_empty() || !entry.taper_widths.is_empty();
+    if tapered && !lw.points.is_empty() {
+        let fill = entry.world_width;
+        entry.taper_widths.resize(entry.points.len(), fill);
+    }
     if !lw.points.is_empty() {
         if needs_sep {
             entry.points.push([f32::NAN; 3]);
             entry.points_low.push([0.0; 3]);
+            if tapered {
+                entry.taper_widths.push(0.0);
+            }
             if has_stations {
                 entry.pattern_stations.push(0.0);
             }
@@ -2878,6 +2910,15 @@ fn emit_wire(
             let station_segment = transformed_stations
                 .as_ref()
                 .map(|data| data.point_segments[idx]);
+            if tapered {
+                let constant = if p[0].is_nan() {
+                    0.0
+                } else {
+                    final_world_width
+                };
+                let width = final_taper_widths.get(idx).copied().unwrap_or(constant);
+                entry.taper_widths.push(width);
+            }
             if p[0].is_nan() {
                 entry.points.push([f32::NAN; 3]);
                 entry.points_low.push([0.0; 3]);
@@ -3447,6 +3488,106 @@ mod compact_nested_tests {
         assert_eq!(finite_points, 6_000);
         assert_eq!(wires.len(), 1);
         assert!(wires[0].render_instance.is_none());
+    }
+
+    /// A block arrow drawn as a tapered polyline segment (width 250 → 0, as
+    /// AutoCAD drawings commonly make them) kept its taper only once
+    /// exploded: inside an INSERT it drew as a constant 250-wide band, a
+    /// rectangle. A constant wide polyline batched alongside keeps its band.
+    #[test]
+    fn tapered_polyline_keeps_its_taper_inside_an_insert() {
+        use codec::entities::{LwPolyline, LwVertex};
+        use codec::types::Vector2;
+
+        let mut document = CadDocument::new();
+        let arrow = add_block(&mut document, "FLE");
+        let mut tip = LwPolyline::new();
+        let mut start = LwVertex::new(Vector2::new(0.0, 0.0));
+        start.start_width = 250.0;
+        tip.vertices = vec![start, LwVertex::new(Vector2::new(400.0, 0.0))];
+        add_owned(&mut document, arrow, EntityType::LwPolyline(tip));
+        let mut shaft =
+            LwPolyline::from_points(vec![Vector2::new(0.0, 500.0), Vector2::new(400.0, 500.0)]);
+        shaft.constant_width = 250.0;
+        add_owned(&mut document, arrow, EntityType::LwPolyline(shaft));
+
+        // Mirrored and scaled 5×, like the drawing's nested arrows.
+        let insert = Insert::new("FLE", Vector3::ZERO).with_scale(-5.0, 5.0, 1.0);
+        let handle = document
+            .add_entity(EntityType::Insert(insert.clone()))
+            .unwrap();
+        let cache = BlockCache::build(
+            &document,
+            1.0,
+            None,
+            true,
+            [0.0, 0.0, 0.0, 1.0],
+            None,
+            &HashMap::default(),
+        );
+        let wires = expand_insert(
+            &document,
+            &cache,
+            &insert,
+            handle,
+            [1.0; 4],
+            0,
+            0.0,
+            [0.0; 8],
+            1.0,
+            InheritStyle {
+                color: [1.0; 4],
+                pat_len: 0.0,
+                pat: [0.0; 8],
+                lw_px: 1.0,
+            },
+            0,
+            true,
+            false,
+            1.0,
+            None,
+            None,
+            false,
+            [0.0, 0.0, 0.0, 1.0],
+            1.0,
+            crate::scene::BlockScalePolicy::FromInsert,
+            false,
+        )
+        .unwrap();
+
+        // Width at each finite point, keyed by its (mirrored, scaled) position.
+        let widths: Vec<([f32; 2], f32)> = wires
+            .iter()
+            .filter(|wire| wire.world_width > 0.0)
+            .flat_map(|wire| {
+                wire.points
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| p[0].is_finite())
+                    .map(move |(index, p)| {
+                        let width = wire
+                            .taper_widths
+                            .get(index)
+                            .copied()
+                            .unwrap_or(wire.world_width);
+                        ([p[0], p[1]], width)
+                    })
+            })
+            .collect();
+        let width_at = |x: f32, y: f32| {
+            widths
+                .iter()
+                .find(|(p, _)| (p[0] - x).abs() < 1.0e-3 && (p[1] - y).abs() < 1.0e-3)
+                .map(|(_, width)| *width)
+        };
+        assert_eq!(width_at(0.0, 0.0), Some(1250.0), "arrow base: 250 × 5");
+        assert_eq!(width_at(-2000.0, 0.0), Some(0.0), "arrow tip tapers to 0");
+        assert_eq!(width_at(0.0, 2500.0), Some(1250.0), "constant band, start");
+        assert_eq!(
+            width_at(-2000.0, 2500.0),
+            Some(1250.0),
+            "constant band, end"
+        );
     }
 
     #[test]
