@@ -1,4 +1,8 @@
 #[cfg(test)]
+#[path = "trim_hatch_tests.rs"]
+mod trim_hatch_tests;
+
+#[cfg(test)]
 mod command_replacement_tests {
     use super::super::*;
     use codec::entities::{Circle, Line};
