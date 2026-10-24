@@ -303,18 +303,42 @@ impl OpenCADStudio {
                 let mut snapshot_pushed = false;
                 loop {
                     // Collect names in use (immutable borrows — own scope per pass).
+                    // An INSERT's attributes live inside it, not in the entity
+                    // list, so their layer, style and linetype count separately.
+                    let insert_attributes = || {
+                        self.tabs[i]
+                            .scene
+                            .document
+                            .entities()
+                            .filter_map(|e| match e {
+                                codec::EntityType::Insert(ins) => Some(ins.attributes.iter()),
+                                _ => None,
+                            })
+                            .flatten()
+                    };
                     let used_layers: rustc_hash::FxHashSet<String> = self.tabs[i]
                         .scene
                         .document
                         .entities()
-                        .filter_map(|e| {
-                            let name = &e.common().layer;
+                        .map(|e| e.common())
+                        .chain(insert_attributes().map(|a| &a.common))
+                        .filter_map(|common| {
+                            let name = &common.layer;
                             if name.is_empty() {
                                 None
                             } else {
                                 Some(name.to_uppercase())
                             }
                         })
+                        // The current layer is never purged, empty or not.
+                        .chain(std::iter::once(
+                            self.tabs[i]
+                                .scene
+                                .document
+                                .header
+                                .current_layer_name
+                                .to_uppercase(),
+                        ))
                         .collect();
                     // Text styles: entity references plus every dimension
                     // style's DIMTXSTY — a style only a dimstyle uses is not
@@ -330,6 +354,15 @@ impl OpenCADStudio {
                             codec::EntityType::AttributeEntity(a) => Some(a.text_style.clone()),
                             _ => None,
                         })
+                        .chain(insert_attributes().map(|a| a.text_style.clone()))
+                        .chain(std::iter::once(
+                            self.tabs[i]
+                                .scene
+                                .document
+                                .header
+                                .current_text_style_name
+                                .clone(),
+                        ))
                         .chain(
                             self.tabs[i]
                                 .scene
@@ -351,14 +384,26 @@ impl OpenCADStudio {
                         .filter_map(|element| element.complex.as_ref())
                         .map(|complex| complex.style_handle)
                         .collect();
+                    // Dimension styles reach their dimension and extension line
+                    // linetypes by handle.
+                    let dimstyle_linetypes: rustc_hash::FxHashSet<codec::Handle> = self.tabs[i]
+                        .scene
+                        .document
+                        .dim_styles
+                        .iter()
+                        .flat_map(|ds| [ds.dimltex_handle, ds.dimltex1_handle, ds.dimltex2_handle])
+                        .filter(|h| !h.is_null())
+                        .collect();
                     // Linetypes: entity references plus every layer's own
                     // linetype — a ByLayer entity reaches it through the layer.
                     let used_linetypes: rustc_hash::FxHashSet<String> = self.tabs[i]
                         .scene
                         .document
                         .entities()
-                        .filter_map(|e| {
-                            let lt = &e.common().linetype;
+                        .map(|e| e.common())
+                        .chain(insert_attributes().map(|a| &a.common))
+                        .filter_map(|common| {
+                            let lt = &common.linetype;
                             if lt.is_empty() || lt == "ByLayer" || lt == "ByBlock" {
                                 None
                             } else {
@@ -373,6 +418,14 @@ impl OpenCADStudio {
                                 .iter()
                                 .map(|l| l.line_type.clone()),
                         )
+                        .chain(std::iter::once(
+                            self.tabs[i]
+                                .scene
+                                .document
+                                .header
+                                .current_linetype_name
+                                .clone(),
+                        ))
                         .filter(|s| !s.is_empty())
                         .map(|s| s.to_uppercase())
                         .collect();
@@ -426,6 +479,7 @@ impl OpenCADStudio {
                                 !standard.iter().any(|s| s.eq_ignore_ascii_case(&lt.name))
                                     && !xref_dependent(&lt.name, lt.xref_dependent)
                                     && !used_linetypes.contains(&lt.name.to_uppercase())
+                                    && !dimstyle_linetypes.contains(&lt.handle)
                             })
                             .map(|lt| lt.name.clone())
                             .collect()
