@@ -1054,13 +1054,21 @@ pub fn load_file(_path: &Path) -> Result<CadDocument, String> {
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn load_file_with_progress(
     path: &Path,
-    _progress: Option<Arc<dyn Fn(u16) + Send + Sync>>,
+    progress: Option<Arc<dyn Fn(u16) + Send + Sync>>,
 ) -> Result<codec::ReadOutcome, String> {
-    let outcome = read_file_attempt(path, _progress, false).map_err(|failure| failure.message)?;
-    if !outcome.stats.has_usable_drawing_data() {
-        return Err("initial read returned no source drawing records".to_string());
+    // Headless reads (--export, xrefs, imports) have no recovery prompt:
+    // fall back to the recovery read as soon as the strict one fails.
+    match load_file_for_open(path, progress.clone(), &OpenAttempt::Strict) {
+        Ok(outcome) => Ok(outcome),
+        Err(failure) if failure.recoverable => {
+            let attempt = OpenAttempt::Recovery(failure.message, failure.read_stats);
+            let mut outcome =
+                load_file_for_open(path, progress, &attempt).map_err(|failure| failure.message)?;
+            repair_drawing(&mut outcome.document);
+            Ok(outcome)
+        }
+        Err(failure) => Err(failure.message),
     }
-    finalize_loaded_outcome(path, outcome)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
