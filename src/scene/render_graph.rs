@@ -659,6 +659,19 @@ pub fn block_base_point(document: &CadDocument, block_name: &str) -> Vector3 {
         .unwrap_or(Vector3::ZERO)
 }
 
+/// An annotative dimension with a single scale representation has a single
+/// picture, its own block: edits drop it and moves carry it like any other
+/// dimension's. With several, each scale's block is a separate picture those
+/// edits leave behind, so it is drawn from its definition instead.
+fn single_scale_picture(document: &CadDocument, handle: Handle, block: &str) -> bool {
+    crate::scene::annotative::object_scale_memberships(document, handle).len() == 1
+        && matches!(
+            document.get_entity(handle),
+            Some(EntityType::Dimension(stored))
+                if stored.base().block_name.trim().eq_ignore_ascii_case(block)
+        )
+}
+
 /// The block reference that places a dimension's picture block: at the
 /// dimension's insertion point, with its insertion rotation and scale. The
 /// point is stored in the dimension's OCS; the picture's sub-entities are in
@@ -905,7 +918,8 @@ fn entity_owned_block_uses(
                 let base = dimension.base();
                 let mut insert = dimension_picture_insert(base, record.name.clone());
                 insert.common = base.common.clone();
-                let picture = !crate::scene::annotative::is_annotative(document, entity);
+                let picture = !crate::scene::annotative::is_annotative(document, entity)
+                    || single_scale_picture(document, base.common.handle, &record.name);
                 vec![block_use(
                     document,
                     insert,
