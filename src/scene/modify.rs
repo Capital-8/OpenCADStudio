@@ -866,6 +866,9 @@ impl Scene {
         br.handle = br_handle;
         br.block_entity_handle = block_handle;
         br.block_end_handle = end_handle;
+        // The DWG writer takes the anonymous bit from the flag alone; without
+        // it AutoCAD's audit reports `Invalid anonymous block "*D<n>"`.
+        br.flags.anonymous = true;
         self.document.block_records.add(br).ok()?;
         let mut block = Block::new(&new_name, codec::types::Vector3::ZERO);
         block.common.handle = block_handle;
@@ -2744,6 +2747,24 @@ mod define_transformed_block_xdict_tests {
             "shared extension dictionaries: {}",
             shared.join(", ")
         );
+    }
+
+    #[test]
+    fn clone_block_is_flagged_anonymous() {
+        let mut scene = Scene::new();
+        let line = scene
+            .document
+            .add_entity(codec::EntityType::Line(codec::entities::Line::new()))
+            .unwrap();
+        let subs = vec![scene.document.get_entity(line).unwrap().clone()];
+        let name = scene
+            .define_transformed_block(
+                &subs,
+                &crate::command::EntityTransform::Translate(glam::DVec3::ZERO),
+            )
+            .expect("clone block must be created");
+        let record = scene.document.block_records.get(&name).unwrap();
+        assert!(record.flags.anonymous);
     }
 
     /// Cloned sub-entities must not share the source's extension dictionary.
