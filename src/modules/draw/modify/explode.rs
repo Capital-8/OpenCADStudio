@@ -1002,16 +1002,25 @@ fn dim_terminator(
                 out.push(dim_seg(r, tip, common));
             }
         }
-        A::Tick { size } => {
+        A::Tick { size, width } => {
             let s = *size as f64;
             let (ox, oy) = (dx + px, dy + py);
             let m = (ox * ox + oy * oy).sqrt().max(1e-9);
-            let (ox, oy) = (ox / m * s, oy / m * s);
-            out.push(dim_seg(
+            let (ux, uy) = (ox / m, oy / m);
+            let (ox, oy) = (ux * s, uy * s);
+            let (a, b) = (
                 Vector3::new(tip.x - ox, tip.y - oy, tip.z),
                 Vector3::new(tip.x + ox, tip.y + oy, tip.z),
-                common,
-            ));
+            );
+            out.push(dim_seg(a, b, common));
+            if *width > 0.0 {
+                // The architectural tick's band, as filled triangles.
+                let h = *width as f64 * 0.5;
+                let side =
+                    |p: Vector3, k: f64| Vector3::new(p.x - uy * h * k, p.y + ux * h * k, p.z);
+                tri(side(a, -1.0), side(a, 1.0), side(b, 1.0), &mut out);
+                tri(side(a, -1.0), side(b, 1.0), side(b, -1.0), &mut out);
+            }
         }
         A::Open { size, half_angle } => {
             let size = *size as f64;
@@ -1270,6 +1279,7 @@ fn dim_metrics(dim: &Dimension, doc: &CadDocument) -> DimMetrics {
     let (arrow1, arrow2) = if dimtsz > 1e-9 {
         let t = ArrowKind::Tick {
             size: dimtsz as f32,
+            width: 0.0,
         };
         (t.clone(), t)
     } else if let Some(s) = style {

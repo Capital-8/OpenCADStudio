@@ -2756,8 +2756,11 @@ pub(crate) enum ArrowKind {
         filled: bool,
         size_mul: f32,
     },
+    /// `width` is the stroke's full width: 0 draws a hairline (Oblique,
+    /// DIMTSZ), more draws a filled band (Architectural tick).
     Tick {
         size: f32,
+        width: f32,
     },
     Open {
         size: f32,
@@ -2891,8 +2894,15 @@ fn builtin_arrow_from_block_name(name: &str, dimasz: f32) -> Option<ArrowKind> {
         // block's stroke runs (-0.5,-0.5)→(0.5,0.5) scaled by DIMASZ, so its
         // half-length is DIMASZ/√2, not DIMASZ/2 — halving drew every
         // oblique stroke √2 short of the file's own. (#898)
-        "OBLIQUE" | "ARCHTICK" => Some(ArrowKind::Tick {
+        "OBLIQUE" => Some(ArrowKind::Tick {
             size: dimasz * std::f32::consts::FRAC_1_SQRT_2,
+            width: 0.0,
+        }),
+        // `_ArchTick` is the same stroke as an LWPOLYLINE of constant width
+        // 0.15 (`_Oblique` is a LINE), so it scales to 0.15·DIMASZ.
+        "ARCHTICK" => Some(ArrowKind::Tick {
+            size: dimasz * std::f32::consts::FRAC_1_SQRT_2,
+            width: dimasz * 0.15,
         }),
         "BOXFILLED" => Some(ArrowKind::Box_ {
             size: dimasz,
@@ -3343,11 +3353,19 @@ pub(crate) fn append_arrow(g: &mut DimGeom, tip: Vec3, dir: Vec3, arrow: &ArrowK
                 push_tri(&mut g.arrow_fill, tip, left, right);
             }
         }
-        ArrowKind::Tick { size } => {
+        ArrowKind::Tick { size, width } => {
             // 45° oblique tick crossing the dim line at the tip; `size` is
             // the half-length used by DIMTSZ.
             let off = (dir + perp).normalize_or_zero() * *size;
             add_segment(&mut g.dim_lines, tip - off, tip + off);
+            if *width > 0.0 {
+                // A wide polyline's band, square at both ends.
+                let side = (perp - dir).normalize_or_zero() * (*width * 0.5);
+                let (a, b) = (tip - off - side, tip - off + side);
+                let (c, d) = (tip + off + side, tip + off - side);
+                push_tri(&mut g.arrow_fill, a, b, c);
+                push_tri(&mut g.arrow_fill, a, c, d);
+            }
         }
         ArrowKind::Open { size, half_angle } => {
             let base = tip + dir * *size;
@@ -3504,6 +3522,10 @@ mod tests {
             ArrowKind::Tick { .. }
         ));
         assert!(matches!(
+            arrow_from_block_name(Some("OBLIQUE"), 1.0),
+            ArrowKind::Tick { width, .. } if width == 0.0
+        ));
+        assert!(matches!(
             arrow_from_block_name(Some("NONE"), 1.0),
             ArrowKind::None
         ));
@@ -3516,6 +3538,40 @@ mod tests {
             arrow_from_block_name(None, 1.0),
             ArrowKind::Triangle { filled: true, .. }
         ));
+    }
+
+    #[test]
+    fn arch_tick_is_a_band_as_wide_as_its_block() {
+        // AutoCAD 2025's "_ArchTick": an LWPOLYLINE (-0.5,-0.5)→(0.5,0.5) of
+        // constant width 0.15, here at DIMASZ 2 × DIMSCALE 100.
+        let mut g = DimGeom::new();
+        append_arrow(
+            &mut g,
+            Vec3::ZERO,
+            Vec3::X,
+            &arrow_from_block_name(Some("ARCHTICK"), 200.0),
+        );
+        assert_eq!(g.arrow_fill.len(), 6);
+        let along = Vec3::new(1.0, 1.0, 0.0).normalize();
+        let across = Vec3::new(-1.0, 1.0, 0.0).normalize();
+        let (mut half_len, mut half_width) = (0.0_f32, 0.0_f32);
+        for p in &g.arrow_fill {
+            let p = Vec3::from_array(*p);
+            half_len = half_len.max(p.dot(along).abs());
+            half_width = half_width.max(p.dot(across).abs());
+        }
+        assert!((half_len - 100.0 * std::f32::consts::SQRT_2).abs() < 1e-3);
+        assert!((half_width - 15.0).abs() < 1e-3, "half width {half_width}");
+
+        // "_Oblique" is a LINE: no band.
+        let mut g = DimGeom::new();
+        append_arrow(
+            &mut g,
+            Vec3::ZERO,
+            Vec3::X,
+            &arrow_from_block_name(Some("OBLIQUE"), 200.0),
+        );
+        assert!(g.arrow_fill.is_empty());
     }
 
     #[test]

@@ -3829,6 +3829,7 @@ fn tessellate_dimension_inner(
     let (arrow1, arrow2) = if dimtsz_raw > 1e-9 {
         let t = ArrowKind::Tick {
             size: (dimtsz_raw as f32).max(0.001),
+            width: 0.0,
         };
         (t.clone(), t)
     } else if let Some(s) = style {
@@ -8415,6 +8416,7 @@ pub(crate) fn baked_large_radial_geometry(
     let arrow = if tick_size > 1.0e-9 {
         ArrowKind::Tick {
             size: (tick_size as f32).max(0.001),
+            width: 0.0,
         }
     } else if let Some(style) = style {
         arrow_from_block(document, style.dimldrblk, arrow_size)
