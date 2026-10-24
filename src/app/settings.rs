@@ -1112,7 +1112,8 @@ impl Default for UserSettings {
             zoom_wheel_reversed: false,
             navigation_style: NavigationStyle::Cad,
             dynamic_ucs: true,
-            touchpad_pan: false,
+            // A Mac's built-in trackpad is the common case there.
+            touchpad_pan: cfg!(target_os = "macos"),
             ui_scale_percent: 100,
             zoom_factor: 60,
             cursor_size: 5,

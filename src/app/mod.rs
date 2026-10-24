@@ -5065,7 +5065,8 @@ impl OpenCADStudio {
             nav_left_with_middle: false,
             dynamic_ucs: true,
             dynamic_ucs_restore: None,
-            touchpad_pan: false,
+            // A Mac's built-in trackpad is the common case there.
+            touchpad_pan: cfg!(target_os = "macos"),
             touch: Default::default(),
             touch_offset: None,
             ui_scale_percent: 100,

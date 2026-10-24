@@ -193,7 +193,11 @@ const ZOOM_DIR_FLIP_PX: f32 = 2.0;
 fn scroll_intent(delta: mouse::ScrollDelta, touchpad_pan: bool, ctrl: bool) -> ScrollIntent {
     /// Screen pixels one wheel line pans.
     const LINE_PX: f32 = 40.0;
-    if touchpad_pan && !ctrl {
+    // A notched wheel reports lines and a trackpad never does there, so on
+    // macOS a line delta zooms even with touchpad panning on.
+    let wheel_notch =
+        cfg!(target_os = "macos") && matches!(delta, mouse::ScrollDelta::Lines { .. });
+    if touchpad_pan && !ctrl && !wheel_notch {
         return match delta {
             mouse::ScrollDelta::Pixels { x, y } => ScrollIntent::Pan { dx: x, dy: y },
             mouse::ScrollDelta::Lines { x, y } => ScrollIntent::Pan {
@@ -8697,7 +8701,9 @@ mod scroll_intent_tests {
     use iced::mouse::ScrollDelta;
 
     /// With the touchpad option, a scroll pans (wheel lines as pixels) and
-    /// Ctrl+scroll — a pinch — still zooms.
+    /// Ctrl+scroll — a pinch — still zooms. On macOS lines come from a
+    /// notched wheel only, which zooms.
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn touchpad_pan_scrolls_pan_and_ctrl_zooms() {
         assert_eq!(
