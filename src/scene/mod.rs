@@ -90,9 +90,10 @@ mod parametric_solve;
 
 pub(crate) use boundary::{
     boundary_entities, boundary_entities_from_sources, boundary_faces, boundary_faces_around,
-    boundary_polyline_entities, exact_hatch_paths, hatch_boundary_rings, hatch_path_directions,
-    hatch_path_ring, remap_hatch_associations, ring_source_handles, separated_hatch_path_groups,
-    sources_near_rings, BoundarySource,
+    boundary_polyline_entities, entity_boundary_source_on_plane, exact_hatch_paths,
+    hatch_boundary_rings, hatch_path_directions, hatch_path_ring, live_segments_for_curves,
+    remap_hatch_associations, ring_source_handles, separated_hatch_path_groups, sources_near_rings,
+    BoundarySource,
 };
 
 // Parallel tessellation free functions live in `convert::tess` (alongside the
