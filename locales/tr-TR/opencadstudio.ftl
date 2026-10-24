@@ -6981,3 +6981,4 @@ block-lookup =
     .invalid-table = Arama tablosu geçersiz.
     .invalid-value = Seçilen satırda geçersiz bir parametre değeri var.
     .incompatible-values = Satır değerleri parametre değer kümelerine uymuyor.
+    .quoted-help = Boşluk veya noktalama içeren adları alıntılayın: { $name }.

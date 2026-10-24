@@ -7060,3 +7060,4 @@ block-lookup =
     .invalid-table = La tabla de consulta no es válida.
     .invalid-value = La fila seleccionada contiene un valor de parámetro no válido.
     .incompatible-values = Los valores de la fila no cumplen los conjuntos de valores de los parámetros.
+    .quoted-help = Delimite nombres con espacios o puntuación: { $name }.

@@ -7057,3 +7057,4 @@ block-lookup =
     .invalid-table = Hakutaulukko on virheellinen.
     .invalid-value = Valitulla rivillä on virheellinen parametriarvo.
     .incompatible-values = Rivin arvot eivät vastaa parametrien arvojoukkoja.
+    .quoted-help = Lainaa välilyöntejä tai välimerkkejä sisältävät nimet: { $name }.

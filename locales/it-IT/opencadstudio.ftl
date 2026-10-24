@@ -7059,3 +7059,4 @@ block-lookup =
     .invalid-table = La tabella di ricerca non è valida.
     .invalid-value = La riga selezionata contiene un valore di parametro non valido.
     .incompatible-values = I valori della riga non rispettano gli insiemi di valori dei parametri.
+    .quoted-help = Delimitare i nomi con spazi o punteggiatura: { $name }.

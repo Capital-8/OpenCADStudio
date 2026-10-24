@@ -790,3 +790,95 @@ pub(crate) fn reframe(
     }
     changed
 }
+
+/// Stage formula rewrites only in owned tables that bind the renamed input.
+/// Every failure occurs before metadata or native table objects are changed.
+pub(crate) fn renamed_input_tables(
+    document: &CadDocument,
+    definition: Handle,
+    parameter: Handle,
+    field: crate::scene::block_authoring::metadata::Field,
+    old: &str,
+    new: &str,
+) -> Result<Vec<(Handle, BlockLookupAction)>, &'static str> {
+    use crate::scene::block_authoring::metadata::Field;
+    let Some(ObjectType::DynamicBlock(object)) = document.objects.get(&parameter) else {
+        return Ok(vec![]);
+    };
+    let connection = match (&object.data, field) {
+        (
+            DynamicBlockData::LinearParameter(_) | DynamicBlockData::PolarParameter(_),
+            Field::Name,
+        ) => "UpdatedDistance",
+        (DynamicBlockData::PolarParameter(_), Field::SecondaryName) => "UpdatedAngle",
+        _ => return Ok(vec![]),
+    };
+    let Some(p) = crate::scene::block_actions::all_parameters(document, definition)
+        .into_iter()
+        .find(|p| p.handle == parameter)
+    else {
+        return Ok(vec![]);
+    };
+    let graph = graph_handle(document, definition).ok_or("The authoring graph is unavailable.")?;
+    let original_properties = properties(document, definition);
+    let mut properties = original_properties.clone();
+    for property in &mut properties {
+        if property.column.node_id == p.id
+            && property
+                .column
+                .connection_name
+                .eq_ignore_ascii_case(connection)
+        {
+            property.label = new.into();
+        }
+    }
+    let mut edits = Vec::new();
+    for object in document.objects.values() {
+        let ObjectType::DynamicBlock(object) = object else {
+            continue;
+        };
+        let DynamicBlockData::LookupAction(original) = &object.data else {
+            continue;
+        };
+        if object.owner != graph
+            || !original.columns.iter().any(|c| {
+                !c.lookup_property
+                    && c.node_id == p.id
+                    && c.connection_name.eq_ignore_ascii_case(connection)
+            })
+        {
+            continue;
+        }
+        if original.columns.len() < 2
+            || original.columns.len() > 64
+            || original.row_count > 1000
+            || original.column_count != original.columns.len() as i32
+            || original.row_count < 0
+            || original.expressions.len() != original.row_count as usize * original.columns.len()
+        {
+            return Err("The Lookup table is invalid.");
+        }
+        let rows = (0..original.row_count as usize)
+            .map(|row| expressions::rewritable_row(&original_properties, original, row))
+            .collect::<Vec<_>>();
+        let mut edited = original.clone();
+        for (index, source) in edited.expressions.iter_mut().enumerate() {
+            if !rows[index / original.columns.len()] {
+                continue;
+            }
+            let column = &original.columns[index % original.columns.len()];
+            if !column.lookup_property && column.value_type == 40 {
+                *source = expressions::rename_cell(source, old, new)?;
+            }
+        }
+        if edited.expressions != original.expressions {
+            if rows.iter().enumerate().any(|(row, known)| {
+                *known && !expressions::rewritable_row(&properties, &edited, row)
+            }) {
+                return Err("The Lookup table is invalid.");
+            }
+            edits.push((object.handle, edited));
+        }
+    }
+    Ok(edits)
+}

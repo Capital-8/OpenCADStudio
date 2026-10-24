@@ -7067,3 +7067,4 @@ block-lookup =
     .invalid-table = Bảng tra cứu không hợp lệ.
     .invalid-value = Hàng được chọn có giá trị tham số không hợp lệ.
     .incompatible-values = Các giá trị trong hàng không đáp ứng tập giá trị tham số.
+    .quoted-help = Đặt tên có khoảng trắng hoặc dấu câu trong dấu trích dẫn: { $name }.

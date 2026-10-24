@@ -7060,3 +7060,4 @@ block-lookup =
     .invalid-table = La table de correspondance est invalide.
     .invalid-value = La ligne sélectionnée contient une valeur de paramètre invalide.
     .incompatible-values = Les valeurs de la ligne ne respectent pas les ensembles de valeurs des paramètres.
+    .quoted-help = Délimitez les noms contenant des espaces ou de la ponctuation : { $name }.

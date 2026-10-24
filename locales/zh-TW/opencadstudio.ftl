@@ -7055,3 +7055,4 @@ block-lookup =
     .invalid-table = 查找表無效。
     .invalid-value = 所選列包含無效的參數值。
     .incompatible-values = 列中的值不符合參數值集。
+    .quoted-help = 以引用符號包住含空格或標點的名稱：{ $name }。

@@ -1,6 +1,7 @@
 use super::*;
 mod multiple_outputs;
 mod expressions;
+mod rename;
 use crate::scene::{block_basepoint, block_distance_parameter as distance, render_graph, Scene};
 use codec::{
     entities::{Insert, Line},

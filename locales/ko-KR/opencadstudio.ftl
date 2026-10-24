@@ -7059,3 +7059,4 @@ block-lookup =
     .invalid-table = 조회 테이블이 잘못되었습니다.
     .invalid-value = 선택한 행에 잘못된 매개변수 값이 있습니다.
     .incompatible-values = 행의 값이 매개변수 값 집합을 충족하지 않습니다.
+    .quoted-help = 공백이나 문장 부호가 있는 이름은 인용 기호로 묶으세요: { $name }.

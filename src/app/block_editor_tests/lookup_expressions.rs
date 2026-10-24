@@ -159,3 +159,49 @@ fn block_lookup_range_and_formula_properties_evaluate_in_drawing_and_test_block(
         }
     }
 }
+
+#[test]
+fn block_lookup_input_rename_properties_rewrite_and_undo_the_native_table_together() {
+    let (mut app, def, lookup) = lookup_editor_fixture();
+    let i = app.active_tab;
+    let input = actions::all_parameters(&app.tabs[i].scene.document, def)[0].handle;
+    let _ = app.run_command_line("BPARAMETER LINEAR 0,0 3,0 0,1");
+    let _ = app.dispatch_command("BLOOKUPTABLE");
+    edit_lookup(&mut app);
+    let second = app
+        .block_lookup
+        .as_ref()
+        .unwrap()
+        .properties
+        .iter()
+        .position(|p| p.label == "Distance2")
+        .unwrap();
+    let _ = app.update(Message::BlockLookup(A::Property(second)));
+    let _ = app.update(Message::BlockLookup(A::AddProperty));
+    let _ = app.update(Message::BlockLookup(A::Cell(0, 1, "Distance1 * 2".into())));
+    let _ = app.update(Message::BlockLookup(A::Apply));
+    assert!(app.block_lookup.is_none());
+    app.tabs[i].selected_authoring = Some(input);
+    app.refresh_properties();
+    let before = app.tabs[i].scene.document.clone();
+    let depth = app.tabs[i].history.undo_stack.len();
+    let _ = app.update(Message::PropGeomInput {
+        field: "authoring_name",
+        value: "Panel width".into(),
+    });
+    let _ = app.update(Message::PropGeomCommit("authoring_name"));
+    let changed = app.tabs[i].scene.document.clone();
+    assert_eq!(
+        lookup::table(&changed, def, lookup)
+            .unwrap()
+            .unwrap()
+            .1
+            .expressions[1],
+        "`Panel width` * 2"
+    );
+    assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+    app.undo_steps(1);
+    assert!(app.tabs[i].scene.document == before);
+    app.redo_steps(1);
+    assert!(app.tabs[i].scene.document == changed);
+}

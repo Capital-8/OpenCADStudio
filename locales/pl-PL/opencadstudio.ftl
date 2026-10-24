@@ -7059,3 +7059,4 @@ block-lookup =
     .invalid-table = Tabela wyszukiwania jest nieprawidłowa.
     .invalid-value = Wybrany wiersz zawiera nieprawidłową wartość parametru.
     .incompatible-values = Wartości wiersza nie spełniają zbiorów wartości parametrów.
+    .quoted-help = Nazwy ze spacjami lub interpunkcją ujmij w znaki cytowania: { $name }.

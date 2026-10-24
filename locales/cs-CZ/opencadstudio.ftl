@@ -7057,3 +7057,4 @@ block-lookup =
     .invalid-table = Vyhledávací tabulka je neplatná.
     .invalid-value = Vybraný řádek obsahuje neplatnou hodnotu parametru.
     .incompatible-values = Hodnoty řádku neodpovídají sadám hodnot parametrů.
+    .quoted-help = Názvy s mezerami nebo interpunkcí uzavřete do uvozovacích znaků: { $name }.

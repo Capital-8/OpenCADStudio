@@ -313,6 +313,7 @@ pub(crate) fn view(state: &State, sizing: crate::ui::modal::ModalSizing) -> Elem
             )
             .size(12),
             text(crate::tr!("block-lookup", "input-help", closed = "[2,6]", open = "(2,6]")).size(12),
+            text(crate::tr!("block-lookup", "quoted-help", name = "`a b`")).size(12),
             scrollable(grid)
                 .direction(scrollable::Direction::Both {
                     vertical: Default::default(),

@@ -326,7 +326,20 @@ pub(crate) fn set_text(
             }
         }
     }
+    let tables = if field.is_name() {
+        crate::scene::block_lookup::renamed_input_tables(
+            document, definition, handle, field, old.value, value,
+        )?
+    } else {
+        vec![]
+    };
     *text_mut(document.objects.get_mut(&handle).unwrap(), field).unwrap() = value.to_owned();
+    for (table, edited) in tables {
+        let ObjectType::DynamicBlock(object) = document.objects.get_mut(&table).unwrap() else {
+            unreachable!()
+        };
+        object.data = Data::LookupAction(edited);
+    }
     sync_visibility(document, handle);
     Ok(true)
 }

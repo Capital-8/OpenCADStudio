@@ -29,9 +29,12 @@ fn finite(table: &ParameterTable, source: &str) -> Result<f64, &'static str> {
 impl Cell {
     pub(super) fn parse(source: &str) -> Result<Self, &'static str> {
         let source = source.trim();
+        if source.len() > 4096 {
+            return Err("The Lookup table is invalid.");
+        }
         let mut depth = 0i32;
         let mut operations = 0;
-        for ch in source.chars() {
+        for (_, ch) in syntax_chars(source) {
             match ch {
                 '(' | '[' => depth += 1,
                 ')' | ']' => depth -= 1,
@@ -51,7 +54,7 @@ impl Cell {
             let inner = &source[1..source.len() - 1];
             let mut depth = 0i32;
             let mut comma = None;
-            for (index, ch) in inner.char_indices() {
+            for (index, ch) in syntax_chars(inner) {
                 match ch {
                     '(' => depth += 1,
                     ')' => depth -= 1,
@@ -205,9 +208,7 @@ fn resolve_row(
                         .eq_ignore_ascii_case(&column.connection_name)
             })
             .ok_or("A Lookup input property is unavailable.")?;
-        if named_parameters::is_valid_name(&property.label)
-            && !named_parameters::is_reserved_name(&property.label)
-        {
+        if !property.label.is_empty() && !property.label.chars().any(char::is_control) {
             if namespace.contains(&property.label) {
                 return Err("The Lookup table is invalid.");
             }
@@ -221,7 +222,7 @@ fn resolve_row(
                 .to_string(),
             };
             namespace
-                .set(&property.label, &expression)
+                .bind_expression(&property.label, &expression)
                 .map_err(|_| "The Lookup table is invalid.")?;
         }
         cells.push(Some(cell));
@@ -439,4 +440,103 @@ fn range_value(
                 .then(a.total_cmp(b))
         })
         .ok_or("The Lookup row values do not satisfy the parameter value sets.")
+}
+
+fn syntax_chars(source: &str) -> Vec<(usize, char)> {
+    let mut chars = source.char_indices().peekable();
+    let mut quoted = false;
+    let mut result = Vec::new();
+    while let Some((index, ch)) = chars.next() {
+        if ch == '`' {
+            if quoted && chars.peek().is_some_and(|(_, ch)| *ch == '`') {
+                chars.next();
+            } else {
+                quoted = !quoted;
+            }
+        } else if !quoted {
+            result.push((index, ch));
+        }
+    }
+    result
+}
+
+pub(super) fn rename_cell(source: &str, old: &str, new: &str) -> Result<String, &'static str> {
+    if !matches!(Cell::parse(source), Ok(Cell::Scalar(_))) {
+        return Ok(source.into());
+    }
+    let body = formula(source);
+    let renamed = match named_parameters::rename_reference(body, old, new) {
+        Ok(value) => value,
+        // Retained opaque syntax is preserved without claiming to understand it.
+        Err(_) => return Err("The Lookup table is invalid."),
+    };
+    let offset = source.find(body).ok_or("The Lookup table is invalid.")?;
+    let result = format!(
+        "{}{}{}",
+        &source[..offset],
+        renamed,
+        &source[offset + body.len()..]
+    );
+    Cell::parse(&result)?;
+    Ok(result)
+}
+
+/// Identify the implemented expression dialect without requiring a particular
+/// current numeric value (a temporary division by zero is not a rename).
+pub(super) fn rewritable_row(
+    properties: &[Property],
+    table: &BlockLookupAction,
+    row: usize,
+) -> bool {
+    use named_parameters::Expr;
+    fn known(expr: &Expr, names: &std::collections::HashSet<&str>) -> bool {
+        match expr {
+            Expr::Number(_) => true,
+            Expr::Ref(name) => names.contains(name.as_str()),
+            Expr::Neg(a) => known(a, names),
+            Expr::Add(a, b)
+            | Expr::Sub(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
+            | Expr::Pow(a, b) => known(a, names) && known(b, names),
+            Expr::Call(name, args) => {
+                named_parameters::is_reserved_name(name) && args.iter().all(|arg| known(arg, names))
+            }
+        }
+    }
+    let inputs = table
+        .columns
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| !c.lookup_property)
+        .map(|(i, c)| {
+            properties
+                .iter()
+                .find(|p| {
+                    p.column.node_id == c.node_id
+                        && p.column
+                            .connection_name
+                            .eq_ignore_ascii_case(&c.connection_name)
+                })
+                .map(|p| (i, c, p))
+        })
+        .collect::<Option<Vec<_>>>();
+    let Some(inputs) = inputs else {
+        return false;
+    };
+    let names = inputs.iter().map(|(_, _, p)| p.label.as_str()).collect();
+    let mut namespace = ParameterTable::new();
+    inputs.iter().all(|(i, c, p)| {
+        if c.value_type != 40 || namespace.contains(&p.label) {
+            return false;
+        }
+        let source = &table.expressions[row * table.columns.len() + i];
+        match Cell::parse(source) {
+            Ok(Cell::Scalar(_)) => named_parameters::parse(formula(source)).is_ok_and(|expr| {
+                known(&expr, &names) && namespace.bind_expression(&p.label, formula(source)).is_ok()
+            }),
+            Ok(Cell::Interval { .. }) => namespace.bind_expression(&p.label, "1").is_ok(),
+            _ => false,
+        }
+    })
 }

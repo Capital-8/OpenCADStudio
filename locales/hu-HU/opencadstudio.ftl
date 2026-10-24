@@ -7044,3 +7044,4 @@ block-lookup =
     .invalid-table = A keresési táblázat érvénytelen.
     .invalid-value = A kiválasztott sor érvénytelen paraméterértéket tartalmaz.
     .incompatible-values = A sor értékei nem felelnek meg a paraméterek értékkészleteinek.
+    .quoted-help = A szóközt vagy írásjelet tartalmazó neveket tegye idézőjelek közé: { $name }.

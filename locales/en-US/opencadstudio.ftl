@@ -7061,3 +7061,4 @@ block-lookup =
     .invalid-table = The Lookup table is invalid.
     .invalid-value = The selected Lookup row has an invalid parameter value.
     .incompatible-values = The Lookup row values do not satisfy the parameter value sets.
+    .quoted-help = Quote names with spaces or punctuation: { $name }.
