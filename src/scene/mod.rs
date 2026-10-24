@@ -72,6 +72,7 @@ mod layout;
 mod limits;
 mod modify;
 pub(crate) use modify::remap_copied_reactors;
+pub(crate) use modify::remap_copied_viewport_clips;
 pub(crate) use modify::inverse_affine;
 mod mspace;
 pub mod named_parameters;

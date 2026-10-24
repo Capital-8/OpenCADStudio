@@ -1174,6 +1174,7 @@ impl Scene {
             let _ = self.sync_displayed_annotation_context(leader_handle);
         }
         remap_copied_reactors(&mut self.document, &handle_map);
+        remap_copied_viewport_clips(&mut self.document, &handle_map, false);
         // A tree cloned in one pass can hold refs to sibling copied entities;
         // only once every copy exists can those resolve.
         remap_copied_xdict_cross_refs(&mut self.document, &handle_map, &created_objects);
@@ -2695,6 +2696,32 @@ pub(crate) fn remap_copied_reactors(
     }
 }
 
+/// A copied clipped viewport is clipped by the copy of its boundary when that
+/// was copied with it, never by the source's boundary (which sits on the
+/// source viewport and would clip the copy somewhere else). With
+/// `drop_unmapped` (a paste, whose source handles may name anything in this
+/// drawing) a viewport whose boundary did not come along loses its clip.
+pub(crate) fn remap_copied_viewport_clips(
+    document: &mut codec::CadDocument,
+    handle_map: &rustc_hash::FxHashMap<Handle, Handle>,
+    drop_unmapped: bool,
+) {
+    for &copy in handle_map.values() {
+        let Some(EntityType::Viewport(viewport)) = document.get_entity_mut(copy) else {
+            continue;
+        };
+        if viewport.clip_boundary_handle.is_null() {
+            continue;
+        }
+        if let Some(&boundary) = handle_map.get(&viewport.clip_boundary_handle) {
+            viewport.clip_boundary_handle = boundary;
+        } else if drop_unmapped {
+            viewport.clip_boundary_handle = Handle::NULL;
+            viewport.status.non_rectangular_clipping = false;
+        }
+    }
+}
+
 /// Resolve entity-valued refs inside freshly cloned object trees through the
 /// completed copy map. Object-to-object cross-refs are already resolved
 /// against the shared prealloc map inside `clone_xdict_tree`; this pass only
@@ -3780,5 +3807,61 @@ mod copy_entities_subhandle_tests {
             .collect();
         first_x.sort_by(f64::total_cmp);
         assert_eq!(first_x, vec![20.0, 120.0, 220.0]);
+    }
+}
+
+#[cfg(test)]
+mod copy_viewport_clip_tests {
+    use super::*;
+    use crate::command::EntityTransform;
+    use codec::entities::{LwPolyline, Viewport};
+    use glam::DVec3;
+
+    fn clipped_viewport(scene: &mut Scene) -> (Handle, Handle) {
+        let mut boundary = LwPolyline::new();
+        boundary.add_point(codec::types::Vector2::new(0.0, 0.0));
+        boundary.add_point(codec::types::Vector2::new(10.0, 0.0));
+        boundary.add_point(codec::types::Vector2::new(5.0, 8.0));
+        boundary.is_closed = true;
+        let boundary = scene.add_entity(EntityType::LwPolyline(boundary));
+        let mut viewport = Viewport::new();
+        viewport.clip_boundary_handle = boundary;
+        viewport.status.non_rectangular_clipping = true;
+        let viewport = scene.add_entity(EntityType::Viewport(Box::new(viewport)));
+        (viewport, boundary)
+    }
+
+    fn clip_of(scene: &Scene, viewport: Handle) -> Handle {
+        match scene.document.get_entity(viewport) {
+            Some(EntityType::Viewport(v)) => v.clip_boundary_handle,
+            other => panic!("expected a viewport, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn copied_viewport_is_clipped_by_the_copied_boundary() {
+        let mut scene = Scene::new();
+        let (viewport, boundary) = clipped_viewport(&mut scene);
+        let copies = scene.copy_entities(
+            &[viewport, boundary],
+            &EntityTransform::Translate(DVec3::new(100.0, 0.0, 0.0)),
+        );
+        let copied_viewport = copies
+            .iter()
+            .copied()
+            .find(|&h| matches!(scene.document.get_entity(h), Some(EntityType::Viewport(_))))
+            .expect("copied viewport");
+        let copied_boundary = copies
+            .iter()
+            .copied()
+            .find(|&h| {
+                matches!(
+                    scene.document.get_entity(h),
+                    Some(EntityType::LwPolyline(_))
+                )
+            })
+            .expect("copied boundary");
+        assert_eq!(clip_of(&scene, copied_viewport), copied_boundary);
+        assert_eq!(clip_of(&scene, viewport), boundary);
     }
 }
