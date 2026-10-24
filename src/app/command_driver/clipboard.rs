@@ -783,9 +783,8 @@ pub(crate) fn paste_entities_kernel(
 }
 
 /// Document-level clone-add: the `&mut CadDocument` half of
-/// `Scene::add_entity_clone` — fresh inline sub-handles (INSERT attributes,
-/// 3D-polyline vertices; `reset_clone_subhandles` is `scene`-private so the
-/// two lines are mirrored here), NULL top-level/owner handles, then
+/// `Scene::add_entity_clone` — fresh inline sub-handles
+/// (`Scene::reset_clone_subhandles`), NULL top-level/owner handles, then
 /// adds it to `space`. Tessellation/render caching stays caller-side in the
 /// Scene shell.
 fn add_entity_clone_doc(
@@ -793,19 +792,7 @@ fn add_entity_clone_doc(
     mut entity: codec::EntityType,
     space: PasteSpace,
 ) -> Handle {
-    match &mut entity {
-        codec::EntityType::Insert(ins) => {
-            for att in ins.attributes.iter_mut() {
-                att.common.handle = doc.allocate_handle();
-            }
-        }
-        codec::EntityType::Polyline3D(p) => {
-            for v in p.vertices.iter_mut() {
-                v.handle = doc.allocate_handle();
-            }
-        }
-        _ => {}
-    }
+    crate::scene::Scene::reset_clone_subhandles(doc, &mut entity);
     entity.common_mut().handle = Handle::NULL;
     entity.common_mut().owner_handle = Handle::NULL;
     match space {
@@ -862,19 +849,7 @@ fn add_entity_clone_doc_inner(
     entity: &mut codec::EntityType,
     owner: Handle,
 ) {
-    match entity {
-        codec::EntityType::Insert(ins) => {
-            for att in ins.attributes.iter_mut() {
-                att.common.handle = doc.allocate_handle();
-            }
-        }
-        codec::EntityType::Polyline3D(p) => {
-            for v in p.vertices.iter_mut() {
-                v.handle = doc.allocate_handle();
-            }
-        }
-        _ => {}
-    }
+    crate::scene::Scene::reset_clone_subhandles(doc, entity);
     entity.common_mut().handle = Handle::NULL;
     entity.common_mut().owner_handle = owner;
     // An extension dictionary is exclusively owned; the clone must not claim
