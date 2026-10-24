@@ -941,6 +941,8 @@ pub(crate) fn paste_entities_kernel(
     crate::scene::remap_hatch_associations(doc, &handle_map);
     // Reactors on the source drawing's objects do not travel with the paste.
     crate::scene::remap_copied_reactors(doc, &handle_map);
+    // A pasted clipped viewport is clipped by the pasted boundary.
+    crate::scene::remap_copied_viewport_clips(doc, &handle_map, true);
     let leader_links: Vec<(Handle, Handle)> = entities
         .iter()
         .filter_map(|source| {
@@ -2390,5 +2392,79 @@ mod define_block_raw_doc_anonymous_tests {
         scene.define_block_raw("*U9", codec::types::Vector3::ZERO, vec![]);
         let record = scene.document.block_records.get("*U9").expect("defined");
         assert!(record.flags.anonymous);
+    }
+}
+
+#[cfg(test)]
+mod paste_viewport_clip_tests {
+    use super::{copy_to_clipboard_kernel, paste_entities_kernel};
+    use codec::Handle;
+
+    fn clipped_viewport(doc: &mut codec::CadDocument) -> (Handle, Handle) {
+        let mut boundary = codec::entities::LwPolyline::new();
+        boundary.add_point(codec::types::Vector2::new(0.0, 0.0));
+        boundary.add_point(codec::types::Vector2::new(10.0, 0.0));
+        boundary.add_point(codec::types::Vector2::new(5.0, 8.0));
+        boundary.is_closed = true;
+        let boundary = doc
+            .add_entity(codec::EntityType::LwPolyline(boundary))
+            .unwrap();
+        let mut viewport = codec::entities::Viewport::new();
+        viewport.clip_boundary_handle = boundary;
+        viewport.status.non_rectangular_clipping = true;
+        let viewport = doc
+            .add_entity(codec::EntityType::Viewport(Box::new(viewport)))
+            .unwrap();
+        (viewport, boundary)
+    }
+
+    fn paste(seed: &codec::CadDocument, handles: &[Handle]) -> (codec::CadDocument, Vec<Handle>) {
+        let (entities, deps) = copy_to_clipboard_kernel(seed, handles);
+        let mut dst = codec::CadDocument::new();
+        let translate =
+            crate::command::EntityTransform::Translate(glam::DVec3::new(100.0, 0.0, 0.0));
+        let (pasted, _) = paste_entities_kernel(
+            &mut dst,
+            &entities,
+            &deps,
+            Some(&translate),
+            crate::app::PasteSpace::Model,
+        );
+        (dst, pasted)
+    }
+
+    fn viewport_in(doc: &codec::CadDocument, handles: &[Handle]) -> codec::entities::Viewport {
+        handles
+            .iter()
+            .find_map(|&h| match doc.get_entity(h) {
+                Some(codec::EntityType::Viewport(v)) => Some(v.as_ref().clone()),
+                _ => None,
+            })
+            .expect("pasted viewport")
+    }
+
+    #[test]
+    fn pasted_viewport_is_clipped_by_the_pasted_boundary() {
+        let mut seed = codec::CadDocument::new();
+        let (viewport, boundary) = clipped_viewport(&mut seed);
+        let (dst, pasted) = paste(&seed, &[viewport, boundary]);
+        let copy = viewport_in(&dst, &pasted);
+        let pasted_boundary = pasted
+            .iter()
+            .copied()
+            .find(|&h| matches!(dst.get_entity(h), Some(codec::EntityType::LwPolyline(_))))
+            .expect("pasted boundary");
+        assert_eq!(copy.clip_boundary_handle, pasted_boundary);
+        assert!(copy.status.non_rectangular_clipping);
+    }
+
+    #[test]
+    fn pasted_viewport_without_its_boundary_is_not_clipped() {
+        let mut seed = codec::CadDocument::new();
+        let (viewport, _) = clipped_viewport(&mut seed);
+        let (dst, pasted) = paste(&seed, &[viewport]);
+        let copy = viewport_in(&dst, &pasted);
+        assert!(copy.clip_boundary_handle.is_null());
+        assert!(!copy.status.non_rectangular_clipping);
     }
 }
