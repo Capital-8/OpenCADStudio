@@ -4,6 +4,8 @@ use crate::scene::block_actions::{self as actions, Kind};
 use codec::{EntityType, Handle};
 use iced::Task;
 
+mod preview;
+
 // These grips start an ordinary point-input command, keeping snapping, typed
 // coordinates and Escape on the command driver's existing path.
 pub(super) const TEST_GRIP_START: usize = crate::scene::pick::grip::CUSTOM_GRIP_ID_START;

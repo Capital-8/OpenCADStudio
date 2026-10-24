@@ -3401,6 +3401,11 @@ pub trait CadCommand: Send {
         None
     }
 
+    /// Non-mutating parameter input for the host's staged geometry preview.
+    fn block_parameter_preview(&self, _cursor: DVec3) -> Option<CmdResult> {
+        None
+    }
+
     /// Advance the insertion anchor on a rising Ctrl key edge.
     fn cycle_insertion_point(&mut self) -> bool {
         false
