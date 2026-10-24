@@ -264,7 +264,8 @@ impl iced::widget::canvas::Program<Message> for MTextPreview {
                     p.line_to(map(x, y));
                 }
             });
-            frame.stroke(&path, Stroke::default().with_color(*col).with_width(*width));
+            let col = readable_on(*col, theme.palette().background.base);
+            frame.stroke(&path, Stroke::default().with_color(col).with_width(*width));
         }
         // Caret — a vertical bar at the caret's glyph boundary, shown when the
         // selection is empty (a plain text cursor).
@@ -328,6 +329,24 @@ impl iced::widget::canvas::Program<Message> for MTextPreview {
 /// Split every preview WireModel into finite (x, y) polyline runs, each
 /// carrying its wire's colour (so inline `\C` / the colour dropdown shows) and a
 /// stroke width (bold runs carry a wider pen via `line_weight_px`).
+/// A text colour too close to the editor background (a light grey layer on
+/// the light theme's white) pulled toward the theme's text colour, keeping
+/// some of its own hue.
+fn readable_on(col: Color, background: iced::theme::palette::Pair) -> Color {
+    let luminance = |c: Color| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    if (luminance(col) - luminance(background.color)).abs() >= 0.35 {
+        return col;
+    }
+    let text = background.text;
+    let mix = |a: f32, b: f32| a * 0.3 + b * 0.7;
+    Color {
+        r: mix(col.r, text.r),
+        g: mix(col.g, text.g),
+        b: mix(col.b, text.b),
+        a: col.a,
+    }
+}
+
 fn mtext_preview_segments(
     ed: &super::super::mtext_editor::MTextEditorState,
 ) -> Vec<(Vec<(f32, f32)>, Color, f32)> {
