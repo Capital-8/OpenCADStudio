@@ -1027,14 +1027,20 @@ impl Scene {
                     {
                         continue;
                     }
-                    let old_count = path.boundary_handles.len();
-                    path.boundary_handles
-                        .retain(|source| self.document.get_entity(*source).is_some());
-                    if path.boundary_handles.is_empty() {
+                    // An erased source leaves the path as it is, no longer
+                    // associative: the remaining sources alone would bound
+                    // a different region.
+                    if path
+                        .boundary_handles
+                        .iter()
+                        .any(|source| self.document.get_entity(*source).is_none())
+                    {
+                        path.boundary_handles.clear();
                         path.flags.set_external(false);
+                        association_changed = true;
+                        modified = true;
+                        continue;
                     }
-                    association_changed |= path.boundary_handles.len() != old_count;
-                    modified |= association_changed;
                     let sources: rustc_hash::FxHashMap<_, _> = path
                         .boundary_handles
                         .iter()
