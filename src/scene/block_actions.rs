@@ -1478,44 +1478,16 @@ fn evaluate_impl(
             {
                 return Err("This Move action uses options not supported yet.");
             }
-            DynamicBlockData::FlipAction(f)
-                if f.connections
-                    != ["Flip", "UpdatedFlip", "UpdatedBase", "UpdatedEnd"].map(|name| {
-                        BlockConnection {
-                            code: q.id,
-                            name: name.into(),
-                        }
-                    }) =>
+            DynamicBlockData::FlipAction(_)
+            | DynamicBlockData::RotateAction(_)
+            | DynamicBlockData::ScaleAction(_)
+                if grip_roles::scalar_mask(&q, &o.data) == Some(0) =>
             {
-                return Err("This Flip action uses options not supported yet.");
-            }
-            DynamicBlockData::RotateAction(r)
-                if r.connections
-                        != vec![BlockConnection {
-                            code: q.id,
-                            name: "AngleDelta".into(),
-                        }]
-                    || r.action.connections
-                        != ["UpdatedBaseX", "UpdatedBaseY"].map(|name| BlockConnection {
-                            code: q.id,
-                            name: name.into(),
-                        }) =>
-            {
-                return Err("This Rotate action uses options not supported yet.");
-            }
-            DynamicBlockData::ScaleAction(s)
-                if s.connections
-                        != ["Scale", "XScale", "YScale"].map(|name| BlockConnection {
-                            code: q.id,
-                            name: name.into(),
-                        })
-                    || s.action.connections
-                        != ["UpdatedBaseX", "UpdatedBaseY"].map(|name| BlockConnection {
-                            code: q.id,
-                            name: name.into(),
-                        }) =>
-            {
-                return Err("This Scale action uses options not supported yet.");
+                return Err(match &o.data {
+                    DynamicBlockData::FlipAction(_) => "This Flip action uses options not supported yet.",
+                    DynamicBlockData::RotateAction(_) => "This Rotate action uses options not supported yet.",
+                    _ => "This Scale action uses options not supported yet.",
+                });
             }
             _ => {}
         }
@@ -1596,11 +1568,7 @@ fn evaluate_impl(
         if arr.column_offset <= 1e-6
             || !arr.column_offset.is_finite()
             || (q.xy && (arr.row_offset <= 1e-6 || !arr.row_offset.is_finite()))
-            || arr.connections
-                != ["Base", "End", "UpdatedBase", "UpdatedEnd"].map(|name| BlockConnection {
-                    code: q.id,
-                    name: name.into(),
-                })
+            || grip_roles::scalar_mask(&q, &o.data) == Some(0)
         {
             return Err("This Array action uses options not supported yet.");
         }

@@ -7245,3 +7245,5 @@ fn block_key_point_grip_eligibility_and_pending_result_follow_reassociation() {
         }
     }
 }
+
+mod scalar_grip_bindings;
