@@ -5177,8 +5177,7 @@ impl OpenCADStudio {
             #[cfg(not(target_arch = "wasm32"))]
             plugin_grip_live_originals: Vec::new(),
             #[cfg(not(target_arch = "wasm32"))]
-            plugin_grip_settle_watchdog:
-                crate::app::update::SETTLE_WATCHDOG,
+            plugin_grip_settle_watchdog: crate::app::update::SETTLE_WATCHDOG,
             #[cfg(not(target_arch = "wasm32"))]
             plugin_grip_settle_strikes: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]

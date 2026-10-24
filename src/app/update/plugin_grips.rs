@@ -309,8 +309,10 @@ impl OpenCADStudio {
         );
         if let Some(event) = event {
             self.issue_phase(tab, ocs_plugin_api::host::CustomGripPhase::Settle, event);
-            self.plugin_grip_deliveries
-                .begin_settle_watch(self.plugin_grip_settle_watchdog, std::time::Instant::now());
+            self.plugin_grip_deliveries.begin_settle_watch(
+                self.plugin_grip_settle_watchdog,
+                std::time::Instant::now(),
+            );
         } else {
             // The owner vanished mid-drag: end as a cancel.
             let _ = self.cancel_plugin_grip_drag();
