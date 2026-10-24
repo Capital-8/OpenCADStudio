@@ -79,7 +79,7 @@ pub fn general_section(entity: &EntityType) -> PropSection {
                 field: "transparency",
                 value: PropValue::EditChoice {
                     value: transp_display,
-                    options: vec!["ByLayer".to_string(), "ByBlock".to_string()],
+                    options: crate::scene::creation_style::transparency_options(),
                 },
             },
             Property {

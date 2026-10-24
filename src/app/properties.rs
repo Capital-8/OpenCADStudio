@@ -2165,7 +2165,7 @@ impl OpenCADStudio {
                                                     .document
                                                     .current_entity_transparency(),
                                             ),
-                                        options: vec!["ByLayer".to_string(), "ByBlock".to_string()],
+                                        options: crate::scene::creation_style::transparency_options(),
                                     },
                                 },
                                 read_only(
