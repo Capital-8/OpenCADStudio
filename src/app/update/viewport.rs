@@ -185,13 +185,11 @@ enum ScrollIntent {
 /// still at the top of a drag strobes the glyph on every jittered pixel.
 const ZOOM_DIR_FLIP_PX: f32 = 2.0;
 
-/// A wheel notch zooms; a trackpad's two fingers pan.
+/// Scroll zooms unless the user has enabled touchpad panning.
 ///
-/// On macOS a wheel reports notches and a trackpad pixels, and that is the
-/// whole distinction. Elsewhere a touchpad's two-finger drag arrives as wheel
-/// notches (the browser build reports every wheel as pixels), so nothing tells
-/// it from a wheel: with `touchpad_pan` on, every scroll pans and Ctrl+scroll —
-/// what a pinch sends there — zooms.
+/// Delta units are not a reliable device identifier: smooth-scrolling mice
+/// can report pixels on macOS too. Honor the explicit touchpad option for
+/// both kinds of delta, with Ctrl+scroll always available for zooming.
 fn scroll_intent(delta: mouse::ScrollDelta, touchpad_pan: bool, ctrl: bool) -> ScrollIntent {
     /// Screen pixels one wheel line pans.
     const LINE_PX: f32 = 40.0;
@@ -205,12 +203,6 @@ fn scroll_intent(delta: mouse::ScrollDelta, touchpad_pan: bool, ctrl: bool) -> S
         };
     }
     match delta {
-        // Both axes go straight through: the two-finger gesture moves the
-        // drawing the same way the middle-button drag moves it. If a pan ever
-        // comes out mirrored, this is the line.
-        #[cfg(target_os = "macos")]
-        mouse::ScrollDelta::Pixels { x, y } => ScrollIntent::Pan { dx: x, dy: y },
-        #[cfg(not(target_os = "macos"))]
         mouse::ScrollDelta::Pixels { y, .. } => ScrollIntent::Zoom { notches: y * 0.01 },
         mouse::ScrollDelta::Lines { y, .. } => ScrollIntent::Zoom { notches: y },
     }
@@ -7295,8 +7287,7 @@ properties={:.1}ms picked={}",
         Task::none()
     }
 
-    /// A wheel notch zooms; a trackpad's two fingers pan. Which one a delta
-    /// means is `scroll_intent`'s call.
+    /// Apply the user's scroll navigation preference to either delta unit.
     pub(super) fn on_viewport_scroll(&mut self, delta: mouse::ScrollDelta) -> Task<Message> {
         match scroll_intent(delta, self.touchpad_pan, self.ctrl_down) {
             ScrollIntent::Zoom { notches } => {
@@ -8730,15 +8721,56 @@ mod scroll_intent_tests {
         );
     }
 
-    /// Both axes of the gesture have to reach the pan, and the drawing has to
-    /// follow the fingers rather than run away from them.
-    #[cfg(target_os = "macos")]
     #[test]
-    fn two_finger_scroll_pans() {
+    fn smooth_mouse_scroll_zooms_without_touchpad_mode() {
+        for (y, notches) in [(100.0, 1.0), (-100.0, -1.0), (0.0, 0.0)] {
+            assert_eq!(
+                scroll_intent(ScrollDelta::Pixels { x: 4.0, y }, false, false),
+                ScrollIntent::Zoom { notches }
+            );
+        }
+    }
+
+    /// Preserve both axes when touchpad panning is explicitly enabled.
+    #[test]
+    fn two_finger_scroll_pans_in_touchpad_mode() {
         assert_eq!(
-            scroll_intent(ScrollDelta::Pixels { x: 4.0, y: 6.0 }, false, false),
+            scroll_intent(ScrollDelta::Pixels { x: 4.0, y: 6.0 }, true, false),
             ScrollIntent::Pan { dx: 4.0, dy: 6.0 }
         );
+    }
+
+    #[test]
+    fn ctrl_pixel_scroll_zooms_in_touchpad_mode() {
+        assert_eq!(
+            scroll_intent(ScrollDelta::Pixels { x: 4.0, y: 100.0 }, true, true),
+            ScrollIntent::Zoom { notches: 1.0 }
+        );
+    }
+
+    #[test]
+    fn smooth_mouse_scroll_changes_camera_zoom_and_honors_reverse() {
+        use crate::app::{Message, OpenCADStudio};
+
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        app.touchpad_pan = false;
+        app.ctrl_down = false;
+        app.zoom_wheel_reversed = false;
+        let i = app.active_tab;
+        app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800.0, 600.0);
+        let before = app.tabs[i].scene.camera.borrow().distance;
+        let scroll = ScrollDelta::Pixels { x: 0.0, y: 100.0 };
+
+        let _ = app.update(Message::ViewportScroll(scroll));
+        let zoomed = app.tabs[i].scene.camera.borrow().distance;
+        assert!(zoomed < before, "scroll must zoom instead of panning");
+
+        app.zoom_wheel_reversed = true;
+        let _ = app.update(Message::ViewportScroll(scroll));
+        let reversed = app.tabs[i].scene.camera.borrow().distance;
+        assert!(reversed > zoomed, "ZOOMWHEEL must reverse smooth scrolling");
+        assert!((reversed - before).abs() < before * 1e-5);
     }
 
     /// A pinch is a scale factor, so the view has to end up exactly that much
