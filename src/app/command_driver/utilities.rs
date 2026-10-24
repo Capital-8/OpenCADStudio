@@ -428,8 +428,10 @@ impl OpenCADStudio {
             } else {
                 None
             };
-            if let Some(command) = self.tabs[i].active_cmd.as_mut() {
+            let tab = &mut self.tabs[i];
+            if let Some(command) = tab.active_cmd.as_mut() {
                 command.set_point_pick_context(context);
+                command.refresh_point_pick_scene(&tab.scene);
             }
         }
     }
@@ -867,9 +869,7 @@ impl OpenCADStudio {
                 command.inject_selection_entities(entities);
             }
         }
-        if matches!(&input, StepInput::Point(_)) {
-            self.refresh_command_point_pick_context(i);
-        }
+        self.refresh_command_point_pick_context(i);
         let ctrl = self.ctrl_down;
         let shift = self.shift_down;
         let picked_handle = if let StepInput::EntityPick(h, _) = &input {
