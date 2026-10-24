@@ -823,6 +823,8 @@ pub(crate) fn define_block_raw_doc(
     let block_handle = Handle::new(next + 1);
     let end_handle = Handle::new(next + 2);
     let mut block_record = codec::tables::BlockRecord::new(name);
+    block_record.flags.anonymous =
+        name.starts_with('*') && !(block_record.is_model_space() || block_record.is_paper_space());
     block_record.handle = br_handle;
     block_record.block_entity_handle = block_handle;
     block_record.block_end_handle = end_handle;
@@ -1732,5 +1734,51 @@ mod define_transformed_block_doc_xdict_tests {
                 None => panic!("cloned child {h:?} missing"),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod define_block_raw_doc_anonymous_tests {
+    use super::define_block_raw_doc;
+
+    fn defined(name: &str) -> codec::CadDocument {
+        let mut doc = codec::CadDocument::new();
+        define_block_raw_doc(&mut doc, name, codec::types::Vector3::ZERO, &[]);
+        doc
+    }
+
+    /// Pasting an INSERT of an anonymous / dynamic-variant block recreates it
+    /// under its `*U<n>` name; the DWG writer takes the anonymous bit only
+    /// from the flag, so the record must carry it.
+    #[test]
+    fn star_named_block_is_flagged_anonymous() {
+        let doc = defined("*U7");
+        let record = doc.block_records.get("*U7").expect("block defined");
+        assert!(record.flags.anonymous, "*U7 must be flagged anonymous");
+    }
+
+    #[test]
+    fn plain_named_block_is_not_flagged_anonymous() {
+        let doc = defined("Door");
+        let record = doc.block_records.get("Door").expect("block defined");
+        assert!(!record.flags.anonymous);
+    }
+
+    #[test]
+    fn layout_block_is_not_flagged_anonymous() {
+        let doc = defined("*Paper_Space0");
+        let record = doc
+            .block_records
+            .get("*Paper_Space0")
+            .expect("block defined");
+        assert!(!record.flags.anonymous, "a layout block is not anonymous");
+    }
+
+    #[test]
+    fn scene_define_block_raw_flags_star_name_anonymous() {
+        let mut scene = crate::scene::Scene::new();
+        scene.define_block_raw("*U9", codec::types::Vector3::ZERO, vec![]);
+        let record = scene.document.block_records.get("*U9").expect("defined");
+        assert!(record.flags.anonymous);
     }
 }
