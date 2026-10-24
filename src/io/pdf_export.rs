@@ -714,8 +714,10 @@ fn append_pdf_page(
                 alpha_open = false;
                 last_color = None;
                 last_lw = None;
-                last_cap = Some(LineCapStyle::Round);
-                last_join = Some(LineJoinStyle::Round);
+                // Q restores whatever was set before the q, not the page
+                // default: force the next object to state its own.
+                last_cap = None;
+                last_join = None;
                 last_dash = None;
             }
             let layer = match &item {
