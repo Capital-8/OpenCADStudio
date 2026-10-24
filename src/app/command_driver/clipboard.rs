@@ -669,6 +669,8 @@ pub(crate) fn merge_image_definitions(
             let handle = doc.allocate_handle();
             let mut copy = definition.clone();
             copy.handle = handle;
+            // The source images' reactors; pasted images drop theirs.
+            copy.reactors.clear();
             copy.owner = register_image_definition(doc, handle, &definition.file_name)
                 .unwrap_or(Handle::NULL);
             doc.objects

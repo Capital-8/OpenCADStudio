@@ -1001,6 +1001,9 @@ fn import_xref_symbols(
                     let new_h = doc.allocate_handle();
                     cloned.handle = new_h;
                     cloned.owner = Handle::NULL;
+                    // The source drawing's reactors; the bound images
+                    // drop their reactor links too.
+                    cloned.reactors.clear();
                     doc.objects
                         .insert(new_h, ObjectType::ImageDefinition(cloned));
                     maps.image_defs.insert(*handle, new_h);
