@@ -71,23 +71,84 @@ pub(crate) fn nurbs3(spline: &Spline) -> Option<NurbsCurve3> {
         fit_nurbs3(spline)?
     } else {
         let degree = usize::try_from(spline.degree).ok()?;
-        let weights = if spline.weights.is_empty() {
-            vec![1.0; spline.control_points.len()]
-        } else {
-            spline.weights.clone()
-        };
-        NurbsCurve3::new_strict(
-            degree,
-            spline
+        let (points, knots, weights) = unwrapped_periodic(spline).unwrap_or_else(|| {
+            let weights = if spline.weights.is_empty() {
+                vec![1.0; spline.control_points.len()]
+            } else {
+                spline.weights.clone()
+            };
+            let points = spline
                 .control_points
                 .iter()
                 .map(|point| [point.x, point.y, point.z])
-                .collect(),
-            spline.knots.clone(),
-            weights,
-        )?
+                .collect();
+            (points, spline.knots.clone(), weights)
+        });
+        NurbsCurve3::new_strict(degree, points, knots, weights)?
     };
     Some(curve.with_periodicity(spline.flags.closed || spline.flags.periodic))
+}
+
+/// A periodic spline as a DWG keeps it, one period: `n` control points and
+/// `n + 1` knots. Returns the same curve as a plain NURBS: the first
+/// `degree` points repeat at the end and the knots run one period further
+/// on both sides. `None` for every other spline.
+fn unwrapped_periodic(spline: &Spline) -> Option<(Vec<[f64; 3]>, Vec<f64>, Vec<f64>)> {
+    let degree = usize::try_from(spline.degree).ok()?;
+    let n = spline.control_points.len();
+    let knots = &spline.knots;
+    if !spline.flags.periodic || degree == 0 || n <= degree || knots.len() != n + 1 {
+        return None;
+    }
+    let period = knots[n] - knots[0];
+    if !(period > 0.0) {
+        return None;
+    }
+    let weight = |i: usize| spline.weights.get(i % n).copied().unwrap_or(1.0);
+    let points = (0..n + degree)
+        .map(|i| {
+            let point = spline.control_points[i % n];
+            [point.x, point.y, point.z]
+        })
+        .collect();
+    let knots = (0..degree)
+        .map(|j| knots[n - degree + j] - period)
+        .chain(knots.iter().copied())
+        .chain((1..=degree).map(|j| knots[j] + period))
+        .collect();
+    let weights = (0..n + degree).map(weight).collect();
+    Some((points, knots, weights))
+}
+
+/// DXF readers take a SPLINE's NURBS data as its shape. A DWG keeps only the
+/// fit data of a fit-method spline and one period of a periodic spline, so
+/// give each such spline in `doc` its full NURBS before a DXF write. The fit
+/// data and flags stay; only control points, knots and weights are added.
+pub(crate) fn complete_nurbs_for_dxf(doc: &mut codec::CadDocument) {
+    for entity in doc.entities_mut() {
+        let codec::EntityType::Spline(spline) = entity else {
+            continue;
+        };
+        let curve = if uses_fit_method(spline) {
+            fit_nurbs3(spline)
+        } else if let Some((points, knots, weights)) = unwrapped_periodic(spline) {
+            let degree = spline.degree.max(0) as usize;
+            NurbsCurve3::new_strict(degree, points, knots, weights)
+        } else {
+            None
+        };
+        let Some(curve) = curve else {
+            continue;
+        };
+        spline.degree = curve.degree() as i32;
+        spline.knots = curve.knots().to_vec();
+        spline.control_points = curve
+            .control_points()
+            .iter()
+            .map(|point| codec::types::Vector3::new(point[0], point[1], point[2]))
+            .collect();
+        spline.weights = curve.weights().to_vec();
+    }
 }
 
 /// NURBS knot locations on a control-point spline, evaluated on its own

@@ -2233,6 +2233,9 @@ where
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
     let write_started = iced::time::Instant::now();
+    if ext == "dxf" {
+        crate::entities::spline::complete_nurbs_for_dxf(&mut doc);
+    }
     let result = match ext.as_str() {
         "dxf" => DxfWriter::new(&doc)
             .write_to_file(&temp_path)
