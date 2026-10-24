@@ -317,7 +317,20 @@ pub fn drop_down_below<'a>(
     popup_height: Length,
     on_dismiss: Message,
 ) -> Element<'a, Message> {
-    let mut dd = iced_aw::DropDown::new(base, popup, true)
+    editable_drop_down_below(base, popup, popup_width, popup_height, on_dismiss, true)
+}
+
+/// Keep the same widget tree while toggling an editable dropdown, preserving
+/// its text input's focus, cursor and selection.
+pub fn editable_drop_down_below<'a>(
+    base: Element<'a, Message>,
+    popup: Element<'a, Message>,
+    popup_width: Option<Length>,
+    popup_height: Length,
+    on_dismiss: Message,
+    expanded: bool,
+) -> Element<'a, Message> {
+    let mut dd = iced_aw::DropDown::new(base, popup, expanded)
         .height(popup_height)
         .alignment(iced_aw::drop_down::Alignment::Bottom)
         .offset(2.0)
