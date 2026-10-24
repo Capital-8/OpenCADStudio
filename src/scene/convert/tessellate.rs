@@ -2811,6 +2811,11 @@ pub(crate) fn arrow_from_block_with_deferred_hatch(
         return arrow_from_block_name(None, dimasz);
     };
     if let Some(arrow) = builtin_arrow_from_block_name(&record.name, dimasz) {
+        // AutoCAD writes "_None" empty, but it draws whatever the block
+        // holds: some drawings define "_NONE" as a small circle.
+        if matches!(arrow, ArrowKind::None) && !record.entity_handles.is_empty() {
+            return custom_arrow_from_block(doc, record, dimasz, defer_hatch).unwrap_or(arrow);
+        }
         return arrow;
     }
     custom_arrow_from_block(doc, record, dimasz, defer_hatch)
@@ -3487,6 +3492,38 @@ pub(crate) fn normalized_or(v: Vec3, fallback: Vec3) -> Vec3 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn none_arrow_draws_what_its_block_holds() {
+        // A drawing's "_NONE" holding a 0.25 circle, which AutoCAD 2025 draws.
+        let mut doc = CadDocument::new();
+        let circle = codec::entities::Circle::from_center_radius(codec::types::Vector3::ZERO, 0.25);
+        crate::app::define_block_raw_doc(
+            &mut doc,
+            "_NONE",
+            codec::types::Vector3::ZERO,
+            &[EntityType::Circle(circle)],
+        );
+        let handle = doc.block_records.get("_NONE").unwrap().handle;
+        let ArrowKind::Custom { size, lines, .. } = arrow_from_block(&doc, handle, 50.0) else {
+            panic!("a non-empty \"_NONE\" draws its contents");
+        };
+        assert_eq!(size, 50.0);
+        let reach = lines
+            .iter()
+            .map(|p| Vec3::from_array(*p).length())
+            .fold(0.0_f32, f32::max);
+        assert!((reach - 0.25).abs() < 1e-3, "circle radius {reach}");
+
+        // AutoCAD's own "_None" is empty: no arrow.
+        let mut doc = CadDocument::new();
+        crate::app::define_block_raw_doc(&mut doc, "_None", codec::types::Vector3::ZERO, &[]);
+        let handle = doc.block_records.get("_None").unwrap().handle;
+        assert!(matches!(
+            arrow_from_block(&doc, handle, 50.0),
+            ArrowKind::None
+        ));
+    }
 
     #[test]
     fn arrow_name_mapping_covers_preview_kinds() {
