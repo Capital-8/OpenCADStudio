@@ -2007,6 +2007,15 @@ pub struct ClipboardDeps {
     pub linetypes: Vec<codec::tables::LineType>,
     pub text_styles: Vec<codec::tables::TextStyle>,
     pub dim_styles: Vec<codec::tables::DimStyle>,
+    /// The text and shape-file styles the captured linetypes' shape and text
+    /// segments point to. Segments name their style by handle, and shape-file
+    /// styles have no name, so a paste matches them by font file instead and
+    /// re-points the recreated linetype at the target's record.
+    pub linetype_styles: Vec<codec::tables::TextStyle>,
+    /// The image definitions the copied raster images point to. A paste
+    /// re-points each image at the target's definition of the same file, or
+    /// recreates the definition there, so it never names the source's object.
+    pub image_definitions: Vec<codec::objects::ImageDefinition>,
     /// Block definitions the copied INSERTs reference (transitively),
     /// snapshotted from the source drawing. Recreated on paste so a block
     /// reference doesn't render empty in a drawing that lacks the
@@ -2217,15 +2226,60 @@ impl ClipboardDeps {
             .cloned()
             .collect();
 
+        let linetypes: Vec<codec::tables::LineType> = ltypes
+            .iter()
+            .filter_map(|n| doc.line_types.get(n).cloned())
+            .collect();
+        let mut linetype_styles: Vec<codec::tables::TextStyle> = Vec::new();
+        for complex in linetypes
+            .iter()
+            .flat_map(|lt| lt.elements.iter())
+            .filter_map(|element| element.complex.as_ref())
+        {
+            if complex.style_handle.is_null()
+                || linetype_styles
+                    .iter()
+                    .any(|s| s.handle == complex.style_handle)
+            {
+                continue;
+            }
+            if let Some(style) = doc
+                .text_styles
+                .iter()
+                .find(|s| s.handle == complex.style_handle)
+            {
+                linetype_styles.push(style.clone());
+            }
+        }
+
+        let mut image_definitions: Vec<codec::objects::ImageDefinition> = Vec::new();
+        for e in entities {
+            let EntityType::RasterImage(image) = e else {
+                continue;
+            };
+            let Some(handle) = image.definition_handle.filter(|h| !h.is_null()) else {
+                continue;
+            };
+            if image_definitions.iter().any(|d| d.handle == handle) {
+                continue;
+            }
+            if let Some(codec::objects::ObjectType::ImageDefinition(definition)) =
+                doc.objects.get(&handle)
+            {
+                let mut definition = definition.clone();
+                definition.handle = handle;
+                image_definitions.push(definition);
+            }
+        }
+
         ClipboardDeps {
             layers: layers
                 .iter()
                 .filter_map(|n| doc.layers.get(n).cloned())
                 .collect(),
-            linetypes: ltypes
-                .iter()
-                .filter_map(|n| doc.line_types.get(n).cloned())
-                .collect(),
+            linetypes,
+            linetype_styles,
+            image_definitions,
             text_styles: tstyles
                 .iter()
                 .filter_map(|n| doc.text_styles.get(n).cloned())
@@ -2243,7 +2297,8 @@ impl ClipboardDeps {
     }
 
     /// Breadth-first collect of every object reachable from extension-dictionary
-    /// `root` (dictionary entries, nested xdictionaries, dictionary defaults),
+    /// `root` (dictionary entries, nested xdictionaries, dictionary defaults,
+    /// objects an XRecord hard-owns),
     /// returned as `(source_handle, object)` pairs. Cycle-safe.
     fn collect_ext_subtree(
         doc: &codec::CadDocument,
@@ -2273,6 +2328,16 @@ impl ClipboardDeps {
                     queue.extend(d.entries.iter().map(|(_, ch)| *ch));
                     queue.push(d.default_handle);
                 }
+                // Hard-owned objects (codes 360-369), e.g. the TABLECONTENT
+                // of a table's ACAD_ROUNDTRIP_2008_TABLE_ENTITY record.
+                ObjectType::XRecord(x) => {
+                    queue.extend(
+                        x.entries
+                            .iter()
+                            .filter(|entry| (360..=369).contains(&entry.code))
+                            .filter_map(|entry| entry.value.as_handle()),
+                    );
+                }
                 _ => {}
             }
             out.push((h, obj.clone()));
@@ -2297,6 +2362,17 @@ impl ClipboardDeps {
                     .and_then(|h| doc.block_records.iter().find(|r| r.handle == h))
                     .map(|record| record.name.clone());
                 for name in std::iter::once(ins.block_name.clone()).chain(definition) {
+                    if seen.insert(name.clone()) {
+                        queue.push(name);
+                    }
+                }
+            }
+            // A table's block cells name their blocks by record handle.
+            if let EntityType::Table(table) = e {
+                for name in crate::app::command_driver::clipboard::table_cell_blocks(table)
+                    .filter_map(|h| doc.block_records.iter().find(|r| r.handle == h))
+                    .map(|record| record.name.clone())
+                {
                     if seen.insert(name.clone()) {
                         queue.push(name);
                     }
