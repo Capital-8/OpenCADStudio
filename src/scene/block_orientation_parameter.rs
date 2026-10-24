@@ -294,8 +294,9 @@ pub(crate) fn create(
         Kind::Flip => DynamicBlockData::FlipParameter(BlockFlipParameter {
             parameter: native,
             flip_label: label,
-            base_state_label: "Not flipped".into(),
-            flipped_state_label: "Flipped".into(),
+            // Unset labels use UI defaults without persisting a UI language.
+            base_state_label: String::new(),
+            flipped_state_label: String::new(),
             definition_label_point: reference,
             flags_96: slots.eval + 1,
             tooltip: "UpdatedFlip".into(),

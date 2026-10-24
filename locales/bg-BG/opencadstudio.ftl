@@ -7048,3 +7048,8 @@ block-grip =
     .alignment = Подравняване: { $mode }
     .flipped = Обърнато
     .not-flipped = Необърнато
+
+
+block-flip =
+    .base-state-label = Етикет на основното състояние
+    .flipped-state-label = Етикет на обърнатото състояние

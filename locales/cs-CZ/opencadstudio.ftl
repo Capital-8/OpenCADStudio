@@ -7045,3 +7045,8 @@ block-grip =
     .alignment = Zarovnání: { $mode }
     .flipped = Převráceno
     .not-flipped = Nepřevráceno
+
+
+block-flip =
+    .base-state-label = Popisek základního stavu
+    .flipped-state-label = Popisek převráceného stavu

@@ -7032,3 +7032,8 @@ block-grip =
     .alignment = Igazítás: { $mode }
     .flipped = Átfordítva
     .not-flipped = Nincs átfordítva
+
+
+block-flip =
+    .base-state-label = Alapállapot felirata
+    .flipped-state-label = Átfordított állapot felirata

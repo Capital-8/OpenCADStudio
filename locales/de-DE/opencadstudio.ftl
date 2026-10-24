@@ -7046,3 +7046,8 @@ block-grip =
     .alignment = Ausrichtung: { $mode }
     .flipped = Gespiegelt
     .not-flipped = Nicht gespiegelt
+
+
+block-flip =
+    .base-state-label = Beschriftung des Ausgangszustands
+    .flipped-state-label = Beschriftung des gespiegelten Zustands

@@ -7047,3 +7047,8 @@ block-grip =
     .alignment = 정렬: { $mode }
     .flipped = 반전됨
     .not-flipped = 반전되지 않음
+
+
+block-flip =
+    .base-state-label = 기본 상태 레이블
+    .flipped-state-label = 반전 상태 레이블

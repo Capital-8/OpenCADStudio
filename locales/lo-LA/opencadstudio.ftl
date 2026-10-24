@@ -7049,3 +7049,8 @@ block-grip =
     .alignment = ການຈັດແນວ: { $mode }
     .flipped = ປີ້ນແລ້ວ
     .not-flipped = ຍັງບໍ່ປີ້ນ
+
+
+block-flip =
+    .base-state-label = ປ້າຍສະຖານະເດີມ
+    .flipped-state-label = ປ້າຍສະຖານະປີ້ນ

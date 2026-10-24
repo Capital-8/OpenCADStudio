@@ -78,26 +78,40 @@ fn descriptors<'a>(
     Ok(result)
 }
 fn flip_labels(doc: &CadDocument, parameter: Handle) -> Vec<String> {
+    [false, true]
+        .into_iter()
+        .filter_map(|state| flip_state_label(doc, parameter, state))
+        .collect()
+}
+
+/// Empty native labels use UI defaults; authored labels are never translated.
+pub(crate) fn flip_state_label(
+    doc: &CadDocument,
+    parameter: Handle,
+    state: bool,
+) -> Option<String> {
     let Some(ObjectType::DynamicBlock(object)) = doc.objects.get(&parameter) else {
-        return vec![];
+        return None;
     };
     let Data::FlipParameter(p) = &object.data else {
-        return vec![];
+        return None;
     };
-    [
-        (&p.base_state_label, "Not flipped"),
-        (&p.flipped_state_label, "Flipped"),
-    ]
-    .into_iter()
-    .map(|(label, fallback)| {
-        if label.is_empty() {
-            fallback.to_owned()
+    let label = if state {
+        &p.flipped_state_label
+    } else {
+        &p.base_state_label
+    };
+    Some(if label.is_empty() {
+        if state {
+            crate::tr!("block-grip", "flipped")
         } else {
-            label.clone()
+            crate::tr!("block-grip", "not-flipped")
         }
+    } else {
+        label.clone()
     })
-    .collect()
 }
+
 fn frame(
     doc: &CadDocument,
     baseline: Option<&CadDocument>,

@@ -7043,3 +7043,8 @@ block-grip =
     .alignment = 對齊: { $mode }
     .flipped = 已翻轉
     .not-flipped = 未翻轉
+
+
+block-flip =
+    .base-state-label = 基本狀態標籤
+    .flipped-state-label = 翻轉狀態標籤

@@ -7055,3 +7055,8 @@ block-grip =
     .alignment = Căn chỉnh: { $mode }
     .flipped = Đã lật
     .not-flipped = Chưa lật
+
+
+block-flip =
+    .base-state-label = Nhãn trạng thái ban đầu
+    .flipped-state-label = Nhãn trạng thái đã lật

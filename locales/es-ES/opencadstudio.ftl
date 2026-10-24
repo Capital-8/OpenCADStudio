@@ -7048,3 +7048,8 @@ block-grip =
     .alignment = Alineación: { $mode }
     .flipped = Invertido
     .not-flipped = Sin invertir
+
+
+block-flip =
+    .base-state-label = Etiqueta del estado base
+    .flipped-state-label = Etiqueta del estado invertido

@@ -7060,3 +7060,8 @@ block-grip =
     .alignment = المحاذاة: { $mode }
     .flipped = معكوس
     .not-flipped = غير معكوس
+
+
+block-flip =
+    .base-state-label = تسمية الحالة الأصلية
+    .flipped-state-label = تسمية الحالة المعكوسة

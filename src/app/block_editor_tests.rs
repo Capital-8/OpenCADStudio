@@ -8,6 +8,7 @@ mod table_properties;
 mod lookup_properties;
 mod visibility_properties;
 mod grip_descriptions;
+mod flip_state_labels;
 
 fn fixture() -> (OpenCADStudio, Handle) {
     let mut app = OpenCADStudio::new_for_test();

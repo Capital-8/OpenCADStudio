@@ -2545,9 +2545,14 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                         props: self.tabs[i].active_block_edit_session()
                             .and_then(|session| crate::scene::block_authoring::metadata::read(&self.tabs[i].scene.document, session.br_handle, item.handle).ok())
                             .map(|metadata| {
-                                let mut props: Vec<Property> = metadata.text.into_iter().map(|text| Property {
-                                    label: crate::t!(text.label).into_owned(), field: text.field.key(),
-                                    value: PropValue::PlainText(text.value.to_owned()),
+                                let mut props: Vec<Property> = metadata.text.into_iter().map(|text| {
+                                    use crate::scene::block_authoring::metadata::Field;
+                                    let label = match text.field {
+                                        Field::BaseStateLabel => crate::tr!("block-flip", "base-state-label"),
+                                        Field::FlippedStateLabel => crate::tr!("block-flip", "flipped-state-label"),
+                                        _ => crate::t!(text.label).into_owned(),
+                                    };
+                                    Property { label, field: text.field.key(), value: PropValue::PlainText(text.value.to_owned()) }
                                 }).collect();
                                 if let Some(visible) = metadata.visible {
                                     props.push(Property { label: crate::t!("Show in Properties").into_owned(), field: "authoring_show_properties", value: PropValue::BoolToggle { field: "authoring_show_properties", value: visible } });

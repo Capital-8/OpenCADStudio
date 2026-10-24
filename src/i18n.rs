@@ -515,6 +515,9 @@ mod tests {
             for attribute in &expected {
                 assert!(!render(attribute).is_empty());
             }
+            for attribute in ["base-state-label", "flipped-state-label"] {
+                assert!(!loader.get_attr("block-flip", attribute).is_empty());
+            }
             assert!(render("visibility-value").contains(authored_state));
             assert!(render("table-row").contains("17"));
             assert!(render("alignment").contains(&mode));

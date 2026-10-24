@@ -7036,3 +7036,8 @@ block-grip =
     .alignment = 位置合わせ: { $mode }
     .flipped = 反転
     .not-flipped = 未反転
+
+
+block-flip =
+    .base-state-label = 基本状態のラベル
+    .flipped-state-label = 反転状態のラベル

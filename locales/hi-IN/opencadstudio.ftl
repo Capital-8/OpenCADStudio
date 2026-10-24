@@ -7036,3 +7036,8 @@ block-grip =
     .alignment = संरेखण: { $mode }
     .flipped = पलटा हुआ
     .not-flipped = नहीं पलटा हुआ
+
+
+block-flip =
+    .base-state-label = मूल स्थिति का लेबल
+    .flipped-state-label = पलटी स्थिति का लेबल

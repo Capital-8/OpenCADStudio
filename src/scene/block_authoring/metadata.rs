@@ -8,6 +8,8 @@ pub(crate) enum Field {
     Description,
     SecondaryName,
     SecondaryDescription,
+    BaseStateLabel,
+    FlippedStateLabel,
 }
 impl Field {
     pub(crate) fn key(self) -> &'static str {
@@ -16,6 +18,8 @@ impl Field {
             Self::Description => "authoring_description",
             Self::SecondaryName => "authoring_secondary_name",
             Self::SecondaryDescription => "authoring_secondary_description",
+            Self::BaseStateLabel => "authoring_base_state_label",
+            Self::FlippedStateLabel => "authoring_flipped_state_label",
         }
     }
     pub(crate) fn from_key(key: &str) -> Option<Self> {
@@ -24,6 +28,8 @@ impl Field {
             Self::Description,
             Self::SecondaryName,
             Self::SecondaryDescription,
+            Self::BaseStateLabel,
+            Self::FlippedStateLabel,
         ]
         .into_iter()
         .find(|field| field.key() == key)
@@ -185,6 +191,16 @@ fn describe(object: &ObjectType) -> Result<Metadata<'_>, &'static str> {
                     label: "Description",
                     value: &p.flip_label_description,
                 });
+                text.push(Text {
+                    field: BaseStateLabel,
+                    label: "Base state label",
+                    value: &p.base_state_label,
+                });
+                text.push(Text {
+                    field: FlippedStateLabel,
+                    label: "Flipped state label",
+                    value: &p.flipped_state_label,
+                });
             }
             Data::LookupParameter(p) => {
                 text.push(Text {
@@ -251,6 +267,8 @@ fn text_mut(object: &mut ObjectType, field: Field) -> Option<&mut String> {
             (Data::RotationParameter(p), Description) => Some(&mut p.angle_description),
             (Data::FlipParameter(p), Name) => Some(&mut p.flip_label),
             (Data::FlipParameter(p), Description) => Some(&mut p.flip_label_description),
+            (Data::FlipParameter(p), BaseStateLabel) => Some(&mut p.base_state_label),
+            (Data::FlipParameter(p), FlippedStateLabel) => Some(&mut p.flipped_state_label),
             (Data::LookupParameter(p), Name) => Some(&mut p.lookup_name),
             (Data::LookupParameter(p), Description) => Some(&mut p.lookup_description),
             (Data::AlignmentParameter(p), Name) => Some(&mut p.parameter.parameter.element.name),

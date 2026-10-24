@@ -1404,7 +1404,12 @@ impl PropertiesPanel {
             .unwrap_or(entity_val);
 
         let active = self.active_field.as_ref() == Some(&key);
-        let ti = text_input("", display)
+        let placeholder = match field {
+            "authoring_base_state_label" => crate::tr!("block-grip", "not-flipped"),
+            "authoring_flipped_state_label" => crate::tr!("block-grip", "flipped"),
+            _ => String::new(),
+        };
+        let ti = text_input(&placeholder, display)
             .id(prop_geom_field_id(field))
             .on_input(move |v| Message::PropGeomInput { field, value: v })
             .on_submit(Message::PropGeomCommit(field))

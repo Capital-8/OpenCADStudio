@@ -7049,3 +7049,8 @@ block-grip =
     .alignment = Выравнивание: { $mode }
     .flipped = Отражено
     .not-flipped = Не отражено
+
+
+block-flip =
+    .base-state-label = Метка исходного состояния
+    .flipped-state-label = Метка отражённого состояния

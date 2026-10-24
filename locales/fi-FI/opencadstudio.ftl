@@ -7045,3 +7045,8 @@ block-grip =
     .alignment = Kohdistus: { $mode }
     .flipped = Käännetty
     .not-flipped = Ei käännetty
+
+
+block-flip =
+    .base-state-label = Perustilan nimi
+    .flipped-state-label = Käännetyn tilan nimi

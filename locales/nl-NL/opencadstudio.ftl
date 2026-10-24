@@ -7046,3 +7046,8 @@ block-grip =
     .alignment = Uitlijning: { $mode }
     .flipped = Omgekeerd
     .not-flipped = Niet omgekeerd
+
+
+block-flip =
+    .base-state-label = Label van de basisstatus
+    .flipped-state-label = Label van de omgekeerde status

@@ -7048,3 +7048,8 @@ block-grip =
     .alignment = Ευθυγράμμιση: { $mode }
     .flipped = Ανεστραμμένο
     .not-flipped = Μη ανεστραμμένο
+
+
+block-flip =
+    .base-state-label = Ετικέτα αρχικής κατάστασης
+    .flipped-state-label = Ετικέτα ανεστραμμένης κατάστασης

@@ -7049,3 +7049,8 @@ block-grip =
     .alignment = Alignment: { $mode }
     .flipped = Flipped
     .not-flipped = Not flipped
+
+
+block-flip =
+    .base-state-label = Base state label
+    .flipped-state-label = Flipped state label

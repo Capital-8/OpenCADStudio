@@ -6969,3 +6969,8 @@ block-grip =
     .alignment = Hizalama: { $mode }
     .flipped = Çevrilmiş
     .not-flipped = Çevrilmemiş
+
+
+block-flip =
+    .base-state-label = Temel durum etiketi
+    .flipped-state-label = Çevrilmiş durum etiketi
