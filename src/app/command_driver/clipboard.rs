@@ -484,7 +484,11 @@ impl OpenCADStudio {
 /// Recreate missing layer/linetype/text-style/dim-style records with fresh
 /// handles from the target document. Shared by `merge_dependencies` (PASTEBLOCK
 /// path) and `paste_entities_kernel` — one copy, not a port per caller.
-pub(crate) fn merge_table_records(doc: &mut codec::CadDocument, deps: &crate::app::ClipboardDeps) {
+/// Returns the names of the dimension styles it added.
+pub(crate) fn merge_table_records(
+    doc: &mut codec::CadDocument,
+    deps: &crate::app::ClipboardDeps,
+) -> Vec<String> {
     use codec::TableEntry;
     for rec in &deps.layers {
         if !doc.layers.contains(rec.name()) {
@@ -541,14 +545,79 @@ pub(crate) fn merge_table_records(doc: &mut codec::CadDocument, deps: &crate::ap
             let _ = doc.text_styles.add(r);
         }
     }
+    let mut added_dim_styles = Vec::new();
     for rec in &deps.dim_styles {
         if !doc.dim_styles.contains(rec.name()) {
             let mut r = rec.clone();
             r.set_handle(doc.allocate_handle());
+            repoint_dim_style(doc, &mut r, &deps.dim_style_refs);
+            added_dim_styles.push(r.name.clone());
             let _ = doc.dim_styles.add(r);
         }
     }
     merge_app_ids(doc, deps);
+    added_dim_styles
+}
+
+/// The arrow blocks a dimension style names.
+pub(crate) fn dim_style_blocks(style: &codec::tables::DimStyle) -> [Handle; 4] {
+    [style.dimblk, style.dimblk1, style.dimblk2, style.dimldrblk]
+}
+
+/// This drawing's record named like source record `source`, or null.
+fn dim_style_ref<T: codec::TableEntry>(
+    table: &codec::tables::Table<T>,
+    refs: &rustc_hash::FxHashMap<Handle, String>,
+    source: Handle,
+) -> Handle {
+    refs.get(&source)
+        .and_then(|name| table.get(name))
+        .map_or(Handle::NULL, |record| record.handle())
+}
+
+/// Point a pasted dimension style, which still holds the source drawing's
+/// handles, at this drawing's text style, linetypes and arrow blocks of the
+/// same names (`refs` names each source handle). A record this drawing lacks
+/// is cleared, so the style falls back to the default instead of naming an
+/// object that is not there.
+fn repoint_dim_style(
+    doc: &codec::CadDocument,
+    style: &mut codec::tables::DimStyle,
+    refs: &rustc_hash::FxHashMap<Handle, String>,
+) {
+    style.dimtxsty_handle = dim_style_ref(&doc.text_styles, refs, style.dimtxsty_handle);
+    for h in [
+        &mut style.dimltex_handle,
+        &mut style.dimltex1_handle,
+        &mut style.dimltex2_handle,
+    ] {
+        *h = dim_style_ref(&doc.line_types, refs, *h);
+    }
+    for h in [
+        &mut style.dimblk,
+        &mut style.dimblk1,
+        &mut style.dimblk2,
+        &mut style.dimldrblk,
+    ] {
+        *h = dim_style_ref(&doc.block_records, refs, *h);
+    }
+}
+
+/// Point the dimension styles a paste added (`added`) at the arrow blocks
+/// the block merge has since recreated: the table merge ran first, while
+/// this drawing still lacked them.
+fn repoint_added_dim_style_blocks(
+    doc: &mut codec::CadDocument,
+    deps: &crate::app::ClipboardDeps,
+    added: &[String],
+) {
+    for rec in deps.dim_styles.iter().filter(|r| added.contains(&r.name)) {
+        let blocks = dim_style_blocks(rec)
+            .map(|h| dim_style_ref(&doc.block_records, &deps.dim_style_refs, h));
+        if let Some(style) = doc.dim_styles.get_mut(&rec.name) {
+            [style.dimblk, style.dimblk1, style.dimblk2, style.dimldrblk] = blocks;
+        }
+    }
 }
 
 /// Register the copied XDATA's applications this drawing lacks.
@@ -847,11 +916,12 @@ pub(crate) fn paste_entities_kernel(
 ) -> (Vec<Handle>, rustc_hash::FxHashMap<Handle, Handle>) {
     // Shared table-record merge (also used by `merge_dependencies`): recreate
     // missing records with fresh handles from the target document.
-    merge_table_records(doc, deps);
+    let added_dim_styles = merge_table_records(doc, deps);
     // Shared block-definition merge (also used by `merge_clipboard_blocks`).
     let apps = eed_app_map(doc, deps);
     let image_definitions = merge_image_definitions(doc, deps);
     merge_block_defs(doc, &deps.blocks, &apps, &image_definitions);
+    repoint_added_dim_style_blocks(doc, deps, &added_dim_styles);
     let records = block_record_map(doc, &deps.blocks);
 
     let by_index: Vec<Handle> = entities
@@ -1851,6 +1921,87 @@ mod paste_entities_kernel_tests {
         };
         assert_eq!(table_content.common.handle, new_content);
         assert_eq!(table_content.common.owner_handle, new_record);
+    }
+
+    #[test]
+    fn pasted_dim_style_points_at_the_targets_records() {
+        use codec::TableEntry;
+        let mut seed = codec::CadDocument::new();
+        let mut text_style = codec::tables::TextStyle::new("DIMTXT");
+        text_style.set_handle(seed.allocate_handle());
+        let text_style = {
+            let h = text_style.handle();
+            seed.text_styles.add(text_style).unwrap();
+            h
+        };
+        let mut line_type = codec::tables::LineType::new("DASHED");
+        line_type.set_handle(seed.allocate_handle());
+        let line_type = {
+            let h = line_type.handle();
+            seed.line_types.add(line_type).unwrap();
+            h
+        };
+        let tick = codec::EntityType::Line(codec::entities::Line::new());
+        define_block_raw_doc(
+            &mut seed,
+            "ARW",
+            codec::types::Vector3::ZERO,
+            std::slice::from_ref(&tick),
+        );
+        let mut style = codec::tables::DimStyle::new("CUSTOM");
+        style.set_handle(seed.allocate_handle());
+        style.dimtxsty_handle = text_style;
+        style.dimltex1_handle = line_type;
+        style.dimblk = seed.block_records.get("ARW").unwrap().handle;
+        seed.dim_styles.add(style).unwrap();
+        let mut dim = codec::entities::DimensionLinear::new(
+            codec::types::Vector3::ZERO,
+            codec::types::Vector3::new(10.0, 0.0, 0.0),
+        );
+        dim.base.style_name = "CUSTOM".to_string();
+        let dim = seed
+            .add_entity(codec::EntityType::Dimension(Box::new(
+                codec::entities::Dimension::Linear(dim),
+            )))
+            .unwrap();
+        let (entities, deps) = copy_to_clipboard_kernel(&seed, &[dim]);
+
+        // The target's handles run differently from the source's.
+        let mut dst = codec::CadDocument::new();
+        for _ in 0..50 {
+            dst.allocate_handle();
+        }
+        paste_entities_kernel(
+            &mut dst,
+            &entities,
+            &deps,
+            None,
+            crate::app::PasteSpace::Model,
+        );
+
+        let style = dst.dim_styles.get("CUSTOM").expect("pasted dim style");
+        assert_eq!(
+            style.dimtxsty_handle,
+            dst.text_styles
+                .get("DIMTXT")
+                .expect("pasted text style")
+                .handle()
+        );
+        assert_eq!(
+            style.dimltex1_handle,
+            dst.line_types
+                .get("DASHED")
+                .expect("pasted linetype")
+                .handle()
+        );
+        assert_eq!(
+            style.dimblk,
+            dst.block_records
+                .get("ARW")
+                .expect("pasted arrow block")
+                .handle
+        );
+        assert!(style.dimblk1.is_null() && style.dimltex2_handle.is_null());
     }
 
     #[test]
