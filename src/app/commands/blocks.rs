@@ -2048,6 +2048,59 @@ mod tests {
     }
 
     #[test]
+    fn block_gallery_works_out_only_the_previews_it_shows() {
+        use crate::ui::window::block_palette::BlockPaletteMsg;
+        let gallery = crate::modules::insert::insert_block::GALLERY_ID.to_string();
+        let mut app = fresh_app();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        let define = |app: &mut crate::app::OpenCADStudio, name: &str| {
+            app.tabs[i].scene.define_block_raw(
+                name,
+                codec::types::Vector3::ZERO,
+                vec![codec::EntityType::Line(codec::entities::Line::new())],
+            );
+        };
+        for k in 0..300 {
+            define(&mut app, &format!("B{k:03}"));
+        }
+        let built = |app: &crate::app::OpenCADStudio| {
+            app.block_palette
+                .blocks
+                .iter()
+                .filter(|b| b.preview.wires().is_some())
+                .map(|b| b.name.clone())
+                .collect::<Vec<_>>()
+        };
+        // Opening the gallery (with the palette hidden) works out its first
+        // rows only.
+        assert!(!app.show_block_palette);
+        let _ = app.update(crate::app::Message::ToggleRibbonDropdown(gallery.clone()));
+        let first = built(&app);
+        assert!(first.contains(&"B000".to_string()));
+        assert!(first.len() < 40, "{}", first.len());
+        // Scrolled down: those rows are worked out too, the rest not.
+        let _ = app.update(crate::app::Message::BlockPalette(
+            BlockPaletteMsg::GalleryScrolled(2000.0),
+        ));
+        let now = built(&app);
+        assert!(now.len() > first.len() && now.len() < 80, "{}", now.len());
+        assert!(!now.contains(&"B299".to_string()));
+        // Opened again, it starts at the top.
+        let _ = app.update(crate::app::Message::ToggleRibbonDropdown(gallery.clone()));
+        let _ = app.update(crate::app::Message::ToggleRibbonDropdown(gallery));
+        assert_eq!(app.block_palette.gallery_offset, 0.0);
+        // A block defined while it is open replaces the previews, and the
+        // ones in view are worked out again.
+        define(&mut app, "ZNEW");
+        let _ = app.update(crate::app::Message::BlockPalette(
+            BlockPaletteMsg::GalleryScrolled(0.0),
+        ));
+        assert!(app.block_palette.current_entry("ZNEW").is_some());
+        assert!(built(&app).contains(&"B000".to_string()));
+    }
+
+    #[test]
     fn blockpalette_library_thumbnails_arrive_in_the_background() {
         use crate::ui::window::block_palette::BlockPaletteMsg;
         let dir = std::env::temp_dir().join(format!(

@@ -169,6 +169,9 @@ impl OpenCADStudio {
             BlockPaletteMsg::Scrolled { offset, height } => {
                 self.block_palette.scroll = (offset, height);
             }
+            BlockPaletteMsg::GalleryScrolled(offset) => {
+                self.block_palette.gallery_offset = offset;
+            }
             BlockPaletteMsg::Thumbnails(read) => self.apply_palette_thumbnails(read),
         }
         Task::none()
@@ -805,11 +808,25 @@ impl OpenCADStudio {
         }
     }
 
-    /// Work out every pending preview of the drawing's blocks.
-    pub(crate) fn ensure_all_block_previews(&mut self) {
-        for name in self.block_palette.cached_names.clone() {
-            self.build_block_preview(&name);
+    /// Work out the previews the ribbon's block gallery is about to show
+    /// that are still pending.
+    pub(crate) fn ensure_gallery_previews(&mut self) {
+        if !self.block_palette.gallery_previews_changed() {
+            return;
         }
+        let scene = &self.tabs[self.active_tab].scene;
+        for entry in self.block_palette.gallery_shown().1 {
+            entry
+                .preview
+                .fill_with(|| scene.block_preview_wires(&entry.name));
+        }
+    }
+
+    /// Whether the ribbon's block gallery is open.
+    pub(crate) fn block_gallery_open(&self) -> bool {
+        self.ribbon.open_dropdown.as_deref()
+            == Some(crate::modules::insert::insert_block::GALLERY_ID)
+            && !self.tabs[self.active_tab].is_start
     }
 
     /// Work out block `name`'s preview if it is a block of the drawing whose
@@ -818,16 +835,14 @@ impl OpenCADStudio {
         let Some(entry) = self.block_palette.current_entry(name) else {
             return;
         };
-        if entry.preview.wires().is_none() {
-            let wires = self.tabs[self.active_tab].scene.block_preview_wires(name);
-            entry.preview.fill(wires);
-        }
+        let scene = &self.tabs[self.active_tab].scene;
+        entry.preview.fill_with(|| scene.block_preview_wires(name));
     }
 
     /// Cheap per-update check: rebuild when the active drawing's definitions
     /// changed, even when their names happen to stay the same.
     pub(crate) fn refresh_block_palette_if_stale(&mut self) {
-        if self.show_block_palette && self.block_palette_stale() {
+        if (self.show_block_palette || self.block_gallery_open()) && self.block_palette_stale() {
             self.refresh_block_palette();
         }
     }

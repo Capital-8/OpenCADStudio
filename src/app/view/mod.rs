@@ -2860,9 +2860,7 @@ bg={bg_ms:.1}ms n={view_count}"
         } else {
             Vec::new()
         };
-        let gallery_open = open_dropdown == Some(crate::modules::insert::insert_block::GALLERY_ID)
-            && !self.tabs[self.active_tab].is_start;
-        let dropdown_layer: Element<'_, Message> = if gallery_open {
+        let dropdown_layer: Element<'_, Message> = if self.block_gallery_open() {
             self.ribbon.place_dropdown(
                 crate::modules::insert::insert_block::GALLERY_ID,
                 crate::ui::window::block_palette::gallery(&self.block_palette),
