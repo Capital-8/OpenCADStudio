@@ -715,6 +715,10 @@ impl Scene {
                         stack.push(xd);
                     }
                 }
+                // A text field's nested fields belong to the same tree.
+                codec::objects::ObjectType::Field(f) => {
+                    stack.extend(f.child_fields.iter().copied());
+                }
                 _ => {}
             }
         }
@@ -789,6 +793,18 @@ impl Scene {
                     }
                     if let Some(&definition) = doc.block_representations.get(&h) {
                         representations.push((new_h, definition));
+                    }
+                }
+                // A FIELD under ACAD_FIELD: the copy evaluates its own field
+                // tree, so its handle, owner and nested fields are remapped.
+                codec::objects::ObjectType::Field(f) => {
+                    f.handle = new_h;
+                    f.owner = rewrite(f.owner);
+                    for child in &mut f.child_fields {
+                        *child = rewrite(*child);
+                    }
+                    for r in &mut f.referenced_objects {
+                        *r = rewrite(*r);
                     }
                 }
                 _ => {}
@@ -1007,6 +1023,9 @@ impl Scene {
                             stack.push(xd);
                         }
                     }
+                    codec::objects::ObjectType::Field(f) => {
+                        stack.extend(f.child_fields.iter().copied());
+                    }
                     _ => {}
                 }
             }
@@ -1048,6 +1067,21 @@ impl Scene {
                     }
                 }
             }
+            // An attribute's own extension dictionary (a field ATTRIB keeps
+            // its FIELD there) is cloned for the copy like the entity's; the
+            // source handles are read before the attributes get new ones.
+            let attribute_xdicts: Vec<(usize, Handle, Handle)> = match &mut entity {
+                EntityType::Insert(ins) => ins
+                    .attributes
+                    .iter_mut()
+                    .enumerate()
+                    .filter_map(|(k, att)| {
+                        let root = att.common.xdictionary_handle.take()?;
+                        Some((k, att.common.handle, root))
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
             Self::reset_clone_subhandles(&mut self.document, &mut entity);
 
             // The source root was captured above; the clone must never carry
@@ -1077,6 +1111,31 @@ impl Scene {
                         // a pure-entity delta; keep undo on the full snapshot.
                         self.poison_undo_recording();
                     }
+                }
+                for (k, src_attribute, src_root) in attribute_xdicts {
+                    let Some(new_attribute) = (match self.document.get_entity(h) {
+                        Some(EntityType::Insert(ins)) => {
+                            ins.attributes.get(k).map(|a| a.common.handle)
+                        }
+                        _ => None,
+                    }) else {
+                        continue;
+                    };
+                    let Some(new_root) = Self::clone_xdict_tree(
+                        &mut self.document,
+                        src_attribute,
+                        src_root,
+                        new_attribute,
+                        &cross,
+                        &owner_of,
+                        &mut created_objects,
+                    ) else {
+                        continue;
+                    };
+                    if let Some(EntityType::Insert(ins)) = self.document.get_entity_mut(h) {
+                        ins.attributes[k].common.xdictionary_handle = Some(new_root);
+                    }
+                    self.poison_undo_recording();
                 }
                 if !annotation_scales.is_empty() {
                     for scale_handle in annotation_scales {
@@ -3863,5 +3922,162 @@ mod copy_viewport_clip_tests {
             .expect("copied boundary");
         assert_eq!(clip_of(&scene, copied_viewport), copied_boundary);
         assert_eq!(clip_of(&scene, viewport), boundary);
+
+mod copy_field_tests {
+    use super::*;
+    use crate::command::EntityTransform;
+    use codec::objects::{Dictionary, Field, ObjectType};
+    use glam::DVec3;
+
+    /// `owner`'s extension dictionary: ACAD_FIELD { TEXT -> field(child) }.
+    /// Returns (root, text field, child field).
+    fn add_field_tree(doc: &mut codec::CadDocument, owner: Handle) -> (Handle, Handle, Handle) {
+        let root_h = doc.allocate_handle();
+        let fields_h = doc.allocate_handle();
+        let text_h = doc.allocate_handle();
+        let child_h = doc.allocate_handle();
+        let mut root = Dictionary::new();
+        root.handle = root_h;
+        root.owner = owner;
+        root.add_entry("ACAD_FIELD", fields_h);
+        let mut fields = Dictionary::new();
+        fields.handle = fields_h;
+        fields.owner = root_h;
+        fields.add_entry("TEXT", text_h);
+        let text = Field {
+            handle: text_h,
+            owner: fields_h,
+            evaluator_id: "_text".to_string(),
+            child_fields: vec![child_h],
+            ..Default::default()
+        };
+        let child = Field {
+            handle: child_h,
+            owner: text_h,
+            evaluator_id: "AcVar".to_string(),
+            code: r"\AcVar CustomDP.Client".to_string(),
+            ..Default::default()
+        };
+        doc.objects.insert(root_h, ObjectType::Dictionary(root));
+        doc.objects.insert(fields_h, ObjectType::Dictionary(fields));
+        doc.objects.insert(text_h, ObjectType::Field(text));
+        doc.objects.insert(child_h, ObjectType::Field(child));
+        (root_h, text_h, child_h)
+    }
+
+    fn entry(doc: &codec::CadDocument, dict: Handle, key: &str) -> Handle {
+        match doc.objects.get(&dict) {
+            Some(ObjectType::Dictionary(d)) => d
+                .entries
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, h)| *h)
+                .expect("dictionary entry"),
+            other => panic!("expected a dictionary, got {other:?}"),
+        }
+    }
+
+    fn field(doc: &codec::CadDocument, h: Handle) -> &Field {
+        match doc.objects.get(&h) {
+            Some(ObjectType::Field(f)) => f,
+            other => panic!("expected a field, got {other:?}"),
+        }
+    }
+
+    /// The copy's ACAD_FIELD tree is its own: fresh handles stored on the
+    /// objects themselves, owners and child links inside the new tree.
+    fn assert_own_field_tree(
+        doc: &codec::CadDocument,
+        copy_root: Handle,
+        src_text: Handle,
+        src_child: Handle,
+    ) {
+        let fields = entry(doc, copy_root, "ACAD_FIELD");
+        let text_h = entry(doc, fields, "TEXT");
+        assert_ne!(text_h, src_text);
+        let text = field(doc, text_h);
+        assert_eq!(text.handle, text_h, "field object keeps its source handle");
+        assert_eq!(text.owner, fields);
+        assert_eq!(text.child_fields.len(), 1);
+        let child_h = text.child_fields[0];
+        assert_ne!(child_h, src_child, "copy shares the source's child field");
+        let child = field(doc, child_h);
+        assert_eq!(child.handle, child_h);
+        assert_eq!(child.owner, text_h);
+        assert_eq!(child.code, r"\AcVar CustomDP.Client");
+    }
+
+    #[test]
+    fn copied_text_gets_its_own_field_tree() {
+        let mut scene = Scene::new();
+        let src = scene
+            .document
+            .add_entity(EntityType::MText(Box::new(codec::entities::MText::new())))
+            .unwrap();
+        let (root, text, child) = add_field_tree(&mut scene.document, src);
+        scene
+            .document
+            .get_entity_mut(src)
+            .unwrap()
+            .common_mut()
+            .xdictionary_handle = Some(root);
+        let copies = scene.copy_entities(
+            &[src],
+            &EntityTransform::Translate(DVec3::new(100.0, 0.0, 0.0)),
+        );
+        let copy_root = scene
+            .document
+            .get_entity(copies[0])
+            .unwrap()
+            .common()
+            .xdictionary_handle
+            .expect("copy has an extension dictionary");
+        assert_ne!(copy_root, root);
+        assert_own_field_tree(&scene.document, copy_root, text, child);
+        assert_eq!(field(&scene.document, text).child_fields, vec![child]);
+    }
+
+    #[test]
+    fn copied_insert_attribute_gets_its_own_field_tree() {
+        let mut scene = Scene::new();
+        let mut insert = codec::entities::Insert::new(
+            "TITLE".to_string(),
+            codec::types::Vector3::ZERO,
+        );
+        insert.attributes.push(codec::entities::AttributeEntity::new(
+            "CLIENT".to_string(),
+            "ACME".to_string(),
+        ));
+        let src = scene.document.add_entity(EntityType::Insert(insert)).unwrap();
+        let src_attribute = match scene.document.get_entity(src) {
+            Some(EntityType::Insert(ins)) => ins.attributes[0].common.handle,
+            _ => unreachable!(),
+        };
+        let (root, text, child) = add_field_tree(&mut scene.document, src_attribute);
+        if let Some(EntityType::Insert(ins)) = scene.document.get_entity_mut(src) {
+            ins.attributes[0].common.xdictionary_handle = Some(root);
+        }
+        let copies = scene.copy_entities(
+            &[src],
+            &EntityTransform::Translate(DVec3::new(100.0, 0.0, 0.0)),
+        );
+        let (copy_attribute, copy_root) = match scene.document.get_entity(copies[0]) {
+            Some(EntityType::Insert(ins)) => (
+                ins.attributes[0].common.handle,
+                ins.attributes[0].common.xdictionary_handle,
+            ),
+            other => panic!("expected the copied insert, got {other:?}"),
+        };
+        let copy_root = copy_root.expect("copied attribute has an extension dictionary");
+        assert_ne!(copy_root, root, "copied attribute shares the source's dictionary");
+        match scene.document.objects.get(&copy_root) {
+            Some(ObjectType::Dictionary(d)) => assert_eq!(d.owner, copy_attribute),
+            other => panic!("expected a dictionary, got {other:?}"),
+        }
+        match scene.document.objects.get(&root) {
+            Some(ObjectType::Dictionary(d)) => assert_eq!(d.owner, src_attribute),
+            other => panic!("expected a dictionary, got {other:?}"),
+        }
+        assert_own_field_tree(&scene.document, copy_root, text, child);
     }
 }
