@@ -2088,11 +2088,42 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
             .collect()
     };
     let total_depth = -line_y_offset.iter().copied().fold(0.0_f32, f32::min);
+    // The bottom of the text is the ink of its deepest line, not its baseline:
+    // AutoCAD 2025 seats a bottom-attached "-3,45" in romand.shx 0.1905·h above
+    // the point (the comma's depth), "Agp" 0.3333·h, and "ABC" on it. A
+    // descender on an earlier line does not count.
+    let last_line_descent = line_y_offset
+        .iter()
+        .enumerate()
+        .min_by(|a, b| a.1.total_cmp(b.1))
+        .and_then(|(index, _)| sub_lines.get(index))
+        .map(|line| {
+            line.atoms
+                .iter()
+                .filter_map(|atom| {
+                    let AtomKind::Word(text) = &atom.kind else {
+                        return None;
+                    };
+                    let font = resolve_font(&atom.state, &base_font_name);
+                    text_local_bounds(
+                        &font,
+                        text,
+                        atom.state.height_mul * entity_h,
+                        atom.state.width_mul * base_wf.abs(),
+                        atom.state.oblique_rad,
+                    )
+                    .map(|b| -b.ink_min[1])
+                })
+                .fold(0.0_f32, f32::max)
+        })
+        .unwrap_or(0.0);
 
     let v_offset = match opts.v_anchor {
         MTextVAnchor::Top => -first_line_ascent,
-        MTextVAnchor::Middle => (total_depth - h) * 0.5,
-        MTextVAnchor::Bottom => total_depth,
+        // Centred on the ink box, from the first line's top to the last
+        // line's bottom.
+        MTextVAnchor::Middle => (total_depth + last_line_descent - first_line_ascent) * 0.5,
+        MTextVAnchor::Bottom => total_depth + last_line_descent,
         MTextVAnchor::MiddleOfTopLine => -h * 0.5,
         MTextVAnchor::MiddleOfBottomLine => total_depth - h * 0.5,
         MTextVAnchor::BottomOfTopLine => 0.0,
@@ -2987,6 +3018,50 @@ mod tests {
             .iter()
             .map(|s| s.strokes.iter().map(Vec::len).sum::<usize>() + s.fill_tris.len())
             .sum()
+    }
+
+    /// AutoCAD 2025 places a bottom-attached MTEXT by the ink of its last
+    /// line (in romand.shx "-3,45" sits 0.1905·h up, "Agp" 0.3333·h, "ABC"
+    /// on the point) and centres a middle-attached one on its ink box.
+    #[test]
+    fn bottom_and_middle_attachments_follow_the_ink() {
+        let layout = |value: &str, v_anchor| {
+            layout_mtext(&MTextRenderOpts {
+                columns: Default::default(),
+                value,
+                insertion: [0.0, 0.0, 0.0],
+                height: 10.0,
+                rect_w: 0.0,
+                rotation: 0.0,
+                style: &style("txt"),
+                attach_h_anchor: 0.5,
+                v_anchor,
+                line_spacing_factor: 1.0,
+                exact_line_spacing: false,
+                rectangle_height: 0.0,
+                vertical_text: false,
+                want_glyph_boxes: false,
+            })
+        };
+
+        // Baseline above the point, as AutoCAD measures with txt.shx at h 10.
+        let close = |value: &str, v_anchor, expected: f32| {
+            let v_offset = layout(value, v_anchor).v_offset;
+            assert!(
+                (v_offset - expected).abs() < 1e-3,
+                "{value}: {v_offset} != {expected}"
+            );
+        };
+        close("ABC", MTextVAnchor::Bottom, 0.0);
+        close("Agp", MTextVAnchor::Bottom, 10.0 / 3.0);
+        close("ABC", MTextVAnchor::Middle, -5.0);
+        close("Agp", MTextVAnchor::Middle, -10.0 / 3.0);
+
+        // Only the last line's descender counts.
+        let two = layout("Agp\\PABC", MTextVAnchor::Bottom);
+        assert!((two.v_offset - two.line_height).abs() < 1e-3);
+        let two = layout("ABC\\PAgp", MTextVAnchor::Bottom);
+        assert!((two.v_offset - two.line_height - 10.0 / 3.0).abs() < 1e-3);
     }
 
     #[test]
