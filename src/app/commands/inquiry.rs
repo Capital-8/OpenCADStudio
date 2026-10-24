@@ -164,9 +164,12 @@ impl OpenCADStudio {
             "LIST" => {
                 let selected: Vec<_> = self.tabs[i].scene.selected_entities();
                 if selected.is_empty() {
-                    self.command_line.push_error(
-                        crate::t!("LIST: no entities selected. Select entities first.").as_ref(),
-                    );
+                    // Without a selection, ask for the objects first.
+                    use crate::modules::draw::select::SelectObjectsCommand;
+                    let cmd = SelectObjectsCommand::new("LIST");
+                    self.command_line.push_info(&cmd.prompt());
+                    self.tabs[i].active_cmd = Some(Box::new(cmd));
+                    return Some(Task::none());
                 } else {
                     for (handle, _) in &selected {
                         if let Some(entity) = self.tabs[i].scene.document.get_entity(*handle) {
@@ -1463,13 +1466,19 @@ fn entity_list_details(entity: &codec::EntityType) -> String {
             a.end_angle.to_degrees()
         )
         .into_owned(),
-        codec::EntityType::LwPolyline(p) => crate::tf!(
-            "{} vertices  closed={}  elevation={:.4}",
-            p.vertices.len(),
-            p.is_closed,
-            p.elevation
-        )
-        .into_owned(),
+        codec::EntityType::LwPolyline(p) => {
+            let mut details = crate::tf!(
+                "{} vertices  closed={}  elevation={:.4}",
+                p.vertices.len(),
+                p.is_closed,
+                p.elevation
+            )
+            .into_owned();
+            for v in &p.vertices {
+                details.push_str(&format!("\n    ({:.4},{:.4})", v.location.x, v.location.y));
+            }
+            details
+        }
         codec::EntityType::Text(t) => crate::tf!(
             "\"{}\"  h={:.4}  at ({:.4},{:.4})",
             t.value,
