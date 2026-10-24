@@ -5856,6 +5856,28 @@ impl OpenCADStudio {
                         )
                     })?
                 });
+                // A dimension pick inside a viewport measures the model
+                // geometry shown there, not the viewport entity itself.
+                let hit = hit.filter(|&handle| {
+                    let measures = self.tabs[i]
+                        .active_cmd
+                        .as_ref()
+                        .is_some_and(|c| c.measures_through_viewports());
+                    if !measures
+                        || !matches!(
+                            self.tabs[i].scene.document.get_entity(handle),
+                            Some(codec::EntityType::Viewport(_))
+                        )
+                    {
+                        return true;
+                    }
+                    let per_px = self.tabs[i].scene.camera.borrow().ortho_size() as f64 * 2.0
+                        / (bounds.height as f64).max(1.0);
+                    self.tabs[i]
+                        .scene
+                        .dimension_pick_through_viewport(pick_wcs, pick_aperture as f64 * per_px)
+                        .is_none()
+                });
                 if let Some(handle) = hit {
                     let uses_surface_point = self.tabs[i]
                         .active_cmd
@@ -5918,6 +5940,37 @@ impl OpenCADStudio {
                         } else {
                             None
                         };
+                    // A dimension pick on a block reference measures the
+                    // nested entity under the click, as a pick through a
+                    // viewport does.
+                    let nested = if self.tabs[i]
+                        .active_cmd
+                        .as_ref()
+                        .is_some_and(|c| c.measures_through_viewports())
+                        && matches!(
+                            self.tabs[i].scene.document.get_entity(handle),
+                            Some(codec::EntityType::Insert(_))
+                        )
+                    {
+                        let scene = &self.tabs[i].scene;
+                        scene.resolve_measurable_entity(handle, entity_pick_point, None)
+                    } else {
+                        None
+                    };
+                    let (handle, block_path) = match &nested {
+                        Some((entity, path)) => {
+                            let nested_handle = entity.as_entity().handle();
+                            (
+                                if nested_handle.is_valid() {
+                                    nested_handle
+                                } else {
+                                    handle
+                                },
+                                path.clone(),
+                            )
+                        }
+                        None => (handle, Vec::new()),
+                    };
                     // Some commands (e.g. SS_CATCHMENT) need the entity
                     // body before `on_entity_pick` can advance.
                     let inject_first = self.tabs[i]
@@ -5932,9 +5985,9 @@ impl OpenCADStudio {
                             .get(&handle)
                             .or_else(|| self.tabs[i].scene.block_meshes.get(&handle))
                             .map(|mesh| mesh.metrics.surface_area);
-                        if let Some(entity) =
+                        if let Some(entity) = nested.map(|(entity, _)| entity).or_else(|| {
                             self.tabs[i].scene.document.get_entity(handle).cloned()
-                        {
+                        }) {
                             if let Some(cmd) = self.tabs[i].active_cmd.as_mut() {
                                 cmd.inject_picked_entity(entity);
                                 if let Some(area) = surface_area {
@@ -5955,7 +6008,7 @@ impl OpenCADStudio {
                         c.set_entity_pick_direction(entity_pick_direction);
                         c.on_entity_pick(handle, entity_pick_point)
                     });
-                    self.record_dimension_entity_points(i, None, handle, Vec::new());
+                    self.record_dimension_entity_points(i, None, handle, block_path);
                     // HATCHEDIT: after pick, inject hatch model data into the command.
                     if self.tabs[i]
                         .active_cmd

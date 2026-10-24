@@ -336,7 +336,14 @@ impl OpenCADStudio {
             return Some(Task::none());
         }
         // Projected points cannot use direct paper-space source inference.
-        let association_allowed = self.dimension_association_allowed(i);
+        // A source picked inside a block reference needs its INSERT path,
+        // which only the acquired snaps carry.
+        let association_allowed = self.dimension_association_allowed(i)
+            && !self.accepted_snaps().iter().any(|snap| {
+                snap.source
+                    .as_ref()
+                    .is_some_and(|source| !source.block_path.is_empty())
+            });
         let inherited_dimension = if preserve_base_style {
             match &entity {
                 codec::EntityType::Dimension(dimension) => Some((
