@@ -7065,3 +7065,10 @@ block-grip =
 block-flip =
     .base-state-label = تسمية الحالة الأصلية
     .flipped-state-label = تسمية الحالة المعكوسة
+
+
+block-lookup =
+    .input-help = المدخلات: أعداد أو صيغ أو فترات مثل { $closed } و{ $open }. تستخدم الصيغ أسماء المدخلات. الزوايا بالراديان.
+    .invalid-table = جدول البحث غير صالح.
+    .invalid-value = يحتوي صف البحث المحدد على قيمة معلمة غير صالحة.
+    .incompatible-values = قيم صف البحث لا تتوافق مع مجموعات قيم المعلمات.

@@ -7053,3 +7053,10 @@ block-grip =
 block-flip =
     .base-state-label = Etiqueta del estado base
     .flipped-state-label = Etiqueta del estado invertido
+
+
+block-lookup =
+    .input-help = Entradas: números, fórmulas o intervalos como { $closed } y { $open }. Las fórmulas usan nombres de entradas. Los ángulos están en radianes.
+    .invalid-table = La tabla de consulta no es válida.
+    .invalid-value = La fila seleccionada contiene un valor de parámetro no válido.
+    .incompatible-values = Los valores de la fila no cumplen los conjuntos de valores de los parámetros.

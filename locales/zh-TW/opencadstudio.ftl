@@ -7048,3 +7048,10 @@ block-grip =
 block-flip =
     .base-state-label = 基本狀態標籤
     .flipped-state-label = 翻轉狀態標籤
+
+
+block-lookup =
+    .input-help = 輸入：數字、公式或區間，例如 { $closed } 和 { $open }。公式使用輸入名稱。角度單位為弧度。
+    .invalid-table = 查找表無效。
+    .invalid-value = 所選列包含無效的參數值。
+    .incompatible-values = 列中的值不符合參數值集。

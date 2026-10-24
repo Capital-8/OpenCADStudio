@@ -7041,3 +7041,10 @@ block-grip =
 block-flip =
     .base-state-label = 基本状態のラベル
     .flipped-state-label = 反転状態のラベル
+
+
+block-lookup =
+    .input-help = 入力には数値、数式、{ $closed } や { $open } などの区間を指定できます。数式では入力名を使います。角度の単位はラジアンです。
+    .invalid-table = ルックアップテーブルが無効です。
+    .invalid-value = 選択した行に無効なパラメーター値があります。
+    .incompatible-values = 行の値がパラメーターの値セットを満たしていません。

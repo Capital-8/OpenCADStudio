@@ -7052,3 +7052,10 @@ block-grip =
 block-flip =
     .base-state-label = 기본 상태 레이블
     .flipped-state-label = 반전 상태 레이블
+
+
+block-lookup =
+    .input-help = 입력: 숫자, 수식 또는 { $closed }, { $open } 같은 구간. 수식은 입력 이름을 사용합니다. 각도 단위는 라디안입니다.
+    .invalid-table = 조회 테이블이 잘못되었습니다.
+    .invalid-value = 선택한 행에 잘못된 매개변수 값이 있습니다.
+    .incompatible-values = 행의 값이 매개변수 값 집합을 충족하지 않습니다.

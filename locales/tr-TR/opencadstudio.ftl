@@ -6974,3 +6974,10 @@ block-grip =
 block-flip =
     .base-state-label = Temel durum etiketi
     .flipped-state-label = Çevrilmiş durum etiketi
+
+
+block-lookup =
+    .input-help = Girdiler: sayılar, formüller veya { $closed } ve { $open } gibi aralıklar. Formüller girdi adlarını kullanır. Açılar radyan cinsindedir.
+    .invalid-table = Arama tablosu geçersiz.
+    .invalid-value = Seçilen satırda geçersiz bir parametre değeri var.
+    .incompatible-values = Satır değerleri parametre değer kümelerine uymuyor.

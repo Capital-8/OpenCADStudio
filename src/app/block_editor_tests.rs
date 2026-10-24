@@ -7251,3 +7251,5 @@ mod scalar_grip_bindings;
 mod alignment_insertion;
 
 mod parameter_preview;
+
+mod lookup_expressions;

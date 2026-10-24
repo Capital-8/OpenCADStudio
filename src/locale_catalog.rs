@@ -3,6 +3,9 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
+        "The Lookup table is invalid." => Some(("block-lookup", "invalid-table")),
+        "The selected Lookup row has an invalid parameter value." => Some(("block-lookup", "invalid-value")),
+        "The Lookup row values do not satisfy the parameter value sets." => Some(("block-lookup", "incompatible-values")),
         "Open in block editor after creating" => Some(("block-def-dialog", "open-in-editor")),
         "Specify On-screen, the object option, Allow exploding and this switch are remembered for the next time." => Some(("block-def-dialog", "remembered")),
         "No objects are selected for the block." => Some(("block-def-dialog", "no-objects")),

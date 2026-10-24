@@ -643,6 +643,12 @@ impl ParameterTable {
         self.resolve_inner(name, &mut cache, &mut stack)
     }
 
+    /// Evaluate an expression in this table's existing, cycle-checked namespace.
+    pub(crate) fn evaluate_expression(&self, source: &str) -> Result<f64, ParamError> {
+        let expr = parse(source)?;
+        self.eval(&expr, &mut HashMap::new(), &mut Vec::new())
+    }
+
     /// Resolves every parameter, isolating a failure to just the parameters
     /// it actually affects rather than aborting the whole table — the same
     /// don't-let-one-bad-item-take-down-everything-else treatment this

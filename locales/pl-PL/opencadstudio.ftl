@@ -7052,3 +7052,10 @@ block-grip =
 block-flip =
     .base-state-label = Etykieta stanu podstawowego
     .flipped-state-label = Etykieta stanu odwróconego
+
+
+block-lookup =
+    .input-help = Dane wejściowe: liczby, formuły lub przedziały, np. { $closed } i { $open }. Formuły używają nazw danych wejściowych. Kąty są w radianach.
+    .invalid-table = Tabela wyszukiwania jest nieprawidłowa.
+    .invalid-value = Wybrany wiersz zawiera nieprawidłową wartość parametru.
+    .incompatible-values = Wartości wiersza nie spełniają zbiorów wartości parametrów.

@@ -7050,3 +7050,10 @@ block-grip =
 block-flip =
     .base-state-label = Perustilan nimi
     .flipped-state-label = Käännetyn tilan nimi
+
+
+block-lookup =
+    .input-help = Syötteet: luvut, kaavat tai välit, kuten { $closed } ja { $open }. Kaavat käyttävät syötteiden nimiä. Kulmat ovat radiaaneina.
+    .invalid-table = Hakutaulukko on virheellinen.
+    .invalid-value = Valitulla rivillä on virheellinen parametriarvo.
+    .incompatible-values = Rivin arvot eivät vastaa parametrien arvojoukkoja.

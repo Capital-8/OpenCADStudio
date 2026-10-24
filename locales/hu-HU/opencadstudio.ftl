@@ -7037,3 +7037,10 @@ block-grip =
 block-flip =
     .base-state-label = Alapállapot felirata
     .flipped-state-label = Átfordított állapot felirata
+
+
+block-lookup =
+    .input-help = Bemenetek: számok, képletek vagy intervallumok, például { $closed } és { $open }. A képletek a bemenetek neveit használják. A szögek radiánban értendők.
+    .invalid-table = A keresési táblázat érvénytelen.
+    .invalid-value = A kiválasztott sor érvénytelen paraméterértéket tartalmaz.
+    .incompatible-values = A sor értékei nem felelnek meg a paraméterek értékkészleteinek.

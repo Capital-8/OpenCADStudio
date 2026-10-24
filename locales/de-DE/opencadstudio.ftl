@@ -7051,3 +7051,10 @@ block-grip =
 block-flip =
     .base-state-label = Beschriftung des Ausgangszustands
     .flipped-state-label = Beschriftung des gespiegelten Zustands
+
+
+block-lookup =
+    .input-help = Eingaben: Zahlen, Formeln oder Intervalle wie { $closed } und { $open }. Formeln verwenden Eingabenamen. Winkel sind im Bogenmaß.
+    .invalid-table = Die Nachschlagetabelle ist ungültig.
+    .invalid-value = Die ausgewählte Zeile enthält einen ungültigen Parameterwert.
+    .incompatible-values = Die Zeilenwerte erfüllen die Parametersätze nicht.

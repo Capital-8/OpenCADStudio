@@ -11,6 +11,8 @@ use codec::{
     CadDocument, Handle,
 };
 mod reference;
+mod expressions;
+pub(crate) use expressions::validate_with_properties;
 #[cfg(test)]
 mod tests;
 pub(crate) use reference::{evaluate_property, reference_properties};
@@ -252,63 +254,33 @@ fn reference_row_context(
     definition: Handle,
     table: &BlockLookupAction,
 ) -> Option<usize> {
-    let params = super::block_actions::all_parameters(baseline.unwrap_or(document), definition);
-    let rows = usize::try_from(table.row_count).ok()?;
-    let columns = table.columns.len();
-    (0..rows).find(|row| {
-        table.columns.iter().enumerate().all(|(column, property)| {
-            if property.lookup_property {
+    let actual = expressions::actual_inputs(document, baseline, definition, insert, table).ok()?;
+    let source = baseline.unwrap_or(document);
+    let mut matching = (0..usize::try_from(table.row_count).ok()?).filter(|row| {
+        let Ok(cells) = expressions::row(source, definition, table, *row, &actual, false) else {
+            return false;
+        };
+        cells.iter().enumerate().all(|(column, resolved)| {
+            let Some((cell, expected)) = resolved else {
                 return true;
-            }
-            if property.value_type != 40 {
-                return false;
-            }
-            let Some(parameter) = params.iter().find(|p| p.id == property.node_id) else {
-                return false;
             };
-            let is_distance = property
+            if matches!(cell, expressions::Cell::Interval { .. }) {
+                return cell.contains(actual[column]);
+            }
+            let difference = if table.columns[column]
                 .connection_name
-                .eq_ignore_ascii_case("UpdatedDistance");
-            let is_angle = property
-                .connection_name
-                .eq_ignore_ascii_case("UpdatedAngle");
-            if !(is_distance && (parameter.linear || parameter.polar)
-                || is_angle && parameter.polar)
+                .eq_ignore_ascii_case("UpdatedAngle")
             {
-                return false;
-            }
-            let Ok(frame) = (if baseline.is_some() {
-                super::block_actions::instance::test_frame(document, insert, parameter)
-            } else {
-                super::block_actions::instance::frame(document, insert, parameter)
-            }) else {
-                return false;
-            };
-            let Some(expected) = table
-                .expressions
-                .get(row * columns + column)
-                .and_then(|value| value.trim().parse::<f64>().ok())
-            else {
-                return false;
-            };
-            let actual = if is_angle {
-                (frame.end.y - frame.base.y)
-                    .atan2(frame.end.x - frame.base.x)
-                    .rem_euclid(std::f64::consts::TAU)
-            } else {
-                frame.end.distance(frame.base)
-            };
-            let difference = if is_angle {
-                (actual - expected + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
+                (actual[column] - expected + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
                     - std::f64::consts::PI
             } else {
-                actual - expected
+                actual[column] - expected
             };
-            actual.is_finite()
-                && expected.is_finite()
-                && difference.abs() <= 1e-8 * actual.abs().max(expected.abs()).max(1.0)
+            difference.abs() <= 1e-8 * actual[column].abs().max(expected.abs()).max(1.)
         })
-    })
+    });
+    let row = matching.next()?;
+    matching.next().is_none().then_some(row)
 }
 
 /// A writable Lookup output as a per-reference property choice.
@@ -406,11 +378,9 @@ fn evaluate_row_context(
             return Err("Test actions with one reference in Test Block. Remove the extra references or reopen Test Block.");
         }
     }
-    if reference_row_context(document, baseline, insert, definition, &table) == Some(row) {
-        return Ok(None);
-    }
+    let mut changed =
+        reference_row_context(document, baseline, insert, definition, &table) != Some(row);
 
-    let columns = table.columns.len();
     let parameters = super::block_actions::all_parameters(baseline.unwrap_or(document), definition);
     let mut evaluated = document.clone();
     let frames = if baseline.is_some() {
@@ -423,6 +393,8 @@ fn evaluate_row_context(
     } else {
         super::block_actions::instance::load_frames(document, &mut evaluated, insert, &parameters)?
     };
+    let actual = expressions::actual_inputs(document, baseline, definition, insert, &table)?;
+    let resolved = expressions::row(baseline.unwrap_or(document), definition, &table, row, &actual, true)?;
     let mut endpoints = std::collections::BTreeMap::new();
     for (column, property) in table.columns.iter().enumerate() {
         if property.lookup_property {
@@ -444,13 +416,7 @@ fn evaluate_row_context(
         if !(is_distance && (parameter.linear || parameter.polar) || is_angle && parameter.polar) {
             return Err("This Lookup input property is unsupported.");
         }
-        let value = table
-            .expressions
-            .get(row * columns + column)
-            .ok_or("The selected Lookup row is incomplete.")?
-            .trim()
-            .parse::<f64>()
-            .ok()
+        let value = resolved[column].as_ref().map(|(_, value)| *value)
             .filter(|value| value.is_finite() && (!is_distance || *value > 1e-9))
             .ok_or("The selected Lookup row has an invalid parameter value.")?;
         let endpoint = if let Some(endpoint) = endpoints.get_mut(&parameter.id) {
@@ -485,12 +451,17 @@ fn evaluate_row_context(
             if constrained.distance(*endpoint) > 1e-8 * endpoint.distance(framed.base).max(1.0) {
                 return Err("The Lookup row values do not satisfy the parameter value sets.");
             }
+            changed |= endpoint.distance(frames[&parameter.handle].end)
+                > 1e-8 * endpoint.distance(framed.base).max(1.0);
             super::block_actions::set_value(
                 &mut evaluated,
                 parameter,
                 super::block_actions::Value::Point(*endpoint),
             )?;
         }
+    }
+    if !changed {
+        return Ok(None);
     }
     super::block_actions::rebuild_framed(
         &mut evaluated,
@@ -637,9 +608,9 @@ pub(crate) fn validate(
                     return Err("Reverse lookup requires unique lookup values.".into());
                 }
             } else {
-                let numeric = cell.trim().parse::<f64>().ok().filter(|v| v.is_finite());
+                let numeric = expressions::constant_value(cell);
                 if property.value_type == 40
-                    && numeric.is_none()
+                    && expressions::valid_cell(cell).is_err()
                     && !original.is_some_and(|old| {
                         old.columns.iter().enumerate().any(|(index, column)| {
                             column == property
@@ -652,7 +623,7 @@ pub(crate) fn validate(
                         })
                     })
                 {
-                    return Err("Enter finite decimal input values. Existing expressions can be retained unchanged.".into());
+                    return Err("The Lookup table is invalid.".into());
                 }
                 key.push(
                     numeric
@@ -686,6 +657,7 @@ fn apply_table_inner(
 ) -> Result<Handle, String> {
     let previous = table(document, definition, parameter).map_err(str::to_string)?;
     validate(&edited, previous.as_ref().map(|(_, t)| t))?;
+    expressions::validate_context(document, definition, &edited, previous.as_ref().map(|(_, t)| t))?;
     let lookups = parameters(document, definition);
     let primary = lookups
         .iter()

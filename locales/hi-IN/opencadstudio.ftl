@@ -7041,3 +7041,10 @@ block-grip =
 block-flip =
     .base-state-label = मूल स्थिति का लेबल
     .flipped-state-label = पलटी स्थिति का लेबल
+
+
+block-lookup =
+    .input-help = इनपुट: संख्याएँ, सूत्र या { $closed } और { $open } जैसे अंतराल। सूत्र इनपुट नामों का उपयोग करते हैं। कोण रेडियन में हैं।
+    .invalid-table = लुकअप तालिका अमान्य है।
+    .invalid-value = चयनित पंक्ति में पैरामीटर का मान अमान्य है।
+    .incompatible-values = पंक्ति के मान पैरामीटर के मान समूहों के अनुरूप नहीं हैं।

@@ -7050,3 +7050,10 @@ block-grip =
 block-flip =
     .base-state-label = Popisek základního stavu
     .flipped-state-label = Popisek převráceného stavu
+
+
+block-lookup =
+    .input-help = Vstupy: čísla, vzorce nebo intervaly jako { $closed } a { $open }. Vzorce používají názvy vstupů. Úhly jsou v radiánech.
+    .invalid-table = Vyhledávací tabulka je neplatná.
+    .invalid-value = Vybraný řádek obsahuje neplatnou hodnotu parametru.
+    .incompatible-values = Hodnoty řádku neodpovídají sadám hodnot parametrů.

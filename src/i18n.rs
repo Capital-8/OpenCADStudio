@@ -530,6 +530,36 @@ mod tests {
     }
 
     #[test]
+    fn lookup_help_preserves_interval_examples_in_every_locale() {
+        for language in Language::ALL
+            .into_iter()
+            .filter(|language| *language != Language::System)
+        {
+            let loader = FluentLanguageLoader::new("opencadstudio", "en-US".parse().unwrap());
+            load_language(&loader, language).expect("Fluent resources must parse");
+            let args = [("closed", "[2,6]"), ("open", "(2,6]")]
+                .into_iter()
+                .collect();
+            let rendered = loader
+                .with_fluent_message_and_bundle("block-lookup", |message, bundle| {
+                    let pattern = message.get_attribute("input-help").unwrap();
+                    let mut errors = Vec::new();
+                    let text = bundle
+                        .format_pattern(pattern.value(), Some(&args), &mut errors)
+                        .into_owned();
+                    assert!(errors.is_empty(), "{language:?}: {errors:?}");
+                    text
+                })
+                .unwrap();
+            assert!(rendered.contains("[2,6]"), "{language:?}: {rendered}");
+            assert!(rendered.contains("(2,6]"), "{language:?}: {rendered}");
+            for attribute in ["invalid-table", "invalid-value", "incompatible-values"] {
+                assert!(!loader.get_attr("block-lookup", attribute).is_empty());
+            }
+        }
+    }
+
+    #[test]
     fn donation_text_is_translated_in_every_locale() {
         for language in Language::ALL
             .into_iter()

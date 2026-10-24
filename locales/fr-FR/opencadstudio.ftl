@@ -7053,3 +7053,10 @@ block-grip =
 block-flip =
     .base-state-label = Libellé de l’état initial
     .flipped-state-label = Libellé de l’état retourné
+
+
+block-lookup =
+    .input-help = Entrées : nombres, formules ou intervalles comme { $closed } et { $open }. Les formules utilisent les noms des entrées. Les angles sont en radians.
+    .invalid-table = La table de correspondance est invalide.
+    .invalid-value = La ligne sélectionnée contient une valeur de paramètre invalide.
+    .incompatible-values = Les valeurs de la ligne ne respectent pas les ensembles de valeurs des paramètres.

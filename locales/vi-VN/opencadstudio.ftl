@@ -7060,3 +7060,10 @@ block-grip =
 block-flip =
     .base-state-label = Nhãn trạng thái ban đầu
     .flipped-state-label = Nhãn trạng thái đã lật
+
+
+block-lookup =
+    .input-help = Đầu vào: số, công thức hoặc khoảng như { $closed } và { $open }. Công thức dùng tên đầu vào. Góc tính bằng radian.
+    .invalid-table = Bảng tra cứu không hợp lệ.
+    .invalid-value = Hàng được chọn có giá trị tham số không hợp lệ.
+    .incompatible-values = Các giá trị trong hàng không đáp ứng tập giá trị tham số.

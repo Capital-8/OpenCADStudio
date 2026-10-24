@@ -7051,3 +7051,10 @@ block-grip =
 block-flip =
     .base-state-label = Label van de basisstatus
     .flipped-state-label = Label van de omgekeerde status
+
+
+block-lookup =
+    .input-help = Invoer: getallen, formules of intervallen zoals { $closed } en { $open }. Formules gebruiken invoernamen. Hoeken zijn in radialen.
+    .invalid-table = De opzoektabel is ongeldig.
+    .invalid-value = De geselecteerde rij bevat een ongeldige parameterwaarde.
+    .incompatible-values = De rijwaarden voldoen niet aan de waardeverzamelingen van de parameters.

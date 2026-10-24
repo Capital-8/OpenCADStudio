@@ -7054,3 +7054,10 @@ block-grip =
 block-flip =
     .base-state-label = ປ້າຍສະຖານະເດີມ
     .flipped-state-label = ປ້າຍສະຖານະປີ້ນ
+
+
+block-lookup =
+    .input-help = ຄ່າປ້ອນ: ຕົວເລກ, ສູດ ຫຼື ຊ່ວງເຊັ່ນ { $closed } ແລະ { $open }. ສູດໃຊ້ຊື່ຄ່າປ້ອນ. ມຸມມີຫົວໜ່ວຍເປັນເຣດຽນ.
+    .invalid-table = ຕາຕະລາງຄົ້ນຫາບໍ່ຖືກຕ້ອງ.
+    .invalid-value = ແຖວທີ່ເລືອກມີຄ່າພາຣາມິເຕີບໍ່ຖືກຕ້ອງ.
+    .incompatible-values = ຄ່າໃນແຖວບໍ່ສອດຄ່ອງກັບຊຸດຄ່າພາຣາມິເຕີ.

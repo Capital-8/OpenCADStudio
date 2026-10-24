@@ -7054,3 +7054,10 @@ block-grip =
 block-flip =
     .base-state-label = Base state label
     .flipped-state-label = Flipped state label
+
+
+block-lookup =
+    .input-help = Inputs: numbers, formulas, or intervals such as { $closed } and { $open }. Formulas use input names. Angles are radians.
+    .invalid-table = The Lookup table is invalid.
+    .invalid-value = The selected Lookup row has an invalid parameter value.
+    .incompatible-values = The Lookup row values do not satisfy the parameter value sets.

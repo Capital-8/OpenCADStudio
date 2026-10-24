@@ -7053,3 +7053,10 @@ block-grip =
 block-flip =
     .base-state-label = Rótulo do estado base
     .flipped-state-label = Rótulo do estado invertido
+
+
+block-lookup =
+    .input-help = Entradas: números, fórmulas ou intervalos como { $closed } e { $open }. As fórmulas usam nomes das entradas. Os ângulos estão em radianos.
+    .invalid-table = A tabela de consulta é inválida.
+    .invalid-value = A linha selecionada contém um valor de parâmetro inválido.
+    .incompatible-values = Os valores da linha não atendem aos conjuntos de valores dos parâmetros.
