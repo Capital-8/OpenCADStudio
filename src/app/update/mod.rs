@@ -11989,6 +11989,9 @@ impl OpenCADStudio {
                     return Task::none();
                 }
                 self.textstyle_font = font_file.clone();
+                // A stroke font replaces the system font, which would
+                // otherwise keep taking precedence.
+                self.textstyle_ttf.clear();
                 if let Some(s) = self.tabs[i].scene.document.text_styles.get_mut(&name) {
                     s.font_file = font_file;
                 }
