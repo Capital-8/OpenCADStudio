@@ -602,6 +602,27 @@ fn wire_distances(wire: &WireModel) -> (Vec<f32>, f32, f32) {
     };
 
     if has_break {
+        // A run too short for one whole period of a dash-first pattern is
+        // drawn as one solid dash, as a single line is below. Batched block
+        // wires and plinegen=false polylines are many runs in one wire, so
+        // pin each such run at the first dash's start.
+        if wire.pattern[0] > 0.0 && wire.pattern[1] < 0.0 {
+            let mut start = 0;
+            while start < n {
+                if !wire.points[start][0].is_finite() {
+                    start += 1;
+                    continue;
+                }
+                let mut end = start;
+                while end + 1 < n && wire.points[end + 1][0].is_finite() {
+                    end += 1;
+                }
+                if end > start && (dists[end] - dists[start]).abs() <= pat_len {
+                    dists[start..=end].fill(0.0);
+                }
+                start = end + 1;
+            }
+        }
         return (dists, 0.0, 0.0);
     }
     if total <= 1e-6 {
