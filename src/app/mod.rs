@@ -2253,7 +2253,10 @@ impl ClipboardDeps {
         }
 
         let mut image_definitions: Vec<codec::objects::ImageDefinition> = Vec::new();
-        for e in entities {
+        for e in entities
+            .iter()
+            .chain(blocks.iter().flat_map(|d| d.entities.iter()))
+        {
             let EntityType::RasterImage(image) = e else {
                 continue;
             };
@@ -2367,34 +2370,47 @@ impl ClipboardDeps {
                     }
                 }
             }
-            // A table's block cells name their blocks by record handle.
-            if let EntityType::Table(table) = e {
-                for name in crate::app::command_driver::clipboard::table_cell_blocks(table)
-                    .filter_map(|h| doc.block_records.iter().find(|r| r.handle == h))
-                    .map(|record| record.name.clone())
-                {
-                    if seen.insert(name.clone()) {
-                        queue.push(name);
-                    }
-                }
-            }
+            Self::queue_table_blocks(doc, e, &mut seen, &mut queue);
         }
         let mut defs = Vec::new();
         while let Some(name) = queue.pop() {
             let Some(def) = Self::snapshot_block(doc, &name) else {
                 continue;
             };
-            // Follow nested INSERTs so their definitions are captured too.
+            // Follow nested INSERTs and table block cells so their
+            // definitions are captured too.
             for e in &def.entities {
                 if let EntityType::Insert(ins) = e {
                     if seen.insert(ins.block_name.clone()) {
                         queue.push(ins.block_name.clone());
                     }
                 }
+                Self::queue_table_blocks(doc, e, &mut seen, &mut queue);
             }
             defs.push(def);
         }
         defs
+    }
+
+    /// Queue the blocks a table's block cells show; the cells name them by
+    /// record handle.
+    fn queue_table_blocks(
+        doc: &codec::CadDocument,
+        entity: &codec::EntityType,
+        seen: &mut rustc_hash::FxHashSet<String>,
+        queue: &mut Vec<String>,
+    ) {
+        let codec::EntityType::Table(table) = entity else {
+            return;
+        };
+        for name in crate::app::command_driver::clipboard::table_cell_blocks(table)
+            .filter_map(|h| doc.block_records.iter().find(|r| r.handle == h))
+            .map(|record| record.name.clone())
+        {
+            if seen.insert(name.clone()) {
+                queue.push(name);
+            }
+        }
     }
 
     /// Snapshot one block definition as a portable `BlockDef`: its base point
