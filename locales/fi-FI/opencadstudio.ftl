@@ -7058,3 +7058,6 @@ block-lookup =
     .invalid-value = Valitulla rivillä on virheellinen parametriarvo.
     .incompatible-values = Rivin arvot eivät vastaa parametrien arvojoukkoja.
     .quoted-help = Lainaa välilyöntejä tai välimerkkejä sisältävät nimet: { $name }.
+
+block-array =
+    .limit-error = Lohkon arviointi loisi yli 100000 matriisiobjektia. Pienennä etäisyyttä tai suurenna välistystä.

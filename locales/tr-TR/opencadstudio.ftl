@@ -6982,3 +6982,6 @@ block-lookup =
     .invalid-value = Seçilen satırda geçersiz bir parametre değeri var.
     .incompatible-values = Satır değerleri parametre değer kümelerine uymuyor.
     .quoted-help = Boşluk veya noktalama içeren adları alıntılayın: { $name }.
+
+block-array =
+    .limit-error = Blok değerlendirmesi 100000 adetten fazla dizi nesnesi oluşturacak. Mesafeyi azaltın veya aralığı artırın.

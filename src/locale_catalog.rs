@@ -3,6 +3,7 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
+        "Block evaluation would generate more than 100000 array objects. Reduce the distance or increase the spacing." => Some(("block-array", "limit-error")),
         "The Lookup table is invalid." => Some(("block-lookup", "invalid-table")),
         "The selected Lookup row has an invalid parameter value." => Some(("block-lookup", "invalid-value")),
         "The Lookup row values do not satisfy the parameter value sets." => Some(("block-lookup", "incompatible-values")),

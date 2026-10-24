@@ -7060,3 +7060,6 @@ block-lookup =
     .invalid-value = La riga selezionata contiene un valore di parametro non valido.
     .incompatible-values = I valori della riga non rispettano gli insiemi di valori dei parametri.
     .quoted-help = Delimitare i nomi con spazi o punteggiatura: { $name }.
+
+block-array =
+    .limit-error = La valutazione del blocco genererebbe più di 100000 oggetti di serie. Ridurre la distanza o aumentare la spaziatura.

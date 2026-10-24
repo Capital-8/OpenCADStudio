@@ -7044,3 +7044,6 @@ block-lookup =
     .invalid-value = 所选行包含无效的参数值。
     .incompatible-values = 行中的值不满足参数值集。
     .quoted-help = 用引用符包围含空格或标点的名称：{ $name }。
+
+block-array =
+    .limit-error = 块求值将生成超过100000个阵列对象。请减小距离或增大间距。

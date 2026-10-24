@@ -7061,3 +7061,6 @@ block-lookup =
     .invalid-value = La fila seleccionada contiene un valor de parámetro no válido.
     .incompatible-values = Los valores de la fila no cumplen los conjuntos de valores de los parámetros.
     .quoted-help = Delimite nombres con espacios o puntuación: { $name }.
+
+block-array =
+    .limit-error = La evaluación del bloque generaría más de 100000 objetos de matriz. Reduzca la distancia o aumente la separación.

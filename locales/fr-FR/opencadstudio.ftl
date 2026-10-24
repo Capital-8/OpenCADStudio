@@ -7061,3 +7061,6 @@ block-lookup =
     .invalid-value = La ligne sélectionnée contient une valeur de paramètre invalide.
     .incompatible-values = Les valeurs de la ligne ne respectent pas les ensembles de valeurs des paramètres.
     .quoted-help = Délimitez les noms contenant des espaces ou de la ponctuation : { $name }.
+
+block-array =
+    .limit-error = L’évaluation du bloc générerait plus de 100000 objets de réseau. Réduisez la distance ou augmentez l’espacement.

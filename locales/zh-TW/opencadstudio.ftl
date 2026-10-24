@@ -7056,3 +7056,6 @@ block-lookup =
     .invalid-value = 所選列包含無效的參數值。
     .incompatible-values = 列中的值不符合參數值集。
     .quoted-help = 以引用符號包住含空格或標點的名稱：{ $name }。
+
+block-array =
+    .limit-error = 圖塊求值將產生超過100000個陣列物件。請縮短距離或增大間距。

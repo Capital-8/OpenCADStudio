@@ -316,3 +316,49 @@ fn block_parameter_geometry_preview_drops_stale_locked_and_disassociated_targets
         }
     }
 }
+#[test]
+fn block_array_over_budget_preview_restores_source_and_preserves_history() {
+    for testing in [false, true] {
+        let (mut app, insert, _, _) = setup(5, testing);
+        let i = app.active_tab;
+        let before = app.tabs[i].scene.document.clone();
+        let depth = app.tabs[i].history.undo_stack.len();
+        let dirty = app.tabs[i].dirty;
+        let EntityType::Insert(reference) = before.get_entity(insert).unwrap() else {
+            panic!()
+        };
+        let transform = crate::scene::render_graph::insert_transform(&before, reference);
+        let cursor =
+            |distance: f64| actions::v(transform.apply(actions::native(DVec3::X * distance)));
+        app.tabs[i].last_cursor_world = cursor(20.);
+        app.refresh_active_cmd_preview(i);
+        assert!(!app.tabs[i].scene.preview_wires.is_empty());
+        app.tabs[i].last_cursor_world = cursor(300_000.);
+        app.refresh_active_cmd_preview(i);
+        assert!(app.tabs[i].scene.preview_wires.is_empty());
+        assert!(app.tabs[i].scene.preview_hatches.is_empty());
+        assert!(!app.tabs[i]
+            .scene
+            .visible_entities_for_edit(|entity| entity.common().handle == insert)
+            .is_empty());
+        assert!(app.tabs[i].scene.document == before);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+        assert_eq!(app.tabs[i].dirty, dirty);
+        let _ = app.feed_command(crate::command::StepInput::Point(cursor(300_000.)));
+        assert!(app.tabs[i].scene.document == before);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth);
+        assert_eq!(app.tabs[i].dirty, dirty);
+        // The live command remains usable after the rejected point.
+        app.tabs[i].last_cursor_world = cursor(30.);
+        app.refresh_active_cmd_preview(i);
+        assert!(!app.tabs[i].scene.preview_wires.is_empty());
+        let _ = app.feed_command(crate::command::StepInput::Point(cursor(30.)));
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+        app.undo_steps(1);
+        assert_eq!(
+            app.tabs[i].scene.document.get_entity(insert),
+            before.get_entity(insert)
+        );
+        assert_eq!(app.tabs[i].scene.document.objects, before.objects);
+    }
+}

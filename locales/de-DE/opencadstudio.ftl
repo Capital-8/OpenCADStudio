@@ -7059,3 +7059,6 @@ block-lookup =
     .invalid-value = Die ausgewählte Zeile enthält einen ungültigen Parameterwert.
     .incompatible-values = Die Zeilenwerte erfüllen die Parametersätze nicht.
     .quoted-help = Namen mit Leerzeichen oder Satzzeichen einschließen: { $name }.
+
+block-array =
+    .limit-error = Die Blockauswertung würde mehr als 100000 Anordnungsobjekte erzeugen. Verringern Sie die Entfernung oder vergrößern Sie den Abstand.
