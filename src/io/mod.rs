@@ -793,7 +793,6 @@ async fn load_web_bytes(
     let mut doc = outcome.document;
     normalize_block_origins(&mut doc);
     if name.to_ascii_lowercase().ends_with(".dxf") {
-        fix_dxf_dimension_rotations(&mut doc);
         fix_dxf_layout_plot_settings(&mut doc);
     }
     fix_viewport_status_flags(&mut doc);
@@ -835,7 +834,6 @@ async fn parse_web_document(name: &str, bytes: &[u8]) -> Result<CadDocument, Str
     let mut doc = outcome.document;
     normalize_block_origins(&mut doc);
     if name.to_ascii_lowercase().ends_with(".dxf") {
-        fix_dxf_dimension_rotations(&mut doc);
         fix_dxf_layout_plot_settings(&mut doc);
     }
     fix_viewport_status_flags(&mut doc);
@@ -981,7 +979,6 @@ pub fn load_bytes(name: &str, bytes: Vec<u8>) -> Result<CadDocument, String> {
                 .map_err(|e| e.to_string())?
                 .read()
                 .map_err(|e| e.to_string())?;
-            fix_dxf_dimension_rotations(&mut doc);
             fix_dxf_layout_plot_settings(&mut doc);
             fix_viewport_status_flags(&mut doc);
             fix_double_placed_dimension_pictures(&mut doc);
@@ -1261,7 +1258,6 @@ fn finalize_loaded_outcome(
     normalize_block_origins(doc);
     materialize_missing_block_markers(doc);
     if outcome.stats.source_format == Some(codec::SourceFormat::Dxf) {
-        fix_dxf_dimension_rotations(doc);
         fix_dxf_layout_plot_settings(doc);
     }
     fix_viewport_status_flags(doc);
@@ -2820,21 +2816,6 @@ fn fix_viewport_status_flags(doc: &mut CadDocument) {
                 vp.turn_on();
                 vp.status.locked = (bits & 0x4000) != 0;
             }
-        }
-    }
-}
-
-/// The opencadcodec DXF reader still stores Shape rotation directly from group
-/// code 50 in degrees, while DWG and our own creation code store radians.
-/// Dimension angles and ATTRIB/ATTDEF rotation are converted inside the
-/// reader, so arms for them here would convert twice.
-fn fix_dxf_dimension_rotations(doc: &mut CadDocument) {
-    for entity in doc.entities_mut() {
-        match entity {
-            EntityType::Shape(s) => {
-                s.rotation = s.rotation.to_radians();
-            }
-            _ => {}
         }
     }
 }

@@ -223,7 +223,6 @@ fn finalize_xref_outcome(outcome: &mut codec::ReadOutcome) {
     let doc = &mut outcome.document;
     super::normalize_block_origins(doc);
     if outcome.stats.source_format == Some(codec::SourceFormat::Dxf) {
-        super::fix_dxf_dimension_rotations(doc);
         super::fix_dxf_layout_plot_settings(doc);
     }
     super::fix_viewport_status_flags(doc);
