@@ -222,5 +222,13 @@ pub fn handle_plugin_request(
             let path: Vec<&str> = dictionary_path.iter().map(|s| s.as_str()).collect();
             PluginResponse::ListXRecordsWithEntriesResult(host.list_xrecords_with_entries(&path))
         }
+        ShowDialog(dialog) => PluginResponse::DialogResult(host.show_dialog(dialog)),
+        RegisterPanel(panel) => PluginResponse::PanelRegistered(host.register_panel(panel)),
+        UpdatePanel { panel_id, values } => {
+            PluginResponse::PanelUpdated(host.update_panel(&panel_id, values))
+        }
+        TogglePanel { panel_id, show } => {
+            PluginResponse::PanelToggled(host.toggle_panel(&panel_id, show))
+        }
     }
 }

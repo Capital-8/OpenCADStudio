@@ -122,6 +122,8 @@ pub enum PanelId {
     Layers,
     /// The calculator (QUICKCALC).
     QuickCalc,
+    /// Dynamic plugin dockable side panel / palette (identified by unique numeric ID).
+    Plugin(u32),
 }
 
 impl PanelId {
@@ -156,6 +158,7 @@ impl PanelId {
             PanelId::SheetSetManager => "Sheet Set Manager",
             PanelId::Layers => "Layer Manager",
             PanelId::QuickCalc => "QuickCalc",
+            PanelId::Plugin(_) => "Plugin",
         }
     }
 
@@ -176,6 +179,7 @@ impl PanelId {
             PanelId::SheetSetManager => include_bytes!("../../assets/icons/sheetset.svg"),
             PanelId::Layers => include_bytes!("../../assets/icons/layers/panel.svg"),
             PanelId::QuickCalc => crate::ui::window::quick_calc::ICON,
+            PanelId::Plugin(_) => crate::ui::icons::MORE,
         }
     }
 
@@ -194,6 +198,7 @@ impl PanelId {
             PanelId::SheetSetManager => 280.0,
             PanelId::Layers => 560.0,
             PanelId::QuickCalc => 320.0,
+            PanelId::Plugin(_) => 280.0,
         }
     }
 

@@ -235,6 +235,7 @@ fn handle_host_request(
                         cmd_ref.on_selection_complete(handles)
                     }
                     InteractiveEvent::Cancel => CommandStep::Cancel,
+                    InteractiveEvent::DialogResponse(res) => cmd_ref.on_dialog_response(res),
                 }));
                 match res {
                     Ok(s) => {
@@ -350,6 +351,19 @@ fn handle_host_request(
                 None => HostResponse::PreviewWires(Vec::new()),
             }
         }
+        HostRequest::GetModalDialog { command_id } => {
+            let result = {
+                let registry = interactive.borrow();
+                registry.get(&command_id).and_then(|cmd| {
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        cmd.modal_dialog()
+                    }))
+                    .ok()
+                    .flatten()
+                })
+            };
+            HostResponse::ModalDialog(result)
+        }
         HostRequest::ExecuteCode { .. } => {
             HostResponse::Error("ExecuteCode requires V4 protocol".to_string())
         }
@@ -452,6 +466,7 @@ fn handle_host_request_v4(
                         cmd_ref.on_selection_complete(handles)
                     }
                     InteractiveEvent::Cancel => CommandStep::Cancel,
+                    InteractiveEvent::DialogResponse(res) => cmd_ref.on_dialog_response(res),
                 }));
                 match res {
                     Ok(s) => {
@@ -586,6 +601,19 @@ fn handle_host_request_v4(
                 Some(Err(_)) => Some(HostResponse::PreviewWires(Vec::new())),
                 None => Some(HostResponse::PreviewWires(Vec::new())),
             }
+        }
+        HostRequest::GetModalDialog { command_id } => {
+            let result = {
+                let registry = interactive.borrow();
+                registry.get(&command_id).and_then(|cmd| {
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        cmd.modal_dialog()
+                    }))
+                    .ok()
+                    .flatten()
+                })
+            };
+            Some(HostResponse::ModalDialog(result))
         }
         HostRequest::ExecuteCode {
             command_id,

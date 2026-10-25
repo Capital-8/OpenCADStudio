@@ -89,6 +89,7 @@ mod parameters;
 mod property_match;
 mod solid3d;
 mod tests;
+mod autolisp_tests;
 mod text_edit;
 mod transform;
 mod utilities;
@@ -112,6 +113,16 @@ impl OpenCADStudio {
     /// command, so `was_active` is false and their selection is preserved.
     pub(super) fn apply_cmd_result(&mut self, mut result: CmdResult) -> Task<Message> {
         let i = self.active_tab;
+        let panel_updates = self.tabs[i]
+            .active_cmd
+            .as_mut()
+            .map(|c| c.take_pending_panel_updates())
+            .unwrap_or_default();
+        for (panel_id, values) in panel_updates {
+            if let Some(panel) = self.plugin_panels.get_mut(&panel_id) {
+                panel.update_values(values);
+            }
+        }
         if let CmdResult::ReturnPoint(pt) = result {
             self.tabs[i].scene.clear_preview_wire();
             if let Some(mut suspended) = self.tabs[i].suspended_cmd.take() {

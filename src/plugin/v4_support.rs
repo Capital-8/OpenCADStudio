@@ -104,6 +104,21 @@ pub fn publish_drawing_changed(tab_id: u64, epoch: u64) {
     broadcast(HostNotification::DrawingChanged { tab_id, epoch });
 }
 
+/// Broadcast a panel control interaction or button click to plugins.
+pub fn publish_panel_action(
+    panel_id: String,
+    control_id: String,
+    action: String,
+    value: Option<ocs_plugin_api::dialog::DialogValue>,
+) {
+    broadcast(HostNotification::PanelAction {
+        panel_id,
+        control_id,
+        action,
+        value,
+    });
+}
+
 /// V4 notification handler installed on the plugin manager.
 ///
 /// Forwards REPL status messages to the log; other notifications are handled

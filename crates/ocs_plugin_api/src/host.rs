@@ -23,6 +23,7 @@ use crate::ribbon::CadModule;
 // so out-of-tree plugins can use them without adding their own opencadcodec
 // dependency (which would risk an ABI-mismatching version).
 pub use codec;
+pub use codec as acadrust;
 pub use codec::objects::{
     DictionaryCloningFlags, KnownXRecordKind, ProxyObjectReference, ProxyReferenceKind, XRecord,
     XRecordEntry, XRecordSection, XRecordValue, XRecordValueType,
@@ -457,6 +458,13 @@ pub enum HostNotification {
         entities: Vec<Handle>,
         records: Vec<(Handle, String)>,
     },
+    /// V7 panel control event (button click, value change). Discriminant 12.
+    PanelAction {
+        panel_id: String,
+        control_id: String,
+        action: String,
+        value: Option<crate::dialog::DialogValue>,
+    },
     /// Fallback for notification variants added in future minor revisions.
     /// Carries the raw bincode payload so an older peer can ignore it without
     /// failing deserialization.
@@ -524,6 +532,22 @@ impl Serialize for HostNotification {
                 bincode::serialize_into(&mut bytes, entities).map_err(serde::ser::Error::custom)?;
                 bincode::serialize_into(&mut bytes, records).map_err(serde::ser::Error::custom)?;
             }
+            HostNotification::PanelAction {
+                panel_id,
+                control_id,
+                action,
+                value,
+            } => {
+                bytes.push(12);
+                bincode::serialize_into(&mut bytes, panel_id)
+                    .map_err(serde::ser::Error::custom)?;
+                bincode::serialize_into(&mut bytes, control_id)
+                    .map_err(serde::ser::Error::custom)?;
+                bincode::serialize_into(&mut bytes, action)
+                    .map_err(serde::ser::Error::custom)?;
+                bincode::serialize_into(&mut bytes, value)
+                    .map_err(serde::ser::Error::custom)?;
+            }
             HostNotification::Unknown(raw) => bytes.extend_from_slice(raw),
         }
         bytes.serialize(serializer)
@@ -582,6 +606,23 @@ impl<'de> Deserialize<'de> for HostNotification {
                     version,
                     entities,
                     records,
+                })
+            }
+            12 => {
+                let mut cursor = std::io::Cursor::new(rest);
+                let panel_id: String = bincode::deserialize_from(&mut cursor)
+                    .map_err(serde::de::Error::custom)?;
+                let control_id: String = bincode::deserialize_from(&mut cursor)
+                    .map_err(serde::de::Error::custom)?;
+                let action: String = bincode::deserialize_from(&mut cursor)
+                    .map_err(serde::de::Error::custom)?;
+                let value: Option<crate::dialog::DialogValue> = bincode::deserialize_from(&mut cursor)
+                    .map_err(serde::de::Error::custom)?;
+                Ok(HostNotification::PanelAction {
+                    panel_id,
+                    control_id,
+                    action,
+                    value,
                 })
             }
             _ => Ok(HostNotification::Unknown(bytes)),
@@ -849,6 +890,21 @@ pub trait InteractiveCommand: Send {
     /// Returns `true` when selection should reject entities on locked layers (e.g. ssget ":L").
     fn selection_rejects_locked_layers(&self) -> bool {
         false
+    }
+
+    /// An optional declarative modal dialog to display while this interactive command is active.
+    fn modal_dialog(&self) -> Option<crate::dialog::DialogDef> {
+        None
+    }
+
+    /// User submitted or cancelled the modal dialog.
+    fn on_dialog_response(&mut self, _response: crate::dialog::DialogResponse) -> CommandStep {
+        CommandStep::Done
+    }
+
+    /// Pending panel updates buffered during interactive command execution (API v7, additive).
+    fn take_pending_panel_updates(&mut self) -> Vec<(String, std::collections::HashMap<String, crate::dialog::DialogValue>)> {
+        Vec::new()
     }
 }
 
@@ -1626,7 +1682,32 @@ pub trait HostApi {
     ) -> Result<Vec<(String, Vec<XRecordEntry>)>, String> {
         Err("XRecord listing with entries is not supported by this host".to_owned())
     }
+
+    /// Display a declarative modal form dialog and wait for user submission or cancellation (API v7, additive).
+    fn show_dialog(&mut self, _dialog: crate::dialog::DialogDef) -> crate::dialog::DialogResponse {
+        crate::dialog::DialogResponse::Cancelled
+    }
+
+    /// Register a persistent dockable side panel / palette (API v7, additive).
+    fn register_panel(&mut self, _panel: crate::dialog::PanelDef) -> bool {
+        false
+    }
+
+    /// Update control values in a persistent dockable side panel (API v7, additive).
+    fn update_panel(
+        &mut self,
+        _panel_id: &str,
+        _values: std::collections::HashMap<String, crate::dialog::DialogValue>,
+    ) -> bool {
+        false
+    }
+
+    /// Toggle visibility or show/hide a persistent dockable side panel (API v7, additive).
+    fn toggle_panel(&mut self, _panel_id: &str, _show: Option<bool>) -> bool {
+        false
+    }
 }
+
 
 /// One XRecord addressed by dictionary path + name (API v13, additive).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

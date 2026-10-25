@@ -520,6 +520,17 @@ impl OpenCADStudio {
                 tab.layers.view_panel(self.layer_name_col_w, width, chrome)
             }
             crate::ui::dock::PanelId::QuickCalc => self.quick_calc_view(tab, width, chrome),
+            crate::ui::dock::PanelId::Plugin(num) => {
+                if let Some(panel_id) = self.plugin_panel_by_num.get(&num) {
+                    if let Some(state) = self.plugin_panels.get(panel_id) {
+                        state.view(num, width, chrome)
+                    } else {
+                        Space::new().into()
+                    }
+                } else {
+                    Space::new().into()
+                }
+            }
         }
     }
 

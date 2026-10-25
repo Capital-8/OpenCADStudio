@@ -1117,6 +1117,72 @@ impl HostApi for V4PluginHostApi {
             Err(error) => Err(error.to_string()),
         }
     }
+
+    fn show_dialog(&mut self, dialog: crate::dialog::DialogDef) -> crate::dialog::DialogResponse {
+        match self.request(PluginRequest::ShowDialog(dialog)) {
+            Ok(PluginResponse::DialogResult(res)) => res,
+            Ok(other) => {
+                eprintln!("[plugin] unexpected ShowDialog response: {other:?}");
+                crate::dialog::DialogResponse::Cancelled
+            }
+            Err(e) => {
+                eprintln!("[plugin] ShowDialog request failed: {e}");
+                crate::dialog::DialogResponse::Cancelled
+            }
+        }
+    }
+
+    fn register_panel(&mut self, panel: crate::dialog::PanelDef) -> bool {
+        match self.request(PluginRequest::RegisterPanel(panel)) {
+            Ok(PluginResponse::PanelRegistered(b)) => b,
+            Ok(other) => {
+                eprintln!("[plugin] unexpected RegisterPanel response: {other:?}");
+                false
+            }
+            Err(e) => {
+                eprintln!("[plugin] RegisterPanel request failed: {e}");
+                false
+            }
+        }
+    }
+
+    fn update_panel(
+        &mut self,
+        panel_id: &str,
+        values: std::collections::HashMap<String, crate::dialog::DialogValue>,
+    ) -> bool {
+        match self.request(PluginRequest::UpdatePanel {
+            panel_id: panel_id.to_string(),
+            values,
+        }) {
+            Ok(PluginResponse::PanelUpdated(b)) => b,
+            Ok(other) => {
+                eprintln!("[plugin] unexpected UpdatePanel response: {other:?}");
+                false
+            }
+            Err(e) => {
+                eprintln!("[plugin] UpdatePanel request failed: {e}");
+                false
+            }
+        }
+    }
+
+    fn toggle_panel(&mut self, panel_id: &str, show: Option<bool>) -> bool {
+        match self.request(PluginRequest::TogglePanel {
+            panel_id: panel_id.to_string(),
+            show,
+        }) {
+            Ok(PluginResponse::PanelToggled(b)) => b,
+            Ok(other) => {
+                eprintln!("[plugin] unexpected TogglePanel response: {other:?}");
+                false
+            }
+            Err(e) => {
+                eprintln!("[plugin] TogglePanel request failed: {e}");
+                false
+            }
+        }
+    }
 }
 
 #[cfg(test)]

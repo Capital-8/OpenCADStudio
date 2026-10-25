@@ -1237,6 +1237,13 @@ pub(super) struct OpenCADStudio {
     /// The open in-canvas modal dialog, if any (Plan B: shared overlay instead
     /// of OS windows).
     active_modal: Option<ModalKind>,
+    /// State backing an active declarative plugin modal dialog.
+    pub(crate) plugin_dialog_state: Option<crate::ui::window::plugin_dialog::PluginDialogState>,
+    /// Persistent dockable side panels registered by plugins.
+    pub(crate) plugin_panels: std::collections::BTreeMap<String, crate::ui::window::plugin_panel::PluginPanelState>,
+    /// Numeric mapping for PanelId::Plugin(u32).
+    pub(crate) plugin_panel_ids: std::collections::HashMap<String, u32>,
+    pub(crate) plugin_panel_by_num: std::collections::HashMap<u32, String>,
     /// Selection and staged values owned by the Properties hyperlink dialog.
     hyperlink_editor_handles: Vec<codec::Handle>,
     hyperlink_editor_block: Option<(u64, codec::Handle)>,
@@ -2768,6 +2775,8 @@ pub enum ModalKind {
     /// `RecoveryPrompt` — nothing is wrong with the drawing itself.
     #[cfg(target_arch = "wasm32")]
     AutosaveRestore,
+    /// Declarative modal dialog opened by a plugin.
+    PluginDialog,
 }
 
 /// A property group controlled by a layer state's restore mask.
@@ -3345,6 +3354,41 @@ pub enum Message {
         command: String,
         path: Option<std::path::PathBuf>,
     },
+    /// Live text change in a plugin modal dialog control.
+    PluginDialogTextChange(String, String),
+    /// Checkbox toggle in a plugin modal dialog control.
+    PluginDialogBoolToggle(String, bool),
+    /// Dropdown choice selection in a plugin modal dialog control.
+    PluginDialogChoiceSelect(String, usize),
+    /// Color selection change in a plugin modal dialog control.
+    PluginDialogColorChange(String, [u8; 3]),
+    /// User clicked Browse on a file picker control in a plugin modal dialog.
+    PluginDialogFilePick(String),
+    /// File chosen from OS dialog for a file picker control.
+    PluginDialogFilePicked(String, Option<std::path::PathBuf>),
+    /// Table cell text change in a plugin modal dialog.
+    PluginDialogTableCellChange(String, usize, usize, String),
+    /// Add empty row to a table in a plugin modal dialog.
+    PluginDialogTableAddRow(String),
+    /// Remove a row from a table in a plugin modal dialog.
+    PluginDialogTableRemoveRow(String, usize),
+    /// Collapse / expand toggle for a property fields section.
+    PluginDialogSectionToggle(String),
+    /// Submit / OK clicked in a plugin modal dialog.
+    PluginDialogSubmit,
+    /// Cancel clicked in a plugin modal dialog.
+    PluginDialogCancel,
+    // ── Plugin dock panels ─────────────────────────────────────────────────
+    PluginPanelButtonClick(String, String, Option<String>),
+    PluginPanelTextChange(String, String, String),
+    PluginPanelBoolToggle(String, String, bool),
+    PluginPanelChoiceSelect(String, String, usize, String),
+    PluginPanelFilePick(String, String),
+    PluginPanelFilePicked(String, String, Option<std::path::PathBuf>),
+    PluginPanelTableCellChange(String, String, usize, usize, String),
+    PluginPanelTableAddRow(String, String),
+    PluginPanelTableRemoveRow(String, String, usize),
+    PluginPanelSectionToggle(String, String),
     // ── Document tabs ──────────────────────────────────────────────────────
     /// Create a new empty document tab.
     TabNew,
@@ -5465,6 +5509,10 @@ impl OpenCADStudio {
             color_books: Default::default(),
             color_books_read: false,
             active_modal: None,
+            plugin_dialog_state: None,
+            plugin_panels: std::collections::BTreeMap::new(),
+            plugin_panel_ids: std::collections::HashMap::new(),
+            plugin_panel_by_num: std::collections::HashMap::new(),
             hyperlink_editor_handles: Vec::new(),
             hyperlink_editor_block: None,
             hyperlink_editor_url: String::new(),
@@ -5858,6 +5906,12 @@ impl OpenCADStudio {
         id
     }
 
+    /// Open a declarative plugin modal dialog.
+    pub(crate) fn open_plugin_dialog(&mut self, def: ocs_plugin_api::dialog::DialogDef) {
+        self.plugin_dialog_state = Some(crate::ui::window::plugin_dialog::PluginDialogState::new(def));
+        self.active_modal = Some(ModalKind::PluginDialog);
+    }
+
     /// Install `cmd` as the active interactive command for tab `tab`.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) fn set_active_command(
@@ -5865,8 +5919,12 @@ impl OpenCADStudio {
         tab: usize,
         cmd: Box<dyn crate::command::CadCommand>,
     ) {
+        let dialog = cmd.modal_dialog();
         if let Some(t) = self.tabs.get_mut(tab) {
             t.active_cmd = Some(cmd);
+        }
+        if let Some(dialog_def) = dialog {
+            self.open_plugin_dialog(dialog_def);
         }
     }
 

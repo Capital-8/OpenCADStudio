@@ -1350,8 +1350,20 @@ impl OpenCADStudio {
         // Refresh the command-line autocomplete pool so a newly enabled plugin's
         // commands become typeable (and a disabled one's drop out). This runs on
         // startup load, settings reload, and every enable/disable toggle (#272).
-        self.command_line.dynamic_commands =
-            crate::plugin::plugin_command_names(&self.disabled_plugins);
+        let mut cmds = crate::plugin::plugin_command_names(&self.disabled_plugins);
+        for state in self.plugin_panels.values() {
+            if let Some(ref c) = state.def.command {
+                let cu = c.to_uppercase();
+                if !cmds.contains(&cu) {
+                    cmds.push(cu);
+                }
+            }
+            let id_u = state.def.id.to_uppercase();
+            if !cmds.contains(&id_u) {
+                cmds.push(id_u);
+            }
+        }
+        self.command_line.dynamic_commands = cmds;
     }
 
     /// Snapshot of disabled plugin ids — lets the registry skip them while it

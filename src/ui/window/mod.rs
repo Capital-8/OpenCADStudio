@@ -53,3 +53,5 @@ pub mod wblock;
 pub mod xref_attach;
 pub mod xref_help;
 pub mod xref_manager;
+pub mod plugin_dialog;
+pub mod plugin_panel;
