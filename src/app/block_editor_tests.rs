@@ -5965,7 +5965,7 @@ fn block_polar_stretch_end_binding_command_scratch_and_reference_history() {
             insert: (!testing).then_some(insert), document, definition, parameter: parameter.handle,
             value: actions::Value::Point(DVec3::new(0., 15., 0.)),
         });
-        let geometry = |doc: &codec::CadDocument| {
+        let geometry = |doc: &codec::Document| {
             let EntityType::Insert(reference) = doc.get_entity(insert).unwrap() else { panic!() };
             let line = doc.block_records.get(&reference.block_name).unwrap().entity_handles.iter().find_map(|h| match doc.get_entity(*h) { Some(EntityType::Line(line)) => Some(line), _ => None }).unwrap();
             (line.start, line.end)
@@ -6030,7 +6030,7 @@ fn block_action_self_grip_selection_edits_keep_native_links_and_reference_histor
         let _ = app.handle_block_action_result(crate::command::CmdResult::EvaluateBlockParameter { grip: None,
             insert: (!testing).then_some(insert), document, definition, parameter: parameter.handle, value: actions::Value::Point(DVec3::new(0., 15., 0.)),
         });
-        let circle_center = |doc: &codec::CadDocument| {
+        let circle_center = |doc: &codec::Document| {
             let EntityType::Insert(reference) = doc.get_entity(insert).unwrap() else { panic!() };
             doc.block_records.get(&reference.block_name).unwrap().entity_handles.iter().find_map(|h| match doc.get_entity(*h) {
                 Some(EntityType::Circle(circle)) => Some(circle.center), _ => None,
@@ -6322,7 +6322,7 @@ fn block_alignment_type_placement_properties_history_and_native_roundtrips() {
     let _ = app.run_command_line("BPARAMETER ALIGNMENT 0,0 TYPE P 10,0");
     let parameter = orientation::parameters(&app.tabs[i].scene.document, definition).into_iter()
         .find(|p| p.kind == Kind::Alignment).unwrap().handle;
-    let perpendicular = |doc: &codec::CadDocument| match &doc.objects[&parameter] {
+    let perpendicular = |doc: &codec::Document| match &doc.objects[&parameter] {
         ObjectType::DynamicBlock(object) => match &object.data {
             DynamicBlockData::AlignmentParameter(p) => p.align_perpendicular,
             _ => panic!(),

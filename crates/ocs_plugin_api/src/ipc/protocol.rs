@@ -26,7 +26,7 @@ use crate::ribbon::owned::{OwnedEntityClasses, OwnedPluginManifest, OwnedRibbonG
 
 pub use crate::host::PreviewWire;
 pub use codec::xdata::{ExtendedDataRecord, XDataValue};
-pub use codec::{CadDocument, EntityType, Handle};
+pub use codec::{Document, EntityType, Handle};
 
 /// Events the host forwards to an active plugin `InteractiveCommand`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -313,7 +313,7 @@ pub enum PluginResponse {
     Bool(bool),
     Handle(Handle),
     Record(Option<ExtendedDataRecord>),
-    Document(Box<CadDocument>),
+    Document(Box<Document>),
     Error(String),
     /// Path to the memory-mapped file and the current snapshot version.
     DocumentView {

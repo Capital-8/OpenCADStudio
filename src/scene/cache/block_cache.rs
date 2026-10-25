@@ -19,7 +19,7 @@ use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::sync::Arc;
 
 use codec::types::{Color as AcadColor, LineWeight, Transform, Vector3};
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 use kernel::space::{Plane as KernelPlane, Vec3 as KernelVec3};
 
 use crate::scene::convert::tessellate;
@@ -261,7 +261,7 @@ impl BlockCache {
     /// Build definitions referenced by block-backed entities. Space records stay
     /// roots so their direct entities preserve individual selection handles.
     pub fn build(
-        doc: &CadDocument,
+        doc: &Document,
         anno_scale: f32,
         annotation_scale_handle: Option<Handle>,
         all_visible: bool,
@@ -318,7 +318,7 @@ impl BlockCache {
     /// Build a small cache rooted at one block. Used only when a synthetic or
     /// newly-added Insert is not present in the resident cache yet.
     pub fn build_for_block(
-        doc: &CadDocument,
+        doc: &Document,
         block_name: &str,
         anno_scale: f32,
         annotation_scale_handle: Option<Handle>,
@@ -460,7 +460,7 @@ impl BlockCache {
     }
 }
 
-fn block_object_names(doc: &CadDocument, entity: &EntityType, anno_scale: f32) -> Vec<String> {
+fn block_object_names(doc: &Document, entity: &EntityType, anno_scale: f32) -> Vec<String> {
     crate::scene::render_graph::entity_render_block_uses(doc, entity, anno_scale)
         .into_iter()
         .filter(|block_use| !block_use.block.is_null())
@@ -469,7 +469,7 @@ fn block_object_names(doc: &CadDocument, entity: &EntityType, anno_scale: f32) -
 }
 
 /// Collect block definitions needed by rendered representations.
-fn collect_referenced_blocks(doc: &CadDocument, anno_scale: f32) -> Vec<String> {
+fn collect_referenced_blocks(doc: &Document, anno_scale: f32) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::default();
     let mut queue: Vec<String> = Vec::new();
 
@@ -498,7 +498,7 @@ fn collect_referenced_blocks(doc: &CadDocument, anno_scale: f32) -> Vec<String> 
     seen.into_iter().collect()
 }
 
-fn referenced_block_tree(doc: &CadDocument, root: &str, anno_scale: f32) -> Vec<String> {
+fn referenced_block_tree(doc: &Document, root: &str, anno_scale: f32) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::default();
     let mut queue = vec![root.to_string()];
     seen.insert(root.to_string());
@@ -535,7 +535,7 @@ fn nested_attachment_transform(nref: &NestedRef, offset: [f64; 3]) -> Transform 
 }
 
 fn build_defn(
-    doc: &CadDocument,
+    doc: &Document,
     block_name: &str,
     anno_scale: f32,
     annotation_scale_handle: Option<Handle>,
@@ -687,7 +687,7 @@ fn inline_wire_point_cost(wire: &LocalWire) -> Option<usize> {
 fn build_nested_ref(
     nested_ins: &codec::entities::Insert,
     scale_policy: crate::scene::BlockScalePolicy,
-    doc: &CadDocument,
+    doc: &Document,
     anno_scale: f32,
     bg_color: [f32; 4],
     viewport: Option<Handle>,
@@ -739,7 +739,7 @@ fn build_nested_ref(
 }
 
 fn tessellate_sub_local(
-    doc: &CadDocument,
+    doc: &Document,
     sub: &EntityType,
     anno_scale: f32,
     annotation_scale_handle: Option<Handle>,
@@ -1029,7 +1029,7 @@ pub fn aabb_disjoint_xy(a: [f32; 4], b: [f32; 4]) -> bool {
 /// Returns `None` if no defn is cached for `ins.block_name`. Returns
 /// `Some(empty)` if the defn exists but is empty.
 pub fn expand_insert(
-    doc: &CadDocument,
+    doc: &Document,
     cache: &BlockCache,
     ins: &codec::entities::Insert,
     ins_handle: Handle,
@@ -3391,7 +3391,7 @@ mod compact_nested_tests {
     use codec::entities::{Insert, Line};
     use codec::tables::BlockRecord;
 
-    fn add_block(document: &mut CadDocument, name: &str) -> Handle {
+    fn add_block(document: &mut Document, name: &str) -> Handle {
         let mut block = BlockRecord::new(name);
         block.handle = document.allocate_handle();
         let handle = block.handle;
@@ -3399,14 +3399,14 @@ mod compact_nested_tests {
         handle
     }
 
-    fn add_owned(document: &mut CadDocument, owner: Handle, mut entity: EntityType) {
+    fn add_owned(document: &mut Document, owner: Handle, mut entity: EntityType) {
         entity.common_mut().owner_handle = owner;
         document.add_entity(entity).unwrap();
     }
 
     #[test]
     fn repeated_small_nested_lines_fold_into_parent_batches() {
-        let mut document = CadDocument::new();
+        let mut document = Document::new();
         let leaf = add_block(&mut document, "LEAF");
         for y in 0..6 {
             add_owned(
@@ -3499,7 +3499,7 @@ mod compact_nested_tests {
         use codec::entities::{LwPolyline, LwVertex};
         use codec::types::Vector2;
 
-        let mut document = CadDocument::new();
+        let mut document = Document::new();
         let arrow = add_block(&mut document, "FLE");
         let mut tip = LwPolyline::new();
         let mut start = LwVertex::new(Vector2::new(0.0, 0.0));
@@ -3658,7 +3658,7 @@ mod metrics_depth_tests {
     use codec::entities::{Insert, Line};
     use codec::tables::BlockRecord;
 
-    fn add_block(document: &mut CadDocument, name: &str) -> Handle {
+    fn add_block(document: &mut Document, name: &str) -> Handle {
         let mut block = BlockRecord::new(name);
         block.handle = document.allocate_handle();
         let handle = block.handle;
@@ -3666,7 +3666,7 @@ mod metrics_depth_tests {
         handle
     }
 
-    fn add_owned(document: &mut CadDocument, owner: Handle, mut entity: EntityType) {
+    fn add_owned(document: &mut Document, owner: Handle, mut entity: EntityType) {
         entity.common_mut().owner_handle = owner;
         document.add_entity(entity).unwrap();
     }
@@ -3679,7 +3679,7 @@ mod metrics_depth_tests {
     #[test]
     fn a_deep_insert_chain_computes_metrics_without_overflowing_the_stack() {
         const DEPTH: usize = 20_000;
-        let mut document = CadDocument::new();
+        let mut document = Document::new();
         let mut prev = add_block(&mut document, "B0");
         for i in 1..=DEPTH {
             let cur = add_block(&mut document, &format!("B{i}"));
@@ -3725,7 +3725,7 @@ mod metrics_depth_tests {
     #[test]
     fn metrics_below_the_depth_cap_are_still_fully_aggregated() {
         const DEPTH: usize = 10;
-        let mut document = CadDocument::new();
+        let mut document = Document::new();
         let mut prev = add_block(&mut document, "B0");
         for i in 1..=DEPTH {
             let cur = add_block(&mut document, &format!("B{i}"));
@@ -3770,7 +3770,7 @@ mod metrics_depth_tests {
     fn locked_cyclic_block_document_renders_without_hanging_and_warns_once() {
         // Document built in code with pre-existing cycle:
         // A contains B, B contains A
-        let mut document = CadDocument::new();
+        let mut document = Document::new();
         let blk_a = add_block(&mut document, "CYC_A");
         let blk_b = add_block(&mut document, "CYC_B");
 

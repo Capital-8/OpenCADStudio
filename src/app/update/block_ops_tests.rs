@@ -1551,8 +1551,8 @@ fn locked_attedit_attribute_flags_cases() {
     preset_row.value = "edited_preset".to_string();
     preset_row.is_constant = false;
 
-    // Verify metadata mapping from CadDocument
-    let mut doc = codec::CadDocument::new();
+    // Verify metadata mapping from Document
+    let mut doc = codec::Document::new();
     let next = doc.next_handle();
     let br_h = Handle::new(next);
     let mut br = BlockRecord::new("FLAG_BLOCK");

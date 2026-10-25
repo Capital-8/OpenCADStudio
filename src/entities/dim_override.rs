@@ -10,7 +10,7 @@
 use codec::entities::EntityCommon;
 use codec::types::Color;
 use codec::xdata::{ExtendedData, XDataValue};
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 
 // DXF group codes of the dimension variables surfaced on the leader panel.
 pub const DIMSCALE: i16 = 40; // overall scale       (real)
@@ -173,7 +173,7 @@ pub fn string(xd: &ExtendedData, code: i16) -> Option<String> {
         })
 }
 
-fn write_pairs(doc: &mut CadDocument, handle: Handle, pairs: Vec<(i16, XDataValue)>) {
+fn write_pairs(doc: &mut Document, handle: Handle, pairs: Vec<(i16, XDataValue)>) {
     let Some(entity) = doc.get_entity(handle) else {
         return;
     };
@@ -214,7 +214,7 @@ fn write_pairs(doc: &mut CadDocument, handle: Handle, pairs: Vec<(i16, XDataValu
 }
 
 /// Replace every dimension-variable override on entity `handle`.
-pub fn replace(doc: &mut CadDocument, handle: Handle, values: Vec<(i16, XDataValue)>) {
+pub fn replace(doc: &mut Document, handle: Handle, values: Vec<(i16, XDataValue)>) {
     write_pairs(doc, handle, values);
 }
 
@@ -222,7 +222,7 @@ pub fn replace(doc: &mut CadDocument, handle: Handle, values: Vec<(i16, XDataVal
 /// leaving the other overrides in the record untouched. Clearing the last one
 /// drops the whole `ACAD`/`DSTYLE` record. Legacy `ACAD_DSTYLE` records written
 /// by older OCS versions are migrated when the canonical `ACAD` slot is free.
-pub fn set(doc: &mut CadDocument, handle: Handle, code: i16, value: Option<XDataValue>) {
+pub fn set(doc: &mut Document, handle: Handle, code: i16, value: Option<XDataValue>) {
     let Some(entity) = doc.get_entity(handle) else {
         return;
     };
@@ -372,7 +372,7 @@ fn yes(value: &str) -> Option<i16> {
     }
 }
 
-fn inherited_int(doc: &CadDocument, handle: Handle, code: i16) -> i16 {
+fn inherited_int(doc: &Document, handle: Handle, code: i16) -> i16 {
     let Some(EntityType::Dimension(dimension)) = doc.get_entity(handle) else {
         return 0;
     };
@@ -411,7 +411,7 @@ fn inherited_int(doc: &CadDocument, handle: Handle, code: i16) -> i16 {
     }
 }
 
-fn inherited_handle(doc: &CadDocument, handle: Handle, code: i16) -> Handle {
+fn inherited_handle(doc: &Document, handle: Handle, code: i16) -> Handle {
     let Some(EntityType::Dimension(dimension)) = doc.get_entity(handle) else {
         return Handle::NULL;
     };
@@ -433,7 +433,7 @@ fn inherited_handle(doc: &CadDocument, handle: Handle, code: i16) -> Handle {
     }
 }
 
-fn inherited_real(doc: &CadDocument, handle: Handle, code: i16) -> f64 {
+fn inherited_real(doc: &Document, handle: Handle, code: i16) -> f64 {
     let Some(EntityType::Dimension(dimension)) = doc.get_entity(handle) else {
         return 0.0;
     };
@@ -458,7 +458,7 @@ fn inherited_real(doc: &CadDocument, handle: Handle, code: i16) -> f64 {
     }
 }
 
-fn inherited_string(doc: &CadDocument, handle: Handle, code: i16) -> String {
+fn inherited_string(doc: &Document, handle: Handle, code: i16) -> String {
     let Some(EntityType::Dimension(dimension)) = doc.get_entity(handle) else {
         return String::new();
     };
@@ -487,7 +487,7 @@ fn split_template(value: &str) -> (&str, &str) {
 
 /// Apply a dimension override row. A changed override lays automatic text
 /// out afresh, so e.g. a new DIMTAD moves it off the stored position.
-pub fn set_property(doc: &mut CadDocument, handle: Handle, field: &str, value: &str) -> bool {
+pub fn set_property(doc: &mut Document, handle: Handle, field: &str, value: &str) -> bool {
     let applied = apply_property(doc, handle, field, value);
     if applied {
         if let Some(EntityType::Dimension(dimension)) = doc.get_entity_mut(handle) {
@@ -497,7 +497,7 @@ pub fn set_property(doc: &mut CadDocument, handle: Handle, field: &str, value: &
     applied
 }
 
-fn apply_property(doc: &mut CadDocument, handle: Handle, field: &str, value: &str) -> bool {
+fn apply_property(doc: &mut Document, handle: Handle, field: &str, value: &str) -> bool {
     let trimmed = value.trim();
     if field == "dim_center_type" {
         let current = inherited_real(doc, handle, DIMCEN);

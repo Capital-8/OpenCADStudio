@@ -1,5 +1,5 @@
 use codec::types::aci_table::aci_to_rgb;
-use codec::CadDocument;
+use codec::Document;
 
 use crate::scene::convert::acad_to_render::{GlyphRun, TextStroke};
 use crate::scene::text::font_face::Face;
@@ -49,7 +49,7 @@ pub struct ResolvedTextStyle {
     pub is_vertical: bool,
 }
 
-pub fn resolve_text_style(style_name: &str, document: &CadDocument) -> ResolvedTextStyle {
+pub fn resolve_text_style(style_name: &str, document: &Document) -> ResolvedTextStyle {
     let style = document.text_styles.iter().find(|entry| {
         entry.name.eq_ignore_ascii_case(style_name)
             || (style_name.trim().is_empty() && entry.name.eq_ignore_ascii_case("Standard"))
@@ -3676,7 +3676,7 @@ mod font_style_tests {
         };
         assert!(width(&bold) > width(family), "the bold face was not used");
 
-        let mut doc = codec::CadDocument::new();
+        let mut doc = codec::Document::new();
         let mut style = codec::tables::TextStyle::with_truetype("B", family);
         style.true_type_font_flags |= TTF_FLAG_BOLD;
         style.handle = doc.allocate_handle();

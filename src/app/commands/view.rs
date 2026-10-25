@@ -2,7 +2,7 @@ use super::*;
 
 // Sort tables belong to the block's extension dictionary. Reserve real handles
 // and reconnect older unattached tables without losing their existing entries.
-fn ensure_draw_order_table(doc: &mut codec::CadDocument, block: codec::Handle) -> codec::Handle {
+fn ensure_draw_order_table(doc: &mut codec::Document, block: codec::Handle) -> codec::Handle {
     use codec::objects::{Dictionary, ObjectType, SortEntitiesTable};
 
     // Older commands inserted objects using the unreserved next-handle value.
@@ -1773,7 +1773,7 @@ impl CadCommand for DrawOrderCommand {
 /// Insert the selected block next to the extremal reference in effective draw
 /// order. Renumber the ordered siblings to avoid ties or saturated sort keys.
 fn assign_relative_group_keys(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     block: codec::Handle,
     selected: &[codec::Handle],
     references: &[codec::Handle],
@@ -1854,7 +1854,7 @@ fn assign_relative_group_keys(
 /// shifted by `n` so lifted siblings keep their relative order. Locked-layer
 /// entities are never moved or lifted.
 fn assign_back_group_keys(
-    doc: &codec::CadDocument,
+    doc: &codec::Document,
     block_handle: codec::Handle,
     group: &[codec::Handle],
     floor: u64,

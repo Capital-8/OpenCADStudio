@@ -3,7 +3,7 @@
 use crate::host::HostApi;
 use crate::ipc::protocol::{PluginRequest, PluginResponse};
 
-fn addressable_document_snapshot(host: &dyn HostApi) -> codec::CadDocument {
+fn addressable_document_snapshot(host: &dyn HostApi) -> codec::Document {
     let mut snapshot = host.document().clone();
     let attributes = host
         .document()

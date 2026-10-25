@@ -4450,7 +4450,7 @@ impl OpenCADStudio {
 }
 
 /// RENAME for the remaining name-keyed symbol tables.
-fn rename_symbol(doc: &mut codec::CadDocument, ty: &str, old: &str, new: &str) -> bool {
+fn rename_symbol(doc: &mut codec::Document, ty: &str, old: &str, new: &str) -> bool {
     use codec::{EntityType, Table, TableEntry};
 
     fn rekey<T: TableEntry>(table: &mut Table<T>, old: &str, new: &str) -> bool {

@@ -1029,7 +1029,7 @@ impl OpenCADStudio {
         i: usize,
         block_name: String,
         br_handle: codec::Handle,
-        unpersisted_pre_document: Option<codec::CadDocument>,
+        unpersisted_pre_document: Option<codec::Document>,
     ) {
         if self.block_editor_preferences.locked {
             self.command_line.push_error(

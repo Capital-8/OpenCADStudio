@@ -112,7 +112,7 @@ pub(crate) use convert::tess::{
 /// through stamp (see `scene::reference_only`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn tessellate_entity(
-    document: &CadDocument,
+    document: &Document,
     selected: &HashSet<Handle>,
     active_viewport: Option<Handle>,
     bg_color: [f32; 4],
@@ -740,7 +740,7 @@ use codec::entities::{
 use codec::objects::ObjectType;
 use codec::tables::normalize_name;
 use codec::types::Vector2;
-use codec::{CadDocument, EntityType, Handle, TableEntry};
+use codec::{Document, EntityType, Handle, TableEntry};
 use glam;
 use iced::time::Duration;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
@@ -1530,7 +1530,7 @@ pub struct OpenTimings {
 /// Build hatch / image / mesh caches from a document without needing `&mut Scene`.
 /// Intended to run on a background thread during file load.
 #[cfg(target_arch = "wasm32")]
-pub fn build_derived_caches(doc: &CadDocument) -> DerivedCaches {
+pub fn build_derived_caches(doc: &Document) -> DerivedCaches {
     build_derived_caches_impl(doc, None, None)
 }
 
@@ -1540,7 +1540,7 @@ pub fn build_derived_caches(doc: &CadDocument) -> DerivedCaches {
 /// keep it cheap, normally just updating atomics.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn build_derived_caches_with_progress(
-    doc: &CadDocument,
+    doc: &Document,
     progress: &(dyn Fn(u16) + Sync),
     material_base_dir: Option<&std::path::Path>,
 ) -> DerivedCaches {
@@ -1548,7 +1548,7 @@ pub fn build_derived_caches_with_progress(
 }
 
 fn build_derived_caches_impl(
-    doc: &CadDocument,
+    doc: &Document,
     progress: Option<&(dyn Fn(u16) + Sync)>,
     material_base_dir: Option<&std::path::Path>,
 ) -> DerivedCaches {
@@ -1809,10 +1809,10 @@ fn build_derived_caches_impl(
 /// geometry are returned.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn prepare_open_geometry(
-    doc: CadDocument,
+    doc: Document,
     caches: &DerivedCaches,
     model_bg: [f32; 4],
-) -> (CadDocument, PreparedOpenGeometry) {
+) -> (Document, PreparedOpenGeometry) {
     let mut scene = Scene::new();
     scene.document = doc;
     scene.local_extent_max = caches.local_extent_max;
@@ -1881,7 +1881,7 @@ pub fn prepare_open_geometry(
             .into_iter()
             .map(|(key, (_epoch, cache))| (key, cache))
             .collect();
-    let doc = std::mem::replace(&mut scene.document, CadDocument::new());
+    let doc = std::mem::replace(&mut scene.document, Document::new());
     (
         doc,
         PreparedOpenGeometry {
@@ -1919,7 +1919,7 @@ struct OffsetPrep {
     owned_by_other_block: rustc_hash::FxHashSet<Handle>,
 }
 
-fn offset_prep(doc: &codec::CadDocument, model_block: Handle) -> OffsetPrep {
+fn offset_prep(doc: &codec::Document, model_block: Handle) -> OffsetPrep {
     let model_br = doc.block_records.iter().find(|br| br.handle == model_block);
     let mspace_set: Option<rustc_hash::FxHashSet<Handle>> = model_br
         .filter(|br| !br.entity_handles.is_empty())
@@ -2424,7 +2424,7 @@ pub struct Scene {
     model_pane_min_px: std::sync::Arc<std::sync::atomic::AtomicU32>,
     pub selection: std::sync::Arc<std::cell::RefCell<SelectionState>>,
     /// The CAD document — single source of truth for all entities.
-    pub document: CadDocument,
+    pub document: Document,
     /// Last chain-compatible dimension created this session.
     /// Never reconstructed from loaded file handles.
     pub last_created_dimension: Option<Handle>,
@@ -3117,7 +3117,7 @@ impl Scene {
             model_panes: iced::widget::pane_grid::State::new(0).0,
             model_pane_min_px: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
             selection: std::sync::Arc::new(std::cell::RefCell::new(SelectionState::default())),
-            document: CadDocument::new(),
+            document: Document::new(),
             last_created_dimension: None,
             object_data_cache: crate::entities::object_data::ObjectDataCache::default(),
             lighting_cache: RefCell::new(HashMap::default()),
@@ -5142,7 +5142,7 @@ impl Scene {
     }
 
     pub(crate) fn layout_sheet_viewport_handle(
-        document: &codec::CadDocument,
+        document: &codec::Document,
         layout: &codec::objects::Layout,
     ) -> Handle {
         let owned_viewport = |handle| match document.get_entity(handle) {
@@ -5199,7 +5199,7 @@ impl Scene {
     }
 
     pub(crate) fn is_sheet_viewport(
-        document: &codec::CadDocument,
+        document: &codec::Document,
         vp: &codec::entities::Viewport,
     ) -> bool {
         if vp.id == 1 {
@@ -7319,7 +7319,7 @@ impl Scene {
         let mut names = vec!["Model".to_string()];
         // Deduplicate by name: prefer the entry with a non-null block_record (the
         // real layout from the file) over the default placeholder created by
-        // CadDocument::new().
+        // Document::new().
         let mut by_name: rustc_hash::FxHashMap<String, (i16, Handle)> = Default::default();
         for obj in self.document.objects.values() {
             if let ObjectType::Layout(l) = obj {
@@ -14114,7 +14114,7 @@ pub fn page_setup_uninitialized(layout: &codec::objects::Layout) -> bool {
 /// uninitialized state and no viewports, as the reference stores a layout
 /// it has not opened yet. A layout already holding a viewport onto the model
 /// (one added by automation) is plainly set up and is written as it is.
-pub(crate) fn write_layout_unopened(document: &mut codec::CadDocument, layout_name: &str) {
+pub(crate) fn write_layout_unopened(document: &mut codec::Document, layout_name: &str) {
     let block = document.objects.values().find_map(|object| match object {
         ObjectType::Layout(layout) if layout.name == layout_name => Some(layout.block_record),
         _ => None,
@@ -14165,7 +14165,7 @@ fn fit_sheet_viewport(vp: &mut codec::entities::Viewport, min: (f64, f64), max: 
 /// Takes a layout's sheet (overall paper) viewport out of its block (entity
 /// and membership). Viewports onto the model are the user's drawing and stay:
 /// a file may carry them on a layout whose page setup was never filled in.
-pub(crate) fn drop_layout_viewports(document: &mut codec::CadDocument, block: Handle) {
+pub(crate) fn drop_layout_viewports(document: &mut codec::Document, block: Handle) {
     if block.is_null() {
         return;
     }
@@ -14908,7 +14908,7 @@ mod journal_tests {
             ))
         }
 
-        let mut document = CadDocument::new();
+        let mut document = Document::new();
         document.add_entity(line(0.0)).unwrap();
         let caches = build_derived_caches_impl(&document, None, None);
         let model_bg = [0.0, 0.0, 0.0, 1.0];
@@ -16087,7 +16087,7 @@ mod layout_cache_tests {
         let first = scene.cached_layout_names();
         let second = scene.cached_layout_names();
         assert!(std::sync::Arc::ptr_eq(&first, &second));
-        // Fresh `CadDocument::new()` ships a default "Layout1" paper layout.
+        // Fresh `Document::new()` ships a default "Layout1" paper layout.
         assert_eq!(&first[..], &["Model".to_string(), "Layout1".to_string()]);
     }
 

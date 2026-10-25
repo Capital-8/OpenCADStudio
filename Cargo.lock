@@ -6,7 +6,6 @@ version = 4
 name = "OpenCADStudio"
 version = "2026.43.0"
 dependencies = [
- "acadrust",
  "aes",
  "allsorts",
  "ashpd",
@@ -50,6 +49,7 @@ dependencies = [
  "ocs_plugin_api",
  "ocs_save",
  "open",
+ "opencaddocument",
  "opencadgraph",
  "opencadkernel",
  "opencadkernel-constraints",
@@ -4335,13 +4335,13 @@ dependencies = [
 name = "ocs_plugin_api"
 version = "0.2.1"
 dependencies = [
- "acadrust",
  "bincode",
  "cargo-lock",
  "getrandom 0.2.17",
  "interprocess",
  "libloading",
  "memmap2",
+ "opencaddocument",
  "rkyv",
  "serde",
  "serde-reflection",
@@ -4354,8 +4354,8 @@ dependencies = [
 name = "ocs_save"
 version = "0.1.0"
 dependencies = [
- "acadrust",
  "bincode",
+ "opencaddocument",
  "serde",
 ]
 
@@ -4363,12 +4363,12 @@ dependencies = [
 name = "ocs_web_worker"
 version = "0.1.0"
 dependencies = [
- "acadrust",
  "bincode",
  "console_error_panic_hook",
  "getrandom 0.3.4",
  "js-sys",
  "ocs_save",
+ "opencaddocument",
  "serde",
  "sha2 0.10.9",
  "wasm-bindgen",
@@ -4403,6 +4403,14 @@ checksum = "a0b3d059e795d52b8a72fef45658620edd4d9c359b338564aa14391ffa511ed5"
 dependencies = [
  "is-wsl",
  "libc",
+]
+
+[[package]]
+name = "opencaddocument"
+version = "0.1.0"
+source = "git+https://github.com/HakanSeven12/opencaddocument.git?rev=afc04ee#afc04eef0de202d3c30504dfde33890900295cd7"
+dependencies = [
+ "acadrust",
 ]
 
 [[package]]

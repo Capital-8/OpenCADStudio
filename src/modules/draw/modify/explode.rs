@@ -27,7 +27,7 @@ use codec::entities::{
 use codec::entities::{Polyline, Polyline2D};
 use codec::tables::BlockRecord;
 use codec::types::Vector3;
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 
 use crate::command::{CadCommand, CmdResult, WorkingPlane};
 use crate::entities::curve::lwpolyline_world_xy;
@@ -64,7 +64,7 @@ pub fn explode_polyline_segments(entity: &EntityType) -> Vec<EntityType> {
 
 /// Decompose an entity into its constituent simple entities.
 /// Returns an empty vec if the entity cannot be exploded.
-pub fn explode_entity(entity: &EntityType, document: &CadDocument) -> Vec<EntityType> {
+pub fn explode_entity(entity: &EntityType, document: &Document) -> Vec<EntityType> {
     match entity {
         EntityType::Line(line) => {
             let Some(association) =
@@ -122,7 +122,7 @@ pub fn explode_entity(entity: &EntityType, document: &CadDocument) -> Vec<Entity
 
 /// Explode every entity; one piece list per input, input order preserved,
 /// empty lists kept. Used by benchmarks and regression tests.
-pub fn explode_batch(items: &[(Handle, &EntityType)], doc: &CadDocument) -> Vec<Vec<EntityType>> {
+pub fn explode_batch(items: &[(Handle, &EntityType)], doc: &Document) -> Vec<Vec<EntityType>> {
     items.iter().map(|(_, e)| explode_entity(e, doc)).collect()
 }
 
@@ -130,7 +130,7 @@ pub fn explode_batch(items: &[(Handle, &EntityType)], doc: &CadDocument) -> Vec<
 /// order-preserving, empty pieces dropped (matching the command arm).
 pub fn plan_explode(
     selected: &[(Handle, &EntityType)],
-    doc: &CadDocument,
+    doc: &Document,
 ) -> Vec<(Handle, Vec<EntityType>)> {
     selected
         .iter()
@@ -1255,7 +1255,7 @@ struct DimMetrics {
 }
 
 /// Resolve style metrics used by saved dimension geometry.
-fn dim_metrics(dim: &Dimension, doc: &CadDocument) -> DimMetrics {
+fn dim_metrics(dim: &Dimension, doc: &Document) -> DimMetrics {
     let name = dim.base().style_name.as_str();
     let effective_style = doc
         .dim_styles
@@ -1374,7 +1374,7 @@ fn dim_common(
 
 fn with_dim_linetype(
     mut common: codec::entities::EntityCommon,
-    doc: &CadDocument,
+    doc: &Document,
     handle: Handle,
 ) -> codec::entities::EntityCommon {
     common.linetype = doc
@@ -1522,7 +1522,7 @@ fn norm2(dx: f64, dy: f64, fx: f64, fy: f64) -> (f64, f64) {
     }
 }
 
-fn explode_dimension(dim: &Dimension, doc: &CadDocument) -> Vec<EntityType> {
+fn explode_dimension(dim: &Dimension, doc: &Document) -> Vec<EntityType> {
     if let Dimension::Arc(arc) = dim {
         if let Some((local_arc, normal)) = crate::entities::dimension::arc_dimension_in_ocs(arc) {
             let (x_axis, y_axis) =
@@ -1924,7 +1924,7 @@ fn explode_dimension(dim: &Dimension, doc: &CadDocument) -> Vec<EntityType> {
 /// field but not `base`, so without this the saved group 10 goes stale and the
 /// dimension's line / leader / origin jumps on reload (#181). Angular-2-line
 /// keeps a distinct base point (the second line's point) and is left alone.
-fn sync_dimension_base_points_and_collect_pending(doc: &mut CadDocument) -> Vec<Handle> {
+fn sync_dimension_base_points_and_collect_pending(doc: &mut Document) -> Vec<Handle> {
     let existing_blocks: rustc_hash::FxHashSet<String> = doc
         .block_records
         .iter()
@@ -1972,7 +1972,7 @@ fn sync_dimension_base_points_and_collect_pending(doc: &mut CadDocument) -> Vec<
 /// Remove `*D` pictures no dimension or insert names any more: a rotated
 /// or mirrored dimension detaches its old one (kept in the open drawing so an
 /// undo can point back to it), which a saved file should not carry.
-fn drop_detached_dimension_blocks(doc: &mut CadDocument) {
+fn drop_detached_dimension_blocks(doc: &mut Document) {
     let named: std::collections::HashSet<String> = doc
         .entities()
         .chain(
@@ -2011,7 +2011,7 @@ fn drop_detached_dimension_blocks(doc: &mut CadDocument) {
 }
 
 /// Smallest free `*D<n>` anonymous block name in `doc`.
-fn next_dimension_block_name(doc: &CadDocument, next: &mut u64) -> String {
+fn next_dimension_block_name(doc: &Document, next: &mut u64) -> String {
     loop {
         let n = *next;
         *next = (*next).saturating_add(1);
@@ -2023,7 +2023,7 @@ fn next_dimension_block_name(doc: &CadDocument, next: &mut u64) -> String {
 }
 
 /// Build missing anonymous dimension geometry blocks before writing.
-pub fn bake_dimension_blocks(doc: &mut CadDocument) {
+pub fn bake_dimension_blocks(doc: &mut Document) {
     drop_detached_dimension_blocks(doc);
     // Keep group-10 in step and find missing blocks in one entity pass. Existing
     // `*D` blocks are the save cache: only invalidated/new dimensions enter the
@@ -2038,7 +2038,7 @@ pub fn bake_dimension_blocks(doc: &mut CadDocument) {
         .collect();
 
     use crate::par::prelude::*;
-    let doc_ref: &CadDocument = doc;
+    let doc_ref: &Document = doc;
     let generated: Vec<(Handle, Vec<EntityType>)> = dimensions
         .par_iter()
         .map(|(handle, dim)| (*handle, explode_dimension(dim, doc_ref)))
@@ -2094,7 +2094,7 @@ pub fn bake_dimension_blocks(doc: &mut CadDocument) {
 }
 
 /// Drop baked dimension geometry so the next save regenerates it.
-pub fn invalidate_dim_block(doc: &mut CadDocument, handle: Handle) {
+pub fn invalidate_dim_block(doc: &mut Document, handle: Handle) {
     let bn = match doc.get_entity(handle) {
         Some(EntityType::Dimension(d)) => d.base().block_name.clone(),
         _ => return,
@@ -2159,7 +2159,7 @@ mod tests {
 
     #[test]
     fn minsert_too_large_to_materialize_is_left_intact() {
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
         let mut block = codec::tables::BlockRecord::new("B1");
         block.handle = doc.allocate_handle();
         doc.block_records.add(block).unwrap();
@@ -2189,7 +2189,7 @@ mod tests {
         hatch.paths.push(path);
         hatch.elevation = 3.0;
         hatch.common.layer = "HATCH".into();
-        let doc = CadDocument::new();
+        let doc = Document::new();
         assert!(explode_entity(&EntityType::Hatch(Box::new(hatch.clone())), &doc).is_empty());
 
         hatch.is_solid = false;
@@ -2220,7 +2220,7 @@ mod tests {
     /// not keep a ByBlock sentinel that nothing downstream resolves.
     #[test]
     fn explode_resolves_byblock_transparency_and_linetype() {
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
 
         let mut block = BlockRecord::new("BYBLOCK_STYLE");
         block.handle = doc.allocate_handle();
@@ -2261,7 +2261,7 @@ mod tests {
     /// only the ByBlock sentinel is replaced.
     #[test]
     fn explode_keeps_explicit_child_transparency_and_linetype() {
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
 
         let mut block = BlockRecord::new("EXPLICIT_STYLE");
         block.handle = doc.allocate_handle();
@@ -2298,7 +2298,7 @@ mod tests {
 
     #[test]
     fn unexplodable_block_is_not_exploded() {
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
         let mut block = codec::tables::BlockRecord::new("NO_EXPLODE");
         block.handle = doc.allocate_handle();
         block.explodable = false;
@@ -2313,7 +2313,7 @@ mod tests {
     /// no-op (already has a valid block).
     #[test]
     fn bakes_block_for_blockless_dimension_and_is_idempotent() {
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
 
         let mut d = DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0));
         d.definition_point = Vector3::new(0.0, 5.0, 0.0);
@@ -2351,7 +2351,7 @@ mod tests {
     /// dimension shifted. Regression test for #181.
     #[test]
     fn bake_zeroes_insertion_point() {
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
 
         let mut d = DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0));
         d.definition_point = Vector3::new(0.0, 5.0, 0.0);
@@ -2380,7 +2380,7 @@ mod tests {
     /// save re-bakes a fresh block. Guards the stale-export fix for #181.
     #[test]
     fn invalidate_removes_block_and_leaves_no_orphan() {
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
 
         let mut d = DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0));
         d.definition_point = Vector3::new(0.0, 5.0, 0.0);
@@ -2441,7 +2441,7 @@ mod tests {
     }
 
     // Collect the line segments baked into the dimension's `*D` block.
-    fn baked_segments(doc: &CadDocument, block_name: &str) -> Vec<(Vector3, Vector3)> {
+    fn baked_segments(doc: &Document, block_name: &str) -> Vec<(Vector3, Vector3)> {
         let rec = doc.block_records.get(block_name).expect("block record");
         doc.entities()
             .filter_map(|e| match e {
@@ -2459,7 +2459,7 @@ mod tests {
     // where a shared offset tilted the dimension line.
     #[test]
     fn linear_dim_line_stays_level_over_sloped_points() {
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
         let mut d = DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 5.0, 0.0));
         d.rotation = 0.0;
         d.definition_point = Vector3::new(0.0, 8.0, 0.0);
@@ -2489,7 +2489,7 @@ mod tests {
     // type. (Default style: DIMTSZ=0 -> arrows, two of them.)
     #[test]
     fn linear_dim_bakes_filled_arrowheads() {
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
         let mut d = DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0));
         d.definition_point = Vector3::new(0.0, 5.0, 0.0);
         let handle = doc
@@ -2512,7 +2512,7 @@ mod tests {
     }
 
     /// The line segments EXPLODE turns the dimension into.
-    fn exploded_segments(dim: &Dimension, doc: &CadDocument) -> Vec<(DVec3, DVec3)> {
+    fn exploded_segments(dim: &Dimension, doc: &Document) -> Vec<(DVec3, DVec3)> {
         let point = |v: Vector3| DVec3::new(v.x, v.y, v.z);
         explode_dimension(dim, doc)
             .into_iter()
@@ -2530,7 +2530,7 @@ mod tests {
     #[test]
     fn exploding_a_linear_dimension_off_world_z_keeps_its_plane() {
         use crate::command::EntityTransform;
-        let doc = CadDocument::new();
+        let doc = Document::new();
         let mut d = DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0));
         d.definition_point = Vector3::new(0.0, 5.0, 0.0);
         let flat = Dimension::Linear(d);
@@ -2569,7 +2569,7 @@ mod tests {
     #[test]
     fn angular_dim_bakes_an_arc() {
         use codec::entities::DimensionAngular3Pt;
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
         let mut d = DimensionAngular3Pt::new(
             Vector3::new(0.0, 0.0, 0.0),
             Vector3::new(10.0, 0.0, 0.0),
@@ -2599,7 +2599,7 @@ mod tests {
     #[test]
     fn diameter_dim_bakes_through_center() {
         use codec::entities::DimensionDiameter;
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
         let center = Vector3::new(3.0, 4.0, 0.0);
         let edge = Vector3::new(8.0, 4.0, 0.0); // radius 5 along +x
         let far = Vector3::new(-2.0, 4.0, 0.0);
@@ -2632,7 +2632,7 @@ mod tests {
     // line instead of a vertical one.
     #[test]
     fn rotated_linear_dim_bakes_at_its_angle() {
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
         let mut d = DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 10.0, 0.0));
         d.rotation = std::f64::consts::FRAC_PI_2; // 90°, vertical dimension line
         d.definition_point = Vector3::new(8.0, 0.0, 0.0);
@@ -2725,7 +2725,7 @@ mod tests {
     fn dimlinear_survives_save_reload_with_baked_geometry() {
         let mut failures = Vec::new();
         for ext in ["dxf", "dwg"] {
-            let mut doc = CadDocument::new();
+            let mut doc = Document::new();
             let mut d =
                 DimensionLinear::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0));
             d.definition_point = Vector3::new(0.0, 5.0, 0.0);
@@ -2792,7 +2792,7 @@ mod tests {
     /// No extension dictionary may be referenced by more than one entity.
     /// Shared xdict ownership fails file validation as
     /// "Extension dictionary <H> Cannot access".
-    fn assert_no_shared_xdicts(doc: &CadDocument) {
+    fn assert_no_shared_xdicts(doc: &Document) {
         use std::collections::HashMap;
         let mut owners: HashMap<codec::Handle, usize> = HashMap::new();
         for entity in doc.entities() {
@@ -2821,7 +2821,7 @@ mod tests {
     /// with exactly N "Cannot access" errors.
     #[test]
     fn baked_children_do_not_share_dimension_xdict() {
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
 
         // Made-up dictionary object for the dimension to own.
         let dict_handle = doc.allocate_handle();

@@ -113,7 +113,7 @@ pub struct TextInlineState {
     /// Canvas-space anchor where the field is drawn (the insertion-point click).
     pub screen_anchor: iced::Point,
 }
-pub(super) fn can_edit_text(mut handle: Handle, document: &codec::CadDocument) -> bool {
+pub(super) fn can_edit_text(mut handle: Handle, document: &codec::Document) -> bool {
     for _ in 0..8 {
         match document.get_entity(handle) {
             Some(codec::EntityType::Leader(l)) => {

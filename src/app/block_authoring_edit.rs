@@ -17,7 +17,7 @@ struct EditCommand {
     definition: Handle,
     handle: Handle,
     part: Part,
-    document_snapshot: codec::CadDocument,
+    document_snapshot: codec::Document,
 }
 impl CadCommand for EditCommand {
     fn name(&self) -> &'static str {
@@ -847,7 +847,7 @@ fn authoring_value_set_mut<'a>(
 }
 
 fn set_authoring_value_set_field(
-    document: &mut codec::CadDocument,
+    document: &mut codec::Document,
     handle: Handle,
     field: &str,
     input: &str,
@@ -939,7 +939,7 @@ fn set_authoring_value_set_field(
 }
 
 fn toggle_authoring_value_set_flag(
-    document: &mut codec::CadDocument,
+    document: &mut codec::Document,
     handle: Handle,
     field: &str,
 ) -> Result<bool, &'static str> {

@@ -15,7 +15,7 @@
 
 use crate::entities::leader::LeaderTess;
 use codec::types::Color as AcadColor;
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 use glam::Vec3;
 
 use crate::scene::convert::acad_to_render::{convert, RenderObject};
@@ -91,7 +91,7 @@ use crate::entities::field::{BOX_ABOVE as FIELD_BOX_ABOVE, BOX_BELOW as FIELD_BO
 /// FIELD_BOX_ABOVE across it. `None` when the host's fields cannot be
 /// located in its text (the whole text is boxed then).
 fn field_run_corner_groups(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     entity: &EntityType,
     stroke_groups: &[crate::scene::convert::acad_to_render::TextStroke],
     anno: f64,
@@ -728,7 +728,7 @@ fn split_mixed_polyline(
 }
 
 fn point_cloud_wires(
-    document: &CadDocument,
+    document: &Document,
     handle: Handle,
     entity: &EntityType,
     selected: bool,
@@ -870,7 +870,7 @@ pub(crate) fn shift_wire_to_world(w: &mut WireModel, origin: [f64; 3]) {
 /// For Solid3D entities this returns an empty wire; mesh tessellation lives
 /// in `solid3d_tess` and is uploaded via the mesh pipeline instead.
 pub fn tessellate(
-    document: &CadDocument,
+    document: &Document,
     handle: Handle,
     entity: &EntityType,
     selected: bool,
@@ -2794,7 +2794,7 @@ pub(crate) enum ArrowKind {
 }
 
 pub(crate) fn arrow_from_block(
-    doc: &CadDocument,
+    doc: &Document,
     handle: codec::types::Handle,
     dimasz: f32,
 ) -> ArrowKind {
@@ -2802,7 +2802,7 @@ pub(crate) fn arrow_from_block(
 }
 
 pub(crate) fn arrow_from_block_with_deferred_hatch(
-    doc: &CadDocument,
+    doc: &Document,
     handle: codec::types::Handle,
     dimasz: f32,
     defer_hatch: bool,
@@ -2931,7 +2931,7 @@ fn builtin_arrow_from_block_name(name: &str, dimasz: f32) -> Option<ArrowKind> {
 }
 
 fn custom_arrow_from_block(
-    doc: &CadDocument,
+    doc: &Document,
     record: &codec::tables::BlockRecord,
     dimasz: f32,
     defer_hatch: bool,
@@ -2983,7 +2983,7 @@ fn custom_arrow_from_block(
 }
 
 fn append_custom_arrow_leaf(
-    doc: &CadDocument,
+    doc: &Document,
     entity: &EntityType,
     lines: &mut Vec<[f32; 3]>,
     fill: &mut Vec<[f32; 3]>,
@@ -3514,7 +3514,7 @@ mod tests {
     #[test]
     fn none_arrow_draws_what_its_block_holds() {
         // A drawing's "_NONE" holding a 0.25 circle, which AutoCAD 2025 draws.
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
         let circle = codec::entities::Circle::from_center_radius(codec::types::Vector3::ZERO, 0.25);
         crate::app::define_block_raw_doc(
             &mut doc,
@@ -3534,7 +3534,7 @@ mod tests {
         assert!((reach - 0.25).abs() < 1e-3, "circle radius {reach}");
 
         // AutoCAD's own "_None" is empty: no arrow.
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
         crate::app::define_block_raw_doc(&mut doc, "_None", codec::types::Vector3::ZERO, &[]);
         let handle = doc.block_records.get("_None").unwrap().handle;
         assert!(matches!(

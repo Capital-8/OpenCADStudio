@@ -124,7 +124,7 @@ fn unwrapped_periodic(spline: &Spline) -> Option<(Vec<[f64; 3]>, Vec<f64>, Vec<f
 /// fit data of a fit-method spline and one period of a periodic spline, so
 /// give each such spline in `doc` its full NURBS before a DXF write. The fit
 /// data and flags stay; only control points, knots and weights are added.
-pub(crate) fn complete_nurbs_for_dxf(doc: &mut codec::CadDocument) {
+pub(crate) fn complete_nurbs_for_dxf(doc: &mut codec::Document) {
     for entity in doc.entities_mut() {
         let codec::EntityType::Spline(spline) = entity else {
             continue;
@@ -1255,7 +1255,7 @@ fn apply_transform(spline: &mut Spline, t: &EntityTransform) {
 }
 
 impl RenderConvertible for Spline {
-    fn to_render(&self, _document: &codec::CadDocument) -> Option<RenderEntity> {
+    fn to_render(&self, _document: &codec::Document) -> Option<RenderEntity> {
         Some(to_render(self))
     }
 }

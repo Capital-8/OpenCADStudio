@@ -465,7 +465,7 @@ pub(super) fn axis_lock_apply(pt: glam::DVec3, base: glam::DVec3, dir: glam::DVe
 /// whole-drawing copy. The per-entity `min` corners give the exact enclosing
 /// box's lower-left.
 pub(super) fn entities_lower_left_by_bbox(
-    doc: &codec::CadDocument,
+    doc: &codec::Document,
     handles: &[codec::Handle],
 ) -> glam::DVec3 {
     let mut min = glam::DVec3::splat(f64::INFINITY);

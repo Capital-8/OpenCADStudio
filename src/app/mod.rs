@@ -431,7 +431,7 @@ pub(crate) enum FindMatchKey {
 use crate::snap::Snapper;
 use crate::ui::{CommandLine, Ribbon, StatusBar};
 use codec::types::{Color as AcadColor, LineWeight};
-use codec::CadDocument;
+use codec::Document;
 
 use iced::time::Instant;
 use iced::window;
@@ -2097,7 +2097,7 @@ pub struct ClipExtObjects {
 
 impl ClipboardDeps {
     /// Snapshot the records `entities` reference that exist in `doc`.
-    pub fn capture(doc: &codec::CadDocument, entities: &[codec::EntityType]) -> Self {
+    pub fn capture(doc: &codec::Document, entities: &[codec::EntityType]) -> Self {
         use codec::EntityType;
         use std::collections::BTreeSet;
         let (mut layers, mut ltypes, mut tstyles, mut dstyles) = (
@@ -2411,7 +2411,7 @@ impl ClipboardDeps {
     /// objects an XRecord hard-owns),
     /// returned as `(source_handle, object)` pairs. Cycle-safe.
     fn collect_ext_subtree(
-        doc: &codec::CadDocument,
+        doc: &codec::Document,
         root: codec::Handle,
     ) -> Vec<(codec::Handle, codec::objects::ObjectType)> {
         use codec::objects::ObjectType;
@@ -2458,7 +2458,7 @@ impl ClipboardDeps {
     /// Snapshot every block definition the `entities` reference through an
     /// INSERT, walking nested INSERTs transitively. Model/paper space and
     /// xref blocks are skipped — those aren't portable definitions.
-    fn capture_blocks(doc: &codec::CadDocument, entities: &[codec::EntityType]) -> Vec<BlockDef> {
+    fn capture_blocks(doc: &codec::Document, entities: &[codec::EntityType]) -> Vec<BlockDef> {
         use codec::EntityType;
         use rustc_hash::FxHashSet;
         let mut seen: FxHashSet<String> = FxHashSet::default();
@@ -2504,7 +2504,7 @@ impl ClipboardDeps {
     /// Queue the blocks a table's block cells show; the cells name them by
     /// record handle.
     fn queue_table_blocks(
-        doc: &codec::CadDocument,
+        doc: &codec::Document,
         entity: &codec::EntityType,
         seen: &mut rustc_hash::FxHashSet<String>,
         queue: &mut Vec<String>,
@@ -2524,7 +2524,7 @@ impl ClipboardDeps {
 
     /// Queue the arrow blocks of a dimension's (or leader's) style.
     fn queue_dim_style_blocks(
-        doc: &codec::CadDocument,
+        doc: &codec::Document,
         entity: &codec::EntityType,
         seen: &mut rustc_hash::FxHashSet<String>,
         queue: &mut Vec<String>,
@@ -2575,7 +2575,7 @@ impl ClipboardDeps {
     /// Snapshot one block definition as a portable `BlockDef`: its base point
     /// and owned entities, minus the structural Block/BlockEnd markers. Returns
     /// None for model/paper space and xref blocks (not portable definitions).
-    fn snapshot_block(doc: &codec::CadDocument, name: &str) -> Option<BlockDef> {
+    fn snapshot_block(doc: &codec::Document, name: &str) -> Option<BlockDef> {
         use codec::EntityType;
         let br = doc.block_records.get(name)?;
         if name.starts_with("*Model_Space") || name.starts_with("*Paper_Space") || br.flags.is_xref
@@ -2997,7 +2997,7 @@ pub enum Message {
     FileOpened(
         u64,
         Result<
-            (String, PathBuf, CadDocument, crate::scene::DerivedCaches),
+            (String, PathBuf, Document, crate::scene::DerivedCaches),
             crate::io::OpenLoadError,
         >,
     ),

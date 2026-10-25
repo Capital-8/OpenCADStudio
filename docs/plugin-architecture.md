@@ -150,7 +150,7 @@ concrete types:
 
 | Category | Methods |
 |----------|---------|
-| Document | `document()` / `document_mut()` return a **local cached copy** of the document (API v3); the first access in a dispatch clones the full `CadDocument` over IPC. Use `add_entity()` / `write_record()` for host-visible mutations. `add_entity()`, `bump_geometry()` |
+| Document | `document()` / `document_mut()` return a **local cached copy** of the document (API v3); the first access in a dispatch clones the full `Document` over IPC. Use `add_entity()` / `write_record()` for host-visible mutations. `add_entity()`, `bump_geometry()` |
 | XDATA | `read_record(handle, app)`, `write_record(handle, record)`, `remove_record(handle, app)` — keyed by entity handle; `write_record` registers the APPID so data round-trips through DWG/DXF |
 | Tab state | object-safe `plugin_state_any*` helpers exist for in-process use; out-of-process plugins should keep state inside the plugin crate because `dyn Any` is not serializable |
 | Command line | `push_info`, `push_output`, `push_error` |
@@ -700,7 +700,7 @@ Done:
 
 Next:
 
-- [ ] Incremental document snapshots instead of cloning `CadDocument` over IPC.
+- [ ] Incremental document snapshots instead of cloning `Document` over IPC.
 - [ ] `#[repr(C)]` vtable / strict handshake for cross-toolchain binaries.
 - [ ] Trust: checksums / signatures before spawning plugin processes.
 - [ ] Interchange (LandXML / SWMM) and live `on_entity_committed` hooks.

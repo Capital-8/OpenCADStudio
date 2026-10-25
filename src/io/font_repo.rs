@@ -10,7 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
-use codec::CadDocument;
+use codec::Document;
 
 /// The community folder's GitHub contents API (lists name + download URL).
 #[cfg(not(target_arch = "wasm32"))]
@@ -88,7 +88,7 @@ pub struct RepoFont {
 /// Referenced-but-unresolvable `.shx` font files across the document's text
 /// styles. Names are deduplicated case-insensitively and reduced to the bare
 /// file name (`C:\Fonts\VNArial.shx` → `VNArial.shx`).
-pub fn missing_shx_fonts(doc: &CadDocument) -> Vec<String> {
+pub fn missing_shx_fonts(doc: &Document) -> Vec<String> {
     let mut missing: Vec<String> = Vec::new();
     let base = doc
         .source_path
@@ -317,7 +317,7 @@ mod tests {
         let dir = std::env::temp_dir().join("ocs_font_repo_tests");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("exists.shx"), b"stub").unwrap();
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
         let mk = |name: &str, file: &str| {
             let mut style = codec::TextStyle::new(name);
             style.font_file = file.into();

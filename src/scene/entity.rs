@@ -1892,7 +1892,7 @@ impl Scene {
 
     pub(super) fn instanced_hatch_models_for_document(
         &self,
-        document: &CadDocument,
+        document: &Document,
         layout_block: Handle,
         hatch_bg: [f32; 4],
         tint_selected: bool,
@@ -3326,7 +3326,7 @@ impl Scene {
 
     pub fn clear(&mut self) {
         self.document.record_all_entities_for_transaction();
-        self.document = CadDocument::new();
+        self.document = Document::new();
         self.replace_selection(HashSet::default());
         self.preview_wires = vec![];
         self.preview_text = vec![];

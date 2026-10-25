@@ -1076,7 +1076,7 @@ fn remap_plane_offset(
 /// its first handle, so "some handle in `xrefs` exists" was true even for a
 /// reference whose actual source had been erased. Walking the chain asks the
 /// question that was meant — is the geometry still there.
-pub(crate) fn dimension_is_associative(document: &codec::CadDocument, dimension: Handle) -> bool {
+pub(crate) fn dimension_is_associative(document: &codec::Document, dimension: Handle) -> bool {
     document.objects.values().any(|object| {
         let ObjectType::Associative(object) = object else {
             return false;
@@ -1095,7 +1095,7 @@ pub(crate) fn dimension_is_associative(document: &codec::CadDocument, dimension:
 }
 
 pub(crate) fn constraint_from_associative_dimension(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     handle: Handle,
 ) -> Option<(
     super::parametric_constraints::ConstraintKind,
@@ -1182,7 +1182,7 @@ pub(crate) fn constraint_from_associative_dimension(
 }
 
 pub(crate) fn radial_extension_points(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     dimension: Handle,
     gap: f64,
     extension: f64,
@@ -2672,7 +2672,7 @@ fn feature_reference(
 }
 
 fn persisted_measurement_scale(
-    doc: &codec::CadDocument,
+    doc: &codec::Document,
     entity: &EntityType,
 ) -> Option<MeasurementScale> {
     use crate::entities::dim_override;
@@ -2720,7 +2720,7 @@ fn persisted_measurement_scale(
 /// made by earlier releases kept their source's association this way, which
 /// the reference application reports as a damaged drawing. Returns how many
 /// reactors were dropped.
-pub(crate) fn drop_stray_dimension_reactors(document: &mut codec::CadDocument) -> usize {
+pub(crate) fn drop_stray_dimension_reactors(document: &mut codec::Document) -> usize {
     let associations: rustc_hash::FxHashMap<Handle, (Handle, Vec<Handle>)> = document
         .objects
         .iter()

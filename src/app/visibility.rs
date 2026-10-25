@@ -217,7 +217,7 @@ impl OpenCADStudio {
     /// parallel member order, so a member visible in the definition maps to the
     /// same position in the anonymous block.
     fn state_mapping(
-        doc: &codec::CadDocument,
+        doc: &codec::Document,
         def_block: Handle,
         anon_name: &str,
         state_idx: usize,
@@ -252,7 +252,7 @@ impl OpenCADStudio {
     /// Which state (if any) matches the anonymous block's current per-member
     /// invisibility flags.
     fn current_visibility_state(
-        doc: &codec::CadDocument,
+        doc: &codec::Document,
         def_block: Handle,
         anon_name: &str,
         param: &BlockVisibilityParameter,
@@ -280,7 +280,7 @@ impl OpenCADStudio {
     /// The visibility parameter of a dynamic-block reference as a Properties
     /// row: the parameter's name, its states, and the one shown now.
     pub(super) fn visibility_property(
-        doc: &codec::CadDocument,
+        doc: &codec::Document,
         handle: Handle,
     ) -> Option<crate::scene::model::object::Property> {
         let Some(EntityType::Insert(ins)) = doc.get_entity(handle) else {

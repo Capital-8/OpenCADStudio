@@ -619,7 +619,7 @@ impl Scene {
     /// vertices, or drop them). Vertices that don't store a handle
     /// (LwPolyline / heavy 2D polyline) get one from the writer, so they need
     /// no fix-up here. Shared with the clipboard paste path. (#129)
-    pub(crate) fn reset_clone_subhandles(doc: &mut codec::CadDocument, entity: &mut EntityType) {
+    pub(crate) fn reset_clone_subhandles(doc: &mut codec::Document, entity: &mut EntityType) {
         match entity {
             EntityType::Insert(ins) => {
                 for att in ins.attributes.iter_mut() {
@@ -666,7 +666,7 @@ impl Scene {
     /// root returns `None` so the caller leaves the copy without an extension
     /// dictionary — never shared.
     pub(super) fn clone_xdict_tree(
-        doc: &mut codec::CadDocument,
+        doc: &mut codec::Document,
         src_owner: Handle,
         src_root: Handle,
         new_owner: Handle,
@@ -2741,7 +2741,7 @@ impl Scene {
 /// association, group, associative hatch) are dropped. The association and
 /// group copies add their own reactors afterwards.
 pub(crate) fn remap_copied_reactors(
-    document: &mut codec::CadDocument,
+    document: &mut codec::Document,
     handle_map: &rustc_hash::FxHashMap<Handle, Handle>,
 ) {
     for &copy in handle_map.values() {
@@ -2762,7 +2762,7 @@ pub(crate) fn remap_copied_reactors(
 /// `drop_unmapped` (a paste, whose source handles may name anything in this
 /// drawing) a viewport whose boundary did not come along loses its clip.
 pub(crate) fn remap_copied_viewport_clips(
-    document: &mut codec::CadDocument,
+    document: &mut codec::Document,
     handle_map: &rustc_hash::FxHashMap<Handle, Handle>,
     drop_unmapped: bool,
 ) {
@@ -2788,7 +2788,7 @@ pub(crate) fn remap_copied_viewport_clips(
 /// rewrites refs to copied entities, which may not have existed yet when an
 /// earlier tree in the same call was cloned.
 fn remap_copied_xdict_cross_refs(
-    document: &mut codec::CadDocument,
+    document: &mut codec::Document,
     handle_map: &rustc_hash::FxHashMap<Handle, Handle>,
     created: &[Handle],
 ) {
@@ -2897,7 +2897,7 @@ mod define_transformed_block_xdict_tests {
     use super::*;
 
     /// No extension dictionary may be referenced by more than one entity.
-    fn assert_no_shared_xdicts(doc: &codec::CadDocument) {
+    fn assert_no_shared_xdicts(doc: &codec::Document) {
         use std::collections::HashMap;
         let mut owners: HashMap<codec::Handle, usize> = HashMap::new();
         for entity in doc.entities() {
@@ -3142,7 +3142,7 @@ mod copy_entities_xdict_tests {
 
     /// Every object reachable from `root` through dictionary entries and
     /// xdictionary links (cycle-safe).
-    fn tree_handles(doc: &codec::CadDocument, root: codec::Handle) -> Vec<codec::Handle> {
+    fn tree_handles(doc: &codec::Document, root: codec::Handle) -> Vec<codec::Handle> {
         let mut out = Vec::new();
         let mut stack = vec![root];
         let mut seen = std::collections::BTreeSet::new();
@@ -3174,7 +3174,7 @@ mod copy_entities_xdict_tests {
 
     /// Byte-for-byte image of a tree for source-unchanged assertions.
     fn tree_image(
-        doc: &codec::CadDocument,
+        doc: &codec::Document,
         root: codec::Handle,
     ) -> Vec<(codec::Handle, ObjectType)> {
         tree_handles(doc, root)
@@ -3819,7 +3819,7 @@ mod copy_entities_subhandle_tests {
 
     /// A polyface mesh as the DWG reader returns it: every vertex, face and
     /// the SEQEND carry their own handle.
-    fn loaded_polyface(doc: &mut codec::CadDocument) -> PolyfaceMesh {
+    fn loaded_polyface(doc: &mut codec::Document) -> PolyfaceMesh {
         let mut mesh = PolyfaceMesh::new();
         for (x, y) in [(20.0, 0.0), (30.0, 0.0), (30.0, 10.0), (20.0, 10.0)] {
             let mut v = PolyfaceVertex::new(Vector3::new(x, y, 0.0));
@@ -3996,7 +3996,7 @@ mod copy_field_tests {
 
     /// `owner`'s extension dictionary: ACAD_FIELD { TEXT -> field(child) }.
     /// Returns (root, text field, child field).
-    fn add_field_tree(doc: &mut codec::CadDocument, owner: Handle) -> (Handle, Handle, Handle) {
+    fn add_field_tree(doc: &mut codec::Document, owner: Handle) -> (Handle, Handle, Handle) {
         let root_h = doc.allocate_handle();
         let fields_h = doc.allocate_handle();
         let text_h = doc.allocate_handle();
@@ -4030,7 +4030,7 @@ mod copy_field_tests {
         (root_h, text_h, child_h)
     }
 
-    fn entry(doc: &codec::CadDocument, dict: Handle, key: &str) -> Handle {
+    fn entry(doc: &codec::Document, dict: Handle, key: &str) -> Handle {
         match doc.objects.get(&dict) {
             Some(ObjectType::Dictionary(d)) => d
                 .entries
@@ -4042,7 +4042,7 @@ mod copy_field_tests {
         }
     }
 
-    fn field(doc: &codec::CadDocument, h: Handle) -> &Field {
+    fn field(doc: &codec::Document, h: Handle) -> &Field {
         match doc.objects.get(&h) {
             Some(ObjectType::Field(f)) => f,
             other => panic!("expected a field, got {other:?}"),
@@ -4052,7 +4052,7 @@ mod copy_field_tests {
     /// The copy's ACAD_FIELD tree is its own: fresh handles stored on the
     /// objects themselves, owners and child links inside the new tree.
     fn assert_own_field_tree(
-        doc: &codec::CadDocument,
+        doc: &codec::Document,
         copy_root: Handle,
         src_text: Handle,
         src_child: Handle,

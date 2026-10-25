@@ -2532,7 +2532,7 @@ mod tests {
 
     #[test]
     fn open_with_missing_xrefs_succeeds_and_lists_every_reference() {
-        let mut doc = codec::CadDocument::new();
+        let mut doc = codec::Document::new();
         for name in ["Grid Plan", "Wall Base"] {
             let mut record = codec::tables::BlockRecord::new(name);
             record.flags.is_xref = true;

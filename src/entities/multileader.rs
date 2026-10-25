@@ -142,7 +142,7 @@ pub(crate) fn catmull_rom_pts(ctrl: &[[f64; 3]], segs_per_span: u32) -> Vec<[f64
     out
 }
 
-fn to_render(ml: &MultiLeader, document: &codec::CadDocument) -> Option<RenderEntity> {
+fn to_render(ml: &MultiLeader, document: &codec::Document) -> Option<RenderEntity> {
     let nan = [f64::NAN; 3];
     let p3 = |v: &codec::types::Vector3| -> [f64; 3] { [v.x, v.y, v.z] };
 
@@ -1597,7 +1597,7 @@ fn reflect_xy_direction(dx: &mut f64, dy: &mut f64, p1: DVec3, p2: DVec3) {
 // ── Trait impls ────────────────────────────────────────────────────────────
 
 impl RenderConvertible for MultiLeader {
-    fn to_render(&self, document: &codec::CadDocument) -> Option<RenderEntity> {
+    fn to_render(&self, document: &codec::Document) -> Option<RenderEntity> {
         to_render(self, document)
     }
 }
@@ -1732,7 +1732,7 @@ impl crate::entities::traits::Transformable for MultiLeader {
 }
 
 pub(crate) fn block_content_insert(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     ml: &MultiLeader,
 ) -> Option<codec::entities::Insert> {
     if ml.content_type != LeaderContentType::Block || !ml.context.has_block_contents {
@@ -1792,7 +1792,7 @@ pub(crate) fn block_content_insert(
 pub trait MultiLeaderTess {
     fn tessellate(
         &self,
-        document: &codec::CadDocument,
+        document: &codec::Document,
         handle: codec::Handle,
         selected: bool,
         entity_color: [f32; 4],
@@ -1810,7 +1810,7 @@ pub trait MultiLeaderTess {
 impl MultiLeaderTess for MultiLeader {
     fn tessellate(
         &self,
-        document: &codec::CadDocument,
+        document: &codec::Document,
         handle: codec::Handle,
         selected: bool,
         entity_color: [f32; 4],
@@ -2684,11 +2684,11 @@ impl MultiLeaderTess for MultiLeader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codec::CadDocument;
+    use codec::Document;
 
     #[test]
     fn test_mleader_arabic_text_tessellation() {
-        let doc = CadDocument::default();
+        let doc = Document::default();
         let mut ml = MultiLeader::default();
         ml.content_type = LeaderContentType::MText;
         ml.context.text_string = "عربي".to_string();
@@ -2733,7 +2733,7 @@ mod tests {
         // Switching "Background mask" on in Properties must mask with the
         // drawing background, not fill with the inherited text colour and
         // hide the text (#2131).
-        let doc = CadDocument::default();
+        let doc = Document::default();
         let mut ml = MultiLeader::default();
         ml.content_type = LeaderContentType::MText;
         ml.context.text_string = "123".to_string();
@@ -2810,7 +2810,7 @@ mod tests {
         // AutoCAD greys out the overall scale of an annotative MLEADER and
         // draws it at its context height. A file with overall scale 50 at a
         // 1:50 annotation scale rendered its text 50× too large.
-        let doc = CadDocument::default();
+        let doc = Document::default();
         let make = |overall: f64| {
             let mut ml = MultiLeader::default();
             ml.content_type = LeaderContentType::MText;
@@ -2854,7 +2854,7 @@ mod tests {
         // line"): the underline must lie on the landing and run on to it, and
         // extending the leader to the text must not climb to the text corner.
         use codec::types::Vector3;
-        let doc = CadDocument::default();
+        let doc = Document::default();
         let mut ml = MultiLeader::default();
         ml.content_type = LeaderContentType::MText;
         ml.path_type = MultiLeaderPathType::StraightLineSegments;
@@ -2940,7 +2940,7 @@ mod tests {
 
     fn tess(ml: &MultiLeader) -> Vec<WireModel> {
         ml.tessellate(
-            &CadDocument::default(),
+            &Document::default(),
             codec::Handle::default(),
             false,
             [1.0, 1.0, 1.0, 1.0],

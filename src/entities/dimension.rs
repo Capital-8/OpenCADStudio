@@ -1628,7 +1628,7 @@ use codec::types::{Color as AcadColor, Vector3};
 pub(crate) fn resolved_dimension_style(
     source: &DimStyle,
     dimension: &Dimension,
-    document: &CadDocument,
+    document: &Document,
 ) -> DimStyle {
     use crate::entities::dim_override as ov;
 
@@ -1808,7 +1808,7 @@ fn calculated_dimlfac(dimension: &Dimension) -> Option<f64> {
 }
 
 /// Whether the dimension's owner is paper space, even without a Layout object.
-pub(crate) fn dimension_in_paper_space(dimension: &Dimension, document: &CadDocument) -> bool {
+pub(crate) fn dimension_in_paper_space(dimension: &Dimension, document: &Document) -> bool {
     let owner = dimension.base().common.owner_handle;
     if !owner.is_valid() {
         return false;
@@ -1852,7 +1852,7 @@ pub(crate) fn displayed_measurement(dimension: &Dimension, style: Option<&DimSty
 pub fn style_sections(
     style: &DimStyle,
     dimension: &Dimension,
-    document: &CadDocument,
+    document: &Document,
 ) -> Vec<PropSection> {
     use crate::entities::dim_override as ov;
 
@@ -3244,7 +3244,7 @@ fn styled_dimension_text_position(
 }
 
 pub(crate) fn materialize_large_radial_text_position(
-    document: &mut CadDocument,
+    document: &mut Document,
     handle: Handle,
     value: &str,
 ) {
@@ -3399,14 +3399,14 @@ fn choice_value(selected: &str, options: &[&str]) -> crate::scene::model::object
 
 /// The arrowhead picker's name for `handle`; `fallback` names a block the
 /// drawing does not hold.
-fn block_name(document: &CadDocument, handle: codec::Handle, fallback: &str) -> String {
+fn block_name(document: &Document, handle: codec::Handle, fallback: &str) -> String {
     if !handle.is_null() && !document.block_records.iter().any(|b| b.handle == handle) {
         return crate::entities::arrowheads::label_for_block(fallback);
     }
     crate::entities::arrowheads::label(document, handle)
 }
 
-fn linetype_name(document: &CadDocument, handle: codec::Handle) -> String {
+fn linetype_name(document: &Document, handle: codec::Handle) -> String {
     document
         .line_types
         .iter()
@@ -3426,7 +3426,7 @@ fn linear_unit_label(value: i16) -> &'static str {
     }
 }
 
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 
 use crate::scene::convert::tess_util::aci_to_rgba;
 use crate::scene::convert::tessellate::{
@@ -3435,7 +3435,7 @@ use crate::scene::convert::tessellate::{
 };
 use crate::scene::model::wire_model::{SnapHint, TangentGeom, WireModel};
 
-fn apply_dimension_breaks(document: &CadDocument, dimension: Handle, lines: &mut Vec<[f32; 3]>) {
+fn apply_dimension_breaks(document: &Document, dimension: Handle, lines: &mut Vec<[f32; 3]>) {
     let references: Vec<_> = document
         .objects
         .values()
@@ -3612,7 +3612,7 @@ pub trait DimensionTess {
     #[allow(clippy::too_many_arguments)]
     fn tessellate(
         &self,
-        document: &CadDocument,
+        document: &Document,
         handle: Handle,
         selected: bool,
         entity_color: [f32; 4],
@@ -3631,7 +3631,7 @@ impl DimensionTess for Dimension {
     #[allow(clippy::too_many_arguments)]
     fn tessellate(
         &self,
-        document: &CadDocument,
+        document: &Document,
         handle: Handle,
         selected: bool,
         entity_color: [f32; 4],
@@ -3664,7 +3664,7 @@ impl DimensionTess for Dimension {
 
 #[allow(clippy::too_many_arguments)]
 fn tessellate_dimension_inner(
-    document: &CadDocument,
+    document: &Document,
     handle: Handle,
     dim: &Dimension,
     selected: bool,
@@ -4524,7 +4524,7 @@ fn append_dim_arrow(g: &mut DimGeom, tip: Vec3, dir: Vec3, arrow: &ArrowKind) {
 /// layer's), which is what the ByBlock lines of its baked `*D` block drew —
 /// an edited dimension, drawn live, lost its layer's dashes. (#898)
 fn resolve_pattern_by_handle(
-    doc: &CadDocument,
+    doc: &Document,
     handle: codec::types::Handle,
     common: &codec::entities::EntityCommon,
     viewport: Option<codec::Handle>,
@@ -6435,7 +6435,7 @@ fn dimension_text_entity(
     dim: &Dimension,
     text_height: f64,
     style: Option<&DimStyle>,
-    document: &CadDocument,
+    document: &Document,
     dim_scale: f64,
 ) -> Option<EntityType> {
     // Deviations are emitted by `dimension_tolerance_entity` at their own
@@ -6538,7 +6538,7 @@ fn dimension_text_entity(
 /// Width factor for a synthesized dimension TEXT. Dimension text is drawn at
 /// its text style's width factor; a TEXT's own factor (1.0 when synthesized)
 /// would otherwise win over the style's.
-fn style_width_factor(style_name: &str, document: &CadDocument) -> f64 {
+fn style_width_factor(style_name: &str, document: &Document) -> f64 {
     f64::from(crate::entities::text_support::resolve_text_style(style_name, document).width_factor)
 }
 
@@ -6745,7 +6745,7 @@ fn dimension_text_is_outside(dim: &Dimension, style: Option<&DimStyle>) -> bool 
 /// Where a dynamic dimension's lock mark sits: just after the text on its
 /// baseline, with the direction that points away from the text.
 pub(crate) fn dynamic_dimension_lock_anchor(
-    document: &CadDocument,
+    document: &Document,
     dim: &Dimension,
     anno_scale: f64,
 ) -> Option<(Vector3, Vector3)> {
@@ -7874,7 +7874,7 @@ fn stored_text_point(dim: &Dimension) -> Option<Vector3> {
 /// overrides applied) when the user has not placed it. Text beside an
 /// extension line (DIMJUST 1/2) is measured by the glyphs of its font, not
 /// by character cells.
-pub(crate) fn automatic_text_position(document: &CadDocument, dim: &Dimension) -> Option<Vector3> {
+pub(crate) fn automatic_text_position(document: &Document, dim: &Dimension) -> Option<Vector3> {
     let name = &dim.base().style_name;
     let source = document.dim_styles.iter().find(|s| {
         s.name.eq_ignore_ascii_case(name)
@@ -7959,7 +7959,7 @@ pub(crate) fn automatic_text_position(document: &CadDocument, dim: &Dimension) -
 /// left out) in its font (an `\F` font in the text, else the style's text
 /// style) at `height`.
 fn dimension_text_ink_width(
-    document: &CadDocument,
+    document: &Document,
     dim: &Dimension,
     style: &DimStyle,
     height: f64,
@@ -8387,7 +8387,7 @@ fn perp_sign_default() -> f64 {
 
 pub(crate) fn baked_large_radial_geometry(
     dimension: &Dimension,
-    document: &CadDocument,
+    document: &Document,
 ) -> Option<DimGeom> {
     if !matches!(dimension, Dimension::LargeRadial(_)) {
         return None;
@@ -8512,7 +8512,7 @@ pub(crate) fn baked_large_radial_geometry(
 /// Build measurement text for a saved dimension block.
 pub(crate) fn baked_dimension_text_entity(
     dim: &Dimension,
-    document: &CadDocument,
+    document: &Document,
     anno_scale: f64,
 ) -> Option<EntityType> {
     let style_name = dim.base().style_name.as_str();
@@ -8540,7 +8540,7 @@ pub(crate) fn baked_dimension_text_entity(
 
 pub(crate) fn baked_arc_length_symbol_points(
     dim: &Dimension,
-    document: &CadDocument,
+    document: &Document,
     anno_scale: f64,
 ) -> Vec<Vector3> {
     if !matches!(dim, Dimension::Arc(_)) {
@@ -8579,7 +8579,7 @@ pub(crate) fn baked_arc_length_symbol_points(
 
 pub(crate) fn dimension_text_grip_position(
     dim: &Dimension,
-    document: &CadDocument,
+    document: &Document,
     anno_scale: f64,
 ) -> Option<Vector3> {
     // A stored text point is where the text is drawn; the grip goes there.
@@ -9129,7 +9129,7 @@ mod linear_transform_tests {
 
     /// Every stroke point the dimension draws, with its low residual added.
     fn stroke_points(dim: &Dimension) -> Vec<DVec3> {
-        let document = CadDocument::new();
+        let document = Document::new();
         let wires = dim.tessellate(
             &document,
             Handle::new(0x40),
@@ -9436,8 +9436,8 @@ mod layout_parity_tests {
     use glam::DVec3;
 
     /// A document whose Standard style has imperial sizes and horizontal text.
-    fn document() -> CadDocument {
-        let mut document = CadDocument::new();
+    fn document() -> Document {
+        let mut document = Document::new();
         let style = document
             .dim_styles
             .get_mut("Standard")
@@ -9452,7 +9452,7 @@ mod layout_parity_tests {
         document
     }
 
-    fn style(document: &CadDocument) -> DimStyle {
+    fn style(document: &Document) -> DimStyle {
         document
             .dim_styles
             .get("Standard")
@@ -9461,7 +9461,7 @@ mod layout_parity_tests {
     }
 
     /// Stroke endpoints and arrowhead triangle count of the drawn dimension.
-    fn drawn(document: &CadDocument, dim: &Dimension) -> (Vec<DVec3>, usize) {
+    fn drawn(document: &Document, dim: &Dimension) -> (Vec<DVec3>, usize) {
         let wires = dim.tessellate(
             document,
             Handle::new(0x40),
@@ -9599,7 +9599,7 @@ mod layout_parity_tests {
     #[test]
     fn negative_dimlfac_follows_the_recorded_association_factor() {
         use codec::xdata::{ExtendedDataRecord, XDataValue};
-        let document = CadDocument::new();
+        let document = Document::new();
         let mut source = style(&document);
         source.dimlfac = -4.0;
         let mut d =
@@ -9782,7 +9782,7 @@ mod text_width_factor_tests {
     fn dimension_text_takes_its_style_width_factor() {
         // A drawing whose dimension style writes with a 0.6-wide text style:
         // AutoCAD 2025 draws the measurement 0.6 as wide; OCS drew it at 1.0.
-        let mut doc = CadDocument::default();
+        let mut doc = Document::default();
         let mut narrow = TextStyle::new("narrow");
         narrow.handle = doc.allocate_handle();
         narrow.width_factor = 0.6;

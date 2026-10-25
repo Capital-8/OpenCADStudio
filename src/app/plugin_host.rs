@@ -4,7 +4,7 @@ use std::any::Any;
 
 use codec::tables::AppId;
 use codec::xdata::ExtendedDataRecord;
-use ocs_plugin_api::host::{CadDocument, EntityType, Handle, HostApi, HostSettingValue};
+use ocs_plugin_api::host::{Document, EntityType, Handle, HostApi, HostSettingValue};
 use ocs_plugin_api::shm::{DocumentSnapshotStore, DocumentViewData};
 
 use super::OpenCADStudio;
@@ -107,11 +107,11 @@ impl<'a> HostSession<'a> {
         }
     }
 
-    pub fn document(&self) -> &CadDocument {
+    pub fn document(&self) -> &Document {
         &self.app.tabs[self.tab].scene.document
     }
 
-    pub fn document_mut(&mut self) -> &mut CadDocument {
+    pub fn document_mut(&mut self) -> &mut Document {
         &mut self.app.tabs[self.tab].scene.document
     }
 
@@ -1376,7 +1376,7 @@ impl<'a> HostSession<'a> {
         operation: ocs_plugin_api::host::TableOperation,
     ) -> Result<Handle, String> {
         use ocs_plugin_api::host::TableOperation;
-        let layer_handle = |doc: &CadDocument, name: &str| -> Result<Handle, String> {
+        let layer_handle = |doc: &Document, name: &str| -> Result<Handle, String> {
             doc.layers
                 .get(name)
                 .map(|layer| layer.handle)
@@ -2053,7 +2053,7 @@ impl<'a> HostSession<'a> {
                 "layout operations act on the active document; switch to it first".to_owned(),
             );
         }
-        let find = |doc: &CadDocument, name: &str| -> Result<(String, Handle), String> {
+        let find = |doc: &Document, name: &str| -> Result<(String, Handle), String> {
             doc.objects
                 .values()
                 .find_map(|object| match object {
@@ -2276,7 +2276,7 @@ impl<'a> HostSession<'a> {
     ) -> Result<Handle, String> {
         use codec::entities::EntityType as E;
         use ocs_plugin_api::host::TableOperation;
-        let editable_block = |doc: &CadDocument, name: &str| -> Result<(String, Handle), String> {
+        let editable_block = |doc: &Document, name: &str| -> Result<(String, Handle), String> {
             let record = doc
                 .block_records
                 .get(name)
@@ -2577,7 +2577,7 @@ impl<'a> HostSession<'a> {
             TableStyleKind::Text => StyleKind::Text,
             TableStyleKind::Dim => StyleKind::Dim,
         };
-        let stored = |doc: &CadDocument,
+        let stored = |doc: &Document,
                       kind: TableStyleKind,
                       name: &str|
          -> Result<(String, Handle), String> {
@@ -3582,7 +3582,7 @@ impl<'a> HostSession<'a> {
 }
 
 /// True when block `outer` (transitively) contains an insert of `target`.
-fn block_nests(doc: &CadDocument, outer: &str, target: &str, depth: usize) -> bool {
+fn block_nests(doc: &Document, outer: &str, target: &str, depth: usize) -> bool {
     if depth > 64 {
         return true;
     }
@@ -3713,7 +3713,7 @@ fn apply_text_style_config(
 /// refused; unknown keys and wrongly typed values are refused too. `dimtxsty`
 /// must name an existing text style, whose handle is linked here.
 fn apply_dim_style_json(
-    doc: &CadDocument,
+    doc: &Document,
     base: &codec::tables::DimStyle,
     properties: &str,
 ) -> Result<codec::tables::DimStyle, String> {
@@ -3763,8 +3763,8 @@ fn apply_dim_style_json(
 /// The stored spelling of `name` in the drawing's linetype table, loading the
 /// standard linetypes first when it is not there yet. `None` when the drawing
 /// cannot supply it: a layer must not reference a linetype that does not exist.
-fn resolve_linetype(doc: &mut codec::CadDocument, name: &str) -> Option<String> {
-    let stored = |doc: &codec::CadDocument| doc.line_types.get(name).map(|lt| lt.name.clone());
+fn resolve_linetype(doc: &mut codec::Document, name: &str) -> Option<String> {
+    let stored = |doc: &codec::Document| doc.line_types.get(name).map(|lt| lt.name.clone());
     stored(doc).or_else(|| {
         crate::io::linetypes::populate_document(doc);
         stored(doc)
@@ -3780,10 +3780,10 @@ impl HostApi for HostSession<'_> {
     fn tab_index(&self) -> usize {
         self.tab_index()
     }
-    fn document(&self) -> &CadDocument {
+    fn document(&self) -> &Document {
         self.document()
     }
-    fn document_mut(&mut self) -> &mut CadDocument {
+    fn document_mut(&mut self) -> &mut Document {
         self.document_mut()
     }
     fn add_entity(&mut self, entity: EntityType) -> Handle {
@@ -4769,13 +4769,13 @@ mod tests {
         // Four mutating calls = four undo steps; the refusals recorded none.
         assert_eq!(app.tabs[0].history.undo_stack.len(), 4);
 
-        let xrecord = |doc: &CadDocument, handle: Handle| -> Option<codec::objects::XRecord> {
+        let xrecord = |doc: &Document, handle: Handle| -> Option<codec::objects::XRecord> {
             match doc.objects.get(&handle) {
                 Some(codec::objects::ObjectType::XRecord(record)) => Some(record.clone()),
                 _ => None,
             }
         };
-        let has_dictionary_entry = |doc: &CadDocument, name: &str| -> bool {
+        let has_dictionary_entry = |doc: &Document, name: &str| -> bool {
             let root = doc.header.named_objects_dict_handle;
             match doc.objects.get(&root) {
                 Some(codec::objects::ObjectType::Dictionary(dictionary)) => dictionary
@@ -4868,13 +4868,13 @@ mod tests {
         assert_eq!(app.tabs[0].history.undo_stack.len(), 1);
         assert_eq!(app.tabs[0].history.undo_stack[0].label(), "CVI: import");
 
-        let xrecord = |doc: &CadDocument, handle: Handle| -> Option<codec::objects::XRecord> {
+        let xrecord = |doc: &Document, handle: Handle| -> Option<codec::objects::XRecord> {
             match doc.objects.get(&handle) {
                 Some(codec::objects::ObjectType::XRecord(record)) => Some(record.clone()),
                 _ => None,
             }
         };
-        let has_dictionary_entry = |doc: &CadDocument, name: &str| -> bool {
+        let has_dictionary_entry = |doc: &Document, name: &str| -> bool {
             let root = doc.header.named_objects_dict_handle;
             match doc.objects.get(&root) {
                 Some(codec::objects::ObjectType::Dictionary(dictionary)) => dictionary
@@ -4936,7 +4936,7 @@ mod tests {
             .unwrap();
 
         let find_xrecord =
-            |doc: &CadDocument, path: &[&str], name: &str| -> Option<codec::objects::XRecord> {
+            |doc: &Document, path: &[&str], name: &str| -> Option<codec::objects::XRecord> {
                 let mut current = doc.header.named_objects_dict_handle;
                 for fragment in path {
                     match doc.objects.get(&current) {
@@ -5422,7 +5422,7 @@ mod tests {
         assert_eq!(edited.thickness, created.thickness);
         assert_eq!(host.selection(), vec![handle]);
 
-        let assert_real_glyph = |entity: &EntityType, document: &CadDocument| {
+        let assert_real_glyph = |entity: &EntityType, document: &Document| {
             let EntityType::Shape(shape) = entity else {
                 panic!("expected Shape");
             };
@@ -5685,7 +5685,7 @@ mod tests {
                 .contains(message));
         }
 
-        let assert_persisted = |label: &str, document: &CadDocument, full_text_state: bool| {
+        let assert_persisted = |label: &str, document: &Document, full_text_state: bool| {
             let actual = document.get_entity(handle);
             assert!(
                 matches!(actual, Some(EntityType::AttributeDefinition(value))
@@ -5736,7 +5736,7 @@ mod tests {
             ),
         );
         assert!(host.document().get_entity(handle).is_none());
-        // CadDocument intentionally leaves the block membership slot in place
+        // Document intentionally leaves the block membership slot in place
         // so delta undo can restore the shared entity without rewriting the
         // record. Writers must still omit the absent entity.
         let deleted_dwg = codec::DwgWriter::write_to_vec(host.document()).unwrap();
@@ -5932,7 +5932,7 @@ mod tests {
                 .contains(message));
         }
 
-        let assert_saved = |document: &CadDocument| {
+        let assert_saved = |document: &Document| {
             assert!(
                 matches!(document.get_entity(insert_handle), Some(EntityType::Insert(insert))
                 if insert.attributes.len() == 1
@@ -5966,7 +5966,7 @@ mod tests {
             ),
         );
         assert!(host.nested_attribute(attribute_handle).is_none());
-        let assert_deleted = |document: &CadDocument| {
+        let assert_deleted = |document: &Document| {
             assert!(
                 matches!(document.get_entity(insert_handle), Some(EntityType::Insert(insert))
                     if insert.attributes.is_empty())
@@ -6149,7 +6149,7 @@ mod tests {
             assert!(host.app.command_line.history.last().unwrap().text.contains(message));
         }
 
-        let assert_saved = |document: &CadDocument| {
+        let assert_saved = |document: &Document| {
             assert!(
                 matches!(document.get_entity(hatch_handle), Some(EntityType::Hatch(hatch))
                 if !hatch.is_solid && hatch.pattern.name == "TEST"
@@ -6318,7 +6318,7 @@ mod tests {
         assert_eq!(created_leader.annotation_handle, text_handle);
         assert_eq!(created_leader.vertices.len(), 3);
 
-        let assert_geometry = |entity: &EntityType, document: &CadDocument| {
+        let assert_geometry = |entity: &EntityType, document: &Document| {
             let EntityType::Leader(leader) = entity else {
                 panic!("expected Leader")
             };
@@ -6452,7 +6452,7 @@ mod tests {
         // storing them (opencadcodec writes them for R13-R2007/R13-R14 only), so
         // only DXF must round-trip those three.
         let assert_saved =
-            |document: &CadDocument, is_dxf: bool| {
+            |document: &Document, is_dxf: bool| {
                 let Some(EntityType::Leader(leader)) = document.get_entity(leader_handle) else {
                     panic!("Leader missing after reopen");
                 };
@@ -6664,7 +6664,7 @@ mod tests {
             (vertex.direction.x - 1.0).abs() < 1e-9 && (vertex.miter.y.abs() - 1.0).abs() < 1e-9
         }));
         let assert_lines =
-            |entity: &EntityType, document: &CadDocument, expected_vertices: usize| {
+            |entity: &EntityType, document: &Document, expected_vertices: usize| {
                 let EntityType::MLine(mline) = entity else {
                     panic!("expected MLine")
                 };
@@ -6763,7 +6763,7 @@ mod tests {
         );
         assert_eq!(host.document().get_entity(handle), Some(&expected));
 
-        let assert_saved = |document: &CadDocument| {
+        let assert_saved = |document: &Document| {
             let Some(EntityType::MLine(mline)) = document.get_entity(handle) else {
                 panic!("MLine missing after reopen");
             };
@@ -6941,7 +6941,7 @@ mod tests {
                 D::LargeRadial(_) => "LargeRadial",
             }
         };
-        let handles_by_subtype = |document: &CadDocument| {
+        let handles_by_subtype = |document: &Document| {
             let mut map = std::collections::BTreeMap::new();
             for entity in document.entities() {
                 if let EntityType::Dimension(dimension) = entity {
@@ -6957,7 +6957,7 @@ mod tests {
             "created: {handles:?}; {}",
             last_output(&host)
         );
-        let measured = |document: &CadDocument, handle: Handle| -> f64 {
+        let measured = |document: &Document, handle: Handle| -> f64 {
             let Some(EntityType::Dimension(dimension)) = document.get_entity(handle) else {
                 panic!("Dimension missing");
             };
@@ -9300,7 +9300,7 @@ mod tests {
             body
         };
         let boxed = sm::box_solid([0.0, 0.0, 0.0], 10.0, 6.0, 4.0).unwrap();
-        let mut doc = codec::CadDocument::new();
+        let mut doc = codec::Document::new();
         let solid = make(&boxed);
         report("created box", &solid);
         let handle = doc.add_entity(EntityType::Solid3D(solid.clone())).unwrap();
@@ -9907,7 +9907,7 @@ mod tests {
             list.sort_by_key(|h| h.value());
             list
         };
-        let extent_in = |document: &CadDocument, handle: Handle| {
+        let extent_in = |document: &Document, handle: Handle| {
             let Some(EntityType::Region(region)) = document.get_entity(handle) else {
                 panic!("no region {handle:?}")
             };
@@ -10117,7 +10117,7 @@ mod tests {
                 "{format} re-edit"
             );
         }
-        fn regions_in(document: &CadDocument) -> Vec<Handle> {
+        fn regions_in(document: &Document) -> Vec<Handle> {
             document
                 .entities()
                 .filter_map(|e| match e {
@@ -10181,7 +10181,7 @@ mod tests {
             list.sort_by_key(|h| h.value());
             list
         };
-        let surfaces_in = |document: &CadDocument| {
+        let surfaces_in = |document: &Document| {
             sorted(
                 document
                     .entities()
@@ -10192,7 +10192,7 @@ mod tests {
                     .collect(),
             )
         };
-        let solids_in = |document: &CadDocument| {
+        let solids_in = |document: &Document| {
             sorted(
                 document
                     .entities()
@@ -10203,7 +10203,7 @@ mod tests {
                     .collect(),
             )
         };
-        let body_of = |document: &CadDocument, handle: Handle| match document.get_entity(handle) {
+        let body_of = |document: &Document, handle: Handle| match document.get_entity(handle) {
             Some(EntityType::Surface(s)) => {
                 kernel_acis_body(&s.acis_data).expect("surface payload lifts losslessly")
             }
@@ -10212,11 +10212,11 @@ mod tests {
             }
             other => panic!("no surface or solid {handle:?}: {other:?}"),
         };
-        let extent_in = |document: &CadDocument, handle: Handle| {
+        let extent_in = |document: &Document, handle: Handle| {
             sm::extent(&body_of(document, handle)).unwrap()
         };
         let close = |a: f64, b: f64| (a - b).abs() < 1e-6;
-        let kind_in = |document: &CadDocument, handle: Handle| match document.get_entity(handle) {
+        let kind_in = |document: &Document, handle: Handle| match document.get_entity(handle) {
             Some(EntityType::Surface(s)) => s.kind,
             other => panic!("no surface {handle:?}: {other:?}"),
         };
@@ -10574,7 +10574,7 @@ mod tests {
         };
         let last =
             |host: &HostSession<'_>| host.app.command_line.history.last().unwrap().text.clone();
-        let solids_in = |document: &CadDocument| {
+        let solids_in = |document: &Document| {
             let mut list: Vec<Handle> = document
                 .entities()
                 .filter_map(|e| match e {
@@ -10585,15 +10585,15 @@ mod tests {
             list.sort_by_key(|h| h.value());
             list
         };
-        let body_in = |document: &CadDocument, handle: Handle| {
+        let body_in = |document: &Document, handle: Handle| {
             let Some(EntityType::Solid3D(solid)) = document.get_entity(handle) else {
                 panic!("no solid {handle:?}")
             };
             kernel_body(solid).expect("payload lifts losslessly")
         };
         let volume_in =
-            |document: &CadDocument, handle: Handle| sm::volume(&body_in(document, handle));
-        let extent_in = |document: &CadDocument, handle: Handle| {
+            |document: &Document, handle: Handle| sm::volume(&body_in(document, handle));
+        let extent_in = |document: &Document, handle: Handle| {
             sm::extent(&body_in(document, handle)).unwrap()
         };
         let close = |a: f64, b: f64| (a - b).abs() < 1e-6 * b.abs().max(1.0);
@@ -11349,7 +11349,7 @@ mod tests {
             .save(&path)
             .unwrap();
         for linked in [false, true] {
-            let mut doc = codec::CadDocument::new();
+            let mut doc = codec::Document::new();
             let mut img = codec::entities::RasterImage::with_size(
                 &path,
                 codec::types::Vector3::ZERO,
@@ -11442,7 +11442,7 @@ mod tests {
                 .unwrap());
             let _ = std::fs::remove_file(&script);
         };
-        let report = |document: &CadDocument| -> (Vec<String>, Vec<String>) {
+        let report = |document: &Document| -> (Vec<String>, Vec<String>) {
             let name = document
                 .layers
                 .iter()
@@ -11493,7 +11493,7 @@ check('currentmissing', lambda: L.set_current('Nope'))
         );
         assert_eq!(refused.len(), 19, "{refused:?}");
 
-        let check_state = |label: &str, document: &CadDocument| {
+        let check_state = |label: &str, document: &Document| {
             let names: Vec<_> = document.layers.iter().map(|l| l.name.as_str()).collect();
             assert!(
                 !names.iter().any(|n| n.eq_ignore_ascii_case("Walls")),
@@ -11645,7 +11645,7 @@ L.delete('Structure', erase_objects=True)
                 .unwrap());
             let _ = std::fs::remove_file(&script);
         };
-        let report = |document: &CadDocument| -> (usize, Vec<String>) {
+        let report = |document: &Document| -> (usize, Vec<String>) {
             let name = document
                 .layers
                 .iter()
@@ -11707,7 +11707,7 @@ check('d_modmissing', lambda: D.modify('Nope', dimscale=2))
         );
         assert_eq!(refused, 26);
 
-        let check_state = |label: &str, document: &CadDocument| {
+        let check_state = |label: &str, document: &Document| {
             assert!(
                 document.text_styles.get("Title").is_none()
                     && document.text_styles.get("Notes").is_none(),
@@ -11881,7 +11881,7 @@ S.delete('Heading')
                 .unwrap());
             let _ = std::fs::remove_file(&script);
         };
-        let report = |document: &CadDocument| -> (usize, Vec<String>) {
+        let report = |document: &Document| -> (usize, Vec<String>) {
             let name = document
                 .layers
                 .iter()
@@ -11936,7 +11936,7 @@ check('modify_missing', lambda: B.modify('Nope', description='x'))
         );
         assert_eq!(refused, 18);
 
-        let check_state = |label: &str, document: &CadDocument| {
+        let check_state = |label: &str, document: &Document| {
             assert!(
                 document.block_records.get("Widget").is_none(),
                 "{label}: old block name gone"
@@ -12145,7 +12145,7 @@ B.delete('Widget2')
                 .unwrap());
             let _ = std::fs::remove_file(&script);
         };
-        let report = |document: &CadDocument| -> (usize, Vec<String>) {
+        let report = |document: &Document| -> (usize, Vec<String>) {
             let name = document
                 .layers
                 .iter()
@@ -12192,7 +12192,7 @@ check('unknown_insert_block', lambda: doc.create_entity('Insert', block_name='Gh
         );
         assert_eq!(refused, 9);
 
-        let check_state = |label: &str, document: &CadDocument| {
+        let check_state = |label: &str, document: &Document| {
             let record = document
                 .block_records
                 .get("Part")
@@ -12347,7 +12347,7 @@ check('unknown_insert_block', lambda: doc.create_entity('Insert', block_name='Gh
                 .unwrap());
             let _ = std::fs::remove_file(&script);
         };
-        let report = |document: &CadDocument| -> (usize, Vec<String>) {
+        let report = |document: &Document| -> (usize, Vec<String>) {
             let name = document
                 .layers
                 .iter()
@@ -12423,7 +12423,7 @@ check('ly_badscale', lambda: LY.set_page('Sheet1', scale=(0, 1)))
         );
         assert_eq!(refused, 34);
 
-        let check_state = |label: &str, document: &CadDocument| {
+        let check_state = |label: &str, document: &Document| {
             assert!(
                 document.line_types.get("Dots").is_none(),
                 "{label}: old linetype name gone"
@@ -12617,7 +12617,7 @@ LT.delete('Temp')
                 .unwrap());
             let _ = std::fs::remove_file(&script);
         };
-        let report = |document: &CadDocument| -> (usize, Vec<String>) {
+        let report = |document: &Document| -> (usize, Vec<String>) {
             let name = document
                 .layers
                 .iter()
@@ -12969,7 +12969,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
 "#,
         );
         assert!(report(host.document()).1.is_empty());
-        let moved = |document: &CadDocument, x: f64| {
+        let moved = |document: &Document, x: f64| {
             document.entities().any(|e| matches!(e, EntityType::Circle(c) if near(c.center.x, x) && near(c.center.y, 0.0)))
         };
         assert!(moved(host.document(), 1007.0));
@@ -13221,7 +13221,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         let _ = std::fs::remove_file(&script);
 
         // The structure: one definition per file, registered and owned by ACAD_IMAGE_DICT.
-        let structure = |document: &CadDocument| {
+        let structure = |document: &Document| {
             let root = document.header.named_objects_dict_handle;
             let Some(ObjectType::Dictionary(root_dict)) = document.objects.get(&root) else {
                 panic!("no root dictionary")
@@ -13253,7 +13253,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
             images.sort_by_key(|(h, _, _)| h.value());
             (dict_handle, entries, defs, images)
         };
-        let check = |label: &str, document: &CadDocument| {
+        let check = |label: &str, document: &Document| {
             let (dict, entries, defs, images) = structure(document);
             let dict = dict.unwrap_or_else(|| panic!("{label}: no ACAD_IMAGE_DICT"));
             assert_eq!(defs.len(), 2, "{label}: one definition per file");

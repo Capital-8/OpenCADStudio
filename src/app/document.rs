@@ -8,7 +8,7 @@ use crate::snap::SnapResult;
 use crate::t;
 use crate::ui::{LayerPanel, PropertiesPanel};
 use codec::tables::{normalize_name, Ucs};
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 use iced;
 use std::any::Any;
 use std::collections::HashMap;
@@ -994,7 +994,7 @@ pub(super) enum StructureSnapshot {
     /// A broad save-time synchronization followed by a command's bounded edits.
     Combined(Vec<StructureSnapshot>),
     /// Compatibility fallback for genuinely broad structural commands.
-    Full(CadDocument),
+    Full(Document),
     /// Exact layer-table entries touched by one command.
     Layers(Vec<TableEntryDelta<codec::tables::Layer>>),
     /// Exact text-style entries touched by one command.
@@ -1084,7 +1084,7 @@ pub(super) struct PendingHistorySnapshot {
     pub(super) active_layer: String,
     pub(super) selected_before: Vec<Handle>,
     pub(super) dirty_before: bool,
-    pub(super) structure_before: CadDocument,
+    pub(super) structure_before: Document,
     pub(super) recorder: Arc<codec::document::EntityChangeRecorder>,
     /// First-touch before-values of reference-only designations (API v9)
     /// mutated inside this plugin scope (see `scene::reference_only`). Set

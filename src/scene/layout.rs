@@ -37,7 +37,7 @@ impl Scene {
     /// it does not get the first viewport a new layout gets. The paper-space
     /// objects are copied by the caller.
     pub fn copy_layout_page(&mut self, source: &str, name: &str) {
-        let find = |document: &codec::CadDocument, wanted: &str| {
+        let find = |document: &codec::Document, wanted: &str| {
             document.objects.values().find_map(|object| match object {
                 ObjectType::Layout(layout) if layout.name == wanted => Some(layout.clone()),
                 _ => None,

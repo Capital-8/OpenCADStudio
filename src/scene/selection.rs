@@ -1343,7 +1343,7 @@ mod tests {
         use codec::entities::Point;
         use codec::xdata::{ExtendedDataRecord, XDataValue};
 
-        let mut doc = CadDocument::new();
+        let mut doc = Document::new();
 
         // An entity carrying a PE_URL hyperlink resolves to that link.
         let mut linked = Point::new();

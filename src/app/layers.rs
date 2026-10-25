@@ -252,7 +252,7 @@ impl OpenCADStudio {
 /// The catalog linetypes the drawing lacks, offered after its own; a pick
 /// loads the one chosen (`ensure_catalog_linetype`).
 pub(super) fn catalog_linetype_items(
-    document: &codec::CadDocument,
+    document: &codec::Document,
 ) -> impl Iterator<Item = ui::properties::LinetypeItem> {
     crate::io::linetypes::catalog_missing_from(document)
         .into_iter()
