@@ -286,6 +286,9 @@ command-copy =
     .mode = COPY  Informe o modo de cópia [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Uso: DCDISPLAY [Mostrar|Ocultar]
+    .dcdisplay-prompt = DCDISPLAY  Digite uma opção [Mostrar/Ocultar] <Mostrar>:
+    .dcdisplay-updated = __ocs_fmt_0__ indicador(es) de restrição atualizado(s).
     .compare-prompt = COMPARE  __ocs_fmt_0__ só aqui (verde), __ocs_fmt_1__ só no outro desenho (vermelho)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Comparar com desenho
@@ -3493,6 +3496,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: o estilo “__ocs_fmt_1__” não foi encontrado.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: substituição inválida "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: nenhuma cota editável foi selecionada.
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ cota(s) atualizada(s).
+    .dimoverride-var-prompt = DIMOVERRIDE  Digite o nome da variável de cota a substituir ou [Limpar substituições]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Digite o novo valor para __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Limpar substituições
+    .dimoverride-unknown-var = DIMOVERRIDE: variável de cota desconhecida "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: valor inválido para esta variável.
+    .dimdisassociate-select = Selecione as cotas a desassociar:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ cota(s) desassociada(s).
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_0__ de __ocs_fmt_1__ cota(s) associada(s).
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ cota(s) associada(s) apenas em parte (não há objeto em alguns pontos de definição).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Informe o texto da cota (vazio = valor medido):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Selecione um arco, círculo ou arco de polilinha:
     .dimjogged-specify-center-location-override = DIMJOGGED  Especifique a posição alternativa do centro:

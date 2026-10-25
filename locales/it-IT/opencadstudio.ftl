@@ -285,6 +285,9 @@ command-copy =
     .mode = COPY  Specificare modalità di copia [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Uso: DCDISPLAY [Mostra|Nascondi]
+    .dcdisplay-prompt = DCDISPLAY  Immettere un'opzione [Mostra/Nascondi] <Mostra>:
+    .dcdisplay-updated = __ocs_fmt_0__ indicatore/i di vincolo aggiornato/i.
     .compare-prompt = COMPARE  __ocs_fmt_0__ solo qui (verde), __ocs_fmt_1__ solo nell'altro disegno (rosso)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Confronta con disegno
@@ -3492,6 +3495,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: stile '__ocs_fmt_1__' non trovato.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: modifica non valida "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: nessuna quota modificabile selezionata.
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ quota/e aggiornata/e.
+    .dimoverride-var-prompt = DIMOVERRIDE  Immettere il nome della variabile di quota da modificare o [Cancella modifiche]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Immettere il nuovo valore per __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Cancella modifiche
+    .dimoverride-unknown-var = DIMOVERRIDE: variabile di quota sconosciuta "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: valore non valido per questa variabile.
+    .dimdisassociate-select = Selezionare le quote da dissociare:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ quota/e dissociata/e.
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_0__ di __ocs_fmt_1__ quota/e associata/e.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ quota/e associata/e solo in parte (nessun oggetto in alcuni punti di definizione).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Immettere il testo della quota (vuoto = valore misurato):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Selezionare un arco, un cerchio o un arco di polilinea:
     .dimjogged-specify-center-location-override = DIMJOGGED  Specificare la posizione alternativa del centro:

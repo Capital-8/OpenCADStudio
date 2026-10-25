@@ -286,6 +286,9 @@ command-copy =
     .mode = COPY  Geef kopieermodus op [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Gebruik: DCDISPLAY [Tonen|Verbergen]
+    .dcdisplay-prompt = DCDISPLAY  Geef een optie op [Tonen/Verbergen] <Tonen>:
+    .dcdisplay-updated = __ocs_fmt_0__ beperkingsindicator(en) bijgewerkt.
     .compare-prompt = COMPARE  __ocs_fmt_0__ alleen hier (groen), __ocs_fmt_1__ alleen in de andere tekening (rood)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Vergelijken met tekening
@@ -3493,6 +3496,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: stijl '__ocs_fmt_1__' niet gevonden.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: ongeldige overschrijving "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: geen bewerkbare maten geselecteerd.
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ maat/maten bijgewerkt.
+    .dimoverride-var-prompt = DIMOVERRIDE  Geef de naam van de te overschrijven maatvariabele op of [Overschrijvingen wissen]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Geef nieuwe waarde voor __ocs_fmt_0__ op:
+    .dimoverride-clear-overrides = Overschrijvingen wissen
+    .dimoverride-unknown-var = DIMOVERRIDE: onbekende maatvariabele "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: ongeldige waarde voor deze variabele.
+    .dimdisassociate-select = Selecteer maten om te ontkoppelen:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ maat/maten ontkoppeld.
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_0__ van __ocs_fmt_1__ maat/maten gekoppeld.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ maat/maten slechts gedeeltelijk gekoppeld (op sommige definitiepunten ligt geen object).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Voer maattekst in (leeg = gemeten waarde):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Selecteer boog, cirkel of polylijnboog:
     .dimjogged-specify-center-location-override = DIMJOGGED  Geef alternatieve middelpuntlocatie op:

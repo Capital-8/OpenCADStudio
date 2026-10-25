@@ -907,6 +907,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "PERSPECTIVE",
         "GRIDMODE",
         "GRIDUNIT",
+        "QPMODE",
         "ZOOMWHEEL",
         "ZOOMFACTOR",
         "SHORTCUTMENU",

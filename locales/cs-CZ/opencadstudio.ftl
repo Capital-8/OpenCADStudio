@@ -285,6 +285,9 @@ command-copy =
     .mode = COPY  Zadejte režim kopírování [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Použití: DCDISPLAY [Zobrazit|Skrýt]
+    .dcdisplay-prompt = DCDISPLAY  Zadejte možnost [Zobrazit/Skrýt] <Zobrazit>:
+    .dcdisplay-updated = Aktualizováno indikátorů vazeb: __ocs_fmt_0__.
     .compare-prompt = COMPARE  __ocs_fmt_0__ jen zde (zeleně), __ocs_fmt_1__ jen v druhém výkresu (červeně)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Porovnat s výkresem
@@ -3490,6 +3493,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: styl '__ocs_fmt_1__' nebyl nalezen.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: neplatné přepsání "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: nebyly vybrány žádné upravitelné kóty.
+    .dimoverride-updated = DIMOVERRIDE: aktualizováno kót: __ocs_fmt_0__.
+    .dimoverride-var-prompt = DIMOVERRIDE  Zadejte název kótovací proměnné k přepsání nebo [Vymazat přepsání]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Zadejte novou hodnotu pro __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Vymazat přepsání
+    .dimoverride-unknown-var = DIMOVERRIDE: neznámá kótovací proměnná "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: neplatná hodnota pro tuto proměnnou.
+    .dimdisassociate-select = Vyberte kóty k odpojení asociativity:
+    .dimdisassociate-done = DIMDISASSOCIATE: odpojeno kót: __ocs_fmt_0__.
+    .dimreassociate-done = DIMREASSOCIATE: přidruženo __ocs_fmt_0__ z __ocs_fmt_1__ kót.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ kót přidruženo jen částečně (v některých definičních bodech není žádný objekt).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Zadejte text kóty (prázdné = změřená hodnota):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Vyberte oblouk, kružnici nebo oblouk křivky:
     .dimjogged-specify-center-location-override = DIMJOGGED  Určete náhradní polohu středu:

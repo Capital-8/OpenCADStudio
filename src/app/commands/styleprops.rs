@@ -10,7 +10,7 @@ impl OpenCADStudio {
                     .unwrap_or(cmd)
                     .split_whitespace()
                     .next(),
-                Some("PERSPECTIVE" | "GRIDMODE" | "GRIDUNIT")
+                Some("PERSPECTIVE" | "GRIDMODE" | "GRIDUNIT" | "QPMODE")
             ) =>
             {
                 let mut words = cmd.strip_prefix("SETVAR ").unwrap_or(cmd).splitn(2, ' ');
@@ -23,6 +23,7 @@ impl OpenCADStudio {
                         (persp as i32).to_string()
                     }
                     "GRIDMODE" => (self.show_grid as i32).to_string(),
+                    "QPMODE" => (self.quick_properties as i32).to_string(),
                     _ => format!("{},{}", self.grid_spacing_x, self.grid_spacing_y),
                 };
                 let Some(value) = value else {
@@ -38,6 +39,13 @@ impl OpenCADStudio {
                     ("GRIDMODE", "0" | "1") => {
                         if (value == "1") != self.show_grid {
                             return Some(Task::done(Message::ToggleGrid));
+                        }
+                    }
+                    // 2 (only objects with configured properties) shows the
+                    // panel for every object, as no per-type list exists.
+                    ("QPMODE", "0" | "1" | "2") => {
+                        if (value != "0") != self.quick_properties {
+                            return Some(Task::done(Message::ToggleQuickProperties));
                         }
                     }
                     ("GRIDUNIT", _) => {

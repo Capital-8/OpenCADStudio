@@ -298,6 +298,9 @@ command-copy =
     .mode = COPY  أدخل خيار وضع النسخ [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = الاستخدام: DCDISPLAY [إظهار|إخفاء]
+    .dcdisplay-prompt = DCDISPLAY  أدخل خيارًا [إظهار/إخفاء] <إظهار>:
+    .dcdisplay-updated = تم تحديث __ocs_fmt_0__ من مؤشرات القيود.
     .compare-prompt = COMPARE  __ocs_fmt_0__ هنا فقط (أخضر)، __ocs_fmt_1__ في الرسم الآخر فقط (أحمر)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = مقارنة مع رسم
@@ -3505,6 +3508,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: لم يُعثر على النمط '__ocs_fmt_1__'.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: تجاوز غير صالح "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: لم يتم تحديد أبعاد قابلة للتحرير.
+    .dimoverride-updated = DIMOVERRIDE: تم تحديث __ocs_fmt_0__ من الأبعاد.
+    .dimoverride-var-prompt = DIMOVERRIDE  أدخل اسم متغير البعد المراد تجاوزه أو [مسح التجاوزات]:
+    .dimoverride-value-prompt = DIMOVERRIDE  أدخل القيمة الجديدة لـ __ocs_fmt_0__:
+    .dimoverride-clear-overrides = مسح التجاوزات
+    .dimoverride-unknown-var = DIMOVERRIDE: متغير بعد غير معروف "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: قيمة غير صالحة لهذا المتغير.
+    .dimdisassociate-select = حدد الأبعاد لفك ارتباطها:
+    .dimdisassociate-done = DIMDISASSOCIATE: تم فك ارتباط __ocs_fmt_0__ من الأبعاد.
+    .dimreassociate-done = DIMREASSOCIATE: تم ربط __ocs_fmt_0__ من أصل __ocs_fmt_1__ من الأبعاد.
+    .dimreassociate-partial = DIMREASSOCIATE: تم ربط __ocs_fmt_0__ من الأبعاد جزئيًا فقط (لا يوجد كائن عند بعض نقاط التعريف).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  أدخل نص البعد (فارغ = القيمة المقاسة):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  حدد قوسًا أو دائرة أو قوس خط متعدد:
     .dimjogged-specify-center-location-override = DIMJOGGED  حدد موقع المركز البديل:

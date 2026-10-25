@@ -289,6 +289,9 @@ command-copy =
     .mode = COPY  Задайте режим копирования [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Использование: DCDISPLAY [Показать|Скрыть]
+    .dcdisplay-prompt = DCDISPLAY  Введите параметр [Показать/Скрыть] <Показать>:
+    .dcdisplay-updated = Обновлено индикаторов зависимостей: __ocs_fmt_0__.
     .compare-prompt = COMPARE  __ocs_fmt_0__ только здесь (зелёные), __ocs_fmt_1__ только в другом чертеже (красные)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Сравнить с чертежом
@@ -3494,6 +3497,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: стиль __ocs_fmt_1__ не найден.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: недопустимое переопределение "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: не выбрано редактируемых размеров.
+    .dimoverride-updated = DIMOVERRIDE: обновлено размеров: __ocs_fmt_0__.
+    .dimoverride-var-prompt = DIMOVERRIDE  Введите имя размерной переменной для переопределения или [Очистить переопределения]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Введите новое значение для __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Очистить переопределения
+    .dimoverride-unknown-var = DIMOVERRIDE: неизвестная размерная переменная "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: недопустимое значение для этой переменной.
+    .dimdisassociate-select = Выберите размеры для отмены ассоциативности:
+    .dimdisassociate-done = DIMDISASSOCIATE: ассоциативность отменена для размеров: __ocs_fmt_0__.
+    .dimreassociate-done = DIMREASSOCIATE: ассоциировано __ocs_fmt_0__ из __ocs_fmt_1__ размеров.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ размеров ассоциировано лишь частично (в некоторых определяющих точках нет объекта).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Введите текст размера (пусто = измеренное значение):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Выберите дугу, окружность или дуговой сегмент полилинии:
     .dimjogged-specify-center-location-override = DIMJOGGED  Укажите переопределённое положение центра:

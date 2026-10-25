@@ -364,6 +364,53 @@ pub fn property_string_code(field: &str) -> Option<i16> {
     })
 }
 
+macro_rules! named_vars {
+    ($($kind:ident: $($code:ident),+;)+) => {
+        &[$($((stringify!($code), $code, VarKind::$kind),)+)+]
+    };
+}
+
+/// How a dimension variable's override value is stored in the record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VarKind {
+    Real,
+    Int,
+    Text,
+}
+
+/// The variables DIMOVERRIDE accepts by name. Block, linetype and text-style
+/// variables are stored as handles and are set from the Properties panel.
+const NAMED_VARS: &[(&str, i16, VarKind)] = named_vars! {
+    Real: DIMSCALE, DIMASZ, DIMEXO, DIMDLI, DIMEXE, DIMRND, DIMDLE, DIMTP, DIMTM, DIMFXL,
+        DIMJOGANG, DIMTXT, DIMCEN, DIMTSZ, DIMALTF, DIMLFAC, DIMTVP, DIMTFAC, DIMGAP,
+        DIMALTRND, DIMALTMZF, DIMMZF;
+    Int: DIMTOL, DIMLIM, DIMTIH, DIMTOH, DIMSE1, DIMSE2, DIMALT, DIMTOFL, DIMSAH, DIMTIX,
+        DIMSOXD, DIMSD1, DIMSD2, DIMUPT, DIMFXLON, DIMTXTDIRECTION, DIMZIN, DIMTAD, DIMAZIN,
+        DIMARCSYM, DIMCLRD, DIMCLRE, DIMCLRT, DIMADEC, DIMALTD, DIMDEC, DIMTDEC, DIMALTU,
+        DIMALTTD, DIMAUNIT, DIMFRAC, DIMLUNIT, DIMDSEP, DIMTMOVE, DIMJUST, DIMTOLJ, DIMTZIN,
+        DIMALTZ, DIMALTTZ, DIMATFIT, DIMTFILL, DIMTFILLCLR, DIMLWD, DIMLWE, DIMTALN;
+    Text: DIMPOST, DIMAPOST, DIMALTMZS, DIMMZS;
+};
+
+/// The group code and storage kind of the dimension variable `name`.
+pub fn named_var(name: &str) -> Option<(i16, VarKind)> {
+    NAMED_VARS
+        .iter()
+        .find(|(var, _, _)| var.eq_ignore_ascii_case(name.trim()))
+        .map(|&(_, code, kind)| (code, kind))
+}
+
+/// Parse a typed value for a variable of `kind` into its record value. ON/OFF
+/// are read as 1/0 so switch variables can be typed either way.
+pub fn parse_var_value(kind: VarKind, text: &str) -> Option<XDataValue> {
+    let text = text.trim();
+    match kind {
+        VarKind::Real => text.parse().ok().filter(|v: &f64| v.is_finite()).map(XDataValue::Real),
+        VarKind::Int => text.parse().ok().or_else(|| yes(text)).map(XDataValue::Integer16),
+        VarKind::Text => Some(XDataValue::String(text.to_string())),
+    }
+}
+
 fn yes(value: &str) -> Option<i16> {
     match value.trim().to_ascii_lowercase().as_str() {
         "yes" | "on" | "true" | "1" => Some(1),

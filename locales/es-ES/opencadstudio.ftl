@@ -286,6 +286,9 @@ command-copy =
     .mode = COPY  Indique modo de copia [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Uso: DCDISPLAY [Mostrar|Ocultar]
+    .dcdisplay-prompt = DCDISPLAY  Introduzca una opción [Mostrar/Ocultar] <Mostrar>:
+    .dcdisplay-updated = __ocs_fmt_0__ indicador(es) de restricción actualizado(s).
     .compare-prompt = COMPARE  __ocs_fmt_0__ solo aquí (verde), __ocs_fmt_1__ solo en el otro dibujo (rojo)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Comparar con dibujo
@@ -3493,6 +3496,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: no se encontró el estilo «__ocs_fmt_1__».
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: modificación no válida "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: no se seleccionaron cotas editables.
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ cota(s) actualizada(s).
+    .dimoverride-var-prompt = DIMOVERRIDE  Introduzca el nombre de la variable de cota que desea modificar o [Borrar modificaciones]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Introduzca el nuevo valor de __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Borrar modificaciones
+    .dimoverride-unknown-var = DIMOVERRIDE: variable de cota desconocida "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: valor no válido para esta variable.
+    .dimdisassociate-select = Seleccione las cotas que desea disociar:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ cota(s) disociada(s).
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_0__ de __ocs_fmt_1__ cota(s) asociada(s).
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ cota(s) asociada(s) solo en parte (no hay ningún objeto en algunos puntos de definición).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Introduzca el texto de cota (vacío = valor medido):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Seleccione un arco, círculo o arco de polilínea:
     .dimjogged-specify-center-location-override = DIMJOGGED  Especifique la ubicación alternativa del centro:

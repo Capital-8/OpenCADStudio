@@ -1825,6 +1825,52 @@ impl Scene {
         })
     }
 
+    /// Remove the DIMASSOC object of `dimension`: the object itself, the
+    /// reactor it left on every entity and its entry in the owning dictionary.
+    /// Returns whether the dimension was associative.
+    pub(crate) fn detach_dimension_association(&mut self, dimension: Handle) -> bool {
+        let found = self.document.objects.iter().find_map(|(handle, object)| {
+            let ObjectType::Associative(object) = object else {
+                return None;
+            };
+            matches!(
+                &object.data,
+                AssociativeData::DimensionAssociation(data) if data.dimension == dimension
+            )
+            .then_some((*handle, object.owner))
+        });
+        let Some((association, owner)) = found else {
+            return false;
+        };
+        let before = self.document.objects.get(&association).cloned();
+        self.record_undo_object_before(association, before);
+        if let Some(ObjectType::Dictionary(dictionary)) = self.document.objects.get(&owner) {
+            let before = ObjectType::Dictionary(dictionary.clone());
+            self.record_undo_object_before(owner, Some(before));
+        }
+        if let Some(ObjectType::Dictionary(dictionary)) = self.document.objects.get_mut(&owner) {
+            dictionary.entries.retain(|(_, handle)| *handle != association);
+        }
+        self.document.objects.remove(&association);
+        let holders: Vec<Handle> = self
+            .document
+            .entities()
+            .filter(|entity| entity.common().reactors.contains(&association))
+            .map(|entity| entity.common().handle)
+            .collect();
+        for handle in holders {
+            if self.is_recording_undo() {
+                let before = self.document.get_entity_arc(handle);
+                self.record_undo_before(handle, before);
+            }
+            if let Some(entity) = self.document.get_entity_mut(handle) {
+                entity.common_mut().reactors.retain(|reactor| *reactor != association);
+            }
+        }
+        self.invalidate_dependency_index();
+        true
+    }
+
     /// Preserve an association only when the dimension and every source-chain
     /// handle were copied. Remap the complete chain to the new entities.
     pub(crate) fn copy_dimension_associations(

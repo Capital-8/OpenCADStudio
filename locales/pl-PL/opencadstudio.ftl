@@ -285,6 +285,9 @@ command-copy =
     .mode = COPY  Podaj tryb kopiowania [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Użycie: DCDISPLAY [Pokaż|Ukryj]
+    .dcdisplay-prompt = DCDISPLAY  Podaj opcję [Pokaż/Ukryj] <Pokaż>:
+    .dcdisplay-updated = Zaktualizowano wskaźniki więzów: __ocs_fmt_0__.
     .compare-prompt = COMPARE  __ocs_fmt_0__ tylko tutaj (zielone), __ocs_fmt_1__ tylko w drugim rysunku (czerwone)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Porównaj z rysunkiem
@@ -3492,6 +3495,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: nie znaleziono stylu „__ocs_fmt_1__”.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: nieprawidłowe nadpisanie "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: nie wybrano edytowalnych wymiarów.
+    .dimoverride-updated = DIMOVERRIDE: zaktualizowano wymiary: __ocs_fmt_0__.
+    .dimoverride-var-prompt = DIMOVERRIDE  Podaj nazwę zmiennej wymiarowej do nadpisania lub [Wyczyść nadpisania]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Podaj nową wartość dla __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Wyczyść nadpisania
+    .dimoverride-unknown-var = DIMOVERRIDE: nieznana zmienna wymiarowa "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: nieprawidłowa wartość dla tej zmiennej.
+    .dimdisassociate-select = Wybierz wymiary do odłączenia:
+    .dimdisassociate-done = DIMDISASSOCIATE: odłączono wymiary: __ocs_fmt_0__.
+    .dimreassociate-done = DIMREASSOCIATE: skojarzono __ocs_fmt_0__ z __ocs_fmt_1__ wymiarów.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ wymiarów skojarzono tylko częściowo (w niektórych punktach definicji nie ma obiektu).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Wprowadź tekst wymiaru (puste = wartość zmierzona):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Wybierz łuk, okrąg lub łuk polilinii:
     .dimjogged-specify-center-location-override = DIMJOGGED  Wskaż zastępcze położenie środka:

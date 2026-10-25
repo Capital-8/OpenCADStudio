@@ -274,6 +274,9 @@ command-copy =
     .mode = COPY  कॉपी मोड विकल्प दर्ज करें [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = उपयोग: DCDISPLAY [दिखाएँ|छिपाएँ]
+    .dcdisplay-prompt = DCDISPLAY  एक विकल्प दर्ज करें [दिखाएँ/छिपाएँ] <दिखाएँ>:
+    .dcdisplay-updated = __ocs_fmt_0__ बाधा संकेतक अपडेट किए गए।
     .compare-prompt = COMPARE  __ocs_fmt_0__ केवल यहाँ (हरा), __ocs_fmt_1__ केवल दूसरी ड्रॉइंग में (लाल)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = ड्रॉइंग से तुलना करें
@@ -3481,6 +3484,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: शैली '__ocs_fmt_1__' नहीं मिली।
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: अमान्य ओवरराइड "__ocs_fmt_0__"।
+    .dimoverride-no-dimensions = DIMOVERRIDE: कोई संपादन योग्य आयाम चयनित नहीं है।
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ आयाम अपडेट किए गए।
+    .dimoverride-var-prompt = DIMOVERRIDE  ओवरराइड करने के लिए आयाम चर का नाम दर्ज करें या [ओवरराइड साफ़ करें]:
+    .dimoverride-value-prompt = DIMOVERRIDE  __ocs_fmt_0__ के लिए नया मान दर्ज करें:
+    .dimoverride-clear-overrides = ओवरराइड साफ़ करें
+    .dimoverride-unknown-var = DIMOVERRIDE: अज्ञात आयाम चर "__ocs_fmt_0__"।
+    .dimoverride-invalid-value = DIMOVERRIDE: इस चर के लिए अमान्य मान।
+    .dimdisassociate-select = असंबद्ध करने के लिए आयाम चुनें:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ आयाम असंबद्ध किए गए।
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_1__ में से __ocs_fmt_0__ आयाम संबद्ध किए गए।
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ आयाम केवल आंशिक रूप से संबद्ध किए गए (कुछ परिभाषा बिंदुओं पर कोई ऑब्जेक्ट नहीं है)।
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  माप पाठ दर्ज करें (खाली = मापा गया मान):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  चाप, वृत्त या पॉलीलाइन चाप चुनें:
     .dimjogged-specify-center-location-override = DIMJOGGED  केंद्र का वैकल्पिक स्थान निर्दिष्ट करें:

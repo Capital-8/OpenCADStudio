@@ -276,6 +276,9 @@ command-copy =
     .mode = COPY  コピーモードを入力 [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = 使用法: DCDISPLAY [表示|非表示]
+    .dcdisplay-prompt = DCDISPLAY  オプションを入力 [表示/非表示] <表示>:
+    .dcdisplay-updated = __ocs_fmt_0__ 個の拘束インジケータを更新しました。
     .compare-prompt = COMPARE  ここのみ __ocs_fmt_0__ (緑)、もう一方の図面のみ __ocs_fmt_1__ (赤)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = 図面と比較
@@ -3483,6 +3486,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: スタイル「__ocs_fmt_1__」が見つかりません。
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: 無効な優先 "__ocs_fmt_0__"。
+    .dimoverride-no-dimensions = DIMOVERRIDE: 編集可能な寸法が選択されていません。
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ 個の寸法を更新しました。
+    .dimoverride-var-prompt = DIMOVERRIDE  優先する寸法変数名を入力 または [優先を解除]:
+    .dimoverride-value-prompt = DIMOVERRIDE  __ocs_fmt_0__ の新しい値を入力:
+    .dimoverride-clear-overrides = 優先を解除
+    .dimoverride-unknown-var = DIMOVERRIDE: 不明な寸法変数 "__ocs_fmt_0__"。
+    .dimoverride-invalid-value = DIMOVERRIDE: この変数には無効な値です。
+    .dimdisassociate-select = 自動調整を解除する寸法を選択:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ 個の寸法の自動調整を解除しました。
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_1__ 個中 __ocs_fmt_0__ 個の寸法を自動調整にしました。
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ 個の寸法は一部のみ自動調整にしました（一部の定義点にオブジェクトがありません）。
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  寸法値を入力 (空欄 = 計測値):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  円弧、円、またはポリライン円弧を選択:
     .dimjogged-specify-center-location-override = DIMJOGGED  中心位置の変更先を指定:

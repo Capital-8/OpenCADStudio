@@ -285,6 +285,9 @@ command-copy =
     .mode = COPY  輸入複製模式選項 [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = 用法：DCDISPLAY [顯示|隱藏]
+    .dcdisplay-prompt = DCDISPLAY  輸入選項 [顯示/隱藏] <顯示>:
+    .dcdisplay-updated = 已更新 __ocs_fmt_0__ 個約束指示器。
     .compare-prompt = COMPARE  僅此處 __ocs_fmt_0__ (綠色)，僅另一圖面 __ocs_fmt_1__ (紅色)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = 與圖面比較
@@ -3492,6 +3495,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__:樣式“__ocs_fmt_1__”未找到。
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE：無效的取代 "__ocs_fmt_0__"。
+    .dimoverride-no-dimensions = DIMOVERRIDE：未選取可編輯的標註。
+    .dimoverride-updated = DIMOVERRIDE：已更新 __ocs_fmt_0__ 個標註。
+    .dimoverride-var-prompt = DIMOVERRIDE  輸入要取代的標註變數名稱或 [清除取代]:
+    .dimoverride-value-prompt = DIMOVERRIDE  輸入 __ocs_fmt_0__ 的新值:
+    .dimoverride-clear-overrides = 清除取代
+    .dimoverride-unknown-var = DIMOVERRIDE：未知的標註變數 "__ocs_fmt_0__"。
+    .dimoverride-invalid-value = DIMOVERRIDE：此變數的值無效。
+    .dimdisassociate-select = 選取要解除關聯的標註:
+    .dimdisassociate-done = DIMDISASSOCIATE：已解除 __ocs_fmt_0__ 個標註的關聯。
+    .dimreassociate-done = DIMREASSOCIATE：已關聯 __ocs_fmt_1__ 個標註中的 __ocs_fmt_0__ 個。
+    .dimreassociate-partial = DIMREASSOCIATE：__ocs_fmt_0__ 個標註僅部分關聯（部分定義點處沒有物件）。
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  輸入標註文字（留空 = 測量值）：
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  選擇圓弧、圓或聚合線圓弧：
     .dimjogged-specify-center-location-override = DIMJOGGED  指定替代圓心位置：

@@ -286,6 +286,9 @@ command-copy =
     .mode = COPY  Kopiermodus eingeben [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Verwendung: DCDISPLAY [Zeigen|Verbergen]
+    .dcdisplay-prompt = DCDISPLAY  Option eingeben [Zeigen/Verbergen] <Zeigen>:
+    .dcdisplay-updated = __ocs_fmt_0__ Abhängigkeitssymbol(e) aktualisiert.
     .compare-prompt = COMPARE  __ocs_fmt_0__ nur hier (grün), __ocs_fmt_1__ nur in der anderen Zeichnung (rot)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Mit Zeichnung vergleichen
@@ -3493,6 +3496,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: Stil '__ocs_fmt_1__' nicht gefunden.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: ungültige Überschreibung "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: keine bearbeitbaren Bemaßungen ausgewählt.
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ Bemaßung(en) aktualisiert.
+    .dimoverride-var-prompt = DIMOVERRIDE  Name der zu überschreibenden Bemaßungsvariable eingeben oder [Überschreibungen löschen]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Neuen Wert für __ocs_fmt_0__ eingeben:
+    .dimoverride-clear-overrides = Überschreibungen löschen
+    .dimoverride-unknown-var = DIMOVERRIDE: unbekannte Bemaßungsvariable "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: ungültiger Wert für diese Variable.
+    .dimdisassociate-select = Bemaßungen zum Lösen der Assoziativität wählen:
+    .dimdisassociate-done = DIMDISASSOCIATE: Assoziativität von __ocs_fmt_0__ Bemaßung(en) gelöst.
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_0__ von __ocs_fmt_1__ Bemaßung(en) assoziiert.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ Bemaßung(en) nur teilweise assoziiert (an einigen Definitionspunkten liegt kein Objekt).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Maßtext eingeben (leer = Messwert):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Bogen, Kreis oder Polylinienbogen auswählen:
     .dimjogged-specify-center-location-override = DIMJOGGED  Überschriebene Mittelpunktposition angeben:

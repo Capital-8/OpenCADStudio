@@ -284,6 +284,9 @@ command-copy =
     .mode = COPY  Adja meg a másolási módot [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Használat: DCDISPLAY [Megjelenítés|Elrejtés]
+    .dcdisplay-prompt = DCDISPLAY  Adjon meg egy opciót [Megjelenítés/Elrejtés] <Megjelenítés>:
+    .dcdisplay-updated = __ocs_fmt_0__ kényszerjelző frissítve.
     .compare-prompt = COMPARE  __ocs_fmt_0__ csak itt (zöld), __ocs_fmt_1__ csak a másik rajzban (piros)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Összehasonlítás rajzzal
@@ -3495,6 +3498,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: a '__ocs_fmt_1__' stílus nem található.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: érvénytelen felülbírálás "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: nincs kijelölve szerkeszthető méret.
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ méret frissítve.
+    .dimoverride-var-prompt = DIMOVERRIDE  Adja meg a felülbírálandó méretváltozó nevét vagy [Felülbírálások törlése]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Adja meg __ocs_fmt_0__ új értékét:
+    .dimoverride-clear-overrides = Felülbírálások törlése
+    .dimoverride-unknown-var = DIMOVERRIDE: ismeretlen méretváltozó "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: érvénytelen érték ehhez a változóhoz.
+    .dimdisassociate-select = Válassza ki a leválasztandó méreteket:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ méret társítása megszüntetve.
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_1__ méretből __ocs_fmt_0__ társítva.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ méret csak részben társítva (néhány definíciós pontban nincs objektum).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Adja meg a méretszöveget (üres = mért érték):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Válasszon ívet, kört vagy vonalláncívet:
     .dimjogged-specify-center-location-override = DIMJOGGED  Adja meg a felülírt középpont helyét:

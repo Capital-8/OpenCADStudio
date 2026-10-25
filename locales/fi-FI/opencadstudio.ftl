@@ -285,6 +285,9 @@ command-copy =
     .mode = COPY  Valitse kopiointitila [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Käyttö: DCDISPLAY [Näytä|Piilota]
+    .dcdisplay-prompt = DCDISPLAY  Anna vaihtoehto [Näytä/Piilota] <Näytä>:
+    .dcdisplay-updated = __ocs_fmt_0__ rajoiteilmaisinta päivitettiin.
     .compare-prompt = COMPARE  __ocs_fmt_0__ vain täällä (vihreä), __ocs_fmt_1__ vain toisessa piirustuksessa (punainen)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Vertaa piirustukseen
@@ -3492,6 +3495,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: tyyliä '__ocs_fmt_1__' ei löydy.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: virheellinen ohitus "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: muokattavia mittoja ei valittu.
+    .dimoverride-updated = DIMOVERRIDE: päivitettiin __ocs_fmt_0__ mittaa.
+    .dimoverride-var-prompt = DIMOVERRIDE  Anna ohitettavan mittamuuttujan nimi tai [Tyhjennä ohitukset]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Anna uusi arvo kohteelle __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Tyhjennä ohitukset
+    .dimoverride-unknown-var = DIMOVERRIDE: tuntematon mittamuuttuja "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: virheellinen arvo tälle muuttujalle.
+    .dimdisassociate-select = Valitse mitat, joiden assosiatiivisuus poistetaan:
+    .dimdisassociate-done = DIMDISASSOCIATE: assosiatiivisuus poistettiin __ocs_fmt_0__ mitasta.
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_0__/__ocs_fmt_1__ mittaa assosioitiin.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ mittaa assosioitiin vain osittain (joissakin määrityspisteissä ei ole objektia).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Anna mittateksti (tyhjä = mitattu arvo):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Valitse kaari, ympyrä tai murtoviivan kaari:
     .dimjogged-specify-center-location-override = DIMJOGGED  Määritä korvaava keskipisteen sijainti:
