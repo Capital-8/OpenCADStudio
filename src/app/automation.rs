@@ -815,6 +815,9 @@ impl OpenCADStudio {
                         self.tabs[i].adopt_active_ucs_from_header();
                         self.tabs[i].current_path = Some(path_buf);
                         self.tabs[i].is_start = false;
+                        // As the GUI open does: save stamps ORTHOMODE / OSMODE
+                        // back from the app state.
+                        self.adopt_header_sysvars(i);
                         self.tabs[i].scene.rebuild_derived_caches();
                         // The opened document settled (API v9): the post-op
                         // boundary announces `DocumentOpened` once for this load.
@@ -2689,6 +2692,36 @@ mod tests {
         let opened = app.automation_op(&format!(r#"{{"op":"open","path":"{p}"}}"#));
         assert_eq!(opened["ok"], true, "{}", opened["error"]);
         assert_eq!(opened["total"], 2);
+        drop(app);
+        let sidecar = path.with_file_name(format!(
+            ".{}.ocs.lock",
+            path.file_name().unwrap().to_string_lossy()
+        ));
+        let _ = std::fs::remove_file(sidecar);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn open_op_keeps_orthomode_through_save() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        app.tabs[i].scene.document.header.ortho_mode = true;
+        let path = std::env::temp_dir().join(format!("ocs_ortho_{}.dxf", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let p = path.to_string_lossy().replace('\\', "\\\\");
+        // Written straight from the document, not through save's stamping.
+        crate::io::save(&app.tabs[i].scene.document, &path).unwrap();
+
+        let mut app = OpenCADStudio::new_for_test();
+        let opened = app.automation_op(&format!(r#"{{"op":"open","path":"{p}"}}"#));
+        assert_eq!(opened["ok"], true, "{}", opened["error"]);
+        let saved = app.automation_op(&format!(r#"{{"op":"save","path":"{p}"}}"#));
+        assert_eq!(saved["ok"], true, "{}", saved["error"]);
+        let reopened = app.automation_op(&format!(r#"{{"op":"open","path":"{p}"}}"#));
+        assert_eq!(reopened["ok"], true, "{}", reopened["error"]);
+        let i = app.active_tab;
+        assert!(app.tabs[i].scene.document.header.ortho_mode);
         drop(app);
         let sidecar = path.with_file_name(format!(
             ".{}.ocs.lock",
