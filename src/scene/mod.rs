@@ -1306,6 +1306,11 @@ const DRAW_DEPTH_LABEL_MAX: i32 = 1_000_000_000;
 const DRAW_DEPTH_INITIAL_MIN: i32 = -800_000_000;
 const DRAW_DEPTH_INITIAL_MAX: i32 = 800_000_000;
 const DRAW_DEPTH_LABEL_SCALE: f32 = 1.0 / 1_073_741_824.0;
+// Label stride for a block that starts empty and grows by Add: wide enough for
+// the depth buffer to keep neighbours apart (about 80 steps of a 24-bit buffer
+// at the default draw-order scale), and narrow enough to leave room for
+// thousands of Adds before a full rebuild.
+const DRAW_DEPTH_EMPTY_BLOCK_STRIDE: i32 = 1 << 18;
 
 fn draw_depth_value(label: i32, half_label: i32) -> [f32; 2] {
     [
@@ -1342,10 +1347,18 @@ fn inserted_draw_depth_label(order: &[DrawDepthEntry], position: usize) -> Optio
         position.checked_sub(1).and_then(|index| order.get(index)),
         order.get(position),
     ) {
-        (None, None) => Some((0, 1)),
+        // A block that starts empty grows from the low end of the initial range
+        // by a fixed stride. A (0, 1) seed spaced a new drawing's entities two
+        // labels apart, too close for the depth buffer, so draw order, masks
+        // and wipeouts had no effect in it.
+        (None, None) => Some((DRAW_DEPTH_INITIAL_MIN, DRAW_DEPTH_EMPTY_BLOCK_STRIDE / 2)),
         (Some(left), None) => {
-            let stride = order
-                .get(position.saturating_sub(2))
+            // With a single entry there is no previous gap to repeat (index
+            // `position - 2` would be `left` itself, giving a zero stride), so
+            // fall back to the entry's reserved half gap.
+            let stride = position
+                .checked_sub(2)
+                .and_then(|index| order.get(index))
                 .map(|previous| left.label - previous.label)
                 .unwrap_or(left.half_label.saturating_mul(2))
                 .max(1);
@@ -15098,6 +15111,46 @@ mod journal_tests {
             "every add / modify / erase / restore edit must use the incremental \
              patch, not silently fall back to a full rebuild"
         );
+    }
+
+    /// Entities added one by one, to a drawing that started empty or held a
+    /// single entity, must get draw depths the depth buffer can tell apart, or
+    /// draw order, masks and wipeouts have no effect among them.
+    #[test]
+    fn added_entities_get_separable_draw_depths() {
+        use codec::entities::Line;
+        use codec::types::Vector3;
+
+        fn add(scene: &mut Scene, y: f64) -> Handle {
+            scene.add_entity(EntityType::Line(Line::from_points(
+                Vector3::new(0.0, y, 0.0),
+                Vector3::new(10.0, y, 0.0),
+            )))
+        }
+        // `apply_draw_order` moves geometry by up to 0.02 of clip w per unit
+        // of depth; a 24-bit depth buffer resolves about 6e-8.
+        let separable = |scene: &Scene, below: Handle, above: Handle| {
+            let depths = scene.draw_depth_map();
+            let gap = depths[&above.value()][0] - depths[&below.value()][0];
+            assert!(gap * 0.02 > 1.0e-6, "draw depths only {gap} apart");
+        };
+
+        // A new drawing is drawn while still empty, then grows by Add.
+        let mut empty = Scene::new();
+        let _ = empty.draw_depth_map();
+        let first = add(&mut empty, 0.0);
+        let _ = empty.draw_depth_map();
+        let second = add(&mut empty, 1.0);
+        separable(&empty, first, second);
+        let third = add(&mut empty, 2.0);
+        separable(&empty, second, third);
+
+        // A drawing loaded with one entity, then grown by Add.
+        let mut single = Scene::new();
+        let only = add(&mut single, 0.0);
+        let _ = single.draw_depth_map();
+        let next = add(&mut single, 1.0);
+        separable(&single, only, next);
     }
 
     #[test]
