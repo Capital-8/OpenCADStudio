@@ -291,21 +291,25 @@ impl OpenCADStudio {
     /// `i`'s document lacks (cross-drawing paste), so the block reference
     /// renders its geometry instead of nothing. No-op for same-document
     /// pastes. (#135)
-    pub(crate) fn merge_clipboard_blocks(&mut self, i: usize) {
-        if self.clipboard_deps.blocks.is_empty() {
-            return;
-        }
-        let blocks = self.clipboard_deps.blocks.clone();
+    /// Also merges the multileader styles, and returns the map the clipboard's
+    /// multileaders are remapped with ([`remap_mleader`]).
+    pub(crate) fn merge_clipboard_blocks(
+        &mut self,
+        i: usize,
+    ) -> std::collections::HashMap<Handle, Handle> {
+        let deps = &self.clipboard_deps;
         let document = &mut self.tabs[i].scene.document;
-        merge_app_ids(document, &self.clipboard_deps);
-        let apps = eed_app_map(document, &self.clipboard_deps);
-        let images = merge_image_definitions(document, &self.clipboard_deps);
+        merge_app_ids(document, deps);
+        let apps = eed_app_map(document, deps);
+        let images = merge_image_definitions(document, deps);
         // Single shared copy — see `merge_block_defs`. One batched geometry
         // rebuild instead of one per definition; same end state as the
         // per-definition bumps `Scene::define_block_raw` used to run.
-        if merge_block_defs(document, &blocks, &apps, &images) > 0 {
+        let (created, mleaders) = merge_blocks_and_mleader_styles(document, deps, &apps, &images);
+        if created > 0 {
             self.tabs[i].scene.bump_geometry();
         }
+        mleaders
     }
 
     /// Shared paste finalize for every paste path (PASTECLIP, PASTEORIG):
@@ -593,7 +597,7 @@ pub(crate) fn mleader_handles(m: &mut codec::entities::MultiLeader) -> Vec<&mut 
     handles
 }
 
-fn remap_mleader(entity: &mut codec::EntityType, map: &std::collections::HashMap<Handle, Handle>) {
+pub(crate) fn remap_mleader(entity: &mut codec::EntityType, map: &std::collections::HashMap<Handle, Handle>) {
     if let codec::EntityType::MultiLeader(m) = entity {
         for h in mleader_handles(m) {
             *h = h
@@ -914,6 +918,35 @@ pub(crate) fn remap_eed_apps(entity: &mut codec::EntityType, apps: &rustc_hash::
     }
 }
 
+/// Merge the clipboard's block definitions and multileader styles, and point
+/// the multileaders inside newly added blocks at this drawing's records.
+/// Returns how many blocks were added and the map the pasted multileaders are
+/// remapped with ([`remap_mleader`]).
+fn merge_blocks_and_mleader_styles(
+    doc: &mut codec::CadDocument,
+    deps: &crate::app::ClipboardDeps,
+    apps: &rustc_hash::FxHashMap<u64, u64>,
+    images: &rustc_hash::FxHashMap<Handle, Handle>,
+) -> (usize, std::collections::HashMap<Handle, Handle>) {
+    let new_blocks: Vec<_> = deps
+        .blocks
+        .iter()
+        .filter(|d| !doc.block_records.contains(&d.name))
+        .collect();
+    let created = merge_block_defs(doc, &deps.blocks, apps, images);
+    let records = merge_mleader_styles(doc, deps);
+    for def in new_blocks {
+        if let Some(record) = doc.block_records.get(&def.name).map(|r| r.handle) {
+            for member in crate::scene::block_authoring::members(doc, record) {
+                if let Some(entity) = doc.get_entity_mut(member) {
+                    remap_mleader(entity, &records);
+                }
+            }
+        }
+    }
+    (created, records)
+}
+
 /// Recreate block definitions the pasted INSERTs reference but the target
 /// document lacks. Shared by `merge_clipboard_blocks` and
 /// `paste_entities_kernel`. Returns how many definitions were created, so
@@ -1020,23 +1053,8 @@ pub(crate) fn paste_entities_kernel(
     // Shared block-definition merge (also used by `merge_clipboard_blocks`).
     let apps = eed_app_map(doc, deps);
     let image_definitions = merge_image_definitions(doc, deps);
-    let new_blocks: Vec<_> = deps
-        .blocks
-        .iter()
-        .filter(|d| !doc.block_records.contains(&d.name))
-        .collect();
-    merge_block_defs(doc, &deps.blocks, &apps, &image_definitions);
+    let (_, records) = merge_blocks_and_mleader_styles(doc, deps, &apps, &image_definitions);
     repoint_added_dim_style_blocks(doc, deps, &added_dim_styles);
-    let records = merge_mleader_styles(doc, deps);
-    for def in new_blocks {
-        if let Some(record) = doc.block_records.get(&def.name).map(|r| r.handle) {
-            for member in crate::scene::block_authoring::members(doc, record) {
-                if let Some(entity) = doc.get_entity_mut(member) {
-                    remap_mleader(entity, &records);
-                }
-            }
-        }
-    }
 
     let by_index: Vec<Handle> = entities
         .iter()
