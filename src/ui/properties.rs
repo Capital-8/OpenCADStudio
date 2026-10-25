@@ -1979,6 +1979,7 @@ fn render_group_row(
         .width(Length::FillPortion(5))
         .height(Length::Fixed(ROW_H))
         .align_y(iced::Center);
+    let label_col = full_label_tooltip(label_col, base, 16);
 
     // The field copies the value, so the locally-built `joined` is fine here.
     let value_field = crate::ui::read_only::field(&joined, FONT_SZ, Length::Fill);
@@ -2193,6 +2194,35 @@ fn render_params_visibility_toggle_row<'a>(value: bool) -> Element<'a, Message> 
     .into()
 }
 
+/// Wrap a row's name column so hovering it shows the whole name when the
+/// column only fits the first `max` characters of `label`.
+fn full_label_tooltip<'a>(
+    label_col: impl Into<Element<'a, Message>>,
+    label: &'a str,
+    max: usize,
+) -> Element<'a, Message> {
+    if label.chars().count() <= max {
+        return label_col.into();
+    }
+    tooltip(label_col, text(label).size(FONT_SZ), tooltip::Position::Top)
+        .gap(4.0)
+        .padding(6.0)
+        .style(|theme: &Theme| {
+            let palette = theme.palette();
+            container::Style {
+                background: Some(Background::Color(palette.background.base.color)),
+                text_color: Some(palette.background.base.text),
+                border: Border {
+                    color: palette.background.neutral.color,
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            }
+        })
+        .into()
+}
+
 /// Build a label | widget property row.
 fn prop_row_widget<'a>(label: &'a str, widget: Element<'a, Message>) -> Element<'a, Message> {
     prop_row_with_active(label, widget, false)
@@ -2228,6 +2258,7 @@ fn prop_row_with_active<'a>(
         left: 6.0,
         right: 6.0,
     });
+    let label_col = full_label_tooltip(label_col, label, 18);
     let value_col = container(widget)
         .style(move |theme: &Theme| container::Style {
             background: Some(Background::Color(if active {
