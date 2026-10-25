@@ -1206,6 +1206,15 @@ fn apply_geom_prop(ml: &mut MultiLeader, field: &str, value: &str) {
                 !ml.context.background_fill_enabled
             } else {
                 value == "true"
+            };
+            // Properties offers only this switch, no fill colour, so a mask
+            // switched on there uses the drawing background like AutoCAD.
+            // Without a colour of its own the fill would inherit the text
+            // colour and hide the text (#2131).
+            if ml.context.background_fill_enabled
+                && ml.context.background_fill_color.rgb().is_none()
+            {
+                ml.context.background_mask_fill_on = true;
             }
         }
         "background_mask_fill_on" => {
@@ -2703,6 +2712,44 @@ mod tests {
             !text_wire.fill_tris.is_empty(),
             "Arabic text must emit shaped vector fill triangles"
         );
+    }
+
+    #[test]
+    fn test_background_mask_switch_masks_with_background() {
+        // Switching "Background mask" on in Properties must mask with the
+        // drawing background, not fill with the inherited text colour and
+        // hide the text (#2131).
+        let doc = CadDocument::default();
+        let mut ml = MultiLeader::default();
+        ml.content_type = LeaderContentType::MText;
+        ml.context.text_string = "123".to_string();
+        ml.context.text_height = 10.0;
+        ml.path_type = MultiLeaderPathType::StraightLineSegments;
+        apply_geom_prop(&mut ml, "background_fill_enabled", "toggle");
+        assert!(ml.context.background_fill_enabled);
+        assert!(ml.context.background_mask_fill_on);
+
+        let text_color = [1.0, 1.0, 1.0, 1.0];
+        let bg_color = [0.1, 0.2, 0.3, 1.0];
+        let wires = ml.tessellate(
+            &doc,
+            codec::Handle::default(),
+            false,
+            text_color,
+            1.0,
+            1.0,
+            None,
+            None,
+            None,
+            None,
+            None,
+            bg_color,
+        );
+        let mask = wires
+            .iter()
+            .find(|w| w.fill_tris.len() == 6 && w.points.is_empty() && w.text_verts.is_empty())
+            .expect("Should produce a background mask quad");
+        assert_eq!(mask.color, bg_color);
     }
 
     /// Vertical extent of everything a tessellated MLEADER draws.
