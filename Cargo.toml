@@ -37,10 +37,10 @@ rfd = "0.17"
 clap = { version = "4", features = ["derive", "string"] }
 env_logger = "0.11"
 log = "0.4"
-codec = { package = "opencaddocument", git = "https://github.com/HakanSeven12/opencaddocument.git", rev = "afc04ee", features = ["serde"] }
-kernel = { package = "opencadkernel", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "8df8743", features = ["acis", "offset"] }
-kernel-constraints = { package = "opencadkernel-constraints", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "8df8743" }
-graph = { package = "opencadgraph", git = "https://github.com/HakanSeven12/opencadgraph.git", rev = "7c6ca90" }
+codec = { package = "opencaddocument", git = "https://github.com/HakanSeven12/opencaddocument.git", rev = "4b7ab99", features = ["serde"] }
+kernel = { package = "opencadkernel", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "d821c35", features = ["acis", "offset"] }
+kernel-constraints = { package = "opencadkernel-constraints", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "d821c35" }
+graph = { package = "opencadgraph", git = "https://github.com/HakanSeven12/opencadgraph.git", rev = "edd9fb8" }
 dwg-thumbnailer = { path = "crates/dwg-thumbnailer" }
 # Shared SAVE serialization dispatch + web-worker wire format: one
 # implementation for the inline (fallback/native) path and the worker path.
