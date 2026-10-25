@@ -112,6 +112,7 @@ donation =
     .decline = नहीं, धन्यवाद
 
 modal =
+    .saving-as-target-cannot-keep = "__ocs_arg_target__" के रूप में सहेजने पर निम्नलिखित सुरक्षित नहीं रह सकते, इसलिए वे खो जाएँगे:
     .about = परिचय
     .keyboard-shortcuts = कीबोर्ड शॉर्टकट
     .command-aliases = कमांड उपनाम

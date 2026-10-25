@@ -112,6 +112,7 @@ donation =
     .decline = Όχι, ευχαριστώ
 
 modal =
+    .saving-as-target-cannot-keep = Η αποθήκευση ως "__ocs_arg_target__" δεν μπορεί να διατηρήσει τα παρακάτω, οπότε θα χαθούν:
     .about = Σχετικά
     .keyboard-shortcuts = Συντομεύσεις πληκτρολογίου
     .command-aliases = Ψευδώνυμα εντολών

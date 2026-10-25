@@ -112,6 +112,7 @@ donation =
     .decline = 今はしない
 
 modal =
+    .saving-as-target-cannot-keep = "__ocs_arg_target__" として保存すると次の内容を保持できないため、失われます:
     .about = バージョン情報
     .keyboard-shortcuts = キーボードショートカット
     .command-aliases = コマンドエイリアス

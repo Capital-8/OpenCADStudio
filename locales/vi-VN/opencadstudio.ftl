@@ -112,6 +112,7 @@ donation =
     .decline = Không, cảm ơn
 
 modal =
+    .saving-as-target-cannot-keep = Lưu dưới dạng "__ocs_arg_target__" không thể giữ lại những nội dung sau, nên chúng sẽ bị mất:
     .about = Giới thiệu
     .keyboard-shortcuts = Phím tắt
     .command-aliases = Lệnh tắt

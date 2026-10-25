@@ -112,6 +112,7 @@ donation =
     .decline = Hayır, Teşekkürler
 
 modal =
+    .saving-as-target-cannot-keep = "__ocs_arg_target__" olarak kaydetme aşağıdakileri koruyamaz, bu yüzden kaybolacaklar:
     .about = Hakkında
     .keyboard-shortcuts = Klavye Kısayolları
     .command-aliases = Komut Kısaltmaları

@@ -1153,7 +1153,7 @@ impl OpenCADStudio {
             crate::io::prepare_document_for_save(self.tabs[i].scene.document_for_save(), version);
         let cmd = cmd.to_string();
         Task::perform(
-            async move { crate::io::serialize_prepared_document(&prepared, &ext).await },
+            async move { crate::io::serialize_prepared_document(&prepared, &ext, false).await },
             move |result| Message::WebArchiveSerialized {
                 cmd,
                 zip_name,

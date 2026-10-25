@@ -89,6 +89,7 @@ impl OpenCADStudio {
             Some(K::DimStyle) => crate::tr!("modal", "dimension-style-manager"),
             Some(K::AssocPrompt) => crate::tr!("modal", "default-application"),
             Some(K::AecDropWarning) => crate::tr!("modal", "save-warning"),
+            Some(K::ConversionLoss) => crate::tr!("modal", "save-warning"),
             #[cfg(not(target_arch = "wasm32"))]
             Some(K::FileInUse) => crate::tr!("modal", "unable-save"),
             #[cfg(not(target_arch = "wasm32"))]
@@ -1686,6 +1687,16 @@ impl OpenCADStudio {
                     )
                 })
             }
+            super::super::ModalKind::ConversionLoss => {
+                let target = self
+                    .pending_conversion_save
+                    .as_ref()
+                    .map(super::super::PendingConversionSave::format_name)
+                    .unwrap_or_default();
+                automatic_flow(ex, |flow| {
+                    conversion_loss_dialog_window(&self.conversion_losses, &target, flow)
+                })
+            }
             #[cfg(not(target_arch = "wasm32"))]
             super::super::ModalKind::FileInUse => {
                 let (path, error) = self
@@ -2037,10 +2048,8 @@ fn save_as_dialog_window<'a>(
     format: &'a str,
     sizing: crate::ui::modal::ModalSizing,
 ) -> Element<'a, Message> {
-    let sel_fmt = crate::io::SAVE_FORMAT_OPTIONS
-        .iter()
-        .copied()
-        .find(|&s| s == format);
+    let options = crate::io::save_format_options();
+    let sel_fmt = options.iter().find(|s| *s == format).cloned();
     let label = |s: Cow<'static, str>| text(s).size(11).style(dialog_muted_text_style);
     let field_width = if matches!(sizing.width, iced::Length::Fill) {
         Fill
@@ -2078,9 +2087,8 @@ fn save_as_dialog_window<'a>(
     items.push(
         row![
             label(t!("Format:")).width(70),
-            iced::widget::pick_list(sel_fmt, crate::io::SAVE_FORMAT_OPTIONS, |value| value
-                .to_string(),)
-            .on_select(|s: &str| Message::SaveDialogFormatChanged(s.to_string()))
+            iced::widget::pick_list(sel_fmt, options, |value| value.clone())
+                .on_select(Message::SaveDialogFormatChanged)
             .width(field_width),
         ]
         .align_y(iced::Alignment::Center)
@@ -2372,6 +2380,43 @@ fn external_change_dialog_window(
 /// (AEC / application) objects that survive only as verbatim source-version
 /// bytes, so saving to a different version or to DXF would drop them. Offers to
 /// save in the source version (keep them) or proceed (drop them).
+fn conversion_loss_dialog_window<'a>(
+    losses: &'a [String],
+    target: &str,
+    sizing: crate::ui::modal::ModalSizing,
+) -> Element<'a, Message> {
+    let body_text = t!(
+        "Saving as \"%{target}\" cannot keep the following, so it will be lost:",
+        target = target,
+    );
+    let mut lines = column![text(body_text).size(13)].spacing(4);
+    for loss in losses {
+        lines = lines.push(text(format!("• {loss}")).size(12));
+    }
+
+    container(
+        column![
+            lines,
+            iced::widget::Space::new().height(20),
+            row![
+                dialog_button(
+                    t!("Save anyway"),
+                    Message::ConversionLossProceed,
+                    button::warning
+                ),
+                iced::widget::Space::new().width(8),
+                dialog_button(t!("Back"), Message::ConversionLossBack, button::secondary),
+            ],
+        ]
+        .spacing(0),
+    )
+    .style(dialog_body_style)
+    .center_x(sizing.width)
+    .center_y(sizing.height)
+    .padding([24, 28])
+    .into()
+}
+
 fn aec_drop_dialog_window(
     count: usize,
     target: &str,

@@ -11222,6 +11222,13 @@ impl OpenCADStudio {
                 self.active_modal = Some(crate::app::ModalKind::SaveDialog);
                 Task::none()
             }
+            Message::ConversionLossProceed => self.on_conversion_loss_proceed(),
+            Message::ConversionLossBack => {
+                self.active_modal = None;
+                self.pending_conversion_save = None;
+                self.conversion_losses.clear();
+                Task::none()
+            }
 
             Message::AutoSave => self.on_autosave(),
 

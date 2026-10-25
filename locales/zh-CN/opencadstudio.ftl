@@ -112,6 +112,7 @@ donation =
     .decline = 不，谢谢
 
 modal =
+    .saving-as-target-cannot-keep = 另存为 "__ocs_arg_target__" 无法保留以下内容，因此它们将丢失：
     .about = 关于
     .keyboard-shortcuts = 键盘快捷键
     .command-aliases = 命令别名

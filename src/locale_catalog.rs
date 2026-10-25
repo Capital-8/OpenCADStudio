@@ -386,6 +386,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "TCOUNT  starting number <{start}>:" => Some(("command", "tcount-starting-number-start")),
         "TCOUNT: numbered {n} text object(s) from {start} by {increment} ({placement_name})." => Some(("annotate", "tcount-numbered-n-text-object-s-from-start-by")),
         "TCOUNT: placement must be Overwrite, Prefix, or Suffix." => Some(("annotate", "tcount-placement-must-be-overwrite-prefix-or-s")),
+        "Saving as \"%{target}\" cannot keep the following, so it will be lost:" => Some(("modal", "saving-as-target-cannot-keep")),
         "\"%{file_name}\" could not be saved." => Some(("modal", "file-name-could-not-be-saved")),
         "\"%{file_name}\" was changed by another application." => Some(("modal", "file-name-was-changed-by-another-application")),
         "\"{}\" name already in use" => Some(("common", "name-already-in-use")),

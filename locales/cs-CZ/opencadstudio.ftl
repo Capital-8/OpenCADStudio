@@ -112,6 +112,7 @@ donation =
     .decline = Ne, děkuji
 
 modal =
+    .saving-as-target-cannot-keep = Uložení jako "__ocs_arg_target__" nemůže zachovat následující, takže to bude ztraceno:
     .about = O aplikaci
     .keyboard-shortcuts = Klávesové zkratky
     .command-aliases = Aliasy příkazů

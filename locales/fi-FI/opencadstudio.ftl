@@ -112,6 +112,7 @@ donation =
     .decline = Ei kiitos
 
 modal =
+    .saving-as-target-cannot-keep = Tallennus muodossa "__ocs_arg_target__" ei voi säilyttää seuraavia, joten ne menetetään:
     .about = Tietoja
     .keyboard-shortcuts = Pikanäppäimet
     .command-aliases = Komentojen aliakset

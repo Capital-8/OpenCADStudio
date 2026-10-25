@@ -39,7 +39,14 @@ impl OpenCADStudio {
         // document) — so Save-As round-trips the format instead of silently
         // re-targeting it. A new/unsaved drawing has no source format, so it
         // uses the application-wide default chosen in Options (#529).
-        self.save_dialog_format = if let Some(path) = &self.tabs[tab_idx].current_path {
+        let converter = self.tabs[tab_idx]
+            .current_path
+            .as_ref()
+            .and_then(|path| path.extension())
+            .and_then(|ext| ocs_save::external_format(&ext.to_string_lossy()));
+        self.save_dialog_format = if let Some(converter) = converter {
+            converter.name().to_string()
+        } else if let Some(path) = &self.tabs[tab_idx].current_path {
             let document = &self.tabs[tab_idx].scene.document;
             let is_dxf = crate::io::source_is_dxf(Some(path), document);
             let version = if is_dxf {

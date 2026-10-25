@@ -1265,6 +1265,12 @@ pub(super) struct OpenCADStudio {
     aec_drop_acknowledged: bool,
     /// Number of unsupported objects shown in the AEC-drop warning modal.
     aec_drop_count: usize,
+    /// What a converter would lose, shown in the conversion-loss modal.
+    conversion_losses: Vec<String>,
+    /// The save held back while that modal asks.
+    pending_conversion_save: Option<PendingConversionSave>,
+    /// Set by "Save anyway" for the save it releases; that save takes it.
+    conversion_loss_allowed: bool,
     /// Layers awaiting a "delete non-empty layer(s)" confirmation: `(names,
     /// total object count)`. Set when the user deletes one or more layers that
     /// still have objects; the warning modal reads it, and confirming erases
@@ -1899,6 +1905,41 @@ pub(super) struct PendingNativeThumbnailSave {
     continuation: SaveContinuation,
     set_current_path: bool,
     check_external_change: bool,
+    /// The user already chose "Save anyway" for this save's conversion loss.
+    allow_conversion_loss: bool,
+}
+
+/// A save waiting on the conversion-loss modal; "Save anyway" replays it.
+#[derive(Debug, Clone)]
+pub(super) enum PendingConversionSave {
+    #[cfg(not(target_arch = "wasm32"))]
+    Native(PendingNativeThumbnailSave),
+    #[cfg(target_arch = "wasm32")]
+    Web {
+        tab_id: u64,
+        filename: String,
+        ext: String,
+        version: codec::DxfVersion,
+    },
+}
+
+impl PendingConversionSave {
+    /// The name of the converter the held-back save writes with.
+    pub(super) fn format_name(&self) -> String {
+        let ext = match self {
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Native(save) => save
+                .path
+                .extension()
+                .map(|ext| ext.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            #[cfg(target_arch = "wasm32")]
+            Self::Web { ext, .. } => ext.clone(),
+        };
+        ocs_save::external_format(&ext)
+            .map(|format| format.name().to_string())
+            .unwrap_or(ext)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -2680,6 +2721,8 @@ pub enum ModalKind {
     /// OVERKILL settings for the selected objects.
     Overkill,
     AecDropWarning,
+    /// A converter would drop part of the drawing on save.
+    ConversionLoss,
     #[cfg(not(target_arch = "wasm32"))]
     FileInUse,
     #[cfg(not(target_arch = "wasm32"))]
@@ -3356,6 +3399,10 @@ pub enum Message {
     AecDropProceed,
     /// Go back to the Save dialog from the AEC-drop warning.
     AecDropBack,
+    /// Save with the converter anyway, accepting the listed losses.
+    ConversionLossProceed,
+    /// Drop the held-back save from the conversion-loss warning.
+    ConversionLossBack,
     /// Periodic autosave tick — write `.sv$` recovery files for dirty tabs.
     AutoSave,
     /// A clean viewport frame is ready for thumbnail capture.
@@ -5434,6 +5481,9 @@ impl OpenCADStudio {
             overkill_dialog: None,
             aec_drop_acknowledged: false,
             aec_drop_count: 0,
+            conversion_losses: Vec::new(),
+            pending_conversion_save: None,
+            conversion_loss_allowed: false,
             layer_delete_pending: None,
             modal_offset: iced::Vector::ZERO,
             modal_drag_last: None,

@@ -112,6 +112,7 @@ donation =
     .decline = Nein, danke
 
 modal =
+    .saving-as-target-cannot-keep = Beim Speichern als "__ocs_arg_target__" kann Folgendes nicht erhalten bleiben und geht verloren:
     .about = Über
     .keyboard-shortcuts = Tastenkombinationen
     .command-aliases = Befehlsaliase

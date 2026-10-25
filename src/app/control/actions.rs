@@ -94,6 +94,8 @@ pub(crate) fn property_json(p: &crate::scene::model::object::Property) -> Value 
 }
 pub(super) const NAMES: &[&str] = &[
     "close_modal",
+    "conversion_loss_save_anyway",
+    "conversion_loss_back",
     // Native-only: the "changed outside" dialog does not exist in the web
     // build, so neither does its action set.
     #[cfg(not(target_arch = "wasm32"))]
@@ -1325,6 +1327,10 @@ impl OpenCADStudio {
         let name = string(req, "name")?;
         let msg = match name {
             "close_modal" => Message::CloseModal,
+            // The conversion-loss warning's choices: save with the losses it
+            // lists, or drop the held-back save.
+            "conversion_loss_save_anyway" => Message::ConversionLossProceed,
+            "conversion_loss_back" => Message::ConversionLossBack,
             // Show a layout (or "Model"), as clicking its tab does.
             "layout_switch" => Message::LayoutSwitch(string(req, "value")?.into()),
             // The "changed outside" modal's suggested actions (D6): reload

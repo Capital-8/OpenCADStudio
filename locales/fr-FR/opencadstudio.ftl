@@ -112,6 +112,7 @@ donation =
     .decline = Non merci
 
 modal =
+    .saving-as-target-cannot-keep = L’enregistrement au format "__ocs_arg_target__" ne peut pas conserver les éléments suivants, qui seront perdus :
     .about = À propos
     .keyboard-shortcuts = Raccourcis clavier
     .command-aliases = Alias de commandes

@@ -36,7 +36,7 @@ pub fn serialize_document(doc: &Document, ext: &str) -> Result<Vec<u8>, String> 
         return DxfWriter::new(doc).write_to_vec().map_err(|e| e.to_string());
     }
     if let Some(format) = external_format(&ext) {
-        return write_external(doc, format);
+        return write_external(doc, format, false);
     }
     let mut buf = std::io::Cursor::new(Vec::new());
     DwgWriter::write_to_writer(&mut buf, doc).map_err(|e| e.to_string())?;
@@ -62,15 +62,27 @@ pub fn external_format(ext: &str) -> Option<&'static (dyn Format + Sync)> {
         .find(|format| format.extensions().iter().any(|e| e.eq_ignore_ascii_case(ext)))
 }
 
-/// Write `doc` with a converter. A loss refuses the save, so a drawing never
-/// drops content silently; the error names what could not be carried over.
-pub fn write_external(doc: &Document, format: &dyn Format) -> Result<Vec<u8>, String> {
+/// Write `doc` with a converter. Unless the user allowed it beforehand (see
+/// [`external_losses`]), a loss refuses the save, so a drawing never drops
+/// content silently; the error names what could not be carried over.
+pub fn write_external(
+    doc: &Document,
+    format: &dyn Format,
+    allow_loss: bool,
+) -> Result<Vec<u8>, String> {
     let (bytes, losses) = format.write(doc).map_err(|e| format!("{}: {e}", format.name()))?;
-    if losses.is_empty() {
+    if losses.is_empty() || allow_loss {
         return Ok(bytes);
     }
     let lost: Vec<&str> = losses.iter().map(|loss| loss.message.as_str()).collect();
     Err(format!("{} cannot carry over: {}", format.name(), lost.join("; ")))
+}
+
+/// What writing `doc` with `format` would lose, so the user can be asked
+/// before the save.
+pub fn external_losses(doc: &Document, format: &dyn Format) -> Result<Vec<String>, String> {
+    let (_, losses) = format.write(doc).map_err(|e| format!("{}: {e}", format.name()))?;
+    Ok(losses.into_iter().map(|loss| loss.message).collect())
 }
 
 /// Diagnostic code for something a converter could not carry over on read.

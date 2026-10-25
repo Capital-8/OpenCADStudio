@@ -112,6 +112,7 @@ donation =
     .decline = Nem, köszönöm
 
 modal =
+    .saving-as-target-cannot-keep = A(z) "__ocs_arg_target__" formátumba mentés nem tudja megőrizni a következőket, ezért elvesznek:
     .missing-fonts-downloading = Letöltés...
     .missing-fonts-download-available = Elérhetők letöltése
     .missing-fonts-skip = Kihagyás

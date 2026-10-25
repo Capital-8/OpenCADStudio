@@ -112,6 +112,7 @@ donation =
     .decline = ບໍ່, ຂອບໃຈ
 
 modal =
+    .saving-as-target-cannot-keep = ການບັນທຶກເປັນ "__ocs_arg_target__" ບໍ່ສາມາດເກັບຮັກສາສິ່ງຕໍ່ໄປນີ້ໄດ້, ດັ່ງນັ້ນມັນຈະສູນເສຍ:
     .about = ກ່ຽວກັບ
     .keyboard-shortcuts = ປຸ່ມລັດແປ້ນພິມ
     .command-aliases = ຊື່ຫຍໍ້ຄຳສັ່ງ

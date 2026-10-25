@@ -1644,6 +1644,17 @@ pub const SAVE_FORMAT_OPTIONS: &[&str] = &[
     "DXF 2013", "DXF 2010", "DXF 2007", "DXF 2004", "DXF 2000", "DXF R14", "DWT 2018",
 ];
 
+/// The Save As format list: the DWG/DXF targets, then each listed converter.
+pub fn save_format_options() -> Vec<String> {
+    let converters = ocs_save::external_formats().iter().map(|format| format.name());
+    SAVE_FORMAT_OPTIONS
+        .iter()
+        .copied()
+        .chain(converters)
+        .map(str::to_string)
+        .collect()
+}
+
 pub fn canonical_save_format(format: &str) -> &'static str {
     SAVE_FORMAT_OPTIONS
         .iter()
@@ -1668,6 +1679,14 @@ pub fn source_is_dxf(path: Option<&Path>, document: &Document) -> bool {
 /// Parse a format string like "DWG 2013" or "DXF 2007" into
 /// `(extension, DxfVersion)`.  Falls back to ("dwg", AC1032) for unknown strings.
 pub fn parse_save_format(format: &str) -> (&'static str, codec::DxfVersion) {
+    // A converter writes its own format; the DXF version does not apply.
+    if let Some(converter) = ocs_save::external_formats()
+        .iter()
+        .find(|converter| converter.name().eq_ignore_ascii_case(format))
+    {
+        let ext = converter.extensions().first().copied().unwrap_or("dwg");
+        return (ext, codec::DxfVersion::AC1032);
+    }
     use codec::DxfVersion;
     let f = format.to_ascii_uppercase();
     let is_dxf = f.starts_with("DXF");
@@ -1952,6 +1971,7 @@ mod save_failure_tests {
             false,
             Some(expected),
             None,
+            false,
         )
         .unwrap_err();
 
@@ -1986,6 +2006,7 @@ mod save_failure_tests {
             false,
             Some(expected),
             Some(reader),
+            false,
         )
         .unwrap_err();
 
@@ -2180,7 +2201,7 @@ pub fn save_as_version(
     let clone_started = iced::time::Instant::now();
     let snapshot = doc.clone();
     let clone_ms = clone_started.elapsed().as_secs_f64() * 1000.0;
-    save_owned_as_version_inner(snapshot, path, version, false, clone_ms, |_| Ok(()))
+    save_owned_as_version_inner(snapshot, path, version, false, false, clone_ms, |_| Ok(()))
         .map_err(|error| error.to_string())
 }
 
@@ -2196,8 +2217,9 @@ pub fn save_owned_as_version_atomic(
     backup: bool,
     expected_fingerprint: Option<edit_lock::FileFingerprint>,
     verify_reader: Option<std::fs::File>,
+    allow_loss: bool,
 ) -> Result<(), SaveFailure> {
-    save_owned_as_version_inner(doc, path, version, backup, 0.0, move |path| {
+    save_owned_as_version_inner(doc, path, version, backup, allow_loss, 0.0, move |path| {
         let Some(expected) = expected_fingerprint else {
             return Ok(());
         };
@@ -2220,6 +2242,7 @@ fn save_owned_as_version_inner<F>(
     path: &Path,
     version: codec::DxfVersion,
     backup: bool,
+    allow_loss: bool,
     clone_ms: f64,
     before_replace: F,
 ) -> Result<(), SaveFailure>
@@ -2250,7 +2273,7 @@ where
             .write_to_file(&temp_path)
             .map_err(|e| SaveFailure::other(e.to_string())),
         other => match ocs_save::external_format(other) {
-            Some(format) => ocs_save::write_external(&doc, format)
+            Some(format) => ocs_save::write_external(&doc, format, allow_loss)
                 .and_then(|bytes| std::fs::write(&temp_path, bytes).map_err(|e| e.to_string()))
                 .map_err(SaveFailure::other),
             None => DwgWriter::write_to_file(&temp_path, &doc)
@@ -2456,7 +2479,13 @@ pub fn prepare_document_for_save(mut doc: Document, version: codec::DxfVersion) 
 pub async fn serialize_prepared_document(
     prepared: &Document,
     ext: &str,
+    allow_conversion_loss: bool,
 ) -> Result<Vec<u8>, String> {
+    // A converter writes inline: the worker only carries the DWG/DXF writers,
+    // and the user's "Save anyway" lives on this side.
+    if let Some(format) = ocs_save::external_format(ext) {
+        return ocs_save::write_external(prepared, format, allow_conversion_loss);
+    }
     let encoded = match ocs_save::encode_request(prepared, ext) {
         Ok(encoded) => encoded,
         // The worker cannot help if the document cannot even be encoded —

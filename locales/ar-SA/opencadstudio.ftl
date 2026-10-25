@@ -112,6 +112,7 @@ donation =
     .decline = لا، شكرًا
 
 modal =
+    .saving-as-target-cannot-keep = الحفظ بتنسيق "__ocs_arg_target__" لا يمكنه الاحتفاظ بما يلي، لذا سيُفقد:
     .about = حول
     .keyboard-shortcuts = اختصارات لوحة المفاتيح
     .command-aliases = الأسماء البديلة للأوامر

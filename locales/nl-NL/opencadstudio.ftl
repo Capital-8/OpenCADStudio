@@ -112,6 +112,7 @@ donation =
     .decline = Nee, bedankt
 
 modal =
+    .saving-as-target-cannot-keep = Opslaan als "__ocs_arg_target__" kan het volgende niet behouden, dus dat gaat verloren:
     .about = Over
     .keyboard-shortcuts = Sneltoetsen
     .command-aliases = Opdrachtaliassen

@@ -112,6 +112,7 @@ donation =
     .decline = 괜찮습니다
 
 modal =
+    .saving-as-target-cannot-keep = "__ocs_arg_target__"(으)로 저장하면 다음 내용을 유지할 수 없어 손실됩니다:
     .about = 정보
     .keyboard-shortcuts = 키보드 단축키
     .command-aliases = 명령 별칭
