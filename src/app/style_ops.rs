@@ -57,7 +57,7 @@ fn import_mleaderstyle_names_from_dictionary(doc: &mut codec::CadDocument) {
     }
 }
 
-fn sync_mleaderstyle_dictionary(doc: &mut codec::CadDocument) {
+pub(crate) fn sync_mleaderstyle_dictionary(doc: &mut codec::CadDocument) {
     let root_h = crate::scene::annotative::root_named_dict_handle(doc);
 
     let existing = match doc.objects.get(&root_h) {

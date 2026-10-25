@@ -2024,6 +2024,7 @@ pub struct ClipboardDeps {
     pub linetypes: Vec<codec::tables::LineType>,
     pub text_styles: Vec<codec::tables::TextStyle>,
     pub dim_styles: Vec<codec::tables::DimStyle>,
+    pub mleader_styles: Vec<codec::objects::MultiLeaderStyle>,
     /// The text and shape-file styles the captured linetypes' shape and text
     /// segments point to. Segments name their style by handle, and shape-file
     /// styles have no name, so a paste matches them by font file instead and
@@ -2147,6 +2148,47 @@ impl ClipboardDeps {
         // by handle: bring the records along (the arrow blocks come with the
         // captured blocks) and remember their names for the paste.
         let mut dim_style_refs = rustc_hash::FxHashMap::default();
+        let mut mleader_styles = Vec::new();
+        for entity in entities
+            .iter()
+            .chain(blocks.iter().flat_map(|d| d.entities.iter()))
+        {
+            let EntityType::MultiLeader(m) = entity else {
+                continue;
+            };
+            let mut m = m.clone();
+            if let Some(codec::objects::ObjectType::MultiLeaderStyle(style)) =
+                m.style_handle.and_then(|h| doc.objects.get(&h))
+            {
+                if !mleader_styles
+                    .iter()
+                    .any(|s: &codec::objects::MultiLeaderStyle| s.handle == style.handle)
+                {
+                    mleader_styles.push(style.clone());
+                }
+            }
+            for h in crate::app::command_driver::clipboard::mleader_handles(&mut m)
+                .into_iter()
+                .filter_map(|h| *h)
+                .chain(mleader_styles.iter().flat_map(|s| {
+                    [
+                        s.text_style_handle,
+                        s.line_type_handle,
+                        s.arrowhead_handle,
+                        s.block_content_handle,
+                    ]
+                    .into_iter()
+                    .flatten()
+                }))
+            {
+                // Blocks come through `capture_blocks`; the paste maps all by name.
+                if let Some(t) = doc.text_styles.iter().find(|t| t.handle == h) {
+                    tstyles.insert(t.name.clone());
+                } else if let Some(t) = doc.line_types.iter().find(|t| t.handle == h) {
+                    ltypes.insert(t.name.clone());
+                }
+            }
+        }
         for style in dstyles.iter().filter_map(|n| doc.dim_styles.get(n)) {
             let text = style.dimtxsty_handle;
             if let Some(t) = doc
@@ -2360,6 +2402,7 @@ impl ClipboardDeps {
             groups,
             app_ids,
             dim_style_refs,
+            mleader_styles,
         }
     }
 
@@ -2486,6 +2529,29 @@ impl ClipboardDeps {
         seen: &mut rustc_hash::FxHashSet<String>,
         queue: &mut Vec<String>,
     ) {
+        if let codec::EntityType::MultiLeader(m) = entity {
+            let mut m = m.clone();
+            let style = m.style_handle.and_then(|h| doc.objects.get(&h));
+            let handles = crate::app::command_driver::clipboard::mleader_handles(&mut m);
+            let style_handles = match style {
+                Some(codec::objects::ObjectType::MultiLeaderStyle(s)) => {
+                    [s.arrowhead_handle, s.block_content_handle]
+                }
+                _ => [None, None],
+            };
+            for h in handles
+                .into_iter()
+                .filter_map(|h| *h)
+                .chain(style_handles.into_iter().flatten())
+            {
+                if let Some(r) = doc.block_records.iter().find(|r| r.handle == h) {
+                    if seen.insert(r.name.clone()) {
+                        queue.push(r.name.clone());
+                    }
+                }
+            }
+            return;
+        }
         let style = match entity {
             codec::EntityType::Dimension(d) => &d.base().style_name,
             codec::EntityType::Leader(l) => &l.dimension_style,
