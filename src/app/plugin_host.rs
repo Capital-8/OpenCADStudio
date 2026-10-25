@@ -6975,7 +6975,7 @@ mod tests {
                 unreachable!()
             };
             assert_eq!(
-                dimension.measurement(),
+                dimension.stored_measurement(),
                 value,
                 "{subtype}: stored measurement is derived"
             );
@@ -8346,8 +8346,10 @@ mod tests {
             expect_reedited: "Polygonal Inside n3 at2.0,3.0 u12.0 v6.0",
             expect_edited_dwg: "",
             expect_reedited_dwg: "",
-            expect_edited_dxf: "",
-            expect_reedited_dxf: "",
+            // DXF writes a polygonal boundary closed (the first vertex
+            // again at the end), and reads it back that way.
+            expect_edited_dxf: "Polygonal Inside n4 at2.0,3.0 u10.0 v6.0",
+            expect_reedited_dxf: "Polygonal Inside n4 at2.0,3.0 u12.0 v6.0",
         });
     }
 
