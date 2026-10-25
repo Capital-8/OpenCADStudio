@@ -1422,7 +1422,9 @@ impl OpenCADStudio {
                 if ext == "scr" {
                     return self.dispatch_command(&format!("SCRIPT \"{}\"", path.display()));
                 }
-                if !matches!(ext.as_str(), "dwg" | "dxf" | "bak" | "sv$") {
+                if !matches!(ext.as_str(), "dwg" | "dxf" | "bak" | "sv$")
+                    && ocs_save::external_format(&ext).is_none()
+                {
                     self.command_line.push_error(
                         crate::tf!("Unsupported file type: {}", path.display()).as_ref(),
                     );

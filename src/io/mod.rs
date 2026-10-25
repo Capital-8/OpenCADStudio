@@ -196,7 +196,7 @@ impl From<&str> for OpenLoadError {
 /// the parser thread starts.
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn pick_open_path() -> Option<(PathBuf, u64)> {
-    let handle = crate::sys::file_dialog()
+    let mut dialog = crate::sys::file_dialog()
         .set_title(crate::t!("Open CAD file").as_ref())
         .add_filter(
             crate::t!("CAD Files").as_ref(),
@@ -213,7 +213,11 @@ pub async fn pick_open_path() -> Option<(PathBuf, u64)> {
         .add_filter(
             crate::t!("Backup / Autosave").as_ref(),
             &["bak", "sv$", "BAK"],
-        )
+        );
+    for format in ocs_save::external_formats() {
+        dialog = dialog.add_filter(format.name(), format.extensions());
+    }
+    let handle = dialog
         .add_filter(crate::t!("All Files").as_ref(), &["*"])
         .pick_file()
         .await?;
@@ -1243,9 +1247,16 @@ fn read_file_attempt(
     match effective.as_str() {
         "dwg" | "dwt" | "dws" => read_dwg_path(path, progress, failsafe),
         "dxf" => read_dxf_path(path, failsafe),
-        _ => Err(ReaderFailure::terminal(format!(
-            "Unsupported file format: .{ext}"
-        ))),
+        other => match ocs_save::external_format(other) {
+            Some(format) => std::fs::read(path)
+                .map_err(|e| ReaderFailure::terminal(e.to_string()))
+                .and_then(|bytes| {
+                    ocs_save::read_external(format, &bytes).map_err(ReaderFailure::terminal)
+                }),
+            None => Err(ReaderFailure::terminal(format!(
+                "Unsupported file format: .{ext}"
+            ))),
+        },
     }
 }
 
@@ -1850,7 +1861,9 @@ fn validate_save_extension(path: &Path) -> Result<(), SaveFailure> {
         .extension()
         .map(|value| value.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    if matches!(extension.as_str(), "dwg" | "dxf" | "dwt" | "sv$") {
+    if matches!(extension.as_str(), "dwg" | "dxf" | "dwt" | "sv$")
+        || ocs_save::external_format(&extension).is_some()
+    {
         return Ok(());
     }
 
@@ -2236,8 +2249,13 @@ where
         "dxf" => DxfWriter::new(&doc)
             .write_to_file(&temp_path)
             .map_err(|e| SaveFailure::other(e.to_string())),
-        _ => DwgWriter::write_to_file(&temp_path, &doc)
-            .map_err(|e| SaveFailure::other(e.to_string())),
+        other => match ocs_save::external_format(other) {
+            Some(format) => ocs_save::write_external(&doc, format)
+                .and_then(|bytes| std::fs::write(&temp_path, bytes).map_err(|e| e.to_string()))
+                .map_err(SaveFailure::other),
+            None => DwgWriter::write_to_file(&temp_path, &doc)
+                .map_err(|e| SaveFailure::other(e.to_string())),
+        },
     };
     if let Err(error) = result {
         let _ = std::fs::remove_file(&temp_path);

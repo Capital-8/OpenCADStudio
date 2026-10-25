@@ -2089,6 +2089,13 @@ impl OpenCADStudio {
             .unwrap_or(0);
         self.command_line
             .push_output(crate::tf!("Opened \"{name}\" — {entity_count} entities").as_ref());
+        // What a converter could not carry over is a warning: the drawing
+        // opened and is usable.
+        for diagnostic in caches.read_stats.iter().flat_map(|stats| &stats.diagnostics) {
+            if diagnostic.code == ocs_save::CONVERSION_LOSS {
+                self.command_line.push_warning(&diagnostic.message);
+            }
+        }
         // Reference problems are warnings, not errors: the host drawing
         // opened and is usable, and automation reads an error as a failed
         // open (#1971). The full list goes to `state.xrefs`.

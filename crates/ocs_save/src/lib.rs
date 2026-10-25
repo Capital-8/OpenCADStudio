@@ -13,7 +13,10 @@
 //! sidecar) are also shared with the existing `parse_document` action, which
 //! returns documents over the same boundary in the opposite direction.
 
-use codec::{Document, DwgWriter, DxfWriter};
+use codec::{
+    push_read_diagnostic, Document, DwgWriter, DxfWriter, Format, ReadDiagnostic, ReadOutcome,
+    ReadStage, ReadStats,
+};
 
 /// Worker protocol version. Bumped whenever a request/response payload shape
 /// changes; the `?v=` cache-buster on the worker URL must match. v5 adds the
@@ -22,21 +25,83 @@ use codec::{Document, DwgWriter, DxfWriter};
 pub const PROTOCOL_VERSION: u16 = 5;
 
 /// Serialize a document to an in-memory byte buffer, format chosen by `ext`
-/// (`dxf` → DXF, anything else → DWG). The document is expected to be fully
-/// prepared for saving (version stamped, current styles synced, dimension
-/// blocks baked) — see the app crate's `io::prepare_document_for_save`, which
-/// owns that app-side half of the pipeline.
+/// (`dxf` → DXF, a listed converter's extension → that converter, anything
+/// else → DWG). The document is expected to be fully prepared for saving
+/// (version stamped, current styles synced, dimension blocks baked) — see the
+/// app crate's `io::prepare_document_for_save`, which owns that app-side half
+/// of the pipeline.
 pub fn serialize_document(doc: &Document, ext: &str) -> Result<Vec<u8>, String> {
-    match ext.to_lowercase().as_str() {
-        "dxf" => DxfWriter::new(doc)
-            .write_to_vec()
-            .map_err(|e| e.to_string()),
-        _ => {
-            let mut buf = std::io::Cursor::new(Vec::new());
-            DwgWriter::write_to_writer(&mut buf, doc).map_err(|e| e.to_string())?;
-            Ok(buf.into_inner())
-        }
+    let ext = ext.to_lowercase();
+    if ext == "dxf" {
+        return DxfWriter::new(doc).write_to_vec().map_err(|e| e.to_string());
     }
+    if let Some(format) = external_format(&ext) {
+        return write_external(doc, format);
+    }
+    let mut buf = std::io::Cursor::new(Vec::new());
+    DwgWriter::write_to_writer(&mut buf, doc).map_err(|e| e.to_string())?;
+    Ok(buf.into_inner())
+}
+
+// ── Other formats ──────────────────────────────────────────────────────────
+
+/// Converters for formats other than DWG/DXF, which keep their own richer read
+/// and write paths. A converter crate implementing [`Format`] is listed here to
+/// become available to open, save and the file dialogs.
+const EXTERNAL_FORMATS: &[&(dyn Format + Sync)] = &[];
+
+pub fn external_formats() -> &'static [&'static (dyn Format + Sync)] {
+    EXTERNAL_FORMATS
+}
+
+/// The listed converter for files with extension `ext`, if any.
+pub fn external_format(ext: &str) -> Option<&'static (dyn Format + Sync)> {
+    EXTERNAL_FORMATS
+        .iter()
+        .copied()
+        .find(|format| format.extensions().iter().any(|e| e.eq_ignore_ascii_case(ext)))
+}
+
+/// Write `doc` with a converter. A loss refuses the save, so a drawing never
+/// drops content silently; the error names what could not be carried over.
+pub fn write_external(doc: &Document, format: &dyn Format) -> Result<Vec<u8>, String> {
+    let (bytes, losses) = format.write(doc).map_err(|e| format!("{}: {e}", format.name()))?;
+    if losses.is_empty() {
+        return Ok(bytes);
+    }
+    let lost: Vec<&str> = losses.iter().map(|loss| loss.message.as_str()).collect();
+    Err(format!("{} cannot carry over: {}", format.name(), lost.join("; ")))
+}
+
+/// Diagnostic code for something a converter could not carry over on read.
+pub const CONVERSION_LOSS: &str = "conversion-loss";
+
+/// Read `bytes` with a converter. What it could not carry over travels as
+/// read diagnostics, reported when the drawing opens; it is not damage, so the
+/// read does not count as recovered.
+pub fn read_external(format: &dyn Format, bytes: &[u8]) -> Result<ReadOutcome, String> {
+    let (document, losses) = format.read(bytes).map_err(|e| format!("{}: {e}", format.name()))?;
+    let output_entities = document.entities().count();
+    let output_objects = document.objects.len();
+    // The open path refuses a read that decoded no records; an empty
+    // drawing from a converter is still a complete read.
+    let records = (output_entities + output_objects).max(1);
+    let mut stats = ReadStats {
+        record_stream_read: true,
+        stream_completed: true,
+        source_records: records,
+        decoded_source_records: records,
+        output_entities,
+        output_objects,
+        ..Default::default()
+    };
+    for loss in losses {
+        let mut diagnostic =
+            ReadDiagnostic::new(CONVERSION_LOSS, ReadStage::RecordStream, loss.message);
+        diagnostic.record_handle = loss.handle.map(|handle| handle.value());
+        push_read_diagnostic(&mut stats.diagnostics, diagnostic);
+    }
+    Ok(ReadOutcome::new(document, stats))
 }
 
 // ── Runtime-field sidecar ──────────────────────────────────────────────────
