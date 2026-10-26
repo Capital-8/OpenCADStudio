@@ -357,7 +357,7 @@ impl OpenCADStudio {
         };
         let pending =
             if association_mode == 0 {
-                let layer = self.tabs[i].active_layer.clone();
+                let layer = self.new_dimension_layer(i);
                 if layer != "0" || entity.as_entity().layer().is_empty() {
                     entity.as_entity_mut().set_layer(layer);
                 }
@@ -479,7 +479,7 @@ impl OpenCADStudio {
         let pending = if association_mode == 0 {
             let mut pieces = Vec::new();
             for (mut entity, _) in dimensions {
-                let layer = self.tabs[i].active_layer.clone();
+                let layer = self.new_dimension_layer(i);
                 if layer != "0" || entity.as_entity().layer().is_empty() {
                     entity.as_entity_mut().set_layer(layer);
                 }

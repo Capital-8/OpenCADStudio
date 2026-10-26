@@ -7260,3 +7260,6 @@ layer-walk =
     .inspect-total = Livelli totali: { $count }
     .inspect-selected = Livelli selezionati: { $count }
     .inspect-objects = Oggetti nei livelli selezionati: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

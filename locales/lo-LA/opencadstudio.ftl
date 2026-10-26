@@ -7253,3 +7253,6 @@ layer-walk =
     .inspect-total = ຈຳນວນຊັ້ນທັງໝົດ: { $count }
     .inspect-selected = ຊັ້ນທີ່ເລືອກ: { $count }
     .inspect-objects = ວັດຖຸເທິງຊັ້ນທີ່ເລືອກ: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

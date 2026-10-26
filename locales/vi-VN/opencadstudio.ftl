@@ -7259,3 +7259,6 @@ layer-walk =
     .inspect-total = Tổng số lớp: { $count }
     .inspect-selected = Số lớp đã chọn: { $count }
     .inspect-objects = Đối tượng trên các lớp đã chọn: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

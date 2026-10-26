@@ -7240,3 +7240,6 @@ layer-walk =
     .inspect-total = 総レイヤー数: { $count }
     .inspect-selected = 選択したレイヤー数: { $count }
     .inspect-objects = 選択したレイヤー上のオブジェクト数: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

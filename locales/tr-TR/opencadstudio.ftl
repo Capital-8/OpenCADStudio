@@ -7182,3 +7182,6 @@ layer-walk =
     .inspect-total = Toplam katman: { $count }
     .inspect-selected = Seçili katman: { $count }
     .inspect-objects = Seçili katmanlardaki nesne: { $count }
+dim-layer =
+    .prompt = DIMLAYER için yeni değer girin veya geçerliyi kullanmak için . <"{ $current }">:
+    .use-current = geçerliyi kullan

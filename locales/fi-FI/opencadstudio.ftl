@@ -7258,3 +7258,6 @@ layer-walk =
     .inspect-total = Tasoja yhteensä: { $count }
     .inspect-selected = Valittuja tasoja: { $count }
     .inspect-objects = Kohteita valituilla tasoilla: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

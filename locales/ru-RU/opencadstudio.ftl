@@ -7265,3 +7265,6 @@ layer-walk =
     .inspect-total = Всего слоёв: { $count }
     .inspect-selected = Выделено слоёв: { $count }
     .inspect-objects = Объектов на выделенных слоях: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

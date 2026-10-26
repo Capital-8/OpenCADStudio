@@ -7249,3 +7249,6 @@ layer-walk =
     .inspect-total = कुल लेयर: { $count }
     .inspect-selected = चयनित लेयर: { $count }
     .inspect-objects = चयनित लेयरों पर वस्तुएँ: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

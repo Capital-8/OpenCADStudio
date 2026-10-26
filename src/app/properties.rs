@@ -3555,9 +3555,14 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
         if let Some(layer) = explicit_mleader_layer {
             entity.as_entity_mut().set_layer(layer);
         } else if !preserve_entity_layer {
-            let layer = &self.tabs[i].active_layer;
+            // DIMLAYER puts new dimensions on their own layer.
+            let layer = if matches!(entity, codec::EntityType::Dimension(_)) {
+                self.new_dimension_layer(i)
+            } else {
+                self.tabs[i].active_layer.clone()
+            };
             if layer != "0" || entity.as_entity().layer().is_empty() {
-                entity.as_entity_mut().set_layer(layer.clone());
+                entity.as_entity_mut().set_layer(layer);
             }
         }
 

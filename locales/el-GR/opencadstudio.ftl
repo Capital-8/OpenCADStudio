@@ -7261,3 +7261,6 @@ layer-walk =
     .inspect-total = Σύνολο επιπέδων: { $count }
     .inspect-selected = Επιλεγμένα επίπεδα: { $count }
     .inspect-objects = Αντικείμενα στα επιλεγμένα επίπεδα: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

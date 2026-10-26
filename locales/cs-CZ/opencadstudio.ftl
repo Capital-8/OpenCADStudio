@@ -7261,3 +7261,6 @@ layer-walk =
     .inspect-total = Vrstev celkem: { $count }
     .inspect-selected = Vybraných vrstev: { $count }
     .inspect-objects = Objektů ve vybraných vrstvách: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

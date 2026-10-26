@@ -7264,3 +7264,6 @@ layer-walk =
     .inspect-total = إجمالي الطبقات: { $count }
     .inspect-selected = الطبقات المحددة: { $count }
     .inspect-objects = الكائنات في الطبقات المحددة: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

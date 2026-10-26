@@ -7245,3 +7245,6 @@ layer-walk =
     .inspect-total = Rétegek összesen: { $count }
     .inspect-selected = Kijelölt rétegek: { $count }
     .inspect-objects = Objektumok a kijelölt rétegeken: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

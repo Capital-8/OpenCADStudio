@@ -7261,3 +7261,6 @@ layer-walk =
     .inspect-total = Calques au total : { $count }
     .inspect-selected = Calques sélectionnés : { $count }
     .inspect-objects = Objets sur les calques sélectionnés : { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

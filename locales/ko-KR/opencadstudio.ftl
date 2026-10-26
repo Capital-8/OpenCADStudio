@@ -7251,3 +7251,6 @@ layer-walk =
     .inspect-total = 총 레이어: { $count }
     .inspect-selected = 선택한 레이어: { $count }
     .inspect-objects = 선택한 레이어의 개체: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

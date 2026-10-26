@@ -7263,3 +7263,6 @@ layer-walk =
     .inspect-total = Wszystkich warstw: { $count }
     .inspect-selected = Zaznaczonych warstw: { $count }
     .inspect-objects = Obiektów na zaznaczonych warstwach: { $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

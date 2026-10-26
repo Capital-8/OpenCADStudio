@@ -7247,3 +7247,6 @@ layer-walk =
     .inspect-total = 圖層總數：{ $count }
     .inspect-selected = 已選圖層：{ $count }
     .inspect-objects = 所選圖層上的物件：{ $count }
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current
