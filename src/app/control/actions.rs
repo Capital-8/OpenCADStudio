@@ -117,9 +117,12 @@ pub(super) const NAMES: &[&str] = &[
     "tds_import_dialog",
     "tds_material_dialog",
     "tds_map_dialog",
+    "data_link_manager",
+    "data_extraction",
     "refedit_dialog",
     "pdf_password_dialog",
     "hyperlink_dialog",
+    "spell_dialog",
     "pdf_shx_settings",
     "pdf_layer_toggle",
     "pc_manager_toggle",
@@ -2206,6 +2209,57 @@ impl OpenCADStudio {
                     })
                 }
             }
+            // The Check Spelling window, one step per call:
+            // "scope=drawing|space|selection", "start", "replacement=<text>",
+            // "change", "change_all", "ignore", "ignore_all", "add", "undo",
+            // "language=<name>", "settings", "option=<n>,0|1" (0 dimension
+            // text … 7 punctuation) or "close".
+            "spell_dialog" => {
+                use crate::ui::window::spell_dialog::{SpellMsg as S, SpellScope, SpellSetting};
+                if self.active_modal != Some(crate::app::ModalKind::Spell) {
+                    return Err(failure("no_dialog", "The Check Spelling window is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let message = match key {
+                    "close" => S::Help,
+                    "scope" => S::Scope(match value {
+                        "space" => SpellScope::Space,
+                        "selection" => SpellScope::Selection,
+                        _ => SpellScope::Drawing,
+                    }),
+                    "start" => S::Start,
+                    "replacement" => S::Replacement(value.to_string()),
+                    "change" => S::Change,
+                    "change_all" => S::ChangeAll,
+                    "ignore" => S::Ignore,
+                    "ignore_all" => S::IgnoreAll,
+                    "add" => S::AddWord,
+                    "undo" => S::Undo,
+                    "language" => S::Language(value.to_string()),
+                    "settings" => S::ToggleSettings,
+                    "option" => {
+                        let (n, on) = value.split_once(',').unwrap_or((value, "1"));
+                        let setting = match n {
+                            "0" => SpellSetting::Dimensions,
+                            "1" => SpellSetting::Attributes,
+                            "2" => SpellSetting::Xrefs,
+                            "3" => SpellSetting::IgnoreCapitalized,
+                            "4" => SpellSetting::IgnoreMixed,
+                            "5" => SpellSetting::IgnoreUpper,
+                            "6" => SpellSetting::IgnoreNumbers,
+                            _ => SpellSetting::IgnorePunctuation,
+                        };
+                        S::Setting(setting, on != "0")
+                    }
+                    _ => return Err(failure("invalid_value", spec)),
+                };
+                if key == "close" {
+                    Message::CloseModal
+                } else {
+                    Message::Spell(message)
+                }
+            }
             // The Insert / Edit Hyperlink window, one field per call:
             // "address=<file, web address or file#location>", "text=<text>",
             // "target=file|view", "view=<name>", "relative=0|1", "dwf=0|1",
@@ -2529,6 +2583,133 @@ impl OpenCADStudio {
                     "cancel" => return Ok(Task::done(Message::CloseModal)),
                     _ => return Err(bad()),
                 })
+            }
+            // The Data Extraction wizard, one step per call: "next", "back",
+            // "finish", "settings=<file.dxex>", "begin=new|template|edit",
+            // "source=drawings|selection", "object=<name>:on|off",
+            // "property=<key>:on|off", "category=<name>:on|off",
+            // "combine|count|name=on|off", "table=on|off", "file=on|off",
+            // "path=<file>", "style=<table style>", "title=<text>",
+            // "headers=on|off".
+            "data_extraction" => {
+                use crate::ui::window::annotation_data::{
+                    DataExtractionField as F, ExtractionBegin, ExtractionSource,
+                };
+                if self.active_modal != Some(crate::app::ModalKind::DataExtraction) {
+                    return Err(failure("no_dialog", "The Data Extraction wizard is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                let on = |v: &str| match v {
+                    "on" | "1" | "true" => Ok(true),
+                    "off" | "0" | "false" => Ok(false),
+                    _ => Err(bad()),
+                };
+                let named = value.rsplit_once(':');
+                match key {
+                    "next" => Message::DataExtractionNext,
+                    "back" => Message::DataExtractionBack,
+                    "finish" => Message::DataExtractionFinish,
+                    "settings" => Message::DataExtractionField(F::SettingsPath(value.to_string())),
+                    "begin" => Message::DataExtractionField(F::Begin(match value {
+                        "new" => ExtractionBegin::New,
+                        "template" => ExtractionBegin::Template,
+                        "edit" => ExtractionBegin::Edit,
+                        _ => return Err(bad()),
+                    })),
+                    "source" => Message::DataExtractionField(F::Source(match value {
+                        "drawings" => ExtractionSource::DrawingsAndFolders,
+                        "selection" => ExtractionSource::CurrentSelection,
+                        _ => return Err(bad()),
+                    })),
+                    "object" => {
+                        let (name, state) = named.ok_or_else(bad)?;
+                        let index = self
+                            .data_extraction
+                            .objects
+                            .iter()
+                            .position(|item| item.name.eq_ignore_ascii_case(name))
+                            .ok_or_else(bad)?;
+                        Message::DataExtractionField(F::Object(index, on(state)?))
+                    }
+                    "property" => {
+                        let (name, state) = named.ok_or_else(bad)?;
+                        let index = self
+                            .data_extraction
+                            .properties
+                            .iter()
+                            .position(|item| item.key == name || item.name.eq_ignore_ascii_case(name))
+                            .ok_or_else(bad)?;
+                        Message::DataExtractionField(F::Property(index, on(state)?))
+                    }
+                    "category" => {
+                        let (name, state) = named.ok_or_else(bad)?;
+                        Message::DataExtractionField(F::Category(name.to_string(), on(state)?))
+                    }
+                    "combine" => Message::DataExtractionField(F::CombineIdentical(on(value)?)),
+                    "count" => Message::DataExtractionField(F::ShowCount(on(value)?)),
+                    "name" => Message::DataExtractionField(F::ShowName(on(value)?)),
+                    "table" => Message::DataExtractionField(F::OutputTable(on(value)?)),
+                    "file" => Message::DataExtractionField(F::OutputFile(on(value)?)),
+                    "path" => Message::DataExtractionField(F::OutputPath(value.to_string())),
+                    "style" => Message::DataExtractionField(F::TableStyle(value.to_string())),
+                    "title" => Message::DataExtractionField(F::TableTitle(value.to_string())),
+                    "headers" => Message::DataExtractionField(F::PropertyHeaders(on(value)?)),
+                    _ => return Err(bad()),
+                }
+            }
+            // The Data Link Manager, one step per call: "new", "name=<text>",
+            // "path=<file>" (as the file picker sets it), "sheet=<name>",
+            // "range=entire|named|cell", "cells=<A1:C4 or name>",
+            // "write=on|off", "insert_after=on|off", "save", "cancel_edit",
+            // "select=<link name>", "edit", "delete", "insert" or "close".
+            "data_link_manager" => {
+                use crate::ui::window::annotation_data::{DataLinkField as F, LinkRange};
+                if self.active_modal != Some(crate::app::ModalKind::DataLinkManager) {
+                    return Err(failure("no_dialog", "The Data Link Manager is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                let on = |v: &str| match v {
+                    "on" | "1" | "true" => Ok(true),
+                    "off" | "0" | "false" => Ok(false),
+                    _ => Err(bad()),
+                };
+                match key {
+                    "new" => Message::DataLinkNew,
+                    "name" => Message::DataLinkField(F::Name(value.to_string())),
+                    "path" => Message::DataLinkBrowseResult(Some(value.into())),
+                    "sheet" => Message::DataLinkField(F::Sheet(value.to_string())),
+                    "range" => Message::DataLinkField(F::RangeKind(match value {
+                        "entire" => LinkRange::EntireSheet,
+                        "named" => LinkRange::NamedRange,
+                        "cell" => LinkRange::CellRange,
+                        _ => return Err(bad()),
+                    })),
+                    "cells" => Message::DataLinkField(F::Range(value.to_string())),
+                    "write" => {
+                        self.data_link_manager.more_options = true;
+                        Message::DataLinkField(F::AllowWrite(on(value)?))
+                    }
+                    "insert_after" => Message::DataLinkField(F::InsertTable(on(value)?)),
+                    "save" => Message::DataLinkSave,
+                    "cancel_edit" => Message::DataLinkEditCancel,
+                    "select" => Message::DataLinkSelect(
+                        self.data_link_manager
+                            .links
+                            .iter()
+                            .find(|link| link.name.eq_ignore_ascii_case(value))
+                            .map(|link| link.handle)
+                            .ok_or_else(bad)?,
+                    ),
+                    "edit" => Message::DataLinkEdit,
+                    "delete" => Message::DataLinkDelete,
+                    "insert" => Message::DataLinkInsert,
+                    "close" => Message::DataLinkClose,
+                    _ => return Err(bad()),
+                }
             }
             // The missing texture map window of a 3D Studio import: "ok"
             // (or "close") dismisses the shown map; the next one follows.

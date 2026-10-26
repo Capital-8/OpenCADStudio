@@ -693,12 +693,21 @@ pub struct KeywordCommand {
     /// Keyword a bare Enter dispatches at the verb step (`<Default>` prompts,
     /// e.g. PLAN's `<Current>`). `None` = Enter cancels, as before.
     default: Option<&'static str>,
+    /// Short keys standing for a keyword (`2` → `WIREFRAME2D`), matched
+    /// before the keywords themselves.
+    aliases: &'static [(&'static str, &'static str)],
 }
 
 impl KeywordCommand {
     /// Set the verb a bare Enter dispatches (shown as `<Default>` in prompts).
     pub fn with_default(mut self, kw: &'static str) -> Self {
         self.default = Some(kw);
+        self
+    }
+
+    /// Accept short keys for keywords, as `(key, keyword)` pairs.
+    pub fn with_aliases(mut self, aliases: &'static [(&'static str, &'static str)]) -> Self {
+        self.aliases = aliases;
         self
     }
 
@@ -713,6 +722,7 @@ impl KeywordCommand {
             options,
             pending: None,
             default: None,
+            aliases: &[],
         }
     }
 }
@@ -787,6 +797,11 @@ impl CadCommand for KeywordCommand {
             None => {
                 // A leading underscore marks the English keyword, as in scripts.
                 let t = t.strip_prefix('_').unwrap_or(t);
+                let t = self
+                    .aliases
+                    .iter()
+                    .find(|(key, _)| key.eq_ignore_ascii_case(t))
+                    .map_or(t, |(_, keyword)| keyword);
                 let Some((_, keyword, value_prompt)) = match_cmd_option(&self.options, t) else {
                     // Unknown verb — keep prompting rather than dispatch garbage.
                     return Some(CmdResult::NeedPoint);
@@ -3362,6 +3377,13 @@ pub trait CadCommand: Send {
         None
     }
 
+    /// A drawing variable the command sets while it runs (MLEADER's laYer
+    /// option writes MLEADERLAYER): `(name, value)`, written to the drawing
+    /// as soon as it differs from what the drawing holds.
+    fn drawing_variable_update(&self) -> Option<(&'static str, String)> {
+        None
+    }
+
     /// Returns `true` when the active text prompt expects free-form prose
     /// that can legitimately contain whitespace (the body of a TEXT /
     /// MTEXT / DDEDIT entity, a table cell, an attribute default value).
@@ -3445,6 +3467,12 @@ pub trait CadCommand: Send {
     /// rest of each completed selection without a word.
     fn selection_entity_filter(&self) -> Option<fn(&EntityType) -> bool> {
         None
+    }
+
+    /// Whether the host says how many objects the entity filter dropped
+    /// (`N were filtered out.`) instead of dropping them silently.
+    fn selection_entity_filter_reports(&self) -> bool {
+        false
     }
 
     /// The command takes block references only (XCLIP): the host drops the

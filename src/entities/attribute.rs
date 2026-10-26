@@ -327,11 +327,19 @@ fn build_attr_layout(
                 AHA::Center | AHA::Middle => b.advance * 0.5,
                 AHA::Right | AHA::Aligned | AHA::Fit => b.advance,
             };
+            // As TEXT: the font's height and descender decide, Middle
+            // (72 = 4) centres on the strokes.
             let ay = match input.vertical_alignment {
+                _ if matches!(input.horizontal_alignment, AHA::Middle) => {
+                    (b.ink_min[1] + b.ink_max[1]) * 0.5
+                }
                 AVA::Baseline => 0.0,
-                AVA::Bottom => b.ink_min[1],
-                AVA::Middle => (b.ink_min[1] + b.ink_max[1]) * 0.5,
-                AVA::Top => b.ink_max[1],
+                AVA::Bottom => {
+                    -(input.height as f32)
+                        * crate::entities::text_support::descent_ratio(&resolved.font_name)
+                }
+                AVA::Middle => input.height as f32 * 0.5,
+                AVA::Top => input.height as f32,
             };
             (ax, ay)
         } else {
@@ -563,10 +571,18 @@ fn justify_offset(a: &AttributeDefinition) -> Option<(f64, f64)> {
         AHA::Right | AHA::Aligned | AHA::Fit => b.advance as f64,
     };
     let ay = match a.vertical_alignment {
+        _ if matches!(a.horizontal_alignment, AHA::Middle) => {
+            (b.ink_min[1] + b.ink_max[1]) as f64 * 0.5
+        }
         AVA::Baseline => 0.0,
-        AVA::Bottom => b.ink_min[1] as f64,
-        AVA::Middle => (b.ink_min[1] + b.ink_max[1]) as f64 * 0.5,
-        AVA::Top => b.ink_max[1] as f64,
+        AVA::Bottom => {
+            -a.height
+                * crate::entities::text_support::descent_ratio(
+                    &crate::entities::common::style_font(&a.text_style),
+                ) as f64
+        }
+        AVA::Middle => a.height * 0.5,
+        AVA::Top => a.height,
     };
     Some((ax, ay))
 }

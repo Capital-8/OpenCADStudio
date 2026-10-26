@@ -120,6 +120,7 @@ pub(in crate::app) use plugin_grips::SETTLE_WATCHDOG;
 mod plugin_grips_tests;
 mod qselect;
 mod style;
+pub(crate) mod style_import;
 pub(in crate::app) mod util;
 mod viewport;
 mod viewport_snap;
@@ -209,6 +210,10 @@ impl OpenCADStudio {
             Some(TextStyle | DimStyle | TableStyle | MLeaderStyle | MlStyle)
         ) {
             self.style_stage_discard();
+        }
+        if self.active_modal == Some(StyleImport) {
+            self.style_import_cancel();
+            return;
         }
         if self.active_modal == Some(PointStyle) {
             self.point_style_tab_id = None;
@@ -332,7 +337,12 @@ impl OpenCADStudio {
         if self.tabs[self.active_tab].active_cmd.is_none() {
             self.ribbon.deactivate_tool();
         }
-        self.active_modal = None;
+        // A child of Options closes back to Options.
+        let child = self.options_child.take();
+        self.active_modal = match child.is_some() && child == self.active_modal {
+            true => Some(Options),
+            false => None,
+        };
         // Recentre / reset the size of the next dialog and drop any drag.
         self.reset_modal_geometry();
         // A 3D Studio import that just ran (or is stopped from its
@@ -457,7 +467,23 @@ impl OpenCADStudio {
                 }
             }
         }
+        let from_options = self.active_modal == Some(super::ModalKind::Options);
         let mut task = self.update_message(msg);
+        // A window opened from Options (shortcuts, aliases, a colour, units,
+        // plot, plugins) is its child: closing it comes back to Options.
+        if from_options
+            && self.active_modal.is_some()
+            && self.active_modal != Some(super::ModalKind::Options)
+        {
+            self.options_child = self.active_modal;
+        } else if self.options_child.is_some() && self.active_modal != self.options_child {
+            // It closed some other way (OK, Apply): Options comes back too.
+            self.options_child = None;
+            if self.active_modal.is_none() {
+                self.active_modal = Some(super::ModalKind::Options);
+                self.reset_modal_geometry();
+            }
+        }
         // What a message changed is only known while it is handled, also when
         // it returned early.
         self.block_palette.change_hint = Default::default();
@@ -2224,6 +2250,10 @@ impl OpenCADStudio {
                 self.on_data_extraction_browse_output_result(path)
             }
             Message::DataExtractionFinish => self.on_data_extraction_finish(),
+            Message::DataExtractionSaveDrawing => self.on_data_extraction_save_drawing(),
+            Message::DataExtractionSaveDrawingResult(path) => {
+                self.on_data_extraction_save_drawing_result(path)
+            }
 
             Message::DataExtractionSave(csv) => {
                 let csv_clone = csv.clone();
@@ -2642,6 +2672,7 @@ impl OpenCADStudio {
             Message::RefEditDialog(message) => self.update_refedit_dialog(message),
             Message::PdfPassword(message) => self.update_pdf_password(message),
             Message::HyperlinkDialog(message) => self.update_hyperlink_dialog(message),
+            Message::Spell(message) => self.update_spell(message),
             Message::PdfShxDialog(message) => self.update_pdf_shx_dialog(message),
             Message::PcManager(message) => self.update_pc_manager(message),
             Message::Count(message) => self.on_count(message),
@@ -4403,7 +4434,10 @@ impl OpenCADStudio {
                                 pl.locked = locked;
                             }
                         }
-                        // Lock state affects editability, not rendered geometry.
+                        // Lock state changes the display colour in the Model
+                        // view, so invalidate all render dependencies as well
+                        // as the editability state.
+                        self.tabs[i].scene.invalidate_layer_dependencies(&targets);
                         self.tabs[i].dirty = true;
                         self.commit_layer_undo(i, undo);
                         self.command_line.push_output(
@@ -10580,7 +10614,7 @@ impl OpenCADStudio {
                 self.mark_startup_modal_shown();
                 if first_measurement {
                     let initial_width = self.mtext_editor.as_ref().and_then(|editor| {
-                        editor.editing.is_none().then(|| {
+                        (editor.editing.is_none() && !editor.keep_width).then(|| {
                             (size.width - 2.0 * super::view::overlay::MTEXT_PREVIEW_PAD).max(80.0)
                                 / editor.preview_scale()
                         })
@@ -11936,6 +11970,25 @@ impl OpenCADStudio {
 
             // ── TextStyle Font Browser ────────────────────────────────────────
             Message::TextStyleDialogOpen => self.on_text_style_dialog_open(),
+            Message::StyleImportPick(kind) => self.style_import_pick(kind),
+            Message::StyleImportFile(kind, path) => self.style_import_file(kind, path),
+            Message::StyleImportLoaded(kind, result) => self.style_import_loaded(kind, result),
+            Message::StyleImportToggle(name) => {
+                self.style_import_toggle(&name);
+                Task::none()
+            }
+            Message::StyleImportApply => {
+                self.style_import_apply();
+                Task::none()
+            }
+            Message::StyleImportConfirm(overwrite) => {
+                self.style_import_confirm(overwrite);
+                Task::none()
+            }
+            Message::StyleImportCancel => {
+                self.style_import_cancel();
+                Task::none()
+            }
             Message::TextStyleDialogClose => {
                 self.close_active_modal();
                 Task::none()

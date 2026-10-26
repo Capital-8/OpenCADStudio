@@ -907,6 +907,17 @@ impl OpenCADStudio {
                 self.open_data_extraction();
             }
 
+            // -DATAEXTRACTION: run a saved extraction from the command line.
+            "-DATAEXTRACTION" => {
+                let command = crate::modules::annotate::data_extract::TemplateCommand;
+                self.command_line.push_info(&command.prompt());
+                self.tabs[i].active_cmd = Some(Box::new(command));
+            }
+            cmd if cmd.starts_with("-DATAEXTRACTION _RUN ") => {
+                let path = cmd.trim_start_matches("-DATAEXTRACTION _RUN ").trim().to_string();
+                self.run_extraction_template(&path);
+            }
+
             // ── Find / Replace ────────────────────────────────────────────────
             // FIND <search>              — list all Text/MText/Dimension containing <search>
             // FIND <search> REPLACE <rep> — replace first occurrence (case-insensitive)

@@ -8,6 +8,7 @@ pub(crate) mod config;
 #[cfg(not(target_arch = "wasm32"))]
 pub use automation::{export_headless, run_batch, serve};
 mod annotation_data;
+mod extraction_catalog;
 mod block_actions;
 mod block_parameter_properties;
 mod block_alignment;
@@ -68,6 +69,7 @@ pub(crate) mod style_ops;
 mod text_inline;
 mod tolerance_dialog;
 mod update;
+pub(crate) use update::style_import::{style_exists as style_import_exists, StyleImportDraft};
 mod view;
 #[cfg(test)]
 mod viewport_dimension_tests;
@@ -686,6 +688,8 @@ pub(super) struct OpenCADStudio {
     import_dialogs: crate::ui::window::import_dialogs::ImportDialogs,
     /// The dialog Options was opened from; it comes back when Options closes.
     options_parent: Option<ModalKind>,
+    /// A dialog opened from Options; Options comes back when it closes.
+    options_child: Option<ModalKind>,
     /// Working copy of the Attach External Reference dialog; None while closed.
     xref_attach: Option<crate::ui::window::xref_attach::XrefAttachState>,
     /// Working copy of the Write Block (WBLOCK) dialog; `None` while it is closed.
@@ -870,6 +874,9 @@ pub(super) struct OpenCADStudio {
     pub txt2mtxt_settings: settings::Txt2MtxtSettings,
     /// The Text to MText Settings dialog's working copy.
     txt2mtxt_dialog: Option<settings::Txt2MtxtSettings>,
+    /// Check Spelling (profile) and its open window.
+    pub spell_prefs: settings::SpellPrefs,
+    spell: Option<crate::ui::window::spell_dialog::SpellState>,
     auto_constrain_saved: Option<settings::AutoConstrainSettings>,
     auto_constrain_selected_row: usize,
     auto_constrain_distance_input: String,
@@ -1562,6 +1569,7 @@ pub(super) struct OpenCADStudio {
     /// in-dialog preview but only persist on Apply; closing without Apply
     /// restores this snapshot. `None` when no style manager is staging.
     style_stage: Option<style_ops::StyleStage>,
+    style_import: Option<update::style_import::StyleImportDraft>,
 
     // ── TextStyle Font Browser ────────────────────────────────────────────
     textstyle_selected: String,
@@ -2682,6 +2690,7 @@ pub enum ModalKind {
     PdfImportSettings,
     /// TXT2MTXT's Text to MText Settings, over the running command.
     Txt2MtxtSettings,
+    Spell,
     PdfImportFile,
     XrefAttach,
     WriteBlock,
@@ -2704,6 +2713,7 @@ pub enum ModalKind {
     MlStyle,
     MLeaderStyle,
     DimStyle,
+    StyleImport,
     Unsaved,
     BlockEditChanges,
     BlockEditPicker,
@@ -2745,6 +2755,8 @@ pub enum ModalKind {
     InsertTable,
     DataLinkManager,
     DataExtraction,
+    /// DATAEXTRACTION on a drawing never saved: save it first.
+    DataExtractionUnsaved,
     /// The scene is drawn by a software rasterizer, or not at all: what that
     /// means and what usually fixes it. Queued once per verdict; the status
     /// bar's ⚠ pill reopens it.
@@ -4787,6 +4799,13 @@ pub enum Message {
     StyleRenameCommit(StyleKind),
     StyleRenameCancel,
     TextStyleDialogDelete,
+    StyleImportPick(StyleKind),
+    StyleImportFile(StyleKind, Option<std::path::PathBuf>),
+    StyleImportLoaded(StyleKind, Result<(String, codec::Document), String>),
+    StyleImportToggle(String),
+    StyleImportApply,
+    StyleImportConfirm(bool),
+    StyleImportCancel,
     /// Edit a string field (FontFile / Width / Oblique).
     TextStyleEdit {
         field: &'static str,
@@ -4999,6 +5018,8 @@ pub enum Message {
     /// An edit in the Password Protected PDF window.
     PdfPassword(crate::ui::window::pdf_password_dialog::PdfPasswordMsg),
     HyperlinkDialog(crate::ui::window::hyperlink_dialog::HyperlinkMsg),
+    /// Check Spelling window.
+    Spell(crate::ui::window::spell_dialog::SpellMsg),
     PdfShxDialog(crate::ui::window::pdf_shx_dialog::ShxDialogMsg),
     /// A click or search in the Point Cloud Manager.
     PcManager(crate::ui::window::pc_manager::PcManagerMsg),
@@ -5084,6 +5105,9 @@ pub enum Message {
     DataExtractionBrowseOutput,
     DataExtractionBrowseOutputResult(Option<std::path::PathBuf>),
     DataExtractionFinish,
+    /// Save the never-saved drawing so the extraction can start.
+    DataExtractionSaveDrawing,
+    DataExtractionSaveDrawingResult(Option<std::path::PathBuf>),
     /// Save the pre-built CSV string to a file chosen by the user.
     DataExtractionSave(String),
     /// Path chosen (or None = cancelled).
@@ -5249,6 +5273,7 @@ impl OpenCADStudio {
             pdf_import_file: None,
             import_dialogs: Default::default(),
             options_parent: None,
+            options_child: None,
             xref_attach: None,
             wblock: None,
             geometric_tolerance: None,
@@ -5332,6 +5357,8 @@ impl OpenCADStudio {
             show_constraint_values: true,
             auto_constrain_settings: settings::AutoConstrainSettings::default(),
             txt2mtxt_settings: settings::Txt2MtxtSettings::default(),
+            spell_prefs: settings::SpellPrefs::default(),
+            spell: None,
             txt2mtxt_dialog: None,
             auto_constrain_saved: None,
             auto_constrain_selected_row: 0,
@@ -5680,6 +5707,7 @@ impl OpenCADStudio {
             style_rename_buf: String::new(),
             style_rename_kind: None,
             style_stage: None,
+            style_import: None,
             textstyle_selected: "Standard".to_string(),
             textstyle_tab: 0,
             textstyle_compare: String::new(),

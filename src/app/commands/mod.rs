@@ -14,6 +14,7 @@ mod count;
 mod dash;
 mod dgn_import;
 mod dim;
+mod mleader_layer;
 pub(crate) mod display;
 mod draw;
 mod field;
@@ -37,7 +38,10 @@ mod plotvars;
 mod point_cloud;
 mod refedit;
 pub(crate) mod sheet_set;
+mod spell;
 mod styleprops;
+mod text_edit;
+mod text_layer;
 mod ucsfollow;
 mod view;
 mod view_presets;
@@ -498,6 +502,12 @@ impl OpenCADStudio {
     /// `finish_dispatch`), or `None` to defer to the next — equivalent to one
     /// sequential `match` over all arms.
     fn dispatch_families(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {
+        if let Some(t) = self.dispatch_text_layer(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_mleader_layer(cmd, i) {
+            return Some(t);
+        }
         if let Some(t) = self.dispatch_dash(cmd, i) {
             return Some(t);
         }
@@ -550,6 +560,12 @@ impl OpenCADStudio {
             return Some(t);
         }
         if let Some(t) = self.dispatch_hyperlink(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_text_edit(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_spell(cmd, i) {
             return Some(t);
         }
         if let Some(t) = self.dispatch_count(cmd, i) {
@@ -1088,6 +1104,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "COLORSCHEME",
         "COUNT",
         "DATAEXTRACTION",
+        "-DATAEXTRACTION",
         "DE",
         "DESELALL",
         "DESELECT",

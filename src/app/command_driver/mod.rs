@@ -155,6 +155,17 @@ impl OpenCADStudio {
                 self.persist_settings_if_changed();
             }
         }
+        let variable = self.tabs[self.active_tab]
+            .active_cmd
+            .as_ref()
+            .and_then(|command| command.drawing_variable_update());
+        if let Some((name, value)) = variable {
+            let tab = &mut self.tabs[self.active_tab];
+            if crate::io::drawing_variable(&tab.scene.document, name).as_deref() != Some(value.as_str()) {
+                crate::io::set_drawing_variable(&mut tab.scene.document, name, &value);
+                tab.dirty = true;
+            }
+        }
         let mline_settings = self.tabs[self.active_tab]
             .active_cmd
             .as_ref()
@@ -1439,7 +1450,15 @@ impl OpenCADStudio {
         self.tabs[i].snap_result = None;
         self.tabs[i].scene.clear_preview_wire();
         self.restore_pre_cmd_tangent();
-        self.dispatch_command(&cmd)
+        // The command handing off is already in the Repeat menu and ↑/↓
+        // recall; the internal line it hands to (`BLOCK_POINT_PICKED x y z`)
+        // must not land there too (#2170).
+        let recent = self.command_line.recent_commands.clone();
+        let recall = self.command_line.cmd_recall.clone();
+        let task = self.dispatch_command(&cmd);
+        self.command_line.recent_commands = recent;
+        self.command_line.cmd_recall = recall;
+        task
     }
 
     fn handle_script(&mut self, script: String) -> Task<Message> {

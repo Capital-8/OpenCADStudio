@@ -116,6 +116,9 @@ pub struct MTextEditorState {
     /// it is NOT derived from the typed content, so adding characters wraps
     /// to the next line instead of stretching the box into one long line.
     pub rect_width: f64,
+    /// The width was set by the MTEXT command's box (or its Width option):
+    /// the editor keeps it instead of fitting its own size.
+    pub keep_width: bool,
     pub rect_height: String,
     pub annotative: bool,
     pub column_type: i16,
@@ -145,6 +148,10 @@ pub struct MTextEditorState {
     /// character range `[start, end)`.
     pub glyph_boxes: Vec<crate::entities::text_support::GlyphBox>,
     pub sel: Option<(usize, usize)>,
+    /// A height / oblique / width / tracking field typed while text is
+    /// selected: it styles the selection, not the whole text, so it is shown
+    /// from here for as long as that selection stands (#2194).
+    pub span_input: Option<((usize, usize), &'static str, String)>,
     /// Anchor offset for an in-progress drag selection.
     pub sel_anchor: usize,
     /// Text caret as a visible-character offset (0..=count). Used for typing
@@ -185,6 +192,7 @@ impl MTextEditorState {
             color_picker_open: false,
             glyph_boxes: Vec::new(),
             sel: None,
+            span_input: None,
             sel_anchor: 0,
             caret: 0,
             caret_blink_on: true,
@@ -193,6 +201,7 @@ impl MTextEditorState {
             // Default box ~20 characters wide; overwritten with the entity's
             // own width when editing an existing MText.
             rect_width: (height * 20.0).max(1.0),
+            keep_width: false,
             rect_height: "0".to_string(),
             annotative: false,
             column_type: 0,
@@ -213,6 +222,15 @@ impl MTextEditorState {
             editing,
             screen_anchor: iced::Point::new(60.0, 90.0),
             original: None,
+        }
+    }
+
+    /// What the `field` input shows: the value typed for the current
+    /// selection, else the whole text's `base`.
+    pub fn span_field<'a>(&'a self, field: &str, base: &'a str) -> &'a str {
+        match &self.span_input {
+            Some((sel, typed, value)) if Some(*sel) == self.sel && *typed == field => value,
+            _ => base,
         }
     }
 
@@ -795,6 +813,7 @@ impl super::OpenCADStudio {
             }
         } else if let Some(m) = template {
             seed_mtext_state(&mut state, &m);
+            state.keep_width = m.rectangle_width > 0.0;
         } else {
             // New MText inherits the document's current text style (STYLE),
             // not the "Standard" default. See #92.
@@ -939,26 +958,37 @@ impl super::OpenCADStudio {
     }
 
     pub(super) fn mtext_apply_span_number(&mut self, field: &'static str, value: String) {
-        let Some(number) = value.trim().replace(',', ".").parse::<f64>().ok() else {
-            return;
-        };
-        let valid = match field {
-            "height" => number > 0.0,
-            "oblique" => (-85.0..=85.0).contains(&number),
-            "width" => number > 0.0,
-            "tracking" => number.is_finite(),
-            _ => false,
-        };
-        if !valid {
-            return;
-        }
+        let number = value
+            .trim()
+            .replace(',', ".")
+            .parse::<f64>()
+            .ok()
+            .filter(|&number| match field {
+                "height" | "width" => number > 0.0,
+                "oblique" => (-85.0..=85.0).contains(&number),
+                "tracking" => number.is_finite(),
+                _ => false,
+            });
         let has_selection = self
             .mtext_editor
             .as_ref()
             .and_then(|editor| editor.sel)
             .is_some_and(|(start, end)| start < end);
         if let Some(ed) = self.mtext_editor.as_mut() {
+            // The field shows what is typed, an empty or half-typed value
+            // included, with or without a selection (#2194).
             if has_selection {
+                ed.span_input = ed.sel.map(|sel| (sel, field, value));
+            } else {
+                match field {
+                    "height" => ed.height = value,
+                    "oblique" => ed.oblique = value,
+                    "width" => ed.width = value,
+                    "tracking" => ed.char_space = value,
+                    _ => {}
+                }
+            }
+            if let (true, Some(number)) = (has_selection, number) {
                 let (start, end) = ed.sel.unwrap();
                 ed.record_undo();
                 let para0 = doc_para0(&ed.doc);
@@ -980,14 +1010,6 @@ impl super::OpenCADStudio {
                 );
                 ed.sel = Some((start, end));
                 ed.caret = end;
-            } else {
-                match field {
-                    "height" => ed.height = value,
-                    "oblique" => ed.oblique = value,
-                    "width" => ed.width = value,
-                    "tracking" => ed.char_space = value,
-                    _ => {}
-                }
             }
         }
         self.rebuild_mtext_preview();
@@ -1790,7 +1812,7 @@ impl super::OpenCADStudio {
             mt.insertion_point = codec::types::Vector3::new(position.x, position.y, position.z);
             self.push_undo_snapshot(i, "MTEXT");
             let handle =
-                self.commit_entity_handle(plane.place_entity(EntityType::MText(Box::new(mt))));
+                self.commit_new_text(plane.place_entity(EntityType::MText(Box::new(mt))));
             if annotative {
                 let scale = self.tabs[i].scene.creation_annotation_scale_handle();
                 if let (Some(handle), Some(scale)) = (handle, scale) {
@@ -1907,7 +1929,7 @@ impl super::OpenCADStudio {
             mt.insertion_point = codec::types::Vector3::new(position.x, position.y, position.z);
             self.push_undo_snapshot(i, "MTEXT");
             let handle =
-                self.commit_entity_handle(plane.place_entity(EntityType::MText(Box::new(mt))));
+                self.commit_new_text(plane.place_entity(EntityType::MText(Box::new(mt))));
             self.tabs[i].dirty = true;
             if annotative {
                 let scale = self.tabs[i].scene.creation_annotation_scale_handle();

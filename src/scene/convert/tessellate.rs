@@ -3221,6 +3221,13 @@ pub(crate) struct DimGeom {
     /// dimension line's dashes.
     pub(crate) arrow_lines: Vec<[f32; 3]>,
     pub(crate) arrow_fill: Vec<[f32; 3]>,
+    /// World-space point that `ext_lines` / `dim_lines` / `arrow_lines` /
+    /// `arrow_fill` were built relative to. Dimension tessellation shifts the
+    /// definition data to a nearby origin so its f32 geometry keeps
+    /// sub-millimetre precision at UTM scale; consumers that need world-space
+    /// points (explode) add this back. Zero for leader and multileader
+    /// arrowheads, whose points are already world-space f32.
+    pub(crate) origin: codec::types::Vector3,
 }
 
 impl DimGeom {
@@ -3230,6 +3237,7 @@ impl DimGeom {
             dim_lines: Vec::new(),
             arrow_lines: Vec::new(),
             arrow_fill: Vec::new(),
+            origin: codec::types::Vector3::ZERO,
         }
     }
 }

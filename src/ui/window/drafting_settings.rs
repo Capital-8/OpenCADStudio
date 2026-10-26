@@ -525,6 +525,13 @@ pub fn view_window<'a>(
                 text_input("25", &state.osnap_aperture_input)
                     .on_input(Message::DraftingSettingsOsnapApertureChanged)
                     .width(70),
+                // The accepted range, so a refused value is not a surprise (#2167).
+                text(format!(
+                    "{}–{}",
+                    crate::snap::MIN_OSNAP_RADIUS_PX,
+                    crate::snap::MAX_OSNAP_RADIUS_PX
+                ))
+                .size(11),
             ]
             .spacing(10)
             .align_y(iced::Center),

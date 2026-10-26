@@ -1088,9 +1088,12 @@ impl Scene {
             entity = crate::modules::draw::modify::explode::normalize_entity_for_block(entity);
             entity.common_mut().handle = Handle::NULL;
             entity.common_mut().owner_handle = br_handle;
-            self.document
+            let handle = self
+                .document
                 .add_entity(entity)
                 .map_err(|e| e.to_string())?;
+            // An image draws from its cached model, not the entity (#2149).
+            self.reseed_derived_caches(handle);
             if options.mode != crate::ui::window::block_definition::BlockObjectMode::Retain {
                 self.erase_entities(&[old_handle]);
             }
@@ -3399,6 +3402,16 @@ impl Scene {
                     s.landing_gap = 2.0;
                     s.landing_distance = 8.0;
                     s.break_gap_size = 3.75;
+                }
+                // Likewise the Standard table style: the metric template's
+                // cells are 4.5 high (title 6) with 1.5 margins, not 0.18.
+                codec::objects::ObjectType::TableStyle(s)
+                    if s.name.eq_ignore_ascii_case("Standard") =>
+                {
+                    s.set_margins(1.5);
+                    s.data_row_style.text_height = 4.5;
+                    s.header_row_style.text_height = 4.5;
+                    s.title_row_style.text_height = 6.0;
                 }
                 _ => {}
             }

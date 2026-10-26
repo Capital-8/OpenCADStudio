@@ -52,6 +52,7 @@ impl OpenCADStudio {
             Some(K::UnderlayLayers) => crate::t!("Underlay Layers").into_owned(),
             Some(K::PdfImportSettings) => crate::t!("PDF Import Settings").into_owned(),
             Some(K::Txt2MtxtSettings) => crate::tr!("txt2mtxt", "title"),
+            Some(K::Spell) => crate::ui::window::spell_dialog::title(),
             Some(K::PdfImportFile) => crate::t!("Import PDF").into_owned(),
             Some(K::ImportFile) => crate::t!("Import File").into_owned(),
             Some(K::DgnImport) => crate::t!("DGN Import").into_owned(),
@@ -73,6 +74,7 @@ impl OpenCADStudio {
             Some(K::PrintAll) => t!("Print All").into_owned(),
             Some(K::LayoutManager) => crate::tr!("modal", "layout-manager"),
             Some(K::ScaleManager) => crate::tr!("modal", "scale-manager"),
+            Some(K::StyleImport) => t!("Import Styles").into_owned(),
             Some(K::AnnoObjectScale) => crate::tr!("modal", "annotation-object-scale"),
             Some(K::Hyperlink) if self.hyperlink_options.edit => {
                 crate::tr!("hyperlink-dialog", "title-edit")
@@ -81,6 +83,7 @@ impl OpenCADStudio {
             Some(K::InsertTable) => crate::t!("Insert Table").into_owned(),
             Some(K::DataLinkManager) => crate::t!("Data Link Manager").into_owned(),
             Some(K::DataExtraction) => crate::t!("Data Extraction Wizard").into_owned(),
+            Some(K::DataExtractionUnsaved) => crate::t!("Data Extraction - Unsaved Drawing").into_owned(),
             Some(K::Plotstyle) => crate::tr!("modal", "plot-style-editor"),
             Some(K::TextStyle) => crate::tr!("modal", "text-style-manager"),
             Some(K::MlStyle) => crate::tr!("modal", "multiline-style-manager"),
@@ -132,6 +135,13 @@ impl OpenCADStudio {
     pub(super) fn modal_content<'s>(&'s self) -> Option<Element<'s, Message>> {
         let ex = self.modal_resize;
         Some(match self.active_modal? {
+            super::super::ModalKind::StyleImport => sized_flow(ex, 540, 480, |flow| {
+                crate::ui::style::style_manager::import_view(
+                    self.style_import.as_ref().expect("style import dialog without draft"),
+                    &self.tabs[self.active_tab].scene.document,
+                    flow,
+                )
+            }),
             super::super::ModalKind::About => {
                 automatic_flow(ex, crate::ui::window::about::view_window)
             }
@@ -489,6 +499,10 @@ impl OpenCADStudio {
                     crate::ui::window::pdf_dialogs::view_import_settings(settings, flow)
                 })
             }
+            super::super::ModalKind::Spell => {
+                let state = self.spell.as_ref()?;
+                sized_flow(ex, 600, 620, |flow| crate::ui::window::spell_dialog::view(state, flow))
+            }
             super::super::ModalKind::Txt2MtxtSettings => {
                 let settings = self.txt2mtxt_dialog.as_ref()?;
                 sized_flow(ex, 600, 470, |flow| {
@@ -755,6 +769,9 @@ impl OpenCADStudio {
             }),
             super::super::ModalKind::DataLinkManager => sized_flow(ex, 760, 560, |flow| {
                 crate::ui::window::annotation_data::data_link_view(&self.data_link_manager, flow)
+            }),
+            super::super::ModalKind::DataExtractionUnsaved => sized_flow(ex, 440, 200, |flow| {
+                crate::ui::window::annotation_data::data_extraction_unsaved_view(flow)
             }),
             super::super::ModalKind::DataExtraction => sized_flow(ex, 780, 570, |flow| {
                 crate::ui::window::annotation_data::data_extraction_view(

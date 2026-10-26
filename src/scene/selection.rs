@@ -1171,6 +1171,7 @@ impl Scene {
                 hover_changed = true;
             }
             hover_changed |= self.constraint_hover_highlights.remove(&h);
+            hover_changed |= self.box_hover_highlights.remove(&h);
             if self
                 .constraint_hover_refs
                 .iter()

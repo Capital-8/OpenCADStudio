@@ -212,20 +212,19 @@ impl CadCommand for DimTeditCommand {
         if !matches!(self.step, Step::PickTextPos { .. }) {
             return None;
         }
-        let point = point.as_vec3();
-        let d = 0.2_f32;
-        Some(WireModel {
-            name: "dimtedit_preview".into(),
-            points: vec![
+        let d = 0.2_f64;
+        Some(WireModel::solid_f64(
+            "dimtedit_preview".into(),
+            vec![
                 [point.x - d, point.y - d, point.z],
                 [point.x + d, point.y - d, point.z],
                 [point.x + d, point.y + d, point.z],
                 [point.x - d, point.y + d, point.z],
                 [point.x - d, point.y - d, point.z],
             ],
-            color: WireModel::CYAN,
-            ..WireModel::default()
-        })
+            WireModel::CYAN,
+            false,
+        ))
     }
 
     fn inject_picked_entity(&mut self, entity: EntityType) {

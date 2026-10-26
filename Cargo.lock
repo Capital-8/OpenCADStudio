@@ -98,7 +98,7 @@ checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
 [[package]]
 name = "acadrust"
 version = "0.6.6"
-source = "git+https://github.com/HakanSeven12/acadrust.git?rev=24b037a#24b037af9d1490b83464e5d43b14a7f4d12744e8"
+source = "git+https://github.com/HakanSeven12/acadrust.git?rev=68530d9#68530d95562f106db1cbaa351a4606d37ed658f1"
 dependencies = [
  "anyhow",
  "bitflags 2.13.1",
@@ -108,6 +108,7 @@ dependencies = [
  "foldhash 0.2.0",
  "indexmap",
  "itoa",
+ "memchr",
  "memmap2",
  "nom 7.1.3",
  "oem_cp",
@@ -4437,7 +4438,7 @@ dependencies = [
 [[package]]
 name = "opencaddocument"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencaddocument.git?rev=af07c53#af07c53113abb24637c4d04738c8add87c6da67b"
+source = "git+https://github.com/HakanSeven12/opencaddocument.git?rev=6d67524#6d67524bd6294e03be84cc744d1dd5afc7a9d968"
 dependencies = [
  "acadrust",
  "ifccad",
@@ -4448,7 +4449,7 @@ dependencies = [
 [[package]]
 name = "opencadgraph"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencadgraph.git?rev=edd9fb8#edd9fb85d932afb4f4fa89dca432f8e05500e093"
+source = "git+https://github.com/HakanSeven12/opencadgraph.git?rev=0011b63#0011b63b194fae261b16aba260e92c9fd54352ca"
 dependencies = [
  "opencadkernel",
  "serde_json",
@@ -4457,7 +4458,7 @@ dependencies = [
 [[package]]
 name = "opencadkernel"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=d821c35#d821c35d916fab0253ce311dd182d32793b7ae98"
+source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=456212d#456212d287293d69b5e52c43c50e982dbdd32349"
 dependencies = [
  "acadrust",
  "cavalier_contours",
@@ -4468,7 +4469,7 @@ dependencies = [
 [[package]]
 name = "opencadkernel-constraints"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=d821c35#d821c35d916fab0253ce311dd182d32793b7ae98"
+source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=456212d#456212d287293d69b5e52c43c50e982dbdd32349"
 dependencies = [
  "nalgebra",
 ]

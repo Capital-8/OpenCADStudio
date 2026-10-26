@@ -332,7 +332,7 @@ impl super::OpenCADStudio {
             {
                 self.tabs[i].scene.document.header.text_height = paper_height;
             }
-            let handle = self.commit_entity_handle(plane.place_entity(EntityType::Text(t)));
+            let handle = self.commit_new_text(plane.place_entity(EntityType::Text(t)));
             if annotative {
                 let scale = self.tabs[i].scene.creation_annotation_scale_handle();
                 if let (Some(handle), Some(scale)) = (handle, scale) {

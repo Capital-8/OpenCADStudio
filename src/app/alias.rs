@@ -82,8 +82,9 @@ const WEB_ALIAS_KEY: &str = "opencadstudio.aliases";
 /// the pre-REDRAW table; version 2 introduced the REDRAW-family aliases; version 3
 /// introduced HB (HATCHTOBACK); version 4 introduced ER (EXTERNALREFERENCES);
 /// version 10 the block command-line forms and block editor shortcuts;
-/// version 11 IO (INSERTOBJ).
-const DEFAULT_ALIASES_VERSION: u32 = 11;
+/// version 11 IO (INSERTOBJ); version 12 DLU (DATALINKUPDATE); version 13 SP
+/// (SPELL).
+const DEFAULT_ALIASES_VERSION: u32 = 13;
 
 #[cfg(target_arch = "wasm32")]
 const WEB_ALIAS_VERSION_KEY: &str = "opencadstudio.aliases.version";
@@ -117,6 +118,8 @@ fn introduced_at(version: u32) -> &'static [(&'static str, &'static str)] {
             ("ATTE", "-ATTEDIT"),
         ],
         11 => &[("IO", "INSERTOBJ")],
+        12 => &[("DLU", "DATALINKUPDATE")],
+        13 => &[("SP", "SPELL")],
         _ => &[],
     }
 }
