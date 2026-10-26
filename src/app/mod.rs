@@ -688,6 +688,8 @@ pub(super) struct OpenCADStudio {
     import_dialogs: crate::ui::window::import_dialogs::ImportDialogs,
     /// The dialog Options was opened from; it comes back when Options closes.
     options_parent: Option<ModalKind>,
+    /// A dialog opened from Options; Options comes back when it closes.
+    options_child: Option<ModalKind>,
     /// Working copy of the Attach External Reference dialog; None while closed.
     xref_attach: Option<crate::ui::window::xref_attach::XrefAttachState>,
     /// Working copy of the Write Block (WBLOCK) dialog; `None` while it is closed.
@@ -5269,6 +5271,7 @@ impl OpenCADStudio {
             pdf_import_file: None,
             import_dialogs: Default::default(),
             options_parent: None,
+            options_child: None,
             xref_attach: None,
             wblock: None,
             geometric_tolerance: None,

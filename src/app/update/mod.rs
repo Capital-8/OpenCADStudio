@@ -337,7 +337,12 @@ impl OpenCADStudio {
         if self.tabs[self.active_tab].active_cmd.is_none() {
             self.ribbon.deactivate_tool();
         }
-        self.active_modal = None;
+        // A child of Options closes back to Options.
+        let child = self.options_child.take();
+        self.active_modal = match child.is_some() && child == self.active_modal {
+            true => Some(Options),
+            false => None,
+        };
         // Recentre / reset the size of the next dialog and drop any drag.
         self.reset_modal_geometry();
         // A 3D Studio import that just ran (or is stopped from its
@@ -462,7 +467,23 @@ impl OpenCADStudio {
                 }
             }
         }
+        let from_options = self.active_modal == Some(super::ModalKind::Options);
         let mut task = self.update_message(msg);
+        // A window opened from Options (shortcuts, aliases, a colour, units,
+        // plot, plugins) is its child: closing it comes back to Options.
+        if from_options
+            && self.active_modal.is_some()
+            && self.active_modal != Some(super::ModalKind::Options)
+        {
+            self.options_child = self.active_modal;
+        } else if self.options_child.is_some() && self.active_modal != self.options_child {
+            // It closed some other way (OK, Apply): Options comes back too.
+            self.options_child = None;
+            if self.active_modal.is_none() {
+                self.active_modal = Some(super::ModalKind::Options);
+                self.reset_modal_geometry();
+            }
+        }
         // What a message changed is only known while it is handled, also when
         // it returned early.
         self.block_palette.change_hint = Default::default();
