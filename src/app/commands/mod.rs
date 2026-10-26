@@ -15,6 +15,7 @@ mod dash;
 mod dgn_import;
 mod dim;
 mod dim_cmd;
+mod dim_inspect;
 mod dim_layer;
 pub(crate) mod display;
 mod draw;
@@ -516,6 +517,9 @@ impl OpenCADStudio {
             return Some(t);
         }
         if let Some(t) = self.dispatch_dim_cmd(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_dim_inspect(cmd, i) {
             return Some(t);
         }
         if let Some(t) = self.dispatch_dash(cmd, i) {

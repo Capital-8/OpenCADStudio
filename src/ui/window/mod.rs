@@ -46,6 +46,7 @@ pub mod plugin_manager;
 pub mod print_all;
 pub mod quick_calc;
 pub mod recovery;
+pub mod dim_inspect_dialog;
 pub mod pdf_password_dialog;
 pub mod refedit_dialog;
 pub mod sheet_set;

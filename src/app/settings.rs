@@ -136,6 +136,30 @@ pub struct Txt2MtxtSettings {
     pub uniform_spacing: bool,
 }
 
+/// The Inspection Dimension window's last values, offered the next time.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DimInspectSettings {
+    /// 0 round, 1 angular, 2 no frame.
+    pub shape: u8,
+    pub label_on: bool,
+    pub label: String,
+    pub rate_on: bool,
+    pub rate: String,
+}
+
+impl Default for DimInspectSettings {
+    fn default() -> Self {
+        Self {
+            shape: 0,
+            label_on: false,
+            label: String::new(),
+            rate_on: true,
+            rate: "100%".to_string(),
+        }
+    }
+}
+
 impl Default for Txt2MtxtSettings {
     fn default() -> Self {
         Self {
@@ -794,6 +818,9 @@ pub struct UserSettings {
     /// Check Spelling: main dictionary, options and the user's words.
     #[serde(default)]
     pub spell: SpellPrefs,
+    /// Inspection Dimension window values.
+    #[serde(default)]
+    pub dim_inspect: DimInspectSettings,
     /// Keep existing geometry size while solving after a constraint edit.
     #[serde(default = "default_constraint_solve_mode")]
     pub constraint_solve_mode: bool,
@@ -1207,6 +1234,7 @@ impl Default for UserSettings {
             auto_constrain: AutoConstrainSettings::default(),
             txt2mtxt: Txt2MtxtSettings::default(),
             spell: SpellPrefs::default(),
+            dim_inspect: DimInspectSettings::default(),
             constraint_solve_mode: true,
             constraint_infer: false,
             constraint_bar_display: 3,

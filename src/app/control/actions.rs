@@ -121,6 +121,7 @@ pub(super) const NAMES: &[&str] = &[
     "data_extraction",
     "refedit_dialog",
     "pdf_password_dialog",
+    "dim_inspect_dialog",
     "hyperlink_dialog",
     "spell_dialog",
     "pdf_shx_settings",
@@ -2258,6 +2259,52 @@ impl OpenCADStudio {
                     Message::CloseModal
                 } else {
                     Message::Spell(message)
+                }
+            }
+            // The Inspection Dimension window, one field per call:
+            // "shape=round|angular|none", "label_on=0|1", "label=<text>",
+            // "rate_on=0|1", "rate=<text>", "select", "remove", "ok" or
+            // "cancel".
+            "dim_inspect_dialog" => {
+                use crate::entities::dim_inspect::Shape;
+                use crate::ui::window::dim_inspect_dialog::DimInspectMsg as D;
+                if self.active_modal != Some(crate::app::ModalKind::DimInspect) {
+                    return Err(failure(
+                        "no_dialog",
+                        "The Inspection Dimension window is not open",
+                    ));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let flag = || match value {
+                    "1" => Ok(true),
+                    "0" => Ok(false),
+                    _ => Err(failure("invalid_value", spec)),
+                };
+                if key == "cancel" {
+                    Message::CloseModal
+                } else {
+                    Message::DimInspect(match key {
+                        "shape" => D::Shape(match value {
+                            "angular" => Shape::Angular,
+                            "none" => Shape::None,
+                            "round" => Shape::Round,
+                            _ => return Err(failure("invalid_value", spec)),
+                        }),
+                        "label_on" => D::LabelOn(flag()?),
+                        "label" => D::Label(value.to_string()),
+                        "rate_on" => D::RateOn(flag()?),
+                        "rate" => D::Rate(value.to_string()),
+                        "select" => D::Select,
+                        "remove" => D::Remove,
+                        "ok" => D::Ok,
+                        _ => {
+                            return Err(failure(
+                                "invalid_value",
+                                "Unknown Inspection Dimension field",
+                            ))
+                        }
+                    })
                 }
             }
             // The Insert / Edit Hyperlink window, one field per call:

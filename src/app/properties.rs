@@ -445,12 +445,12 @@ impl OpenCADStudio {
             let xd = &source_entity.common().extended_data;
             if !xd.is_empty() && !matches!(source_entity, codec::EntityType::Ole2Frame(_)) {
                 let mut xd_props = Vec::new();
-                // A hyperlink shows on its own row.
-                for rec in xd
-                    .records()
-                    .iter()
-                    .filter(|rec| rec.application_name != crate::scene::hyperlink::APP)
-                {
+                // A hyperlink shows on its own row; inspection data is the
+                // dimension's own.
+                for rec in xd.records().iter().filter(|rec| {
+                    rec.application_name != crate::scene::hyperlink::APP
+                        && rec.application_name != crate::entities::dim_inspect::APP
+                }) {
                     let value_text = rec
                         .values
                         .iter()

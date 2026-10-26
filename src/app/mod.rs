@@ -683,6 +683,8 @@ pub(super) struct OpenCADStudio {
     refedit_dialog: Option<crate::ui::window::refedit_dialog::RefEditDialogState>,
     /// The Password Protected PDF window.
     pdf_password: Option<crate::ui::window::pdf_password_dialog::PdfPasswordState>,
+    /// The Inspection Dimension window.
+    dim_inspect_dialog: Option<crate::ui::window::dim_inspect_dialog::DimInspectState>,
     pdf_shx_dialog: Option<crate::ui::window::pdf_shx_dialog::ShxSettingsState>,
     underlay_layers: Option<crate::ui::window::pdf_dialogs::UnderlayLayersState>,
     pdf_import_settings: Option<crate::modules::insert::pdf_import::PdfImportSettings>,
@@ -875,6 +877,7 @@ pub(super) struct OpenCADStudio {
     pub auto_constrain_settings: settings::AutoConstrainSettings,
     /// TXT2MTXT settings (profile).
     pub txt2mtxt_settings: settings::Txt2MtxtSettings,
+    pub dim_inspect_settings: settings::DimInspectSettings,
     /// The Text to MText Settings dialog's working copy.
     txt2mtxt_dialog: Option<settings::Txt2MtxtSettings>,
     /// Check Spelling (profile) and its open window.
@@ -2688,6 +2691,7 @@ pub enum ModalKind {
     ImageAdjust,
     RefEdit,
     PdfPassword,
+    DimInspect,
     PdfShxSettings,
     UnderlayLayers,
     PdfImportSettings,
@@ -5020,6 +5024,8 @@ pub enum Message {
     RefEditDialog(crate::ui::window::refedit_dialog::RefEditDialogMsg),
     /// An edit in the Password Protected PDF window.
     PdfPassword(crate::ui::window::pdf_password_dialog::PdfPasswordMsg),
+    /// An edit in the Inspection Dimension window.
+    DimInspect(crate::ui::window::dim_inspect_dialog::DimInspectMsg),
     HyperlinkDialog(crate::ui::window::hyperlink_dialog::HyperlinkMsg),
     /// Check Spelling window.
     Spell(crate::ui::window::spell_dialog::SpellMsg),
@@ -5270,6 +5276,7 @@ impl OpenCADStudio {
             image_adjust: None,
             refedit_dialog: None,
             pdf_password: None,
+            dim_inspect_dialog: None,
             pdf_shx_dialog: None,
             underlay_layers: None,
             pdf_import_settings: None,
@@ -5362,6 +5369,7 @@ impl OpenCADStudio {
             txt2mtxt_settings: settings::Txt2MtxtSettings::default(),
             spell_prefs: settings::SpellPrefs::default(),
             spell: None,
+            dim_inspect_settings: settings::DimInspectSettings::default(),
             txt2mtxt_dialog: None,
             auto_constrain_saved: None,
             auto_constrain_selected_row: 0,

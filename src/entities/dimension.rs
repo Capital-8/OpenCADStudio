@@ -4381,9 +4381,11 @@ fn tessellate_dimension_inner(
         }
     }
 
+    // DIMINSPECT: label, value and rate in their own frame.
+    let inspection = crate::entities::dim_inspect::read(&dim.base().common.extended_data);
     // A negative DIMGAP denotes the Basic tolerance display: frame the
     // dimension text while keeping the absolute gap as the frame margin.
-    if style.is_some_and(|s| s.dimgap < 0.0) {
+    if inspection.is_none() && style.is_some_and(|s| s.dimgap < 0.0) {
         if let Some(rect) = text_fill_rect(dim, style, dim_txt, dim_scale) {
             let p1 = rect[0];
             let p2 = rect[1];
@@ -4459,25 +4461,36 @@ fn tessellate_dimension_inner(
         // Tolerance Text rendered separately so DIMTFAC scales its height
         // and DIMTOLJ aligns it vertically against the primary text.
         let tol_entity = dimension_tolerance_entity(source_dim, style, &synth_text_entity, dim_txt);
+        let text_entities = match &inspection {
+            Some(inspection) => crate::entities::dim_inspect::layout(
+                inspection,
+                synth_text_entity,
+                document,
+                style.map(|s| s.dimgap.abs()).unwrap_or(0.0) * dim_scale,
+            ),
+            None => vec![synth_text_entity],
+        };
         // Route synthesised dim text through tessellate_entity so the
         // baseline/greek/full LOD ladder applies (zoom-out behaviour
         // matches top-level Text / MText). The text already has dim_scale
         // baked into its height, so anno_scale stays 1.0.
-        let text_wires = crate::scene::tessellate_entity_dim_text(
-            document,
-            selected_set,
-            active_viewport,
-            bg_color,
-            1.0,
-            &synth_text_entity,
-            view_aabb,
-            world_per_pixel,
-            text_color,
-            reference_only,
-        );
-        for mut w in text_wires {
-            w.name = name.clone();
-            wires.push(w);
+        for text_entity in &text_entities {
+            let text_wires = crate::scene::tessellate_entity_dim_text(
+                document,
+                selected_set,
+                active_viewport,
+                bg_color,
+                1.0,
+                text_entity,
+                view_aabb,
+                world_per_pixel,
+                text_color,
+                reference_only,
+            );
+            for mut w in text_wires {
+                w.name = name.clone();
+                wires.push(w);
+            }
         }
 
         if let Some(tol_entity_e) = tol_entity {
@@ -8707,6 +8720,43 @@ pub(crate) fn baked_dimension_text_entity(
     document: &Document,
     anno_scale: f64,
 ) -> Option<EntityType> {
+    let (ent, _) = baked_dimension_text(dim, document, anno_scale)?;
+    let mut ent = ent;
+    if let EntityType::Text(t) = &mut ent {
+        t.alignment_point = Some(t.insertion_point);
+    }
+    Some(ent)
+}
+
+/// The measurement text of a saved dimension block, with the DIMINSPECT
+/// label, rate and frame when the dimension has them.
+pub(crate) fn baked_dimension_text_entities(
+    dim: &Dimension,
+    document: &Document,
+    anno_scale: f64,
+) -> Vec<EntityType> {
+    let Some((ent, gap)) = baked_dimension_text(dim, document, anno_scale) else {
+        return Vec::new();
+    };
+    let mut entities =
+        match crate::entities::dim_inspect::read(&dim.base().common.extended_data) {
+            Some(inspection) => crate::entities::dim_inspect::layout(&inspection, ent, document, gap),
+            None => vec![ent],
+        };
+    for ent in &mut entities {
+        if let EntityType::Text(t) = ent {
+            t.alignment_point = Some(t.insertion_point);
+        }
+    }
+    entities
+}
+
+/// The measurement text entity and the scaled DIMGAP of a saved dimension.
+fn baked_dimension_text(
+    dim: &Dimension,
+    document: &Document,
+    anno_scale: f64,
+) -> Option<(EntityType, f64)> {
     let style_name = dim.base().style_name.as_str();
     let effective_style = document
         .dim_styles
@@ -8723,11 +8773,8 @@ pub(crate) fn baked_dimension_text_entity(
     let dim_txt = style
         .map(|s| s.dimtxt * dim_scale)
         .unwrap_or(2.5 * dim_scale);
-    let mut ent = dimension_text_entity(dim, dim_txt, style, document, dim_scale)?;
-    if let EntityType::Text(t) = &mut ent {
-        t.alignment_point = Some(t.insertion_point);
-    }
-    Some(ent)
+    let gap = style.map(|s| s.dimgap.abs()).unwrap_or(0.0) * dim_scale;
+    Some((dimension_text_entity(dim, dim_txt, style, document, dim_scale)?, gap))
 }
 
 pub(crate) fn baked_arc_length_symbol_points(

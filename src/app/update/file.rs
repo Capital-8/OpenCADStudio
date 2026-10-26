@@ -909,6 +909,7 @@ impl OpenCADStudio {
             auto_constrain: self.auto_constrain_settings.clone(),
             txt2mtxt: self.txt2mtxt_settings,
             spell: self.spell_prefs.clone(),
+            dim_inspect: self.dim_inspect_settings.clone(),
             constraint_solve_mode: self.constraint_solve_mode,
             constraint_infer: self.constraint_infer,
             constraint_bar_display: self.constraint_bar_display,
@@ -1100,6 +1101,7 @@ impl OpenCADStudio {
         self.auto_constrain_settings = s.auto_constrain.clone();
         self.txt2mtxt_settings = s.txt2mtxt;
         self.spell_prefs = s.spell.clone();
+        self.dim_inspect_settings = s.dim_inspect.clone();
         self.auto_constrain_settings.sanitize();
         self.auto_constrain_distance_input =
             format!("{}", self.auto_constrain_settings.distance_tolerance);
