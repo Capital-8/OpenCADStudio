@@ -3400,6 +3400,16 @@ impl Scene {
                     s.landing_distance = 8.0;
                     s.break_gap_size = 3.75;
                 }
+                // Likewise the Standard table style: the metric template's
+                // cells are 4.5 high (title 6) with 1.5 margins, not 0.18.
+                codec::objects::ObjectType::TableStyle(s)
+                    if s.name.eq_ignore_ascii_case("Standard") =>
+                {
+                    s.set_margins(1.5);
+                    s.data_row_style.text_height = 4.5;
+                    s.header_row_style.text_height = 4.5;
+                    s.title_row_style.text_height = 6.0;
+                }
                 _ => {}
             }
         }
