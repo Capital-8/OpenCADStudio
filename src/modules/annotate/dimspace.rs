@@ -32,6 +32,9 @@ enum Step {
 pub struct DimSpaceCommand {
     step: Step,
     picked_entity: Option<EntityType>,
+    /// DIM's aliGn: the dimensions are lined up with the base (no spacing
+    /// is asked).
+    align: bool,
 }
 
 impl DimSpaceCommand {
@@ -39,16 +42,35 @@ impl DimSpaceCommand {
         Self {
             step: Step::PickBase,
             picked_entity: None,
+            align: false,
+        }
+    }
+
+    /// DIM's aliGn option.
+    pub fn aligning() -> Self {
+        Self {
+            align: true,
+            ..Self::new()
         }
     }
 }
 
 impl CadCommand for DimSpaceCommand {
     fn name(&self) -> &'static str {
-        "DIMSPACE"
+        if self.align {
+            "DIM"
+        } else {
+            "DIMSPACE"
+        }
     }
 
     fn prompt(&self) -> String {
+        if self.align {
+            return match &self.step {
+                Step::PickBase => crate::tr!("dim-cmd", "align-base"),
+                _ => crate::tr!("dim-cmd", "align-others"),
+            };
+        }
         match &self.step {
             Step::PickBase => t!("DIMSPACE  Select base dimension:").into_owned(),
             Step::PickOthers { others, .. } => t!(
@@ -158,6 +180,13 @@ impl CadCommand for DimSpaceCommand {
         }
         let base = *base;
         let others = others.clone();
+        if self.align {
+            return CmdResult::SpaceDimensions {
+                base,
+                others,
+                spacing: Some(0.0),
+            };
+        }
         self.step = Step::EnterSpacing { base, others };
         CmdResult::NeedPoint
     }
@@ -216,6 +245,7 @@ mod tests {
                 others: vec![Handle::from(3)],
             },
             picked_entity: None,
+            align: false,
         };
         let Some(CmdResult::SpaceDimensions {
             base,

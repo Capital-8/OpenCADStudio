@@ -1,0 +1,515 @@
+// DIM — one command for most dimension types. At its main prompt a picked
+// line gives a linear (or aligned) dimension, a circle a diameter, an arc a
+// radius; a point starts a dimension between two points. The options run
+// the other kinds. Each dimension is made by the matching dimension command
+// running inside DIM; after it DIM asks again until Enter.
+
+use codec::{EntityType, Handle};
+use glam::DVec3;
+
+use crate::command::{
+    CadCommand, CmdOption, CmdResult, DimensionPreview, DynSpec, InputKind, WorkingPlane,
+};
+use crate::modules::annotate::aligned_dim::AlignedDimensionCommand;
+use crate::modules::annotate::angular_dim::AngularDimensionCommand;
+use crate::modules::annotate::arc_length_dim::ArcLengthDimensionCommand;
+use crate::modules::annotate::diameter_dim::DiameterDimensionCommand;
+use crate::modules::annotate::linear_dim::LinearDimensionCommand;
+use crate::modules::annotate::ordinate_dim::OrdinateDimCommand;
+use crate::modules::annotate::radius_dim::RadiusDimensionCommand;
+use crate::modules::{IconKind, ModuleEvent, ToolDef};
+use crate::scene::model::wire_model::WireModel;
+
+pub const ICON: IconKind = IconKind::Svg(include_bytes!("../../../assets/icons/dim_linear.svg"));
+
+pub fn tool() -> ToolDef {
+    ToolDef {
+        id: "DIM",
+        label: "Dimension",
+        icon: ICON,
+        event: ModuleEvent::Command("DIM".to_string()),
+    }
+}
+
+/// What a radial pick was, so its options can switch the kind.
+#[derive(Clone)]
+struct RadialPick {
+    entity: EntityType,
+    handle: Handle,
+    point: DVec3,
+    circle: bool,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Kind {
+    Linear,
+    Aligned,
+    Radius,
+    Diameter,
+    ArcLength,
+    Angular,
+    Ordinate,
+}
+
+pub struct DimCommand {
+    plane: WorkingPlane,
+    inner: Option<(Kind, Box<dyn CadCommand>)>,
+    /// The first point of a dimension started from a point, while its second
+    /// one is awaited.
+    first_point: Option<DVec3>,
+    radial: Option<RadialPick>,
+    picked: Option<EntityType>,
+    /// The Layer option is waiting for a name.
+    layer: bool,
+    /// The layer DIM was started with ("." = the current one).
+    current_layer: String,
+}
+
+impl DimCommand {
+    pub fn new(current_layer: String) -> Self {
+        Self {
+            plane: WorkingPlane::default(),
+            inner: None,
+            first_point: None,
+            radial: None,
+            picked: None,
+            layer: false,
+            current_layer,
+        }
+    }
+
+    fn start(&mut self, kind: Kind) -> &mut Box<dyn CadCommand> {
+        let mut command: Box<dyn CadCommand> = match kind {
+            Kind::Linear => Box::new(LinearDimensionCommand::new()),
+            Kind::Aligned => Box::new(AlignedDimensionCommand::new()),
+            Kind::Radius => Box::new(RadiusDimensionCommand::new()),
+            Kind::Diameter => Box::new(DiameterDimensionCommand::new()),
+            Kind::ArcLength => Box::new(ArcLengthDimensionCommand::new()),
+            Kind::Angular => Box::new(AngularDimensionCommand::new()),
+            Kind::Ordinate => Box::new(OrdinateDimCommand::new()),
+        };
+        command.set_working_plane(self.plane);
+        &mut self.inner.insert((kind, command)).1
+    }
+
+    /// A pick replayed into a dimension command whose first prompt picks an
+    /// object.
+    fn start_picked(&mut self, kind: Kind, entity: EntityType, handle: Handle, point: DVec3) -> CmdResult {
+        let command = self.start(kind);
+        if !command.needs_entity_pick() {
+            // DIMLINEAR / DIMALIGNED pick objects after an Enter.
+            let _ = command.on_enter();
+        }
+        command.inject_picked_entity(entity);
+        let result = command.on_entity_pick(handle, point);
+        self.wrap(result)
+    }
+
+    /// The inner command's result: a finished dimension keeps DIM running.
+    fn wrap(&mut self, result: CmdResult) -> CmdResult {
+        match result {
+            CmdResult::CommitDimension {
+                entity,
+                association,
+                preserve_base_style,
+                continue_command,
+            } => {
+                if !continue_command {
+                    self.reset();
+                }
+                CmdResult::CommitDimension {
+                    entity,
+                    association,
+                    preserve_base_style,
+                    continue_command: true,
+                }
+            }
+            other => other,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.inner = None;
+        self.first_point = None;
+        self.radial = None;
+        self.picked = None;
+    }
+
+    fn inner(&self) -> Option<&dyn CadCommand> {
+        self.inner.as_ref().map(|(_, command)| command.as_ref())
+    }
+
+    /// The kind a radial option switches to, with the same pick.
+    fn switch_radial(&mut self, kind: Kind) -> Option<CmdResult> {
+        let pick = self.radial.clone()?;
+        if kind == Kind::ArcLength && pick.circle {
+            return None;
+        }
+        Some(self.start_picked(kind, pick.entity, pick.handle, pick.point))
+    }
+}
+
+/// A line-like source has two ends; circles and arcs are radial.
+enum Source {
+    Line,
+    Circle,
+    Arc,
+    Other,
+}
+
+fn source_of(entity: &EntityType) -> Source {
+    match entity {
+        EntityType::Line(_) | EntityType::LwPolyline(_) | EntityType::Polyline(_) => Source::Line,
+        EntityType::Circle(_) => Source::Circle,
+        EntityType::Arc(_) => Source::Arc,
+        _ => Source::Other,
+    }
+}
+
+impl CadCommand for DimCommand {
+    fn name(&self) -> &'static str {
+        "DIM"
+    }
+
+    fn set_working_plane(&mut self, plane: WorkingPlane) {
+        self.plane = plane;
+        if let Some((_, command)) = self.inner.as_mut() {
+            command.set_working_plane(plane);
+        }
+    }
+
+    fn prompt(&self) -> String {
+        if self.layer {
+            return crate::tr!("dim-cmd", "layer", current = self.current_layer.clone());
+        }
+        if let Some(pick) = &self.radial {
+            if self
+                .inner()
+                .is_some_and(|command| command.dimension_placement_pending())
+            {
+                return if pick.circle {
+                    crate::tr!("dim-cmd", "diameter-location")
+                } else {
+                    crate::tr!("dim-cmd", "radius-location")
+                };
+            }
+        }
+        match self.inner() {
+            // The inner command's prompt, under DIM's name.
+            Some(command) => {
+                let prompt = command.prompt();
+                match prompt.split_once("  ") {
+                    Some((_, rest)) => format!("DIM  {rest}"),
+                    None => prompt,
+                }
+            }
+            None => crate::tr!("dim-cmd", "main"),
+        }
+    }
+
+    fn options(&self) -> Vec<CmdOption> {
+        if self.layer {
+            return vec![CmdOption::new("Use current", "USECURRENT")];
+        }
+        if let Some(pick) = &self.radial {
+            if self
+                .inner()
+                .is_some_and(|command| command.dimension_placement_pending())
+            {
+                let mut options = Vec::new();
+                if pick.circle {
+                    options.push(CmdOption::new("Radius", "RADIUS"));
+                } else {
+                    options.push(CmdOption::new("Diameter", "DIAMETER"));
+                }
+                options.push(CmdOption::new("Jogged", "JOGGED"));
+                options.push(CmdOption::new("Angular", "ANGULAR"));
+                if !pick.circle {
+                    options.push(CmdOption::new("Arc length", "ARCLENGTH"));
+                }
+                if let Some(command) = self.inner() {
+                    options.extend(command.options());
+                }
+                return options;
+            }
+        }
+        match self.inner() {
+            Some(command) => command.options(),
+            None => vec![
+                CmdOption::new("Angular", "ANGULAR"),
+                CmdOption::new("Baseline", "BASELINE"),
+                CmdOption::new("Continue", "CONTINUE"),
+                CmdOption::new("Ordinate", "ORDINATE"),
+                CmdOption::new("aliGn", "ALIGN"),
+                CmdOption::new("Distribute", "DISTRIBUTE"),
+                CmdOption::new("Layer", "LAYER"),
+                CmdOption::new("Undo", "UNDO"),
+            ],
+        }
+    }
+
+    fn input_kind(&self) -> InputKind {
+        if self.layer {
+            return InputKind::FreeText;
+        }
+        self.inner()
+            .map_or(InputKind::Point, |command| command.input_kind())
+    }
+
+    #[allow(deprecated)]
+    fn wants_text_input(&self) -> bool {
+        self.layer || self.inner().is_some_and(|command| command.wants_text_input())
+    }
+
+    fn point_step_accepts_keywords(&self) -> bool {
+        !self.layer
+            && self
+                .inner()
+                .is_none_or(|command| command.point_step_accepts_keywords())
+    }
+
+    fn needs_entity_pick(&self) -> bool {
+        match self.inner() {
+            Some(command) => command.needs_entity_pick(),
+            // The main prompt picks objects and takes points.
+            None => !self.layer,
+        }
+    }
+
+    fn entity_pick_accepts_points(&self) -> bool {
+        match self.inner() {
+            Some(command) => command.entity_pick_accepts_points(),
+            None => true,
+        }
+    }
+
+    fn entity_pick_highlights_hover(&self) -> bool {
+        self.inner()
+            .is_none_or(|command| command.entity_pick_highlights_hover())
+    }
+
+    fn inject_before_entity_pick(&self) -> bool {
+        self.inner()
+            .is_none_or(|command| command.inject_before_entity_pick())
+    }
+
+    fn inject_picked_entity(&mut self, entity: EntityType) {
+        match self.inner.as_mut() {
+            Some((_, command)) => command.inject_picked_entity(entity),
+            None => self.picked = Some(entity),
+        }
+    }
+
+    fn on_entity_pick(&mut self, handle: Handle, pt: DVec3) -> CmdResult {
+        if let Some((_, command)) = self.inner.as_mut() {
+            let result = command.on_entity_pick(handle, pt);
+            return self.wrap(result);
+        }
+        let Some(entity) = self.picked.take() else {
+            return CmdResult::NeedPoint;
+        };
+        match source_of(&entity) {
+            Source::Line => {
+                // A slanted line is measured along itself.
+                let kind = match &entity {
+                    EntityType::Line(line) => {
+                        let dx = line.end.x - line.start.x;
+                        let dy = line.end.y - line.start.y;
+                        if dx.abs() > 1e-9 && dy.abs() > 1e-9 {
+                            Kind::Aligned
+                        } else {
+                            Kind::Linear
+                        }
+                    }
+                    _ => Kind::Linear,
+                };
+                self.start_picked(kind, entity, handle, pt)
+            }
+            Source::Circle | Source::Arc => {
+                let circle = matches!(entity, EntityType::Circle(_));
+                self.radial = Some(RadialPick {
+                    entity: entity.clone(),
+                    handle,
+                    point: pt,
+                    circle,
+                });
+                let kind = if circle { Kind::Diameter } else { Kind::Radius };
+                self.start_picked(kind, entity, handle, pt)
+            }
+            Source::Other => CmdResult::NeedPoint,
+        }
+    }
+
+    fn on_point(&mut self, pt: DVec3) -> CmdResult {
+        if let Some((kind, command)) = self.inner.as_mut() {
+            // A slanted pair of points is dimensioned along itself.
+            if *kind == Kind::Linear && command.dimension_acquired_points().len() == 1 {
+                if let Some(first) = self.first_point {
+                    let d = self.plane.to_local(pt) - self.plane.to_local(first);
+                    if d.x.abs() > 1e-9 && d.y.abs() > 1e-9 {
+                        let aligned = self.start(Kind::Aligned);
+                        let _ = aligned.on_point(first);
+                        let result = aligned.on_point(pt);
+                        return self.wrap(result);
+                    }
+                }
+            }
+            let result = command.on_point(pt);
+            return self.wrap(result);
+        }
+        self.first_point = Some(pt);
+        let command = self.start(Kind::Linear);
+        let result = command.on_point(pt);
+        self.wrap(result)
+    }
+
+    fn on_enter(&mut self) -> CmdResult {
+        if self.layer {
+            self.layer = false;
+            return CmdResult::NeedPoint;
+        }
+        match self.inner.as_mut() {
+            Some((_, command)) => {
+                let result = command.on_enter();
+                match result {
+                    // Enter that ends the inner command returns to DIM.
+                    CmdResult::Cancel => {
+                        self.reset();
+                        CmdResult::NeedPoint
+                    }
+                    other => self.wrap(other),
+                }
+            }
+            None => CmdResult::Cancel,
+        }
+    }
+
+    fn on_escape(&mut self) -> CmdResult {
+        CmdResult::Cancel
+    }
+
+    fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        if self.layer {
+            self.layer = false;
+            let value = text.trim().trim_matches('"');
+            let value = match value.to_ascii_uppercase().as_str() {
+                "U" | "USE" | "USECURRENT" | "USE CURRENT" | "." | "" => ".".to_string(),
+                _ => value.to_string(),
+            };
+            self.current_layer = value.clone();
+            return Some(CmdResult::Dispatch(format!("_DIM_LAYER {value}")));
+        }
+        let keyword = text.trim().trim_start_matches(['_', '.']).to_ascii_uppercase();
+        if self.radial.is_some()
+            && self
+                .inner()
+                .is_some_and(|command| command.dimension_placement_pending())
+        {
+            let switched = match keyword.as_str() {
+                "R" | "RADIUS" => self.switch_radial(Kind::Radius),
+                "D" | "DIAMETER" => self.switch_radial(Kind::Diameter),
+                "L" | "ARCLENGTH" => self.switch_radial(Kind::ArcLength),
+                "A" | "ANGULAR" => {
+                    let pick = self.radial.clone()?;
+                    Some(self.start_picked(Kind::Angular, pick.entity, pick.handle, pick.point))
+                }
+                // Jogged needs the drawing's dimension defaults.
+                "J" | "JOGGED" => Some(CmdResult::Dispatch("DIMJOGGED".into())),
+                _ => None,
+            };
+            if switched.is_some() {
+                return switched;
+            }
+        }
+        if let Some((_, command)) = self.inner.as_mut() {
+            // DIM names the text angle "text aNgle".
+            let text = if command.dimension_placement_pending()
+                && matches!(keyword.as_str(), "N" | "ANGLE")
+            {
+                "A"
+            } else {
+                text
+            };
+            let result = command.on_text_input(text)?;
+            return Some(self.wrap(result));
+        }
+        match keyword.as_str() {
+            "A" | "AN" | "ANG" | "ANGULAR" => {
+                self.start(Kind::Angular);
+                Some(CmdResult::NeedPoint)
+            }
+            "O" | "ORD" | "ORDINATE" => {
+                self.start(Kind::Ordinate);
+                Some(CmdResult::NeedPoint)
+            }
+            // The continued and baseline series need the last dimension.
+            "B" | "BASELINE" => Some(CmdResult::Dispatch("DIMBASELINE".into())),
+            "C" | "CONTINUE" => Some(CmdResult::Dispatch("DIMCONTINUE".into())),
+            "G" | "ALIGN" => Some(CmdResult::Dispatch("_DIM_ALIGN".into())),
+            "D" | "DISTRIBUTE" => Some(CmdResult::Dispatch("DIMSPACE".into())),
+            "L" | "LAYER" => {
+                self.layer = true;
+                Some(CmdResult::NeedPoint)
+            }
+            "U" | "UNDO" => Some(CmdResult::Dispatch("_DIM_UNDO".into())),
+            _ => None,
+        }
+    }
+
+    fn on_mouse_move(&mut self, pt: DVec3) -> Option<WireModel> {
+        self.inner
+            .as_mut()
+            .and_then(|(_, command)| command.on_mouse_move(pt))
+    }
+
+    fn dimension_preview(&self, cursor: DVec3) -> Option<Vec<DimensionPreview>> {
+        self.inner()?.dimension_preview(cursor)
+    }
+
+    fn measures_through_viewports(&self) -> bool {
+        true
+    }
+
+    fn dimension_placement_pending(&self) -> bool {
+        self.inner()
+            .is_some_and(|command| command.dimension_placement_pending())
+    }
+
+    fn dimension_acquired_points(&self) -> Vec<DVec3> {
+        self.inner()
+            .map(|command| command.dimension_acquired_points())
+            .unwrap_or_default()
+    }
+
+    fn on_editor_text(&mut self, value: String) {
+        if let Some((_, command)) = self.inner.as_mut() {
+            command.on_editor_text(value);
+        }
+    }
+
+    fn on_editor_closed(&mut self, committed: bool) -> CmdResult {
+        match self.inner.as_mut() {
+            Some((_, command)) => {
+                let result = command.on_editor_closed(committed);
+                self.wrap(result)
+            }
+            None => CmdResult::NeedPoint,
+        }
+    }
+
+    fn on_undo_step(&mut self) -> Option<CmdResult> {
+        let (_, command) = self.inner.as_mut()?;
+        let result = command.on_undo_step()?;
+        Some(self.wrap(result))
+    }
+
+    fn dyn_spec(&self) -> Option<DynSpec> {
+        self.inner()?.dyn_spec()
+    }
+
+    fn text_field(&self) -> Option<(String, Vec<Handle>)> {
+        self.inner()?.text_field()
+    }
+}
+
+inventory::submit!(crate::command::CommandRegistration { names: &["DIM"] });

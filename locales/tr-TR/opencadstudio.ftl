@@ -7001,3 +7001,11 @@ block-lookup =
 
 block-array =
     .limit-error = Blok değerlendirmesi 100000 adetten fazla dizi nesnesi oluşturacak. Mesafeyi azaltın veya aralığı artırın.
+dim-cmd =
+    .main = DIM  Nesneleri seçin veya ilk uzatma çizgisinin başlangıcını belirtin veya [Angular/Baseline/Continue/Ordinate/aliGn/Distribute/Layer/Undo]:
+    .diameter-location = DIM  Çap ölçüsünün konumunu belirtin veya [Radius/Jogged/Angular/Mtext/Text/text aNgle/Undo]:
+    .radius-location = DIM  Yarıçap ölçüsünün konumunu belirtin veya [Diameter/Jogged/Angular/Arc length/Mtext/Text/text aNgle/Undo]:
+    .layer = DIM  Katman adını girin veya katmanı belirlemek için bir nesne seçin veya [Use current] <"{ $current }">:
+    .align-base = DIM  Temel ölçüyü seçin:
+    .align-others = DIM  Hizalanacak ölçüleri seçin:
+    .use-current = geçerliyi kullan

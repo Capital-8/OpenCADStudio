@@ -10,6 +10,7 @@ pub mod data_link;
 pub mod ddedit;
 pub mod diameter_dim;
 pub mod dim_baseline;
+pub mod dim_cmd;
 pub mod dim_continue;
 pub mod dimbreak;
 pub mod dimedit;

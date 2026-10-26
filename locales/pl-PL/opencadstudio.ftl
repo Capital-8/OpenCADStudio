@@ -7079,3 +7079,11 @@ block-lookup =
 
 block-array =
     .limit-error = Przeliczenie bloku utworzyłoby ponad 100000 obiektów szyku. Zmniejsz odległość lub zwiększ odstęp.
+dim-cmd =
+    .main = DIM  Select objects or specify first extension line origin or [Angular/Baseline/Continue/Ordinate/aliGn/Distribute/Layer/Undo]:
+    .diameter-location = DIM  Specify diameter dimension location or [Radius/Jogged/Angular/Mtext/Text/text aNgle/Undo]:
+    .radius-location = DIM  Specify radius dimension location or [Diameter/Jogged/Angular/Arc length/Mtext/Text/text aNgle/Undo]:
+    .layer = DIM  Enter layer name or select an object to specify layer name or [Use current] <"{ $current }">:
+    .align-base = DIM  Select base dimension:
+    .align-others = DIM  Select dimensions to align:
+    .use-current = use current
