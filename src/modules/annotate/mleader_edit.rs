@@ -301,26 +301,105 @@ pub const ICON_ALIGN: IconKind =
 pub fn tool_align() -> ToolDef {
     ToolDef {
         id: "MLEADERALIGN",
-        label: "Align Leaders",
+        label: "Align",
         icon: ICON_ALIGN,
         event: ModuleEvent::Command("MLEADERALIGN".to_string()),
     }
 }
 
+/// How MLEADERALIGN spaces the multileaders it lines up.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MLeaderAlignMode {
+    /// Keep each content where it falls along the line (its projection).
+    UseCurrent,
+    /// Spread the contents evenly between two points.
+    Distribute,
+    /// Turn each leader's last segment parallel to the one aligned to.
+    Parallel,
+    /// Stack the contents along the line this far apart.
+    Spacing,
+}
+
+/// The align mode and spacing carry over to the next MLEADERALIGN.
+static ALIGN_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+static ALIGN_SPACING: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn align_mode() -> MLeaderAlignMode {
+    match ALIGN_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => MLeaderAlignMode::Distribute,
+        2 => MLeaderAlignMode::Parallel,
+        3 => MLeaderAlignMode::Spacing,
+        _ => MLeaderAlignMode::UseCurrent,
+    }
+}
+
+fn align_spacing() -> f64 {
+    f64::from_bits(ALIGN_SPACING.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum AlignStep {
     Gathering,
-    PickDirection { handles: Vec<Handle> },
-    PickEndDir { handles: Vec<Handle>, from: DVec3 },
+    AlignTo,
+    Direction,
+    Options,
+    Spacing,
+    SecondPoint,
 }
 
 pub struct MLeaderAlignCommand {
     step: AlignStep,
+    handles: Vec<Handle>,
+    reference: Option<Handle>,
+    picked: Option<EntityType>,
+    first: Option<DVec3>,
+    mode: MLeaderAlignMode,
+    spacing: f64,
 }
 
 impl MLeaderAlignCommand {
     pub fn new() -> Self {
         Self {
             step: AlignStep::Gathering,
+            handles: Vec::new(),
+            reference: None,
+            picked: None,
+            first: None,
+            mode: align_mode(),
+            spacing: align_spacing(),
+        }
+    }
+
+    fn mode_line(&self) -> String {
+        let mode = match self.mode {
+            MLeaderAlignMode::UseCurrent => crate::tr!("mleader-align", "mode-current"),
+            MLeaderAlignMode::Distribute => crate::tr!("mleader-align", "mode-distribute"),
+            MLeaderAlignMode::Parallel => crate::tr!("mleader-align", "mode-parallel"),
+            MLeaderAlignMode::Spacing => {
+                crate::tr!("mleader-align", "mode-spacing", value = format!("{:.6}", self.spacing))
+            }
+        };
+        crate::tr!("mleader-align", "current-mode", mode = mode)
+    }
+
+    /// The step after the selection or an option: where the mode starts.
+    fn mode_step(&self) -> AlignStep {
+        AlignStep::AlignTo
+    }
+
+    fn set_mode(&mut self, mode: MLeaderAlignMode) {
+        self.mode = mode;
+        ALIGN_MODE.store(mode as u8, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn result(&self, from: DVec3, to: DVec3) -> CmdResult {
+        CmdResult::AlignMLeaders {
+            handles: self.handles.clone(),
+            reference: self.reference,
+            mode: self.mode,
+            spacing: self.spacing,
+            from,
+            to,
         }
     }
 }
@@ -331,55 +410,189 @@ impl CadCommand for MLeaderAlignCommand {
     }
 
     fn prompt(&self) -> String {
-        match &self.step {
-            AlignStep::Gathering => {
-                t!("MLEADERALIGN  Select multileaders to align (Enter when done):").into_owned()
+        match self.step {
+            AlignStep::Gathering => crate::tr!("mleader-align", "select"),
+            AlignStep::AlignTo if self.mode == MLeaderAlignMode::Distribute => {
+                crate::tr!("mleader-align", "first-point")
             }
-            AlignStep::PickDirection { .. } => {
-                t!("MLEADERALIGN  Specify direction — pick start point:").into_owned()
-            }
-            AlignStep::PickEndDir { .. } => {
-                t!("MLEADERALIGN  Specify end point of alignment direction:").into_owned()
+            AlignStep::AlignTo => crate::tr!("mleader-align", "align-to"),
+            AlignStep::Direction => crate::tr!("mleader-align", "direction"),
+            AlignStep::SecondPoint => crate::tr!("mleader-align", "second-point"),
+            AlignStep::Spacing => crate::tr!(
+                "mleader-align",
+                "spacing",
+                value = format!("{:.6}", self.spacing)
+            ),
+            AlignStep::Options => {
+                let current = match self.mode {
+                    MLeaderAlignMode::UseCurrent => crate::tr!("mleader-align", "opt-current"),
+                    MLeaderAlignMode::Distribute => crate::tr!("mleader-align", "opt-distribute"),
+                    MLeaderAlignMode::Parallel => crate::tr!("mleader-align", "opt-parallel"),
+                    MLeaderAlignMode::Spacing => crate::tr!("mleader-align", "opt-spacing"),
+                };
+                crate::tr!("mleader-align", "options", current = current)
             }
         }
     }
 
+    fn options(&self) -> Vec<CmdOption> {
+        match self.step {
+            AlignStep::AlignTo => vec![CmdOption::new("Options", "O")],
+            AlignStep::Options => vec![
+                CmdOption::new("Distribute", "D"),
+                CmdOption::new("make leader segments Parallel", "P"),
+                CmdOption::new("specify Spacing", "S"),
+                CmdOption::new("Use current spacing", "U"),
+            ],
+            _ => Vec::new(),
+        }
+    }
+
     fn is_selection_gathering(&self) -> bool {
-        matches!(self.step, AlignStep::Gathering)
+        self.step == AlignStep::Gathering
+    }
+
+    fn selection_entity_filter(&self) -> Option<fn(&EntityType) -> bool> {
+        Some(|entity| matches!(entity, EntityType::MultiLeader(_)))
+    }
+
+    fn selection_entity_filter_reports(&self) -> bool {
+        true
     }
 
     fn on_selection_complete(&mut self, handles: Vec<Handle>) -> CmdResult {
         if handles.is_empty() {
             return CmdResult::Cancel;
         }
-        self.step = AlignStep::PickDirection { handles };
-        CmdResult::NeedPoint
+        self.handles = handles;
+        self.step = self.mode_step();
+        CmdResult::ReportMeasurement(self.mode_line())
+    }
+
+    fn needs_entity_pick(&self) -> bool {
+        self.step == AlignStep::AlignTo && self.mode != MLeaderAlignMode::Distribute
+    }
+
+    fn inject_before_entity_pick(&self) -> bool {
+        true
+    }
+
+    fn typed_point_picks_entity(&self) -> bool {
+        self.needs_entity_pick()
+    }
+
+    fn inject_picked_entity(&mut self, entity: EntityType) {
+        self.picked = Some(entity);
+    }
+
+    fn on_entity_pick(&mut self, handle: Handle, pt: DVec3) -> CmdResult {
+        match self.picked.take() {
+            Some(EntityType::MultiLeader(_)) if !handle.is_null() => {
+                self.reference = Some(handle);
+                if self.mode == MLeaderAlignMode::Parallel {
+                    return self.result(pt, pt);
+                }
+                self.step = AlignStep::Direction;
+                CmdResult::NeedPoint
+            }
+            Some(_) => CmdResult::ReportError(crate::tr!("mleader-edit", "not-multileader")),
+            None => CmdResult::NeedPoint,
+        }
+    }
+
+    fn input_kind(&self) -> InputKind {
+        match self.step {
+            AlignStep::Options | AlignStep::Spacing => InputKind::SingleToken,
+            _ => InputKind::Point,
+        }
+    }
+
+    fn point_step_accepts_keywords(&self) -> bool {
+        self.step == AlignStep::AlignTo
+    }
+
+    fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        let key = text.trim().trim_start_matches('_').to_ascii_uppercase();
+        match self.step {
+            AlignStep::AlignTo => match key.as_str() {
+                "O" | "OPTIONS" => {
+                    self.step = AlignStep::Options;
+                    Some(CmdResult::NeedPoint)
+                }
+                _ => None,
+            },
+            AlignStep::Options => {
+                match key.as_str() {
+                    "D" | "DISTRIBUTE" => self.set_mode(MLeaderAlignMode::Distribute),
+                    "P" | "PARALLEL" => self.set_mode(MLeaderAlignMode::Parallel),
+                    "S" | "SPACING" => {
+                        self.step = AlignStep::Spacing;
+                        return Some(CmdResult::NeedPoint);
+                    }
+                    "U" | "USE" | "USE CURRENT SPACING" => {
+                        self.set_mode(MLeaderAlignMode::UseCurrent)
+                    }
+                    _ => {
+                        return Some(CmdResult::ReportError(
+                            t!("Invalid option keyword.").into_owned(),
+                        ))
+                    }
+                }
+                self.step = self.mode_step();
+                Some(CmdResult::NeedPoint)
+            }
+            AlignStep::Spacing => {
+                let value = crate::entities::common::parse_typed_length(text.trim())
+                    .filter(|v| *v >= 0.0)?;
+                self.spacing = value;
+                ALIGN_SPACING.store(value.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                self.set_mode(MLeaderAlignMode::Spacing);
+                self.step = self.mode_step();
+                Some(CmdResult::NeedPoint)
+            }
+            _ => None,
+        }
     }
 
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
-        match &mut self.step {
-            AlignStep::PickDirection { handles } => {
-                let h = handles.clone();
-                self.step = AlignStep::PickEndDir {
-                    handles: h,
-                    from: pt,
-                };
+        match self.step {
+            AlignStep::AlignTo if self.mode == MLeaderAlignMode::Distribute => {
+                self.first = Some(pt);
+                self.step = AlignStep::SecondPoint;
                 CmdResult::NeedPoint
             }
-            AlignStep::PickEndDir { handles, from } => CmdResult::AlignMLeaders {
-                handles: handles.clone(),
-                from: *from,
-                to: pt,
-            },
+            AlignStep::SecondPoint => {
+                let first = self.first.unwrap_or(pt);
+                self.result(first, pt)
+            }
+            AlignStep::Direction => self.result(pt, pt),
             _ => CmdResult::NeedPoint,
         }
     }
 
     fn on_enter(&mut self) -> CmdResult {
-        CmdResult::Cancel
+        match self.step {
+            AlignStep::Options => {
+                self.step = self.mode_step();
+                CmdResult::NeedPoint
+            }
+            AlignStep::Spacing => {
+                self.set_mode(MLeaderAlignMode::Spacing);
+                self.step = self.mode_step();
+                CmdResult::NeedPoint
+            }
+            _ => CmdResult::Cancel,
+        }
     }
-    fn on_mouse_move(&mut self, _pt: DVec3) -> Option<WireModel> {
-        None
+
+    fn on_mouse_move(&mut self, pt: DVec3) -> Option<WireModel> {
+        match self.step {
+            AlignStep::SecondPoint => {
+                let first = self.first?;
+                Some(preview_wire(&[first.as_vec3(), pt.as_vec3()]))
+            }
+            _ => None,
+        }
     }
 }
 
@@ -391,25 +604,67 @@ pub const ICON_COLLECT: IconKind =
 pub fn tool_collect() -> ToolDef {
     ToolDef {
         id: "MLEADERCOLLECT",
-        label: "Collect Leaders",
+        label: "Collect",
         icon: ICON_COLLECT,
         event: ModuleEvent::Command("MLEADERCOLLECT".to_string()),
     }
 }
 
+/// How MLEADERCOLLECT lays the collected blocks out.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum MLeaderCollectLayout {
+    Horizontal,
+    Vertical,
+    /// Rows no wider than the width (0: one row).
+    Wrap(f64),
+}
+
+/// The layout carries over to the next MLEADERCOLLECT.
+static COLLECT_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+static COLLECT_WRAP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn collect_layout() -> MLeaderCollectLayout {
+    match COLLECT_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => MLeaderCollectLayout::Vertical,
+        2 => MLeaderCollectLayout::Wrap(f64::from_bits(
+            COLLECT_WRAP.load(std::sync::atomic::Ordering::Relaxed),
+        )),
+        _ => MLeaderCollectLayout::Horizontal,
+    }
+}
+
+fn store_collect_layout(layout: MLeaderCollectLayout) {
+    use std::sync::atomic::Ordering;
+    let mode = match layout {
+        MLeaderCollectLayout::Horizontal => 0,
+        MLeaderCollectLayout::Vertical => 1,
+        MLeaderCollectLayout::Wrap(width) => {
+            COLLECT_WRAP.store(width.to_bits(), Ordering::Relaxed);
+            2
+        }
+    };
+    COLLECT_MODE.store(mode, Ordering::Relaxed);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum CollectStep {
     Gathering,
-    PickLocation { handles: Vec<Handle> },
+    Location,
+    WrapWidth,
 }
 
 pub struct MLeaderCollectCommand {
     step: CollectStep,
+    handles: Vec<Handle>,
+    layout: MLeaderCollectLayout,
 }
 
 impl MLeaderCollectCommand {
     pub fn new() -> Self {
         Self {
             step: CollectStep::Gathering,
+            handles: Vec::new(),
+            layout: collect_layout(),
         }
     }
 }
@@ -420,47 +675,125 @@ impl CadCommand for MLeaderCollectCommand {
     }
 
     fn prompt(&self) -> String {
-        match &self.step {
-            CollectStep::Gathering => {
-                t!("MLEADERCOLLECT  Select multileaders to collect (Enter when done):").into_owned()
+        match self.step {
+            CollectStep::Gathering => crate::tr!("mleader-align", "select"),
+            CollectStep::Location => {
+                let current = match self.layout {
+                    MLeaderCollectLayout::Horizontal => {
+                        crate::tr!("mleader-collect", "horizontal")
+                    }
+                    MLeaderCollectLayout::Vertical => crate::tr!("mleader-collect", "vertical"),
+                    MLeaderCollectLayout::Wrap(_) => crate::tr!("mleader-collect", "wrap"),
+                };
+                crate::tr!("mleader-collect", "location", current = current)
             }
-            CollectStep::PickLocation { .. } => {
-                t!("MLEADERCOLLECT  Specify collected multileader location:").into_owned()
+            CollectStep::WrapWidth => {
+                let width = match self.layout {
+                    MLeaderCollectLayout::Wrap(width) => width,
+                    _ => 0.0,
+                };
+                crate::tr!("mleader-collect", "wrap-width", value = format!("{width:.6}"))
             }
         }
     }
 
+    fn options(&self) -> Vec<CmdOption> {
+        match self.step {
+            CollectStep::Location => vec![
+                CmdOption::new("Vertical", "V"),
+                CmdOption::new("Horizontal", "H"),
+                CmdOption::new("Wrap", "W"),
+            ],
+            _ => Vec::new(),
+        }
+    }
+
     fn is_selection_gathering(&self) -> bool {
-        matches!(self.step, CollectStep::Gathering)
+        self.step == CollectStep::Gathering
+    }
+
+    fn selection_entity_filter(&self) -> Option<fn(&EntityType) -> bool> {
+        Some(|entity| {
+            matches!(entity, EntityType::MultiLeader(ml)
+                if ml.content_type == codec::entities::LeaderContentType::Block)
+        })
+    }
+
+    fn selection_entity_filter_reports(&self) -> bool {
+        true
     }
 
     fn on_selection_complete(&mut self, handles: Vec<Handle>) -> CmdResult {
         if handles.is_empty() {
             return CmdResult::Cancel;
         }
-        self.step = CollectStep::PickLocation { handles };
+        self.handles = handles;
+        self.step = CollectStep::Location;
         CmdResult::NeedPoint
+    }
+
+    fn input_kind(&self) -> InputKind {
+        match self.step {
+            CollectStep::WrapWidth => InputKind::SingleToken,
+            _ => InputKind::Point,
+        }
+    }
+
+    fn point_step_accepts_keywords(&self) -> bool {
+        self.step == CollectStep::Location
+    }
+
+    fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        let key = text.trim().trim_start_matches('_').to_ascii_uppercase();
+        match self.step {
+            CollectStep::Location => {
+                self.layout = match key.as_str() {
+                    "V" | "VERTICAL" => MLeaderCollectLayout::Vertical,
+                    "H" | "HORIZONTAL" => MLeaderCollectLayout::Horizontal,
+                    "W" | "WRAP" => {
+                        self.step = CollectStep::WrapWidth;
+                        return Some(CmdResult::NeedPoint);
+                    }
+                    _ => return None,
+                };
+                store_collect_layout(self.layout);
+                Some(CmdResult::NeedPoint)
+            }
+            CollectStep::WrapWidth => {
+                let width = crate::entities::common::parse_typed_length(text.trim())
+                    .filter(|v| *v >= 0.0)?;
+                self.layout = MLeaderCollectLayout::Wrap(width);
+                store_collect_layout(self.layout);
+                self.step = CollectStep::Location;
+                Some(CmdResult::NeedPoint)
+            }
+            CollectStep::Gathering => None,
+        }
     }
 
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
-        if let CollectStep::PickLocation { handles } = &self.step {
-            return CmdResult::CollectMLeaders {
-                handles: handles.clone(),
-                point: pt,
-            };
+        if self.step != CollectStep::Location {
+            return CmdResult::NeedPoint;
         }
-        CmdResult::NeedPoint
+        CmdResult::CollectMLeaders {
+            handles: self.handles.clone(),
+            point: pt,
+            layout: self.layout,
+        }
     }
 
     fn on_enter(&mut self) -> CmdResult {
+        if self.step == CollectStep::WrapWidth {
+            self.step = CollectStep::Location;
+            return CmdResult::NeedPoint;
+        }
         CmdResult::Cancel
     }
+
     fn on_mouse_move(&mut self, _pt: DVec3) -> Option<WireModel> {
         None
     }
 }
-
-// ── Shared helpers ────────────────────────────────────────────────────────────
 
 fn preview_wire(pts: &[Vec3]) -> WireModel {
     WireModel {

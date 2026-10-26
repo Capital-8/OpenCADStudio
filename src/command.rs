@@ -1866,16 +1866,23 @@ pub enum CmdResult {
     /// Persist the quick-dimension extension-origin priority while keeping the
     /// active command at its current prompt (0 = endpoints, 1 = intersections).
     SetQuickDimensionSnapPriority(u8),
-    /// Align multileader content points along a picked infinite line.
+    /// MLEADERALIGN: line the multileaders up with `reference` the way
+    /// `mode` says. `from` / `to` are the direction point (twice) or the
+    /// Distribute span's two points.
     AlignMLeaders {
         handles: Vec<Handle>,
+        reference: Option<Handle>,
+        mode: crate::modules::annotate::mleader_edit::MLeaderAlignMode,
+        spacing: f64,
         from: DVec3,
         to: DVec3,
     },
-    /// Merge compatible block multileaders at a picked content point.
+    /// MLEADERCOLLECT: lay the block multileaders out at `point`, one leader
+    /// left for the collection.
     CollectMLeaders {
         handles: Vec<Handle>,
         point: DVec3,
+        layout: crate::modules::annotate::mleader_edit::MLeaderCollectLayout,
     },
     /// Commit a Model-tab 3D solid: the opencadcodec entity (for selection /
     /// persistence) plus its B-rep (cached for boolean ops + shaded
