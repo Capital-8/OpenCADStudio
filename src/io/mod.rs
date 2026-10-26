@@ -1672,6 +1672,8 @@ pub fn source_is_dxf(path: Option<&Path>, document: &Document) -> bool {
     {
         Some("dxf") => true,
         Some("dwg") => false,
+        // A converter's own file is neither; it is not read as DXF.
+        Some(extension) if ocs_save::external_format(extension).is_some() => false,
         _ => document.dwg_source_version.is_none(),
     }
 }
