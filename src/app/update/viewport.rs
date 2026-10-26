@@ -6464,7 +6464,7 @@ impl OpenCADStudio {
                             self.tabs[i].scene.select_entities(&handles);
                             self.tabs[i].scene.expand_selection_for_groups(&handles);
                         }
-                        self.pick_authoring_box(a, p, crossing);
+                        self.pick_authoring_box(a, p, crossing, !handles.is_empty());
                         let apply_ms = t_apply.map_or(0.0, |t| t.elapsed().as_secs_f64() * 1000.0);
                         let t_props = crate::perf::enabled().then(Instant::now);
                         self.refresh_properties();
@@ -6864,7 +6864,7 @@ was_selected={}",
                     }
                     let apply_ms = t_apply.map_or(0.0, |t| t.elapsed().as_secs_f64() * 1000.0);
                     let t_props = crate::perf::enabled().then(Instant::now);
-                    self.pick_authoring_box(a, p, crossing);
+                    self.pick_authoring_box(a, p, crossing, !handles.is_empty());
                     self.refresh_properties();
                     if crate::perf::enabled() {
                         crate::perf_record!(

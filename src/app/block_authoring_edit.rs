@@ -423,11 +423,23 @@ impl OpenCADStudio {
         }
         Task::none()
     }
-    pub(super) fn pick_authoring_box(&mut self, a: Point, b: Point, crossing: bool) -> bool {
+    /// Select the authoring object a selection box catches. A box that also
+    /// caught drawing objects keeps those instead (#2217): the authoring
+    /// selection would clear them.
+    pub(super) fn pick_authoring_box(
+        &mut self,
+        a: Point,
+        b: Point,
+        crossing: bool,
+        caught_objects: bool,
+    ) -> bool {
         let i = self.active_tab;
         let Some(session) = self.tabs[i].active_block_edit_session() else {
             return false;
         };
+        if caught_objects {
+            return false;
+        }
         let items = edit::items(&self.tabs[i].scene.document, session.br_handle);
         let bounds = iced::Rectangle {
             x: 0.0,

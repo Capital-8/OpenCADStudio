@@ -1587,6 +1587,7 @@ fn block_parameter_leader_and_crossing_box_select_then_delete() {
         iced::Point::new(box_bounds.x, box_bounds.y),
         iced::Point::new(box_bounds.x + box_bounds.width, box_bounds.y + box_bounds.height),
         true,
+        false,
     ));
     assert_eq!(app.tabs[i].selected_authoring, Some(handle));
 
