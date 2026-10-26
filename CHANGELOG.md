@@ -8,7 +8,8 @@
 
 | Release | Date | Highlights | Details |
 | :--- | :--- | :--- | :--- |
-| **[Unreleased](changelogs/unreleased.md)** | *2026-10-18 to Present* | Dynamic block authoring follow-ups: Block Properties Table grips, row selection, and authoring preview fixes | [changelogs/unreleased.md](changelogs/unreleased.md) |
+| **[Unreleased](changelogs/unreleased.md)** | *2026-10-25 to Present* | Dimension association controls and converter-based file interchange with save-loss review | [changelogs/unreleased.md](changelogs/unreleased.md) |
+| **[v2026.43](changelogs/v2026.43.md)** | *2026-10-25* | Dynamic block authoring, QuickCalc, HATCH editing, expanded import/export, plugin grips, drafting tools, and broad reliability improvements | [changelogs/v2026.43.md](changelogs/v2026.43.md) |
 | **[v2026.42](changelogs/v2026.42.md)** | *2026-10-18* | Dynamic block authoring, broad import support (DGN, PDF, STEP, IGES, SAT, WMF, 3DS), dockable palettes, web parity, and drafting/layout tools | [changelogs/v2026.42.md](changelogs/v2026.42.md) |
 | **[v2026.41](changelogs/v2026.41.md)** | *2026-10-11* | Sheet Set Manager (`SHEETSET`), `COUNT` command & live tables, associative `SWEEP`, RTL text, DimStyle per-end arrowheads (`DIMBLK1`/`DIMBLK2`), GPU options (Metal/OpenGL) | [changelogs/v2026.41.md](changelogs/v2026.41.md) |
 | **[v2026.40 / v2026.40.1](changelogs/v2026.40.md)** | *2026-10-05* | `FIELD` command & dialog, `ATTDEF` parity, Blocks palette, MCP DeepZoom pyramidal tiling & SoM visual ID stamps, DWF/DGN underlays, `DYNMODE`, embedded TrueType PDF, instant layer toggling | [changelogs/v2026.40.md](changelogs/v2026.40.md) |
@@ -17,9 +18,13 @@
 
 ---
 
-## [Unreleased] - 2026-10-18
+## [Unreleased] - 2026-10-25
 
-> **Summary:** Continued dynamic block authoring with native Block Properties Table grips, reference-side row selection, and improved parameter editing and preview. See the [full Unreleased notes](changelogs/unreleased.md).
+> **Summary:** Added dimension association controls and converter-based file interchange with explicit review of content a conversion cannot preserve. See the [full Unreleased notes](changelogs/unreleased.md).
+
+## [v2026.43] - 2026-10-25
+
+> **Summary:** Expanded dynamic block authoring and editing, added QuickCalc and richer geometry workflows, advanced drawing exchange and automation, and delivered broad drafting, annotation, plotting, rendering, and reliability improvements. See the [full v2026.43 release notes](changelogs/v2026.43.md).
 
 ## [v2026.42] - 2026-10-18
 
