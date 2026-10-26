@@ -4130,6 +4130,10 @@ impl OpenCADStudio {
                 document.dwg_source_version.unwrap_or(document.version)
             };
             crate::io::format_for_version(version, is_dxf)
+        } else if let Some(format) = self.current_file_format(tab_idx) {
+            // A drawing that already has a file keeps that file's format;
+            // the configured default is for new drawings (#2215).
+            format
         } else {
             self.default_save_format.clone()
         };
@@ -4150,6 +4154,21 @@ impl OpenCADStudio {
         }
         self.aec_drop_acknowledged = false;
         self.on_save_dialog_confirm()
+    }
+
+    /// The save format of the tab's current file, by its extension: the
+    /// converter for a converter format, else DWG or DXF in the document's
+    /// version. `None` for an unsaved drawing or another extension.
+    pub(in crate::app) fn current_file_format(&self, tab_idx: usize) -> Option<String> {
+        let path = self.tabs[tab_idx].current_path.as_deref()?;
+        let ext = path.extension()?.to_str()?;
+        if let Some(converter) = ocs_save::external_format(ext) {
+            return Some(converter.name().to_string());
+        }
+        let is_dxf = ext.eq_ignore_ascii_case("dxf");
+        (is_dxf || ext.eq_ignore_ascii_case("dwg")).then(|| {
+            crate::io::format_for_version(self.tabs[tab_idx].scene.document.version, is_dxf)
+        })
     }
 
     pub(super) fn on_save_dialog_confirm(&mut self) -> Task<Message> {
