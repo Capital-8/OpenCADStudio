@@ -7126,3 +7126,9 @@ block-lookup =
 
 block-array =
     .limit-error = Blok değerlendirmesi 100000 adetten fazla dizi nesnesi oluşturacak. Mesafeyi azaltın veya aralığı artırın.
+mleader-layer =
+    .prompt = MLEADERLAYER için yeni değer girin veya geçerliyi kullanmak için . <"{ $current }">:
+    .use-current = geçerliyi kullan
+mleader-cmd =
+    .layer = Çoklu kılavuzların yerleşeceği katmanın adını girin veya katmanı belirlemek için nesne seçin ya da geçerliyi kullanmak için . [?/çıKış] <"{ $current }">:
+    .use-current = Geçerliyi Kullan

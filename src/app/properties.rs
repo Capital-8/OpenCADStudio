@@ -3538,20 +3538,15 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
                     | codec::EntityType::Polyline2D(_)
                     | codec::EntityType::Polyline3D(_)
             );
-        let explicit_mleader_layer = match &entity {
-            codec::EntityType::MultiLeader(leader) => leader
-                .common
-                .layer
-                .strip_prefix("__MLEADER_LAYER__")
-                .map(str::to_owned),
-            _ => None,
-        };
-        if let Some(layer) = explicit_mleader_layer {
-            entity.as_entity_mut().set_layer(layer);
-        } else if !preserve_entity_layer {
-            let layer = &self.tabs[i].active_layer;
+        if !preserve_entity_layer {
+            // MLEADERLAYER puts new multileaders on their own layer.
+            let layer = if matches!(entity, codec::EntityType::MultiLeader(_)) {
+                self.new_mleader_layer(i)
+            } else {
+                self.tabs[i].active_layer.clone()
+            };
             if layer != "0" || entity.as_entity().layer().is_empty() {
-                entity.as_entity_mut().set_layer(layer.clone());
+                entity.as_entity_mut().set_layer(layer);
             }
         }
 

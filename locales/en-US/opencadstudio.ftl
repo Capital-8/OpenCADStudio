@@ -7206,3 +7206,9 @@ block-lookup =
 
 block-array =
     .limit-error = Block evaluation would generate more than 100000 array objects. Reduce the distance or increase the spacing.
+mleader-layer =
+    .prompt = Enter new value for MLEADERLAYER, or . for use current <"{ $current }">:
+    .use-current = use current
+mleader-cmd =
+    .layer = Enter layer name or select object to specify layer to place multileaders or . for use current [?/eXit] <"{ $current }">:
+    .use-current = Use Current

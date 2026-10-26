@@ -7204,3 +7204,9 @@ block-lookup =
 
 block-array =
     .limit-error = 블록 평가 시 배열 객체가 100000개를 초과합니다. 거리를 줄이거나 간격을 늘리세요.
+mleader-layer =
+    .prompt = Enter new value for MLEADERLAYER, or . for use current <"{ $current }">:
+    .use-current = use current
+mleader-cmd =
+    .layer = Enter layer name or select object to specify layer to place multileaders or . for use current [?/eXit] <"{ $current }">:
+    .use-current = Use Current

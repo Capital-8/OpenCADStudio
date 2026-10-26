@@ -7205,3 +7205,9 @@ block-lookup =
 
 block-array =
     .limit-error = Оценяването на блока би създало повече от 100000 обекта в масив. Намалете разстоянието или увеличете отстоянието.
+mleader-layer =
+    .prompt = Enter new value for MLEADERLAYER, or . for use current <"{ $current }">:
+    .use-current = use current
+mleader-cmd =
+    .layer = Enter layer name or select object to specify layer to place multileaders or . for use current [?/eXit] <"{ $current }">:
+    .use-current = Use Current

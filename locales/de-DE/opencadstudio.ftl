@@ -7203,3 +7203,9 @@ block-lookup =
 
 block-array =
     .limit-error = Die Blockauswertung würde mehr als 100000 Anordnungsobjekte erzeugen. Verringern Sie die Entfernung oder vergrößern Sie den Abstand.
+mleader-layer =
+    .prompt = Enter new value for MLEADERLAYER, or . for use current <"{ $current }">:
+    .use-current = use current
+mleader-cmd =
+    .layer = Enter layer name or select object to specify layer to place multileaders or . for use current [?/eXit] <"{ $current }">:
+    .use-current = Use Current

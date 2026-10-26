@@ -7193,3 +7193,9 @@ block-lookup =
 
 block-array =
     .limit-error = ブロックの評価により、配列オブジェクトが100000個を超えます。距離を短くするか、間隔を広げてください。
+mleader-layer =
+    .prompt = Enter new value for MLEADERLAYER, or . for use current <"{ $current }">:
+    .use-current = use current
+mleader-cmd =
+    .layer = Enter layer name or select object to specify layer to place multileaders or . for use current [?/eXit] <"{ $current }">:
+    .use-current = Use Current

@@ -14,6 +14,7 @@ mod count;
 mod dash;
 mod dgn_import;
 mod dim;
+mod mleader_layer;
 pub(crate) mod display;
 mod draw;
 mod field;
@@ -502,6 +503,9 @@ impl OpenCADStudio {
     /// sequential `match` over all arms.
     fn dispatch_families(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {
         if let Some(t) = self.dispatch_text_layer(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_mleader_layer(cmd, i) {
             return Some(t);
         }
         if let Some(t) = self.dispatch_dash(cmd, i) {

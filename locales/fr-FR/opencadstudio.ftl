@@ -7205,3 +7205,9 @@ block-lookup =
 
 block-array =
     .limit-error = L’évaluation du bloc générerait plus de 100000 objets de réseau. Réduisez la distance ou augmentez l’espacement.
+mleader-layer =
+    .prompt = Enter new value for MLEADERLAYER, or . for use current <"{ $current }">:
+    .use-current = use current
+mleader-cmd =
+    .layer = Enter layer name or select object to specify layer to place multileaders or . for use current [?/eXit] <"{ $current }">:
+    .use-current = Use Current

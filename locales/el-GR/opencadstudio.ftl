@@ -7205,3 +7205,9 @@ block-lookup =
 
 block-array =
     .limit-error = Η αξιολόγηση του μπλοκ θα δημιουργούσε περισσότερα από 100000 αντικείμενα διάταξης. Μειώστε την απόσταση ή αυξήστε το διάκενο.
+mleader-layer =
+    .prompt = Enter new value for MLEADERLAYER, or . for use current <"{ $current }">:
+    .use-current = use current
+mleader-cmd =
+    .layer = Enter layer name or select object to specify layer to place multileaders or . for use current [?/eXit] <"{ $current }">:
+    .use-current = Use Current

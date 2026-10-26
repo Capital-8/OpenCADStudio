@@ -35,7 +35,10 @@ pub struct MLeaderCommand {
     max_points: usize,
     first_angle: Option<f64>,
     second_angle: Option<f64>,
+    /// MLEADERLAYER as the laYer option shows it (empty: the current layer).
     layer: String,
+    /// The laYer option changed MLEADERLAYER.
+    layer_set: bool,
     text: String,
     picked_entity: Option<EntityType>,
     selected_mtext: Option<codec::entities::MText>,
@@ -86,6 +89,7 @@ impl MLeaderCommand {
             first_angle: None,
             second_angle: None,
             layer: String::new(),
+            layer_set: false,
             text: String::new(),
             picked_entity: None,
             selected_mtext: None,
@@ -119,6 +123,7 @@ impl MLeaderCommand {
             second_angle: (style.second_segment_angle.abs() > 1.0e-12)
                 .then_some(style.second_segment_angle),
             layer: String::new(),
+            layer_set: false,
             text: style.default_text.clone(),
             picked_entity: None,
             selected_mtext: None,
@@ -139,6 +144,17 @@ impl MLeaderCommand {
         self.layers = layers;
         self.text_styles = text_styles;
         self
+    }
+
+    /// Start from the drawing's MLEADERLAYER (`None`: the current layer).
+    pub fn with_layer(mut self, layer: Option<String>) -> Self {
+        self.layer = layer.unwrap_or_default();
+        self
+    }
+
+    fn set_layer(&mut self, layer: &str) {
+        self.layer = layer.to_string();
+        self.layer_set = true;
     }
 
     fn point_limit(&self) -> usize {
@@ -192,9 +208,6 @@ impl MLeaderCommand {
         ml.dogleg_length = self.landing_length;
         if self.content_type == LeaderContentType::Block {
             ml.block_content_handle = self.block_handle;
-        }
-        if !self.layer.trim().is_empty() {
-            ml.common.layer = format!("__MLEADER_LAYER__{}", self.layer.trim());
         }
         for root in &mut ml.context.leader_roots {
             root.landing_distance = self.landing_length * self.display_scale;
@@ -337,7 +350,14 @@ impl CadCommand for MLeaderCommand {
             Step::MaxPoints => t!("MLEADER  Enter maximum leader points:").into_owned(),
             Step::FirstAngle => t!("MLEADER  First segment angle [Any/15/30/45/60/90]:").into_owned(),
             Step::SecondAngle => t!("MLEADER  Second segment angle [Any/15/30/45/60/90]:").into_owned(),
-            Step::Layer => t!("MLEADER  Enter layer name:").into_owned(),
+            Step::Layer => {
+                let current = if self.layer.is_empty() {
+                    crate::tr!("mleader-cmd", "use-current")
+                } else {
+                    self.layer.clone()
+                };
+                crate::tr!("mleader-cmd", "layer", current = current)
+            }
             Step::PreEnterText => t!("MLEADER  Enter text:").into_owned(),
             Step::SelectMText => t!("MLEADER  Select an MText object:").into_owned(),
             Step::BlockSource => t!("MLEADER  Enter source block name:").into_owned(),
@@ -390,10 +410,9 @@ impl CadCommand for MLeaderCommand {
                 .iter()
                 .map(|(name, _)| CmdOption::new(name, name))
                 .collect(),
-            Step::Layer => self
-                .layers
-                .iter()
-                .map(|name| CmdOption::new(name, name))
+            Step::Layer => [CmdOption::new("?", "?"), CmdOption::new("eXit", "X")]
+                .into_iter()
+                .chain(self.layers.iter().map(|name| CmdOption::new(name, name)))
                 .collect(),
             Step::FirstAngle | Step::SecondAngle => ["Any", "15", "30", "45", "60", "90"]
                 .into_iter()
@@ -416,6 +435,10 @@ impl CadCommand for MLeaderCommand {
     }
 
     fn on_enter(&mut self) -> CmdResult {
+        if self.step == Step::Layer {
+            self.step = Step::Options;
+            return CmdResult::NeedPoint;
+        }
         if self.step != Step::PickPoints || self.verts.len() < 2 {
             return CmdResult::Cancel;
         }
@@ -492,7 +515,7 @@ impl CadCommand for MLeaderCommand {
     }
 
     fn point_step_accepts_keywords(&self) -> bool {
-        self.step == Step::PickPoints
+        matches!(self.step, Step::PickPoints | Step::Layer)
     }
 
     fn on_text_input(&mut self, input: &str) -> Option<CmdResult> {
@@ -588,19 +611,16 @@ impl CadCommand for MLeaderCommand {
                 self.step = Step::Options;
             }
             Step::Layer => {
-                if text.is_empty() {
-                    return None;
+                match upper.as_str() {
+                    "" => return None,
+                    "X" | "EXIT" => self.step = Step::Options,
+                    "?" => {
+                        return Some(CmdResult::ReportMeasurement(self.layers.join("
+")));
+                    }
+                    "." => self.set_layer(""),
+                    _ => self.set_layer(text.trim_matches('"')),
                 }
-                let Some(layer) = self
-                    .layers
-                    .iter()
-                    .find(|layer| layer.eq_ignore_ascii_case(text))
-                    .cloned()
-                else {
-                    return None;
-                };
-                self.layer = layer;
-                self.step = Step::Options;
             }
             Step::PreEnterText => {
                 self.text = input.to_string();
@@ -626,7 +646,14 @@ impl CadCommand for MLeaderCommand {
     }
 
     fn needs_entity_pick(&self) -> bool {
-        self.step == Step::SelectMText
+        matches!(self.step, Step::SelectMText | Step::Layer)
+    }
+
+    fn drawing_variable_update(&self) -> Option<(&'static str, String)> {
+        self.layer_set.then(|| {
+            let value = if self.layer.is_empty() { "." } else { &self.layer };
+            ("MLEADERLAYER", value.to_string())
+        })
     }
 
     fn inject_before_entity_pick(&self) -> bool {
@@ -638,6 +665,14 @@ impl CadCommand for MLeaderCommand {
     }
 
     fn on_entity_pick(&mut self, _handle: codec::Handle, _point: DVec3) -> CmdResult {
+        if self.step == Step::Layer {
+            // A picked object lends its layer.
+            if let Some(entity) = self.picked_entity.take() {
+                let layer = entity.as_entity().layer().to_string();
+                self.set_layer(&layer);
+            }
+            return CmdResult::NeedPoint;
+        }
         let Some(EntityType::MText(text)) = self.picked_entity.take() else {
             return CmdResult::NeedPoint;
         };

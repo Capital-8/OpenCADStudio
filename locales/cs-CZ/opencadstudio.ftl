@@ -7202,3 +7202,9 @@ block-lookup =
 
 block-array =
     .limit-error = Vyhodnocení bloku by vytvořilo více než 100000 objektů pole. Zmenšete vzdálenost nebo zvětšete rozestup.
+mleader-layer =
+    .prompt = Enter new value for MLEADERLAYER, or . for use current <"{ $current }">:
+    .use-current = use current
+mleader-cmd =
+    .layer = Enter layer name or select object to specify layer to place multileaders or . for use current [?/eXit] <"{ $current }">:
+    .use-current = Use Current

@@ -7212,3 +7212,9 @@ block-lookup =
 
 block-array =
     .limit-error = Việc tính toán khối sẽ tạo hơn 100000 đối tượng mảng. Giảm khoảng cách hoặc tăng bước mảng.
+mleader-layer =
+    .prompt = Enter new value for MLEADERLAYER, or . for use current <"{ $current }">:
+    .use-current = use current
+mleader-cmd =
+    .layer = Enter layer name or select object to specify layer to place multileaders or . for use current [?/eXit] <"{ $current }">:
+    .use-current = Use Current
