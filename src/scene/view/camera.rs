@@ -312,18 +312,15 @@ impl Camera {
     /// point is made eye-relative in f64 (small numbers near the view) before
     /// the rotation-only projection, so it stays exact at large absolute
     /// coordinates — the CPU equivalent of the GPU's relative-to-eye path.
-    /// Returns `None` for points at/behind the eye plane (w ≈ 0).
+    /// Returns `None` for points at/behind the perspective eye plane.
     pub fn project(&self, p: glam::DVec3, bounds: Rectangle) -> Option<glam::Vec2> {
-        let rel = (p - self.eye()).as_vec3();
-        let clip = self.view_proj_rte(bounds) * rel.extend(1.0);
-        if clip.w.abs() < 1e-9 {
-            return None;
-        }
-        let ndc = clip.truncate() / clip.w;
-        Some(glam::vec2(
-            (ndc.x * 0.5 + 0.5) * bounds.width,
-            (0.5 - ndc.y * 0.5) * bounds.height,
-        ))
+        let screen = crate::scene::view::projection::project_screen(
+            self.view_proj_rte(bounds),
+            self.eye(),
+            bounds,
+            p,
+        )?;
+        Some(glam::vec2(screen.x, screen.y))
     }
 
     /// Unproject in f64, with the kernel intersection relative to the plane
@@ -1094,6 +1091,24 @@ mod tests {
                 assert!((depth(camera.distance) - 0.5).abs() < 1e-5);
             }
         }
+    }
+
+    /// A point behind a perspective eye has a negative clip W, not a near-zero
+    /// one: dividing by it mirrors the point onto the screen. `project` must
+    /// reject it, whatever its distance.
+    #[test]
+    fn project_rejects_points_behind_the_eye() {
+        let bounds = Rectangle::with_size(iced::Size::new(800., 600.));
+        let camera = Camera {
+            projection: Projection::Perspective,
+            rotation: Quat::IDENTITY,
+            target: DVec3::ZERO,
+            distance: 10.0,
+            ..Camera::default()
+        };
+        assert!(camera.project(DVec3::new(0., 0., 5.), bounds).is_some());
+        assert!(camera.project(DVec3::new(0., 0., 15.), bounds).is_none());
+        assert!(camera.project(DVec3::new(0., 0., 1_000.), bounds).is_none());
     }
 
     /// A drawing 140 units wide carrying one entity 800 km below its plane must

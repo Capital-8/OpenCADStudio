@@ -14,6 +14,7 @@ use crate::scene::model::hatch_model::HatchModel;
 use crate::scene::model::mesh_model::MeshModel;
 use crate::scene::model::wire_model::WireModel;
 use crate::scene::pick::interaction_index::{SegmentRef, WireSource};
+use crate::scene::view::projection;
 
 /// Pick radius for one wire, in screen pixels.
 ///
@@ -62,12 +63,16 @@ fn aabb_rejects(
     // wouldn't bound it.
     let (mut sx0, mut sy0, mut sx1, mut sy1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     for (cx, cy) in [(minx, miny), (maxx, miny), (maxx, maxy), (minx, maxy)] {
-        let s = world_to_screen(
-            glam::DVec3::new(cx as f64, cy as f64, 0.0),
+        // A corner behind the eye mirrors across the screen, so the union of
+        // the four pixels no longer bounds anything: keep the wire (#64).
+        let Some(s) = projection::project_screen(
             view_rot,
             eye,
             bounds,
-        );
+            glam::DVec3::new(cx as f64, cy as f64, 0.0),
+        ) else {
+            return false;
+        };
         sx0 = sx0.min(s.x);
         sx1 = sx1.max(s.x);
         sy0 = sy0.min(s.y);
@@ -78,6 +83,10 @@ fn aabb_rejects(
 
 /// Depth of the first triangle in `tris` whose screen projection contains
 /// `cursor`, as the mean NDC z of its corners; `None` when none do.
+///
+/// A triangle with any corner on/behind the perspective eye plane is skipped:
+/// its corners would mirror onto the opposite side of the screen and the
+/// containment test would answer for a triangle the user cannot see (#64).
 ///
 /// `tris` is a flat vertex list, 3 per triangle, and `tris_low` its
 /// double-single residual — empty meaning an all-zero low half, per the
@@ -94,6 +103,7 @@ fn tris_hit_depth(
     while t + 2 < tris.len() {
         let mut sp = [Point::ORIGIN; 3];
         let mut depth = 0.0f32;
+        let mut visible = true;
         for j in 0..3 {
             let k = t + j;
             let hi = tris[k];
@@ -103,7 +113,10 @@ fn tris_hit_depth(
                 hi[1] as f64 + lo[1] as f64,
                 hi[2] as f64 + lo[2] as f64,
             );
-            let ndc = view_rot.project_point3((world - eye).as_vec3());
+            let Some(ndc) = projection::project_ndc(view_rot, eye, world) else {
+                visible = false;
+                break;
+            };
             sp[j] = Point::new(
                 (ndc.x + 1.0) * 0.5 * bounds.width,
                 (1.0 - ndc.y) * 0.5 * bounds.height,
@@ -111,7 +124,7 @@ fn tris_hit_depth(
             depth += ndc.z;
         }
         t += 3;
-        if point_in_polygon(cursor, &sp) {
+        if visible && point_in_polygon(cursor, &sp) {
             return Some(depth / 3.0);
         }
     }
@@ -159,6 +172,7 @@ fn text_quad_hit_area(
     for quad in verts.chunks_exact(6) {
         // push_glyph_vertices emits BL, BR, TR, BL, TR, TL.
         let mut screen = [Point::ORIGIN; 4];
+        let mut visible = true;
         for (dst, src) in screen.iter_mut().zip([0usize, 1, 2, 5]) {
             let v = quad[src];
             let world = glam::DVec3::new(
@@ -166,7 +180,14 @@ fn text_quad_hit_area(
                 v.pos[1] as f64 + v.pos_low[1] as f64,
                 v.pos[2] as f64 + v.pos_low[2] as f64,
             );
-            *dst = world_to_screen(world, view_rot, eye, bounds);
+            let Some(projected) = projection::project_screen(view_rot, eye, bounds, world) else {
+                visible = false;
+                break;
+            };
+            *dst = projected;
+        }
+        if !visible {
+            continue;
         }
         if point_in_polygon(cursor, &screen) {
             let (mut min_x, mut min_y, mut max_x, mut max_y) =
@@ -236,12 +257,19 @@ pub fn click_hit<'a, W: WireSource + ?Sized>(
                 previous = None;
                 continue;
             }
-            let screen = world_to_screen(
-                wire_point_world(wire, index, view_rot, eye),
+            let Some(screen) = projection::project_screen(
                 view_rot,
                 eye,
                 bounds,
-            );
+                wire_point_world(wire, index, view_rot, eye),
+            ) else {
+                // A behind-eye vertex mirrors onto the screen. Dropping the
+                // segment is conservative: a segment straddling the eye plane
+                // loses its visible near part instead of hitting at a mirrored
+                // pixel (#64).
+                previous = None;
+                continue;
+            };
             if let Some(start) = previous {
                 let distance = dist_point_to_segment(cursor, start, screen);
                 if distance < tolerance && beats(distance, &wire.name, best_dist, best) {
@@ -279,18 +307,22 @@ pub fn click_hit<'a, W: WireSource + ?Sized>(
             if start + 1 >= wire.points.len() {
                 continue;
             }
-            let p0 = world_to_screen(
-                wire_point_world(wire, start, view_rot, eye),
-                view_rot,
-                eye,
-                bounds,
-            );
-            let p1 = world_to_screen(
-                wire_point_world(wire, start + 1, view_rot, eye),
-                view_rot,
-                eye,
-                bounds,
-            );
+            let (Some(p0), Some(p1)) = (
+                projection::project_screen(
+                    view_rot,
+                    eye,
+                    bounds,
+                    wire_point_world(wire, start, view_rot, eye),
+                ),
+                projection::project_screen(
+                    view_rot,
+                    eye,
+                    bounds,
+                    wire_point_world(wire, start + 1, view_rot, eye),
+                ),
+            ) else {
+                continue;
+            };
             let d = dist_point_to_segment(cursor, p0, p1);
             if d < pick_tolerance_px(wire, lw_display, base_radius_px)
                 && beats(d, &wire.name, best_dist, best)
@@ -324,12 +356,15 @@ pub fn click_hit<'a, W: WireSource + ?Sized>(
                     prev = None;
                     continue;
                 }
-                let cur = world_to_screen(
-                    wire_point_world(wire, i, view_rot, eye),
+                let Some(cur) = projection::project_screen(
                     view_rot,
                     eye,
                     bounds,
-                );
+                    wire_point_world(wire, i, view_rot, eye),
+                ) else {
+                    prev = None;
+                    continue;
+                };
                 if let Some(p0) = prev {
                     let d = dist_point_to_segment(cursor, p0, cur);
                     if d < tol && beats(d, &wire.name, best_dist, best) {
@@ -541,12 +576,15 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
                 previous = None;
                 continue;
             }
-            let screen = world_to_screen(
-                wire_point_world(wire, index, view_rot, eye),
+            let Some(screen) = projection::project_screen(
                 view_rot,
                 eye,
                 bounds,
-            );
+                wire_point_world(wire, index, view_rot, eye),
+            ) else {
+                previous = None;
+                continue;
+            };
             if let Some(start) = previous {
                 let distance = dist_point_to_segment(cursor, start, screen);
                 if distance < tolerance {
@@ -580,18 +618,22 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             if start + 1 >= wire.points.len() {
                 continue;
             }
-            let p0 = world_to_screen(
-                wire_point_world(wire, start, view_rot, eye),
-                view_rot,
-                eye,
-                bounds,
-            );
-            let p1 = world_to_screen(
-                wire_point_world(wire, start + 1, view_rot, eye),
-                view_rot,
-                eye,
-                bounds,
-            );
+            let (Some(p0), Some(p1)) = (
+                projection::project_screen(
+                    view_rot,
+                    eye,
+                    bounds,
+                    wire_point_world(wire, start, view_rot, eye),
+                ),
+                projection::project_screen(
+                    view_rot,
+                    eye,
+                    bounds,
+                    wire_point_world(wire, start + 1, view_rot, eye),
+                ),
+            ) else {
+                continue;
+            };
             let d = dist_point_to_segment(cursor, p0, p1);
             if d < pick_tolerance_px(wire, lw_display, base_radius_px) {
                 best_by_wire
@@ -622,12 +664,15 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
                     prev = None;
                     continue;
                 }
-                let cur = world_to_screen(
-                    wire_point_world(wire, i, view_rot, eye),
+                let Some(cur) = projection::project_screen(
                     view_rot,
                     eye,
                     bounds,
-                );
+                    wire_point_world(wire, i, view_rot, eye),
+                ) else {
+                    prev = None;
+                    continue;
+                };
                 if let Some(p0) = prev {
                     let d = dist_point_to_segment(cursor, p0, cur);
                     if d < best_for_wire {
@@ -857,11 +902,15 @@ pub(crate) fn mesh_edge_click_hit<'a>(
             if !first.is_finite() || !second.is_finite() {
                 continue;
             }
-            let first_ndc = view_rot.project_point3((first - eye).as_vec3());
-            let second_ndc = view_rot.project_point3((second - eye).as_vec3());
-            if !first_ndc.is_finite() || !second_ndc.is_finite() {
+            // Either endpoint behind the eye mirrors the edge across the
+            // screen. Drop it rather than hit a mirrored pixel; an edge that
+            // straddles the eye plane loses its visible near part (#64).
+            let (Some(first_ndc), Some(second_ndc)) = (
+                projection::project_ndc(view_rot, eye, first),
+                projection::project_ndc(view_rot, eye, second),
+            ) else {
                 continue;
-            }
+            };
             let to_screen = |point: glam::Vec3| {
                 Point::new(
                     (point.x + 1.0) * 0.5 * bounds.width,
@@ -1184,14 +1233,16 @@ fn mesh_vert(hi: [f32; 3], low: &[[f32; 3]], i: usize) -> glam::DVec3 {
     )
 }
 
-/// Project a mesh's vertices to screen space.
+/// Project a mesh's vertices to screen space. `None` for a vertex the eye-plane
+/// guard rejects: its raw projection would be a mirrored pixel that the box or
+/// lasso must not reach (#64).
 fn project_mesh_verts(
     mesh: &MeshModel,
     transform: Option<codec::types::Transform>,
     view_rot: Mat4,
     eye: glam::DVec3,
     bounds: Rectangle,
-) -> Vec<Point> {
+) -> Vec<Option<Point>> {
     mesh.verts
         .iter()
         .enumerate()
@@ -1201,27 +1252,24 @@ fn project_mesh_verts(
                 let point = transform.apply(codec::types::Vector3::new(point.x, point.y, point.z));
                 glam::DVec3::new(point.x, point.y, point.z)
             });
-            let ndc = view_rot.project_point3((point - eye).as_vec3());
-            Point::new(
-                (ndc.x + 1.0) * 0.5 * bounds.width,
-                (1.0 - ndc.y) * 0.5 * bounds.height,
-            )
+            projection::project_screen(view_rot, eye, bounds, point)
         })
         .collect()
 }
 
 /// True when any of `mesh`'s projected triangles contains one of `pts`
 /// (used so a crossing box / lasso entirely inside a solid still selects it).
-fn mesh_covers_any(proj: &[Point], indices: &[u32], pts: &[Point]) -> bool {
-    let mut t = 0;
-    while t + 2 < indices.len() {
-        let tri = [
-            proj[indices[t] as usize],
-            proj[indices[t + 1] as usize],
-            proj[indices[t + 2] as usize],
-        ];
-        t += 3;
-        if pts.iter().any(|p| point_in_polygon(*p, &tri)) {
+fn mesh_covers_any(proj: &[Option<Point>], indices: &[u32], pts: &[Point]) -> bool {
+    for tri in indices.chunks_exact(3) {
+        let (Some(a), Some(b), Some(c)) = (
+            proj[tri[0] as usize],
+            proj[tri[1] as usize],
+            proj[tri[2] as usize],
+        ) else {
+            continue;
+        };
+        let triangle = [a, b, c];
+        if pts.iter().any(|p| point_in_polygon(*p, &triangle)) {
             return true;
         }
     }
@@ -1256,9 +1304,10 @@ pub fn mesh_box_hit<'a>(
             continue;
         }
         let hit = if crossing {
-            proj.iter().any(in_box) || mesh_covers_any(&proj, &mesh.indices, &corners)
+            proj.iter().flatten().any(in_box)
+                || mesh_covers_any(&proj, &mesh.indices, &corners)
         } else {
-            proj.iter().all(in_box)
+            proj.iter().all(|p| p.is_some_and(|p| in_box(&p)))
         };
         if hit {
             out.push(h);
@@ -1288,10 +1337,13 @@ pub fn mesh_poly_hit<'a>(
             continue;
         }
         let hit = if crossing {
-            proj.iter().any(|p| point_in_polygon(*p, poly))
+            proj.iter()
+                .flatten()
+                .any(|p| point_in_polygon(*p, poly))
                 || mesh_covers_any(&proj, &mesh.indices, poly)
         } else {
-            proj.iter().all(|p| point_in_polygon(*p, poly))
+            proj.iter()
+                .all(|p| p.is_some_and(|p| point_in_polygon(p, poly)))
         };
         if hit {
             out.push(h);
@@ -1316,14 +1368,16 @@ fn projected_wire_triangle(
         (&wire.fill_tris, &wire.fill_tris_low)
     };
     let points = points.get(start..start + 3)?;
-    Some(std::array::from_fn(|offset| {
-        world_to_screen(
-            wp64(points[offset], low, start + offset),
+    let mut screen = [Point::ORIGIN; 3];
+    for (offset, dst) in screen.iter_mut().enumerate() {
+        *dst = projection::project_screen(
             view_rot,
             eye,
             bounds,
-        )
-    }))
+            wp64(points[offset], low, start + offset),
+        )?;
+    }
+    Some(screen)
 }
 
 fn projected_text_quad(
@@ -1334,19 +1388,21 @@ fn projected_text_quad(
     bounds: Rectangle,
 ) -> Option<[Point; 6]> {
     let vertices = wire.text_verts.get(start..start + 6)?;
-    Some(std::array::from_fn(|offset| {
+    let mut screen = [Point::ORIGIN; 6];
+    for (offset, dst) in screen.iter_mut().enumerate() {
         let vertex = vertices[offset];
-        world_to_screen(
+        *dst = projection::project_screen(
+            view_rot,
+            eye,
+            bounds,
             glam::DVec3::new(
                 vertex.pos[0] as f64 + vertex.pos_low[0] as f64,
                 vertex.pos[1] as f64 + vertex.pos_low[1] as f64,
                 vertex.pos[2] as f64 + vertex.pos_low[2] as f64,
             ),
-            view_rot,
-            eye,
-            bounds,
-        )
-    }))
+        )?;
+    }
+    Some(screen)
 }
 
 fn triangle_crosses_box(triangle: [Point; 3], corners: [Point; 4]) -> bool {
@@ -1416,18 +1472,22 @@ fn indexed_box_crossing_hits<'a, W: WireSource + ?Sized>(
         if start + 1 >= wire.points.len() {
             return None;
         }
-        let a = world_to_screen(
-            wire_point_world(wire, start, view_rot, eye),
-            view_rot,
-            eye,
-            bounds,
-        );
-        let b = world_to_screen(
-            wire_point_world(wire, start + 1, view_rot, eye),
-            view_rot,
-            eye,
-            bounds,
-        );
+        let (Some(a), Some(b)) = (
+            projection::project_screen(
+                view_rot,
+                eye,
+                bounds,
+                wire_point_world(wire, start, view_rot, eye),
+            ),
+            projection::project_screen(
+                view_rot,
+                eye,
+                bounds,
+                wire_point_world(wire, start + 1, view_rot, eye),
+            ),
+        ) else {
+            return None;
+        };
         segment_hits(a, b).then_some(wire.name.as_str())
     };
 
@@ -1536,12 +1596,13 @@ fn indexed_box_crossing_hits<'a, W: WireSource + ?Sized>(
         }
         if wire.points.iter().enumerate().any(|(index, &point)| {
             point[0].is_finite()
-                && inside(world_to_screen(
-                    wire_point_world(wire, index, view_rot, eye),
+                && projection::project_screen(
                     view_rot,
                     eye,
                     bounds,
-                ))
+                    wire_point_world(wire, index, view_rot, eye),
+                )
+                .is_some_and(inside)
         }) && seen.insert(wire.name.as_str())
         {
             out.push(wire.name.as_str());
@@ -1589,18 +1650,22 @@ pub fn poly_fence_hit<'a, W: WireSource + ?Sized>(
             if start + 1 >= wire.points.len() || seen.contains(wire.name.as_str()) {
                 continue;
             }
-            let a = world_to_screen(
-                wire_point_world(wire, start, view_rot, eye),
-                view_rot,
-                eye,
-                bounds,
-            );
-            let b = world_to_screen(
-                wire_point_world(wire, start + 1, view_rot, eye),
-                view_rot,
-                eye,
-                bounds,
-            );
+            let (Some(a), Some(b)) = (
+                projection::project_screen(
+                    view_rot,
+                    eye,
+                    bounds,
+                    wire_point_world(wire, start, view_rot, eye),
+                ),
+                projection::project_screen(
+                    view_rot,
+                    eye,
+                    bounds,
+                    wire_point_world(wire, start + 1, view_rot, eye),
+                ),
+            ) else {
+                continue;
+            };
             if cuts(a, b) && seen.insert(wire.name.as_str()) {
                 out.push(wire.name.as_str());
             }
@@ -1626,18 +1691,22 @@ pub fn poly_fence_hit<'a, W: WireSource + ?Sized>(
             continue;
         }
         let hit = (0..wire.points.len() - 1).any(|k| {
-            let a = world_to_screen(
-                wire_point_world(wire, k, view_rot, eye),
-                view_rot,
-                eye,
-                bounds,
-            );
-            let b = world_to_screen(
-                wire_point_world(wire, k + 1, view_rot, eye),
-                view_rot,
-                eye,
-                bounds,
-            );
+            let (Some(a), Some(b)) = (
+                projection::project_screen(
+                    view_rot,
+                    eye,
+                    bounds,
+                    wire_point_world(wire, k, view_rot, eye),
+                ),
+                projection::project_screen(
+                    view_rot,
+                    eye,
+                    bounds,
+                    wire_point_world(wire, k + 1, view_rot, eye),
+                ),
+            ) else {
+                return false;
+            };
             cuts(a, b)
         });
         if hit && seen.insert(wire.name.as_str()) {
@@ -1667,18 +1736,22 @@ fn indexed_polygon_crossing_hits<'a, W: WireSource + ?Sized>(
         if start + 1 >= wire.points.len() {
             continue;
         }
-        let a = world_to_screen(
-            wire_point_world(wire, start, view_rot, eye),
-            view_rot,
-            eye,
-            bounds,
-        );
-        let b = world_to_screen(
-            wire_point_world(wire, start + 1, view_rot, eye),
-            view_rot,
-            eye,
-            bounds,
-        );
+        let (Some(a), Some(b)) = (
+            projection::project_screen(
+                view_rot,
+                eye,
+                bounds,
+                wire_point_world(wire, start, view_rot, eye),
+            ),
+            projection::project_screen(
+                view_rot,
+                eye,
+                bounds,
+                wire_point_world(wire, start + 1, view_rot, eye),
+            ),
+        ) else {
+            continue;
+        };
         if (point_in_polygon(a, poly)
             || point_in_polygon(b, poly)
             || segment_crosses_polygon(a, b, poly))
@@ -1769,15 +1842,13 @@ fn indexed_polygon_crossing_hits<'a, W: WireSource + ?Sized>(
         }
         if wire.points.iter().enumerate().any(|(index, &point)| {
             point[0].is_finite()
-                && point_in_polygon(
-                    world_to_screen(
-                        wire_point_world(wire, index, view_rot, eye),
-                        view_rot,
-                        eye,
-                        bounds,
-                    ),
-                    poly,
+                && projection::project_screen(
+                    view_rot,
+                    eye,
+                    bounds,
+                    wire_point_world(wire, index, view_rot, eye),
                 )
+                .is_some_and(|sp| point_in_polygon(sp, poly))
         }) && seen.insert(wire.name.as_str())
         {
             out.push(wire.name.as_str());
@@ -1878,7 +1949,10 @@ pub fn box_hit<'a, W: WireSource + ?Sized>(
                 } else {
                     wp64([px, py, pz], low, i)
                 };
-                let sp = world_to_screen(world, view_rot, eye, bounds);
+                let Some(sp) = projection::project_screen(view_rot, eye, bounds, world) else {
+                    prev = None;
+                    continue;
+                };
                 if inside(sp) {
                     hit = true;
                 }
@@ -1966,7 +2040,12 @@ pub fn box_hit<'a, W: WireSource + ?Sized>(
                 } else {
                     wp64([px, py, pz], low, i)
                 };
-                let sp = world_to_screen(world, view_rot, eye, bounds);
+                // A vertex behind the eye has no pixel of its own; the window
+                // cannot contain the wire (#64).
+                let Some(sp) = projection::project_screen(view_rot, eye, bounds, world) else {
+                    all_inside = false;
+                    break;
+                };
                 if !inside(sp) {
                     all_inside = false;
                     break;
@@ -2078,7 +2157,10 @@ pub fn poly_hit<'a, W: WireSource + ?Sized>(
                 } else {
                     wp64([px, py, pz], low, i)
                 };
-                let sp = world_to_screen(world, view_rot, eye, bounds);
+                let Some(sp) = projection::project_screen(view_rot, eye, bounds, world) else {
+                    prev = None;
+                    continue;
+                };
                 if sp.x < 0.0 || sp.x > bounds.width || sp.y < 0.0 || sp.y > bounds.height {
                     prev = None;
                     continue;
@@ -2164,7 +2246,11 @@ pub fn poly_hit<'a, W: WireSource + ?Sized>(
                 } else {
                     wp64([px, py, pz], low, i)
                 };
-                let sp = world_to_screen(world, view_rot, eye, bounds);
+                let Some(sp) = projection::project_screen(view_rot, eye, bounds, world) else {
+                    all_inside = false;
+                    prev = None;
+                    continue;
+                };
                 // Reject points the GPU scissored out of a floating viewport so
                 // the lasso can't reach clipped geometry. No-op in model space.
                 if sp.x < 0.0 || sp.x > bounds.width || sp.y < 0.0 || sp.y > bounds.height {
@@ -2218,6 +2304,12 @@ pub fn poly_hit<'a, W: WireSource + ?Sized>(
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+/// Project a world point **without** an eye-plane guard.
+///
+/// Only for callers that place decoration for points already known to be in
+/// front of the eye. Anything deciding a hit, a snap or a visible span must use
+/// [`projection::project_screen`], which rejects points behind the perspective
+/// eye instead of mirroring them across the screen (#64).
 pub(crate) fn world_to_screen(
     world: glam::DVec3,
     view_rot: Mat4,
@@ -2278,12 +2370,15 @@ fn marker_segment_hit(
             previous = None;
             continue;
         }
-        let screen = world_to_screen(
-            wire_point_world(wire, index, view_rot, eye),
+        let Some(screen) = projection::project_screen(
             view_rot,
             eye,
             bounds,
-        );
+            wire_point_world(wire, index, view_rot, eye),
+        ) else {
+            previous = None;
+            continue;
+        };
         if previous.is_some_and(|start| hit(start, screen)) {
             return true;
         }
@@ -2454,18 +2549,15 @@ fn hatch_contains_screen_point(
         .boundary
         .iter()
         .map(|&[x, y]| {
-            if x.is_finite() && y.is_finite() {
-                world_to_screen(
-                    glam::DVec3::new(x as f64 + ox, y as f64 + oy, 0.0),
-                    view_rot,
-                    eye,
-                    bounds,
-                )
-            } else {
-                // Preserve path separators for the NaN-aware
-                // point_in_polygon ray-cast.
-                Point::new(f32::NAN, f32::NAN)
-            }
+            // A vertex behind the eye becomes a path separator, exactly like a
+            // non-finite one: it cannot be part of a visible boundary (#64).
+            projection::project_screen(
+                view_rot,
+                eye,
+                bounds,
+                glam::DVec3::new(x as f64 + ox, y as f64 + oy, 0.0),
+            )
+            .unwrap_or(Point::new(f32::NAN, f32::NAN))
         })
         .collect();
     screen.len() >= 3 && point_in_polygon(cursor, &screen)
@@ -2495,16 +2587,15 @@ fn hatch_box_hit(
         .boundary
         .iter()
         .map(|&[x, y]| {
-            if x.is_finite() && y.is_finite() {
-                world_to_screen(
-                    glam::DVec3::new(x as f64 + ox, y as f64 + oy, 0.0),
-                    view_rot,
-                    eye,
-                    bounds,
-                )
-            } else {
-                Point::new(f32::NAN, f32::NAN)
-            }
+            // Behind-eye vertices split the boundary at a NaN, like any other
+            // vertex without a screen position (#64).
+            projection::project_screen(
+                view_rot,
+                eye,
+                bounds,
+                glam::DVec3::new(x as f64 + ox, y as f64 + oy, 0.0),
+            )
+            .unwrap_or(Point::new(f32::NAN, f32::NAN))
         })
         .collect();
     if !screen
@@ -2629,16 +2720,15 @@ fn hatch_polygon_hit(
         .boundary
         .iter()
         .map(|&[x, y]| {
-            if x.is_finite() && y.is_finite() {
-                world_to_screen(
-                    glam::DVec3::new(x as f64 + ox, y as f64 + oy, 0.0),
-                    view_rot,
-                    eye,
-                    bounds,
-                )
-            } else {
-                Point::new(f32::NAN, f32::NAN)
-            }
+            // Behind-eye vertices split the boundary at a NaN, like any other
+            // vertex without a screen position (#64).
+            projection::project_screen(
+                view_rot,
+                eye,
+                bounds,
+                glam::DVec3::new(x as f64 + ox, y as f64 + oy, 0.0),
+            )
+            .unwrap_or(Point::new(f32::NAN, f32::NAN))
         })
         .collect();
     if !screen
@@ -3112,5 +3202,267 @@ mod parallel_selection_tests {
             area.len(),
         );
         println!("crossing scan: {scan_ms:.1}ms ({scan_n} hits)");
+    }
+}
+
+#[cfg(test)]
+mod behind_eye_tests {
+    use super::*;
+    use glam::DVec3;
+
+    /// Eye at the origin looking down -Z: `z < 0` is in front, `z > 0` is
+    /// behind. Both sets mirror onto the same pixels, so a hit test that
+    /// divides by a negative clip W cannot tell them apart.
+    fn perspective_view() -> (Mat4, DVec3, Rectangle) {
+        let bounds = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        let view = glam::camera::rh::proj::directx::perspective(
+            45.0_f32.to_radians(),
+            bounds.width / bounds.height,
+            0.1,
+            2000.0,
+        );
+        (view, DVec3::ZERO, bounds)
+    }
+
+    #[test]
+    fn behind_eye_triangle_does_not_hit_test() {
+        let (view, eye, bounds) = perspective_view();
+        let cursor = Point::new(400.0, 300.0);
+        let front = [
+            [-100.0, -100.0, -100.0],
+            [100.0, -100.0, -100.0],
+            [0.0, 100.0, -100.0],
+        ];
+        assert!(
+            tris_hit_depth(cursor, &front, &[], view, eye, bounds).is_some(),
+            "a front triangle containing the cursor must hit"
+        );
+        let behind = [
+            [-100.0, -100.0, 100.0],
+            [100.0, -100.0, 100.0],
+            [0.0, 100.0, 100.0],
+        ];
+        assert!(
+            tris_hit_depth(cursor, &behind, &[], view, eye, bounds).is_none(),
+            "a behind-eye triangle wraps onto the cursor and must not hit"
+        );
+    }
+
+    #[test]
+    fn behind_eye_wire_does_not_hit_test() {
+        let (view, eye, bounds) = perspective_view();
+        let cursor = Point::new(400.0, 300.0);
+        let wire = |name: &str, z: f32| {
+            WireModel::solid(
+                name.to_string(),
+                vec![[-100.0, 0.0, z], [100.0, 0.0, z]],
+                [1.0; 4],
+                false,
+            )
+        };
+        let front = wire("10", -100.0);
+        assert_eq!(
+            click_hit(
+                cursor,
+                std::slice::from_ref(&front),
+                view,
+                eye,
+                bounds,
+                false,
+                8.0,
+                &HashMap::default(),
+            ),
+            Some("10")
+        );
+        let behind = wire("20", 100.0);
+        assert_eq!(
+            click_hit(
+                cursor,
+                std::slice::from_ref(&behind),
+                view,
+                eye,
+                bounds,
+                false,
+                8.0,
+                &HashMap::default(),
+            ),
+            None,
+            "a behind-eye wire wraps its segment onto the cursor"
+        );
+    }
+
+    #[test]
+    fn behind_eye_mesh_edge_does_not_hit_test() {
+        let (view, eye, bounds) = perspective_view();
+        let cursor = Point::new(400.0, 300.0);
+        let empty: &[[f32; 3]] = &[];
+        let front: Vec<[f32; 3]> = vec![[-100.0, 0.0, -100.0], [100.0, 0.0, -100.0]];
+        let behind: Vec<[f32; 3]> = vec![[-100.0, 0.0, 100.0], [100.0, 0.0, 100.0]];
+        assert!(
+            mesh_edge_click_hit(
+                cursor,
+                std::iter::once((Handle::new(1), front.as_slice(), empty, None)),
+                view,
+                eye,
+                bounds,
+                8.0,
+            )
+            .is_some(),
+            "a front mesh edge through the cursor must hit"
+        );
+        assert!(
+            mesh_edge_click_hit(
+                cursor,
+                std::iter::once((Handle::new(2), behind.as_slice(), empty, None)),
+                view,
+                eye,
+                bounds,
+                8.0,
+            )
+            .is_none(),
+            "a behind-eye mesh edge must not hit"
+        );
+    }
+
+    fn quad_mesh(name: &str, z: f32) -> MeshModel {
+        MeshModel {
+            name: name.to_string(),
+            verts: vec![
+                [-5.0, -5.0, z],
+                [5.0, -5.0, z],
+                [5.0, 5.0, z],
+                [-5.0, 5.0, z],
+            ],
+            verts_low: Vec::new(),
+            normals: Vec::new(),
+            indices: vec![0, 1, 2, 0, 2, 3],
+            triangle_material_handles: Vec::new(),
+            triangle_colors: Vec::new(),
+            color: [1.0; 4],
+            selected: false,
+        }
+    }
+
+    #[test]
+    fn behind_eye_mesh_is_not_box_or_lasso_selected() {
+        let (view, eye, bounds) = perspective_view();
+        // The mirrored quad lands on the same pixels as its front twin, so a
+        // box around the raw projection of the behind-eye quad also contains
+        // the visible front quad.
+        let raw_pixels = |mesh: &MeshModel| -> Vec<Point> {
+            mesh.verts
+                .iter()
+                .map(|v| {
+                    let ndc = view.project_point3(
+                        (glam::DVec3::new(v[0] as f64, v[1] as f64, v[2] as f64) - eye).as_vec3(),
+                    );
+                    Point::new(
+                        (ndc.x + 1.0) * 0.5 * bounds.width,
+                        (1.0 - ndc.y) * 0.5 * bounds.height,
+                    )
+                })
+                .collect()
+        };
+        let behind = quad_mesh("30", 100.0);
+        let pixels = raw_pixels(&behind);
+        let min = pixels
+            .iter()
+            .fold(Point::new(f32::MAX, f32::MAX), |acc, p| {
+                Point::new(acc.x.min(p.x), acc.y.min(p.y))
+            });
+        let max = pixels
+            .iter()
+            .fold(Point::new(f32::MIN, f32::MIN), |acc, p| {
+                Point::new(acc.x.max(p.x), acc.y.max(p.y))
+            });
+        let a = Point::new(min.x - 1.0, min.y - 1.0);
+        let b = Point::new(max.x + 1.0, max.y + 1.0);
+        let lasso = [a, Point::new(b.x, a.y), b, Point::new(a.x, b.y)];
+        assert!(
+            pixels.iter().all(|p| point_in_polygon(*p, &lasso)),
+            "fixture: the mirrored pixels must lie inside the lasso"
+        );
+
+        let front = quad_mesh("10", -100.0);
+        assert_eq!(
+            mesh_box_hit(
+                a,
+                b,
+                false,
+                std::iter::once((Handle::new(1), &front, None)),
+                view,
+                eye,
+                bounds,
+            ),
+            vec![Handle::new(1)],
+            "the front quad control must be box-selected"
+        );
+        assert_eq!(
+            mesh_poly_hit(
+                &lasso,
+                false,
+                std::iter::once((Handle::new(1), &front, None)),
+                view,
+                eye,
+                bounds,
+            ),
+            vec![Handle::new(1)],
+            "the front quad control must be lasso-selected"
+        );
+        assert!(
+            mesh_box_hit(
+                a,
+                b,
+                false,
+                std::iter::once((Handle::new(2), &behind, None)),
+                view,
+                eye,
+                bounds,
+            )
+            .is_empty(),
+            "a behind-eye mesh must not be window-selected through mirrored pixels"
+        );
+        assert!(
+            mesh_box_hit(
+                a,
+                b,
+                true,
+                std::iter::once((Handle::new(2), &behind, None)),
+                view,
+                eye,
+                bounds,
+            )
+            .is_empty(),
+            "a behind-eye mesh must not be crossing-selected through mirrored pixels"
+        );
+        assert!(
+            mesh_poly_hit(
+                &lasso,
+                false,
+                std::iter::once((Handle::new(2), &behind, None)),
+                view,
+                eye,
+                bounds,
+            )
+            .is_empty(),
+            "a behind-eye mesh must not be window-selected by a lasso"
+        );
+        assert!(
+            mesh_poly_hit(
+                &lasso,
+                true,
+                std::iter::once((Handle::new(2), &behind, None)),
+                view,
+                eye,
+                bounds,
+            )
+            .is_empty(),
+            "a behind-eye mesh must not be crossing-selected by a lasso"
+        );
     }
 }

@@ -735,24 +735,15 @@ pub struct GridCanvasState {
 /// first so points near the camera stay precise at UTM-scale coords.
 /// Rejects points on/behind the perspective eye plane before dividing by W —
 /// without this a behind-camera point wraps to a finite mirrored coordinate
-/// (screen centre for on-axis points) and strokes garbage (#46).
+/// (screen centre for on-axis points) and strokes garbage (#46). The guard is
+/// shared with picking and snapping through `scene::view::projection`.
 fn project_point(
     view_rot: Mat4,
     eye: glam::DVec3,
     bounds: iced::Rectangle,
     world: glam::DVec3,
 ) -> Option<Point> {
-    let rel = (world - eye).as_vec3();
-    let clip = view_rot * rel.extend(1.0);
-    if !clip.is_finite() || clip.w <= 1e-7 {
-        return None;
-    }
-    let ndc = clip.truncate() / clip.w;
-    let screen = Point::new(
-        (ndc.x + 1.0) * 0.5 * bounds.width,
-        (1.0 - ndc.y) * 0.5 * bounds.height,
-    );
-    (screen.x.is_finite() && screen.y.is_finite()).then_some(screen)
+    crate::scene::view::projection::project_screen(view_rot, eye, bounds, world)
 }
 
 /// Clip the screen segment `p0`→`p1` to `bounds` (Liang–Barsky), returning the

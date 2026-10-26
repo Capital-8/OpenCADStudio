@@ -389,15 +389,15 @@ pub(super) fn polar_constrain_if_near(
 ) -> Option<glam::DVec3> {
     let snapped = polar_constrain(pt, base, step_deg, xf);
     let to_screen = |w: glam::DVec3| {
-        let ndc = view_rot.project_point3((w - eye).as_vec3());
-        (
-            (ndc.x + 1.0) * 0.5 * bounds.width,
-            (1.0 - ndc.y) * 0.5 * bounds.height,
-        )
+        crate::scene::view::projection::project_screen(view_rot, eye, bounds, w)
     };
-    let (cx, cy) = to_screen(pt);
-    let (sx, sy) = to_screen(snapped);
-    (((cx - sx).powi(2) + (cy - sy).powi(2)).sqrt() <= tol_px).then_some(snapped)
+    // Behind the eye, screen distance says nothing about how close the
+    // constrained point is to the cursor: leave the constraint disengaged.
+    let (Some(cursor), Some(candidate)) = (to_screen(pt), to_screen(snapped)) else {
+        return None;
+    };
+    (((cursor.x - candidate.x).powi(2) + (cursor.y - candidate.y).powi(2)).sqrt() <= tol_px)
+        .then_some(snapped)
 }
 
 /// Hard axis lock (#312): the locked ray's direction — the nearest polar

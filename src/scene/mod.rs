@@ -362,14 +362,15 @@ impl Scene {
             return None;
         }
         let perp_base = want_perp.then(|| base).flatten();
-        let project = |world: glam::DVec3| {
-            let ndc = view_rot.project_point3((world - eye).as_vec3());
-            [
+        // Eye-plane guard: a triangle behind the perspective eye mirrors onto
+        // visible pixels and would otherwise win a snap for a hidden face (#64).
+        let project = |world: glam::DVec3| -> Option<[f32; 2]> {
+            let ndc = crate::scene::view::projection::project_ndc(view_rot, eye, world)?;
+            Some([
                 (ndc.x + 1.0) * 0.5 * bounds.width,
                 (1.0 - ndc.y) * 0.5 * bounds.height,
-            ]
+            ])
         };
-        let finite_screen = |s: [f32; 2]| s[0].is_finite() && s[1].is_finite();
         let in_bounds = |s: [f32; 2]| {
             s[0] >= 0.0 && s[0] <= bounds.width && s[1] >= 0.0 && s[1] <= bounds.height
         };
@@ -432,8 +433,12 @@ impl Scene {
                 continue;
             }
             // Screen-space cull from the mesh bounds before touching triangles.
+            // It is only sound while every corner has a real projection: a
+            // corner behind the eye mirrors across the screen, so the union of
+            // the projected corners bounds nothing (#64).
             let (mut x0, mut y0) = (f32::INFINITY, f32::INFINITY);
             let (mut x1, mut y1) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
+            let mut cullable = true;
             for corner in [
                 [set.world_aabb[0], set.world_aabb[1], set.z_aabb[0]],
                 [set.world_aabb[2], set.world_aabb[1], set.z_aabb[0]],
@@ -444,23 +449,24 @@ impl Scene {
                 [set.world_aabb[0], set.world_aabb[3], set.z_aabb[1]],
                 [set.world_aabb[2], set.world_aabb[3], set.z_aabb[1]],
             ] {
-                let s = project(glam::DVec3::new(
+                let Some(s) = project(glam::DVec3::new(
                     corner[0] as f64,
                     corner[1] as f64,
                     corner[2] as f64,
-                ));
-                if !finite_screen(s) {
-                    continue;
-                }
+                )) else {
+                    cullable = false;
+                    break;
+                };
                 x0 = x0.min(s[0]);
                 y0 = y0.min(s[1]);
                 x1 = x1.max(s[0]);
                 y1 = y1.max(s[1]);
             }
-            if cursor[0] < x0 - aperture_px
-                || cursor[0] > x1 + aperture_px
-                || cursor[1] < y0 - aperture_px
-                || cursor[1] > y1 + aperture_px
+            if cullable
+                && (cursor[0] < x0 - aperture_px
+                    || cursor[0] > x1 + aperture_px
+                    || cursor[1] < y0 - aperture_px
+                    || cursor[1] > y1 + aperture_px)
             {
                 continue;
             }
@@ -492,10 +498,9 @@ impl Scene {
                     continue;
                 }
                 let [a, b, c] = v;
-                let (sa, sb, sc) = (project(a), project(b), project(c));
-                if !(finite_screen(sa) && finite_screen(sb) && finite_screen(sc)) {
+                let (Some(sa), Some(sb), Some(sc)) = (project(a), project(b), project(c)) else {
                     continue;
-                }
+                };
                 // Per-triangle screen reject before any 3D work.
                 let (tx0, ty0) = (sa[0].min(sb[0]).min(sc[0]), sa[1].min(sb[1]).min(sc[1]));
                 let (tx1, ty1) = (sa[0].max(sb[0]).max(sc[0]), sa[1].max(sb[1]).max(sc[1]));
@@ -515,8 +520,7 @@ impl Scene {
                 }
                 if let Some(base3d) = perp_base {
                     if let Some(foot) = foot_on_triangle(base3d, a, b, c) {
-                        let sf = project(foot);
-                        if finite_screen(sf) {
+                        if let Some(sf) = project(foot) {
                             let dx = sf[0] - cursor[0];
                             let dy = sf[1] - cursor[1];
                             consider(
