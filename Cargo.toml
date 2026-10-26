@@ -303,6 +303,10 @@ harness = false
 name = "centerline_refresh_scan"
 harness = false
 
+[[bench]]
+name = "navigation_selection_bounds"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"

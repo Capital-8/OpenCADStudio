@@ -7660,6 +7660,7 @@ impl Scene {
             annotation_scale_handle,
             all_visible,
             style_viewport,
+            None,
         );
         // Baking a drawing's glyphs for the first time can grow the SDF atlas
         // part-way through this pass (a CJK sheet set bakes thousands of
@@ -7687,6 +7688,7 @@ impl Scene {
                 annotation_scale_handle,
                 all_visible,
                 style_viewport,
+                None,
             );
         }
         self.building_resident_set.set(false);
@@ -12750,6 +12752,10 @@ impl Scene {
         annotation_scale_handle: Option<Handle>,
         all_visible: bool,
         style_viewport: Option<Handle>,
+        // Build only these entities — the same wires a full build would give
+        // them, though not in document order — instead of the whole block.
+        // View culling is not applied.
+        only: Option<&HashSet<Handle>>,
     ) -> Vec<WireModel> {
         use codec::objects::ObjectType;
 
@@ -12830,7 +12836,31 @@ impl Scene {
         // entities (Insert/Viewport) are appended via a small linear scan.
         // Paper space and the first-frame "settle" path fall back to the
         // full doc scan — preserving prior behaviour.
-        let visible: Vec<&EntityType> = if let Some(local_view) = view_aabb {
+        let visible: Vec<&EntityType> = if let Some(only) = only {
+            debug_assert!(view_aabb.is_none(), "a restricted build is never culled");
+            visible_path = "only";
+            visible_candidates = only.len();
+            // Same membership as the full-scan / block-index paths below: any
+            // entity when no block ownership is known, else direct content of
+            // this block by owner handle or, without one, by the block map.
+            let members: Vec<&EntityType> = {
+                let block_map = self.entity_block_map();
+                let any_block = block_handle.is_null() || block_map.is_empty();
+                only.iter()
+                    .filter_map(|&handle| self.document.get_entity(handle))
+                    .filter(|entity| {
+                        let common = entity.common();
+                        any_block
+                            || if common.owner_handle.is_null() {
+                                block_map.get(&common.handle) == Some(&block_handle)
+                            } else {
+                                common.owner_handle == block_handle
+                            }
+                    })
+                    .collect()
+            };
+            members.into_iter().filter(|entity| visibility_ok(entity)).collect()
+        } else if let Some(local_view) = view_aabb {
             visible_path = "quadtree";
             let view_wcs: [f64; 4] = [
                 local_view[0] as f64,
@@ -13127,6 +13157,9 @@ impl Scene {
         if let Some(section) = self.active_live_section(block_handle) {
             let handles: Vec<Handle> = self.meshes.keys().copied().collect();
             for handle in handles {
+                if only.is_some_and(|only| !only.contains(&handle)) {
+                    continue;
+                }
                 let Some(source) = self.document.get_entity(handle) else {
                     continue;
                 };
@@ -14281,6 +14314,7 @@ vis_index={:.1} visible_probe={:.1}",
             scale,
             self.annotation_all_visible(),
             None,
+            Some(&self.selected),
         );
         let mut min = glam::DVec3::splat(f64::INFINITY);
         let mut max = glam::DVec3::splat(f64::NEG_INFINITY);
@@ -16223,6 +16257,62 @@ mod layout_cache_tests {
     }
 
     #[test]
+    fn a_restricted_build_matches_the_full_build_for_its_handles() {
+        use codec::entities::Line;
+        use codec::tables::layer::Layer;
+        use codec::types::Vector3;
+
+        let mut s = Scene::new();
+        let mut hidden = Layer::new("Walls");
+        hidden.flags.off = true;
+        s.document.layers.add_or_replace(hidden);
+        let mut line_at = |y: f64, layer: &str| {
+            let mut line = Line::from_points(Vector3::new(0.0, y, 0.0), Vector3::new(10.0, y, 0.0));
+            line.common.layer = layer.to_string();
+            s.add_entity(EntityType::Line(line))
+        };
+        let shown = line_at(0.0, "0");
+        let off = line_at(100.0, "Walls");
+        let unselected = line_at(50.0, "0");
+        let only: HashSet<Handle> = [shown, off].into_iter().collect();
+        let build = |s: &Scene, only: Option<&HashSet<Handle>>| {
+            let mut wires: Vec<(String, Vec<[f32; 3]>)> = s
+                .wires_for_block_culled(
+                    s.model_space_block_handle(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    true,
+                    None,
+                    only,
+                )
+                .into_iter()
+                .map(|wire| (wire.name, wire.points))
+                .collect();
+            wires.sort_by(|a, b| a.0.cmp(&b.0));
+            wires
+        };
+
+        let restricted = build(&s, Some(&only));
+        let full: Vec<_> = build(&s, None)
+            .into_iter()
+            .filter(|(name, _)| *name == shown.value().to_string())
+            .collect();
+        assert!(!full.is_empty());
+        assert_eq!(restricted, full, "the hidden handle is dropped, the shown one is unchanged");
+        assert!(restricted
+            .iter()
+            .all(|(name, _)| *name != unselected.value().to_string()));
+
+        s.selected = only;
+        s.selection_generation += 1;
+        let pivot = s.orbit_pivot().expect("the shown line is selected");
+        assert!((pivot - glam::DVec3::new(5.0, 0.0, 0.0)).length() < 1e-9);
+    }
+
+    #[test]
     fn memoized_plain_line_matches_fresh_background() {
         let mut s = Scene::new();
         s.bg_color = [0.1, 0.1, 0.1, 1.0];
@@ -16239,6 +16329,7 @@ mod layout_cache_tests {
                 None,
                 None,
                 true,
+                None,
                 None,
             )
             .into_iter()

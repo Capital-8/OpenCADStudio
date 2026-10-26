@@ -1654,6 +1654,7 @@ impl Scene {
                 scale,
                 self.annotation_all_visible(),
                 None,
+                None,
             ) {
                 let is_infinite = Self::handle_from_wire_name(&wire.name)
                     .and_then(|handle| self.document.get_entity(handle))
