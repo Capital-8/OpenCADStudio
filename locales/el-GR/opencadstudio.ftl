@@ -6326,6 +6326,14 @@ dimstyle =
     .surveyors-units = Τοπογραφικές μονάδες
 
 style-manager =
+    .import-styles = Εισαγωγή στυλ
+    .select-drawing-to-import-styles-from = Επιλέξτε σχέδιο από το οποίο θα εισαχθούν στυλ
+    .select-the-styles-to-import = Επιλέξτε τα στυλ για εισαγωγή
+    .style-name-conflict = Υπάρχει ήδη στυλ με αυτό το όνομα. Αντικατάσταση;
+    .no-styles-found = Δεν βρέθηκαν στυλ σε αυτό το σχέδιο.
+    .existing = Υπάρχον
+    .imported-styles-apply = Εισήχθησαν __ocs_fmt_0__ στυλ. Πατήστε Εφαρμογή για να διατηρηθούν οι αλλαγές.
+    .missing-style-references = Ορισμένα στυλ που εισήχθησαν αναφέρονται σε μπλοκ βελών, τύπους γραμμών ή στυλ κειμένου που λείπουν από αυτό το σχέδιο· θα χρησιμοποιηθούν οι προεπιλογές.
     .alignment-spacing = Απόσταση στοίχισης
     .always-left-align = Πάντα αριστερή στοίχιση
     .attachment-direction = Κατεύθυνση σύνδεσης

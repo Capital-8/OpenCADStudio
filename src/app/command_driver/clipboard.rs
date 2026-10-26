@@ -684,7 +684,7 @@ fn dim_style_ref<T: codec::TableEntry>(
 /// same names (`refs` names each source handle). A record this drawing lacks
 /// is cleared, so the style falls back to the default instead of naming an
 /// object that is not there.
-fn repoint_dim_style(
+pub(crate) fn repoint_dim_style(
     doc: &codec::Document,
     style: &mut codec::tables::DimStyle,
     refs: &rustc_hash::FxHashMap<Handle, String>,

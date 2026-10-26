@@ -6321,6 +6321,14 @@ dimstyle =
     .surveyors-units = 測量單位
 
 style-manager =
+    .import-styles = 匯入樣式
+    .select-drawing-to-import-styles-from = 選取要從中匯入樣式的圖面
+    .select-the-styles-to-import = 選取要匯入的樣式
+    .style-name-conflict = 已存在同名樣式。是否覆寫?
+    .no-styles-found = 此圖面中找不到樣式。
+    .existing = 現有
+    .imported-styles-apply = 已匯入 __ocs_fmt_0__ 個樣式。按一下「套用」以保留變更。
+    .missing-style-references = 部分匯入的樣式參考了此圖面中不存在的箭頭圖塊、線型或文字樣式;將使用預設值。
     .alignment-spacing = 對齊間距
     .always-left-align = 始終左對齊
     .attachment-direction = 附著方向

@@ -6323,6 +6323,14 @@ dimstyle =
     .surveyors-units = Zeměměřické jednotky
 
 style-manager =
+    .import-styles = Importovat styly
+    .select-drawing-to-import-styles-from = Vyberte výkres, ze kterého se mají importovat styly
+    .select-the-styles-to-import = Vyberte styly k importu
+    .style-name-conflict = Styl s tímto názvem již existuje. Přepsat?
+    .no-styles-found = V tomto výkresu nebyly nalezeny žádné styly.
+    .existing = Existující
+    .imported-styles-apply = Importováno stylů: __ocs_fmt_0__. Změny zachováte tlačítkem Použít.
+    .missing-style-references = Některé importované styly odkazují na bloky šipek, typy čar nebo styly textu, které v tomto výkresu chybí; použijí se výchozí hodnoty.
     .alignment-spacing = Rozteč zarovnání
     .always-left-align = Vždy zarovnat doleva
     .attachment-direction = Směr přílohy

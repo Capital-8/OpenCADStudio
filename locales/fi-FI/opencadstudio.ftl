@@ -6323,6 +6323,14 @@ dimstyle =
     .surveyors-units = Maanmittausyksiköt
 
 style-manager =
+    .import-styles = Tuo tyylejä
+    .select-drawing-to-import-styles-from = Valitse piirustus, josta tyylit tuodaan
+    .select-the-styles-to-import = Valitse tuotavat tyylit
+    .style-name-conflict = Tämänniminen tyyli on jo olemassa. Korvataanko?
+    .no-styles-found = Tästä piirustuksesta ei löytynyt tyylejä.
+    .existing = Olemassa oleva
+    .imported-styles-apply = Tuotiin __ocs_fmt_0__ tyyliä. Säilytä muutokset valitsemalla Käytä.
+    .missing-style-references = Osa tuoduista tyyleistä viittaa nuolilohkoihin, viivatyyppeihin tai tekstityyleihin, joita tässä piirustuksessa ei ole; käytetään oletuksia.
     .alignment-spacing = Tasausvälit
     .always-left-align = Tasaa aina vasemmalle
     .attachment-direction = Kiinnityssuunta

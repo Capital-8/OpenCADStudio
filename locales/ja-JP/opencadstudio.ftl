@@ -6314,6 +6314,14 @@ dimstyle =
     .surveyors-units = 測量単位
 
 style-manager =
+    .import-styles = スタイルを読み込む
+    .select-drawing-to-import-styles-from = スタイルを読み込む図面を選択
+    .select-the-styles-to-import = 読み込むスタイルを選択してください
+    .style-name-conflict = この名前のスタイルは既に存在します。上書きしますか?
+    .no-styles-found = この図面にスタイルが見つかりません。
+    .existing = 既存
+    .imported-styles-apply = __ocs_fmt_0__ 個のスタイルを読み込みました。変更を保持するには[適用]をクリックしてください。
+    .missing-style-references = 読み込んだスタイルの一部が、この図面にない矢印ブロック、線種、文字スタイルを参照しています。既定値が使用されます。
     .alignment-spacing = 位置合わせ間隔
     .always-left-align = 常に左揃え
     .attachment-direction = アタッチ方向

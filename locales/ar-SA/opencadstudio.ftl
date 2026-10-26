@@ -6338,6 +6338,14 @@ dimstyle =
     .surveyors-units = وحدات المسّاح
 
 style-manager =
+    .import-styles = استيراد الأنماط
+    .select-drawing-to-import-styles-from = حدد الرسم الذي تُستورد منه الأنماط
+    .select-the-styles-to-import = حدد الأنماط المراد استيرادها
+    .style-name-conflict = يوجد نمط بهذا الاسم بالفعل. هل تريد استبداله؟
+    .no-styles-found = لم يُعثر على أنماط في هذا الرسم.
+    .existing = موجود
+    .imported-styles-apply = تم استيراد __ocs_fmt_0__ نمط. اضغط تطبيق للاحتفاظ بالتغييرات.
+    .missing-style-references = تشير بعض الأنماط المستوردة إلى كتل أسهم أو أنواع خطوط أو أنماط نص غير موجودة في هذا الرسم؛ ستُستخدم القيم الافتراضية.
     .alignment-spacing = تباعد المحاذاة
     .always-left-align = المحاذاة لليسار دائمًا
     .attachment-direction = اتجاه الإرفاق

@@ -6249,6 +6249,14 @@ dimstyle =
     .surveyors-units = Haritacılık birimleri
 
 style-manager =
+    .import-styles = Stilleri İçe Aktar
+    .select-drawing-to-import-styles-from = Stillerin İçe Aktarılacağı Çizimi Seçin
+    .select-the-styles-to-import = İçe aktarılacak stilleri seçin
+    .style-name-conflict = Bu adda bir stil zaten var. Üzerine yazılsın mı?
+    .no-styles-found = Bu çizimde stil bulunamadı.
+    .existing = Mevcut
+    .imported-styles-apply = __ocs_fmt_0__ stil içe aktarıldı. Değişiklikleri korumak için Uygula'ya basın.
+    .missing-style-references = İçe aktarılan bazı stiller bu çizimde bulunmayan ok bloklarına, çizgi tiplerine veya metin stillerine başvuruyor; varsayılanlar kullanılacak.
     .alignment-spacing = Hizalama aralığı
     .always-left-align = Her zaman sola hizala
     .attachment-direction = Bağlantı yönü

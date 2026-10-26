@@ -6326,6 +6326,14 @@ dimstyle =
     .surveyors-units = Unidades de agrimensura
 
 style-manager =
+    .import-styles = Importar estilos
+    .select-drawing-to-import-styles-from = Selecionar o desenho do qual importar estilos
+    .select-the-styles-to-import = Selecione os estilos a importar
+    .style-name-conflict = Já existe um estilo com este nome. Substituí-lo?
+    .no-styles-found = Nenhum estilo encontrado neste desenho.
+    .existing = Existente
+    .imported-styles-apply = __ocs_fmt_0__ estilo(s) importado(s). Clique em Aplicar para manter as alterações.
+    .missing-style-references = Alguns estilos importados referenciam blocos de seta, tipos de linha ou estilos de texto ausentes neste desenho; serão usados os padrões.
     .alignment-spacing = Espaçamento de alinhamento
     .always-left-align = Sempre alinhar à esquerda
     .attachment-direction = Direção da conexão

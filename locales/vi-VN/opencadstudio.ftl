@@ -6333,6 +6333,14 @@ dimstyle =
     .surveyors-units = Các đơn vị khảo sát
 
 style-manager =
+    .import-styles = Nhập kiểu
+    .select-drawing-to-import-styles-from = Chọn bản vẽ để nhập kiểu
+    .select-the-styles-to-import = Chọn các kiểu cần nhập
+    .style-name-conflict = Đã có kiểu cùng tên. Ghi đè?
+    .no-styles-found = Không tìm thấy kiểu nào trong bản vẽ này.
+    .existing = Hiện có
+    .imported-styles-apply = Đã nhập __ocs_fmt_0__ kiểu. Nhấn Áp dụng để giữ thay đổi.
+    .missing-style-references = Một số kiểu đã nhập tham chiếu khối mũi tên, kiểu đường hoặc kiểu chữ không có trong bản vẽ này; sẽ dùng giá trị mặc định.
     .alignment-spacing = Khoảng cách căn chỉnh
     .always-left-align = Luôn căn trái
     .attachment-direction = Hướng gắn

@@ -6314,6 +6314,14 @@ dimstyle =
     .surveyors-units = सर्वेक्षण इकाइयाँ
 
 style-manager =
+    .import-styles = शैलियाँ आयात करें
+    .select-drawing-to-import-styles-from = शैलियाँ आयात करने के लिए ड्रॉइंग चुनें
+    .select-the-styles-to-import = आयात करने के लिए शैलियाँ चुनें
+    .style-name-conflict = इस नाम की शैली पहले से मौजूद है। क्या इसे बदलें?
+    .no-styles-found = इस ड्रॉइंग में कोई शैली नहीं मिली।
+    .existing = मौजूदा
+    .imported-styles-apply = __ocs_fmt_0__ शैली आयात की गई। बदलाव रखने के लिए लागू करें दबाएँ।
+    .missing-style-references = कुछ आयातित शैलियाँ ऐसे तीर ब्लॉक, रेखा प्रकार या टेक्स्ट शैलियों को संदर्भित करती हैं जो इस ड्रॉइंग में नहीं हैं; डिफ़ॉल्ट उपयोग किए जाएँगे।
     .alignment-spacing = संरेखण अंतराल
     .always-left-align = हमेशा बाएँ संरेखित करें
     .attachment-direction = संयोजन दिशा

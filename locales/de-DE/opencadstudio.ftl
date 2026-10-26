@@ -6324,6 +6324,14 @@ dimstyle =
     .surveyors-units = Vermessungseinheiten
 
 style-manager =
+    .import-styles = Stile importieren
+    .select-drawing-to-import-styles-from = Zeichnung zum Importieren von Stilen auswählen
+    .select-the-styles-to-import = Zu importierende Stile auswählen
+    .style-name-conflict = Ein Stil mit diesem Namen ist bereits vorhanden. Überschreiben?
+    .no-styles-found = In dieser Zeichnung wurden keine Stile gefunden.
+    .existing = Vorhanden
+    .imported-styles-apply = __ocs_fmt_0__ Stil(e) importiert. Zum Übernehmen auf Anwenden klicken.
+    .missing-style-references = Einige importierte Stile verweisen auf Pfeilblöcke, Linientypen oder Textstile, die in dieser Zeichnung fehlen; es werden Standardwerte verwendet.
     .alignment-spacing = Ausrichtungsabstand
     .always-left-align = Immer links ausrichten
     .attachment-direction = Anschlussrichtung

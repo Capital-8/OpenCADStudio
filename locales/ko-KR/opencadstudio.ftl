@@ -6325,6 +6325,14 @@ dimstyle =
     .surveyors-units = 측량 단위
 
 style-manager =
+    .import-styles = 스타일 가져오기
+    .select-drawing-to-import-styles-from = 스타일을 가져올 도면 선택
+    .select-the-styles-to-import = 가져올 스타일을 선택하십시오
+    .style-name-conflict = 이 이름의 스타일이 이미 있습니다. 덮어쓰시겠습니까?
+    .no-styles-found = 이 도면에서 스타일을 찾을 수 없습니다.
+    .existing = 기존
+    .imported-styles-apply = 스타일 __ocs_fmt_0__개를 가져왔습니다. 변경 사항을 유지하려면 적용을 누르십시오.
+    .missing-style-references = 가져온 일부 스타일이 이 도면에 없는 화살표 블록, 선종류 또는 문자 스타일을 참조합니다. 기본값이 사용됩니다.
     .alignment-spacing = 정렬 간격
     .always-left-align = 항상 왼쪽 정렬
     .attachment-direction = 부착 방향

@@ -6325,6 +6325,14 @@ dimstyle =
     .surveyors-units = Jednostki geodezyjne
 
 style-manager =
+    .import-styles = Importuj style
+    .select-drawing-to-import-styles-from = Wybierz rysunek, z którego zaimportować style
+    .select-the-styles-to-import = Wybierz style do zaimportowania
+    .style-name-conflict = Styl o tej nazwie już istnieje. Zastąpić go?
+    .no-styles-found = W tym rysunku nie znaleziono stylów.
+    .existing = Istniejący
+    .imported-styles-apply = Zaimportowano style: __ocs_fmt_0__. Kliknij Zastosuj, aby zachować zmiany.
+    .missing-style-references = Niektóre zaimportowane style odwołują się do bloków strzałek, rodzajów linii lub stylów tekstu, których brak w tym rysunku; zostaną użyte wartości domyślne.
     .alignment-spacing = Rozstaw wyrównania
     .always-left-align = Zawsze wyrównaj do lewej
     .attachment-direction = Kierunek mocowania

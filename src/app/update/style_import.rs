@@ -57,27 +57,6 @@ impl StyleImportDraft {
     }
 }
 
-fn map_handle(
-    source: impl Iterator<Item = (Handle, String)>,
-    target: impl Iterator<Item = (Handle, String)>,
-    handle: Handle,
-) -> Handle {
-    if handle.is_null() {
-        return Handle::NULL;
-    }
-    let Some(name) = source
-        .into_iter()
-        .find(|(h, _)| *h == handle)
-        .map(|(_, n)| n)
-    else {
-        return Handle::NULL;
-    };
-    target
-        .into_iter()
-        .find(|(_, n)| n.eq_ignore_ascii_case(&name))
-        .map_or(Handle::NULL, |(h, _)| h)
-}
-
 fn import_one(
     doc: &mut Document,
     source: &Document,
@@ -137,44 +116,57 @@ fn import_one(
             if doc.text_styles.get(&style.dimtxsty).is_none() {
                 *missing_refs = true;
             }
-            if let Some(text) = doc
+            // Source handles name the dependencies; point them at this
+            // drawing's records of the same names, as a paste does.
+            let mut refs = rustc_hash::FxHashMap::default();
+            for text in source.text_styles.iter() {
+                refs.insert(text.handle, text.name.clone());
+            }
+            for linetype in source.line_types.iter() {
+                refs.insert(linetype.handle, linetype.name.clone());
+            }
+            for block in source.block_records.iter() {
+                refs.insert(block.handle, block.name.clone());
+            }
+            let before = crate::app::command_driver::clipboard::dim_style_blocks(&style)
+                .into_iter()
+                .chain([
+                    style.dimltex_handle,
+                    style.dimltex1_handle,
+                    style.dimltex2_handle,
+                ])
+                .filter(|handle| !handle.is_null())
+                .count();
+            let text_name = style.dimtxsty.clone();
+            style.dimtxsty_handle = source
                 .text_styles
-                .get(&style.dimtxsty)
+                .get(&text_name)
+                .map_or(style.dimtxsty_handle, |text| text.handle);
+            crate::app::command_driver::clipboard::repoint_dim_style(doc, &mut style, &refs);
+            let after = crate::app::command_driver::clipboard::dim_style_blocks(&style)
+                .into_iter()
+                .chain([
+                    style.dimltex_handle,
+                    style.dimltex1_handle,
+                    style.dimltex2_handle,
+                ])
+                .filter(|handle| !handle.is_null())
+                .count();
+            *missing_refs |= after < before;
+            match doc
+                .text_styles
+                .iter()
+                .find(|text| !style.dimtxsty_handle.is_null() && text.handle == style.dimtxsty_handle)
                 .or_else(|| doc.text_styles.get("Standard"))
             {
-                style.dimtxsty = text.name.clone();
-                style.dimtxsty_handle = text.handle;
-            } else {
-                style.dimtxsty_handle = Handle::NULL;
-                *missing_refs = true;
-            }
-            let source_lt = || source.line_types.iter().map(|r| (r.handle, r.name.clone()));
-            let target_lt = || doc.line_types.iter().map(|r| (r.handle, r.name.clone()));
-            for field in [
-                &mut style.dimltex_handle,
-                &mut style.dimltex1_handle,
-                &mut style.dimltex2_handle,
-            ] {
-                let mapped = map_handle(source_lt(), target_lt(), *field);
-                *missing_refs |= !field.is_null() && mapped.is_null();
-                *field = mapped;
-            }
-            let source_blk = || {
-                source
-                    .block_records
-                    .iter()
-                    .map(|r| (r.handle, r.name.clone()))
-            };
-            let target_blk = || doc.block_records.iter().map(|r| (r.handle, r.name.clone()));
-            for field in [
-                &mut style.dimblk,
-                &mut style.dimblk1,
-                &mut style.dimblk2,
-                &mut style.dimldrblk,
-            ] {
-                let mapped = map_handle(source_blk(), target_blk(), *field);
-                *missing_refs |= !field.is_null() && mapped.is_null();
-                *field = mapped;
+                Some(text) => {
+                    style.dimtxsty = text.name.clone();
+                    style.dimtxsty_handle = text.handle;
+                }
+                None => {
+                    style.dimtxsty_handle = Handle::NULL;
+                    *missing_refs = true;
+                }
             }
             style.xref_reference = false;
             style.xref_resolved = false;

@@ -6324,6 +6324,14 @@ dimstyle =
     .surveyors-units = Landmeeteenheden
 
 style-manager =
+    .import-styles = Stijlen importeren
+    .select-drawing-to-import-styles-from = Tekening selecteren om stijlen uit te importeren
+    .select-the-styles-to-import = Selecteer de stijlen die u wilt importeren
+    .style-name-conflict = Er bestaat al een stijl met deze naam. Overschrijven?
+    .no-styles-found = Geen stijlen gevonden in deze tekening.
+    .existing = Bestaand
+    .imported-styles-apply = __ocs_fmt_0__ stijl(en) geïmporteerd. Klik op Toepassen om de wijzigingen te behouden.
+    .missing-style-references = Sommige geïmporteerde stijlen verwijzen naar pijlblokken, lijntypen of tekststijlen die in deze tekening ontbreken; standaardwaarden worden gebruikt.
     .alignment-spacing = Uitlijningsafstand
     .always-left-align = Altijd links uitlijnen
     .attachment-direction = Aanhechtingsrichting

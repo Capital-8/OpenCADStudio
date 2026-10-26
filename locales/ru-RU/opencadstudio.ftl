@@ -6327,6 +6327,14 @@ dimstyle =
     .surveyors-units = Геодезические единицы
 
 style-manager =
+    .import-styles = Импорт стилей
+    .select-drawing-to-import-styles-from = Выберите чертёж для импорта стилей
+    .select-the-styles-to-import = Выберите стили для импорта
+    .style-name-conflict = Стиль с таким именем уже существует. Заменить?
+    .no-styles-found = В этом чертеже стили не найдены.
+    .existing = Существующий
+    .imported-styles-apply = Импортировано стилей: __ocs_fmt_0__. Нажмите «Применить», чтобы сохранить изменения.
+    .missing-style-references = Некоторые импортированные стили ссылаются на блоки стрелок, типы линий или текстовые стили, которых нет в этом чертеже; будут использованы значения по умолчанию.
     .alignment-spacing = Интервал выравнивания
     .always-left-align = Всегда выравнивать по левому краю
     .attachment-direction = Направление присоединения

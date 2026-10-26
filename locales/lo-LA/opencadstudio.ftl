@@ -6327,6 +6327,14 @@ dimstyle =
     .surveyors-units = ຫົວໜ່ວຍການສຳຫຼວດ
 
 style-manager =
+    .import-styles = ນຳເຂົ້າຮູບແບບ
+    .select-drawing-to-import-styles-from = ເລືອກແບບແຕ້ມທີ່ຈະນຳເຂົ້າຮູບແບບ
+    .select-the-styles-to-import = ເລືອກຮູບແບບທີ່ຈະນຳເຂົ້າ
+    .style-name-conflict = ມີຮູບແບບຊື່ນີ້ແລ້ວ. ຂຽນທັບບໍ?
+    .no-styles-found = ບໍ່ພົບຮູບແບບໃນແບບແຕ້ມນີ້.
+    .existing = ທີ່ມີຢູ່
+    .imported-styles-apply = ນຳເຂົ້າ __ocs_fmt_0__ ຮູບແບບແລ້ວ. ກົດ ນຳໃຊ້ ເພື່ອຮັກສາການປ່ຽນແປງ.
+    .missing-style-references = ບາງຮູບແບບທີ່ນຳເຂົ້າອ້າງເຖິງບລັອກລູກສອນ, ປະເພດເສັ້ນ ຫຼື ຮູບແບບຂໍ້ຄວາມທີ່ບໍ່ມີໃນແບບແຕ້ມນີ້; ຈະໃຊ້ຄ່າເລີ່ມຕົ້ນ.
     .alignment-spacing = ໄລຍະຫ່າງການຈັດແນວ
     .always-left-align = ຈັດແນວຊ້າຍສະເໝີ
     .attachment-direction = ທິດທາງການຕິດຄັດ
