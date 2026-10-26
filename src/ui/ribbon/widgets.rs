@@ -331,6 +331,9 @@ pub(super) struct StyleContext<'a> {
     pub active_mleader_style: &'a str,
     pub table_style_names: &'a [String],
     pub active_table_style: &'a str,
+    /// Annotate > Text: what the find box holds and the text height shown.
+    pub text_find: &'a str,
+    pub text_height: &'a str,
 }
 
 impl<'a> StyleContext<'a> {
@@ -838,6 +841,9 @@ pub(super) fn render_large_dropdown<'a>(
         })
         .or_else(|| items.first().map(|(_, lbl, _)| *lbl))
         .unwrap_or(id);
+    // FOLLOW_CHOSEN: the chosen item's icon and name.
+    let explicit_label =
+        explicit_label.filter(|label| *label != ocs_plugin_api::ribbon::FOLLOW_CHOSEN);
     // An empty label: the face keeps its own icon and names the chosen item.
     let names_item = explicit_label == Some("");
     let cur_icon = if names_item { icon } else { cur_icon };
@@ -1301,10 +1307,64 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
             for row_tools in rows {
                 col_items.push(tool_row(row_tools, active_tool));
             }
+            if *style_key == StyleKey::TextStyle {
+                col_items.push(text_find_box(style_ctx.text_find));
+                col_items.push(text_height_box(style_ctx.text_height));
+            }
 
             combo_panel_col(STYLE_COMBO_W, col_items)
         }
     }
+}
+
+/// Annotate > Text find box id, and its text height box.
+pub(crate) const TEXT_FIND_ID: &str = "ribbon_text_find";
+pub(crate) const TEXT_HEIGHT_ID: &str = "ribbon_text_height";
+
+/// Annotate > Text: text to find; Enter or the magnifier opens Find and
+/// Replace with it.
+fn text_find_box<'a>(value: &str) -> Element<'a, Message> {
+    let input = iced::widget::text_input(&t!("Find text"), value)
+        .id(iced::widget::Id::new(TEXT_FIND_ID))
+        .on_input(Message::RibbonTextFind)
+        .on_submit(Message::RibbonTextFindSubmit)
+        .size(11)
+        .padding([3, 6])
+        .width(Fill);
+    let search = button(make_icon(
+        IconKind::Svg(include_bytes!("../../../assets/icons/find.svg")),
+        14.0,
+    ))
+    .on_press(Message::RibbonTextFindSubmit)
+    .style(move |theme: &Theme, status| tool_btn_style(theme, false, status))
+    .padding(3);
+    let search = tooltip(search, make_tip(t!("Find text").into_owned()), TipPos::Bottom)
+        .delay(Duration::from_millis(400))
+        .style(tip_style);
+    row![input, search]
+        .spacing(2)
+        .align_y(iced::Center)
+        .width(Fill)
+        .into()
+}
+
+/// Annotate > Text: the text height new text takes (TEXTSIZE).
+fn text_height_box<'a>(value: &str) -> Element<'a, Message> {
+    let input = iced::widget::text_input("", value)
+        .id(iced::widget::Id::new(TEXT_HEIGHT_ID))
+        .on_input(Message::RibbonTextHeight)
+        .on_submit(Message::RibbonTextHeightSubmit)
+        .size(11)
+        .padding([3, 6])
+        .width(Fill);
+    let input = tooltip(
+        input,
+        make_tip(format!("{}\n{} TEXTSIZE", t!("Text Height"), t!("Command:"))),
+        TipPos::Bottom,
+    )
+    .delay(Duration::from_millis(400))
+    .style(tip_style);
+    super::keytips::anchor(super::keytips::TEXT_HEIGHT, input)
 }
 
 // ── Message helpers ────────────────────────────────────────────────────────
@@ -1505,6 +1565,8 @@ mod style_context_tests {
             active_mleader_style: &active_mleader,
             table_style_names: &table_names,
             active_table_style: &active_table,
+            text_find: "",
+            text_height: "",
         };
         assert_eq!(ctx.names_for(StyleKey::TextStyle), &text_names);
         assert_eq!(ctx.active_for(StyleKey::TextStyle), "Standard");
@@ -1526,6 +1588,8 @@ mod style_context_tests {
             active_mleader_style: &empty_s,
             table_style_names: &empty,
             active_table_style: &empty_s,
+            text_find: "",
+            text_height: "",
         };
         assert_eq!(ctx.active_for(StyleKey::TableStyle), "");
         assert!(ctx.names_for(StyleKey::MLeaderStyle).is_empty());

@@ -99,6 +99,10 @@ const RIBBON_AREA: &str = "KEYTIP_RIBBON_AREA";
 pub(super) const XREF_LAUNCHER: &str = "XREF_LAUNCHER";
 /// The xref fading switch in the Reference slide-out.
 pub(super) const XREF_FADE: &str = "XREF_FADE";
+/// The Text panel's corner arrow (Text Style).
+pub(super) const TEXT_LAUNCHER: &str = "TEXT_LAUNCHER";
+/// The Text panel's text height box.
+pub(super) const TEXT_HEIGHT: &str = "TEXT_HEIGHT";
 const COLLAPSED_PREFIX: &str = "panel:";
 
 pub fn active() -> bool {
@@ -424,6 +428,12 @@ const CODES: &[(&str, &str, &str)] = &[
     ("annotate", "Text", "TE"),
     ("annotate", "ANNOTATE_TEXT", "MT"),
     ("annotate", "TEXT_STYLE_COMBO", "TY"),
+    ("annotate", TEXT_LAUNCHER, "TS"),
+    ("annotate", "SPELL", "CS"),
+    ("annotate", "TEXTALIGN", "TA"),
+    ("annotate", "JUSTIFYTEXT", "JT"),
+    ("annotate", TEXT_HEIGHT, "TH"),
+    ("text_extension", "SCALETEXT", "ST"),
     ("annotate", "Dimensions", "DM"),
     ("annotate", "ANNOTATE_DIM", "DN"),
     ("annotate", "DIM_STYLE_COMBO", "DY"),
@@ -782,6 +792,20 @@ impl Ribbon {
                     target: XREF_LAUNCHER,
                     code: code(scope, XREF_LAUNCHER).map(str::to_string),
                     action: Action::Run(Message::ToggleXrefManager),
+                });
+            }
+            if id == draw_panel::TEXT_PANEL_ID {
+                tips.push(Tip {
+                    anchor: TEXT_LAUNCHER.to_string(),
+                    target: TEXT_LAUNCHER,
+                    code: code(scope, TEXT_LAUNCHER).map(str::to_string),
+                    action: Action::Run(Message::Command("STYLE".to_string())),
+                });
+                tips.push(Tip {
+                    anchor: TEXT_HEIGHT.to_string(),
+                    target: TEXT_HEIGHT,
+                    code: code(scope, TEXT_HEIGHT).map(str::to_string),
+                    action: Action::Run(Message::RibbonTextHeightFocus),
                 });
             }
         }

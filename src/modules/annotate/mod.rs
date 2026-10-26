@@ -56,6 +56,21 @@ pub fn dimension_menu_items() -> Vec<(&'static str, &'static str, IconKind)> {
     ]
 }
 
+/// A text height the way the Text panel shows it (no trailing zeros).
+pub fn text_height_label(height: f64) -> String {
+    let text = format!("{height:.6}");
+    text.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+fn text_tool(id: &'static str, label: &'static str, icon: &'static [u8]) -> crate::modules::ToolDef {
+    crate::modules::ToolDef {
+        id,
+        label,
+        icon: IconKind::Svg(icon),
+        event: crate::modules::ModuleEvent::Command(id.to_string()),
+    }
+}
+
 pub struct AnnotateModule;
 
 impl CadModule for AnnotateModule {
@@ -76,29 +91,43 @@ impl CadModule for AnnotateModule {
                 RibbonGroup {
                     title: "Text",
                     tools: vec![
+                        // The face runs and shows the one chosen last.
                         RibbonItem::LargeDropdown {
                             id: "ANNOTATE_TEXT",
-                            label: "Multiline\nText",
+                            label: ocs_plugin_api::ribbon::FOLLOW_CHOSEN,
                             icon: mtext::ICON,
                             items: vec![
-                                (mtext::tool().id, mtext::tool().label, mtext::tool().icon),
-                                (text::tool().id, text::tool().label, text::tool().icon),
-                                (ddedit::tool().id, ddedit::tool().label, ddedit::tool().icon),
+                                (mtext::tool().id, "Multiline Text", mtext::tool().icon),
+                                (text::tool().id, "Single Line", text::tool().icon),
                             ],
                             default: "MTEXT",
                         },
+                        RibbonItem::ToolGrid {
+                            columns: vec![vec![
+                                text_tool(
+                                    "SPELL",
+                                    "Check Spelling",
+                                    include_bytes!("../../../assets/icons/ui/check.svg"),
+                                ),
+                                text_tool(
+                                    "TEXTALIGN",
+                                    "Text Align",
+                                    include_bytes!("../../../assets/icons/align_left.svg"),
+                                ),
+                                text_tool(
+                                    "JUSTIFYTEXT",
+                                    "Justify",
+                                    include_bytes!("../../../assets/icons/mt_align_justify.svg"),
+                                ),
+                            ]],
+                        },
+                        // Text style, then the find box and the text height
+                        // (drawn by the ribbon for the text style group).
                         RibbonItem::StyleComboGroup {
                             style_key: StyleKey::TextStyle,
                             combo_id: "TEXT_STYLE_COMBO",
                             manager_cmd: Some("STYLE"),
-                            rows: vec![vec![crate::modules::ToolDef {
-                                id: "FIND",
-                                label: "Find",
-                                icon: crate::modules::IconKind::Svg(include_bytes!(
-                                    "../../../assets/icons/find.svg"
-                                )),
-                                event: crate::modules::ModuleEvent::Command("FIND".to_string()),
-                            }]],
+                            rows: Vec::new(),
                         },
                     ],
                 },

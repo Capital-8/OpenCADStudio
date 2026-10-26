@@ -5040,6 +5040,16 @@ pub enum Message {
     XrefFadeSlide(u8),
     XrefFadeCommit,
     XrefFadeToggle,
+    /// Annotate > Text: the find box changed / was submitted.
+    RibbonTextFind(String),
+    RibbonTextFindSubmit,
+    /// Annotate > Text: the text height box changed / was submitted / is
+    /// focused by its key tip.
+    RibbonTextHeight(String),
+    RibbonTextHeightSubmit,
+    RibbonTextHeightFocus,
+    /// Annotate > Text slide-out: TEXTLAYER picked (empty: Use Current).
+    RibbonTextLayer(String),
     /// Result of the ATTACH file picker.
     AttachPickResult(Result<std::path::PathBuf, String>),
     /// An edit in the Attach External Reference dialog.

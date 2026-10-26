@@ -278,6 +278,12 @@ pub struct Ribbon {
     block_testing: Option<usize>,
     /// XDWGFADECTL as the Reference slide-out shows it (negative = off).
     pub xref_fade: i32,
+    /// Annotate > Text: the find box, the text height box (TEXTSIZE while it
+    /// is not being typed in) and TEXTLAYER (empty: the current layer).
+    pub text_find: String,
+    pub text_height: String,
+    pub text_height_editing: bool,
+    pub text_layer: String,
     /// Open key tips (Alt).
     keytips: Option<keytips::State>,
 }
@@ -407,6 +413,10 @@ impl Ribbon {
             block_editing: None,
             block_testing: None,
             xref_fade: 50,
+            text_find: String::new(),
+            text_height: String::new(),
+            text_height_editing: false,
+            text_layer: String::new(),
             keytips: None,
         }
     }
@@ -965,6 +975,8 @@ impl Ribbon {
                 active_mleader_style: &self.active_mleader_style,
                 table_style_names: &self.table_style_names,
                 active_table_style: &self.active_table_style,
+                text_find: &self.text_find,
+                text_height: &self.text_height,
             };
 
             // Adaptive tool area: panels sit on one row; when they don't all
@@ -1446,6 +1458,8 @@ impl Ribbon {
             active_mleader_style: &self.active_mleader_style,
             table_style_names: &self.table_style_names,
             active_table_style: &self.active_table_style,
+            text_find: &self.text_find,
+            text_height: &self.text_height,
         };
         let active = ctx.active_for(style_key).to_string();
 
@@ -1962,6 +1976,8 @@ mod tests {
             active_mleader_style: "",
             table_style_names: &[],
             active_table_style: "",
+            text_find: "",
+            text_height: "",
         };
         let groups: Vec<_> = groups.iter().collect();
         let mut last_cmd = FxHashMap::default();
