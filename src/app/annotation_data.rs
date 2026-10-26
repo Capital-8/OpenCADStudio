@@ -2693,22 +2693,29 @@ impl OpenCADStudio {
             rows.iter().skip(1).cloned().collect()
         };
         let columns = body.iter().map(Vec::len).max().unwrap_or(1).max(1);
-        let (text_height, margin, row_heights) = match style {
+        // Rows are a line and a third of their text high plus both margins
+        // (measured: 4.5 text with 1.5 margins -> 9, the 6 title -> 11).
+        let (text_heights, margin, row_heights) = match style {
             Some((_, table_style)) => {
                 let heights = [
-                    table_style.title_row_style.text_height,
-                    table_style.header_row_style.text_height,
-                    table_style.data_row_style.text_height,
+                    table_style.title_row_style.text_height.max(1.0e-6),
+                    table_style.header_row_style.text_height.max(1.0e-6),
+                    table_style.data_row_style.text_height.max(1.0e-6),
                 ];
-                let row = |h: f64| h.max(1.0e-6) + 2.0 * table_style.vertical_margin;
+                let row = |h: f64| h * 4.0 / 3.0 + 2.0 * table_style.vertical_margin;
                 (
-                    heights[2].max(1.0e-6),
+                    heights,
                     table_style.horizontal_margin,
                     [row(heights[0]), row(heights[1]), row(heights[2])],
                 )
             }
-            None => (0.18, 0.06, [0.5, 0.5, 0.5]),
+            None => ([0.25, 0.25, 0.18], 0.06, [0.5, 0.5, 0.5]),
         };
+        let font = crate::entities::text_support::resolve_text_style(
+            style.map_or("Standard", |(_, s)| s.data_row_style.text_style_name.as_str()),
+            doc,
+        )
+        .font_name;
         let mut table = TableBuilder::new(body.len() + 1, columns)
             .at(Vector3::new(0.0, 0.0, 0.0))
             .row_height(row_heights[2])
@@ -2724,15 +2731,28 @@ impl OpenCADStudio {
                 table.set_cell_text(row_index + 1, column_index, value);
             }
         }
+        // A column is as wide as its widest text plus both margins.
+        let header = usize::from(state.property_headers);
         for (column_index, column) in table.columns.iter_mut().enumerate() {
-            let longest = body
+            let widest = body
                 .iter()
-                .filter_map(|row| row.get(column_index))
-                .map(|value| value.chars().count())
-                .max()
-                .unwrap_or(1)
-                .max(1);
-            column.width = longest as f64 * text_height * 0.85 + 2.0 * margin;
+                .enumerate()
+                .filter_map(|(row_index, row)| {
+                    let height = text_heights[if row_index < header { 1 } else { 2 }];
+                    row.get(column_index).map(|value| (value, height))
+                })
+                .filter_map(|(value, height)| {
+                    crate::entities::text_support::text_local_bounds(
+                        &font,
+                        value,
+                        height as f32,
+                        1.0,
+                        0.0,
+                    )
+                })
+                .map(|bounds| f64::from(bounds.advance))
+                .fold(0.0_f64, f64::max);
+            column.width = widest.max(text_heights[2]) + 2.0 * margin;
         }
         if let Some((_, table_style)) = style {
             let names = [
