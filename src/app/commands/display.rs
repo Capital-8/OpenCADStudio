@@ -1970,10 +1970,12 @@ impl OpenCADStudio {
                     let document = &self.tabs[i].scene.document;
                     // An extraction table is refreshed by running its saved
                     // extraction again, under its title row.
-                    let read = match crate::app::annotation_data::extraction_link_settings(
+                    let settings = crate::app::annotation_data::extraction_link_settings(
                         document,
                         *link_handle,
-                    ) {
+                    );
+                    let first_linked_row = usize::from(settings.is_some());
+                    let read = match settings {
                         Some(settings) => crate::app::annotation_data::rerun_extraction(
                             document,
                             self.tabs[i].current_path.as_deref(),
@@ -1992,7 +1994,7 @@ impl OpenCADStudio {
                     };
                     match read {
                         Ok(rows) if !rows.is_empty() => {
-                            updates.push((*table_handle, *link_handle, rows))
+                            updates.push((*table_handle, *link_handle, rows, first_linked_row))
                         }
                         _ => failed += 1,
                     }
@@ -2001,13 +2003,13 @@ impl OpenCADStudio {
                     self.push_undo_snapshot(i, "DATALINKUPDATE");
                 }
                 let mut changed_handles = Vec::new();
-                for (table_handle, link_handle, rows) in updates {
+                for (table_handle, link_handle, rows, first_linked_row) in updates {
                     let Some(codec::EntityType::Table(table)) =
                         self.tabs[i].scene.document.get_entity_mut(table_handle)
                     else {
                         continue;
                     };
-                    apply_link_rows(table, link_handle, &rows, 0);
+                    apply_link_rows(table, link_handle, &rows, first_linked_row);
                     changed_handles.push(table_handle);
                 }
                 if !changed_handles.is_empty() {
@@ -2217,26 +2219,6 @@ pub(crate) fn parse_csv_table(text: &str) -> Vec<Vec<String>> {
         }
     }
     rows
-}
-
-/// Ties every cell of a table to a data link and locks it.
-pub(crate) fn lock_to_link(table: &mut codec::entities::Table, link_handle: codec::Handle) {
-    use codec::entities::table::CellStateFlags;
-    let rows = table.row_count() as i32;
-    let columns = table.column_count() as i32;
-    for row in &mut table.rows {
-        for cell in &mut row.cells {
-            cell.has_linked_data = true;
-            cell.data_link_handle = Some(link_handle);
-            cell.data_link_rows = rows;
-            cell.data_link_columns = columns;
-            cell.state.insert(
-                CellStateFlags::LINKED
-                    | CellStateFlags::CONTENT_LOCKED
-                    | CellStateFlags::FORMAT_LOCKED,
-            );
-        }
-    }
 }
 
 /// Replaces a linked table's cells with the rows read from its link, growing

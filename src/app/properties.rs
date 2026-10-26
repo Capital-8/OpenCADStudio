@@ -3486,7 +3486,7 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
                     &mut self.tabs[i].scene.document,
                     &settings,
                 );
-                crate::app::commands::display::lock_to_link(table, link);
+                crate::modules::annotate::data_link::link_cells(table, link, 1);
             }
             const PREFIX: &str = "__OPENCAD_LINK_PENDING__";
             if let Some(path) = table.name.strip_prefix(PREFIX).map(str::to_string) {
