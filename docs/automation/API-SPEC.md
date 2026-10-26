@@ -151,11 +151,22 @@ connection is closed.
 
 ### 3.5 AI-tool session (`--mcp`)
 
-Exposes four tools — `ocs_sessions`, `ocs_read`, `ocs_execute`, `ocs_capture`
-— with JSON-Schema validated arguments (`ocs_execute` alone accepts all 36
-mutation operations, §6). Session discovery and capability advertisement
-follow the same protocol-1 semantics. Set-up instructions: see the MCP section
-of [`README.md`](README.md).
+Exposes 20 tools with JSON-Schema described arguments. Four are general-purpose
+facades: `ocs_sessions`, `ocs_read`, `ocs_execute` (all 36 mutation operations,
+§6), and `ocs_capture`. Sixteen are intent tools over the same operation paths:
+`ocs_inspect`, `ocs_query`, `ocs_find_text`, `ocs_audit`, `ocs_commands`,
+`ocs_measure`, `ocs_render`, `ocs_run`, `ocs_new`, `ocs_open`, `ocs_save`,
+`ocs_save_verified`, `ocs_select`, `ocs_cancel`, `ocs_undo`, and `ocs_redo`.
+
+Intent tools expose operation arguments directly. `ocs_session_id` is optional
+when exactly one session is available and required to disambiguate several.
+Execute intents make `request_id` optional but pass through a caller-supplied
+value; reuse that value with the identical request for a safe retry. Generated
+IDs do not make autonomous retries safe. `ocs_run` maps `command` to the
+operation's `cmd`. `ocs_render` reuses capture behavior with `view: "extents"`
+as its default. Session discovery, idempotency, validation, task behavior, and
+capability advertisement remain identical to the facade path. Set-up
+instructions: see the MCP section of [`README.md`](README.md).
 
 ---
 
