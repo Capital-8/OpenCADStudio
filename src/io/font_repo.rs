@@ -99,9 +99,13 @@ pub fn missing_shx_fonts(doc: &Document) -> Vec<String> {
         // The primary font and the big font (Asian double-byte glyphs) are
         // both plain .shx files the style depends on.
         for file in [style.font_file.trim(), style.big_font_file.trim()] {
+            // A font with a built-in stroke equivalent (romans, simplex, txt...)
+            // already draws as it should; only one that would fall back to an
+            // unrelated face is worth a download.
             if file.is_empty()
                 || !file.to_ascii_lowercase().ends_with(".shx")
                 || crate::io::linetypes::is_bundled_shape_file(file)
+                || crate::scene::text::lff::is_builtin(file)
             {
                 continue;
             }
@@ -327,6 +331,9 @@ mod tests {
         let _ = doc.text_styles.add(mk("B", "missing1.SHX"));
         let _ = doc.text_styles.add(mk("C", "exists.shx"));
         doc.source_path = Some(dir.join("drawing.dwg").to_string_lossy().into_owned());
+        // Fonts with a built-in stroke equivalent are not missing (#2156).
+        let _ = doc.text_styles.add(mk("D", "romans.shx"));
+        let _ = doc.text_styles.add(mk("E", "SIMPLEX.SHX"));
         let missing = missing_shx_fonts(&doc);
         assert_eq!(missing, vec!["MISSING1.shx".to_string()]);
         let _ = std::fs::remove_file(dir.join("exists.shx"));
