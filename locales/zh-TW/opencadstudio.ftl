@@ -7200,3 +7200,9 @@ block-lookup =
 
 block-array =
     .limit-error = 圖塊求值將產生超過100000個陣列物件。請縮短距離或增大間距。
+mleader-edit =
+    .select = Select a multileader:
+    .add = Specify leader arrowhead location or [Remove leaders]:
+    .remove = Specify leaders to remove or [Add leaders]:
+    .not-multileader = Object selected was not a multileader.
+    .none-left = No leaders exist to remove.

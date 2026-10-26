@@ -7193,3 +7193,9 @@ block-lookup =
 
 block-array =
     .limit-error = ブロックの評価により、配列オブジェクトが100000個を超えます。距離を短くするか、間隔を広げてください。
+mleader-edit =
+    .select = Select a multileader:
+    .add = Specify leader arrowhead location or [Remove leaders]:
+    .remove = Specify leaders to remove or [Add leaders]:
+    .not-multileader = Object selected was not a multileader.
+    .none-left = No leaders exist to remove.

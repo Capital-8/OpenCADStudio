@@ -747,6 +747,17 @@ impl OpenCADStudio {
                     return task;
                 }
             }
+            CmdResult::UpdateEntityAndReport {
+                handle,
+                entity,
+                message,
+            } => {
+                let task = self.handle_update_entity_and_finish(handle, entity);
+                self.command_line.push_output(&message);
+                if let Some(task) = task {
+                    return task;
+                }
+            }
             result @ CmdResult::AddParametricConstraint { .. } => {
                 if let Some(task) = self.handle_add_parametric_constraint(result) {
                     return task;

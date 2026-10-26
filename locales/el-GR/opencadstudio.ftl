@@ -7205,3 +7205,9 @@ block-lookup =
 
 block-array =
     .limit-error = Η αξιολόγηση του μπλοκ θα δημιουργούσε περισσότερα από 100000 αντικείμενα διάταξης. Μειώστε την απόσταση ή αυξήστε το διάκενο.
+mleader-edit =
+    .select = Select a multileader:
+    .add = Specify leader arrowhead location or [Remove leaders]:
+    .remove = Specify leaders to remove or [Add leaders]:
+    .not-multileader = Object selected was not a multileader.
+    .none-left = No leaders exist to remove.

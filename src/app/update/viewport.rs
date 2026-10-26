@@ -6116,13 +6116,13 @@ impl OpenCADStudio {
                             self.tabs[i].active_cmd = None;
                         }
                     }
-                    // DIMTEDIT / MLEADERADD / MLEADERREMOVE: inject cloned entity via trait.
+                    // DIMTEDIT: inject cloned entity via trait.
                     {
                         let needs_inject = self.tabs[i]
                             .active_cmd
                             .as_ref()
                             .map(|c| {
-                                matches!(c.name(), "DIMTEDIT" | "MLEADERADD" | "MLEADERREMOVE")
+                                matches!(c.name(), "DIMTEDIT")
                             })
                             .unwrap_or(false);
                         if needs_inject {

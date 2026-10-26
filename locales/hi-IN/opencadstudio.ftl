@@ -7193,3 +7193,9 @@ block-lookup =
 
 block-array =
     .limit-error = ब्लॉक के मूल्यांकन से 100000 से अधिक ऐरे ऑब्जेक्ट बनेंगे। दूरी कम करें या अंतराल बढ़ाएँ।
+mleader-edit =
+    .select = Select a multileader:
+    .add = Specify leader arrowhead location or [Remove leaders]:
+    .remove = Specify leaders to remove or [Add leaders]:
+    .not-multileader = Object selected was not a multileader.
+    .none-left = No leaders exist to remove.

@@ -7205,3 +7205,9 @@ block-lookup =
 
 block-array =
     .limit-error = Оценяването на блока би създало повече от 100000 обекта в масив. Намалете разстоянието или увеличете отстоянието.
+mleader-edit =
+    .select = Select a multileader:
+    .add = Specify leader arrowhead location or [Remove leaders]:
+    .remove = Specify leaders to remove or [Add leaders]:
+    .not-multileader = Object selected was not a multileader.
+    .none-left = No leaders exist to remove.

@@ -7206,3 +7206,9 @@ block-lookup =
 
 block-array =
     .limit-error = ການປະເມີນບລັອກຈະສ້າງວັດຖຸແຖວລຳດັບຫຼາຍກວ່າ 100000 ອັນ. ຫຼຸດໄລຍະທາງ ຫຼື ເພີ່ມໄລຍະຫ່າງ.
+mleader-edit =
+    .select = Select a multileader:
+    .add = Specify leader arrowhead location or [Remove leaders]:
+    .remove = Specify leaders to remove or [Add leaders]:
+    .not-multileader = Object selected was not a multileader.
+    .none-left = No leaders exist to remove.

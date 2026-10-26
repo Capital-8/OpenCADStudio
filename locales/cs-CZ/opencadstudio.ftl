@@ -7202,3 +7202,9 @@ block-lookup =
 
 block-array =
     .limit-error = Vyhodnocení bloku by vytvořilo více než 100000 objektů pole. Zmenšete vzdálenost nebo zvětšete rozestup.
+mleader-edit =
+    .select = Select a multileader:
+    .add = Specify leader arrowhead location or [Remove leaders]:
+    .remove = Specify leaders to remove or [Add leaders]:
+    .not-multileader = Object selected was not a multileader.
+    .none-left = No leaders exist to remove.

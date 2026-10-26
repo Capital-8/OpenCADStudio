@@ -7203,3 +7203,9 @@ block-lookup =
 
 block-array =
     .limit-error = Die Blockauswertung würde mehr als 100000 Anordnungsobjekte erzeugen. Verringern Sie die Entfernung oder vergrößern Sie den Abstand.
+mleader-edit =
+    .select = Select a multileader:
+    .add = Specify leader arrowhead location or [Remove leaders]:
+    .remove = Specify leaders to remove or [Add leaders]:
+    .not-multileader = Object selected was not a multileader.
+    .none-left = No leaders exist to remove.

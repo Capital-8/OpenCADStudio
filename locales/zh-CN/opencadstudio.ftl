@@ -7188,3 +7188,9 @@ block-lookup =
 
 block-array =
     .limit-error = 块求值将生成超过100000个阵列对象。请减小距离或增大间距。
+mleader-edit =
+    .select = Select a multileader:
+    .add = Specify leader arrowhead location or [Remove leaders]:
+    .remove = Specify leaders to remove or [Add leaders]:
+    .not-multileader = Object selected was not a multileader.
+    .none-left = No leaders exist to remove.

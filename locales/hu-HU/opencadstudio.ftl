@@ -7189,3 +7189,9 @@ block-lookup =
 
 block-array =
     .limit-error = A blokk kiértékelése több mint 100000 kiosztási objektumot hozna létre. Csökkentse a távolságot vagy növelje a térközt.
+mleader-edit =
+    .select = Select a multileader:
+    .add = Specify leader arrowhead location or [Remove leaders]:
+    .remove = Specify leaders to remove or [Add leaders]:
+    .not-multileader = Object selected was not a multileader.
+    .none-left = No leaders exist to remove.

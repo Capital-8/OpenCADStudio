@@ -650,16 +650,14 @@ impl OpenCADStudio {
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
             }
 
-            "MLEADERADD" => {
-                use crate::modules::annotate::mleader_edit::MLeaderAddCommand;
-                let cmd = MLeaderAddCommand::new();
-                self.command_line.push_info(&cmd.prompt());
-                self.tabs[i].active_cmd = Some(Box::new(cmd));
-            }
-
-            "MLEADERREMOVE" => {
-                use crate::modules::annotate::mleader_edit::MLeaderRemoveCommand;
-                let cmd = MLeaderRemoveCommand::new();
+            "MLEADEREDIT" | "AIMLEADEREDITADD" | "AIMLEADEREDITREMOVE" => {
+                use crate::modules::annotate::mleader_edit::MLeaderEditCommand;
+                let name = match cmd {
+                    "AIMLEADEREDITADD" => "AIMLEADEREDITADD",
+                    "AIMLEADEREDITREMOVE" => "AIMLEADEREDITREMOVE",
+                    _ => "MLEADEREDIT",
+                };
+                let cmd = MLeaderEditCommand::new(name);
                 self.command_line.push_info(&cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
             }

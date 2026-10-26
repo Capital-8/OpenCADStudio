@@ -7204,3 +7204,9 @@ block-lookup =
 
 block-array =
     .limit-error = 블록 평가 시 배열 객체가 100000개를 초과합니다. 거리를 줄이거나 간격을 늘리세요.
+mleader-edit =
+    .select = Select a multileader:
+    .add = Specify leader arrowhead location or [Remove leaders]:
+    .remove = Specify leaders to remove or [Add leaders]:
+    .not-multileader = Object selected was not a multileader.
+    .none-left = No leaders exist to remove.

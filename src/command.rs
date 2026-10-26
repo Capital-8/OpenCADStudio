@@ -1990,6 +1990,12 @@ pub enum CmdResult {
         handle: Handle,
         entity: EntityType,
     },
+    /// `UpdateEntityAndFinish`, then print `message`.
+    UpdateEntityAndReport {
+        handle: Handle,
+        entity: EntityType,
+        message: String,
+    },
     /// Replace / delete multiple entities and add new ones; command ends.
     /// Each pair: (handle_to_erase, replacement_entities) — empty vec = delete only.
     ReplaceMany(Vec<(Handle, Vec<EntityType>)>, Vec<EntityType>),
@@ -3631,7 +3637,7 @@ pub trait CadCommand: Send {
     }
 
     /// Called by update.rs to inject the cloned entity into commands
-    /// that need to read/modify it (e.g. DIMTEDIT, MLEADERADD, MLEADERREMOVE).
+    /// that need to read/modify it (e.g. DIMTEDIT, MLEADEREDIT).
     /// Default: no-op.
     fn inject_picked_entity(&mut self, _entity: codec::EntityType) {}
 

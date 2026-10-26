@@ -7126,3 +7126,9 @@ block-lookup =
 
 block-array =
     .limit-error = Blok değerlendirmesi 100000 adetten fazla dizi nesnesi oluşturacak. Mesafeyi azaltın veya aralığı artırın.
+mleader-edit =
+    .select = Bir çoklu kılavuz seçin:
+    .add = Kılavuz ok ucunun konumunu belirtin veya [kılavuzları Kaldır]:
+    .remove = Kaldırılacak kılavuzları belirtin veya [kılavuz Ekle]:
+    .not-multileader = Seçilen nesne bir çoklu kılavuz değil.
+    .none-left = Kaldırılacak kılavuz yok.

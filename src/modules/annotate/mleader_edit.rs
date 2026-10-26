@@ -1,7 +1,8 @@
-// MLEADERADD / MLEADERREMOVE / MLEADERALIGN / MLEADERCOLLECT commands.
+// MLEADEREDIT / AIMLEADEREDITADD / AIMLEADEREDITREMOVE / MLEADERALIGN /
+// MLEADERCOLLECT commands.
 //
-// MLEADERADD:    pick a multileader → pick new arrowhead point → adds a leader line
-// MLEADERREMOVE: pick a multileader → pick a leader line to remove
+// MLEADEREDIT:   pick a multileader → add leaders at arrowhead points, or
+//                [Remove leaders] picked leaders; Enter applies the edit.
 // MLEADERALIGN:  select multileaders → pick base alignment direction
 // MLEADERCOLLECT: select block-content multileaders → pick collection point
 
@@ -11,313 +12,284 @@ use codec::{EntityType, Handle};
 use glam::{DVec3, Vec3};
 use kernel::geom2d::{closest_point, Curve, Line};
 
-use crate::command::{CadCommand, CmdResult};
+use crate::command::{CadCommand, CmdOption, CmdResult, InputKind};
 use crate::modules::{IconKind, ModuleEvent, ToolDef};
 use crate::scene::model::wire_model::WireModel;
 use crate::t;
 
-// ── MLEADERADD ────────────────────────────────────────────────────────────────
+// ── MLEADEREDIT ───────────────────────────────────────────────────────────────
 
 pub const ICON_ADD: IconKind =
     IconKind::Svg(include_bytes!("../../../assets/icons/mleader_add.svg"));
 
 pub fn tool_add() -> ToolDef {
     ToolDef {
-        id: "MLEADERADD",
+        id: "AIMLEADEREDITADD",
         label: "Add Leader",
         icon: ICON_ADD,
-        event: ModuleEvent::Command("MLEADERADD".to_string()),
+        event: ModuleEvent::Command("AIMLEADEREDITADD".to_string()),
     }
 }
-
-enum AddStep {
-    PickMLeader,
-    PickArrowhead {
-        handle: Handle,
-        entity: Option<EntityType>,
-    },
-    CollectPoints {
-        handle: Handle,
-        entity: EntityType,
-        pts: Vec<DVec3>,
-    },
-}
-
-pub struct MLeaderAddCommand {
-    step: AddStep,
-}
-
-impl MLeaderAddCommand {
-    pub fn new() -> Self {
-        Self {
-            step: AddStep::PickMLeader,
-        }
-    }
-}
-
-impl CadCommand for MLeaderAddCommand {
-    fn name(&self) -> &'static str {
-        "MLEADERADD"
-    }
-
-    fn prompt(&self) -> String {
-        match &self.step {
-            AddStep::PickMLeader => t!("MLEADERADD  Select a multileader:").into_owned(),
-            AddStep::PickArrowhead { .. } => {
-                t!("MLEADERADD  Specify arrowhead location:").into_owned()
-            }
-            AddStep::CollectPoints { pts, .. } => t!(
-                "MLEADERADD  Specify next leader point (%{count} pts, Enter to finish):",
-                count = pts.len()
-            )
-            .into_owned(),
-        }
-    }
-
-    fn needs_entity_pick(&self) -> bool {
-        matches!(self.step, AddStep::PickMLeader)
-    }
-
-    fn on_entity_pick(&mut self, handle: Handle, _pt: DVec3) -> CmdResult {
-        if handle.is_null() {
-            return CmdResult::NeedPoint;
-        }
-        self.step = AddStep::PickArrowhead {
-            handle,
-            entity: None,
-        };
-        CmdResult::NeedPoint
-    }
-
-    fn on_point(&mut self, pt: DVec3) -> CmdResult {
-        match &mut self.step {
-            AddStep::PickArrowhead { handle, entity } => {
-                if let Some(ent) = entity.take() {
-                    if !matches!(ent, EntityType::MultiLeader(_)) {
-                        return CmdResult::Cancel;
-                    }
-                    let h = *handle;
-                    self.step = AddStep::CollectPoints {
-                        handle: h,
-                        entity: ent,
-                        pts: vec![pt],
-                    };
-                    return CmdResult::NeedPoint;
-                }
-                CmdResult::NeedPoint
-            }
-            AddStep::CollectPoints { pts, .. } => {
-                pts.push(pt);
-                CmdResult::NeedPoint
-            }
-            _ => CmdResult::NeedPoint,
-        }
-    }
-
-    fn on_enter(&mut self) -> CmdResult {
-        if let AddStep::CollectPoints {
-            handle,
-            entity,
-            pts,
-        } = &mut self.step
-        {
-            if pts.len() < 1 {
-                return CmdResult::Cancel;
-            }
-            let h = *handle;
-            if let EntityType::MultiLeader(ref mut ml) = entity {
-                let points: Vec<Vector3> =
-                    pts.iter().map(|p| Vector3::new(p.x, p.y, p.z)).collect();
-                let template_root = ml.context.leader_roots.first().cloned();
-                let template_line = template_root
-                    .as_ref()
-                    .and_then(|root| root.lines.first())
-                    .cloned();
-                let path_type = ml.path_type;
-                let line_color = ml.line_color;
-                let line_type_handle = ml.line_type_handle;
-                let line_weight = ml.line_weight;
-                let arrowhead_handle = ml.arrowhead_handle;
-                let arrowhead_size = ml.arrowhead_size;
-                let root = ml.context.add_leader_root();
-                if let Some(template) = template_root {
-                    root.connection_point = template.connection_point;
-                    root.direction = template.direction;
-                    root.landing_distance = template.landing_distance;
-                    root.text_attachment_direction = template.text_attachment_direction;
-                }
-                let line = root.create_line(points);
-                if let Some(template) = template_line {
-                    line.path_type = template.path_type;
-                    line.line_color = template.line_color;
-                    line.line_type_handle = template.line_type_handle;
-                    line.line_weight = template.line_weight;
-                    line.arrowhead_handle = template.arrowhead_handle;
-                    line.arrowhead_size = template.arrowhead_size;
-                    line.override_flags = template.override_flags;
-                } else {
-                    line.path_type = path_type;
-                    line.line_color = line_color;
-                    line.line_type_handle = line_type_handle;
-                    line.line_weight = line_weight;
-                    line.arrowhead_handle = arrowhead_handle;
-                    line.arrowhead_size = arrowhead_size;
-                }
-            }
-            let updated = std::mem::replace(entity, EntityType::XLine(Default::default()));
-            return CmdResult::ReplaceEntity(h, vec![updated]);
-        }
-        CmdResult::Cancel
-    }
-
-    fn on_mouse_move(&mut self, pt: DVec3) -> Option<WireModel> {
-        let existing_pts = match &self.step {
-            AddStep::CollectPoints { pts, .. } => pts.clone(),
-            _ => return None,
-        };
-        let mut all_pts = existing_pts;
-        all_pts.push(pt);
-        Some(preview_wire(
-            &all_pts.iter().map(|p| p.as_vec3()).collect::<Vec<_>>(),
-        ))
-    }
-
-    fn inject_picked_entity(&mut self, entity: EntityType) {
-        if let AddStep::PickArrowhead { entity: slot, .. } = &mut self.step {
-            *slot = Some(entity);
-        }
-    }
-}
-
-// ── MLEADERREMOVE ─────────────────────────────────────────────────────────────
 
 pub const ICON_REMOVE: IconKind =
     IconKind::Svg(include_bytes!("../../../assets/icons/mleader_remove.svg"));
 
 pub fn tool_remove() -> ToolDef {
     ToolDef {
-        id: "MLEADERREMOVE",
+        id: "AIMLEADEREDITREMOVE",
         label: "Remove Leader",
         icon: ICON_REMOVE,
-        event: ModuleEvent::Command("MLEADERREMOVE".to_string()),
+        event: ModuleEvent::Command("AIMLEADEREDITREMOVE".to_string()),
     }
 }
 
-enum RemoveStep {
-    PickMLeader,
-    PickLeaderToRemove {
-        handle: Handle,
-        entity: Option<EntityType>,
-    },
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EditMode {
+    Add,
+    Remove,
 }
 
-pub struct MLeaderRemoveCommand {
-    step: RemoveStep,
+/// One command behind MLEADEREDIT and its add / remove entry points: the
+/// picked multileader is edited in a copy and written back in one step.
+pub struct MLeaderEditCommand {
+    name: &'static str,
+    mode: EditMode,
+    picked: Option<EntityType>,
+    target: Option<(Handle, MultiLeader)>,
+    /// Leader lines picked for removal, as (root, line) indices.
+    removals: Vec<(usize, usize)>,
+    changed: bool,
 }
 
-impl MLeaderRemoveCommand {
-    pub fn new() -> Self {
+impl MLeaderEditCommand {
+    pub fn new(name: &'static str) -> Self {
         Self {
-            step: RemoveStep::PickMLeader,
+            name,
+            mode: if name == "AIMLEADEREDITREMOVE" {
+                EditMode::Remove
+            } else {
+                EditMode::Add
+            },
+            picked: None,
+            target: None,
+            removals: Vec::new(),
+            changed: false,
         }
     }
+
+    /// The leader line nearest `pick`, when the pick lands on it.
+    fn leader_at(ml: &MultiLeader, pick: Vector3) -> Option<(usize, usize)> {
+        let tolerance = (ml.context.arrowhead_size.max(ml.arrowhead_size) * 1.5).max(1.0e-6);
+        ml.context
+            .leader_roots
+            .iter()
+            .enumerate()
+            .flat_map(|(root_index, root)| {
+                root.lines.iter().enumerate().map(move |(line_index, line)| {
+                    let mut distance = line
+                        .points
+                        .windows(2)
+                        .map(|segment| point_segment_distance_xy(pick, segment[0], segment[1]))
+                        .fold(f64::INFINITY, f64::min);
+                    if let Some(last) = line.points.last().copied() {
+                        distance = distance.min(point_segment_distance_xy(
+                            pick,
+                            last,
+                            root.connection_point,
+                        ));
+                    }
+                    (root_index, line_index, distance)
+                })
+            })
+            .filter(|(_, _, distance)| *distance <= tolerance)
+            .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(root, line, _)| (root, line))
+    }
+
+    /// The edited multileader with the picked leaders taken out.
+    fn applied(&self) -> Option<(Handle, MultiLeader)> {
+        let (handle, ml) = self.target.as_ref()?;
+        let mut ml = ml.clone();
+        let mut removals = self.removals.clone();
+        removals.sort_unstable_by(|a, b| b.cmp(a));
+        for (root, line) in removals {
+            if let Some(r) = ml.context.leader_roots.get_mut(root) {
+                if line < r.lines.len() {
+                    r.lines.remove(line);
+                }
+            }
+        }
+        ml.context.leader_roots.retain(|root| !root.lines.is_empty());
+        Some((*handle, ml))
+    }
 }
 
-impl CadCommand for MLeaderRemoveCommand {
+impl CadCommand for MLeaderEditCommand {
     fn name(&self) -> &'static str {
-        "MLEADERREMOVE"
+        self.name
     }
 
     fn prompt(&self) -> String {
-        match &self.step {
-            RemoveStep::PickMLeader => t!("MLEADERREMOVE  Select a multileader:").into_owned(),
-            RemoveStep::PickLeaderToRemove { .. } => {
-                t!("MLEADERREMOVE  Click near the leader line to remove:").into_owned()
-            }
+        if self.target.is_none() {
+            return crate::tr!("mleader-edit", "select");
+        }
+        match self.mode {
+            EditMode::Add => crate::tr!("mleader-edit", "add"),
+            EditMode::Remove => crate::tr!("mleader-edit", "remove"),
+        }
+    }
+
+    fn options(&self) -> Vec<CmdOption> {
+        match (self.target.is_some(), self.mode) {
+            (false, _) => Vec::new(),
+            (true, EditMode::Add) => vec![CmdOption::new("Remove leaders", "R")],
+            (true, EditMode::Remove) => vec![CmdOption::new("Add leaders", "A")],
         }
     }
 
     fn needs_entity_pick(&self) -> bool {
-        matches!(self.step, RemoveStep::PickMLeader)
+        self.target.is_none()
+    }
+
+    fn inject_before_entity_pick(&self) -> bool {
+        true
+    }
+
+    fn typed_point_picks_entity(&self) -> bool {
+        self.target.is_none()
+    }
+
+    fn inject_picked_entity(&mut self, entity: EntityType) {
+        self.picked = Some(entity);
     }
 
     fn on_entity_pick(&mut self, handle: Handle, _pt: DVec3) -> CmdResult {
-        if handle.is_null() {
-            return CmdResult::NeedPoint;
+        match self.picked.take() {
+            Some(EntityType::MultiLeader(ml)) if !handle.is_null() => {
+                self.target = Some((handle, *ml));
+                CmdResult::NeedPoint
+            }
+            Some(_) => CmdResult::ReportError(crate::tr!("mleader-edit", "not-multileader")),
+            None => CmdResult::NeedPoint,
         }
-        self.step = RemoveStep::PickLeaderToRemove {
-            handle,
-            entity: None,
-        };
-        CmdResult::NeedPoint
+    }
+
+    fn input_kind(&self) -> InputKind {
+        InputKind::Point
+    }
+
+    fn point_step_accepts_keywords(&self) -> bool {
+        self.target.is_some()
+    }
+
+    fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        self.target.as_ref()?;
+        let key = text.trim().trim_start_matches('_').to_ascii_uppercase();
+        match (self.mode, key.as_str()) {
+            (EditMode::Add, "R" | "REMOVE" | "REMOVE LEADERS") => self.mode = EditMode::Remove,
+            (EditMode::Remove, "A" | "ADD" | "ADD LEADERS") => self.mode = EditMode::Add,
+            _ => {
+                return Some(CmdResult::ReportError(
+                    t!("Invalid option keyword.").into_owned(),
+                ))
+            }
+        }
+        Some(CmdResult::NeedPoint)
     }
 
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
-        let pt = pt.as_vec3();
-        if let RemoveStep::PickLeaderToRemove { handle, entity } = &mut self.step {
-            if let Some(mut ent) = entity.take() {
-                let h = *handle;
-                if let EntityType::MultiLeader(ref mut ml) = ent {
-                    let pick = Vector3::new(pt.x as f64, pt.y as f64, pt.z as f64);
-                    let best = ml
-                        .context
-                        .leader_roots
-                        .iter()
-                        .enumerate()
-                        .flat_map(|(root_index, root)| {
-                            root.lines
-                                .iter()
-                                .enumerate()
-                                .map(move |(line_index, line)| {
-                                    let mut distance = line
-                                        .points
-                                        .windows(2)
-                                        .map(|segment| {
-                                            point_segment_distance_xy(pick, segment[0], segment[1])
-                                        })
-                                        .fold(f64::INFINITY, f64::min);
-                                    if let Some(last) = line.points.last().copied() {
-                                        distance = distance.min(point_segment_distance_xy(
-                                            pick,
-                                            last,
-                                            root.connection_point,
-                                        ));
-                                    }
-                                    (root_index, line_index, distance)
-                                })
-                        })
-                        .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
-                    let Some((root_index, line_index, _)) = best else {
-                        return CmdResult::Cancel;
-                    };
-                    if ml.total_leader_line_count() <= 1 {
-                        return CmdResult::Cancel;
+        let pick = Vector3::new(pt.x, pt.y, pt.z);
+        let mode = self.mode;
+        let Some((_, ml)) = self.target.as_mut() else {
+            return CmdResult::NeedPoint;
+        };
+        match mode {
+            EditMode::Add => {
+                crate::entities::multileader::add_leader_line(ml, pick);
+                self.changed = true;
+            }
+            EditMode::Remove => {
+                if let Some(found) = Self::leader_at(ml, pick) {
+                    if !self.removals.contains(&found) {
+                        self.removals.push(found);
+                        self.changed = true;
                     }
-                    let root = &mut ml.context.leader_roots[root_index];
-                    root.lines.remove(line_index);
-                    if root.lines.is_empty() {
-                        ml.context.leader_roots.remove(root_index);
-                    }
-                } else {
-                    return CmdResult::Cancel;
                 }
-                return CmdResult::ReplaceEntity(h, vec![ent]);
             }
         }
         CmdResult::NeedPoint
     }
 
     fn on_enter(&mut self) -> CmdResult {
-        CmdResult::Cancel
-    }
-    fn on_mouse_move(&mut self, _pt: DVec3) -> Option<WireModel> {
-        None
+        if !self.changed {
+            return CmdResult::Cancel;
+        }
+        let Some((handle, ml)) = self.applied() else {
+            return CmdResult::Cancel;
+        };
+        // Taking out every leader leaves the content on its own.
+        let message = (!self.removals.is_empty() && ml.total_leader_line_count() == 0)
+            .then(|| crate::tr!("mleader-edit", "none-left"));
+        let entity = EntityType::MultiLeader(Box::new(ml));
+        match message {
+            Some(message) => CmdResult::UpdateEntityAndReport {
+                handle,
+                entity,
+                message,
+            },
+            None => CmdResult::UpdateEntityAndFinish { handle, entity },
+        }
     }
 
-    fn inject_picked_entity(&mut self, entity: EntityType) {
-        if let RemoveStep::PickLeaderToRemove { entity: slot, .. } = &mut self.step {
-            *slot = Some(entity);
+    fn on_mouse_move(&mut self, pt: DVec3) -> Option<WireModel> {
+        let (_, ml) = self.applied()?;
+        // Rubber band from the cursor to the landing it would join.
+        if self.mode != EditMode::Add {
+            return None;
         }
+        let mut probe = ml;
+        crate::entities::multileader::add_leader_line(
+            &mut probe,
+            Vector3::new(pt.x, pt.y, pt.z),
+        );
+        let root = probe
+            .context
+            .leader_roots
+            .iter()
+            .find(|root| {
+                root.lines
+                    .last()
+                    .and_then(|line| line.points.first())
+                    .is_some_and(|p| (p.x - pt.x).abs() < 1e-9 && (p.y - pt.y).abs() < 1e-9)
+            })?;
+        let cp = root.connection_point;
+        Some(preview_wire(&[
+            pt.as_vec3(),
+            Vec3::new(cp.x as f32, cp.y as f32, cp.z as f32),
+        ]))
+    }
+
+    fn persistent_preview_wires(&self) -> Vec<WireModel> {
+        // The edit so far: the added and the remaining leaders.
+        let Some((_, ml)) = self.applied() else {
+            return Vec::new();
+        };
+        ml.context
+            .leader_roots
+            .iter()
+            .flat_map(|root| {
+                root.lines.iter().map(move |line| {
+                    let mut pts: Vec<Vec3> = line
+                        .points
+                        .iter()
+                        .map(|p| Vec3::new(p.x as f32, p.y as f32, p.z as f32))
+                        .collect();
+                    let cp = root.connection_point;
+                    pts.push(Vec3::new(cp.x as f32, cp.y as f32, cp.z as f32));
+                    preview_wire(&pts)
+                })
+            })
+            .collect()
     }
 }
 
@@ -546,14 +518,11 @@ fn _uses_ml_types(_ml: &MultiLeader, _ll: &LeaderLine) {}
 
 // ── Autocomplete registry ─────────────────────────────────
 inventory::submit!(crate::command::CommandRegistration {
-    names: &["MLEADERADD"]
-}); // MLeaderAddCommand
+    names: &["MLEADEREDIT", "AIMLEADEREDITADD", "AIMLEADEREDITREMOVE"]
+}); // MLeaderEditCommand
 inventory::submit!(crate::command::CommandRegistration {
     names: &["MLEADERALIGN"]
 }); // MLeaderAlignCommand
 inventory::submit!(crate::command::CommandRegistration {
     names: &["MLEADERCOLLECT"]
 }); // MLeaderCollectCommand
-inventory::submit!(crate::command::CommandRegistration {
-    names: &["MLEADERREMOVE"]
-}); // MLeaderRemoveCommand
