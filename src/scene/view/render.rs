@@ -4244,6 +4244,7 @@ impl Scene {
         if self.selected.is_empty()
             && self.hover_highlight.is_none()
             && self.constraint_hover_highlights.is_empty()
+            && self.box_hover_highlights.is_empty()
         {
             return Arc::new(Vec::new());
         }

@@ -900,6 +900,49 @@ impl OpenCADStudio {
     /// cursor exactly where the GPU draws it; otherwise the model/paper camera
     /// and the normal hit-test wires. `bounds` is the pane-local rectangle.
 
+    /// SELECTIONPREVIEW while a selection box is drawn (#2172): what the box
+    /// would catch with its corner at `p` (canvas pixels) rolls over before
+    /// the release commits it, with the release's filters.
+    fn refresh_box_selection_preview(&mut self, i: usize, p: iced::Point) {
+        let enabled = match self.tabs[i].active_cmd.as_ref() {
+            None => self.model_space.selection_preview & 1 != 0,
+            Some(command) => {
+                command.is_selection_gathering() && self.model_space.selection_preview & 2 != 0
+            }
+        };
+        let navigating =
+            self.tabs[i].orbit_mode || self.tabs[i].pan_mode || self.tabs[i].zoom_dynamic_mode;
+        let (anchor, crossing) = {
+            let sel = self.tabs[i].scene.selection.borrow();
+            let anchor = sel.gesture.box_anchor.filter(|_| !sel.gesture.poly_active);
+            let crossing = match anchor {
+                Some(a) if !sel.gesture.box_crossing_locked => p.x < a.x,
+                _ => sel.gesture.box_crossing,
+            };
+            (anchor, crossing)
+        };
+        let Some(anchor) = anchor.filter(|_| enabled && !navigating) else {
+            self.tabs[i].scene.set_box_hover_highlights(&[]);
+            return;
+        };
+        let canvas_sz = self.tabs[i].scene.selection.borrow().view.vp_size;
+        let edit_frame = self.tabs[i].scene.viewport_edit_frame(canvas_sz);
+        let tile = match &edit_frame {
+            Some((_, full)) => *full,
+            None => self.tabs[i]
+                .scene
+                .active_model_tile_bounds(canvas_sz.0, canvas_sz.1),
+        };
+        let edit_cam = edit_frame.map(|(cam, _)| cam);
+        let local = |point: iced::Point| iced::Point::new(point.x - tile.x, point.y - tile.y);
+        let bounds = iced::Rectangle::new(iced::Point::ORIGIN, tile.size());
+        let (mut handles, _) =
+            self.box_selection_handles(i, &edit_cam, bounds, local(anchor), local(p), crossing);
+        handles.retain(|&h| self.tabs[i].scene.passes_selection_filter(h));
+        self.filter_handles_reject_locked(i, &mut handles);
+        self.tabs[i].scene.set_box_hover_highlights(&handles);
+    }
+
     /// The entities a selection box from `a` to `p` (tile pixels) catches,
     /// as a window or crossing, through the wire, hatch and mesh tests — the
     /// one box test the drag and click-move-click gestures and automation
@@ -1608,6 +1651,7 @@ impl OpenCADStudio {
             // every pointer event while drawing, and clear any idle hover once.
             self.tabs[i].scene.set_constraint_hover_highlights(&[]);
         }
+        self.refresh_box_selection_preview(i, p);
         // Modifier-driven selection must be known before cursor_plane/axis and
         // drafting constraints are read, not merely before the final callback.
         if let Some(command) = self.tabs[i].active_cmd.as_mut() {
@@ -5230,6 +5274,8 @@ impl OpenCADStudio {
         // A click fires after the cursor has settled — clear any pending
         // deferred snap so the release's own snap runs at full fidelity.
         self.snap_dwell = None;
+        // The release commits (or restarts) any box; its preview is done.
+        self.tabs[i].scene.set_box_hover_highlights(&[]);
         // A block dragged from the Blocks palette lands here.
         if let Some(item) = self.take_block_drop() {
             return self.drop_block(item);

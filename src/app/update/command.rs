@@ -1438,6 +1438,7 @@ impl OpenCADStudio {
             self.tabs[i].selected_authoring = None;
             self.tabs[i].scene.deselect_all();
             self.refresh_properties();
+            self.tabs[i].scene.set_box_hover_highlights(&[]);
             let mut sel = self.tabs[i].scene.selection.borrow_mut();
             sel.gesture.box_anchor = None;
             // Also drop the world-space anchor, or the next pan/zoom

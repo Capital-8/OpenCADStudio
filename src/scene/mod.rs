@@ -2483,6 +2483,9 @@ pub struct Scene {
     pub hover_highlight: Option<Handle>,
     /// All entities related to the constraint indicator currently under the cursor.
     constraint_hover_highlights: HashSet<Handle>,
+    /// Entities a selection box still being drawn would catch on release
+    /// (SELECTIONPREVIEW), expanded to their selectable groups.
+    box_hover_highlights: HashSet<Handle>,
     /// Sub-entity references related to that indicator. Polyline segments are
     /// drawn separately so hovering one constraint does not light the whole chain.
     constraint_hover_refs: Vec<crate::scene::parametric_constraints::ParametricRef>,
@@ -3148,6 +3151,7 @@ impl Scene {
             count_display: None,
             hover_highlight: None,
             constraint_hover_highlights: HashSet::default(),
+            box_hover_highlights: HashSet::default(),
             constraint_hover_refs: Vec::new(),
             constraint_hover_wires: Vec::new(),
             selection_color: crate::scene::model::wire_model::WireModel::SELECTED,
@@ -6912,7 +6916,22 @@ impl Scene {
             .map(|handle| self.handles_expanded_for_selectable_groups(&[handle]))
             .unwrap_or_default();
         handles.extend(self.constraint_hover_highlights.iter().copied());
+        handles.extend(self.box_hover_highlights.iter().copied());
         handles
+    }
+
+    /// Roll over everything a selection box still being drawn would catch,
+    /// before the release commits it. An empty slice clears the preview.
+    pub fn set_box_hover_highlights(&mut self, handles: &[Handle]) {
+        let handles = if handles.is_empty() {
+            HashSet::default()
+        } else {
+            self.handles_expanded_for_selectable_groups(handles)
+        };
+        if handles != self.box_hover_highlights {
+            self.box_hover_highlights = handles;
+            self.bump_selection();
+        }
     }
 
     pub fn set_constraint_hover_highlights(
