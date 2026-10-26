@@ -7063,3 +7063,11 @@ block-lookup =
 
 block-array =
     .limit-error = 块求值将生成超过100000个阵列对象。请减小距离或增大间距。
+dim-prompts =
+    .no-objects = No objects found to dimension.
+    .priority-endpoint = Associative dimension priority = Endpoint
+    .priority-intersection = Associative dimension priority = Intersection
+    .select-reassociate = Select dimensions to reassociate ...
+    .select-disassociate = Select dimensions to disassociate ...
+    .select-or-disassociated = Select objects or [Disassociated]:
+    .disassociated = __ocs_fmt_0__ disassociated.

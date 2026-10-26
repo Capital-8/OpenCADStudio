@@ -122,7 +122,7 @@ impl CadCommand for DiameterDimensionCommand {
         }
         match self.step {
             Step::SelectObject => {
-                t!("DIMDIAMETER  Select arc, circle, polyline arc, or circular region edge:")
+                t!("DIMDIAMETER  Select arc or circle:")
                     .into_owned()
             }
             Step::DimLine(_) => {

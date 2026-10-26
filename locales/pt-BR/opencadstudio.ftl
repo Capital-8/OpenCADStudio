@@ -7080,3 +7080,11 @@ block-lookup =
 
 block-array =
     .limit-error = A avaliação do bloco geraria mais de 100000 objetos de matriz. Reduza a distância ou aumente o espaçamento.
+dim-prompts =
+    .no-objects = No objects found to dimension.
+    .priority-endpoint = Associative dimension priority = Endpoint
+    .priority-intersection = Associative dimension priority = Intersection
+    .select-reassociate = Select dimensions to reassociate ...
+    .select-disassociate = Select dimensions to disassociate ...
+    .select-or-disassociated = Select objects or [Disassociated]:
+    .disassociated = __ocs_fmt_0__ disassociated.

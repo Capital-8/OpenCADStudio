@@ -2104,14 +2104,14 @@ common =
     .dimbreak-select-a-dimension = DIMBREAK: select a dimension.
     .dimbreak-updated-dimension-s = DIMBREAK: updated __ocs_fmt_0__ dimension(s).
     .dimedit-enter-new-dimension-text-measured-value = DIMEDIT  Enter new dimension text <measured value>:
-    .dimedit-enter-obliquing-angle-press-enter-for-none = DIMEDIT  Enter obliquing angle (press Enter for none):
+    .dimedit-enter-obliquing-angle-press-enter-for-none = DIMEDIT  Enter obliquing angle (press ENTER for none):
     .dimedit-enter-type-of-dimension-editing-home-new-rotate-oblique-home = DIMEDIT  Enter type of dimension editing [Home/New/Rotate/Oblique] <Home>:
     .dimedit-select-objects = DIMEDIT  Select objects:
     .dimedit-specify-angle-for-dimension-text = DIMEDIT  Specify angle for dimension text:
     .dimedit-no-editable-dimensions-were-selected = DIMEDIT: no editable dimensions were selected.
     .dimedit-updated-dimension-s = DIMEDIT: updated __ocs_fmt_0__ dimension(s).
     .dimjogline-select-dimension-to-add-jog-or-remove = DIMJOGLINE  Select dimension to add jog or [Remove]:
-    .dimjogline-select-dimension-to-remove-jog = DIMJOGLINE  Select dimension to remove jog:
+    .dimjogline-select-dimension-to-remove-jog = DIMJOGLINE  Select jog to remove:
     .dimjogline-specify-jog-location-or-press-enter = DIMJOGLINE  Specify jog location (or press Enter):
     .dimjogline-jog-added = DIMJOGLINE: jog added.
     .dimjogline-jog-removed = DIMJOGLINE: jog removed.
@@ -3549,7 +3549,7 @@ annotate =
     .dimcontinue-no-base-dimension-found-place-a-di = DIMCONTINUE  No base dimension found. Place a dimension first.
     .dimcontinue-specify-a-second-extension-line-or = DIMCONTINUE  Specify a second extension line origin (Enter to exit):
     .dimdiameter-enter-dimension-text-blank-measure = DIMDIAMETER  Enter dimension text (blank = measured value):
-    .dimdiameter-select-arc-circle-or-polyline-arc = DIMDIAMETER  Select arc, circle, polyline arc, or circular region edge:
+    .dimdiameter-select-arc-circle-or-polyline-arc = DIMDIAMETER  Select arc or circle:
     .dimdiameter-specify-dimension-line-location-text = DIMDIAMETER  Specify dimension line location  [Mtext/Text/Angle]:
     .dimdiameter-specify-point-on-circle = DIMDIAMETER  Specify point on circle:
     .dimdiameter-specify-text-angle-degrees = DIMDIAMETER  Specify text angle (degrees):
@@ -3559,7 +3559,7 @@ annotate =
     .dimjogged-invalid-radius = DIMJOGGED: invalid radius.
     .dimjogged-select-an-arc-or-circle-first = DIMJOGGED: select an arc or circle first.
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Enter dimension text (blank = measured value):
-    .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Select arc, circle, or polyline arc:
+    .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Select arc or circle:
     .dimjogged-specify-center-location-override = DIMJOGGED  Specify center location override:
     .dimjogged-specify-dimension-line-location-text = DIMJOGGED  Specify dimension line location  [Mtext/Text/Angle]:
     .dimjogged-specify-jog-location = DIMJOGGED  Specify jog location:
@@ -3576,7 +3576,7 @@ annotate =
     .dimordinate-specify-leader-endpoint = DIMORDINATE  Specify leader endpoint [Xdatum/Ydatum/Mtext/Text/Angle]:
     .dimordinate-specify-text-angle-degrees = DIMORDINATE  Specify text angle (degrees):
     .dimradius-enter-dimension-text-blank-measured = DIMRADIUS  Enter dimension text (blank = measured value):
-    .dimradius-select-arc-circle-or-polyline-arc = DIMRADIUS  Select arc, circle, polyline arc, or circular region edge:
+    .dimradius-select-arc-circle-or-polyline-arc = DIMRADIUS  Select arc or circle:
     .dimradius-specify-dimension-line-location-text = DIMRADIUS  Specify dimension line location  [Mtext/Text/Angle]:
     .dimradius-specify-radius-point = DIMRADIUS  Specify radius point:
     .dimradius-specify-text-angle-degrees = DIMRADIUS  Specify text angle (degrees):
@@ -3631,7 +3631,7 @@ annotate =
         Text
     .ordinate = Ordinate
     .out = Out
-    .qdim-select-geometry-to-dimension-enter-when-d = QDIM  Select geometry to dimension (Enter when done):
+    .qdim-select-geometry-to-dimension-enter-when-d = QDIM  Select geometry to dimension:
     .qdim-specify-dimension-line-position = QDIM  Specify dimension line position:
     .qdim-made-dimensions-created = QDIM  __ocs_fmt_0__ dimensions created.
     .qdim-endpoints-collapse-to-a-single-position = QDIM: endpoints collapse to a single position.
@@ -3681,7 +3681,7 @@ annotate =
 
     .dimarc-enter-dimension-text-blank-measured-value = DIMARC  Enter dimension text (blank = measured value):
     .dimarc-specify-text-angle-degrees = DIMARC  Specify text angle (degrees):
-    .dimarc-select-arc-or-polyline-arc-segment = DIMARC  Select arc, polyline arc segment, or circular region arc edge:
+    .dimarc-select-arc-or-polyline-arc-segment = DIMARC  Select arc or polyline arc segment:
     .dimarc-specify-arc-length-dimension-location-mtext-text-angle-partial = DIMARC  Specify arc length dimension location [Mtext/Text/Angle/Partial__ocs_fmt_0__]:
     .dimarc-specify-first-point-of-partial-arc = DIMARC  Specify first point of partial arc:
     .dimarc-specify-second-point-of-partial-arc = DIMARC  Specify second point of partial arc:
@@ -3726,10 +3726,10 @@ annotate =
     .mtext-enter-column-count = MTEXT  Enter column count <__ocs_fmt_0__>:
     .mtext-enter-column-width = MTEXT  Enter column width <__ocs_fmt_0__>:
     .mtext-enter-column-gutter = MTEXT  Enter column gutter <__ocs_fmt_0__>:
-    .qdim-specify-dimension-line-position-or-choose-an-option = QDIM  Specify dimension line position or choose an option:
-    .qdim-specify-datum-point = QDIM  Specify datum point:
-    .qdim-select-a-point-to-remove-enter-when-done = QDIM  Select a point to remove (Enter when done):
-    .qdim-choose-extension-origin-priority-endpoints-intersections = QDIM  Choose extension origin priority [Endpoints/Intersections]:
+    .qdim-specify-dimension-line-position-or-choose-an-option = QDIM  Specify dimension line position, or [Continuous/Staggered/Baseline/Ordinate/Radius/Diameter/datumPoint/Edit/seTtings] <Continuous>:
+    .qdim-specify-datum-point = QDIM  Select new datum point:
+    .qdim-select-a-point-to-remove-enter-when-done = QDIM  Indicate dimension point to remove, or [eXit] <eXit>:
+    .qdim-choose-extension-origin-priority-endpoints-intersections = QDIM  Associative dimension priority [Endpoint/Intersection] <Endpoint>:
     .tabledit-select-a-table-cell = TABLEDIT  Select a table cell:
     .text-current-style-height-annotative = TEXT  Current style: __ocs_fmt_0__, Height: __ocs_fmt_1__, Annotative: __ocs_fmt_2__
     .text-specify-start-point-or-justify-style = TEXT  Specify start point or [Justify/Style]:
@@ -7081,3 +7081,11 @@ block-lookup =
 
 block-array =
     .limit-error = Block evaluation would generate more than 100000 array objects. Reduce the distance or increase the spacing.
+dim-prompts =
+    .no-objects = No objects found to dimension.
+    .priority-endpoint = Associative dimension priority = Endpoint
+    .priority-intersection = Associative dimension priority = Intersection
+    .select-reassociate = Select dimensions to reassociate ...
+    .select-disassociate = Select dimensions to disassociate ...
+    .select-or-disassociated = Select objects or [Disassociated]:
+    .disassociated = __ocs_fmt_0__ disassociated.
