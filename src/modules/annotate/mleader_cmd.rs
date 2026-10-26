@@ -5,6 +5,8 @@ use codec::types::Vector3;
 use codec::EntityType;
 use glam::{DVec3, Mat4, Vec3};
 
+use std::sync::atomic::{AtomicU8, Ordering};
+
 use crate::command::{CadCommand, CmdOption, CmdResult, InputKind, WorkingPlane};
 use crate::modules::{IconKind, ModuleEvent, ToolDef};
 use crate::scene::model::wire_model::WireModel;
@@ -21,8 +23,17 @@ pub fn tool() -> ToolDef {
     }
 }
 
+/// The creation order and the last Options choice carry over to the next
+/// MLEADER of the session.
+static LAST_ORDER: AtomicU8 = AtomicU8::new(CreationOrder::ArrowFirst as u8);
+static LAST_OPTION: AtomicU8 = AtomicU8::new(MlOption::Exit as u8);
+
 pub struct MLeaderCommand {
     verts: Vec<DVec3>,
+    /// Content first: the width between the text box corners.
+    box_width: Option<f64>,
+    /// The Options prompt's default (the option chosen last).
+    last_option: MlOption,
     plane: WorkingPlane,
     style: Option<codec::objects::MultiLeaderStyle>,
     display_scale: f64,
@@ -55,6 +66,44 @@ enum CreationOrder {
     ContentFirst,
 }
 
+impl CreationOrder {
+    fn last() -> Self {
+        match LAST_ORDER.load(Ordering::Relaxed) {
+            1 => Self::LandingFirst,
+            2 => Self::ContentFirst,
+            _ => Self::ArrowFirst,
+        }
+    }
+}
+
+/// The MLEADER Options prompt's choices, in prompt order.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MlOption {
+    LeaderType,
+    Landing,
+    ContentType,
+    MaxPoints,
+    FirstAngle,
+    SecondAngle,
+    Layer,
+    Exit,
+}
+
+impl MlOption {
+    fn last() -> Self {
+        match LAST_OPTION.load(Ordering::Relaxed) {
+            0 => Self::LeaderType,
+            1 => Self::Landing,
+            2 => Self::ContentType,
+            3 => Self::MaxPoints,
+            4 => Self::FirstAngle,
+            5 => Self::SecondAngle,
+            6 => Self::Layer,
+            _ => Self::Exit,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Step {
     PickPoints,
@@ -76,10 +125,12 @@ impl MLeaderCommand {
     pub fn new() -> Self {
         Self {
             verts: Vec::new(),
+            box_width: None,
+            last_option: MlOption::last(),
             plane: WorkingPlane::default(),
             style: None,
             display_scale: 1.0,
-            order: CreationOrder::ArrowFirst,
+            order: CreationOrder::last(),
             step: Step::PickPoints,
             content_type: LeaderContentType::MText,
             path_type: MultiLeaderPathType::StraightLineSegments,
@@ -108,10 +159,12 @@ impl MLeaderCommand {
         };
         Self {
             verts: Vec::new(),
+            box_width: None,
+            last_option: MlOption::last(),
             plane: WorkingPlane::default(),
             style: Some(style.clone()),
             display_scale,
-            order: CreationOrder::ArrowFirst,
+            order: CreationOrder::last(),
             step: Step::PickPoints,
             content_type: (style.content_type as i16).into(),
             path_type: (style.path_type as i16).into(),
@@ -160,9 +213,27 @@ impl MLeaderCommand {
     fn point_limit(&self) -> usize {
         if self.order == CreationOrder::ContentFirst {
             2
+        } else if self.max_points == 0 {
+            usize::MAX
         } else {
             self.max_points.max(2)
         }
+    }
+
+    /// Run an Options choice; it becomes the prompt's default.
+    fn choose_option(&mut self, option: MlOption) {
+        self.last_option = option;
+        LAST_OPTION.store(option as u8, Ordering::Relaxed);
+        self.step = match option {
+            MlOption::LeaderType => Step::LeaderType,
+            MlOption::Landing => Step::Landing,
+            MlOption::ContentType => Step::ContentType,
+            MlOption::MaxPoints => Step::MaxPoints,
+            MlOption::FirstAngle => Step::FirstAngle,
+            MlOption::SecondAngle => Step::SecondAngle,
+            MlOption::Layer => Step::Layer,
+            MlOption::Exit => Step::PickPoints,
+        };
     }
 
     fn finish(&self) -> CmdResult {
@@ -182,9 +253,13 @@ impl MLeaderCommand {
                 (points, None)
             }
             CreationOrder::ContentFirst => {
-                let content = local[0];
+                let mut content = local[0];
                 let arrow = local[1];
                 let sign = if content.x >= arrow.x { 1.0 } else { -1.0 };
+                // Text left of the arrow hangs from the box's right edge.
+                if sign < 0.0 {
+                    content.x += self.box_width.unwrap_or(0.0);
+                }
                 let elbow = DVec3::new(
                     content.x - sign * self.landing_length * self.display_scale,
                     content.y,
@@ -203,6 +278,12 @@ impl MLeaderCommand {
         );
         ml.content_type = self.content_type;
         ml.path_type = self.path_type;
+        // New multileaders reach their text and keep no wrap width unless
+        // the content-first box gave one; the text flows by its style.
+        ml.extend_leader_to_text = true;
+        ml.context.text_width = self.box_width.unwrap_or(0.0);
+        ml.context.text_flow_direction =
+            codec::entities::multileader::FlowDirectionType::ByStyle;
         ml.enable_landing = self.enable_landing;
         ml.enable_dogleg = self.enable_landing;
         ml.dogleg_length = self.landing_length;
@@ -341,70 +422,152 @@ impl CadCommand for MLeaderCommand {
     }
 
     fn prompt(&self) -> String {
+        use crate::tr;
+        let num = |v: f64| format!("{v:.4}");
+        let angle = |a: Option<f64>| {
+            a.map_or("0".to_string(), |r| format!("{}", r.to_degrees().round()))
+        };
         match self.step {
-            Step::Options => t!("MLEADER  Options [Leader type/Landing/Content type/Max points/First angle/Second angle/Layer/Exit]:").into_owned(),
-            Step::LeaderType => t!("MLEADER  Leader type [Straight/Spline/None]:").into_owned(),
-            Step::Landing => t!("MLEADER  Leader landing [Yes/No]:").into_owned(),
-            Step::LandingLength => t!("MLEADER  Specify landing distance:").into_owned(),
-            Step::ContentType => t!("MLEADER  Content type [MText/Block/None]:").into_owned(),
-            Step::MaxPoints => t!("MLEADER  Enter maximum leader points:").into_owned(),
-            Step::FirstAngle => t!("MLEADER  First segment angle [Any/15/30/45/60/90]:").into_owned(),
-            Step::SecondAngle => t!("MLEADER  Second segment angle [Any/15/30/45/60/90]:").into_owned(),
+            Step::Options => {
+                let default = match self.last_option {
+                    MlOption::LeaderType => tr!("mleader-prompt", "opt-leader-type"),
+                    MlOption::Landing => tr!("mleader-prompt", "opt-landing"),
+                    MlOption::ContentType => tr!("mleader-prompt", "opt-content-type"),
+                    MlOption::MaxPoints => tr!("mleader-prompt", "opt-maxpoints"),
+                    MlOption::FirstAngle => tr!("mleader-prompt", "opt-first-angle"),
+                    MlOption::SecondAngle => tr!("mleader-prompt", "opt-second-angle"),
+                    MlOption::Layer => tr!("mleader-prompt", "opt-layer"),
+                    MlOption::Exit => tr!("mleader-prompt", "opt-exit"),
+                };
+                tr!("mleader-prompt", "options", default = default)
+            }
+            Step::LeaderType => {
+                let current = match self.path_type {
+                    MultiLeaderPathType::Spline => tr!("mleader-prompt", "spline"),
+                    MultiLeaderPathType::Invisible => tr!("mleader-prompt", "none"),
+                    _ => tr!("mleader-prompt", "straight"),
+                };
+                tr!("mleader-prompt", "leader-type", current = current)
+            }
+            Step::Landing => {
+                let current = if self.enable_landing {
+                    tr!("mleader-prompt", "yes")
+                } else {
+                    tr!("mleader-prompt", "no")
+                };
+                tr!("mleader-prompt", "use-landing", current = current)
+            }
+            Step::LandingLength => {
+                tr!("mleader-prompt", "landing-distance", current = num(self.landing_length))
+            }
+            Step::ContentType => {
+                let current = match self.content_type {
+                    LeaderContentType::Block => tr!("mleader-prompt", "block"),
+                    LeaderContentType::None => tr!("mleader-prompt", "none"),
+                    _ => tr!("mleader-prompt", "mtext"),
+                };
+                tr!("mleader-prompt", "content-type", current = current)
+            }
+            Step::MaxPoints => {
+                tr!("mleader-prompt", "max-points", current = self.max_points.to_string())
+            }
+            Step::FirstAngle => {
+                tr!("mleader-prompt", "first-angle", current = angle(self.first_angle))
+            }
+            Step::SecondAngle => {
+                tr!("mleader-prompt", "second-angle", current = angle(self.second_angle))
+            }
             Step::Layer => {
                 let current = if self.layer.is_empty() {
-                    crate::tr!("mleader-cmd", "use-current")
+                    tr!("mleader-cmd", "use-current")
                 } else {
                     self.layer.clone()
                 };
-                crate::tr!("mleader-cmd", "layer", current = current)
+                tr!("mleader-cmd", "layer", current = current)
             }
             Step::PreEnterText => t!("MLEADER  Enter text:").into_owned(),
             Step::SelectMText => t!("MLEADER  Select an MText object:").into_owned(),
-            Step::BlockSource => t!("MLEADER  Enter source block name:").into_owned(),
-            Step::PickPoints if self.verts.is_empty() => match self.order {
-                CreationOrder::ArrowFirst => t!("MLEADER  Specify arrowhead point or [Landing first/Content first/Text/Select MText/Options]:").into_owned(),
-                CreationOrder::LandingFirst => t!("MLEADER  Specify landing point or [Arrowhead first/Content first/Text/Select MText/Options]:").into_owned(),
-                CreationOrder::ContentFirst => t!("MLEADER  Specify content location or [Arrowhead first/Landing first/Text/Select MText/Options]:").into_owned(),
-            },
-            Step::PickPoints if self.order == CreationOrder::ContentFirst => {
-                t!("MLEADER  Specify arrowhead point:").into_owned()
+            Step::BlockSource => tr!("mleader-prompt", "block-name"),
+            Step::PickPoints if self.verts.is_empty() => {
+                let text = !self.text.is_empty();
+                match (self.order, text) {
+                    (CreationOrder::ArrowFirst, false) => tr!("mleader-prompt", "arrow-first"),
+                    (CreationOrder::ArrowFirst, true) => {
+                        tr!("mleader-prompt", "arrow-first-text")
+                    }
+                    (CreationOrder::LandingFirst, false) => {
+                        tr!("mleader-prompt", "landing-first")
+                    }
+                    (CreationOrder::LandingFirst, true) => {
+                        tr!("mleader-prompt", "landing-first-text")
+                    }
+                    (CreationOrder::ContentFirst, false) => {
+                        tr!("mleader-prompt", "content-first")
+                    }
+                    (CreationOrder::ContentFirst, true) => {
+                        tr!("mleader-prompt", "content-first-text")
+                    }
+                }
             }
-            Step::PickPoints => t!("MLEADER  Specify next leader point or press Enter to finish:").into_owned(),
+            Step::PickPoints if self.order == CreationOrder::ContentFirst => {
+                if self.box_width.is_none() {
+                    tr!("mleader-prompt", "opposite-corner")
+                } else {
+                    tr!("mleader-prompt", "arrowhead")
+                }
+            }
+            Step::PickPoints if self.verts.len() + 1 >= self.point_limit() => {
+                if self.order == CreationOrder::LandingFirst {
+                    tr!("mleader-prompt", "arrowhead")
+                } else {
+                    tr!("mleader-prompt", "landing")
+                }
+            }
+            Step::PickPoints => tr!("mleader-prompt", "next-point"),
         }
     }
 
     fn options(&self) -> Vec<CmdOption> {
+        let keys = |list: &[(&str, &str)]| {
+            list.iter()
+                .map(|(label, key)| CmdOption::new(label, key))
+                .collect::<Vec<_>>()
+        };
         match self.step {
-            Step::PickPoints if self.verts.is_empty() => vec![
-                CmdOption::new("Arrowhead first", "A"),
-                CmdOption::new("Landing first", "L"),
-                CmdOption::new("Content first", "C"),
-                CmdOption::new("Text", "T"),
-                CmdOption::new("Select MText", "S"),
-                CmdOption::new("Options", "O"),
-            ],
-            Step::Options => vec![
-                CmdOption::new("Leader type", "LT"),
-                CmdOption::new("Landing", "LD"),
-                CmdOption::new("Content type", "CT"),
-                CmdOption::new("Max points", "M"),
-                CmdOption::new("First angle", "F"),
-                CmdOption::new("Second angle", "S"),
-                CmdOption::new("Layer", "LA"),
-                CmdOption::new("Exit", "X"),
-            ],
-            Step::LeaderType => ["Straight", "Spline", "None"]
-                .into_iter()
-                .map(|v| CmdOption::new(v, v))
-                .collect(),
-            Step::Landing => ["Yes", "No"]
-                .into_iter()
-                .map(|v| CmdOption::new(v, v))
-                .collect(),
-            Step::ContentType => ["MText", "Block", "None"]
-                .into_iter()
-                .map(|v| CmdOption::new(v, v))
-                .collect(),
+            Step::PickPoints if self.verts.is_empty() => {
+                let mut list: Vec<(&str, &str)> = Vec::new();
+                if self.text.is_empty() {
+                    list.push(("pre enter Text", "T"));
+                }
+                match self.order {
+                    CreationOrder::ArrowFirst => {
+                        list.extend([("leader Landing first", "L"), ("Content first", "C")])
+                    }
+                    CreationOrder::LandingFirst => {
+                        list.extend([("leader arrowHead first", "H"), ("Content first", "C")])
+                    }
+                    CreationOrder::ContentFirst => list.extend([
+                        ("select Mtext", "M"),
+                        ("leader arrowHead first", "H"),
+                        ("leader Landing first", "L"),
+                    ]),
+                }
+                list.push(("Options", "O"));
+                keys(&list)
+            }
+            Step::Options => keys(&[
+                ("Leader type", "L"),
+                ("leader lAnding", "A"),
+                ("Content type", "C"),
+                ("Maxpoints", "M"),
+                ("First angle", "F"),
+                ("Second angle", "S"),
+                ("laYer", "Y"),
+                ("eXit options", "X"),
+            ]),
+            Step::LeaderType => keys(&[("Straight", "S"), ("sPline", "P"), ("None", "N")]),
+            Step::Landing => keys(&[("Yes", "Y"), ("No", "N")]),
+            Step::ContentType => keys(&[("Block", "B"), ("Mtext", "M"), ("None", "N")]),
             Step::BlockSource => self
                 .block_sources
                 .iter()
@@ -414,16 +577,28 @@ impl CadCommand for MLeaderCommand {
                 .into_iter()
                 .chain(self.layers.iter().map(|name| CmdOption::new(name, name)))
                 .collect(),
-            Step::FirstAngle | Step::SecondAngle => ["Any", "15", "30", "45", "60", "90"]
-                .into_iter()
-                .map(|v| CmdOption::new(v, v))
-                .collect(),
             _ => Vec::new(),
         }
     }
 
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
         if self.step != Step::PickPoints {
+            return CmdResult::NeedPoint;
+        }
+        // Content first: the text box's two corners, then the arrowhead.
+        if self.order == CreationOrder::ContentFirst
+            && self.verts.len() == 1
+            && self.box_width.is_none()
+        {
+            let first = self.plane.to_local(self.verts[0]);
+            let other = self.plane.to_local(pt);
+            self.box_width = Some((other.x - first.x).abs());
+            // The text sits at the box's top-left corner.
+            self.verts[0] = self.plane.to_world(DVec3::new(
+                first.x.min(other.x),
+                first.y.max(other.y),
+                first.z,
+            ));
             return CmdResult::NeedPoint;
         }
         self.verts.push(self.constrained_point(pt));
@@ -435,14 +610,37 @@ impl CadCommand for MLeaderCommand {
     }
 
     fn on_enter(&mut self) -> CmdResult {
-        if self.step == Step::Layer {
-            self.step = Step::Options;
-            return CmdResult::NeedPoint;
+        match self.step {
+            Step::Options => {
+                let option = self.last_option;
+                self.choose_option(option);
+                CmdResult::NeedPoint
+            }
+            Step::LeaderType
+            | Step::Landing
+            | Step::LandingLength
+            | Step::ContentType
+            | Step::MaxPoints
+            | Step::FirstAngle
+            | Step::SecondAngle
+            | Step::Layer => {
+                self.step = Step::Options;
+                CmdResult::NeedPoint
+            }
+            Step::BlockSource => {
+                CmdResult::ReportError(crate::tr!("mleader-prompt", "invalid-input"))
+            }
+            Step::PreEnterText | Step::SelectMText => {
+                self.step = Step::PickPoints;
+                CmdResult::NeedPoint
+            }
+            Step::PickPoints if self.verts.is_empty() => {
+                self.step = Step::Options;
+                CmdResult::NeedPoint
+            }
+            Step::PickPoints if self.verts.len() >= 2 => self.finish(),
+            Step::PickPoints => CmdResult::Cancel,
         }
-        if self.step != Step::PickPoints || self.verts.len() < 2 {
-            return CmdResult::Cancel;
-        }
-        self.finish()
     }
 
     fn on_escape(&mut self) -> CmdResult {
@@ -452,6 +650,24 @@ impl CadCommand for MLeaderCommand {
     fn on_mouse_move(&mut self, pt: DVec3) -> Option<WireModel> {
         if self.step != Step::PickPoints || self.verts.is_empty() {
             return None;
+        }
+        if self.order == CreationOrder::ContentFirst && self.box_width.is_none() {
+            // The text box being spanned.
+            let a = self.plane.to_local(self.verts[0]);
+            let b = self.plane.to_local(pt);
+            let corners = [
+                DVec3::new(a.x, a.y, a.z),
+                DVec3::new(b.x, a.y, a.z),
+                DVec3::new(b.x, b.y, a.z),
+                DVec3::new(a.x, b.y, a.z),
+                DVec3::new(a.x, a.y, a.z),
+            ];
+            let mut preview = preview_wire(&[], 0.0);
+            preview.points = corners
+                .iter()
+                .map(|p| self.plane.to_world(*p).as_vec3().to_array())
+                .collect();
+            return Some(preview);
         }
         // Preview / rubber-band is GPU screen-space: downcast to f32 here.
         let mut local_points: Vec<DVec3> = self
@@ -521,37 +737,69 @@ impl CadCommand for MLeaderCommand {
     fn on_text_input(&mut self, input: &str) -> Option<CmdResult> {
         let text = input.trim();
         let upper = text.to_ascii_uppercase();
+        let upper = upper.trim_start_matches('_');
+        let invalid_keyword = || Some(CmdResult::ReportError(t!("Invalid option keyword.").into_owned()));
+        let invalid_input =
+            || Some(CmdResult::ReportError(crate::tr!("mleader-prompt", "invalid-input")));
         match self.step {
-            Step::PickPoints if self.verts.is_empty() => match upper.as_str() {
-                "A" | "ARROWHEAD" | "ARROWHEAD FIRST" => self.order = CreationOrder::ArrowFirst,
-                "L" | "LANDING" | "LANDING FIRST" => self.order = CreationOrder::LandingFirst,
-                "C" | "CONTENT" | "CONTENT FIRST" => self.order = CreationOrder::ContentFirst,
-                "T" | "TEXT" => self.step = Step::PreEnterText,
-                "S" | "SELECT" | "SELECT MTEXT" => self.step = Step::SelectMText,
-                "O" | "OPTIONS" => self.step = Step::Options,
-                _ => return None,
-            },
-            Step::Options => match upper.as_str() {
-                "LT" | "LEADER TYPE" => self.step = Step::LeaderType,
-                "LD" | "LANDING" => self.step = Step::Landing,
-                "CT" | "CONTENT TYPE" => self.step = Step::ContentType,
-                "M" | "MAX" | "MAX POINTS" => self.step = Step::MaxPoints,
-                "F" | "FIRST" | "FIRST ANGLE" => self.step = Step::FirstAngle,
-                "S" | "SECOND" | "SECOND ANGLE" => self.step = Step::SecondAngle,
-                "LA" | "LAYER" => self.step = Step::Layer,
-                "X" | "EXIT" => self.step = Step::PickPoints,
-                _ => return None,
-            },
-            Step::LeaderType => {
-                self.path_type = match upper.as_str() {
-                    "SPLINE" => MultiLeaderPathType::Spline,
-                    "NONE" => MultiLeaderPathType::Invisible,
-                    "STRAIGHT" => MultiLeaderPathType::StraightLineSegments,
+            Step::PickPoints if self.verts.is_empty() => {
+                let order = match (upper, self.order) {
+                    ("T" | "TEXT" | "PRE ENTER TEXT", _) if self.text.is_empty() => {
+                        self.step = Step::PreEnterText;
+                        return Some(CmdResult::NeedPoint);
+                    }
+                    ("O" | "OPTIONS", _) => {
+                        self.step = Step::Options;
+                        return Some(CmdResult::NeedPoint);
+                    }
+                    ("M" | "MTEXT" | "SELECT MTEXT", CreationOrder::ContentFirst) => {
+                        self.step = Step::SelectMText;
+                        return Some(CmdResult::NeedPoint);
+                    }
+                    ("H" | "ARROWHEAD" | "LEADER ARROWHEAD FIRST", order)
+                        if order != CreationOrder::ArrowFirst =>
+                    {
+                        CreationOrder::ArrowFirst
+                    }
+                    ("L" | "LANDING" | "LEADER LANDING FIRST", order)
+                        if order != CreationOrder::LandingFirst =>
+                    {
+                        CreationOrder::LandingFirst
+                    }
+                    ("C" | "CONTENT" | "CONTENT FIRST", order)
+                        if order != CreationOrder::ContentFirst =>
+                    {
+                        CreationOrder::ContentFirst
+                    }
                     _ => return None,
+                };
+                self.order = order;
+                LAST_ORDER.store(order as u8, Ordering::Relaxed);
+            }
+            Step::Options => {
+                let option = match upper {
+                    "L" | "LEADER TYPE" => MlOption::LeaderType,
+                    "A" | "LANDING" | "LEADER LANDING" => MlOption::Landing,
+                    "C" | "CONTENT TYPE" => MlOption::ContentType,
+                    "M" | "MAXPOINTS" => MlOption::MaxPoints,
+                    "F" | "FIRST ANGLE" => MlOption::FirstAngle,
+                    "S" | "SECOND ANGLE" => MlOption::SecondAngle,
+                    "Y" | "LAYER" => MlOption::Layer,
+                    "X" | "EXIT" | "EXIT OPTIONS" => MlOption::Exit,
+                    _ => return invalid_keyword(),
+                };
+                self.choose_option(option);
+            }
+            Step::LeaderType => {
+                self.path_type = match upper {
+                    "S" | "STRAIGHT" => MultiLeaderPathType::StraightLineSegments,
+                    "P" | "SPLINE" => MultiLeaderPathType::Spline,
+                    "N" | "NONE" => MultiLeaderPathType::Invisible,
+                    _ => return invalid_keyword(),
                 };
                 self.step = Step::Options;
             }
-            Step::Landing => match upper.as_str() {
+            Step::Landing => match upper {
                 "Y" | "YES" => {
                     self.enable_landing = true;
                     self.step = Step::LandingLength;
@@ -560,49 +808,52 @@ impl CadCommand for MLeaderCommand {
                     self.enable_landing = false;
                     self.step = Step::Options;
                 }
-                _ => return None,
+                _ => return invalid_keyword(),
             },
             Step::LandingLength => {
-                let value = crate::entities::common::parse_typed_length(text)?;
-                if value <= 0.0 {
-                    return None;
+                let Some(value) = crate::entities::common::parse_typed_length(text) else {
+                    return invalid_input();
+                };
+                if value < 0.0 {
+                    return invalid_input();
                 }
                 self.landing_length = value;
                 self.step = Step::Options;
             }
             Step::ContentType => {
-                self.content_type = match upper.as_str() {
-                    "MTEXT" => LeaderContentType::MText,
-                    "BLOCK" => LeaderContentType::Block,
-                    "NONE" => LeaderContentType::None,
-                    _ => return None,
+                self.content_type = match upper {
+                    "B" | "BLOCK" => LeaderContentType::Block,
+                    "M" | "MTEXT" => LeaderContentType::MText,
+                    "N" | "NONE" => LeaderContentType::None,
+                    _ => return invalid_keyword(),
                 };
-                self.step = if self.content_type == LeaderContentType::Block
-                    && self.block_handle.is_none()
-                {
+                self.step = if self.content_type == LeaderContentType::Block {
                     Step::BlockSource
                 } else {
                     Step::Options
                 };
             }
             Step::MaxPoints => {
-                let value = text.parse::<usize>().ok()?;
-                if value < 2 {
-                    return None;
-                }
+                // 0 leaves the count open (Enter ends the leader).
+                let Some(value) = text.parse::<usize>().ok().filter(|v| *v == 0 || *v >= 2)
+                else {
+                    return invalid_input();
+                };
                 self.max_points = value;
                 self.step = Step::Options;
             }
             Step::FirstAngle | Step::SecondAngle => {
-                let angle = if upper == "ANY" {
-                    None
-                } else {
-                    let degrees = text.parse::<f64>().ok()?;
-                    if !matches!(degrees as i32, 15 | 30 | 45 | 60 | 90) {
-                        return None;
-                    }
-                    Some(degrees.to_radians())
+                let Some(degrees) = text
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|d| [0.0, 15.0, 30.0, 45.0, 60.0, 90.0, 180.0].contains(d))
+                else {
+                    return Some(CmdResult::ReportError(crate::tr!(
+                        "mleader-prompt",
+                        "invalid-angle"
+                    )));
                 };
+                let angle = (degrees != 0.0).then(|| degrees.to_radians());
                 if self.step == Step::FirstAngle {
                     self.first_angle = angle;
                 } else {
@@ -611,12 +862,11 @@ impl CadCommand for MLeaderCommand {
                 self.step = Step::Options;
             }
             Step::Layer => {
-                match upper.as_str() {
+                match upper {
                     "" => return None,
                     "X" | "EXIT" => self.step = Step::Options,
                     "?" => {
-                        return Some(CmdResult::ReportMeasurement(self.layers.join("
-")));
+                        return Some(CmdResult::ReportMeasurement(self.layers.join("\n")));
                     }
                     "." => self.set_layer(""),
                     _ => self.set_layer(text.trim_matches('"')),
@@ -634,7 +884,7 @@ impl CadCommand for MLeaderCommand {
                     .iter()
                     .find(|(name, _)| name.eq_ignore_ascii_case(text))
                 else {
-                    return None;
+                    return invalid_input();
                 };
                 self.block_handle = Some(*handle);
                 self.content_type = LeaderContentType::Block;
@@ -755,16 +1005,42 @@ fn build_mleader(
     // Place text beyond the landing and gap.
     let off = landing * (landing_distance + landing_gap) as f32;
 
-    let text_location = content_point.map(v3).unwrap_or_else(|| {
+    let mut text_location = content_point.map(v3).unwrap_or_else(|| {
         Vector3::new(
             elbow_v3.x + off.x as f64,
             elbow_v3.y + off.y as f64,
             elbow_v3.z,
         )
     });
+    // The text location is the text's top-left corner; level text sits so
+    // its attachment line meets the landing. A content-first box gives that
+    // corner, so the landing comes to it, one landing and gap away.
+    let level = ux.y.abs() < 1.0e-6 && ux.x > 0.0;
+    let top = if level {
+        crate::entities::multileader::text_top_offset(&ml)
+    } else {
+        0.0
+    };
+    if content_point.is_some() {
+        if let Some(root) = ml.context.leader_roots.first_mut() {
+            root.connection_point.x =
+                text_location.x - sign * (landing_distance + landing_gap) * f64::from(ux.x);
+            root.connection_point.y = text_location.y - top;
+        }
+    } else {
+        text_location.y += top;
+    }
+    // The content base is the landing's end.
+    let base = ml.context.leader_roots.first().map_or(text_location, |root| {
+        Vector3::new(
+            root.connection_point.x + root.direction.x * landing_distance,
+            root.connection_point.y + root.direction.y * landing_distance,
+            root.connection_point.z,
+        )
+    });
 
     ml.context.text_location = text_location;
-    ml.context.content_base_point = text_location;
+    ml.context.content_base_point = base;
 
     ml
 }

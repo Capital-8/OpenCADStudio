@@ -3195,6 +3195,28 @@ mod tests {
 /// Put the text on the right (`to_right`) or left of its landing: the text
 /// block attaches by its near edge, and left- or right-justified text turns
 /// to read away from the leader. Centred text stays centred.
+/// How far above its landing the top of a one-line text sits, for the
+/// attachment that governs it: the stored text location is the text's
+/// top-left corner, the landing meets the attachment line.
+pub(crate) fn text_top_offset(ml: &MultiLeader) -> f64 {
+    let height = if ml.context.text_height > 0.0 {
+        ml.context.text_height
+    } else {
+        ml.text_height
+    };
+    let attach = active_vertical_attachment(ml);
+    let lift = if underlined_line(attach, 1).is_some() {
+        height * f64::from(MLEADER_UNDERLINE_GAP)
+    } else {
+        0.0
+    };
+    lift + match mleader_v_anchor(attach) {
+        MTextVAnchor::Top => 0.0,
+        MTextVAnchor::Bottom | MTextVAnchor::BottomOfTopLine => height,
+        _ => height * 0.5,
+    }
+}
+
 pub(crate) fn set_mleader_text_side(ml: &mut MultiLeader, to_right: bool) {
     use codec::entities::multileader::TextAttachmentPointType;
     let (attachment, alignment) = if to_right {

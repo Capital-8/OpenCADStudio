@@ -7192,6 +7192,7 @@ impl OpenCADStudio {
             Message::MTextRectWidth(width) => {
                 if let Some(ed) = self.mtext_editor.as_mut() {
                     ed.rect_width = width.max(1e-6);
+                    ed.keep_width = true;
                 }
                 self.rebuild_mtext_preview();
                 Task::none()
