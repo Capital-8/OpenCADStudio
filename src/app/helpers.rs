@@ -548,6 +548,14 @@ fn insert_bounds(
     out
 }
 
+/// Box of the named block definition's contents, relative to its base point.
+pub(crate) fn block_definition_bounds(
+    doc: &codec::Document,
+    name: &str,
+) -> Option<codec::types::BoundingBox3D> {
+    block_bounds(doc, name, &mut BlockBounds::default(), 0)
+}
+
 /// Box of a block definition's contents, relative to its base point. Attribute
 /// definitions are left out: a reference draws its attributes instead.
 fn block_bounds(
