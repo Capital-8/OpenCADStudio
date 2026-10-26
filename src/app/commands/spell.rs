@@ -208,10 +208,14 @@ impl OpenCADStudio {
     fn open_spell(&mut self, i: usize, selection: Option<Vec<Handle>>) {
         let mut state = self.spell.take().unwrap_or_else(|| {
             let languages = available_languages();
-            let language = if self.spell_prefs.language.is_empty() {
-                with_speller("", |s| s.language().to_string())
-            } else {
+            // American English first, as the reference offers; else the
+            // system's own language.
+            let language = if !self.spell_prefs.language.is_empty() {
                 self.spell_prefs.language.clone()
+            } else if languages.iter().any(|(tag, _)| tag == "en-US") {
+                "en-US".to_string()
+            } else {
+                with_speller("", |s| s.language().to_string())
             };
             SpellState {
                 language,
