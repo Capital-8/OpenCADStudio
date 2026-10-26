@@ -164,7 +164,7 @@ impl CadCommand for JoggedRadiusDimensionCommand {
         }
         match self.step {
             Step::SelectObject => {
-                t!("DIMJOGGED  Select arc, circle, or polyline arc:").into_owned()
+                t!("DIMJOGGED  Select arc or circle:").into_owned()
             }
             Step::OverrideCenter(_) => {
                 t!("DIMJOGGED  Specify center location override:").into_owned()

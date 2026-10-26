@@ -7226,3 +7226,11 @@ dim-panel =
     .right-justify = Sağa Yasla
     .override = Geçersiz Kıl
     .dimension-layer = Ölçü Katmanı
+dim-prompts =
+    .no-objects = Ölçülendirilecek nesne bulunamadı.
+    .priority-endpoint = İlişkisel ölçü önceliği = Endpoint
+    .priority-intersection = İlişkisel ölçü önceliği = Intersection
+    .select-reassociate = Yeniden ilişkilendirilecek ölçüleri seçin ...
+    .select-disassociate = İlişkisi kaldırılacak ölçüleri seçin ...
+    .select-or-disassociated = Nesneleri seçin veya [Disassociated]:
+    .disassociated = __ocs_fmt_0__ ilişkisi kaldırıldı.

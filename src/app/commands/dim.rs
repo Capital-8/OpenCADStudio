@@ -611,6 +611,12 @@ impl OpenCADStudio {
                     .collect();
                 let cmd =
                     QdimCommand::new(selection, dim_spacing, self.quick_dimension_snap_priority);
+                let priority = if self.quick_dimension_snap_priority == 1 {
+                    crate::t!("Associative dimension priority = Intersection")
+                } else {
+                    crate::t!("Associative dimension priority = Endpoint")
+                };
+                self.command_line.push_output(&priority);
                 self.command_line.push_info(&cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
             }
@@ -1459,19 +1465,56 @@ impl OpenCADStudio {
                 }
             }
 
+            // DIMREASSOCIATE's Disassociated: every dimension of the space
+            // without associations.
+            "_DIMREASSOCIATE_DISASSOCIATED" => {
+                let scene = &self.tabs[i].scene;
+                let handles: Vec<codec::Handle> = scene
+                    .document
+                    .entities()
+                    .filter_map(|entity| match entity {
+                        codec::EntityType::Dimension(dimension) => {
+                            Some(dimension.base().common.handle)
+                        }
+                        _ => None,
+                    })
+                    .filter(|&handle| {
+                        scene.document.get_entity(handle).is_some_and(|entity| {
+                            entity.common().owner_handle == scene.current_layout_block_handle_pub()
+                        }) && scene.dimension_association(handle).is_none()
+                            && !scene.is_layer_locked(handle)
+                    })
+                    .collect();
+                self.tabs[i].scene.deselect_all();
+                if handles.is_empty() {
+                    return Some(self.finish_dispatch(cmd));
+                }
+                let found = handles.len();
+                self.command_line.push_output(&crate::tf!("{found} found"));
+                self.tabs[i].scene.select_entities(&handles);
+                return Some(self.dispatch_command("DIMREASSOCIATE"));
+            }
+
             "DIMDISASSOCIATE" | "DIMREASSOCIATE" => {
                 let handles = self.selected_editable_dimensions(i);
                 if handles.is_empty() {
                     use crate::modules::draw::select::SelectObjectsCommand;
                     self.tabs[i].scene.deselect_all();
                     let sel = if cmd == "DIMDISASSOCIATE" {
-                        SelectObjectsCommand::associative_dimensions(
-                            cmd,
-                            cmd,
-                            "Select dimensions to disassociate:",
-                        )
+                        self.command_line
+                            .push_info(&crate::t!("Select dimensions to disassociate ..."));
+                        SelectObjectsCommand::associative_dimensions(cmd, cmd, "Select objects:")
                     } else {
-                        SelectObjectsCommand::new(cmd)
+                        self.command_line
+                            .push_info(&crate::t!("Select dimensions to reassociate ..."));
+                        SelectObjectsCommand::with_keyword(
+                            cmd,
+                            cmd,
+                            "Select objects or [Disassociated]:",
+                            "Disassociated",
+                            "D",
+                            || crate::command::CmdResult::Dispatch("_DIMREASSOCIATE_DISASSOCIATED".into()),
+                        )
                     };
                     self.command_line.push_info(&sel.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(sel));
@@ -1483,9 +1526,8 @@ impl OpenCADStudio {
                         .count();
                     self.invalidate_property_targets(i, &handles);
                     self.tabs[i].dirty |= count > 0;
-                    self.command_line.push_output(
-                        crate::tf!("DIMDISASSOCIATE: {count} dimension(s) disassociated.").as_ref(),
-                    );
+                    self.command_line
+                        .push_output(crate::tf!("{count} disassociated.").as_ref());
                 } else {
                     self.push_undo_snapshot(i, "DIMREASSOCIATE");
                     let (mut count, mut partial) = (0, 0);
