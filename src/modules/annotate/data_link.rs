@@ -39,22 +39,7 @@ impl DataLinkPlaceCommand {
     /// drawing. Every populated cell is locked and points at the same link so
     /// update and save/reopen keep one stable relationship.
     pub fn existing(mut table: Table, link: codec::Handle) -> Self {
-        use codec::entities::table::CellStateFlags;
-        let rows = table.row_count() as i32;
-        let columns = table.column_count() as i32;
-        for row in &mut table.rows {
-            for cell in &mut row.cells {
-                cell.has_linked_data = true;
-                cell.data_link_handle = Some(link);
-                cell.data_link_rows = rows;
-                cell.data_link_columns = columns;
-                cell.state.insert(
-                    CellStateFlags::LINKED
-                        | CellStateFlags::CONTENT_LOCKED
-                        | CellStateFlags::FORMAT_LOCKED,
-                );
-            }
-        }
+        link_cells(&mut table, link, 0);
         Self {
             table,
             plane: WorkingPlane::default(),
@@ -146,6 +131,34 @@ impl DataLinkPlaceCommand {
             fill_tris_low: Vec::new(),
 
             ..Default::default()
+        }
+    }
+}
+
+/// Links a table to a data link the way the drawing format stores it: the
+/// first cell of the linked range (row `first_row`, column 0) carries the link
+/// and the size of the range; every cell of the range is locked and marked as
+/// linked. Rows above `first_row` (an extraction table's title) stay free.
+pub fn link_cells(table: &mut Table, link: codec::Handle, first_row: usize) {
+    use codec::entities::table::CellStateFlags;
+    let rows = table.row_count().saturating_sub(first_row) as i32;
+    let columns = table.column_count() as i32;
+    for (row_index, row) in table.rows.iter_mut().enumerate() {
+        for (column_index, cell) in row.cells.iter_mut().enumerate() {
+            let anchor = row_index == first_row && column_index == 0;
+            cell.has_linked_data = anchor;
+            cell.data_link_handle = anchor.then_some(link);
+            cell.data_link_rows = if anchor { rows } else { 0 };
+            cell.data_link_columns = if anchor { columns } else { 0 };
+            cell.data_link_unknown = 0;
+            cell.state.remove(CellStateFlags::FORMAT_LOCKED);
+            if row_index >= first_row {
+                cell.state
+                    .insert(CellStateFlags::LINKED | CellStateFlags::CONTENT_LOCKED);
+            } else {
+                cell.state
+                    .remove(CellStateFlags::LINKED | CellStateFlags::CONTENT_LOCKED);
+            }
         }
     }
 }
