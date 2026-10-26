@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use std::sync::Arc;
 
-use codec::io::dwg::DwgReader;
+use codec::DwgReader;
 use codec::{DwgReadOptions, DxfReader, DxfReaderConfiguration};
 use js_sys::{Function, Uint8Array};
 use sha2::{Digest, Sha256};

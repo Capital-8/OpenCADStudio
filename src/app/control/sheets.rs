@@ -702,6 +702,9 @@ fn validate_sysvar(document: &codec::Document, name: &str, value: &Value) -> Res
 fn set_sysvar(document: &mut codec::Document, name: &str, value: &Value) -> Result<(), Value> {
     validate_sysvar(document, name, value)?;
     let failure = |message: &str| crate::app::control::failure("invalid_sysvar_value", message);
+    // The header and the tables are separate fields of the acadrust document;
+    // borrow them through it, not through the whole Document.
+    let document: &mut codec::CadDocument = document;
     let header = &mut document.header;
     match name.to_ascii_lowercase().as_str() {
         "ltscale" => {

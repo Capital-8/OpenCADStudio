@@ -67,7 +67,7 @@ use codec::entities::EntityType;
 // The path-based readers are native-only; web parsing runs through the
 // parse worker / the xref bytes registry instead.
 #[cfg(not(target_arch = "wasm32"))]
-use codec::io::dwg::DwgReader;
+use codec::DwgReader;
 use codec::{Document, DwgWriter, DxfWriter};
 #[cfg(not(target_arch = "wasm32"))]
 use codec::{DwgReadOptions, DxfReader, DxfReaderConfiguration};
@@ -1303,7 +1303,7 @@ fn read_dwg_path(
         // fault — or refuses to open under a third-party lock — falls back
         // to one in-memory snapshot read below.
         if !cloud_placeholder(path) {
-            match DwgReader::from_mmap(path) {
+            match codec::acadrust::DwgReader::from_mmap(path).map(DwgReader::from) {
                 Ok(mut reader) => {
                     reader.options = options.clone();
                     if let Some(progress) = &progress {
@@ -2509,35 +2509,40 @@ pub async fn serialize_prepared_document(
 fn fix_current_style_names(doc: &mut Document) {
     use codec::objects::ObjectType;
 
-    let h = doc.header.current_text_style_handle;
-    if h.is_valid() {
-        if let Some(name) = doc
-            .text_styles
-            .iter()
-            .find(|s| s.handle == h)
-            .map(|s| s.name.clone())
-        {
-            doc.header.current_text_style_name = name;
+    {
+        // The style tables and the header are separate fields of the acadrust
+        // document; borrow them through it, not through the whole Document.
+        let doc: &mut codec::CadDocument = &mut *doc;
+        let h = doc.header.current_text_style_handle;
+        if h.is_valid() {
+            if let Some(name) = doc
+                .text_styles
+                .iter()
+                .find(|s| s.handle == h)
+                .map(|s| s.name.clone())
+            {
+                doc.header.current_text_style_name = name;
+            }
         }
-    }
-    let h = doc.header.current_dimstyle_handle;
-    if h.is_valid() {
-        if let Some(name) = doc
-            .dim_styles
-            .iter()
-            .find(|s| s.handle == h)
-            .map(|s| s.name.clone())
-        {
-            doc.header.current_dimstyle_name = name;
+        let h = doc.header.current_dimstyle_handle;
+        if h.is_valid() {
+            if let Some(name) = doc
+                .dim_styles
+                .iter()
+                .find(|s| s.handle == h)
+                .map(|s| s.name.clone())
+            {
+                doc.header.current_dimstyle_name = name;
+            }
         }
-    }
-    let h = doc.header.current_multiline_style_handle;
-    if h.is_valid() {
-        if let Some(name) = doc.objects.values().find_map(|o| match o {
-            ObjectType::MLineStyle(s) if s.handle == h => Some(s.name.clone()),
-            _ => None,
-        }) {
-            doc.header.multiline_style = name;
+        let h = doc.header.current_multiline_style_handle;
+        if h.is_valid() {
+            if let Some(name) = doc.objects.values().find_map(|o| match o {
+                ObjectType::MLineStyle(s) if s.handle == h => Some(s.name.clone()),
+                _ => None,
+            }) {
+                doc.header.multiline_style = name;
+            }
         }
     }
 
