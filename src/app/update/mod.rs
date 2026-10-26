@@ -4392,7 +4392,10 @@ impl OpenCADStudio {
                                 pl.locked = locked;
                             }
                         }
-                        // Lock state affects editability, not rendered geometry.
+                        // Lock state changes the display colour in the Model
+                        // view, so invalidate all render dependencies as well
+                        // as the editability state.
+                        self.tabs[i].scene.invalidate_layer_dependencies(&targets);
                         self.tabs[i].dirty = true;
                         self.commit_layer_undo(i, undo);
                         self.command_line.push_output(

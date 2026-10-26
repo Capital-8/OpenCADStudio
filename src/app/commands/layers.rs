@@ -402,7 +402,9 @@ impl OpenCADStudio {
                             dl.lock();
                         }
                     }
-                    // Layer locking changes editability only.
+                    // Layer locking changes the Model-view display colour as
+                    // well as editability, including block dependencies.
+                    self.tabs[i].scene.invalidate_layer_dependencies(&names);
                     self.tabs[i].dirty = true;
                     self.commit_layer_undo(i, undo);
                     self.refresh_layer_panel();
@@ -515,7 +517,9 @@ impl OpenCADStudio {
                             dl.unlock();
                         }
                     }
-                    // Layer unlocking changes editability only.
+                    // Layer unlocking restores the Model-view display colour
+                    // as well as editability, including block dependencies.
+                    self.tabs[i].scene.invalidate_layer_dependencies(&names);
                     self.tabs[i].dirty = true;
                     self.commit_layer_undo(i, undo);
                     self.refresh_layer_panel();

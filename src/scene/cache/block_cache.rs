@@ -73,6 +73,9 @@ pub struct LocalWire {
     /// equals the sub-entity's resolved colour. For colour-split MTEXT
     /// (`\C`/`\c` inline overrides) each wire carries its own override colour.
     pub color: [f32; 4],
+    /// True when the source entity's own layer is locked. This is applied
+    /// after ByBlock and layer-0 inheritance are resolved at expansion time.
+    pub layer_locked: bool,
     pub contrast_bg: Option<[f32; 4]>,
     pub preserve_color: bool,
     pub canvas_color: bool,
@@ -135,6 +138,8 @@ pub struct NestedRef {
     pub instance_offsets: Vec<[f64; 3]>,
     pub plot_visible: bool,
     pub plot_l0: bool,
+    /// True when this nested INSERT is itself on a locked layer.
+    pub layer_locked: bool,
     /// XCLIP boundary for this nested insert, in the parent defn's local frame
     /// (`None` = unclipped). Baked at build time because the clip's spatial
     /// filter lives in `doc.objects`, which isn't reachable at expand time; on
@@ -730,6 +735,10 @@ fn build_nested_ref(
         instance_offsets: crate::scene::render_graph::array_offsets(nested_ins),
         plot_visible,
         plot_l0,
+        layer_locked: crate::scene::view::render::layer_locked(
+            doc,
+            &EntityType::Insert(nested_ins.clone()),
+        ),
         clip_poly,
         local_rank: depth_map
             .get(&nested_ins.common.handle.value())
@@ -766,6 +775,7 @@ fn tessellate_sub_local(
     let _ = bg_color;
 
     let has_book_color = crate::scene::view::render::has_resolved_book_color(doc, sub);
+    let layer_locked = crate::scene::view::render::layer_locked(doc, sub);
     let color_is_byblock = !has_book_color && sub.common().color == AcadColor::ByBlock;
     let lt_is_byblock = sub.common().linetype.eq_ignore_ascii_case("byblock");
     let lw_is_byblock = matches!(sub.common().line_weight, LineWeight::ByBlock);
@@ -905,6 +915,7 @@ fn tessellate_sub_local(
             pick_tris: wire.pick_tris,
             pick_tris_low: wire.pick_tris_low,
             color: wire.color,
+            layer_locked,
             contrast_bg,
             preserve_color,
             canvas_color,
@@ -1100,6 +1111,10 @@ pub fn expand_insert(
                 bg_color,
                 anno_scale,
                 suppress_root_points,
+                crate::scene::view::render::layer_locked(
+                    doc,
+                    &EntityType::Insert(ins.clone()),
+                ),
             ))
         } else {
             None
@@ -1204,6 +1219,10 @@ pub fn expand_insert(
         world_per_pixel: None,
         is_xref,
         bg_color,
+        insert_layer_locked: crate::scene::view::render::layer_locked(
+            doc,
+            &EntityType::Insert(ins.clone()),
+        ),
     };
     if offsets.len() > 1 {
         let first_xform = cell_xform(&offsets[0]);
@@ -1313,6 +1332,7 @@ fn expansion_prototype_key(
     bg_color: [f32; 4],
     anno_scale: f32,
     suppress_root_points: bool,
+    insert_layer_locked: bool,
 ) -> ExpansionPrototypeKey {
     let matrix = &transform.matrix.m;
     let linear = [
@@ -1336,6 +1356,7 @@ fn expansion_prototype_key(
     insert_style.extend(ins_layer.pat.map(f32::to_bits));
     insert_style.push(ins_layer.lw_px.to_bits());
     insert_style.push(ins_layer_plottable as u32);
+    insert_style.push(insert_layer_locked as u32);
     insert_style.push(pslt_factor.to_bits());
     insert_style.extend(bg_color.map(f32::to_bits));
     insert_style.push(anno_scale.to_bits());
@@ -1488,6 +1509,8 @@ struct ExpandCtx<'a> {
     // which geometry comes from an external reference.
     is_xref: bool,
     bg_color: [f32; 4],
+    /// True when the current INSERT is on a locked layer.
+    insert_layer_locked: bool,
 }
 
 fn nested_prototype_key(
@@ -1520,6 +1543,7 @@ fn nested_prototype_key(
     style.push(ctx.l0.lw_px.to_bits());
     style.push(ctx.l0_plottable as u32);
     style.push(ctx.plot_visible as u32);
+    style.push(ctx.insert_layer_locked as u32);
     style.push(ctx.pslt_factor.to_bits());
     style.extend(ctx.bg_color.map(f32::to_bits));
     NestedPrototypeKey {
@@ -2054,6 +2078,7 @@ fn expand_defn(
                     world_per_pixel: ctx.world_per_pixel,
                     is_xref: ctx.is_xref,
                     bg_color: ctx.bg_color,
+                    insert_layer_locked: ctx.insert_layer_locked || nref.layer_locked,
                 };
                 for offset in &nref.instance_offsets {
                     let attachment_transform =
@@ -2301,10 +2326,18 @@ fn resolve_wire_color(lw: &LocalWire, ctx: &ExpandCtx) -> [f32; 4] {
         };
     }
     if ctx.is_xref && !ctx.selected {
-        xref_fade(color, ctx.bg_color)
-    } else {
-        color
+        color = xref_fade(color, ctx.bg_color);
     }
+    // ByBlock and layer-0 colours may already inherit the faded INSERT style.
+    // Do not fade those a second time; an explicitly coloured child still
+    // needs the current INSERT-layer fade applied here.
+    let inherited_color = lw.color_is_byblock || lw.color_l0;
+    if !ctx.selected
+        && (lw.layer_locked || (ctx.insert_layer_locked && !inherited_color))
+    {
+        color = fade_toward_bg(color, ctx.bg_color);
+    }
+    color
 }
 
 /// Effective linetype scale along this wire after an INSERT transform.

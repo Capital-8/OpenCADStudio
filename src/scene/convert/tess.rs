@@ -54,6 +54,9 @@ fn block_object_style(
     let mut layer =
         view::render::layer_render_style_viewport(document, &insert.common.layer, active_viewport);
     layer.color = view::render::adapt_to_bg(layer.color, bg_color);
+    if view::render::layer_locked(document, &entity) {
+        layer.color = crate::scene::cache::block_cache::fade_toward_bg(layer.color, bg_color);
+    }
     let layer_aci = document
         .layers
         .get(&insert.common.layer)
@@ -67,8 +70,10 @@ fn block_object_style(
         .get(&insert.common.layer)
         .map(|layer| layer.is_plottable)
         .unwrap_or(true);
+    let color = view::render::adapt_to_bg(color, bg_color);
+    let color = fade_if_locked(document, &entity, color, bg_color);
     BlockObjectStyle {
-        color: view::render::adapt_to_bg(color, bg_color),
+        color,
         aci,
         pattern_length,
         pattern,
