@@ -582,14 +582,19 @@ impl OpenCADStudio {
                     _ => None,
                 })
                 .collect();
-            // A leader with no linetype handle draws ByBlock; expose that
-            // as the first option so the default is selectable.
-            let ltype_names: Vec<String> = std::iter::once("ByBlock".to_string())
+            // ByLayer and ByBlock lead the list once (a leader with no
+            // linetype handle draws ByBlock), then the drawing's linetypes.
+            let ltype_names: Vec<String> = ["ByLayer".to_string(), "ByBlock".to_string()]
+                .into_iter()
                 .chain(
                     doc.line_types
                         .iter()
                         .map(|l| l.name.clone())
-                        .filter(|n| !n.is_empty()),
+                        .filter(|n| {
+                            !n.is_empty()
+                                && !n.eq_ignore_ascii_case("ByLayer")
+                                && !n.eq_ignore_ascii_case("ByBlock")
+                        }),
                 )
                 .collect();
             // Arrowheads are blocks; the closed-filled default has no
@@ -1540,7 +1545,7 @@ impl OpenCADStudio {
                 | codec::EntityType::Insert(_)
                 | codec::EntityType::Leader(_)
                 | codec::EntityType::Hatch(_) => Some(("annotative", None)),
-                codec::EntityType::MultiLeader(_) => Some(("enable_annotation_scale", None)),
+                codec::EntityType::MultiLeader(_) => Some(("annotative", None)),
                 codec::EntityType::Dimension(_) => Some(("annotative", Some("style_name"))),
                 codec::EntityType::Tolerance(_) => Some(("annotative", Some("tol_dim_style"))),
                 codec::EntityType::Table(_) => Some(("annotative", Some("tbl_style_handle"))),
@@ -1612,7 +1617,8 @@ impl OpenCADStudio {
                         | codec::EntityType::Insert(_)
                         | codec::EntityType::Leader(_)
                         | codec::EntityType::Hatch(_)
-                        | codec::EntityType::Dimension(_) => {
+                        | codec::EntityType::Dimension(_)
+                        | codec::EntityType::MultiLeader(_) => {
                             set_row_value(&mut sections, "annotative", yes_no_choice(is_anno))
                         }
                         _ => set_row(

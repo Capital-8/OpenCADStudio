@@ -848,12 +848,33 @@ fn line_style_str(s: &LineSpacingStyle) -> &'static str {
     }
 }
 
+/// A Yes/No list, as the reference shows its on/off rows.
 fn bool_toggle(label: &str, field: &'static str, value: bool) -> Property {
     Property {
         label: label.into(),
         field,
-        value: PropValue::BoolToggle { field, value },
+        value: PropValue::Choice {
+            selected: if value { t!("Yes") } else { t!("No") }.into_owned(),
+            options: vec![t!("Yes").into_owned(), t!("No").into_owned()],
+        },
     }
+}
+
+/// A Yes/No row's pick as the "true" / "false" its field reads.
+fn yes_no_value(field: &str, value: &str) -> String {
+    let flag = matches!(
+        field,
+        "text_frame"
+            | "enable_landing"
+            | "enable_dogleg"
+            | "extend_leader_to_text"
+            | "enable_annotation_scale"
+            | "background_fill_enabled"
+    );
+    if !flag || value == "toggle" || value == "true" || value == "false" {
+        return value.to_string();
+    }
+    (value.eq_ignore_ascii_case("yes") || value == t!("Yes").as_ref()).to_string()
 }
 
 fn choice(label: &str, field: &'static str, selected: &str, opts: &[&str]) -> Property {
@@ -896,7 +917,7 @@ fn properties(ml: &MultiLeader) -> Vec<PropSection> {
             ),
             bool_toggle(
                 t!("Annotative").as_ref(),
-                "enable_annotation_scale",
+                "annotative",
                 ml.enable_annotation_scale,
             ),
         ],
@@ -1107,6 +1128,8 @@ fn properties(ml: &MultiLeader) -> Vec<PropSection> {
 
 fn apply_geom_prop(ml: &mut MultiLeader, field: &str, value: &str) {
     let f64 = |s: &str| -> Option<f64> { s.trim().parse().ok() };
+    let value = yes_no_value(field, value);
+    let value = value.as_str();
 
     match field {
         "content_type" => {
