@@ -1737,7 +1737,7 @@ fn explode_dimension(dim: &Dimension, doc: &Document) -> Vec<EntityType> {
                 anchor
             };
             result.push(make_seg(&point, &leader, &dim_c));
-            result.extend(dim_center_mark(center, met.dimcen, len, &dim_c));
+            // The dimension line reaches the centre, so no centre mark.
         }
         Dimension::Diameter(d) => {
             let (edge, far) = (d.angle_vertex, d.definition_point);
@@ -1826,7 +1826,11 @@ fn explode_dimension(dim: &Dimension, doc: &Document) -> Vec<EntityType> {
                     }
                 }
             }
-            result.extend(dim_center_mark(center, met.dimcen, len * 0.5, &dim_c));
+            // A centre mark only when no part of the dimension line crosses
+            // the circle.
+            if met.dimsd1 && met.dimsd2 {
+                result.extend(dim_center_mark(center, met.dimcen, len * 0.5, &dim_c));
+            }
         }
         Dimension::Angular2Ln(d) => {
             result.extend(angular_block_segs(

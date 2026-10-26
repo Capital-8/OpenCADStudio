@@ -4984,7 +4984,9 @@ fn dimension_geometry(
                 // point to the centre. Text outside: only a leader from the
                 // arc point to the text, unless DIMTOFL asks for the inside
                 // line as well.
-                if !jogged && !suppress.dim2 && (!text_is_outside || params.dimtofl) {
+                let inside_line =
+                    !jogged && !suppress.dim2 && (!text_is_outside || params.dimtofl);
+                if inside_line {
                     add_segment(&mut g.dim_lines, center, point);
                 }
                 if text_is_outside && !suppress.dim2 {
@@ -4999,7 +5001,9 @@ fn dimension_geometry(
                     };
                     append_dim_arrow(&mut g, point, normalized_or(body, Vec3::X), arrow1);
                 }
-                if text_is_outside {
+                // The centre mark only goes with a radius whose dimension
+                // line does not reach the centre.
+                if text_is_outside && !inside_line {
                     append_center_mark(&mut g, center, params.dimcen, radius);
                 }
             }
@@ -5017,11 +5021,6 @@ fn dimension_geometry(
                 params,
                 suppress,
             );
-            if !params.constraint {
-                let center = (chord + far_chord) * 0.5;
-                let radius = chord.distance(far_chord) * 0.5;
-                append_center_mark(&mut g, center, params.dimcen, radius);
-            }
         }
         Dimension::Angular2Ln(d) => {
             // A two-line angular dimension stores two LINES, not two rays:
@@ -5668,7 +5667,9 @@ fn append_diameter_dimension(
         }
     }
 
-    if params.constraint && !draw_inside_line {
+    // The centre mark only goes with a diameter whose dimension line does not
+    // cross the circle.
+    if !draw_inside_line {
         let center = (chord + far_chord) * 0.5;
         append_center_mark(g, center, params.dimcen, diameter * 0.5);
     }
