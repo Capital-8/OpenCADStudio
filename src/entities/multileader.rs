@@ -103,7 +103,7 @@ pub(crate) fn active_vertical_attachment(ml: &MultiLeader) -> TextAttachmentType
 
 use crate::command::EntityTransform;
 use crate::entities::common::{
-    center_grip, edit_angle_prop as edit_angle, edit_prop as edit, num_prop as num_row,
+    edit_angle_prop as edit_angle, edit_prop as edit, num_prop as num_row,
     ro_prop as ro, square_grip, triangle_grip,
 };
 use crate::entities::traits::RenderConvertible;
@@ -562,9 +562,33 @@ fn mleader_landing_geom(ml: &MultiLeader) -> Option<(DVec3, DVec3, f64, f64, f64
         return None;
     }
 
-    let elbow = text - axis * (sign * (dogleg + gap));
+    // The landing starts at the first root's connection point; the text
+    // location is the text's corner, off the landing line.
+    let elbow = ml
+        .context
+        .leader_roots
+        .first()
+        .map(|root| {
+            DVec3::new(
+                root.connection_point.x,
+                root.connection_point.y,
+                root.connection_point.z,
+            )
+        })
+        .unwrap_or_else(|| text - axis * (sign * (dogleg + gap)));
 
     Some((elbow, axis, sign, dogleg, gap))
+}
+
+/// Where the text sits off its landing line, across the reading direction.
+fn text_offset_across(ml: &MultiLeader, elbow: DVec3, axis: DVec3) -> DVec3 {
+    let text = DVec3::new(
+        ml.context.text_location.x,
+        ml.context.text_location.y,
+        ml.context.text_location.z,
+    );
+    let rel = text - elbow;
+    rel - axis * rel.dot(axis)
 }
 
 fn set_mleader_text_location(ml: &mut MultiLeader, location: DVec3) {
@@ -588,21 +612,28 @@ fn grips(ml: &MultiLeader) -> Vec<GripDef> {
     }
 
     if ml.content_type == LeaderContentType::MText {
-        if let Some((elbow, _, _, _, _)) = mleader_landing_geom(ml) {
+        // The landing's start, then its end (a triangle pointing at the
+        // text: drag it to lengthen the landing).
+        if let Some((elbow, axis, sign, dogleg, _)) = mleader_landing_geom(ml) {
             result.push(square_grip(id, elbow));
-
+            id += 1;
+            let mut end = triangle_grip(id, elbow + axis * (sign * dogleg));
+            end.dir = Some(axis * sign);
+            result.push(end);
             id += 1;
         }
 
         let tl = &ml.context.text_location;
 
-        result.push(center_grip(id, DVec3::new(tl.x, tl.y, tl.z)));
+        result.push(square_grip(id, DVec3::new(tl.x, tl.y, tl.z)));
 
         id += 1;
 
-        let (_, far) = text_box_geom(ml);
-
-        result.push(triangle_grip(id, DVec3::new(far[0], far[1], far[2])));
+        // A wrap width shows its own triangle; text without one has none.
+        if ml.context.text_width > 1.0e-9 {
+            let (_, far) = text_box_geom(ml);
+            result.push(triangle_grip(id, DVec3::new(far[0], far[1], far[2])));
+        }
     }
 
     result
@@ -709,8 +740,12 @@ fn apply_grip(ml: &mut MultiLeader, grip_id: usize, apply: GripApply) {
             } else {
                 old_sign
             };
+            let across = text_offset_across(ml, old_elbow, axis);
             set_mleader_text_side(ml, new_sign >= 0.0);
-            set_mleader_text_location(ml, target + axis * (new_sign * (dogleg + gap)));
+            set_mleader_text_location(
+                ml,
+                target + axis * (new_sign * (dogleg + gap)) + across,
+            );
 
             if let Some(root) = ml.context.leader_roots.first_mut() {
                 root.connection_point.x = target.x;
@@ -724,29 +759,50 @@ fn apply_grip(ml: &mut MultiLeader, grip_id: usize, apply: GripApply) {
         }
 
         idx += 1;
+
+        // Landing end: lengthen the landing along its own line; the text
+        // keeps its gap past the new end.
+        if grip_id == idx {
+            let old_end = old_elbow + axis * (old_sign * dogleg);
+            let target = match apply {
+                GripApply::Absolute(a) => DVec3::new(a.x as f64, a.y as f64, a.z as f64),
+                GripApply::Translate(d) => {
+                    old_end + DVec3::new(d.x as f64, d.y as f64, d.z as f64)
+                }
+            };
+            let new_length = ((target - old_elbow).dot(axis) * old_sign).max(1.0e-6);
+            let across = text_offset_across(ml, old_elbow, axis);
+            set_mleader_text_location(
+                ml,
+                old_elbow + axis * (old_sign * (new_length + gap)) + across,
+            );
+            ml.dogleg_length = new_length;
+            for root in &mut ml.context.leader_roots {
+                root.landing_distance = new_length;
+            }
+            return;
+        }
+
+        idx += 1;
     }
 
+    // Text: the content moves and its landing follows; the arrowheads stay.
     if grip_id == idx {
-        let old_end = DVec3::new(
+        let old_text = DVec3::new(
             ml.context.text_location.x,
             ml.context.text_location.y,
             ml.context.text_location.z,
         );
         let target = match apply {
             GripApply::Absolute(a) => DVec3::new(a.x as f64, a.y as f64, a.z as f64),
-            GripApply::Translate(d) => old_end + DVec3::new(d.x as f64, d.y as f64, d.z as f64),
+            GripApply::Translate(d) => old_text + DVec3::new(d.x as f64, d.y as f64, d.z as f64),
         };
-
-        if let Some((elbow, axis, sign, _, gap)) = landing {
-            let requested_total = (target - elbow).dot(axis) * sign;
-            let new_length = (requested_total - gap).max(1.0e-6);
-            set_mleader_text_location(ml, elbow + axis * (sign * (new_length + gap)));
-            ml.dogleg_length = new_length;
-            for root in &mut ml.context.leader_roots {
-                root.landing_distance = new_length;
-            }
-        } else {
-            set_mleader_text_location(ml, target);
+        let shift = target - old_text;
+        set_mleader_text_location(ml, target);
+        for root in &mut ml.context.leader_roots {
+            root.connection_point.x += shift.x;
+            root.connection_point.y += shift.y;
+            root.connection_point.z += shift.z;
         }
         return;
     }
@@ -1648,11 +1704,13 @@ impl crate::entities::traits::Grippable for MultiLeader {
 
             let elbow_id = n_vertices;
 
-            let landing_id = n_vertices + usize::from(has_elbow);
+            let landing_end_id = elbow_id + 1;
+
+            let landing_id = n_vertices + 2 * usize::from(has_elbow);
 
             let width_id = landing_id + 1;
 
-            if has_elbow && grip_id == elbow_id {
+            if has_elbow && (grip_id == elbow_id || grip_id == landing_end_id) {
                 return vec![GripMenuItem {
                     label: "Stretch",
                     action: GripMenuAction::Stretch,
