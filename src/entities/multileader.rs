@@ -282,6 +282,21 @@ fn to_render(ml: &MultiLeader, document: &codec::Document) -> Option<RenderEntit
         let cp = &root.connection_point;
         let cp_f = p3(cp);
         snap_pts.push(node(cp_f));
+        // A root landing on the text's far side keeps its own landing: from
+        // its connection point toward the text by its landing distance.
+        let far_side = ml.content_type == LeaderContentType::MText
+            && ((cp.x - text_loc.x) * tdx + (cp.y - text_loc.y) * tdy) * text_sign > 0.0;
+        let (elbow_pt, text_edge_pt) = if far_side {
+            let d = &root.direction;
+            let dl = (d.x * d.x + d.y * d.y).sqrt().max(1e-12);
+            let reach = if dogleg > 0.0 { root.landing_distance.max(0.0) } else { 0.0 };
+            (
+                cp_f,
+                [cp.x + d.x / dl * reach, cp.y + d.y / dl * reach, cp.z],
+            )
+        } else {
+            (elbow_pt, text_edge_pt)
+        };
 
         for line in &root.lines {
             if line.points.is_empty() {
@@ -589,6 +604,91 @@ fn text_offset_across(ml: &MultiLeader, elbow: DVec3, axis: DVec3) -> DVec3 {
     );
     let rel = text - elbow;
     rel - axis * rel.dot(axis)
+}
+
+/// Add a leader line ending at `arrow` the way MLEADEREDIT does: onto the
+/// leader root on the arrow's side of the text, or onto a new root landing on
+/// the text's other side. Other contents take the line on the first root.
+pub(crate) fn add_leader_line(ml: &mut MultiLeader, arrow: codec::types::Vector3) {
+    let template = ml
+        .context
+        .leader_roots
+        .iter()
+        .flat_map(|root| root.lines.first())
+        .next()
+        .cloned();
+    let index = ml.total_leader_line_count() as i32;
+    let mut target = 0usize;
+    if ml.content_type == LeaderContentType::MText && !ml.context.leader_roots.is_empty() {
+        let tl = ml.context.text_location;
+        let td = ml.context.text_direction;
+        let (dx, dy) = {
+            let l = (td.x * td.x + td.y * td.y).sqrt();
+            if l > 1e-9 {
+                (td.x / l, td.y / l)
+            } else {
+                let a = ml.context.text_rotation;
+                (a.cos(), a.sin())
+            }
+        };
+        let (_, far) = text_box_geom(ml);
+        let span = (far[0] - tl.x) * dx + (far[1] - tl.y) * dy;
+        let side = |p: &codec::types::Vector3| {
+            let along = (p.x - tl.x) * dx + (p.y - tl.y) * dy;
+            if along >= span * 0.5 { 1.0 } else { -1.0 }
+        };
+        let arrow_side = side(&arrow);
+        match ml
+            .context
+            .leader_roots
+            .iter()
+            .position(|root| side(&root.connection_point) == arrow_side)
+        {
+            Some(found) => target = found,
+            None => {
+                let landing = ml.context.leader_roots[0].landing_distance;
+                let reach = landing + ml.context.landing_gap.max(0.0);
+                let edge = if arrow_side > 0.0 { span.max(0.0) } else { span.min(0.0) };
+                let along = edge + arrow_side * reach;
+                let template_root = ml.context.leader_roots[0].clone();
+                // Same height across the text as the first root's landing.
+                let c0 = template_root.connection_point;
+                let across = (c0.x - tl.x) * -dy + (c0.y - tl.y) * dx;
+                let root = ml.context.add_leader_root();
+                root.connection_point = codec::types::Vector3::new(
+                    tl.x + dx * along - dy * across,
+                    tl.y + dy * along + dx * across,
+                    tl.z,
+                );
+                root.direction = codec::types::Vector3::new(-arrow_side * dx, -arrow_side * dy, 0.0);
+                root.landing_distance = landing;
+                root.text_attachment_direction = template_root.text_attachment_direction;
+                target = ml.context.leader_roots.len() - 1;
+            }
+        }
+    }
+    if ml.context.leader_roots.is_empty() {
+        ml.context.add_leader_root();
+    }
+    let root = &mut ml.context.leader_roots[target];
+    let line = root.create_line(vec![arrow]);
+    line.index = index;
+    if let Some(template) = template {
+        line.path_type = template.path_type;
+        line.line_color = template.line_color;
+        line.line_type_handle = template.line_type_handle;
+        line.line_weight = template.line_weight;
+        line.arrowhead_handle = template.arrowhead_handle;
+        line.arrowhead_size = template.arrowhead_size;
+        line.override_flags = template.override_flags;
+    } else {
+        line.path_type = ml.path_type;
+        line.line_color = ml.line_color;
+        line.line_type_handle = ml.line_type_handle;
+        line.line_weight = ml.line_weight;
+        line.arrowhead_handle = ml.arrowhead_handle;
+        line.arrowhead_size = ml.arrowhead_size;
+    }
 }
 
 fn set_mleader_text_location(ml: &mut MultiLeader, location: DVec3) {
@@ -2152,7 +2252,13 @@ impl MultiLeaderTess for MultiLeader {
                 points.push(nan);
                 points.push(cp_f);
                 points.push(landing_end);
-                if ml.extend_leader_to_text {
+                // A root landing on the text's other side than the first
+                // root meets the text's far edge: it never runs on.
+                let opposite_first = ml.context.leader_roots.first().is_some_and(|first| {
+                    first.direction.x * root.direction.x + first.direction.y * root.direction.y
+                        < 0.0
+                });
+                if ml.extend_leader_to_text && !opposite_first {
                     // Run on along the landing up to one gap short of the
                     // text. text_location is the text block's corner, often
                     // above the landing, so only its reach along the landing
