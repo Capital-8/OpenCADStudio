@@ -1233,9 +1233,11 @@ impl OpenCADStudio {
                 // Only curves cut or get cut: block references, text and the
                 // like stay out of the working copy (#1978). HATCH fills have
                 // their own renderer, so visible top-level hatches are added
-                // for the hatch trim solver.
-                let mut entities =
-                    self.tabs[i].scene.visible_entities_for_edit(is_trim_boundary_entity);
+                // for the hatch trim solver. A multiline is trimmed but never
+                // cuts (#2068).
+                let mut entities = self.tabs[i].scene.visible_entities_for_edit(|entity| {
+                    is_trim_boundary_entity(entity) || matches!(entity, codec::EntityType::MLine(_))
+                });
                 let mut seen: std::collections::HashSet<codec::Handle> =
                     entities.iter().map(|(handle, _)| *handle).collect();
                 for handle in self.tabs[i].scene.visible_hatch_handles_for_edit() {
