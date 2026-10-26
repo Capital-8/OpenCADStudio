@@ -380,7 +380,8 @@ impl CadCommand for DimCommand {
                     other => self.wrap(other),
                 }
             }
-            None => CmdResult::Cancel,
+            // Enter at DIM's own prompt ends it quietly.
+            None => CmdResult::Measurement(String::new()),
         }
     }
 
