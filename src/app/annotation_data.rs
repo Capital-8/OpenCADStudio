@@ -1282,16 +1282,11 @@ fn extraction_properties(
             });
         }
     }
-    // A category the user filtered out stays out; new ones are shown.
+    // Every category is shown unless the user filtered it out.
     let categories = properties
         .iter()
         .map(|value| value.category.clone())
-        .filter(|category| {
-            state.categories.contains(category)
-                || !properties
-                    .iter()
-                    .any(|value| &value.category == category && previous.contains_key(&value.key))
-        })
+        .filter(|category| !state.hidden_categories.contains(category))
         .collect();
     (properties, categories)
 }
@@ -1399,12 +1394,7 @@ fn save_extraction_settings(state: &DataExtractionState) -> Result<(), String> {
         "blocksOnly": state.blocks_only,
         "attributedBlocksOnly": state.attributed_blocks_only,
         "inUseOnly": state.in_use_only,
-        "hiddenCategories": state
-            .properties
-            .iter()
-            .map(|value| value.category.clone())
-            .filter(|category| !state.categories.contains(category))
-            .collect::<BTreeSet<_>>(),
+        "hiddenCategories": state.hidden_categories,
     });
     let text = serde_json::to_string_pretty(&value).map_err(|error| error.to_string())?;
     #[cfg(target_arch = "wasm32")]
@@ -1465,6 +1455,7 @@ fn load_extraction_settings(state: &mut DataExtractionState) -> Result<(), Strin
     }
     if let Some(hidden) = set_of("hiddenCategories") {
         state.categories.retain(|category| !hidden.contains(category));
+        state.hidden_categories = hidden;
     }
     state.combine_identical = flag("combineIdentical", state.combine_identical);
     state.show_count = flag("showCount", state.show_count);
@@ -2179,8 +2170,10 @@ impl OpenCADStudio {
             }
             DataExtractionField::Category(category, value) => {
                 if value {
+                    self.data_extraction.hidden_categories.remove(&category);
                     self.data_extraction.categories.insert(category);
                 } else {
+                    self.data_extraction.hidden_categories.insert(category.clone());
                     self.data_extraction.categories.remove(&category);
                 }
             }

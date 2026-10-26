@@ -335,6 +335,8 @@ pub struct DataExtractionState {
     pub in_use_only: bool,
     pub properties: Vec<ExtractionProperty>,
     pub categories: BTreeSet<String>,
+    /// Categories the user filtered out of the property list.
+    pub hidden_categories: BTreeSet<String>,
     pub combine_identical: bool,
     pub show_count: bool,
     pub show_name: bool,
@@ -374,6 +376,7 @@ impl Default for DataExtractionState {
             in_use_only: true,
             properties: Vec::new(),
             categories: BTreeSet::new(),
+            hidden_categories: BTreeSet::new(),
             combine_identical: true,
             show_count: true,
             show_name: true,
