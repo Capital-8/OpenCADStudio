@@ -2266,6 +2266,46 @@ fn constraints_in_drawing_order<'a>(
     constraints
 }
 
+/// Replays sweeping `pairs` in order until a sweep changes nothing, where a
+/// pair with exactly one side in `known` teaches it the other side. Returns
+/// the firings in sweep order as `(pair index, the second side was learned)`.
+/// A pair is revisited only when one of its sides is learned, at the place
+/// the next sweep would reach it, so a chain running against the sweep costs
+/// one visit per link instead of one sweep per link.
+fn propagate_in_sweep_order<K: Copy + Eq + std::hash::Hash>(
+    pairs: &[(K, K)],
+    known: &mut HashSet<K>,
+) -> Vec<(usize, bool)> {
+    use std::cmp::Reverse;
+    let mut incident: HashMap<K, Vec<usize>> = HashMap::new();
+    let mut due = std::collections::BinaryHeap::new();
+    for (index, &(a, b)) in pairs.iter().enumerate() {
+        incident.entry(a).or_default().push(index);
+        if b != a {
+            incident.entry(b).or_default().push(index);
+        }
+        if known.contains(&a) != known.contains(&b) {
+            due.push(Reverse((0usize, index)));
+        }
+    }
+    let mut fired = Vec::new();
+    while let Some(Reverse((sweep, index))) = due.pop() {
+        let (a, b) = pairs[index];
+        let (learned, second) = match (known.contains(&a), known.contains(&b)) {
+            (true, false) => (b, true),
+            (false, true) => (a, false),
+            _ => continue,
+        };
+        known.insert(learned);
+        fired.push((index, second));
+        for &next in &incident[&learned] {
+            let at = if next > index { sweep } else { sweep + 1 };
+            due.push(Reverse((at, next)));
+        }
+    }
+    fired
+}
+
 /// Propagate explicit axis constraints through parallel/perpendicular relations.
 fn constrained_line_axes(constraints: &[&ParametricConstraint]) -> HashMap<ParametricRef, bool> {
     let mut axes = HashMap::new();
@@ -2293,28 +2333,31 @@ fn constrained_line_axes(constraints: &[&ParametricConstraint]) -> HashMap<Param
             }
         }
     }
-    loop {
-        let before = axes.len();
-        for c in constraints.iter().filter(|c| c.enabled) {
-            if !matches!(
-                c.kind,
-                ConstraintKind::Parallel | ConstraintKind::Perpendicular | ConstraintKind::Colinear
-            ) {
-                continue;
-            }
-            let [a, b] = c.refs.as_slice() else { continue };
-            let perpendicular = c.kind == ConstraintKind::Perpendicular;
-            if let Some(axis) = axes.get(a).copied() {
-                axes.entry(*b).or_insert(axis ^ perpendicular);
-            }
-            if let Some(axis) = axes.get(b).copied() {
-                axes.entry(*a).or_insert(axis ^ perpendicular);
-            }
-        }
-        if before == axes.len() {
-            return axes;
-        }
+    let relations: Vec<(ParametricRef, ParametricRef, bool)> = constraints
+        .iter()
+        .filter(|c| {
+            c.enabled
+                && matches!(
+                    c.kind,
+                    ConstraintKind::Parallel
+                        | ConstraintKind::Perpendicular
+                        | ConstraintKind::Colinear
+                )
+        })
+        .filter_map(|c| match c.refs.as_slice() {
+            [a, b] => Some((*a, *b, c.kind == ConstraintKind::Perpendicular)),
+            _ => None,
+        })
+        .collect();
+    let pairs: Vec<_> = relations.iter().map(|&(a, b, _)| (a, b)).collect();
+    let mut known: HashSet<ParametricRef> = axes.keys().copied().collect();
+    for (index, second) in propagate_in_sweep_order(&pairs, &mut known) {
+        let (a, b, perpendicular) = relations[index];
+        let (from, to) = if second { (a, b) } else { (b, a) };
+        let axis = axes[&from] ^ perpendicular;
+        axes.entry(to).or_insert(axis);
     }
+    axes
 }
 
 /// Solve the scope through the kernel and return changed geometry plus diagnostics.
@@ -2641,35 +2684,29 @@ fn solve_scope(
                 .iter()
                 .any(|reference| reference.entity == handle)
     };
-    let mut equal_followers: Vec<ParametricRef> = Vec::new();
-    let mut moving: Vec<Handle> = cache
+    let equal_refs: Vec<(ParametricRef, ParametricRef)> = constraints
+        .iter()
+        .filter(|c| c.enabled && c.kind == ConstraintKind::Equal)
+        .filter_map(|c| match c.refs.as_slice() {
+            [a, b] => Some((*a, *b)),
+            _ => None,
+        })
+        .collect();
+    let equal_entities: Vec<(Handle, Handle)> =
+        equal_refs.iter().map(|(a, b)| (a.entity, b.entity)).collect();
+    let mut moving: HashSet<Handle> = cache
         .keys()
         .copied()
         .filter(|handle| edited(*handle))
         .collect();
-    loop {
-        let before = equal_followers.len();
-        for constraint in &constraints {
-            if !constraint.enabled || constraint.kind != ConstraintKind::Equal {
-                continue;
-            }
-            let [a, b] = constraint.refs.as_slice() else {
-                continue;
-            };
-            let follower = match (moving.contains(&a.entity), moving.contains(&b.entity)) {
-                (true, false) => *b,
-                (false, true) => *a,
-                _ => continue,
-            };
-            if !equal_followers.contains(&follower) {
-                equal_followers.push(follower);
-                moving.push(follower.entity);
-            }
-        }
-        if equal_followers.len() == before {
-            break;
-        }
-    }
+    let equal_followers: Vec<ParametricRef> =
+        propagate_in_sweep_order(&equal_entities, &mut moving)
+            .into_iter()
+            .map(|(index, second)| {
+                let (a, b) = equal_refs[index];
+                if second { b } else { a }
+            })
+            .collect();
     for follower in &equal_followers {
         let Some(geometry) = resolve_ref(document, &mut sys, &mut cache, *follower) else {
             continue;
@@ -2913,6 +2950,29 @@ fn solve_scope(
     // Grip edits retain radii while connected lines resize to meet their
     // endpoints. Other edits can retain line lengths as well.
     if retain_size {
+        let follower_entities: HashSet<Handle> =
+            equal_followers.iter().map(|follower| follower.entity).collect();
+        // A driving dimension between an entity's own ends is its size;
+        // a retained length would contradict a new value.
+        let self_dimensioned: HashSet<Handle> = constraints
+            .iter()
+            .filter(|c| {
+                c.enabled
+                    && c.driving_param.is_some()
+                    && matches!(
+                        c.kind,
+                        ConstraintKind::Distance
+                            | ConstraintKind::DistanceX
+                            | ConstraintKind::DistanceY
+                            | ConstraintKind::DistanceDirected
+                    )
+                    && c.refs.len() >= 2
+                    && c.refs
+                        .iter()
+                        .all(|r| r.entity == c.refs[0].entity && r.marker.is_some())
+            })
+            .map(|c| c.refs[0].entity)
+            .collect();
         for (handle, geom) in &cache {
             // A Fixed entity's size is whatever its pins say: whole → all
             // pinned anyway, partial → the reference lets it resize (MOVE
@@ -2924,22 +2984,8 @@ fn solve_scope(
                 || symmetric_constraints.iter().any(|constraint| {
                     constraint.refs.get(2).is_some_and(|axis| axis.entity == *handle)
                 })
-                || equal_followers.iter().any(|follower| follower.entity == *handle)
-                // A driving dimension between an entity's own ends is its size;
-                // a retained length would contradict a new value.
-                || constraints.iter().any(|c| {
-                    c.enabled
-                        && c.driving_param.is_some()
-                        && matches!(
-                            c.kind,
-                            ConstraintKind::Distance
-                                | ConstraintKind::DistanceX
-                                | ConstraintKind::DistanceY
-                                | ConstraintKind::DistanceDirected
-                        )
-                        && c.refs.len() >= 2
-                        && c.refs.iter().all(|r| r.entity == *handle && r.marker.is_some())
-                })
+                || follower_entities.contains(handle)
+                || self_dimensioned.contains(handle)
             {
                 continue;
             }
@@ -4159,6 +4205,68 @@ mod tests {
         let mut circle = codec::entities::Circle::from_coords(x, y, z, radius);
         circle.normal = normal;
         circle
+    }
+
+    #[test]
+    fn sweep_order_propagation_matches_literal_sweeps() {
+        use std::collections::HashSet;
+        fn literal(pairs: &[(u32, u32)], known: &mut Vec<u32>) -> Vec<(usize, bool)> {
+            let mut fired = Vec::new();
+            loop {
+                let before = fired.len();
+                for (index, &(a, b)) in pairs.iter().enumerate() {
+                    match (known.contains(&a), known.contains(&b)) {
+                        (true, false) => {
+                            known.push(b);
+                            fired.push((index, true));
+                        }
+                        (false, true) => {
+                            known.push(a);
+                            fired.push((index, false));
+                        }
+                        _ => {}
+                    }
+                }
+                if fired.len() == before {
+                    return fired;
+                }
+            }
+        }
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        let mut next = |bound: u32| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % u64::from(bound)) as u32
+        };
+        for case in 0..500 {
+            let nodes = 2 + case % 40;
+            let pairs: Vec<(u32, u32)> = (0..next(3 * nodes) + 1)
+                .map(|_| (next(nodes), next(nodes)))
+                .collect();
+            let seeds: Vec<u32> = (0..next(3) + 1).map(|_| next(nodes)).collect();
+            let mut expected_known = seeds.clone();
+            let expected = literal(&pairs, &mut expected_known);
+            let mut known: HashSet<u32> = seeds.into_iter().collect();
+            let fired = super::propagate_in_sweep_order(&pairs, &mut known);
+            assert_eq!(fired, expected, "case {case}: {pairs:?}");
+            assert_eq!(known, expected_known.into_iter().collect::<HashSet<_>>());
+        }
+        // A chain against the sweep direction, one link learned per sweep.
+        let chain: Vec<(u32, u32)> = (0..200).map(|i| (i, i + 1)).collect();
+        let mut known: HashSet<u32> = [200].into_iter().collect();
+        let fired = super::propagate_in_sweep_order(&chain, &mut known);
+        let expected: Vec<(usize, bool)> = (0..200).rev().map(|i| (i, false)).collect();
+        assert_eq!(fired, expected);
+
+        // A cycle seeded at two nodes: the lower index learns its neighbour in
+        // the same sweep, and the pair closing the cycle fires nothing.
+        let cycle = [(0, 1), (1, 2), (2, 3), (3, 0)];
+        let mut expected_known = vec![0, 3];
+        let expected = literal(&cycle, &mut expected_known);
+        let mut known: HashSet<u32> = [0, 3].into_iter().collect();
+        assert_eq!(super::propagate_in_sweep_order(&cycle, &mut known), expected);
+        assert_eq!(known, expected_known.into_iter().collect::<HashSet<_>>());
     }
 
     #[test]
