@@ -37,6 +37,7 @@ mod plotvars;
 mod point_cloud;
 mod refedit;
 pub(crate) mod sheet_set;
+mod spell;
 mod styleprops;
 mod text_edit;
 mod text_layer;
@@ -558,6 +559,9 @@ impl OpenCADStudio {
             return Some(t);
         }
         if let Some(t) = self.dispatch_text_edit(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_spell(cmd, i) {
             return Some(t);
         }
         if let Some(t) = self.dispatch_count(cmd, i) {

@@ -108,6 +108,17 @@ impl AutoConstrainSettings {
     }
 }
 
+/// Check Spelling preferences kept with the profile.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SpellPrefs {
+    /// BCP-47 tag of the main dictionary; empty: the system language.
+    pub language: String,
+    pub options: crate::ui::window::spell_dialog::SpellOptions,
+    /// Words added to the user's dictionary.
+    pub custom: Vec<String>,
+}
+
 /// TXT2MTXT (Combine Text) settings, the profile values
 /// TXT2MTXTCOMBINEMTEXT, TXT2MTXTTEXTORDER, TXT2MTXTWORDWRAP and
 /// TXT2MTXTLINESPACING.
@@ -780,6 +791,9 @@ pub struct UserSettings {
     /// TXT2MTXT settings (Text to MText Settings dialog).
     #[serde(default)]
     pub txt2mtxt: Txt2MtxtSettings,
+    /// Check Spelling: main dictionary, options and the user's words.
+    #[serde(default)]
+    pub spell: SpellPrefs,
     /// Keep existing geometry size while solving after a constraint edit.
     #[serde(default = "default_constraint_solve_mode")]
     pub constraint_solve_mode: bool,
@@ -1192,6 +1206,7 @@ impl Default for UserSettings {
             show_constraint_values: true,
             auto_constrain: AutoConstrainSettings::default(),
             txt2mtxt: Txt2MtxtSettings::default(),
+            spell: SpellPrefs::default(),
             constraint_solve_mode: true,
             constraint_infer: false,
             constraint_bar_display: 3,
