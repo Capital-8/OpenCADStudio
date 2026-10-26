@@ -1439,7 +1439,15 @@ impl OpenCADStudio {
         self.tabs[i].snap_result = None;
         self.tabs[i].scene.clear_preview_wire();
         self.restore_pre_cmd_tangent();
-        self.dispatch_command(&cmd)
+        // The command handing off is already in the Repeat menu and ↑/↓
+        // recall; the internal line it hands to (`BLOCK_POINT_PICKED x y z`)
+        // must not land there too (#2170).
+        let recent = self.command_line.recent_commands.clone();
+        let recall = self.command_line.cmd_recall.clone();
+        let task = self.dispatch_command(&cmd);
+        self.command_line.recent_commands = recent;
+        self.command_line.cmd_recall = recall;
+        task
     }
 
     fn handle_script(&mut self, script: String) -> Task<Message> {

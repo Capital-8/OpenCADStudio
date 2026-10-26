@@ -1310,7 +1310,9 @@ pub(super) fn viewport_context_menu_overlay(
                 };
                 let content = row![
                     context_menu_gutter(*icon, enabled),
-                    text(label.clone()).size(12),
+                    text(label.clone())
+                        .size(12)
+                        .wrapping(iced::widget::text::Wrapping::None),
                     iced::widget::Space::new().width(Fill),
                     caret,
                 ]
@@ -1371,7 +1373,11 @@ pub(super) fn viewport_context_menu_overlay(
 /// aligned with the others. Disabled rows render without a press handler and
 /// with faded text and icons.
 fn context_menu_row(item: &MenuItem, indent: f32, highlighted: bool) -> Element<'static, Message> {
-    let mut label_text = text(item.label.clone()).size(12);
+    // Rows have a fixed height: a long label must not wrap onto the next
+    // row (#2170).
+    let mut label_text = text(item.label.clone())
+        .size(12)
+        .wrapping(iced::widget::text::Wrapping::None);
     if item.default {
         label_text = label_text.font(iced::Font {
             weight: iced::font::Weight::Bold,
