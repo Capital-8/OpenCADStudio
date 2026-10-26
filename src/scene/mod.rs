@@ -2820,6 +2820,14 @@ pub struct Scene {
     /// Boundary source → associative hatch handles. Source edits reuse this
     /// index instead of scanning the document during every drag step.
     associative_hatch_source_cache: RefCell<Option<HashMap<Handle, Vec<Handle>>>>,
+    /// Centre-line source → carrier lines. Built on first use and dropped
+    /// whenever an entity or an association may have changed, so an ordinary
+    /// edit neither walks every line nor parses its xdata.
+    associative_centerline_source_cache:
+        RefCell<Option<crate::scene::centerline::CenterLineSourceIndex>>,
+    /// Centre-mark source → carrier lines. See
+    /// [`Self::associative_centerline_source_cache`].
+    associative_centermark_source_cache: RefCell<Option<HashMap<Handle, Vec<Handle>>>>,
     /// Conservative association hint: unknown until scanned, then updated from
     /// changed entities. Retaining `true` after deletion only costs an extra scan.
     has_associative_centers: std::cell::Cell<Option<bool>>,
@@ -3248,6 +3256,8 @@ impl Scene {
             ucs_names_cache: RefCell::new(None),
             dependency_index_cache: RefCell::new(None),
             associative_hatch_source_cache: RefCell::new(None),
+            associative_centerline_source_cache: RefCell::new(None),
+            associative_centermark_source_cache: RefCell::new(None),
             parametric_constraints: Vec::new(),
             constraint_name_format: 2,
             dynamic_constraint_display: true,
@@ -4181,6 +4191,18 @@ impl Scene {
                     .is_some_and(|entity| matches!(entity, EntityType::Hatch(_)))
         }) {
             self.associative_hatch_source_cache.borrow_mut().take();
+        }
+        // A pasted, duplicated or restored carrier arrives with its
+        // association xdata already attached, and an erased one takes its
+        // edges with it; neither names a line as modified, so the centre
+        // indexes drop here and rebuild on the next associated edit. Lazy:
+        // an edit with nothing to refresh never pays for the rebuild.
+        if changes
+            .iter()
+            .any(|(_, kind)| matches!(kind, ChangeKind::Added | ChangeKind::Removed))
+        {
+            self.associative_centerline_source_cache.borrow_mut().take();
+            self.associative_centermark_source_cache.borrow_mut().take();
         }
         let mut changes = changes.to_vec();
         // A table whose content this app changed (its picture reference
@@ -13723,6 +13745,11 @@ vis_index={:.1} visible_probe={:.1}",
         // the direction that matters is undo/redo and plugin edits that
         // bypass `store_dimension_association_full`.
         self.has_dimension_associations.set(None);
+        // Entity additions, erasures, in-place restores (undo/redo replays
+        // entity images) and plugin edits can add, drop or re-point a centre
+        // association without naming a line as modified.
+        self.associative_centerline_source_cache.borrow_mut().take();
+        self.associative_centermark_source_cache.borrow_mut().take();
     }
 
     /// Spatial index + always-emit list for top-level entities. Lazily

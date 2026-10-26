@@ -299,6 +299,10 @@ harness = false
 name = "associative_refresh_dedup"
 harness = false
 
+[[bench]]
+name = "centerline_refresh_scan"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
