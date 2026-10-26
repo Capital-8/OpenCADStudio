@@ -334,6 +334,10 @@ pub(super) struct StyleContext<'a> {
     /// Annotate > Text: what the find box holds and the text height shown.
     pub text_find: &'a str,
     pub text_height: &'a str,
+    /// Annotate > Dimensions: DIMLAYER (empty: the current layer) and the
+    /// colour of the layer it names.
+    pub dim_layer: &'a str,
+    pub dim_layer_color: Option<iced::Color>,
 }
 
 impl<'a> StyleContext<'a> {
@@ -1304,6 +1308,35 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                         .width(Fill)
                         .into(),
                 ];
+            // Dimensions: the style list and the dimension layer list each
+            // lead a row of small tools.
+            if *style_key == StyleKey::DimStyle && rows.len() == 2 {
+                let combo = col_items.pop().expect("the style combo");
+                let side = |tools: &[ToolDef]| {
+                    container(tool_row(tools, active_tool)).width(Length::Shrink)
+                };
+                col_items.push(
+                    row![container(combo).width(Fill), side(&rows[0])]
+                        .spacing(3)
+                        .align_y(iced::Center)
+                        .into(),
+                );
+                col_items.push(
+                    row![
+                        container(dim_layer_combo(
+                            style_ctx.dim_layer,
+                            style_ctx.dim_layer_color,
+                            open_dd.as_deref() == Some(DIM_LAYER_COMBO),
+                        ))
+                        .width(Fill),
+                        side(&rows[1])
+                    ]
+                    .spacing(3)
+                    .align_y(iced::Center)
+                    .into(),
+                );
+                return combo_panel_col(STYLE_COMBO_W * 1.7, col_items);
+            }
             for row_tools in rows {
                 col_items.push(tool_row(row_tools, active_tool));
             }
@@ -1315,6 +1348,66 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
             combo_panel_col(STYLE_COMBO_W, col_items)
         }
     }
+}
+
+/// Annotate > Dimensions: the dimension layer list's id.
+pub(crate) const DIM_LAYER_COMBO: &str = "DIM_LAYER_COMBO";
+
+/// Annotate > Dimensions: the layer new dimensions go on (DIMLAYER), with
+/// its colour; "Use Current" when it is the current layer.
+fn dim_layer_combo<'a>(layer: &str, color: Option<iced::Color>, open: bool) -> Element<'a, Message> {
+    let swatch: Element<'a, Message> = match color {
+        Some(color) => container(text(""))
+            .width(10)
+            .height(10)
+            .style(move |_: &Theme| container::Style {
+                background: Some(color.into()),
+                border: Border {
+                    color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                    width: 1.0,
+                    radius: 2.0.into(),
+                },
+                ..Default::default()
+            })
+            .into(),
+        None => iced::widget::Space::new().width(10).height(10).into(),
+    };
+    let label = if layer.is_empty() {
+        t!("Use Current").into_owned()
+    } else {
+        layer.to_string()
+    };
+    let combo = button(
+        row![
+            make_icon(
+                IconKind::Svg(include_bytes!("../../../assets/icons/underlay_layers.svg")),
+                12.0
+            ),
+            swatch,
+            container(text(label).size(11).wrapping(advanced_text::Wrapping::None))
+                .width(Fill)
+                .clip(true),
+            if open {
+                icons::themed_arrow_up(9.0)
+            } else {
+                icons::themed_arrow_down(9.0)
+            },
+        ]
+        .spacing(4)
+        .align_y(iced::Center),
+    )
+    .on_press(Message::ToggleRibbonDropdown(DIM_LAYER_COMBO.to_string()))
+    .style(move |theme: &Theme, status| combo_btn_style(theme, open, status, 3.0))
+    .padding([3, 8])
+    .width(Fill);
+    let combo = tooltip(
+        PosReport::new(DIM_LAYER_COMBO, combo),
+        make_tip(format!("{}\n{} DIMLAYER", t!("Dimension Layer"), t!("Command:"))),
+        TipPos::Bottom,
+    )
+    .delay(Duration::from_millis(400))
+    .style(tip_style);
+    super::keytips::anchor(DIM_LAYER_COMBO, combo)
 }
 
 /// Annotate > Text find box id, and its text height box.
@@ -1567,6 +1660,8 @@ mod style_context_tests {
             active_table_style: &active_table,
             text_find: "",
             text_height: "",
+            dim_layer: "",
+            dim_layer_color: None,
         };
         assert_eq!(ctx.names_for(StyleKey::TextStyle), &text_names);
         assert_eq!(ctx.active_for(StyleKey::TextStyle), "Standard");
@@ -1590,6 +1685,8 @@ mod style_context_tests {
             active_table_style: &empty_s,
             text_find: "",
             text_height: "",
+            dim_layer: "",
+            dim_layer_color: None,
         };
         assert_eq!(ctx.active_for(StyleKey::TableStyle), "");
         assert!(ctx.names_for(StyleKey::MLeaderStyle).is_empty());

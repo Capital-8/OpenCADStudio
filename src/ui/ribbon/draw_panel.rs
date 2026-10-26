@@ -190,6 +190,46 @@ const TEXT_TOOLS: &[Tool] = &[icon_tool(
 )];
 pub(super) const TEXT_PANEL_ID: &str = "text_extension";
 
+/// Annotate > Dimensions slide-out, its tools named beside their icons.
+const DIMENSION_TOOLS: &[Tool] = &[
+    icon_tool(
+        "TOLERANCE",
+        "Tolerance",
+        include_bytes!("../../../assets/icons/tolerance.svg"),
+    ),
+    icon_tool(
+        "DIMEDIT;O",
+        "Oblique",
+        include_bytes!("../../../assets/icons/dim_edit.svg"),
+    ),
+    icon_tool(
+        "DIMTEDIT_ANGLE",
+        "Text Angle",
+        include_bytes!("../../../assets/icons/dim_tedit.svg"),
+    ),
+    icon_tool(
+        "DIMTEDIT_LEFT",
+        "Left Justify",
+        include_bytes!("../../../assets/icons/align_left.svg"),
+    ),
+    icon_tool(
+        "DIMTEDIT_CENTER",
+        "Center Justify",
+        include_bytes!("../../../assets/icons/align_hcenter.svg"),
+    ),
+    icon_tool(
+        "DIMTEDIT_RIGHT",
+        "Right Justify",
+        include_bytes!("../../../assets/icons/align_right.svg"),
+    ),
+    icon_tool(
+        "DIMOVERRIDE",
+        "Override",
+        include_bytes!("../../../assets/icons/dim_style.svg"),
+    ),
+];
+pub(super) const DIMENSIONS_PANEL_ID: &str = "dimensions_extension";
+
 const PANELS: &[Panel] = &[
     Panel {
         id: PANEL_ID,
@@ -239,6 +279,13 @@ const PANELS: &[Panel] = &[
         title_id: "text_extension_title",
         title: "Text",
         tools: TEXT_TOOLS,
+    },
+    Panel {
+        id: DIMENSIONS_PANEL_ID,
+        anchor: Some("DIM"),
+        title_id: "dimensions_extension_title",
+        title: "Dimensions",
+        tools: DIMENSION_TOOLS,
     },
 ];
 
@@ -388,6 +435,11 @@ pub(super) fn group_title<'a>(
             Message::Command("STYLE".to_string()),
             format!("{}\n{} STYLE", t!("Text Style"), t!("Command:")),
             keytips::TEXT_LAUNCHER,
+        ),
+        DIMENSIONS_PANEL_ID => (
+            Message::Command("DIMSTYLE".to_string()),
+            format!("{}\n{} DIMSTYLE", t!("Dimension Style"), t!("Command:")),
+            keytips::DIMENSION_LAUNCHER,
         ),
         _ => return title_button,
     };
@@ -657,7 +709,10 @@ pub(super) fn overlay<'a>(ribbon: &Ribbon, id: &str, win: (f32, f32)) -> Element
     if panel.id == REFERENCE_PANEL_ID {
         return reference_overlay(ribbon, panel, win);
     }
-    if panel.id == BLOCK_DEFINITION_PANEL_ID || panel.id == IMPORT_PANEL_ID {
+    if panel.id == BLOCK_DEFINITION_PANEL_ID
+        || panel.id == IMPORT_PANEL_ID
+        || panel.id == DIMENSIONS_PANEL_ID
+    {
         return labeled_overlay(ribbon, panel, win);
     }
     if panel.id == TEXT_PANEL_ID {

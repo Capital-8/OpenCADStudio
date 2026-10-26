@@ -5069,6 +5069,8 @@ pub enum Message {
     RibbonTextHeightFocus,
     /// Annotate > Text slide-out: TEXTLAYER picked (empty: Use Current).
     RibbonTextLayer(String),
+    /// Annotate > Dimensions: DIMLAYER picked (empty: Use Current).
+    RibbonDimLayer(String),
     /// Result of the ATTACH file picker.
     AttachPickResult(Result<std::path::PathBuf, String>),
     /// An edit in the Attach External Reference dialog.

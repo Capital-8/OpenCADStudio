@@ -622,6 +622,20 @@ impl OpenCADStudio {
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
             }
 
+            // The Dimensions panel's text buttons: pick, then the option.
+            "DIMTEDIT_ANGLE" | "DIMTEDIT_LEFT" | "DIMTEDIT_CENTER" | "DIMTEDIT_RIGHT" => {
+                use crate::modules::annotate::dimtedit::DimTeditCommand;
+                let option = match cmd {
+                    "DIMTEDIT_ANGLE" => "A",
+                    "DIMTEDIT_LEFT" => "L",
+                    "DIMTEDIT_CENTER" => "C",
+                    _ => "R",
+                };
+                let cmd = DimTeditCommand::with_option(option);
+                self.command_line.push_info(&cmd.prompt());
+                self.tabs[i].active_cmd = Some(Box::new(cmd));
+            }
+
             "DIMTEDIT" | "DIMTED" => {
                 use crate::modules::annotate::dimtedit::DimTeditCommand;
                 let cmd = DimTeditCommand::new();
