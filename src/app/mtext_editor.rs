@@ -116,6 +116,9 @@ pub struct MTextEditorState {
     /// it is NOT derived from the typed content, so adding characters wraps
     /// to the next line instead of stretching the box into one long line.
     pub rect_width: f64,
+    /// The width was set by the MTEXT command's box (or its Width option):
+    /// the editor keeps it instead of fitting its own size.
+    pub keep_width: bool,
     pub rect_height: String,
     pub annotative: bool,
     pub column_type: i16,
@@ -193,6 +196,7 @@ impl MTextEditorState {
             // Default box ~20 characters wide; overwritten with the entity's
             // own width when editing an existing MText.
             rect_width: (height * 20.0).max(1.0),
+            keep_width: false,
             rect_height: "0".to_string(),
             annotative: false,
             column_type: 0,
@@ -795,6 +799,7 @@ impl super::OpenCADStudio {
             }
         } else if let Some(m) = template {
             seed_mtext_state(&mut state, &m);
+            state.keep_width = m.rectangle_width > 0.0;
         } else {
             // New MText inherits the document's current text style (STYLE),
             // not the "Standard" default. See #92.
