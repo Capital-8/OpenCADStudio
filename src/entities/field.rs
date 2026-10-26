@@ -340,7 +340,7 @@ pub fn set_text_field(
 
 /// Month and day names and the regional date / time pictures, as date
 /// fields show them: the operating system's regional settings.
-fn os_date_locale() -> codec::fields::DateLocale {
+pub(crate) fn os_date_locale() -> codec::fields::DateLocale {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::Globalization::GetLocaleInfoEx;

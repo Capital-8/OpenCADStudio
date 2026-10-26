@@ -118,6 +118,7 @@ pub(super) const NAMES: &[&str] = &[
     "tds_material_dialog",
     "tds_map_dialog",
     "data_link_manager",
+    "data_extraction",
     "refedit_dialog",
     "pdf_password_dialog",
     "hyperlink_dialog",
@@ -2530,6 +2531,81 @@ impl OpenCADStudio {
                     "cancel" => return Ok(Task::done(Message::CloseModal)),
                     _ => return Err(bad()),
                 })
+            }
+            // The Data Extraction wizard, one step per call: "next", "back",
+            // "finish", "settings=<file.dxex>", "begin=new|template|edit",
+            // "source=drawings|selection", "object=<name>:on|off",
+            // "property=<key>:on|off", "category=<name>:on|off",
+            // "combine|count|name=on|off", "table=on|off", "file=on|off",
+            // "path=<file>", "style=<table style>", "title=<text>",
+            // "headers=on|off".
+            "data_extraction" => {
+                use crate::ui::window::annotation_data::{
+                    DataExtractionField as F, ExtractionBegin, ExtractionSource,
+                };
+                if self.active_modal != Some(crate::app::ModalKind::DataExtraction) {
+                    return Err(failure("no_dialog", "The Data Extraction wizard is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let bad = || failure("invalid_value", spec);
+                let on = |v: &str| match v {
+                    "on" | "1" | "true" => Ok(true),
+                    "off" | "0" | "false" => Ok(false),
+                    _ => Err(bad()),
+                };
+                let named = value.rsplit_once(':');
+                match key {
+                    "next" => Message::DataExtractionNext,
+                    "back" => Message::DataExtractionBack,
+                    "finish" => Message::DataExtractionFinish,
+                    "settings" => Message::DataExtractionField(F::SettingsPath(value.to_string())),
+                    "begin" => Message::DataExtractionField(F::Begin(match value {
+                        "new" => ExtractionBegin::New,
+                        "template" => ExtractionBegin::Template,
+                        "edit" => ExtractionBegin::Edit,
+                        _ => return Err(bad()),
+                    })),
+                    "source" => Message::DataExtractionField(F::Source(match value {
+                        "drawings" => ExtractionSource::DrawingsAndFolders,
+                        "selection" => ExtractionSource::CurrentSelection,
+                        _ => return Err(bad()),
+                    })),
+                    "object" => {
+                        let (name, state) = named.ok_or_else(bad)?;
+                        let index = self
+                            .data_extraction
+                            .objects
+                            .iter()
+                            .position(|item| item.name.eq_ignore_ascii_case(name))
+                            .ok_or_else(bad)?;
+                        Message::DataExtractionField(F::Object(index, on(state)?))
+                    }
+                    "property" => {
+                        let (name, state) = named.ok_or_else(bad)?;
+                        let index = self
+                            .data_extraction
+                            .properties
+                            .iter()
+                            .position(|item| item.key == name || item.name.eq_ignore_ascii_case(name))
+                            .ok_or_else(bad)?;
+                        Message::DataExtractionField(F::Property(index, on(state)?))
+                    }
+                    "category" => {
+                        let (name, state) = named.ok_or_else(bad)?;
+                        Message::DataExtractionField(F::Category(name.to_string(), on(state)?))
+                    }
+                    "combine" => Message::DataExtractionField(F::CombineIdentical(on(value)?)),
+                    "count" => Message::DataExtractionField(F::ShowCount(on(value)?)),
+                    "name" => Message::DataExtractionField(F::ShowName(on(value)?)),
+                    "table" => Message::DataExtractionField(F::OutputTable(on(value)?)),
+                    "file" => Message::DataExtractionField(F::OutputFile(on(value)?)),
+                    "path" => Message::DataExtractionField(F::OutputPath(value.to_string())),
+                    "style" => Message::DataExtractionField(F::TableStyle(value.to_string())),
+                    "title" => Message::DataExtractionField(F::TableTitle(value.to_string())),
+                    "headers" => Message::DataExtractionField(F::PropertyHeaders(on(value)?)),
+                    _ => return Err(bad()),
+                }
             }
             // The Data Link Manager, one step per call: "new", "name=<text>",
             // "path=<file>" (as the file picker sets it), "sheet=<name>",

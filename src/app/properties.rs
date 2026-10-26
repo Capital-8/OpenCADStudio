@@ -3476,6 +3476,18 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
             None
         };
         if let codec::EntityType::Table(table) = &mut entity {
+            if let Some(settings) = table
+                .name
+                .strip_prefix(crate::modules::annotate::data_link::EXTRACTION_PENDING)
+                .map(str::to_string)
+            {
+                table.name.clear();
+                let link = crate::app::annotation_data::add_extraction_link(
+                    &mut self.tabs[i].scene.document,
+                    &settings,
+                );
+                crate::modules::annotate::data_link::link_cells(table, link, 1);
+            }
             const PREFIX: &str = "__OPENCAD_LINK_PENDING__";
             if let Some(path) = table.name.strip_prefix(PREFIX).map(str::to_string) {
                 let document = &mut self.tabs[i].scene.document;

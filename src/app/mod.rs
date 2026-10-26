@@ -8,6 +8,7 @@ pub(crate) mod config;
 #[cfg(not(target_arch = "wasm32"))]
 pub use automation::{export_headless, run_batch, serve};
 mod annotation_data;
+mod extraction_catalog;
 mod block_actions;
 mod block_parameter_properties;
 mod block_alignment;
@@ -2748,6 +2749,8 @@ pub enum ModalKind {
     InsertTable,
     DataLinkManager,
     DataExtraction,
+    /// DATAEXTRACTION on a drawing never saved: save it first.
+    DataExtractionUnsaved,
     /// The scene is drawn by a software rasterizer, or not at all: what that
     /// means and what usually fixes it. Queued once per verdict; the status
     /// bar's ⚠ pill reopens it.
@@ -5082,6 +5085,9 @@ pub enum Message {
     DataExtractionBrowseOutput,
     DataExtractionBrowseOutputResult(Option<std::path::PathBuf>),
     DataExtractionFinish,
+    /// Save the never-saved drawing so the extraction can start.
+    DataExtractionSaveDrawing,
+    DataExtractionSaveDrawingResult(Option<std::path::PathBuf>),
     /// Save the pre-built CSV string to a file chosen by the user.
     DataExtractionSave(String),
     /// Path chosen (or None = cancelled).

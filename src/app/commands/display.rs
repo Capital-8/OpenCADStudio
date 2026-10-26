@@ -1967,12 +1967,34 @@ impl OpenCADStudio {
                 let mut updates = Vec::new();
                 let mut failed = 0usize;
                 for (table_handle, link_handle) in &jobs {
-                    match crate::app::annotation_data::read_data_link(
-                        &self.tabs[i].scene.document,
+                    let document = &self.tabs[i].scene.document;
+                    // An extraction table is refreshed by running its saved
+                    // extraction again, under its title row.
+                    let settings = crate::app::annotation_data::extraction_link_settings(
+                        document,
                         *link_handle,
-                    ) {
+                    );
+                    let first_linked_row = usize::from(settings.is_some());
+                    let read = match settings {
+                        Some(settings) => crate::app::annotation_data::rerun_extraction(
+                            document,
+                            self.tabs[i].current_path.as_deref(),
+                            &settings,
+                        )
+                        .map(|rows| {
+                            let title = match document.get_entity(*table_handle) {
+                                Some(codec::EntityType::Table(table)) => {
+                                    table.cell_text(0, 0).unwrap_or_default().to_string()
+                                }
+                                _ => String::new(),
+                            };
+                            std::iter::once(vec![title]).chain(rows).collect()
+                        }),
+                        None => crate::app::annotation_data::read_data_link(document, *link_handle),
+                    };
+                    match read {
                         Ok(rows) if !rows.is_empty() => {
-                            updates.push((*table_handle, *link_handle, rows))
+                            updates.push((*table_handle, *link_handle, rows, first_linked_row))
                         }
                         _ => failed += 1,
                     }
@@ -1981,13 +2003,13 @@ impl OpenCADStudio {
                     self.push_undo_snapshot(i, "DATALINKUPDATE");
                 }
                 let mut changed_handles = Vec::new();
-                for (table_handle, link_handle, rows) in updates {
+                for (table_handle, link_handle, rows, first_linked_row) in updates {
                     let Some(codec::EntityType::Table(table)) =
                         self.tabs[i].scene.document.get_entity_mut(table_handle)
                     else {
                         continue;
                     };
-                    apply_link_rows(table, link_handle, &rows, 0);
+                    apply_link_rows(table, link_handle, &rows, first_linked_row);
                     changed_handles.push(table_handle);
                 }
                 if !changed_handles.is_empty() {

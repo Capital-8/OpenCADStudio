@@ -17,17 +17,12 @@ use crate::ui::window::annotation_data::{
     TableSource,
 };
 
+/// One extracted object: the name it is listed under and the value of every
+/// property it offers.
 #[derive(Clone)]
 struct ExtractionRecord {
-    object_type: String,
-    handle: String,
-    layer: String,
-    color: String,
-    linetype: String,
-    details: String,
-    position: Option<codec::types::Vector3>,
-    /// Rotation in degrees, for the objects the Properties palette shows one for.
-    rotation: Option<f64>,
+    name: String,
+    values: BTreeMap<&'static str, String>,
 }
 
 // ── In-session picked-file registries (web) ───────────────────────────────
@@ -161,19 +156,7 @@ pub(crate) fn extraction_document(path: &str) -> Option<Arc<Document>> {
 
 impl ExtractionRecord {
     fn value(&self, key: &str) -> String {
-        match key {
-            "type" => self.object_type.clone(),
-            "handle" => self.handle.clone(),
-            "layer" => self.layer.clone(),
-            "color" => self.color.clone(),
-            "linetype" => self.linetype.clone(),
-            "details" => self.details.clone(),
-            "position_x" => self.position.map_or_else(String::new, |p| format!("{:.3}", p.x)),
-            "position_y" => self.position.map_or_else(String::new, |p| format!("{:.3}", p.y)),
-            "position_z" => self.position.map_or_else(String::new, |p| format!("{:.3}", p.z)),
-            "rotation" => self.rotation.map_or_else(String::new, |r| format!("{r:.3}")),
-            _ => String::new(),
-        }
+        self.values.get(key).cloned().unwrap_or_default()
     }
 }
 
@@ -811,6 +794,45 @@ pub(crate) fn connect_data_link(doc: &mut Document, link: Handle, target: Handle
     }
 }
 
+/// The link a data extraction table keeps to its settings file, named
+/// `Data Extraction - <file>`.
+pub(crate) fn add_extraction_link(doc: &mut Document, settings: &str) -> Handle {
+    let file = Path::new(settings)
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| settings.to_string());
+    let stem = Path::new(&file)
+        .file_stem()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| file.clone());
+    let base = format!("Data Extraction - {file}");
+    let names = data_link_entries(doc);
+    let mut name = base.clone();
+    let mut n = 1;
+    while names.iter().any(|(known, _)| known.eq_ignore_ascii_case(&name)) {
+        n += 1;
+        name = format!("{base} ({n})");
+    }
+    let link = DataLink {
+        data_adapter: EXTRACTION_LINK_ADAPTER.into(),
+        tooltip: format!("Created from Data Extraction:\r\n{stem}"),
+        connection_string: settings.to_string(),
+        option: LINK_OPTION_PERSIST_CACHE,
+        update_option: UPDATE_SKIP_FORMAT,
+        flags: 1,
+        path_option: 5,
+        ..DataLink::default()
+    };
+    add_data_link(doc, &name, link)
+}
+
+/// The settings file of a data extraction link.
+pub(crate) fn extraction_link_settings(doc: &Document, handle: Handle) -> Option<String> {
+    data_link(doc, handle)
+        .filter(|link| link.data_adapter == EXTRACTION_LINK_ADAPTER)
+        .map(|link| link.connection_string.clone())
+}
+
 /// Whether the link lets tables write their data back to the source.
 pub(crate) fn data_link_allows_write(doc: &Document, handle: Handle) -> bool {
     data_link(doc, handle)
@@ -857,90 +879,37 @@ pub(crate) fn data_link_write_path(doc: &Document, handle: Handle) -> Result<Pat
     Ok(path)
 }
 
-fn entity_details(entity: &EntityType) -> String {
-    match entity {
-        EntityType::Line(value) => format!(
-            "({:.3},{:.3},{:.3})-({:.3},{:.3},{:.3})",
-            value.start.x, value.start.y, value.start.z, value.end.x, value.end.y, value.end.z
-        ),
-        EntityType::Circle(value) => format!(
-            "C({:.3},{:.3},{:.3}) R={:.3}",
-            value.center.x, value.center.y, value.center.z, value.radius
-        ),
-        EntityType::Arc(value) => format!(
-            "C({:.3},{:.3},{:.3}) R={:.3} {:.1}°-{:.1}°",
-            value.center.x,
-            value.center.y,
-            value.center.z,
-            value.radius,
-            value.start_angle.to_degrees(),
-            value.end_angle.to_degrees()
-        ),
-        EntityType::Text(value) => value.value.clone(),
-        EntityType::MText(value) => value.value.clone(),
-        EntityType::Insert(value) => format!(
-            "{} @({:.3},{:.3},{:.3})",
-            value.block_name, value.insert_point.x, value.insert_point.y, value.insert_point.z
-        ),
-        EntityType::LwPolyline(value) => format!("{} vertices", value.vertices.len()),
-        EntityType::Polyline(value) => format!("{} vertices", value.vertices.len()),
-        EntityType::Polyline2D(value) => format!("{} vertices", value.vertices.len()),
-        EntityType::Polyline3D(value) => format!("{} vertices", value.vertices.len()),
-        EntityType::Hatch(value) => value.pattern.name.clone(),
-        EntityType::Dimension(value) => format!("{:.3}", value.measurement()),
-        EntityType::Spline(value) => format!("{} control points", value.control_points.len()),
-        _ => String::new(),
-    }
-}
-
-/// The placement point the Properties palette shows as Position.
-fn entity_position(entity: &EntityType) -> Option<codec::types::Vector3> {
-    match entity {
-        EntityType::Text(value) => Some(crate::entities::text::position(value)),
-        EntityType::MText(value) => Some(value.insertion_point),
-        EntityType::Insert(value) => Some(value.insert_point),
-        EntityType::Point(value) => Some(value.location),
-        _ => None,
-    }
-}
-
-fn entity_rotation(entity: &EntityType) -> Option<f64> {
-    let radians = match entity {
-        EntityType::Insert(value) => value.rotation,
-        EntityType::Text(value) => value.rotation,
-        EntityType::MText(value) => value.rotation,
-        _ => return None,
-    };
-    Some(radians.to_degrees())
+/// The objects the extraction reads from a drawing: model space objects
+/// other than block definitions' own markers.
+fn extraction_entities<'a>(
+    doc: &'a Document,
+    allowed_handles: Option<&'a BTreeSet<Handle>>,
+) -> impl Iterator<Item = &'a EntityType> + 'a {
+    doc.entities().filter(move |entity| {
+        !matches!(entity, EntityType::Block(_) | EntityType::BlockEnd(_))
+            && allowed_handles.is_none_or(|handles| handles.contains(&entity.common().handle))
+    })
 }
 
 fn collect_records(
     doc: &Document,
+    path: Option<&Path>,
     allowed_handles: Option<&BTreeSet<Handle>>,
-    allowed_types: &BTreeSet<String>,
+    allowed_names: &BTreeSet<String>,
     out: &mut Vec<ExtractionRecord>,
 ) {
-    for entity in doc.entities() {
-        if matches!(entity, EntityType::Block(_) | EntityType::BlockEnd(_)) {
+    use crate::app::extraction_catalog as catalog;
+    let facts = catalog::DrawingFacts::of(doc, path);
+    for entity in extraction_entities(doc, allowed_handles) {
+        let (name, _) = catalog::object_name(entity);
+        if !allowed_names.contains(&name) {
             continue;
         }
-        if allowed_handles.is_some_and(|handles| !handles.contains(&entity.common().handle)) {
-            continue;
-        }
-        let object_type = crate::entities::names::dxf_name(entity).to_string();
-        if !allowed_types.is_empty() && !allowed_types.contains(&object_type) {
-            continue;
-        }
-        out.push(ExtractionRecord {
-            object_type,
-            handle: format!("{:X}", entity.common().handle.value()),
-            layer: entity.common().layer.clone(),
-            color: entity.common().color.to_string(),
-            linetype: entity.common().linetype.clone(),
-            details: entity_details(entity),
-            position: entity_position(entity),
-            rotation: entity_rotation(entity),
-        });
+        let values = catalog::properties(entity)
+            .into_iter()
+            .map(|property| (property.key, catalog::value(entity, property.key, &facts)))
+            .collect();
+        out.push(ExtractionRecord { name, values });
     }
 }
 
@@ -998,47 +967,54 @@ fn extraction_drawing_paths(state: &DataExtractionState) -> Result<Vec<PathBuf>,
 /// every listed source must have been picked, or it asks for the pick again.
 fn for_each_extraction_document(
     state: &DataExtractionState,
-    mut visit: impl FnMut(&Document),
+    mut visit: impl FnMut(&Document, Option<&Path>),
 ) -> Result<(), String> {
     #[cfg(target_arch = "wasm32")]
     for source in &state.source_files {
         let document = extraction_document(source).ok_or_else(|| {
             crate::tf!("Drawing not loaded in the browser: {name}.", name = source).into_owned()
         })?;
-        visit(&document);
+        visit(&document, None);
     }
     #[cfg(not(target_arch = "wasm32"))]
     for source in extraction_drawing_paths(state)? {
         let document = crate::io::load_file(&source)
             .map_err(|error| format!("{}: {error}", source.display()))?;
-        visit(&document);
+        visit(&document, Some(&source));
     }
     Ok(())
 }
 
-fn collect_type_counts(
+/// Per listed object: whether it is a block, how many there are, and the
+/// properties it offers.
+type ObjectCatalog = BTreeMap<String, (bool, usize, Vec<crate::app::extraction_catalog::Property>)>;
+
+fn collect_object_catalog(
     doc: &Document,
     allowed_handles: Option<&BTreeSet<Handle>>,
-    counts: &mut BTreeMap<String, usize>,
+    catalog: &mut ObjectCatalog,
 ) {
-    for entity in doc.entities() {
-        if matches!(entity, EntityType::Block(_) | EntityType::BlockEnd(_)) {
-            continue;
+    for entity in extraction_entities(doc, allowed_handles) {
+        let (name, block) = crate::app::extraction_catalog::object_name(entity);
+        let entry = catalog.entry(name).or_insert((block, 0, Vec::new()));
+        entry.1 += 1;
+        for property in crate::app::extraction_catalog::properties(entity) {
+            if !entry.2.iter().any(|known| known.key == property.key) {
+                entry.2.push(property);
+            }
         }
-        if allowed_handles.is_some_and(|handles| !handles.contains(&entity.common().handle)) {
-            continue;
-        }
-        *counts
-            .entry(crate::entities::names::dxf_name(entity).to_string())
-            .or_default() += 1;
     }
 }
 
+/// The extraction's rows: a header (Count, Name, then the chosen properties
+/// in the order their objects list them), then one row per object, or per
+/// group of identical objects when they are combined.
 fn extraction_preview(
     state: &DataExtractionState,
     current: &Document,
+    current_path: Option<&Path>,
 ) -> Result<Vec<Vec<String>>, String> {
-    let allowed_types = state
+    let allowed_names = state
         .objects
         .iter()
         .filter(|value| value.checked)
@@ -1052,83 +1028,67 @@ fn extraction_preview(
     let mut records = Vec::new();
     match state.source {
         ExtractionSource::CurrentDrawing => {
-            collect_records(current, None, &allowed_types, &mut records)
+            collect_records(current, current_path, None, &allowed_names, &mut records)
         }
-        ExtractionSource::CurrentSelection => {
-            collect_records(current, Some(&selected), &allowed_types, &mut records)
-        }
+        ExtractionSource::CurrentSelection => collect_records(
+            current,
+            current_path,
+            Some(&selected),
+            &allowed_names,
+            &mut records,
+        ),
         ExtractionSource::DrawingsAndFolders => {
             if state.include_current {
-                collect_records(current, None, &allowed_types, &mut records);
+                collect_records(current, current_path, None, &allowed_names, &mut records);
             }
-            for_each_extraction_document(state, |document| {
-                collect_records(document, None, &allowed_types, &mut records);
+            for_each_extraction_document(state, |document, path| {
+                collect_records(document, path, None, &allowed_names, &mut records);
             })?;
         }
     }
     let props = state
         .properties
         .iter()
-        .filter(|value| value.checked)
+        .filter(|value| value.checked && state.categories.contains(&value.category))
         .collect::<Vec<_>>();
     if props.is_empty() {
         return Err(crate::t!("Select at least one property.").into_owned());
     }
     let mut header = Vec::new();
-    if state.show_name {
-        header.push("Name".to_string());
-    }
-    header.extend(
-        props
-            .iter()
-            .filter(|value| !(state.show_name && value.key == "type"))
-            .map(|value| value.name.clone()),
-    );
     if state.show_count {
         header.push("Count".to_string());
     }
-    let mut rows = Vec::new();
-    if state.combine_identical {
-        let mut grouped: BTreeMap<Vec<String>, usize> = BTreeMap::new();
-        for record in records {
-            let mut values = Vec::new();
-            if state.show_name {
-                values.push(record.object_type.clone());
-            }
-            values.extend(
-                props
-                    .iter()
-                    .filter(|value| !(state.show_name && value.key == "type"))
-                    .map(|value| record.value(&value.key)),
-            );
-            *grouped.entry(values).or_default() += 1;
+    if state.show_name {
+        header.push("Name".to_string());
+    }
+    header.extend(props.iter().map(|value| value.name.clone()));
+    let values_of = |record: &ExtractionRecord| {
+        let mut values = Vec::new();
+        if state.show_name {
+            values.push(record.name.clone());
         }
-        for (mut values, count) in grouped {
-            if state.show_count {
-                values.push(count.to_string());
+        values.extend(props.iter().map(|value| record.value(&value.key)));
+        values
+    };
+    let mut rows: Vec<(Vec<String>, usize)> = Vec::new();
+    for record in &records {
+        let values = values_of(record);
+        if state.combine_identical {
+            if let Some(row) = rows.iter_mut().find(|(known, _)| *known == values) {
+                row.1 += 1;
+                continue;
             }
-            rows.push(values);
         }
-    } else {
-        for record in records {
-            let mut values = Vec::new();
-            if state.show_name {
-                values.push(record.object_type.clone());
-            }
-            values.extend(
-                props
-                    .iter()
-                    .filter(|value| !(state.show_name && value.key == "type"))
-                    .map(|value| record.value(&value.key)),
-            );
-            if state.show_count {
-                values.push("1".into());
-            }
-            rows.push(values);
-        }
+        rows.push((values, 1));
     }
     let mut output = vec![header];
-    output.extend(rows);
+    output.extend(rows.into_iter().map(|(values, count)| {
+        if state.show_count {
+            std::iter::once(count.to_string()).chain(values).collect()
+        } else {
+            values
+        }
+    }));
     Ok(output)
 }
 
@@ -1152,6 +1112,239 @@ fn rows_to_csv(rows: &[Vec<String>]) -> String {
         csv.push('\n');
     }
     csv
+}
+
+/// Writes the extraction rows as a workbook (.xlsx), comma-separated values
+/// (.csv) or tab-separated text (.txt).
+fn write_extraction_file(path: &Path, rows: &[Vec<String>]) -> Result<(), String> {
+    let ext = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let bytes = match ext.as_str() {
+        "xlsx" => xlsx_bytes(rows)?,
+        "csv" => rows_to_csv(rows).into_bytes(),
+        "txt" => (rows
+            .iter()
+            .map(|row| row.join("\t"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n")
+            .into_bytes(),
+        _ => {
+            return Err(crate::t!(
+                "The external file must be an .xlsx, .csv or .txt file."
+            )
+            .into_owned())
+        }
+    };
+    #[cfg(target_arch = "wasm32")]
+    {
+        let name = path
+            .file_name()
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_else(|| format!("extraction.{ext}"));
+        crate::sys::download_bytes(&name, &bytes);
+        Ok(())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::fs::write(path, bytes).map_err(|error| error.to_string())
+    }
+}
+
+/// A one-sheet workbook holding the rows as text cells.
+fn xlsx_bytes(rows: &[Vec<String>]) -> Result<Vec<u8>, String> {
+    use std::io::Write;
+    fn column_name(mut index: usize) -> String {
+        let mut name = String::new();
+        index += 1;
+        while index > 0 {
+            let rem = (index - 1) % 26;
+            name.insert(0, (b'A' + rem as u8) as char);
+            index = (index - 1) / 26;
+        }
+        name
+    }
+    fn escape(text: &str) -> String {
+        text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    }
+    let mut sheet = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>",
+    );
+    for (r, row) in rows.iter().enumerate() {
+        sheet.push_str(&format!("<row r=\"{}\">", r + 1));
+        for (c, value) in row.iter().enumerate() {
+            if value.is_empty() {
+                continue;
+            }
+            sheet.push_str(&format!(
+                "<c r=\"{}{}\" t=\"inlineStr\"><is><t xml:space=\"preserve\">{}</t></is></c>",
+                column_name(c),
+                r + 1,
+                escape(value)
+            ));
+        }
+        sheet.push_str("</row>");
+    }
+    sheet.push_str("</sheetData></worksheet>");
+    let parts = [
+        ("[Content_Types].xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>".to_string()),
+        ("_rels/.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>".to_string()),
+        ("xl/workbook.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>".to_string()),
+        ("xl/_rels/workbook.xml.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>".to_string()),
+        ("xl/worksheets/sheet1.xml", sheet),
+    ];
+    let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    for (name, body) in parts {
+        writer
+            .start_file(name, options)
+            .map_err(|error| error.to_string())?;
+        writer
+            .write_all(body.as_bytes())
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(writer
+        .finish()
+        .map_err(|error| error.to_string())?
+        .into_inner())
+}
+
+/// The listed objects with what was checked before (new ones start checked),
+/// each object's properties in name order, objects in name order.
+fn objects_from_catalog(
+    catalog: ObjectCatalog,
+    previous: &BTreeMap<String, bool>,
+) -> Vec<crate::ui::window::annotation_data::ExtractionObject> {
+    let mut objects: Vec<_> = catalog
+        .into_iter()
+        .map(|(name, (block, count, mut properties))| {
+            properties.sort_by_key(|property| property.name.to_ascii_lowercase());
+            crate::ui::window::annotation_data::ExtractionObject {
+                checked: previous
+                    .get(&name.to_ascii_lowercase())
+                    .copied()
+                    .unwrap_or(true),
+                name,
+                count,
+                block,
+                properties: properties
+                    .into_iter()
+                    .map(|property| {
+                        (
+                            property.key.to_string(),
+                            property.name.to_string(),
+                            property.category.to_string(),
+                        )
+                    })
+                    .collect(),
+            }
+        })
+        .collect();
+    objects.sort_by_key(|object| object.name.to_ascii_lowercase());
+    objects
+}
+
+/// The property list for the checked objects (each property once, in the
+/// order the objects list them) and the categories to show, keeping what
+/// was checked before; new properties start checked.
+fn extraction_properties(
+    state: &DataExtractionState,
+    previous: &BTreeMap<String, bool>,
+) -> (
+    Vec<crate::ui::window::annotation_data::ExtractionProperty>,
+    BTreeSet<String>,
+) {
+    let mut properties: Vec<crate::ui::window::annotation_data::ExtractionProperty> = Vec::new();
+    for object in state
+        .objects
+        .iter()
+        .filter(|object| object.checked && state.shows_object(object))
+    {
+        for (key, name, category) in &object.properties {
+            if properties.iter().any(|known| &known.key == key) {
+                continue;
+            }
+            properties.push(crate::ui::window::annotation_data::ExtractionProperty {
+                checked: previous.get(key).copied().unwrap_or(true),
+                key: key.clone(),
+                name: name.clone(),
+                category: category.clone(),
+            });
+        }
+    }
+    // Every category is shown unless the user filtered it out.
+    let categories = properties
+        .iter()
+        .map(|value| value.category.clone())
+        .filter(|category| !state.hidden_categories.contains(category))
+        .collect();
+    (properties, categories)
+}
+
+/// Runs a saved extraction again on a drawing (DATALINKUPDATE on an
+/// extraction table): the settings file's sources, objects, properties and
+/// row options.
+pub(crate) fn rerun_extraction(
+    doc: &Document,
+    doc_path: Option<&Path>,
+    settings: &str,
+) -> Result<Vec<Vec<String>>, String> {
+    let mut state = DataExtractionState {
+        settings_path: settings.to_string(),
+        ..DataExtractionState::default()
+    };
+    load_extraction_settings(&mut state)?;
+    let mut catalog = ObjectCatalog::new();
+    match state.source {
+        ExtractionSource::CurrentDrawing | ExtractionSource::CurrentSelection => {
+            collect_object_catalog(doc, None, &mut catalog)
+        }
+        ExtractionSource::DrawingsAndFolders => {
+            if state.include_current {
+                collect_object_catalog(doc, None, &mut catalog);
+            }
+            for_each_extraction_document(&state, |document, _| {
+                collect_object_catalog(document, None, &mut catalog);
+            })?;
+        }
+    }
+    let saved_objects = state.saved_objects.take().unwrap_or_default();
+    let previous = catalog
+        .keys()
+        .map(|name| {
+            (
+                name.to_ascii_lowercase(),
+                saved_objects.is_empty() || saved_objects.contains(name),
+            )
+        })
+        .collect();
+    state.objects = objects_from_catalog(catalog, &previous);
+    let saved_properties = state.saved_properties.take().unwrap_or_default();
+    let previous = state
+        .objects
+        .iter()
+        .flat_map(|object| object.properties.iter())
+        .map(|(key, _, _)| {
+            (
+                key.clone(),
+                saved_properties.is_empty() || saved_properties.contains(key),
+            )
+        })
+        .collect();
+    let (properties, categories) = extraction_properties(&state, &previous);
+    state.properties = properties;
+    state.categories = categories;
+    if state.source == ExtractionSource::CurrentSelection {
+        state.source = ExtractionSource::CurrentDrawing;
+    }
+    extraction_preview(&state, doc, doc_path)
 }
 
 fn save_extraction_settings(state: &DataExtractionState) -> Result<(), String> {
@@ -1190,6 +1383,15 @@ fn save_extraction_settings(state: &DataExtractionState) -> Result<(), String> {
         "outputPath": state.output_path,
         "tableStyle": state.table_style,
         "tableTitle": state.table_title,
+        "titleCellStyle": state.title_cell_style,
+        "headerCellStyle": state.header_cell_style,
+        "dataCellStyle": state.data_cell_style,
+        "propertyHeaders": state.property_headers,
+        "displayAllTypes": state.display_all_types,
+        "blocksOnly": state.blocks_only,
+        "attributedBlocksOnly": state.attributed_blocks_only,
+        "inUseOnly": state.in_use_only,
+        "hiddenCategories": state.hidden_categories,
     });
     let text = serde_json::to_string_pretty(&value).map_err(|error| error.to_string())?;
     #[cfg(target_arch = "wasm32")]
@@ -1215,64 +1417,59 @@ fn load_extraction_settings(state: &mut DataExtractionState) -> Result<(), Strin
         serde_json::from_str(&text).map_err(|error| error.to_string())?;
     state.source = match value["source"].as_str() {
         Some("currentSelection") => ExtractionSource::CurrentSelection,
-        Some("drawingsAndFolders") => ExtractionSource::DrawingsAndFolders,
-        _ => ExtractionSource::CurrentDrawing,
+        Some("currentDrawing") => ExtractionSource::CurrentDrawing,
+        _ => ExtractionSource::DrawingsAndFolders,
     };
-    state.include_current = value["includeCurrent"]
-        .as_bool()
-        .unwrap_or(state.include_current);
-    state.include_subfolders = value["includeSubfolders"]
-        .as_bool()
-        .unwrap_or(state.include_subfolders);
+    let flag = |key: &str, current: bool| value[key].as_bool().unwrap_or(current);
+    let text_of = |key: &str, current: &str| value[key].as_str().unwrap_or(current).to_string();
+    let set_of = |key: &str| {
+        value[key].as_array().map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect::<BTreeSet<_>>()
+        })
+    };
+    state.include_current = flag("includeCurrent", state.include_current);
+    state.include_subfolders = flag("includeSubfolders", state.include_subfolders);
     if let Some(files) = value["sourceFiles"].as_array() {
         state.source_files = files
             .iter()
             .filter_map(|value| value.as_str().map(str::to_string))
             .collect();
     }
-    let object_types = value["objectTypes"]
-        .as_array()
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(|value| value.as_str())
-                .collect::<BTreeSet<_>>()
-        })
-        .unwrap_or_default();
+    state.saved_objects = set_of("objectTypes");
+    state.saved_properties = set_of("properties");
     for item in &mut state.objects {
-        item.checked = object_types.is_empty() || object_types.contains(item.name.as_str());
+        if let Some(saved) = &state.saved_objects {
+            item.checked = saved.is_empty() || saved.contains(&item.name);
+        }
     }
-    let properties = value["properties"]
-        .as_array()
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(|value| value.as_str())
-                .collect::<BTreeSet<_>>()
-        })
-        .unwrap_or_default();
     for item in &mut state.properties {
-        item.checked = properties.is_empty() || properties.contains(item.key.as_str());
+        if let Some(saved) = &state.saved_properties {
+            item.checked = saved.is_empty() || saved.contains(&item.key);
+        }
     }
-    state.combine_identical = value["combineIdentical"]
-        .as_bool()
-        .unwrap_or(state.combine_identical);
-    state.show_count = value["showCount"].as_bool().unwrap_or(state.show_count);
-    state.show_name = value["showName"].as_bool().unwrap_or(state.show_name);
-    state.output_table = value["outputTable"].as_bool().unwrap_or(state.output_table);
-    state.output_file = value["outputFile"].as_bool().unwrap_or(state.output_file);
-    state.output_path = value["outputPath"]
-        .as_str()
-        .unwrap_or(&state.output_path)
-        .to_string();
-    state.table_style = value["tableStyle"]
-        .as_str()
-        .unwrap_or(&state.table_style)
-        .to_string();
-    state.table_title = value["tableTitle"]
-        .as_str()
-        .unwrap_or(&state.table_title)
-        .to_string();
+    if let Some(hidden) = set_of("hiddenCategories") {
+        state.categories.retain(|category| !hidden.contains(category));
+        state.hidden_categories = hidden;
+    }
+    state.combine_identical = flag("combineIdentical", state.combine_identical);
+    state.show_count = flag("showCount", state.show_count);
+    state.show_name = flag("showName", state.show_name);
+    state.output_table = flag("outputTable", state.output_table);
+    state.output_file = flag("outputFile", state.output_file);
+    state.output_path = text_of("outputPath", &state.output_path);
+    state.table_style = text_of("tableStyle", &state.table_style);
+    state.table_title = text_of("tableTitle", &state.table_title);
+    state.title_cell_style = text_of("titleCellStyle", &state.title_cell_style);
+    state.header_cell_style = text_of("headerCellStyle", &state.header_cell_style);
+    state.data_cell_style = text_of("dataCellStyle", &state.data_cell_style);
+    state.property_headers = flag("propertyHeaders", state.property_headers);
+    state.display_all_types = flag("displayAllTypes", state.display_all_types);
+    state.blocks_only = flag("blocksOnly", state.blocks_only);
+    state.attributed_blocks_only = flag("attributedBlocksOnly", state.attributed_blocks_only);
+    state.in_use_only = flag("inUseOnly", state.in_use_only);
     Ok(())
 }
 
@@ -1330,6 +1527,12 @@ impl OpenCADStudio {
 
     pub(super) fn open_data_extraction(&mut self) {
         let i = self.active_tab;
+        // The extraction keeps settings next to the drawing and lists the
+        // drawing among its sources, so it needs a saved drawing.
+        if self.tabs[i].current_path.is_none() {
+            self.reset_annotation_modal(ModalKind::DataExtractionUnsaved);
+            return;
+        }
         let doc = &self.tabs[i].scene.document;
         let selection_handles = self.tabs[i]
             .scene
@@ -1337,30 +1540,100 @@ impl OpenCADStudio {
             .into_iter()
             .map(|(handle, _)| handle)
             .collect::<Vec<_>>();
-        let mut counts = BTreeMap::<String, usize>::new();
-        for entity in doc.entities() {
-            if !matches!(entity, EntityType::Block(_) | EntityType::BlockEnd(_)) {
-                *counts
-                    .entry(crate::entities::names::dxf_name(entity).to_string())
-                    .or_default() += 1;
-            }
-        }
         let mut state = DataExtractionState::default();
         state.selection_handles = selection_handles;
-        state.objects = counts
-            .into_iter()
-            .map(
-                |(name, count)| crate::ui::window::annotation_data::ExtractionObject {
-                    name,
-                    checked: true,
-                    count,
-                },
-            )
-            .collect();
         state.table_styles = table_styles(doc);
         state.table_style = doc.header.current_table_style_name.clone();
         self.data_extraction = state;
         self.reset_annotation_modal(ModalKind::DataExtraction);
+    }
+
+    /// Save in the unsaved-drawing notice: pick where the drawing goes.
+    pub(super) fn on_data_extraction_save_drawing(&mut self) -> Task<Message> {
+        let name = format!("{}.dwg", self.tabs[self.active_tab].tab_display_name());
+        Task::perform(
+            async move {
+                let handle = crate::sys::file_dialog()
+                    .set_title(crate::t!("Save Drawing As").as_ref())
+                    .add_filter(crate::t!("Drawing (*.dwg)").as_ref(), &["dwg"])
+                    .set_file_name(&name)
+                    .save_file()
+                    .await?;
+                Some(crate::sys::handle_path(&handle))
+            },
+            Message::DataExtractionSaveDrawingResult,
+        )
+    }
+
+    /// The drawing's new file: save it there, then open the wizard.
+    pub(super) fn on_data_extraction_save_drawing_result(
+        &mut self,
+        path: Option<PathBuf>,
+    ) -> Task<Message> {
+        let Some(path) = path else {
+            return Task::none();
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let i = self.active_tab;
+            if let Err(error) = self.save_tab_synchronously_protected(i, path, true) {
+                self.command_line.push_error(&error.to_string());
+                return Task::none();
+            }
+            self.open_data_extraction();
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = path;
+        Task::none()
+    }
+
+    /// -DATAEXTRACTION with a settings file: run that extraction on the
+    /// drawing — its external file, then its table at a picked point.
+    pub(in crate::app) fn run_extraction_template(&mut self, path: &str) {
+        let i = self.active_tab;
+        let mut state = DataExtractionState {
+            settings_path: path.to_string(),
+            ..DataExtractionState::default()
+        };
+        if let Err(error) = load_extraction_settings(&mut state) {
+            self.command_line.push_error(&error);
+            return;
+        }
+        let rows = match rerun_extraction(
+            &self.tabs[i].scene.document,
+            self.tabs[i].current_path.as_deref(),
+            path,
+        ) {
+            Ok(rows) => rows,
+            Err(error) => {
+                self.command_line.push_error(&error);
+                return;
+            }
+        };
+        if state.output_file && !state.output_path.trim().is_empty() {
+            let file = PathBuf::from(state.output_path.trim());
+            match write_extraction_file(&file, &rows) {
+                Ok(()) => self.command_line.push_output(
+                    crate::tf!(
+                        "External file \"{}\" was successfully created.",
+                        file.display()
+                    )
+                    .as_ref(),
+                ),
+                Err(error) => self.command_line.push_error(&error),
+            }
+        }
+        if state.output_table {
+            let saved = std::mem::replace(&mut self.data_extraction, state);
+            let table = self.extraction_table(&rows);
+            self.data_extraction = saved;
+            let command = crate::modules::annotate::data_link::DataLinkPlaceCommand::extraction(
+                table,
+                path.to_string(),
+            );
+            self.command_line.push_info(&command.prompt());
+            self.tabs[i].active_cmd = Some(Box::new(command));
+        }
     }
 
     pub(super) fn on_table_insert_style(&mut self, style: String) -> Task<Message> {
@@ -1894,8 +2167,10 @@ impl OpenCADStudio {
             }
             DataExtractionField::Category(category, value) => {
                 if value {
+                    self.data_extraction.hidden_categories.remove(&category);
                     self.data_extraction.categories.insert(category);
                 } else {
+                    self.data_extraction.hidden_categories.insert(category.clone());
                     self.data_extraction.categories.remove(&category);
                 }
             }
@@ -1905,10 +2180,35 @@ impl OpenCADStudio {
             DataExtractionField::ShowCount(value) => self.data_extraction.show_count = value,
             DataExtractionField::ShowName(value) => self.data_extraction.show_name = value,
             DataExtractionField::OutputTable(value) => self.data_extraction.output_table = value,
-            DataExtractionField::OutputFile(value) => self.data_extraction.output_file = value,
+            DataExtractionField::OutputFile(value) => {
+                self.data_extraction.output_file = value;
+                if value && self.data_extraction.output_path.trim().is_empty() {
+                    self.data_extraction.output_path = self.default_extraction_output();
+                }
+            }
             DataExtractionField::OutputPath(value) => self.data_extraction.output_path = value,
             DataExtractionField::TableStyle(value) => self.data_extraction.table_style = value,
             DataExtractionField::TableTitle(value) => self.data_extraction.table_title = value,
+            DataExtractionField::DisplayAllTypes(value) => {
+                self.data_extraction.display_all_types = value
+            }
+            DataExtractionField::BlocksOnly(value) => self.data_extraction.blocks_only = value,
+            DataExtractionField::AttributedBlocksOnly(value) => {
+                self.data_extraction.attributed_blocks_only = value
+            }
+            DataExtractionField::InUseOnly(value) => self.data_extraction.in_use_only = value,
+            DataExtractionField::TitleCellStyle(value) => {
+                self.data_extraction.title_cell_style = value
+            }
+            DataExtractionField::HeaderCellStyle(value) => {
+                self.data_extraction.header_cell_style = value
+            }
+            DataExtractionField::DataCellStyle(value) => {
+                self.data_extraction.data_cell_style = value
+            }
+            DataExtractionField::PropertyHeaders(value) => {
+                self.data_extraction.property_headers = value
+            }
         }
         self.data_extraction.error.clear();
         if self.data_extraction.page == ExtractionPage::Refine {
@@ -1924,48 +2224,66 @@ impl OpenCADStudio {
             .iter()
             .copied()
             .collect::<BTreeSet<_>>();
-        let mut counts = BTreeMap::new();
+        let mut catalog = ObjectCatalog::new();
         let current = &self.tabs[self.active_tab].scene.document;
         match state.source {
-            ExtractionSource::CurrentDrawing => collect_type_counts(current, None, &mut counts),
+            ExtractionSource::CurrentDrawing => collect_object_catalog(current, None, &mut catalog),
             ExtractionSource::CurrentSelection => {
-                collect_type_counts(current, Some(&selected), &mut counts)
+                collect_object_catalog(current, Some(&selected), &mut catalog)
             }
             ExtractionSource::DrawingsAndFolders => {
                 if state.include_current {
-                    collect_type_counts(current, None, &mut counts);
+                    collect_object_catalog(current, None, &mut catalog);
                 }
-                for_each_extraction_document(&state, |document| {
-                    collect_type_counts(document, None, &mut counts);
+                for_each_extraction_document(&state, |document, _| {
+                    collect_object_catalog(document, None, &mut catalog);
                 })?;
             }
         }
-        let previous = self
+        let mut previous = self
             .data_extraction
             .objects
             .iter()
             .map(|item| (item.name.to_ascii_lowercase(), item.checked))
             .collect::<BTreeMap<_, _>>();
-        self.data_extraction.objects = counts
-            .into_iter()
-            .map(
-                |(name, count)| crate::ui::window::annotation_data::ExtractionObject {
-                    checked: previous
-                        .get(&name.to_ascii_lowercase())
-                        .copied()
-                        .unwrap_or(true),
-                    name,
-                    count,
-                },
-            )
-            .collect();
+        if let Some(saved) = self.data_extraction.saved_objects.take() {
+            for name in catalog.keys() {
+                previous.insert(
+                    name.to_ascii_lowercase(),
+                    saved.is_empty() || saved.contains(name),
+                );
+            }
+        }
+        let objects = objects_from_catalog(catalog, &previous);
+        self.data_extraction.objects = objects;
         Ok(())
+    }
+
+    fn refresh_extraction_properties(&mut self) {
+        let mut previous = self
+            .data_extraction
+            .properties
+            .iter()
+            .map(|item| (item.key.clone(), item.checked))
+            .collect::<BTreeMap<_, _>>();
+        if let Some(saved) = self.data_extraction.saved_properties.take() {
+            for object in &self.data_extraction.objects {
+                for (key, _, _) in &object.properties {
+                    previous.insert(key.clone(), saved.is_empty() || saved.contains(key));
+                }
+            }
+        }
+        let (properties, categories) =
+            extraction_properties(&self.data_extraction, &previous);
+        self.data_extraction.categories = categories;
+        self.data_extraction.properties = properties;
     }
 
     fn update_extraction_preview(&mut self) {
         match extraction_preview(
             &self.data_extraction,
             &self.tabs[self.active_tab].scene.document,
+            self.tabs[self.active_tab].current_path.as_deref(),
         ) {
             Ok(rows) => {
                 self.data_extraction.preview = rows;
@@ -2041,12 +2359,13 @@ impl OpenCADStudio {
                     .data_extraction
                     .objects
                     .iter()
-                    .any(|value| value.checked)
+                    .any(|value| value.checked && self.data_extraction.shows_object(value))
                 {
                     self.data_extraction.error =
                         crate::t!("Select at least one object type.").into_owned();
                     return Task::none();
                 }
+                self.refresh_extraction_properties();
                 self.data_extraction.page = ExtractionPage::Properties;
             }
             ExtractionPage::Properties => {
@@ -2097,7 +2416,14 @@ impl OpenCADStudio {
         Task::perform(
             async move {
                 let dialog = crate::sys::file_dialog()
-                    .set_title(crate::t!("Data Extraction Settings").as_ref())
+                    .set_title(
+                        if save {
+                            crate::t!("Save Data Extraction As")
+                        } else {
+                            crate::t!("Data Extraction Settings")
+                        }
+                        .as_ref(),
+                    )
                     .add_filter(crate::t!("Data Extraction Settings").as_ref(), &["dxex"])
                     .add_filter(crate::t!("All Files").as_ref(), &["*"]);
                 let handle = if save {
@@ -2319,57 +2645,158 @@ impl OpenCADStudio {
         let rows = self.data_extraction.preview.clone();
         if self.data_extraction.output_file {
             let path = PathBuf::from(self.data_extraction.output_path.trim());
-            let text = if path
-                .extension()
-                .and_then(|value| value.to_str())
-                .is_some_and(|value| value.eq_ignore_ascii_case("txt"))
-            {
-                rows.iter()
-                    .map(|row| row.join("\t"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-                    + "\n"
-            } else {
-                rows_to_csv(&rows)
-            };
-            // Web output mirrors the native CSV/TXT write (there is no xlsx
-            // writer on either target): the browser gets the same bytes as a
-            // download under the picked name.
-            #[cfg(target_arch = "wasm32")]
-            {
-                let name = path
-                    .file_name()
-                    .map(|value| value.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "extraction.csv".into());
-                crate::sys::download_bytes(&name, text.as_bytes());
-            }
-            #[cfg(not(target_arch = "wasm32"))]
-            if let Err(error) = std::fs::write(&path, text) {
-                self.data_extraction.error = error.to_string();
+            if let Err(error) = write_extraction_file(&path, &rows) {
+                self.data_extraction.error = error;
                 return Task::none();
             }
+            self.command_line.push_output(
+                crate::tf!(
+                    "External file \"{}\" was successfully created.",
+                    path.display()
+                )
+                .as_ref(),
+            );
         }
         let i = self.active_tab;
+        self.active_modal = None;
+        self.reset_modal_geometry();
         if self.data_extraction.output_table {
-            let style = table_style_handle(
-                &self.tabs[i].scene.document,
-                &self.data_extraction.table_style,
+            let table = self.extraction_table(&rows);
+            let settings = self.data_extraction.settings_path.trim().to_string();
+            let command = crate::modules::annotate::data_link::DataLinkPlaceCommand::extraction(
+                table, settings,
             );
-            let table = build_table(&rows, style, Some(&self.data_extraction.table_title));
-            let command =
-                crate::modules::annotate::data_link::DataLinkPlaceCommand::unlinked(table);
-            self.active_modal = None;
-            self.reset_modal_geometry();
             self.command_line.push_info(&command.prompt());
             self.tabs[i].active_cmd = Some(Box::new(command));
         } else {
-            self.active_modal = None;
-            self.reset_modal_geometry();
             self.ribbon.deactivate_tool();
-            self.command_line
-                .push_output(crate::t!("DATAEXTRACTION: external file created.").as_ref());
         }
         Task::none()
+    }
+
+    /// The extraction table: a title row (empty when no title was given),
+    /// the column headers, then the data, in the chosen table and cell
+    /// styles, each column as wide as its longest entry.
+    fn extraction_table(&self, rows: &[Vec<String>]) -> codec::entities::Table {
+        let state = &self.data_extraction;
+        let doc = &self.tabs[self.active_tab].scene.document;
+        let style = doc.objects.iter().find_map(|(handle, object)| match object {
+            ObjectType::TableStyle(style) if style.name.eq_ignore_ascii_case(&state.table_style) => {
+                Some((*handle, style))
+            }
+            _ => None,
+        });
+        let body: Vec<Vec<String>> = if state.property_headers {
+            rows.to_vec()
+        } else {
+            rows.iter().skip(1).cloned().collect()
+        };
+        let columns = body.iter().map(Vec::len).max().unwrap_or(1).max(1);
+        // Rows are a line and a third of their text high plus both margins
+        // (measured: 4.5 text with 1.5 margins -> 9, the 6 title -> 11).
+        let (text_heights, margin, row_heights) = match style {
+            Some((_, table_style)) => {
+                let heights = [
+                    table_style.title_row_style.text_height.max(1.0e-6),
+                    table_style.header_row_style.text_height.max(1.0e-6),
+                    table_style.data_row_style.text_height.max(1.0e-6),
+                ];
+                let row = |h: f64| h * 4.0 / 3.0 + 2.0 * table_style.vertical_margin;
+                (
+                    heights,
+                    table_style.horizontal_margin,
+                    [row(heights[0]), row(heights[1]), row(heights[2])],
+                )
+            }
+            None => ([0.25, 0.25, 0.18], 0.06, [0.5, 0.5, 0.5]),
+        };
+        let font = crate::entities::text_support::resolve_text_style(
+            style.map_or("Standard", |(_, s)| s.data_row_style.text_style_name.as_str()),
+            doc,
+        )
+        .font_name;
+        let mut table = TableBuilder::new(body.len() + 1, columns)
+            .at(Vector3::new(0.0, 0.0, 0.0))
+            .row_height(row_heights[2])
+            .column_width(2.0)
+            .build();
+        table.table_style_handle = style.map(|(handle, _)| handle);
+        table.set_cell_text(0, 0, state.table_title.trim());
+        if columns > 1 {
+            table.merge_cells(CellRange::new(0, 0, 0, columns - 1));
+        }
+        for (row_index, row) in body.iter().enumerate() {
+            for (column_index, value) in row.iter().enumerate() {
+                table.set_cell_text(row_index + 1, column_index, value);
+            }
+        }
+        // A column is as wide as its widest text, both margins and one more
+        // text height (measured: every column 4.5 wider than text + margins
+        // at 4.5 text with 1.5 margins).
+        let header = usize::from(state.property_headers);
+        for (column_index, column) in table.columns.iter_mut().enumerate() {
+            let widest = body
+                .iter()
+                .enumerate()
+                .filter_map(|(row_index, row)| {
+                    let height = text_heights[if row_index < header { 1 } else { 2 }];
+                    row.get(column_index).map(|value| (value, height))
+                })
+                .filter_map(|(value, height)| {
+                    crate::entities::text_support::text_local_bounds(
+                        &font,
+                        value,
+                        height as f32,
+                        1.0,
+                        0.0,
+                    )
+                })
+                .map(|bounds| f64::from(bounds.advance))
+                .fold(0.0_f64, f64::max);
+            column.width = widest + text_heights[2] + 2.0 * margin;
+        }
+        if let Some((_, table_style)) = style {
+            let names = [
+                state.title_cell_style.as_str(),
+                if state.property_headers {
+                    state.header_cell_style.as_str()
+                } else {
+                    state.data_cell_style.as_str()
+                },
+                state.data_cell_style.as_str(),
+            ];
+            for (row_index, row) in table.rows.iter_mut().enumerate() {
+                let slot = row_index.min(2);
+                row.style = Some(crate::modules::annotate::table_cmd::selected_row_style(
+                    table_style,
+                    names[slot],
+                ));
+                row.height = row_heights[slot];
+            }
+        }
+        table
+    }
+
+    /// The external file the extraction suggests: the drawing's name as a
+    /// workbook beside the drawing.
+    fn default_extraction_output(&self) -> String {
+        let tab = &self.tabs[self.active_tab];
+        let stem = tab
+            .current_path
+            .as_deref()
+            .and_then(|path| path.file_stem())
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_else(|| tab.tab_display_name());
+        let folder = tab
+            .current_path
+            .as_deref()
+            .and_then(|path| path.parent())
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
+        folder
+            .join(format!("{stem}.xlsx"))
+            .to_string_lossy()
+            .into_owned()
     }
 }
 

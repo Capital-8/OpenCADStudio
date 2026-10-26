@@ -19,6 +19,10 @@ pub fn tool() -> ToolDef {
     }
 }
 
+/// Marks a table waiting to be linked to the extraction settings named after
+/// the marker.
+pub const EXTRACTION_PENDING: &str = "__OPENCAD_EXTRACTION_PENDING__";
+
 pub struct DataLinkPlaceCommand {
     table: Table,
     plane: WorkingPlane,
@@ -47,7 +51,19 @@ impl DataLinkPlaceCommand {
         }
     }
 
-    /// Place a prepared, unlinked table (used by the extraction wizard).
+    /// Place a data extraction table; on placement it is linked to the
+    /// extraction's settings file so DATALINKUPDATE can refresh it.
+    pub fn extraction(mut table: Table, settings: String) -> Self {
+        table.name = format!("{EXTRACTION_PENDING}{settings}");
+        Self {
+            table,
+            plane: WorkingPlane::default(),
+            command_name: "DATAEXTRACTION",
+        }
+    }
+
+    /// Place a prepared, unlinked table.
+    #[allow(dead_code)]
     pub fn unlinked(table: Table) -> Self {
         Self {
             table,

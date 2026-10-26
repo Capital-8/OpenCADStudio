@@ -2218,6 +2218,10 @@ impl OpenCADStudio {
                 self.on_data_extraction_browse_output_result(path)
             }
             Message::DataExtractionFinish => self.on_data_extraction_finish(),
+            Message::DataExtractionSaveDrawing => self.on_data_extraction_save_drawing(),
+            Message::DataExtractionSaveDrawingResult(path) => {
+                self.on_data_extraction_save_drawing_result(path)
+            }
 
             Message::DataExtractionSave(csv) => {
                 let csv_clone = csv.clone();
