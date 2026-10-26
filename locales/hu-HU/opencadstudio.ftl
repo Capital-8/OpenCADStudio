@@ -6310,6 +6310,14 @@ dimstyle =
     .surveyors-units = Földmérési egységek
 
 style-manager =
+    .import-styles = Stílusok importálása
+    .select-drawing-to-import-styles-from = Válassza ki a rajzot, amelyből stílusokat szeretne importálni
+    .select-the-styles-to-import = Válassza ki az importálandó stílusokat
+    .style-name-conflict = Már létezik ilyen nevű stílus. Felülírja?
+    .no-styles-found = Nem találhatók stílusok ebben a rajzban.
+    .existing = Már létezik
+    .imported-styles-apply = __ocs_fmt_0__ stílus importálva. A módosítások megtartásához kattintson az Alkalmaz gombra.
+    .missing-style-references = Egyes importált stílusok olyan nyílblokkokra, vonaltípusokra vagy szövegstílusokra hivatkoznak, amelyek nincsenek meg ebben a rajzban; helyettük alapértékek lesznek használatban.
     .alignment-spacing = Igazítási távolság
     .always-left-align = Mindig balra igazítás
     .attachment-direction = Rögzítési irány

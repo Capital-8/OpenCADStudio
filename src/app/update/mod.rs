@@ -120,6 +120,7 @@ pub(in crate::app) use plugin_grips::SETTLE_WATCHDOG;
 mod plugin_grips_tests;
 mod qselect;
 mod style;
+pub(crate) mod style_import;
 pub(in crate::app) mod util;
 mod viewport;
 mod viewport_snap;
@@ -209,6 +210,10 @@ impl OpenCADStudio {
             Some(TextStyle | DimStyle | TableStyle | MLeaderStyle | MlStyle)
         ) {
             self.style_stage_discard();
+        }
+        if self.active_modal == Some(StyleImport) {
+            self.style_import_cancel();
+            return;
         }
         if self.active_modal == Some(PointStyle) {
             self.point_style_tab_id = None;
@@ -11874,6 +11879,25 @@ impl OpenCADStudio {
 
             // ── TextStyle Font Browser ────────────────────────────────────────
             Message::TextStyleDialogOpen => self.on_text_style_dialog_open(),
+            Message::StyleImportPick(kind) => self.style_import_pick(kind),
+            Message::StyleImportFile(kind, path) => self.style_import_file(kind, path),
+            Message::StyleImportLoaded(kind, result) => self.style_import_loaded(kind, result),
+            Message::StyleImportToggle(name) => {
+                self.style_import_toggle(&name);
+                Task::none()
+            }
+            Message::StyleImportApply => {
+                self.style_import_apply();
+                Task::none()
+            }
+            Message::StyleImportConfirm(overwrite) => {
+                self.style_import_confirm(overwrite);
+                Task::none()
+            }
+            Message::StyleImportCancel => {
+                self.style_import_cancel();
+                Task::none()
+            }
             Message::TextStyleDialogClose => {
                 self.close_active_modal();
                 Task::none()

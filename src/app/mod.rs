@@ -68,6 +68,7 @@ pub(crate) mod style_ops;
 mod text_inline;
 mod tolerance_dialog;
 mod update;
+pub(crate) use update::style_import::{style_exists as style_import_exists, StyleImportDraft};
 mod view;
 #[cfg(test)]
 mod viewport_dimension_tests;
@@ -1562,6 +1563,7 @@ pub(super) struct OpenCADStudio {
     /// in-dialog preview but only persist on Apply; closing without Apply
     /// restores this snapshot. `None` when no style manager is staging.
     style_stage: Option<style_ops::StyleStage>,
+    style_import: Option<update::style_import::StyleImportDraft>,
 
     // ── TextStyle Font Browser ────────────────────────────────────────────
     textstyle_selected: String,
@@ -2704,6 +2706,7 @@ pub enum ModalKind {
     MlStyle,
     MLeaderStyle,
     DimStyle,
+    StyleImport,
     Unsaved,
     BlockEditChanges,
     BlockEditPicker,
@@ -4787,6 +4790,13 @@ pub enum Message {
     StyleRenameCommit(StyleKind),
     StyleRenameCancel,
     TextStyleDialogDelete,
+    StyleImportPick(StyleKind),
+    StyleImportFile(StyleKind, Option<std::path::PathBuf>),
+    StyleImportLoaded(StyleKind, Result<(String, codec::Document), String>),
+    StyleImportToggle(String),
+    StyleImportApply,
+    StyleImportConfirm(bool),
+    StyleImportCancel,
     /// Edit a string field (FontFile / Width / Oblique).
     TextStyleEdit {
         field: &'static str,
@@ -5668,6 +5678,7 @@ impl OpenCADStudio {
             style_rename_buf: String::new(),
             style_rename_kind: None,
             style_stage: None,
+            style_import: None,
             textstyle_selected: "Standard".to_string(),
             textstyle_tab: 0,
             textstyle_compare: String::new(),

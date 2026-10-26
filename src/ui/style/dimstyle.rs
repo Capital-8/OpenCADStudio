@@ -1434,6 +1434,7 @@ pub fn view_window<'a>(
         on_new: Message::DimStyleDialogNew,
         on_copy: Message::DimStyleDialogCopy,
         on_delete: Message::DimStyleDialogDelete,
+        on_import: Some(Message::StyleImportPick(crate::app::StyleKind::Dim)),
         on_select: Message::DimStyleDialogSelect,
         on_set_current: Message::DimStyleDialogSetCurrent,
         on_apply: Message::DimStyleDialogApply,

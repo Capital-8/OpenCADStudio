@@ -73,6 +73,7 @@ impl OpenCADStudio {
             Some(K::PrintAll) => t!("Print All").into_owned(),
             Some(K::LayoutManager) => crate::tr!("modal", "layout-manager"),
             Some(K::ScaleManager) => crate::tr!("modal", "scale-manager"),
+            Some(K::StyleImport) => t!("Import Styles").into_owned(),
             Some(K::AnnoObjectScale) => crate::tr!("modal", "annotation-object-scale"),
             Some(K::Hyperlink) if self.hyperlink_options.edit => {
                 crate::tr!("hyperlink-dialog", "title-edit")
@@ -132,6 +133,13 @@ impl OpenCADStudio {
     pub(super) fn modal_content<'s>(&'s self) -> Option<Element<'s, Message>> {
         let ex = self.modal_resize;
         Some(match self.active_modal? {
+            super::super::ModalKind::StyleImport => sized_flow(ex, 540, 480, |flow| {
+                crate::ui::style::style_manager::import_view(
+                    self.style_import.as_ref().expect("style import dialog without draft"),
+                    &self.tabs[self.active_tab].scene.document,
+                    flow,
+                )
+            }),
             super::super::ModalKind::About => {
                 automatic_flow(ex, crate::ui::window::about::view_window)
             }
