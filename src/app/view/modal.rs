@@ -4,6 +4,10 @@ use iced::widget::{button, column, container, row, text, Space};
 use iced::{Background, Element, Fill, Fit, Theme};
 use std::borrow::Cow;
 
+#[cfg(test)]
+#[path = "conversion_loss_tests.rs"]
+mod conversion_loss_tests;
+
 impl OpenCADStudio {
     /// Title shown in the active modal's title bar. Keep in sync with the
     /// [`Self::modal_content`] dispatch.
@@ -1710,7 +1714,7 @@ impl OpenCADStudio {
                     .as_ref()
                     .map(super::super::PendingConversionSave::format_name)
                     .unwrap_or_default();
-                automatic_flow(ex, |flow| {
+                sized_flow(ex, 640, 480, |flow| {
                     conversion_loss_dialog_window(&self.conversion_losses, &target, flow)
                 })
             }
@@ -2406,14 +2410,27 @@ fn conversion_loss_dialog_window<'a>(
         "Saving as \"%{target}\" cannot keep the following, so it will be lost:",
         target = target,
     );
-    let mut lines = column![text(body_text).size(13)].spacing(4);
+    // Leave room for the scrollbar and its rounded scroll offset at the end.
+    let mut lines = column![].spacing(4).padding(iced::Padding {
+        right: 14.0,
+        bottom: 1.0,
+        ..iced::Padding::ZERO
+    });
     for loss in losses {
-        lines = lines.push(text(format!("• {loss}")).size(12));
+        lines = lines.push(
+            text(format!("• {loss}"))
+                .size(12)
+                .wrapping(iced::widget::text::Wrapping::WordOrGlyph),
+        );
     }
 
     container(
         column![
-            lines,
+            text(body_text).size(13),
+            Space::new().height(8),
+            iced::widget::scrollable(lines)
+                .width(sizing.width)
+                .height(sizing.height),
             iced::widget::Space::new().height(20),
             row![
                 dialog_button(
@@ -2425,7 +2442,9 @@ fn conversion_loss_dialog_window<'a>(
                 dialog_button(t!("Back"), Message::ConversionLossBack, button::secondary),
             ],
         ]
-        .spacing(0),
+        .spacing(0)
+        .width(sizing.width)
+        .height(sizing.height),
     )
     .style(dialog_body_style)
     .center_x(sizing.width)
