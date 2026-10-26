@@ -10603,7 +10603,7 @@ impl OpenCADStudio {
                 self.mark_startup_modal_shown();
                 if first_measurement {
                     let initial_width = self.mtext_editor.as_ref().and_then(|editor| {
-                        editor.editing.is_none().then(|| {
+                        (editor.editing.is_none() && !editor.keep_width).then(|| {
                             (size.width - 2.0 * super::view::overlay::MTEXT_PREVIEW_PAD).max(80.0)
                                 / editor.preview_scale()
                         })
