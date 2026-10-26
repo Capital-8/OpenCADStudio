@@ -542,6 +542,14 @@ impl OpenCADStudio {
         };
         self.ribbon
             .set_dropdown_current("ATTMODE_DROPDOWN", attmode);
+        // Annotate > Text: TEXTSIZE (unless it is being typed in) and
+        // TEXTLAYER.
+        if !self.ribbon.text_height_editing {
+            self.ribbon.text_height =
+                crate::modules::annotate::text_height_label(tab.scene.document.header.text_height);
+        }
+        self.ribbon.text_layer =
+            crate::io::drawing_variable(&tab.scene.document, "TEXTLAYER").unwrap_or_default();
     }
 
     fn update_message(&mut self, msg: Message) -> Task<Message> {
@@ -6940,6 +6948,52 @@ impl OpenCADStudio {
             Message::XrefFadeCommit => {
                 self.set_xref_fade(self.ribbon.xref_fade);
                 Task::none()
+            }
+            Message::RibbonTextFind(value) => {
+                self.ribbon.text_find = value;
+                Task::none()
+            }
+            // The text goes to Find and Replace, which lists where it occurs.
+            Message::RibbonTextFindSubmit => {
+                let search = self.ribbon.text_find.trim().to_string();
+                if search.is_empty() {
+                    return Task::none();
+                }
+                self.find_replace_search_changed(search);
+                let task = self.open_find_replace();
+                self.find_replace_find_all();
+                task
+            }
+            Message::RibbonTextHeight(value) => {
+                self.ribbon.text_height = value;
+                self.ribbon.text_height_editing = true;
+                Task::none()
+            }
+            Message::RibbonTextHeightSubmit => {
+                self.ribbon.text_height_editing = false;
+                let i = self.active_tab;
+                let typed = self.ribbon.text_height.trim().replace(',', ".");
+                match typed.parse::<f64>() {
+                    Ok(height) if height.is_finite() && height > 0.0 => {
+                        if (self.tabs[i].scene.document.header.text_height - height).abs() > 1e-12 {
+                            self.tabs[i].scene.document.header.text_height = height;
+                            self.tabs[i].dirty = true;
+                        }
+                    }
+                    _ => self.command_line.push_error(
+                        crate::t!("Cannot set TEXTSIZE to that value.").as_ref(),
+                    ),
+                }
+                self.sync_frame_dropdown();
+                Task::none()
+            }
+            Message::RibbonTextHeightFocus => iced::widget::operation::focus(iced::widget::Id::new(
+                crate::ui::ribbon::widgets::TEXT_HEIGHT_ID,
+            )),
+            Message::RibbonTextLayer(layer) => {
+                self.ribbon.close_dropdown();
+                let value = if layer.is_empty() { ".".to_string() } else { layer };
+                self.dispatch_command(&format!("TEXTLAYER {value}"))
             }
             Message::XrefFadeToggle => {
                 let fade = crate::scene::cache::block_cache::xref_fade_ctl();
