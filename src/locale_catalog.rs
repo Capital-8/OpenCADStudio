@@ -3,6 +3,14 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
+        "Import Styles" => Some(("style-manager", "import-styles")),
+        "Select Drawing to Import Styles From" => Some(("style-manager", "select-drawing-to-import-styles-from")),
+        "Select the styles to import" => Some(("style-manager", "select-the-styles-to-import")),
+        "A style with this name already exists. Overwrite it?" => Some(("style-manager", "style-name-conflict")),
+        "No styles found in this drawing." => Some(("style-manager", "no-styles-found")),
+        "Existing" => Some(("style-manager", "existing")),
+        "Imported {} style(s). Apply to keep the changes." => Some(("style-manager", "imported-styles-apply")),
+        "Some imported styles reference arrow blocks, linetypes, or text styles unavailable in this drawing; defaults will be used." => Some(("style-manager", "missing-style-references")),
         "Block evaluation would generate more than 100000 array objects. Reduce the distance or increase the spacing." => Some(("block-array", "limit-error")),
         "The Lookup table is invalid." => Some(("block-lookup", "invalid-table")),
         "The selected Lookup row has an invalid parameter value." => Some(("block-lookup", "invalid-value")),
