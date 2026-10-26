@@ -200,8 +200,7 @@ pub(crate) const DATA_LINK_DICTIONARY: &str = "ACAD_DATALINK";
 /// Data adapter of spreadsheet links.
 pub(crate) const EXCEL_LINK_ADAPTER: &str = "AcExcel";
 /// Data adapter of the links a data extraction table keeps to its settings.
-pub(crate) const EXTRACTION_LINK_ADAPTER: &str =
-    "Autodesk.AutoCAD.DataExtraction.DxDataLinkAdapter";
+pub(crate) const EXTRACTION_LINK_ADAPTER: &str = "OpenCADStudio.DataExtraction.DataLinkAdapter";
 /// Data-link option: keep a cached copy of the source data.
 pub(crate) const LINK_OPTION_PERSIST_CACHE: i32 = 0x1;
 /// Update-option bits.
