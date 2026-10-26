@@ -185,6 +185,11 @@ pub struct TextLocalBounds {
     pub advance: f32,
 }
 
+/// The descender depth of `font_name` as a fraction of the text height.
+pub fn descent_ratio(font_name: &str) -> f32 {
+    Face::resolve(font_name).descent_ratio()
+}
+
 pub fn text_local_bounds(
     font_name: &str,
     text: &str,

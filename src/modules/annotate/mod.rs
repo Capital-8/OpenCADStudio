@@ -29,6 +29,7 @@ pub mod qdim;
 pub mod radius_dim;
 pub mod table_cmd;
 pub mod text;
+pub mod text_edit;
 pub mod textedit;
 pub mod txt2mtxt;
 pub mod tolerance_cmd;
