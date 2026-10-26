@@ -929,7 +929,14 @@ fn dim_geom_entities(
     dim_common: &codec::entities::EntityCommon,
 ) -> Vec<EntityType> {
     let mut entities = Vec::new();
-    let point = |value: [f32; 3]| Vector3::new(value[0] as f64, value[1] as f64, value[2] as f64);
+    let origin = geometry.origin;
+    let point = |value: [f32; 3]| {
+        Vector3::new(
+            value[0] as f64 + origin.x,
+            value[1] as f64 + origin.y,
+            value[2] as f64 + origin.z,
+        )
+    };
     for (points, common) in [
         (geometry.ext_lines.as_slice(), ext_common),
         (geometry.dim_lines.as_slice(), dim_common),

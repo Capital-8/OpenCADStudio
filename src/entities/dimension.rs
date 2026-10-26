@@ -3435,7 +3435,12 @@ use crate::scene::convert::tessellate::{
 };
 use crate::scene::model::wire_model::{SnapHint, TangentGeom, WireModel};
 
-fn apply_dimension_breaks(document: &Document, dimension: Handle, lines: &mut Vec<[f32; 3]>) {
+fn apply_dimension_breaks(
+    document: &Document,
+    dimension: Handle,
+    lines: &mut Vec<[f32; 3]>,
+    origin: Vector3,
+) {
     let references: Vec<_> = document
         .objects
         .values()
@@ -3472,8 +3477,8 @@ fn apply_dimension_breaks(document: &Document, dimension: Handle, lines: &mut Ve
             }
             let mut intervals = vec![(0.0f32, 1.0f32)];
             for reference in &references {
-                let first = vec3_local(reference.first_point);
-                let second = vec3_local(reference.second_point);
+                let first = vec3_local(point_from_origin(reference.first_point, origin));
+                let second = vec3_local(point_from_origin(reference.second_point, origin));
                 let t1 = (first - a).dot(direction) / length_squared;
                 let t2 = (second - a).dot(direction) / length_squared;
                 let closest1 = a + direction * t1.clamp(0.0, 1.0);
@@ -3522,7 +3527,8 @@ fn apply_dimension_breaks(document: &Document, dimension: Handle, lines: &mut Ve
     *lines = output;
 }
 
-fn dimension_jog_point(dimension: &Dimension) -> Option<Vec3> {
+/// The jog position stored on a dimension (WCS, full f64), if any.
+fn dimension_jog_point(dimension: &Dimension) -> Option<Vector3> {
     if !matches!(dimension, Dimension::Linear(_) | Dimension::Aligned(_)) {
         return None;
     }
@@ -3533,7 +3539,7 @@ fn dimension_jog_point(dimension: &Dimension) -> Option<Vec3> {
         .get_record("ACAD_DSTYLE_DIMJAG_POSITION")
         .and_then(|record| {
             record.values.iter().rev().find_map(|value| match value {
-                codec::xdata::XDataValue::Point3D(point) => Some(vec3_local(*point)),
+                codec::xdata::XDataValue::Point3D(point) => Some(*point),
                 _ => None,
             })
         })
@@ -3752,6 +3758,15 @@ fn tessellate_dimension_inner(
     // (Baked-block fast path moved up into scene::tessellate_entity so the
     // recursive call goes through the LOD ladder, not the kernel path.)
 
+    // Dimension geometry is f32. Tessellate it in a local frame anchored at a
+    // point of the dimension, then fold the origin back in as a double-single
+    // residual, so dimensions stay glued to their measured points on
+    // UTM-scale drawings instead of drifting by up to half a metre.
+    let source_dim = dim;
+    let origin = dimension_precision_origin(dim);
+    let shifted = (origin != Vector3::ZERO).then(|| shift_dimension(dim, origin));
+    let dim = shifted.as_ref().unwrap_or(dim);
+
     let style_name = &dim.base().style_name;
     let source_style = document.dim_styles.iter().find(|s| {
         s.name.eq_ignore_ascii_case(style_name)
@@ -3940,7 +3955,10 @@ fn tessellate_dimension_inner(
             dimexo as f64,
             dimexe as f64,
         ) {
-            let points: Vec<Vec3> = points.into_iter().map(vec3_local).collect();
+            let points: Vec<Vec3> = points
+                .into_iter()
+                .map(|point| vec3_local(point_from_origin(point, origin)))
+                .collect();
             add_polyline(&mut geom.ext_lines, &points);
         }
     }
@@ -3968,20 +3986,21 @@ fn tessellate_dimension_inner(
         // supersedes it. Read but not honoured.
         let _ = s.dimunit;
     }
-    if let Some(point) = dimension_jog_point(dim) {
+    if let Some(point) = dimension_jog_point(source_dim) {
         let jog_angle = style
             .map(|style| style.dimjogang as f32)
             .unwrap_or(std::f32::consts::FRAC_PI_4);
         apply_dimension_jog(
             &mut geom.dim_lines,
-            point,
+            vec3_local(point_from_origin(point, origin)),
             vec3_local(dim.base().normal),
             dim_txt as f32 * CELL_WIDTH as f32,
             jog_angle,
         );
     }
-    apply_dimension_breaks(document, handle, &mut geom.dim_lines);
-    apply_dimension_breaks(document, handle, &mut geom.ext_lines);
+    apply_dimension_breaks(document, handle, &mut geom.dim_lines, origin);
+    apply_dimension_breaks(document, handle, &mut geom.ext_lines, origin);
+    geom.origin = origin;
     // Dimension entity fields that the render path doesn't yet use but are
     // preserved on save:
     //   - base.insertion_point: legacy anchor reference; render uses
@@ -4037,13 +4056,15 @@ fn tessellate_dimension_inner(
         )
     };
 
-    let snap_pts = dimension_snap_pts(dim);
+    let snap_pts = dimension_snap_pts(source_dim);
     let key_vertices: Vec<[f64; 3]> = geom
         .dim_lines
         .iter()
         .chain(geom.ext_lines.iter())
         .copied()
         .filter(|p| !(p[0].is_nan() || p[1].is_nan() || p[2].is_nan()))
+        // Still in the local frame here; `translate_wire_from_origin` folds
+        // the origin in once, together with the wire's point buffers.
         .map(|[x, y, z]| [x as f64, y as f64, z as f64])
         .collect();
 
@@ -4412,8 +4433,17 @@ fn tessellate_dimension_inner(
         }
     }
 
+    // Everything above is local-frame geometry: fold the origin back in as a
+    // double-single residual. The synthesised text below is built from the
+    // original f64 position, so it stays world-space and must not be shifted.
+    if origin != Vector3::ZERO {
+        for wire in &mut wires {
+            translate_wire_from_origin(wire, origin);
+        }
+    }
+
     if let Some(mut synth_text_entity) =
-        dimension_text_entity(dim, dim_txt, style, document, dim_scale)
+        dimension_text_entity(source_dim, dim_txt, style, document, dim_scale)
     {
         // The glyphs take their colour from the text entity itself, which
         // copies the dimension's (usually ByLayer); an explicit DIMCLRT has to
@@ -4428,7 +4458,7 @@ fn tessellate_dimension_inner(
         }
         // Tolerance Text rendered separately so DIMTFAC scales its height
         // and DIMTOLJ aligns it vertically against the primary text.
-        let tol_entity = dimension_tolerance_entity(dim, style, &synth_text_entity, dim_txt);
+        let tol_entity = dimension_tolerance_entity(source_dim, style, &synth_text_entity, dim_txt);
         // Route synthesised dim text through tessellate_entity so the
         // baseline/greek/full LOD ladder applies (zoom-out behaviour
         // matches top-level Text / MText). The text already has dim_scale
@@ -7699,6 +7729,156 @@ fn vec3_local(v: Vector3) -> Vec3 {
     Vec3::new(v.x as f32, v.y as f32, v.z as f32)
 }
 
+/// WCS point used as the local frame origin while one dimension is
+/// tessellated.
+///
+/// Dimension geometry is assembled in `Vec3` (f32). On a survey drawing at
+/// UTM-scale coordinates (eastings ~1.65e6, northings ~4.95e6) an absolute
+/// f32 has an ulp of ~0.5 m, so the dimensional lines, extension lines and
+/// arrows snap to a half-metre grid and visibly drift away from the points
+/// they measure. Shifting the dimension's definition data to a nearby origin
+/// first keeps every f32 operation exact to well under a millimetre; the
+/// origin is folded back into the double-single wire buffers on output.
+fn dimension_precision_origin(dim: &Dimension) -> Vector3 {
+    let point = match dim {
+        Dimension::Aligned(d) => d.first_point,
+        Dimension::Linear(d) => d.first_point,
+        Dimension::Radius(d) => d.angle_vertex,
+        Dimension::Diameter(d) => d.angle_vertex,
+        Dimension::Angular2Ln(d) => d.angle_vertex,
+        Dimension::Angular3Pt(d) => d.angle_vertex,
+        Dimension::Ordinate(d) => d.feature_location,
+        Dimension::Arc(d) => d.center_point,
+        Dimension::LargeRadial(d) => d.chord_point,
+    };
+    (point.x.is_finite() && point.y.is_finite() && point.z.is_finite())
+        .then_some(point)
+        .unwrap_or_else(|| {
+            let base = dim.base();
+            if base.definition_point.x.is_finite() {
+                base.definition_point
+            } else {
+                Vector3::ZERO
+            }
+        })
+}
+
+fn point_from_origin(point: Vector3, origin: Vector3) -> Vector3 {
+    Vector3::new(point.x - origin.x, point.y - origin.y, point.z - origin.z)
+}
+
+/// Same, but keeps the all-zero "not stored" sentinel some base fields use
+/// (text placement and the legacy insertion point). Shifting a zero there
+/// would turn "automatic" into a bogus explicit point at the far origin.
+fn stored_point_from_origin(point: Vector3, origin: Vector3) -> Vector3 {
+    if point == Vector3::ZERO {
+        point
+    } else {
+        point_from_origin(point, origin)
+    }
+}
+
+/// `dim` with every definition point moved into the local frame at `origin`.
+/// Measurements, angles and vectors are translation-invariant, so the shifted
+/// dimension reports the same values while its `Vec3` geometry stays small.
+fn shift_dimension(dim: &Dimension, origin: Vector3) -> Dimension {
+    let mut shifted = dim.clone();
+    let base = shifted.base_mut();
+    base.definition_point = point_from_origin(base.definition_point, origin);
+    base.text_middle_point = stored_point_from_origin(base.text_middle_point, origin);
+    base.insertion_point = stored_point_from_origin(base.insertion_point, origin);
+    match &mut shifted {
+        Dimension::Aligned(d) => {
+            d.first_point = point_from_origin(d.first_point, origin);
+            d.second_point = point_from_origin(d.second_point, origin);
+            d.definition_point = point_from_origin(d.definition_point, origin);
+        }
+        Dimension::Linear(d) => {
+            d.first_point = point_from_origin(d.first_point, origin);
+            d.second_point = point_from_origin(d.second_point, origin);
+            d.definition_point = point_from_origin(d.definition_point, origin);
+        }
+        Dimension::Radius(d) => {
+            d.definition_point = point_from_origin(d.definition_point, origin);
+            d.angle_vertex = point_from_origin(d.angle_vertex, origin);
+        }
+        Dimension::Diameter(d) => {
+            d.definition_point = point_from_origin(d.definition_point, origin);
+            d.angle_vertex = point_from_origin(d.angle_vertex, origin);
+        }
+        Dimension::Angular2Ln(d) => {
+            d.dimension_arc = point_from_origin(d.dimension_arc, origin);
+            d.first_point = point_from_origin(d.first_point, origin);
+            d.second_point = point_from_origin(d.second_point, origin);
+            d.angle_vertex = point_from_origin(d.angle_vertex, origin);
+            d.definition_point = point_from_origin(d.definition_point, origin);
+        }
+        Dimension::Angular3Pt(d) => {
+            d.definition_point = point_from_origin(d.definition_point, origin);
+            d.first_point = point_from_origin(d.first_point, origin);
+            d.second_point = point_from_origin(d.second_point, origin);
+            d.angle_vertex = point_from_origin(d.angle_vertex, origin);
+        }
+        Dimension::Ordinate(d) => {
+            d.definition_point = point_from_origin(d.definition_point, origin);
+            d.feature_location = point_from_origin(d.feature_location, origin);
+            d.leader_endpoint = point_from_origin(d.leader_endpoint, origin);
+        }
+        Dimension::Arc(d) => {
+            d.definition_point = point_from_origin(d.definition_point, origin);
+            d.first_extension_point = point_from_origin(d.first_extension_point, origin);
+            d.second_extension_point = point_from_origin(d.second_extension_point, origin);
+            d.center_point = point_from_origin(d.center_point, origin);
+            d.first_leader_point = point_from_origin(d.first_leader_point, origin);
+            d.second_leader_point = point_from_origin(d.second_leader_point, origin);
+        }
+        Dimension::LargeRadial(d) => {
+            d.definition_point = point_from_origin(d.definition_point, origin);
+            d.chord_point = point_from_origin(d.chord_point, origin);
+            d.override_center = point_from_origin(d.override_center, origin);
+            d.jog_point = point_from_origin(d.jog_point, origin);
+        }
+    }
+    shifted
+}
+
+/// Move one wire built in the local frame back to world space, splitting each
+/// vertex into the double-single pair the renderer reconstructs relative to
+/// the eye. Leaves `snap_pts` alone: those are absolute source points, not
+/// locally-computed geometry.
+fn translate_wire_from_origin(wire: &mut WireModel, origin: Vector3) {
+    let translate = |high: &mut Vec<[f32; 3]>, low: &mut Vec<[f32; 3]>| {
+        if high.is_empty() {
+            return;
+        }
+        let old_low = std::mem::take(low);
+        low.reserve(high.len());
+        for (index, point) in high.iter_mut().enumerate() {
+            if !point[0].is_finite() {
+                low.push([0.0; 3]);
+                continue;
+            }
+            let residual = old_low.get(index).copied().unwrap_or([0.0; 3]);
+            let x = point[0] as f64 + residual[0] as f64 + origin.x;
+            let y = point[1] as f64 + residual[1] as f64 + origin.y;
+            let z = point[2] as f64 + residual[2] as f64 + origin.z;
+            let (hx, lx) = WireModel::split_ds(x);
+            let (hy, ly) = WireModel::split_ds(y);
+            let (hz, lz) = WireModel::split_ds(z);
+            *point = [hx, hy, hz];
+            low.push([lx, ly, lz]);
+        }
+    };
+    translate(&mut wire.points, &mut wire.points_low);
+    translate(&mut wire.fill_tris, &mut wire.fill_tris_low);
+    translate(&mut wire.pick_tris, &mut wire.pick_tris_low);
+    for point in &mut wire.key_vertices {
+        point[0] += origin.x;
+        point[1] += origin.y;
+        point[2] += origin.z;
+    }
+}
+
 /// Style-driven text anchor on the dimension line: a point on the line through
 /// `defpt` parallel to (`ax`,`ay`), slid along it per DIMJUST and lifted by
 /// `perp_off` toward the side the dimension line sits on.
@@ -8392,6 +8572,11 @@ pub(crate) fn baked_large_radial_geometry(
     if !matches!(dimension, Dimension::LargeRadial(_)) {
         return None;
     }
+    // Same local frame as the render path: the geometry is f32, so build it
+    // around a nearby origin and let `DimGeom::origin` carry it back.
+    let origin = dimension_precision_origin(dimension);
+    let shifted = (origin != Vector3::ZERO).then(|| shift_dimension(dimension, origin));
+    let dimension = shifted.as_ref().unwrap_or(dimension);
     let style_name = dimension.base().style_name.as_str();
     let effective_style = document
         .dim_styles
@@ -8473,6 +8658,7 @@ pub(crate) fn baked_large_radial_geometry(
             dim2: style.is_some_and(|style| style.dimsd2),
         },
     );
+    geometry.origin = origin;
     if !style.is_some_and(|style| style.dimse1) {
         if let Some(points) = crate::scene::dimension_assoc::radial_extension_points(
             document,
@@ -8480,7 +8666,10 @@ pub(crate) fn baked_large_radial_geometry(
             style.map(|style| style.dimexo * scale).unwrap_or(0.0),
             style.map(|style| style.dimexe * scale).unwrap_or(0.0),
         ) {
-            let points: Vec<_> = points.into_iter().map(vec3_local).collect();
+            let points: Vec<_> = points
+                .into_iter()
+                .map(|point| vec3_local(point_from_origin(point, origin)))
+                .collect();
             add_polyline(&mut geometry.ext_lines, &points);
         }
     }
@@ -8500,11 +8689,13 @@ pub(crate) fn baked_large_radial_geometry(
         document,
         dimension.base().common.handle,
         &mut geometry.dim_lines,
+        origin,
     );
     apply_dimension_breaks(
         document,
         dimension.base().common.handle,
         &mut geometry.ext_lines,
+        origin,
     );
     Some(geometry)
 }
@@ -9485,6 +9676,83 @@ mod layout_parity_tests {
             fills += wire.fill_tris.len() / 3;
         }
         (points, fills)
+    }
+
+    /// Like [`drawn`], but reconstructs each vertex from its double-single
+    /// pair — the coordinates the renderer actually shows. The high f32 alone
+    /// is ~0.5 m off at UTM scale, which is exactly the defect under test.
+    fn drawn_precise(document: &Document, dim: &Dimension) -> (Vec<DVec3>, usize) {
+        let wires = dim.tessellate(
+            document,
+            Handle::new(0x40),
+            false,
+            [1.0; 4],
+            1.0,
+            1.0,
+            &rustc_hash::FxHashSet::default(),
+            None,
+            [0.0, 0.0, 0.0, 1.0],
+            None,
+            None,
+            &rustc_hash::FxHashSet::default(),
+        );
+        let mut points = Vec::new();
+        let mut fills = 0;
+        let collect = |high: &[[f32; 3]], low: &[[f32; 3]], points: &mut Vec<DVec3>| {
+            for (index, p) in high.iter().enumerate() {
+                if !p[0].is_finite() {
+                    continue;
+                }
+                let l = low.get(index).copied().unwrap_or([0.0; 3]);
+                points.push(DVec3::new(
+                    p[0] as f64 + l[0] as f64,
+                    p[1] as f64 + l[1] as f64,
+                    p[2] as f64 + l[2] as f64,
+                ));
+            }
+        };
+        for wire in &wires {
+            collect(&wire.points, &wire.points_low, &mut points);
+            collect(&wire.fill_tris, &wire.fill_tris_low, &mut points);
+            // Key vertices are dually used for snapping/picking; they must be
+            // world-space like the rendered points.
+            points.extend(
+                wire.key_vertices
+                    .iter()
+                    .map(|p| DVec3::new(p[0], p[1], p[2])),
+            );
+            fills += wire.fill_tris.len() / 3;
+        }
+        (points, fills)
+    }
+
+    #[test]
+    fn linear_dimension_stays_on_its_points_at_utm_scale() {
+        let document = document();
+        let mut local = DimensionLinear::horizontal(Vector3::ZERO, Vector3::new(10.0, 0.0, 0.0));
+        local.definition_point = Vector3::new(0.0, 5.0, 0.0);
+        local.base.definition_point = local.definition_point;
+
+        let offset = Vector3::new(1_649_905.55, 4_945_694.94, 0.0);
+        let mut moved = local.clone();
+        moved.first_point = moved.first_point + offset;
+        moved.second_point = moved.second_point + offset;
+        moved.definition_point = moved.definition_point + offset;
+        moved.base.definition_point = moved.base.definition_point + offset;
+
+        let (local_points, local_fills) = drawn_precise(&document, &Dimension::Linear(local));
+        let (moved_points, moved_fills) = drawn_precise(&document, &Dimension::Linear(moved));
+        assert_eq!(local_points.len(), moved_points.len());
+        assert_eq!(local_fills, moved_fills);
+        let shift = DVec3::new(offset.x, offset.y, offset.z);
+        for (local, moved) in local_points.iter().zip(&moved_points) {
+            let moved = *moved - shift;
+            assert!(
+                local.distance(moved) < 1e-3,
+                "local {local:?} vs translated-back {moved:?} (offset {:?})",
+                local.distance(moved)
+            );
+        }
     }
 
     fn vertical(top: f64) -> DimensionLinear {

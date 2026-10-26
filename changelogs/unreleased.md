@@ -16,4 +16,5 @@
 ### 🐛 Bug Fixes
 
 * **Partial Dimension Reassociation Reporting:** Identify dimensions that could only be partly re-anchored.
+* **Dimension and Preview Precision at Large Coordinates:** Dimensions are now built in a local frame and folded back into their double-single vertex buffers, so their lines, arrows and extension lines stay on the points they measure on UTM-scale drawings. Measurement and drafting previews likewise keep full precision instead of downcasting absolute coordinates to f32, which had left the `DIST` rubber band offset from the picked points.
 * **Recovery Reader Revision:** Read the embedded acadrust source hash so recovery reports show the reader revision following the shared document-model migration.
