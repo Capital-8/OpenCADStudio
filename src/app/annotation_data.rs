@@ -816,9 +816,7 @@ pub(crate) fn add_extraction_link(doc: &mut Document, settings: &str) -> Handle 
     }
     let link = DataLink {
         data_adapter: EXTRACTION_LINK_ADAPTER.into(),
-        tooltip: format!("Created from Data Extraction:
-
-{stem}"),
+        tooltip: format!("Created from Data Extraction:\r\n{stem}"),
         connection_string: settings.to_string(),
         option: LINK_OPTION_PERSIST_CACHE,
         update_option: UPDATE_SKIP_FORMAT,
