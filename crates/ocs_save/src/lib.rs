@@ -48,7 +48,7 @@ pub fn serialize_document(doc: &Document, ext: &str) -> Result<Vec<u8>, String> 
 /// Converters for formats other than DWG/DXF, which keep their own richer read
 /// and write paths. A converter crate implementing [`Format`] is listed here to
 /// become available to open, save and the file dialogs.
-const EXTERNAL_FORMATS: &[&(dyn Format + Sync)] = &[];
+const EXTERNAL_FORMATS: &[&(dyn Format + Sync)] = &[&codec::Ifcx];
 
 pub fn external_formats() -> &'static [&'static (dyn Format + Sync)] {
     EXTERNAL_FORMATS

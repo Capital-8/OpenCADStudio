@@ -280,7 +280,7 @@ mod tests {
         let path = dir.join("embedded_roundtrip.dwg");
         codec::DwgWriter::write_to_file(&path, &doc).unwrap();
 
-        let mut reader = codec::io::dwg::DwgReader::from_file(&path).unwrap();
+        let mut reader = codec::DwgReader::from_file(&path).unwrap();
         let reopened = reader.read().unwrap();
         std::fs::remove_file(&path).ok();
 

@@ -1585,7 +1585,7 @@ impl OpenCADStudio {
             "document_id": tab.id,
             "source": {
                 "path": tab.current_path,
-                "format": if source_is_dxf { "dxf" } else { "dwg" },
+                "format": source_format(tab.current_path.as_deref(), source_is_dxf),
                 "version": format!("{:?}", document.version),
                 "sha256": source_sha256,
                 "dxf_structure": source_dxf_structure,
@@ -4514,5 +4514,17 @@ mod tests {
         let query = app.automation_op(r#"{"op":"query","type":"Point"}"#);
         assert_eq!(query["entities"][0]["type"], "Point");
         assert_eq!(query["entities"][0]["display_type"], "Point");
+    }
+}
+
+/// The audited source's format: "dxf", "dwg", or a converter's lowercase name.
+fn source_format(path: Option<&std::path::Path>, source_is_dxf: bool) -> String {
+    let converter = path
+        .and_then(std::path::Path::extension)
+        .and_then(|ext| ocs_save::external_format(&ext.to_string_lossy()));
+    match converter {
+        Some(format) => format.name().to_ascii_lowercase(),
+        None if source_is_dxf => "dxf".to_string(),
+        None => "dwg".to_string(),
     }
 }
