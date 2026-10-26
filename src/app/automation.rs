@@ -215,7 +215,7 @@ fn serve_socket_with_idle(
 
 /// The entities inside block definitions: owned by (or listed in) a block
 /// record that is not a layout's model or paper space.
-fn definition_members(document: &codec::CadDocument) -> std::collections::HashSet<codec::Handle> {
+fn definition_members(document: &codec::Document) -> std::collections::HashSet<codec::Handle> {
     let mut layouts: std::collections::HashSet<codec::Handle> = document
         .objects
         .values()
@@ -509,7 +509,7 @@ fn is_generated_dimension_block_name(name: &str) -> bool {
 /// Save-time baking materializes a Dimension's graphics in an anonymous
 /// `*D<n>` block. Those members are derived display geometry, not additional
 /// logical drawing entities; named block members remain part of the manifest.
-fn is_dimension_display_entity(document: &codec::CadDocument, entity: &codec::EntityType) -> bool {
+fn is_dimension_display_entity(document: &codec::Document, entity: &codec::EntityType) -> bool {
     let owner = entity.common().owner_handle;
     document
         .block_records
@@ -517,7 +517,7 @@ fn is_dimension_display_entity(document: &codec::CadDocument, entity: &codec::En
         .any(|block| block.handle == owner && is_generated_dimension_block_name(&block.name))
 }
 
-fn document_manifest(document: &codec::CadDocument) -> Value {
+fn document_manifest(document: &codec::Document) -> Value {
     let mut by_type: BTreeMap<String, u64> = BTreeMap::new();
     let mut by_layer: BTreeMap<String, u64> = BTreeMap::new();
     let mut total = 0u64;
@@ -815,6 +815,9 @@ impl OpenCADStudio {
                         self.tabs[i].adopt_active_ucs_from_header();
                         self.tabs[i].current_path = Some(path_buf);
                         self.tabs[i].is_start = false;
+                        // As the GUI open does: save stamps ORTHOMODE / OSMODE
+                        // back from the app state.
+                        self.adopt_header_sysvars(i);
                         self.tabs[i].scene.rebuild_derived_caches();
                         // The opened document settled (API v9): the post-op
                         // boundary announces `DocumentOpened` once for this load.
@@ -884,6 +887,10 @@ impl OpenCADStudio {
             "text_search" => self.automation_text_search(&req),
             "text_audit" => self.automation_text_audit(&req),
             "text_replace" => self.automation_text_replace(&req),
+            "blocks"
+            | "block_instances"
+            | "cad_get_blocks"
+            | "cad_extract_block_instances" => self.automation_blocks(&req),
             "records" => self.record_query(&req),
             "record_schema" => self.record_schema(&req),
             "capabilities" => self.record_capabilities(),
@@ -2143,9 +2150,9 @@ mod tests {
         use codec::entities::{Dimension, DimensionLinear, Line};
         use codec::tables::BlockRecord;
         use codec::types::Vector3;
-        use codec::{CadDocument, EntityType};
+        use codec::{Document, EntityType};
 
-        let mut document = CadDocument::new();
+        let mut document = Document::new();
         let mut detail = BlockRecord::new("DETAIL");
         detail.handle = document.allocate_handle();
         let detail_handle = detail.handle;
@@ -2685,6 +2692,36 @@ mod tests {
         let opened = app.automation_op(&format!(r#"{{"op":"open","path":"{p}"}}"#));
         assert_eq!(opened["ok"], true, "{}", opened["error"]);
         assert_eq!(opened["total"], 2);
+        drop(app);
+        let sidecar = path.with_file_name(format!(
+            ".{}.ocs.lock",
+            path.file_name().unwrap().to_string_lossy()
+        ));
+        let _ = std::fs::remove_file(sidecar);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn open_op_keeps_orthomode_through_save() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        app.tabs[i].scene.document.header.ortho_mode = true;
+        let path = std::env::temp_dir().join(format!("ocs_ortho_{}.dxf", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let p = path.to_string_lossy().replace('\\', "\\\\");
+        // Written straight from the document, not through save's stamping.
+        crate::io::save(&app.tabs[i].scene.document, &path).unwrap();
+
+        let mut app = OpenCADStudio::new_for_test();
+        let opened = app.automation_op(&format!(r#"{{"op":"open","path":"{p}"}}"#));
+        assert_eq!(opened["ok"], true, "{}", opened["error"]);
+        let saved = app.automation_op(&format!(r#"{{"op":"save","path":"{p}"}}"#));
+        assert_eq!(saved["ok"], true, "{}", saved["error"]);
+        let reopened = app.automation_op(&format!(r#"{{"op":"open","path":"{p}"}}"#));
+        assert_eq!(reopened["ok"], true, "{}", reopened["error"]);
+        let i = app.active_tab;
+        assert!(app.tabs[i].scene.document.header.ortho_mode);
         drop(app);
         let sidecar = path.with_file_name(format!(
             ".{}.ocs.lock",
@@ -3969,7 +4006,7 @@ mod tests {
         ));
         let _ = std::fs::remove_file(&path);
 
-        let mut doc = codec::CadDocument::new();
+        let mut doc = codec::Document::new();
         let mut good = codec::entities::Circle::new();
         good.center = codec::types::Vector3::new(5.0, 5.0, 0.0);
         good.radius = 2.0;

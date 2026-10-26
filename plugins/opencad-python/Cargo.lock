@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "acadrust"
 version = "0.6.6"
-source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=f647216#f64721613076af70ae7db8ce53f2c53d98d5af1a"
+source = "git+https://github.com/HakanSeven12/acadrust.git?rev=24b037a#24b037af9d1490b83464e5d43b14a7f4d12744e8"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -1254,13 +1254,13 @@ dependencies = [
 name = "ocs_plugin_api"
 version = "0.2.1"
 dependencies = [
- "acadrust",
  "bincode",
  "cargo-lock",
  "getrandom 0.2.17",
  "interprocess",
  "libloading 0.8.9",
  "memmap2",
+ "opencaddocument",
  "rkyv",
  "serde",
  "serde-reflection",
@@ -1292,6 +1292,14 @@ dependencies = [
  "rustpython-vm",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "opencaddocument"
+version = "0.1.0"
+source = "git+https://github.com/HakanSeven12/opencaddocument.git?rev=22665ca#22665ca03135da2f8849668dcd4219fb210dcfe7"
+dependencies = [
+ "acadrust",
 ]
 
 [[package]]

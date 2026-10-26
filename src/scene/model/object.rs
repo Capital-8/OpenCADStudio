@@ -19,6 +19,8 @@ pub enum BlockParameterComponent {
     Distance,
     Angle,
     Flip,
+    TableRow(u64),
+    LookupOutput { column: usize, revision: u64 },
 }
 
 /// The kind of value held by a property row.
@@ -55,6 +57,12 @@ pub enum PropValue {
     Choice {
         selected: String,
         options: Vec<String>,
+    },
+    /// String choice retaining authored help text in editable and read-only views.
+    ChoiceWithTooltip {
+        selected: String,
+        options: Vec<String>,
+        tooltip: String,
     },
     /// Editable text plus a dropdown of existing options (block reference
     /// Name row): picking an option re-points the reference, submitting a

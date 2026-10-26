@@ -8,7 +8,7 @@ use codec::objects::{
     AssocAction, AssocArrayActionBody, AssocDependency, AssocEvalValue, AssocValueParam,
     AssociativeData, ObjectType,
 };
-use codec::{CadDocument, Handle};
+use codec::{Document, Handle};
 use glam::{DMat4, DVec3};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,7 +31,7 @@ pub struct AssocArray {
     pub kind: ArrayKind,
 }
 
-fn dependency(document: &CadDocument, handle: Handle) -> Option<&AssocDependency> {
+fn dependency(document: &Document, handle: Handle) -> Option<&AssocDependency> {
     match document.objects.get(&handle)? {
         ObjectType::Associative(object) => match &object.data {
             AssociativeData::Dependency(dependency) => Some(dependency),
@@ -43,7 +43,7 @@ fn dependency(document: &CadDocument, handle: Handle) -> Option<&AssocDependency
     }
 }
 
-pub fn action(document: &CadDocument, handle: Handle) -> Option<&AssocAction> {
+pub fn action(document: &Document, handle: Handle) -> Option<&AssocAction> {
     match document.objects.get(&handle)? {
         ObjectType::Associative(object) => match &object.data {
             AssociativeData::Action(action) => Some(action),
@@ -53,7 +53,7 @@ pub fn action(document: &CadDocument, handle: Handle) -> Option<&AssocAction> {
     }
 }
 
-pub fn body(document: &CadDocument, handle: Handle) -> Option<&AssocArrayActionBody> {
+pub fn body(document: &Document, handle: Handle) -> Option<&AssocArrayActionBody> {
     match document.objects.get(&handle)? {
         ObjectType::Associative(object) => match &object.data {
             AssociativeData::ArrayActionBody(body) => Some(body),
@@ -65,7 +65,7 @@ pub fn body(document: &CadDocument, handle: Handle) -> Option<&AssocArrayActionB
 }
 
 /// The associative array whose array INSERT is `insert`, if any.
-pub fn array_of_insert(document: &CadDocument, insert: Handle) -> Option<AssocArray> {
+pub fn array_of_insert(document: &Document, insert: Handle) -> Option<AssocArray> {
     document.objects.iter().find_map(|(&handle, object)| {
         let ObjectType::Associative(object) = object else {
             return None;
@@ -109,7 +109,7 @@ pub fn array_of_insert(document: &CadDocument, insert: Handle) -> Option<AssocAr
 
 /// An array action whose array INSERT is gone (erased or exploded): it has
 /// nothing left to drive and is dropped when the networks are written.
-pub fn orphaned_array_action(document: &CadDocument, handle: Handle) -> bool {
+pub fn orphaned_array_action(document: &Document, handle: Handle) -> bool {
     let Some(action) = action(document, handle) else {
         return false;
     };
@@ -127,7 +127,7 @@ pub fn orphaned_array_action(document: &CadDocument, handle: Handle) -> bool {
 
 /// The value parameters of an array action: inline in the action (R2013+)
 /// or in the body's parameter section (R2007).
-pub fn value_params<'a>(document: &'a CadDocument, array: &AssocArray) -> &'a [AssocValueParam] {
+pub fn value_params<'a>(document: &'a Document, array: &AssocArray) -> &'a [AssocValueParam] {
     match action(document, array.action) {
         Some(action) if !action.values.is_empty() => &action.values,
         _ => body(document, array.body).map_or(&[], |body| &body.parameter_body.values),
@@ -166,7 +166,7 @@ pub fn set_param_value(params: &mut [AssocValueParam], name: &str, value: f64) -
 
 /// The direction columns step along: the line of the action's "RowProfile"
 /// parameter, X when the array has none.
-pub fn column_axis(document: &CadDocument, array: &AssocArray) -> DVec3 {
+pub fn column_axis(document: &Document, array: &AssocArray) -> DVec3 {
     let Some(action) = action(document, array.action) else {
         return DVec3::X;
     };
@@ -195,7 +195,7 @@ pub fn column_axis(document: &CadDocument, array: &AssocArray) -> DVec3 {
 
 /// The plane normal of an array: its "BaseNormal" vertex parameter, Z when
 /// the array has none.
-pub fn base_normal(document: &CadDocument, array: &AssocArray) -> DVec3 {
+pub fn base_normal(document: &Document, array: &AssocArray) -> DVec3 {
     let Some(action) = action(document, array.action) else {
         return DVec3::Z;
     };
@@ -273,7 +273,7 @@ fn plane_x(normal: DVec3) -> DVec3 {
 
 /// The centre of a polar array, recovered from its first item and its
 /// Radius and StartAngle.
-pub fn polar_center(document: &CadDocument, array: &AssocArray) -> Option<DVec3> {
+pub fn polar_center(document: &Document, array: &AssocArray) -> Option<DVec3> {
     let params = value_params(document, array);
     let first = body(document, array.body)?
         .items
@@ -396,7 +396,7 @@ fn property_rows(kind: ArrayKind) -> &'static [(&'static str, &'static str, &'st
 /// The Properties section of an associative array. Path arrays are shown
 /// read-only: their items follow a curve this does not re-place yet.
 pub fn property_section(
-    document: &CadDocument,
+    document: &Document,
     array: &AssocArray,
 ) -> crate::scene::model::object::PropSection {
     use crate::entities::common::{format_angle, format_length};
@@ -639,7 +639,7 @@ const ARRAY_CLASSES: &[(&str, &str, i32, i32)] = &[
     ),
 ];
 
-fn register_array_classes(document: &mut CadDocument) {
+fn register_array_classes(document: &mut Document) {
     for &(dxf_name, cpp_class_name, dwg_version, maintenance_version) in ARRAY_CLASSES {
         if document.classes.get_by_name(dxf_name).is_some() {
             continue;
@@ -662,7 +662,7 @@ fn register_array_classes(document: &mut CadDocument) {
     }
 }
 
-fn next_anonymous_name(document: &CadDocument) -> String {
+fn next_anonymous_name(document: &Document) -> String {
     let next = document
         .block_records
         .iter()
@@ -686,7 +686,7 @@ fn associative(
     ObjectType::Associative(object)
 }
 
-fn dictionary_entry(document: &CadDocument, dictionary: Handle, key: &str) -> Option<Handle> {
+fn dictionary_entry(document: &Document, dictionary: Handle, key: &str) -> Option<Handle> {
     match document.objects.get(&dictionary)? {
         ObjectType::Dictionary(dictionary) => dictionary.get(key),
         _ => None,
@@ -694,7 +694,7 @@ fn dictionary_entry(document: &CadDocument, dictionary: Handle, key: &str) -> Op
 }
 
 /// A dictionary stored under `key` in `parent`, created when absent.
-fn child_dictionary(document: &mut CadDocument, parent: Handle, key: &str) -> Handle {
+fn child_dictionary(document: &mut Document, parent: Handle, key: &str) -> Handle {
     if let Some(handle) = dictionary_entry(document, parent, key).filter(|handle| {
         matches!(
             document.objects.get(handle),
@@ -719,7 +719,7 @@ fn child_dictionary(document: &mut CadDocument, parent: Handle, key: &str) -> Ha
 
 /// The network holding the actions of model space, created with the root
 /// network above it when the drawing has none.
-fn model_space_network(document: &mut CadDocument) -> Handle {
+fn model_space_network(document: &mut Document) -> Handle {
     const KEY: &str = "ACAD_ASSOCNETWORK";
     let model = document.header.model_space_block_handle;
     let scope = document.ensure_extension_dictionary(model);
@@ -962,7 +962,7 @@ pub fn create(
             .map(|(_, placement)| item(*placement))
             .collect(),
     );
-    let record = |document: &CadDocument, name: &str| {
+    let record = |document: &Document, name: &str| {
         document
             .block_records
             .get(name)

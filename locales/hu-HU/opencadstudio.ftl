@@ -112,6 +112,7 @@ donation =
     .decline = Nem, köszönöm
 
 modal =
+    .saving-as-target-cannot-keep = A(z) "__ocs_arg_target__" formátumba mentés nem tudja megőrizni a következőket, ezért elvesznek:
     .missing-fonts-downloading = Letöltés...
     .missing-fonts-download-available = Elérhetők letöltése
     .missing-fonts-skip = Kihagyás
@@ -284,6 +285,9 @@ command-copy =
     .mode = COPY  Adja meg a másolási módot [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Használat: DCDISPLAY [Megjelenítés|Elrejtés]
+    .dcdisplay-prompt = DCDISPLAY  Adjon meg egy opciót [Megjelenítés/Elrejtés] <Megjelenítés>:
+    .dcdisplay-updated = __ocs_fmt_0__ kényszerjelző frissítve.
     .compare-prompt = COMPARE  __ocs_fmt_0__ csak itt (zöld), __ocs_fmt_1__ csak a másik rajzban (piros)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Összehasonlítás rajzzal
@@ -3495,6 +3499,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: a '__ocs_fmt_1__' stílus nem található.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: érvénytelen felülbírálás "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: nincs kijelölve szerkeszthető méret.
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ méret frissítve.
+    .dimoverride-var-prompt = DIMOVERRIDE  Adja meg a felülbírálandó méretváltozó nevét vagy [Felülbírálások törlése]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Adja meg __ocs_fmt_0__ új értékét:
+    .dimoverride-clear-overrides = Felülbírálások törlése
+    .dimoverride-unknown-var = DIMOVERRIDE: ismeretlen méretváltozó "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: érvénytelen érték ehhez a változóhoz.
+    .dimdisassociate-select = Válassza ki a leválasztandó méreteket:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ méret társítása megszüntetve.
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_1__ méretből __ocs_fmt_0__ társítva.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ méret csak részben társítva (néhány definíciós pontban nincs objektum).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Adja meg a méretszöveget (üres = mért érték):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Válasszon ívet, kört vagy vonalláncívet:
     .dimjogged-specify-center-location-override = DIMJOGGED  Adja meg a felülírt középpont helyét:
@@ -6656,6 +6672,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6754,6 +6784,17 @@ import-panel =
     .combine-text = Szöveg egyesítése
     .land-xml = Land XML
     .import-file-header = Fájl importálása — a gomb a legutóbb választottat futtatja
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6796,6 +6837,43 @@ pdf-password =
         { $path }
         Ez a PDF-fájl nem nyitható meg.
         Titkosított, és jelszót igényel.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = érvénytelen szám: '__ocs_fmt_0__'
@@ -6959,3 +7037,30 @@ script-files =
     .exit-save = EXIT  Menti a(z) __ocs_arg_name__ módosításait? [Yes/No] <Yes>:
     .exit-no-path = EXIT: a(z) "__ocs_fmt_0__" rajznak még nincs fájlútvonala; először használja a SAVEAS parancsot.
     .sdi-dirty = SDI: mentse vagy zárja be a(z) "__ocs_fmt_0__" rajzot, mielőtt másikat nyit meg.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Láthatósági állapot
+    .visibility-value = Láthatósági állapot: { $state }
+    .table-label = Blokk tulajdonságai
+    .table-row = Blokk tulajdonságai: { $row }
+    .alignment = Igazítás: { $mode }
+    .flipped = Átfordítva
+    .not-flipped = Nincs átfordítva
+
+
+block-flip =
+    .base-state-label = Alapállapot felirata
+    .flipped-state-label = Átfordított állapot felirata
+
+
+block-lookup =
+    .input-help = Bemenetek: számok, képletek vagy intervallumok, például { $closed } és { $open }. A képletek a bemenetek neveit használják. A szögek radiánban értendők.
+    .invalid-table = A keresési táblázat érvénytelen.
+    .invalid-value = A kiválasztott sor érvénytelen paraméterértéket tartalmaz.
+    .incompatible-values = A sor értékei nem felelnek meg a paraméterek értékkészleteinek.
+    .quoted-help = A szóközt vagy írásjelet tartalmazó neveket tegye idézőjelek közé: { $name }.
+
+block-array =
+    .limit-error = A blokk kiértékelése több mint 100000 kiosztási objektumot hozna létre. Csökkentse a távolságot vagy növelje a térközt.

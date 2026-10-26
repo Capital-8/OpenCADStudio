@@ -112,6 +112,7 @@ donation =
     .decline = Nee, bedankt
 
 modal =
+    .saving-as-target-cannot-keep = Opslaan als "__ocs_arg_target__" kan het volgende niet behouden, dus dat gaat verloren:
     .about = Over
     .keyboard-shortcuts = Sneltoetsen
     .command-aliases = Opdrachtaliassen
@@ -286,6 +287,9 @@ command-copy =
     .mode = COPY  Geef kopieermodus op [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Gebruik: DCDISPLAY [Tonen|Verbergen]
+    .dcdisplay-prompt = DCDISPLAY  Geef een optie op [Tonen/Verbergen] <Tonen>:
+    .dcdisplay-updated = __ocs_fmt_0__ beperkingsindicator(en) bijgewerkt.
     .compare-prompt = COMPARE  __ocs_fmt_0__ alleen hier (groen), __ocs_fmt_1__ alleen in de andere tekening (rood)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Vergelijken met tekening
@@ -3493,6 +3497,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: stijl '__ocs_fmt_1__' niet gevonden.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: ongeldige overschrijving "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: geen bewerkbare maten geselecteerd.
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ maat/maten bijgewerkt.
+    .dimoverride-var-prompt = DIMOVERRIDE  Geef de naam van de te overschrijven maatvariabele op of [Overschrijvingen wissen]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Geef nieuwe waarde voor __ocs_fmt_0__ op:
+    .dimoverride-clear-overrides = Overschrijvingen wissen
+    .dimoverride-unknown-var = DIMOVERRIDE: onbekende maatvariabele "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: ongeldige waarde voor deze variabele.
+    .dimdisassociate-select = Selecteer maten om te ontkoppelen:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ maat/maten ontkoppeld.
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_0__ van __ocs_fmt_1__ maat/maten gekoppeld.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ maat/maten slechts gedeeltelijk gekoppeld (op sommige definitiepunten ligt geen object).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Voer maattekst in (leeg = gemeten waarde):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Selecteer boog, cirkel of polylijnboog:
     .dimjogged-specify-center-location-override = DIMJOGGED  Geef alternatieve middelpuntlocatie op:
@@ -6670,6 +6686,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6768,6 +6798,17 @@ import-panel =
     .combine-text = Tekst combineren
     .land-xml = Land XML
     .import-file-header = Bestand importeren — de knop voert de laatste keuze uit
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6810,6 +6851,43 @@ pdf-password =
         { $path }
         Kan dit PDF-bestand niet openen.
         Het is versleuteld en vereist een wachtwoord.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = ongeldig getal '__ocs_fmt_0__'
@@ -6973,3 +7051,30 @@ script-files =
     .exit-save = EXIT  Wijzigingen in __ocs_arg_name__ opslaan? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" heeft nog geen bestandspad; gebruik eerst SAVEAS.
     .sdi-dirty = SDI: sla "__ocs_fmt_0__" op of sluit deze voordat u een andere tekening opent.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Zichtbaarheidsstatus
+    .visibility-value = Zichtbaarheidsstatus: { $state }
+    .table-label = Blokeigenschappen
+    .table-row = Blokeigenschappen: { $row }
+    .alignment = Uitlijning: { $mode }
+    .flipped = Omgekeerd
+    .not-flipped = Niet omgekeerd
+
+
+block-flip =
+    .base-state-label = Label van de basisstatus
+    .flipped-state-label = Label van de omgekeerde status
+
+
+block-lookup =
+    .input-help = Invoer: getallen, formules of intervallen zoals { $closed } en { $open }. Formules gebruiken invoernamen. Hoeken zijn in radialen.
+    .invalid-table = De opzoektabel is ongeldig.
+    .invalid-value = De geselecteerde rij bevat een ongeldige parameterwaarde.
+    .incompatible-values = De rijwaarden voldoen niet aan de waardeverzamelingen van de parameters.
+    .quoted-help = Zet namen met spaties of leestekens tussen aanhalingstekens: { $name }.
+
+block-array =
+    .limit-error = De blokevaluatie zou meer dan 100000 matrixobjecten genereren. Verklein de afstand of vergroot de tussenruimte.

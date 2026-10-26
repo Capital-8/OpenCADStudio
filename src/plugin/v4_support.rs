@@ -12,7 +12,7 @@ fn mgr() -> std::sync::MutexGuard<'static, HostV4SnapshotManager> {
 }
 
 /// Open (or refresh) the V4 shared document view for `tab_id`.
-pub fn open_document_view_v4(tab_id: u64, doc: &codec::CadDocument) -> Option<DocumentViewInfo> {
+pub fn open_document_view_v4(tab_id: u64, doc: &codec::Document) -> Option<DocumentViewInfo> {
     mgr().open(tab_id, doc)
 }
 
@@ -23,7 +23,7 @@ pub fn close_document_view_v4(tab_id: u64) {
 
 /// Publish the latest document to the V4 shared view for `tab_id` and broadcast
 /// a change notification when successful.
-pub fn publish_document_view_v4(tab_id: u64, doc: &codec::CadDocument) {
+pub fn publish_document_view_v4(tab_id: u64, doc: &codec::Document) {
     let info = mgr().publish(tab_id, doc);
     if let Some(info) = info {
         broadcast(HostNotification::DocumentChangedV4 {

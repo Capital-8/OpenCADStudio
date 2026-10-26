@@ -9,12 +9,15 @@ const EDIT_GRIP_START: usize = usize::MAX / 4;
 pub(super) fn is_editor_grip(id: usize) -> bool {
     (EDIT_GRIP_START..EDIT_GRIP_START + 16).contains(&id)
 }
+pub(super) fn editor_grip_index(id: usize) -> Option<usize> {
+    is_editor_grip(id).then(|| id - EDIT_GRIP_START)
+}
 struct EditCommand {
     document: u64,
     definition: Handle,
     handle: Handle,
     part: Part,
-    document_snapshot: codec::CadDocument,
+    document_snapshot: codec::Document,
 }
 impl CadCommand for EditCommand {
     fn name(&self) -> &'static str {
@@ -844,7 +847,7 @@ fn authoring_value_set_mut<'a>(
 }
 
 fn set_authoring_value_set_field(
-    document: &mut codec::CadDocument,
+    document: &mut codec::Document,
     handle: Handle,
     field: &str,
     input: &str,
@@ -936,7 +939,7 @@ fn set_authoring_value_set_field(
 }
 
 fn toggle_authoring_value_set_flag(
-    document: &mut codec::CadDocument,
+    document: &mut codec::Document,
     handle: Handle,
     field: &str,
 ) -> Result<bool, &'static str> {

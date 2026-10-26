@@ -128,7 +128,7 @@ fn to_render(circle: &Circle) -> RenderEntity {
 /// Zoom-aware render converter for EntityType::Circle.
 pub fn relative_render(
     entity: &codec::EntityType,
-    _document: &codec::CadDocument,
+    _document: &codec::Document,
     wpp: Option<f32>,
 ) -> Option<RenderEntity> {
     let codec::EntityType::Circle(circle) = entity else {
@@ -267,7 +267,7 @@ fn apply_transform(circle: &mut Circle, t: &EntityTransform) {
 }
 
 impl RenderConvertible for Circle {
-    fn to_render(&self, _document: &codec::CadDocument) -> Option<RenderEntity> {
+    fn to_render(&self, _document: &codec::Document) -> Option<RenderEntity> {
         Some(to_render(self))
     }
 }

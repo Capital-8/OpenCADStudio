@@ -8,7 +8,7 @@
 
 use codec::entities::{Circle, Line, LwPolyline, LwVertex, Solid};
 use codec::types::{Color, LineWeight, Vector3};
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 
 /// Name shown, block name (empty: closed filled, the null handle).
 pub(crate) const STANDARD: &[(&str, &str)] = &[
@@ -62,7 +62,7 @@ pub(crate) fn label_for_block(name: &str) -> String {
 }
 
 /// What a picker shows for the arrowhead `handle`.
-pub(crate) fn label(doc: &CadDocument, handle: Handle) -> String {
+pub(crate) fn label(doc: &Document, handle: Handle) -> String {
     if handle.is_null() {
         return STANDARD[0].0.to_string();
     }
@@ -89,7 +89,7 @@ pub(crate) fn options<'a>(current: impl IntoIterator<Item = &'a str>) -> Vec<Str
 
 /// The handle a picker value selects, creating a standard arrowhead's block
 /// when the drawing does not have it yet. `None` for an unknown name.
-pub(crate) fn resolve(doc: &mut CadDocument, value: &str) -> Option<Handle> {
+pub(crate) fn resolve(doc: &mut Document, value: &str) -> Option<Handle> {
     let value = value.trim();
     if value.is_empty() || value == "Default" {
         return Some(Handle::NULL);

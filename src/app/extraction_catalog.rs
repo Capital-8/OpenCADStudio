@@ -3,7 +3,7 @@
 //! names and categories) and formatted values it offers for it.
 
 use codec::types::Color;
-use codec::{CadDocument, EntityType};
+use codec::{Document, EntityType};
 
 /// One extractable property: its key, display name and category.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -225,7 +225,7 @@ pub(crate) struct DrawingFacts {
 }
 
 impl DrawingFacts {
-    pub(crate) fn of(doc: &CadDocument, path: Option<&std::path::Path>) -> Self {
+    pub(crate) fn of(doc: &Document, path: Option<&std::path::Path>) -> Self {
         let info = &doc.summary_info;
         let mut facts = Self {
             location: String::new(),

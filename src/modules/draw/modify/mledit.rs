@@ -1126,5 +1126,15 @@ mod trim_tests {
             let data = &trimmed.vertices[0].segments[element];
             assert_eq!(drawn_ranges(&data.parameters, 10.0), vec![(0.0, 3.0), (7.0, 10.0)]);
         }
+        // The fill between the outer lines leaves the same gap.
+        let mut style = codec::objects::MLineStyle::new("FILLED");
+        style.elements = vec![
+            codec::objects::MLineStyleElement::new(1.0),
+            codec::objects::MLineStyleElement::new(-1.0),
+        ];
+        style.flags.fill_on = true;
+        let fill = crate::entities::mline::mline_fill_triangles_with_style(&trimmed, &style);
+        assert!(!fill.is_empty());
+        assert!(fill.iter().all(|p| p[0] <= 3.0 + 1e-6 || p[0] >= 7.0 - 1e-6), "{fill:?}");
     }
 }

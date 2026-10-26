@@ -188,7 +188,7 @@ fn as_circle_or_line(g: EntityGeom, reference: ParametricRef) -> CircleOrLine {
 /// they solve exactly one constraint in isolation, so they need that
 /// convention; a whole scope's constraint graph does not).
 fn register_entity(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     sys: &mut System,
     handle: Handle,
 ) -> Option<EntityGeom> {
@@ -499,7 +499,7 @@ fn register_entity_geom(
 /// supported entity type, or (for a point ref) uses a marker that entity
 /// type doesn't support.
 fn resolve_ref(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     sys: &mut System,
     cache: &mut HashMap<Handle, EntityGeom>,
     r: ParametricRef,
@@ -517,7 +517,7 @@ fn resolve_ref(
 /// midpoint markers are derived parameters so moving either parent geometry
 /// or another constrained object recomputes them in the same solve.
 fn resolve_constraint_point(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     sys: &mut System,
     cache: &mut HashMap<Handle, EntityGeom>,
     reference: ParametricRef,
@@ -797,7 +797,7 @@ fn entity_plane_z(entity: &EntityType) -> Option<f64> {
     z.is_finite().then_some(z)
 }
 
-fn refs_share_supported_plane(document: &codec::CadDocument, refs: &[ParametricRef]) -> bool {
+fn refs_share_supported_plane(document: &codec::Document, refs: &[ParametricRef]) -> bool {
     let mut plane_z = None;
     for reference in refs {
         let Some(entity) = document.get_entity(reference.entity) else {
@@ -815,7 +815,7 @@ fn refs_share_supported_plane(document: &codec::CadDocument, refs: &[ParametricR
 }
 
 fn concentric_reference_geometry(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     reference: ParametricRef,
 ) -> Option<(Vector3, kernel::space::Plane)> {
     let marker = reference.marker?;
@@ -828,7 +828,7 @@ fn concentric_reference_geometry(
     Some((center, plane))
 }
 
-fn concentric_refs_share_plane(document: &codec::CadDocument, refs: &[ParametricRef]) -> bool {
+fn concentric_refs_share_plane(document: &codec::Document, refs: &[ParametricRef]) -> bool {
     let [first, second] = refs else {
         return false;
     };
@@ -875,7 +875,7 @@ fn ref_is_driven(driven: &[ParametricRef], reference: ParametricRef) -> bool {
 }
 
 fn apply_spatial_concentric_constraints(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     constraints: &[&ParametricConstraint],
     driven_refs: &[ParametricRef],
     initial_fixed_refs: &[ParametricRef],
@@ -1006,7 +1006,7 @@ fn oriented_distance(target: f64, current_projection: f64) -> f64 {
 }
 
 fn retained_tangent_side(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     retained_before: &HashMap<Handle, std::sync::Arc<EntityType>>,
     constraint: &ParametricConstraint,
 ) -> Option<bool> {
@@ -1063,7 +1063,7 @@ fn collapsed_by_solve(entity: &EntityType) -> bool {
 /// Ellipse likewise pins center + radmin, `focus1` being tied to `center`
 /// by the ellipse-rules `Difference` constraints.
 fn fixed_pin_params(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     sys: &mut System,
     cache: &mut HashMap<Handle, EntityGeom>,
     r: ParametricRef,
@@ -1128,7 +1128,7 @@ fn fixed_pin_params(
 /// Builds the kernel equations for one constraint. Unsupported references or
 /// invalid dimensional targets produce no equations.
 fn build_constraint(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     sys: &mut System,
     cache: &mut HashMap<Handle, EntityGeom>,
     params: &ParameterTable,
@@ -2063,7 +2063,7 @@ fn smooth_entity_plane(
 }
 
 fn smooth_refs_share_plane(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     source_ref: ParametricRef,
     target_curve_ref: ParametricRef,
 ) -> bool {
@@ -2100,7 +2100,7 @@ fn smooth_refs_share_plane(
 }
 
 fn apply_smooth_constraints(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     constraints: &[&ParametricConstraint],
     results: &mut Vec<(Handle, EntityType)>,
 ) {
@@ -2153,6 +2153,12 @@ fn apply_smooth_constraints(
 }
 
 const MOVE_EPS: f64 = 1e-9;
+/// The fixpoint gate for `solve_scope`: a scope whose every constraint row
+/// already evaluates to zero at the current values is not iterated at all.
+/// Mirrors the kernel solvers' own convergence tolerance (`TOLF = 1e-10` in
+/// `kernel_constraints::solvers::dogleg`, the bound `solve_dl` exits on) so
+/// "already converged" means exactly what the solver itself would conclude.
+const FIXPOINT_TOLF: f64 = 1.0e-10;
 type SolveResult = (
     Vec<(Handle, EntityType)>,
     usize,
@@ -2222,7 +2228,7 @@ fn retain_segment_length(sys: &mut System, a: GPoint, b: GPoint, current_length:
 
 /// Visit vertices and segments in stored drawing order, including the closing edge last.
 fn polyline_ref_order(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     reference: ParametricRef,
 ) -> Option<(u64, usize)> {
     if !matches!(
@@ -2244,7 +2250,7 @@ fn polyline_ref_order(
 }
 
 fn constraints_in_drawing_order<'a>(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     constraints: &[&'a ParametricConstraint],
 ) -> Vec<&'a ParametricConstraint> {
     let mut constraints: Vec<_> = constraints.to_vec();
@@ -2327,7 +2333,7 @@ fn constrained_line_axes(constraints: &[&ParametricConstraint]) -> HashMap<Param
 // was already exceeded before this signature grew).
 #[allow(clippy::too_many_arguments)]
 fn solve_scope(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     drawing_params: &ParameterTable,
     local_parameters: &ParameterTable,
     constraint_view: &[&ParametricConstraint],
@@ -3194,9 +3200,40 @@ fn solve_scope(
     }
 
     let partitions = sys.partition();
-    for sub in &partitions {
-        if solve_dl(sub, sys.store_mut()) == SolveStatus::Failed {
-            solve_lm(sub, sys.store_mut());
+    // Fixpoint guarantee: a transaction whose resulting document state
+    // satisfies every constraint of the scope within the solver's own
+    // convergence tolerance is a fixpoint of any correct iterative solver.
+    // The solve such a write triggers must be a no-op — never a
+    // re-projection of the written state onto a different (e.g. the
+    // retained pre-edit) valid configuration, which is how a
+    // two-valued tangency could displace a consistent write by the
+    // distance between its two solutions. Only the scope's own rows
+    // (`owner` — the rows compiled from the scope's parametric
+    // constraints) decide this: the temporary pins, size/length
+    // retentions and Equal-follow datums below are the solver's
+    // instrumentation for genuinely violated interactive solves, and a
+    // state whose rows are all zero needs none of them. Smooth and
+    // out-of-plane Concentric refine outside this 2D system (they run in
+    // the result phase after it), so scopes carrying them keep their
+    // current flow exactly. The gate is route-independent (no caller-route
+    // conjuncts): a state whose user rows are all zero is a fixpoint of any
+    // iterative solver and holds for every write route — the plugin's
+    // transactions included — while the ONE live exception is an actively
+    // driven drag (`driven_refs` non-empty): the grip re-alignment the
+    // implied-axis machinery owes the cursor must still run even when the
+    // written state satisfies every user constraint, because the machinery
+    // - not the rows - carries the drag semantics there.
+    let scope_is_a_fixpoint = !has_smooth
+        && !has_spatial_concentric
+        && driven_refs.is_empty()
+        && owner
+            .iter()
+            .all(|(constraint, _)| constraint.error(sys.store()).abs() <= FIXPOINT_TOLF);
+    if !scope_is_a_fixpoint {
+        for sub in &partitions {
+            if solve_dl(sub, sys.store_mut()) == SolveStatus::Failed {
+                solve_lm(sub, sys.store_mut());
+            }
         }
     }
     // DOF/conflict diagnostics feed only the commit path, which stores them
@@ -4106,7 +4143,7 @@ mod tests {
     /// `constraints_in_drawing_order` over a standalone set (test helper —
     /// the production paths borrow the view from a scene-owned set).
     fn constraints_in_drawing_order<'a>(
-        document: &codec::CadDocument,
+        document: &codec::Document,
         set: &'a ParametricConstraintSet,
     ) -> Vec<&'a ParametricConstraint> {
         let view: Vec<&ParametricConstraint> = set.constraints.iter().collect();

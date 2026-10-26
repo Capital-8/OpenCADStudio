@@ -576,7 +576,7 @@ mod tests {
     use crate::ipc::protocol::{HostResponse, PluginRequest, PluginResponse};
     use crate::ipc::transport::recv;
     use crate::ipc::v4::protocol::{HostToPluginV4, PluginToHostV4};
-    use codec::{CadDocument, Handle};
+    use codec::{Document, Handle};
     use interprocess::local_socket::{
         traits::{Listener, Stream as StreamTrait},
         GenericNamespaced, ListenerOptions, ToNsName,
@@ -644,10 +644,10 @@ mod tests {
         fn tab_index(&self) -> usize {
             0
         }
-        fn document(&self) -> &CadDocument {
+        fn document(&self) -> &Document {
             panic!("not used")
         }
-        fn document_mut(&mut self) -> &mut CadDocument {
+        fn document_mut(&mut self) -> &mut Document {
             panic!("not used")
         }
         fn document_reader(&self) -> Box<dyn DocumentReader + '_> {
@@ -1164,10 +1164,10 @@ mod tests {
         fn tab_index(&self) -> usize {
             0
         }
-        fn document(&self) -> &CadDocument {
+        fn document(&self) -> &Document {
             panic!("not used")
         }
-        fn document_mut(&mut self) -> &mut CadDocument {
+        fn document_mut(&mut self) -> &mut Document {
             panic!("not used")
         }
         fn document_reader(&self) -> Box<dyn DocumentReader + '_> {

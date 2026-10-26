@@ -28,7 +28,7 @@ pub use codec::objects::{
     XRecordEntry, XRecordSection, XRecordValue, XRecordValueType,
 };
 pub use codec::xdata::{ExtendedDataRecord, XDataValue};
-pub use codec::{CadDocument, EntityType, Handle};
+pub use codec::{Document, EntityType, Handle};
 
 use crate::ipc::protocol::{PluginRequest, PluginResponse};
 
@@ -1143,7 +1143,7 @@ pub trait HostApi {
     fn tab_index(&self) -> usize;
 
     // ── Document ────────────────────────────────────────────────────────────
-    fn document(&self) -> &CadDocument;
+    fn document(&self) -> &Document;
     /// Mutable access to the active document.
     ///
     /// For an **out-of-process** plugin this borrows a *local snapshot*: edits
@@ -1152,7 +1152,7 @@ pub trait HostApi {
     /// use [`add_entity`](Self::add_entity), [`update_entity`](Self::update_entity)
     /// and [`remove_entity`](Self::remove_entity), which are committed to the
     /// host document over IPC.
-    fn document_mut(&mut self) -> &mut CadDocument;
+    fn document_mut(&mut self) -> &mut Document;
 
     /// Add an entity to the active document, returning its handle.
     fn add_entity(&mut self, entity: EntityType) -> Handle;
@@ -1699,7 +1699,7 @@ pub trait DocumentReader {
     /// Total number of entities in the document.
     fn entity_count(&self) -> usize;
 
-    /// Iterate over all entities without allocating a full `CadDocument`.
+    /// Iterate over all entities without allocating a full `Document`.
     fn for_each_entity(&self, f: &mut dyn FnMut(ReaderEntity<'_>));
 
     /// Look up a layer name by handle.
@@ -1727,8 +1727,8 @@ impl ReaderEntityKind {
     }
 }
 
-/// In-process `DocumentReader` implementation that wraps a borrowed `CadDocument`.
-pub struct CadDocumentReader<'a>(pub &'a CadDocument);
+/// In-process `DocumentReader` implementation that wraps a borrowed `Document`.
+pub struct CadDocumentReader<'a>(pub &'a Document);
 
 impl<'a> DocumentReader for CadDocumentReader<'a> {
     fn entity_count(&self) -> usize {

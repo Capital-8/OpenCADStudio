@@ -74,7 +74,10 @@ impl OpenCADStudio {
             Some(K::LayoutManager) => crate::tr!("modal", "layout-manager"),
             Some(K::ScaleManager) => crate::tr!("modal", "scale-manager"),
             Some(K::AnnoObjectScale) => crate::tr!("modal", "annotation-object-scale"),
-            Some(K::Hyperlink) => crate::t!("Hyperlink").into_owned(),
+            Some(K::Hyperlink) if self.hyperlink_options.edit => {
+                crate::tr!("hyperlink-dialog", "title-edit")
+            }
+            Some(K::Hyperlink) => crate::tr!("hyperlink-dialog", "title-insert"),
             Some(K::InsertTable) => crate::t!("Insert Table").into_owned(),
             Some(K::DataLinkManager) => crate::t!("Data Link Manager").into_owned(),
             Some(K::DataExtraction) => crate::t!("Data Extraction Wizard").into_owned(),
@@ -87,6 +90,7 @@ impl OpenCADStudio {
             Some(K::DimStyle) => crate::tr!("modal", "dimension-style-manager"),
             Some(K::AssocPrompt) => crate::tr!("modal", "default-application"),
             Some(K::AecDropWarning) => crate::tr!("modal", "save-warning"),
+            Some(K::ConversionLoss) => crate::tr!("modal", "save-warning"),
             #[cfg(not(target_arch = "wasm32"))]
             Some(K::FileInUse) => crate::tr!("modal", "unable-save"),
             #[cfg(not(target_arch = "wasm32"))]
@@ -1687,6 +1691,16 @@ impl OpenCADStudio {
                     )
                 })
             }
+            super::super::ModalKind::ConversionLoss => {
+                let target = self
+                    .pending_conversion_save
+                    .as_ref()
+                    .map(super::super::PendingConversionSave::format_name)
+                    .unwrap_or_default();
+                automatic_flow(ex, |flow| {
+                    conversion_loss_dialog_window(&self.conversion_losses, &target, flow)
+                })
+            }
             #[cfg(not(target_arch = "wasm32"))]
             super::super::ModalKind::FileInUse => {
                 let (path, error) = self
@@ -1756,11 +1770,12 @@ impl OpenCADStudio {
                     flow,
                 )
             }),
-            super::super::ModalKind::Hyperlink => sized_flow(ex, 560, 260, |flow| {
-                hyperlink_dialog_window(
+            super::super::ModalKind::Hyperlink => sized_flow(ex, 520, 380, |flow| {
+                crate::ui::window::hyperlink_dialog::view(
                     &self.hyperlink_editor_url,
                     &self.hyperlink_editor_description,
                     self.hyperlink_editor_mixed,
+                    &self.hyperlink_options,
                     flow,
                 )
             }),
@@ -2029,80 +2044,6 @@ fn dialog_muted_text_style(theme: &Theme) -> iced::widget::text::Style {
     }
 }
 
-fn hyperlink_dialog_window<'a>(
-    url: &'a str,
-    description: &'a str,
-    mixed: bool,
-    sizing: crate::ui::modal::ModalSizing,
-) -> Element<'a, Message> {
-    let label = |value: Cow<'static, str>| {
-        text(value)
-            .size(11)
-            .style(dialog_muted_text_style)
-            .width(90)
-    };
-    let mut items: Vec<Element<'a, Message>> = Vec::new();
-    if mixed {
-        items.push(
-            text(t!("Selected objects have different hyperlink values."))
-                .size(11)
-                .style(dialog_muted_text_style)
-                .into(),
-        );
-        items.push(Space::new().height(8).into());
-    }
-    items.push(
-        row![
-            label(t!("URL:")),
-            iced::widget::text_input("https://", url)
-                .on_input(Message::HyperlinkUrlChanged)
-                .size(13)
-                .padding([5, 8])
-                .width(Fill),
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center)
-        .width(sizing.width)
-        .into(),
-    );
-    items.push(Space::new().height(8).into());
-    items.push(
-        row![
-            label(t!("Description:")),
-            iced::widget::text_input("", description)
-                .on_input(Message::HyperlinkDescriptionChanged)
-                .size(13)
-                .padding([5, 8])
-                .width(Fill),
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center)
-        .width(sizing.width)
-        .into(),
-    );
-    items.push(Space::new().height(Fill).into());
-    items.push(
-        row![
-            dialog_button(t!("Remove"), Message::HyperlinkRemove, button::danger),
-            Space::new().width(Fill),
-            dialog_button(t!("Cancel"), Message::HyperlinkCancel, button::secondary),
-            Space::new().width(8),
-            dialog_button(t!("OK"), Message::HyperlinkApply, button::primary),
-        ]
-        .align_y(iced::Alignment::Center)
-        .into(),
-    );
-    container(
-        column(items)
-            .spacing(0)
-            .width(sizing.width)
-            .height(sizing.height),
-    )
-    .style(dialog_body_style)
-    .padding([14, 16])
-    .into()
-}
-
 /// Compact Save-As options dialog: pick the format/version and a default file
 /// name. The destination folder and overwrite confirmation come from the
 /// native OS save dialog (native) or the browser download (web) that follows.
@@ -2111,10 +2052,8 @@ fn save_as_dialog_window<'a>(
     format: &'a str,
     sizing: crate::ui::modal::ModalSizing,
 ) -> Element<'a, Message> {
-    let sel_fmt = crate::io::SAVE_FORMAT_OPTIONS
-        .iter()
-        .copied()
-        .find(|&s| s == format);
+    let options = crate::io::save_format_options();
+    let sel_fmt = options.iter().find(|s| *s == format).cloned();
     let label = |s: Cow<'static, str>| text(s).size(11).style(dialog_muted_text_style);
     let field_width = if matches!(sizing.width, iced::Length::Fill) {
         Fill
@@ -2152,9 +2091,8 @@ fn save_as_dialog_window<'a>(
     items.push(
         row![
             label(t!("Format:")).width(70),
-            iced::widget::pick_list(sel_fmt, crate::io::SAVE_FORMAT_OPTIONS, |value| value
-                .to_string(),)
-            .on_select(|s: &str| Message::SaveDialogFormatChanged(s.to_string()))
+            iced::widget::pick_list(sel_fmt, options, |value| value.clone())
+                .on_select(Message::SaveDialogFormatChanged)
             .width(field_width),
         ]
         .align_y(iced::Alignment::Center)
@@ -2446,6 +2384,43 @@ fn external_change_dialog_window(
 /// (AEC / application) objects that survive only as verbatim source-version
 /// bytes, so saving to a different version or to DXF would drop them. Offers to
 /// save in the source version (keep them) or proceed (drop them).
+fn conversion_loss_dialog_window<'a>(
+    losses: &'a [String],
+    target: &str,
+    sizing: crate::ui::modal::ModalSizing,
+) -> Element<'a, Message> {
+    let body_text = t!(
+        "Saving as \"%{target}\" cannot keep the following, so it will be lost:",
+        target = target,
+    );
+    let mut lines = column![text(body_text).size(13)].spacing(4);
+    for loss in losses {
+        lines = lines.push(text(format!("• {loss}")).size(12));
+    }
+
+    container(
+        column![
+            lines,
+            iced::widget::Space::new().height(20),
+            row![
+                dialog_button(
+                    t!("Save anyway"),
+                    Message::ConversionLossProceed,
+                    button::warning
+                ),
+                iced::widget::Space::new().width(8),
+                dialog_button(t!("Back"), Message::ConversionLossBack, button::secondary),
+            ],
+        ]
+        .spacing(0),
+    )
+    .style(dialog_body_style)
+    .center_x(sizing.width)
+    .center_y(sizing.height)
+    .padding([24, 28])
+    .into()
+}
+
 fn aec_drop_dialog_window(
     count: usize,
     target: &str,

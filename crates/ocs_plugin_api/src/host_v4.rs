@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use codec::CadDocument;
+use codec::Document;
 
 use crate::shm::{DocumentSnapshotStore, DocumentViewDataV4, DocumentViewInfo};
 
@@ -39,7 +39,7 @@ impl HostV4SnapshotManager {
     }
 
     /// Open (or refresh) the V4 snapshot for `tab_id` and return the view info.
-    pub fn open(&mut self, tab_id: u64, doc: &CadDocument) -> Option<DocumentViewInfo> {
+    pub fn open(&mut self, tab_id: u64, doc: &Document) -> Option<DocumentViewInfo> {
         let store = match self.stores.get_mut(&tab_id) {
             Some(store) => store,
             None => {
@@ -59,7 +59,7 @@ impl HostV4SnapshotManager {
 
     /// Publish the latest document to the existing V4 snapshot for `tab_id`.
     /// Returns the updated view info if the snapshot exists.
-    pub fn publish(&mut self, tab_id: u64, doc: &CadDocument) -> Option<DocumentViewInfo> {
+    pub fn publish(&mut self, tab_id: u64, doc: &Document) -> Option<DocumentViewInfo> {
         let store = self.stores.get_mut(&tab_id)?;
         if let Err(e) = store.publish(&doc.into()) {
             eprintln!("[host] failed to publish V4 document view for tab {tab_id}: {e}");

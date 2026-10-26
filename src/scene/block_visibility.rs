@@ -16,7 +16,7 @@ use codec::objects::{
 };
 use codec::types::Vector3;
 use codec::xdata::{ExtendedDataRecord, XDataValue};
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 
 use super::Scene;
 
@@ -95,12 +95,12 @@ const CLASSES: &[(&str, &str, i32)] = &[
 ];
 
 /// The visibility parameter of block definition `definition`.
-pub fn parameter(document: &CadDocument, definition: Handle) -> Option<&BlockVisibilityParameter> {
+pub fn parameter(document: &Document, definition: Handle) -> Option<&BlockVisibilityParameter> {
     document.block_visibility_param_for_def(definition)
 }
 
 /// Store an edited parameter in the document and its lookup view.
-pub(crate) fn store(document: &mut CadDocument, parameter: BlockVisibilityParameter) {
+pub(crate) fn store(document: &mut Document, parameter: BlockVisibilityParameter) {
     document
         .block_visibility_params
         .insert(parameter.handle, parameter.clone());
@@ -112,7 +112,7 @@ pub(crate) fn store(document: &mut CadDocument, parameter: BlockVisibilityParame
 
 /// Commit a staged state list while retaining the parameter's graph and identity.
 pub(crate) fn replace_states(
-    document: &mut CadDocument,
+    document: &mut Document,
     definition: Handle,
     edited: BlockVisibilityParameter,
 ) {
@@ -126,7 +126,7 @@ pub(crate) fn replace_states(
 
 /// Why another visibility parameter cannot be placed in this definition.
 /// Existing evaluation graphs must be composed, never replaced by a new graph.
-pub fn placement_error(document: &CadDocument, definition: Handle) -> Option<&'static str> {
+pub fn placement_error(document: &Document, definition: Handle) -> Option<&'static str> {
     if parameter(document, definition).is_some() {
         return Some("This block already has a visibility parameter.");
     }
@@ -136,7 +136,7 @@ pub fn placement_error(document: &CadDocument, definition: Handle) -> Option<&'s
 /// Make block definition `definition` dynamic with a visibility parameter
 /// whose grip sits at `location`, one state showing every object. Returns
 /// the parameter, or the one the block has already.
-pub fn create(document: &mut CadDocument, definition: Handle, location: Vector3) -> Option<Handle> {
+pub fn create(document: &mut Document, definition: Handle, location: Vector3) -> Option<Handle> {
     if let Some(existing) = parameter(document, definition) {
         return Some(existing.handle);
     }
@@ -235,7 +235,7 @@ pub fn create(document: &mut CadDocument, definition: Handle, location: Vector3)
 /// Expressions read UpdatedX/UpdatedY from the parameter; their cached scalar
 /// values are not geometry and must not receive the point transform.
 pub fn reframe(
-    document: &mut CadDocument,
+    document: &mut Document,
     definition: Handle,
     transform: &codec::types::Transform,
 ) -> usize {
@@ -272,7 +272,7 @@ pub fn reframe(
 }
 
 /// The names of the states of `parameter`, in list order.
-pub fn state_names(document: &CadDocument, parameter: Handle) -> Vec<String> {
+pub fn state_names(document: &Document, parameter: Handle) -> Vec<String> {
     match document.objects.get(&parameter) {
         Some(ObjectType::BlockVisibilityParameter(parameter)) => parameter
             .states
@@ -284,7 +284,7 @@ pub fn state_names(document: &CadDocument, parameter: Handle) -> Vec<String> {
 }
 
 fn edit<R>(
-    document: &mut CadDocument,
+    document: &mut Document,
     parameter: Handle,
     change: impl FnOnce(&mut BlockVisibilityParameter) -> R,
 ) -> Option<R> {
@@ -301,7 +301,7 @@ fn edit<R>(
 /// Add state `name`, showing what state `like` shows. Returns its index, or
 /// `None` when the name is taken.
 pub fn add_state(
-    document: &mut CadDocument,
+    document: &mut Document,
     parameter: Handle,
     name: &str,
     like: usize,
@@ -331,7 +331,7 @@ pub fn add_state(
 
 /// Rename state `index`; false when the new name is taken.
 pub fn rename_state(
-    document: &mut CadDocument,
+    document: &mut Document,
     parameter: Handle,
     index: usize,
     name: &str,
@@ -354,7 +354,7 @@ pub fn rename_state(
 }
 
 /// Delete state `index`; the last state stays.
-pub fn delete_state(document: &mut CadDocument, parameter: Handle, index: usize) -> bool {
+pub fn delete_state(document: &mut Document, parameter: Handle, index: usize) -> bool {
     edit(document, parameter, |parameter| {
         if parameter.states.len() <= 1 || index >= parameter.states.len() {
             return false;
@@ -368,7 +368,7 @@ pub fn delete_state(document: &mut CadDocument, parameter: Handle, index: usize)
 /// Show (`visible`) or hide `handles` in state `index`. An object the
 /// parameter did not govern yet is shown in every other state, as it was.
 pub fn set_visible(
-    document: &mut CadDocument,
+    document: &mut Document,
     parameter: Handle,
     index: usize,
     handles: &[Handle],
@@ -398,7 +398,7 @@ pub fn set_visible(
 }
 
 /// The block definition `parameter` belongs to (graph, dictionary, record).
-fn owner_definition(document: &CadDocument, parameter: Handle) -> Option<Handle> {
+fn owner_definition(document: &Document, parameter: Handle) -> Option<Handle> {
     let graph = match document.objects.get(&parameter)? {
         ObjectType::BlockVisibilityParameter(parameter) => parameter.owner,
         _ => return None,
@@ -414,7 +414,7 @@ fn owner_definition(document: &CadDocument, parameter: Handle) -> Option<Handle>
 }
 
 /// Show the definition's objects as state `index` does.
-pub fn apply_state(document: &mut CadDocument, parameter: Handle, index: usize) {
+pub fn apply_state(document: &mut Document, parameter: Handle, index: usize) {
     let Some(ObjectType::BlockVisibilityParameter(current)) = document.objects.get(&parameter)
     else {
         return;
@@ -435,7 +435,7 @@ pub fn apply_state(document: &mut CadDocument, parameter: Handle, index: usize) 
 }
 
 /// The state whose objects are the ones the definition shows now.
-pub fn shown_state(document: &CadDocument, parameter: Handle) -> usize {
+pub fn shown_state(document: &Document, parameter: Handle) -> usize {
     let Some(ObjectType::BlockVisibilityParameter(parameter)) = document.objects.get(&parameter)
     else {
         return 0;
@@ -457,7 +457,7 @@ pub fn shown_state(document: &CadDocument, parameter: Handle) -> usize {
 
 /// After the Block Editor: drop objects that were erased, tag new ones and
 /// leave the definition showing its first state.
-pub fn finish_editing(document: &mut CadDocument, definition: Handle) {
+pub fn finish_editing(document: &mut Document, definition: Handle) {
     let Some(handle) = parameter(document, definition).map(|parameter| parameter.handle) else {
         return;
     };

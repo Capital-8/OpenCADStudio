@@ -112,6 +112,7 @@ donation =
     .decline = 괜찮습니다
 
 modal =
+    .saving-as-target-cannot-keep = "__ocs_arg_target__"(으)로 저장하면 다음 내용을 유지할 수 없어 손실됩니다:
     .about = 정보
     .keyboard-shortcuts = 키보드 단축키
     .command-aliases = 명령 별칭
@@ -285,6 +286,9 @@ command-copy =
     .mode = COPY  복사 모드 옵션 입력 [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = 사용법: DCDISPLAY [표시|숨기기]
+    .dcdisplay-prompt = DCDISPLAY  옵션 입력 [표시/숨기기] <표시>:
+    .dcdisplay-updated = 구속 표시기 __ocs_fmt_0__개를 업데이트했습니다.
     .compare-prompt = COMPARE  여기에만 __ocs_fmt_0__ (녹색), 다른 도면에만 __ocs_fmt_1__ (빨간색)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = 도면과 비교
@@ -3492,6 +3496,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: '__ocs_fmt_1__' 스타일을 찾을 수 없습니다.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: 잘못된 재지정 "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: 편집 가능한 치수가 선택되지 않았습니다.
+    .dimoverride-updated = DIMOVERRIDE: 치수 __ocs_fmt_0__개를 업데이트했습니다.
+    .dimoverride-var-prompt = DIMOVERRIDE  재지정할 치수 변수 이름 입력 또는 [재지정 지우기]:
+    .dimoverride-value-prompt = DIMOVERRIDE  __ocs_fmt_0__의 새 값 입력:
+    .dimoverride-clear-overrides = 재지정 지우기
+    .dimoverride-unknown-var = DIMOVERRIDE: 알 수 없는 치수 변수 "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: 이 변수에 잘못된 값입니다.
+    .dimdisassociate-select = 연관을 해제할 치수 선택:
+    .dimdisassociate-done = DIMDISASSOCIATE: 치수 __ocs_fmt_0__개의 연관을 해제했습니다.
+    .dimreassociate-done = DIMREASSOCIATE: 치수 __ocs_fmt_1__개 중 __ocs_fmt_0__개를 연관했습니다.
+    .dimreassociate-partial = DIMREASSOCIATE: 치수 __ocs_fmt_0__개는 일부만 연관되었습니다(일부 정의점에 객체가 없음).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  치수 문자 입력 (비워 두면 측정값):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  호, 원 또는 폴리선 호 선택:
     .dimjogged-specify-center-location-override = DIMJOGGED  중심 위치 재지정:
@@ -6671,6 +6687,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6769,6 +6799,17 @@ import-panel =
     .combine-text = 문자 결합
     .land-xml = Land XML
     .import-file-header = 파일 가져오기 — 버튼은 마지막으로 선택한 항목을 실행합니다
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6811,6 +6852,43 @@ pdf-password =
         { $path }
         이 PDF 파일을 열 수 없습니다.
         암호화되어 있어 암호가 필요합니다.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = 잘못된 숫자 '__ocs_fmt_0__'
@@ -6974,3 +7052,30 @@ script-files =
     .exit-save = EXIT  __ocs_arg_name__의 변경 사항을 저장하시겠습니까? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__"에는 아직 파일 경로가 없습니다. 먼저 SAVEAS를 사용하십시오.
     .sdi-dirty = SDI: 다른 도면을 열기 전에 "__ocs_fmt_0__"을(를) 저장하거나 닫으십시오.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = 가시성 상태
+    .visibility-value = 가시성 상태: { $state }
+    .table-label = 블록 특성
+    .table-row = 블록 특성: { $row }
+    .alignment = 정렬: { $mode }
+    .flipped = 반전됨
+    .not-flipped = 반전되지 않음
+
+
+block-flip =
+    .base-state-label = 기본 상태 레이블
+    .flipped-state-label = 반전 상태 레이블
+
+
+block-lookup =
+    .input-help = 입력: 숫자, 수식 또는 { $closed }, { $open } 같은 구간. 수식은 입력 이름을 사용합니다. 각도 단위는 라디안입니다.
+    .invalid-table = 조회 테이블이 잘못되었습니다.
+    .invalid-value = 선택한 행에 잘못된 매개변수 값이 있습니다.
+    .incompatible-values = 행의 값이 매개변수 값 집합을 충족하지 않습니다.
+    .quoted-help = 공백이나 문장 부호가 있는 이름은 인용 기호로 묶으세요: { $name }.
+
+block-array =
+    .limit-error = 블록 평가 시 배열 객체가 100000개를 초과합니다. 거리를 줄이거나 간격을 늘리세요.

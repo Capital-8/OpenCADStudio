@@ -6,7 +6,7 @@
 // defined once — so a circle drawn here and a circle extruded by the Model
 // tab come from the same definition and cannot disagree.
 
-use codec::{CadDocument, EntityType};
+use codec::{Document, EntityType};
 
 use crate::entities::traits::EntityTypeOps;
 use crate::scene::model::wire_model::{SnapHint, TangentGeom};
@@ -131,7 +131,7 @@ pub struct RenderEntity {
     pub pick_tris: Vec<[f64; 3]>,
 }
 
-pub fn convert(entity: &EntityType, document: &CadDocument) -> Option<RenderEntity> {
+pub fn convert(entity: &EntityType, document: &Document) -> Option<RenderEntity> {
     entity.to_render_entity(document)
 }
 

@@ -112,6 +112,7 @@ donation =
     .decline = Όχι, ευχαριστώ
 
 modal =
+    .saving-as-target-cannot-keep = Η αποθήκευση ως "__ocs_arg_target__" δεν μπορεί να διατηρήσει τα παρακάτω, οπότε θα χαθούν:
     .about = Σχετικά
     .keyboard-shortcuts = Συντομεύσεις πληκτρολογίου
     .command-aliases = Ψευδώνυμα εντολών
@@ -285,6 +286,9 @@ command-copy =
     .mode = COPY  Επιλέξτε λειτουργία αντιγραφής [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Χρήση: DCDISPLAY [Εμφάνιση|Απόκρυψη]
+    .dcdisplay-prompt = DCDISPLAY  Εισαγάγετε επιλογή [Εμφάνιση/Απόκρυψη] <Εμφάνιση>:
+    .dcdisplay-updated = Ενημερώθηκαν __ocs_fmt_0__ δείκτες περιορισμών.
     .compare-prompt = COMPARE  __ocs_fmt_0__ μόνο εδώ (πράσινο), __ocs_fmt_1__ μόνο στο άλλο σχέδιο (κόκκινο)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Σύγκριση με σχέδιο
@@ -3493,6 +3497,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: το στυλ '__ocs_fmt_1__' δεν βρέθηκε.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: μη έγκυρη παράκαμψη "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: δεν επιλέχθηκαν επεξεργάσιμες διαστάσεις.
+    .dimoverride-updated = DIMOVERRIDE: ενημερώθηκαν __ocs_fmt_0__ διαστάσεις.
+    .dimoverride-var-prompt = DIMOVERRIDE  Εισαγάγετε όνομα μεταβλητής διάστασης για παράκαμψη ή [Εκκαθάριση παρακάμψεων]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Εισαγάγετε νέα τιμή για __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Εκκαθάριση παρακάμψεων
+    .dimoverride-unknown-var = DIMOVERRIDE: άγνωστη μεταβλητή διάστασης "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: μη έγκυρη τιμή για αυτή τη μεταβλητή.
+    .dimdisassociate-select = Επιλέξτε διαστάσεις για αποσύνδεση:
+    .dimdisassociate-done = DIMDISASSOCIATE: αποσυνδέθηκαν __ocs_fmt_0__ διαστάσεις.
+    .dimreassociate-done = DIMREASSOCIATE: συσχετίστηκαν __ocs_fmt_0__ από __ocs_fmt_1__ διαστάσεις.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ διαστάσεις συσχετίστηκαν μόνο μερικώς (δεν υπάρχει αντικείμενο σε ορισμένα σημεία ορισμού).
     .prefix-textedit-enter-text-edit-mode-single-mu = __ocs_arg_prefix__TEXTEDIT Δώστε λειτουργία επεξεργασίας κειμένου [Μεμονωμένη/Πολλαπλή] <__ocs_arg_mode__>:
     .prefix-texteditmode-enter-new-value-for-texted = __ocs_arg_prefix__TEXTEDITMODE Δώστε νέα τιμή για το TEXTEDITMODE <__ocs_arg_v__>:
     .arctext-text-to-place-along-the-arc = ARCTEXT  κείμενο για τοποθέτηση κατά μήκος του τόξου:
@@ -6672,6 +6688,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6770,6 +6800,17 @@ import-panel =
     .combine-text = Συνδυασμός κειμένου
     .land-xml = Land XML
     .import-file-header = Εισαγωγή αρχείου — το κουμπί εκτελεί την τελευταία επιλογή
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6812,6 +6853,43 @@ pdf-password =
         { $path }
         Δεν είναι δυνατό το άνοιγμα αυτού του αρχείου PDF.
         Είναι κρυπτογραφημένο και απαιτεί κωδικό.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = μη έγκυρος αριθμός '__ocs_fmt_0__'
@@ -6975,3 +7053,30 @@ script-files =
     .exit-save = EXIT  Αποθήκευση αλλαγών στο __ocs_arg_name__; [Yes/No] <Yes>:
     .exit-no-path = EXIT: το "__ocs_fmt_0__" δεν έχει ακόμη διαδρομή αρχείου· χρησιμοποιήστε πρώτα SAVEAS.
     .sdi-dirty = SDI: αποθηκεύστε ή κλείστε το "__ocs_fmt_0__" πριν ανοίξετε άλλο σχέδιο.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Κατάσταση ορατότητας
+    .visibility-value = Κατάσταση ορατότητας: { $state }
+    .table-label = Ιδιότητες μπλοκ
+    .table-row = Ιδιότητες μπλοκ: { $row }
+    .alignment = Ευθυγράμμιση: { $mode }
+    .flipped = Ανεστραμμένο
+    .not-flipped = Μη ανεστραμμένο
+
+
+block-flip =
+    .base-state-label = Ετικέτα αρχικής κατάστασης
+    .flipped-state-label = Ετικέτα ανεστραμμένης κατάστασης
+
+
+block-lookup =
+    .input-help = Είσοδοι: αριθμοί, τύποι ή διαστήματα όπως { $closed } και { $open }. Οι τύποι χρησιμοποιούν ονόματα εισόδων. Οι γωνίες είναι σε ακτίνια.
+    .invalid-table = Ο πίνακας αναζήτησης δεν είναι έγκυρος.
+    .invalid-value = Η επιλεγμένη γραμμή περιέχει μη έγκυρη τιμή παραμέτρου.
+    .incompatible-values = Οι τιμές της γραμμής δεν ικανοποιούν τα σύνολα τιμών των παραμέτρων.
+    .quoted-help = Περικλείστε ονόματα με κενά ή σημεία στίξης: { $name }.
+
+block-array =
+    .limit-error = Η αξιολόγηση του μπλοκ θα δημιουργούσε περισσότερα από 100000 αντικείμενα διάταξης. Μειώστε την απόσταση ή αυξήστε το διάκενο.

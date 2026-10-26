@@ -1153,7 +1153,7 @@ impl OpenCADStudio {
             crate::io::prepare_document_for_save(self.tabs[i].scene.document_for_save(), version);
         let cmd = cmd.to_string();
         Task::perform(
-            async move { crate::io::serialize_prepared_document(&prepared, &ext).await },
+            async move { crate::io::serialize_prepared_document(&prepared, &ext, false).await },
             move |result| Message::WebArchiveSerialized {
                 cmd,
                 zip_name,
@@ -1287,7 +1287,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ocs-batch-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let a = dir.join("a 1.dxf");
-        let doc = codec::CadDocument::new();
+        let doc = codec::Document::new();
         std::fs::write(&a, crate::io::save_to_bytes(&doc, "dxf", doc.version).unwrap()).unwrap();
         let out = dir.join("out file.dwg");
         let _ = std::fs::remove_file(&out);
@@ -1316,7 +1316,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ocs-batch-exit-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let a = dir.join("a.dxf");
-        let doc = codec::CadDocument::new();
+        let doc = codec::Document::new();
         std::fs::write(&a, crate::io::save_to_bytes(&doc, "dxf", doc.version).unwrap()).unwrap();
         let mut app = OpenCADStudio::new_for_test();
         let text = format!("OPEN \"{}\"\nCIRCLE 0,0 5\nEXIT\nY\nCIRCLE 1,1 2\n", a.display());

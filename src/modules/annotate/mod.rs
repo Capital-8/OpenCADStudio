@@ -13,6 +13,7 @@ pub mod dim_baseline;
 pub mod dim_continue;
 pub mod dimbreak;
 pub mod dimedit;
+pub mod dimoverride;
 pub mod dimjogline;
 pub mod dimspace;
 pub mod dimtedit;

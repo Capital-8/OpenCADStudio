@@ -4,8 +4,16 @@ use super::model::object::{
     BlockParameterComponent as Component, BlockParameterKey as Key, PropValue, Property,
 };
 use codec::objects::{DynamicBlockData as Data, ObjectType};
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 use glam::DVec3;
+
+mod table;
+
+pub(crate) fn current_table_row(doc: &Document, baseline: Option<&Document>, insert: Handle) -> Option<usize> {
+    let definition = instance::definition(doc, insert)?;
+    let view = super::block_properties_table::table(baseline.unwrap_or(doc), definition).ok()??;
+    table::current_row(doc, baseline, insert, definition, &view).ok().flatten()
+}
 
 struct Descriptor<'a> {
     component: Component,
@@ -13,7 +21,7 @@ struct Descriptor<'a> {
     description: &'a str,
 }
 fn descriptors<'a>(
-    doc: &'a CadDocument,
+    doc: &'a Document,
     definition: Handle,
     p: &Parameter,
 ) -> Result<Vec<Descriptor<'a>>, &'static str> {
@@ -69,30 +77,44 @@ fn descriptors<'a>(
     }
     Ok(result)
 }
-fn flip_labels(doc: &CadDocument, parameter: Handle) -> Vec<String> {
+fn flip_labels(doc: &Document, parameter: Handle) -> Vec<String> {
+    [false, true]
+        .into_iter()
+        .filter_map(|state| flip_state_label(doc, parameter, state))
+        .collect()
+}
+
+/// Empty native labels use UI defaults; authored labels are never translated.
+pub(crate) fn flip_state_label(
+    doc: &Document,
+    parameter: Handle,
+    state: bool,
+) -> Option<String> {
     let Some(ObjectType::DynamicBlock(object)) = doc.objects.get(&parameter) else {
-        return vec![];
+        return None;
     };
     let Data::FlipParameter(p) = &object.data else {
-        return vec![];
+        return None;
     };
-    [
-        (&p.base_state_label, "Not flipped"),
-        (&p.flipped_state_label, "Flipped"),
-    ]
-    .into_iter()
-    .map(|(label, fallback)| {
-        if label.is_empty() {
-            fallback.to_owned()
+    let label = if state {
+        &p.flipped_state_label
+    } else {
+        &p.base_state_label
+    };
+    Some(if label.is_empty() {
+        if state {
+            crate::tr!("block-grip", "flipped")
         } else {
-            label.clone()
+            crate::tr!("block-grip", "not-flipped")
         }
+    } else {
+        label.clone()
     })
-    .collect()
 }
+
 fn frame(
-    doc: &CadDocument,
-    baseline: Option<&CadDocument>,
+    doc: &Document,
+    baseline: Option<&Document>,
     insert: Handle,
     p: &Parameter,
 ) -> Result<instance::ParameterFrame, &'static str> {
@@ -127,8 +149,8 @@ fn number(
 }
 /// Values are in definition-plane drawing units, with angles in degrees.
 pub(crate) fn properties(
-    doc: &CadDocument,
-    baseline: Option<&CadDocument>,
+    doc: &Document,
+    baseline: Option<&Document>,
     document: u64,
     insert: Handle,
 ) -> Vec<Property> {
@@ -183,6 +205,8 @@ pub(crate) fn properties(
             });
         }
     }
+    rows.extend(table::property(doc, baseline, document, insert, definition));
+    rows.extend(super::block_lookup::reference_properties(doc, baseline, document, insert));
     rows
 }
 #[derive(Clone, Copy)]
@@ -193,15 +217,21 @@ pub(crate) enum Input {
 
 /// Stage the same complete-frame evaluation used by native grips.
 pub(crate) fn evaluate(
-    doc: &CadDocument,
-    baseline: Option<&CadDocument>,
+    doc: &Document,
+    baseline: Option<&Document>,
     key: Key,
     input: Input,
-) -> Result<Option<CadDocument>, &'static str> {
+) -> Result<Option<Document>, &'static str> {
     if instance::definition(doc, key.insert) != Some(key.definition) {
         return Err("The reference parameter property is stale.");
     }
     let source = baseline.unwrap_or(doc);
+    if let Component::TableRow(revision) = key.component {
+        return table::evaluate(doc, baseline, key, revision, input);
+    }
+    if let Component::LookupOutput { column, revision } = key.component {
+        return super::block_lookup::evaluate_property(doc, baseline, key, column, revision, input);
+    }
     let p = actions::all_parameters(source, key.definition)
         .into_iter()
         .find(|p| p.handle == key.parameter)
@@ -242,7 +272,7 @@ pub(crate) fn evaluate(
                     frame.end =
                         frame.base + DVec3::new(angle.cos(), angle.sin(), 0.) * delta.length();
                 }
-                Component::Flip => unreachable!(),
+                Component::Flip | Component::TableRow(_) | Component::LookupOutput { .. } => unreachable!(),
             }
             if !frame.end.is_finite() {
                 return Err("Specify a finite parameter value.");

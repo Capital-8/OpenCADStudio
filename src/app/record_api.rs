@@ -496,7 +496,7 @@ fn collection_records(
     }
 }
 
-fn collection_count(document: &codec::CadDocument, collection: &str) -> usize {
+fn collection_count(document: &codec::Document, collection: &str) -> usize {
     match collection {
         "entities" => document.entities().count(),
         "objects" => document.objects.len(),

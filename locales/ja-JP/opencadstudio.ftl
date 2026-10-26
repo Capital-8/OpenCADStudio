@@ -112,6 +112,7 @@ donation =
     .decline = 今はしない
 
 modal =
+    .saving-as-target-cannot-keep = "__ocs_arg_target__" として保存すると次の内容を保持できないため、失われます:
     .about = バージョン情報
     .keyboard-shortcuts = キーボードショートカット
     .command-aliases = コマンドエイリアス
@@ -276,6 +277,9 @@ command-copy =
     .mode = COPY  コピーモードを入力 [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = 使用法: DCDISPLAY [表示|非表示]
+    .dcdisplay-prompt = DCDISPLAY  オプションを入力 [表示/非表示] <表示>:
+    .dcdisplay-updated = __ocs_fmt_0__ 個の拘束インジケータを更新しました。
     .compare-prompt = COMPARE  ここのみ __ocs_fmt_0__ (緑)、もう一方の図面のみ __ocs_fmt_1__ (赤)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = 図面と比較
@@ -3483,6 +3487,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: スタイル「__ocs_fmt_1__」が見つかりません。
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: 無効な優先 "__ocs_fmt_0__"。
+    .dimoverride-no-dimensions = DIMOVERRIDE: 編集可能な寸法が選択されていません。
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ 個の寸法を更新しました。
+    .dimoverride-var-prompt = DIMOVERRIDE  優先する寸法変数名を入力 または [優先を解除]:
+    .dimoverride-value-prompt = DIMOVERRIDE  __ocs_fmt_0__ の新しい値を入力:
+    .dimoverride-clear-overrides = 優先を解除
+    .dimoverride-unknown-var = DIMOVERRIDE: 不明な寸法変数 "__ocs_fmt_0__"。
+    .dimoverride-invalid-value = DIMOVERRIDE: この変数には無効な値です。
+    .dimdisassociate-select = 自動調整を解除する寸法を選択:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ 個の寸法の自動調整を解除しました。
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_1__ 個中 __ocs_fmt_0__ 個の寸法を自動調整にしました。
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ 個の寸法は一部のみ自動調整にしました（一部の定義点にオブジェクトがありません）。
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  寸法値を入力 (空欄 = 計測値):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  円弧、円、またはポリライン円弧を選択:
     .dimjogged-specify-center-location-override = DIMJOGGED  中心位置の変更先を指定:
@@ -6660,6 +6676,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6758,6 +6788,17 @@ import-panel =
     .combine-text = 文字を結合
     .land-xml = Land XML
     .import-file-header = ファイル読み込み — ボタンは最後に選んだ項目を実行します
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6800,6 +6841,43 @@ pdf-password =
         { $path }
         この PDF ファイルを開けません。
         暗号化されており、パスワードが必要です。
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = 無効な数値 '__ocs_fmt_0__'
@@ -6963,3 +7041,30 @@ script-files =
     .exit-save = EXIT  __ocs_arg_name__ の変更を保存しますか? [Yes/No] <Yes>:
     .exit-no-path = EXIT: 「__ocs_fmt_0__」にはまだファイル パスがありません。先に SAVEAS を使用してください。
     .sdi-dirty = SDI: 別の図面を開く前に「__ocs_fmt_0__」を保存するか閉じてください。
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = 表示状態
+    .visibility-value = 表示状態: { $state }
+    .table-label = ブロック プロパティ
+    .table-row = ブロック プロパティ: { $row }
+    .alignment = 位置合わせ: { $mode }
+    .flipped = 反転
+    .not-flipped = 未反転
+
+
+block-flip =
+    .base-state-label = 基本状態のラベル
+    .flipped-state-label = 反転状態のラベル
+
+
+block-lookup =
+    .input-help = 入力には数値、数式、{ $closed } や { $open } などの区間を指定できます。数式では入力名を使います。角度の単位はラジアンです。
+    .invalid-table = ルックアップテーブルが無効です。
+    .invalid-value = 選択した行に無効なパラメーター値があります。
+    .incompatible-values = 行の値がパラメーターの値セットを満たしていません。
+    .quoted-help = 空白や句読点を含む名前を引用符で囲みます：{ $name }。
+
+block-array =
+    .limit-error = ブロックの評価により、配列オブジェクトが100000個を超えます。距離を短くするか、間隔を広げてください。

@@ -143,7 +143,7 @@ fn segment_intersection_xy(
     ))
 }
 
-fn break_object_handle(document: &codec::CadDocument, dimension: Handle) -> Option<Handle> {
+fn break_object_handle(document: &codec::Document, dimension: Handle) -> Option<Handle> {
     document.objects.iter().find_map(|(handle, object)| {
         let codec::objects::ObjectType::DataObject(object) = object else {
             return None;
@@ -155,7 +155,7 @@ fn break_object_handle(document: &codec::CadDocument, dimension: Handle) -> Opti
     })
 }
 
-fn remove_dimension_break_data(document: &mut codec::CadDocument, dimension: Handle) -> bool {
+fn remove_dimension_break_data(document: &mut codec::Document, dimension: Handle) -> bool {
     let handles: Vec<_> = document
         .objects
         .iter()
@@ -193,7 +193,7 @@ fn remove_dimension_break_data(document: &mut codec::CadDocument, dimension: Han
 }
 
 fn write_dimension_break_data(
-    document: &mut codec::CadDocument,
+    document: &mut codec::Document,
     dimension: Handle,
     reserved_reference: Handle,
     references: Vec<codec::objects::BreakPointReference>,
@@ -505,7 +505,7 @@ fn apply_dimspace(
 }
 
 fn dimension_auto_spacing(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     dimension: &codec::entities::Dimension,
     annotation_multiplier: f64,
 ) -> f64 {
