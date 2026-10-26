@@ -805,7 +805,9 @@ impl super::OpenCADStudio {
                 }
                 Some(EntityType::MultiLeader(ml)) => {
                     state.line_spacing = ml.context.line_spacing_factor as f32;
-                    if ml.context.text_width > 0.0 {
+                    // A multileader without a width keeps none until one is set.
+                    state.keep_width = ml.context.text_width > 0.0;
+                    if state.keep_width {
                         state.rect_width = ml.context.text_width;
                     }
                 }
@@ -1726,6 +1728,7 @@ impl super::OpenCADStudio {
             return true;
         }
         let body_empty = ed.content.text().trim().is_empty();
+        let keep_width = ed.keep_width;
         let mut mt = ed.build_mtext();
         let annotative = mt.is_annotative
             || ed.editing.is_none()
@@ -1762,7 +1765,7 @@ impl super::OpenCADStudio {
                     ml.context.text_string = mt.value;
                     ml.context.text_height = mt.height;
                     ml.context.line_spacing_factor = mt.line_spacing_factor;
-                    if mt.rectangle_width > 0.0 {
+                    if keep_width && mt.rectangle_width > 0.0 {
                         ml.context.text_width = mt.rectangle_width;
                     }
                 }
@@ -1840,11 +1843,12 @@ impl super::OpenCADStudio {
             return;
         }
         let i = self.active_tab;
-        let (mut mt, editing, body_empty) = match self.mtext_editor.as_ref() {
+        let (mut mt, editing, body_empty, keep_width) = match self.mtext_editor.as_ref() {
             Some(ed) => (
                 ed.build_mtext(),
                 ed.editing,
                 ed.content.text().trim().is_empty(),
+                ed.keep_width,
             ),
             None => return,
         };
@@ -1880,7 +1884,7 @@ impl super::OpenCADStudio {
                     ml.context.text_string = mt.value;
                     ml.context.text_height = mt.height;
                     ml.context.line_spacing_factor = mt.line_spacing_factor;
-                    if mt.rectangle_width > 0.0 {
+                    if keep_width && mt.rectangle_width > 0.0 {
                         ml.context.text_width = mt.rectangle_width;
                     }
                 }
