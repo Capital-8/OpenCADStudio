@@ -516,7 +516,8 @@ impl OpenCADStudio {
                     .map_or_else(MLeaderCommand::new, |style| {
                         MLeaderCommand::with_style(style, multiplier)
                     })
-                    .with_drawing_resources(block_sources, layers, text_styles);
+                    .with_drawing_resources(block_sources, layers, text_styles)
+                    .with_layer(self.mleader_layer(i));
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
             }

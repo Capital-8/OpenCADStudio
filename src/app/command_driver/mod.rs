@@ -155,6 +155,17 @@ impl OpenCADStudio {
                 self.persist_settings_if_changed();
             }
         }
+        let variable = self.tabs[self.active_tab]
+            .active_cmd
+            .as_ref()
+            .and_then(|command| command.drawing_variable_update());
+        if let Some((name, value)) = variable {
+            let tab = &mut self.tabs[self.active_tab];
+            if crate::io::drawing_variable(&tab.scene.document, name).as_deref() != Some(value.as_str()) {
+                crate::io::set_drawing_variable(&mut tab.scene.document, name, &value);
+                tab.dirty = true;
+            }
+        }
         let mline_settings = self.tabs[self.active_tab]
             .active_cmd
             .as_ref()
