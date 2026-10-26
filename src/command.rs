@@ -693,12 +693,21 @@ pub struct KeywordCommand {
     /// Keyword a bare Enter dispatches at the verb step (`<Default>` prompts,
     /// e.g. PLAN's `<Current>`). `None` = Enter cancels, as before.
     default: Option<&'static str>,
+    /// Short keys standing for a keyword (`2` → `WIREFRAME2D`), matched
+    /// before the keywords themselves.
+    aliases: &'static [(&'static str, &'static str)],
 }
 
 impl KeywordCommand {
     /// Set the verb a bare Enter dispatches (shown as `<Default>` in prompts).
     pub fn with_default(mut self, kw: &'static str) -> Self {
         self.default = Some(kw);
+        self
+    }
+
+    /// Accept short keys for keywords, as `(key, keyword)` pairs.
+    pub fn with_aliases(mut self, aliases: &'static [(&'static str, &'static str)]) -> Self {
+        self.aliases = aliases;
         self
     }
 
@@ -713,6 +722,7 @@ impl KeywordCommand {
             options,
             pending: None,
             default: None,
+            aliases: &[],
         }
     }
 }
@@ -787,6 +797,11 @@ impl CadCommand for KeywordCommand {
             None => {
                 // A leading underscore marks the English keyword, as in scripts.
                 let t = t.strip_prefix('_').unwrap_or(t);
+                let t = self
+                    .aliases
+                    .iter()
+                    .find(|(key, _)| key.eq_ignore_ascii_case(t))
+                    .map_or(t, |(_, keyword)| keyword);
                 let Some((_, keyword, value_prompt)) = match_cmd_option(&self.options, t) else {
                     // Unknown verb — keep prompting rather than dispatch garbage.
                     return Some(CmdResult::NeedPoint);

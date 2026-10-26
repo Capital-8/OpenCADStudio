@@ -189,7 +189,8 @@ impl OpenCADStudio {
                     "VSCURRENT",
                     visual_style::keyword_prompt(),
                     visual_style::keyword_choices(),
-                );
+                )
+                .with_aliases(visual_style::SHORT_KEYS);
                 self.command_line.push_info(&c.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(c));
             }
