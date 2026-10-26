@@ -1230,8 +1230,9 @@ impl OpenCADStudio {
 
             "TRIM" => {
                 use crate::modules::draw::modify::trim::{is_trim_boundary_entity, TrimCommand};
-                // Only curves cut or get cut: block references, text and the
-                // like stay out of the working copy (#1978). HATCH fills have
+                // Only curves cut or get cut: text and the like stay out of
+                // the working copy (#1978), and a block reference cuts only
+                // through its contents, added below (#2192). HATCH fills have
                 // their own renderer, so visible top-level hatches are added
                 // for the hatch trim solver. A multiline is trimmed but never
                 // cuts (#2068).
