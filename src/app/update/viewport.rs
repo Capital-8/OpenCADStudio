@@ -1784,7 +1784,22 @@ impl OpenCADStudio {
         );
         if mid_down {
             if let Some(last) = mid_last {
-                let (dx, dy) = (p.x - last.x, p.y - last.y);
+                let (mut dx, mut dy) = (p.x - last.x, p.y - last.y);
+                // Shift held during a pan constrains it to the axis it has
+                // mostly moved along; the orbit Shift brings is for a drag
+                // that starts with it (#2155).
+                let constrained_from = sel.input.middle_pan_from.filter(|_| {
+                    self.shift_down
+                        && !self.tabs[i].orbit_mode
+                        && self.navigation_style == crate::app::settings::NavigationStyle::Cad
+                });
+                if let Some(from) = constrained_from {
+                    if (p.x - from.x).abs() >= (p.y - from.y).abs() {
+                        dy = 0.0;
+                    } else {
+                        dx = 0.0;
+                    }
+                }
                 if self.tabs[i].zoom_dynamic_mode {
                     let bounds = self.tabs[i]
                         .scene
@@ -1829,7 +1844,7 @@ impl OpenCADStudio {
                 // — the requested Zoom=wheel / Pan=MMB / Rotate=Shift+MMB
                 // scheme (#229). Floating viewports and paper keep the
                 // plain MMB pan.
-                if self.middle_drag_orbits(i) {
+                if self.middle_drag_orbits(i) && constrained_from.is_none() {
                     if self.tabs[i].scene.active_viewport.is_some() {
                         // Orbit the floating viewport's own model view.
                         drop(sel);
@@ -1885,6 +1900,7 @@ impl OpenCADStudio {
                         return Task::none();
                     }
                 }
+                sel.input.middle_pan_from.get_or_insert(last);
                 // Drop `sel` before calling mutable scene methods.
                 drop(sel);
                 self.pan_active_view(i, dx, dy, move_started);
@@ -4801,6 +4817,7 @@ impl OpenCADStudio {
             let mut sel = self.tabs[i].scene.selection.borrow_mut();
             sel.input.middle_down = true;
             sel.input.middle_last_pos = Some(p);
+            sel.input.middle_pan_from = None;
             if self.tabs[i].zoom_dynamic_mode {
                 sel.gesture.box_anchor = Some(p);
                 sel.gesture.box_current = Some(p);
@@ -7325,6 +7342,7 @@ properties={:.1}ms picked={}",
             sel.input.middle_down = true;
             sel.input.middle_last_pos = Some(p);
             sel.input.middle_last_press_time = Some(now);
+            sel.input.middle_pan_from = None;
         }
         if is_double {
             self.tabs[i].scene.fit_all();
