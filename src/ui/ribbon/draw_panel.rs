@@ -282,7 +282,7 @@ const PANELS: &[Panel] = &[
     },
     Panel {
         id: DIMENSIONS_PANEL_ID,
-        anchor: Some("DIM_STYLE_COMBO"),
+        anchor: Some("DIM"),
         title_id: "dimensions_extension_title",
         title: "Dimensions",
         tools: DIMENSION_TOOLS,

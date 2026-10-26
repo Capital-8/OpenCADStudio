@@ -1335,7 +1335,7 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                     .align_y(iced::Center)
                     .into(),
                 );
-                return combo_panel_col(STYLE_COMBO_W * 1.25, col_items);
+                return combo_panel_col(STYLE_COMBO_W * 1.7, col_items);
             }
             for row_tools in rows {
                 col_items.push(tool_row(row_tools, active_tool));
@@ -1384,7 +1384,9 @@ fn dim_layer_combo<'a>(layer: &str, color: Option<iced::Color>, open: bool) -> E
                 12.0
             ),
             swatch,
-            container(text(label).size(11)).width(Fill).clip(true),
+            container(text(label).size(11).wrapping(advanced_text::Wrapping::None))
+                .width(Fill)
+                .clip(true),
             if open {
                 icons::themed_arrow_up(9.0)
             } else {
