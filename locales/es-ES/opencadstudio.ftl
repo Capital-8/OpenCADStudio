@@ -7080,3 +7080,6 @@ block-lookup =
 
 block-array =
     .limit-error = La evaluación del bloque generaría más de 100000 objetos de matriz. Reduzca la distancia o aumente la separación.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

@@ -7079,3 +7079,6 @@ block-lookup =
 
 block-array =
     .limit-error = Przeliczenie bloku utworzyłoby ponad 100000 obiektów szyku. Zmniejsz odległość lub zwiększ odstęp.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

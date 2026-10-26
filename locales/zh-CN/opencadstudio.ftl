@@ -7063,3 +7063,6 @@ block-lookup =
 
 block-array =
     .limit-error = 块求值将生成超过100000个阵列对象。请减小距离或增大间距。
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

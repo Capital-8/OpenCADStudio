@@ -7077,3 +7077,6 @@ block-lookup =
 
 block-array =
     .limit-error = Lohkon arviointi loisi yli 100000 matriisiobjektia. Pienennä etäisyyttä tai suurenna välistystä.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

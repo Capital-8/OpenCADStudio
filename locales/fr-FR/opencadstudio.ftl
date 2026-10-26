@@ -7080,3 +7080,6 @@ block-lookup =
 
 block-array =
     .limit-error = L’évaluation du bloc générerait plus de 100000 objets de réseau. Réduisez la distance ou augmentez l’espacement.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

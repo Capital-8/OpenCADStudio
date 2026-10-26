@@ -7081,3 +7081,6 @@ block-lookup =
 
 block-array =
     .limit-error = Вычисление блока создало бы более 100000 объектов массива. Уменьшите расстояние или увеличьте интервал.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

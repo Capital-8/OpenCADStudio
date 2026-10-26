@@ -7079,3 +7079,6 @@ block-lookup =
 
 block-array =
     .limit-error = La valutazione del blocco genererebbe più di 100000 oggetti di serie. Ridurre la distanza o aumentare la spaziatura.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

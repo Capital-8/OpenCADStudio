@@ -7064,3 +7064,6 @@ block-lookup =
 
 block-array =
     .limit-error = A blokk kiértékelése több mint 100000 kiosztási objektumot hozna létre. Csökkentse a távolságot vagy növelje a térközt.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

@@ -7081,3 +7081,6 @@ block-lookup =
 
 block-array =
     .limit-error = Block evaluation would generate more than 100000 array objects. Reduce the distance or increase the spacing.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

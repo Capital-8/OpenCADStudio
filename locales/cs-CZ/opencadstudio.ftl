@@ -7077,3 +7077,6 @@ block-lookup =
 
 block-array =
     .limit-error = Vyhodnocení bloku by vytvořilo více než 100000 objektů pole. Zmenšete vzdálenost nebo zvětšete rozestup.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

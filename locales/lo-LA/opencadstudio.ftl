@@ -7081,3 +7081,6 @@ block-lookup =
 
 block-array =
     .limit-error = ການປະເມີນບລັອກຈະສ້າງວັດຖຸແຖວລຳດັບຫຼາຍກວ່າ 100000 ອັນ. ຫຼຸດໄລຍະທາງ ຫຼື ເພີ່ມໄລຍະຫ່າງ.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

@@ -7068,3 +7068,6 @@ block-lookup =
 
 block-array =
     .limit-error = ブロックの評価により、配列オブジェクトが100000個を超えます。距離を短くするか、間隔を広げてください。
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

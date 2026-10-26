@@ -7080,3 +7080,6 @@ block-lookup =
 
 block-array =
     .limit-error = Оценяването на блока би създало повече от 100000 обекта в масив. Намалете разстоянието или увеличете отстоянието.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

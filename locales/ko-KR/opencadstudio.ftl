@@ -7079,3 +7079,6 @@ block-lookup =
 
 block-array =
     .limit-error = 블록 평가 시 배열 객체가 100000개를 초과합니다. 거리를 줄이거나 간격을 늘리세요.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

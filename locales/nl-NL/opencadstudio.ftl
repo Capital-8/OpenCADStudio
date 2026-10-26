@@ -7078,3 +7078,6 @@ block-lookup =
 
 block-array =
     .limit-error = De blokevaluatie zou meer dan 100000 matrixobjecten genereren. Verklein de afstand of vergroot de tussenruimte.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

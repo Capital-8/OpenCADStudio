@@ -7092,3 +7092,6 @@ block-lookup =
 
 block-array =
     .limit-error = سيؤدي تقييم الكتلة إلى إنشاء أكثر من 100000 عنصر مصفوفة. قلّل المسافة أو زِد التباعد.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

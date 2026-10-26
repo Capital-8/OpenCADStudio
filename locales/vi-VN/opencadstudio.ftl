@@ -7087,3 +7087,6 @@ block-lookup =
 
 block-array =
     .limit-error = Việc tính toán khối sẽ tạo hơn 100000 đối tượng mảng. Giảm khoảng cách hoặc tăng bước mảng.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

@@ -7078,3 +7078,6 @@ block-lookup =
 
 block-array =
     .limit-error = Die Blockauswertung würde mehr als 100000 Anordnungsobjekte erzeugen. Verringern Sie die Entfernung oder vergrößern Sie den Abstand.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

@@ -7001,3 +7001,6 @@ block-lookup =
 
 block-array =
     .limit-error = Blok değerlendirmesi 100000 adetten fazla dizi nesnesi oluşturacak. Mesafeyi azaltın veya aralığı artırın.
+dim-layer =
+    .prompt = DIMLAYER için yeni değer girin veya geçerliyi kullanmak için . <"{ $current }">:
+    .use-current = geçerliyi kullan

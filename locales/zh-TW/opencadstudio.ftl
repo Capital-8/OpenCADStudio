@@ -7075,3 +7075,6 @@ block-lookup =
 
 block-array =
     .limit-error = 圖塊求值將產生超過100000個陣列物件。請縮短距離或增大間距。
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current

@@ -7080,3 +7080,6 @@ block-lookup =
 
 block-array =
     .limit-error = Η αξιολόγηση του μπλοκ θα δημιουργούσε περισσότερα από 100000 αντικείμενα διάταξης. Μειώστε την απόσταση ή αυξήστε το διάκενο.
+dim-layer =
+    .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
+    .use-current = use current
