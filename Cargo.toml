@@ -295,6 +295,10 @@ harness = false
 name = "tds_material_groups"
 harness = false
 
+[[bench]]
+name = "associative_refresh_dedup"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"

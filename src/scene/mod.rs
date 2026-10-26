@@ -4216,50 +4216,36 @@ impl Scene {
         // association that disagrees with its dimension would otherwise
         // re-place the dimension on a layer toggle.
         if !appearance_only {
+            // One membership set shared by every associative family below, so a
+            // re-solved handle is checked once instead of rescanning the
+            // growing change list per returned handle (O(changes x refreshed)
+            // on a bulk edit). Hydrated lazily: an edit that refreshes nothing
+            // — the common case — never builds it. Families still run in the
+            // same order and see the same accumulated list.
+            let mut refreshed_handles: Option<HashSet<Handle>> = None;
             if self.associative_centers_possible(&changes) {
-                for change in self.refresh_associative_centerlines(&changes) {
-                    if !changes.iter().any(|(handle, _)| *handle == change.0) {
-                        changes.push(change);
-                    }
-                }
-                for change in self.refresh_associative_center_marks(&changes) {
-                    if !changes.iter().any(|(handle, _)| *handle == change.0) {
-                        changes.push(change);
-                    }
-                }
+                let refreshed = self.refresh_associative_centerlines(&changes);
+                Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
+                let refreshed = self.refresh_associative_center_marks(&changes);
+                Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
             }
-            for change in self.refresh_associative_dimensions(&changes) {
-                if !changes.iter().any(|(handle, _)| *handle == change.0) {
-                    changes.push(change);
-                }
-            }
-            for change in self.refresh_associative_hatches(&changes) {
-                if !changes.iter().any(|(handle, _)| *handle == change.0) {
-                    changes.push(change);
-                }
-            }
-            for change in self.refresh_associative_sweeps(&changes) {
-                if !changes.iter().any(|(handle, _)| *handle == change.0) {
-                    changes.push(change);
-                }
-            }
-            for change in self.refresh_associative_surfaces(&changes) {
-                if !changes.iter().any(|(handle, _)| *handle == change.0) {
-                    changes.push(change);
-                }
-            }
+            let refreshed = self.refresh_associative_dimensions(&changes);
+            Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
+            let refreshed = self.refresh_associative_hatches(&changes);
+            Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
+            let refreshed = self.refresh_associative_sweeps(&changes);
+            Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
+            let refreshed = self.refresh_associative_surfaces(&changes);
+            Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
             if solve_parametric && !self.parametric_constraints.is_empty() {
-                for change in self.refresh_parametric_constraints_with_initial_policy(
+                let refreshed = self.refresh_parametric_constraints_with_initial_policy(
                     &changes,
                     driven_refs,
                     retain_size,
                     retained_originals,
                     fixed_refs,
-                ) {
-                    if !changes.iter().any(|(handle, _)| *handle == change.0) {
-                        changes.push(change);
-                    }
-                }
+                );
+                Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
             }
         }
         if !self.parametric_constraints.is_empty() || !self.named_parameters.is_empty() {
@@ -4359,6 +4345,29 @@ impl Scene {
             }
         }
         self.push_geometry_delta(epoch, changes, false);
+    }
+
+    /// Append the handles an associative refresh re-solved, skipping the ones
+    /// the edit already names (and the ones an earlier family appended).
+    /// `members` is hydrated from `changes` on the first non-empty refresh and
+    /// mirrors it afterwards; the old per-handle `changes.iter().any(..)` scan
+    /// made this O(changes x refreshed) for every family.
+    fn absorb_refreshed(
+        changes: &mut Vec<(Handle, ChangeKind)>,
+        members: &mut Option<HashSet<Handle>>,
+        refreshed: Vec<(Handle, ChangeKind)>,
+    ) {
+        if refreshed.is_empty() {
+            return;
+        }
+        let members =
+            members.get_or_insert_with(|| changes.iter().map(|(handle, _)| *handle).collect());
+        changes.reserve(refreshed.len());
+        for change in refreshed {
+            if members.insert(change.0) {
+                changes.push(change);
+            }
+        }
     }
 
     /// True when any changed handle belongs to an ordinary block definition
@@ -15447,6 +15456,96 @@ mod journal_tests {
             10.0,
             10.0,
         )
+    }
+}
+
+/// The associative families append their re-solved handles to a
+/// `bump_entities` change list through one shared membership structure: each
+/// handle is appended once, in family order, and a handle the edit already
+/// named — or an earlier family appended — is never appended again.
+#[cfg(test)]
+mod associative_refresh_dedup_tests {
+    use super::*;
+    use codec::entities::{
+        CenterLineAssociation, CenterLineSource, CenterLineSourceKind, EntityType, Line,
+    };
+    use codec::types::Vector3;
+
+    fn line(y: f64) -> EntityType {
+        EntityType::Line(Line::from_points(
+            Vector3::new(0.0, y, 0.0),
+            Vector3::new(100.0, y, 0.0),
+        ))
+    }
+
+    fn associated(first: Handle, second: Handle) -> EntityType {
+        let EntityType::Line(mut carrier) = line(5.0) else {
+            unreachable!()
+        };
+        CenterLineAssociation {
+            first: CenterLineSource {
+                handle: first,
+                kind: CenterLineSourceKind::Line,
+                segment_index: -1,
+                pick_point: Vector3::new(50.0, 0.0, 0.0),
+            },
+            second: CenterLineSource {
+                handle: second,
+                kind: CenterLineSourceKind::Line,
+                segment_index: -1,
+                pick_point: Vector3::new(50.0, 10.0, 0.0),
+            },
+            plane_origin: Vector3::new(0.0, 0.0, 0.0),
+            plane_x: Vector3::new(1.0, 0.0, 0.0),
+            plane_y: Vector3::new(0.0, 1.0, 0.0),
+            start_extension: 0.0,
+            end_extension: 0.0,
+            start_length_adjustment: 0.0,
+            end_length_adjustment: 0.0,
+            associated: true,
+        }
+        .write(&mut carrier.common.extended_data);
+        EntityType::Line(carrier)
+    }
+
+    fn last_changes(scene: &Scene) -> Vec<(Handle, ChangeKind)> {
+        scene
+            .geometry_deltas
+            .borrow()
+            .back()
+            .expect("a geometry delta")
+            .changes
+            .clone()
+    }
+
+    #[test]
+    fn refreshed_carriers_are_appended_once_and_already_named_handles_are_skipped() {
+        let mut scene = Scene::new();
+        let first = scene.add_entity(line(0.0));
+        let second = scene.add_entity(line(10.0));
+        let carrier = scene.add_entity(associated(first, second));
+
+        scene.bump_entities(&[(first, ChangeKind::Modified), (second, ChangeKind::Modified)]);
+        assert_eq!(
+            last_changes(&scene),
+            vec![
+                (first, ChangeKind::Modified),
+                (second, ChangeKind::Modified),
+                (carrier, ChangeKind::Modified),
+            ],
+            "the re-solved carrier must be appended once, after the edit's own handles"
+        );
+
+        // The edit already names the carrier (the user moved the centre line
+        // itself): the refresh must not append it a second time.
+        scene.bump_entities(&[(carrier, ChangeKind::Modified), (first, ChangeKind::Modified)]);
+        assert_eq!(
+            last_changes(&scene),
+            vec![
+                (carrier, ChangeKind::Modified),
+                (first, ChangeKind::Modified),
+            ],
+        );
     }
 }
 
