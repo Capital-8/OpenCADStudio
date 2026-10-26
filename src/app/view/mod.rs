@@ -220,10 +220,9 @@ fn ui_font_changes() -> Subscription<Message> {
 }
 
 /// Background used by drafting overlays in model or paper space.
+/// The background the viewport actually draws behind the cursor and grid. The
+/// block editor draws on the model background too (#2216).
 fn crosshair_background(tab: &DocumentTab, is_paper: bool) -> [f32; 4] {
-    if tab.active_block_edit_session().is_some() {
-        return [0.62, 0.62, 0.62, 1.0];
-    }
     if !is_paper {
         return tab.scene.bg_color;
     }
@@ -491,12 +490,7 @@ impl OpenCADStudio {
         mark("viewport_3d");
         let viewport_3d: Element<'_, Message> = if self.layout_settling && !tab.is_start {
             // Omit the shader and drafting overlays for the notice frame.
-            let in_block_editor = tab.active_block_edit_session().is_some();
-            let bg = if in_block_editor {
-                [0.62, 0.62, 0.62, 1.0]
-            } else {
-                crosshair_background(tab, is_paper)
-            };
+            let bg = crosshair_background(tab, is_paper);
             let lum = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2];
             let ink = if lum > 0.5 {
                 Color::from_rgba(0.0, 0.0, 0.0, 0.55)
@@ -697,11 +691,7 @@ impl OpenCADStudio {
             let params_ms = crate::perf::elapsed_ms(t_params);
             let t_bg = crate::perf::enabled().then(iced::time::Instant::now);
             let in_block_editor = tab.active_block_edit_session().is_some();
-            let bg = if in_block_editor {
-                [0.62, 0.62, 0.62, 1.0]
-            } else {
-                crosshair_background(tab, is_paper)
-            };
+            let bg = crosshair_background(tab, is_paper);
             let bg_ms = crate::perf::elapsed_ms(t_bg);
             if views_ms + params_ms + bg_ms >= 1.0 {
                 crate::perf_record!(
