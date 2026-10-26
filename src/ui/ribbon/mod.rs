@@ -286,6 +286,8 @@ pub struct Ribbon {
     pub text_layer: String,
     /// Annotate > Dimensions: DIMLAYER (empty: the current layer).
     pub dim_layer: String,
+    /// Annotate > Leaders: MLEADERLAYER (empty: the current layer).
+    pub mleader_layer: String,
     /// Open key tips (Alt).
     keytips: Option<keytips::State>,
 }
@@ -420,6 +422,7 @@ impl Ribbon {
             text_height_editing: false,
             text_layer: String::new(),
             dim_layer: String::new(),
+            mleader_layer: String::new(),
             keytips: None,
         }
     }
@@ -982,6 +985,8 @@ impl Ribbon {
                 text_height: &self.text_height,
                 dim_layer: &self.dim_layer,
                 dim_layer_color: self.dim_layer_color(),
+                mleader_layer: &self.mleader_layer,
+                mleader_layer_color: self.layer_color(&self.mleader_layer),
             };
 
             // Adaptive tool area: panels sit on one row; when they don't all
@@ -1172,7 +1177,20 @@ impl Ribbon {
         }
 
         if open_id == widgets::DIM_LAYER_COMBO {
-            return Some(self.dim_layer_overlay(win));
+            return Some(self.annotation_layer_overlay(
+                widgets::DIM_LAYER_COMBO,
+                &self.dim_layer,
+                Message::RibbonDimLayer,
+                win,
+            ));
+        }
+        if open_id == widgets::MLEADER_LAYER_COMBO {
+            return Some(self.annotation_layer_overlay(
+                widgets::MLEADER_LAYER_COMBO,
+                &self.mleader_layer,
+                Message::RibbonMLeaderLayer,
+                win,
+            ));
         }
 
         if open_id == PROP_COLOR_ID {
@@ -1297,20 +1315,31 @@ impl Ribbon {
 
     /// The colour of the DIMLAYER layer, `None` for Use Current.
     fn dim_layer_color(&self) -> Option<iced::Color> {
-        if self.dim_layer.is_empty() {
+        self.layer_color(&self.dim_layer)
+    }
+
+    /// The colour of layer `name`, `None` for Use Current (empty).
+    fn layer_color(&self, name: &str) -> Option<iced::Color> {
+        if name.is_empty() {
             return None;
         }
         self.layer_infos
             .iter()
-            .find(|info| info.name.eq_ignore_ascii_case(&self.dim_layer))
+            .find(|info| info.name.eq_ignore_ascii_case(name))
             .map(|info| info.color)
     }
 
-    /// Annotate > Dimensions layer list: Use Current, then the drawing's
-    /// layers.
-    fn dim_layer_overlay(&self, win: (f32, f32)) -> Element<'_, Message> {
+    /// An Annotate layer list (`id`, Dimensions or Leaders): Use Current,
+    /// then the drawing's layers; a pick sends `pick`.
+    fn annotation_layer_overlay(
+        &self,
+        id: &'static str,
+        current: &str,
+        pick: fn(String) -> Message,
+        win: (f32, f32),
+    ) -> Element<'_, Message> {
         const W: f32 = 220.0;
-        let current = self.dim_layer.clone();
+        let current = current.to_string();
         let entry = |value: String, label: String, color: Option<iced::Color>| {
             let on = value.eq_ignore_ascii_case(&current);
             let swatch: Element<'_, Message> = match color {
@@ -1338,7 +1367,7 @@ impl Ribbon {
                 .spacing(6)
                 .align_y(iced::Center),
             )
-            .on_press(Message::RibbonDimLayer(value))
+            .on_press(pick(value))
             .style(popup_row_style)
             .width(Fill)
             .padding([3, 8])
@@ -1359,7 +1388,7 @@ impl Ribbon {
         .style(popup_panel_style)
         .padding(2)
         .width(Length::Fixed(W));
-        let (align_right, h_pad, top) = self.dd_anchor(widgets::DIM_LAYER_COMBO, W, win.0);
+        let (align_right, h_pad, top) = self.dd_anchor(id, W, win.0);
         dropdown_backdrop(position_ribbon_dropdown(panel.into(), align_right, h_pad, top))
     }
 
@@ -1539,6 +1568,8 @@ impl Ribbon {
             text_height: &self.text_height,
             dim_layer: &self.dim_layer,
             dim_layer_color: self.dim_layer_color(),
+            mleader_layer: &self.mleader_layer,
+            mleader_layer_color: self.layer_color(&self.mleader_layer),
         };
         let active = ctx.active_for(style_key).to_string();
 
@@ -2059,6 +2090,8 @@ mod tests {
             text_height: "",
             dim_layer: "",
             dim_layer_color: None,
+            mleader_layer: "",
+            mleader_layer_color: None,
         };
         let groups: Vec<_> = groups.iter().collect();
         let mut last_cmd = FxHashMap::default();

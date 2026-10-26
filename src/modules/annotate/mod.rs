@@ -253,35 +253,28 @@ impl CadModule for AnnotateModule {
                     ],
                 },
                 // ── Leaders ──────────────────────────────────────────────────
+                // Multileader, the style list, the multileader layer list,
+                // then Align / Collect / Add Leader / Remove Leader; the
+                // corner arrow opens Multileader Style.
                 RibbonGroup {
                     title: "Leaders",
                     tools: vec![
-                        RibbonItem::LargeDropdown {
-                            id: "ANNOTATE_LEADER",
+                        RibbonItem::LargeTool(crate::modules::ToolDef {
+                            id: "MLEADER",
                             label: "Multileader",
                             icon: mleader_cmd::ICON,
-                            items: vec![
-                                (
-                                    mleader_cmd::tool().id,
-                                    mleader_cmd::tool().label,
-                                    mleader_cmd::tool().icon,
-                                ),
-                                (
-                                    leader_cmd::tool().id,
-                                    leader_cmd::tool().label,
-                                    leader_cmd::tool().icon,
-                                ),
-                            ],
-                            default: "MLEADER",
-                        },
+                            event: crate::modules::ModuleEvent::Command("MLEADER".to_string()),
+                        }),
                         RibbonItem::StyleComboGroup {
                             style_key: StyleKey::MLeaderStyle,
                             combo_id: "MLEADER_STYLE_COMBO",
                             manager_cmd: Some("MLEADERSTYLE"),
-                            rows: vec![
-                                vec![mleader_edit::tool_add(), mleader_edit::tool_remove()],
-                                vec![mleader_edit::tool_align(), mleader_edit::tool_collect()],
-                            ],
+                            rows: vec![vec![
+                                mleader_edit::tool_align(),
+                                mleader_edit::tool_collect(),
+                                mleader_edit::tool_add(),
+                                mleader_edit::tool_remove(),
+                            ]],
                         },
                     ],
                 },

@@ -7388,3 +7388,5 @@ mleader-collect =
     .vertical = Vertical
     .wrap = Wrap
     .wrap-width = Specify wrap width <{ $value }>:
+leaders-panel =
+    .multileader-layer = Multileader Layer

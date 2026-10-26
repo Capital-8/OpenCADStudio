@@ -7306,3 +7306,5 @@ mleader-collect =
     .vertical = Dikey
     .wrap = Kaydır
     .wrap-width = Kaydırma genişliğini belirtin <{ $value }>:
+leaders-panel =
+    .multileader-layer = Çoklu Kılavuz Katmanı

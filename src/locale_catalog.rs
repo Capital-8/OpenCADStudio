@@ -6219,6 +6219,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Right Justify" => Some(("dim-panel", "right-justify")),
         "Override" => Some(("dim-panel", "override")),
         "Dimension Layer" => Some(("dim-panel", "dimension-layer")),
+        "Multileader Layer" => Some(("leaders-panel", "multileader-layer")),
         "Single Line" => Some(("text-panel", "single-line")),
         "Check Spelling" => Some(("text-panel", "check-spelling")),
         "Text Align" => Some(("text-panel", "text-align")),

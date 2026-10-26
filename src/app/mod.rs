@@ -5071,6 +5071,8 @@ pub enum Message {
     RibbonTextLayer(String),
     /// Annotate > Dimensions: DIMLAYER picked (empty: Use Current).
     RibbonDimLayer(String),
+    /// Annotate > Leaders: MLEADERLAYER picked (empty: Use Current).
+    RibbonMLeaderLayer(String),
     /// Result of the ATTACH file picker.
     AttachPickResult(Result<std::path::PathBuf, String>),
     /// An edit in the Attach External Reference dialog.
