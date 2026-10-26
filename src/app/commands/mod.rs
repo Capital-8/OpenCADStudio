@@ -38,6 +38,7 @@ mod point_cloud;
 mod refedit;
 pub(crate) mod sheet_set;
 mod styleprops;
+mod text_edit;
 mod ucsfollow;
 mod view;
 mod view_presets;
@@ -550,6 +551,9 @@ impl OpenCADStudio {
             return Some(t);
         }
         if let Some(t) = self.dispatch_hyperlink(cmd, i) {
+            return Some(t);
+        }
+        if let Some(t) = self.dispatch_text_edit(cmd, i) {
             return Some(t);
         }
         if let Some(t) = self.dispatch_count(cmd, i) {
