@@ -253,9 +253,13 @@ impl MLeaderCommand {
                 (points, None)
             }
             CreationOrder::ContentFirst => {
-                let content = local[0];
+                let mut content = local[0];
                 let arrow = local[1];
                 let sign = if content.x >= arrow.x { 1.0 } else { -1.0 };
+                // Text left of the arrow hangs from the box's right edge.
+                if sign < 0.0 {
+                    content.x += self.box_width.unwrap_or(0.0);
+                }
                 let elbow = DVec3::new(
                     content.x - sign * self.landing_length * self.display_scale,
                     content.y,
@@ -589,6 +593,12 @@ impl CadCommand for MLeaderCommand {
             let first = self.plane.to_local(self.verts[0]);
             let other = self.plane.to_local(pt);
             self.box_width = Some((other.x - first.x).abs());
+            // The text sits at the box's top-left corner.
+            self.verts[0] = self.plane.to_world(DVec3::new(
+                first.x.min(other.x),
+                first.y.max(other.y),
+                first.z,
+            ));
             return CmdResult::NeedPoint;
         }
         self.verts.push(self.constrained_point(pt));
@@ -995,16 +1005,42 @@ fn build_mleader(
     // Place text beyond the landing and gap.
     let off = landing * (landing_distance + landing_gap) as f32;
 
-    let text_location = content_point.map(v3).unwrap_or_else(|| {
+    let mut text_location = content_point.map(v3).unwrap_or_else(|| {
         Vector3::new(
             elbow_v3.x + off.x as f64,
             elbow_v3.y + off.y as f64,
             elbow_v3.z,
         )
     });
+    // The text location is the text's top-left corner; level text sits so
+    // its attachment line meets the landing. A content-first box gives that
+    // corner, so the landing comes to it, one landing and gap away.
+    let level = ux.y.abs() < 1.0e-6 && ux.x > 0.0;
+    let top = if level {
+        crate::entities::multileader::text_top_offset(&ml)
+    } else {
+        0.0
+    };
+    if content_point.is_some() {
+        if let Some(root) = ml.context.leader_roots.first_mut() {
+            root.connection_point.x =
+                text_location.x - sign * (landing_distance + landing_gap) * f64::from(ux.x);
+            root.connection_point.y = text_location.y - top;
+        }
+    } else {
+        text_location.y += top;
+    }
+    // The content base is the landing's end.
+    let base = ml.context.leader_roots.first().map_or(text_location, |root| {
+        Vector3::new(
+            root.connection_point.x + root.direction.x * landing_distance,
+            root.connection_point.y + root.direction.y * landing_distance,
+            root.connection_point.z,
+        )
+    });
 
     ml.context.text_location = text_location;
-    ml.context.content_base_point = text_location;
+    ml.context.content_base_point = base;
 
     ml
 }
