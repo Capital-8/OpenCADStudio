@@ -7130,5 +7130,5 @@ mleader-layer =
     .prompt = MLEADERLAYER için yeni değer girin veya geçerliyi kullanmak için . <"{ $current }">:
     .use-current = geçerliyi kullan
 mleader-cmd =
-    .layer = Çoklu kılavuzların yerleşeceği katmanın adını girin veya katmanı belirlemek için nesne seçin ya da geçerliyi kullanmak için . [?/çıKış] <"{ $current }">:
+    .layer = Çoklu kılavuzların yerleşeceği katmanın adını girin veya katmanı belirlemek için nesne seçin ya da geçerliyi kullanmak için . [?/çıkış] <"{ $current }">:
     .use-current = Geçerliyi Kullan
