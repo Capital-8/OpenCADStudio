@@ -7878,25 +7878,10 @@ impl OpenCADStudio {
             }
             Message::QSelectApply => {
                 let validation_error = self.qselect.as_ref().and_then(|state| {
-                    if self.tabs[self.active_tab]
+                    let candidate_count = self.tabs[self.active_tab]
                         .scene
-                        .qselect_candidate_count(state.scope)
-                        == 0
-                    {
-                        Some(crate::t!("No objects are available in this scope.").into_owned())
-                    } else if state.editing_condition.is_some() {
-                        Some(
-                            crate::t!("Update or cancel the condition edit before applying.")
-                                .into_owned(),
-                        )
-                    } else if state.conditions.is_empty() {
-                        state.draft_condition().validation_error()
-                    } else {
-                        state
-                            .conditions
-                            .iter()
-                            .find_map(|condition| condition.validation_error())
-                    }
+                        .qselect_candidate_count(state.scope);
+                    state.validation_error(candidate_count)
                 });
                 if let Some(error) = validation_error {
                     if let Some(state) = self.qselect.as_mut() {

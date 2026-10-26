@@ -1720,26 +1720,17 @@ fn qselect_content<'a>(
 
     let derived_error = if candidate_count == 0 {
         Some(crate::t!("No objects are available in this scope.").into_owned())
-    } else if value_enabled
-        && number_property
-        && crate::entities::common::parse_f64(&state.value).is_none()
-    {
-        Some(crate::t!("Enter a valid number.").into_owned())
-    } else if value_enabled
-        && state.property.as_ref().is_some_and(|property| {
-            matches!(property.editor, crate::app::QSelectValueEditor::Choice(_))
-        })
-        && state.value.is_empty()
-    {
-        Some(crate::t!("Choose a value.").into_owned())
-    } else if matches!(
-        state.operator,
-        crate::app::QSelectOp::Gt | crate::app::QSelectOp::Lt
-    ) && !number_property
-    {
-        Some(crate::t!("This operator requires a numeric property.").into_owned())
-    } else {
+    } else if state.type_filter.is_none() && state.property.is_none() {
+        // An empty draft is only an error once Apply is possible; the Add
+        // button already requires a type or property.
         None
+    } else {
+        crate::app::QSelectCondition::validation_error_for(
+            state.type_filter.as_deref(),
+            state.property.as_ref(),
+            state.operator,
+            &state.value,
+        )
     };
     let error = state.error.clone().or(derived_error.clone());
 

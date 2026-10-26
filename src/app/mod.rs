@@ -63,6 +63,8 @@ pub mod plugin_host;
 mod presspull_ops;
 mod properties;
 mod quick_calc;
+#[cfg(test)]
+mod qselect_tests;
 mod recent;
 mod record_api;
 pub(crate) mod settings;
@@ -300,33 +302,50 @@ pub struct QSelectCondition {
 }
 
 impl QSelectCondition {
-    pub fn validation_error(&self) -> Option<String> {
-        if self.type_filter.is_none() && self.property.is_none() {
+    /// Condition rules over borrowed fields. The live dialog validates its
+    /// draft through this form so it shares one rule with Apply without
+    /// cloning the property choice (and its option list) every frame.
+    pub fn validation_error_for(
+        type_filter: Option<&str>,
+        property: Option<&QSelectPropertyChoice>,
+        operator: QSelectOp,
+        value: &str,
+    ) -> Option<String> {
+        if type_filter.is_none() && property.is_none() {
             return Some(crate::t!("Choose an object type or property.").into_owned());
         }
-        let Some(property) = &self.property else {
+        let Some(property) = property else {
             return None;
         };
-        if matches!(self.operator, QSelectOp::Any) {
+        if matches!(operator, QSelectOp::Any) {
             return None;
         }
-        if matches!(self.operator, QSelectOp::Gt | QSelectOp::Lt)
+        if matches!(operator, QSelectOp::Gt | QSelectOp::Lt)
             && !matches!(property.editor, QSelectValueEditor::Number)
         {
             return Some(crate::t!("This operator requires a numeric property.").into_owned());
         }
         match &property.editor {
             QSelectValueEditor::Number
-                if crate::entities::common::parse_f64(&self.value)
+                if crate::entities::common::parse_f64(value)
                     .is_none_or(|value| !value.is_finite()) =>
             {
                 Some(crate::t!("Enter a valid number.").into_owned())
             }
-            QSelectValueEditor::Choice(_) if self.value.is_empty() => {
+            QSelectValueEditor::Choice(_) if value.is_empty() => {
                 Some(crate::t!("Choose a value.").into_owned())
             }
             _ => None,
         }
+    }
+
+    pub fn validation_error(&self) -> Option<String> {
+        Self::validation_error_for(
+            self.type_filter.as_deref(),
+            self.property.as_ref(),
+            self.operator,
+            &self.value,
+        )
     }
 }
 
@@ -368,6 +387,26 @@ impl QSelectState {
             property: self.property.clone(),
             operator: self.operator,
             value: self.value.clone(),
+        }
+    }
+
+    /// Error Apply would report. Apply passes a freshly counted scope size;
+    /// the live dialog uses the stored count so it stays cheap per frame.
+    pub fn validation_error(&self, candidate_count: usize) -> Option<String> {
+        if candidate_count == 0 {
+            return Some(crate::t!("No objects are available in this scope.").into_owned());
+        }
+        if self.editing_condition.is_some() {
+            return Some(
+                crate::t!("Update or cancel the condition edit before applying.").into_owned(),
+            );
+        }
+        if self.conditions.is_empty() {
+            self.draft_condition().validation_error()
+        } else {
+            self.conditions
+                .iter()
+                .find_map(QSelectCondition::validation_error)
         }
     }
 }
