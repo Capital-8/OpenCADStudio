@@ -7261,6 +7261,19 @@ layer-walk =
     .inspect-total = Σύνολο επιπέδων: { $count }
     .inspect-selected = Επιλεγμένα επίπεδα: { $count }
     .inspect-objects = Αντικείμενα στα επιλεγμένα επίπεδα: { $count }
+    .visible-count = { $visible } από { $total } ορατά
+    .invert = Αναστροφή
+    .count-tip = { $count ->
+       [one] { $count } αντικείμενο σε αυτό το επίπεδο
+      *[other] { $count } αντικείμενα σε αυτό το επίπεδο
+     }
+    .eye-shown = Εμφανίζεται στο σχέδιο
+    .eye-hidden-walk = Κρυμμένο από την περιήγηση
+    .eye-hidden = Απενεργοποιημένο ή κατεψυγμένο στο σχέδιο
+    .frozen-tip = Κατεψυγμένο
+    .locked-tip = Κλειδωμένο
+    .pin-hold-tip = Διατήρηση ορατό κατά την περιήγηση
+    .pin-held-tip = Σε hold - κλικ για απελευθέρωση
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

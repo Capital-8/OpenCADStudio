@@ -7247,6 +7247,18 @@ layer-walk =
     .inspect-total = 圖層總數：{ $count }
     .inspect-selected = 已選圖層：{ $count }
     .inspect-objects = 所選圖層上的物件：{ $count }
+    .visible-count = { $total } 個圖層中顯示 { $visible } 個
+    .invert = 反選
+    .count-tip = { $count ->
+      *[other] 此圖層上有 { $count } 個物件
+     }
+    .eye-shown = 圖中顯示
+    .eye-hidden-walk = 被巡覽隱藏
+    .eye-hidden = 圖中關閉或凍結
+    .frozen-tip = 凍結
+    .locked-tip = 鎖定
+    .pin-hold-tip = 巡覽時保持顯示
+    .pin-held-tip = 已固定 - 單擊取消
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

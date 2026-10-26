@@ -7260,6 +7260,19 @@ layer-walk =
     .inspect-total = Livelli totali: { $count }
     .inspect-selected = Livelli selezionati: { $count }
     .inspect-objects = Oggetti nei livelli selezionati: { $count }
+    .visible-count = { $visible } di { $total } visibili
+    .invert = Inverti
+    .count-tip = { $count ->
+       [one] { $count } oggetto su questo livello
+      *[other] { $count } oggetti su questo livello
+     }
+    .eye-shown = Mostrato nel disegno
+    .eye-hidden-walk = Nascosto dalla navigazione
+    .eye-hidden = Spento o congelato nel disegno
+    .frozen-tip = Congelato
+    .locked-tip = Bloccato
+    .pin-hold-tip = Mantieni visibile durante la navigazione
+    .pin-held-tip = Mantenuto - fare clic per rilasciare
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

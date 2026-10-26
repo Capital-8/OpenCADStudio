@@ -7182,6 +7182,19 @@ layer-walk =
     .inspect-total = Toplam katman: { $count }
     .inspect-selected = Seçili katman: { $count }
     .inspect-objects = Seçili katmanlardaki nesne: { $count }
+    .visible-count = { $visible } / { $total } görünür
+    .invert = Ters çevir
+    .count-tip = { $count ->
+       [one] Bu katmanda { $count } nesne
+      *[other] Bu katmanda { $count } nesne
+     }
+    .eye-shown = Çizimde gösteriliyor
+    .eye-hidden-walk = Yürüyüş tarafından gizlendi
+    .eye-hidden = Çizimde kapalı veya donmuş
+    .frozen-tip = Donmuş
+    .locked-tip = Kilitli
+    .pin-hold-tip = Yürüyüş sırasında görünür tut
+    .pin-held-tip = Tutuluyor - bırakmak için tıklayın
 dim-layer =
     .prompt = DIMLAYER için yeni değer girin veya geçerliyi kullanmak için . <"{ $current }">:
     .use-current = geçerliyi kullan

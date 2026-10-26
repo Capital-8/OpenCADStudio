@@ -7245,6 +7245,19 @@ layer-walk =
     .inspect-total = Rétegek összesen: { $count }
     .inspect-selected = Kijelölt rétegek: { $count }
     .inspect-objects = Objektumok a kijelölt rétegeken: { $count }
+    .visible-count = { $visible } / { $total } látható
+    .invert = Megfordítás
+    .count-tip = { $count ->
+       [one] { $count } objektum ezen a rétegen
+      *[other] { $count } objektum ezen a rétegen
+     }
+    .eye-shown = Látható a rajzban
+    .eye-hidden-walk = A bejárás elrejtette
+    .eye-hidden = Ki vagy fagyasztva a rajzban
+    .frozen-tip = Fagyasztva
+    .locked-tip = Zárolva
+    .pin-hold-tip = Tartsa láthatóan bejárás közben
+    .pin-held-tip = Rögzítve - kattintson a feloldáshoz
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

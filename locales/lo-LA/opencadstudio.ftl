@@ -7253,6 +7253,18 @@ layer-walk =
     .inspect-total = ຈຳນວນຊັ້ນທັງໝົດ: { $count }
     .inspect-selected = ຊັ້ນທີ່ເລືອກ: { $count }
     .inspect-objects = ວັດຖຸເທິງຊັ້ນທີ່ເລືອກ: { $count }
+    .visible-count = { $visible } / { $total } ເຫັນ
+    .invert = ປີ້ນກັບ
+    .count-tip = { $count ->
+      *[other] ວັດຖຸ { $count } ຢູ່ເທິງຊັ້ນນີ້
+     }
+    .eye-shown = ເຫັນໃນແຜນ
+    .eye-hidden-walk = ຖືກລັບເມື່ອເດີນຊັ້ນ
+    .eye-hidden = ປິດ ຫຼື ແຊ່ໃນແຜນ
+    .frozen-tip = ແຊ່
+    .locked-tip = ລັອກ
+    .pin-hold-tip = ຮັກສາໃຫ້ເຫັນຂະນະເດີນຊັ້ນ
+    .pin-held-tip = ຕິດຢູ່ - ຄລິກເພື່ອປ່ອຍ
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

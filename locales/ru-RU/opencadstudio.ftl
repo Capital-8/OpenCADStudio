@@ -7265,6 +7265,19 @@ layer-walk =
     .inspect-total = Всего слоёв: { $count }
     .inspect-selected = Выделено слоёв: { $count }
     .inspect-objects = Объектов на выделенных слоях: { $count }
+    .visible-count = { $visible } из { $total } видимых
+    .invert = Инвертировать
+    .count-tip = { $count ->
+       [one] { $count } объект на этом слое
+      *[other] { $count } объекта на этом слое
+     }
+    .eye-shown = Показан на чертеже
+    .eye-hidden-walk = Скрыт обходом
+    .eye-hidden = Выключен или заморожен на чертеже
+    .frozen-tip = Заморожен
+    .locked-tip = Заблокирован
+    .pin-hold-tip = Держать видимым во время обхода
+    .pin-held-tip = Удерживается - щёлкните, чтобы отпустить
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

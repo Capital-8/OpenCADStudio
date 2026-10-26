@@ -7251,6 +7251,18 @@ layer-walk =
     .inspect-total = 총 레이어: { $count }
     .inspect-selected = 선택한 레이어: { $count }
     .inspect-objects = 선택한 레이어의 개체: { $count }
+    .visible-count = { $visible } / { $total } 표시됨
+    .invert = 반전
+    .count-tip = { $count ->
+      *[other] 이 레이어의 개체 { $count } 개
+     }
+    .eye-shown = 드로잉에 표시됨
+    .eye-hidden-walk = 워킹에서 숨김
+    .eye-hidden = 드로잉에서 꺼짐 또는 얼림
+    .frozen-tip = 얼림
+    .locked-tip = 잠김
+    .pin-hold-tip = 워킹 중 표시 유지
+    .pin-held-tip = 고정됨 - 클릭으로 해제
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

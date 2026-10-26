@@ -7262,6 +7262,19 @@ layer-walk =
     .inspect-total = Total layers: { $count }
     .inspect-selected = Selected layers: { $count }
     .inspect-objects = Objects on the selected layers: { $count }
+    .visible-count = { $visible } of { $total } visible
+    .invert = Invert
+    .count-tip = { $count ->
+       [one] { $count } object on this layer
+      *[other] { $count } objects on this layer
+     }
+    .eye-shown = Shown in the drawing
+    .eye-hidden-walk = Hidden by the walk
+    .eye-hidden = Off or frozen in the drawing
+    .frozen-tip = Frozen
+    .locked-tip = Locked
+    .pin-hold-tip = Hold visible while walking
+    .pin-held-tip = Held - click to release
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

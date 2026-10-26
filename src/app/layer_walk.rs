@@ -326,6 +326,18 @@ impl OpenCADStudio {
                 }
                 self.walk_apply();
             }
+            LayerWalkMsg::RowHover { name, on } => {
+                // View-only: the hover never changes what is on screen, so it
+                // must not re-run the override. A leave only clears its own
+                // row, so an enter/leave pair cannot drop the new hover.
+                if let Some(session) = self.tabs[i].layer_walk.as_mut() {
+                    if on {
+                        session.hovered = Some(name);
+                    } else if session.hovered.as_deref() == Some(name.as_str()) {
+                        session.hovered = None;
+                    }
+                }
+            }
             LayerWalkMsg::RowRelease { name } => {
                 {
                     let tab = &mut self.tabs[i];
@@ -663,14 +675,14 @@ impl OpenCADStudio {
             if !layer_walk::walk_changes_underlying(&tab.layer_walk_rows, session) {
                 return false;
             }
-            let visible = layer_walk::visible_set(&tab.layer_walk_rows, session);
-            // Layer 0 and the current layer are never turned off, exactly as
-            // LAYOFF skips them; a layer the walk shows is thawed as well as
-            // turned on, so a frozen row can come back.
+            let visible = layer_walk::visible_set(session);
+            // The walk's own set is committed as-is: a layer it shows is
+            // turned on and thawed, a layer it hides is turned off. The only
+            // protection lives in the pallet, in the layer-0 pin — an unpinned
+            // row 0 is a row like any other.
             let names: Vec<String> = tab
                 .layer_walk_rows
                 .iter()
-                .filter(|r| !r.is_current && r.name != "0")
                 .filter(|r| r.underlying_shown() != visible.contains(&r.name))
                 .map(|r| r.name.clone())
                 .collect();

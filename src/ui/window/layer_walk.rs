@@ -65,6 +65,12 @@ pub enum LayerWalkMsg {
     ToggleHold {
         name: String,
     },
+    /// The pointer entered or left a row. Hover owns the row's tint and the
+    /// unheld pin, so the list shows one marked row instead of a speck per row.
+    RowHover {
+        name: String,
+        on: bool,
+    },
     /// The pointer was released over a row: the end of a click-drag range.
     RowRelease {
         name: String,
@@ -157,6 +163,9 @@ pub struct LayerWalkSession {
     pub show_only_matching: bool,
     pub restore_on_exit: bool,
     pub layer0_always_on: bool,
+    /// The row under the pointer, for the hover tint and the unheld pin. Only
+    /// ever set from a row, so a stale name simply stops matching in the view.
+    pub hovered: Option<String>,
     pub sort: LayerWalkSort,
     pub sort_asc: bool,
     /// True while the list owns the arrow keys (set by a row click).
@@ -188,6 +197,7 @@ impl LayerWalkSession {
             show_only_matching: false,
             restore_on_exit: true,
             layer0_always_on: false,
+            hovered: None,
             sort: LayerWalkSort::Name,
             sort_asc: true,
             list_focused: false,
@@ -217,8 +227,6 @@ pub struct LayerWalkRow {
     pub off: bool,
     pub frozen: bool,
     pub locked: bool,
-    /// The drawing's current layer: the walk can never hide it.
-    pub is_current: bool,
 }
 
 impl LayerWalkRow {
@@ -264,7 +272,6 @@ pub fn sync_rows(
                 off: l.flags.off,
                 frozen: l.flags.frozen,
                 locked: l.flags.locked,
-                is_current: key == current,
                 name: l.name.clone(),
                 count,
             }
@@ -433,18 +440,28 @@ pub fn drag_select(rows: &[LayerWalkRow], session: &mut LayerWalkSession, end_in
     session.anchor = Some(end_index);
 }
 
-/// Visible layers = selected ∪ held, plus layer 0 when pinned on; the current
-/// layer can never be hidden, so it is always in the set.
-pub fn visible_set(rows: &[LayerWalkRow], session: &LayerWalkSession) -> FxHashSet<String> {
+/// Visible layers = selected ∪ held, plus layer 0 while its pin is on. Nothing
+/// else is protected: the current layer is a row like any other, so a walk can
+/// hide it — which is what makes the pin the only guard worth honouring.
+pub fn visible_set(session: &LayerWalkSession) -> FxHashSet<String> {
     let mut set: FxHashSet<String> = session.selected.iter().cloned().collect();
     set.extend(session.held.iter().cloned());
     if session.layer0_always_on {
         set.insert("0".to_string());
     }
-    if let Some(row) = rows.iter().find(|r| r.is_current) {
-        set.insert(row.name.clone());
-    }
     set
+}
+
+/// How many of the rows the walk actually draws are on screen — the pallet's
+/// own status line, so "Clear All" has a visible result.
+pub fn visible_counts(rows: &[LayerWalkRow], session: &LayerWalkSession) -> (usize, usize) {
+    let visible = visible_set(session);
+    let drawn = visible_rows(rows, session);
+    let shown = drawn
+        .iter()
+        .filter(|(_, row)| visible.contains(&row.name))
+        .count();
+    (shown, drawn.len())
 }
 
 /// The walk set as table handles — what `Scene::set_space_layer_walk` keys on.
@@ -453,7 +470,7 @@ pub fn visible_handles(
     rows: &[LayerWalkRow],
     session: &LayerWalkSession,
 ) -> FxHashSet<codec::Handle> {
-    let names = visible_set(rows, session);
+    let names = visible_set(session);
     rows.iter()
         .filter(|r| names.contains(&r.name))
         .map(|r| r.handle)
@@ -463,7 +480,7 @@ pub fn visible_handles(
 /// The walk is worth committing when its visible set differs from the
 /// drawing's own layer visibility.
 pub fn walk_changes_underlying(rows: &[LayerWalkRow], session: &LayerWalkSession) -> bool {
-    let visible = visible_set(rows, session);
+    let visible = visible_set(session);
     rows.iter()
         .any(|r| r.underlying_shown() != visible.contains(&r.name))
 }
@@ -633,12 +650,23 @@ fn msg(m: LayerWalkMsg) -> Message {
 /// Scrollable id, so the app can focus the list for arrow navigation.
 pub const LIST_ID: &str = "layer-walk-list";
 
-/// Column widths: the swatch, the count, the hold pin and the state icons are
+/// Column widths: the swatch, the count, the hold pin and the state cluster are
 /// fixed; the layer name takes the rest and elides like the Layer Manager.
+/// The state column is exactly one effective eye plus the two underlying marks
+/// it can carry, so it never leaves dead width next to the name.
 const COL_SWATCH: f32 = 22.0;
-const COL_COUNT: f32 = 44.0;
+const COL_COUNT: f32 = 40.0;
 const COL_PIN: f32 = 22.0;
-const COL_STATE: f32 = 62.0;
+const COL_STATE: f32 = 36.0;
+/// How much a row the walk hides loses: alpha carries the signal because the
+/// bundled UI font has no italic cut.
+const HIDDEN_ALPHA: f32 = 0.38;
+/// A row that is off or frozen in the drawing is only muted: the walk keeps it
+/// out of the eye's way, but it cannot switch such a layer on.
+const UNDERLYING_ALPHA: f32 = 0.55;
+/// The header's action buttons share one width so the second line reads as a
+/// control strip instead of three different shapes.
+const ACTION_W: f32 = 62.0;
 
 /// The whole pallet: chrome title, header, list, inline dialogs and footer.
 /// The pallet stays non-modal, so its dialogs are drawn inside it rather than
@@ -775,60 +803,97 @@ fn view_content<'a>(
         iced::widget::Space::new().width(Length::Fixed(0.0)).into()
     };
     let tiny = |label: Cow<'static, str>, item: LayerWalkMenuItem| -> Element<'_, Message> {
-        button(text(label).size(10))
+        button(text(label).size(10).width(Fill).align_x(iced::Center))
             .on_press(msg(LayerWalkMsg::MenuItem(item)))
             .style(button::subtle)
-            .padding([3, 5])
+            .padding([3, 4])
+            .width(Length::Fixed(ACTION_W))
             .into()
     };
-    let header = row![
-        select_btn,
-        filter_combo_box,
-        filter_box,
-        clear_filter,
-        filter_check,
-        tiny(t!("Select All"), LayerWalkMenuItem::SelectAll),
-        tiny(t!("Clear All"), LayerWalkMenuItem::ClearAll),
-        tiny(t!("Invert Selection"), LayerWalkMenuItem::Invert),
+    // The running total is the one number the walk cannot be read without:
+    // how much of the drawing is on screen right now.
+    let (shown, drawn) = visible_counts(rows, session);
+    let status = text(crate::tr!(
+        "layer-walk",
+        "visible-count",
+        visible = shown,
+        total = drawn
+    ))
+    .size(10)
+    .style(muted_style);
+    // Two lines, not eight controls on one: at 420 px the fields had no
+    // visible edge and every button was a guess.
+    let header = column![
+        row![select_btn, filter_combo_box, filter_box, clear_filter]
+            .spacing(4)
+            .align_y(iced::Center),
+        row![
+            filter_check,
+            tiny(t!("Select All"), LayerWalkMenuItem::SelectAll),
+            tiny(t!("Clear All"), LayerWalkMenuItem::ClearAll),
+            tiny(
+                crate::tr!("layer-walk", "invert").into(),
+                LayerWalkMenuItem::Invert
+            ),
+            iced::widget::Space::new().width(Fill),
+            status,
+        ]
+        .spacing(4)
+        .align_y(iced::Center),
     ]
-    .spacing(4)
-    .align_y(iced::Center);
+    .spacing(4);
 
     // ── Column header ─────────────────────────────────────────────────────
-    let sort_head =
-        |label: Cow<'static, str>, col: LayerWalkSort, w: Length| -> Element<'_, Message> {
-            let mut content = row![text(label).size(10).style(muted_style)]
-                .spacing(3)
-                .align_y(iced::Center);
-            if session.sort == col {
-                content = content.push(if session.sort_asc {
-                    crate::ui::icons::themed_arrow_up(8.0)
-                } else {
-                    crate::ui::icons::themed_arrow_down(8.0)
-                });
-            }
-            button(content)
-                .on_press(msg(LayerWalkMsg::Sort(col)))
-                .style(crate::ui::style::row_button::header_button_style)
-                .padding(Padding {
-                    top: 0.0,
-                    bottom: 0.0,
-                    left: 2.0,
-                    right: 2.0,
-                })
-                .width(w)
-                .into()
-        };
+    // `right` mirrors the cell: the count is right-aligned, so its header is
+    // too, or the two edges never line up.
+    let sort_head = |label: Cow<'static, str>,
+                     col: LayerWalkSort,
+                     w: Length,
+                     right: bool|
+     -> Element<'_, Message> {
+        let mut content = if right {
+            row![
+                iced::widget::Space::new().width(Fill),
+                text(label).size(10).style(muted_style)
+            ]
+        } else {
+            row![text(label).size(10).style(muted_style)]
+        }
+        .spacing(3)
+        .align_y(iced::Center);
+        if session.sort == col {
+            content = content.push(if session.sort_asc {
+                crate::ui::icons::themed_arrow_up(8.0)
+            } else {
+                crate::ui::icons::themed_arrow_down(8.0)
+            });
+        }
+        button(content)
+            .on_press(msg(LayerWalkMsg::Sort(col)))
+            .style(crate::ui::style::row_button::header_button_style)
+            .padding(Padding {
+                top: 0.0,
+                bottom: 0.0,
+                left: 2.0,
+                right: 2.0,
+            })
+            .width(w)
+            .into()
+    };
     let header_grid = container(
         row![
-            sort_head(t!("Name"), LayerWalkSort::Name, Length::Fill),
+            sort_head(t!("Name"), LayerWalkSort::Name, Length::Fill, false),
             text("").width(Length::Fixed(COL_SWATCH)),
             sort_head(
                 t!("Objects"),
                 LayerWalkSort::Count,
-                Length::Fixed(COL_COUNT)
+                Length::Fixed(COL_COUNT),
+                true
             ),
-            text("").width(Length::Fixed(COL_PIN + COL_STATE)),
+            // The pin and the eye share one spacer here but two cells with a
+            // gap between them in the row, so the gap has to be added back or
+            // the header drifts 4 px left of every count.
+            text("").width(Length::Fixed(COL_PIN + COL_STATE + 4.0)),
         ]
         .spacing(4)
         .align_y(iced::Center),
@@ -851,6 +916,7 @@ fn view_content<'a>(
     // ── Rows ──────────────────────────────────────────────────────────────
     let sel: FxHashSet<&str> = session.selected.iter().map(String::as_str).collect();
     let held: FxHashSet<&str> = session.held.iter().map(String::as_str).collect();
+    let visible = visible_set(session);
     let matches: FxHashSet<usize> = matching_indices(rows, session.pattern.as_deref())
         .into_iter()
         .collect();
@@ -877,6 +943,8 @@ fn view_content<'a>(
                 position,
                 sel.contains(row.name.as_str()),
                 held.contains(row.name.as_str()),
+                visible.contains(&row.name),
+                session.hovered.as_deref() == Some(row.name.as_str()),
                 matches.contains(index),
                 ctrl,
                 shift,
@@ -979,41 +1047,55 @@ fn view_content<'a>(
         .into()
 }
 
-/// One row: colour swatch, name, object count, hold pin, state indicators.
-/// A hidden layer stays selectable and walkable but reads dimmed (the bundled
-/// UI font has no italic cut, so alpha carries the signal). A filter match
-/// reads semibold over a tinted band.
+/// One row: name, colour swatch, object count, hold pin and the walk's eye.
+/// The body container has to ask for `align_y`: it defaults to `Start`, which
+/// pins a 16 px line of content to the top edge of the 26 px band.
+///
+/// Alpha carries the walk state (the bundled UI font has no italic cut): a row
+/// the walk hides dims, a row off or frozen in the table is only muted.
 fn walk_row(
     row: &LayerWalkRow,
     position: usize,
     is_selected: bool,
     is_held: bool,
+    is_visible: bool,
+    is_hovered: bool,
     matches: bool,
     ctrl: bool,
     shift: bool,
     entries: Rc<Vec<MenuEntry>>,
 ) -> Element<'_, Message> {
-    let hidden_underlying = !row.underlying_shown();
+    let dim = if !is_visible {
+        HIDDEN_ALPHA
+    } else if row.underlying_shown() {
+        1.0
+    } else {
+        UNDERLYING_ALPHA
+    };
     let mut label = text(crate::ui::text_util::elide(&row.name, 48)).size(FONT_SZ);
     if matches && !is_selected {
         label = label.font(iced::Font::DEFAULT.weight(iced::font::Weight::Semibold));
     }
-    let name_cell = container(label.width(Fill)).width(Length::Fill);
     let name = row.name.clone();
     // The gesture areas are siblings, never nested: a `mouse_area` handles an
     // event over its whole bounds whether or not a child area also claims it,
     // so a pin inside the row area would toggle hold *and* reselect the row.
     let left = mouse_area(
         row![
-            name_cell,
+            container(label.width(Fill)).width(Length::Fill),
             container(crate::ui::color_select::swatch(
-                crate::ui::window::layers::iced_color_from_acad(&row.color)
+                crate::ui::window::layers::iced_color_from_acad(&row.color).scale_alpha(dim)
             ))
             .width(Length::Fixed(COL_SWATCH))
             .align_x(iced::Center),
-            text(row.count.to_string())
-                .size(FONT_SZ)
-                .width(Length::Fixed(COL_COUNT)),
+            tooltip(
+                text(row.count.to_string())
+                    .size(FONT_SZ)
+                    .width(Length::Fixed(COL_COUNT))
+                    .align_x(iced::Right),
+                text(crate::tr!("layer-walk", "count-tip", count = row.count)).size(10),
+                iced::widget::tooltip::Position::FollowCursor,
+            ),
         ]
         .spacing(4)
         .align_y(iced::Center)
@@ -1031,89 +1113,158 @@ fn walk_row(
     }))
     .on_release(msg(LayerWalkMsg::RowRelease { name: name.clone() }))
     .interaction(iced::mouse::Interaction::Pointer);
-    let pin = mouse_area(
-        container(if is_held {
-            crate::ui::icons::themed_primary(crate::ui::icons::PIN_ACTIVE, ICON_SZ * 0.8)
-        } else {
-            crate::ui::icons::themed_secondary(crate::ui::icons::PIN, ICON_SZ * 0.8)
+    // A held row is a chip: the pin alone in grey at this size reads as a
+    // smudge. An unheld row shows its pin only under the pointer, so the
+    // column stays quiet until a row is actually being aimed at.
+    let glyph: Element<'_, Message> = if is_held {
+        container(crate::ui::icons::themed_primary(
+            crate::ui::icons::PIN_ACTIVE,
+            ICON_SZ * 0.75,
+        ))
+        .width(Length::Fixed(ICON_SZ + 4.0))
+        .height(Length::Fixed(ICON_SZ))
+        .align_x(iced::Center)
+        .align_y(iced::Center)
+        .style(|theme: &Theme| {
+            let pair = theme.palette().primary.weak;
+            container::Style {
+                background: Some(Background::Color(pair.color)),
+                text_color: Some(pair.text),
+                border: Border {
+                    radius: 3.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
         })
+        .into()
+    } else if is_hovered {
+        container(crate::ui::icons::themed_secondary(
+            crate::ui::icons::PIN,
+            ICON_SZ * 0.8,
+        ))
+        .width(Length::Fixed(COL_PIN))
+        .align_x(iced::Center)
+        .into()
+    } else {
+        iced::widget::Space::new()
+            .width(Length::Fixed(COL_PIN))
+            .into()
+    };
+    let pin = mouse_area(
+        container(tooltip(
+            glyph,
+            text(if is_held {
+                crate::tr!("layer-walk", "pin-held-tip")
+            } else {
+                crate::tr!("layer-walk", "pin-hold-tip")
+            })
+            .size(10),
+            iced::widget::tooltip::Position::FollowCursor,
+        ))
         .width(Length::Fixed(COL_PIN))
         .align_x(iced::Center),
     )
     .on_press(msg(LayerWalkMsg::ToggleHold { name }))
     .interaction(iced::mouse::Interaction::Pointer);
-    let cells = row![left, pin, state_cells(row)]
+    let cells = row![left, pin, state_cells(row, is_visible)]
         .spacing(4)
         .align_y(iced::Center);
-    let body = container(cells)
-        .width(Fill)
-        .height(Length::Fixed(ROW_H))
-        .padding(Padding {
-            top: 0.0,
-            bottom: 0.0,
-            left: 8.0,
-            right: 8.0,
-        })
-        .style(move |theme: &Theme| {
-            let palette = theme.palette();
-            let pair = if is_selected {
-                palette.primary.weak
-            } else if position % 2 == 0 {
-                palette.background.base
-            } else {
-                palette.background.weak
-            };
-            let mut text_color = pair.text;
-            if hidden_underlying && !is_selected {
-                text_color = text_color.scale_alpha(0.45);
-            }
-            container::Style {
-                background: Some(Background::Color(if matches && !is_selected {
-                    palette.primary.weak.color.scale_alpha(0.30)
-                } else {
-                    pair.color
-                })),
-                text_color: Some(text_color),
-                ..Default::default()
-            }
-        });
+    let body = container(
+        mouse_area(cells)
+            .on_enter(msg(LayerWalkMsg::RowHover {
+                name: row.name.clone(),
+                on: true,
+            }))
+            .on_exit(msg(LayerWalkMsg::RowHover {
+                name: row.name.clone(),
+                on: false,
+            })),
+    )
+    .width(Fill)
+    .height(Length::Fixed(ROW_H))
+    .align_y(iced::Center)
+    .padding(Padding {
+        top: 0.0,
+        bottom: 0.0,
+        left: 8.0,
+        right: 8.0,
+    })
+    .style(move |theme: &Theme| {
+        let palette = theme.palette();
+        let pair = if is_selected {
+            palette.primary.weak
+        } else if position % 2 == 0 {
+            palette.background.base
+        } else {
+            palette.background.weak
+        };
+        // Hover outranks selection outranks the zebra band, the same order the
+        // shared `cell_button_style` uses, so this row reads like the rest of
+        // the app's lists. The filter tint only applies to the zebra band.
+        let (band, text_color) = if is_hovered {
+            let strong = palette.background.strong;
+            (strong.color, strong.text)
+        } else if is_selected {
+            (pair.color, pair.text)
+        } else if matches {
+            (palette.primary.weak.color.scale_alpha(0.30), pair.text)
+        } else {
+            (pair.color, pair.text)
+        };
+        container::Style {
+            background: Some(Background::Color(band)),
+            text_color: Some(text_color.scale_alpha(dim)),
+            ..Default::default()
+        }
+    });
     // `ContextMenu` watches for the right press itself, over its underlay's
     // bounds; it does not need a `mouse_area` of its own.
     iced_aw::ContextMenu::new(body, move || row_menu((*entries).clone())).into()
 }
 
-/// Off / frozen / locked indicators, then the current-layer mark. A locked or
-/// frozen layer is still walkable — the walk overrides it, exactly as holding
-/// it in AutoCAD does.
-fn state_cells<'a>(row: &LayerWalkRow) -> Element<'a, Message> {
-    let mut state = row![].spacing(2).align_y(iced::Center);
-    if row.off {
-        state = state.push(crate::ui::icons::themed_disabled(
-            crate::ui::icons::layer_visible(false),
-            ICON_SZ * 0.75,
-        ));
-    }
+/// The walk's own eye, then the two underlying marks it cannot change.
+///
+/// The eye reports what the drawing actually shows: a layer outside the walk
+/// set reads closed, and so does one the walk holds while it is off or frozen
+/// in the table — the override hides geometry, it does not switch layers on.
+/// The tooltip names which of the two reasons applies.
+fn state_cells<'a>(row: &LayerWalkRow, is_visible: bool) -> Element<'a, Message> {
+    let on_screen = is_visible && row.underlying_shown();
+    let tip = if on_screen {
+        crate::tr!("layer-walk", "eye-shown")
+    } else if !is_visible {
+        crate::tr!("layer-walk", "eye-hidden-walk")
+    } else {
+        crate::tr!("layer-walk", "eye-hidden")
+    };
+    let eye: Element<'a, Message> = if on_screen {
+        crate::ui::icons::themed(crate::ui::icons::layer_visible(true), ICON_SZ * 0.72)
+    } else {
+        crate::ui::icons::themed_disabled(crate::ui::icons::layer_visible(false), ICON_SZ * 0.72)
+    };
+    let mut state = row![tooltip(
+        eye,
+        text(tip).size(10),
+        iced::widget::tooltip::Position::FollowCursor
+    )]
+    .spacing(2)
+    .align_y(iced::Center);
     if row.frozen {
-        state = state.push(crate::ui::icons::themed_disabled(
-            crate::ui::icons::layer_freeze(true),
-            ICON_SZ * 0.75,
+        state = state.push(tooltip(
+            crate::ui::icons::themed_disabled(crate::ui::icons::layer_freeze(true), ICON_SZ * 0.55),
+            text(crate::tr!("layer-walk", "frozen-tip")).size(10),
+            iced::widget::tooltip::Position::FollowCursor,
         ));
     }
     if row.locked {
-        state = state.push(crate::ui::icons::themed_disabled(
-            crate::ui::icons::layer_lock(true),
-            ICON_SZ * 0.75,
+        state = state.push(tooltip(
+            crate::ui::icons::themed_disabled(crate::ui::icons::layer_lock(true), ICON_SZ * 0.55),
+            text(crate::tr!("layer-walk", "locked-tip")).size(10),
+            iced::widget::tooltip::Position::FollowCursor,
         ));
     }
-    if row.is_current {
-        state = state.push(crate::ui::icons::themed_success(
-            crate::ui::icons::DOT,
-            ICON_SZ * 0.55,
-        ));
-    }
-    container(state.width(Length::Fixed(COL_STATE)))
-        .align_x(iced::Right)
-        .into()
+    container(state.width(Length::Fixed(COL_STATE))).into()
 }
 
 // ── Context menu ──────────────────────────────────────────────────────────
@@ -1344,18 +1495,12 @@ mod tests {
             off: false,
             frozen: false,
             locked: false,
-            is_current: false,
         }
     }
 
     fn fixture() -> Vec<LayerWalkRow> {
         vec![
-            LayerWalkRow {
-                name: "0".into(),
-                count: 5,
-                is_current: true,
-                ..row("0", 5)
-            },
+            row("0", 5),
             LayerWalkRow {
                 name: "WALL".into(),
                 count: 10,
@@ -1424,7 +1569,7 @@ mod tests {
     }
 
     #[test]
-    fn visible_set_is_selected_union_held_with_guards() {
+    fn visible_set_is_selected_union_held_with_the_zero_pin() {
         let rows = fixture();
         let mut s = LayerWalkSession::fresh(&rows);
         s.selected = vec!["WALL".into()];
@@ -1432,18 +1577,32 @@ mod tests {
         let mut want: FxHashSet<String> = FxHashSet::default();
         want.insert("WALL".into());
         want.insert("DOOR".into());
-        want.insert("0".into()); // the current layer is always shown
-        assert_eq!(visible_set(&rows, &s), want);
+        assert_eq!(visible_set(&s), want);
 
-        // With 0 no longer current, only the pin brings it back.
-        let mut rows = fixture();
-        rows[0].is_current = false;
-        let mut s = LayerWalkSession::fresh(&rows);
-        s.selected = vec!["WALL".into()];
+        // A row the walk hides is hidden even when the drawing itself keeps it
+        // on; only the 0 pin adds to the set.
+        assert!(!visible_set(&s).contains("0"));
+        s.selected.clear();
         s.held.clear();
-        assert!(!visible_set(&rows, &s).contains("0"));
+        assert!(visible_set(&s).is_empty());
         s.layer0_always_on = true;
-        assert!(visible_set(&rows, &s).contains("0"));
+        assert_eq!(
+            visible_set(&s),
+            ["0".to_string()].into_iter().collect::<FxHashSet<String>>()
+        );
+    }
+
+    #[test]
+    fn visible_counts_cover_the_drawn_rows() {
+        let rows = fixture();
+        let mut s = LayerWalkSession::fresh(&rows);
+        s.selected = vec!["WALL".into(), "DOOR".into()];
+        assert_eq!(visible_counts(&rows, &s), (2, 4));
+        s.layer0_always_on = true;
+        assert_eq!(visible_counts(&rows, &s), (3, 4));
+        let filtered = matching_indices(&rows, Some("D*"));
+        assert_eq!(visible_counts(&rows, &s), (3, 4));
+        assert_eq!(filtered.len(), 1);
     }
 
     #[test]
@@ -1473,11 +1632,11 @@ mod tests {
         assert_eq!(s.held, vec!["WALL"]);
         // Held layers stay visible even when the selection drops them.
         s.selected = vec!["DOOR".into()];
-        let set = visible_set(&rows, &s);
+        let set = visible_set(&s);
         assert!(set.contains("WALL") && set.contains("DOOR"));
         set_held(&mut s, &["WALL".into()], false);
         assert!(s.held.is_empty());
-        assert!(!visible_set(&rows, &s).contains("WALL"));
+        assert!(!visible_set(&s).contains("WALL"));
     }
 
     #[test]
@@ -1544,7 +1703,7 @@ mod tests {
         s.selected = vec!["WALL".into()];
         s.held = vec!["DOOR".into()];
         s.selected.clear();
-        let set = visible_set(&rows, &s);
+        let set = visible_set(&s);
         assert!(set.contains("DOOR"));
         assert!(!set.contains("WALL"));
     }
@@ -1563,7 +1722,7 @@ mod tests {
         let mut s = LayerWalkSession::fresh(&rows);
         click_select(&rows, &mut s, "ONLY", false, false);
         assert_eq!(s.selected, vec!["ONLY"]);
-        assert!(visible_set(&rows, &s).contains("ONLY"));
+        assert!(visible_set(&s).contains("ONLY"));
     }
 
     #[test]
@@ -1572,7 +1731,7 @@ mod tests {
         let mut s = LayerWalkSession::fresh(&rows);
         click_select(&rows, &mut s, "REF1|WALL", false, false);
         assert_eq!(s.selected, vec!["REF1|WALL"]);
-        assert!(visible_set(&rows, &s).contains("REF1|WALL"));
+        assert!(visible_set(&s).contains("REF1|WALL"));
         assert_eq!(matching_indices(&rows, Some("REF1|*")), vec![0]);
     }
 

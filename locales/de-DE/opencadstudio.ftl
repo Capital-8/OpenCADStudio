@@ -7259,6 +7259,19 @@ layer-walk =
     .inspect-total = Ebenen gesamt: { $count }
     .inspect-selected = Ausgewählte Ebenen: { $count }
     .inspect-objects = Objekte auf den ausgewählten Ebenen: { $count }
+    .visible-count = { $visible } von { $total } sichtbar
+    .invert = Umkehren
+    .count-tip = { $count ->
+       [one] { $count } Objekt auf dieser Ebene
+      *[other] { $count } Objekte auf dieser Ebene
+     }
+    .eye-shown = Im Zeichenblatt sichtbar
+    .eye-hidden-walk = Durch den Durchgang ausgeblendet
+    .eye-hidden = Im Zeichenblatt aus oder eingefroren
+    .frozen-tip = Eingefroren
+    .locked-tip = Gesperrt
+    .pin-hold-tip = Während des Durchgangs sichtbar halten
+    .pin-held-tip = Gehalten - klicken zum Lösen
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

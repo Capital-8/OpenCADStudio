@@ -7249,6 +7249,19 @@ layer-walk =
     .inspect-total = कुल लेयर: { $count }
     .inspect-selected = चयनित लेयर: { $count }
     .inspect-objects = चयनित लेयरों पर वस्तुएँ: { $count }
+    .visible-count = { $visible } / { $total } दृश्य
+    .invert = उलटा करें
+    .count-tip = { $count ->
+       [one] इस लेयर पर { $count } वस्तु
+      *[other] इस लेयर पर { $count } वस्तुएँ
+     }
+    .eye-shown = ड्रॉइंग में दिखाई दे रहा
+    .eye-hidden-walk = वॉक द्वारा छिपा
+    .eye-hidden = ड्रॉइंग में बंद या फ्रॉज़न
+    .frozen-tip = फ्रॉज़न
+    .locked-tip = लॉक
+    .pin-hold-tip = वॉक के दौरान दिखाई रखें
+    .pin-held-tip = होल्ड - छोड़ने के लिए क्लिक करें
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

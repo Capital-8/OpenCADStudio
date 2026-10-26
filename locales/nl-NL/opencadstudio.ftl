@@ -7259,6 +7259,19 @@ layer-walk =
     .inspect-total = Totaal aantal lagen: { $count }
     .inspect-selected = Geselecteerde lagen: { $count }
     .inspect-objects = Objecten op de geselecteerde lagen: { $count }
+    .visible-count = { $visible } van { $total } zichtbaar
+    .invert = Omkeren
+    .count-tip = { $count ->
+       [one] { $count } object op deze laag
+      *[other] { $count } objecten op deze laag
+     }
+    .eye-shown = Zichtbaar in de tekening
+    .eye-hidden-walk = Verborgen door de doorloop
+    .eye-hidden = Uit of bevroren in de tekening
+    .frozen-tip = Bevroren
+    .locked-tip = Vergrendeld
+    .pin-hold-tip = Zichtbaar houden tijdens de doorloop
+    .pin-held-tip = Vastgezet - klik om los te maken
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

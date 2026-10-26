@@ -7261,6 +7261,19 @@ layer-walk =
     .inspect-total = Vrstev celkem: { $count }
     .inspect-selected = Vybraných vrstev: { $count }
     .inspect-objects = Objektů ve vybraných vrstvách: { $count }
+    .visible-count = { $visible } z { $total } viditelných
+    .invert = Invertovat
+    .count-tip = { $count ->
+       [one] { $count } objekt na této vrstvě
+      *[other] { $count } objekty na této vrstvě
+     }
+    .eye-shown = Zobrazeno ve výkresu
+    .eye-hidden-walk = Skryto průchodem
+    .eye-hidden = Vypnuta nebo zamrzlá ve výkresu
+    .frozen-tip = Zamrzlá
+    .locked-tip = Uzamčená
+    .pin-hold-tip = Ponechat viditelnou během průchodu
+    .pin-held-tip = Podrženo - kliknutím uvolníte
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

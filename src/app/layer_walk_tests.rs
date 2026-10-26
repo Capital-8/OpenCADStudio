@@ -24,7 +24,7 @@ mod tests {
     }
 
     /// `WALLS` / `DOOR` with two / one objects, `GHOST` with none. The current
-    /// layer is left on `0`, so it is the always-visible one.
+    /// layer stays on `0`, and no layer gets any protection from the walk.
     fn three_layer_drawing() -> OpenCADStudio {
         let mut app = fresh_app();
         let i = app.active_tab;
@@ -192,14 +192,15 @@ mod tests {
                 .off
         );
         assert!(
-            !app.tabs[i]
+            app.tabs[i]
                 .scene
                 .document
                 .layers
                 .get("0")
                 .unwrap()
                 .flags
-                .off
+                .off,
+            "unpinned layer 0 is committed off with everything else the walk hid"
         );
         assert!(app.tabs[i].dirty);
         assert_eq!(app.tabs[i].history.undo_stack.len(), undo_before + 1);
@@ -390,9 +391,12 @@ mod tests {
         // and a deletion drops the held layer that no longer exists.
         assert_eq!(session(&app).selected, Vec::<String>::new());
         assert_eq!(session(&app).held, Vec::<String>::new());
-        // The current layer is never hidden, so a walk to nothing is still safe.
-        assert!(hidden(&app, &["0"]).is_empty());
-        assert_eq!(hidden(&app, &["GHOST", "WALL-NEW"]), ["GHOST", "WALL-NEW"]);
+        // Nothing is selected any more, so the walk hides every row it lost —
+        // the current layer included.
+        assert_eq!(
+            hidden(&app, &["0", "GHOST", "WALL-NEW"]),
+            ["0", "GHOST", "WALL-NEW"]
+        );
     }
 
     #[test]
@@ -408,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn held_layers_stay_visible_and_the_current_layer_never_hides() {
+    fn held_layers_stay_visible_and_everything_else_hides() {
         let mut app = three_layer_drawing();
         app.open_layer_walk();
         walk(
@@ -428,15 +432,82 @@ mod tests {
         assert!(hidden(&app, &["DOOR"]).contains(&"DOOR".to_string()));
         assert!(hidden(&app, &["GHOST"]).is_empty());
         assert!(session(&app).held.contains(&"GHOST".to_string()));
-        // Clear everything: only the current layer survives the walk.
+        // Clear everything: only what is held is left on screen.
         walk(
             &mut app,
             LayerWalkMsg::MenuItem(LayerWalkMenuItem::ClearAll),
         );
         assert_eq!(
             hidden(&app, &["0", "WALLS", "DOOR", "GHOST"]),
-            ["WALLS", "DOOR"]
+            ["0", "WALLS", "DOOR"]
         );
+    }
+
+    #[test]
+    fn walking_off_the_current_layer_hides_it_like_any_other() {
+        let mut app = three_layer_drawing();
+        let i = app.active_tab;
+        // `WALLS` is current; walking to `DOOR` alone hides it.
+        app.tabs[i].scene.document.header.current_layer_name = "WALLS".into();
+        app.open_layer_walk();
+        walk(
+            &mut app,
+            LayerWalkMsg::RowClick {
+                name: "DOOR".into(),
+                ctrl: false,
+                shift: false,
+            },
+        );
+        assert_eq!(hidden(&app, &["WALLS"]), ["WALLS"]);
+        assert!(hidden(&app, &["DOOR"]).is_empty());
+    }
+
+    #[test]
+    fn keep_result_turns_the_current_layer_off() {
+        let mut app = three_layer_drawing();
+        let i = app.active_tab;
+        app.tabs[i].scene.document.header.current_layer_name = "WALLS".into();
+        app.open_layer_walk();
+        walk(
+            &mut app,
+            LayerWalkMsg::RowClick {
+                name: "DOOR".into(),
+                ctrl: false,
+                shift: false,
+            },
+        );
+        let undo_before = app.tabs[i].history.undo_stack.len();
+        walk(&mut app, LayerWalkMsg::KeepResult);
+        let doc = &app.tabs[i].scene.document;
+        let off = |n: &str| doc.layers.get(n).map(|l| l.flags.off).unwrap_or(false);
+        assert!(
+            off("WALLS"),
+            "the walked-off current layer is committed off"
+        );
+        assert!(off("0") && off("GHOST"));
+        assert!(!off("DOOR"));
+        assert_eq!(app.tabs[i].history.undo_stack.len(), undo_before + 1);
+    }
+
+    #[test]
+    fn the_zero_pin_is_the_only_layer_keep_result_refuses_to_turn_off() {
+        let mut app = three_layer_drawing();
+        let i = app.active_tab;
+        app.open_layer_walk();
+        walk(
+            &mut app,
+            LayerWalkMsg::RowClick {
+                name: "DOOR".into(),
+                ctrl: false,
+                shift: false,
+            },
+        );
+        walk(&mut app, LayerWalkMsg::ToggleLayer0AlwaysOn(true));
+        walk(&mut app, LayerWalkMsg::KeepResult);
+        let doc = &app.tabs[i].scene.document;
+        let off = |n: &str| doc.layers.get(n).map(|l| l.flags.off).unwrap_or(false);
+        assert!(!off("0"), "the pin keeps layer 0 on through the commit");
+        assert!(off("WALLS") && off("GHOST"));
     }
 
     #[test]
@@ -455,9 +526,10 @@ mod tests {
             },
         );
         assert_eq!(hidden(&app, &["0"]), ["0"]);
-        assert!(hidden(&app, &["WALLS"]).is_empty());
+        assert_eq!(hidden(&app, &["WALLS"]), ["WALLS"]);
         walk(&mut app, LayerWalkMsg::ToggleLayer0AlwaysOn(true));
         assert!(hidden(&app, &["0"]).is_empty());
+        assert_eq!(hidden(&app, &["WALLS"]), ["WALLS"]);
     }
 
     #[test]
@@ -532,6 +604,52 @@ mod tests {
         // A click in the drawing gives the arrows back.
         app.layer_walk_lost_focus();
         assert!(!app.layer_walk_owns_arrows());
+    }
+
+    #[test]
+    fn the_hover_lives_on_the_row_under_the_pointer() {
+        let mut app = three_layer_drawing();
+        app.open_layer_walk();
+        let before = hidden(&app, &["0", "WALLS", "DOOR", "GHOST"]);
+        walk(
+            &mut app,
+            LayerWalkMsg::RowHover {
+                name: "WALLS".into(),
+                on: true,
+            },
+        );
+        assert_eq!(session(&app).hovered.as_deref(), Some("WALLS"));
+        // View-only: the hover must not re-run the override.
+        assert_eq!(
+            hidden(&app, &["0", "WALLS", "DOOR", "GHOST"]),
+            before,
+            "a hover changes nothing on screen"
+        );
+        // Rows above the hovered one leave *after* the new row enters, so a
+        // leave may only clear its own row.
+        walk(
+            &mut app,
+            LayerWalkMsg::RowHover {
+                name: "DOOR".into(),
+                on: true,
+            },
+        );
+        walk(
+            &mut app,
+            LayerWalkMsg::RowHover {
+                name: "WALLS".into(),
+                on: false,
+            },
+        );
+        assert_eq!(session(&app).hovered.as_deref(), Some("DOOR"));
+        walk(
+            &mut app,
+            LayerWalkMsg::RowHover {
+                name: "DOOR".into(),
+                on: false,
+            },
+        );
+        assert_eq!(session(&app).hovered.as_deref(), None);
     }
 
     // ── Edge-case drawings ─────────────────────────────────────────────────
@@ -758,7 +876,7 @@ mod tests {
         };
         assert!(!off("WALLS"));
         assert!(off("DOOR") && off("GHOST"), "the walk's hide is the state");
-        assert!(!off("0"), "the current layer is never stored off");
+        assert!(off("0"), "the walk hides the current layer like any other");
         // Nothing was written to the document by opening the editor.
         assert!(app.tabs[i].scene.document.layer_states().is_empty());
     }

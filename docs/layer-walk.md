@@ -34,8 +34,9 @@ This is the mechanism the spec asked for and the renderer supports:
 
 Committing is the separate, explicit act: **Keep Result**, or closing with
 *Restore on exit* unticked, writes the walked visibility into the layer table
-as exactly one undo step, mirroring LAYOFF/LAYON (layer 0 and the current layer
-are never turned off, a layer the walk shows is thawed as well as turned on).
+as exactly one undo step, mirroring LAYOFF/LAYON (a layer the walk shows is
+thawed as well as turned on; the *Layer 0 always on* pin is the only thing that
+keeps a layer out of the commit).
 
 Every path that ends a walk tears the override down — Close, the dock chrome,
 the `LAYWALK` toggle, `reset_layer_walk_for` on a document load, and any
@@ -45,16 +46,21 @@ PURGE, VPLAYER, ERASE, NEW/OPEN/SAVEAS …). A transparent command such as
 
 ## The list
 
-Rows carry the colour swatch, name, object count, the Always-Show pin and the
-off/frozen/locked markers, and sort by name or count. On open, every layer the
-drawing itself shows is selected. A click replaces the selection, Ctrl+click
-toggles, Shift+click and click-drag take the range between the anchor and the
-release in *drawn* order, and Up/Down step one row while the list owns the
-keyboard (a click in the drawing hands it back). Double-click toggles
+Rows carry the colour swatch, name, object count, the Always-Show pin and one
+eye for the state the walk actually produces, and sort by name or count; frozen
+and locked stay as small marks behind the eye. The eye reads open only when the
+drawing really shows the layer, so a row the walk hides and a row that is off or
+frozen in the table both read closed, and the tooltip says which. On open, every
+layer the drawing itself shows is selected. A click replaces the selection,
+Ctrl+click toggles, Shift+click and click-drag take the range between the anchor
+and the release in *drawn* order, and Up/Down step one row while the list owns
+the keyboard (a click in the drawing hands it back). Double-click toggles
 Always-Show on that layer; Ctrl/Shift+double-click toggles it on the whole
-selection. Held layers stay visible whatever is selected, and the current layer
-can never be hidden — it is always in the visible set and its row is marked.
-Layers the drawing hides are dimmed but remain selectable and walkable.
+selection. Held layers stay visible whatever is selected, and nothing else is
+protected: the current layer is a row like any other, so the *Layer 0 always on*
+pin is the only guard. A row dims when the walk hides it and is only muted when
+the drawing itself has it off or frozen. The header's second line reports how
+many of the listed layers are on screen.
 
 Counts and purgeability come from the same pass, using PURGE's rules verbatim,
 so a row's number and its purgeability agree with `PURGE LAyers`. System layers

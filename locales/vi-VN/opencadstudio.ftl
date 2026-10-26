@@ -7259,6 +7259,18 @@ layer-walk =
     .inspect-total = Tổng số lớp: { $count }
     .inspect-selected = Số lớp đã chọn: { $count }
     .inspect-objects = Đối tượng trên các lớp đã chọn: { $count }
+    .visible-count = { $visible } / { $total } đang hiện
+    .invert = Đảo
+    .count-tip = { $count ->
+      *[other] { $count } đối tượng trên lớp này
+     }
+    .eye-shown = Đang hiển thị trong bản vẽ
+    .eye-hidden-walk = Bị ẩn khi đi qua lớp
+    .eye-hidden = Tắt hoặc đóng băng trong bản vẽ
+    .frozen-tip = Đóng băng
+    .locked-tip = Khóa
+    .pin-hold-tip = Giữ hiển thị khi đi qua lớp
+    .pin-held-tip = Đang giữ - nhấp để bỏ
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

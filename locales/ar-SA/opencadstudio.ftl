@@ -7264,6 +7264,19 @@ layer-walk =
     .inspect-total = إجمالي الطبقات: { $count }
     .inspect-selected = الطبقات المحددة: { $count }
     .inspect-objects = الكائنات في الطبقات المحددة: { $count }
+    .visible-count = { $visible } من { $total } مرئية
+    .invert = عكس
+    .count-tip = { $count ->
+       [one] كائن واحد على هذه الطبقة
+      *[other] { $count } كائنات على هذه الطبقة
+     }
+    .eye-shown = ظاهر في الرسم
+    .eye-hidden-walk = مخفي بالتنقل
+    .eye-hidden = مطفأ أو مجمد في الرسم
+    .frozen-tip = مجمد
+    .locked-tip = مقفل
+    .pin-hold-tip = إبقاء ظاهر أثناء التنقل
+    .pin-held-tip = مثبّت - انقر للإلغاء
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

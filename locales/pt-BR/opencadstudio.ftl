@@ -7261,6 +7261,19 @@ layer-walk =
     .inspect-total = Camadas totais: { $count }
     .inspect-selected = Camadas selecionadas: { $count }
     .inspect-objects = Objetos nas camadas selecionadas: { $count }
+    .visible-count = { $visible } de { $total } visíveis
+    .invert = Inverter
+    .count-tip = { $count ->
+       [one] { $count } objeto nesta camada
+      *[other] { $count } objetos nesta camada
+     }
+    .eye-shown = Exibido no desenho
+    .eye-hidden-walk = Oculto pela navegação
+    .eye-hidden = Desligada ou congelada no desenho
+    .frozen-tip = Congelada
+    .locked-tip = Bloqueada
+    .pin-hold-tip = Manter visível durante a navegação
+    .pin-held-tip = Mantida - clique para liberar
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

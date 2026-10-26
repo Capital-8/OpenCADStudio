@@ -7261,6 +7261,19 @@ layer-walk =
     .inspect-total = Calques au total : { $count }
     .inspect-selected = Calques sélectionnés : { $count }
     .inspect-objects = Objets sur les calques sélectionnés : { $count }
+    .visible-count = { $visible } sur { $total } visibles
+    .invert = Inverser
+    .count-tip = { $count ->
+       [one] { $count } objet sur ce calque
+      *[other] { $count } objets sur ce calque
+     }
+    .eye-shown = Affiché dans le dessin
+    .eye-hidden-walk = Masqué par le parcours
+    .eye-hidden = Éteint ou figé dans le dessin
+    .frozen-tip = Figé
+    .locked-tip = Verrouillé
+    .pin-hold-tip = Maintenir affiché pendant le parcours
+    .pin-held-tip = Maintenu - cliquer pour libérer
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

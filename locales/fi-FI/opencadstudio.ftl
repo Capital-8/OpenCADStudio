@@ -7258,6 +7258,19 @@ layer-walk =
     .inspect-total = Tasoja yhteensä: { $count }
     .inspect-selected = Valittuja tasoja: { $count }
     .inspect-objects = Kohteita valituilla tasoilla: { $count }
+    .visible-count = { $visible } / { $total } näkyy
+    .invert = Käännä
+    .count-tip = { $count ->
+       [one] { $count } kohde tällä tasolla
+      *[other] { $count } kohdetta tällä tasolla
+     }
+    .eye-shown = Näkyy piirustuksessa
+    .eye-hidden-walk = Piilotettu kulun aikana
+    .eye-hidden = Pois tai jäädytetty piirustuksessa
+    .frozen-tip = Jäädytetty
+    .locked-tip = Lukittu
+    .pin-hold-tip = Pidä näkyvissä kulun aikana
+    .pin-held-tip = Pidetty - napsauta vapauttaaksesi
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current

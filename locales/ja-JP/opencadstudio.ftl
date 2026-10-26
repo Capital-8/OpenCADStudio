@@ -7240,6 +7240,18 @@ layer-walk =
     .inspect-total = 総レイヤー数: { $count }
     .inspect-selected = 選択したレイヤー数: { $count }
     .inspect-objects = 選択したレイヤー上のオブジェクト数: { $count }
+    .visible-count = { $visible } / { $total } 表示中
+    .invert = 反転
+    .count-tip = { $count ->
+      *[other] このレイヤー上のオブジェクト { $count } 件
+     }
+    .eye-shown = 図面に表示中
+    .eye-hidden-walk = Walk で非表示
+    .eye-hidden = 図面でオフまたは凍結
+    .frozen-tip = 凍結
+    .locked-tip = ロック
+    .pin-hold-tip = Walk 中に表示維持
+    .pin-held-tip = ホールド中 - クリックで解除
 dim-layer =
     .prompt = Enter new value for DIMLAYER, or . for use current <"{ $current }">:
     .use-current = use current
