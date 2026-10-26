@@ -176,22 +176,40 @@ impl Scene {
             .filter(|&h| !self.is_layer_locked(h))
             .collect();
         let handles = &handles[..];
-        let retained_originals: Vec<(Handle, EntityType)> = handles
+        let selection: rustc_hash::FxHashSet<Handle> = handles.iter().copied().collect();
+        // The only consumer of these pre-edit images is the parametric solve:
+        // they feed its retained sizes and its collapse refusal, and the solve
+        // runs only when a constraint scope exists. Without one, skip the
+        // clones entirely.
+        let has_constraints = self
+            .parametric_constraints
             .iter()
-            .filter_map(|handle| {
-                self.document
-                    .get_entity(*handle)
-                    .cloned()
-                    .map(|entity| (*handle, entity))
-            })
-            .collect();
-        let transformed_refs: Vec<_> = handles
-            .iter()
-            .copied()
-            .map(parametric_constraints::ParametricRef::whole)
-            .collect();
+            .any(|set| !set.constraints.is_empty());
+        let retained_originals: Vec<(Handle, EntityType)> = if has_constraints {
+            handles
+                .iter()
+                .filter_map(|handle| {
+                    self.document
+                        .get_entity(*handle)
+                        .cloned()
+                        .map(|entity| (*handle, entity))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let transformed_refs: Vec<_> = if has_constraints {
+            handles
+                .iter()
+                .copied()
+                .map(parametric_constraints::ParametricRef::whole)
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut driven_refs = Vec::new();
-        if !matches!(t, EntityTransform::Translate(_)) {
+        if has_constraints && !matches!(t, EntityTransform::Translate(_)) {
+            let mut seen_driven = rustc_hash::FxHashSet::default();
             for set in &self.parametric_constraints {
                 for constraint in &set.constraints {
                     if !constraint.enabled
@@ -207,7 +225,7 @@ impl Scene {
                     let selected_refs = constraint
                         .refs
                         .iter()
-                        .filter(|reference| handles.contains(&reference.entity))
+                        .filter(|reference| selection.contains(&reference.entity))
                         .count();
                     if selected_refs == 0 || selected_refs == constraint.refs.len() {
                         continue;
@@ -216,7 +234,7 @@ impl Scene {
                         .refs
                         .iter()
                         .copied()
-                        .filter(|reference| !handles.contains(&reference.entity))
+                        .filter(|reference| !selection.contains(&reference.entity))
                     {
                         let anchor = if let Some(index) = reference.segment_index() {
                             parametric_constraints::ParametricRef::point(
@@ -237,9 +255,12 @@ impl Scene {
                             link.enabled
                                 && link.kind == parametric_constraints::ConstraintKind::Coincident
                                 && link.refs.contains(&anchor)
-                                && link.refs.iter().any(|item| handles.contains(&item.entity))
+                                && link
+                                    .refs
+                                    .iter()
+                                    .any(|item| selection.contains(&item.entity))
                         });
-                        if !follows_selected_point && !driven_refs.contains(&anchor) {
+                        if !follows_selected_point && seen_driven.insert(anchor) {
                             driven_refs.push(anchor);
                         }
                     }
