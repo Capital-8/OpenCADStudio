@@ -565,13 +565,9 @@ fn block_bounds(
     // Placeholder while measuring, so a block that contains itself ends.
     blocks.insert(name.to_string(), None);
     let record = doc.block_records.get(name)?;
-    let base = doc
-        .get_entity(record.block_entity_handle)
-        .and_then(|entity| match entity {
-            codec::EntityType::Block(block) => Some(block.base_point),
-            _ => None,
-        })
-        .unwrap_or(record.base_point);
+    // The one place the base-point convention lives (dynamic blocks' BASEPOINT
+    // parameter included).
+    let base = crate::scene::render_graph::block_base_point(doc, name);
     let mut out = None;
     for &h in &record.entity_handles {
         let Some(e) = doc.get_entity(h) else { continue };
