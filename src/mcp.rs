@@ -35,7 +35,7 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 /// `plugin` (dragging a plugin-declared custom grip, routed to its owner).
 /// Sixteen generated intent tools now follow the four facades.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "88714a7370bfebb004d457497c72955b541700b4fea5d2eaa80ed78e07f30a43";
+const TOOL_SCHEMA_DIGEST: &str = "3d94fffb82a516e539c1622f2f6bda16dd348419adb2fccfaefa14997a685460";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
