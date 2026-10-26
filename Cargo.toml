@@ -307,6 +307,10 @@ harness = false
 name = "navigation_selection_bounds"
 harness = false
 
+[[bench]]
+name = "paper_viewport_hidden_handles"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"

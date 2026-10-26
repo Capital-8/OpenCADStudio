@@ -2698,6 +2698,12 @@ pub struct Scene {
     /// Viewports that carry layer color/alpha/linetype/lineweight overrides.
     /// Cached per geometry epoch so ordinary viewports can share render data.
     viewport_style_override_cache: RefCell<Option<(u64, HashSet<Handle>)>>,
+    /// Model-space INSERTs that carry a view-representation binding, as
+    /// `(insert, bound viewport)` pairs, cached for the geometry epoch and
+    /// model-space block they were collected for. Every content viewport asks
+    /// which references hide inside it on every frame; without this the answer
+    /// came from a full document scan per viewport.
+    view_rep_reference_cache: RefCell<Option<(u64, Handle, Arc<Vec<(Handle, Handle)>>)>>,
     /// Cached block-instance hatches for hit-testing, keyed by geometry_epoch.
     /// The set is geometry-derived, so a camera move or hover never invalidates
     /// the shared graph result.
@@ -3227,6 +3233,7 @@ impl Scene {
             point_cloud_cache: RefCell::new(HashMap::default()),
             frozen_mesh_cache: RefCell::new(HashMap::default()),
             viewport_style_override_cache: RefCell::new(None),
+            view_rep_reference_cache: RefCell::new(None),
             insert_hatch_cache: RefCell::new(None),
             paper_sheet_cache: RefCell::new(HashMap::default()),
             paper_viewport_cache: RefCell::new(HashMap::default()),
@@ -9927,26 +9934,50 @@ impl Scene {
             Some(EntityType::Viewport(v)) => v.frozen_layers.iter().copied().collect(),
             _ => HashSet::default(),
         };
-        // ponytail: full entity scan per call, gated to drawings declaring the
-        // class; memoize per geometry epoch if large Inventor sheets show up.
         if self
             .document
             .classes
             .get_by_name("ACIDBLOCKREFERENCE")
             .is_some()
         {
-            let model = self.model_space_block_handle();
-            hidden.extend(self.document.entities().filter_map(|e| match e {
-                EntityType::Insert(i)
-                    if i.common.owner_handle == model
-                        && i.view_rep_handle.is_some_and(|bound| bound != vp) =>
-                {
-                    Some(i.common.handle)
-                }
-                _ => None,
-            }));
+            hidden.extend(
+                self.view_rep_references()
+                    .iter()
+                    .filter(|(_, bound)| *bound != vp)
+                    .map(|&(handle, _)| handle),
+            );
         }
         hidden
+    }
+
+    /// Model-space INSERTs carrying a view-representation binding, cached for
+    /// the current geometry epoch. Any entity add/remove/modify bumps the
+    /// epoch, so a new or rebound reference is picked up on the next call; the
+    /// model-space block handle is part of the key because a structure-only
+    /// undo can swap it without touching geometry.
+    fn view_rep_references(&self) -> Arc<Vec<(Handle, Handle)>> {
+        let model = self.model_space_block_handle();
+        if let Some((epoch, cached_model, references)) =
+            self.view_rep_reference_cache.borrow().as_ref()
+        {
+            if *epoch == self.geometry_epoch && *cached_model == model {
+                return Arc::clone(references);
+            }
+        }
+        let references: Vec<(Handle, Handle)> = self
+            .document
+            .entities()
+            .filter_map(|entity| match entity {
+                EntityType::Insert(insert) if insert.common.owner_handle == model => insert
+                    .view_rep_handle
+                    .map(|bound| (insert.common.handle, bound)),
+                _ => None,
+            })
+            .collect();
+        let references = Arc::new(references);
+        *self.view_rep_reference_cache.borrow_mut() =
+            Some((self.geometry_epoch, model, Arc::clone(&references)));
+        references
     }
 
     /// True when `layer`'s handle is in a content viewport's per-viewport
@@ -15835,6 +15866,169 @@ mod associative_refresh_dedup_tests {
                 (first, ChangeKind::Modified),
             ],
         );
+    }
+}
+
+#[cfg(test)]
+mod viewport_hidden_handles_tests {
+    use super::*;
+    use codec::classes::DxfClass;
+    use codec::entities::{EntityType, Insert, Viewport};
+    use codec::types::Vector3;
+
+    /// The pre-memo implementation, kept literal: one full scan per call.
+    fn literal(scene: &Scene, vp: Handle) -> HashSet<Handle> {
+        let mut hidden: HashSet<Handle> = match scene.document.get_entity(vp) {
+            Some(EntityType::Viewport(v)) => v.frozen_layers.iter().copied().collect(),
+            _ => HashSet::default(),
+        };
+        if scene
+            .document
+            .classes
+            .get_by_name("ACIDBLOCKREFERENCE")
+            .is_some()
+        {
+            let model = scene.model_space_block_handle();
+            hidden.extend(scene.document.entities().filter_map(|e| match e {
+                EntityType::Insert(i)
+                    if i.common.owner_handle == model
+                        && i.view_rep_handle.is_some_and(|bound| bound != vp) =>
+                {
+                    Some(i.common.handle)
+                }
+                _ => None,
+            }));
+        }
+        hidden
+    }
+
+    struct Fixture {
+        scene: Scene,
+        first: Handle,
+        second: Handle,
+        to_first: Handle,
+        to_second: Handle,
+        unbound: Handle,
+        paper_owned: Handle,
+    }
+
+    fn fixture(declare: bool) -> Fixture {
+        let mut scene = Scene::new();
+        scene.document.add_layout("Sheet").expect("unique layout");
+        scene.set_current_layout("Sheet".to_string());
+        let mut first = Viewport::new();
+        first.frozen_layers = vec![Handle::new(9001)];
+        let first = scene.add_entity(EntityType::Viewport(Box::new(first)));
+        let second = scene.add_entity(EntityType::Viewport(Box::new(Viewport::new())));
+        // Owned by the sheet, so it is not a model-space reference.
+        let mut paper_owned = Insert::new("ViewRep", Vector3::new(0.0, 0.0, 0.0));
+        paper_owned.view_rep_handle = Some(first);
+        let paper_owned = scene.add_entity(EntityType::Insert(paper_owned));
+
+        scene.set_current_layout("Model".to_string());
+        let bound = |vp: Handle, x: f64| {
+            let mut insert = Insert::new("ViewRep", Vector3::new(x, 0.0, 0.0));
+            insert.view_rep_handle = Some(vp);
+            EntityType::Insert(insert)
+        };
+        let to_first = scene.add_entity(bound(first, 0.0));
+        let to_second = scene.add_entity(bound(second, 10.0));
+        let unbound = scene.add_entity(EntityType::Insert(Insert::new(
+            "ViewRep",
+            Vector3::new(20.0, 0.0, 0.0),
+        )));
+        if declare {
+            scene.document.classes.add_or_update(DxfClass {
+                dxf_name: "ACIDBLOCKREFERENCE".to_string(),
+                cpp_class_name: "AcDbBlockRepresentationContext".to_string(),
+                application_name: "ObjectDBX Classes".to_string(),
+                proxy_flags: codec::classes::ProxyFlags(1153),
+                instance_count: 0,
+                was_zombie: false,
+                is_an_entity: false,
+                class_number: 0,
+                item_class_id: 0x1F3,
+                dwg_version: 25,
+                maintenance_version: 0,
+                unknown1: 0,
+                unknown2: 0,
+            });
+        }
+        scene.set_current_layout("Sheet".to_string());
+        Fixture {
+            scene,
+            first,
+            second,
+            to_first,
+            to_second,
+            unbound,
+            paper_owned,
+        }
+    }
+
+    #[test]
+    fn the_memo_matches_a_literal_scan() {
+        let Fixture {
+            scene,
+            first,
+            second,
+            to_first,
+            to_second,
+            unbound,
+            paper_owned,
+        } = fixture(true);
+        let hidden_first = scene.viewport_hidden_handles(first);
+        let hidden_second = scene.viewport_hidden_handles(second);
+        assert_eq!(hidden_first, literal(&scene, first));
+        assert_eq!(hidden_second, literal(&scene, second));
+        assert!(hidden_first.contains(&Handle::new(9001)));
+        assert!(!hidden_first.contains(&to_first));
+        assert!(hidden_first.contains(&to_second));
+        assert!(hidden_second.contains(&to_first));
+        assert!(!hidden_second.contains(&to_second));
+        for handle in [unbound, paper_owned] {
+            assert!(!hidden_first.contains(&handle));
+            assert!(!hidden_second.contains(&handle));
+        }
+    }
+
+    #[test]
+    fn without_the_class_only_the_viewport_frozen_layers_hide() {
+        let Fixture {
+            scene, first, second, ..
+        } = fixture(false);
+        let hidden = scene.viewport_hidden_handles(first);
+        assert_eq!(hidden.len(), 1);
+        assert!(hidden.contains(&Handle::new(9001)));
+        assert!(scene.viewport_hidden_handles(second).is_empty());
+    }
+
+    #[test]
+    fn a_reference_added_or_rebound_after_a_lookup_is_seen() {
+        let Fixture {
+            mut scene,
+            first,
+            second,
+            to_first,
+            ..
+        } = fixture(true);
+        scene.viewport_hidden_handles(first);
+
+        scene.set_current_layout("Model".to_string());
+        let mut late = Insert::new("ViewRep", Vector3::new(30.0, 0.0, 0.0));
+        late.view_rep_handle = Some(second);
+        let late = scene.add_entity(EntityType::Insert(late));
+        scene.set_current_layout("Sheet".to_string());
+        assert_eq!(scene.viewport_hidden_handles(first), literal(&scene, first));
+        assert!(scene.viewport_hidden_handles(first).contains(&late));
+
+        if let Some(EntityType::Insert(insert)) = scene.document.get_entity_mut(to_first) {
+            insert.view_rep_handle = Some(first);
+        }
+        scene.bump_entities(&[(to_first, ChangeKind::Modified)]);
+        assert_eq!(scene.viewport_hidden_handles(first), literal(&scene, first));
+        assert!(!scene.viewport_hidden_handles(first).contains(&to_first));
+        assert!(scene.viewport_hidden_handles(second).contains(&to_first));
     }
 }
 
