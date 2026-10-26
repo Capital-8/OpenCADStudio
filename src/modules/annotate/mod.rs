@@ -11,6 +11,7 @@ pub mod ddedit;
 pub mod diameter_dim;
 pub mod dim_baseline;
 pub mod dim_continue;
+pub mod dim_inspect;
 pub mod dimbreak;
 pub mod dimedit;
 pub mod dimoverride;

@@ -1900,7 +1900,7 @@ fn explode_dimension(dim: &Dimension, doc: &Document) -> Vec<EntityType> {
     // position, height, rotation, alignment, text style, MText handling all
     // shared), so the baked block matches the on-screen dimension and the label
     // doesn't shift when the file is saved and reopened. `None` = suppressed.
-    if let Some(mut tent) = crate::entities::dimension::baked_dimension_text_entity(dim, doc, 1.0) {
+    for mut tent in crate::entities::dimension::baked_dimension_text_entities(dim, doc, 1.0) {
         // Apply the text colour / lineweight (DIMCLRT) onto the entity.
         let tc = dim_common(&base.common, met.dimclrt, -2);
         tent.common_mut().color = tc.color;

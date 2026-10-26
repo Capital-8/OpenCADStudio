@@ -2630,6 +2630,7 @@ impl OpenCADStudio {
             Message::FieldDialog(message) => self.on_field_dialog(message),
             Message::RefEditDialog(message) => self.update_refedit_dialog(message),
             Message::PdfPassword(message) => self.update_pdf_password(message),
+            Message::DimInspect(message) => self.update_dim_inspect(message),
             Message::HyperlinkDialog(message) => self.update_hyperlink_dialog(message),
             Message::PdfShxDialog(message) => self.update_pdf_shx_dialog(message),
             Message::PcManager(message) => self.update_pc_manager(message),

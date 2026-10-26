@@ -48,6 +48,7 @@ impl OpenCADStudio {
             Some(K::ImageAdjust) => crate::tr!("image-adjust", "title"),
             Some(K::RefEdit) => crate::tr!("ref-edit", "dialog-title"),
             Some(K::PdfPassword) => crate::tr!("pdf-password", "title"),
+            Some(K::DimInspect) => crate::tr!("dim-inspect", "title"),
             Some(K::PdfShxSettings) => crate::tr!("pdf-shx", "title"),
             Some(K::UnderlayLayers) => crate::t!("Underlay Layers").into_owned(),
             Some(K::PdfImportSettings) => crate::t!("PDF Import Settings").into_owned(),
@@ -469,6 +470,12 @@ impl OpenCADStudio {
                 let state = self.pdf_password.as_ref()?;
                 sized_flow(ex, 440, 430, |flow| {
                     crate::ui::window::pdf_password_dialog::view(state, flow)
+                })
+            }
+            super::super::ModalKind::DimInspect => {
+                let state = self.dim_inspect_dialog.as_ref()?;
+                sized_flow(ex, 480, 470, |flow| {
+                    crate::ui::window::dim_inspect_dialog::view(state, flow)
                 })
             }
             super::super::ModalKind::RefEdit => {
