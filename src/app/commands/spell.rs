@@ -189,9 +189,10 @@ impl OpenCADStudio {
     pub(super) fn dispatch_spell(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {
         let (verb, rest) = cmd.split_once(char::is_whitespace).unwrap_or((cmd, ""));
         match verb.trim_start_matches(['_', '.']).to_ascii_uppercase().as_str() {
+            // A pickfirst selection is not used: the window opens on the
+            // place chosen last (Entire drawing at first), as measured.
             "SPELL" if rest.trim().is_empty() => {
-                let preselected = self.tabs[i].scene.selected_handles_in_order();
-                self.open_spell(i, (!preselected.is_empty()).then_some(preselected));
+                self.open_spell(i, None);
                 Some(Task::none())
             }
             "SPELLSELECTED" if verb.starts_with('_') => {
