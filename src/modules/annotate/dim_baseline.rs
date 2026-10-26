@@ -653,7 +653,7 @@ fn refresh_measurement(dimension: &mut Dimension, plane: Plane) {
 }
 
 fn preview_for_dimension(dimension: &Dimension) -> WireModel {
-    let mut points = Vec::<[f32; 3]>::new();
+    let mut points = Vec::<[f64; 3]>::new();
     match dimension {
         Dimension::Linear(value) => {
             let plane = plane_from_normal(value.first_point, value.base.normal);
@@ -720,47 +720,13 @@ fn preview_for_dimension(dimension: &Dimension) -> WireModel {
         ),
         _ => {}
     }
-    WireModel {
-        bg_adapt: None,
-        point_marker: None,
-        taper_widths: Vec::new(),
-        pattern_stations: Vec::new(),
-        world_width: 0.0,
-        depth_override: None,
-        display_visible: true,
-        snap_only: false,
-        plot_visible: true,
-        fill_is_3d: false,
-        fill_is_2d_solid: false,
-        render_instance: None,
-        pick_tris: Vec::new(),
-        pick_tris_low: Vec::new(),
-        dash_from_start: false,
-        dash_align_end: None,
-        text_verts: Vec::new(),
-        name: "dimbaseline_preview".into(),
-        points,
-        points_low: Vec::new(),
-        color: WireModel::CYAN,
-        selected: false,
-        pattern_length: 0.0,
-        pattern: [0.0; 8],
-        line_weight_px: 1.0,
-        snap_pts: Vec::new(),
-        tangent_geoms: Vec::new(),
-        aci: 0,
-        key_vertices: Vec::new(),
-        aabb: WireModel::UNBOUNDED_AABB,
-        plinegen: true,
-        fill_tris: Vec::new(),
-        fill_tris_low: Vec::new(),
-
-        ..Default::default()
-    }
+    // Preview geometry is f64; `solid_f64` keeps the residual so the preview
+    // stays on the dimension points at UTM-scale coordinates.
+    WireModel::solid_f64("dimbaseline_preview".into(), points, WireModel::CYAN, false)
 }
 
 fn linear_preview(
-    points: &mut Vec<[f32; 3]>,
+    points: &mut Vec<[f64; 3]>,
     plane: Plane,
     first: Vec2,
     second: Vec2,
@@ -777,7 +743,7 @@ fn linear_preview(
     append_arrows(points, plane, first_line, second_line);
 }
 
-fn append_arrows(points: &mut Vec<[f32; 3]>, plane: Plane, first: Vec2, second: Vec2) {
+fn append_arrows(points: &mut Vec<[f64; 3]>, plane: Plane, first: Vec2, second: Vec2) {
     let Some(axis) = (second - first).normalize() else {
         return;
     };
@@ -791,7 +757,7 @@ fn append_arrows(points: &mut Vec<[f32; 3]>, plane: Plane, first: Vec2, second: 
 }
 
 fn angular_preview(
-    points: &mut Vec<[f32; 3]>,
+    points: &mut Vec<[f64; 3]>,
     plane: Plane,
     vertex: Vec2,
     first: Vec2,
@@ -841,7 +807,7 @@ fn point(value: Vector3) -> [f64; 3] {
     [value.x, value.y, value.z]
 }
 
-fn segment_local(points: &mut Vec<[f32; 3]>, plane: Plane, first: Vec2, second: Vec2) {
+fn segment_local(points: &mut Vec<[f64; 3]>, plane: Plane, first: Vec2, second: Vec2) {
     segment_world(
         points,
         plane.point_at(first.into()),
@@ -849,18 +815,14 @@ fn segment_local(points: &mut Vec<[f32; 3]>, plane: Plane, first: Vec2, second: 
     );
 }
 
-fn segment_world(points: &mut Vec<[f32; 3]>, first: [f64; 3], second: [f64; 3]) {
-    points.push(float3(first));
-    points.push(float3(second));
-    points.push([f32::NAN, 0.0, 0.0]);
+fn segment_world(points: &mut Vec<[f64; 3]>, first: [f64; 3], second: [f64; 3]) {
+    points.push(first);
+    points.push(second);
+    points.push([f64::NAN, 0.0, 0.0]);
 }
 
-fn push_local(points: &mut Vec<[f32; 3]>, plane: Plane, point: Vec2) {
-    points.push(float3(plane.point_at(point.into())));
-}
-
-fn float3(value: [f64; 3]) -> [f32; 3] {
-    [value[0] as f32, value[1] as f32, value[2] as f32]
+fn push_local(points: &mut Vec<[f64; 3]>, plane: Plane, point: Vec2) {
+    points.push(plane.point_at(point.into()));
 }
 
 inventory::submit!(crate::command::CommandRegistration {
