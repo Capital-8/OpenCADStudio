@@ -244,6 +244,9 @@ pub struct TextFrame {
     /// The y Left / Center / Right sit on: the baseline of a TEXT, the bottom
     /// of an MTEXT.
     base: f64,
+    /// The y ML / MC / MR sit on: half the height of a TEXT (measured: "Alpha"
+    /// at 2.5 centres 1.25 above its baseline), the middle of an MTEXT.
+    mid: f64,
     /// The centre of the strokes (Middle).
     ink: f64,
 }
@@ -274,6 +277,7 @@ impl TextFrame {
                     bottom: -height * descent_ratio(&p.font) as f64,
                     top: height,
                     base: 0.0,
+                    mid: height * 0.5,
                     ink,
                 })
             }
@@ -298,6 +302,7 @@ impl TextFrame {
                     bottom,
                     top,
                     base: bottom,
+                    mid: (top + bottom) / 2.0,
                     ink: (top + bottom) / 2.0,
                 })
             }
@@ -310,7 +315,7 @@ impl TextFrame {
         let y = match j.row() {
             Row::Baseline => self.base,
             Row::Top => self.top,
-            Row::Mid => (self.top + self.bottom) / 2.0,
+            Row::Mid => self.mid,
             Row::Bottom => self.bottom,
             Row::Ink => self.ink,
         };
