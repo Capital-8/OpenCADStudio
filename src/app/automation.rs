@@ -4517,8 +4517,8 @@ mod tests {
     }
 }
 
-/// The audited source's format: "dxf", "dwg", or a converter's lowercase name.
-fn source_format(path: Option<&std::path::Path>, source_is_dxf: bool) -> String {
+/// A file's format: "dxf", "dwg", or a converter's lowercase name.
+pub(super) fn source_format(path: Option<&std::path::Path>, source_is_dxf: bool) -> String {
     let converter = path
         .and_then(std::path::Path::extension)
         .and_then(|ext| ocs_save::external_format(&ext.to_string_lossy()));

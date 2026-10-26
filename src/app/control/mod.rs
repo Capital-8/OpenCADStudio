@@ -1309,7 +1309,8 @@ impl OpenCADStudio {
                     ));
                 }
                 self.set_control_result(json!({
-                    "saved":path,"target_format":if is_dxf { "dxf" } else { "dwg" },
+                    "saved":path,
+                    "target_format":super::automation::source_format(Some(&path), is_dxf),
                     "target_version":format!("{version:?}"),"dropped_on_save":dropped,
                 }));
                 if self.main_window.is_none() {
