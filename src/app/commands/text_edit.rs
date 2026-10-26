@@ -237,5 +237,6 @@ impl OpenCADStudio {
             let delta = deltas.get(&e.common().handle)?;
             moved(e, *delta)
         });
+        self.tabs[i].scene.deselect_all();
     }
 }
