@@ -39,6 +39,7 @@ mod refedit;
 pub(crate) mod sheet_set;
 mod styleprops;
 mod text_edit;
+mod text_layer;
 mod ucsfollow;
 mod view;
 mod view_presets;
@@ -499,6 +500,9 @@ impl OpenCADStudio {
     /// `finish_dispatch`), or `None` to defer to the next — equivalent to one
     /// sequential `match` over all arms.
     fn dispatch_families(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {
+        if let Some(t) = self.dispatch_text_layer(cmd, i) {
+            return Some(t);
+        }
         if let Some(t) = self.dispatch_dash(cmd, i) {
             return Some(t);
         }
