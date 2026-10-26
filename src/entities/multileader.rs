@@ -2171,7 +2171,13 @@ impl MultiLeaderTess for MultiLeader {
                 points.push(nan);
                 points.push(cp_f);
                 points.push(landing_end);
-                if ml.extend_leader_to_text {
+                // A root landing on the text's other side than the first
+                // root meets the text's far edge: it never runs on.
+                let opposite_first = ml.context.leader_roots.first().is_some_and(|first| {
+                    first.direction.x * root.direction.x + first.direction.y * root.direction.y
+                        < 0.0
+                });
+                if ml.extend_leader_to_text && !opposite_first {
                     // Run on along the landing up to one gap short of the
                     // text. text_location is the text block's corner, often
                     // above the landing, so only its reach along the landing
