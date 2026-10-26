@@ -288,6 +288,10 @@ pub struct Pipeline {
     pub(crate) wire_arena_fallback_handles: rustc_hash::FxHashSet<codec::Handle>,
     /// The Model content id both arenas currently mirror (`u64::MAX` = none).
     pub(crate) wire_arena_id: u64,
+    /// The draw-depth generation the arenas' slabs baked. A patch rewrites
+    /// only the changed entities, so after a full depth rebuild the arenas
+    /// have to be rebuilt instead of patched.
+    pub(crate) wire_arena_depth_generation: u64,
     /// Handles that contributed to this slot's retained analytical uploads.
     pub(crate) partition_contributors: rustc_hash::FxHashSet<codec::Handle>,
     /// The draw-depth generation those uploads baked. A full depth rebuild
@@ -2485,6 +2489,7 @@ impl Pipeline {
             wire_arena_fallback_kind: None,
             wire_arena_fallback_handles: rustc_hash::FxHashSet::default(),
             wire_arena_id: u64::MAX,
+            wire_arena_depth_generation: u64::MAX,
             partition_contributors: rustc_hash::FxHashSet::default(),
             partition_depth_generation: u64::MAX,
             wire_cull_key: (u64::MAX, u64::MAX, 0, 0),

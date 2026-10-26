@@ -112,6 +112,7 @@ donation =
     .decline = لا، شكرًا
 
 modal =
+    .saving-as-target-cannot-keep = الحفظ بتنسيق "__ocs_arg_target__" لا يمكنه الاحتفاظ بما يلي، لذا سيُفقد:
     .about = حول
     .keyboard-shortcuts = اختصارات لوحة المفاتيح
     .command-aliases = الأسماء البديلة للأوامر
@@ -298,6 +299,9 @@ command-copy =
     .mode = COPY  أدخل خيار وضع النسخ [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = الاستخدام: DCDISPLAY [إظهار|إخفاء]
+    .dcdisplay-prompt = DCDISPLAY  أدخل خيارًا [إظهار/إخفاء] <إظهار>:
+    .dcdisplay-updated = تم تحديث __ocs_fmt_0__ من مؤشرات القيود.
     .compare-prompt = COMPARE  __ocs_fmt_0__ هنا فقط (أخضر)، __ocs_fmt_1__ في الرسم الآخر فقط (أحمر)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = مقارنة مع رسم
@@ -3505,6 +3509,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: لم يُعثر على النمط '__ocs_fmt_1__'.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: تجاوز غير صالح "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: لم يتم تحديد أبعاد قابلة للتحرير.
+    .dimoverride-updated = DIMOVERRIDE: تم تحديث __ocs_fmt_0__ من الأبعاد.
+    .dimoverride-var-prompt = DIMOVERRIDE  أدخل اسم متغير البعد المراد تجاوزه أو [مسح التجاوزات]:
+    .dimoverride-value-prompt = DIMOVERRIDE  أدخل القيمة الجديدة لـ __ocs_fmt_0__:
+    .dimoverride-clear-overrides = مسح التجاوزات
+    .dimoverride-unknown-var = DIMOVERRIDE: متغير بعد غير معروف "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: قيمة غير صالحة لهذا المتغير.
+    .dimdisassociate-select = حدد الأبعاد لفك ارتباطها:
+    .dimdisassociate-done = DIMDISASSOCIATE: تم فك ارتباط __ocs_fmt_0__ من الأبعاد.
+    .dimreassociate-done = DIMREASSOCIATE: تم ربط __ocs_fmt_0__ من أصل __ocs_fmt_1__ من الأبعاد.
+    .dimreassociate-partial = DIMREASSOCIATE: تم ربط __ocs_fmt_0__ من الأبعاد جزئيًا فقط (لا يوجد كائن عند بعض نقاط التعريف).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  أدخل نص البعد (فارغ = القيمة المقاسة):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  حدد قوسًا أو دائرة أو قوس خط متعدد:
     .dimjogged-specify-center-location-override = DIMJOGGED  حدد موقع المركز البديل:
@@ -6684,6 +6700,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6782,6 +6812,17 @@ import-panel =
     .combine-text = دمج النص
     .land-xml = Land XML
     .import-file-header = استيراد ملف — يشغّل الزر آخر خيار محدد
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6824,6 +6865,43 @@ pdf-password =
         { $path }
         تعذر فتح ملف PDF هذا.
         إنه مشفر ويتطلب كلمة مرور.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = رقم غير صالح '__ocs_fmt_0__'
@@ -6987,3 +7065,30 @@ script-files =
     .exit-save = EXIT  حفظ التغييرات في __ocs_arg_name__؟ [Yes/No] <Yes>:
     .exit-no-path = EXIT: ليس لـ "__ocs_fmt_0__" مسار ملف بعد؛ استخدم SAVEAS أولًا.
     .sdi-dirty = SDI: احفظ "__ocs_fmt_0__" أو أغلقه قبل فتح رسم آخر.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = حالة الظهور
+    .visibility-value = حالة الظهور: { $state }
+    .table-label = خصائص الكتلة
+    .table-row = خصائص الكتلة: { $row }
+    .alignment = المحاذاة: { $mode }
+    .flipped = معكوس
+    .not-flipped = غير معكوس
+
+
+block-flip =
+    .base-state-label = تسمية الحالة الأصلية
+    .flipped-state-label = تسمية الحالة المعكوسة
+
+
+block-lookup =
+    .input-help = المدخلات: أعداد أو صيغ أو فترات مثل { $closed } و{ $open }. تستخدم الصيغ أسماء المدخلات. الزوايا بالراديان.
+    .invalid-table = جدول البحث غير صالح.
+    .invalid-value = يحتوي صف البحث المحدد على قيمة معلمة غير صالحة.
+    .incompatible-values = قيم صف البحث لا تتوافق مع مجموعات قيم المعلمات.
+    .quoted-help = ضع أسماء المسافات أو علامات الترقيم بين علامتي اقتباس: { $name }.
+
+block-array =
+    .limit-error = سيؤدي تقييم الكتلة إلى إنشاء أكثر من 100000 عنصر مصفوفة. قلّل المسافة أو زِد التباعد.

@@ -2978,6 +2978,9 @@ pub trait CadCommand: Send {
     /// Refreshed for each point input so zoom and viewport changes are reflected.
     fn set_point_pick_context(&mut self, _context: Option<PointPickContext>) {}
 
+    /// Refresh geometry used by scene-aware point placement before input/preview.
+    fn refresh_point_pick_scene(&mut self, _scene: &Scene) {}
+
     /// Called when the user presses Enter (finalize / next option).
     fn on_enter(&mut self) -> CmdResult;
 
@@ -3302,7 +3305,7 @@ pub trait CadCommand: Send {
     /// Entities the host draws as the live preview, tessellated like the
     /// drawing's own (arcs, text, linetypes and all). Commands whose preview
     /// changes an entity's shape return edited copies of it here.
-    fn preview_entities(&mut self, _document: &codec::CadDocument, _pt: DVec3) -> Vec<EntityType> {
+    fn preview_entities(&mut self, _document: &codec::Document, _pt: DVec3) -> Vec<EntityType> {
         Vec::new()
     }
 
@@ -3395,6 +3398,11 @@ pub trait CadCommand: Send {
         None
     }
     fn block_parameter_grip_id(&self) -> Option<usize> {
+        None
+    }
+
+    /// Non-mutating parameter input for the host's staged geometry preview.
+    fn block_parameter_preview(&self, _cursor: DVec3) -> Option<CmdResult> {
         None
     }
 
@@ -3616,7 +3624,7 @@ pub trait CadCommand: Send {
     /// (`CmdResult::UndoDocument`) and the command stays active. Commands
     /// that cache document entities (FILLET, CHAMFER) refresh them here so
     /// the next pick sees the restored geometry. Default: no-op.
-    fn on_document_undone(&mut self, _document: &codec::CadDocument) {}
+    fn on_document_undone(&mut self, _document: &codec::Document) {}
 
     /// Supply the tessellated surface area associated with the picked entity.
     /// Commands that measure mesh-backed objects can opt in without owning the

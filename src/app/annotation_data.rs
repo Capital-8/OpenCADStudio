@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use codec::entities::{table::CellRange, TableBuilder};
 use codec::objects::{ClassObject, ClassObjectData, DataLink, DataLinkCustomData, ObjectType};
 use codec::types::{Handle, Vector3};
-use codec::{CadDocument, EntityType};
+use codec::{Document, EntityType};
 use iced::Task;
 
 use super::{Message, ModalKind, OpenCADStudio};
@@ -45,8 +45,8 @@ fn picked_sources() -> &'static Mutex<HashMap<String, Arc<Vec<u8>>>> {
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-fn extraction_documents() -> &'static Mutex<HashMap<String, Arc<CadDocument>>> {
-    static DOCUMENTS: OnceLock<Mutex<HashMap<String, Arc<CadDocument>>>> = OnceLock::new();
+fn extraction_documents() -> &'static Mutex<HashMap<String, Arc<Document>>> {
+    static DOCUMENTS: OnceLock<Mutex<HashMap<String, Arc<Document>>>> = OnceLock::new();
     DOCUMENTS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -136,7 +136,7 @@ pub(crate) fn picked_source_bytes(path: &str) -> Option<Arc<Vec<u8>>> {
 /// lists. The extraction pipeline reads these on the web instead of calling
 /// the path-based `load_file`.
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-pub(crate) fn register_extraction_document(name: &str, document: CadDocument) {
+pub(crate) fn register_extraction_document(name: &str, document: Document) {
     extraction_documents()
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -146,7 +146,7 @@ pub(crate) fn register_extraction_document(name: &str, document: CadDocument) {
 /// The parsed drawing registered under this source reference, matched by exact
 /// key or by file name.
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-pub(crate) fn extraction_document(path: &str) -> Option<Arc<CadDocument>> {
+pub(crate) fn extraction_document(path: &str) -> Option<Arc<Document>> {
     let cache = extraction_documents()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -177,7 +177,7 @@ impl ExtractionRecord {
     }
 }
 
-fn table_styles(doc: &CadDocument) -> Vec<String> {
+fn table_styles(doc: &Document) -> Vec<String> {
     let mut styles: Vec<String> = doc
         .objects
         .iter()
@@ -212,7 +212,7 @@ pub(crate) const UPDATE_SKIP_FORMAT_AFTER_FIRST: i32 = 0x100_0000;
 /// Every data link of the drawing as `(name, handle)`: the entries of the
 /// data-link dictionary first, then links stored outside it (older OpenCAD
 /// drawings) under their description or file name.
-pub(crate) fn data_link_entries(doc: &CadDocument) -> Vec<(String, Handle)> {
+pub(crate) fn data_link_entries(doc: &Document) -> Vec<(String, Handle)> {
     let mut entries = Vec::new();
     if let Some(dictionary) = data_link_dictionary(doc) {
         if let Some(ObjectType::Dictionary(dictionary)) = doc.objects.get(&dictionary) {
@@ -235,7 +235,7 @@ pub(crate) fn data_link_entries(doc: &CadDocument) -> Vec<(String, Handle)> {
     entries
 }
 
-fn data_link_dictionary(doc: &CadDocument) -> Option<Handle> {
+fn data_link_dictionary(doc: &Document) -> Option<Handle> {
     let Some(ObjectType::Dictionary(root)) =
         doc.objects.get(&doc.header.named_objects_dict_handle)
     else {
@@ -258,7 +258,7 @@ fn link_fallback_name(link: &DataLink) -> String {
 
 /// Stores a data link under `name` in the data-link dictionary (created when
 /// the drawing has none) and returns its handle.
-pub(crate) fn add_data_link(doc: &mut CadDocument, name: &str, mut link: DataLink) -> Handle {
+pub(crate) fn add_data_link(doc: &mut Document, name: &str, mut link: DataLink) -> Handle {
     stamp_data_link(&mut link);
     let handle = doc.allocate_handle();
     let mut object = ClassObject::new(ClassObjectData::DataLink(link));
@@ -270,7 +270,7 @@ pub(crate) fn add_data_link(doc: &mut CadDocument, name: &str, mut link: DataLin
 
 /// Files a link under `name` in the data-link dictionary, replacing the
 /// entry it had, and makes the dictionary its owner.
-fn put_data_link_entry(doc: &mut CadDocument, handle: Handle, name: &str) {
+fn put_data_link_entry(doc: &mut Document, handle: Handle, name: &str) {
     let dictionary = data_link_dictionary(doc).or_else(|| {
         let root = doc.header.named_objects_dict_handle;
         if !matches!(doc.objects.get(&root), Some(ObjectType::Dictionary(_))) {
@@ -330,12 +330,12 @@ pub(crate) fn stamp_data_link(link: &mut DataLink) {
 }
 
 /// Renames a link (filing it in the dictionary when it was outside it).
-fn rename_data_link(doc: &mut CadDocument, handle: Handle, name: &str) {
+fn rename_data_link(doc: &mut Document, handle: Handle, name: &str) {
     put_data_link_entry(doc, handle, name);
 }
 
 /// Removes a link and its dictionary entry.
-fn remove_data_link(doc: &mut CadDocument, handle: Handle) {
+fn remove_data_link(doc: &mut Document, handle: Handle) {
     if let Some(dictionary) = data_link_dictionary(doc) {
         if let Some(ObjectType::Dictionary(entries)) = doc.objects.get_mut(&dictionary) {
             entries.entries.retain(|(_, h)| *h != handle);
@@ -376,7 +376,7 @@ fn join_connection(path: &str, sheet: &str, kind: LinkRange, range: Option<&str>
     }
 }
 
-fn resolve_link_path(doc: &CadDocument, link: &DataLink) -> PathBuf {
+fn resolve_link_path(doc: &Document, link: &DataLink) -> PathBuf {
     let stored = PathBuf::from(split_connection(&link.connection_string).0);
     if stored.is_absolute() || link.path_option == 1 {
         return stored;
@@ -390,7 +390,7 @@ fn resolve_link_path(doc: &CadDocument, link: &DataLink) -> PathBuf {
 }
 
 /// What a link takes from its source, as the manager describes it.
-fn link_details(doc: &CadDocument, link: &DataLink) -> String {
+fn link_details(doc: &Document, link: &DataLink) -> String {
     if link.data_adapter == EXTRACTION_LINK_ADAPTER {
         return crate::t!("Data extraction settings").into_owned();
     }
@@ -405,7 +405,7 @@ fn link_details(doc: &CadDocument, link: &DataLink) -> String {
     }
 }
 
-fn data_link_choices(doc: &CadDocument) -> Vec<DataLinkChoice> {
+fn data_link_choices(doc: &Document) -> Vec<DataLinkChoice> {
     let mut links = data_link_entries(doc)
         .into_iter()
         .filter_map(|(name, handle)| {
@@ -428,7 +428,7 @@ fn data_link_choices(doc: &CadDocument) -> Vec<DataLinkChoice> {
     links
 }
 
-fn data_link<'a>(doc: &'a CadDocument, handle: Handle) -> Option<&'a DataLink> {
+fn data_link<'a>(doc: &'a Document, handle: Handle) -> Option<&'a DataLink> {
     match doc.objects.get(&handle) {
         Some(ObjectType::ClassObject(object)) => match &object.data {
             ClassObjectData::DataLink(link) => Some(link),
@@ -438,7 +438,7 @@ fn data_link<'a>(doc: &'a CadDocument, handle: Handle) -> Option<&'a DataLink> {
     }
 }
 
-fn data_link_mut<'a>(doc: &'a mut CadDocument, handle: Handle) -> Option<&'a mut DataLink> {
+fn data_link_mut<'a>(doc: &'a mut Document, handle: Handle) -> Option<&'a mut DataLink> {
     match doc.objects.get_mut(&handle) {
         Some(ObjectType::ClassObject(object)) => match &mut object.data {
             ClassObjectData::DataLink(link) => Some(link),
@@ -659,7 +659,7 @@ pub(crate) fn read_tabular_file(
     }
 }
 
-fn table_style_handle(doc: &CadDocument, name: &str) -> Option<Handle> {
+fn table_style_handle(doc: &Document, name: &str) -> Option<Handle> {
     doc.objects
         .iter()
         .find_map(|(handle, object)| match object {
@@ -698,7 +698,7 @@ fn build_table(
 /// The sheet, range kind and range a link reads: from its connection string,
 /// or from the custom data older OpenCAD drawings kept them in.
 fn link_selection(
-    doc: &CadDocument,
+    doc: &Document,
     link: &DataLink,
 ) -> (Option<String>, LinkRange, Option<String>) {
     let mut sheet = None;
@@ -801,7 +801,7 @@ pub(crate) fn set_spreadsheet_link(link: &mut DataLink, settings: &SpreadsheetLi
 }
 
 /// Lists an object a link feeds among the link's connected objects.
-pub(crate) fn connect_data_link(doc: &mut CadDocument, link: Handle, target: Handle) {
+pub(crate) fn connect_data_link(doc: &mut Document, link: Handle, target: Handle) {
     if let Some(link) = data_link_mut(doc, link) {
         if !link.custom_data.iter().any(|item| item.target == target) {
             link.custom_data.push(DataLinkCustomData {
@@ -813,12 +813,12 @@ pub(crate) fn connect_data_link(doc: &mut CadDocument, link: Handle, target: Han
 }
 
 /// Whether the link lets tables write their data back to the source.
-pub(crate) fn data_link_allows_write(doc: &CadDocument, handle: Handle) -> bool {
+pub(crate) fn data_link_allows_write(doc: &Document, handle: Handle) -> bool {
     data_link(doc, handle)
         .is_some_and(|link| link.update_option & UPDATE_ALLOW_SOURCE_UPDATE != 0)
 }
 
-fn read_link_rows(doc: &CadDocument, link: &DataLink) -> Result<Vec<Vec<String>>, String> {
+fn read_link_rows(doc: &Document, link: &DataLink) -> Result<Vec<Vec<String>>, String> {
     let (sheet, kind, range) = link_selection(doc, link);
     read_tabular_file(
         &resolve_link_path(doc, link),
@@ -829,7 +829,7 @@ fn read_link_rows(doc: &CadDocument, link: &DataLink) -> Result<Vec<Vec<String>>
 }
 
 pub(crate) fn read_data_link(
-    doc: &CadDocument,
+    doc: &Document,
     handle: Handle,
 ) -> Result<Vec<Vec<String>>, String> {
     let link = data_link(doc, handle)
@@ -837,7 +837,7 @@ pub(crate) fn read_data_link(
     read_link_rows(doc, link)
 }
 
-pub(crate) fn data_link_write_path(doc: &CadDocument, handle: Handle) -> Result<PathBuf, String> {
+pub(crate) fn data_link_write_path(doc: &Document, handle: Handle) -> Result<PathBuf, String> {
     let link = data_link(doc, handle)
         .ok_or_else(|| crate::t!("The data link no longer exists.").into_owned())?;
     if link.update_option & UPDATE_ALLOW_SOURCE_UPDATE == 0 {
@@ -916,7 +916,7 @@ fn entity_rotation(entity: &EntityType) -> Option<f64> {
 }
 
 fn collect_records(
-    doc: &CadDocument,
+    doc: &Document,
     allowed_handles: Option<&BTreeSet<Handle>>,
     allowed_types: &BTreeSet<String>,
     out: &mut Vec<ExtractionRecord>,
@@ -999,7 +999,7 @@ fn extraction_drawing_paths(state: &DataExtractionState) -> Result<Vec<PathBuf>,
 /// every listed source must have been picked, or it asks for the pick again.
 fn for_each_extraction_document(
     state: &DataExtractionState,
-    mut visit: impl FnMut(&CadDocument),
+    mut visit: impl FnMut(&Document),
 ) -> Result<(), String> {
     #[cfg(target_arch = "wasm32")]
     for source in &state.source_files {
@@ -1018,7 +1018,7 @@ fn for_each_extraction_document(
 }
 
 fn collect_type_counts(
-    doc: &CadDocument,
+    doc: &Document,
     allowed_handles: Option<&BTreeSet<Handle>>,
     counts: &mut BTreeMap<String, usize>,
 ) {
@@ -1037,7 +1037,7 @@ fn collect_type_counts(
 
 fn extraction_preview(
     state: &DataExtractionState,
-    current: &CadDocument,
+    current: &Document,
 ) -> Result<Vec<Vec<String>>, String> {
     let allowed_types = state
         .objects
@@ -2487,7 +2487,7 @@ mod tests {
     #[test]
     fn registered_extraction_documents_match_by_file_name() {
         let key = format!("ocs-doc-{}-{}.dwg", std::process::id(), line!());
-        register_extraction_document(&key, CadDocument::new());
+        register_extraction_document(&key, Document::new());
         assert!(extraction_document(&key.to_ascii_uppercase()).is_some());
         assert!(extraction_document("ocs-doc-other.dwg").is_none());
     }

@@ -1777,7 +1777,7 @@ impl OpenCADStudio {
 /// the nearest planar curve of the edited space within a small share of
 /// that space's extent, the way a pick box takes the object under a click.
 fn entity_at_typed_point(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     owner: Handle,
     point: glam::DVec3,
 ) -> Option<Handle> {

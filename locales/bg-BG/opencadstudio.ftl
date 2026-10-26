@@ -112,6 +112,7 @@ donation =
     .decline = Не, благодаря
 
 modal =
+    .saving-as-target-cannot-keep = Записът като "__ocs_arg_target__" не може да запази следното, затова то ще бъде загубено:
     .about = Относно
     .keyboard-shortcuts = Клавишни комбинации
     .command-aliases = Псевдоними на команди
@@ -285,6 +286,9 @@ command-copy =
     .displacement = COPY  Задайте преместване:
     .mode = COPY  Въведете режим на копиране [Single/Multiple] <Multiple>:
 common =
+    .dcdisplay-usage = Употреба: DCDISPLAY [Показване|Скриване]
+    .dcdisplay-prompt = DCDISPLAY  Въведете опция [Показване/Скриване] <Показване>:
+    .dcdisplay-updated = Обновени индикатори за ограничения: __ocs_fmt_0__.
     .compare-prompt = COMPARE  __ocs_fmt_0__ само тук (зелено), __ocs_fmt_1__ само в другия чертеж (червено)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Сравняване с чертеж
@@ -3492,6 +3496,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: стил "__ocs_fmt_1__" не е намерен.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: невалидна промяна "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: не са избрани редактируеми размери.
+    .dimoverride-updated = DIMOVERRIDE: обновени размери: __ocs_fmt_0__.
+    .dimoverride-var-prompt = DIMOVERRIDE  Въведете име на размерна променлива за промяна или [Изчистване на промените]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Въведете нова стойност за __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Изчистване на промените
+    .dimoverride-unknown-var = DIMOVERRIDE: неизвестна размерна променлива "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: невалидна стойност за тази променлива.
+    .dimdisassociate-select = Изберете размери за премахване на асоциативността:
+    .dimdisassociate-done = DIMDISASSOCIATE: премахната асоциативност на размери: __ocs_fmt_0__.
+    .dimreassociate-done = DIMREASSOCIATE: асоциирани __ocs_fmt_0__ от __ocs_fmt_1__ размера.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ размера са асоциирани само частично (няма обект в някои дефиниционни точки).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Въведете текст на размера (празно = измерена стойност):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Изберете дъга, окръжност или дъга от полилиния:
     .dimjogged-specify-center-location-override = DIMJOGGED  Посочете заместващо положение на центъра:
@@ -6672,6 +6688,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6770,6 +6800,17 @@ import-panel =
     .combine-text = Обединяване на текст
     .land-xml = Land XML
     .import-file-header = Импортиране на файл — бутонът изпълнява последно избраното
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6812,6 +6853,43 @@ pdf-password =
         { $path }
         Този PDF файл не може да бъде отворен.
         Той е шифрован и изисква парола.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = невалидно число '__ocs_fmt_0__'
@@ -6975,3 +7053,30 @@ script-files =
     .exit-save = EXIT  Да се запишат ли промените в __ocs_arg_name__? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" все още няма път до файл; първо използвайте SAVEAS.
     .sdi-dirty = SDI: запишете или затворете "__ocs_fmt_0__", преди да отворите друг чертеж.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Състояние на видимост
+    .visibility-value = Състояние на видимост: { $state }
+    .table-label = Свойства на блока
+    .table-row = Свойства на блока: { $row }
+    .alignment = Подравняване: { $mode }
+    .flipped = Обърнато
+    .not-flipped = Необърнато
+
+
+block-flip =
+    .base-state-label = Етикет на основното състояние
+    .flipped-state-label = Етикет на обърнатото състояние
+
+
+block-lookup =
+    .input-help = Входове: числа, формули или интервали като { $closed } и { $open }. Формулите използват имената на входовете. Ъглите са в радиани.
+    .invalid-table = Таблицата за справки е невалидна.
+    .invalid-value = Избраният ред съдържа невалидна стойност на параметър.
+    .incompatible-values = Стойностите на реда не отговарят на наборите от стойности на параметрите.
+    .quoted-help = Оградете имена с интервали или пунктуация: { $name }.
+
+block-array =
+    .limit-error = Оценяването на блока би създало повече от 100000 обекта в масив. Намалете разстоянието или увеличете отстоянието.

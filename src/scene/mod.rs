@@ -8,6 +8,7 @@
 pub mod annotative;
 pub mod assoc_array;
 pub(crate) mod block_metadata;
+pub(crate) mod hyperlink;
 pub mod block_service;
 pub mod block_visibility;
 pub(crate) mod block_construction;
@@ -71,6 +72,7 @@ mod layout;
 mod limits;
 mod modify;
 pub(crate) use modify::remap_copied_reactors;
+pub(crate) use modify::remap_copied_viewport_clips;
 pub(crate) use modify::inverse_affine;
 mod mspace;
 pub mod named_parameters;
@@ -83,15 +85,16 @@ mod scene_markers;
 mod selection;
 pub mod viewport_dimension_pick;
 pub mod viewport_ref;
-pub(crate) use selection::{pe_url_description_of, pe_url_of};
+pub(crate) use selection::pe_url_of;
 pub mod parametric_constraints;
 mod parametric_solve;
 
 pub(crate) use boundary::{
     boundary_entities, boundary_entities_from_sources, boundary_faces, boundary_faces_around,
-    boundary_polyline_entities, exact_hatch_paths, hatch_boundary_rings, hatch_path_directions,
-    hatch_path_ring, remap_hatch_associations, ring_source_handles, separated_hatch_path_groups,
-    sources_near_rings, BoundarySource,
+    boundary_polyline_entities, entity_boundary_source_on_plane, exact_hatch_paths,
+    hatch_boundary_rings, hatch_path_directions, hatch_path_ring, live_segments_for_curves,
+    remap_hatch_associations, ring_source_handles, separated_hatch_path_groups, sources_near_rings,
+    BoundarySource,
 };
 
 // Parallel tessellation free functions live in `convert::tess` (alongside the
@@ -109,7 +112,7 @@ pub(crate) use convert::tess::{
 /// through stamp (see `scene::reference_only`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn tessellate_entity(
-    document: &CadDocument,
+    document: &Document,
     selected: &HashSet<Handle>,
     active_viewport: Option<Handle>,
     bg_color: [f32; 4],
@@ -737,7 +740,7 @@ use codec::entities::{
 use codec::objects::ObjectType;
 use codec::tables::normalize_name;
 use codec::types::Vector2;
-use codec::{CadDocument, EntityType, Handle, TableEntry};
+use codec::{Document, EntityType, Handle, TableEntry};
 use glam;
 use iced::time::Duration;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
@@ -1303,6 +1306,11 @@ const DRAW_DEPTH_LABEL_MAX: i32 = 1_000_000_000;
 const DRAW_DEPTH_INITIAL_MIN: i32 = -800_000_000;
 const DRAW_DEPTH_INITIAL_MAX: i32 = 800_000_000;
 const DRAW_DEPTH_LABEL_SCALE: f32 = 1.0 / 1_073_741_824.0;
+// Label stride for a block that starts empty and grows by Add: wide enough for
+// the depth buffer to keep neighbours apart (about 80 steps of a 24-bit buffer
+// at the default draw-order scale), and narrow enough to leave room for
+// thousands of Adds before a full rebuild.
+const DRAW_DEPTH_EMPTY_BLOCK_STRIDE: i32 = 1 << 18;
 
 fn draw_depth_value(label: i32, half_label: i32) -> [f32; 2] {
     [
@@ -1339,10 +1347,18 @@ fn inserted_draw_depth_label(order: &[DrawDepthEntry], position: usize) -> Optio
         position.checked_sub(1).and_then(|index| order.get(index)),
         order.get(position),
     ) {
-        (None, None) => Some((0, 1)),
+        // A block that starts empty grows from the low end of the initial range
+        // by a fixed stride. A (0, 1) seed spaced a new drawing's entities two
+        // labels apart, too close for the depth buffer, so draw order, masks
+        // and wipeouts had no effect in it.
+        (None, None) => Some((DRAW_DEPTH_INITIAL_MIN, DRAW_DEPTH_EMPTY_BLOCK_STRIDE / 2)),
         (Some(left), None) => {
-            let stride = order
-                .get(position.saturating_sub(2))
+            // With a single entry there is no previous gap to repeat (index
+            // `position - 2` would be `left` itself, giving a zero stride), so
+            // fall back to the entry's reserved half gap.
+            let stride = position
+                .checked_sub(2)
+                .and_then(|index| order.get(index))
                 .map(|previous| left.label - previous.label)
                 .unwrap_or(left.half_label.saturating_mul(2))
                 .max(1);
@@ -1514,7 +1530,7 @@ pub struct OpenTimings {
 /// Build hatch / image / mesh caches from a document without needing `&mut Scene`.
 /// Intended to run on a background thread during file load.
 #[cfg(target_arch = "wasm32")]
-pub fn build_derived_caches(doc: &CadDocument) -> DerivedCaches {
+pub fn build_derived_caches(doc: &Document) -> DerivedCaches {
     build_derived_caches_impl(doc, None, None)
 }
 
@@ -1524,7 +1540,7 @@ pub fn build_derived_caches(doc: &CadDocument) -> DerivedCaches {
 /// keep it cheap, normally just updating atomics.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn build_derived_caches_with_progress(
-    doc: &CadDocument,
+    doc: &Document,
     progress: &(dyn Fn(u16) + Sync),
     material_base_dir: Option<&std::path::Path>,
 ) -> DerivedCaches {
@@ -1532,7 +1548,7 @@ pub fn build_derived_caches_with_progress(
 }
 
 fn build_derived_caches_impl(
-    doc: &CadDocument,
+    doc: &Document,
     progress: Option<&(dyn Fn(u16) + Sync)>,
     material_base_dir: Option<&std::path::Path>,
 ) -> DerivedCaches {
@@ -1793,10 +1809,10 @@ fn build_derived_caches_impl(
 /// geometry are returned.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn prepare_open_geometry(
-    doc: CadDocument,
+    doc: Document,
     caches: &DerivedCaches,
     model_bg: [f32; 4],
-) -> (CadDocument, PreparedOpenGeometry) {
+) -> (Document, PreparedOpenGeometry) {
     let mut scene = Scene::new();
     scene.document = doc;
     scene.local_extent_max = caches.local_extent_max;
@@ -1865,7 +1881,7 @@ pub fn prepare_open_geometry(
             .into_iter()
             .map(|(key, (_epoch, cache))| (key, cache))
             .collect();
-    let doc = std::mem::replace(&mut scene.document, CadDocument::new());
+    let doc = std::mem::replace(&mut scene.document, Document::new());
     (
         doc,
         PreparedOpenGeometry {
@@ -1903,7 +1919,7 @@ struct OffsetPrep {
     owned_by_other_block: rustc_hash::FxHashSet<Handle>,
 }
 
-fn offset_prep(doc: &codec::CadDocument, model_block: Handle) -> OffsetPrep {
+fn offset_prep(doc: &codec::Document, model_block: Handle) -> OffsetPrep {
     let model_br = doc.block_records.iter().find(|br| br.handle == model_block);
     let mspace_set: Option<rustc_hash::FxHashSet<Handle>> = model_br
         .filter(|br| !br.entity_handles.is_empty())
@@ -2408,7 +2424,7 @@ pub struct Scene {
     model_pane_min_px: std::sync::Arc<std::sync::atomic::AtomicU32>,
     pub selection: std::sync::Arc<std::cell::RefCell<SelectionState>>,
     /// The CAD document — single source of truth for all entities.
-    pub document: CadDocument,
+    pub document: Document,
     /// Last chain-compatible dimension created this session.
     /// Never reconstructed from loaded file handles.
     pub last_created_dimension: Option<Handle>,
@@ -2726,6 +2742,8 @@ pub struct Scene {
     pub bg_color: [f32; 4],
     /// Custom paper-space background fill color for Wipeout entities.
     pub paper_bg_color: [f32; 4],
+    /// The desk around a layout's sheet (Options › Display).
+    pub desk_bg_color: [f32; 4],
     /// Dense model-space cluster half-span used for viewport recovery.
     pub local_extent_max: f32,
     /// Dense model-space cluster median used for viewport recovery.
@@ -3099,7 +3117,7 @@ impl Scene {
             model_panes: iced::widget::pane_grid::State::new(0).0,
             model_pane_min_px: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
             selection: std::sync::Arc::new(std::cell::RefCell::new(SelectionState::default())),
-            document: CadDocument::new(),
+            document: Document::new(),
             last_created_dimension: None,
             object_data_cache: crate::entities::object_data::ObjectDataCache::default(),
             lighting_cache: RefCell::new(HashMap::default()),
@@ -3191,6 +3209,7 @@ impl Scene {
             active_viewport: None,
             bg_color: [33.0 / 255.0, 40.0 / 255.0, 48.0 / 255.0, 1.0],
             paper_bg_color: [1.0, 1.0, 1.0, 1.0],
+            desk_bg_color: PAPER_DESK_COLOR,
             local_extent_max: 1e9,
             local_center: [0.0, 0.0],
             annotation_scale: 1.0,
@@ -5123,7 +5142,7 @@ impl Scene {
     }
 
     pub(crate) fn layout_sheet_viewport_handle(
-        document: &codec::CadDocument,
+        document: &codec::Document,
         layout: &codec::objects::Layout,
     ) -> Handle {
         let owned_viewport = |handle| match document.get_entity(handle) {
@@ -5180,7 +5199,7 @@ impl Scene {
     }
 
     pub(crate) fn is_sheet_viewport(
-        document: &codec::CadDocument,
+        document: &codec::Document,
         vp: &codec::entities::Viewport,
     ) -> bool {
         if vp.id == 1 {
@@ -7300,7 +7319,7 @@ impl Scene {
         let mut names = vec!["Model".to_string()];
         // Deduplicate by name: prefer the entry with a non-null block_record (the
         // real layout from the file) over the default placeholder created by
-        // CadDocument::new().
+        // Document::new().
         let mut by_name: rustc_hash::FxHashMap<String, (i16, Handle)> = Default::default();
         for obj in self.document.objects.values() {
             if let ObjectType::Layout(l) = obj {
@@ -14095,7 +14114,7 @@ pub fn page_setup_uninitialized(layout: &codec::objects::Layout) -> bool {
 /// uninitialized state and no viewports, as the reference stores a layout
 /// it has not opened yet. A layout already holding a viewport onto the model
 /// (one added by automation) is plainly set up and is written as it is.
-pub(crate) fn write_layout_unopened(document: &mut codec::CadDocument, layout_name: &str) {
+pub(crate) fn write_layout_unopened(document: &mut codec::Document, layout_name: &str) {
     let block = document.objects.values().find_map(|object| match object {
         ObjectType::Layout(layout) if layout.name == layout_name => Some(layout.block_record),
         _ => None,
@@ -14146,7 +14165,7 @@ fn fit_sheet_viewport(vp: &mut codec::entities::Viewport, min: (f64, f64), max: 
 /// Takes a layout's sheet (overall paper) viewport out of its block (entity
 /// and membership). Viewports onto the model are the user's drawing and stay:
 /// a file may carry them on a layout whose page setup was never filled in.
-pub(crate) fn drop_layout_viewports(document: &mut codec::CadDocument, block: Handle) {
+pub(crate) fn drop_layout_viewports(document: &mut codec::Document, block: Handle) {
     if block.is_null() {
         return;
     }
@@ -14889,7 +14908,7 @@ mod journal_tests {
             ))
         }
 
-        let mut document = CadDocument::new();
+        let mut document = Document::new();
         document.add_entity(line(0.0)).unwrap();
         let caches = build_derived_caches_impl(&document, None, None);
         let model_bg = [0.0, 0.0, 0.0, 1.0];
@@ -15092,6 +15111,46 @@ mod journal_tests {
             "every add / modify / erase / restore edit must use the incremental \
              patch, not silently fall back to a full rebuild"
         );
+    }
+
+    /// Entities added one by one, to a drawing that started empty or held a
+    /// single entity, must get draw depths the depth buffer can tell apart, or
+    /// draw order, masks and wipeouts have no effect among them.
+    #[test]
+    fn added_entities_get_separable_draw_depths() {
+        use codec::entities::Line;
+        use codec::types::Vector3;
+
+        fn add(scene: &mut Scene, y: f64) -> Handle {
+            scene.add_entity(EntityType::Line(Line::from_points(
+                Vector3::new(0.0, y, 0.0),
+                Vector3::new(10.0, y, 0.0),
+            )))
+        }
+        // `apply_draw_order` moves geometry by up to 0.02 of clip w per unit
+        // of depth; a 24-bit depth buffer resolves about 6e-8.
+        let separable = |scene: &Scene, below: Handle, above: Handle| {
+            let depths = scene.draw_depth_map();
+            let gap = depths[&above.value()][0] - depths[&below.value()][0];
+            assert!(gap * 0.02 > 1.0e-6, "draw depths only {gap} apart");
+        };
+
+        // A new drawing is drawn while still empty, then grows by Add.
+        let mut empty = Scene::new();
+        let _ = empty.draw_depth_map();
+        let first = add(&mut empty, 0.0);
+        let _ = empty.draw_depth_map();
+        let second = add(&mut empty, 1.0);
+        separable(&empty, first, second);
+        let third = add(&mut empty, 2.0);
+        separable(&empty, second, third);
+
+        // A drawing loaded with one entity, then grown by Add.
+        let mut single = Scene::new();
+        let only = add(&mut single, 0.0);
+        let _ = single.draw_depth_map();
+        let next = add(&mut single, 1.0);
+        separable(&single, only, next);
     }
 
     #[test]
@@ -16028,7 +16087,7 @@ mod layout_cache_tests {
         let first = scene.cached_layout_names();
         let second = scene.cached_layout_names();
         assert!(std::sync::Arc::ptr_eq(&first, &second));
-        // Fresh `CadDocument::new()` ships a default "Layout1" paper layout.
+        // Fresh `Document::new()` ships a default "Layout1" paper layout.
         assert_eq!(&first[..], &["Model".to_string(), "Layout1".to_string()]);
     }
 

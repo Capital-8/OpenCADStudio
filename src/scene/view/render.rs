@@ -4,7 +4,7 @@
 use crate::io::plot_style::PlotStyleTableExt as _;
 use codec::tables::LineType;
 use codec::types::{Color as AcadColor, LineWeight};
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 use glam::Mat4;
 use iced::mouse;
 use iced::widget::shader::{self, Viewport};
@@ -741,9 +741,12 @@ impl shader::Primitive for Primitive {
                         self, PersistentWireArena as WireArena,
                     };
                     let const_bgl = inner.wire_const_bgl.as_ref();
-                    let base_ok = vp.wire_patch.as_ref().map_or(false, |(base, patch)| {
-                        inner.wire_arena_id == *base && !patch.changes.is_empty()
-                    });
+                    // A full draw-depth rebuild moves every label, which a patch
+                    // of the changed entities alone would leave stale.
+                    let base_ok = inner.wire_arena_depth_generation == vp.draw_depth_generation
+                        && vp.wire_patch.as_ref().map_or(false, |(base, patch)| {
+                            inner.wire_arena_id == *base && !patch.changes.is_empty()
+                        });
                     let patch = vp.wire_patch.as_ref().map(|(_, patch)| patch);
                     if _perf {
                         crate::perf_record!(
@@ -1004,6 +1007,7 @@ retained_contributors={}",
                             } else {
                                 u64::MAX
                             };
+                        inner.wire_arena_depth_generation = vp.draw_depth_generation;
                         arena_served = true;
                     } else {
                         inner.wire_arena = None;
@@ -2768,7 +2772,7 @@ impl Scene {
         // paints no canvas at all; anything else would erase the page beneath
         // it. Only model space clears to the editor background.
         let canvas_background = if viewport.paper_sheet {
-            crate::scene::PAPER_DESK_COLOR
+            self.desk_bg_color
         } else if self.current_layout != "Model" {
             // This viewport paints no canvas of its own (`skip_background`),
             // but shading and fog still blend toward whatever is behind it —
@@ -3372,6 +3376,15 @@ impl Scene {
         (final_color, pl, pat, lw, aci)
     }
 
+    /// Whether lines are drawn at their lineweights on screen. `$LWDISPLAY`
+    /// decides it in model space and in every layout alike: a layout that
+    /// displays plot styles takes its lineweights from the style table, but
+    /// AutoCAD and DWG TrueView still draw them hairline while LWDISPLAY is
+    /// off.
+    pub(crate) fn lineweights_on_screen(&self) -> bool {
+        self.document.header.lineweight_display
+    }
+
     fn display_plot_style(&self) -> Option<Arc<crate::io::plot_style::PlotStyleTable>> {
         if self.current_layout == "Model" {
             return None;
@@ -3612,7 +3625,7 @@ impl Scene {
 
 /// Whether an entity sits on a locked layer (via the document's layer table).
 /// Document-only so it is safe from the parallel tessellation path.
-pub(in crate::scene) fn layer_locked(document: &CadDocument, e: &EntityType) -> bool {
+pub(in crate::scene) fn layer_locked(document: &Document, e: &EntityType) -> bool {
     document
         .layers
         .get(&e.common().layer)
@@ -3625,14 +3638,14 @@ pub(in crate::scene) fn layer_locked(document: &CadDocument, e: &EntityType) -> 
 /// Resolves the effective linetype name for an entity, falling back to the
 /// layer's linetype when the entity's own linetype is "ByLayer".
 pub(in crate::scene) fn linetype_name_for<'a>(
-    document: &'a CadDocument,
+    document: &'a Document,
     e: &'a EntityType,
 ) -> &'a str {
     linetype_name_for_viewport(document, e, None)
 }
 
 pub(crate) fn linetype_name_for_common_viewport<'a>(
-    document: &'a CadDocument,
+    document: &'a Document,
     common: &'a codec::entities::EntityCommon,
     viewport: Option<Handle>,
 ) -> &'a str {
@@ -3667,7 +3680,7 @@ pub(crate) fn linetype_name_for_common_viewport<'a>(
 }
 
 pub(in crate::scene) fn linetype_name_for_viewport<'a>(
-    document: &'a CadDocument,
+    document: &'a Document,
     e: &'a EntityType,
     viewport: Option<Handle>,
 ) -> &'a str {
@@ -3677,7 +3690,7 @@ pub(in crate::scene) fn linetype_name_for_viewport<'a>(
 /// Returns `(entity_color, pattern_length, pattern, line_weight_px, aci)` for
 /// an entity, resolving ByLayer color and linetype from the document.
 pub(in crate::scene) fn render_style_for(
-    document: &CadDocument,
+    document: &Document,
     e: &EntityType,
 ) -> ([f32; 4], f32, [f32; 8], f32, u8) {
     render_style_for_viewport(document, e, None)
@@ -3710,7 +3723,7 @@ pub(crate) fn pack_layer_override_color(color: &AcadColor) -> Option<i32> {
 }
 
 fn viewport_override(
-    document: &CadDocument,
+    document: &Document,
     layer_name: &str,
     viewport: Option<Handle>,
     kind: codec::objects::KnownXRecordKind,
@@ -3724,7 +3737,7 @@ fn viewport_override(
 }
 
 pub(crate) fn render_style_for_common_viewport(
-    document: &CadDocument,
+    document: &Document,
     common: &codec::entities::EntityCommon,
     viewport: Option<Handle>,
 ) -> ([f32; 4], f32, [f32; 8], f32, u8) {
@@ -3833,7 +3846,7 @@ pub(crate) fn render_style_for_common_viewport(
 }
 
 pub(crate) fn render_style_for_viewport(
-    document: &CadDocument,
+    document: &Document,
     e: &EntityType,
     viewport: Option<Handle>,
 ) -> ([f32; 4], f32, [f32; 8], f32, u8) {
@@ -3841,7 +3854,7 @@ pub(crate) fn render_style_for_viewport(
 }
 
 pub(crate) fn has_resolved_book_color_common(
-    document: &CadDocument,
+    document: &Document,
     common: &codec::entities::EntityCommon,
 ) -> bool {
     common
@@ -3851,7 +3864,7 @@ pub(crate) fn has_resolved_book_color_common(
         .is_some_and(|object| matches!(object, codec::objects::ObjectType::BookColor(_)))
 }
 
-pub(crate) fn has_resolved_book_color(document: &CadDocument, e: &EntityType) -> bool {
+pub(crate) fn has_resolved_book_color(document: &Document, e: &EntityType) -> bool {
     has_resolved_book_color_common(document, e.common())
 }
 
@@ -3882,12 +3895,12 @@ pub(crate) fn lineweight_to_px(lw: &LineWeight) -> f32 {
 /// reference's layer through this. Color is returned RAW (background adaptation
 /// happens at emit time). Falls back to white / Continuous / 1 px when the
 /// layer is missing.
-pub(crate) fn layer_render_style(document: &CadDocument, layer_name: &str) -> InheritStyle {
+pub(crate) fn layer_render_style(document: &Document, layer_name: &str) -> InheritStyle {
     layer_render_style_viewport(document, layer_name, None)
 }
 
 pub(crate) fn layer_render_style_viewport(
-    document: &CadDocument,
+    document: &Document,
     layer_name: &str,
     viewport: Option<Handle>,
 ) -> InheritStyle {
@@ -3994,7 +4007,7 @@ pub(crate) fn is_effective_layer_zero(layer_name: &str) -> bool {
 /// *layer* style (`l0`). Explicit properties always win. Call this for
 /// exploded block sub-entities so color/linetype/lineweight propagate right.
 pub(crate) fn render_style_for_block_sub(
-    document: &CadDocument,
+    document: &Document,
     e: &EntityType,
     insert_color: [f32; 4],
     insert_pat_len: f32,
@@ -4015,7 +4028,7 @@ pub(crate) fn render_style_for_block_sub(
 }
 
 pub(crate) fn render_style_for_block_sub_viewport(
-    document: &CadDocument,
+    document: &Document,
     e: &EntityType,
     insert_color: [f32; 4],
     insert_pat_len: f32,
@@ -4889,15 +4902,7 @@ impl Scene {
             width: full.width.max(1.0),
             height: full.height.max(1.0),
         };
-        let display_plot_lineweights = self.current_layout != "Model"
-            && self.effective_plot_settings().is_some_and(|settings| {
-                settings.flags.show_plot_styles && settings.flags.print_lineweights
-            });
-        let mut uniforms = Uniforms::new(
-            &inst.camera,
-            full_bounds,
-            self.document.header.lineweight_display || display_plot_lineweights,
-        );
+        let mut uniforms = Uniforms::new(&inst.camera, full_bounds, self.lineweights_on_screen());
         if self.current_layout == "Model" {
             uniforms.lineweight_scale = -self.model_lineweight_scale;
         } else {
@@ -5333,7 +5338,7 @@ pub(crate) fn resolve_pattern(
 /// Whether a wire belongs to a Face3D entity, by document handle lookup —
 /// so no changes to WireModel are needed.
 #[allow(dead_code)]
-fn is_face3d_wire(w: &WireModel, document: &codec::CadDocument) -> bool {
+fn is_face3d_wire(w: &WireModel, document: &codec::Document) -> bool {
     w.name
         .parse::<u64>()
         .ok()
@@ -5348,7 +5353,7 @@ fn is_face3d_wire(w: &WireModel, document: &codec::CadDocument) -> bool {
 #[allow(dead_code)]
 fn split_face3d_wires(
     wires: &[WireModel],
-    document: &codec::CadDocument,
+    document: &codec::Document,
 ) -> (Vec<WireModel>, Vec<WireModel>) {
     let face3d_handles: rustc_hash::FxHashSet<u64> = document
         .entities()
@@ -5398,8 +5403,8 @@ mod layer0_inherit_tests {
 
     // ACI: 1 = red, 3 = green, 7 = white. Distinct, so the assertions below
     // can tell "inherited the insert layer" from "kept layer 0".
-    fn doc() -> CadDocument {
-        let mut d = CadDocument::new();
+    fn doc() -> Document {
+        let mut d = Document::new();
         let mut walls = Layer::new("Walls");
         walls.color = Color::Index(1); // red
         d.layers.add_or_replace(walls);
@@ -5419,7 +5424,7 @@ mod layer0_inherit_tests {
         EntityType::Line(l)
     }
 
-    fn resolve(d: &CadDocument, e: &EntityType, ins: [f32; 4]) -> [f32; 4] {
+    fn resolve(d: &Document, e: &EntityType, ins: [f32; 4]) -> [f32; 4] {
         // Insert sits on "Walls"; its layer style is the layer-0 target.
         let l0 = layer_render_style(d, "Walls");
         render_style_for_block_sub(d, e, ins, l0.pat_len, l0.pat, l0.lw_px, l0).0
@@ -5537,6 +5542,25 @@ mod layer0_inherit_tests {
         assert_eq!(color[3], 1.0);
     }
 
+    /// A layout that displays plot styles and plots lineweights still draws
+    /// hairlines while LWDISPLAY is off, as AutoCAD 2025 does on such a
+    /// drawing; turning LWDISPLAY on shows the lineweights.
+    #[test]
+    fn displayed_plot_styles_do_not_turn_lineweights_on() {
+        let mut scene = Scene::new();
+        scene.set_current_layout("Layout1".into());
+        let mut settings = scene.effective_plot_settings().expect("layout settings");
+        settings.current_style_sheet = crate::io::plot_style::MONOCHROME_PLOT_STYLE.into();
+        settings.flags.show_plot_styles = true;
+        settings.flags.print_lineweights = true;
+        assert!(scene.set_layout_plot_settings("Layout1", &settings));
+
+        scene.document.header.lineweight_display = false;
+        assert!(!scene.lineweights_on_screen());
+        scene.document.header.lineweight_display = true;
+        assert!(scene.lineweights_on_screen());
+    }
+
     /// Displayed plot styles recolour a repeated block's stubbed copies too,
     /// not only its first copy. (#2030)
     #[test]
@@ -5639,7 +5663,7 @@ mod layer0_inherit_tests {
 
     #[test]
     fn split_face3d_wires_correctness_and_parity() {
-        let mut doc = codec::CadDocument::new();
+        let mut doc = codec::Document::new();
         let face = codec::entities::Face3D::new(
             codec::types::Vector3::new(0.0, 0.0, 0.0),
             codec::types::Vector3::new(10.0, 0.0, 0.0),

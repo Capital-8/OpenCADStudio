@@ -78,7 +78,7 @@ pub fn load_targets(path: &Path) -> Result<Vec<TargetLayer>, String> {
 /// Extract the translation targets from an already-parsed drawing — the
 /// tail of [`load_targets`], reused by the web flow, which parses the
 /// picked file's bytes before it gets here.
-pub fn targets_from_document(document: &codec::CadDocument) -> Result<Vec<TargetLayer>, String> {
+pub fn targets_from_document(document: &codec::Document) -> Result<Vec<TargetLayer>, String> {
     let mut targets: Vec<TargetLayer> = document
         .layers
         .iter()

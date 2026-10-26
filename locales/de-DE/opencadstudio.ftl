@@ -112,6 +112,7 @@ donation =
     .decline = Nein, danke
 
 modal =
+    .saving-as-target-cannot-keep = Beim Speichern als "__ocs_arg_target__" kann Folgendes nicht erhalten bleiben und geht verloren:
     .about = Über
     .keyboard-shortcuts = Tastenkombinationen
     .command-aliases = Befehlsaliase
@@ -286,6 +287,9 @@ command-copy =
     .mode = COPY  Kopiermodus eingeben [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Verwendung: DCDISPLAY [Zeigen|Verbergen]
+    .dcdisplay-prompt = DCDISPLAY  Option eingeben [Zeigen/Verbergen] <Zeigen>:
+    .dcdisplay-updated = __ocs_fmt_0__ Abhängigkeitssymbol(e) aktualisiert.
     .compare-prompt = COMPARE  __ocs_fmt_0__ nur hier (grün), __ocs_fmt_1__ nur in der anderen Zeichnung (rot)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Mit Zeichnung vergleichen
@@ -3493,6 +3497,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: Stil '__ocs_fmt_1__' nicht gefunden.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: ungültige Überschreibung "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: keine bearbeitbaren Bemaßungen ausgewählt.
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ Bemaßung(en) aktualisiert.
+    .dimoverride-var-prompt = DIMOVERRIDE  Name der zu überschreibenden Bemaßungsvariable eingeben oder [Überschreibungen löschen]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Neuen Wert für __ocs_fmt_0__ eingeben:
+    .dimoverride-clear-overrides = Überschreibungen löschen
+    .dimoverride-unknown-var = DIMOVERRIDE: unbekannte Bemaßungsvariable "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: ungültiger Wert für diese Variable.
+    .dimdisassociate-select = Bemaßungen zum Lösen der Assoziativität wählen:
+    .dimdisassociate-done = DIMDISASSOCIATE: Assoziativität von __ocs_fmt_0__ Bemaßung(en) gelöst.
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_0__ von __ocs_fmt_1__ Bemaßung(en) assoziiert.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ Bemaßung(en) nur teilweise assoziiert (an einigen Definitionspunkten liegt kein Objekt).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Maßtext eingeben (leer = Messwert):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Bogen, Kreis oder Polylinienbogen auswählen:
     .dimjogged-specify-center-location-override = DIMJOGGED  Überschriebene Mittelpunktposition angeben:
@@ -6670,6 +6686,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6768,6 +6798,17 @@ import-panel =
     .combine-text = Text kombinieren
     .land-xml = Land XML
     .import-file-header = Datei importieren — die Schaltfläche führt den zuletzt gewählten Eintrag aus
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6810,6 +6851,43 @@ pdf-password =
         { $path }
         Diese PDF-Datei kann nicht geöffnet werden.
         Sie ist verschlüsselt und erfordert ein Kennwort.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = ungültige Zahl '__ocs_fmt_0__'
@@ -6973,3 +7051,30 @@ script-files =
     .exit-save = EXIT  Änderungen an __ocs_arg_name__ speichern? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" hat noch keinen Dateipfad; verwenden Sie zuerst SAVEAS.
     .sdi-dirty = SDI: Speichern oder schließen Sie "__ocs_fmt_0__", bevor Sie eine andere Zeichnung öffnen.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Sichtbarkeitsstatus
+    .visibility-value = Sichtbarkeitsstatus: { $state }
+    .table-label = Blockeigenschaften
+    .table-row = Blockeigenschaften: { $row }
+    .alignment = Ausrichtung: { $mode }
+    .flipped = Gespiegelt
+    .not-flipped = Nicht gespiegelt
+
+
+block-flip =
+    .base-state-label = Beschriftung des Ausgangszustands
+    .flipped-state-label = Beschriftung des gespiegelten Zustands
+
+
+block-lookup =
+    .input-help = Eingaben: Zahlen, Formeln oder Intervalle wie { $closed } und { $open }. Formeln verwenden Eingabenamen. Winkel sind im Bogenmaß.
+    .invalid-table = Die Nachschlagetabelle ist ungültig.
+    .invalid-value = Die ausgewählte Zeile enthält einen ungültigen Parameterwert.
+    .incompatible-values = Die Zeilenwerte erfüllen die Parametersätze nicht.
+    .quoted-help = Namen mit Leerzeichen oder Satzzeichen einschließen: { $name }.
+
+block-array =
+    .limit-error = Die Blockauswertung würde mehr als 100000 Anordnungsobjekte erzeugen. Verringern Sie die Entfernung oder vergrößern Sie den Abstand.

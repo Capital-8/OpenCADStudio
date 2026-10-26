@@ -154,7 +154,7 @@ pub(crate) fn picked_source(
 }
 
 fn resolve_source(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     source: &CenterLineSource,
 ) -> Option<(DVec3, DVec3)> {
     let entity = document.get_entity(source.handle)?;
@@ -209,7 +209,7 @@ fn resolve_source(
 }
 
 fn rebuild_line(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     association: &CenterLineAssociation,
 ) -> Option<codec::Line> {
     let first = resolve_source(document, &association.first)?;

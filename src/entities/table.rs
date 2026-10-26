@@ -142,7 +142,7 @@ fn cell_text_height(
 /// A cell's text style: the content's own, else the cell, row, column or
 /// table style that sets it (by handle, or by name for a cell override).
 fn cell_text_style(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     table: &Table,
     row: &codec::entities::table::TableRow,
     column: usize,
@@ -676,7 +676,7 @@ fn fallback_content_centers(
 }
 
 fn content_display_value(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     table: &Table,
     content: &codec::entities::table::CellContent,
 ) -> String {
@@ -701,7 +701,7 @@ fn content_display_value(
 }
 
 fn resolved_content_geometry(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     table: &Table,
     row: usize,
     column: usize,
@@ -753,7 +753,7 @@ fn resolved_content_geometry(
 
 pub(crate) fn block_cell_inserts(
     table: &Table,
-    document: &codec::CadDocument,
+    document: &codec::Document,
     anno_scale: f32,
 ) -> Vec<codec::entities::Insert> {
     use codec::entities::table::ContentLayoutFlags;
@@ -1054,7 +1054,7 @@ pub(crate) fn block_cell_inserts(
 }
 
 impl RenderConvertible for Table {
-    fn to_render(&self, document: &codec::CadDocument) -> Option<RenderEntity> {
+    fn to_render(&self, document: &codec::Document) -> Option<RenderEntity> {
         if self.rows.is_empty() || self.columns.is_empty() {
             return None;
         }
@@ -1398,7 +1398,7 @@ impl RenderConvertible for Table {
 /// Builds colored geometry for tables without a stored display block.
 pub fn tessellate_table(
     tab: &Table,
-    document: &codec::CadDocument,
+    document: &codec::Document,
     selected: bool,
     entity_color: [f32; 4],
     line_weight_px: f32,

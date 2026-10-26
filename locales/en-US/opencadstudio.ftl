@@ -112,6 +112,7 @@ donation =
     .decline = No Thanks
 
 modal =
+    .saving-as-target-cannot-keep = Saving as "__ocs_arg_target__" cannot keep the following, so it will be lost:
     .about = About
     .keyboard-shortcuts = Keyboard Shortcuts
     .command-aliases = Command Aliases
@@ -285,6 +286,9 @@ command-copy =
     .mode = COPY  Enter a copy mode option [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Usage: DCDISPLAY [Show|Hide]
+    .dcdisplay-prompt = DCDISPLAY  Enter an option [Show/Hide] <Show>:
+    .dcdisplay-updated = __ocs_fmt_0__ constraint indicator(s) updated.
     .compare-prompt = COMPARE  __ocs_fmt_0__ only here (green), __ocs_fmt_1__ only in the other drawing (red)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Compare with drawing
@@ -3494,6 +3498,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: style '__ocs_fmt_1__' not found.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: invalid override "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: no editable dimensions were selected.
+    .dimoverride-updated = DIMOVERRIDE: updated __ocs_fmt_0__ dimension(s).
+    .dimoverride-var-prompt = DIMOVERRIDE  Enter dimension variable name to override or [Clear overrides]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Enter new value for __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Clear overrides
+    .dimoverride-unknown-var = DIMOVERRIDE: unknown dimension variable "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: invalid value for this variable.
+    .dimdisassociate-select = Select dimensions to disassociate:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ dimension(s) disassociated.
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_0__ of __ocs_fmt_1__ dimension(s) associated.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ dimension(s) only partially associated (no object at some definition points).
     .prefix-textedit-enter-text-edit-mode-single-mu = __ocs_arg_prefix__TEXTEDIT Enter text edit mode [Single/Multiple] <__ocs_arg_mode__>:
     .prefix-texteditmode-enter-new-value-for-texted = __ocs_arg_prefix__TEXTEDITMODE Enter new value for TEXTEDITMODE <__ocs_arg_v__>:
     .arctext-text-to-place-along-the-arc = ARCTEXT  text to place along the arc:
@@ -6673,6 +6689,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6771,6 +6801,17 @@ import-panel =
     .combine-text = Combine Text
     .land-xml = Land XML
     .import-file-header = Import File — the face runs the last one chosen
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6813,6 +6854,43 @@ pdf-password =
         { $path }
         Unable to open this PDF file.
         It is encrypted and requires a password.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = invalid number '__ocs_fmt_0__'
@@ -6976,3 +7054,30 @@ script-files =
     .exit-save = EXIT  Save changes to __ocs_arg_name__? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" has no file path yet; use SAVEAS first.
     .sdi-dirty = SDI: save or close "__ocs_fmt_0__" before opening another drawing.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Visibility state
+    .visibility-value = Visibility state: { $state }
+    .table-label = Block properties
+    .table-row = Block properties: { $row }
+    .alignment = Alignment: { $mode }
+    .flipped = Flipped
+    .not-flipped = Not flipped
+
+
+block-flip =
+    .base-state-label = Base state label
+    .flipped-state-label = Flipped state label
+
+
+block-lookup =
+    .input-help = Inputs: numbers, formulas, or intervals such as { $closed } and { $open }. Formulas use input names. Angles are radians.
+    .invalid-table = The Lookup table is invalid.
+    .invalid-value = The selected Lookup row has an invalid parameter value.
+    .incompatible-values = The Lookup row values do not satisfy the parameter value sets.
+    .quoted-help = Quote names with spaces or punctuation: { $name }.
+
+block-array =
+    .limit-error = Block evaluation would generate more than 100000 array objects. Reduce the distance or increase the spacing.

@@ -7,9 +7,10 @@
 //! an override over the style default, so editing one of these rows writes here
 //! and the change round-trips to file.
 
+use codec::entities::EntityCommon;
 use codec::types::Color;
 use codec::xdata::{ExtendedData, XDataValue};
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 
 // DXF group codes of the dimension variables surfaced on the leader panel.
 pub const DIMSCALE: i16 = 40; // overall scale       (real)
@@ -172,7 +173,7 @@ pub fn string(xd: &ExtendedData, code: i16) -> Option<String> {
         })
 }
 
-fn write_pairs(doc: &mut CadDocument, handle: Handle, pairs: Vec<(i16, XDataValue)>) {
+fn write_pairs(doc: &mut Document, handle: Handle, pairs: Vec<(i16, XDataValue)>) {
     let Some(entity) = doc.get_entity(handle) else {
         return;
     };
@@ -213,7 +214,7 @@ fn write_pairs(doc: &mut CadDocument, handle: Handle, pairs: Vec<(i16, XDataValu
 }
 
 /// Replace every dimension-variable override on entity `handle`.
-pub fn replace(doc: &mut CadDocument, handle: Handle, values: Vec<(i16, XDataValue)>) {
+pub fn replace(doc: &mut Document, handle: Handle, values: Vec<(i16, XDataValue)>) {
     write_pairs(doc, handle, values);
 }
 
@@ -221,7 +222,7 @@ pub fn replace(doc: &mut CadDocument, handle: Handle, values: Vec<(i16, XDataVal
 /// leaving the other overrides in the record untouched. Clearing the last one
 /// drops the whole `ACAD`/`DSTYLE` record. Legacy `ACAD_DSTYLE` records written
 /// by older OCS versions are migrated when the canonical `ACAD` slot is free.
-pub fn set(doc: &mut CadDocument, handle: Handle, code: i16, value: Option<XDataValue>) {
+pub fn set(doc: &mut Document, handle: Handle, code: i16, value: Option<XDataValue>) {
     let Some(entity) = doc.get_entity(handle) else {
         return;
     };
@@ -245,7 +246,12 @@ pub fn set(doc: &mut CadDocument, handle: Handle, code: i16, value: Option<XData
 /// document. Keeping the override on the entity means it is part of the single
 /// committed object and rides the ordinary undo/redo history.
 pub fn set_on_entity(entity: &mut EntityType, code: i16, value: Option<XDataValue>) {
-    let common = entity.common_mut();
+    set_on_common(entity.common_mut(), code, value);
+}
+
+/// [`set_on_entity`] for an entity reached through its own type, such as a
+/// `Dimension` rather than its `EntityType`.
+pub fn set_on_common(common: &mut EntityCommon, code: i16, value: Option<XDataValue>) {
     let mut kept: Vec<(i16, XDataValue)> = pairs(&common.extended_data)
         .into_iter()
         .filter(|(c, _)| *c != code)
@@ -358,6 +364,53 @@ pub fn property_string_code(field: &str) -> Option<i16> {
     })
 }
 
+macro_rules! named_vars {
+    ($($kind:ident: $($code:ident),+;)+) => {
+        &[$($((stringify!($code), $code, VarKind::$kind),)+)+]
+    };
+}
+
+/// How a dimension variable's override value is stored in the record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VarKind {
+    Real,
+    Int,
+    Text,
+}
+
+/// The variables DIMOVERRIDE accepts by name. Block, linetype and text-style
+/// variables are stored as handles and are set from the Properties panel.
+const NAMED_VARS: &[(&str, i16, VarKind)] = named_vars! {
+    Real: DIMSCALE, DIMASZ, DIMEXO, DIMDLI, DIMEXE, DIMRND, DIMDLE, DIMTP, DIMTM, DIMFXL,
+        DIMJOGANG, DIMTXT, DIMCEN, DIMTSZ, DIMALTF, DIMLFAC, DIMTVP, DIMTFAC, DIMGAP,
+        DIMALTRND, DIMALTMZF, DIMMZF;
+    Int: DIMTOL, DIMLIM, DIMTIH, DIMTOH, DIMSE1, DIMSE2, DIMALT, DIMTOFL, DIMSAH, DIMTIX,
+        DIMSOXD, DIMSD1, DIMSD2, DIMUPT, DIMFXLON, DIMTXTDIRECTION, DIMZIN, DIMTAD, DIMAZIN,
+        DIMARCSYM, DIMCLRD, DIMCLRE, DIMCLRT, DIMADEC, DIMALTD, DIMDEC, DIMTDEC, DIMALTU,
+        DIMALTTD, DIMAUNIT, DIMFRAC, DIMLUNIT, DIMDSEP, DIMTMOVE, DIMJUST, DIMTOLJ, DIMTZIN,
+        DIMALTZ, DIMALTTZ, DIMATFIT, DIMTFILL, DIMTFILLCLR, DIMLWD, DIMLWE, DIMTALN;
+    Text: DIMPOST, DIMAPOST, DIMALTMZS, DIMMZS;
+};
+
+/// The group code and storage kind of the dimension variable `name`.
+pub fn named_var(name: &str) -> Option<(i16, VarKind)> {
+    NAMED_VARS
+        .iter()
+        .find(|(var, _, _)| var.eq_ignore_ascii_case(name.trim()))
+        .map(|&(_, code, kind)| (code, kind))
+}
+
+/// Parse a typed value for a variable of `kind` into its record value. ON/OFF
+/// are read as 1/0 so switch variables can be typed either way.
+pub fn parse_var_value(kind: VarKind, text: &str) -> Option<XDataValue> {
+    let text = text.trim();
+    match kind {
+        VarKind::Real => text.parse().ok().filter(|v: &f64| v.is_finite()).map(XDataValue::Real),
+        VarKind::Int => text.parse().ok().or_else(|| yes(text)).map(XDataValue::Integer16),
+        VarKind::Text => Some(XDataValue::String(text.to_string())),
+    }
+}
+
 fn yes(value: &str) -> Option<i16> {
     match value.trim().to_ascii_lowercase().as_str() {
         "yes" | "on" | "true" | "1" => Some(1),
@@ -366,7 +419,7 @@ fn yes(value: &str) -> Option<i16> {
     }
 }
 
-fn inherited_int(doc: &CadDocument, handle: Handle, code: i16) -> i16 {
+fn inherited_int(doc: &Document, handle: Handle, code: i16) -> i16 {
     let Some(EntityType::Dimension(dimension)) = doc.get_entity(handle) else {
         return 0;
     };
@@ -405,7 +458,7 @@ fn inherited_int(doc: &CadDocument, handle: Handle, code: i16) -> i16 {
     }
 }
 
-fn inherited_handle(doc: &CadDocument, handle: Handle, code: i16) -> Handle {
+fn inherited_handle(doc: &Document, handle: Handle, code: i16) -> Handle {
     let Some(EntityType::Dimension(dimension)) = doc.get_entity(handle) else {
         return Handle::NULL;
     };
@@ -427,7 +480,7 @@ fn inherited_handle(doc: &CadDocument, handle: Handle, code: i16) -> Handle {
     }
 }
 
-fn inherited_real(doc: &CadDocument, handle: Handle, code: i16) -> f64 {
+fn inherited_real(doc: &Document, handle: Handle, code: i16) -> f64 {
     let Some(EntityType::Dimension(dimension)) = doc.get_entity(handle) else {
         return 0.0;
     };
@@ -452,7 +505,7 @@ fn inherited_real(doc: &CadDocument, handle: Handle, code: i16) -> f64 {
     }
 }
 
-fn inherited_string(doc: &CadDocument, handle: Handle, code: i16) -> String {
+fn inherited_string(doc: &Document, handle: Handle, code: i16) -> String {
     let Some(EntityType::Dimension(dimension)) = doc.get_entity(handle) else {
         return String::new();
     };
@@ -481,7 +534,7 @@ fn split_template(value: &str) -> (&str, &str) {
 
 /// Apply a dimension override row. A changed override lays automatic text
 /// out afresh, so e.g. a new DIMTAD moves it off the stored position.
-pub fn set_property(doc: &mut CadDocument, handle: Handle, field: &str, value: &str) -> bool {
+pub fn set_property(doc: &mut Document, handle: Handle, field: &str, value: &str) -> bool {
     let applied = apply_property(doc, handle, field, value);
     if applied {
         if let Some(EntityType::Dimension(dimension)) = doc.get_entity_mut(handle) {
@@ -491,7 +544,7 @@ pub fn set_property(doc: &mut CadDocument, handle: Handle, field: &str, value: &
     applied
 }
 
-fn apply_property(doc: &mut CadDocument, handle: Handle, field: &str, value: &str) -> bool {
+fn apply_property(doc: &mut Document, handle: Handle, field: &str, value: &str) -> bool {
     let trimmed = value.trim();
     if field == "dim_center_type" {
         let current = inherited_real(doc, handle, DIMCEN);

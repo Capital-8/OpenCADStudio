@@ -142,7 +142,7 @@ pub(crate) fn catmull_rom_pts(ctrl: &[[f64; 3]], segs_per_span: u32) -> Vec<[f64
     out
 }
 
-fn to_render(ml: &MultiLeader, document: &codec::CadDocument) -> Option<RenderEntity> {
+fn to_render(ml: &MultiLeader, document: &codec::Document) -> Option<RenderEntity> {
     let nan = [f64::NAN; 3];
     let p3 = |v: &codec::types::Vector3| -> [f64; 3] { [v.x, v.y, v.z] };
 
@@ -1206,6 +1206,15 @@ fn apply_geom_prop(ml: &mut MultiLeader, field: &str, value: &str) {
                 !ml.context.background_fill_enabled
             } else {
                 value == "true"
+            };
+            // Properties offers only this switch, no fill colour, so a mask
+            // switched on there uses the drawing background like AutoCAD.
+            // Without a colour of its own the fill would inherit the text
+            // colour and hide the text (#2131).
+            if ml.context.background_fill_enabled
+                && ml.context.background_fill_color.rgb().is_none()
+            {
+                ml.context.background_mask_fill_on = true;
             }
         }
         "background_mask_fill_on" => {
@@ -1491,9 +1500,8 @@ fn parse_attachment(s: &str) -> TextAttachmentType {
 fn apply_transform(ml: &mut MultiLeader, t: &EntityTransform) {
     crate::scene::view::transform::apply_standard_entity_transform(ml, t, |entity, p1, p2| {
         // Reflect every point on the leader (line points, connection points,
-        // break-point endpoints) AND every direction vector that drives the
-        // text orientation. Without the direction reflection text would keep
-        // its original rotation while the leader appears mirrored.
+        // break-point endpoints) and the leader directions; the content
+        // orientation follows AutoCAD (`mirror_content_orientation`).
         for root in &mut entity.context.leader_roots {
             for line in &mut root.lines {
                 for p in &mut line.points {
@@ -1536,26 +1544,41 @@ fn apply_transform(ml: &mut MultiLeader, t: &EntityTransform) {
                 );
             }
         }
-        crate::scene::view::transform::reflect_xy_point(
-            &mut entity.context.text_location.x,
-            &mut entity.context.text_location.y,
-            p1,
-            p2,
-        );
-        entity.context.content_base_point = entity.context.text_location;
-        reflect_xy_direction(
-            &mut entity.context.text_direction.x,
-            &mut entity.context.text_direction.y,
-            p1,
-            p2,
-        );
-        reflect_xy_direction(
-            &mut entity.context.base_direction.x,
-            &mut entity.context.base_direction.y,
-            p1,
-            p2,
-        );
+        for point in [
+            &mut entity.context.text_location,
+            &mut entity.context.content_base_point,
+            &mut entity.context.block_content_location,
+        ] {
+            crate::scene::view::transform::reflect_xy_point(&mut point.x, &mut point.y, p1, p2);
+        }
+        mirror_content_orientation(entity, p1, p2);
     });
+}
+
+/// MIRROR of the content, as AutoCAD does it. MTEXT stays readable whatever
+/// MIRRTEXT says: its direction and rotation are kept and the text moves to
+/// the other side of its location. Block content becomes a true mirror
+/// image: X scale negated, rotation `2·axis + 180° − rotation`.
+fn mirror_content_orientation(ml: &mut MultiLeader, p1: DVec3, p2: DVec3) {
+    use codec::entities::multileader::TextAttachmentPointType;
+    // AutoCAD changes only the drawn (context) content; the entity-level
+    // values are style overrides and keep their values.
+    let (attachment, alignment) = match ml.context.text_attachment_point {
+        TextAttachmentPointType::Left => (TextAttachmentPointType::Right, TextAlignmentType::Right),
+        TextAttachmentPointType::Right => (TextAttachmentPointType::Left, TextAlignmentType::Left),
+        TextAttachmentPointType::Center => {
+            (TextAttachmentPointType::Center, ml.context.text_alignment)
+        }
+    };
+    ml.context.text_attachment_point = attachment;
+    if ml.context.text_alignment != TextAlignmentType::Center {
+        ml.context.text_alignment = alignment;
+    }
+    ml.property_override_flags |= MultiLeaderPropertyOverrideFlags::TEXT_ALIGNMENT;
+    let axis = (p2.y - p1.y).atan2(p2.x - p1.x);
+    ml.context.block_content_scale.x = -ml.context.block_content_scale.x;
+    ml.context.block_rotation = (2.0 * axis + std::f64::consts::PI - ml.context.block_rotation)
+        .rem_euclid(std::f64::consts::TAU);
 }
 
 /// Reflect a direction (not position) vector across the mirror line p1→p2.
@@ -1574,7 +1597,7 @@ fn reflect_xy_direction(dx: &mut f64, dy: &mut f64, p1: DVec3, p2: DVec3) {
 // ── Trait impls ────────────────────────────────────────────────────────────
 
 impl RenderConvertible for MultiLeader {
-    fn to_render(&self, document: &codec::CadDocument) -> Option<RenderEntity> {
+    fn to_render(&self, document: &codec::Document) -> Option<RenderEntity> {
         to_render(self, document)
     }
 }
@@ -1709,7 +1732,7 @@ impl crate::entities::traits::Transformable for MultiLeader {
 }
 
 pub(crate) fn block_content_insert(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     ml: &MultiLeader,
 ) -> Option<codec::entities::Insert> {
     if ml.content_type != LeaderContentType::Block || !ml.context.has_block_contents {
@@ -1769,7 +1792,7 @@ pub(crate) fn block_content_insert(
 pub trait MultiLeaderTess {
     fn tessellate(
         &self,
-        document: &codec::CadDocument,
+        document: &codec::Document,
         handle: codec::Handle,
         selected: bool,
         entity_color: [f32; 4],
@@ -1787,7 +1810,7 @@ pub trait MultiLeaderTess {
 impl MultiLeaderTess for MultiLeader {
     fn tessellate(
         &self,
-        document: &codec::CadDocument,
+        document: &codec::Document,
         handle: codec::Handle,
         selected: bool,
         entity_color: [f32; 4],
@@ -2661,11 +2684,11 @@ impl MultiLeaderTess for MultiLeader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codec::CadDocument;
+    use codec::Document;
 
     #[test]
     fn test_mleader_arabic_text_tessellation() {
-        let doc = CadDocument::default();
+        let doc = Document::default();
         let mut ml = MultiLeader::default();
         ml.content_type = LeaderContentType::MText;
         ml.context.text_string = "عربي".to_string();
@@ -2703,6 +2726,44 @@ mod tests {
             !text_wire.fill_tris.is_empty(),
             "Arabic text must emit shaped vector fill triangles"
         );
+    }
+
+    #[test]
+    fn test_background_mask_switch_masks_with_background() {
+        // Switching "Background mask" on in Properties must mask with the
+        // drawing background, not fill with the inherited text colour and
+        // hide the text (#2131).
+        let doc = Document::default();
+        let mut ml = MultiLeader::default();
+        ml.content_type = LeaderContentType::MText;
+        ml.context.text_string = "123".to_string();
+        ml.context.text_height = 10.0;
+        ml.path_type = MultiLeaderPathType::StraightLineSegments;
+        apply_geom_prop(&mut ml, "background_fill_enabled", "toggle");
+        assert!(ml.context.background_fill_enabled);
+        assert!(ml.context.background_mask_fill_on);
+
+        let text_color = [1.0, 1.0, 1.0, 1.0];
+        let bg_color = [0.1, 0.2, 0.3, 1.0];
+        let wires = ml.tessellate(
+            &doc,
+            codec::Handle::default(),
+            false,
+            text_color,
+            1.0,
+            1.0,
+            None,
+            None,
+            None,
+            None,
+            None,
+            bg_color,
+        );
+        let mask = wires
+            .iter()
+            .find(|w| w.fill_tris.len() == 6 && w.points.is_empty() && w.text_verts.is_empty())
+            .expect("Should produce a background mask quad");
+        assert_eq!(mask.color, bg_color);
     }
 
     /// Vertical extent of everything a tessellated MLEADER draws.
@@ -2749,7 +2810,7 @@ mod tests {
         // AutoCAD greys out the overall scale of an annotative MLEADER and
         // draws it at its context height. A file with overall scale 50 at a
         // 1:50 annotation scale rendered its text 50× too large.
-        let doc = CadDocument::default();
+        let doc = Document::default();
         let make = |overall: f64| {
             let mut ml = MultiLeader::default();
             ml.content_type = LeaderContentType::MText;
@@ -2793,7 +2854,7 @@ mod tests {
         // line"): the underline must lie on the landing and run on to it, and
         // extending the leader to the text must not climb to the text corner.
         use codec::types::Vector3;
-        let doc = CadDocument::default();
+        let doc = Document::default();
         let mut ml = MultiLeader::default();
         ml.content_type = LeaderContentType::MText;
         ml.path_type = MultiLeaderPathType::StraightLineSegments;
@@ -2879,7 +2940,7 @@ mod tests {
 
     fn tess(ml: &MultiLeader) -> Vec<WireModel> {
         ml.tessellate(
-            &CadDocument::default(),
+            &Document::default(),
             codec::Handle::default(),
             false,
             [1.0, 1.0, 1.0, 1.0],
@@ -2993,6 +3054,60 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// MIRROR about x = 0, values as AutoCAD writes them: text stays readable
+    /// and moves to the other side, block content is mirrored in place.
+    #[test]
+    fn mirror_matches_autocad() {
+        use codec::entities::multileader::TextAttachmentPointType;
+        use codec::types::Vector3;
+        let mut ml = MultiLeader::default();
+        ml.context.text_location = Vector3::new(60.0, 81.18, 0.0);
+        ml.context.text_direction = Vector3::new(1.0, 0.0, 0.0);
+        ml.context.base_direction = Vector3::new(1.0, 0.0, 0.0);
+        ml.context.text_attachment_point = TextAttachmentPointType::Left;
+        ml.context.text_alignment = TextAlignmentType::Left;
+        ml.text_attachment_point = TextAttachmentPointType::Left;
+        ml.context.content_base_point = Vector3::new(65.0, 41.0, 0.0);
+        ml.context.block_content_location = Vector3::new(60.0, 40.0, 0.0);
+        let mirror = EntityTransform::Mirror {
+            p1: DVec3::ZERO,
+            p2: DVec3::Y,
+            working_normal: DVec3::Z,
+        };
+        apply_transform(&mut ml, &mirror);
+        let ctx = &ml.context;
+        assert_eq!((ctx.text_location.x, ctx.text_location.y), (-60.0, 81.18));
+        assert_eq!(
+            ctx.text_direction,
+            Vector3::new(1.0, 0.0, 0.0),
+            "text stays readable"
+        );
+        assert_eq!(ctx.base_direction, Vector3::new(1.0, 0.0, 0.0));
+        assert_eq!(ctx.text_attachment_point, TextAttachmentPointType::Right);
+        assert_eq!(ctx.text_alignment, TextAlignmentType::Right);
+        assert!(ml
+            .property_override_flags
+            .contains(MultiLeaderPropertyOverrideFlags::TEXT_ALIGNMENT));
+        assert_eq!(
+            (ctx.content_base_point.x, ctx.content_base_point.y),
+            (-65.0, 41.0)
+        );
+        assert_eq!(
+            (ctx.block_content_location.x, ctx.block_content_location.y),
+            (-60.0, 40.0)
+        );
+        assert_eq!(ctx.block_content_scale.x, -1.0);
+        let rotation = ctx.block_rotation;
+        assert!(
+            rotation.sin().abs() < 1e-9 && rotation.cos() > 0.0,
+            "rotation {rotation}"
+        );
+        // AutoCAD keeps the entity-level overrides.
+        assert_eq!(ml.block_scale.x, 1.0);
+        assert_eq!(ml.block_rotation, 0.0);
+        assert_eq!(ml.text_attachment_point, TextAttachmentPointType::Left);
     }
 }
 

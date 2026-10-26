@@ -170,7 +170,7 @@ pub(crate) fn picked_mark_source(
 }
 
 fn resolve_source(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     source: &CenterMarkSource,
 ) -> Option<(DVec3, f64, DVec3, DVec3)> {
     let entity = document.get_entity(source.handle)?;

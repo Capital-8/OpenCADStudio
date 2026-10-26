@@ -112,6 +112,7 @@ donation =
     .decline = Non merci
 
 modal =
+    .saving-as-target-cannot-keep = L’enregistrement au format "__ocs_arg_target__" ne peut pas conserver les éléments suivants, qui seront perdus :
     .about = À propos
     .keyboard-shortcuts = Raccourcis clavier
     .command-aliases = Alias de commandes
@@ -286,6 +287,9 @@ command-copy =
     .mode = COPY  Entrez le mode de copie [Single/Multiple] <Multiple> :
 
 common =
+    .dcdisplay-usage = Usage : DCDISPLAY [Afficher|Masquer]
+    .dcdisplay-prompt = DCDISPLAY  Entrez une option [Afficher/Masquer] <Afficher> :
+    .dcdisplay-updated = __ocs_fmt_0__ indicateur(s) de contrainte mis à jour.
     .compare-prompt = COMPARE  __ocs_fmt_0__ seulement ici (vert), __ocs_fmt_1__ seulement dans l’autre dessin (rouge)__ocs_fmt_2__ [Next/Previous/eXit] :
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Comparer avec un dessin
@@ -3493,6 +3497,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: style '__ocs_fmt_1__' non trouvé.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE : remplacement non valide "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE : aucune cote modifiable sélectionnée.
+    .dimoverride-updated = DIMOVERRIDE : __ocs_fmt_0__ cote(s) mise(s) à jour.
+    .dimoverride-var-prompt = DIMOVERRIDE  Entrez le nom de la variable de cotation à remplacer ou [Effacer les remplacements] :
+    .dimoverride-value-prompt = DIMOVERRIDE  Entrez la nouvelle valeur de __ocs_fmt_0__ :
+    .dimoverride-clear-overrides = Effacer les remplacements
+    .dimoverride-unknown-var = DIMOVERRIDE : variable de cotation inconnue "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE : valeur non valide pour cette variable.
+    .dimdisassociate-select = Sélectionnez les cotes à dissocier :
+    .dimdisassociate-done = DIMDISASSOCIATE : __ocs_fmt_0__ cote(s) dissociée(s).
+    .dimreassociate-done = DIMREASSOCIATE : __ocs_fmt_0__ cote(s) sur __ocs_fmt_1__ associée(s).
+    .dimreassociate-partial = DIMREASSOCIATE : __ocs_fmt_0__ cote(s) associée(s) seulement en partie (aucun objet sur certains points de définition).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Entrez le texte de cote (vide = valeur mesurée) :
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Sélectionnez un arc, un cercle ou un arc de polyligne :
     .dimjogged-specify-center-location-override = DIMJOGGED  Spécifiez le remplacement de la position du centre :
@@ -6672,6 +6688,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6770,6 +6800,17 @@ import-panel =
     .combine-text = Combiner le texte
     .land-xml = Land XML
     .import-file-header = Importer un fichier — le bouton exécute le dernier choix
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6812,6 +6853,43 @@ pdf-password =
         { $path }
         Impossible d'ouvrir ce fichier PDF.
         Il est chiffré et nécessite un mot de passe.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = nombre non valide '__ocs_fmt_0__'
@@ -6975,3 +7053,30 @@ script-files =
     .exit-save = EXIT  Enregistrer les modifications de __ocs_arg_name__ ? [Yes/No] <Yes>:
     .exit-no-path = EXIT : « __ocs_fmt_0__ » n'a pas encore de chemin de fichier ; utilisez d'abord SAVEAS.
     .sdi-dirty = SDI : enregistrez ou fermez « __ocs_fmt_0__ » avant d'ouvrir un autre dessin.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = État de visibilité
+    .visibility-value = État de visibilité: { $state }
+    .table-label = Propriétés du bloc
+    .table-row = Propriétés du bloc: { $row }
+    .alignment = Alignement: { $mode }
+    .flipped = Retourné
+    .not-flipped = Non retourné
+
+
+block-flip =
+    .base-state-label = Libellé de l’état initial
+    .flipped-state-label = Libellé de l’état retourné
+
+
+block-lookup =
+    .input-help = Entrées : nombres, formules ou intervalles comme { $closed } et { $open }. Les formules utilisent les noms des entrées. Les angles sont en radians.
+    .invalid-table = La table de correspondance est invalide.
+    .invalid-value = La ligne sélectionnée contient une valeur de paramètre invalide.
+    .incompatible-values = Les valeurs de la ligne ne respectent pas les ensembles de valeurs des paramètres.
+    .quoted-help = Délimitez les noms contenant des espaces ou de la ponctuation : { $name }.
+
+block-array =
+    .limit-error = L’évaluation du bloc générerait plus de 100000 objets de réseau. Réduisez la distance ou augmentez l’espacement.

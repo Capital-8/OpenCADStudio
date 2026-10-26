@@ -1,5 +1,5 @@
 use codec::types::aci_table::aci_to_rgb;
-use codec::CadDocument;
+use codec::Document;
 
 use crate::scene::convert::acad_to_render::{GlyphRun, TextStroke};
 use crate::scene::text::font_face::Face;
@@ -49,7 +49,7 @@ pub struct ResolvedTextStyle {
     pub is_vertical: bool,
 }
 
-pub fn resolve_text_style(style_name: &str, document: &CadDocument) -> ResolvedTextStyle {
+pub fn resolve_text_style(style_name: &str, document: &Document) -> ResolvedTextStyle {
     let style = document.text_styles.iter().find(|entry| {
         entry.name.eq_ignore_ascii_case(style_name)
             || (style_name.trim().is_empty() && entry.name.eq_ignore_ascii_case("Standard"))
@@ -634,14 +634,25 @@ pub fn adapt_mtext_paragraphs(
 
     let entity_height = entity_height.max(1e-6);
     let doc = parse_mtext(s, true);
-    // Paragraph indents and tab stops: the extended `\pxi…;` form measures
-    // them in text heights, the bare `\pi…;` form (older editors and
+    // Paragraph indents and tab stops: the extended `\px…;` form measures
+    // them in text heights, the bare `\p…;` form (older editors and
     // text-to-MTEXT converters, which centre each line with it) in drawing
-    // units. (#1918)
-    let bare_p = s
-        .match_indices("\\p")
-        .any(|(i, _)| matches!(s.as_bytes().get(i + 2), Some(b'i' | b'l' | b'r' | b't')));
-    let para_unit = if bare_p && !s.contains("\\px") {
+    // units (#1918). A block sets them when one of its comma-separated codes
+    // starts with i, l, r or t; alignment (`ql`, `qc`, …) and spacing codes
+    // don't.
+    let sets_indent = |props: &str| {
+        props.split(';').next().unwrap_or("").split(',').any(|code| {
+            code.starts_with(['i', 'l', 'r', 't'])
+        })
+    };
+    let (mut has_px_indent, mut has_bare_p_indent) = (false, false);
+    for (i, _) in s.match_indices("\\p") {
+        match s[i + 2..].strip_prefix('x') {
+            Some(extended) => has_px_indent |= sets_indent(extended),
+            None => has_bare_p_indent |= sets_indent(&s[i + 2..]),
+        }
+    }
+    let para_unit = if has_bare_p_indent || !has_px_indent {
         1.0
     } else {
         entity_height
@@ -2077,11 +2088,42 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
             .collect()
     };
     let total_depth = -line_y_offset.iter().copied().fold(0.0_f32, f32::min);
+    // The bottom of the text is the ink of its deepest line, not its baseline:
+    // AutoCAD 2025 seats a bottom-attached "-3,45" in romand.shx 0.1905·h above
+    // the point (the comma's depth), "Agp" 0.3333·h, and "ABC" on it. A
+    // descender on an earlier line does not count.
+    let last_line_descent = line_y_offset
+        .iter()
+        .enumerate()
+        .min_by(|a, b| a.1.total_cmp(b.1))
+        .and_then(|(index, _)| sub_lines.get(index))
+        .map(|line| {
+            line.atoms
+                .iter()
+                .filter_map(|atom| {
+                    let AtomKind::Word(text) = &atom.kind else {
+                        return None;
+                    };
+                    let font = resolve_font(&atom.state, &base_font_name);
+                    text_local_bounds(
+                        &font,
+                        text,
+                        atom.state.height_mul * entity_h,
+                        atom.state.width_mul * base_wf.abs(),
+                        atom.state.oblique_rad,
+                    )
+                    .map(|b| -b.ink_min[1])
+                })
+                .fold(0.0_f32, f32::max)
+        })
+        .unwrap_or(0.0);
 
     let v_offset = match opts.v_anchor {
         MTextVAnchor::Top => -first_line_ascent,
-        MTextVAnchor::Middle => (total_depth - h) * 0.5,
-        MTextVAnchor::Bottom => total_depth,
+        // Centred on the ink box, from the first line's top to the last
+        // line's bottom.
+        MTextVAnchor::Middle => (total_depth + last_line_descent - first_line_ascent) * 0.5,
+        MTextVAnchor::Bottom => total_depth + last_line_descent,
         MTextVAnchor::MiddleOfTopLine => -h * 0.5,
         MTextVAnchor::MiddleOfBottomLine => total_depth - h * 0.5,
         MTextVAnchor::BottomOfTopLine => 0.0,
@@ -2978,6 +3020,50 @@ mod tests {
             .sum()
     }
 
+    /// AutoCAD 2025 places a bottom-attached MTEXT by the ink of its last
+    /// line (in romand.shx "-3,45" sits 0.1905·h up, "Agp" 0.3333·h, "ABC"
+    /// on the point) and centres a middle-attached one on its ink box.
+    #[test]
+    fn bottom_and_middle_attachments_follow_the_ink() {
+        let layout = |value: &str, v_anchor| {
+            layout_mtext(&MTextRenderOpts {
+                columns: Default::default(),
+                value,
+                insertion: [0.0, 0.0, 0.0],
+                height: 10.0,
+                rect_w: 0.0,
+                rotation: 0.0,
+                style: &style("txt"),
+                attach_h_anchor: 0.5,
+                v_anchor,
+                line_spacing_factor: 1.0,
+                exact_line_spacing: false,
+                rectangle_height: 0.0,
+                vertical_text: false,
+                want_glyph_boxes: false,
+            })
+        };
+
+        // Baseline above the point, as AutoCAD measures with txt.shx at h 10.
+        let close = |value: &str, v_anchor, expected: f32| {
+            let v_offset = layout(value, v_anchor).v_offset;
+            assert!(
+                (v_offset - expected).abs() < 1e-3,
+                "{value}: {v_offset} != {expected}"
+            );
+        };
+        close("ABC", MTextVAnchor::Bottom, 0.0);
+        close("Agp", MTextVAnchor::Bottom, 10.0 / 3.0);
+        close("ABC", MTextVAnchor::Middle, -5.0);
+        close("Agp", MTextVAnchor::Middle, -10.0 / 3.0);
+
+        // Only the last line's descender counts.
+        let two = layout("Agp\\PABC", MTextVAnchor::Bottom);
+        assert!((two.v_offset - two.line_height).abs() < 1e-3);
+        let two = layout("ABC\\PAgp", MTextVAnchor::Bottom);
+        assert!((two.v_offset - two.line_height - 10.0 / 3.0).abs() < 1e-3);
+    }
+
     #[test]
     fn unresolved_inline_font_falls_back_to_style_font() {
         let base = "txt";
@@ -3145,8 +3231,8 @@ mod adapter_tests {
         // applies (~15°) — not upright.
         let (_, it) = first_run(&adapt_mtext_paragraphs("\\fArial|i1;x", 2.5, true));
         assert!(
-            (it.oblique_rad - 15f32.to_radians()).abs() < 1e-4,
-            "italic flag should slant, got {}",
+            it.italic || (it.oblique_rad - 15f32.to_radians()).abs() < 1e-4,
+            "italic flag should slant or use italic face, got {}",
             it.oblique_rad
         );
         // A non-italic font stays upright.
@@ -3411,6 +3497,37 @@ mod v_anchor_tests {
         assert!((wrapped.origin[0] - 36.0).abs() < 1e-3, "{:?}", wrapped.origin);
     }
 
+    /// Paragraph indents with bare `\p` and paragraph alignment `\pxqc` or `\pqc`
+    /// must measure in drawing units without being scaled by text height. (#1918)
+    #[test]
+    fn bare_p_with_alignment_measures_in_drawing_units() {
+        use crate::entities::text_support::adapt_mtext_paragraphs;
+        // Case 1: AutoCAD standard bare \pi with drawing units (e.g. beam label SB5: height 250, indent -250, left 500)
+        let doc1 = adapt_mtext_paragraphs("\\A1;\\pi-250,l500,t500,1000;{\\W1;SB5}", 250.0, true);
+        assert_eq!(doc1.len(), 1);
+        assert!((doc1[0].indent_first - 250.0).abs() < 1e-3, "first indent should be 250, got {}", doc1[0].indent_first);
+        assert!((doc1[0].indent_left - 500.0).abs() < 1e-3, "left margin should be 500, got {}", doc1[0].indent_left);
+        assert_eq!(doc1[0].tab_stops.len(), 2);
+        assert!((doc1[0].tab_stops[0].position - 500.0).abs() < 1e-3);
+        assert!((doc1[0].tab_stops[1].position - 1000.0).abs() < 1e-3);
+
+        // Case 2: \pxqc paragraph alignment combined with bare \pi indents
+        let doc2 = adapt_mtext_paragraphs("\\pxqc;\\pi-250,l500;SB5", 250.0, true);
+        assert_eq!(doc2.len(), 1);
+        assert!((doc2[0].indent_first - 250.0).abs() < 1e-3, "first indent should be 250, got {}", doc2[0].indent_first);
+        assert!((doc2[0].indent_left - 500.0).abs() < 1e-3, "left margin should be 500, got {}", doc2[0].indent_left);
+
+        // Case 3: Bare \p with alignment first (\pqc,i-250,l500;)
+        let doc3 = adapt_mtext_paragraphs("\\pqc,i-250,l500;SB5", 250.0, true);
+        assert_eq!(doc3.len(), 1);
+        assert!((doc3[0].indent_first - 250.0).abs() < 1e-3, "first indent should be 250, got {}", doc3[0].indent_first);
+        assert!((doc3[0].indent_left - 500.0).abs() < 1e-3, "left margin should be 500, got {}", doc3[0].indent_left);
+
+        // Case 4: left alignment beside the extended form keeps text heights.
+        let doc4 = adapt_mtext_paragraphs("\\pql;\\pxi-1,l2;SB5", 250.0, true);
+        assert!((doc4[0].indent_left - 500.0).abs() < 1e-3, "got {}", doc4[0].indent_left);
+    }
+
     #[test]
     fn test_mtext_arabic_bidi_layout() {
         use crate::entities::text_support::{
@@ -3559,7 +3676,7 @@ mod font_style_tests {
         };
         assert!(width(&bold) > width(family), "the bold face was not used");
 
-        let mut doc = codec::CadDocument::new();
+        let mut doc = codec::Document::new();
         let mut style = codec::tables::TextStyle::with_truetype("B", family);
         style.true_type_font_flags |= TTF_FLAG_BOLD;
         style.handle = doc.allocate_handle();

@@ -734,7 +734,6 @@ class _Modify:
             lambda c: c.text(radius),
             lambda c: c.entity(first, self._at(first, at1)),
             lambda c: c.entity(second, self._at(second, at2)),
-            lambda c: c.enter(),
         ])
 
     def move(self, entities, base, target):

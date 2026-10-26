@@ -1897,7 +1897,7 @@ impl CadCommand for FilletCommand {
         self.undo_last()
     }
 
-    fn on_document_undone(&mut self, document: &codec::CadDocument) {
+    fn on_document_undone(&mut self, document: &codec::Document) {
         self.all_entities = document
             .entities()
             .map(crate::entities::curve::entity_with_lwpolyline_world_xy)
@@ -2627,7 +2627,7 @@ impl CadCommand for ChamferCommand {
         self.undo_last()
     }
 
-    fn on_document_undone(&mut self, document: &codec::CadDocument) {
+    fn on_document_undone(&mut self, document: &codec::Document) {
         self.all_entities = document
             .entities()
             .map(crate::entities::curve::entity_with_lwpolyline_world_xy)
@@ -2945,7 +2945,7 @@ mod tests {
         ));
         assert_eq!(keywords(&command), ["P", "R", "T"]);
         // The host hands the restored document back; the cache follows it.
-        let mut doc = codec::CadDocument::new();
+        let mut doc = codec::Document::new();
         let _ = doc.add_entity(line(0.0, 0.0, 20.0, 0.0, 7));
         command.on_document_undone(&doc);
         assert_eq!(command.all_entities.len(), 1);

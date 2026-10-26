@@ -3,7 +3,7 @@
 //! The host owns a memory-mapped file that contains a small, read-only,
 //! rkyv-serialized view of the active document. The plugin maps the same file
 //! read-only and reads entity/layer data directly from the mapping without
-//! copying the full `CadDocument` into its own address space.
+//! copying the full `Document` into its own address space.
 //!
 //! This module is generic over the payload type so that the V3 simplified view
 //! and the V4 bincode-per-entity view can share the same double-buffered
@@ -29,7 +29,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 use memmap2::{Mmap, MmapMut, MmapOptions};
 use rkyv::{check_archived_root, to_bytes, Archive, Deserialize, Serialize};
 
@@ -413,8 +413,8 @@ pub struct DocumentViewData {
     pub entities: Vec<EntityView>,
 }
 
-impl From<&CadDocument> for DocumentViewData {
-    fn from(doc: &CadDocument) -> Self {
+impl From<&Document> for DocumentViewData {
+    fn from(doc: &Document) -> Self {
         Self {
             layers: doc.layers.iter().map(LayerView::from).collect(),
             app_ids: doc.app_ids.iter().map(AppIdView::from).collect(),
@@ -550,10 +550,10 @@ pub struct DocumentViewDataV4 {
     pub entities: Vec<EntityViewV4>,
 }
 
-impl From<&CadDocument> for DocumentViewDataV4 {
-    fn from(doc: &CadDocument) -> Self {
+impl From<&Document> for DocumentViewDataV4 {
+    fn from(doc: &Document) -> Self {
         let mut entities: Vec<_> = doc.entities().map(EntityViewV4::from).collect();
-        // ATTRIB records live inside their owning INSERT in CadDocument rather
+        // ATTRIB records live inside their owning INSERT in Document rather
         // than in the flat entity index. Flatten them into the plugin snapshot
         // as addressable entities while keeping the INSERT's canonical nested
         // copy intact for rendering and file serialization.
@@ -607,7 +607,7 @@ mod tests {
     use crate::host::{DocumentReader, ReaderEntityKind};
     use codec::entities::Point;
     use codec::tables::Layer;
-    use codec::{CadDocument, EntityType};
+    use codec::{Document, EntityType};
 
     fn unique_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -621,8 +621,8 @@ mod tests {
         ))
     }
 
-    fn sample_doc() -> CadDocument {
-        let mut doc = CadDocument::new();
+    fn sample_doc() -> Document {
+        let mut doc = Document::new();
         doc.layers.add(Layer::new("SURVEY")).unwrap();
         let mut point = Point::from_coords(10.0, 20.0, 5.0);
         point.common.layer = "SURVEY".to_string();

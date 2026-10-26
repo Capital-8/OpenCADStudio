@@ -472,7 +472,7 @@ fn point_cloud_clip_lines(data: &PointCloudData) -> Vec<[f64; 3]> {
 /// The cloud's extents box, placed in the drawing. Its points are drawn from
 /// the scan file; the box only picks the cloud, unless the file cannot be
 /// found: then the box shows, with the saved path written across it.
-fn point_cloud_ex_lines(data: &PointCloudExData, document: &codec::CadDocument) -> Vec<[f64; 3]> {
+fn point_cloud_ex_lines(data: &PointCloudExData, document: &codec::Document) -> Vec<[f64; 3]> {
     let mut points = point_cloud_ex_box(data);
     if crate::scene::model::point_cloud::resolve_source(document, data).is_none() {
         let saved = crate::scene::model::point_cloud::definition(document, data)
@@ -595,7 +595,7 @@ pub(crate) fn point_cloud_frame_lines(entity: &ExtendedEntity) -> Option<Vec<[f6
     }
 }
 
-fn camera_lines(document: &codec::CadDocument, view_handle: Handle) -> Vec<[f64; 3]> {
+fn camera_lines(document: &codec::Document, view_handle: Handle) -> Vec<[f64; 3]> {
     // CAMERADISPLAY 0 hides every camera glyph.
     if !document.header.camera_display {
         return Vec::new();
@@ -637,7 +637,7 @@ fn camera_lines(document: &codec::CadDocument, view_handle: Handle) -> Vec<[f64;
     points
 }
 
-fn to_render(entity: &ExtendedEntity, document: &codec::CadDocument) -> Option<RenderEntity> {
+fn to_render(entity: &ExtendedEntity, document: &codec::Document) -> Option<RenderEntity> {
     let (points, snaps, keys): (Vec<[f64; 3]>, Vec<(glam::DVec3, SnapHint)>, Vec<[f64; 3]>) =
         match &entity.data {
             ExtendedEntityData::Camera { view_handle } => {
@@ -2451,7 +2451,7 @@ fn apply_transform(entity: &mut ExtendedEntity, requested: &EntityTransform) {
 }
 
 impl RenderConvertible for ExtendedEntity {
-    fn to_render(&self, document: &codec::CadDocument) -> Option<RenderEntity> {
+    fn to_render(&self, document: &codec::Document) -> Option<RenderEntity> {
         to_render(self, document)
     }
 }

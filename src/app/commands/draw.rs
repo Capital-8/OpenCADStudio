@@ -1049,6 +1049,45 @@ impl OpenCADStudio {
                 }
             }
 
+            "DCDISPLAY" => {
+                use crate::command::ValuePromptCommand;
+                use crate::modules::draw::select::SelectObjectsCommand;
+                if self.tabs[i].scene.selected_handles_in_order().is_empty() {
+                    let sel = SelectObjectsCommand::new(cmd);
+                    self.command_line.push_info(&sel.prompt());
+                    self.tabs[i].active_cmd = Some(Box::new(sel));
+                } else {
+                    let c = ValuePromptCommand::new(
+                        "DCDISPLAY",
+                        "DCDISPLAY  Enter an option [Show/Hide] <Show>:",
+                    );
+                    self.command_line.push_info(&c.prompt());
+                    self.tabs[i].active_cmd = Some(Box::new(c));
+                }
+            }
+
+            cmd if cmd.starts_with("DCDISPLAY ") => {
+                let visible = match cmd["DCDISPLAY ".len()..].trim().to_ascii_uppercase().as_str() {
+                    "" | "S" | "SHOW" => true,
+                    "H" | "HIDE" => false,
+                    _ => {
+                        self.command_line
+                            .push_error(crate::t!("Usage: DCDISPLAY [Show|Hide]").as_ref());
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                };
+                let handles = self.tabs[i].scene.selected_handles_in_order();
+                let scope = self.tabs[i].current_parametric_scope();
+                let count = self.tabs[i].scene.set_parametric_constraint_visibility(
+                    scope,
+                    Some(&handles),
+                    true,
+                    visible,
+                );
+                self.command_line
+                    .push_output(crate::tf!("{} constraint indicator(s) updated.", count).as_ref());
+            }
+
             "GCRESET" => {
                 let scope = self.tabs[i].current_parametric_scope();
                 let count = self.tabs[i]
@@ -1086,7 +1125,7 @@ impl OpenCADStudio {
                     visible,
                 );
                 self.command_line
-                    .push_output(format!("{} constraint indicator(s) updated.", count).as_str());
+                    .push_output(crate::tf!("{} constraint indicator(s) updated.", count).as_ref());
             }
 
             "DELCONSTRAINT" => {

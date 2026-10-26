@@ -32,7 +32,7 @@ fn property_choice_combos(
         .iter()
         .flat_map(|section| section.props.iter())
         .filter_map(|prop| match &prop.value {
-            PropValue::Choice { options, .. } => Some((
+            PropValue::Choice { options, .. } | PropValue::ChoiceWithTooltip { options, .. } => Some((
                 prop.field.to_string(),
                 iced::widget::combo_box::State::new(
                     options
@@ -443,9 +443,14 @@ impl OpenCADStudio {
         {
             use crate::entities::common::ro_prop;
             let xd = &source_entity.common().extended_data;
-            if !xd.is_empty() {
+            if !xd.is_empty() && !matches!(source_entity, codec::EntityType::Ole2Frame(_)) {
                 let mut xd_props = Vec::new();
-                for rec in xd.records() {
+                // A hyperlink shows on its own row.
+                for rec in xd
+                    .records()
+                    .iter()
+                    .filter(|rec| rec.application_name != crate::scene::hyperlink::APP)
+                {
                     let value_text = rec
                         .values
                         .iter()
@@ -458,10 +463,12 @@ impl OpenCADStudio {
                         format!("{}: {value_text}", rec.application_name),
                     ));
                 }
-                sections.push(crate::scene::model::object::PropSection {
-                    title: t!("Extended Data").into_owned(),
-                    props: xd_props,
-                });
+                if !xd_props.is_empty() {
+                    sections.push(crate::scene::model::object::PropSection {
+                        title: t!("Extended Data").into_owned(),
+                        props: xd_props,
+                    });
+                }
             }
         }
 
@@ -955,15 +962,12 @@ impl OpenCADStudio {
                     for property in &mut custom_properties {
                         property.value = match &property.value {
                             crate::scene::model::object::PropValue::BlockNumber { value, description, .. } => crate::scene::model::object::PropValue::ReadOnlyWithTooltip { value: value.clone(), tooltip: description.clone() },
-                            crate::scene::model::object::PropValue::BlockChoice { selected, options, description, .. } => crate::scene::model::object::PropValue::ReadOnlyWithTooltip { value: options.get(*selected).cloned().unwrap_or_default(), tooltip: description.clone() },
+                            crate::scene::model::object::PropValue::BlockChoice { selected, options, description, .. } => crate::scene::model::object::PropValue::ReadOnlyWithTooltip { value: options.get(*selected).cloned().unwrap_or_else(|| t!("Custom").into_owned()), tooltip: description.clone() },
                             value => value.clone(),
                         };
                     }
                 }
                 custom_properties.extend(Self::visibility_property(doc, handle));
-                if let Some(row) = crate::scene::block_lookup::reference_property(doc, handle) {
-                    custom_properties.push(row);
-                }
                 if !custom_properties.is_empty() {
                     sections.push(crate::scene::model::object::PropSection {
                         title: t!("Custom").into_owned(),
@@ -1719,6 +1723,9 @@ impl OpenCADStudio {
         if compact_solid {
             retain_compact_solid_sections(&mut sections);
         }
+        if let codec::EntityType::Ole2Frame(ole) = entity {
+            self.fill_ole_rows(i, handle, ole, &mut sections);
+        }
         let title = match entity {
             codec::EntityType::Insert(ins) => {
                 let is_xref = self.tabs[i]
@@ -1763,6 +1770,7 @@ impl OpenCADStudio {
                 codec::entities::UnderlayType::Dgn => t!("DGN Underlay"),
             }
             .into_owned(),
+            codec::EntityType::Ole2Frame(_) => "OLE".to_string(),
             _ => entity_type_label(entity),
         };
         // A dynamic dimension shows only its constraint and text
@@ -2157,7 +2165,7 @@ impl OpenCADStudio {
                                                     .document
                                                     .current_entity_transparency(),
                                             ),
-                                        options: vec!["ByLayer".to_string(), "ByBlock".to_string()],
+                                        options: crate::scene::creation_style::transparency_options(),
                                     },
                                 },
                                 read_only(
@@ -2537,9 +2545,14 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
                         props: self.tabs[i].active_block_edit_session()
                             .and_then(|session| crate::scene::block_authoring::metadata::read(&self.tabs[i].scene.document, session.br_handle, item.handle).ok())
                             .map(|metadata| {
-                                let mut props: Vec<Property> = metadata.text.into_iter().map(|text| Property {
-                                    label: crate::t!(text.label).into_owned(), field: text.field.key(),
-                                    value: PropValue::PlainText(text.value.to_owned()),
+                                let mut props: Vec<Property> = metadata.text.into_iter().map(|text| {
+                                    use crate::scene::block_authoring::metadata::Field;
+                                    let label = match text.field {
+                                        Field::BaseStateLabel => crate::tr!("block-flip", "base-state-label"),
+                                        Field::FlippedStateLabel => crate::tr!("block-flip", "flipped-state-label"),
+                                        _ => crate::t!(text.label).into_owned(),
+                                    };
+                                    Property { label, field: text.field.key(), value: PropValue::PlainText(text.value.to_owned()) }
                                 }).collect();
                                 if let Some(visible) = metadata.visible {
                                     props.push(Property { label: crate::t!("Show in Properties").into_owned(), field: "authoring_show_properties", value: PropValue::BoolToggle { field: "authoring_show_properties", value: visible } });
@@ -3756,6 +3769,23 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
         if tracks_dimension_chain {
             self.tabs[i].scene.last_created_dimension = new_handle;
         }
+        // An OLE object placed now is at 100 % of the size it is given and
+        // takes OLEQUALITY (automatic: high graphics for a picture).
+        if let Some(handle) = new_handle {
+            if let Some(codec::EntityType::Ole2Frame(ole)) =
+                self.tabs[i].scene.document.get_entity_mut(handle)
+            {
+                ole.lock_aspect = super::commands::ole_quality().min(2) as u8;
+                let (_, w, h) = crate::entities::ole2frame::frame_box(ole);
+                self.tabs[i].ole_frames.insert(
+                    handle.value(),
+                    crate::entities::ole2frame::FrameState {
+                        base: Some((w, h)),
+                        lock_aspect: true,
+                    },
+                );
+            }
+        }
         self.sync_registered_layers(i);
         new_handle
     }
@@ -3783,7 +3813,7 @@ fn make_sections_read_only(
             | PropValue::HatchPatternChoice(value) => value.clone(),
             PropValue::BlockNumber { value, .. } => value.clone(),
             PropValue::BlockChoice { selected, options, .. } => options.get(*selected).cloned().unwrap_or_default(),
-            PropValue::Choice { selected, .. } => selected.clone(),
+            PropValue::Choice { selected, .. } | PropValue::ChoiceWithTooltip { selected, .. } => selected.clone(),
             PropValue::EditChoice { value, .. } => value.clone(),
             PropValue::ColorChoice(color) => match color {
                 codec::types::Color::None => "None".to_string(),
@@ -3819,7 +3849,11 @@ fn make_sections_read_only(
             }
         };
         property.field = "locked_read_only";
-        property.value = PropValue::ReadOnly(text);
+        property.value = if let PropValue::ChoiceWithTooltip { tooltip, .. } = &property.value {
+            PropValue::ReadOnlyWithTooltip { value: text, tooltip: tooltip.clone() }
+        } else {
+            PropValue::ReadOnly(text)
+        };
     }
 }
 
@@ -4016,7 +4050,7 @@ pub(super) fn aggregate_sections(
 }
 
 fn aggregate_solid_history_sections(
-    document: &codec::CadDocument,
+    document: &codec::Document,
     handles: &[Handle],
 ) -> Vec<crate::scene::model::object::PropSection> {
     let mut sections = handles
@@ -4122,6 +4156,19 @@ fn merge_prop_value(
     }
 
     match (left, right) {
+        (
+            PropValue::ChoiceWithTooltip { options, tooltip, .. },
+            PropValue::ChoiceWithTooltip { options: other_options, tooltip: other_tooltip, .. },
+        ) => {
+            let mut merged_options = options.clone();
+            for option in other_options {
+                if !merged_options.contains(option) { merged_options.push(option.clone()); }
+            }
+            PropValue::ChoiceWithTooltip {
+                selected: VARIES_LABEL.into(), options: merged_options,
+                tooltip: if tooltip == other_tooltip { tooltip.clone() } else { String::new() },
+            }
+        }
         (PropValue::LayerChoice(_), PropValue::LayerChoice(_)) => {
             PropValue::LayerChoice(VARIES_LABEL.into())
         }
@@ -4502,7 +4549,7 @@ fn update_row_text(
             | PropValue::PlainText(current)
             | PropValue::Hyperlink(current) => *current = value,
             PropValue::ReadOnlyWithTooltip { value: current, .. } => *current = value,
-            PropValue::Choice { selected, .. } => *selected = value,
+            PropValue::Choice { selected, .. } | PropValue::ChoiceWithTooltip { selected, .. } => *selected = value,
             _ => {}
         }
         return;
@@ -4612,7 +4659,7 @@ pub(crate) fn dimtad_from_label(label: &str) -> i16 {
 /// Resolve a dimension style by name (case-insensitive), falling back to
 /// "Standard" when the name is blank.
 fn find_dim_style<'a>(
-    doc: &'a codec::CadDocument,
+    doc: &'a codec::Document,
     name: &str,
 ) -> Option<&'a codec::tables::DimStyle> {
     doc.dim_styles.iter().find(|s| {
@@ -4679,7 +4726,7 @@ pub(crate) fn arrowhead_label(name: &str) -> String {
 
 /// The leader's arrowhead label, resolved from the dim style's DIMLDRBLK block.
 fn leader_arrow_label(
-    doc: &codec::CadDocument,
+    doc: &codec::Document,
     ds: &codec::tables::DimStyle,
     arrow_enabled: bool,
 ) -> String {

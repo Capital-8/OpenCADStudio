@@ -1,6 +1,6 @@
 use codec::objects::ObjectType;
 use codec::tables::{DimStyle, TextStyle};
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 
 #[derive(Debug, Clone)]
 pub struct TextCreationDefaults {
@@ -23,7 +23,7 @@ pub struct DimensionCreationDefaults {
     pub annotative: bool,
 }
 
-fn named_text_style(doc: &CadDocument, name: &str) -> Option<TextStyle> {
+fn named_text_style(doc: &Document, name: &str) -> Option<TextStyle> {
     doc.text_styles
         .iter()
         .find(|style| style.name.eq_ignore_ascii_case(name))
@@ -39,7 +39,7 @@ fn named_text_style(doc: &CadDocument, name: &str) -> Option<TextStyle> {
 /// metric template) when the drawing has none of that name, and hands back its
 /// handle: the header records the current dimension style by handle as well as
 /// by name, and a DWG carries only the handle.
-pub fn ensure_iso_dim_style(doc: &mut CadDocument) -> Handle {
+pub fn ensure_iso_dim_style(doc: &mut Document) -> Handle {
     if let Some(style) = doc
         .dim_styles
         .iter()
@@ -89,7 +89,7 @@ pub fn ensure_iso_dim_style(doc: &mut CadDocument) -> Handle {
     handle
 }
 
-fn named_dim_style(doc: &CadDocument, name: &str) -> Option<DimStyle> {
+fn named_dim_style(doc: &Document, name: &str) -> Option<DimStyle> {
     doc.dim_styles
         .iter()
         .find(|style| style.name.eq_ignore_ascii_case(name))
@@ -101,7 +101,7 @@ fn named_dim_style(doc: &CadDocument, name: &str) -> Option<DimStyle> {
         .cloned()
 }
 
-pub fn current_text_defaults(doc: &CadDocument) -> TextCreationDefaults {
+pub fn current_text_defaults(doc: &Document) -> TextCreationDefaults {
     let requested = doc.header.current_text_style_name.trim();
     let style = named_text_style(doc, requested);
     let variable_height = if doc.header.text_height > 1.0e-9 {
@@ -129,7 +129,7 @@ pub fn current_text_defaults(doc: &CadDocument) -> TextCreationDefaults {
     }
 }
 
-pub fn current_dimension_defaults(doc: &CadDocument) -> DimensionCreationDefaults {
+pub fn current_dimension_defaults(doc: &Document) -> DimensionCreationDefaults {
     let requested = doc.header.current_dimstyle_name.trim();
     let style = named_dim_style(doc, requested);
     DimensionCreationDefaults {
@@ -167,7 +167,7 @@ fn entity_uses_default_style(name: &str) -> bool {
     name.trim().is_empty() || name.eq_ignore_ascii_case("Standard")
 }
 
-fn apply_text_defaults(doc: &CadDocument, entity: &mut EntityType) {
+fn apply_text_defaults(doc: &Document, entity: &mut EntityType) {
     let active = current_text_defaults(doc);
     let style_name = match entity {
         EntityType::Text(text) => &mut text.style,
@@ -232,7 +232,7 @@ fn apply_text_defaults(doc: &CadDocument, entity: &mut EntityType) {
     }
 }
 
-fn apply_dimension_defaults(doc: &CadDocument, entity: &mut EntityType) {
+fn apply_dimension_defaults(doc: &Document, entity: &mut EntityType) {
     let active = current_dimension_defaults(doc);
     match entity {
         EntityType::Dimension(dimension) => {
@@ -266,7 +266,7 @@ fn apply_dimension_defaults(doc: &CadDocument, entity: &mut EntityType) {
     }
 }
 
-fn apply_object_defaults(doc: &CadDocument, entity: &mut EntityType) {
+fn apply_object_defaults(doc: &Document, entity: &mut EntityType) {
     match entity {
         EntityType::MultiLeader(leader) if leader.style_handle.is_none() => {
             let name = doc.header.current_mleader_style_name.trim();
@@ -319,11 +319,18 @@ fn apply_object_defaults(doc: &CadDocument, entity: &mut EntityType) {
     }
 }
 
-pub fn apply_current_creation_styles(doc: &CadDocument, entity: &mut EntityType) {
+pub fn apply_current_creation_styles(doc: &Document, entity: &mut EntityType) {
     entity.common_mut().transparency = doc.current_entity_transparency();
     apply_text_defaults(doc, entity);
     apply_dimension_defaults(doc, entity);
     apply_object_defaults(doc, entity);
+}
+
+pub(crate) fn transparency_options() -> Vec<String> {
+    ["ByLayer".to_string(), "ByBlock".to_string()]
+        .into_iter()
+        .chain((0..=90).step_by(10).map(|value| value.to_string()))
+        .collect()
 }
 
 pub(crate) fn parse_current_transparency(value: &str) -> Option<codec::types::Transparency> {

@@ -122,7 +122,7 @@ fn reflect_vec3(vx: &mut f64, vy: &mut f64, ax: f64, ay: f64, len2: f64) {
 // ── RasterImage ───────────────────────────────────────────────────────────────
 
 impl RenderConvertible for RasterImage {
-    fn to_render(&self, document: &codec::CadDocument) -> Option<RenderEntity> {
+    fn to_render(&self, document: &codec::Document) -> Option<RenderEntity> {
         let corners = image_corners(
             &self.insertion_point,
             &self.u_vector,
@@ -549,7 +549,7 @@ fn wipeout_world_to_clip(wipeout: &Wipeout, world: [f64; 3]) -> Option<codec::ty
 }
 
 impl RenderConvertible for Wipeout {
-    fn to_render(&self, _document: &codec::CadDocument) -> Option<RenderEntity> {
+    fn to_render(&self, _document: &codec::Document) -> Option<RenderEntity> {
         let boundary = wipeout_boundary(self);
         let mut pts = boundary.clone();
         if let Some(&first) = pts.first() {

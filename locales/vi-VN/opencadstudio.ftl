@@ -112,6 +112,7 @@ donation =
     .decline = Không, cảm ơn
 
 modal =
+    .saving-as-target-cannot-keep = Lưu dưới dạng "__ocs_arg_target__" không thể giữ lại những nội dung sau, nên chúng sẽ bị mất:
     .about = Giới thiệu
     .keyboard-shortcuts = Phím tắt
     .command-aliases = Lệnh tắt
@@ -285,6 +286,9 @@ command-copy =
     .mode = COPY  Nhập tùy chọn chế độ sao chép [Đơn/Nhiều] <Nhiều>:
 
 common =
+    .dcdisplay-usage = Cách dùng: DCDISPLAY [Hiện|Ẩn]
+    .dcdisplay-prompt = DCDISPLAY  Nhập tùy chọn [Hiện/Ẩn] <Hiện>:
+    .dcdisplay-updated = Đã cập nhật __ocs_fmt_0__ chỉ báo ràng buộc.
     .compare-prompt = COMPARE  __ocs_fmt_0__ chỉ có ở đây (xanh lá), __ocs_fmt_1__ chỉ có trong bản vẽ khác (đỏ)__ocs_fmt_2__ [Tiếp/Trước/Thoát]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = So sánh với bản vẽ
@@ -3500,6 +3504,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: không tìm thấy kiểu '__ocs_fmt_1__'.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: ghi đè không hợp lệ "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: không có kích thước có thể sửa nào được chọn.
+    .dimoverride-updated = DIMOVERRIDE: đã cập nhật __ocs_fmt_0__ kích thước.
+    .dimoverride-var-prompt = DIMOVERRIDE  Nhập tên biến kích thước cần ghi đè hoặc [Xóa ghi đè]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Nhập giá trị mới cho __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Xóa ghi đè
+    .dimoverride-unknown-var = DIMOVERRIDE: biến kích thước không xác định "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: giá trị không hợp lệ cho biến này.
+    .dimdisassociate-select = Chọn kích thước cần bỏ liên kết:
+    .dimdisassociate-done = DIMDISASSOCIATE: đã bỏ liên kết __ocs_fmt_0__ kích thước.
+    .dimreassociate-done = DIMREASSOCIATE: đã liên kết __ocs_fmt_0__ trên __ocs_fmt_1__ kích thước.
+    .dimreassociate-partial = DIMREASSOCIATE: chỉ liên kết được một phần __ocs_fmt_0__ kích thước (không có đối tượng tại một số điểm định nghĩa).
     .prefix-textedit-enter-text-edit-mode-single-mu = __ocs_arg_prefix__TEXTEDIT Vào chế độ chỉnh sửa văn bản [Đơn/Nhiều] <__ocs_arg_mode__>:
     .prefix-texteditmode-enter-new-value-for-texted = __ocs_arg_prefix__TEXTEDITMODE Nhập giá trị mới cho TEXTEDITMODE <__ocs_arg_v__>:
     .arctext-text-to-place-along-the-arc = ARCTEXT  văn bản đặt dọc theo cung:
@@ -6679,6 +6695,20 @@ txt2mtxt =
     .result-count = Kết quả · { $count } MText
     .apply = Áp dụng
     .help = Đặt cách TXT2MTXT gộp các đối tượng văn bản thành MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Được hỗ trợ
     .by-extension = Theo phần mở rộng
@@ -6777,6 +6807,17 @@ import-panel =
     .combine-text = Kết hợp văn bản
     .land-xml = Land XML
     .import-file-header = Nhập tệp — nút chính chạy định dạng được chọn gần nhất
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = Cài đặt nhận dạng văn bản PDF
     .preview = Xem trước
@@ -6819,6 +6860,43 @@ pdf-password =
         { $path }
         Không thể mở tệp PDF này.
         Tệp được mã hóa và yêu cầu mật khẩu.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 dash-command =
     .layer-option = -LAYER  Nhập một tùy chọn [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:
@@ -6982,3 +7060,30 @@ quickcalc =
     .function-expr = Hàm: __ocs_fmt_0__
     .double-click-insert = Nhấp đúp để chèn
     .variables-hint = Nhấp đúp để chèn. Nhập $name = giá trị cũng thêm một hằng số.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Trạng thái hiển thị
+    .visibility-value = Trạng thái hiển thị: { $state }
+    .table-label = Thuộc tính khối
+    .table-row = Thuộc tính khối: { $row }
+    .alignment = Căn chỉnh: { $mode }
+    .flipped = Đã lật
+    .not-flipped = Chưa lật
+
+
+block-flip =
+    .base-state-label = Nhãn trạng thái ban đầu
+    .flipped-state-label = Nhãn trạng thái đã lật
+
+
+block-lookup =
+    .input-help = Đầu vào: số, công thức hoặc khoảng như { $closed } và { $open }. Công thức dùng tên đầu vào. Góc tính bằng radian.
+    .invalid-table = Bảng tra cứu không hợp lệ.
+    .invalid-value = Hàng được chọn có giá trị tham số không hợp lệ.
+    .incompatible-values = Các giá trị trong hàng không đáp ứng tập giá trị tham số.
+    .quoted-help = Đặt tên có khoảng trắng hoặc dấu câu trong dấu trích dẫn: { $name }.
+
+block-array =
+    .limit-error = Việc tính toán khối sẽ tạo hơn 100000 đối tượng mảng. Giảm khoảng cách hoặc tăng bước mảng.

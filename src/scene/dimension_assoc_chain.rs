@@ -6,7 +6,7 @@
 
 use codec::objects::AssocDimensionReference;
 use codec::types::{Handle, Matrix4, Transform, Vector3};
-use codec::{CadDocument, EntityType};
+use codec::{Document, EntityType};
 use kernel::geom2d::{closest_point, Curve as KernelCurve};
 use kernel::space::Plane;
 
@@ -103,7 +103,7 @@ pub(crate) enum ChainError {
 /// neither is the geometry. A chain that is nothing but INSERTs (dimensioning
 /// a block reference's insertion point) ends on the innermost INSERT.
 pub(crate) fn walk_chain(
-    document: &CadDocument,
+    document: &Document,
     xrefs: &[Handle],
 ) -> Result<ReferenceChain, ChainError> {
     if xrefs.is_empty() {
@@ -219,7 +219,7 @@ pub(crate) struct FeatureContext {
 /// evaluate, or when the geometry no longer supports it. The caller keeps the
 /// reference data intact and leaves the dimension where it was.
 pub(crate) fn feature_point(
-    document: &CadDocument,
+    document: &Document,
     entity: &EntityType,
     reference: &AssocDimensionReference,
     context: FeatureContext,
@@ -478,7 +478,7 @@ fn spline_tangent_point(
 /// kernel's exact/converged intersection solver. Apparent intersections may
 /// project noncoplanar curves; only straight lines support an extended crossing.
 fn intersection_point(
-    document: &CadDocument,
+    document: &Document,
     entity: &EntityType,
     reference: &AssocDimensionReference,
     hint: Vector3,

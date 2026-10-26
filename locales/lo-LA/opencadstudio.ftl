@@ -112,6 +112,7 @@ donation =
     .decline = ບໍ່, ຂອບໃຈ
 
 modal =
+    .saving-as-target-cannot-keep = ການບັນທຶກເປັນ "__ocs_arg_target__" ບໍ່ສາມາດເກັບຮັກສາສິ່ງຕໍ່ໄປນີ້ໄດ້, ດັ່ງນັ້ນມັນຈະສູນເສຍ:
     .about = ກ່ຽວກັບ
     .keyboard-shortcuts = ປຸ່ມລັດແປ້ນພິມ
     .command-aliases = ຊື່ຫຍໍ້ຄຳສັ່ງ
@@ -285,6 +286,9 @@ command-copy =
     .mode = COPY  ປ້ອນຕົວເລືອກໂໝດການຄັດລອກ [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = ການໃຊ້: DCDISPLAY [ສະແດງ|ເຊື່ອງ]
+    .dcdisplay-prompt = DCDISPLAY  ປ້ອນຕົວເລືອກ [ສະແດງ/ເຊື່ອງ] <ສະແດງ>:
+    .dcdisplay-updated = ອັບເດດຕົວຊີ້ບອກຂໍ້ຈຳກັດ __ocs_fmt_0__ ອັນແລ້ວ.
     .compare-prompt = COMPARE  __ocs_fmt_0__ ຢູ່ນີ້ເທົ່ານັ້ນ (ຂຽວ), __ocs_fmt_1__ ຢູ່ໃນແບບອື່ນເທົ່ານັ້ນ (ແດງ)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = ປຽບທຽບກັບແບບ
@@ -3494,6 +3498,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: ບໍ່ພົບຮູບແບບ '__ocs_fmt_1__'.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: ການແທນທີ່ບໍ່ຖືກຕ້ອງ "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: ບໍ່ໄດ້ເລືອກມິຕິທີ່ແກ້ໄຂໄດ້.
+    .dimoverride-updated = DIMOVERRIDE: ອັບເດດ __ocs_fmt_0__ ມິຕິແລ້ວ.
+    .dimoverride-var-prompt = DIMOVERRIDE  ປ້ອນຊື່ຕົວແປມິຕິທີ່ຈະແທນທີ່ ຫຼື [ລ້າງການແທນທີ່]:
+    .dimoverride-value-prompt = DIMOVERRIDE  ປ້ອນຄ່າໃໝ່ສຳລັບ __ocs_fmt_0__:
+    .dimoverride-clear-overrides = ລ້າງການແທນທີ່
+    .dimoverride-unknown-var = DIMOVERRIDE: ບໍ່ຮູ້ຈັກຕົວແປມິຕິ "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: ຄ່າບໍ່ຖືກຕ້ອງສຳລັບຕົວແປນີ້.
+    .dimdisassociate-select = ເລືອກມິຕິທີ່ຈະຍົກເລີກການເຊື່ອມໂຍງ:
+    .dimdisassociate-done = DIMDISASSOCIATE: ຍົກເລີກການເຊື່ອມໂຍງ __ocs_fmt_0__ ມິຕິແລ້ວ.
+    .dimreassociate-done = DIMREASSOCIATE: ເຊື່ອມໂຍງ __ocs_fmt_0__ ຈາກ __ocs_fmt_1__ ມິຕິແລ້ວ.
+    .dimreassociate-partial = DIMREASSOCIATE: ເຊື່ອມໂຍງ __ocs_fmt_0__ ມິຕິໄດ້ພຽງບາງສ່ວນ (ບໍ່ມີວັດຖຸຢູ່ບາງຈຸດກຳນົດ).
     .prefix-textedit-enter-text-edit-mode-single-mu = __ocs_arg_prefix__TEXTEDIT ປ້ອນໂໝດການແກ້ໄຂຂໍ້ຄວາມ [Single/Multiple] <__ocs_arg_mode__>:
     .prefix-texteditmode-enter-new-value-for-texted = __ocs_arg_prefix__TEXTEDITMODE ປ້ອນຄ່າໃໝ່ສຳລັບ TEXTEDITMODE <__ocs_arg_v__>:
     .arctext-text-to-place-along-the-arc = ARCTEXT  ຂໍ້ຄວາມທີ່ຈະວາງຕາມແນວສ່ວນໂຄ້ງ:
@@ -6673,6 +6689,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6771,6 +6801,17 @@ import-panel =
     .combine-text = ລວມຂໍ້ຄວາມ
     .land-xml = Land XML
     .import-file-header = ນໍາເຂົ້າໄຟລ໌ — ປຸ່ມຈະເຮັດລາຍການທີ່ເລືອກລ່າສຸດ
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6813,6 +6854,43 @@ pdf-password =
         { $path }
         ບໍ່ສາມາດເປີດໄຟລ໌ PDF ນີ້ໄດ້.
         ມັນຖືກເຂົ້າລະຫັດ ແລະ ຕ້ອງໃຊ້ລະຫັດຜ່ານ.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = ຕົວເລກບໍ່ຖືກຕ້ອງ '__ocs_fmt_0__'
@@ -6976,3 +7054,30 @@ script-files =
     .exit-save = EXIT  ບັນທຶກການປ່ຽນແປງໃນ __ocs_arg_name__ ບໍ? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" ຍັງບໍ່ມີເສັ້ນທາງໄຟລ໌; ໃຊ້ SAVEAS ກ່ອນ.
     .sdi-dirty = SDI: ບັນທຶກ ຫຼື ປິດ "__ocs_fmt_0__" ກ່ອນເປີດແຜ່ນແຕ້ມອື່ນ.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = ສະຖານະການເບິ່ງເຫັນ
+    .visibility-value = ສະຖານະການເບິ່ງເຫັນ: { $state }
+    .table-label = ຄຸນສົມບັດບລັອກ
+    .table-row = ຄຸນສົມບັດບລັອກ: { $row }
+    .alignment = ການຈັດແນວ: { $mode }
+    .flipped = ປີ້ນແລ້ວ
+    .not-flipped = ຍັງບໍ່ປີ້ນ
+
+
+block-flip =
+    .base-state-label = ປ້າຍສະຖານະເດີມ
+    .flipped-state-label = ປ້າຍສະຖານະປີ້ນ
+
+
+block-lookup =
+    .input-help = ຄ່າປ້ອນ: ຕົວເລກ, ສູດ ຫຼື ຊ່ວງເຊັ່ນ { $closed } ແລະ { $open }. ສູດໃຊ້ຊື່ຄ່າປ້ອນ. ມຸມມີຫົວໜ່ວຍເປັນເຣດຽນ.
+    .invalid-table = ຕາຕະລາງຄົ້ນຫາບໍ່ຖືກຕ້ອງ.
+    .invalid-value = ແຖວທີ່ເລືອກມີຄ່າພາຣາມິເຕີບໍ່ຖືກຕ້ອງ.
+    .incompatible-values = ຄ່າໃນແຖວບໍ່ສອດຄ່ອງກັບຊຸດຄ່າພາຣາມິເຕີ.
+    .quoted-help = ໃສ່ເຄື່ອງໝາຍອ້ອມຊື່ທີ່ມີຍະຫວ່າງ ຫຼື ເຄື່ອງໝາຍວັກຕອນ: { $name }.
+
+block-array =
+    .limit-error = ການປະເມີນບລັອກຈະສ້າງວັດຖຸແຖວລຳດັບຫຼາຍກວ່າ 100000 ອັນ. ຫຼຸດໄລຍະທາງ ຫຼື ເພີ່ມໄລຍະຫ່າງ.

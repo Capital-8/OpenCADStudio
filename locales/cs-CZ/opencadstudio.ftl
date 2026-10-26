@@ -112,6 +112,7 @@ donation =
     .decline = Ne, děkuji
 
 modal =
+    .saving-as-target-cannot-keep = Uložení jako "__ocs_arg_target__" nemůže zachovat následující, takže to bude ztraceno:
     .about = O aplikaci
     .keyboard-shortcuts = Klávesové zkratky
     .command-aliases = Aliasy příkazů
@@ -285,6 +286,9 @@ command-copy =
     .mode = COPY  Zadejte režim kopírování [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Použití: DCDISPLAY [Zobrazit|Skrýt]
+    .dcdisplay-prompt = DCDISPLAY  Zadejte možnost [Zobrazit/Skrýt] <Zobrazit>:
+    .dcdisplay-updated = Aktualizováno indikátorů vazeb: __ocs_fmt_0__.
     .compare-prompt = COMPARE  __ocs_fmt_0__ jen zde (zeleně), __ocs_fmt_1__ jen v druhém výkresu (červeně)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Porovnat s výkresem
@@ -3490,6 +3494,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: styl '__ocs_fmt_1__' nebyl nalezen.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: neplatné přepsání "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: nebyly vybrány žádné upravitelné kóty.
+    .dimoverride-updated = DIMOVERRIDE: aktualizováno kót: __ocs_fmt_0__.
+    .dimoverride-var-prompt = DIMOVERRIDE  Zadejte název kótovací proměnné k přepsání nebo [Vymazat přepsání]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Zadejte novou hodnotu pro __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Vymazat přepsání
+    .dimoverride-unknown-var = DIMOVERRIDE: neznámá kótovací proměnná "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: neplatná hodnota pro tuto proměnnou.
+    .dimdisassociate-select = Vyberte kóty k odpojení asociativity:
+    .dimdisassociate-done = DIMDISASSOCIATE: odpojeno kót: __ocs_fmt_0__.
+    .dimreassociate-done = DIMREASSOCIATE: přidruženo __ocs_fmt_0__ z __ocs_fmt_1__ kót.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ kót přidruženo jen částečně (v některých definičních bodech není žádný objekt).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Zadejte text kóty (prázdné = změřená hodnota):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Vyberte oblouk, kružnici nebo oblouk křivky:
     .dimjogged-specify-center-location-override = DIMJOGGED  Určete náhradní polohu středu:
@@ -6669,6 +6685,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6767,6 +6797,17 @@ import-panel =
     .combine-text = Sloučit text
     .land-xml = Land XML
     .import-file-header = Importovat soubor — tlačítko spustí naposledy zvolenou položku
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6809,6 +6850,43 @@ pdf-password =
         { $path }
         Tento soubor PDF nelze otevřít.
         Je šifrovaný a vyžaduje heslo.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = neplatné číslo '__ocs_fmt_0__'
@@ -6972,3 +7050,30 @@ script-files =
     .exit-save = EXIT  Uložit změny výkresu __ocs_arg_name__? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" zatím nemá cestu k souboru; nejprve použijte SAVEAS.
     .sdi-dirty = SDI: před otevřením jiného výkresu uložte nebo zavřete "__ocs_fmt_0__".
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Stav viditelnosti
+    .visibility-value = Stav viditelnosti: { $state }
+    .table-label = Vlastnosti bloku
+    .table-row = Vlastnosti bloku: { $row }
+    .alignment = Zarovnání: { $mode }
+    .flipped = Převráceno
+    .not-flipped = Nepřevráceno
+
+
+block-flip =
+    .base-state-label = Popisek základního stavu
+    .flipped-state-label = Popisek převráceného stavu
+
+
+block-lookup =
+    .input-help = Vstupy: čísla, vzorce nebo intervaly jako { $closed } a { $open }. Vzorce používají názvy vstupů. Úhly jsou v radiánech.
+    .invalid-table = Vyhledávací tabulka je neplatná.
+    .invalid-value = Vybraný řádek obsahuje neplatnou hodnotu parametru.
+    .incompatible-values = Hodnoty řádku neodpovídají sadám hodnot parametrů.
+    .quoted-help = Názvy s mezerami nebo interpunkcí uzavřete do uvozovacích znaků: { $name }.
+
+block-array =
+    .limit-error = Vyhodnocení bloku by vytvořilo více než 100000 objektů pole. Zmenšete vzdálenost nebo zvětšete rozestup.

@@ -8,7 +8,7 @@ use crate::snap::SnapResult;
 use crate::t;
 use crate::ui::{LayerPanel, PropertiesPanel};
 use codec::tables::{normalize_name, Ucs};
-use codec::{CadDocument, EntityType, Handle};
+use codec::{Document, EntityType, Handle};
 use iced;
 use std::any::Any;
 use std::collections::HashMap;
@@ -256,6 +256,8 @@ pub(super) struct DocumentTab {
     /// handle numbering, so an app-global set keyed by raw handle leaks one
     /// tab's opt-out into another tab reusing the value (#47).
     pub(super) props_asym_scale: std::collections::HashSet<u64>,
+    /// OLE objects' scale base and aspect lock, by handle.
+    pub(super) ole_frames: std::collections::HashMap<u64, crate::entities::ole2frame::FrameState>,
     /// Node graph shown by the command line's graph button.
     pub(super) graph: crate::ui::node_graph::Graph,
     /// Currently active UCS. `None` means WCS (identity transform).
@@ -307,6 +309,11 @@ pub(super) struct DocumentTab {
     /// of the model-space shader. The scene is still constructed so the
     /// rest of the code can treat it as a normal tab when reading.
     pub(super) is_start: bool,
+    /// Room the docked edges took beside the viewport (left, right) when
+    /// this drawing was last on screen, and the window size then. A dock
+    /// change pans the view by the difference so the drawing stays put,
+    /// and either change sets the viewport's new size right away.
+    pub(super) dock_inset: Option<(f32, f32, (f32, f32))>,
     /// Interactive PAN mode (the PAN command / tool). While active, a left-
     /// button drag pans the view instead of selecting — the only pan path on a
     /// device with no middle mouse button (a trackpad / web client). Exited
@@ -782,6 +789,7 @@ impl DocumentTab {
             block_test: None,
             active_layer: "0".to_string(),
             props_asym_scale: std::collections::HashSet::new(),
+            ole_frames: std::collections::HashMap::new(),
             graph: Default::default(),
             active_ucs: None,
             sketch_session: None,
@@ -802,6 +810,7 @@ impl DocumentTab {
             xref_missing: 0,
             xref_report: Vec::new(),
             is_start: false,
+            dock_inset: None,
             pan_mode: false,
             orbit_mode: false,
             zoom_dynamic_mode: false,
@@ -985,7 +994,7 @@ pub(super) enum StructureSnapshot {
     /// A broad save-time synchronization followed by a command's bounded edits.
     Combined(Vec<StructureSnapshot>),
     /// Compatibility fallback for genuinely broad structural commands.
-    Full(CadDocument),
+    Full(Document),
     /// Exact layer-table entries touched by one command.
     Layers(Vec<TableEntryDelta<codec::tables::Layer>>),
     /// Exact text-style entries touched by one command.
@@ -1075,7 +1084,7 @@ pub(super) struct PendingHistorySnapshot {
     pub(super) active_layer: String,
     pub(super) selected_before: Vec<Handle>,
     pub(super) dirty_before: bool,
-    pub(super) structure_before: CadDocument,
+    pub(super) structure_before: Document,
     pub(super) recorder: Arc<codec::document::EntityChangeRecorder>,
     /// First-touch before-values of reference-only designations (API v9)
     /// mutated inside this plugin scope (see `scene::reference_only`). Set

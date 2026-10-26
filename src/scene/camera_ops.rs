@@ -114,7 +114,7 @@ fn fold_sane_bounds(
 }
 
 fn block_entity_transform(
-    document: &CadDocument,
+    document: &Document,
     block_name: &str,
     target: Handle,
     visited: &mut Vec<String>,
@@ -2089,7 +2089,7 @@ impl Scene {
 }
 
 /// The drawing's ACAD_BACKGROUND dictionary, made when it has none.
-fn background_dictionary(document: &mut codec::CadDocument) -> Option<Handle> {
+fn background_dictionary(document: &mut codec::Document) -> Option<Handle> {
     use codec::objects::{Dictionary, ObjectType};
     let root = document.header.named_objects_dict_handle;
     let Some(ObjectType::Dictionary(root_dictionary)) = document.objects.get(&root) else {
@@ -2120,7 +2120,7 @@ fn background_dictionary(document: &mut codec::CadDocument) -> Option<Handle> {
 /// A new background object in ACAD_BACKGROUND, keyed by its own handle as
 /// the reference keys it. Null when the drawing has no named-objects root.
 pub fn add_background(
-    document: &mut codec::CadDocument,
+    document: &mut codec::Document,
     data: codec::objects::ClassObjectData,
 ) -> Handle {
     use codec::objects::{ClassObject, ObjectType};
@@ -2144,7 +2144,7 @@ pub fn add_background(
 /// Erases a background object once no view or viewport refers to it (the
 /// reference erases a view's background when it is replaced, cleared or the
 /// view deleted, and a viewport's when the viewport takes another).
-pub fn erase_background(document: &mut codec::CadDocument, handle: Handle) {
+pub fn erase_background(document: &mut codec::Document, handle: Handle) {
     use codec::objects::{ClassObjectData as D, ObjectType};
     if !handle.is_valid()
         || document.views.iter().any(|view| view.background_handle == handle)
@@ -2179,7 +2179,7 @@ pub fn erase_background(document: &mut codec::CadDocument, handle: Handle) {
 
 /// A copy of a background object (the reference gives each view and
 /// viewport its own); null for none.
-pub fn copy_background(document: &mut codec::CadDocument, handle: Handle) -> Handle {
+pub fn copy_background(document: &mut codec::Document, handle: Handle) -> Handle {
     use codec::objects::{ClassObjectData as D, ObjectType};
     match document.objects.get(&handle) {
         Some(ObjectType::ClassObject(object))

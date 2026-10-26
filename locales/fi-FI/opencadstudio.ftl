@@ -112,6 +112,7 @@ donation =
     .decline = Ei kiitos
 
 modal =
+    .saving-as-target-cannot-keep = Tallennus muodossa "__ocs_arg_target__" ei voi säilyttää seuraavia, joten ne menetetään:
     .about = Tietoja
     .keyboard-shortcuts = Pikanäppäimet
     .command-aliases = Komentojen aliakset
@@ -285,6 +286,9 @@ command-copy =
     .mode = COPY  Valitse kopiointitila [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Käyttö: DCDISPLAY [Näytä|Piilota]
+    .dcdisplay-prompt = DCDISPLAY  Anna vaihtoehto [Näytä/Piilota] <Näytä>:
+    .dcdisplay-updated = __ocs_fmt_0__ rajoiteilmaisinta päivitettiin.
     .compare-prompt = COMPARE  __ocs_fmt_0__ vain täällä (vihreä), __ocs_fmt_1__ vain toisessa piirustuksessa (punainen)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Vertaa piirustukseen
@@ -3492,6 +3496,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: tyyliä '__ocs_fmt_1__' ei löydy.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: virheellinen ohitus "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: muokattavia mittoja ei valittu.
+    .dimoverride-updated = DIMOVERRIDE: päivitettiin __ocs_fmt_0__ mittaa.
+    .dimoverride-var-prompt = DIMOVERRIDE  Anna ohitettavan mittamuuttujan nimi tai [Tyhjennä ohitukset]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Anna uusi arvo kohteelle __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Tyhjennä ohitukset
+    .dimoverride-unknown-var = DIMOVERRIDE: tuntematon mittamuuttuja "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: virheellinen arvo tälle muuttujalle.
+    .dimdisassociate-select = Valitse mitat, joiden assosiatiivisuus poistetaan:
+    .dimdisassociate-done = DIMDISASSOCIATE: assosiatiivisuus poistettiin __ocs_fmt_0__ mitasta.
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_0__/__ocs_fmt_1__ mittaa assosioitiin.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ mittaa assosioitiin vain osittain (joissakin määrityspisteissä ei ole objektia).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Anna mittateksti (tyhjä = mitattu arvo):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Valitse kaari, ympyrä tai murtoviivan kaari:
     .dimjogged-specify-center-location-override = DIMJOGGED  Määritä korvaava keskipisteen sijainti:
@@ -6669,6 +6685,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6767,6 +6797,17 @@ import-panel =
     .combine-text = Yhdistä teksti
     .land-xml = Land XML
     .import-file-header = Tuo tiedosto — painike suorittaa viimeksi valitun
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6809,6 +6850,43 @@ pdf-password =
         { $path }
         Tätä PDF-tiedostoa ei voi avata.
         Se on salattu ja vaatii salasanan.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = virheellinen luku '__ocs_fmt_0__'
@@ -6972,3 +7050,30 @@ script-files =
     .exit-save = EXIT  Tallennetaanko muutokset kohteeseen __ocs_arg_name__? [Yes/No] <Yes>:
     .exit-no-path = EXIT: kohteella "__ocs_fmt_0__" ei ole vielä tiedostopolkua; käytä ensin SAVEAS-komentoa.
     .sdi-dirty = SDI: tallenna tai sulje "__ocs_fmt_0__" ennen toisen piirustuksen avaamista.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Näkyvyystila
+    .visibility-value = Näkyvyystila: { $state }
+    .table-label = Lohkon ominaisuudet
+    .table-row = Lohkon ominaisuudet: { $row }
+    .alignment = Kohdistus: { $mode }
+    .flipped = Käännetty
+    .not-flipped = Ei käännetty
+
+
+block-flip =
+    .base-state-label = Perustilan nimi
+    .flipped-state-label = Käännetyn tilan nimi
+
+
+block-lookup =
+    .input-help = Syötteet: luvut, kaavat tai välit, kuten { $closed } ja { $open }. Kaavat käyttävät syötteiden nimiä. Kulmat ovat radiaaneina.
+    .invalid-table = Hakutaulukko on virheellinen.
+    .invalid-value = Valitulla rivillä on virheellinen parametriarvo.
+    .incompatible-values = Rivin arvot eivät vastaa parametrien arvojoukkoja.
+    .quoted-help = Lainaa välilyöntejä tai välimerkkejä sisältävät nimet: { $name }.
+
+block-array =
+    .limit-error = Lohkon arviointi loisi yli 100000 matriisiobjektia. Pienennä etäisyyttä tai suurenna välistystä.

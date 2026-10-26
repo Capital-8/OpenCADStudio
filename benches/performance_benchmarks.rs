@@ -41,7 +41,7 @@ use std::time::Instant;
 
 use codec::entities::{Arc as AcadArc, Circle, Ellipse, Line, LwPolyline, LwVertex};
 use codec::types::{Vector2, Vector3};
-use codec::{CadDocument, DxfReader, DxfWriter, EntityType};
+use codec::{Document, DxfReader, DxfWriter, EntityType};
 use glam::{DVec3, Mat4, Vec3};
 use iced::{Color, Point, Rectangle};
 
@@ -638,7 +638,7 @@ fn bench_dxf_io_throughput(runner: &mut BenchmarkRunner) {
     }
 
     let n_entities = if runner.quick_mode { 1_000 } else { 5_000 };
-    let mut doc = CadDocument::new();
+    let mut doc = Document::new();
 
     for i in 0..n_entities {
         let x = (i % 100) as f64 * 20.0;
@@ -698,7 +698,7 @@ fn bench_dxf_io_throughput(runner: &mut BenchmarkRunner) {
 
     runner.record(
         "dxf_import_parse_throughput",
-        "Parsing DXF stream of 5,000 entities into CadDocument",
+        "Parsing DXF stream of 5,000 entities into Document",
         "ms",
         read_samples,
         Some((read_throughput_mb, "MB/s")),
@@ -1130,7 +1130,7 @@ fn bench_ui_plotstyle_layer_usage(runner: &mut BenchmarkRunner) {
         return;
     }
 
-    let mut doc = CadDocument::new();
+    let mut doc = Document::new();
     for i in 0..200 {
         let mut layer = codec::tables::Layer::new(&format!("LAYER_{i:03}"));
         layer.handle = doc.allocate_handle();

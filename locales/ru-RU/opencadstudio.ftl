@@ -112,6 +112,7 @@ donation =
     .decline = Нет, спасибо
 
 modal =
+    .saving-as-target-cannot-keep = При сохранении в формате "__ocs_arg_target__" следующее не сохранится и будет потеряно:
     .about = О программе
     .keyboard-shortcuts = Настройки клавиатуры
     .command-aliases = Псевдонимы команд
@@ -289,6 +290,9 @@ command-copy =
     .mode = COPY  Задайте режим копирования [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Использование: DCDISPLAY [Показать|Скрыть]
+    .dcdisplay-prompt = DCDISPLAY  Введите параметр [Показать/Скрыть] <Показать>:
+    .dcdisplay-updated = Обновлено индикаторов зависимостей: __ocs_fmt_0__.
     .compare-prompt = COMPARE  __ocs_fmt_0__ только здесь (зелёные), __ocs_fmt_1__ только в другом чертеже (красные)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Сравнить с чертежом
@@ -3494,6 +3498,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: стиль __ocs_fmt_1__ не найден.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: недопустимое переопределение "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: не выбрано редактируемых размеров.
+    .dimoverride-updated = DIMOVERRIDE: обновлено размеров: __ocs_fmt_0__.
+    .dimoverride-var-prompt = DIMOVERRIDE  Введите имя размерной переменной для переопределения или [Очистить переопределения]:
+    .dimoverride-value-prompt = DIMOVERRIDE  Введите новое значение для __ocs_fmt_0__:
+    .dimoverride-clear-overrides = Очистить переопределения
+    .dimoverride-unknown-var = DIMOVERRIDE: неизвестная размерная переменная "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: недопустимое значение для этой переменной.
+    .dimdisassociate-select = Выберите размеры для отмены ассоциативности:
+    .dimdisassociate-done = DIMDISASSOCIATE: ассоциативность отменена для размеров: __ocs_fmt_0__.
+    .dimreassociate-done = DIMREASSOCIATE: ассоциировано __ocs_fmt_0__ из __ocs_fmt_1__ размеров.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ размеров ассоциировано лишь частично (в некоторых определяющих точках нет объекта).
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  Введите текст размера (пусто = измеренное значение):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  Выберите дугу, окружность или дуговой сегмент полилинии:
     .dimjogged-specify-center-location-override = DIMJOGGED  Укажите переопределённое положение центра:
@@ -6673,6 +6689,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6771,6 +6801,17 @@ import-panel =
     .combine-text = Объединить текст
     .land-xml = Land XML
     .import-file-header = Импорт файла — кнопка запускает последний выбранный пункт
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6813,6 +6854,43 @@ pdf-password =
         { $path }
         Не удаётся открыть этот PDF-файл.
         Он зашифрован и требует пароль.
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = недопустимое число '__ocs_fmt_0__'
@@ -6976,3 +7054,30 @@ script-files =
     .exit-save = EXIT  Сохранить изменения в __ocs_arg_name__? [Yes/No] <Yes>:
     .exit-no-path = EXIT: у "__ocs_fmt_0__" ещё нет пути к файлу; сначала используйте SAVEAS.
     .sdi-dirty = SDI: сохраните или закройте "__ocs_fmt_0__", прежде чем открыть другой чертёж.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Состояние видимости
+    .visibility-value = Состояние видимости: { $state }
+    .table-label = Свойства блока
+    .table-row = Свойства блока: { $row }
+    .alignment = Выравнивание: { $mode }
+    .flipped = Отражено
+    .not-flipped = Не отражено
+
+
+block-flip =
+    .base-state-label = Метка исходного состояния
+    .flipped-state-label = Метка отражённого состояния
+
+
+block-lookup =
+    .input-help = Входные данные: числа, формулы или интервалы, например { $closed } и { $open }. Формулы используют имена входных данных. Углы задаются в радианах.
+    .invalid-table = Таблица поиска недействительна.
+    .invalid-value = Выбранная строка содержит недопустимое значение параметра.
+    .incompatible-values = Значения строки не соответствуют наборам значений параметров.
+    .quoted-help = Заключайте имена с пробелами или знаками препинания в кавычки: { $name }.
+
+block-array =
+    .limit-error = Вычисление блока создало бы более 100000 объектов массива. Уменьшите расстояние или увеличьте интервал.

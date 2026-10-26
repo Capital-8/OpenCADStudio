@@ -112,6 +112,7 @@ donation =
     .decline = Hayır, Teşekkürler
 
 modal =
+    .saving-as-target-cannot-keep = "__ocs_arg_target__" olarak kaydetme aşağıdakileri koruyamaz, bu yüzden kaybolacaklar:
     .about = Hakkında
     .keyboard-shortcuts = Klavye Kısayolları
     .command-aliases = Komut Kısaltmaları
@@ -271,6 +272,9 @@ command-copy =
     .mode = COPY  Kopyalama modu seçin [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = Kullanım: DCDISPLAY [Göster|Gizle]
+    .dcdisplay-prompt = DCDISPLAY  Bir seçenek girin [Göster/Gizle] <Göster>:
+    .dcdisplay-updated = __ocs_fmt_0__ kısıtlama göstergesi güncellendi.
     .compare-prompt = COMPARE  __ocs_fmt_0__ yalnızca burada (yeşil), __ocs_fmt_1__ yalnızca diğer çizimde (kırmızı)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = Çizimle karşılaştır
@@ -3473,6 +3477,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: '__ocs_fmt_1__' stili bulunamadı.
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: geçersiz geçersiz kılma "__ocs_fmt_0__".
+    .dimoverride-no-dimensions = DIMOVERRIDE: düzenlenebilir ölçü seçilmedi.
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ ölçü güncellendi.
+    .dimoverride-var-prompt = DIMOVERRIDE  Geçersiz kılınacak ölçü değişkeninin adını girin veya [Geçersiz kılmaları temizle]:
+    .dimoverride-value-prompt = DIMOVERRIDE  __ocs_fmt_0__ için yeni değeri girin:
+    .dimoverride-clear-overrides = Geçersiz kılmaları temizle
+    .dimoverride-unknown-var = DIMOVERRIDE: bilinmeyen ölçü değişkeni "__ocs_fmt_0__".
+    .dimoverride-invalid-value = DIMOVERRIDE: bu değişken için geçersiz değer.
+    .dimdisassociate-select = İlişkisi kaldırılacak ölçüleri seçin:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ ölçünün ilişkisi kaldırıldı.
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_1__ ölçüden __ocs_fmt_0__ tanesi ilişkilendirildi.
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ ölçü yalnızca kısmen ilişkilendirildi (bazı tanım noktalarında nesne yok).
     .prefix-textedit-enter-text-edit-mode-single-mu = __ocs_arg_prefix__TEXTEDIT Metin düzenleme modu [Tekli/Çoklu] <__ocs_arg_mode__>:
     .prefix-texteditmode-enter-new-value-for-texted = __ocs_arg_prefix__TEXTEDITMODE TEXTEDITMODE için yeni değer girin <__ocs_arg_v__>:
     .arctext-text-to-place-along-the-arc = ARCTEXT  Yay boyunca yerleştirilecek metin:
@@ -6595,6 +6611,20 @@ txt2mtxt =
     .result-count = Sonuç · { $count } MText
     .apply = Uygula
     .help = TXT2MTXT komutunun metin nesnelerini MText olarak nasıl birleştireceğini ayarlar.
+ole-props =
+    .scale-width = Genişlik ölçeği %
+    .scale-height = Yükseklik ölçeği %
+    .lock-aspect = En-boy oranını kilitle
+    .plot-quality = Çizim kalitesi
+    .source-app = Kaynak uygulama
+    .plot-monochrome = Tek renk (ör. hesap tablosu)
+    .plot-low = Düşük grafik (ör. renkli metin ve pasta grafikler)
+    .plot-high = Yüksek grafik (ör. fotoğraf)
+    .type-embedded = Gömülü
+    .type-link = Bağlı
+    .type-static = Statik
+    .not-embeddable = gömülemez: dosyadan yalnız resimler eklenebilir.
+    .create-new = yeni nesne kendi uygulamasını gerektirir; Dosyadan Oluştur'u seçin.
 dgn-import =
     .supported = Destekleniyor
     .by-extension = Uzantıya göre
@@ -6693,6 +6723,15 @@ import-panel =
     .combine-text = Metni Birleştir
     .land-xml = Arazi XML
     .import-file-header = Dosya İçe Aktar — yüz son seçileni çalıştırır
+data-panel =
+    .linking = Bağlama ve Çıkarma
+    .update-fields = Alanları Güncelle
+    .ole-object = OLE Nesnesi
+    .data-link = Bağla
+    .download = Kaynaktan İndir
+    .upload = Kaynağa Yükle
+    .extract = Veri Çıkar
+    .select-objects = Nesneleri seçin:
 pdf-shx =
     .title = PDF Metin Tanıma Ayarları
     .preview = Önizleme
@@ -6735,6 +6774,43 @@ pdf-password =
         { $path }
         Bu PDF dosyası açılamıyor.
         Dosya şifreli ve parola gerektiriyor.
+hyperlink-dialog =
+    .title-insert = Köprü Ekle
+    .title-edit = Köprüyü Düzenle
+    .target-file = Dosya veya web sayfası
+    .target-view = Bu çizimin görünümü
+    .link = Bağlantı
+    .address = Adres
+    .address-hint = dosya, web adresi veya dosya#konum
+    .browse = Dosya...
+    .path = Yol
+    .relative = Göreli yol
+    .dwf = DWG bağlantıları DWF'i açar
+    .views = Görünümler ve düzenler
+    .text = Görüntülenecek metin
+    .selected-one = 1 nesne seçili.
+    .selected-many = nesne seçili.
+    .linked-one = Köprülü 1 nesne.
+    .linked-many = köprülü nesne.
+    .remove = Bağlantıyı Kaldır
+    .help = HYPERLINK: seçili nesneleri bir dosyaya veya web adresine (bir görünümünü ya da düzenini açmak için #konum ekleyin) veya bu çizimin bir görünümüne bağlar; görüntülenecek metin bağlantının gösterdiği yazıdır.
+hyperlink-cmd =
+    .option = Bir seçenek girin [Remove/Insert] <Insert>:
+    .insert-option = Köprü ekleme seçeneğini girin [Area/Object] <Object>:
+    .first-corner = İlk köşe:
+    .other-corner = Diğer köşe:
+    .url = Köprüyü girin <geçerli çizim>:
+    .location = Adlandırılmış konumu girin <yok>:
+    .description = Açıklamayı girin <yok>:
+    .remove-pick = Numara, köprü veya tümü için * girin:
+    .not-valid = Geçerli bir seçim değil, yeniden deneyin.
+    .deleted-one = 1 köprü silindi.
+    .deleted-many = köprü silindi.
+    .selection-error = Seçimde hata.
+    .invalid-keyword = Geçersiz seçenek anahtar sözcüğü.
+    .options-yes = Köprü imleci, ipucu ve kısayol menüsü gösterilsin mi? [Yes/No] <Yes>:
+    .options-no = Köprü imleci, ipucu ve kısayol menüsü gösterilsin mi? [Yes/No] <No>:
+    .base-prompt = HYPERLINKBASE için yeni değeri girin veya hiçbiri için .
 
 calc =
     .invalid-number = geçersiz sayı '__ocs_fmt_0__'
@@ -6898,3 +6974,30 @@ script-files =
     .exit-save = EXIT  __ocs_arg_name__ üzerindeki değişiklikler kaydedilsin mi? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" için henüz dosya yolu yok; önce SAVEAS kullanın.
     .sdi-dirty = SDI: başka bir çizim açmadan önce "__ocs_fmt_0__" çizimini kaydedin veya kapatın.
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = Görünürlük durumu
+    .visibility-value = Görünürlük durumu: { $state }
+    .table-label = Blok özellikleri
+    .table-row = Blok özellikleri: { $row }
+    .alignment = Hizalama: { $mode }
+    .flipped = Çevrilmiş
+    .not-flipped = Çevrilmemiş
+
+
+block-flip =
+    .base-state-label = Temel durum etiketi
+    .flipped-state-label = Çevrilmiş durum etiketi
+
+
+block-lookup =
+    .input-help = Girdiler: sayılar, formüller veya { $closed } ve { $open } gibi aralıklar. Formüller girdi adlarını kullanır. Açılar radyan cinsindedir.
+    .invalid-table = Arama tablosu geçersiz.
+    .invalid-value = Seçilen satırda geçersiz bir parametre değeri var.
+    .incompatible-values = Satır değerleri parametre değer kümelerine uymuyor.
+    .quoted-help = Boşluk veya noktalama içeren adları alıntılayın: { $name }.
+
+block-array =
+    .limit-error = Blok değerlendirmesi 100000 adetten fazla dizi nesnesi oluşturacak. Mesafeyi azaltın veya aralığı artırın.

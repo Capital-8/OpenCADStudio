@@ -112,6 +112,7 @@ donation =
     .decline = 不用，謝謝
 
 modal =
+    .saving-as-target-cannot-keep = 另存為 "__ocs_arg_target__" 無法保留以下內容，因此它們將遺失：
     .about = 關於
     .keyboard-shortcuts = 鍵盤快速鍵
     .command-aliases = 命令別名
@@ -285,6 +286,9 @@ command-copy =
     .mode = COPY  輸入複製模式選項 [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = 用法：DCDISPLAY [顯示|隱藏]
+    .dcdisplay-prompt = DCDISPLAY  輸入選項 [顯示/隱藏] <顯示>:
+    .dcdisplay-updated = 已更新 __ocs_fmt_0__ 個約束指示器。
     .compare-prompt = COMPARE  僅此處 __ocs_fmt_0__ (綠色)，僅另一圖面 __ocs_fmt_1__ (紅色)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = 與圖面比較
@@ -3492,6 +3496,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__:樣式“__ocs_fmt_1__”未找到。
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE：無效的取代 "__ocs_fmt_0__"。
+    .dimoverride-no-dimensions = DIMOVERRIDE：未選取可編輯的標註。
+    .dimoverride-updated = DIMOVERRIDE：已更新 __ocs_fmt_0__ 個標註。
+    .dimoverride-var-prompt = DIMOVERRIDE  輸入要取代的標註變數名稱或 [清除取代]:
+    .dimoverride-value-prompt = DIMOVERRIDE  輸入 __ocs_fmt_0__ 的新值:
+    .dimoverride-clear-overrides = 清除取代
+    .dimoverride-unknown-var = DIMOVERRIDE：未知的標註變數 "__ocs_fmt_0__"。
+    .dimoverride-invalid-value = DIMOVERRIDE：此變數的值無效。
+    .dimdisassociate-select = 選取要解除關聯的標註:
+    .dimdisassociate-done = DIMDISASSOCIATE：已解除 __ocs_fmt_0__ 個標註的關聯。
+    .dimreassociate-done = DIMREASSOCIATE：已關聯 __ocs_fmt_1__ 個標註中的 __ocs_fmt_0__ 個。
+    .dimreassociate-partial = DIMREASSOCIATE：__ocs_fmt_0__ 個標註僅部分關聯（部分定義點處沒有物件）。
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  輸入標註文字（留空 = 測量值）：
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  選擇圓弧、圓或聚合線圓弧：
     .dimjogged-specify-center-location-override = DIMJOGGED  指定替代圓心位置：
@@ -6667,6 +6683,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6765,6 +6795,17 @@ import-panel =
     .combine-text = 合併文字
     .land-xml = Land XML
     .import-file-header = 匯入檔案 — 按鈕執行上次選取的項目
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6807,6 +6848,43 @@ pdf-password =
         { $path }
         無法開啟此 PDF 檔案。
         此檔案已加密，需要密碼。
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = 無效數字 '__ocs_fmt_0__'
@@ -6970,3 +7048,30 @@ script-files =
     .exit-save = EXIT  是否儲存對 __ocs_arg_name__ 的變更? [Yes/No] <Yes>:
     .exit-no-path = EXIT: 「__ocs_fmt_0__」尚無檔案路徑；請先使用 SAVEAS。
     .sdi-dirty = SDI: 開啟其他圖面前，請儲存或關閉「__ocs_fmt_0__」。
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = 可見性狀態
+    .visibility-value = 可見性狀態: { $state }
+    .table-label = 圖塊性質
+    .table-row = 圖塊性質: { $row }
+    .alignment = 對齊: { $mode }
+    .flipped = 已翻轉
+    .not-flipped = 未翻轉
+
+
+block-flip =
+    .base-state-label = 基本狀態標籤
+    .flipped-state-label = 翻轉狀態標籤
+
+
+block-lookup =
+    .input-help = 輸入：數字、公式或區間，例如 { $closed } 和 { $open }。公式使用輸入名稱。角度單位為弧度。
+    .invalid-table = 查找表無效。
+    .invalid-value = 所選列包含無效的參數值。
+    .incompatible-values = 列中的值不符合參數值集。
+    .quoted-help = 以引用符號包住含空格或標點的名稱：{ $name }。
+
+block-array =
+    .limit-error = 圖塊求值將產生超過100000個陣列物件。請縮短距離或增大間距。

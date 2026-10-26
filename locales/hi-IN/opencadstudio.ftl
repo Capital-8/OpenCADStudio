@@ -112,6 +112,7 @@ donation =
     .decline = नहीं, धन्यवाद
 
 modal =
+    .saving-as-target-cannot-keep = "__ocs_arg_target__" के रूप में सहेजने पर निम्नलिखित सुरक्षित नहीं रह सकते, इसलिए वे खो जाएँगे:
     .about = परिचय
     .keyboard-shortcuts = कीबोर्ड शॉर्टकट
     .command-aliases = कमांड उपनाम
@@ -274,6 +275,9 @@ command-copy =
     .mode = COPY  कॉपी मोड विकल्प दर्ज करें [Single/Multiple] <Multiple>:
 
 common =
+    .dcdisplay-usage = उपयोग: DCDISPLAY [दिखाएँ|छिपाएँ]
+    .dcdisplay-prompt = DCDISPLAY  एक विकल्प दर्ज करें [दिखाएँ/छिपाएँ] <दिखाएँ>:
+    .dcdisplay-updated = __ocs_fmt_0__ बाधा संकेतक अपडेट किए गए।
     .compare-prompt = COMPARE  __ocs_fmt_0__ केवल यहाँ (हरा), __ocs_fmt_1__ केवल दूसरी ड्रॉइंग में (लाल)__ocs_fmt_2__ [Next/Previous/eXit]:
     .compare-error = COMPARE: __ocs_fmt_0__
     .compare-with-drawing = ड्रॉइंग से तुलना करें
@@ -3481,6 +3485,18 @@ layers =
     .prefix-style-style-name-not-found = __ocs_fmt_0__: शैली '__ocs_fmt_1__' नहीं मिली।
 
 annotate =
+    .dimoverride-invalid-override = DIMOVERRIDE: अमान्य ओवरराइड "__ocs_fmt_0__"।
+    .dimoverride-no-dimensions = DIMOVERRIDE: कोई संपादन योग्य आयाम चयनित नहीं है।
+    .dimoverride-updated = DIMOVERRIDE: __ocs_fmt_0__ आयाम अपडेट किए गए।
+    .dimoverride-var-prompt = DIMOVERRIDE  ओवरराइड करने के लिए आयाम चर का नाम दर्ज करें या [ओवरराइड साफ़ करें]:
+    .dimoverride-value-prompt = DIMOVERRIDE  __ocs_fmt_0__ के लिए नया मान दर्ज करें:
+    .dimoverride-clear-overrides = ओवरराइड साफ़ करें
+    .dimoverride-unknown-var = DIMOVERRIDE: अज्ञात आयाम चर "__ocs_fmt_0__"।
+    .dimoverride-invalid-value = DIMOVERRIDE: इस चर के लिए अमान्य मान।
+    .dimdisassociate-select = असंबद्ध करने के लिए आयाम चुनें:
+    .dimdisassociate-done = DIMDISASSOCIATE: __ocs_fmt_0__ आयाम असंबद्ध किए गए।
+    .dimreassociate-done = DIMREASSOCIATE: __ocs_fmt_1__ में से __ocs_fmt_0__ आयाम संबद्ध किए गए।
+    .dimreassociate-partial = DIMREASSOCIATE: __ocs_fmt_0__ आयाम केवल आंशिक रूप से संबद्ध किए गए (कुछ परिभाषा बिंदुओं पर कोई ऑब्जेक्ट नहीं है)।
     .dimjogged-enter-dimension-text-blank-measured = DIMJOGGED  माप पाठ दर्ज करें (खाली = मापा गया मान):
     .dimjogged-select-arc-circle-or-polyline-arc = DIMJOGGED  चाप, वृत्त या पॉलीलाइन चाप चुनें:
     .dimjogged-specify-center-location-override = DIMJOGGED  केंद्र का वैकल्पिक स्थान निर्दिष्ट करें:
@@ -6660,6 +6676,20 @@ txt2mtxt =
     .result-count = Result · { $count } MText
     .apply = Apply
     .help = Sets how TXT2MTXT combines text objects into MText.
+ole-props =
+    .scale-width = Scale width %
+    .scale-height = Scale height %
+    .lock-aspect = Lock aspect
+    .plot-quality = Plot quality
+    .source-app = Source application
+    .plot-monochrome = Monochrome (e.g. spreadsheet)
+    .plot-low = Low graphics (e.g. color text & pie charts)
+    .plot-high = High graphics (e.g. photograph)
+    .type-embedded = Embedded
+    .type-link = Linked
+    .type-static = Static
+    .not-embeddable = cannot be embedded: only pictures can be inserted from a file.
+    .create-new = a new object needs its own application; choose Create from File.
 dgn-import =
     .supported = Supported
     .by-extension = By extension
@@ -6758,6 +6788,17 @@ import-panel =
     .combine-text = टेक्स्ट मिलाएँ
     .land-xml = Land XML
     .import-file-header = फ़ाइल आयात — बटन अंतिम चुना गया विकल्प चलाता है
+data-panel =
+    .linking = Linking & Extraction
+    .update-fields = Update Fields
+    .ole-object = OLE Object
+    .data-link =
+        Data
+        Link
+    .download = Download from Source
+    .upload = Upload to Source
+    .extract = Extract Data
+    .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
     .preview = Preview
@@ -6800,6 +6841,43 @@ pdf-password =
         { $path }
         यह PDF फ़ाइल नहीं खोली जा सकी।
         यह एन्क्रिप्टेड है और इसके लिए पासवर्ड चाहिए।
+hyperlink-dialog =
+    .title-insert = Insert Hyperlink
+    .title-edit = Edit Hyperlink
+    .target-file = File or web page
+    .target-view = View of this drawing
+    .link = Link
+    .address = Address
+    .address-hint = file, web address or file#location
+    .browse = File...
+    .path = Path
+    .relative = Relative path
+    .dwf = DWG links open the DWF
+    .views = Views and layouts
+    .text = Text to display
+    .selected-one = 1 object selected.
+    .selected-many = objects selected.
+    .linked-one = 1 object with a hyperlink.
+    .linked-many = objects with hyperlinks.
+    .remove = Remove Link
+    .help = HYPERLINK: link the selected objects to a file or web address (add #location to open a view or layout of it) or to a view of this drawing; the text to display is what the link shows.
+hyperlink-cmd =
+    .option = Enter an option [Remove/Insert] <Insert>:
+    .insert-option = Enter hyperlink insert option [Area/Object] <Object>:
+    .first-corner = First corner:
+    .other-corner = Other corner:
+    .url = Enter hyperlink <current drawing>:
+    .location = Enter named location <none>:
+    .description = Enter description <none>:
+    .remove-pick = Enter number, hyperlink, or * for all:
+    .not-valid = Not a valid selection, try again.
+    .deleted-one = 1 hyperlink deleted.
+    .deleted-many = hyperlinks deleted.
+    .selection-error = Error in selection.
+    .invalid-keyword = Invalid option keyword.
+    .options-yes = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <Yes>:
+    .options-no = Display hyperlink cursor, tooltip, and shortcut menu? [Yes/No] <No>:
+    .base-prompt = Enter new value for HYPERLINKBASE, or . for none
 
 calc =
     .invalid-number = अमान्य संख्या '__ocs_fmt_0__'
@@ -6963,3 +7041,30 @@ script-files =
     .exit-save = EXIT  __ocs_arg_name__ में परिवर्तन सहेजें? [Yes/No] <Yes>:
     .exit-no-path = EXIT: "__ocs_fmt_0__" का अभी कोई फ़ाइल पथ नहीं है; पहले SAVEAS का उपयोग करें।
     .sdi-dirty = SDI: कोई दूसरी ड्रॉइंग खोलने से पहले "__ocs_fmt_0__" को सहेजें या बंद करें।
+
+
+# Built-in grip help. Parameter names, states and descriptions remain authored data.
+block-grip =
+    .visibility-label = दृश्यता स्थिति
+    .visibility-value = दृश्यता स्थिति: { $state }
+    .table-label = ब्लॉक गुण
+    .table-row = ब्लॉक गुण: { $row }
+    .alignment = संरेखण: { $mode }
+    .flipped = पलटा हुआ
+    .not-flipped = नहीं पलटा हुआ
+
+
+block-flip =
+    .base-state-label = मूल स्थिति का लेबल
+    .flipped-state-label = पलटी स्थिति का लेबल
+
+
+block-lookup =
+    .input-help = इनपुट: संख्याएँ, सूत्र या { $closed } और { $open } जैसे अंतराल। सूत्र इनपुट नामों का उपयोग करते हैं। कोण रेडियन में हैं।
+    .invalid-table = लुकअप तालिका अमान्य है।
+    .invalid-value = चयनित पंक्ति में पैरामीटर का मान अमान्य है।
+    .incompatible-values = पंक्ति के मान पैरामीटर के मान समूहों के अनुरूप नहीं हैं।
+    .quoted-help = रिक्त स्थान या विराम चिह्न वाले नाम उद्धृत करें: { $name }।
+
+block-array =
+    .limit-error = ब्लॉक के मूल्यांकन से 100000 से अधिक ऐरे ऑब्जेक्ट बनेंगे। दूरी कम करें या अंतराल बढ़ाएँ।
