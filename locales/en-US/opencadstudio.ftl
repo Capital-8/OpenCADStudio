@@ -3739,7 +3739,7 @@ annotate =
     .text-specify-height = TEXT  Specify height <__ocs_fmt_0__>:
     .text-specify-rotation-angle = TEXT  Specify rotation angle <__ocs_fmt_0__>:
     .text-specify-second-endpoint = TEXT  Specify second endpoint:
-    .tolerance-specify-insertion-point = TOLERANCE  Specify insertion point:
+    .tolerance-specify-insertion-point = TOLERANCE  Enter tolerance location:
 
 insert =
     .pastespec-specify-insertion-point = PASTESPEC  Specify insertion point:

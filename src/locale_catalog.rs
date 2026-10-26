@@ -4720,7 +4720,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "TEXT  Specify height <{}>:" => Some(("annotate", "text-specify-height")),
         "TEXT  Specify rotation angle <{}>:" => Some(("annotate", "text-specify-rotation-angle")),
         "TEXT  Specify second endpoint:" => Some(("annotate", "text-specify-second-endpoint")),
-        "TOLERANCE  Specify insertion point:" => Some(("annotate", "tolerance-specify-insertion-point")),
+        "TOLERANCE  Enter tolerance location:" => Some(("annotate", "tolerance-specify-insertion-point")),
         "CIRCLE  Specify diameter  <{:.4}>:" => Some(("draw", "circle-specify-diameter")),
         "CENTERMARK  Select arc or circle <finish>:" => Some(("draw", "centermark-select-arc-or-circle-finish")),
         "CENTERREASSOCIATE  Select new arc or circle:" => Some(("draw", "centerreassociate-select-new-arc-or-circle")),

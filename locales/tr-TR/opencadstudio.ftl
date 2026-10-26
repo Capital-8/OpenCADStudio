@@ -3712,7 +3712,7 @@ annotate =
     .text-specify-height = TEXT  { common.specify }: { common.height } <__ocs_fmt_0__>:
     .text-specify-rotation-angle = TEXT  Döndürme açısını belirtin <__ocs_fmt_0__>:
     .text-specify-second-endpoint = TEXT  { common.specify }: { common.endpoint-2 }:
-    .tolerance-specify-insertion-point = TOLERANCE  Ekleme noktasını belirtin:
+    .tolerance-specify-insertion-point = TOLERANCE  Tolerans konumunu girin:
 
 insert =
     .pastespec-specify-insertion-point = PASTESPEC  Ekleme noktasını belirtin:
