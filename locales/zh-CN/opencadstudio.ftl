@@ -7207,3 +7207,5 @@ mleader-layer =
 mleader-cmd =
     .layer = Enter layer name or select object to specify layer to place multileaders or . for use current [?/eXit] <"{ $current }">:
     .use-current = Use Current
+leaders-panel =
+    .multileader-layer = Multileader Layer

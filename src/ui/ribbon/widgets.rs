@@ -338,6 +338,9 @@ pub(super) struct StyleContext<'a> {
     /// colour of the layer it names.
     pub dim_layer: &'a str,
     pub dim_layer_color: Option<iced::Color>,
+    /// Annotate > Leaders: MLEADERLAYER, likewise.
+    pub mleader_layer: &'a str,
+    pub mleader_layer_color: Option<iced::Color>,
 }
 
 impl<'a> StyleContext<'a> {
@@ -1323,10 +1326,12 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                 );
                 col_items.push(
                     row![
-                        container(dim_layer_combo(
+                        container(layer_combo(
+                            DIM_LAYER_COMBO,
                             style_ctx.dim_layer,
                             style_ctx.dim_layer_color,
                             open_dd.as_deref() == Some(DIM_LAYER_COMBO),
+                            format!("{}\n{} DIMLAYER", t!("Dimension Layer"), t!("Command:")),
                         ))
                         .width(Fill),
                         side(&rows[1])
@@ -1336,6 +1341,21 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                     .into(),
                 );
                 return combo_panel_col(STYLE_COMBO_W * 1.7, col_items);
+            }
+            // Leaders: the style list, the multileader layer list, then the
+            // small tools.
+            if *style_key == StyleKey::MLeaderStyle {
+                col_items.push(
+                    container(layer_combo(
+                        MLEADER_LAYER_COMBO,
+                        style_ctx.mleader_layer,
+                        style_ctx.mleader_layer_color,
+                        open_dd.as_deref() == Some(MLEADER_LAYER_COMBO),
+                        format!("{}\n{} MLEADERLAYER", t!("Multileader Layer"), t!("Command:")),
+                    ))
+                    .width(Fill)
+                    .into(),
+                );
             }
             for row_tools in rows {
                 col_items.push(tool_row(row_tools, active_tool));
@@ -1352,10 +1372,19 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
 
 /// Annotate > Dimensions: the dimension layer list's id.
 pub(crate) const DIM_LAYER_COMBO: &str = "DIM_LAYER_COMBO";
+/// Annotate > Leaders: the multileader layer list's id.
+pub(crate) const MLEADER_LAYER_COMBO: &str = "MLEADER_LAYER_COMBO";
 
-/// Annotate > Dimensions: the layer new dimensions go on (DIMLAYER), with
-/// its colour; "Use Current" when it is the current layer.
-fn dim_layer_combo<'a>(layer: &str, color: Option<iced::Color>, open: bool) -> Element<'a, Message> {
+/// A layer list of the Annotate panels (`id`): the layer new annotations of
+/// its kind go on (DIMLAYER, MLEADERLAYER), with its colour; "Use Current"
+/// when it is the current layer.
+fn layer_combo<'a>(
+    id: &'static str,
+    layer: &str,
+    color: Option<iced::Color>,
+    open: bool,
+    tip: String,
+) -> Element<'a, Message> {
     let swatch: Element<'a, Message> = match color {
         Some(color) => container(text(""))
             .width(10)
@@ -1396,18 +1425,14 @@ fn dim_layer_combo<'a>(layer: &str, color: Option<iced::Color>, open: bool) -> E
         .spacing(4)
         .align_y(iced::Center),
     )
-    .on_press(Message::ToggleRibbonDropdown(DIM_LAYER_COMBO.to_string()))
+    .on_press(Message::ToggleRibbonDropdown(id.to_string()))
     .style(move |theme: &Theme, status| combo_btn_style(theme, open, status, 3.0))
     .padding([3, 8])
     .width(Fill);
-    let combo = tooltip(
-        PosReport::new(DIM_LAYER_COMBO, combo),
-        make_tip(format!("{}\n{} DIMLAYER", t!("Dimension Layer"), t!("Command:"))),
-        TipPos::Bottom,
-    )
-    .delay(Duration::from_millis(400))
-    .style(tip_style);
-    super::keytips::anchor(DIM_LAYER_COMBO, combo)
+    let combo = tooltip(PosReport::new(id, combo), make_tip(tip), TipPos::Bottom)
+        .delay(Duration::from_millis(400))
+        .style(tip_style);
+    super::keytips::anchor(id, combo)
 }
 
 /// Annotate > Text find box id, and its text height box.
@@ -1662,6 +1687,8 @@ mod style_context_tests {
             text_height: "",
             dim_layer: "",
             dim_layer_color: None,
+            mleader_layer: "",
+            mleader_layer_color: None,
         };
         assert_eq!(ctx.names_for(StyleKey::TextStyle), &text_names);
         assert_eq!(ctx.active_for(StyleKey::TextStyle), "Standard");
@@ -1687,6 +1714,8 @@ mod style_context_tests {
             text_height: "",
             dim_layer: "",
             dim_layer_color: None,
+            mleader_layer: "",
+            mleader_layer_color: None,
         };
         assert_eq!(ctx.active_for(StyleKey::TableStyle), "");
         assert!(ctx.names_for(StyleKey::MLeaderStyle).is_empty());

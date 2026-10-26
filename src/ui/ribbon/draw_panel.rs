@@ -390,7 +390,17 @@ pub(super) fn group_title<'a>(
             || format!("title:{title}"),
             text(t!(title)).size(9).style(muted_text_style),
         );
-        return container(label).padding([1, 4]).into();
+        let label: Element<'a, Message> = container(label).padding([1, 4]).into();
+        // Leaders has no slide-out, only the corner arrow to its style.
+        if title == "Leaders" && group_ids.contains(&"MLEADER") {
+            let launcher = corner_launcher(
+                Message::Command("MLEADERSTYLE".to_string()),
+                format!("{}\n{} MLEADERSTYLE", t!("Multileader Style"), t!("Command:")),
+                keytips::LEADER_LAUNCHER,
+            );
+            return row![label, launcher].spacing(6).align_y(iced::Center).into();
+        }
+        return label;
     };
     let expanded = open.as_deref().and_then(parent_panel) == Some(panel.id);
     // A command running from the closed slide-out lights its title, the way a
@@ -443,6 +453,19 @@ pub(super) fn group_title<'a>(
         ),
         _ => return title_button,
     };
+    let launcher = corner_launcher(on_press, tip, anchor);
+    row![title_button, launcher]
+        .spacing(6)
+        .align_y(iced::Center)
+        .into()
+}
+
+/// A panel's corner arrow running `on_press`.
+fn corner_launcher<'a>(
+    on_press: Message,
+    tip: String,
+    anchor: &'static str,
+) -> Element<'a, Message> {
     let launcher = tooltip(
         // A right arrow turned to point into the corner.
         button(
@@ -463,11 +486,7 @@ pub(super) fn group_title<'a>(
     .delay(Duration::from_millis(400))
     .style(tip_style);
     // Shrink-sized: a Fill here would make the panel claim the whole row.
-    let launcher = keytips::anchor(anchor, launcher);
-    row![title_button, launcher]
-        .spacing(6)
-        .align_y(iced::Center)
-        .into()
+    keytips::anchor(anchor, launcher)
 }
 
 fn tool_button(tool: &Tool, active: bool, panel_id: &'static str) -> Element<'static, Message> {

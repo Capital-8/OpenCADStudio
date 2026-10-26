@@ -105,6 +105,8 @@ pub(super) const TEXT_LAUNCHER: &str = "TEXT_LAUNCHER";
 pub(super) const TEXT_HEIGHT: &str = "TEXT_HEIGHT";
 /// The Dimensions panel's corner arrow (Dimension Style).
 pub(super) const DIMENSION_LAUNCHER: &str = "DIMENSION_LAUNCHER";
+/// The Leaders panel's corner arrow (Multileader Style).
+pub(super) const LEADER_LAUNCHER: &str = "LEADER_LAUNCHER";
 const COLLAPSED_PREFIX: &str = "panel:";
 
 pub fn active() -> bool {
@@ -460,8 +462,10 @@ const CODES: &[(&str, &str, &str)] = &[
     ("annotate", "Centerlines", "CE"),
     ("annotate", "CENTERMARK", "CM"),
     ("annotate", "CENTERLINE", "CL"),
-    ("annotate", "ANNOTATE_LEADER", "ML"),
+    ("annotate", "MLEADER", "ML"),
     ("annotate", "MLEADER_STYLE_COMBO", "MY"),
+    ("annotate", super::widgets::MLEADER_LAYER_COMBO, "MU"),
+    ("annotate", LEADER_LAUNCHER, "MS"),
     ("annotate", "MLEADERADD", "MAD"),
     ("annotate", "MLEADERREMOVE", "MV"),
     ("annotate", "MLEADERALIGN", "MAL"),
@@ -766,6 +770,9 @@ impl Ribbon {
                     }
                     RibbonItem::StyleComboGroup { combo_id, rows, .. } => {
                         tips.push(dropdown_tip(scope, combo_id));
+                        if *combo_id == "MLEADER_STYLE_COMBO" {
+                            tips.push(dropdown_tip(scope, super::widgets::MLEADER_LAYER_COMBO));
+                        }
                         tips.extend(rows.iter().flatten().map(|tool| tool_tip(scope, tool)));
                     }
                 }
@@ -785,6 +792,14 @@ impl Ribbon {
             };
             let Some(id) = draw_panel::slide_out_id(group.title, &ids) else {
                 tips.push(flyout);
+                if group.title == "Leaders" && ids.contains(&"MLEADER") {
+                    tips.push(Tip {
+                        anchor: LEADER_LAUNCHER.to_string(),
+                        target: LEADER_LAUNCHER,
+                        code: code(scope, LEADER_LAUNCHER).map(str::to_string),
+                        action: Action::Run(Message::Command("MLEADERSTYLE".to_string())),
+                    });
+                }
                 continue;
             };
             let slide_out = Tip {

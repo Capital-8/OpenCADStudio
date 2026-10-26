@@ -7145,3 +7145,5 @@ mleader-layer =
 mleader-cmd =
     .layer = Çoklu kılavuzların yerleşeceği katmanın adını girin veya katmanı belirlemek için nesne seçin ya da geçerliyi kullanmak için . [?/çıKış] <"{ $current }">:
     .use-current = Geçerliyi Kullan
+leaders-panel =
+    .multileader-layer = Çoklu Kılavuz Katmanı
