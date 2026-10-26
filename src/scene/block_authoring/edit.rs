@@ -449,8 +449,8 @@ pub fn move_part(
             }
         }
     }
-    if let Some(ObjectType::BlockVisibilityParameter(p)) = staged.objects.get(&handle) {
-        staged.block_visibility_params.insert(handle, p.clone());
+    if let Some(ObjectType::BlockVisibilityParameter(p)) = staged.objects.get(&handle).cloned() {
+        staged.block_visibility_params.insert(handle, p);
     }
     if !native_grips.is_empty() {
         let updated = crate::scene::block_grips::config::locations(&staged, definition, handle)?;

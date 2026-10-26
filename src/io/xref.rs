@@ -239,7 +239,7 @@ fn read_outcome_from_bytes(
     bytes: Arc<Vec<u8>>,
     progress: Option<Arc<dyn Fn(u16) + Send + Sync>>,
 ) -> Result<codec::ReadOutcome, String> {
-    use codec::io::dwg::DwgReader;
+    use codec::DwgReader;
     use codec::DxfReader;
     // The readers keep their stream and want an owned, 'static buffer —
     // take the registry `Arc`'s contents by value (one copy; the worker

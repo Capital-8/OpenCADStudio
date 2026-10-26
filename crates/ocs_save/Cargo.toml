@@ -10,6 +10,6 @@ publish = false
 # exactly one implementation. No UI/app dependencies — only the codec + serde.
 
 [dependencies]
-codec = { package = "opencaddocument", git = "https://github.com/HakanSeven12/opencaddocument.git", rev = "22665ca", features = ["serde"] }
+codec = { package = "opencaddocument", git = "https://github.com/HakanSeven12/opencaddocument.git", rev = "f3d6b26", features = ["serde", "ifcx"] }
 bincode = "1.3"
 serde = { version = "1", features = ["derive"] }
