@@ -525,7 +525,7 @@ fn mtext_editor_content<'a>(
             .spacing(3)
             .align_y(iced::Alignment::Center),
         font_pl,
-        small_input("2.5", &ed.height, Message::MTextHeight, 64.0),
+        small_input("2.5", ed.span_field("height", &ed.height), Message::MTextHeight, 64.0),
         iced::widget::Space::new().width(6),
         icon_btn(
             include_bytes!("../../../assets/icons/mt_bold.svg"),
@@ -581,11 +581,11 @@ fn mtext_editor_content<'a>(
             .padding(3)
             .style(btn_style),
         lbl("O"),
-        small_input("0", &ed.oblique, Message::MTextOblique, 48.0),
+        small_input("0", ed.span_field("oblique", &ed.oblique), Message::MTextOblique, 48.0),
         lbl("W"),
-        small_input("1", &ed.width, Message::MTextWidth, 48.0),
+        small_input("1", ed.span_field("width", &ed.width), Message::MTextWidth, 48.0),
         lbl("◊"),
-        small_input("0", &ed.char_space, Message::MTextCharSpace, 48.0),
+        small_input("0", ed.span_field("tracking", &ed.char_space), Message::MTextCharSpace, 48.0),
         iced::widget::Space::new().width(6),
         icon_btn(
             include_bytes!("../../../assets/icons/mt_align_left.svg"),

@@ -145,6 +145,10 @@ pub struct MTextEditorState {
     /// character range `[start, end)`.
     pub glyph_boxes: Vec<crate::entities::text_support::GlyphBox>,
     pub sel: Option<(usize, usize)>,
+    /// A height / oblique / width / tracking field typed while text is
+    /// selected: it styles the selection, not the whole text, so it is shown
+    /// from here for as long as that selection stands (#2194).
+    pub span_input: Option<((usize, usize), &'static str, String)>,
     /// Anchor offset for an in-progress drag selection.
     pub sel_anchor: usize,
     /// Text caret as a visible-character offset (0..=count). Used for typing
@@ -185,6 +189,7 @@ impl MTextEditorState {
             color_picker_open: false,
             glyph_boxes: Vec::new(),
             sel: None,
+            span_input: None,
             sel_anchor: 0,
             caret: 0,
             caret_blink_on: true,
@@ -213,6 +218,15 @@ impl MTextEditorState {
             editing,
             screen_anchor: iced::Point::new(60.0, 90.0),
             original: None,
+        }
+    }
+
+    /// What the `field` input shows: the value typed for the current
+    /// selection, else the whole text's `base`.
+    pub fn span_field<'a>(&'a self, field: &str, base: &'a str) -> &'a str {
+        match &self.span_input {
+            Some((sel, typed, value)) if Some(*sel) == self.sel && *typed == field => value,
+            _ => base,
         }
     }
 
@@ -939,26 +953,37 @@ impl super::OpenCADStudio {
     }
 
     pub(super) fn mtext_apply_span_number(&mut self, field: &'static str, value: String) {
-        let Some(number) = value.trim().replace(',', ".").parse::<f64>().ok() else {
-            return;
-        };
-        let valid = match field {
-            "height" => number > 0.0,
-            "oblique" => (-85.0..=85.0).contains(&number),
-            "width" => number > 0.0,
-            "tracking" => number.is_finite(),
-            _ => false,
-        };
-        if !valid {
-            return;
-        }
+        let number = value
+            .trim()
+            .replace(',', ".")
+            .parse::<f64>()
+            .ok()
+            .filter(|&number| match field {
+                "height" | "width" => number > 0.0,
+                "oblique" => (-85.0..=85.0).contains(&number),
+                "tracking" => number.is_finite(),
+                _ => false,
+            });
         let has_selection = self
             .mtext_editor
             .as_ref()
             .and_then(|editor| editor.sel)
             .is_some_and(|(start, end)| start < end);
         if let Some(ed) = self.mtext_editor.as_mut() {
+            // The field shows what is typed, an empty or half-typed value
+            // included, with or without a selection (#2194).
             if has_selection {
+                ed.span_input = ed.sel.map(|sel| (sel, field, value));
+            } else {
+                match field {
+                    "height" => ed.height = value,
+                    "oblique" => ed.oblique = value,
+                    "width" => ed.width = value,
+                    "tracking" => ed.char_space = value,
+                    _ => {}
+                }
+            }
+            if let (true, Some(number)) = (has_selection, number) {
                 let (start, end) = ed.sel.unwrap();
                 ed.record_undo();
                 let para0 = doc_para0(&ed.doc);
@@ -980,14 +1005,6 @@ impl super::OpenCADStudio {
                 );
                 ed.sel = Some((start, end));
                 ed.caret = end;
-            } else {
-                match field {
-                    "height" => ed.height = value,
-                    "oblique" => ed.oblique = value,
-                    "width" => ed.width = value,
-                    "tracking" => ed.char_space = value,
-                    _ => {}
-                }
             }
         }
         self.rebuild_mtext_preview();
