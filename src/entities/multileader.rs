@@ -562,9 +562,33 @@ fn mleader_landing_geom(ml: &MultiLeader) -> Option<(DVec3, DVec3, f64, f64, f64
         return None;
     }
 
-    let elbow = text - axis * (sign * (dogleg + gap));
+    // The landing starts at the first root's connection point; the text
+    // location is the text's corner, off the landing line.
+    let elbow = ml
+        .context
+        .leader_roots
+        .first()
+        .map(|root| {
+            DVec3::new(
+                root.connection_point.x,
+                root.connection_point.y,
+                root.connection_point.z,
+            )
+        })
+        .unwrap_or_else(|| text - axis * (sign * (dogleg + gap)));
 
     Some((elbow, axis, sign, dogleg, gap))
+}
+
+/// Where the text sits off its landing line, across the reading direction.
+fn text_offset_across(ml: &MultiLeader, elbow: DVec3, axis: DVec3) -> DVec3 {
+    let text = DVec3::new(
+        ml.context.text_location.x,
+        ml.context.text_location.y,
+        ml.context.text_location.z,
+    );
+    let rel = text - elbow;
+    rel - axis * rel.dot(axis)
 }
 
 fn set_mleader_text_location(ml: &mut MultiLeader, location: DVec3) {
@@ -716,8 +740,12 @@ fn apply_grip(ml: &mut MultiLeader, grip_id: usize, apply: GripApply) {
             } else {
                 old_sign
             };
+            let across = text_offset_across(ml, old_elbow, axis);
             set_mleader_text_side(ml, new_sign >= 0.0);
-            set_mleader_text_location(ml, target + axis * (new_sign * (dogleg + gap)));
+            set_mleader_text_location(
+                ml,
+                target + axis * (new_sign * (dogleg + gap)) + across,
+            );
 
             if let Some(root) = ml.context.leader_roots.first_mut() {
                 root.connection_point.x = target.x;
@@ -743,7 +771,11 @@ fn apply_grip(ml: &mut MultiLeader, grip_id: usize, apply: GripApply) {
                 }
             };
             let new_length = ((target - old_elbow).dot(axis) * old_sign).max(1.0e-6);
-            set_mleader_text_location(ml, old_elbow + axis * (old_sign * (new_length + gap)));
+            let across = text_offset_across(ml, old_elbow, axis);
+            set_mleader_text_location(
+                ml,
+                old_elbow + axis * (old_sign * (new_length + gap)) + across,
+            );
             ml.dogleg_length = new_length;
             for root in &mut ml.context.leader_roots {
                 root.landing_distance = new_length;
