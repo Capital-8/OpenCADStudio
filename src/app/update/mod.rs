@@ -2631,6 +2631,7 @@ impl OpenCADStudio {
             Message::RefEditDialog(message) => self.update_refedit_dialog(message),
             Message::PdfPassword(message) => self.update_pdf_password(message),
             Message::HyperlinkDialog(message) => self.update_hyperlink_dialog(message),
+            Message::Spell(message) => self.update_spell(message),
             Message::PdfShxDialog(message) => self.update_pdf_shx_dialog(message),
             Message::PcManager(message) => self.update_pc_manager(message),
             Message::Count(message) => self.on_count(message),

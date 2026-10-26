@@ -52,6 +52,7 @@ impl OpenCADStudio {
             Some(K::UnderlayLayers) => crate::t!("Underlay Layers").into_owned(),
             Some(K::PdfImportSettings) => crate::t!("PDF Import Settings").into_owned(),
             Some(K::Txt2MtxtSettings) => crate::tr!("txt2mtxt", "title"),
+            Some(K::Spell) => crate::ui::window::spell_dialog::title(),
             Some(K::PdfImportFile) => crate::t!("Import PDF").into_owned(),
             Some(K::ImportFile) => crate::t!("Import File").into_owned(),
             Some(K::DgnImport) => crate::t!("DGN Import").into_owned(),
@@ -488,6 +489,10 @@ impl OpenCADStudio {
                 sized_flow(ex, 640, 380, |flow| {
                     crate::ui::window::pdf_dialogs::view_import_settings(settings, flow)
                 })
+            }
+            super::super::ModalKind::Spell => {
+                let state = self.spell.as_ref()?;
+                sized_flow(ex, 600, 620, |flow| crate::ui::window::spell_dialog::view(state, flow))
             }
             super::super::ModalKind::Txt2MtxtSettings => {
                 let settings = self.txt2mtxt_dialog.as_ref()?;

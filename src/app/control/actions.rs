@@ -120,6 +120,7 @@ pub(super) const NAMES: &[&str] = &[
     "refedit_dialog",
     "pdf_password_dialog",
     "hyperlink_dialog",
+    "spell_dialog",
     "pdf_shx_settings",
     "pdf_layer_toggle",
     "pc_manager_toggle",
@@ -2204,6 +2205,57 @@ impl OpenCADStudio {
                             ))
                         }
                     })
+                }
+            }
+            // The Check Spelling window, one step per call:
+            // "scope=drawing|space|selection", "start", "replacement=<text>",
+            // "change", "change_all", "ignore", "ignore_all", "add", "undo",
+            // "language=<name>", "settings", "option=<n>,0|1" (0 dimension
+            // text … 7 punctuation) or "close".
+            "spell_dialog" => {
+                use crate::ui::window::spell_dialog::{SpellMsg as S, SpellScope, SpellSetting};
+                if self.active_modal != Some(crate::app::ModalKind::Spell) {
+                    return Err(failure("no_dialog", "The Check Spelling window is not open"));
+                }
+                let spec = string(req, "value")?;
+                let (key, value) = spec.split_once('=').unwrap_or((spec, ""));
+                let message = match key {
+                    "close" => S::Help,
+                    "scope" => S::Scope(match value {
+                        "space" => SpellScope::Space,
+                        "selection" => SpellScope::Selection,
+                        _ => SpellScope::Drawing,
+                    }),
+                    "start" => S::Start,
+                    "replacement" => S::Replacement(value.to_string()),
+                    "change" => S::Change,
+                    "change_all" => S::ChangeAll,
+                    "ignore" => S::Ignore,
+                    "ignore_all" => S::IgnoreAll,
+                    "add" => S::AddWord,
+                    "undo" => S::Undo,
+                    "language" => S::Language(value.to_string()),
+                    "settings" => S::ToggleSettings,
+                    "option" => {
+                        let (n, on) = value.split_once(',').unwrap_or((value, "1"));
+                        let setting = match n {
+                            "0" => SpellSetting::Dimensions,
+                            "1" => SpellSetting::Attributes,
+                            "2" => SpellSetting::Xrefs,
+                            "3" => SpellSetting::IgnoreCapitalized,
+                            "4" => SpellSetting::IgnoreMixed,
+                            "5" => SpellSetting::IgnoreUpper,
+                            "6" => SpellSetting::IgnoreNumbers,
+                            _ => SpellSetting::IgnorePunctuation,
+                        };
+                        S::Setting(setting, on != "0")
+                    }
+                    _ => return Err(failure("invalid_value", spec)),
+                };
+                if key == "close" {
+                    Message::CloseModal
+                } else {
+                    Message::Spell(message)
                 }
             }
             // The Insert / Edit Hyperlink window, one field per call:
