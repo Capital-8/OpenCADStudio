@@ -2007,7 +2007,7 @@ impl OpenCADStudio {
                     else {
                         continue;
                     };
-                    apply_link_rows(table, link_handle, &rows);
+                    apply_link_rows(table, link_handle, &rows, 0);
                     changed_handles.push(table_handle);
                 }
                 if !changed_handles.is_empty() {
@@ -2245,8 +2245,8 @@ pub(crate) fn apply_link_rows(
     table: &mut codec::entities::Table,
     link_handle: codec::Handle,
     rows: &[Vec<String>],
+    first_linked_row: usize,
 ) {
-    use codec::entities::table::CellStateFlags;
     let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
     while table.row_count() < rows.len() {
         table.add_row();
@@ -2269,18 +2269,10 @@ pub(crate) fn apply_link_rows(
         for column in 0..columns {
             if let Some(cell) = table.cell_mut(row, column) {
                 cell.set_text(values.get(column).map(String::as_str).unwrap_or(""));
-                cell.has_linked_data = true;
-                cell.data_link_handle = Some(link_handle);
-                cell.data_link_rows = rows.len() as i32;
-                cell.data_link_columns = columns as i32;
-                cell.state.insert(
-                    CellStateFlags::LINKED
-                        | CellStateFlags::CONTENT_LOCKED
-                        | CellStateFlags::FORMAT_LOCKED,
-                );
             }
         }
     }
+    crate::modules::annotate::data_link::link_cells(table, link_handle, first_linked_row);
 }
 
 pub(crate) fn table_to_csv(table: &codec::entities::Table) -> String {
