@@ -7203,3 +7203,57 @@ block-lookup =
 
 block-array =
     .limit-error = Die Blockauswertung würde mehr als 100000 Anordnungsobjekte erzeugen. Verringern Sie die Entfernung oder vergrößern Sie den Abstand.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Ebenen: { $count }
+    .select-objects-tip = Wählt Objekte und deren Ebenen aus
+    .saved-filters = Gespeicherte Filter
+    .pattern-placeholder = *pattern*
+    .clear-filter = Filter löschen
+    .hold-selection = Auswahl behalten
+    .release-selection = Auswahl freigeben
+    .release-all = Alle freigeben
+    .select-unreferenced = Nicht referenzierte auswählen
+    .save-state = Ebenenzustand speichern ...
+    .inspect = Überprüfen ...
+    .copy-as-filter = Als Filter kopieren
+    .save-filter = Aktuellen Filter speichern
+    .delete-filter = Aktuellen Filter löschen
+    .zoom-extents = Auf Ebenenausdehnung zoomen
+    .select-objects-on-layer = Objekte auf Ebene auswählen
+    .restore-on-exit = Beim Beenden wiederherstellen
+    .layer-0-always-on = Ebene 0 immer sichtbar
+    .keep-result = Ergebnis behalten
+    .no-layers = Keine Ebenen
+    .no-matches = Keine Ebene passt zum Filter
+    .kept = LAYWALK: Ebenensichtbarkeit beibehalten.
+    .restored = LAYWALK: Ebenensichtbarkeit wiederhergestellt.
+    .no-objects = LAYWALK: Keine Objekte auf den ausgewählten Ebenen.
+    .nothing-to-zoom = LAYWALK: Nichts zu zoomen.
+    .no-walked-layer = LAYWALK: Die gewählten Objekte liegen auf keiner durchlaufenen Ebene.
+    .saved-filter-done = LAYWALK: Filter "{ $name }" gespeichert.
+    .deleted-filter-done = LAYWALK: Filter "{ $name }" gelöscht.
+    .why-select-layer = LAYWALK: Wählen Sie zuerst mindestens eine Ebene aus.
+    .why-none-held = LAYWALK: Keine der ausgewählten Ebenen ist behalten.
+    .why-no-hold = LAYWALK: Keine Ebene ist behalten.
+    .why-all-referenced = LAYWALK: Jede Ebene wird referenziert.
+    .why-select-keep = LAYWALK: Wählen Sie die Ebenen, die der Zustand behalten soll.
+    .why-one-layer = LAYWALK: Wählen Sie genau eine Ebene, um ihren Namen zu kopieren.
+    .why-filter-first = LAYWALK: Wenden Sie zuerst einen Filter an.
+    .why-no-saved-filter = LAYWALK: Das Filterfeld enthält keinen gespeicherten Filter.
+    .purge-question = { $count ->
+       [one] { $count } nicht referenzierte Ebene bereinigen?
+      *[other] { $count } nicht referenzierte Ebenen bereinigen?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: { $count } Ebene bereinigt.
+      *[other] LAYWALK: { $count } Ebenen bereinigt.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: { $count } Objekt ausgewählt.
+      *[other] LAYWALK: { $count } Objekte ausgewählt.
+     }
+    .inspect-total = Ebenen gesamt: { $count }
+    .inspect-selected = Ausgewählte Ebenen: { $count }
+    .inspect-objects = Objekte auf den ausgewählten Ebenen: { $count }

@@ -7193,3 +7193,57 @@ block-lookup =
 
 block-array =
     .limit-error = ब्लॉक के मूल्यांकन से 100000 से अधिक ऐरे ऑब्जेक्ट बनेंगे। दूरी कम करें या अंतराल बढ़ाएँ।
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - लेयर: { $count }
+    .select-objects-tip = वस्तुओं और उनकी लेयर चुनता है
+    .saved-filters = सहेजे गए फ़िल्टर
+    .pattern-placeholder = *pattern*
+    .clear-filter = फ़िल्टर हटाएँ
+    .hold-selection = चयन रखें
+    .release-selection = चयन छोड़ें
+    .release-all = सभी छोड़ें
+    .select-unreferenced = असंदर्भित चुनें
+    .save-state = लेयर स्थिति सहेजें...
+    .inspect = जाँच...
+    .copy-as-filter = फ़िल्टर के रूप में कॉपी
+    .save-filter = वर्तमान फ़िल्टर सहेजें
+    .delete-filter = वर्तमान फ़िल्टर हटाएँ
+    .zoom-extents = लेयर सीमा तक ज़ूम
+    .select-objects-on-layer = लेयर पर वस्तुएँ चुनें
+    .restore-on-exit = बाहर निकलने पर पुनर्स्थापित करें
+    .layer-0-always-on = लेयर 0 सदा चालू
+    .keep-result = परिणाम रखें
+    .no-layers = कोई लेयर नहीं
+    .no-matches = कोई लेयर फ़िल्टर से मेल नहीं खाती
+    .kept = LAYWALK: लेयर दृश्यता रखी गई।
+    .restored = LAYWALK: लेयर दृश्यता पुनर्स्थापित की गई।
+    .no-objects = LAYWALK: चयनित लेयरों पर कोई वस्तु नहीं है।
+    .nothing-to-zoom = LAYWALK: ज़ूम करने के लिए कुछ नहीं है।
+    .no-walked-layer = LAYWALK: चुनी गई वस्तुएँ किसी चल रहे लेयर पर नहीं हैं।
+    .saved-filter-done = LAYWALK: फ़िल्टर "{ $name }" सहेजा गया।
+    .deleted-filter-done = LAYWALK: फ़िल्टर "{ $name }" हटाया गया।
+    .why-select-layer = LAYWALK: पहले कम से कम एक लेयर चुनें।
+    .why-none-held = LAYWALK: चयनित लेयरों में से कोई नहीं रखी गई है।
+    .why-no-hold = LAYWALK: कोई लेयर रखी नहीं गई है।
+    .why-all-referenced = LAYWALK: हर लेयर संदर्भित है।
+    .why-select-keep = LAYWALK: वे लेयर चुनें जिन्हें स्थिति रखनी चाहिए।
+    .why-one-layer = LAYWALK: नाम कॉपी करने के लिए ठीक एक लेयर चुनें।
+    .why-filter-first = LAYWALK: पहले फ़िल्टर लागू करें।
+    .why-no-saved-filter = LAYWALK: फ़िल्टर बॉक्स में सहेजा गया फ़िल्टर नहीं है।
+    .purge-question = { $count ->
+       [one] { $count } असंदर्भित लेयर पर्ज करें?
+      *[other] { $count } असंदर्भित लेयरें पर्ज करें?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: { $count } लेयर पर्ज हुई।
+      *[other] LAYWALK: { $count } लेयरें पर्ज हुईं।
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: { $count } वस्तु चयनित।
+      *[other] LAYWALK: { $count } वस्तुएँ चयनित।
+     }
+    .inspect-total = कुल लेयर: { $count }
+    .inspect-selected = चयनित लेयर: { $count }
+    .inspect-objects = चयनित लेयरों पर वस्तुएँ: { $count }

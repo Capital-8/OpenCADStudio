@@ -72,6 +72,10 @@ impl OpenCADStudio {
             .layers
             .sync_with_viewports(&doc_layers, vp_info);
         self.sync_ribbon_layers();
+        // A walk in flight reads the same table: a layer added, renamed or
+        // erased by any other command has to reach its rows, or the override
+        // would go on hiding (or showing) what no longer exists.
+        self.walk_rebuild();
         // The Properties palette lists layer names it read when it was built;
         // a layer added, removed or renamed must reach that list too (#1664).
         // Only then: the rebuild is costly for a large selection.

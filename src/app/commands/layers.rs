@@ -84,6 +84,16 @@ impl OpenCADStudio {
                 }
             }
 
+            // LAYWALK — the non-modal layer walk. The pallet is the whole
+            // command: a second LAYWALK closes the one it just opened, the way
+            // the ribbon button toggles it.
+            "LAYWALK" => return Some(self.toggle_layer_walk()),
+            // The follow-up to the pallet's *Select Objects* button: the pick
+            // relaunches this name once the objects are in hand.
+            "LAYWALK_SELECT" => {
+                self.walk_picked_objects();
+            }
+
             // DWGUNITS — change what one drawing unit measures, and convert the
             // model to match. The units pill only relabels, which is all the
             // label is for; this is the one place geometry moves. (#668)

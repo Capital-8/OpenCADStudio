@@ -2228,6 +2228,10 @@ impl OpenCADStudio {
         self.install_native_edit_guard(i, &path, opened_fingerprint);
         self.tabs[i].scene.material_base_dir = path.parent().map(std::path::Path::to_path_buf);
         self.tabs[i].scene.document = doc;
+        // A walk belongs to the drawing it was opened on. Loading a document
+        // into this tab ends any walk it still held, so the new drawing can
+        // never render under the previous one's hide.
+        self.reset_layer_walk_for(i);
         self.tabs[i].scene.bump_layout_epoch();
         self.tabs[i].scene.bump_scale_epoch();
         self.tabs[i].scene.bump_ucs_epoch();

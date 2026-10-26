@@ -7204,3 +7204,60 @@ block-lookup =
 
 block-array =
     .limit-error = Przeliczenie bloku utworzyłoby ponad 100000 obiektów szyku. Zmniejsz odległość lub zwiększ odstęp.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Warstwy: { $count }
+    .select-objects-tip = Zaznacza obiekty i ich warstwy
+    .saved-filters = Zapisane filtry
+    .pattern-placeholder = *pattern*
+    .clear-filter = Wyczyść filtr
+    .hold-selection = Przytrzymaj zaznaczenie
+    .release-selection = Zwolnij zaznaczenie
+    .release-all = Zwolnij wszystko
+    .select-unreferenced = Zaznacz nieużywane
+    .save-state = Zapisz stan warstwy...
+    .inspect = Inspekcja...
+    .copy-as-filter = Kopiuj jako filtr
+    .save-filter = Zapisz bieżący filtr
+    .delete-filter = Usuń bieżący filtr
+    .zoom-extents = Powiększ do zakresu warstwy
+    .select-objects-on-layer = Zaznacz obiekty na warstwie
+    .restore-on-exit = Przywróć przy zamknięciu
+    .layer-0-always-on = Warstwa 0 zawsze widoczna
+    .keep-result = Zachowaj wynik
+    .no-layers = Brak warstw
+    .no-matches = Żadna warstwa nie pasuje do filtra
+    .kept = LAYWALK: widoczność warstw zachowana.
+    .restored = LAYWALK: widoczność warstw przywrócona.
+    .no-objects = LAYWALK: brak obiektów na zaznaczonych warstwach.
+    .nothing-to-zoom = LAYWALK: nie ma czego powiększać.
+    .no-walked-layer = LAYWALK: wybrane obiekty nie leżą na przeglądanej warstwie.
+    .saved-filter-done = LAYWALK: zapisano filtr "{ $name }".
+    .deleted-filter-done = LAYWALK: usunięto filtr "{ $name }".
+    .why-select-layer = LAYWALK: najpierw zaznacz co najmniej jedną warstwę.
+    .why-none-held = LAYWALK: żadna z zaznaczonych warstw nie jest przytrzymana.
+    .why-no-hold = LAYWALK: żadna warstwa nie jest przytrzymana.
+    .why-all-referenced = LAYWALK: każda warstwa jest używana.
+    .why-select-keep = LAYWALK: zaznacz warstwy, które stan ma zachować.
+    .why-one-layer = LAYWALK: zaznacz dokładnie jedną warstwę, aby skopiować jej nazwę.
+    .why-filter-first = LAYWALK: najpierw zastosuj filtr.
+    .why-no-saved-filter = LAYWALK: pole filtra nie zawiera zapisanego filtra.
+    .purge-question = { $count ->
+       [one] Usunąć { $count } nieużywaną warstwę?
+      [few] Usunąć { $count } nieużywane warstwy?
+      *[other] Usunąć { $count } nieużywanych warstw?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: usunięto { $count } warstwę.
+      [few] LAYWALK: usunięto { $count } warstwy.
+      *[other] LAYWALK: usunięto { $count } warstw.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: zaznaczono { $count } obiekt.
+      [few] LAYWALK: zaznaczono { $count } obiekty.
+      *[other] LAYWALK: zaznaczono { $count } obiektów.
+     }
+    .inspect-total = Wszystkich warstw: { $count }
+    .inspect-selected = Zaznaczonych warstw: { $count }
+    .inspect-objects = Obiektów na zaznaczonych warstwach: { $count }

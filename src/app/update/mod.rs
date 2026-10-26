@@ -2673,6 +2673,7 @@ impl OpenCADStudio {
             Message::PdfShxDialog(message) => self.update_pdf_shx_dialog(message),
             Message::PcManager(message) => self.update_pc_manager(message),
             Message::Count(message) => self.on_count(message),
+            Message::Laywalk(message) => self.on_layer_walk(message),
             Message::QuickCalc(message) => self.on_quick_calc(message),
             Message::SheetSet(message) => self.on_sheet_set(message),
             Message::KeyTip(input) => self.on_keytip(input),
@@ -3198,8 +3199,27 @@ impl OpenCADStudio {
                 extend_selection,
             } => {
                 if !focused {
-                    // Not the command line: maybe the QuickCalc input, whose
-                    // ↑/↓ step through its history.
+                    // Not the command line: the walk list keeps the arrows while
+                    // a row has the selection, so ↑/↓ step through layers.
+                    if self.layer_walk_owns_arrows() {
+                        match direction {
+                            ArrowKey::Up => {
+                                return self.on_layer_walk(crate::ui::window::layer_walk::LayerWalkMsg::KeyNav {
+                                    up: true,
+                                })
+                            }
+                            ArrowKey::Down => {
+                                return self.on_layer_walk(
+                                    crate::ui::window::layer_walk::LayerWalkMsg::KeyNav {
+                                        up: false,
+                                    },
+                                )
+                            }
+                            ArrowKey::Left | ArrowKey::Right => {}
+                        }
+                    }
+                    // …or maybe the QuickCalc input, whose ↑/↓ step through
+                    // its history.
                     let up = matches!(direction, ArrowKey::Up);
                     if !self.quick_calc.show || !matches!(direction, ArrowKey::Up | ArrowKey::Down) {
                         return Task::none();
@@ -4873,6 +4893,9 @@ impl OpenCADStudio {
                 // event. The last hover can lag behind fast cursor motion,
                 // particularly while expensive OSNAP/OTRACK previews run.
                 self.snap_dwell = None;
+                // Clicking the drawing ends the walk list's claim on the arrow
+                // keys; the pallet stays open and keeps its selection.
+                self.layer_walk_lost_focus();
                 let tab = &self.tabs[self.active_tab];
                 // Ordinary selection does not consume a snapped point. Running
                 // ViewportMove here repeated the full snap/hover query at click
@@ -11112,6 +11135,8 @@ impl OpenCADStudio {
                 let phase = Instant::now();
                 self.refresh_properties();
                 let properties_ms = phase.elapsed().as_secs_f64() * 1000.0;
+                // The entered viewport is now the space being walked.
+                self.walk_space_changed();
                 self.command_line.push_output(crate::t!("MSPACE").as_ref());
                 if perf {
                     crate::perf_record!(
@@ -11149,6 +11174,8 @@ impl OpenCADStudio {
                 // Paper space has no UCS — drop the viewport's UCS.
                 self.tabs[i].refresh_active_ucs();
                 self.refresh_properties();
+                // Back on the sheet, the walk follows the space it belongs to.
+                self.walk_space_changed();
                 self.command_line.push_output(crate::t!("PSPACE").as_ref());
                 if context_changed {
                     self.sync_dyn_fields();

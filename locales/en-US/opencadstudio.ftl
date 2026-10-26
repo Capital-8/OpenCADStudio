@@ -7206,3 +7206,57 @@ block-lookup =
 
 block-array =
     .limit-error = Block evaluation would generate more than 100000 array objects. Reduce the distance or increase the spacing.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Layers: { $count }
+    .select-objects-tip = Selects objects and their layers
+    .saved-filters = Saved filters
+    .pattern-placeholder = *pattern*
+    .clear-filter = Clear filter
+    .hold-selection = Hold Selection
+    .release-selection = Release Selection
+    .release-all = Release All
+    .select-unreferenced = Select Unreferenced
+    .save-state = Save Layer State...
+    .inspect = Inspect...
+    .copy-as-filter = Copy as Filter
+    .save-filter = Save Current Filter
+    .delete-filter = Delete Current Filter
+    .zoom-extents = Zoom to Layer Extents
+    .select-objects-on-layer = Select Objects on Layer
+    .restore-on-exit = Restore on exit
+    .layer-0-always-on = Layer 0 always on
+    .keep-result = Keep Result
+    .no-layers = No layers
+    .no-matches = No layer matches the filter
+    .kept = LAYWALK: layer visibility kept.
+    .restored = LAYWALK: layer visibility restored.
+    .no-objects = Laywalk: no objects on the selected layers.
+    .nothing-to-zoom = Laywalk: nothing to zoom to.
+    .no-walked-layer = Laywalk: the picked objects are on no walked layer.
+    .saved-filter-done = LAYWALK: saved filter "{ $name }".
+    .deleted-filter-done = LAYWALK: deleted filter "{ $name }".
+    .why-select-layer = Laywalk: select at least one layer first.
+    .why-none-held = Laywalk: none of the selected layers is held.
+    .why-no-hold = Laywalk: no layer is held.
+    .why-all-referenced = Laywalk: every layer is referenced.
+    .why-select-keep = Laywalk: select the layers the state should keep.
+    .why-one-layer = Laywalk: select exactly one layer to copy its name.
+    .why-filter-first = Laywalk: apply a filter first.
+    .why-no-saved-filter = Laywalk: the filter box does not hold a saved filter.
+    .purge-question = Purge { $count ->
+       [one] { $count } unreferenced layer
+      *[other] { $count } unreferenced layers
+     }?
+    .purged = { $count ->
+       [one] LAYWALK: { $count } layer purged.
+      *[other] LAYWALK: { $count } layers purged.
+     }
+    .selected-objects = { $count ->
+       [one] Laywalk: { $count } object selected.
+      *[other] Laywalk: { $count } objects selected.
+     }
+    .inspect-total = Total layers: { $count }
+    .inspect-selected = Selected layers: { $count }
+    .inspect-objects = Objects on the selected layers: { $count }

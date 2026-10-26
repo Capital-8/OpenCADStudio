@@ -31,6 +31,7 @@ pub mod gradient_editor;
 pub mod graphic_attributes;
 pub mod layer_state_manager;
 pub mod layer_translator;
+pub mod layer_walk;
 pub mod layers;
 pub mod layout_manager;
 pub mod missing_fonts;

@@ -278,6 +278,10 @@ impl InstanceContext {
 pub struct RenderSceneGraph<'a> {
     document: &'a Document,
     frozen_layers: Option<&'a FxHashSet<Handle>>,
+    /// Session LAYWALK visible-layer set of the space this graph renders,
+    /// carried like `frozen_layers`. `None` = the space is not walked (or
+    /// the graph serves a foreign space / an export pass).
+    layer_walk: Option<&'a FxHashSet<Handle>>,
     annotation_scale_handle: Option<Handle>,
     annotation_scale: f32,
     all_visible: bool,
@@ -300,6 +304,7 @@ impl<'a> RenderSceneGraph<'a> {
         Self {
             document,
             frozen_layers,
+            layer_walk: None,
             annotation_scale_handle,
             annotation_scale: 1.0,
             all_visible,
@@ -312,6 +317,11 @@ impl<'a> RenderSceneGraph<'a> {
 
     pub fn with_visibility_reveal(mut self, handles: &'a FxHashSet<Handle>) -> Self {
         self.visibility_reveal = Some(handles);
+        self
+    }
+
+    pub fn with_layer_walk(mut self, visible: Option<&'a FxHashSet<Handle>>) -> Self {
+        self.layer_walk = visible;
         self
     }
 
@@ -610,8 +620,15 @@ impl<'a> RenderSceneGraph<'a> {
             return false;
         }
         let layer = self.document.layers.get(&common.layer);
-        if (member && block_member_layer_hidden(self.document, &common.layer))
-            || (!member && layer.is_some_and(|layer| layer.flags.off || layer.flags.frozen))
+        if (member && block_member_layer_hidden(self.document, &common.layer, self.layer_walk))
+            || (!member
+                && layer.is_some_and(|layer| {
+                    layer.flags.off
+                        || layer.flags.frozen
+                        || self
+                            .layer_walk
+                            .is_some_and(|walk| !walk.contains(&layer.handle))
+                }))
         {
             return false;
         }
@@ -633,11 +650,20 @@ impl<'a> RenderSceneGraph<'a> {
 /// Whether a block member on `layer` is hidden by its layer. Frozen layers
 /// hide it; layer 0 being off does not, since a member on layer 0 shows on the
 /// layer of the reference that places it, which the caller has checked.
-/// (#1916)
-pub(crate) fn block_member_layer_hidden(document: &Document, layer: &str) -> bool {
+/// (#1916) `walk` is the session LAYWALK visible set of the space being
+/// rendered; outside layers hide like frozen ones, but layer 0 defers with the
+/// same exemption the off flag gets — the reference's layer was already
+/// checked against the walk by the caller.
+pub(crate) fn block_member_layer_hidden(
+    document: &Document,
+    layer: &str,
+    walk: Option<&FxHashSet<Handle>>,
+) -> bool {
     document.layers.get(layer).is_some_and(|record| {
+        let layer_zero = crate::scene::view::render::is_effective_layer_zero(layer);
         record.flags.frozen
-            || (record.flags.off && !crate::scene::view::render::is_effective_layer_zero(layer))
+            || (record.flags.off && !layer_zero)
+            || (walk.is_some_and(|walk| !walk.contains(&record.handle)) && !layer_zero)
     })
 }
 

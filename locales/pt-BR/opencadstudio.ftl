@@ -7205,3 +7205,57 @@ block-lookup =
 
 block-array =
     .limit-error = A avaliação do bloco geraria mais de 100000 objetos de matriz. Reduza a distância ou aumente o espaçamento.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Camadas: { $count }
+    .select-objects-tip = Seleciona os objetos e suas camadas
+    .saved-filters = Filtros salvos
+    .pattern-placeholder = *pattern*
+    .clear-filter = Limpar filtro
+    .hold-selection = Manter seleção
+    .release-selection = Liberar seleção
+    .release-all = Liberar tudo
+    .select-unreferenced = Selecionar não referenciadas
+    .save-state = Salvar estado da camada...
+    .inspect = Inspecionar...
+    .copy-as-filter = Copiar como filtro
+    .save-filter = Salvar filtro atual
+    .delete-filter = Excluir filtro atual
+    .zoom-extents = Zoom para os limites da camada
+    .select-objects-on-layer = Selecionar objetos na camada
+    .restore-on-exit = Restaurar ao sair
+    .layer-0-always-on = Camada 0 sempre ativa
+    .keep-result = Manter resultado
+    .no-layers = Nenhuma camada
+    .no-matches = Nenhuma camada corresponde ao filtro
+    .kept = LAYWALK: visibilidade das camadas mantida.
+    .restored = LAYWALK: visibilidade das camadas restaurada.
+    .no-objects = LAYWALK: não há objetos nas camadas selecionadas.
+    .nothing-to-zoom = LAYWALK: nada para dar zoom.
+    .no-walked-layer = LAYWALK: os objetos escolhidos não estão em nenhuma camada navegada.
+    .saved-filter-done = LAYWALK: filtro "{ $name }" salvo.
+    .deleted-filter-done = LAYWALK: filtro "{ $name }" excluído.
+    .why-select-layer = LAYWALK: selecione pelo menos uma camada primeiro.
+    .why-none-held = LAYWALK: nenhuma das camadas selecionadas está retida.
+    .why-no-hold = LAYWALK: nenhuma camada está retida.
+    .why-all-referenced = LAYWALK: todas as camadas são referenciadas.
+    .why-select-keep = LAYWALK: selecione as camadas que o estado deve manter.
+    .why-one-layer = LAYWALK: selecione exatamente uma camada para copiar seu nome.
+    .why-filter-first = LAYWALK: aplique um filtro primeiro.
+    .why-no-saved-filter = LAYWALK: a caixa de filtro não contém um filtro salvo.
+    .purge-question = { $count ->
+       [one] Expurgar { $count } camada não referenciada?
+      *[other] Expurgar { $count } camadas não referenciadas?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: { $count } camada expurgada.
+      *[other] LAYWALK: { $count } camadas expurgadas.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: { $count } objeto selecionado.
+      *[other] LAYWALK: { $count } objetos selecionados.
+     }
+    .inspect-total = Camadas totais: { $count }
+    .inspect-selected = Camadas selecionadas: { $count }
+    .inspect-objects = Objetos nas camadas selecionadas: { $count }

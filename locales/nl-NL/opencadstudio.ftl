@@ -7203,3 +7203,57 @@ block-lookup =
 
 block-array =
     .limit-error = De blokevaluatie zou meer dan 100000 matrixobjecten genereren. Verklein de afstand of vergroot de tussenruimte.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Lagen: { $count }
+    .select-objects-tip = Selecteert objecten en hun lagen
+    .saved-filters = Opgeslagen filters
+    .pattern-placeholder = *pattern*
+    .clear-filter = Filter wissen
+    .hold-selection = Selectie vasthouden
+    .release-selection = Selectie loslaten
+    .release-all = Alles loslaten
+    .select-unreferenced = Niet-verwijnde selecteren
+    .save-state = Lagenstatus opslaan...
+    .inspect = Inspecteren...
+    .copy-as-filter = Kopiëren als filter
+    .save-filter = Huidig filter opslaan
+    .delete-filter = Huidig filter verwijderen
+    .zoom-extents = Zoomen naar layerbegrenzing
+    .select-objects-on-layer = Objecten op laag selecteren
+    .restore-on-exit = Herstellen bij afsluiten
+    .layer-0-always-on = Laag 0 altijd aan
+    .keep-result = Resultaat behouden
+    .no-layers = Geen lagen
+    .no-matches = Geen laag voldoet aan het filter
+    .kept = LAYWALK: lagenzichtbaarheid behouden.
+    .restored = LAYWALK: lagenzichtbaarheid hersteld.
+    .no-objects = LAYWALK: geen objecten op de geselecteerde lagen.
+    .nothing-to-zoom = LAYWALK: er is niets om naartoe te zoomen.
+    .no-walked-layer = LAYWALK: de gekozen objecten staan niet op een bewandelde laag.
+    .saved-filter-done = LAYWALK: filter "{ $name }" opgeslagen.
+    .deleted-filter-done = LAYWALK: filter "{ $name }" verwijderd.
+    .why-select-layer = LAYWALK: selecteer eerst minstens één laag.
+    .why-none-held = LAYWALK: geen van de geselecteerde lagen is vastgehouden.
+    .why-no-hold = LAYWALK: geen enkele laag is vastgehouden.
+    .why-all-referenced = LAYWALK: elke laag wordt verwezen.
+    .why-select-keep = LAYWALK: selecteer de lagen die de status moet behouden.
+    .why-one-layer = LAYWALK: selecteer precies één laag om de naam te kopiëren.
+    .why-filter-first = LAYWALK: pas eerst een filter toe.
+    .why-no-saved-filter = LAYWALK: het filtervak bevat geen opgeslagen filter.
+    .purge-question = { $count ->
+       [one] { $count } niet-verwezen laag zuiveren?
+      *[other] { $count } niet-verwezen lagen zuiveren?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: { $count } laag gezuiverd.
+      *[other] LAYWALK: { $count } lagen gezuiverd.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: { $count } object geselecteerd.
+      *[other] LAYWALK: { $count } objecten geselecteerd.
+     }
+    .inspect-total = Totaal aantal lagen: { $count }
+    .inspect-selected = Geselecteerde lagen: { $count }
+    .inspect-objects = Objecten op de geselecteerde lagen: { $count }

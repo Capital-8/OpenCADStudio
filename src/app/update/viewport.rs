@@ -8240,6 +8240,9 @@ properties={:.1}ms picked={}",
         self.tabs[i]
             .layers
             .sync_with_viewports(&doc_layers, vp_info);
+        // A walk in flight belongs to the space on screen, so it moves with
+        // the layout instead of silently hiding a drawing the user left.
+        self.walk_space_changed();
         let layers_ms = perf_phase.elapsed().as_secs_f64() * 1000.0;
         // Give the layout rebuild a visible notice first.
         self.layout_settling = true;

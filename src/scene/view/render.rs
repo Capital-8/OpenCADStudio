@@ -5050,7 +5050,7 @@ impl Scene {
             self.meshes_for_viewport(inst.handle, &vp_frozen)
         };
         let point_clouds =
-            self.point_clouds_for_viewport(&vp_frozen, inst.paper_sheet || wireframe_2d);
+            self.point_clouds_for_viewport(inst.handle, &vp_frozen, inst.paper_sheet || wireframe_2d);
 
         // SDF text quads (behind OCS_TEXT_SDF). The glyph quads ride on each
         // entity's own wire (produced by the tessellator, transformed for

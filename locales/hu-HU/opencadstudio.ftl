@@ -7189,3 +7189,57 @@ block-lookup =
 
 block-array =
     .limit-error = A blokk kiértékelése több mint 100000 kiosztási objektumot hozna létre. Csökkentse a távolságot vagy növelje a térközt.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Rétegek: { $count }
+    .select-objects-tip = Kijelöli az objektumokat és azok rétegeit
+    .saved-filters = Mentett szűrők
+    .pattern-placeholder = *pattern*
+    .clear-filter = Szűrő törlése
+    .hold-selection = Kijelölés megtartása
+    .release-selection = Kijelölés feloldása
+    .release-all = Összes feloldása
+    .select-unreferenced = Nem hivatkozottak kijelölése
+    .save-state = Rétegállapot mentése...
+    .inspect = Vizsgálás...
+    .copy-as-filter = Másolás szűrőként
+    .save-filter = Jelenlegi szűrő mentése
+    .delete-filter = Jelenlegi szűrő törlése
+    .zoom-extents = Nagyítás a réteg kiterjedésére
+    .select-objects-on-layer = Objektumok kijelölése a rétegen
+    .restore-on-exit = Visszaállítás kilépéskor
+    .layer-0-always-on = 0. réteg mindig látszik
+    .keep-result = Eredmény megtartása
+    .no-layers = Nincsenek rétegek
+    .no-matches = Egy réteg sem felel meg a szűrőnek
+    .kept = LAYWALK: a rétegek láthatósága megtartva.
+    .restored = LAYWALK: a rétegek láthatósága visszaállítva.
+    .no-objects = LAYWALK: nincsenek objektumok a kijelölt rétegeken.
+    .nothing-to-zoom = LAYWALK: nincs nagyítandó objektum.
+    .no-walked-layer = LAYWALK: a kiválasztott objektumok nem böngészött rétegen vannak.
+    .saved-filter-done = LAYWALK: „{ $name }” szűrő mentve.
+    .deleted-filter-done = LAYWALK: „{ $name }” szűrő törölve.
+    .why-select-layer = LAYWALK: előbb jelöljön ki legalább egy réteget.
+    .why-none-held = LAYWALK: a kijelölt rétegek egyike sincs megtartva.
+    .why-no-hold = LAYWALK: nincs megtartott réteg.
+    .why-all-referenced = LAYWALK: minden réteg hivatkozott.
+    .why-select-keep = LAYWALK: jelölje ki az állapot által megtartandó rétegeket.
+    .why-one-layer = LAYWALK: jelöljön ki pontosan egy réteget a nevének másolásához.
+    .why-filter-first = LAYWALK: előbb alkalmazzon szűrőt.
+    .why-no-saved-filter = LAYWALK: a szűrőmező nem tartalmaz mentett szűrőt.
+    .purge-question = { $count ->
+       [one] { $count } nem hivatkozott réteg tisztítása?
+      *[other] { $count } nem hivatkozott réteg tisztítása?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: { $count } réteg törölve.
+      *[other] LAYWALK: { $count } réteg törölve.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: { $count } objektum kijelölve.
+      *[other] LAYWALK: { $count } objektum kijelölve.
+     }
+    .inspect-total = Rétegek összesen: { $count }
+    .inspect-selected = Kijelölt rétegek: { $count }
+    .inspect-objects = Objektumok a kijelölt rétegeken: { $count }

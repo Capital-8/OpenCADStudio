@@ -7204,3 +7204,57 @@ block-lookup =
 
 block-array =
     .limit-error = La valutazione del blocco genererebbe più di 100000 oggetti di serie. Ridurre la distanza o aumentare la spaziatura.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Livelli: { $count }
+    .select-objects-tip = Seleziona gli oggetti e i loro livelli
+    .saved-filters = Filtri salvati
+    .pattern-placeholder = *pattern*
+    .clear-filter = Cancella filtro
+    .hold-selection = Mantieni selezione
+    .release-selection = Rilascia selezione
+    .release-all = Rilascia tutto
+    .select-unreferenced = Seleziona non referenziati
+    .save-state = Salva stato livello...
+    .inspect = Ispeziona...
+    .copy-as-filter = Copia come filtro
+    .save-filter = Salva filtro corrente
+    .delete-filter = Elimina filtro corrente
+    .zoom-extents = Zoom all'estensione del livello
+    .select-objects-on-layer = Seleziona oggetti nel livello
+    .restore-on-exit = Ripristina all'uscita
+    .layer-0-always-on = Livello 0 sempre attivo
+    .keep-result = Mantieni risultato
+    .no-layers = Nessun livello
+    .no-matches = Nessun livello corrisponde al filtro
+    .kept = LAYWALK: visibilità dei livelli mantenuta.
+    .restored = LAYWALK: visibilità dei livelli ripristinata.
+    .no-objects = LAYWALK: nessun oggetto nei livelli selezionati.
+    .nothing-to-zoom = LAYWALK: non c'è nulla su cui fare zoom.
+    .no-walked-layer = LAYWALK: gli oggetti scelti non sono su nessun livello esplorato.
+    .saved-filter-done = LAYWALK: filtro "{ $name }" salvato.
+    .deleted-filter-done = LAYWALK: filtro "{ $name }" eliminato.
+    .why-select-layer = LAYWALK: selezionare prima almeno un livello.
+    .why-none-held = LAYWALK: nessun livello selezionato è trattenuto.
+    .why-no-hold = LAYWALK: nessun livello è trattenuto.
+    .why-all-referenced = LAYWALK: tutti i livelli sono referenziati.
+    .why-select-keep = LAYWALK: selezionare i livelli che lo stato deve mantenere.
+    .why-one-layer = LAYWALK: selezionare esattamente un livello per copiarne il nome.
+    .why-filter-first = LAYWALK: applicare prima un filtro.
+    .why-no-saved-filter = LAYWALK: la casella filtro non contiene un filtro salvato.
+    .purge-question = { $count ->
+       [one] Eliminare { $count } livello non referenziato?
+      *[other] Eliminare { $count } livelli non referenziati?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: { $count } livello eliminato.
+      *[other] LAYWALK: { $count } livelli eliminati.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: { $count } oggetto selezionato.
+      *[other] LAYWALK: { $count } oggetti selezionati.
+     }
+    .inspect-total = Livelli totali: { $count }
+    .inspect-selected = Livelli selezionati: { $count }
+    .inspect-objects = Oggetti nei livelli selezionati: { $count }

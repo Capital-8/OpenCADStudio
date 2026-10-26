@@ -120,13 +120,15 @@ pub enum PanelId {
     SheetSetManager,
     /// The Layer Manager (LAYERS).
     Layers,
+    /// The LAYWALK pallet.
+    Laywalk,
     /// The calculator (QUICKCALC).
     QuickCalc,
 }
 
 impl PanelId {
     /// Every panel, in the order the pallet menu lists them.
-    pub const ALL: [PanelId; 12] = [
+    pub const ALL: [PanelId; 13] = [
         PanelId::Properties,
         PanelId::GraphicAttributes,
         PanelId::BlockPalette,
@@ -138,6 +140,7 @@ impl PanelId {
         PanelId::Count,
         PanelId::SheetSetManager,
         PanelId::Layers,
+        PanelId::Laywalk,
         PanelId::QuickCalc,
     ];
 
@@ -155,6 +158,7 @@ impl PanelId {
             PanelId::Count => "Count",
             PanelId::SheetSetManager => "Sheet Set Manager",
             PanelId::Layers => "Layer Manager",
+            PanelId::Laywalk => "Layer Walk",
             PanelId::QuickCalc => "QuickCalc",
         }
     }
@@ -175,6 +179,7 @@ impl PanelId {
             PanelId::Count => include_bytes!("../../assets/icons/data_extract.svg"),
             PanelId::SheetSetManager => include_bytes!("../../assets/icons/sheetset.svg"),
             PanelId::Layers => include_bytes!("../../assets/icons/layers/panel.svg"),
+            PanelId::Laywalk => include_bytes!("../../assets/icons/layers/laywalk.svg"),
             PanelId::QuickCalc => crate::ui::window::quick_calc::ICON,
         }
     }
@@ -193,6 +198,7 @@ impl PanelId {
             PanelId::Count => 280.0,
             PanelId::SheetSetManager => 280.0,
             PanelId::Layers => 560.0,
+            PanelId::Laywalk => 420.0,
             PanelId::QuickCalc => 320.0,
         }
     }

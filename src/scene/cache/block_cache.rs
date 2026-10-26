@@ -581,7 +581,15 @@ fn build_defn(
         // leaves its members to the insert's layer. The defn cache is rebuilt on
         // every layer off/freeze toggle (bump_geometry bumps block_epoch), so
         // baking the visibility here stays in sync.
-        if crate::scene::render_graph::block_member_layer_hidden(doc, &entity.common().layer) {
+        // The defn cache is space-shared: a session LAYWALK never enters
+        // here (`None`), so one walked space cannot bake its hides into the
+        // block definitions every other space draws. Graph walks apply the
+        // walk per instance instead.
+        if crate::scene::render_graph::block_member_layer_hidden(
+            doc,
+            &entity.common().layer,
+            None,
+        ) {
             continue;
         }
         // Annotative scale representation: bake only the current scale's copy

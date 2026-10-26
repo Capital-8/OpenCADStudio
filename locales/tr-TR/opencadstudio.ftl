@@ -7126,3 +7126,57 @@ block-lookup =
 
 block-array =
     .limit-error = Blok değerlendirmesi 100000 adetten fazla dizi nesnesi oluşturacak. Mesafeyi azaltın veya aralığı artırın.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Katmanlar: { $count }
+    .select-objects-tip = Nesneleri ve onların katmanlarını seçer
+    .saved-filters = Kaydedilmiş filtreler
+    .pattern-placeholder = *pattern*
+    .clear-filter = Filtreyi temizle
+    .hold-selection = Seçimi tut
+    .release-selection = Seçimi bırak
+    .release-all = Tümünü bırak
+    .select-unreferenced = Başvurulmayanları seç
+    .save-state = Katman durumunu kaydet...
+    .inspect = İncele...
+    .copy-as-filter = Filtre olarak kopyala
+    .save-filter = Geçerli filtreyi kaydet
+    .delete-filter = Geçerli filtreyi sil
+    .zoom-extents = Katman sınırlarına yakınlaştır
+    .select-objects-on-layer = Katmandaki nesneleri seç
+    .restore-on-exit = Çıkışta geri yükle
+    .layer-0-always-on = 0 katmanı her zaman açık
+    .keep-result = Sonucu koru
+    .no-layers = Katman yok
+    .no-matches = Hiçbir katman filtreyle eşleşmiyor
+    .kept = LAYWALK: katman görünürlüğü korundu.
+    .restored = LAYWALK: katman görünürlüğü geri yüklendi.
+    .no-objects = LAYWALK: seçili katmanlarda nesne yok.
+    .nothing-to-zoom = LAYWALK: yakınlaştırılacak bir şey yok.
+    .no-walked-layer = LAYWALK: seçilen nesneler gezilen bir katmanda değil.
+    .saved-filter-done = LAYWALK: "{ $name }" filtresi kaydedildi.
+    .deleted-filter-done = LAYWALK: "{ $name }" filtresi silindi.
+    .why-select-layer = LAYWALK: önce en az bir katman seçin.
+    .why-none-held = LAYWALK: seçili katmanların hiçbiri tutulmuyor.
+    .why-no-hold = LAYWALK: hiçbir katman tutulmuyor.
+    .why-all-referenced = LAYWALK: tüm katmanlara başvuruluyor.
+    .why-select-keep = LAYWALK: durumun koruması gereken katmanları seçin.
+    .why-one-layer = LAYWALK: adını kopyalamak için tam olarak bir katman seçin.
+    .why-filter-first = LAYWALK: önce bir filtre uygulayın.
+    .why-no-saved-filter = LAYWALK: filtre kutusu kaydedilmiş bir filtre içermiyor.
+    .purge-question = { $count ->
+       [one] Başvurulmayan { $count } katman temizlensin mi?
+      *[other] Başvurulmayan { $count } katman temizlensin mi?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: { $count } katman temizlendi.
+      *[other] LAYWALK: { $count } katman temizlendi.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: { $count } nesne seçildi.
+      *[other] LAYWALK: { $count } nesne seçildi.
+     }
+    .inspect-total = Toplam katman: { $count }
+    .inspect-selected = Seçili katman: { $count }
+    .inspect-objects = Seçili katmanlardaki nesne: { $count }

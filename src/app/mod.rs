@@ -48,6 +48,9 @@ pub(crate) mod expr_eval;
 mod find_replace;
 pub(crate) mod helpers;
 mod history;
+mod layer_walk;
+#[cfg(test)]
+mod layer_walk_tests;
 mod layers;
 mod measurement;
 mod model_ops;
@@ -5024,6 +5027,8 @@ pub enum Message {
     /// A click or search in the Point Cloud Manager.
     PcManager(crate::ui::window::pc_manager::PcManagerMsg),
     Count(crate::ui::window::count_palette::CountMsg),
+    /// The LayerWalk pallet (LAYWALK).
+    Laywalk(crate::ui::window::layer_walk::LayerWalkMsg),
     /// The QuickCalc pallet.
     QuickCalc(crate::ui::window::quick_calc::QuickCalcMsg),
     SheetSet(crate::ui::window::sheet_set::SheetSetMsg),

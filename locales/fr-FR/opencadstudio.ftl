@@ -7205,3 +7205,57 @@ block-lookup =
 
 block-array =
     .limit-error = L’évaluation du bloc générerait plus de 100000 objets de réseau. Réduisez la distance ou augmentez l’espacement.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Calques : { $count }
+    .select-objects-tip = Sélectionne les objets et leurs calques
+    .saved-filters = Filtres enregistrés
+    .pattern-placeholder = *pattern*
+    .clear-filter = Effacer le filtre
+    .hold-selection = Conserver la sélection
+    .release-selection = Libérer la sélection
+    .release-all = Libérer tout
+    .select-unreferenced = Sélectionner les non référencés
+    .save-state = Enregistrer l'état de calque...
+    .inspect = Consulter...
+    .copy-as-filter = Copier comme filtre
+    .save-filter = Enregistrer le filtre actuel
+    .delete-filter = Supprimer le filtre actuel
+    .zoom-extents = Zoom sur l'étendue du calque
+    .select-objects-on-layer = Sélectionner les objets du calque
+    .restore-on-exit = Restaurer à la fermeture
+    .layer-0-always-on = Calque 0 toujours actif
+    .keep-result = Conserver le résultat
+    .no-layers = Aucun calque
+    .no-matches = Aucun calque ne correspond au filtre
+    .kept = LAYWALK : visibilité des calques conservée.
+    .restored = LAYWALK : visibilité des calques restaurée.
+    .no-objects = LAYWALK : aucun objet sur les calques sélectionnés.
+    .nothing-to-zoom = LAYWALK : rien à zoomer.
+    .no-walked-layer = LAYWALK : les objets choisis ne sont sur aucun calque parcouru.
+    .saved-filter-done = LAYWALK : filtre « { $name } » enregistré.
+    .deleted-filter-done = LAYWALK : filtre « { $name } » supprimé.
+    .why-select-layer = LAYWALK : sélectionnez d'abord au moins un calque.
+    .why-none-held = LAYWALK : aucun calque sélectionné n'est conservé.
+    .why-no-hold = LAYWALK : aucun calque n'est conservé.
+    .why-all-referenced = LAYWALK : tous les calques sont référencés.
+    .why-select-keep = LAYWALK : sélectionnez les calques que l'état doit conserver.
+    .why-one-layer = LAYWALK : sélectionnez exactement un calque pour copier son nom.
+    .why-filter-first = LAYWALK : appliquez d'abord un filtre.
+    .why-no-saved-filter = LAYWALK : la zone de filtre ne contient pas de filtre enregistré.
+    .purge-question = { $count ->
+       [one] Purger { $count } calque non référencé ?
+      *[other] Purger { $count } calques non référencés ?
+     }
+    .purged = { $count ->
+       [one] LAYWALK : { $count } calque purgé.
+      *[other] LAYWALK : { $count } calques purgés.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK : { $count } objet sélectionné.
+      *[other] LAYWALK : { $count } objets sélectionnés.
+     }
+    .inspect-total = Calques au total : { $count }
+    .inspect-selected = Calques sélectionnés : { $count }
+    .inspect-objects = Objets sur les calques sélectionnés : { $count }

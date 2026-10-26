@@ -7202,3 +7202,57 @@ block-lookup =
 
 block-array =
     .limit-error = Lohkon arviointi loisi yli 100000 matriisiobjektia. Pienennä etäisyyttä tai suurenna välistystä.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Tasoja: { $count }
+    .select-objects-tip = Valitsee kohteet ja niiden tasot
+    .saved-filters = Tallennetut suodattimet
+    .pattern-placeholder = *pattern*
+    .clear-filter = Tyhjennä suodatin
+    .hold-selection = Pidä valinta
+    .release-selection = Vapauta valinta
+    .release-all = Vapauta kaikki
+    .select-unreferenced = Valitse viittaamattomat
+    .save-state = Tallenna tasotila...
+    .inspect = Tarkista...
+    .copy-as-filter = Kopioi suodattimeksi
+    .save-filter = Tallenna nykyinen suodatin
+    .delete-filter = Poista nykyinen suodatin
+    .zoom-extents = Tasaa tason rajat
+    .select-objects-on-layer = Valitse kohteet tasolla
+    .restore-on-exit = Palauta poistuttaessa
+    .layer-0-always-on = Taso 0 aina päällä
+    .keep-result = Säilytä tulos
+    .no-layers = Ei tasoja
+    .no-matches = Yksikään taso ei vastaa suodatinta
+    .kept = LAYWALK: tasojen näkyvyys säilytetty.
+    .restored = LAYWALK: tasojen näkyvyys palautettu.
+    .no-objects = LAYWALK: valituilla tasoilla ei ole kohteita.
+    .nothing-to-zoom = LAYWALK: ei mihin lähentää.
+    .no-walked-layer = LAYWALK: valitut kohteet eivät ole kierrettävällä tasolla.
+    .saved-filter-done = LAYWALK: suodatin "{ $name }" tallennettu.
+    .deleted-filter-done = LAYWALK: suodatin "{ $name }" poistettu.
+    .why-select-layer = LAYWALK: valitse ensin vähintään yksi taso.
+    .why-none-held = LAYWALK: yksikään valituista tasoista ei ole pidettynä.
+    .why-no-hold = LAYWALK: yhtään tasoa ei ole pidettynä.
+    .why-all-referenced = LAYWALK: kaikki tasot ovat viitattuja.
+    .why-select-keep = LAYWALK: valitse tasot, jotka tilan tulee säilyttää.
+    .why-one-layer = LAYWALK: valitse tasan yksi taso sen nimen kopioimiseksi.
+    .why-filter-first = LAYWALK: ota suodatin ensin käyttöön.
+    .why-no-saved-filter = LAYWALK: suodatinkenttä ei sisällä tallennettua suodatinta.
+    .purge-question = { $count ->
+       [one] Puhdista { $count } viittaamaton taso?
+      *[other] Puhdista { $count } viittaamatonta tasoa?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: { $count } taso puhdistettu.
+      *[other] LAYWALK: { $count } tasoa puhdistettu.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: { $count } kohde valittu.
+      *[other] LAYWALK: { $count } kohdetta valittu.
+     }
+    .inspect-total = Tasoja yhteensä: { $count }
+    .inspect-selected = Valittuja tasoja: { $count }
+    .inspect-objects = Kohteita valituilla tasoilla: { $count }

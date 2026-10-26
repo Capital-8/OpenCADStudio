@@ -73,6 +73,7 @@ const MENUS: &[(&str, Entries)] = &[
         "Format",
         &[
             ("Layer", "LAYER"),
+            ("Layer Walk", "LAYWALK"),
             ("Color", "COLOR"),
             ("Linetype", "LINETYPE"),
             ("Text Style", "STYLE"),

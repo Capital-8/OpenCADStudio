@@ -7202,3 +7202,60 @@ block-lookup =
 
 block-array =
     .limit-error = Vyhodnocení bloku by vytvořilo více než 100000 objektů pole. Zmenšete vzdálenost nebo zvětšete rozestup.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Vrstvy: { $count }
+    .select-objects-tip = Vybere objekty a jejich vrstvy
+    .saved-filters = Uložené filtry
+    .pattern-placeholder = *pattern*
+    .clear-filter = Vymazat filtr
+    .hold-selection = Podržet výběr
+    .release-selection = Uvolnit výběr
+    .release-all = Uvolnit vše
+    .select-unreferenced = Vybrat nepoužívané
+    .save-state = Uložit stav vrstvy...
+    .inspect = Prohlédnout...
+    .copy-as-filter = Kopírovat jako filtr
+    .save-filter = Uložit aktuální filtr
+    .delete-filter = Smazat aktuální filtr
+    .zoom-extents = Přiblížit na rozsah vrstvy
+    .select-objects-on-layer = Vybrat objekty ve vrstvě
+    .restore-on-exit = Obnovit při zavření
+    .layer-0-always-on = Vrstva 0 vždy zapnutá
+    .keep-result = Zachovat výsledek
+    .no-layers = Žádné vrstvy
+    .no-matches = Žádná vrstva neodpovídá filtru
+    .kept = LAYWALK: viditelnost vrstev zachována.
+    .restored = LAYWALK: viditelnost vrstev obnovena.
+    .no-objects = LAYWALK: ve vybraných vrstvách nejsou žádné objekty.
+    .nothing-to-zoom = LAYWALK: není k čemu se přiblížit.
+    .no-walked-layer = LAYWALK: vybrané objekty nejsou na procházené vrstvě.
+    .saved-filter-done = LAYWALK: filtr „{ $name }“ uložen.
+    .deleted-filter-done = LAYWALK: filtr „{ $name }“ smazán.
+    .why-select-layer = LAYWALK: nejprve vyberte alespoň jednu vrstvu.
+    .why-none-held = LAYWALK: žádná z vybraných vrstev není poddržena.
+    .why-no-hold = LAYWALK: žádná vrstva není poddržena.
+    .why-all-referenced = LAYWALK: všechny vrstvy jsou používány.
+    .why-select-keep = LAYWALK: vyberte vrstvy, které má stav zachovat.
+    .why-one-layer = LAYWALK: vyberte právě jednu vrstvu pro kopírování jejího názvu.
+    .why-filter-first = LAYWALK: nejprve použijte filtr.
+    .why-no-saved-filter = LAYWALK: pole filtru neobsahuje uložený filtr.
+    .purge-question = { $count ->
+       [one] Vymazat { $count } nepoužívanou vrstvu?
+      [few] Vymazat { $count } nepoužívané vrstvy?
+      *[other] Vymazat { $count } nepoužívaných vrstev?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: vymazána { $count } vrstva.
+      [few] LAYWALK: vymazány { $count } vrstvy.
+      *[other] LAYWALK: vymazáno { $count } vrstev.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: vybrán { $count } objekt.
+      [few] LAYWALK: vybrány { $count } objekty.
+      *[other] LAYWALK: vybráno { $count } objektů.
+     }
+    .inspect-total = Vrstev celkem: { $count }
+    .inspect-selected = Vybraných vrstev: { $count }
+    .inspect-objects = Objektů ve vybraných vrstvách: { $count }

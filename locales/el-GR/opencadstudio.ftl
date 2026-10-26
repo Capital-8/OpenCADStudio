@@ -7205,3 +7205,57 @@ block-lookup =
 
 block-array =
     .limit-error = Η αξιολόγηση του μπλοκ θα δημιουργούσε περισσότερα από 100000 αντικείμενα διάταξης. Μειώστε την απόσταση ή αυξήστε το διάκενο.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Επίπεδα: { $count }
+    .select-objects-tip = Επιλέγει τα αντικείμενα και τα επίπεδά τους
+    .saved-filters = Αποθηκευμένα φίλτρα
+    .pattern-placeholder = *pattern*
+    .clear-filter = Εκκαθάριση φίλτρου
+    .hold-selection = Κράτηση επιλογής
+    .release-selection = Απελευθέρωση επιλογής
+    .release-all = Απελευθέρωση όλων
+    .select-unreferenced = Επιλογή μη αναφερόμενων
+    .save-state = Αποθήκευση κατάστασης επιπέδου...
+    .inspect = Επιθεώρηση...
+    .copy-as-filter = Αντιγραφή ως φίλτρο
+    .save-filter = Αποθήκευση τρέχοντος φίλτρου
+    .delete-filter = Διαγραφή τρέχοντος φίλτρου
+    .zoom-extents = Εστίαση στα όρια του επιπέδου
+    .select-objects-on-layer = Επιλογή αντικειμένων στο επίπεδο
+    .restore-on-exit = Επαναφορά στην έξοδο
+    .layer-0-always-on = Επίπεδο 0 πάντα ενεργό
+    .keep-result = Διατήρηση αποτελέσματος
+    .no-layers = Δεν υπάρχουν επίπεδα
+    .no-matches = Κανένα επίπεδο δεν ταιριάζει με το φίλτρο
+    .kept = LAYWALK: η ορατότητα επιπέδων διατηρήθηκε.
+    .restored = LAYWALK: η ορατότητα επιπέδων αποκαταστάθηκε.
+    .no-objects = LAYWALK: δεν υπάρχουν αντικείμενα στα επιλεγμένα επίπεδα.
+    .nothing-to-zoom = LAYWALK: δεν υπάρχει κάτι για εστίαση.
+    .no-walked-layer = LAYWALK: τα επιλεγμένα αντικείμενα δεν βρίσκονται σε διαδραμόμενο επίπεδο.
+    .saved-filter-done = LAYWALK: το φίλτρο "{ $name }" αποθηκεύτηκε.
+    .deleted-filter-done = LAYWALK: το φίλτρο "{ $name }" διαγράφηκε.
+    .why-select-layer = LAYWALK: επιλέξτε πρώτα τουλάχιστον ένα επίπεδο.
+    .why-none-held = LAYWALK: κανένα από τα επιλεγμένα επίπεδα δεν κρατιέται.
+    .why-no-hold = LAYWALK: δεν κρατιέται κανένα επίπεδο.
+    .why-all-referenced = LAYWALK: όλα τα επίπεδα αναφέρονται.
+    .why-select-keep = LAYWALK: επιλέξτε τα επίπεδα που πρέπει να κρατήσει η κατάσταση.
+    .why-one-layer = LAYWALK: επιλέξτε ακριβώς ένα επίπεδο για αντιγραφή του ονόματός του.
+    .why-filter-first = LAYWALK: εφαρμόστε πρώτα ένα φίλτρο.
+    .why-no-saved-filter = LAYWALK: το πλαίσιο φίλτρου δεν περιέχει αποθηκευμένο φίλτρο.
+    .purge-question = { $count ->
+       [one] Καθαρισμός { $count } μη αναφερόμενου επιπέδου;
+      *[other] Καθαρισμός { $count } μη αναφερόμενων επιπέδων;
+     }
+    .purged = { $count ->
+       [one] LAYWALK: { $count } επίπεδο καθαρίστηκε.
+      *[other] LAYWALK: { $count } επίπεδα καθαρίστηκαν.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: { $count } αντικείμενο επιλέχθηκε.
+      *[other] LAYWALK: { $count } αντικείμενα επιλέχθηκαν.
+     }
+    .inspect-total = Σύνολο επιπέδων: { $count }
+    .inspect-selected = Επιλεγμένα επίπεδα: { $count }
+    .inspect-objects = Αντικείμενα στα επιλεγμένα επίπεδα: { $count }

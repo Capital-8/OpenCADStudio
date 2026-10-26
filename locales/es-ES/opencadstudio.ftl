@@ -7205,3 +7205,57 @@ block-lookup =
 
 block-array =
     .limit-error = La evaluación del bloque generaría más de 100000 objetos de matriz. Reduzca la distancia o aumente la separación.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Capas: { $count }
+    .select-objects-tip = Selecciona los objetos y sus capas
+    .saved-filters = Filtros guardados
+    .pattern-placeholder = *pattern*
+    .clear-filter = Borrar filtro
+    .hold-selection = Mantener selección
+    .release-selection = Liberar selección
+    .release-all = Liberar todo
+    .select-unreferenced = Seleccionar sin referencia
+    .save-state = Guardar estado de capa...
+    .inspect = Inspeccionar...
+    .copy-as-filter = Copiar como filtro
+    .save-filter = Guardar filtro actual
+    .delete-filter = Eliminar filtro actual
+    .zoom-extents = Zoom a límites de capa
+    .select-objects-on-layer = Seleccionar objetos en la capa
+    .restore-on-exit = Restaurar al salir
+    .layer-0-always-on = Capa 0 siempre activada
+    .keep-result = Conservar resultado
+    .no-layers = Sin capas
+    .no-matches = Ninguna capa coincide con el filtro
+    .kept = LAYWALK: visibilidad de capas conservada.
+    .restored = LAYWALK: visibilidad de capas restaurada.
+    .no-objects = LAYWALK: no hay objetos en las capas seleccionadas.
+    .nothing-to-zoom = LAYWALK: no hay nada a lo que acercar el zoom.
+    .no-walked-layer = LAYWALK: los objetos elegidos no están en ninguna capa recorrida.
+    .saved-filter-done = LAYWALK: filtro "{ $name }" guardado.
+    .deleted-filter-done = LAYWALK: filtro "{ $name }" eliminado.
+    .why-select-layer = LAYWALK: seleccione primero al menos una capa.
+    .why-none-held = LAYWALK: ninguna capa seleccionada está retenida.
+    .why-no-hold = LAYWALK: no hay ninguna capa retenida.
+    .why-all-referenced = LAYWALK: todas las capas están referenciadas.
+    .why-select-keep = LAYWALK: seleccione las capas que el estado debe conservar.
+    .why-one-layer = LAYWALK: seleccione exactamente una capa para copiar su nombre.
+    .why-filter-first = LAYWALK: aplique un filtro primero.
+    .why-no-saved-filter = LAYWALK: el cuadro de filtro no contiene un filtro guardado.
+    .purge-question = { $count ->
+       [one] ¿Purgar { $count } capa sin referencia?
+      *[other] ¿Purgar { $count } capas sin referencia?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: { $count } capa purgada.
+      *[other] LAYWALK: { $count } capas purgadas.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: { $count } objeto seleccionado.
+      *[other] LAYWALK: { $count } objetos seleccionados.
+     }
+    .inspect-total = Capas totales: { $count }
+    .inspect-selected = Capas seleccionadas: { $count }
+    .inspect-objects = Objetos en las capas seleccionadas: { $count }

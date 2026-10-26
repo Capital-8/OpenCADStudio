@@ -773,6 +773,16 @@ impl ObjectIsolationState {
     }
 }
 
+/// Session-only LAYWALK visibility override, keyed by drawing space
+/// (see `Scene::interaction_space_key_pub`): while a space has a walk set,
+/// entities whose layer is not in the set are hidden there — like
+/// per-viewport freeze, but in memory only. The layer table is never
+/// touched, so the drawing stays clean and undo is unaffected.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LayerWalkState {
+    pub visible: HashMap<u64, HashSet<Handle>>,
+}
+
 /// Global counter so every Scene and every geometry mutation gets a
 /// process-wide unique epoch. This prevents two different tabs (Scenes)
 /// from ever sharing the same epoch value, which would cause the shared
@@ -2454,6 +2464,11 @@ pub struct Scene {
     pub selected_constraint: Option<crate::scene::parametric_constraints::ConstraintId>,
     /// Session-only ISOLATEOBJECTS / HIDEOBJECTS state. Never written to DWG/DXF.
     pub object_isolation: ObjectIsolationState,
+    /// Session-only LAYWALK per-space visible-layer sets. In-memory only;
+    /// never serialized and never touches the layer table, so undo is
+    /// unaffected and a document replace drops it with the rest of the
+    /// transient visibility.
+    pub layer_walk: LayerWalkState,
     /// Scene-scoped reference-only designations (API v9): plugin-owned
     /// display geometry the built-in edit paths refuse. In-memory only,
     /// keyed by handle, lives and dies with this scene — never written to
@@ -3151,6 +3166,7 @@ impl Scene {
             selected_order: Vec::new(),
             selected_constraint: None,
             object_isolation: ObjectIsolationState::default(),
+            layer_walk: LayerWalkState::default(),
             reference_only: Default::default(),
             preview_hidden: HashSet::default(),
             command_preview_hidden: HashSet::default(),
@@ -7098,10 +7114,12 @@ impl Scene {
 
     /// A newly opened/replaced document starts with no session visibility.
     /// Persisted `EntityCommon::invisible` values stay untouched and continue
-    /// to serve file/dynamic-block visibility.
+    /// to serve file/dynamic-block visibility. Covers LAYWALK too: the walk
+    /// is a session override, never a drawing property.
     pub fn reset_transient_visibility(&mut self) {
         self.block_visibility_reveal = false;
         self.object_isolation = ObjectIsolationState::default();
+        self.layer_walk = LayerWalkState::default();
         self.preview_hidden.clear();
         self.command_preview_hidden.clear();
     }
@@ -7783,6 +7801,19 @@ impl Scene {
             }
             None => mix(u64::MAX - 1),
         }
+        // LAYWALK changes what the gate admits, so a walked build must get
+        // its own key and never reuse (or be reused by) the un-walked set.
+        match self.interaction_layer_walk() {
+            Some(visible) => {
+                let mut signature = 0u64;
+                for handle in visible {
+                    signature ^= handle.value().wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                }
+                mix(signature);
+                mix(visible.len() as u64 + 1);
+            }
+            None => mix(u64::MAX - 2),
+        }
         key
     }
 
@@ -7838,6 +7869,9 @@ impl Scene {
     fn uses_resident_memo(&self, block: Handle, frozen_layers: Option<&HashSet<Handle>>) -> bool {
         block == self.model_space_block_handle()
             && frozen_layers.is_none_or(|layers| layers.is_empty())
+            // A walked build filters entities differently than the memo's
+            // un-walked set membership, so it must not read or fill it.
+            && self.interaction_layer_walk().is_none()
             && resident_memo_enabled()
     }
 
@@ -8960,8 +8994,13 @@ impl Scene {
         } else {
             self.paper_annotation_scale_handle()
         };
-        let arc =
-            Arc::new(self.wipeout_models(target_block, None, scale, self.annotation_all_visible()));
+        let arc = Arc::new(self.wipeout_models(
+            target_block,
+            None,
+            scale,
+            self.annotation_all_visible(),
+            None,
+        ));
         self.wipeout_cache
             .borrow_mut()
             .insert(key, (self.geometry_epoch, Arc::clone(&arc)));
@@ -9092,6 +9131,11 @@ impl Scene {
         } else {
             self.visibility_reveal_handles()
         };
+        // Plot/export passes draw the drawing as stored, not as walked;
+        // live renders get the walk only when they show the interaction space.
+        let layer_walk = (!plotting)
+            .then(|| self.render_space_layer_walk(target_block, viewport))
+            .flatten();
         let graph = render_graph::RenderSceneGraph::new(
             &self.document,
             frozen,
@@ -9100,6 +9144,7 @@ impl Scene {
             depth_map.as_ref(),
         )
         .with_visibility_reveal(&visibility_reveal)
+        .with_layer_walk(layer_walk)
         .with_annotation_scale(self.annotation_scale)
         .with_viewport(viewport);
         let mut models = Vec::new();
@@ -9316,6 +9361,19 @@ impl Scene {
     }
 
     fn interaction_space_key(&self) -> u64 {
+        let base = self.interaction_space_base_key();
+        // Fold the session LAYWALK set in like the viewport freeze fold:
+        // render caches keyed here must never reuse an un-walked build.
+        let walk = Self::layer_walk_sig(self.layer_walk.visible.get(&base));
+        base ^ walk.rotate_left(11)
+    }
+
+    /// The space identity WITHOUT any walk: block ^ viewport ^ per-viewport
+    /// freeze. `LayerWalkState` entries are keyed by this value, so a walk
+    /// can be set or cleared without ever moving the key it lives under.
+    /// During block edit the viewport is ignored, so a walk stored under this
+    /// key applies to the edited block space — matching the other gates.
+    fn interaction_space_base_key(&self) -> u64 {
         let block = self.interaction_block_handle().value();
         let viewport = self
             .active_viewport
@@ -9333,7 +9391,131 @@ impl Scene {
         block ^ viewport.rotate_left(29) ^ frozen.rotate_left(47)
     }
 
+    /// Order-independent signature of an optional walk set, folded like the
+    /// frozen-set folds so iteration order cannot change a cache key. `None`
+    /// and the empty set differ: a hide-everything walk never aliases the
+    /// un-walked key.
+    fn layer_walk_sig(walk: Option<&HashSet<Handle>>) -> u64 {
+        let Some(visible) = walk else {
+            return 0;
+        };
+        visible
+            .iter()
+            .fold(visible.len() as u64 + 1, |signature, handle| {
+                signature ^ handle.value().wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            })
+    }
+
+    /// The walk set governing the current interaction space, if any. An
+    /// empty set is a valid walk (it hides every layered entity).
+    fn interaction_layer_walk(&self) -> Option<&HashSet<Handle>> {
+        self.layer_walk.visible.get(&self.interaction_space_base_key())
+    }
+
+    /// Walk set for a render of `block` seen through `viewport` (`None` =
+    /// the sheet / tiles directly). Only the current interaction space
+    /// carries a walk: a graph that serves a foreign viewport or an export
+    /// pass must keep drawing the un-walked content.
+    fn render_space_layer_walk(
+        &self,
+        block: Handle,
+        viewport: Option<Handle>,
+    ) -> Option<&HashSet<Handle>> {
+        let walk = self.interaction_layer_walk()?;
+        let interaction_viewport = self
+            .active_viewport
+            .filter(|_| self.block_edit_block.is_none());
+        if viewport.filter(|handle| !handle.is_null()) != interaction_viewport {
+            return None;
+        }
+        (block == self.interaction_block_handle()).then_some(walk)
+    }
+
+    /// Public handle on the key the LAYWALK state is stored under (see
+    /// `interaction_space_base_key`): stable with and without an active walk,
+    /// so the app can set / clear / compare space identities.
+    pub fn interaction_space_key_pub(&self) -> u64 {
+        self.interaction_space_base_key()
+    }
+
+    /// The visible-layer set walked in space `space`, if that space is walked.
+    pub fn space_layer_walk(&self, space: u64) -> Option<&HashSet<Handle>> {
+        self.layer_walk.visible.get(&space)
+    }
+
+    /// Install or remove (`None`) the walk set for space `space`. Pure state:
+    /// the caller bumps the geometry epoch so every derived cache rebuilds.
+    pub fn set_space_layer_walk(&mut self, space: u64, visible: Option<HashSet<Handle>>) {
+        match visible {
+            Some(visible) => {
+                self.layer_walk.visible.insert(space, visible);
+            }
+            None => {
+                self.layer_walk.visible.remove(&space);
+            }
+        }
+    }
+
+    /// Drop walks for every space but `keep` — the app guarantees only the
+    /// interactively walked space is ever hidden.
+    pub fn clear_other_space_layer_walks(&mut self, keep: u64) {
+        self.layer_walk.visible.retain(|space, _| *space == keep);
+    }
+
+    /// Drop every walk set. The pallet's cleanup path calls this on every
+    /// close, so a drawing can never be left half-hidden.
+    pub fn clear_all_layer_walks(&mut self) {
+        self.layer_walk.visible.clear();
+    }
+
+    /// The entity handles of the block record being interacted with: model
+    /// space, or the current layout's paper-space block. Per-layer actions
+    /// (LAYWALK's zoom and select) work on this set, never on block-definition
+    /// geometry.
+    pub fn interaction_space_handles(&self) -> Vec<Handle> {
+        let block = self.interaction_block_handle();
+        self.document
+            .block_records
+            .iter()
+            .find(|record| record.handle == block)
+            .map(|record| record.entity_handles.clone())
+            .unwrap_or_default()
+    }
+
+    /// Whether any space currently has a walk set.
+    pub fn layer_walk_active(&self) -> bool {
+        !self.layer_walk.visible.is_empty()
+    }
+
+    /// Whether the current interaction space is walked.
+    pub fn layer_walk_active_for_current_space(&self) -> bool {
+        self.layer_walk
+            .visible
+            .contains_key(&self.interaction_space_base_key())
+    }
+
+    /// Convenience clone of the current space's walk set for snapshot/undo-free restores.
+    pub fn current_space_walk_visible(&self) -> Option<HashSet<Handle>> {
+        self.space_layer_walk(self.interaction_space_base_key()).cloned()
+    }
+
+    /// True when the current space's walk hides this layer — the predicate
+    /// every visibility gate ANDs in next to its off/frozen test. No set,
+    /// or a layer outside any space (unknown record), never hides.
+    pub fn layer_walk_hidden(&self, layer: Option<&codec::tables::layer::Layer>) -> bool {
+        let Some(layer) = layer else {
+            return false;
+        };
+        self.interaction_layer_walk()
+            .is_some_and(|walk| !walk.contains(&layer.handle))
+    }
+
     fn interaction_layer_frozen(&self, layer: &str) -> bool {
+        // The interaction-space LAYWALK hides layers like a VP freeze would,
+        // so every per-viewport-freeze consumer honours it through this gate.
+        if self.layer_walk_hidden(self.document.layers.get(layer)) {
+            return true;
+        }
         let Some(frozen) = self.interaction_viewport_frozen_layers() else {
             return false;
         };
@@ -9722,12 +9904,11 @@ impl Scene {
     }
 
     /// True when `layer` is turned off or frozen — entities on it never render.
+    /// Also true when the current space's LAYWALK set omits it: every hatch /
+    /// fill / mesh consumer funnels through here, so the walk hides them too.
     fn layer_hidden(&self, layer: &str) -> bool {
-        self.document
-            .layers
-            .get(layer)
-            .map(|l| l.flags.off || l.flags.frozen)
-            .unwrap_or(false)
+        let record = self.document.layers.get(layer);
+        record.map(|l| l.flags.off || l.flags.frozen).unwrap_or(false) || self.layer_walk_hidden(record)
     }
 
     /// Handles hidden inside content viewport `vp`: its VP-frozen layers plus
@@ -9767,6 +9948,11 @@ impl Scene {
     /// [`Scene::resident_entity_visible`] so fills / images / meshes hide on the
     /// same layers wires do. `None` / empty set → never frozen.
     fn layer_frozen_in(&self, layer: &str, frozen: Option<&HashSet<Handle>>) -> bool {
+        // LAYWALK rides the same gate: consumers of VP freeze (fills, plot
+        // fills, meshes) hide walked-out layers as if the viewport froze them.
+        if self.layer_walk_hidden(self.document.layers.get(layer)) {
+            return true;
+        }
         match frozen {
             Some(fz) if !fz.is_empty() => self
                 .document
@@ -9848,7 +10034,9 @@ impl Scene {
         let context_sig = scale.map_or(0, |handle| handle.value())
             ^ u64::from(all_visible).rotate_left(61)
             ^ self.viewport_style_key(Some(viewport)).rotate_left(23);
-        let sig = Self::frozen_layers_sig(frozen) ^ context_sig;
+        let layer_walk = self
+            .render_space_layer_walk(target_block, (!viewport.is_null()).then_some(viewport));
+        let sig = Self::frozen_layers_sig(frozen) ^ context_sig ^ Self::layer_walk_sig(layer_walk);
         let key = (target_block, self.current_layout.clone(), sig);
         let sel = if tint_selected {
             self.selected_hatch_sig()
@@ -9888,14 +10076,22 @@ impl Scene {
         let all_visible = self.annotation_all_visible();
         let context_sig =
             scale.map_or(0, |handle| handle.value()) ^ u64::from(all_visible).rotate_left(61);
-        let sig = Self::frozen_layers_sig(frozen) ^ context_sig;
+        let layer_walk = self
+            .render_space_layer_walk(target_block, (!viewport.is_null()).then_some(viewport));
+        let sig = Self::frozen_layers_sig(frozen) ^ context_sig ^ Self::layer_walk_sig(layer_walk);
         let key = (target_block, self.current_layout.clone(), sig);
         if let Some((e, arc)) = self.frozen_wipeout_cache.borrow().get(&key) {
             if *e == self.geometry_epoch {
                 return Arc::clone(arc);
             }
         }
-        let arc = Arc::new(self.wipeout_models(target_block, Some(frozen), scale, all_visible));
+        let arc = Arc::new(self.wipeout_models(
+            target_block,
+            Some(frozen),
+            scale,
+            all_visible,
+            (!viewport.is_null()).then_some(viewport),
+        ));
         self.frozen_wipeout_cache
             .borrow_mut()
             .insert(key, (self.geometry_epoch, Arc::clone(&arc)));
@@ -9908,6 +10104,7 @@ impl Scene {
     /// buffers) by key.
     pub(super) fn point_clouds_for_viewport(
         &self,
+        viewport: Handle,
         frozen: &HashSet<Handle>,
         paper_sheet: bool,
     ) -> Arc<crate::scene::model::point_cloud::PointCloudSet> {
@@ -9919,7 +10116,16 @@ impl Scene {
             return empty();
         }
         let target_block = self.content_render_block_handle();
-        let key = (target_block, Self::frozen_layers_sig(frozen));
+        let layer_walk = self.render_space_layer_walk(
+            target_block,
+            (!viewport.is_null()).then_some(viewport),
+        );
+        // Viewports sharing a frozen set only share the build when the walk
+        // matches too: the active (walked) viewport must not leak its set.
+        let key = (
+            target_block,
+            Self::frozen_layers_sig(frozen) ^ Self::layer_walk_sig(layer_walk),
+        );
         if let Some((epoch, arc)) = self.point_cloud_cache.borrow().get(&key) {
             if *epoch == self.geometry_epoch {
                 return Arc::clone(arc);
@@ -9935,7 +10141,8 @@ impl Scene {
                 true,
                 &depths,
             )
-            .with_visibility_reveal(&visibility_reveal);
+            .with_visibility_reveal(&visibility_reveal)
+            .with_layer_walk(layer_walk);
             let mut clouds = Vec::new();
             graph.walk_root(
                 self.render_scene_root(target_block),
@@ -10019,6 +10226,7 @@ impl Scene {
                     .layers
                     .get(&common.layer)
                     .is_some_and(|layer| layer.is_off() || layer.is_frozen())
+                || self.layer_walk_hidden(self.document.layers.get(&common.layer))
                 || resolve_source(&self.document, data).is_none()
             {
                 continue;
@@ -10063,7 +10271,11 @@ impl Scene {
         let context_sig = scale.map_or(0, |handle| handle.value())
             ^ u64::from(all_visible).rotate_left(61)
             ^ self.viewport_style_key(Some(viewport)).rotate_left(23);
-        let sig = Self::frozen_layers_sig(frozen) ^ context_sig;
+        // The walked (interaction) viewport must not share its build with a
+        // frozen-set twin that renders un-walked.
+        let layer_walk = self
+            .render_space_layer_walk(target_block, (!viewport.is_null()).then_some(viewport));
+        let sig = Self::frozen_layers_sig(frozen) ^ context_sig ^ Self::layer_walk_sig(layer_walk);
         let key = (target_block, sig);
         if let Some((e, arc)) = self.frozen_image_cache.borrow().get(&key) {
             if *e == self.geometry_epoch {
@@ -10098,7 +10310,9 @@ impl Scene {
         let context_sig = scale.map_or(0, |handle| handle.value())
             ^ u64::from(all_visible).rotate_left(61)
             ^ self.viewport_style_key(Some(viewport)).rotate_left(23);
-        let sig = Self::frozen_layers_sig(frozen) ^ context_sig;
+        let layer_walk = self
+            .render_space_layer_walk(target_block, (!viewport.is_null()).then_some(viewport));
+        let sig = Self::frozen_layers_sig(frozen) ^ context_sig ^ Self::layer_walk_sig(layer_walk);
         let key = (target_block, self.current_layout.clone(), sig);
         if let Some((e, arc)) = self.frozen_mesh_cache.borrow().get(&key) {
             if *e == self.geometry_epoch {
@@ -10213,6 +10427,7 @@ impl Scene {
         }
         let depth_map = self.draw_depth_map();
         let visibility_reveal = self.visibility_reveal_handles();
+        let layer_walk = self.render_space_layer_walk(layout_block, viewport);
         let graph = render_graph::RenderSceneGraph::new(
             &self.document,
             frozen,
@@ -10221,6 +10436,7 @@ impl Scene {
             depth_map.as_ref(),
         )
         .with_visibility_reveal(&visibility_reveal)
+        .with_layer_walk(layer_walk)
         .with_annotation_scale(self.annotation_scale)
         .with_viewport(viewport);
         let mut out = Vec::new();
@@ -10644,6 +10860,9 @@ impl Scene {
             depth_map.as_ref(),
         )
         .with_visibility_reveal(&visibility_reveal)
+        // The cache is keyed on `interaction_space_key`, already walk-folded,
+        // so this build always serves the walked interaction space.
+        .with_layer_walk(self.interaction_layer_walk())
         .with_annotation_scale(self.annotation_scale);
         for entity in self.document.entities() {
             let contextual = crate::scene::annotative::entity_for_annotation_context(
@@ -12484,6 +12703,11 @@ impl Scene {
             .map(|l| l.flags.off || l.flags.frozen)
             .unwrap_or(false)
         {
+            return false;
+        }
+        // Session LAYWALK: in a walked space, layers outside the visible
+        // set hide exactly like frozen ones — in memory, for this space only.
+        if self.layer_walk_hidden(layer) {
             return false;
         }
         if let Some(frozen) = frozen_layers {

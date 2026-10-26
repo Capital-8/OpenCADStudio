@@ -539,6 +539,13 @@ impl OpenCADStudio {
                         self.sync_ribbon_layers();
                         self.show_layers = true;
                     }
+                    // The walk session is the pallet's state, so opening from
+                    // a collapsed tab starts a walk exactly like LAYWALK does.
+                    PanelId::Laywalk => {
+                        if self.tabs[self.active_tab].layer_walk.is_none() {
+                            self.open_layer_walk();
+                        }
+                    }
                     PanelId::QuickCalc => self.quick_calc.show = true,
                 }
             }
@@ -574,6 +581,7 @@ impl OpenCADStudio {
                 self.show_layers = false;
                 self.ribbon.deactivate_tool_if("LAYERS");
             }
+            PanelId::Laywalk => self.close_layer_walk(false),
             PanelId::QuickCalc => self.quick_calc.show = false,
             PanelId::GraphicAttributes => {
                 self.show_graphic_attributes = false;
@@ -657,6 +665,14 @@ impl OpenCADStudio {
             PanelId::Count => self.count_palette.show,
             PanelId::SheetSetManager => self.sheet_set.show,
             PanelId::Layers => self.show_layers,
+            // The walk session is the pallet's state. While the Select Objects
+            // prompt owns the pointer the pallet steps out of the way, and
+            // comes back when the pick ends or is cancelled.
+            PanelId::Laywalk => {
+                let tab = &self.tabs[self.active_tab];
+                tab.layer_walk.is_some()
+                    && !(tab.layer_walk_picking && tab.active_cmd.is_some())
+            }
             PanelId::QuickCalc => self.quick_calc.show,
             PanelId::GraphicAttributes => self.show_graphic_attributes,
         }

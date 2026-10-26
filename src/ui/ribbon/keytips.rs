@@ -311,6 +311,7 @@ const CODES: &[(&str, &str, &str)] = &[
     ("draw", "LAYLCK", "LK"),
     ("draw", "LAYMCUR", "LC"),
     ("draw", "LAYISO", "LS"),
+    ("draw", "LAYWALK", "LX"),
     ("draw", "LAYON", "LN"),
     ("draw", "LAYTHW", "LW"),
     ("draw", "LAYULK", "UL"),

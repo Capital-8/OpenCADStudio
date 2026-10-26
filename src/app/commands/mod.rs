@@ -379,6 +379,12 @@ impl OpenCADStudio {
             self.resume_transparent_parent(i);
             return Some(task);
         }
+        // A walk is only a temporary hide, and these commands take ownership of
+        // layer visibility from here on: starting one puts the drawing back
+        // first, so the override never swallows the result it is hiding.
+        if self.tabs[i].layer_walk.is_some() && Self::layer_walk_conflicts_with(cmd) {
+            self.abandon_layer_walk_on(i);
+        }
         // A new command abandons any grip edit and its numeric input.
         let had_pending_grip_input = self.grip_pending.take().is_some();
         let had_active_grip = self.cancel_active_grip_edit();
@@ -1146,6 +1152,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "LAYOUTTAB",
         "LAYTHW",
         "LAYUNISO",
+        "LAYWALK",
         "LI",
         "LINETYPE",
         "LIST",

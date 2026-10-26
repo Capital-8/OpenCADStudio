@@ -1915,6 +1915,12 @@ impl Scene {
         } else {
             self.visibility_reveal_handles()
         };
+        // Plot passes draw the stored drawing; live renders of the walked
+        // space hide layers outside its visible set (foreign viewports
+        // resolve to `None` inside `render_space_layer_walk`).
+        let layer_walk = (!plot_only)
+            .then(|| self.render_space_layer_walk(layout_block, viewport))
+            .flatten();
         let graph = crate::scene::render_graph::RenderSceneGraph::new(
             document,
             frozen,
@@ -1923,6 +1929,7 @@ impl Scene {
             depth_map.as_ref(),
         )
         .with_visibility_reveal(&visibility_reveal)
+        .with_layer_walk(layer_walk)
         .with_annotation_scale(self.annotation_scale)
         .with_viewport(viewport);
         let mut hatch_block_memo = std::collections::HashMap::new();
@@ -2106,6 +2113,7 @@ impl Scene {
         frozen: Option<&rustc_hash::FxHashSet<Handle>>,
         annotation_scale_handle: Option<Handle>,
         all_visible: bool,
+        viewport: Option<Handle>,
     ) -> Vec<HatchModel> {
         let bg_color = if self.current_layout != "Model" {
             self.paper_bg_color
@@ -2120,6 +2128,7 @@ impl Scene {
             bg_color,
             false,
             false,
+            viewport,
         )
     }
 
@@ -2132,6 +2141,7 @@ impl Scene {
         bg_color: [f32; 4],
         tint_insert_selection: bool,
         plot_only: bool,
+        viewport: Option<Handle>,
     ) -> Vec<HatchModel> {
         let depth_map = self.draw_depth_map();
         let visibility_reveal = if plot_only {
@@ -2139,6 +2149,10 @@ impl Scene {
         } else {
             self.visibility_reveal_handles()
         };
+        // LAYWALK hides block-tree wipeouts only in the walked space itself.
+        let layer_walk = (!plot_only)
+            .then(|| self.render_space_layer_walk(target_block, viewport))
+            .flatten();
         let graph = crate::scene::render_graph::RenderSceneGraph::new(
             &self.document,
             frozen,
@@ -2147,6 +2161,7 @@ impl Scene {
             depth_map.as_ref(),
         )
         .with_visibility_reveal(&visibility_reveal)
+        .with_layer_walk(layer_walk)
         .with_annotation_scale(self.annotation_scale);
         let mut models = Vec::new();
         let mut wipeout_sources = rustc_hash::FxHashMap::default();

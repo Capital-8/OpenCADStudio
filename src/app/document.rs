@@ -157,6 +157,18 @@ pub(super) struct DocumentTab {
     pub(super) tab_title: String,
     pub(super) properties: PropertiesPanel,
     pub(super) layers: LayerPanel,
+    /// The LAYWALK pallet session, while a walk is open on this drawing.
+    pub(super) layer_walk: Option<crate::ui::window::layer_walk::LayerWalkSession>,
+    /// Rows cached for that session, so the pallet and the pure logic agree on
+    /// one view of the layer table (rebuilt by `walk_rebuild`).
+    pub(super) layer_walk_rows: Vec<crate::ui::window::layer_walk::LayerWalkRow>,
+    /// The pallet asked for a pick (Select Objects) and is hidden while the
+    /// selection prompt owns the pointer.
+    pub(super) layer_walk_picking: bool,
+    /// Saved wildcard filters, per drawing (not persisted with the DWG).
+    pub(super) layer_walk_filters: Vec<String>,
+    /// Dropdown state for `layer_walk_filters`.
+    pub(super) layer_walk_combo: iced::widget::combo_box::State<String>,
     pub(super) active_cmd: Option<Box<dyn CadCommand>>,
     /// Follow-up command for a Parameter Set macro after parameter placement.
     pub(super) pending_parameter_set_follow_up: Option<&'static str>,
@@ -819,6 +831,11 @@ impl DocumentTab {
             transparent_resume: false,
             last_crossing_window: None,
             recent_colors: Vec::new(),
+            layer_walk: None,
+            layer_walk_rows: Vec::new(),
+            layer_walk_picking: false,
+            layer_walk_filters: Vec::new(),
+            layer_walk_combo: iced::widget::combo_box::State::new(Vec::new()),
         }
     }
 

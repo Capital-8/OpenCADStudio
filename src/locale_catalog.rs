@@ -1982,6 +1982,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Layer State Manager" => Some(("layers", "layer-state-manager")),
         "Layer State Manager…" => Some(("ui", "layer-state-manager")),
         "Layer Unlock" => Some(("layers", "layer-unlock")),
+        "Layer Walk" => Some(("layer-walk", "panel-title")),
         "Layer matched to \"{layer}\"." => Some(("common", "layer-matched-to-layer")),
         "Layer state \"{name}\" already exists." => Some(("common", "layer-state-name-already-exists")),
         "Layer state \"{name}\" was not found." => Some(("common", "layer-state-name-was-not-found")),

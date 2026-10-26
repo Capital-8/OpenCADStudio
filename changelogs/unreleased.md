@@ -12,6 +12,7 @@
 
 * **Dimension Overrides and Associations:** Set or clear per-dimension variable overrides; remove a dimension's association or reassociate it to geometry. `DCDISPLAY` toggles constraint indicators on selected objects, and `QPMODE` reads or sets Quick Properties visibility.
 * **Converter Interchange and Loss Review:** Open and save supported external formats through registered converters. Review converter-reported losses before choosing to proceed with a save.
+* **Layer Walk:** `LAYWALK` opens the non-modal LayerWalk pallet. Click through layers and only their objects stay on screen; the hide is a temporary view override that leaves the layer table, the dirty flag and undo untouched until you commit it with *Keep Result* or by turning *Restore on exit* off. Wildcard filtering with saved patterns, hold (Always Show), purge, layer-state capture, zoom to layer extents and select objects on layer are all in the pallet. See [docs/layer-walk.md](../docs/layer-walk.md).
 
 ### 🐛 Bug Fixes
 

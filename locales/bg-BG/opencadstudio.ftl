@@ -7205,3 +7205,57 @@ block-lookup =
 
 block-array =
     .limit-error = Оценяването на блока би създало повече от 100000 обекта в масив. Намалете разстоянието или увеличете отстоянието.
+
+layer-walk =
+    .panel-title = Layer Walk
+    .title = LayerWalk - Слоеве: { $count }
+    .select-objects-tip = Избира обектите и техните слоеве
+    .saved-filters = Запазени филтри
+    .pattern-placeholder = *pattern*
+    .clear-filter = Изчисти филтъра
+    .hold-selection = Задржи селекцията
+    .release-selection = Освободи селекцията
+    .release-all = Освободи всичко
+    .select-unreferenced = Избери непрепратените
+    .save-state = Запази състоянието на слоя...
+    .inspect = Проверка...
+    .copy-as-filter = Копирай като филтър
+    .save-filter = Запази текущия филтър
+    .delete-filter = Изтрий текущия филтър
+    .zoom-extents = Мащаб към границите на слоя
+    .select-objects-on-layer = Избери обекти в слоя
+    .restore-on-exit = Възстанови при изход
+    .layer-0-always-on = Слой 0 винаги включен
+    .keep-result = Запази резултата
+    .no-layers = Няма слоеве
+    .no-matches = Няма слой, съответстващ на филтъра
+    .kept = LAYWALK: видимостта на словете е запазена.
+    .restored = LAYWALK: видимостта на словете е възстановена.
+    .no-objects = LAYWALK: няма обекти в избраните слоеве.
+    .nothing-to-zoom = LAYWALK: няма към какво да се мащабира.
+    .no-walked-layer = LAYWALK: избраните обекти не са в обхождания слой.
+    .saved-filter-done = LAYWALK: филтър "{ $name }" е запазен.
+    .deleted-filter-done = LAYWALK: филтър "{ $name }" е изтрит.
+    .why-select-layer = LAYWALK: първо изберете поне един слой.
+    .why-none-held = LAYWALK: нито един от избраните слоеве не е задържан.
+    .why-no-hold = LAYWALK: няма задържан слой.
+    .why-all-referenced = LAYWALK: всеки слой е препратен.
+    .why-select-keep = LAYWALK: изберете слоевете, които състоянието да запази.
+    .why-one-layer = LAYWALK: изберете точно един слой, за да копирате името.
+    .why-filter-first = LAYWALK: първо приложете филтър.
+    .why-no-saved-filter = LAYWALK: полето за филтър не съдържа запазен филтър.
+    .purge-question = { $count ->
+       [one] Да се прочисти ли { $count } непрепратен слой?
+      *[other] Да се прочистят ли { $count } непрепратени слоя?
+     }
+    .purged = { $count ->
+       [one] LAYWALK: прочистен { $count } слой.
+      *[other] LAYWALK: прочистени { $count } слоя.
+     }
+    .selected-objects = { $count ->
+       [one] LAYWALK: избран { $count } обект.
+      *[other] LAYWALK: избрани { $count } обекта.
+     }
+    .inspect-total = Общо слоеве: { $count }
+    .inspect-selected = Избрани слоеве: { $count }
+    .inspect-objects = Обекти в избраните слоеве: { $count }
