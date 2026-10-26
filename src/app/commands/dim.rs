@@ -1375,11 +1375,44 @@ impl OpenCADStudio {
                     .scene
                     .selected_entities()
                     .into_iter()
-                    .filter(|(_, entity)| is_trim_boundary_entity(entity))
+                    .filter(|(_, entity)| {
+                        is_trim_boundary_entity(entity)
+                            || matches!(entity, codec::EntityType::Insert(_))
+                    })
                     .map(|(handle, _)| handle)
                     .collect();
                 let all_entities: Vec<_> = entities.into_iter().map(|(_, e)| e).collect();
-                let new_cmd = TrimCommand::with_cutting_edges(all_entities, initial_edges);
+                let visible_inserts = self.tabs[i]
+                    .scene
+                    .visible_entities_for_edit(|entity| {
+                        matches!(entity, codec::EntityType::Insert(_))
+                    });
+                let document = &self.tabs[i].scene.document;
+                let block_boundaries = visible_inserts
+                    .into_iter()
+                    .filter_map(|entity| {
+                        let (handle, entity) = entity;
+                        let codec::EntityType::Insert(insert) = entity else {
+                            return None;
+                        };
+                        let children = insert.block_entities_from_document(document)?;
+                        let pieces = insert
+                            .explode(&children)
+                            .into_iter()
+                            .filter(|child| {
+                                !crate::scene::block_construction::is_construction(
+                                    child.common(),
+                                )
+                            })
+                            .collect();
+                        Some((handle, pieces))
+                    })
+                    .collect();
+                let new_cmd = TrimCommand::with_block_boundaries(
+                    all_entities,
+                    block_boundaries,
+                    initial_edges,
+                );
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
             }
