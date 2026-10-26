@@ -113,66 +113,71 @@ pub fn build_step(meshes: &[&MeshModel]) -> Option<String> {
         let vertex_id = |v: usize| point_ids[v] + 1;
 
         // One EDGE_CURVE per vertex pair, oriented from the lower index, and
-        // how many triangles use it.
+        // how many faces use it.
         let mut edges: std::collections::HashMap<(usize, usize), (usize, usize)> =
             std::collections::HashMap::new();
-        let mut faces = Vec::with_capacity(tris.len());
-        for tri in &tris {
-            let mut oriented = [0; 3];
-            for k in 0..3 {
-                let (from, to) = (tri.v[k], tri.v[(k + 1) % 3]);
-                let key = (from.min(to), from.max(to));
-                let curve = match edges.get_mut(&key) {
-                    Some(entry) => {
-                        entry.1 += 1;
-                        entry.0
-                    }
-                    None => {
-                        let (start, end) = key;
-                        let (p, q) = (points[start], points[end]);
-                        let d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
-                        let length = d[0].hypot(d[1]).hypot(d[2]).max(f64::EPSILON);
-                        let (dir, vector, line, curve) = (alloc(), alloc(), alloc(), alloc());
-                        writeln!(
-                            data,
-                            "#{dir} = DIRECTION('',({:.6},{:.6},{:.6}));",
-                            d[0] / length,
-                            d[1] / length,
-                            d[2] / length
-                        )
-                        .ok();
-                        writeln!(data, "#{vector} = VECTOR('',#{dir},{length:.6});").ok();
-                        writeln!(data, "#{line} = LINE('',#{},#{vector});", point_ids[start]).ok();
-                        writeln!(
-                            data,
-                            "#{curve} = EDGE_CURVE('',#{},#{},#{line},.T.);",
-                            vertex_id(start),
-                            vertex_id(end)
-                        )
-                        .ok();
-                        edges.insert(key, (curve, 1));
-                        curve
-                    }
-                };
-                let id = alloc();
-                let sense = if from == key.0 { ".T." } else { ".F." };
-                writeln!(data, "#{id} = ORIENTED_EDGE('',*,*,#{curve},{sense});").ok();
-                oriented[k] = id;
+        let mut faces = Vec::new();
+        // A face bounded by `loops` (vertex rings, the outer one first) on
+        // the plane through its first vertex with normal `n`.
+        let mut write_face = |loops: &[Vec<usize>], n: [f64; 3], data: &mut String| {
+            let mut bounds = Vec::with_capacity(loops.len());
+            for (index, ring) in loops.iter().enumerate() {
+                let mut oriented = Vec::with_capacity(ring.len());
+                for k in 0..ring.len() {
+                    let (from, to) = (ring[k], ring[(k + 1) % ring.len()]);
+                    let key = (from.min(to), from.max(to));
+                    let curve = match edges.get_mut(&key) {
+                        Some(entry) => {
+                            entry.1 += 1;
+                            entry.0
+                        }
+                        None => {
+                            let (start, end) = key;
+                            let (p, q) = (points[start], points[end]);
+                            let d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+                            let length = d[0].hypot(d[1]).hypot(d[2]).max(f64::EPSILON);
+                            let (dir, vector, line, curve) = (alloc(), alloc(), alloc(), alloc());
+                            writeln!(
+                                data,
+                                "#{dir} = DIRECTION('',({:.6},{:.6},{:.6}));",
+                                d[0] / length,
+                                d[1] / length,
+                                d[2] / length
+                            )
+                            .ok();
+                            writeln!(data, "#{vector} = VECTOR('',#{dir},{length:.6});").ok();
+                            writeln!(data, "#{line} = LINE('',#{},#{vector});", point_ids[start])
+                                .ok();
+                            writeln!(
+                                data,
+                                "#{curve} = EDGE_CURVE('',#{},#{},#{line},.T.);",
+                                vertex_id(start),
+                                vertex_id(end)
+                            )
+                            .ok();
+                            edges.insert(key, (curve, 1));
+                            curve
+                        }
+                    };
+                    let id = alloc();
+                    let sense = if from == key.0 { ".T." } else { ".F." };
+                    writeln!(data, "#{id} = ORIENTED_EDGE('',*,*,#{curve},{sense});").ok();
+                    oriented.push(format!("#{id}"));
+                }
+                let (lp, bound) = (alloc(), alloc());
+                writeln!(data, "#{lp} = EDGE_LOOP('',({}));", oriented.join(",")).ok();
+                let kind = if index == 0 { "FACE_OUTER_BOUND" } else { "FACE_BOUND" };
+                writeln!(data, "#{bound} = {kind}('',#{lp},.T.);").ok();
+                bounds.push(format!("#{bound}"));
             }
-            let (lp, bound, normal, reference, placement, plane, face) =
-                (alloc(), alloc(), alloc(), alloc(), alloc(), alloc(), alloc());
-            writeln!(
-                data,
-                "#{lp} = EDGE_LOOP('',(#{},#{},#{}));",
-                oriented[0], oriented[1], oriented[2]
-            )
-            .ok();
-            writeln!(data, "#{bound} = FACE_OUTER_BOUND('',#{lp},.T.);").ok();
-            let [nx, ny, nz] = tri.n;
+            let (normal, reference, placement, plane, face) =
+                (alloc(), alloc(), alloc(), alloc(), alloc());
+            let [nx, ny, nz] = n;
             writeln!(data, "#{normal} = DIRECTION('',({nx:.6},{ny:.6},{nz:.6}));").ok();
             // The reference direction: the first edge, made square to the
             // normal (a degenerate triangle's edge need not be).
-            let (p, q) = (points[tri.v[0]], points[tri.v[1]]);
+            let outer = &loops[0];
+            let (p, q) = (points[outer[0]], points[outer[1]]);
             let d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
             let along = d[0] * nx + d[1] * ny + d[2] * nz;
             let r = [d[0] - along * nx, d[1] - along * ny, d[2] - along * nz];
@@ -193,12 +198,69 @@ pub fn build_step(meshes: &[&MeshModel]) -> Option<String> {
             writeln!(
                 data,
                 "#{placement} = AXIS2_PLACEMENT_3D('',#{},#{normal},#{reference});",
-                point_ids[tri.v[0]]
+                point_ids[outer[0]]
             )
             .ok();
             writeln!(data, "#{plane} = PLANE('',#{placement});").ok();
-            writeln!(data, "#{face} = ADVANCED_FACE('',(#{bound}),#{plane},.T.);").ok();
+            writeln!(data, "#{face} = ADVANCED_FACE('',({}),#{plane},.T.);", bounds.join(",")).ok();
             faces.push(face);
+        };
+
+        // Coplanar neighbours are one face, as a modeller writes a box's six
+        // faces rather than its twelve triangles: triangles that share an
+        // edge and lie on one plane are grouped, and each group is written
+        // bounded by its outline and holes.
+        let mut by_edge: std::collections::HashMap<(usize, usize), Vec<usize>> =
+            std::collections::HashMap::new();
+        for (t, tri) in tris.iter().enumerate() {
+            for k in 0..3 {
+                let (a, b) = (tri.v[k], tri.v[(k + 1) % 3]);
+                by_edge.entry((a.min(b), a.max(b))).or_default().push(t);
+            }
+        }
+        let mut parent: Vec<usize> = (0..tris.len()).collect();
+        fn root(parent: &mut [usize], mut i: usize) -> usize {
+            while parent[i] != i {
+                parent[i] = parent[parent[i]];
+                i = parent[i];
+            }
+            i
+        }
+        let offset = |tri: &Tri| {
+            let p = points[tri.v[0]];
+            tri.n[0] * p[0] + tri.n[1] * p[1] + tri.n[2] * p[2]
+        };
+        let mut shared: Vec<_> = by_edge.values().filter(|users| users.len() == 2).collect();
+        shared.sort();
+        for users in shared {
+            let (a, b) = (&tris[users[0]], &tris[users[1]]);
+            let facing = a.n[0] * b.n[0] + a.n[1] * b.n[1] + a.n[2] * b.n[2];
+            if facing > 1.0 - 1e-9 && (offset(a) - offset(b)).abs() <= grid * 1e3 {
+                let (ra, rb) = (root(&mut parent, users[0]), root(&mut parent, users[1]));
+                if ra != rb {
+                    parent[ra.max(rb)] = ra.min(rb);
+                }
+            }
+        }
+        let mut groups: Vec<(usize, Vec<usize>)> = Vec::new();
+        for t in 0..tris.len() {
+            let r = root(&mut parent, t);
+            match groups.iter_mut().find(|(g, _)| *g == r) {
+                Some((_, members)) => members.push(t),
+                None => groups.push((r, vec![t])),
+            }
+        }
+        for (_, members) in &groups {
+            let n = tris[members[0]].n;
+            match outline(members.iter().map(|&t| tris[t].v), &points, n) {
+                Some(loops) => write_face(&loops, n, &mut data),
+                // An outline that does not close into rings: its triangles.
+                None => {
+                    for &t in members {
+                        write_face(&[tris[t].v.to_vec()], tris[t].n, &mut data);
+                    }
+                }
+            }
         }
 
         let face_list = faces
@@ -335,6 +397,74 @@ pub async fn pick_step_path_owned(stem: String) -> Option<std::path::PathBuf> {
 }
 
 /// Returns an ISO 8601-like timestamp string for the STEP file header.
+/// The rings bounding a set of triangles that share one plane: its edges used
+/// once, chained end to start, the ring enclosing the most area (seen along
+/// `n`) first. `None` when they do not close into rings.
+fn outline(
+    triangles: impl Iterator<Item = [usize; 3]>,
+    points: &[[f64; 3]],
+    n: [f64; 3],
+) -> Option<Vec<Vec<usize>>> {
+    let mut directed = std::collections::HashSet::new();
+    let mut order = Vec::new();
+    for v in triangles {
+        for k in 0..3 {
+            let edge = (v[k], v[(k + 1) % 3]);
+            if directed.insert(edge) {
+                order.push(edge);
+            }
+        }
+    }
+    let mut next: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+    let mut left = 0;
+    for &(a, b) in &order {
+        if !directed.contains(&(b, a)) {
+            next.entry(a).or_default().push(b);
+            left += 1;
+        }
+    }
+    let mut rings = Vec::new();
+    for &(start, _) in &order {
+        while next.get(&start).is_some_and(|ends| !ends.is_empty()) {
+            let mut ring = vec![start];
+            let mut at = start;
+            loop {
+                let to = next.get_mut(&at)?.pop()?;
+                left -= 1;
+                if to == start {
+                    break;
+                }
+                ring.push(to);
+                at = to;
+                if ring.len() > order.len() {
+                    return None;
+                }
+            }
+            if ring.len() < 3 {
+                return None;
+            }
+            rings.push(ring);
+        }
+    }
+    if left != 0 || rings.is_empty() {
+        return None;
+    }
+    // Twice the area each ring encloses, signed along the normal.
+    let area = |ring: &Vec<usize>| {
+        let mut sum = [0.0f64; 3];
+        for k in 0..ring.len() {
+            let (p, q) = (points[ring[k]], points[ring[(k + 1) % ring.len()]]);
+            sum[0] += p[1] * q[2] - p[2] * q[1];
+            sum[1] += p[2] * q[0] - p[0] * q[2];
+            sum[2] += p[0] * q[1] - p[1] * q[0];
+        }
+        sum[0] * n[0] + sum[1] * n[1] + sum[2] * n[2]
+    };
+    let outer = (0..rings.len()).max_by(|&a, &b| area(&rings[a]).total_cmp(&area(&rings[b])))?;
+    rings.swap(0, outer);
+    Some(rings)
+}
+
 fn chrono_timestamp() -> String {
     // Use seconds since Unix epoch for a simple timestamp without chrono dep.
     // `SystemTime::now` panics in the browser; ask the page's clock there. (#761)
@@ -488,5 +618,62 @@ mod tests {
         let step = build_step(&[&mesh]).expect("step");
         assert_eq!(plane_normals(&step), vec![[0.0, 1.0, 0.0]]);
     }
+
+    /// A unit cube as twelve triangles, each face's corners repeated (as the
+    /// tessellator does where the normal changes).
+    fn cube() -> MeshModel {
+        let corner = |i: usize| [(i & 1) as f32, ((i >> 1) & 1) as f32, ((i >> 2) & 1) as f32];
+        // Each face's corners, counter-clockwise seen from outside.
+        let faces = [
+            [0, 2, 3, 1],
+            [4, 5, 7, 6],
+            [0, 1, 5, 4],
+            [2, 6, 7, 3],
+            [0, 4, 6, 2],
+            [1, 3, 7, 5],
+        ];
+        let mut verts = Vec::new();
+        let mut indices = Vec::new();
+        for face in faces {
+            let base = verts.len() as u32;
+            verts.extend(face.map(corner));
+            indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+        }
+        MeshModel {
+            indices,
+            ..triangle(verts, Vec::new())
+        }
+    }
+
+    #[test]
+    fn a_box_exports_six_planar_faces_in_a_closed_shell() {
+        let mesh = cube();
+        let step = build_step(&[&mesh]).unwrap();
+        assert_eq!(step.matches("ADVANCED_FACE").count(), 6, "{step}");
+        assert_eq!(step.matches("EDGE_CURVE").count(), 12);
+        assert!(step.contains("CLOSED_SHELL") && step.contains("MANIFOLD_SOLID_BREP"));
+    }
+
+    #[test]
+    fn a_face_with_a_hole_keeps_both_bounds() {
+        // A square with a square hole, as eight triangles in one plane.
+        let p = |x: f32, y: f32| [x, y, 0.0];
+        let verts = vec![
+            p(0.0, 0.0), p(3.0, 0.0), p(3.0, 3.0), p(0.0, 3.0),
+            p(1.0, 1.0), p(2.0, 1.0), p(2.0, 2.0), p(1.0, 2.0),
+        ];
+        let indices = vec![
+            0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
+        ];
+        let mesh = MeshModel {
+            indices,
+            ..triangle(verts, Vec::new())
+        };
+        let step = build_step(&[&mesh]).unwrap();
+        assert_eq!(step.matches("ADVANCED_FACE").count(), 1, "{step}");
+        assert_eq!(step.matches("FACE_OUTER_BOUND").count(), 1);
+        assert_eq!(step.matches("= FACE_BOUND").count(), 1);
+    }
+
 }
 
