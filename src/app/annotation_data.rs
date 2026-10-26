@@ -2731,7 +2731,9 @@ impl OpenCADStudio {
                 table.set_cell_text(row_index + 1, column_index, value);
             }
         }
-        // A column is as wide as its widest text plus both margins.
+        // A column is as wide as its widest text, both margins and one more
+        // text height (measured: every column 4.5 wider than text + margins
+        // at 4.5 text with 1.5 margins).
         let header = usize::from(state.property_headers);
         for (column_index, column) in table.columns.iter_mut().enumerate() {
             let widest = body
@@ -2752,7 +2754,7 @@ impl OpenCADStudio {
                 })
                 .map(|bounds| f64::from(bounds.advance))
                 .fold(0.0_f64, f64::max);
-            column.width = widest.max(text_heights[2]) + 2.0 * margin;
+            column.width = widest + text_heights[2] + 2.0 * margin;
         }
         if let Some((_, table_style)) = style {
             let names = [
