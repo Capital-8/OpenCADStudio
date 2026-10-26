@@ -252,6 +252,8 @@ impl OpenCADStudio {
                 // last selection. #21.
                 self.sync_ribbon_layers();
                 self.sync_ribbon_from_selection();
+                #[cfg(not(target_arch = "wasm32"))]
+                crate::plugin::v4_support::on_tab_closed(tab_id);
                 // The tab list just shrank: refresh the remembered
                 // session list (web session memory).
                 #[cfg(target_arch = "wasm32")]
