@@ -1298,7 +1298,7 @@ dependencies = [
 [[package]]
 name = "opencaddocument"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencaddocument.git?rev=1714fbb#1714fbb48c0a5d238aca93ce016c5cfedf0d3ac2"
+source = "git+https://github.com/HakanSeven12/opencaddocument.git?rev=691142b#691142b80141ed90e86db78f057abaf31bbc2c3d"
 dependencies = [
  "acadrust",
  "serde",
