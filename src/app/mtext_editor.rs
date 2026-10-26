@@ -1790,7 +1790,7 @@ impl super::OpenCADStudio {
             mt.insertion_point = codec::types::Vector3::new(position.x, position.y, position.z);
             self.push_undo_snapshot(i, "MTEXT");
             let handle =
-                self.commit_entity_handle(plane.place_entity(EntityType::MText(Box::new(mt))));
+                self.commit_new_text(plane.place_entity(EntityType::MText(Box::new(mt))));
             if annotative {
                 let scale = self.tabs[i].scene.creation_annotation_scale_handle();
                 if let (Some(handle), Some(scale)) = (handle, scale) {
@@ -1907,7 +1907,7 @@ impl super::OpenCADStudio {
             mt.insertion_point = codec::types::Vector3::new(position.x, position.y, position.z);
             self.push_undo_snapshot(i, "MTEXT");
             let handle =
-                self.commit_entity_handle(plane.place_entity(EntityType::MText(Box::new(mt))));
+                self.commit_new_text(plane.place_entity(EntityType::MText(Box::new(mt))));
             self.tabs[i].dirty = true;
             if annotative {
                 let scale = self.tabs[i].scene.creation_annotation_scale_handle();

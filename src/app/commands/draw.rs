@@ -2783,7 +2783,11 @@ impl OpenCADStudio {
                 } else {
                     height
                 };
-                let new_cmd = MTextCommand::with_defaults(height, style);
+                let annotative = crate::scene::annotative::text_style_is_annotative(
+                    &self.tabs[i].scene.document,
+                    &style,
+                );
+                let new_cmd = MTextCommand::with_defaults(height, style).with_annotative(annotative);
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
             }
