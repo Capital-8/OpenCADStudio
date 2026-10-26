@@ -550,6 +550,9 @@ impl OpenCADStudio {
         }
         self.ribbon.text_layer =
             crate::io::drawing_variable(&tab.scene.document, "TEXTLAYER").unwrap_or_default();
+        self.ribbon.dim_layer = crate::io::drawing_variable(&tab.scene.document, "DIMLAYER")
+            .filter(|layer| layer.trim() != ".")
+            .unwrap_or_default();
     }
 
     fn update_message(&mut self, msg: Message) -> Task<Message> {
@@ -6990,6 +6993,11 @@ impl OpenCADStudio {
             Message::RibbonTextHeightFocus => iced::widget::operation::focus(iced::widget::Id::new(
                 crate::ui::ribbon::widgets::TEXT_HEIGHT_ID,
             )),
+            Message::RibbonDimLayer(layer) => {
+                self.ribbon.close_dropdown();
+                let value = if layer.is_empty() { ".".to_string() } else { layer };
+                self.dispatch_command(&format!("DIMLAYER {value}"))
+            }
             Message::RibbonTextLayer(layer) => {
                 self.ribbon.close_dropdown();
                 let value = if layer.is_empty() { ".".to_string() } else { layer };

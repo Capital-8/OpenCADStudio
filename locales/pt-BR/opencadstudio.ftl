@@ -7088,3 +7088,16 @@ block-lookup =
 
 block-array =
     .limit-error = A avaliação do bloco geraria mais de 100000 objetos de matriz. Reduza a distância ou aumente o espaçamento.
+dim-panel =
+    .adjust-space = Adjust Space
+    .inspect = Inspect
+    .update = Update
+    .reassociate = Reassociate
+    .quick = Quick
+    .oblique = Oblique
+    .text-angle = Text Angle
+    .left-justify = Left Justify
+    .center-justify = Center Justify
+    .right-justify = Right Justify
+    .override = Override
+    .dimension-layer = Dimension Layer

@@ -55,6 +55,30 @@ pub fn dimension_menu_items() -> Vec<(&'static str, &'static str, IconKind)> {
     ]
 }
 
+/// The Dimensions panel's Linear split button, in the reference order.
+fn annotate_dimension_items() -> Vec<(&'static str, &'static str, IconKind)> {
+    vec![
+        (linear_dim::tool().id, "Linear", linear_dim::tool().icon),
+        (aligned_dim::tool().id, "Aligned", aligned_dim::tool().icon),
+        (angular_dim::tool().id, "Angular", angular_dim::tool().icon),
+        (arc_length_dim::tool().id, "Arc Length", arc_length_dim::tool().icon),
+        (radius_dim::tool().id, "Radius", radius_dim::tool().icon),
+        (diameter_dim::tool().id, "Diameter", diameter_dim::tool().icon),
+        (jogged_radius_dim::tool().id, "Jogged", jogged_radius_dim::tool().icon),
+        (ordinate_dim::tool().id, "Ordinate", ordinate_dim::tool().icon),
+    ]
+}
+
+/// A small Dimensions-panel button running `command`.
+fn dim_tool(id: &'static str, label: &'static str, icon: &'static [u8], command: &str) -> crate::modules::ToolDef {
+    crate::modules::ToolDef {
+        id,
+        label,
+        icon: IconKind::Svg(icon),
+        event: crate::modules::ModuleEvent::Command(command.to_string()),
+    }
+}
+
 /// A text height the way the Text panel shows it (no trailing zeros).
 pub fn text_height_label(height: f64) -> String {
     let text = format!("{height:.6}");
@@ -131,31 +155,59 @@ impl CadModule for AnnotateModule {
                     ],
                 },
                 // ── Dimensions ───────────────────────────────────────────────
+                // Dimension (DIM), the style list with Break / Adjust Space /
+                // Jog Line, the dimension layer list with Inspect / Update /
+                // Reassociate, then the Linear and Continue split buttons
+                // and Quick. Tolerance and the text edits are in the
+                // slide-out; the corner arrow opens Dimension Style.
                 RibbonGroup {
                     title: "Dimensions",
                     tools: vec![
-                        RibbonItem::LargeDropdown {
-                            id: "ANNOTATE_DIM",
+                        RibbonItem::LargeTool(crate::modules::ToolDef {
+                            id: "DIM",
                             label: "Dimension",
                             icon: linear_dim::ICON,
-                            items: dimension_menu_items(),
-                            default: "DIMLINEAR",
-                        },
+                            event: crate::modules::ModuleEvent::Command("DIM".to_string()),
+                        }),
                         RibbonItem::StyleComboGroup {
                             style_key: StyleKey::DimStyle,
                             combo_id: "DIM_STYLE_COMBO",
                             manager_cmd: Some("DIMSTYLE"),
                             rows: vec![
-                                vec![qdim::tool(), dim_continue::tool(), dim_baseline::tool()],
                                 vec![
-                                    tolerance_cmd::tool(),
-                                    dimedit::tool(),
-                                    dimtedit::tool(),
-                                    dimbreak::tool(),
-                                    dimspace::tool(),
-                                    dimjogline::tool(),
+                                    dim_tool("DIMBREAK", "Break", include_bytes!("../../../assets/icons/dim_break.svg"), "DIMBREAK"),
+                                    dim_tool("DIMSPACE", "Adjust Space", include_bytes!("../../../assets/icons/dim_space.svg"), "DIMSPACE"),
+                                    dim_tool("DIMJOGLINE", "Jog Line", include_bytes!("../../../assets/icons/dim_jog.svg"), "DIMJOGLINE"),
+                                ],
+                                vec![
+                                    dim_tool("DIMINSPECT", "Inspect", include_bytes!("../../../assets/icons/find.svg"), "DIMINSPECT"),
+                                    dim_tool("DIMSTYLE_APPLY", "Update", include_bytes!("../../../assets/icons/ui/refresh.svg"), r#"-DIMSTYLE ["APPLY"]"#),
+                                    dim_tool("DIMREASSOCIATE", "Reassociate", include_bytes!("../../../assets/icons/sync.svg"), "DIMREASSOCIATE"),
                                 ],
                             ],
+                        },
+                        RibbonItem::LabeledDropdown {
+                            id: "ANNOTATE_DIM",
+                            label: "",
+                            icon: linear_dim::ICON,
+                            items: annotate_dimension_items(),
+                            default: "DIMLINEAR",
+                        },
+                        RibbonItem::LabeledTool(crate::modules::ToolDef {
+                            id: "QDIM",
+                            label: "Quick",
+                            icon: qdim::tool().icon,
+                            event: crate::modules::ModuleEvent::Command("QDIM".to_string()),
+                        }),
+                        RibbonItem::LabeledDropdown {
+                            id: "ANNOTATE_DIM_CONTINUE",
+                            label: "",
+                            icon: dim_continue::tool().icon,
+                            items: vec![
+                                (dim_continue::tool().id, "Continue", dim_continue::tool().icon),
+                                (dim_baseline::tool().id, "Baseline", dim_baseline::tool().icon),
+                            ],
+                            default: "DIMCONTINUE",
                         },
                     ],
                 },

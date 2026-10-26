@@ -7100,3 +7100,16 @@ block-lookup =
 
 block-array =
     .limit-error = سيؤدي تقييم الكتلة إلى إنشاء أكثر من 100000 عنصر مصفوفة. قلّل المسافة أو زِد التباعد.
+dim-panel =
+    .adjust-space = Adjust Space
+    .inspect = Inspect
+    .update = Update
+    .reassociate = Reassociate
+    .quick = Quick
+    .oblique = Oblique
+    .text-angle = Text Angle
+    .left-justify = Left Justify
+    .center-justify = Center Justify
+    .right-justify = Right Justify
+    .override = Override
+    .dimension-layer = Dimension Layer

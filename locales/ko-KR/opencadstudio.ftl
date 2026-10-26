@@ -7087,3 +7087,16 @@ block-lookup =
 
 block-array =
     .limit-error = 블록 평가 시 배열 객체가 100000개를 초과합니다. 거리를 줄이거나 간격을 늘리세요.
+dim-panel =
+    .adjust-space = Adjust Space
+    .inspect = Inspect
+    .update = Update
+    .reassociate = Reassociate
+    .quick = Quick
+    .oblique = Oblique
+    .text-angle = Text Angle
+    .left-justify = Left Justify
+    .center-justify = Center Justify
+    .right-justify = Right Justify
+    .override = Override
+    .dimension-layer = Dimension Layer

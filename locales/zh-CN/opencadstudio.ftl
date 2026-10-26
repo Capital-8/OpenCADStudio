@@ -7071,3 +7071,16 @@ block-lookup =
 
 block-array =
     .limit-error = 块求值将生成超过100000个阵列对象。请减小距离或增大间距。
+dim-panel =
+    .adjust-space = Adjust Space
+    .inspect = Inspect
+    .update = Update
+    .reassociate = Reassociate
+    .quick = Quick
+    .oblique = Oblique
+    .text-angle = Text Angle
+    .left-justify = Left Justify
+    .center-justify = Center Justify
+    .right-justify = Right Justify
+    .override = Override
+    .dimension-layer = Dimension Layer

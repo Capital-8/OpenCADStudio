@@ -7087,3 +7087,16 @@ block-lookup =
 
 block-array =
     .limit-error = Przeliczenie bloku utworzyłoby ponad 100000 obiektów szyku. Zmniejsz odległość lub zwiększ odstęp.
+dim-panel =
+    .adjust-space = Adjust Space
+    .inspect = Inspect
+    .update = Update
+    .reassociate = Reassociate
+    .quick = Quick
+    .oblique = Oblique
+    .text-angle = Text Angle
+    .left-justify = Left Justify
+    .center-justify = Center Justify
+    .right-justify = Right Justify
+    .override = Override
+    .dimension-layer = Dimension Layer

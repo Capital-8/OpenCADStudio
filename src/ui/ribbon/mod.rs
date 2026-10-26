@@ -284,6 +284,8 @@ pub struct Ribbon {
     pub text_height: String,
     pub text_height_editing: bool,
     pub text_layer: String,
+    /// Annotate > Dimensions: DIMLAYER (empty: the current layer).
+    pub dim_layer: String,
     /// Open key tips (Alt).
     keytips: Option<keytips::State>,
 }
@@ -417,6 +419,7 @@ impl Ribbon {
             text_height: String::new(),
             text_height_editing: false,
             text_layer: String::new(),
+            dim_layer: String::new(),
             keytips: None,
         }
     }
@@ -977,6 +980,8 @@ impl Ribbon {
                 active_table_style: &self.active_table_style,
                 text_find: &self.text_find,
                 text_height: &self.text_height,
+                dim_layer: &self.dim_layer,
+                dim_layer_color: self.dim_layer_color(),
             };
 
             // Adaptive tool area: panels sit on one row; when they don't all
@@ -1166,6 +1171,10 @@ impl Ribbon {
             return self.layer_combo_overlay(win);
         }
 
+        if open_id == widgets::DIM_LAYER_COMBO {
+            return Some(self.dim_layer_overlay(win));
+        }
+
         if open_id == PROP_COLOR_ID {
             return self.prop_color_overlay(win, recent_colors);
         }
@@ -1284,6 +1293,74 @@ impl Ribbon {
             h_pad,
             top,
         )))
+    }
+
+    /// The colour of the DIMLAYER layer, `None` for Use Current.
+    fn dim_layer_color(&self) -> Option<iced::Color> {
+        if self.dim_layer.is_empty() {
+            return None;
+        }
+        self.layer_infos
+            .iter()
+            .find(|info| info.name.eq_ignore_ascii_case(&self.dim_layer))
+            .map(|info| info.color)
+    }
+
+    /// Annotate > Dimensions layer list: Use Current, then the drawing's
+    /// layers.
+    fn dim_layer_overlay(&self, win: (f32, f32)) -> Element<'_, Message> {
+        const W: f32 = 220.0;
+        let current = self.dim_layer.clone();
+        let entry = |value: String, label: String, color: Option<iced::Color>| {
+            let on = value.eq_ignore_ascii_case(&current);
+            let swatch: Element<'_, Message> = match color {
+                Some(color) => container(text(""))
+                    .width(10)
+                    .height(10)
+                    .style(move |_: &Theme| container::Style {
+                        background: Some(color.into()),
+                        border: Border {
+                            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                            width: 1.0,
+                            radius: 2.0.into(),
+                        },
+                        ..Default::default()
+                    })
+                    .into(),
+                None => iced::widget::Space::new().width(10).height(10).into(),
+            };
+            let item: Element<'_, Message> = button(
+                row![
+                    crate::ui::icons::themed_check_cell(on),
+                    swatch,
+                    text(label).size(11)
+                ]
+                .spacing(6)
+                .align_y(iced::Center),
+            )
+            .on_press(Message::RibbonDimLayer(value))
+            .style(popup_row_style)
+            .width(Fill)
+            .padding([3, 8])
+            .into();
+            item
+        };
+        let mut rows: Vec<Element<'_, Message>> =
+            vec![entry(String::new(), t!("Use Current").into_owned(), None)];
+        rows.extend(
+            self.layer_infos
+                .iter()
+                .map(|info| entry(info.name.clone(), info.name.clone(), Some(info.color))),
+        );
+        let list_height = ((self.layer_infos.len() + 1) as f32 * 24.0).min(260.0);
+        let panel = container(
+            scrollable(column(rows).spacing(1)).height(Length::Fixed(list_height)),
+        )
+        .style(popup_panel_style)
+        .padding(2)
+        .width(Length::Fixed(W));
+        let (align_right, h_pad, top) = self.dd_anchor(widgets::DIM_LAYER_COMBO, W, win.0);
+        dropdown_backdrop(position_ribbon_dropdown(panel.into(), align_right, h_pad, top))
     }
 
     fn layer_combo_overlay(&self, win: (f32, f32)) -> Option<Element<'_, Message>> {
@@ -1460,6 +1537,8 @@ impl Ribbon {
             active_table_style: &self.active_table_style,
             text_find: &self.text_find,
             text_height: &self.text_height,
+            dim_layer: &self.dim_layer,
+            dim_layer_color: self.dim_layer_color(),
         };
         let active = ctx.active_for(style_key).to_string();
 
@@ -1978,6 +2057,8 @@ mod tests {
             active_table_style: "",
             text_find: "",
             text_height: "",
+            dim_layer: "",
+            dim_layer_color: None,
         };
         let groups: Vec<_> = groups.iter().collect();
         let mut last_cmd = FxHashMap::default();

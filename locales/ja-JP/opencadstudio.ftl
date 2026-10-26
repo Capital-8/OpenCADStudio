@@ -7076,3 +7076,16 @@ block-lookup =
 
 block-array =
     .limit-error = ブロックの評価により、配列オブジェクトが100000個を超えます。距離を短くするか、間隔を広げてください。
+dim-panel =
+    .adjust-space = Adjust Space
+    .inspect = Inspect
+    .update = Update
+    .reassociate = Reassociate
+    .quick = Quick
+    .oblique = Oblique
+    .text-angle = Text Angle
+    .left-justify = Left Justify
+    .center-justify = Center Justify
+    .right-justify = Right Justify
+    .override = Override
+    .dimension-layer = Dimension Layer

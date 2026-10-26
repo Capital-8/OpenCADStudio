@@ -7095,3 +7095,16 @@ block-lookup =
 
 block-array =
     .limit-error = Việc tính toán khối sẽ tạo hơn 100000 đối tượng mảng. Giảm khoảng cách hoặc tăng bước mảng.
+dim-panel =
+    .adjust-space = Adjust Space
+    .inspect = Inspect
+    .update = Update
+    .reassociate = Reassociate
+    .quick = Quick
+    .oblique = Oblique
+    .text-angle = Text Angle
+    .left-justify = Left Justify
+    .center-justify = Center Justify
+    .right-justify = Right Justify
+    .override = Override
+    .dimension-layer = Dimension Layer

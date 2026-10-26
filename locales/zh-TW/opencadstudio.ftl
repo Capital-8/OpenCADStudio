@@ -7083,3 +7083,16 @@ block-lookup =
 
 block-array =
     .limit-error = 圖塊求值將產生超過100000個陣列物件。請縮短距離或增大間距。
+dim-panel =
+    .adjust-space = Adjust Space
+    .inspect = Inspect
+    .update = Update
+    .reassociate = Reassociate
+    .quick = Quick
+    .oblique = Oblique
+    .text-angle = Text Angle
+    .left-justify = Left Justify
+    .center-justify = Center Justify
+    .right-justify = Right Justify
+    .override = Override
+    .dimension-layer = Dimension Layer

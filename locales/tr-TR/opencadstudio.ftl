@@ -7009,3 +7009,16 @@ block-lookup =
 
 block-array =
     .limit-error = Blok değerlendirmesi 100000 adetten fazla dizi nesnesi oluşturacak. Mesafeyi azaltın veya aralığı artırın.
+dim-panel =
+    .adjust-space = Aralığı Ayarla
+    .inspect = Denetle
+    .update = Güncelle
+    .reassociate = Yeniden İlişkilendir
+    .quick = Hızlı
+    .oblique = Eğik
+    .text-angle = Metin Açısı
+    .left-justify = Sola Yasla
+    .center-justify = Ortala
+    .right-justify = Sağa Yasla
+    .override = Geçersiz Kıl
+    .dimension-layer = Ölçü Katmanı

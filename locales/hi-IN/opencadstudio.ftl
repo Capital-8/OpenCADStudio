@@ -7076,3 +7076,16 @@ block-lookup =
 
 block-array =
     .limit-error = ब्लॉक के मूल्यांकन से 100000 से अधिक ऐरे ऑब्जेक्ट बनेंगे। दूरी कम करें या अंतराल बढ़ाएँ।
+dim-panel =
+    .adjust-space = Adjust Space
+    .inspect = Inspect
+    .update = Update
+    .reassociate = Reassociate
+    .quick = Quick
+    .oblique = Oblique
+    .text-angle = Text Angle
+    .left-justify = Left Justify
+    .center-justify = Center Justify
+    .right-justify = Right Justify
+    .override = Override
+    .dimension-layer = Dimension Layer

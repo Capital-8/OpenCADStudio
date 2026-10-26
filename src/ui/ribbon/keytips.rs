@@ -103,6 +103,8 @@ pub(super) const XREF_FADE: &str = "XREF_FADE";
 pub(super) const TEXT_LAUNCHER: &str = "TEXT_LAUNCHER";
 /// The Text panel's text height box.
 pub(super) const TEXT_HEIGHT: &str = "TEXT_HEIGHT";
+/// The Dimensions panel's corner arrow (Dimension Style).
+pub(super) const DIMENSION_LAUNCHER: &str = "DIMENSION_LAUNCHER";
 const COLLAPSED_PREFIX: &str = "panel:";
 
 pub fn active() -> bool {
@@ -435,15 +437,26 @@ const CODES: &[(&str, &str, &str)] = &[
     ("annotate", TEXT_HEIGHT, "TH"),
     ("text_extension", "SCALETEXT", "ST"),
     ("annotate", "Dimensions", "DM"),
-    ("annotate", "ANNOTATE_DIM", "DN"),
+    ("annotate", "DIM", "DI"),
     ("annotate", "DIM_STYLE_COMBO", "DY"),
-    ("annotate", "QDIM", "QD"),
-    ("annotate", "DIMCONTINUE", "CO"),
-    ("annotate", "TOLERANCE", "TO"),
-    ("annotate", "DIMEDIT", "DE"),
     ("annotate", "DIMBREAK", "BR"),
     ("annotate", "DIMSPACE", "SP"),
     ("annotate", "DIMJOGLINE", "DJ"),
+    ("annotate", super::widgets::DIM_LAYER_COMBO, "DA"),
+    ("annotate", "DIMINSPECT", "DP"),
+    ("annotate", "DIMSTYLE_APPLY", "DU"),
+    ("annotate", "DIMREASSOCIATE", "DR"),
+    ("annotate", "ANNOTATE_DIM", "DN"),
+    ("annotate", "QDIM", "QD"),
+    ("annotate", "ANNOTATE_DIM_CONTINUE", "CO"),
+    ("annotate", DIMENSION_LAUNCHER, "DS"),
+    ("dimensions_extension", "TOLERANCE", "TO"),
+    ("dimensions_extension", "DIMEDIT;O", "DE"),
+    ("dimensions_extension", "DIMTEDIT_ANGLE", "DTA"),
+    ("dimensions_extension", "DIMTEDIT_LEFT", "DTL"),
+    ("dimensions_extension", "DIMTEDIT_CENTER", "DTC"),
+    ("dimensions_extension", "DIMTEDIT_RIGHT", "DTR"),
+    ("dimensions_extension", "DIMOVERRIDE", "DO"),
     ("annotate", "Centerlines", "CE"),
     ("annotate", "CENTERMARK", "CM"),
     ("annotate", "CENTERLINE", "CL"),
@@ -792,6 +805,14 @@ impl Ribbon {
                     target: XREF_LAUNCHER,
                     code: code(scope, XREF_LAUNCHER).map(str::to_string),
                     action: Action::Run(Message::ToggleXrefManager),
+                });
+            }
+            if id == draw_panel::DIMENSIONS_PANEL_ID {
+                tips.push(Tip {
+                    anchor: DIMENSION_LAUNCHER.to_string(),
+                    target: DIMENSION_LAUNCHER,
+                    code: code(scope, DIMENSION_LAUNCHER).map(str::to_string),
+                    action: Action::Run(Message::Command("DIMSTYLE".to_string())),
                 });
             }
             if id == draw_panel::TEXT_PANEL_ID {
