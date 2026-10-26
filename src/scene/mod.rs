@@ -2759,6 +2759,14 @@ pub struct Scene {
     /// Cached model-space bounding box, keyed by geometry_epoch.
     /// Avoids re-tessellating all entities on every ZOOM E / auto-fit call.
     model_extents_cache: RefCell<Option<(u64, Option<(glam::Vec3, glam::Vec3)>)>>,
+    /// Memoised [`Scene::model_space_block_handle`] answer, keyed by the
+    /// structural state it is derived from: the geometry epoch (a coarse
+    /// structural change can replace the whole document), the layout epoch
+    /// (Layout objects inserted/removed/renamed/reordered) and the object
+    /// count (a direct `document.objects` insert/remove). The scene asks for
+    /// the handle from 18 call sites, several per frame, and the DWG lookup
+    /// walks every object until it finds the "Model" layout.
+    model_space_block_cache: std::cell::Cell<Option<(u64, u64, usize, Handle)>>,
     /// Reverse map: entity_handle → block_record_handle, built from entity_handles lists.
     /// Keyed by geometry_epoch. Eliminates the O(B) fallback scan in belongs_to_visible_block.
     entity_block_map_cache: RefCell<Option<(u64, HashMap<Handle, Handle>)>>,
@@ -3215,6 +3223,7 @@ impl Scene {
             annotation_scale: 1.0,
             annotation_affects_wires: std::cell::Cell::new(None),
             model_extents_cache: RefCell::new(None),
+            model_space_block_cache: std::cell::Cell::new(None),
             entity_block_map_cache: RefCell::new(None),
             block_members_cache: RefCell::new(None),
             leaders_by_annotation_cache: RefCell::new(None),
@@ -13887,7 +13896,27 @@ vis_index={:.1} visible_probe={:.1}",
         wires
     }
 
-    fn model_space_block_handle(&self) -> Handle {
+    /// `doc(hidden)` public only so `benches/model_space_handle_lookup.rs`
+    /// can time the real production lookup.
+    #[doc(hidden)]
+    pub fn model_space_block_handle(&self) -> Handle {
+        let key = (
+            self.geometry_epoch,
+            self.layout_epoch,
+            self.document.objects.len(),
+        );
+        if let Some((geometry, layout, objects, handle)) = self.model_space_block_cache.get() {
+            if (geometry, layout, objects) == key {
+                return handle;
+            }
+        }
+        let handle = self.resolve_model_space_block_handle();
+        self.model_space_block_cache
+            .set(Some((key.0, key.1, key.2, handle)));
+        handle
+    }
+
+    fn resolve_model_space_block_handle(&self) -> Handle {
         // Primary: Layout object's block_record (DWG reader sets this).
         if let Some(h) = self.document.objects.values().find_map(|obj| {
             if let ObjectType::Layout(l) = obj {
@@ -15761,6 +15790,58 @@ mod selection_arc_tests {
 #[cfg(test)]
 mod layout_cache_tests {
     use super::*;
+
+    #[test]
+    fn model_space_block_handle_memo_follows_the_document_structure() {
+        let mut s = Scene::new();
+        let fallback = s
+            .document
+            .block_records
+            .get("*Model_Space")
+            .expect("Document::new creates the *Model_Space block record")
+            .handle;
+        let model_layout = s
+            .document
+            .objects
+            .iter()
+            .find_map(|(handle, object)| match object {
+                ObjectType::Layout(layout) if layout.name == "Model" => Some(*handle),
+                _ => None,
+            })
+            .expect("Document::new creates a Model layout");
+        assert_eq!(s.model_space_block_handle(), fallback);
+
+        // Repoint the Model layout without moving an epoch: the memo holds.
+        let repointed = s.document.header.paper_space_block_handle;
+        if let Some(ObjectType::Layout(layout)) = s.document.objects.get_mut(&model_layout) {
+            layout.block_record = repointed;
+        }
+        assert_eq!(
+            s.model_space_block_handle(),
+            fallback,
+            "the memo deliberately holds until an epoch moves"
+        );
+
+        // An object insert changes the count, so the memo re-resolves.
+        let extra = s.document.allocate_handle();
+        s.document
+            .objects
+            .insert(extra, ObjectType::XRecord(codec::objects::XRecord::new()));
+        assert_eq!(s.model_space_block_handle(), repointed);
+
+        // Layout edits move the layout epoch, so the new target stays seen.
+        if let Some(ObjectType::Layout(layout)) = s.document.objects.get_mut(&model_layout) {
+            layout.block_record = fallback;
+        }
+        assert_eq!(s.model_space_block_handle(), repointed);
+        s.bump_layout_epoch();
+        assert_eq!(s.model_space_block_handle(), fallback);
+
+        // A coarse structural bump re-resolves too and keeps the answer.
+        s.bump_geometry();
+        assert_eq!(s.model_space_block_handle(), fallback);
+    }
+
     #[test]
     fn memoized_plain_line_matches_fresh_background() {
         let mut s = Scene::new();
