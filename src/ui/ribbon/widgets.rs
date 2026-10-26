@@ -1365,7 +1365,13 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                 col_items.push(text_height_box(style_ctx.text_height));
             }
 
-            combo_panel_col(STYLE_COMBO_W, col_items)
+            // The Leaders lists are wider, so the layer list shows its name.
+            let width = if *style_key == StyleKey::MLeaderStyle {
+                STYLE_COMBO_W * 1.4
+            } else {
+                STYLE_COMBO_W
+            };
+            combo_panel_col(width, col_items)
         }
     }
 }
