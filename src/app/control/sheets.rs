@@ -476,6 +476,10 @@ impl OpenCADStudio {
         }
         crate::app::style_ops::ensure_standard_styles(&mut self.tabs[i].scene.document);
         self.tabs[i].adopt_active_ucs_from_header();
+        // The template's saved view and its grid/snap state, as an opened
+        // drawing gets them (#2198).
+        self.tabs[i].scene.restore_saved_camera();
+        self.adopt_view_display(i);
         self.tabs[i].current_path = None;
         self.tabs[i].is_start = false;
         self.tabs[i].dirty = true;
