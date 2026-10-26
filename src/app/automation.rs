@@ -564,6 +564,9 @@ fn audit_ascii_dxf_references(path: &std::path::Path) -> Result<Value, String> {
     let mut pairs = Vec::new();
     let mut version = None;
     let mut variable = None;
+    // Only a record's first 5/105 is its own handle; SORTENTSTABLE stores its
+    // sort handles under 5 as well (#2211).
+    let mut record_has_handle = false;
     for pair in lines.chunks_exact(2) {
         let Ok(code) = pair[0].trim().parse::<i32>() else {
             return Ok(
@@ -578,8 +581,12 @@ fn audit_ascii_dxf_references(path: &std::path::Path) -> Result<Value, String> {
             version = Some(value.clone());
             variable = None;
         }
-        if code == 5 || code == 105 {
-            if !declared.insert(value.clone()) {
+        if code == 0 {
+            record_has_handle = false;
+        } else if code == 5 || code == 105 {
+            if !std::mem::replace(&mut record_has_handle, true)
+                && !declared.insert(value.clone())
+            {
                 duplicate.insert(value.clone());
             }
         } else if [330, 340, 350, 360, 390].contains(&code) {
@@ -2323,6 +2330,24 @@ mod tests {
         let audit = super::audit_ascii_dxf_references(&path).unwrap();
         assert_eq!(audit["ok"], false, "{audit}");
         assert_eq!(audit["dangling_handles"], serde_json::json!(["2"]));
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// SORTENTSTABLE keeps its sort handles under code 5 after its own; they
+    /// are not declared handles (#2211). A record's second own handle still is.
+    #[test]
+    fn raw_dxf_audit_counts_only_a_records_own_handle() {
+        let path = std::env::temp_dir().join(format!("ocs_sortents_{}.dxf", std::process::id()));
+        std::fs::write(
+            &path,
+            "  0\nTEXT\n  5\n2F\n  0\nTEXT\n  5\n30\n  0\nSORTENTSTABLE\n  5\n33\n331\n2F\n  5\n30\n331\n30\n  5\n2F\n",
+        )
+        .unwrap();
+        let audit = super::audit_ascii_dxf_references(&path).unwrap();
+        assert_eq!(audit["duplicate_handles"], serde_json::json!([]), "{audit}");
+        std::fs::write(&path, "  0\nTEXT\n  5\n2F\n  0\nLINE\n  5\n2F\n").unwrap();
+        let audit = super::audit_ascii_dxf_references(&path).unwrap();
+        assert_eq!(audit["duplicate_handles"], serde_json::json!(["2F"]), "{audit}");
         let _ = std::fs::remove_file(path);
     }
 
