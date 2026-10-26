@@ -1433,6 +1433,7 @@ impl Scene {
         let association_handle = self.document.allocate_handle();
         let mut object = AssociativeObject::new("DIMASSOC", "AcDbDimAssoc");
         object.handle = association_handle;
+        self.has_dimension_associations.set(Some(true));
         object.reactors.push(dimension);
         object.data = AssociativeData::DimensionAssociation(AssocDimensionAssociation {
             associativity,
@@ -2019,14 +2020,38 @@ impl Scene {
             .collect()
     }
 
-    pub(crate) fn refresh_associative_dimensions(
+    /// Whether the drawing holds any DIMASSOC dimension association.
+    ///
+    /// Settled with one pass over `document.objects` and cached: creating an
+    /// association sets it to `true`, and a coarse structural change
+    /// (`Scene::bump_geometry`) re-opens the question. Most drawings have
+    /// none, so their per-edit refreshes stop scanning the object graph.
+    fn dimension_associations_possible(&self) -> bool {
+        if let Some(known) = self.has_dimension_associations.get() {
+            return known;
+        }
+        let any = self.document.objects.values().any(|object| {
+            matches!(
+                object,
+                ObjectType::Associative(associative)
+                    if matches!(associative.data, AssociativeData::DimensionAssociation(_))
+            )
+        });
+        self.has_dimension_associations.set(Some(any));
+        any
+    }
+
+    /// `doc(hidden)` public only so `benches/dimension_association_refresh.rs`
+    /// can time the real per-edit production entry point.
+    #[doc(hidden)]
+    pub fn refresh_associative_dimensions(
         &mut self,
         changes: &[(Handle, ChangeKind)],
     ) -> Vec<(Handle, ChangeKind)> {
-        let changed: rustc_hash::FxHashSet<_> = changes.iter().map(|(handle, _)| *handle).collect();
-        if changed.is_empty() {
+        if changes.is_empty() || !self.dimension_associations_possible() {
             return Vec::new();
         }
+        let changed: rustc_hash::FxHashSet<_> = changes.iter().map(|(handle, _)| *handle).collect();
         let associations: Vec<_> = self
             .document
             .objects
@@ -2602,6 +2627,37 @@ mod tests {
         assert!(objects
             .iter()
             .any(|(handle, before)| *handle == association && before.is_some()));
+    }
+
+    #[test]
+    fn dimension_association_gate_tracks_creation_and_reset() {
+        let mut scene = Scene::new();
+        assert!(
+            !scene.dimension_associations_possible(),
+            "a fresh drawing holds no DIMASSOC association"
+        );
+
+        let circle = scene.add_entity(EntityType::Circle(Circle::from_center_radius(
+            Vector3::ZERO,
+            5.0,
+        )));
+        let dimension = scene.add_entity(EntityType::Dimension(Box::new(Dimension::Diameter(
+            DimensionDiameter::new(Vector3::new(5.0, 0.0, 0.0), Vector3::new(-5.0, 0.0, 0.0)),
+        ))));
+        scene.attach_dimension_association(dimension, vec![Some(circle)]);
+        assert!(
+            scene.dimension_associations_possible(),
+            "creating an association must open the refresh path in this session"
+        );
+
+        // A coarse structural bump re-opens the question; the association is
+        // still there, so the answer stays true.
+        scene.bump_geometry();
+        assert!(scene.dimension_associations_possible());
+
+        // Detaching the association settles the answer back to false.
+        assert!(scene.detach_dimension_association(dimension));
+        assert!(!scene.dimension_associations_possible());
     }
 }
 

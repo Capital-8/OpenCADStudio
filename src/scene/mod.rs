@@ -2820,6 +2820,11 @@ pub struct Scene {
     /// Conservative association hint: unknown until scanned, then updated from
     /// changed entities. Retaining `true` after deletion only costs an extra scan.
     has_associative_centers: std::cell::Cell<Option<bool>>,
+    /// Conservative hint for whether any DIMASSOC dimension association exists.
+    /// Unknown until scanned; creating one sets it, and a coarse structural
+    /// change re-opens the question. Lets most drawings skip the per-edit
+    /// `document.objects` scan in `refresh_associative_dimensions`.
+    has_dimension_associations: std::cell::Cell<Option<bool>>,
     /// Conservative hint for whether any Underlay entities exist in the document.
     pub(crate) has_underlays: std::cell::Cell<Option<bool>>,
     /// Conservative hint for whether any Face3D entities exist in the document.
@@ -3253,6 +3258,7 @@ impl Scene {
             named_parameters: named_parameters::ParameterTable::new(),
             native_graph_fingerprint: None,
             has_associative_centers: std::cell::Cell::new(None),
+            has_dimension_associations: std::cell::Cell::new(None),
             has_underlays: std::cell::Cell::new(None),
             has_face3d: std::cell::Cell::new(None),
             document_render_env_cache: RefCell::new(None),
@@ -4410,6 +4416,7 @@ impl Scene {
         // A change this coarse can carry a new document; re-determine whether
         // it holds associative centerlines or center marks.
         self.has_associative_centers.set(None);
+        self.has_dimension_associations.set(None);
         // Structural change — drop both per-entity tessellation memos.
         self.tess_memo.borrow_mut().clear();
         self.resident_tess_memo.borrow_mut().clear();
@@ -13684,6 +13691,10 @@ vis_index={:.1} visible_probe={:.1}",
 
     pub(crate) fn invalidate_dependency_index(&self) {
         self.dependency_index_cache.borrow_mut().take();
+        // Objects (and so DIMASSOC associations) may have appeared or gone;
+        // the direction that matters is undo/redo and plugin edits that
+        // bypass `store_dimension_association_full`.
+        self.has_dimension_associations.set(None);
     }
 
     /// Spatial index + always-emit list for top-level entities. Lazily

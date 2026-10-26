@@ -280,6 +280,10 @@ name = "model_space_handle_lookup"
 harness = false
 
 [[bench]]
+name = "dimension_association_refresh"
+harness = false
+
+[[bench]]
 name = "parametric_presolve_fixpoint"
 harness = false
 

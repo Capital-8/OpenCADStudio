@@ -1131,6 +1131,9 @@ impl OpenCADStudio {
                         self.tabs[i].scene.document.objects.remove(&entry.handle);
                     }
                 }
+                // Object images can add or drop a DIMASSOC association without
+                // moving geometry (an undone dimension erase, a redone one).
+                self.tabs[i].scene.invalidate_dependency_index();
                 if layout_touched {
                     self.tabs[i].scene.bump_layout_epoch();
                 }
