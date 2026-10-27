@@ -6607,6 +6607,7 @@ keytips =
 selection-report =
     .found-duplicate-total = __ocs_fmt_0__ találat (__ocs_fmt_1__ ismétlődés), összesen __ocs_fmt_2__
     .found-removed-total = __ocs_fmt_0__ találat, __ocs_fmt_1__ eltávolítva, összesen __ocs_fmt_2__
+    .invalid-window = Invalid window specification.
 
 block-def =
     .name-too-short = A névnek legalább egy karakterből kell állnia.

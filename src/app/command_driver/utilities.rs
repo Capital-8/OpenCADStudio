@@ -746,6 +746,9 @@ impl OpenCADStudio {
         if matches!(input, StepInput::Point(_)) {
             let _ = self.apply_dynamic_ucs(None);
         }
+        // Whatever reaches the command ends a typed window still waiting
+        // for its opposite corner.
+        self.typed_window_corner = None;
         let gathering = self.report_selection_found(&input);
         // A command that takes associative dimensions only keeps just those:
         // the rest leave the selection and the count of what went is reported,
@@ -1244,8 +1247,111 @@ impl OpenCADStudio {
         Some(self.feed_command(StepInput::SelectionComplete(handles)))
     }
 
+    /// A typed coordinate in world space: relative to the last point when it
+    /// starts with `@`, through the active UCS otherwise.
+    fn typed_wcs(&self, i: usize, token: &str) -> Option<glam::DVec3> {
+        let (coord, kind) = crate::app::helpers::parse_coord(token)?;
+        let ucs = &self.tabs[i].active_ucs;
+        Some(
+            match (
+                matches!(kind, crate::app::helpers::CoordKind::Relative),
+                self.last_point,
+            ) {
+                (true, Some(base)) => {
+                    base + match ucs {
+                        Some(value) => crate::app::helpers::ucs_rotate_vec(coord, value),
+                        None => coord,
+                    }
+                }
+                _ => match ucs {
+                    Some(value) => crate::app::helpers::ucs_to_wcs(coord, value),
+                    None => coord,
+                },
+            },
+        )
+    }
+
+    /// A typed coordinate at an object prompt picks the object under it, as
+    /// a click there would: while objects are gathered it adds the object
+    /// found there (or, on empty space, starts a window whose opposite
+    /// corner is the next typed coordinate), and at a single-object prompt
+    /// that takes no points it is the pick itself. `None` when the token is
+    /// no coordinate or the prompt reads it some other way. Shared by the
+    /// command line and the token feeder so both read a typed point the same.
+    pub(in crate::app) fn typed_object_pick(&mut self, token: &str) -> Option<Task<Message>> {
+        let i = self.active_tab;
+        let (gathering, picks_entity, key) = self.tabs[i].active_cmd.as_ref().map(|command| {
+            (
+                command.is_selection_gathering(),
+                command.needs_entity_pick() && command.typed_point_picks_entity(),
+                &**command as *const dyn crate::command::CadCommand as *const () as usize,
+            )
+        })?;
+        if let Some((pending, first)) = self.typed_window_corner.take() {
+            if gathering && pending == key {
+                let Some(second) = self.typed_wcs(i, token) else {
+                    // Enter or a word where the opposite corner belongs: the
+                    // selection prompt comes back with the corner still open.
+                    self.typed_window_corner = Some((pending, first));
+                    self.command_line
+                        .push_error(crate::t!("Invalid window specification.").as_ref());
+                    if let Some(prompt) = self.tabs[i].active_cmd.as_ref().map(|c| c.prompt()) {
+                        self.command_line.push_info(&prompt);
+                    }
+                    self.command_line
+                        .push_info(crate::t!("Specify opposite corner:").as_ref());
+                    return Some(Task::none());
+                };
+                self.last_point = Some(second);
+                return Some(self.select_typed_window(first, second));
+            }
+        }
+        if !gathering && !picks_entity {
+            return None;
+        }
+        let wcs = self.typed_wcs(i, token)?;
+        let owner = self.tabs[i]
+            .current_parametric_scope()
+            .owner_handle(&self.tabs[i].scene.document);
+        let found = entity_at_typed_point(&self.tabs[i].scene.document, owner, wcs);
+        if gathering {
+            self.last_point = Some(wcs);
+            let Some(handle) = found else {
+                self.typed_window_corner = Some((key, wcs));
+                self.command_line
+                    .push_info(crate::t!("Specify opposite corner:").as_ref());
+                return Some(Task::none());
+            };
+            self.last_pick = Some((vec![handle], self.select_remove_mode));
+            if self.select_remove_mode {
+                self.tabs[i].scene.deselect_entity(handle);
+            } else {
+                self.tabs[i].scene.select_entity(handle, false);
+            }
+            self.refresh_properties();
+            let handles: Vec<Handle> = self.tabs[i]
+                .scene
+                .selected_entities()
+                .into_iter()
+                .map(|(h, _)| h)
+                .collect();
+            return Some(self.feed_command(StepInput::SelectionComplete(handles)));
+        }
+        if !self.command_point_allowed(i, wcs) {
+            return Some(Task::none());
+        }
+        self.last_point = Some(wcs);
+        self.push_ucs_to_cmd(i);
+        Some(self.feed_command(StepInput::EntityPick(found.unwrap_or(Handle::NULL), wcs)))
+    }
+
     pub(in crate::app) fn feed_active_cmd(&mut self, token: &str) -> Task<Message> {
         let i = self.active_tab;
+        if self.typed_window_corner.is_some() {
+            if let Some(task) = self.typed_object_pick(token) {
+                return task;
+            }
+        }
         let trimmed = token.trim();
         if trimmed.is_empty()
             || trimmed.eq_ignore_ascii_case("ENTER")
@@ -1273,46 +1379,18 @@ impl OpenCADStudio {
             if let Some(task) = self.try_selection_keyword(token) {
                 return task;
             }
+            if let Some(task) = self.typed_object_pick(token) {
+                return task;
+            }
             let accepts_points = self.tabs[i]
                 .active_cmd
                 .as_ref()
                 .is_some_and(|command| command.entity_pick_accepts_points());
             if accepts_points {
-                if let Some((coord, kind)) = crate::app::helpers::parse_coord(token) {
-                    let ucs = self.tabs[i].active_ucs.clone();
-                    let wcs = match (
-                        matches!(kind, crate::app::helpers::CoordKind::Relative),
-                        self.last_point,
-                    ) {
-                        (true, Some(base)) => {
-                            base + match &ucs {
-                                Some(value) => crate::app::helpers::ucs_rotate_vec(coord, value),
-                                None => coord,
-                            }
-                        }
-                        _ => match &ucs {
-                            Some(value) => crate::app::helpers::ucs_to_wcs(coord, value),
-                            None => coord,
-                        },
-                    };
+                if let Some(wcs) = self.typed_wcs(i, token) {
                     if self.command_point_allowed(i, wcs) {
                         self.last_point = Some(wcs);
                         self.push_ucs_to_cmd(i);
-                        // A typed coordinate at an object prompt is a pick at
-                        // that point, as in the reference.
-                        let picks_entity = self.tabs[i]
-                            .active_cmd
-                            .as_ref()
-                            .is_some_and(|command| command.typed_point_picks_entity());
-                        if picks_entity {
-                            let owner = self.tabs[i]
-                                .current_parametric_scope()
-                                .owner_handle(&self.tabs[i].scene.document);
-                            let handle =
-                                entity_at_typed_point(&self.tabs[i].scene.document, owner, wcs)
-                                    .unwrap_or(Handle::NULL);
-                            return self.feed_command(StepInput::EntityPick(handle, wcs));
-                        }
                         return self.feed_command(StepInput::Point(wcs));
                     }
                     return Task::none();

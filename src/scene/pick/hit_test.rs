@@ -1882,8 +1882,10 @@ pub fn box_hit<'a, W: WireSource + ?Sized>(
     let min_y = corner_a.y.min(corner_b.y).max(0.0);
     let max_y = corner_a.y.max(corner_b.y).min(bounds.height);
 
-    // Ignore zero-area boxes (including a box clamped entirely off-pane).
-    if (max_x - min_x) < 1.0 || (max_y - min_y) < 1.0 {
+    // A box clamped entirely off the pane holds nothing. A box with no width
+    // or no height still selects what lies on it or crosses it, as in the
+    // reference.
+    if max_x < min_x || max_y < min_y {
         return vec![];
     }
 
@@ -2577,7 +2579,7 @@ fn hatch_box_hit(
     let max_x = corner_a.x.max(corner_b.x);
     let min_y = corner_a.y.min(corner_b.y);
     let max_y = corner_a.y.max(corner_b.y);
-    if (max_x - min_x) < 1.0 || (max_y - min_y) < 1.0 || hatch.boundary.is_empty() {
+    if max_x < min_x || max_y < min_y || hatch.boundary.is_empty() {
         return false;
     }
     let inside =

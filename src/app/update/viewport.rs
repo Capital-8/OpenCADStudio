@@ -1743,7 +1743,7 @@ impl OpenCADStudio {
                     sel.gesture.box_anchor = Some(press);
                     sel.gesture.box_current = Some(p);
                     if !sel.gesture.box_crossing_locked {
-                        sel.gesture.box_crossing = p.x < press.x;
+                        sel.gesture.box_crossing = crate::scene::selection_box_crossing(press, p);
                     }
                 } else {
                     sel.gesture.poly_active = true;
@@ -1764,7 +1764,7 @@ impl OpenCADStudio {
                 if let Some(a) = sel.gesture.box_anchor {
                     sel.gesture.box_current = Some(p);
                     if !sel.gesture.box_crossing_locked {
-                        sel.gesture.box_crossing = p.x < a.x;
+                        sel.gesture.box_crossing = crate::scene::selection_box_crossing(a, p);
                     }
                 }
             }
@@ -1772,7 +1772,7 @@ impl OpenCADStudio {
             sel.gesture.box_current = Some(p);
             if let Some(a) = sel.gesture.box_anchor {
                 if !sel.gesture.box_crossing_locked {
-                    sel.gesture.box_crossing = p.x < a.x;
+                    sel.gesture.box_crossing = crate::scene::selection_box_crossing(a, p);
                 }
             }
         }

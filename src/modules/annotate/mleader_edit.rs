@@ -461,12 +461,9 @@ impl CadCommand for MLeaderAlignCommand {
     }
 
     fn on_selection_complete(&mut self, handles: Vec<Handle>) -> CmdResult {
-        if handles.is_empty() {
-            return CmdResult::Cancel;
-        }
+        // Each pick adds to the set; Enter ends the selection.
         self.handles = handles;
-        self.step = self.mode_step();
-        CmdResult::ReportMeasurement(self.mode_line())
+        CmdResult::NeedPoint
     }
 
     fn needs_entity_pick(&self) -> bool {
@@ -572,6 +569,11 @@ impl CadCommand for MLeaderAlignCommand {
 
     fn on_enter(&mut self) -> CmdResult {
         match self.step {
+            AlignStep::Gathering if self.handles.is_empty() => CmdResult::Cancel,
+            AlignStep::Gathering => {
+                self.step = self.mode_step();
+                CmdResult::ReportMeasurement(self.mode_line())
+            }
             AlignStep::Options => {
                 self.step = self.mode_step();
                 CmdResult::NeedPoint
@@ -747,11 +749,8 @@ impl CadCommand for MLeaderCollectCommand {
     }
 
     fn on_selection_complete(&mut self, handles: Vec<Handle>) -> CmdResult {
-        if handles.is_empty() {
-            return CmdResult::Cancel;
-        }
+        // Each pick adds to the set; Enter ends the selection.
         self.handles = handles;
-        self.step = CollectStep::Location;
         CmdResult::NeedPoint
     }
 
@@ -818,6 +817,15 @@ impl CadCommand for MLeaderCollectCommand {
 
     fn on_enter(&mut self) -> CmdResult {
         match self.step {
+            // Enter with nothing picked ends the command; otherwise it moves
+            // on to the location.
+            CollectStep::Gathering => {
+                if self.handles.is_empty() {
+                    return CmdResult::Cancel;
+                }
+                self.step = CollectStep::Location;
+                return CmdResult::NeedPoint;
+            }
             // Enter keeps the wrap rule the prompt offered.
             CollectStep::WrapWidth => {
                 if !matches!(
@@ -899,6 +907,35 @@ fn point_segment_distance_xy(point: Vector3, start: Vector3, end: Vector3) -> f6
         [point.x, point.y],
     )
     .distance
+}
+
+/// How far `point` is from a multileader's leader lines and landings, the
+/// parts a pick box catches.
+pub(crate) fn mleader_pick_distance(ml: &MultiLeader, point: Vector3) -> f64 {
+    let mut distance = f64::INFINITY;
+    for root in &ml.context.leader_roots {
+        let d = &root.direction;
+        let len = (d.x * d.x + d.y * d.y).sqrt();
+        if len > 1.0e-12 && ml.enable_landing && ml.enable_dogleg {
+            let reach = root.landing_distance.max(0.0) / len;
+            let end = Vector3::new(
+                root.connection_point.x + d.x * reach,
+                root.connection_point.y + d.y * reach,
+                root.connection_point.z,
+            );
+            distance = distance.min(point_segment_distance_xy(point, root.connection_point, end));
+        }
+        for line in &root.lines {
+            for segment in line.points.windows(2) {
+                distance = distance.min(point_segment_distance_xy(point, segment[0], segment[1]));
+            }
+            if let Some(last) = line.points.last().copied() {
+                distance =
+                    distance.min(point_segment_distance_xy(point, last, root.connection_point));
+            }
+        }
+    }
+    distance
 }
 
 // Silence unused-import warning for MultiLeader and LeaderLine if not used in all paths

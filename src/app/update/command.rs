@@ -946,6 +946,13 @@ impl OpenCADStudio {
             // still work when dynamic input is off. See #97.
             // Selection keywords (P / L) at a Select objects prompt
             // consume the token before any other interpretation (#426).
+            // A typed window waiting for its opposite corner reads this
+            // entry first, Enter included.
+            if self.typed_window_corner.is_some() {
+                if let Some(task) = self.typed_object_pick(&text) {
+                    return task;
+                }
+            }
             if let Some(task) = self.try_selection_keyword(&text) {
                 return task;
             }
@@ -995,6 +1002,9 @@ impl OpenCADStudio {
                 }
             }
 
+            if let Some(task) = self.typed_object_pick(&text) {
+                return task;
+            }
             if let Some((coord, kind)) = parse_coord(&text) {
                 // Command-line coordinates are absolute by default,
                 // independent of DYN: `@` forces relative, `#` forces

@@ -971,6 +971,9 @@ pub(super) struct OpenCADStudio {
     /// The objects the last selection step picked (a click, a window, a
     /// fence, Last / Previous / All) and whether it removed them.
     pub(crate) last_pick: Option<(Vec<codec::Handle>, bool)>,
+    /// The first corner of a window typed at a selection prompt, keyed by
+    /// the gathering command, until the opposite corner is typed.
+    pub(crate) typed_window_corner: Option<(usize, glam::DVec3)>,
     /// The Edit Reference dialog's remembered settings.
     pub(crate) refedit_options: crate::app::settings::RefEditOptions,
     /// BLOCKREDEFINEMODE (0–2).
@@ -5437,6 +5440,7 @@ impl OpenCADStudio {
             block_mru_list: 50,
             selection_report: None,
             last_pick: None,
+            typed_window_corner: None,
             refedit_options: Default::default(),
             block_redefine_mode: 1,
             block_navigate: ".".to_string(),

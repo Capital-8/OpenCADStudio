@@ -14661,6 +14661,14 @@ pub(crate) fn drop_layout_viewports(document: &mut codec::Document, block: Handl
 static LAYOUT_CREATE_VIEWPORT: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(true);
 
+/// A selection box drawn right to left on the screen is a crossing, left to
+/// right a window — for a dragged box and for two typed corners alike. A box
+/// with no width on the screen (its corners within half a pixel across) is a
+/// crossing too, as in the reference.
+pub fn selection_box_crossing(anchor: iced::Point, current: iced::Point) -> bool {
+    current.x < anchor.x + 0.5
+}
+
 pub fn layout_create_viewport() -> bool {
     LAYOUT_CREATE_VIEWPORT.load(std::sync::atomic::Ordering::Relaxed)
 }
