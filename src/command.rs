@@ -3411,6 +3411,11 @@ pub trait CadCommand: Send {
         false
     }
 
+    /// DIM is back at its own prompt (no dimension under way).
+    fn at_main_prompt(&self) -> bool {
+        false
+    }
+
     /// Opt in to transient measurement text; unrelated Measurement users keep
     /// their existing command-line-only behavior.
     fn has_measurement_readout(&self) -> bool {

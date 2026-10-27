@@ -355,6 +355,7 @@ impl OpenCADStudio {
         } else {
             None
         };
+        let mut committed = None;
         let pending =
             if association_mode == 0 {
                 let layer = self.new_dimension_layer(i);
@@ -409,6 +410,13 @@ impl OpenCADStudio {
                 if let Some(handle) =
                     self.commit_entity_handle_with_dimension_policy(entity, preserve_base_style)
                 {
+                    if !preserve_base_style {
+                        crate::scene::creation_style::apply_drawing_dimdli(
+                            &mut self.tabs[i].scene.document,
+                            handle,
+                        );
+                    }
+                    committed = Some(handle);
                     if association_mode == 2 && association_allowed {
                         let mut changes = vec![(handle, crate::scene::ChangeKind::Modified)];
                         match association {
@@ -457,6 +465,28 @@ impl OpenCADStudio {
         self.tabs[i].snap_result = None;
         if let Some(pd) = pending {
             self.commit_undo_delta(i, pd);
+        }
+        // A dimension DIM placed over another asks what to do with them.
+        let at_dim_prompt = self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .is_some_and(|command| command.name() == "DIM" && command.at_main_prompt());
+        if let (true, Some(handle)) = (continue_command && at_dim_prompt, committed) {
+            let overlapped = super::dim_edit::overlapping_dimensions(
+                &self.tabs[i].scene,
+                handle,
+            );
+            if !overlapped.is_empty() {
+                return Some(self.dispatch_command(&format!(
+                    "_DIM_OVERLAP_ASK {} {}",
+                    handle.value(),
+                    overlapped
+                        .iter()
+                        .map(|handle| handle.value().to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )));
+            }
         }
         if continue_command {
             if let Some(prompt) = self.tabs[i].active_cmd.as_ref().map(|cmd| cmd.prompt()) {

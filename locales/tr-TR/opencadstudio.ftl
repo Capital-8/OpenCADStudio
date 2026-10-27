@@ -7230,6 +7230,7 @@ dim-cmd =
     .distribute-others = DIM  Dağıtılacak ölçüleri seçin:
     .distribute-others-offset = DIM  Dağıtılacak ölçüleri seçin veya [Offset]:
     .no-object-selected = Nesne seçilmedi.
+    .overlap = DIM  Üst üste binen ölçülerin nasıl işleneceğini belirtin [Move away/Break up/Replace/None] <{ $default }>:
 dim-inspect =
     .title = Denetim Ölçüsü
     .dimensions = Ölçüler

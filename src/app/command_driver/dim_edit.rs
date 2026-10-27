@@ -477,6 +477,148 @@ fn objects_modified(count: usize) -> String {
     }
 }
 
+/// The linear and aligned dimensions of the same space whose dimension line
+/// lies on `new`'s and shares part of its length.
+pub(super) fn overlapping_dimensions(scene: &crate::scene::Scene, new: Handle) -> Vec<Handle> {
+    let Some((axis, _, definition)) = spacing_axis(scene, new) else {
+        return Vec::new();
+    };
+    let length = axis[0].hypot(axis[1]);
+    if length <= 0.0 {
+        return Vec::new();
+    }
+    let along = |p: [f64; 3]| (p[0] * axis[0] + p[1] * axis[1]) / length;
+    let across = |p: [f64; 3]| (p[1] * axis[0] - p[0] * axis[1]) / length;
+    let span = |handle: Handle| {
+        let dimension = scene
+            .document
+            .get_entity(handle)
+            .and_then(crate::entities::dimension::as_dimension)?;
+        let (a, b) = match dimension {
+            codec::entities::Dimension::Linear(d) => (d.first_point, d.second_point),
+            codec::entities::Dimension::Aligned(d) => (d.first_point, d.second_point),
+            _ => return None,
+        };
+        let (a, b) = (along([a.x, a.y, a.z]), along([b.x, b.y, b.z]));
+        Some((a.min(b), a.max(b)))
+    };
+    let Some((low, high)) = span(new) else {
+        return Vec::new();
+    };
+    let owner = scene.document.get_entity(new).map(|e| e.common().owner_handle);
+    let line = across(definition);
+    let tolerance = (high - low).abs().max(1.0) * 1.0e-9;
+    scene
+        .document
+        .entities()
+        .map(|entity| entity.common().handle)
+        .filter(|&handle| handle != new)
+        .filter(|&handle| {
+            scene.document.get_entity(handle).map(|e| e.common().owner_handle) == owner
+        })
+        .filter(|&handle| {
+            let Some((other_axis, _, other_definition)) = spacing_axis(scene, handle) else {
+                return false;
+            };
+            let cross = axis[0] * other_axis[1] - axis[1] * other_axis[0];
+            let other_length = other_axis[0].hypot(other_axis[1]);
+            if other_length <= 0.0 || (cross / (length * other_length)).abs() > 1.0e-9 {
+                return false;
+            }
+            if (across(other_definition) - line).abs() > tolerance {
+                return false;
+            }
+            span(handle).is_some_and(|(a, b)| a.max(low) < b.min(high) - tolerance)
+        })
+        .collect()
+}
+
+/// DIM's answer to an overlap: Move away steps the overlapped dimensions one
+/// DIMDLI towards what they measure, Break up breaks them where the new one
+/// crosses, Replace erases them, None leaves them.
+pub(crate) fn apply_dim_overlap(
+    scene: &mut crate::scene::Scene,
+    choice: char,
+    new: Handle,
+    others: &[Handle],
+    dimdli: f64,
+) {
+    match choice {
+        'M' => {
+            let mut changes = Vec::new();
+            for &handle in others {
+                let Some((axis, normal, definition)) = spacing_axis(scene, handle) else {
+                    continue;
+                };
+                let Some(frame) = kernel::space::dimension_spacing_frame(axis, normal, definition)
+                else {
+                    continue;
+                };
+                let p = frame.perpendicular;
+                let measured = match scene
+                    .document
+                    .get_entity(handle)
+                    .and_then(crate::entities::dimension::as_dimension)
+                {
+                    Some(codec::entities::Dimension::Linear(d)) => d.first_point,
+                    Some(codec::entities::Dimension::Aligned(d)) => d.first_point,
+                    _ => continue,
+                };
+                let toward = (measured.x - definition[0]) * p[0]
+                    + (measured.y - definition[1]) * p[1]
+                    + (measured.z - definition[2]) * p[2];
+                let target = frame.coordinate + dimdli * toward.signum();
+                if let Some(codec::EntityType::Dimension(dim)) =
+                    scene.document.get_entity_mut(handle)
+                {
+                    let slide = |point: &mut codec::types::Vector3| {
+                        let moved = kernel::space::move_to_dimension_spacing(
+                            [point.x, point.y, point.z],
+                            frame,
+                            target,
+                        );
+                        *point = codec::types::Vector3::new(moved[0], moved[1], moved[2]);
+                    };
+                    match &mut **dim {
+                        codec::entities::Dimension::Linear(d) => {
+                            slide(&mut d.definition_point);
+                            d.base.definition_point = d.definition_point;
+                        }
+                        codec::entities::Dimension::Aligned(d) => {
+                            slide(&mut d.definition_point);
+                            d.base.definition_point = d.definition_point;
+                        }
+                        _ => continue,
+                    }
+                    scene.invalidate_dim_block_recorded(handle);
+                    changes.push((handle, crate::scene::ChangeKind::Modified));
+                }
+            }
+            if !changes.is_empty() {
+                scene.bump_entities(&changes);
+            }
+        }
+        'B' => {
+            let result = apply_dimbreak(
+                scene,
+                others,
+                crate::command::DimensionBreakOperation::Object(new),
+            );
+            for handle in &result.changed {
+                scene.invalidate_dim_block_recorded(*handle);
+            }
+            let changes: Vec<_> = result
+                .changed
+                .iter()
+                .map(|handle| (*handle, crate::scene::ChangeKind::Modified))
+                .collect();
+            scene.bump_entities(&changes);
+        }
+        'R' => scene.erase_entities(others),
+        _ => {}
+    }
+}
+
 /// The axis, normal and dimension-line point of a linear or aligned dimension.
 fn spacing_axis(
     scene: &crate::scene::Scene,
