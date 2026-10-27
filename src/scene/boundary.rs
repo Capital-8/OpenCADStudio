@@ -1208,6 +1208,66 @@ impl Scene {
         refreshed
     }
 
+    /// Keep the boundary sources drawn in the current view. HATCH, GRADIENT
+    /// and BOUNDARY find regions among what is on screen; an object off the
+    /// view, or on a layer that is off or frozen (never drawn), takes no part
+    /// (#2126). A model view seen through a layout viewport is left whole.
+    pub fn retain_sources_on_screen(
+        &self,
+        sources: &mut rustc_hash::FxHashMap<Handle, BoundarySource>,
+        plane: WorkingPlane,
+    ) {
+        if self.active_viewport.is_some() {
+            return;
+        }
+        let (width, height) = self.selection.borrow().view.vp_size;
+        if !(width > 1.0 && height > 1.0) {
+            return;
+        }
+        let bounds = iced::Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+        };
+        let camera = self.camera.borrow();
+        let corners = [(0.0, 0.0), (width, 0.0), (width, height), (0.0, height)].map(|(x, y)| {
+            let world = camera.unproject_on_plane(
+                iced::Point::new(x, y),
+                bounds,
+                plane.z.as_vec3(),
+                plane.origin,
+            );
+            plane.to_local(world)
+        });
+        if !corners.iter().all(|corner| corner.is_finite()) {
+            return;
+        }
+        let (min_x, max_x) = corners
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), c| (lo.min(c.x), hi.max(c.x)));
+        let (min_y, max_y) = corners
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), c| (lo.min(c.y), hi.max(c.y)));
+        let on_screen = |line: &Line| {
+            line.start[0].max(line.end[0]) >= min_x
+                && line.start[0].min(line.end[0]) <= max_x
+                && line.start[1].max(line.end[1]) >= min_y
+                && line.start[1].min(line.end[1]) <= max_y
+        };
+        let shown = |handle: &Handle| {
+            self.document.get_entity(*handle).is_none_or(|entity| {
+                self.document
+                    .layers
+                    .get(&entity.common().layer)
+                    .is_none_or(|layer| !layer.is_off() && !layer.is_frozen())
+            })
+        };
+        sources.retain(|handle, source| {
+            shown(handle) && source.segments.iter().any(on_screen)
+        });
+    }
+
     /// Boundary candidates in the active working plane, with exact curves
     /// where the source entity exposes them.
     pub fn boundary_sources_on_plane(
@@ -1248,10 +1308,10 @@ impl Scene {
                 .extend(segments);
         }
         let wire_ms = crate::perf::elapsed_ms(wire_started);
-        // Objects on a layer that is turned off (not frozen) still bound a
-        // hatch, as in the reference: drawings switch off the layers that
-        // close the regions to be hatched. They draw no wire, so they come
-        // from the document. (#1813)
+        // Objects on a layer that is turned off (not frozen) stay sources, so
+        // an associative hatch keeps a boundary whose layer was switched off.
+        // They draw no wire, so they come from the document. A pick in HATCH
+        // or BOUNDARY drops them again (`retain_sources_on_screen`).
         let space = if self.active_viewport.is_some() || self.current_layout == "Model" {
             self.content_render_block_handle()
         } else {
