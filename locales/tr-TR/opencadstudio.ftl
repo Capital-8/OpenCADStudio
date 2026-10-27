@@ -7335,3 +7335,5 @@ mleader-collect =
     .wrap-width = Kaydırma genişliğini belirtin <{ $value }>:
 leaders-panel =
     .multileader-layer = Çoklu Kılavuz Katmanı
+dim-cmd-msg =
+    .value-positive = Değer pozitif olmalıdır.

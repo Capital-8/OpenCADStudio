@@ -3,6 +3,7 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
+        "Value must be positive." => Some(("dim-cmd-msg", "value-positive")),
         "Import Styles" => Some(("style-manager", "import-styles")),
         "Select Drawing to Import Styles From" => Some(("style-manager", "select-drawing-to-import-styles-from")),
         "Select the styles to import" => Some(("style-manager", "select-the-styles-to-import")),

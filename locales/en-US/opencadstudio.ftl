@@ -7415,3 +7415,5 @@ mleader-collect =
     .wrap-width = Specify wrap width <{ $value }>:
 leaders-panel =
     .multileader-layer = Multileader Layer
+dim-cmd-msg =
+    .value-positive = Value must be positive.
