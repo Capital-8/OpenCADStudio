@@ -1676,6 +1676,9 @@ fn menu_separator() -> Element<'static, Message> {
 /// path tools. No Bind, no Attach/Overlay — those are DWG-only and
 /// hidden entirely. Change Path Type shows a right triangle and a
 /// second list adjacent to "Change Path Type" on hover.
+/// Width of the Change Path Type flyout.
+const XREF_FLYOUT_W: f32 = 180.0;
+
 fn row_menu_for(id: XrefRowId, change_path_open: bool) -> Element<'static, Message> {
     let item = |label: &str, op: XrefPaletteOp| -> Element<'static, Message> {
         menu_row(label.to_string(), Message::XrefRowOp(id.clone(), op))
@@ -1754,8 +1757,16 @@ fn row_menu_for(id: XrefRowId, change_path_open: bool) -> Element<'static, Messa
     .width(Length::Fixed(220.0))
     .into();
 
+    // The menu keeps one width with the flyout open or closed: near the
+    // window edge the overlay is moved in to fit, and a width that changed
+    // with the flyout moved it out from under the pointer, which closed the
+    // flyout and moved it back (#2258).
     if !change_path_open {
-        return main;
+        return row![
+            main,
+            iced::widget::Space::new().width(Length::Fixed(XREF_FLYOUT_W))
+        ]
+        .into();
     }
 
     // Top offset so the flyout top border aligns directly with the "Change Path Type" row.
@@ -1785,7 +1796,7 @@ fn row_menu_for(id: XrefRowId, change_path_open: bool) -> Element<'static, Messa
         },
         ..Default::default()
     })
-    .width(Length::Fixed(180.0))
+    .width(Length::Fixed(XREF_FLYOUT_W))
     .into();
 
     let flyout_column = column![
