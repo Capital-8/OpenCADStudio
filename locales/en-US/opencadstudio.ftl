@@ -7402,6 +7402,6 @@ mleader-collect =
     .wrap-width = Specify wrap width <{ $value }>:
 leaders-panel =
     .multileader-layer = Multileader Layer
-text-panel =
+text-panel-messages =
     .numeric-distance-or-second-point = Requires numeric distance or second point.
     .cannot-set-textlayer = Cannot set TEXTLAYER to that value.

@@ -7322,6 +7322,6 @@ mleader-collect =
     .wrap-width = Kaydırma genişliğini belirtin <{ $value }>:
 leaders-panel =
     .multileader-layer = Çoklu Kılavuz Katmanı
-text-panel =
+text-panel-messages =
     .numeric-distance-or-second-point = Sayısal uzaklık veya ikinci nokta gerekir.
     .cannot-set-textlayer = TEXTLAYER bu değere ayarlanamaz.

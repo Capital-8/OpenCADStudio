@@ -3,8 +3,6 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
-        "Requires numeric distance or second point." => Some(("text-panel", "numeric-distance-or-second-point")),
-        "Cannot set TEXTLAYER to that value." => Some(("text-panel", "cannot-set-textlayer")),
         "Import Styles" => Some(("style-manager", "import-styles")),
         "Select Drawing to Import Styles From" => Some(("style-manager", "select-drawing-to-import-styles-from")),
         "Select the styles to import" => Some(("style-manager", "select-the-styles-to-import")),
@@ -523,6 +521,8 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "The tag cannot be empty." => Some(("insert", "attdef-tag-empty")),
         "The tag may not contain spaces." => Some(("insert", "attdef-tag-spaces")),
         "Value must be positive and nonzero." => Some(("insert", "attdef-positive")),
+        "Requires numeric distance or second point." => Some(("text-panel-messages", "numeric-distance-or-second-point")),
+        "Cannot set TEXTLAYER to that value." => Some(("text-panel-messages", "cannot-set-textlayer")),
         "Requires valid numeric angle or second point." => Some(("insert", "attdef-angle")),
         "Field" => Some(("insert", "field-title")),
         "Category" => Some(("insert", "field-category")),
