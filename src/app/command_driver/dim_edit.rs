@@ -417,7 +417,7 @@ fn apply_dimbreak(
     }
 
     let reserved = match operation {
-        DimensionBreakOperation::Object(handle) => *handle,
+        DimensionBreakOperation::Object(handle) => handle,
         DimensionBreakOperation::Objects(handles) => {
             handles.first().copied().unwrap_or(Handle::NULL)
         }
