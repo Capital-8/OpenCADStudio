@@ -3435,6 +3435,10 @@ pub trait CadCommand: Send {
         None
     }
 
+    /// The view's world units per screen pixel, given before the preview
+    /// wires are asked for, for markers drawn at a fixed screen size.
+    fn set_world_per_pixel(&mut self, _world_per_pixel: f64) {}
+
     /// Called on every mouse-move; return all preview wires to show (object ghosts + rubber-band).
     /// Default: forwards to `on_mouse_move` for backwards compatibility.
     fn on_preview_wires(&mut self, pt: DVec3) -> Vec<WireModel> {
