@@ -3,7 +3,6 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
-        "Value must be positive." => Some(("dim-cmd-msg", "value-positive")),
         "Import Styles" => Some(("style-manager", "import-styles")),
         "Select Drawing to Import Styles From" => Some(("style-manager", "select-drawing-to-import-styles-from")),
         "Select the styles to import" => Some(("style-manager", "select-the-styles-to-import")),
@@ -5868,6 +5867,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Remaining degrees of freedom in the current parametric constraint scope" => Some(("common", "remaining-degrees-of-freedom-in-the-current-parametric-constraint-scope")),
         "Requires an integer between 0 and 99." => Some(("common", "requires-an-integer-between-0-and-99")),
         "Requires numeric distance or two points." => Some(("common", "requires-numeric-distance-or-two-points")),
+        "Value must be positive." => Some(("dim-cmd-msg", "value-positive")),
         "SECTIONPLANE  Align section to [Front/bAck/Top/Bottom/Left/Right] <Top>:" => Some(("common", "sectionplane-align-section-to-front-back-top-bottom-left-right-top")),
         "SECTIONPLANE  Enter section plane type [Plane/Slice/Boundary/Volume] <Plane>:" => Some(("common", "sectionplane-enter-section-plane-type-plane-slice-boundary-volume-plane")),
         "SECTIONPLANE  Specify next point or ENTER to complete:" => Some(("common", "sectionplane-specify-next-point-or-enter-to-complete")),
