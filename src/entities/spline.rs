@@ -144,7 +144,7 @@ fn clamped(
     if !(end > start) {
         return None;
     }
-    let mut insert = |knots: &mut Vec<f64>, control: &mut Vec<[f64; 4]>, u: f64| {
+    let insert = |knots: &mut Vec<f64>, control: &mut Vec<[f64; 4]>, u: f64| {
         let last = control.len() - 1;
         let span = (degree..=last).rev().find(|&k| knots[k] <= u)?;
         let mut updated = control[..=span - degree].to_vec();
