@@ -10,15 +10,11 @@ fn restore_layiso_layer(
         current.flags.off = saved.before.flags.off;
         changed = true;
     }
-    if mode == crate::app::document::LayisoMode::LockAndFade {
-        if current.flags.locked == saved.after.flags.locked {
-            current.flags.locked = saved.before.flags.locked;
-            changed = true;
-        }
-        if current.transparency == saved.after.transparency {
-            current.transparency = saved.before.transparency;
-            changed = true;
-        }
+    if mode == crate::app::document::LayisoMode::LockAndFade
+        && current.flags.locked == saved.after.flags.locked
+    {
+        current.flags.locked = saved.before.flags.locked;
+        changed = true;
     }
     changed
 }
@@ -1368,11 +1364,7 @@ impl OpenCADStudio {
                     && name != "0"
                     && match mode {
                         crate::app::document::LayisoMode::Off => !layer.is_off(),
-                        crate::app::document::LayisoMode::LockAndFade => {
-                            !layer.is_locked()
-                                || layer.transparency
-                                    != codec::types::Transparency::from_percent(0.5)
-                        }
+                        crate::app::document::LayisoMode::LockAndFade => !layer.is_locked(),
                     }
             })
             .map(|(name, _)| name.clone())
@@ -1383,10 +1375,9 @@ impl OpenCADStudio {
             if let Some(layer) = self.tabs[i].scene.document.layers.get_mut(name) {
                 match mode {
                     crate::app::document::LayisoMode::Off => layer.turn_off(),
-                    crate::app::document::LayisoMode::LockAndFade => {
-                        layer.lock();
-                        layer.transparency = codec::types::Transparency::from_percent(0.5);
-                    }
+                    // A locked layer already draws faded; its saved
+                    // transparency is left alone.
+                    crate::app::document::LayisoMode::LockAndFade => layer.lock(),
                 }
             }
         }
