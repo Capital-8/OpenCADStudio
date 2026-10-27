@@ -39,7 +39,6 @@ pub struct DimReassociateCommand {
     /// "Select object" / "Select arc or circle" was chosen at the first prompt.
     select_object: bool,
     picked: Option<EntityType>,
-    changed: bool,
 }
 
 impl DimReassociateCommand {
@@ -50,7 +49,6 @@ impl DimReassociateCommand {
             step: 0,
             select_object: false,
             picked: None,
-            changed: false,
         }
     }
 
@@ -73,13 +71,10 @@ impl DimReassociateCommand {
 
     fn apply(&mut self, target: ReassociateTarget, whole_dimension: bool) -> CmdResult {
         let dimension = self.items[self.item].0;
-        let first_change = !self.changed;
-        self.changed = true;
         let more = self.advance(whole_dimension);
         CmdResult::ReassociateDimension {
             dimension,
             target,
-            first_change,
             last: !more,
         }
     }

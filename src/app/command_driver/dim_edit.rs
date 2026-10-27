@@ -30,18 +30,15 @@ impl OpenCADStudio {
     }
 
     /// One answer of DIMREASSOCIATE: the point (or object) is applied at
-    /// once; the whole command is one undo step.
+    /// once, as its own undo step.
     pub(super) fn handle_reassociate_dimension(
         &mut self,
         dimension: Handle,
         target: crate::command::ReassociateTarget,
-        first_change: bool,
         last: bool,
     ) {
         let i = self.active_tab;
-        if first_change {
-            self.push_undo_snapshot(i, "DIMREASSOCIATE");
-        }
+        self.push_undo_snapshot(i, "DIMREASSOCIATE");
         if self.tabs[i].scene.reassociate_dimension(dimension, &target) {
             self.invalidate_property_targets(i, &[dimension]);
             self.tabs[i].dirty = true;

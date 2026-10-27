@@ -892,10 +892,9 @@ impl OpenCADStudio {
             CmdResult::ReassociateDimension {
                 dimension,
                 target,
-                first_change,
                 last,
             } => {
-                self.handle_reassociate_dimension(dimension, target, first_change, last);
+                self.handle_reassociate_dimension(dimension, target, last);
             }
             CmdResult::SpaceDimensions {
                 base,

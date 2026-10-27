@@ -2241,7 +2241,6 @@ pub enum CmdResult {
     ReassociateDimension {
         dimension: Handle,
         target: ReassociateTarget,
-        first_change: bool,
         last: bool,
     },
     SpaceDimensions {
