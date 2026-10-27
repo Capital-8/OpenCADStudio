@@ -16,6 +16,10 @@ pub(crate) struct HostSession<'a> {
     app: &'a mut OpenCADStudio,
     tab: usize,
     doc_store: Option<DocumentSnapshotStore<DocumentViewData>>,
+    /// API v15: this session's registered plugin classes — session state
+    /// exactly like the grip sets; the file keeps only instance stamps and
+    /// records.
+    plugin_classes: Vec<ocs_plugin_api::host::PluginClassDeclaration>,
 }
 
 /// A plugin request that drives commands: sets `plugin_request_active` (the
@@ -70,6 +74,7 @@ impl<'a> HostSession<'a> {
             app,
             tab,
             doc_store: None,
+            plugin_classes: Vec::new(),
         }
     }
 
@@ -3521,6 +3526,160 @@ impl<'a> HostSession<'a> {
         crate::parametric::sample_chain(chain, s)
     }
 
+    // ── API v15: plugin class objects (additive) ─────────────────────────
+
+    /// Register a plugin-scoped entity class (API v15, additive): session
+    /// state only. Re-registering the same identity with an equal schema is
+    /// idempotent; a mismatch refuses without touching the live class — a
+    /// parameter-set change re-stages the instances, it never hot-swaps a
+    /// schema under live entities.
+    pub fn register_plugin_class(
+        &mut self,
+        plugin_id: &str,
+        class: &ocs_plugin_api::host::PluginClassDeclaration,
+    ) -> Result<(), String> {
+        let known = crate::plugin::grip_points::visibility(&self.app.disabled_plugins)(plugin_id);
+        if !known {
+            return Err(format!(
+                "plugin {plugin_id:?} is not a loaded, alive plugin; classes must be declared \
+                 by their owner"
+            ));
+        }
+        if class.class_id.is_empty() {
+            return Err("a plugin class declaration needs its identity key".to_owned());
+        }
+        if let Some(entry) = class
+            .grip_schema
+            .iter()
+            .find(|entry| entry.param_name.is_empty())
+        {
+            return Err(format!(
+                "class {}: grip schema entry {} needs its parameter name",
+                class.class_id, entry.grip_id
+            ));
+        }
+        let mut ids: Vec<u64> = class
+            .grip_schema
+            .iter()
+            .map(|entry| entry.grip_id)
+            .collect();
+        ids.sort_unstable();
+        if ids.len() > 1 && ids.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(format!(
+                "class {} declares duplicate grip ids in its schema",
+                class.class_id
+            ));
+        }
+        if let Some(existing) = self
+            .plugin_classes
+            .iter()
+            .find(|entry| entry.class_id == class.class_id)
+        {
+            if existing.schema_version == class.schema_version
+                && existing.grip_schema == class.grip_schema
+            {
+                return Ok(());
+            }
+            return Err(format!(
+                "class {} is already registered with a different schema ({}); re-stage its \
+                 instances instead",
+                class.class_id, existing.schema_version
+            ));
+        }
+        self.plugin_classes.push(class.clone());
+        Ok(())
+    }
+
+    /// Stage one instance of a session-registered plugin class (API v15,
+    /// additive) — [`HostSession::stage_parametric_chain`]'s contract
+    /// generalized: the design descriptor is host-evaluated before any
+    /// change (the v14 engine for the `ParametricChain` kind; a kind the
+    /// host does not know refuses at the contract), the staged set carries
+    /// the class identity key in XDATA and a reference-only designation,
+    /// and the undo composition is the entity-write contract. The plugin id
+    /// never travels the wire: the session confirms the caller owns the
+    /// class.
+    pub fn stage_plugin_class_instance(
+        &mut self,
+        plugin_id: &str,
+        instance: &ocs_plugin_api::host::PluginClassInstance,
+    ) -> Result<Vec<Handle>, String> {
+        let known = crate::plugin::grip_points::visibility(&self.app.disabled_plugins)(plugin_id);
+        if !known {
+            return Err(format!(
+                "plugin {plugin_id:?} is not a loaded, alive plugin; instances must be staged \
+                 by their owner"
+            ));
+        }
+        let registered = self
+            .plugin_classes
+            .iter()
+            .find(|entry| entry.class_id == instance.class_id)
+            .ok_or_else(|| {
+                format!(
+                    "class {:?} is not registered in this session; register it before staging \
+                     instances",
+                    instance.class_id
+                )
+            })?;
+        if registered.schema_version != instance.schema_version {
+            return Err(format!(
+                "instance of class {:?} was authored for schema version {}, the session \
+                 declares {}",
+                instance.class_id, instance.schema_version, registered.schema_version
+            ));
+        }
+        // The exhaustive match is the v15 expand-velocity point: a newer
+        // plugin kind lands here as a compile-time arm, never as a guess.
+        let (entities, _carriers) = match &instance.design {
+            ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(chain) => {
+                crate::parametric::build_display_entities(chain, instance.tolerance).map_err(
+                    |e| format!("instance of class {:?}: {e}", instance.class_id),
+                )?
+            }
+        };
+        if entities.is_empty() {
+            // Zero-geometry designs record nothing, like zero-length chains.
+            return Ok(Vec::new());
+        }
+        let own_scope = self.ensure_xrecord_undo_scope("Stage plugin class instance");
+        let handles = self.add_entities(entities);
+        for handle in &handles {
+            // Identity stamp: the class key as the XDATA application on every
+            // staged entity (write_record registers the APPID so the stamp
+            // survives the file), carrying the schema version and the record
+            // linkage.
+            let mut stamp = ocs_plugin_api::host::codec::xdata::ExtendedDataRecord::new(
+                instance.class_id.clone(),
+            );
+            stamp.add_value(ocs_plugin_api::host::codec::xdata::XDataValue::Integer32(
+                instance.schema_version as i32,
+            ));
+            if !instance.design_record.is_empty() {
+                stamp.add_value(ocs_plugin_api::host::codec::xdata::XDataValue::String(
+                    instance.design_record.clone(),
+                ));
+            }
+            self.write_record(*handle, stamp);
+            // Designation inside the SAME scope, the before-image
+            // pending-scoped the way set_reference_only does.
+            let before = self.app.tabs[self.tab].scene.reference_only.is_marked(*handle);
+            self.app
+                .record_reference_designation_before_pending(self.tab, *handle, before);
+            self.app
+                .tabs[self.tab]
+                .scene
+                .set_reference_only_membership(*handle, true);
+        }
+        self.bump_geometry();
+        self.set_dirty();
+        self.publish_document_view();
+        if own_scope {
+            self.app.finish_pending_history(self.tab);
+        }
+        Ok(handles)
+    }
+
     /// Read several XRecords in one call (API v13): per-entry results, `Err`
     /// per missing path/name instead of failing the whole batch.
     pub fn read_xrecords(
@@ -4072,6 +4231,20 @@ impl HostApi for HostSession<'_> {
         s: f64,
     ) -> Result<Option<ocs_plugin_api::host::ParametricSample>, String> {
         self.sample_parametric(chain, s)
+    }
+    fn register_plugin_class(
+        &mut self,
+        plugin_id: &str,
+        class: &ocs_plugin_api::host::PluginClassDeclaration,
+    ) -> Result<(), String> {
+        self.register_plugin_class(plugin_id, class)
+    }
+    fn stage_plugin_class_instance(
+        &mut self,
+        plugin_id: &str,
+        instance: &ocs_plugin_api::host::PluginClassInstance,
+    ) -> Result<Vec<Handle>, String> {
+        self.stage_plugin_class_instance(plugin_id, instance)
     }
 }
 
@@ -15241,6 +15414,160 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         assert!(host.stage_parametric_chain("bad", &broken, 1e-3).is_err());
         assert_eq!(host.document().entities().count(), 0);
         assert_eq!(host.app.tabs[0].scene.geometry_epoch, epoch_before);
+    }
+
+    // ── API v15: plugin class objects ──────────────────────────────────────
+
+    /// Becomes the owner plugin in these tests: the in-process sink installs
+    /// the thread-local liveness the visibility predicate consults in tests.
+    fn install_class_owner() {
+        crate::plugin::grip_points::install_in_process_sink("CVIFC", |_host, _event| {
+            ocs_plugin_api::host::CustomGripResponse::default()
+        });
+    }
+
+    fn traverse_class() -> ocs_plugin_api::host::PluginClassDeclaration {
+        ocs_plugin_api::host::PluginClassDeclaration {
+            class_id: "CVI_ALIGN_DISPLAY".to_string(),
+            schema_version: 4,
+            grip_schema: vec![ocs_plugin_api::host::PluginGripSchemaEntry {
+                grip_id: 1,
+                param_name: "peak_gradient".to_string(),
+            }],
+        }
+    }
+
+    fn traverse_instance() -> ocs_plugin_api::host::PluginClassInstance {
+        ocs_plugin_api::host::PluginClassInstance {
+            class_id: "CVI_ALIGN_DISPLAY".to_string(),
+            schema_version: 4,
+            design: ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(
+                staging_profile_chain(),
+            ),
+            tolerance: 1e-3,
+            layer: "CVI_PROFILE".to_string(),
+            design_record: "CVIFC_ALIGN_DISPLAY".to_string(),
+        }
+    }
+
+    #[test]
+    fn plugin_class_registration_is_owned_idempotent_and_refusing() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let mut host = HostSession::new(&mut app, 0);
+        let not_owner = host.register_plugin_class("ghost", &traverse_class()).unwrap_err();
+        assert!(not_owner.contains("not a loaded, alive plugin"), "got: {not_owner}");
+        install_class_owner();
+        // Register, then re-register identical: idempotent, still one entry.
+        assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+        assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+        assert_eq!(host.plugin_classes.len(), 1);
+        // A different schema refuses without touching the live class.
+        let mut bumped = traverse_class();
+        bumped.schema_version = 5;
+        let err = host.register_plugin_class("CVIFC", &bumped).unwrap_err();
+        assert!(err.contains("different schema"), "got: {err}");
+        assert_eq!(host.plugin_classes[0].schema_version, 4);
+        // Malformed declarations refuse: empty identity, unnamed grip
+        // parameter, duplicate grip ids.
+        let mut empty = traverse_class();
+        empty.class_id = String::new();
+        assert!(host.register_plugin_class("CVIFC", &empty).is_err());
+        let mut unnamed = traverse_class();
+        unnamed.grip_schema[0].param_name = String::new();
+        assert!(host.register_plugin_class("CVIFC", &unnamed).is_err());
+        let mut dup = traverse_class();
+        dup.grip_schema.push(ocs_plugin_api::host::PluginGripSchemaEntry {
+            grip_id: 1,
+            param_name: "other".to_string(),
+        });
+        assert!(host.register_plugin_class("CVIFC", &dup).is_err());
+        assert_eq!(host.plugin_classes.len(), 1);
+    }
+
+    #[test]
+    fn plugin_class_instance_stages_reference_only_with_identity_stamp() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        install_class_owner();
+        let instance = traverse_instance();
+        let handles;
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+            handles = host
+                .stage_plugin_class_instance("CVIFC", &instance)
+                .expect("the class instance stages");
+            assert!(!handles.is_empty());
+            for handle in &handles {
+                // The identity stamp: class key as the XDATA application, the
+                // schema version + the record linkage as its values, the
+                // APPID auto-registered so the stamp survives the file.
+                let stamped = host
+                    .read_record(*handle, "CVI_ALIGN_DISPLAY")
+                    .expect("the class identity stamp");
+                assert_eq!(stamped.values.len(), 2);
+                let ocs_plugin_api::host::codec::xdata::XDataValue::Integer32(version) =
+                    stamped.values[0]
+                else {
+                    panic!("the stamp carries the schema version as an integer");
+                };
+                assert_eq!(version, 4);
+                let ocs_plugin_api::host::codec::xdata::XDataValue::String(record) =
+                    stamped.values[1].clone()
+                else {
+                    panic!("the stamp carries the design record linkage");
+                };
+                assert_eq!(record, "CVIFC_ALIGN_DISPLAY");
+                assert!(host.document().app_ids.contains("CVI_ALIGN_DISPLAY"));
+                assert!(
+                    host.app.tabs[0].scene.is_reference_only(*handle),
+                    "staged class display must be reference-only"
+                );
+            }
+        }
+        app.finish_pending_history(0);
+        // Stamp + designation + add: ONE undo step, the entity-write contract.
+        assert_eq!(app.tabs[0].history.undo_stack.len(), 1);
+        app.undo_steps(1);
+        for handle in &handles {
+            assert!(app.tabs[0].scene.document.get_entity(*handle).is_none());
+        }
+    }
+
+    #[test]
+    fn plugin_class_instance_refusals_change_nothing_and_record_no_steps() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        install_class_owner();
+        let mut host = HostSession::new(&mut app, 0);
+        assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+        let epoch_before = host.app.tabs[0].scene.geometry_epoch;
+        // Unregistered class.
+        let mut ghost = traverse_instance();
+        ghost.class_id = "GHOST".to_owned();
+        assert!(host.stage_plugin_class_instance("CVIFC", &ghost).is_err());
+        // Schema version mismatch.
+        let mut mismatch = traverse_instance();
+        mismatch.schema_version = 5;
+        assert!(host.stage_plugin_class_instance("CVIFC", &mismatch).is_err());
+        // Broken design parameter (the chain audit refuses at the contract).
+        let mut broken = traverse_instance();
+        let ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(chain) =
+            &mut broken.design;
+        chain.segments[0].end_gradient = f64::NAN;
+        broken.tolerance = 1e-3;
+        assert!(host.stage_plugin_class_instance("CVIFC", &broken).is_err());
+        // Broken tolerance.
+        assert!(host.stage_plugin_class_instance("CVIFC", &traverse_instance_for(0.0)).is_err());
+        assert_eq!(host.document().entities().count(), 0);
+        assert_eq!(host.app.tabs[0].scene.geometry_epoch, epoch_before);
+    }
+
+    fn traverse_instance_for(tolerance: f64) -> ocs_plugin_api::host::PluginClassInstance {
+        let mut instance = traverse_instance();
+        instance.tolerance = tolerance;
+        instance
     }
 
     #[test]

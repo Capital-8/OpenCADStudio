@@ -1160,6 +1160,46 @@ impl HostApi for V4PluginHostApi {
             Err(error) => Err(error.to_string()),
         }
     }
+
+    fn register_plugin_class(
+        &mut self,
+        _plugin_id: &str,
+        class: &crate::host::PluginClassDeclaration,
+    ) -> Result<(), String> {
+        // API v15: declared class in; session registry state (no document
+        // mutation, no cache effect).
+        match self.request(PluginRequest::RegisterPluginClass {
+            class: class.clone(),
+        }) {
+            Ok(PluginResponse::RegisterPluginClassResult(result)) => result,
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected class registration response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn stage_plugin_class_instance(
+        &mut self,
+        _plugin_id: &str,
+        instance: &crate::host::PluginClassInstance,
+    ) -> Result<Vec<Handle>, String> {
+        // API v15: identity + design descriptor in, reference-only display
+        // handles out. A staged write mutates the document: the cached
+        // snapshot invalidates like every write path.
+        match self.request(PluginRequest::StagePluginClassInstance {
+            instance: instance.clone(),
+        }) {
+            Ok(PluginResponse::StagePluginClassInstanceResult(result)) => {
+                if result.is_ok() {
+                    self.document_cache = OnceCell::new();
+                }
+                result
+            }
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected instance staging response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
 }
 
 #[cfg(test)]

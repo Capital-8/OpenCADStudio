@@ -210,6 +210,7 @@ fn install_sink(plugin: &str) -> SinkState {
             CustomGripPhase::Begin | CustomGripPhase::Move => CustomGripResponse {
                 preview: preview.borrow().clone().into_iter().collect(),
                 live_entities: live_geom.borrow().clone(),
+                descriptor: None,
             },
             CustomGripPhase::Settle => {
                 if *panic_on_settle.borrow() {

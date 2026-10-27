@@ -234,5 +234,17 @@ pub fn handle_plugin_request(
         SampleParametric { chain, s } => {
             PluginResponse::SampleParametricResult(host.sample_parametric(&chain, s))
         }
+        RegisterPluginClass { class } => {
+            PluginResponse::RegisterPluginClassResult(host.register_plugin_class(
+                &plugin_id,
+                &class,
+            ))
+        }
+        StagePluginClassInstance { instance } => {
+            PluginResponse::StagePluginClassInstanceResult(host.stage_plugin_class_instance(
+                &plugin_id,
+                &instance,
+            ))
+        }
     }
 }

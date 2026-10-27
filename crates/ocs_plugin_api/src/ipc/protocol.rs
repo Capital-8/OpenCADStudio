@@ -316,6 +316,17 @@ pub enum PluginRequest {
         chain: crate::host::ParametricChain,
         s: f64,
     },
+    /// V15 (additive): register a plugin-scoped entity class — session
+    /// state; idempotent for an equal schema, refusing a mismatch.
+    RegisterPluginClass {
+        class: crate::host::PluginClassDeclaration,
+    },
+    /// V15 (additive): stage one instance of a registered plugin class —
+    /// identity plus a host-evaluated design descriptor (the entity-write
+    /// undo contract; reference-only; capped).
+    StagePluginClassInstance {
+        instance: crate::host::PluginClassInstance,
+    },
 }
 
 /// Responses the host sends back for `PluginRequest`.
@@ -384,6 +395,10 @@ pub enum PluginResponse {
     StageParametricChainResult(Result<Vec<Handle>, String>),
     /// V14 (additive): the evaluated chain point, `None` outside the chain.
     SampleParametricResult(Result<Option<crate::host::ParametricSample>, String>),
+    /// V15 (additive): outcome of a plugin class registration.
+    RegisterPluginClassResult(Result<(), String>),
+    /// V15 (additive): handles of the staged instance display set.
+    StagePluginClassInstanceResult(Result<Vec<Handle>, String>),
 }
 
 /// Messages sent from the host to the plugin runner.

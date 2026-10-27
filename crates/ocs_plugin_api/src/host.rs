@@ -1067,6 +1067,17 @@ pub struct CustomGripResponse {
     pub preview: Vec<PreviewWire>,
     #[serde(default)]
     pub live_entities: Vec<(Handle, EntityType)>,
+    /// A descriptor-backed live design for the dragged instance (API v15,
+    /// additive). Some on the Begin answer tells the host to derive the live
+    /// preview ITSELF from this design for the rest of the drag — re-evaluated
+    /// locally per coalesced cursor move, no further Move frames crossing the
+    /// IPC — instead of the plugin streaming preview/live-entity geometry per
+    /// move. The plugin's settle callback stays the only write window (its
+    /// own labeled undo step; records first, then the re-stage). Older hosts
+    /// deserialize the field to None and keep the v12 semantics untouched;
+    /// None keeps every current response behaving exactly as before.
+    #[serde(default)]
+    pub descriptor: Option<PluginDisplayDescriptor>,
 }
 
 /// Per-response cap on live-geometry entities (API v12): the drag stays
@@ -1674,6 +1685,55 @@ pub trait HostApi {
     ) -> Result<Option<ParametricSample>, String> {
         Err("Parametric chain sampling is not supported by this host".to_owned())
     }
+
+    /// Register a plugin-scoped entity class (API v15, additive).
+    ///
+    /// The declaration is session state, exactly like the grip sets: the
+    /// drawing file keeps only what the instances stamp (XDATA identity keys,
+    /// entity-bound records) plus the plugin's own record-layer XRecords —
+    /// never the class registry itself; the plugin re-declares on load and
+    /// after its own notification boundaries. Re-registering `class_id` with
+    /// an EQUAL schema (same `schema_version` and grip ids/parameter names)
+    /// is idempotent; any mismatch refuses without touching the live class —
+    /// a parameter-set change is a RE-STAGE of the instances, not a hot
+    /// schema swap.
+    ///
+    /// The grip schema is the class-scoped surface of the v11 grip rule: it
+    /// names the parameters the class's grips drive (ids must match the
+    /// plugin's later [`HostApi::set_plugin_grips`] declarations for these
+    /// instances). The host stores it for instance validation; grip
+    /// interpretation stays the plugin's per the v11 law.
+    fn register_plugin_class(
+        &mut self,
+        _plugin_id: &str,
+        _class: &PluginClassDeclaration,
+    ) -> Result<(), String> {
+        Err("Plugin class registration is not supported by this host".to_owned())
+    }
+
+    /// Stage one instance of a session-registered plugin class (API v15,
+    /// additive).
+    ///
+    /// The generalized form of [`HostApi::stage_parametric_chain`]: the
+    /// instance carries only identity — class id, schema version, layer,
+    /// record linkage — and a HOST-EVALUATED display descriptor
+    /// ([`PluginDisplayDescriptor`]; the v14 parametric engine is the first
+    /// host-known kind, so a `ParametricChain` design stages through exactly
+    /// the audited-seam/cap/refusal/undo contract of chain staging). The
+    /// staged set is reference-only (the designation machinery transfers
+    /// verbatim), stamped with the class identity key, and the instance's
+    /// record linkage (`design_record`) rides the record layer as usual: the
+    /// definition lives in records, host and file never grow a new runtime.
+    /// Refusals precede any change and record no undo step; otherwise one
+    /// batched add, one geometry bump, one publish — one step of its own
+    /// unless a plugin `push_undo` scope is open, which it joins.
+    fn stage_plugin_class_instance(
+        &mut self,
+        _plugin_id: &str,
+        _instance: &PluginClassInstance,
+    ) -> Result<Vec<Handle>, String> {
+        Err("Plugin class instance staging is not supported by this host".to_owned())
+    }
 }
 
 /// **Parametric-chain staging types (API v14, additive).**
@@ -1830,6 +1890,97 @@ pub struct ParametricSample {
     /// Unit tangent in plane coordinates (plan = (cos θ, sin θ); profile =
     /// (1, gradient) / |(1, gradient)|).
     pub direction: [f64; 2],
+}
+
+/// **Plugin class-object staging types (API v15, additive).**
+///
+/// The generalization of the parametric staging contract: a plugin-declared
+/// entity CLASS whose instances carry only identity (class id, schema
+/// version, layer, record linkage) while the DEFINITION stays in the record
+/// layer (XRecords — the file's only source of truth) and the display is
+/// HOST-EVALUATED from a design descriptor. Alignment chains are exactly the
+/// `ParametricChain` descriptor kind: a class instance whose design is a
+/// chain stages through [`HostApi::stage_parametric_chain`]'s audited-seam,
+/// cap, refusal, undo and reference-only discipline verbatim. Older hosts
+/// simply answer both v15 methods with the standard degradation error.
+///
+/// The class declaration itself is session state like the v11 grip sets —
+/// never written to the drawing file; instances stamp only XDATA identity
+/// keys and record linkages, so a file without the plugin still renders its
+/// staged (standard-entity) display and reads its records, it just has no
+/// re-marking, re-staging or grip semantics until the plugin loads again.
+///
+/// A plugin-declared entity class (API v15).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginClassDeclaration {
+    /// Stable identity key the host stamps on instances (XDATA class key —
+    /// same key the plugin declares as its v10 `entity_classes` identity for
+    /// presentation purposes; the host stamps it on HOST-staged instances so
+    /// instance sets survive and re-associate across sessions).
+    pub class_id: String,
+    /// Monotone schema version of the class's parameter set (the record
+    /// layer's truth). An instance refuses to stage against a live class
+    /// whose version differs — the consumer re-declares and re-stages
+    /// instead, keeping the records authoritative.
+    pub schema_version: u32,
+    /// The class's grip schema (ids and the parameter names they drive,
+    /// matching the plugin's later `set_plugin_grips` declarations for its
+    /// instances). The host uses it for instance validation; grip
+    /// interpretation stays the declaring plugin's per the v11 law.
+    pub grip_schema: Vec<PluginGripSchemaEntry>,
+}
+
+/// One grip in a class's schema (API v15): which parameter of the class
+/// schema this grip drives. Drag semantics remain the declaring plugin's.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginGripSchemaEntry {
+    /// Grip id — links a schema row to the plugin's `set_plugin_grips`
+    /// declaration (the drag's `CustomGripEvent::grip_id`).
+    pub grip_id: u64,
+    /// Parameter name in the class's record layer this grip drives
+    /// (e.g. `"peak_gradient"`).
+    pub param_name: String,
+}
+
+/// One staged instance of a registered plugin class (API v15): identity plus
+/// a host-evaluated design descriptor. Records carry the truth; the host
+/// never re-interprets anything the plugin does not declare here.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginClassInstance {
+    /// Must equal a class registered in this session (else the staging
+    /// refuses before any change).
+    pub class_id: String,
+    /// The schema version the instance was authored against (refuses on
+    /// mismatch with the live declaration).
+    pub schema_version: u32,
+    /// The host-evaluated display design.
+    pub design: PluginDisplayDescriptor,
+    /// The display carrier tolerance (chain designs: the chord tolerance of
+    /// the transcendental species, seams keep the record tolerances).
+    #[serde(default)]
+    pub tolerance: f64,
+    /// Layer for the staged display set; empty = the host's default layer.
+    pub layer: String,
+    /// NOD-side record name holding this instance's parameter truth (the
+    /// handles-to-records linkage the plugin maintains).
+    #[serde(default)]
+    pub design_record: String,
+}
+
+/// Host-evaluated display descriptor kinds (API v15, additive).
+///
+/// Kinds append at the END only (the wire encodes a variant by its
+/// position); the first host-known kind is the v14 parametric engine for
+/// alignment chains. A kind the host does not know refuses the staging at
+/// the contract — never approximated, never silently dropped.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PluginDisplayDescriptor {
+    /// The v14 parametric engine is the host-known evaluator (the same wire
+    /// grammar [`HostApi::stage_parametric_chain`] takes).
+    ParametricChain(ParametricChain),
+    // New descriptor kinds go after the existing ones: inserting one earlier
+    // would make a plugin built against the previous API send its kind and
+    // have the host read it as something else.
 }
 
 /// One XRecord addressed by dictionary path + name (API v13, additive).

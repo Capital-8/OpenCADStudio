@@ -494,6 +494,115 @@ mod tests {
     }
 
     #[test]
+    fn plugin_class_requests_roundtrip() {
+        // API v15: the class frames keep the same wire discipline — serialize
+        // then deserialize byte-clean, in declared order.
+        let class = crate::host::PluginClassDeclaration {
+            class_id: "CVI_ALIGN_DISPLAY".to_string(),
+            schema_version: 4,
+            grip_schema: vec![crate::host::PluginGripSchemaEntry {
+                grip_id: 1,
+                param_name: "peak_gradient".to_string(),
+            }],
+        };
+        let bytes = bincode::serialize(&PluginRequest::RegisterPluginClass {
+            class: class.clone(),
+        })
+        .unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginRequest>(&bytes).unwrap(),
+            PluginRequest::RegisterPluginClass { class: got } if got == class)
+        );
+        let instance = crate::host::PluginClassInstance {
+            class_id: "CVI_ALIGN_DISPLAY".to_string(),
+            schema_version: 4,
+            design: crate::host::PluginDisplayDescriptor::ParametricChain(
+                crate::host::ParametricChain {
+                    plane: crate::host::ParametricPlane::Profile,
+                    segments: vec![crate::host::ParametricSegment {
+                        species: crate::host::ParametricSpecies::Vertical(
+                            crate::host::VerticalSegmentSpecies::ParabolicArc,
+                        ),
+                        start_point: [0.0, 100.0],
+                        start_direction: 0.0,
+                        start_gradient: 0.0,
+                        end_gradient: 0.1,
+                        length: 80.0,
+                        start_radius: 800.0,
+                        end_radius: 0.0,
+                        end_curvature: 0.0,
+                        bank_change: 0.0,
+                        gravity_height: 0.0,
+                    }],
+                    layer: "CVI_PROFILE".to_string(),
+                },
+            ),
+            tolerance: 1e-3,
+            layer: "CVI_PROFILE".to_string(),
+            design_record: "CVIFC_ALIGN_DISPLAY".to_string(),
+        };
+        let bytes = bincode::serialize(&PluginRequest::StagePluginClassInstance {
+            instance: instance.clone(),
+        })
+        .unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginRequest>(&bytes).unwrap(),
+            PluginRequest::StagePluginClassInstance { instance: got } if got == instance)
+        );
+        let bytes = bincode::serialize(&PluginResponse::RegisterPluginClassResult(Ok(())))
+            .unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginResponse>(&bytes).unwrap(),
+            PluginResponse::RegisterPluginClassResult(Ok(())))
+        );
+        let bytes = bincode::serialize(&PluginResponse::StagePluginClassInstanceResult(Ok(
+            vec![codec::Handle::new(0x51)],
+        )))
+        .unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginResponse>(&bytes).unwrap(),
+            PluginResponse::StagePluginClassInstanceResult(Ok(handles)) if handles.len() == 1)
+        );
+        let bytes = bincode::serialize(&PluginResponse::StagePluginClassInstanceResult(
+            Err("class not registered in this session".to_owned()),
+        ))
+        .unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginResponse>(&bytes).unwrap(),
+            PluginResponse::StagePluginClassInstanceResult(Err(_)))
+        );
+        // The v15 descriptor hook rides the v11 response additively: the
+        // default round-trips as None, and a set descriptor survives.
+        let bytes = bincode::serialize(&crate::host::CustomGripResponse::default()).unwrap();
+        assert!(
+            matches!(
+                bincode::deserialize::<crate::host::CustomGripResponse>(&bytes).unwrap().descriptor,
+                None
+            ),
+            "a v15-free response stays descriptor-free"
+        );
+        let bytes = bincode::serialize(&crate::host::CustomGripResponse {
+            preview: Vec::new(),
+            live_entities: Vec::new(),
+            descriptor: Some(crate::host::PluginDisplayDescriptor::ParametricChain(
+                crate::host::ParametricChain {
+                    plane: crate::host::ParametricPlane::Plan,
+                    segments: Vec::new(),
+                    layer: String::new(),
+                },
+            )),
+        })
+        .unwrap();
+        assert!(
+            matches!(
+                bincode::deserialize::<crate::host::CustomGripResponse>(&bytes).unwrap().descriptor,
+                Some(crate::host::PluginDisplayDescriptor::ParametricChain(_))
+            ),
+            "the descriptor hook survives the wire"
+        );
+    }
+
+    #[test]
     fn plugin_notification_roundtrip() {
         let frame = PluginToHostV4::Notification(NotificationEnvelope {
             command_id: None,

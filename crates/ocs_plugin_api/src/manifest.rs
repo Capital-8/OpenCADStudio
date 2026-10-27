@@ -69,7 +69,20 @@
 /// [`MAX_PLUGIN_LIVE_ENTITIES`](crate::host::MAX_PLUGIN_LIVE_ENTITIES); and
 /// `sample_parametric` — the same engine exposed as a pure placement
 /// evaluation.
-pub const API_VERSION: u32 = 14;
+///
+/// **API v15** (additive): plugin-scoped class objects —
+/// `register_plugin_class` / `stage_plugin_class_instance`: a declared
+/// entity class (schema version + grip schema) whose instances carry only
+/// identity and a host-evaluated display descriptor (the v14 parametric
+/// engine is the first host-known kind; kinds append at the end); the
+/// staged display set is reference-only and stamped with the class identity
+/// key. Class declarations are session state (like the grip sets); records
+/// stay the only file truth. `CustomGripResponse` gains the
+/// `descriptor` field (serde default): a Begin answer can hand the host a
+/// live design so the host re-derives preview geometry locally per move
+/// instead of the plugin streaming it (older hosts read `None` and keep the
+/// v12 semantics).
+pub const API_VERSION: u32 = 15;
 
 /// Oldest plugin API major the current host still loads. This keeps previously
 /// compiled cdylibs usable as long as their vtable layout is a prefix of the
