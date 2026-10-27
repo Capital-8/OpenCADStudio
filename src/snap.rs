@@ -2934,6 +2934,73 @@ impl Snapper {
             }
         }
 
+        // Nothing caught in the aperture: the object under the cursor offers
+        // its nearest enabled discrete point, so an endpoint or a midpoint
+        // need not be hunted for (#1914). With Nearest on, the point on the
+        // curve is always nearer and stands.
+        if self.snap_enabled
+            && matches!(
+                best.as_ref().map(|b| b.snap_type),
+                None | Some(SnapType::Grid)
+            )
+        {
+            let near_cursor = |a: DVec3, b: DVec3| {
+                let foot = nearest_on_segment(cursor_world, a, b);
+                dist2(world_to_screen(foot, view_rot, eye, bounds), cursor_screen) < radius2
+            };
+            let mut hovered: Vec<&WireModel> = Vec::new();
+            if let Some(segments) = &local_segments {
+                for segment in segments {
+                    let Some(wire) = wires.source_wire(segment.wire) else {
+                        continue;
+                    };
+                    if !hovered.iter().any(|known| std::ptr::eq(*known, wire))
+                        && near_cursor(segment.a, segment.b)
+                    {
+                        hovered.push(wire);
+                    }
+                }
+            } else {
+                hovered.extend(in_range_wires.iter().filter(|wire| {
+                    (0..wire.points.len().saturating_sub(1))
+                        .any(|i| near_cursor(wp_f64(wire, i), wp_f64(wire, i + 1)))
+                }));
+            }
+            let mut nearest: Option<(f32, SnapResult)> = None;
+            for wire in hovered {
+                self.for_each_discrete_feature(
+                    std::slice::from_ref(wire),
+                    || std::iter::once(wire),
+                    |world, snap_type, source| {
+                        let screen = world_to_screen(world, view_rot, eye, bounds);
+                        let d2 = dist2(screen, cursor_screen);
+                        if in_bounds(screen) && nearest.as_ref().map_or(true, |(n, _)| d2 < *n) {
+                            nearest = Some((
+                                d2,
+                                SnapResult {
+                                    world,
+                                    screen,
+                                    snap_type,
+                                    tangent_obj: None,
+                                    extension_base: None,
+                                    extension_base2: None,
+                                    extension_origin: None,
+                                    extension_dir: None,
+                                    viewport: None,
+                                    source,
+                                    secondary_source: None,
+                                    model_point: None,
+                                },
+                            ));
+                        }
+                    },
+                );
+            }
+            if let Some((_, found)) = nearest {
+                best = Some(found);
+            }
+        }
+
         // If an Extension snap or an extended intersection won, re-find the
         // endpoint(s) whose ray(s) it lies on so the overlay can draw the dashed
         // guide line(s) back to them. An Extension yields one base; an extended
