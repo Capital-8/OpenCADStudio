@@ -6630,6 +6630,7 @@ keytips =
 selection-report =
     .found-duplicate-total = Tìm thấy __ocs_fmt_0__ (__ocs_fmt_1__ trùng), tổng __ocs_fmt_2__
     .found-removed-total = Tìm thấy __ocs_fmt_0__, đã bỏ __ocs_fmt_1__, tổng __ocs_fmt_2__
+    .invalid-window = Invalid window specification.
 
 block-def =
     .name-too-short = Tên phải dài ít nhất một ký tự.
