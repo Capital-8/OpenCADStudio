@@ -493,8 +493,22 @@ pub fn parse_var_value(kind: VarKind, text: &str) -> Option<XDataValue> {
     let text = text.trim();
     match kind {
         VarKind::Real => text.parse().ok().filter(|v: &f64| v.is_finite()).map(XDataValue::Real),
-        VarKind::Int => text.parse().ok().or_else(|| yes(text)).map(XDataValue::Integer16),
+        VarKind::Int => text
+            .parse()
+            .ok()
+            .or_else(|| yes(text))
+            .or_else(|| color_keyword(text))
+            .map(XDataValue::Integer16),
         VarKind::Text => Some(XDataValue::String(text.to_string())),
+    }
+}
+
+/// A colour typed by name, as DIMOVERRIDE shows ByBlock and ByLayer.
+fn color_keyword(value: &str) -> Option<i16> {
+    match value.trim().to_ascii_uppercase().as_str() {
+        "BYBLOCK" => Some(0),
+        "BYLAYER" => Some(256),
+        _ => None,
     }
 }
 
