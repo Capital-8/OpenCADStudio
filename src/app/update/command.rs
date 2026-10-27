@@ -907,6 +907,13 @@ impl OpenCADStudio {
                 .map(|c| c.is_free_text_step())
                 .unwrap_or(false);
             let raw = self.command_line.input.trim().to_string();
+            if raw.trim_start_matches('_').eq_ignore_ascii_case("FROM")
+                && self.point_modifier_step(i)
+            {
+                self.command_line.input.clear();
+                self.start_from_modifier(i);
+                return self.focus_cmd_input();
+            }
             let is_mtp = raw.trim_start_matches('_').eq_ignore_ascii_case("MTP")
                 || raw.trim_start_matches('_').eq_ignore_ascii_case("M2P");
             if is_mtp {
@@ -1004,7 +1011,7 @@ impl OpenCADStudio {
                 // absolute regardless of the DYN setting.)
                 let want_relative = matches!(kind, CoordKind::Relative);
                 let ucs = self.tabs[i].active_ucs.clone();
-                let wcs_pt = match (want_relative, self.last_point) {
+                let wcs_pt = match (want_relative, self.relative_input_base(i)) {
                     (true, Some(base)) => {
                         // Offset from the last point, rotated by the
                         // UCS axes (no origin translation).

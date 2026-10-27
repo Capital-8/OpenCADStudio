@@ -88,6 +88,8 @@ pub enum MenuAction {
     Command(String),
     /// One-shot "Mid Between 2 Points" snap override.
     Mtp,
+    /// One-shot base point and offset modifier.
+    From,
     /// One-shot object snap override for the next pick.
     SnapOverride(SnapType),
     /// Next pick ignores object snaps.
@@ -518,7 +520,7 @@ fn recent_input_submenu(items: Vec<MenuItem>, open_submenu: Option<SubmenuId>) -
 }
 
 /// Snap Overrides ▸: one-shot object snaps for the next pick, in the
-/// grouping (M2P, then the edge snaps, the curve snaps, the relation snaps,
+/// grouping (M2P / FROM, then the edge snaps, the curve snaps, the relation snaps,
 /// None) plus the settings dialog.
 fn snap_override_items() -> Vec<MenuItem> {
     let snap = |label: &str, t: SnapType| {
@@ -526,6 +528,8 @@ fn snap_override_items() -> Vec<MenuItem> {
     };
     vec![
         MenuItem::new(t!("Mid Between 2 Points").into_owned(), MenuAction::Mtp).icon(MenuIcon::Mtp),
+        MenuItem::new(t!("From").into_owned(), MenuAction::From)
+            .icon(MenuIcon::Chrome(crate::ui::icons::from_icon())),
         snap("Endpoint", SnapType::Endpoint),
         snap("Midpoint", SnapType::Midpoint),
         snap("Intersection", SnapType::Intersection),
@@ -988,6 +992,7 @@ mod tests {
         let menu = build_context_menu(&ctx, Some(SubmenuId::SnapOverrides));
         let acts = actions(&menu);
         assert!(acts.contains(&MenuAction::Mtp));
+        assert!(acts.contains(&MenuAction::From));
         for &(t, _, _) in crate::snap::ALL_SNAP_MODES {
             assert!(acts.contains(&MenuAction::SnapOverride(t)), "missing {t:?}");
         }

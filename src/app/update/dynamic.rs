@@ -29,6 +29,16 @@ impl OpenCADStudio {
         &self,
         i: usize,
     ) -> Option<(glam::DVec3, glam::DVec3)> {
+        // FROM measures from its base toward the constrained cursor, not
+        // from an OTRACK / Extension endpoint elsewhere in the drawing.
+        if let Some(base) = self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .filter(|c| c.name() == "FROM")
+            .and_then(|c| c.resolved_anchor())
+        {
+            return self.angle_override.map(|dir| (base, dir));
+        }
         // A typed `<angle` locks the way from the last point.
         if let (Some(dir), Some(base)) = (self.angle_override, self.last_point) {
             return Some((base, dir));

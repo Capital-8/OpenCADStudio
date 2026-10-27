@@ -104,6 +104,9 @@ impl OpenCADStudio {
                 .and_then(|rest| rest.chars().next()),
             _ => None,
         };
+        if typed.is_some_and(|ch| ch.eq_ignore_ascii_case(&'F')) {
+            return Some(self.update(Message::SnapOverrideFrom));
+        }
         if let Some(t) = typed.and_then(crate::snap::override_menu_snap) {
             self.apply_snap_override(crate::snap::SnapOverrideKind::Mode(t));
             return Some(iced::Task::none());

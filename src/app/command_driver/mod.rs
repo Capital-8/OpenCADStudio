@@ -371,6 +371,9 @@ impl OpenCADStudio {
     }
 
     pub(in crate::app) fn start_mtp_modifier(&mut self, i: usize) {
+        if self.tabs[i].suspended_cmd.is_some() {
+            return;
+        }
         let parent = self.tabs[i].active_cmd.take();
         self.tabs[i].suspended_cmd = parent;
         self.tabs[i].scene.clear_preview_wire();
@@ -380,6 +383,32 @@ impl OpenCADStudio {
         self.command_line.push_info(&prompt);
         self.command_line.set_step_options(Vec::new());
         self.refresh_active_cmd_preview(i);
+    }
+
+    pub(in crate::app) fn start_from_modifier(&mut self, i: usize) {
+        // There is only one parking slot; never overwrite an existing parent.
+        if self.tabs[i].suspended_cmd.is_some() {
+            return;
+        }
+        let parent = self.tabs[i].active_cmd.take();
+        self.tabs[i].suspended_cmd = parent;
+        self.tabs[i].scene.clear_preview_wire();
+        let cmd = crate::command::FromPointCommand::new(self.last_point);
+        let prompt = crate::command::CadCommand::prompt(&cmd);
+        self.tabs[i].active_cmd = Some(Box::new(cmd));
+        self.command_line.push_info(&prompt);
+        self.command_line.set_step_options(Vec::new());
+        self.sync_dyn_fields();
+        self.refresh_active_cmd_preview(i);
+    }
+
+    pub(in crate::app) fn relative_input_base(&self, i: usize) -> Option<glam::DVec3> {
+        self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .filter(|c| c.name() == "FROM")
+            .and_then(|c| c.resolved_anchor())
+            .or(self.last_point)
     }
 
     /// Apply a command replacement without deleting a one-to-one entity edit.
@@ -1324,7 +1353,16 @@ impl OpenCADStudio {
         let space_changed = matches!(cancel, CmdResult::CancelForSpaceChange);
         self.tabs[i].scene.clear_preview_wire();
         if !space_changed && self.tabs[i].suspended_cmd.is_some() {
+            if let Some(point) = self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .and_then(|c| c.modifier_restore_point())
+            {
+                self.last_point = point;
+                self.reset_tracking_after_point();
+            }
             self.tabs[i].active_cmd = self.tabs[i].suspended_cmd.take();
+            self.sync_dyn_fields();
             let prompt = self.tabs[i].active_cmd.as_ref().map(|c| c.prompt());
             if let Some(p) = prompt {
                 self.command_line.push_info(&p);
