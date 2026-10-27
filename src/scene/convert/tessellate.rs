@@ -817,7 +817,8 @@ fn arc_joint_bevels(
         else {
             continue;
         };
-        let Some(normal) = n0.or(n1) else {
+        // A tangent joint has no notch to close.
+        let Some(normal) = n0.or(n1).filter(|_| d0.dot(d1) < 1.0 - 1e-9) else {
             continue;
         };
         let (h0, h1) = (half(before).1, half(after).0);
