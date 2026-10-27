@@ -120,6 +120,67 @@ fn unwrapped_periodic(spline: &Spline) -> Option<(Vec<[f64; 3]>, Vec<f64>, Vec<f
     Some((points, knots, weights))
 }
 
+/// The same curve with clamped ends: the domain ends are inserted until each
+/// has multiplicity `degree` (Boehm), and the knots and control points
+/// outside the domain are dropped. `None` when the input is not a valid
+/// NURBS of `degree`.
+fn clamped(
+    degree: usize,
+    points: Vec<[f64; 3]>,
+    knots: Vec<f64>,
+    weights: Vec<f64>,
+) -> Option<(Vec<[f64; 3]>, Vec<f64>, Vec<f64>)> {
+    let n = points.len();
+    if degree == 0 || weights.len() != n || knots.len() != n + degree + 1 {
+        return None;
+    }
+    let mut knots = knots;
+    let mut control: Vec<[f64; 4]> = points
+        .iter()
+        .zip(&weights)
+        .map(|(p, w)| [p[0] * w, p[1] * w, p[2] * w, *w])
+        .collect();
+    let (start, end) = (knots[degree], knots[n]);
+    if !(end > start) {
+        return None;
+    }
+    let mut insert = |knots: &mut Vec<f64>, control: &mut Vec<[f64; 4]>, u: f64| {
+        let last = control.len() - 1;
+        let span = (degree..=last).rev().find(|&k| knots[k] <= u)?;
+        let mut updated = control[..=span - degree].to_vec();
+        for i in span - degree + 1..=span {
+            let width = knots[i + degree] - knots[i];
+            let alpha = if width.abs() < 1e-15 { 0.0 } else { (u - knots[i]) / width };
+            updated.push(std::array::from_fn(|a| {
+                control[i - 1][a] * (1.0 - alpha) + control[i][a] * alpha
+            }));
+        }
+        updated.extend_from_slice(&control[span..]);
+        knots.insert(span + 1, u);
+        *control = updated;
+        Some(())
+    };
+    for u in [start, end] {
+        while knots.iter().filter(|&&k| k == u).count() < degree {
+            insert(&mut knots, &mut control, u)?;
+        }
+    }
+    let first = knots.iter().position(|&k| k == start)?;
+    let last = knots.iter().rposition(|&k| k == end)?;
+    let knots: Vec<f64> = std::iter::once(start)
+        .chain(knots[first..=last].iter().copied())
+        .chain(std::iter::once(end))
+        .collect();
+    let count = knots.len() - degree - 1;
+    let control = control.get(first - 1..first - 1 + count)?;
+    let points = control
+        .iter()
+        .map(|c| [c[0] / c[3], c[1] / c[3], c[2] / c[3]])
+        .collect();
+    let weights = control.iter().map(|c| c[3]).collect();
+    Some((points, knots, weights))
+}
+
 /// DXF readers take a SPLINE's NURBS data as its shape. A DWG keeps only the
 /// fit data of a fit-method spline and one period of a periodic spline, so
 /// give each such spline in `doc` its full NURBS before a DXF write. The fit
@@ -132,8 +193,13 @@ pub(crate) fn complete_nurbs_for_dxf(doc: &mut codec::Document) {
         let curve = if uses_fit_method(spline) {
             fit_nurbs3(spline)
         } else if let Some((points, knots, weights)) = unwrapped_periodic(spline) {
+            // Readers apply their own wrap to an unclamped periodic form and
+            // draw an extra tail; the clamped equivalent reads the same
+            // everywhere (opencadcodec#149).
             let degree = spline.degree.max(0) as usize;
-            NurbsCurve3::new_strict(degree, points, knots, weights)
+            clamped(degree, points, knots, weights).and_then(|(points, knots, weights)| {
+                NurbsCurve3::new_strict(degree, points, knots, weights)
+            })
         } else {
             None
         };
@@ -1351,6 +1417,39 @@ impl crate::entities::traits::Transformable for Spline {
 
 #[cfg(test)]
 mod tests {
+    /// The clamped periodic form draws the same loop and has clamped ends,
+    /// so DXF readers need no wrap of their own (opencadcodec#149).
+    #[test]
+    fn a_clamped_periodic_spline_is_the_same_closed_loop() {
+        let degree = 2;
+        let ring: Vec<[f64; 3]> = (0..6)
+            .map(|i| {
+                let a = i as f64 * std::f64::consts::TAU / 6.0;
+                [a.cos() * (2.0 + (i % 2) as f64), a.sin() * 3.0, 0.0]
+            })
+            .collect();
+        let points: Vec<[f64; 3]> =
+            (0..ring.len() + degree).map(|i| ring[i % ring.len()]).collect();
+        let knots: Vec<f64> = (0..points.len() + degree + 1).map(|i| i as f64 - 2.0).collect();
+        let weights = vec![1.0; points.len()];
+        let open =
+            super::NurbsCurve3::new_strict(degree, points.clone(), knots.clone(), weights.clone())
+                .unwrap();
+        let (cp, ck, cw) = super::clamped(degree, points, knots, weights).unwrap();
+        assert_eq!(ck[..=degree], [ck[0]; 3]);
+        assert_eq!(ck[ck.len() - degree - 1..], [ck[ck.len() - 1]; 3]);
+        assert_eq!(cp.len(), ck.len() - degree - 1);
+        let clamped = super::NurbsCurve3::new_strict(degree, cp.clone(), ck, cw).unwrap();
+        let first = cp[0];
+        let last = cp[cp.len() - 1];
+        assert!((0..3).all(|a| (first[a] - last[a]).abs() < 1e-9), "closed");
+        for step in 0..=60 {
+            let t = step as f64 / 60.0;
+            let (p, q) = (open.point_at(t), clamped.point_at(t));
+            assert!((0..3).all(|a| (p[a] - q[a]).abs() < 1e-9), "t={t}: {p:?} vs {q:?}");
+        }
+    }
+
     use super::*;
 
     #[test]
