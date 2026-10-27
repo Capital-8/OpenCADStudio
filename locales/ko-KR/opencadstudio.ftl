@@ -1122,6 +1122,7 @@ common =
     .other-keys = ── 기타 키 ─────────────────────────────────────────
     .prefix = 접두사
     .suffix = 접미사
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = { common.crossing }: { common.specify } · { common.first-corner }.
     .window-specify-first-corner = { common.window }: { common.specify } · { common.first-corner }.
@@ -3497,6 +3498,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: '__ocs_fmt_1__' 스타일이 생성되었습니다.
     .prefix-style-name-not-found = __ocs_fmt_0__: '__ocs_fmt_1__' 스타일을 찾을 수 없습니다.
     .prefix-style-style-name-not-found = __ocs_fmt_0__: '__ocs_fmt_1__' 스타일을 찾을 수 없습니다.
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = LAYISO 설정: 잠그고 흐리게.
+    .layiso-settings-off = LAYISO 설정: 끄기.
+    .lock-and-fade = 잠그고 흐리게
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: 잘못된 재지정 "__ocs_fmt_0__".

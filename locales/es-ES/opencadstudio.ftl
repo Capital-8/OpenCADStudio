@@ -1123,6 +1123,7 @@ common =
     .other-keys = ── Otras teclas ───────────────────────────────────────
     .prefix = Prefijo
     .suffix = Sufijo
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = { common.crossing }: { common.specify } · { common.first-corner }.
     .window-specify-first-corner = { common.window }: { common.specify } · { common.first-corner }.
@@ -3498,6 +3499,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: se creó el estilo «__ocs_fmt_1__».
     .prefix-style-name-not-found = __ocs_fmt_0__: no se encontró el estilo «__ocs_fmt_1__».
     .prefix-style-style-name-not-found = __ocs_fmt_0__: no se encontró el estilo «__ocs_fmt_1__».
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = Parámetros de LAYISO: Bloquear y atenuar.
+    .layiso-settings-off = Parámetros de LAYISO: Desactivar.
+    .lock-and-fade = Bloquear y atenuar
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: modificación no válida "__ocs_fmt_0__".

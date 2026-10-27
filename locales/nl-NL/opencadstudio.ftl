@@ -1121,6 +1121,7 @@ common =
     .other-keys = ── Overige toetsen ────────────────────────────────────
     .prefix = Voorvoegsel
     .suffix = Achtervoegsel
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = { common.crossing }: { common.specify } · { common.first-corner }.
     .window-specify-first-corner = { common.window }: { common.specify } · { common.first-corner }.
@@ -3498,6 +3499,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: stijl "__ocs_fmt_1__' aangemaakt.
     .prefix-style-name-not-found = __ocs_fmt_0__: stijl '__ocs_fmt_1__' niet gevonden.
     .prefix-style-style-name-not-found = __ocs_fmt_0__: stijl '__ocs_fmt_1__' niet gevonden.
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = LAYISO-instellingen: Vergrendelen en vervagen.
+    .layiso-settings-off = LAYISO-instellingen: Uit.
+    .lock-and-fade = Vergrendelen en vervagen
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: ongeldige overschrijving "__ocs_fmt_0__".

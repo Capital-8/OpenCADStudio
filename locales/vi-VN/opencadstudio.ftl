@@ -1121,6 +1121,7 @@ common =
     .other-keys = ── Các phím khác ──────────────────────────────────────────
     .prefix = Tiền tố
     .suffix = Hậu tố
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = Cắt ngang: chỉ định góc thứ nhất.
     .window-specify-first-corner = Cửa sổ: chỉ định góc đầu tiên.
@@ -3505,6 +3506,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: đã tạo kiểu '__ocs_fmt_1__'.
     .prefix-style-name-not-found = __ocs_fmt_0__: không tìm thấy kiểu '__ocs_fmt_1__'.
     .prefix-style-style-name-not-found = __ocs_fmt_0__: không tìm thấy kiểu '__ocs_fmt_1__'.
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = Thiết lập LAYISO: Khóa và làm mờ.
+    .layiso-settings-off = Thiết lập LAYISO: Tắt.
+    .lock-and-fade = Khóa và làm mờ
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: ghi đè không hợp lệ "__ocs_fmt_0__".

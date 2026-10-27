@@ -1122,6 +1122,7 @@ common =
     .other-keys = ── Muut avaimet ───────────────────── ─────────────────────
     .prefix = Etuliite
     .suffix = Suffiksi
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = { common.crossing }: { common.specify } · { common.first-corner }.
     .window-specify-first-corner = { common.window }: { common.specify } · { common.first-corner }.
@@ -3497,6 +3498,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: tyyli '__ocs_fmt_1__' luotu.
     .prefix-style-name-not-found = __ocs_fmt_0__: tyyliä '__ocs_fmt_1__' ei löydy.
     .prefix-style-style-name-not-found = __ocs_fmt_0__: tyyliä '__ocs_fmt_1__' ei löydy.
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = LAYISO-asetukset: Lukitse ja himmennä.
+    .layiso-settings-off = LAYISO-asetukset: Pois.
+    .lock-and-fade = Lukitse ja himmennä
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: virheellinen ohitus "__ocs_fmt_0__".

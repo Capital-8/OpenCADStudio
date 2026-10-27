@@ -1111,6 +1111,7 @@ common =
     .other-keys = ── अन्य कुंजियाँ ─────────────────────────────────────
     .prefix = उपसर्ग
     .suffix = प्रत्यय
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = { common.crossing }: { common.specify } · { common.first-corner }.
     .window-specify-first-corner = { common.window }: { common.specify } · { common.first-corner }.
@@ -3486,6 +3487,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: शैली '__ocs_fmt_1__' बनाई गई।
     .prefix-style-name-not-found = __ocs_fmt_0__: शैली '__ocs_fmt_1__' नहीं मिली।
     .prefix-style-style-name-not-found = __ocs_fmt_0__: शैली '__ocs_fmt_1__' नहीं मिली।
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = LAYISO सेटिंग्स: लॉक और फ़ेड।
+    .layiso-settings-off = LAYISO सेटिंग्स: बंद।
+    .lock-and-fade = लॉक और फ़ेड
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: अमान्य ओवरराइड "__ocs_fmt_0__"।

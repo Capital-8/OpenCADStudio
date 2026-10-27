@@ -1113,6 +1113,7 @@ common =
     .other-keys = ── その他のキー ───────────────────────────────────────
     .prefix = 接頭辞
     .suffix = 接尾辞
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = { common.crossing }: { common.specify } · { common.first-corner }.
     .window-specify-first-corner = { common.window }: { common.specify } · { common.first-corner }.
@@ -3488,6 +3489,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: スタイル「__ocs_fmt_1__」を作成しました。
     .prefix-style-name-not-found = __ocs_fmt_0__: スタイル「__ocs_fmt_1__」が見つかりません。
     .prefix-style-style-name-not-found = __ocs_fmt_0__: スタイル「__ocs_fmt_1__」が見つかりません。
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = LAYISO 設定: ロックしてフェード。
+    .layiso-settings-off = LAYISO 設定: オフ。
+    .lock-and-fade = ロックしてフェード
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: 無効な優先 "__ocs_fmt_0__"。

@@ -1135,6 +1135,7 @@ common =
     .other-keys = ── مفاتيح أخرى ──────────────────────────────────────────
     .prefix = بادئة
     .suffix = لاحقة
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = { common.crossing }: { common.specify } · { common.first-corner }.
     .window-specify-first-corner = { common.window }: { common.specify } · { common.first-corner }.
@@ -3510,6 +3511,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: أُنشئ النمط '__ocs_fmt_1__'.
     .prefix-style-name-not-found = __ocs_fmt_0__: لم يُعثر على النمط '__ocs_fmt_1__'.
     .prefix-style-style-name-not-found = __ocs_fmt_0__: لم يُعثر على النمط '__ocs_fmt_1__'.
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = إعدادات LAYISO: قفل وتعتيم.
+    .layiso-settings-off = إعدادات LAYISO: إيقاف.
+    .lock-and-fade = قفل وتعتيم
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: تجاوز غير صالح "__ocs_fmt_0__".

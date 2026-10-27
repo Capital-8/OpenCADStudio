@@ -1128,6 +1128,7 @@ common =
     .other-keys = ── ປຸ່ມອື່ນໆ ──────────────────────────────────────────
     .prefix = ຄຳນຳໜ້າ
     .suffix = ຄຳຕໍ່ທ້າຍ
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = Crossing: ກຳນົດມຸມທຳອິດ.
     .window-specify-first-corner = Window: ກຳນົດມຸມທຳອິດ.
@@ -3499,6 +3500,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: ສ້າງຮູບແບບ '__ocs_fmt_1__' ແລ້ວ.
     .prefix-style-name-not-found = __ocs_fmt_0__: ບໍ່ພົບຮູບແບບ '__ocs_fmt_1__'.
     .prefix-style-style-name-not-found = __ocs_fmt_0__: ບໍ່ພົບຮູບແບບ '__ocs_fmt_1__'.
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = ການຕັ້ງຄ່າ LAYISO: ລັອກ ແລະ ເຮັດໃຫ້ຈາງ.
+    .layiso-settings-off = ການຕັ້ງຄ່າ LAYISO: ປິດ.
+    .lock-and-fade = ລັອກ ແລະ ເຮັດໃຫ້ຈາງ
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: ການແທນທີ່ບໍ່ຖືກຕ້ອງ "__ocs_fmt_0__".

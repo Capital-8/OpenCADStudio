@@ -1122,6 +1122,7 @@ common =
     .other-keys = ── Další klávesy ───────────────────── ─────────────────────
     .prefix = Předpona
     .suffix = Přípona
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = { common.crossing }: { common.specify } · { common.first-corner }.
     .window-specify-first-corner = { common.window }: { common.specify } · { common.first-corner }.
@@ -3495,6 +3496,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: vytvořen styl '__ocs_fmt_1__'.
     .prefix-style-name-not-found = __ocs_fmt_0__: styl '__ocs_fmt_1__' nebyl nalezen.
     .prefix-style-style-name-not-found = __ocs_fmt_0__: styl '__ocs_fmt_1__' nebyl nalezen.
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = Nastavení LAYISO: Zamknout a zeslabit.
+    .layiso-settings-off = Nastavení LAYISO: Vypnuto.
+    .lock-and-fade = Zamknout a zeslabit
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: neplatné přepsání "__ocs_fmt_0__".

@@ -1109,6 +1109,7 @@ common =
     .other-keys = ── Diğer Tuşlar ────────────────────────────────────────
     .prefix = Önek
     .suffix = Sonek
+    .select-objects-or-settings-short = Nesneleri seçin veya [Ayarlar]:
 
     .crossing-specify-first-corner = { common.crossing }: { common.specify } · { common.first-corner }.
     .window-specify-first-corner = { common.window }: { common.specify } · { common.first-corner }.
@@ -3478,6 +3479,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: '__ocs_fmt_1__' stili oluşturuldu.
     .prefix-style-name-not-found = __ocs_fmt_0__: '__ocs_fmt_1__' stili bulunamadı.
     .prefix-style-style-name-not-found = __ocs_fmt_0__: '__ocs_fmt_1__' stili bulunamadı.
+    .layiso-settings-off-lock-and-fade = LAYISO  Ayarlar [Kapalı / Kilitle ve soldur]:
+    .layiso-settings-lock-and-fade = LAYISO Ayarları: Kilitle ve soldur.
+    .layiso-settings-off = LAYISO Ayarları: Kapalı.
+    .lock-and-fade = Kilitle ve soldur
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: geçersiz geçersiz kılma "__ocs_fmt_0__".

@@ -1124,6 +1124,7 @@ common =
     .other-keys = ── Άλλα πλήκτρα ──────────────────────────────────────────
     .prefix = Πρόθεμα
     .suffix = Κατάληξη
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = { common.crossing }: { common.specify } · { common.first-corner }.
     .window-specify-first-corner = { common.window }: { common.specify } · { common.first-corner }.
@@ -3498,6 +3499,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: το στυλ '__ocs_fmt_1__' δημιουργήθηκε.
     .prefix-style-name-not-found = __ocs_fmt_0__: το στυλ '__ocs_fmt_1__' δεν βρέθηκε.
     .prefix-style-style-name-not-found = __ocs_fmt_0__: το στυλ '__ocs_fmt_1__' δεν βρέθηκε.
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = Ρυθμίσεις LAYISO: Κλείδωμα και εξασθένιση.
+    .layiso-settings-off = Ρυθμίσεις LAYISO: Απενεργοποίηση.
+    .lock-and-fade = Κλείδωμα και εξασθένιση
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE: μη έγκυρη παράκαμψη "__ocs_fmt_0__".

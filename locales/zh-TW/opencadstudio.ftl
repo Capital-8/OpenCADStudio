@@ -1122,6 +1122,7 @@ common =
     .other-keys = ── 其他按鍵 ──────────────────────────────────────────
     .prefix = 前綴
     .suffix = 後綴
+    .select-objects-or-settings-short = Select objects or [Settings]:
 
     .crossing-specify-first-corner = { common.crossing }: { common.specify } · { common.first-corner }.
     .window-specify-first-corner = { common.window }: { common.specify } · { common.first-corner }.
@@ -3497,6 +3498,10 @@ layers =
     .prefix-style-name-created = __ocs_fmt_0__: 樣式'__ocs_fmt_1__'建立。
     .prefix-style-name-not-found = __ocs_fmt_0__:樣式“__ocs_fmt_1__”未找到。
     .prefix-style-style-name-not-found = __ocs_fmt_0__:樣式“__ocs_fmt_1__”未找到。
+    .layiso-settings-off-lock-and-fade = LAYISO  Settings [Off / Lock and Fade]:
+    .layiso-settings-lock-and-fade = LAYISO 設定：鎖定並淡入。
+    .layiso-settings-off = LAYISO 設定：關閉。
+    .lock-and-fade = 鎖定並淡入
 
 annotate =
     .dimoverride-invalid-override = DIMOVERRIDE：無效的取代 "__ocs_fmt_0__"。
