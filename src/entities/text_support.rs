@@ -2743,7 +2743,14 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
                             }),
                         });
                     };
-                    emit(denominator, valign_dy);
+                    // A `^` stack with no top half is a subscript: its
+                    // bottom half drops below the baseline (#2236).
+                    let bottom_dy = if numerator.is_empty() && !*bar {
+                        valign_dy - run_h * STACK_RAISE * 0.5
+                    } else {
+                        valign_dy
+                    };
+                    emit(denominator, bottom_dy);
                     emit(numerator, valign_dy + run_h * STACK_RAISE);
 
                     if opts.want_glyph_boxes {
@@ -2751,6 +2758,7 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
                             + denominator.chars().count()
                             + usize::from(!denominator.is_empty());
                         if slots > 0 {
+                            let valign_dy = bottom_dy;
                             let top = valign_dy + run_h * (STACK_RAISE + STACK_HALF_SCALE);
                             for index in 0..slots {
                                 let x0 = cursor_x + slot_w * index as f32 / slots as f32;

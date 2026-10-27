@@ -1091,7 +1091,11 @@ impl super::OpenCADStudio {
                 denominator: plain[split + separator_len..].to_string(),
                 stacking_type: StackingType::from_char(separator),
             };
-            if data.numerator.is_empty() || data.denominator.is_empty() {
+            // A `^` stack may leave one half empty: "2^" stacks as a
+            // superscript and "^2" as a subscript (#2236).
+            let one_sided = separator == '^'
+                && !(data.numerator.is_empty() && data.denominator.is_empty());
+            if !one_sided && (data.numerator.is_empty() || data.denominator.is_empty()) {
                 return;
             }
             let props = cells[start..end]
