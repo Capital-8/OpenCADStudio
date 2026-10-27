@@ -1329,17 +1329,17 @@ impl OpenCADStudio {
                     }
                 }
             }
-            if accepts_points {
+            let picks_entity = self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .is_some_and(|command| command.typed_point_picks_entity());
+            if accepts_points || picks_entity {
                 if let Some(wcs) = self.typed_wcs(i, token) {
                     if self.command_point_allowed(i, wcs) {
                         self.last_point = Some(wcs);
                         self.push_ucs_to_cmd(i);
                         // A typed coordinate at an object prompt is a pick at
                         // that point, as in the reference.
-                        let picks_entity = self.tabs[i]
-                            .active_cmd
-                            .as_ref()
-                            .is_some_and(|command| command.typed_point_picks_entity());
                         if picks_entity {
                             let owner = self.tabs[i]
                                 .current_parametric_scope()
