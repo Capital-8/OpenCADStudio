@@ -1708,6 +1708,8 @@ pub enum DimensionBreakOperation {
     Auto,
     /// Break where the picked objects cross.
     Objects(Vec<Handle>),
+    /// Break where this one object crosses.
+    Object(Handle),
     Manual(DVec3, DVec3),
     Remove,
 }
