@@ -104,6 +104,12 @@ pub struct DimBaselineCommand {
     fallback_dimdli: f64,
     preserve_base_style: bool,
     committed: usize,
+    /// Run from DIM's Baseline option: its own wording and an Offset option.
+    in_dim: bool,
+    /// The Offset distance is being asked.
+    offset_pending: bool,
+    offset_override: Option<f64>,
+    dimdli: f64,
 }
 
 impl DimBaselineCommand {
@@ -122,6 +128,10 @@ impl DimBaselineCommand {
             fallback_dimdli,
             preserve_base_style,
             committed: 0,
+            in_dim: false,
+            offset_pending: false,
+            offset_override: None,
+            dimdli: fallback_dimdli,
         };
         if let Some(entity) = recent {
             let _ = command.install_base(&entity, None);
@@ -129,7 +139,49 @@ impl DimBaselineCommand {
         command
     }
 
+    /// DIM's Baseline: the base is picked, and Offset sets the spacing.
+    pub fn run_from_dim(&mut self, dimdli: f64) {
+        self.in_dim = true;
+        self.dimdli = dimdli;
+    }
+
+    /// The spacing Offset typed, applied to the series under way as well.
+    fn set_offset(&mut self, value: f64) {
+        self.offset_override = Some(value);
+        let Some(base) = self.base.as_mut() else {
+            return;
+        };
+        match &mut base.kind {
+            BaselineKind::Linear {
+                next_offset,
+                increment,
+                ..
+            } => {
+                let signed = value.copysign(*increment);
+                *next_offset += signed - *increment;
+                *increment = signed;
+            }
+            BaselineKind::Angular2Ln {
+                next_radius,
+                increment,
+                ..
+            }
+            | BaselineKind::Angular3Pt {
+                next_radius,
+                increment,
+                ..
+            } => {
+                *next_radius = (*next_radius + value - *increment).max(1.0e-9);
+                *increment = value;
+            }
+            BaselineKind::Ordinate { .. } => {}
+        }
+    }
+
     fn effective_increment(&self, style_name: &str) -> f64 {
+        if let Some(offset) = self.offset_override {
+            return offset.abs();
+        }
         let style_name = if self.preserve_base_style {
             style_name
         } else {
@@ -386,6 +438,19 @@ impl CadCommand for DimBaselineCommand {
     }
 
     fn prompt(&self) -> String {
+        if self.offset_pending {
+            let current = self.offset_override.unwrap_or(self.dimdli);
+            return crate::tr!("dim-cmd", "offset-distance", offset = format!("{current:.6}"));
+        }
+        if self.in_dim {
+            return match &self.base {
+                None => crate::tr!("dim-cmd", "baseline-first"),
+                Some(base) if matches!(&base.kind, BaselineKind::Ordinate { .. }) => {
+                    crate::tr!("dim-cmd", "baseline-ordinate")
+                }
+                Some(_) => crate::tr!("dim-cmd", "baseline-second"),
+            };
+        }
         if self.base.is_none() {
             crate::t!("DIMBASELINE  Select base dimension:").into_owned()
         } else if self
@@ -401,6 +466,20 @@ impl CadCommand for DimBaselineCommand {
     }
 
     fn options(&self) -> Vec<CmdOption> {
+        if self.offset_pending {
+            return Vec::new();
+        }
+        if self.in_dim {
+            return if self.base.is_none() {
+                vec![CmdOption::new("Offset", "O")]
+            } else {
+                vec![
+                    CmdOption::new("Select", "S"),
+                    CmdOption::new("Offset", "O"),
+                    CmdOption::new("Undo", "U"),
+                ]
+            };
+        }
         self.base.as_ref().map_or_else(Vec::new, |base| {
             if matches!(&base.kind, BaselineKind::Ordinate { .. }) {
                 vec![CmdOption::new("Undo", "U"), CmdOption::new("Select", "S")]
@@ -410,12 +489,20 @@ impl CadCommand for DimBaselineCommand {
         })
     }
 
+    fn input_kind(&self) -> crate::command::InputKind {
+        if self.offset_pending {
+            crate::command::InputKind::SingleToken
+        } else {
+            crate::command::InputKind::Point
+        }
+    }
+
     fn needs_entity_pick(&self) -> bool {
-        self.base.is_none()
+        self.base.is_none() && !self.offset_pending
     }
 
     fn entity_pick_highlights_hover(&self) -> bool {
-        self.base.is_none()
+        self.base.is_none() && !self.offset_pending
     }
 
     fn inject_before_entity_pick(&self) -> bool {
@@ -435,6 +522,9 @@ impl CadCommand for DimBaselineCommand {
     }
 
     fn on_point(&mut self, point: DVec3) -> CmdResult {
+        if self.offset_pending {
+            return CmdResult::NeedPoint;
+        }
         let Some(dimension) = self.build_dimension(point) else {
             return CmdResult::NeedPoint;
         };
@@ -449,6 +539,10 @@ impl CadCommand for DimBaselineCommand {
     }
 
     fn on_enter(&mut self) -> CmdResult {
+        if self.offset_pending {
+            self.offset_pending = false;
+            return CmdResult::NeedPoint;
+        }
         if self.base.take().is_some() {
             self.committed = 0;
             CmdResult::NeedPoint
@@ -458,15 +552,38 @@ impl CadCommand for DimBaselineCommand {
     }
 
     fn wants_text_input(&self) -> bool {
-        self.base.is_some()
+        self.base.is_some() || self.in_dim
     }
 
     fn point_step_accepts_keywords(&self) -> bool {
-        self.base.is_some()
+        self.base.is_some() || self.in_dim
     }
 
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
-        match text.trim().to_ascii_uppercase().as_str() {
+        if self.offset_pending {
+            let Ok(value) = text.trim().parse::<f64>() else {
+                return Some(CmdResult::ReportError(
+                    crate::t!("Requires numeric distance or two points.").into_owned(),
+                ));
+            };
+            if !value.is_finite() || value < 0.0 {
+                return Some(CmdResult::ReportError(
+                    crate::t!("Value must be positive.").into_owned(),
+                ));
+            }
+            self.offset_pending = false;
+            self.set_offset(value);
+            return Some(CmdResult::NeedPoint);
+        }
+        let word = text.trim().trim_start_matches('_').to_ascii_uppercase();
+        if self.in_dim && matches!(word.as_str(), "O" | "OFFSET") {
+            self.offset_pending = true;
+            return Some(CmdResult::NeedPoint);
+        }
+        if self.base.is_none() {
+            return None;
+        }
+        match word.as_str() {
             "S" | "SELECT" => {
                 self.base = None;
                 self.committed = 0;

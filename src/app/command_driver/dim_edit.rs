@@ -89,14 +89,46 @@ impl OpenCADStudio {
         spacing: Option<f64>,
     ) {
         let i = self.active_tab;
-        self.push_undo_snapshot(i, "DIMSPACE");
-        if apply_dimspace(&mut self.tabs[i].scene, base, &others, spacing) {
-            self.tabs[i].dirty = true;
-            self.command_line
-                .push_output(crate::t!("DIMSPACE  Spacing adjusted.").as_ref());
+        // DIM's aliGn comes back to DIM's prompt, quietly.
+        let in_dim = self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .is_some_and(|command| command.name() == "DIM");
+        if !others.is_empty() {
+            self.push_undo_snapshot(i, if in_dim { "DIM" } else { "DIMSPACE" });
+            if apply_dimspace(&mut self.tabs[i].scene, base, &others, spacing) {
+                self.tabs[i].dirty = true;
+                if !in_dim {
+                    self.command_line
+                        .push_output(crate::t!("DIMSPACE  Spacing adjusted.").as_ref());
+                }
+            }
         }
         self.tabs[i].active_cmd = None;
         self.tabs[i].snap_result = None;
+        if in_dim {
+            self.tabs[i].scene.deselect_all();
+            self.start_dim(i);
+        }
+    }
+
+    pub(super) fn handle_distribute_dimensions(
+        &mut self,
+        base: Option<Handle>,
+        dimensions: Vec<Handle>,
+        offset: Option<f64>,
+    ) {
+        let i = self.active_tab;
+        if !dimensions.is_empty() {
+            self.push_undo_snapshot(i, "DIM");
+            if apply_dim_distribute(&mut self.tabs[i].scene, base, &dimensions, offset) {
+                self.tabs[i].dirty = true;
+            }
+        }
+        self.tabs[i].active_cmd = None;
+        self.tabs[i].snap_result = None;
+        self.tabs[i].scene.deselect_all();
+        self.start_dim(i);
     }
 }
 
@@ -408,6 +440,135 @@ fn apply_dimbreak(
         },
         changed,
     }
+}
+
+/// The axis, normal and dimension-line point of a linear or aligned dimension.
+fn spacing_axis(
+    scene: &crate::scene::Scene,
+    handle: Handle,
+) -> Option<([f64; 3], [f64; 3], [f64; 3])> {
+    use codec::entities::Dimension;
+    match scene
+        .document
+        .get_entity(handle)
+        .and_then(crate::entities::dimension::as_dimension)?
+    {
+        Dimension::Linear(d) => Some((
+            [d.rotation.cos(), d.rotation.sin(), 0.0],
+            [d.base.normal.x, d.base.normal.y, d.base.normal.z],
+            [d.definition_point.x, d.definition_point.y, d.definition_point.z],
+        )),
+        Dimension::Aligned(d) => Some((
+            [
+                d.second_point.x - d.first_point.x,
+                d.second_point.y - d.first_point.y,
+                d.second_point.z - d.first_point.z,
+            ],
+            [d.base.normal.x, d.base.normal.y, d.base.normal.z],
+            [d.definition_point.x, d.definition_point.y, d.definition_point.z],
+        )),
+        _ => None,
+    }
+}
+
+/// DIM's Distribute. Equal (`offset` None) keeps the outermost two of the
+/// dimensions parallel to the first and spaces the rest evenly between them;
+/// Offset keeps `base` and steps the others away from it, nearest first, on
+/// the side each lies.
+fn apply_dim_distribute(
+    scene: &mut crate::scene::Scene,
+    base: Option<Handle>,
+    dimensions: &[Handle],
+    offset: Option<f64>,
+) -> bool {
+    let Some(reference) = base.or_else(|| dimensions.first().copied()) else {
+        return false;
+    };
+    let Some((axis, normal, definition)) = spacing_axis(scene, reference) else {
+        return false;
+    };
+    let Some(frame) = kernel::space::dimension_spacing_frame(axis, normal, definition) else {
+        return false;
+    };
+    let p = frame.perpendicular;
+    let coordinate = |point: [f64; 3]| point[0] * p[0] + point[1] * p[1] + point[2] * p[2];
+    let parallel = |handle: Handle| {
+        spacing_axis(scene, handle).and_then(|(other, _, point)| {
+            let cross = axis[0] * other[1] - axis[1] * other[0];
+            let length = axis[0].hypot(axis[1]) * other[0].hypot(other[1]);
+            (length > 0.0 && (cross / length).abs() < 1.0e-6).then(|| coordinate(point))
+        })
+    };
+    let mut placed: Vec<(Handle, f64)> = dimensions
+        .iter()
+        .filter(|&&handle| Some(handle) != base)
+        .filter_map(|&handle| parallel(handle).map(|at| (handle, at)))
+        .collect();
+    let mut targets = Vec::new();
+    match (base, offset) {
+        (Some(base), Some(offset)) => {
+            let Some(origin) = parallel(base) else {
+                return false;
+            };
+            placed.sort_by(|a, b| (a.1 - origin).abs().total_cmp(&(b.1 - origin).abs()));
+            let (mut above, mut below) = (0.0, 0.0);
+            for (handle, at) in placed {
+                let step = if at >= origin {
+                    above += 1.0;
+                    above
+                } else {
+                    below -= 1.0;
+                    below
+                };
+                targets.push((handle, origin + offset * step));
+            }
+        }
+        _ => {
+            if placed.len() < 3 {
+                return false;
+            }
+            placed.sort_by(|a, b| a.1.total_cmp(&b.1));
+            let (low, high) = (placed[0].1, placed[placed.len() - 1].1);
+            let gap = (high - low) / (placed.len() - 1) as f64;
+            for (index, (handle, _)) in placed.iter().enumerate() {
+                targets.push((*handle, low + gap * index as f64));
+            }
+        }
+    }
+    // The frame measures from its own origin; the coordinates above are
+    // plain projections.
+    let shift = frame.coordinate - coordinate(definition);
+    let mut changes = Vec::new();
+    for (handle, target) in targets {
+        let target = target + shift;
+        if let Some(codec::EntityType::Dimension(dim)) = scene.document.get_entity_mut(handle) {
+            let slide = |point: &mut codec::types::Vector3| {
+                let moved = kernel::space::move_to_dimension_spacing(
+                    [point.x, point.y, point.z],
+                    frame,
+                    target,
+                );
+                *point = codec::types::Vector3::new(moved[0], moved[1], moved[2]);
+            };
+            match &mut **dim {
+                codec::entities::Dimension::Linear(d) => {
+                    slide(&mut d.definition_point);
+                    d.base.definition_point = d.definition_point;
+                }
+                codec::entities::Dimension::Aligned(d) => {
+                    slide(&mut d.definition_point);
+                    d.base.definition_point = d.definition_point;
+                }
+                _ => continue,
+            }
+            scene.invalidate_dim_block_recorded(handle);
+            changes.push((handle, crate::scene::ChangeKind::Modified));
+        }
+    }
+    if !changes.is_empty() {
+        scene.bump_entities(&changes);
+    }
+    !changes.is_empty()
 }
 
 fn apply_dimspace(

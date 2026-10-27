@@ -896,6 +896,13 @@ impl OpenCADStudio {
             } => {
                 self.handle_space_dimensions(base, others, spacing);
             }
+            CmdResult::DistributeDimensions {
+                base,
+                dimensions,
+                offset,
+            } => {
+                self.handle_distribute_dimensions(base, dimensions, offset);
+            }
             CmdResult::ReplaceEntity(handle, new_entities) => {
                 if let Some(task) = self.handle_replace_entity(handle, new_entities) {
                     return task;

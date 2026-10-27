@@ -49,6 +49,8 @@ enum Kind {
     ArcLength,
     Angular,
     Ordinate,
+    /// A baseline or continued series run from DIM's options.
+    Series,
 }
 
 pub struct DimCommand {
@@ -63,6 +65,8 @@ pub struct DimCommand {
     layer: bool,
     /// The layer DIM was started with ("." = the current one).
     current_layer: String,
+    /// The object picked at the Layer prompt, whose layer is taken.
+    layer_pick: Option<EntityType>,
 }
 
 impl DimCommand {
@@ -75,7 +79,22 @@ impl DimCommand {
             picked: None,
             layer: false,
             current_layer,
+            layer_pick: None,
         }
+    }
+
+    /// DIM at its Layer prompt, which repeats until Enter or eXit.
+    pub fn at_layer(current_layer: String) -> Self {
+        Self {
+            layer: true,
+            ..Self::new(current_layer)
+        }
+    }
+
+    /// DIM running a command it handed off (the Baseline and Continue
+    /// series); Enter at that command's first prompt comes back to DIM.
+    pub fn adopt(&mut self, command: Box<dyn CadCommand>) {
+        self.inner = Some((Kind::Series, command));
     }
 
     fn start(&mut self, kind: Kind) -> &mut Box<dyn CadCommand> {
@@ -87,6 +106,7 @@ impl DimCommand {
             Kind::ArcLength => Box::new(ArcLengthDimensionCommand::new()),
             Kind::Angular => Box::new(AngularDimensionCommand::new()),
             Kind::Ordinate => Box::new(OrdinateDimCommand::new()),
+            Kind::Series => unreachable!("a series is adopted, not started"),
         };
         command.set_working_plane(self.plane);
         &mut self.inner.insert((kind, command)).1
@@ -209,7 +229,7 @@ impl CadCommand for DimCommand {
 
     fn options(&self) -> Vec<CmdOption> {
         if self.layer {
-            return vec![CmdOption::new("Use current", "USECURRENT")];
+            return vec![CmdOption::new("?", "?"), CmdOption::new("eXit", "X")];
         }
         if let Some(pick) = &self.radial {
             if self
@@ -249,9 +269,6 @@ impl CadCommand for DimCommand {
     }
 
     fn input_kind(&self) -> InputKind {
-        if self.layer {
-            return InputKind::FreeText;
-        }
         self.inner()
             .map_or(InputKind::Point, |command| command.input_kind())
     }
@@ -262,17 +279,16 @@ impl CadCommand for DimCommand {
     }
 
     fn point_step_accepts_keywords(&self) -> bool {
-        !self.layer
-            && self
-                .inner()
-                .is_none_or(|command| command.point_step_accepts_keywords())
+        self.inner()
+            .is_none_or(|command| command.point_step_accepts_keywords())
     }
 
     fn needs_entity_pick(&self) -> bool {
         match self.inner() {
             Some(command) => command.needs_entity_pick(),
-            // The main prompt picks objects and takes points.
-            None => !self.layer,
+            // The main prompt picks objects and takes points; the Layer
+            // prompt takes a picked object's layer.
+            None => true,
         }
     }
 
@@ -296,6 +312,7 @@ impl CadCommand for DimCommand {
     fn inject_picked_entity(&mut self, entity: EntityType) {
         match self.inner.as_mut() {
             Some((_, command)) => command.inject_picked_entity(entity),
+            None if self.layer => self.layer_pick = Some(entity),
             None => self.picked = Some(entity),
         }
     }
@@ -304,6 +321,16 @@ impl CadCommand for DimCommand {
         if let Some((_, command)) = self.inner.as_mut() {
             let result = command.on_entity_pick(handle, pt);
             return self.wrap(result);
+        }
+        if self.layer {
+            return match self.layer_pick.take() {
+                Some(entity) if !handle.is_null() => {
+                    let layer = entity.common().layer.clone();
+                    self.current_layer = layer.clone();
+                    CmdResult::Dispatch(format!("_DIM_LAYER {layer}"))
+                }
+                _ => CmdResult::NeedPoint,
+            };
         }
         let Some(entity) = self.picked.take() else {
             return CmdResult::NeedPoint;
@@ -341,6 +368,9 @@ impl CadCommand for DimCommand {
     }
 
     fn on_point(&mut self, pt: DVec3) -> CmdResult {
+        if self.layer && self.inner.is_none() {
+            return CmdResult::NeedPoint;
+        }
         if let Some((kind, command)) = self.inner.as_mut() {
             // A slanted pair of points is dimensioned along itself.
             if *kind == Kind::Linear && command.dimension_acquired_points().len() == 1 {
@@ -391,14 +421,19 @@ impl CadCommand for DimCommand {
 
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
         if self.layer {
-            self.layer = false;
             let value = text.trim().trim_matches('"');
-            let value = match value.to_ascii_uppercase().as_str() {
-                "U" | "USE" | "USECURRENT" | "USE CURRENT" | "." | "" => ".".to_string(),
-                _ => value.to_string(),
-            };
-            self.current_layer = value.clone();
-            return Some(CmdResult::Dispatch(format!("_DIM_LAYER {value}")));
+            return Some(match value.to_ascii_uppercase().as_str() {
+                "" => CmdResult::NeedPoint,
+                "X" | "EXIT" | "_X" | "_EXIT" => {
+                    self.layer = false;
+                    CmdResult::NeedPoint
+                }
+                "?" => CmdResult::Dispatch("_DIM_LAYER_LIST".into()),
+                _ => {
+                    self.current_layer = value.to_string();
+                    CmdResult::Dispatch(format!("_DIM_LAYER {value}"))
+                }
+            });
         }
         let keyword = text.trim().trim_start_matches(['_', '.']).to_ascii_uppercase();
         if self.radial.is_some()
@@ -444,10 +479,11 @@ impl CadCommand for DimCommand {
                 Some(CmdResult::NeedPoint)
             }
             // The continued and baseline series need the last dimension.
-            "B" | "BASELINE" => Some(CmdResult::Dispatch("DIMBASELINE".into())),
-            "C" | "CONTINUE" => Some(CmdResult::Dispatch("DIMCONTINUE".into())),
+            // Both series pick their first dimension and come back to DIM.
+            "B" | "BASELINE" => Some(CmdResult::Dispatch("_DIM_BASELINE".into())),
+            "C" | "CONTINUE" => Some(CmdResult::Dispatch("_DIM_CONTINUE".into())),
             "G" | "ALIGN" => Some(CmdResult::Dispatch("_DIM_ALIGN".into())),
-            "D" | "DISTRIBUTE" => Some(CmdResult::Dispatch("DIMSPACE".into())),
+            "D" | "DISTRIBUTE" => Some(CmdResult::Dispatch("_DIM_DISTRIBUTE".into())),
             "L" | "LAYER" => {
                 self.layer = true;
                 Some(CmdResult::NeedPoint)
