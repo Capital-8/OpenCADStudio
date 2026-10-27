@@ -617,11 +617,14 @@ pub enum MLeaderCollectLayout {
     Vertical,
     /// Rows no wider than the width (0: one row).
     Wrap(f64),
+    /// Rows of this many blocks.
+    WrapNumber(u32),
 }
 
 /// The layout carries over to the next MLEADERCOLLECT.
 static COLLECT_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 static COLLECT_WRAP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static COLLECT_NUMBER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 fn collect_layout() -> MLeaderCollectLayout {
     match COLLECT_MODE.load(std::sync::atomic::Ordering::Relaxed) {
@@ -629,6 +632,9 @@ fn collect_layout() -> MLeaderCollectLayout {
         2 => MLeaderCollectLayout::Wrap(f64::from_bits(
             COLLECT_WRAP.load(std::sync::atomic::Ordering::Relaxed),
         )),
+        3 => MLeaderCollectLayout::WrapNumber(
+            COLLECT_NUMBER.load(std::sync::atomic::Ordering::Relaxed),
+        ),
         _ => MLeaderCollectLayout::Horizontal,
     }
 }
@@ -642,6 +648,10 @@ fn store_collect_layout(layout: MLeaderCollectLayout) {
             COLLECT_WRAP.store(width.to_bits(), Ordering::Relaxed);
             2
         }
+        MLeaderCollectLayout::WrapNumber(count) => {
+            COLLECT_NUMBER.store(count, Ordering::Relaxed);
+            3
+        }
     };
     COLLECT_MODE.store(mode, Ordering::Relaxed);
 }
@@ -651,6 +661,7 @@ enum CollectStep {
     Gathering,
     Location,
     WrapWidth,
+    WrapNumber,
 }
 
 pub struct MLeaderCollectCommand {
@@ -683,17 +694,28 @@ impl CadCommand for MLeaderCollectCommand {
                         crate::tr!("mleader-collect", "horizontal")
                     }
                     MLeaderCollectLayout::Vertical => crate::tr!("mleader-collect", "vertical"),
-                    MLeaderCollectLayout::Wrap(_) => crate::tr!("mleader-collect", "wrap"),
+                    MLeaderCollectLayout::Wrap(_) | MLeaderCollectLayout::WrapNumber(_) => {
+                        crate::tr!("mleader-collect", "wrap")
+                    }
                 };
                 crate::tr!("mleader-collect", "location", current = current)
             }
             CollectStep::WrapWidth => {
-                let width = match self.layout {
-                    MLeaderCollectLayout::Wrap(width) => width,
-                    _ => 0.0,
+                let current = match self.layout {
+                    MLeaderCollectLayout::WrapNumber(_) => crate::tr!("mleader-collect", "number"),
+                    MLeaderCollectLayout::Wrap(width) => format!("{width:.6}"),
+                    _ => format!(
+                        "{:.6}",
+                        f64::from_bits(COLLECT_WRAP.load(std::sync::atomic::Ordering::Relaxed))
+                    ),
                 };
-                crate::tr!("mleader-collect", "wrap-width", value = format!("{width:.6}"))
+                crate::tr!("mleader-collect", "wrap-width", value = current)
             }
+            CollectStep::WrapNumber => crate::tr!(
+                "mleader-collect",
+                "number-per-row",
+                value = COLLECT_NUMBER.load(std::sync::atomic::Ordering::Relaxed).to_string()
+            ),
         }
     }
 
@@ -704,6 +726,7 @@ impl CadCommand for MLeaderCollectCommand {
                 CmdOption::new("Horizontal", "H"),
                 CmdOption::new("Wrap", "W"),
             ],
+            CollectStep::WrapWidth => vec![CmdOption::new("Number", "N")],
             _ => Vec::new(),
         }
     }
@@ -734,7 +757,7 @@ impl CadCommand for MLeaderCollectCommand {
 
     fn input_kind(&self) -> InputKind {
         match self.step {
-            CollectStep::WrapWidth => InputKind::SingleToken,
+            CollectStep::WrapWidth | CollectStep::WrapNumber => InputKind::SingleToken,
             _ => InputKind::Point,
         }
     }
@@ -757,6 +780,17 @@ impl CadCommand for MLeaderCollectCommand {
                     _ => return None,
                 };
                 store_collect_layout(self.layout);
+                Some(CmdResult::NeedPoint)
+            }
+            CollectStep::WrapWidth if matches!(key.as_str(), "N" | "NUMBER") => {
+                self.step = CollectStep::WrapNumber;
+                Some(CmdResult::NeedPoint)
+            }
+            CollectStep::WrapNumber => {
+                let count = text.trim().parse::<u32>().ok().filter(|n| *n >= 1)?;
+                self.layout = MLeaderCollectLayout::WrapNumber(count);
+                store_collect_layout(self.layout);
+                self.step = CollectStep::Location;
                 Some(CmdResult::NeedPoint)
             }
             CollectStep::WrapWidth => {
@@ -783,9 +817,30 @@ impl CadCommand for MLeaderCollectCommand {
     }
 
     fn on_enter(&mut self) -> CmdResult {
-        if self.step == CollectStep::WrapWidth {
-            self.step = CollectStep::Location;
-            return CmdResult::NeedPoint;
+        match self.step {
+            // Enter keeps the wrap rule the prompt offered.
+            CollectStep::WrapWidth => {
+                if !matches!(
+                    self.layout,
+                    MLeaderCollectLayout::Wrap(_) | MLeaderCollectLayout::WrapNumber(_)
+                ) {
+                    self.layout = MLeaderCollectLayout::Wrap(f64::from_bits(
+                        COLLECT_WRAP.load(std::sync::atomic::Ordering::Relaxed),
+                    ));
+                }
+                store_collect_layout(self.layout);
+                self.step = CollectStep::Location;
+                return CmdResult::NeedPoint;
+            }
+            CollectStep::WrapNumber => {
+                self.layout = MLeaderCollectLayout::WrapNumber(
+                    COLLECT_NUMBER.load(std::sync::atomic::Ordering::Relaxed),
+                );
+                store_collect_layout(self.layout);
+                self.step = CollectStep::Location;
+                return CmdResult::NeedPoint;
+            }
+            _ => {}
         }
         CmdResult::Cancel
     }

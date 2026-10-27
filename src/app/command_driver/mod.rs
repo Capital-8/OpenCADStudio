@@ -2129,16 +2129,19 @@ fn apply_mleader_collect(
                 }
                 centres.push(glam::DVec2::new(point.x, y));
             }
-            Layout::Horizontal | Layout::Wrap(_) => {
+            Layout::Horizontal | Layout::Wrap(_) | Layout::WrapNumber(_) => {
                 if index > 0 {
                     x += sizes[index - 1].1.x * 0.5 + size.x * 0.5;
                 }
-                if let Layout::Wrap(width) = layout {
-                    if width > 0.0 && x + size.x * 0.5 - point.x > width && index > 0 {
-                        x = point.x;
-                        y -= row_height;
-                        row_height = 0.0;
-                    }
+                let wrap = match layout {
+                    Layout::Wrap(width) => width > 0.0 && x + size.x * 0.5 - point.x > width,
+                    Layout::WrapNumber(count) => index % count.max(1) as usize == 0,
+                    _ => false,
+                };
+                if wrap && index > 0 {
+                    x = point.x;
+                    y -= row_height;
+                    row_height = 0.0;
                 }
                 row_height = row_height.max(size.y);
                 centres.push(glam::DVec2::new(x, y));
