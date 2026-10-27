@@ -469,7 +469,8 @@ pub fn style_value_text(style: &codec::tables::DimStyle, code: i16) -> Option<St
         DIMCLRE => color_name(style.dimclre),
         DIMCLRT => color_name(style.dimclrt),
         DIMTFILLCLR => color_name(style.dimtfillclr),
-        DIMPOST => style.dimpost.clone(),
+        // "<>" is the measurement itself, shown as no suffix.
+        DIMPOST => style.dimpost.replace("<>", ""),
         DIMAPOST => style.dimapost.clone(),
         DIMALTMZS => style.dimaltmzs.clone(),
         DIMMZS => style.dimmzs.clone(),
