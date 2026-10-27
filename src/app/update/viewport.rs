@@ -554,6 +554,15 @@ impl OpenCADStudio {
         }
         if self.shift_down && allowed && !self.ortho_mode {
             if self.axis_lock_dir.is_none() {
+                // Right after a point is placed the cursor still sits on it
+                // and its direction is noise: wait until it has moved away,
+                // so each segment takes the axis it is drawn along (#1422).
+                let height = self.tabs[tab].scene.selection.borrow().view.vp_size.1.max(1.0);
+                let ortho_size = self.tabs[tab].scene.camera.borrow().ortho_size();
+                let world_per_px = 2.0 * f64::from(ortho_size) / f64::from(height);
+                if (cursor - base).length() < world_per_px * 8.0 {
+                    return None;
+                }
                 let ucs = self.tabs[tab].ucs_xform();
                 self.axis_lock_dir = axis_lock_capture(
                     cursor,
@@ -9233,6 +9242,33 @@ mod rapid_drawing_tests {
             preview_has_endpoint(&app, 88.0, 42.0),
             "fast cursor move must update the STRETCH geometry, not hide it"
         );
+    }
+
+    /// Shift held through several PLINE points: each segment takes the axis
+    /// it is drawn along, without releasing Shift in between (#1422).
+    #[test]
+    fn shift_axis_lock_follows_each_new_segment() {
+        let mut app = drawing_app("PLINE");
+        let start = screen(&app, glam::DVec3::ZERO);
+        let _ = app.update(Message::ViewportLeftPressAt(start));
+        let _ = app.update(Message::ViewportLeftRelease);
+        app.shift_down = true;
+        app.snap_dwell = None;
+        let at = screen(&app, glam::DVec3::new(40.0, 3.0, 0.0));
+        let _ = app.update(Message::ViewportMove(at));
+        let first = app.axis_lock_dir.expect("locked to the first axis");
+        assert!(first.x.abs() > 0.99, "{first:?}");
+        let _ = app.update(Message::ViewportLeftPressAt(at));
+        let _ = app.update(Message::ViewportLeftRelease);
+        // Shift is still down: the next segment goes up.
+        // The first move after the click drifts on along the old axis.
+        for to in [glam::DVec3::new(40.4, 0.05, 0.0), glam::DVec3::new(43.0, 40.0, 0.0)] {
+            app.snap_dwell = None;
+            let at = screen(&app, to);
+            let _ = app.update(Message::ViewportMove(at));
+        }
+        let second = app.axis_lock_dir.expect("locked to the second axis");
+        assert!(second.y.abs() > 0.99, "{second:?}");
     }
 
     #[test]

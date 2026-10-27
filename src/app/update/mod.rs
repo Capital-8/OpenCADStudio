@@ -885,8 +885,9 @@ impl OpenCADStudio {
     /// points are reset on every input so they don't pile up across a
     /// multi-point command and overwhelm the next pick (issue #85).
     pub(in crate::app) fn reset_tracking_after_point(&mut self) {
-        // A typed `<angle` holds for the next point only.
+        // A typed `<angle` and a Shift axis lock hold for the next point only.
         self.angle_override = None;
+        self.axis_lock_dir = None;
         self.snapper.clear_tracking();
         self.otrack_active = None;
         self.otrack_cross = None;
