@@ -14161,23 +14161,32 @@ vis_index={:.1} visible_probe={:.1}",
                 }
                 let mut cache = self.entity_index_cache.borrow_mut();
                 if let Some((epoch, idx)) = cache.as_mut() {
-                    for op in ops {
-                        match op {
+                    // replay_since coalesces to one entry per handle, so each
+                    // touched handle appears in exactly one op: sweep the
+                    // unbounded list once for the whole batch instead of one
+                    // retain per op (O(ops x handles) on point-heavy drawings).
+                    let mut touched: HashSet<Handle> = HashSet::default();
+                    let mut unbounded_pushes: Vec<Handle> = Vec::new();
+                    for op in &ops {
+                        match *op {
                             IdxOp::Remove(h) => {
                                 idx.tree.remove(h);
-                                idx.unbounded_handles.retain(|x| *x != h);
+                                touched.insert(h);
                             }
                             IdxOp::SetBounded(h, ab) => {
                                 idx.tree.update(h, ab);
-                                idx.unbounded_handles.retain(|x| *x != h);
+                                touched.insert(h);
                             }
                             IdxOp::SetUnbounded(h) => {
                                 idx.tree.remove(h);
-                                idx.unbounded_handles.retain(|x| *x != h);
-                                idx.unbounded_handles.push(h);
+                                touched.insert(h);
+                                unbounded_pushes.push(h);
                             }
                         }
                     }
+                    idx.unbounded_handles
+                        .retain(|x| !touched.contains(x));
+                    idx.unbounded_handles.extend(unbounded_pushes);
                     *epoch = self.geometry_epoch;
                     drop(cache);
                     return std::cell::Ref::map(self.entity_index_cache.borrow(), |c| {

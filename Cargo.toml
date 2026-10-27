@@ -327,6 +327,10 @@ harness = false
 name = "hatch_pattern_segments"
 harness = false
 
+[[bench]]
+name = "scene_pick_micro"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
