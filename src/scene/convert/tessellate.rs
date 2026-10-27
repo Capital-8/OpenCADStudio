@@ -724,7 +724,113 @@ fn split_mixed_polyline(
         }
     }
 
+    // A dashed band leaves its joints open as the dashes fall.
+    if pattern_length <= 0.0 {
+        let bevels = arc_joint_bevels(tangent_geoms, key_vertices, seg_widths, global_world_width);
+        if !bevels.is_empty() {
+            let (fill_tris, fill_tris_low) = points_to_ds(bevels);
+            out.push(WireModel {
+                name: name.to_string(),
+                color,
+                selected,
+                line_weight_px,
+                fill_tris,
+                fill_tris_low,
+                aabb: WireModel::UNBOUNDED_AABB,
+                plinegen: true,
+                display_visible: true,
+                plot_visible: true,
+                ..Default::default()
+            });
+        }
+    }
+
     out
+}
+
+/// The bands of a line and an arc, or of two arcs, are separate wires that
+/// end square at their joint, so a turn there opens a notch on its outer side.
+/// A bevel triangle on each side of such a joint closes it (#2200).
+fn arc_joint_bevels(
+    tangent_geoms: &[TangentGeom],
+    key_vertices: &[[f64; 3]],
+    seg_widths: &[(f32, f32)],
+    global_world_width: f32,
+) -> Vec<[f64; 3]> {
+    use glam::DVec3;
+    let (n, m) = (tangent_geoms.len(), key_vertices.len());
+    if n < 2 || m < 2 {
+        return Vec::new();
+    }
+    let vertex = |k: usize| DVec3::from(key_vertices[k % m]);
+    let half = |i: usize| {
+        let (start, end) = seg_widths
+            .get(i)
+            .copied()
+            .unwrap_or((global_world_width, global_world_width));
+        (f64::from(start) * 0.5, f64::from(end) * 0.5)
+    };
+    // Segment `i`'s direction of travel at its start or end, and its plane
+    // normal when it is an arc.
+    let direction = |i: usize, at_end: bool| -> Option<(DVec3, Option<DVec3>)> {
+        let (a, b) = (vertex(i), vertex(i + 1));
+        match tangent_geoms[i] {
+            TangentGeom::Line { .. } => Some(((b - a).try_normalize()?, None)),
+            TangentGeom::Arc {
+                center,
+                axis_x,
+                axis_y,
+                radius,
+                start_angle,
+                ..
+            } => {
+                let (c, x, y) = (DVec3::from(center), DVec3::from(axis_x), DVec3::from(axis_y));
+                let normal = x.cross(y).try_normalize()?;
+                let (sin, cos) = start_angle.sin_cos();
+                let first = c + radius * (cos * x + sin * y);
+                // The polyline runs the arc clockwise when the arc's own
+                // start sits at the segment's end.
+                let reversed = first.distance_squared(b) < first.distance_squared(a);
+                let at = if at_end { b } else { a };
+                let ccw = normal.cross(at - c).try_normalize()?;
+                Some((if reversed { -ccw } else { ccw }, Some(normal)))
+            }
+            _ => None,
+        }
+    };
+    // Joints between consecutive segments, and the last segment to the first
+    // where the polyline comes back to its start.
+    // ponytail: an open polyline whose ends merely touch is joined there too;
+    // pass the closed flag in if that bevel ever shows.
+    let closed = m == n || vertex(n).distance_squared(vertex(0)) < 1e-18;
+    let joints = (1..n).chain(closed.then_some(n));
+    let mut tris = Vec::new();
+    for k in joints {
+        let (before, after) = (k - 1, k % n);
+        let either_arc = [before, after]
+            .iter()
+            .any(|&i| matches!(tangent_geoms[i], TangentGeom::Arc { .. }));
+        if !either_arc {
+            continue;
+        }
+        let (Some((d0, n0)), Some((d1, n1))) = (direction(before, true), direction(after, false))
+        else {
+            continue;
+        };
+        let Some(normal) = n0.or(n1) else {
+            continue;
+        };
+        let (h0, h1) = (half(before).1, half(after).0);
+        if h0 <= 0.0 && h1 <= 0.0 {
+            continue;
+        }
+        let p = vertex(k);
+        let (left0, left1) = (normal.cross(d0), normal.cross(d1));
+        for side in [1.0, -1.0] {
+            tris.extend([p, p + left0 * h0 * side, p + left1 * h1 * side].map(|v| v.to_array()));
+        }
+    }
+    tris
 }
 
 fn point_cloud_wires(
