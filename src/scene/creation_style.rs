@@ -319,6 +319,66 @@ fn apply_object_defaults(doc: &Document, entity: &mut EntityType) {
     }
 }
 
+/// The drawing's DIMDLI takes the current dimension style's value, as
+/// making a style current does; DIM's Offset changes it afterwards.
+pub fn sync_header_dim_vars(doc: &mut Document) {
+    let current = doc.header.current_dimstyle_name.clone();
+    let value = doc
+        .dim_styles
+        .iter()
+        .find(|style| style.name.eq_ignore_ascii_case(&current))
+        .map(|style| style.dimdli);
+    if let Some(value) = value {
+        doc.header.dim_line_increment = value;
+    }
+}
+
+/// The drawing's DIMDLI. Drawings saved before the header followed the
+/// current style kept the imperial 0.38 in a metric drawing; that value is
+/// read as the current style's.
+pub fn drawing_dimdli(doc: &Document) -> f64 {
+    let current = doc.header.current_dimstyle_name.clone();
+    let style = doc
+        .dim_styles
+        .iter()
+        .find(|style| style.name.eq_ignore_ascii_case(&current))
+        .map(|style| style.dimdli);
+    let header = doc.header.dim_line_increment;
+    // ponytail: an exact 0.38 in a metric drawing is taken as never synced;
+    // a metric drawing really set to 0.38 by DIM's Offset reads as the style's.
+    let unsynced = (header - 0.38).abs() < 1.0e-12 && doc.header.measurement == 1;
+    match style {
+        Some(value) if unsynced || header <= 0.0 => value,
+        _ => header,
+    }
+}
+
+/// A DIMDLI set for the drawing that differs from the dimension's own
+/// style goes on the new dimension as an override.
+pub fn apply_drawing_dimdli(doc: &mut Document, handle: codec::Handle) {
+    let Some(EntityType::Dimension(dimension)) = doc.get_entity(handle) else {
+        return;
+    };
+    let name = dimension.base().style_name.clone();
+    let Some(style_value) = doc
+        .dim_styles
+        .iter()
+        .find(|style| style.name.eq_ignore_ascii_case(&name))
+        .map(|style| style.dimdli)
+    else {
+        return;
+    };
+    let drawing = drawing_dimdli(doc);
+    if (drawing - style_value).abs() > 1.0e-9 {
+        crate::entities::dim_override::set(
+            doc,
+            handle,
+            crate::entities::dim_override::DIMDLI,
+            Some(codec::xdata::XDataValue::Real(drawing)),
+        );
+    }
+}
+
 pub fn apply_current_creation_styles(doc: &Document, entity: &mut EntityType) {
     entity.common_mut().transparency = doc.current_entity_transparency();
     apply_text_defaults(doc, entity);

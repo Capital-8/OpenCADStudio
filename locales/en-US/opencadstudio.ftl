@@ -7300,6 +7300,7 @@ dim-cmd =
     .distribute-others = DIM  Select dimensions to distribute:
     .distribute-others-offset = DIM  Select dimensions to distribute or [Offset]:
     .no-object-selected = No Object Selected.
+    .overlap = DIM  Specify how to handle overlapping dimensions [Move away/Break up/Replace/None] <{ $default }>:
 dim-inspect =
     .title = Inspection Dimension
     .dimensions = Dimensions

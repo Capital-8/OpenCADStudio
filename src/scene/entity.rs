@@ -3392,6 +3392,7 @@ impl Scene {
         self.document.header.isolines = 8;
         let iso = crate::scene::creation_style::ensure_iso_dim_style(&mut self.document);
         self.document.header.current_dimstyle_name = "ISO-25".to_string();
+        crate::scene::creation_style::sync_header_dim_vars(&mut self.document);
         // The name alone leaves the header pointing at the previous style, and
         // a DWG writes the current style by handle only.
         self.document.header.current_dimstyle_handle = iso;

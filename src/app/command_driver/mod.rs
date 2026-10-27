@@ -83,6 +83,7 @@ use iced::Task;
 pub(super) mod clipboard;
 mod constraint;
 mod dim_edit;
+pub(crate) use dim_edit::apply_dim_overlap;
 mod entity_commit;
 mod modify;
 mod parameters;
@@ -1463,6 +1464,20 @@ impl OpenCADStudio {
         // through the normal dispatcher. Selection is left untouched.
         // The option picked in DIMCONSTRAINT becomes its next default;
         // the same command run on its own leaves the default alone.
+        // DIM's Offset sets the drawing's DIMDLI; the series goes on.
+        if let Some(value) = cmd
+            .strip_prefix("_DIM_SET_DIMDLI ")
+            .and_then(|value| value.trim().parse::<f64>().ok())
+        {
+            self.tabs[i].scene.document.header.dim_line_increment = value;
+            self.tabs[i].dirty = true;
+            if let Some(command) = self.tabs[i].active_cmd.as_ref() {
+                let (prompt, options) = (command.prompt(), command.options());
+                self.command_line.push_info(&prompt);
+                self.command_line.set_step_options(options);
+            }
+            return Task::none();
+        }
         let from_menu = self.tabs[i]
             .active_cmd
             .as_ref()

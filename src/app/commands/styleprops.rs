@@ -4024,6 +4024,9 @@ impl OpenCADStudio {
                 } else {
                     if self.tabs[i].scene.document.dim_styles.contains(&name_arg) {
                         self.tabs[i].scene.document.header.current_dimstyle_name = name_arg.clone();
+                        crate::scene::creation_style::sync_header_dim_vars(
+                            &mut self.tabs[i].scene.document,
+                        );
                         self.tabs[i].dirty = true;
                         self.command_line.push_output(
                             crate::tf!("Active dim style set to \"{name_arg}\"").as_ref(),

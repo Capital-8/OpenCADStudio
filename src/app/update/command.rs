@@ -2586,6 +2586,9 @@ impl OpenCADStudio {
                 if let Some(h) = found {
                     self.tabs[i].scene.document.header.current_dimstyle_handle = h;
                     self.tabs[i].scene.document.header.current_dimstyle_name = name;
+                    crate::scene::creation_style::sync_header_dim_vars(
+                        &mut self.tabs[i].scene.document,
+                    );
                 }
             }
             StyleKey::MLeaderStyle => {

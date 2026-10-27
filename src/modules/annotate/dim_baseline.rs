@@ -143,6 +143,7 @@ impl DimBaselineCommand {
     pub fn run_from_dim(&mut self, dimdli: f64) {
         self.in_dim = true;
         self.dimdli = dimdli;
+        self.offset_override = Some(dimdli);
     }
 
     /// The spacing Offset typed, applied to the series under way as well.
@@ -573,7 +574,9 @@ impl CadCommand for DimBaselineCommand {
             }
             self.offset_pending = false;
             self.set_offset(value);
-            return Some(CmdResult::NeedPoint);
+            self.dimdli = value;
+            // The drawing's DIMDLI, kept with the drawing.
+            return Some(CmdResult::Dispatch(format!("_DIM_SET_DIMDLI {value}")));
         }
         let word = text.trim().trim_start_matches('_').to_ascii_uppercase();
         if self.in_dim && matches!(word.as_str(), "O" | "OFFSET") {
