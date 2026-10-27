@@ -622,16 +622,9 @@ impl FieldDialogState {
                 vec![],
             ),
             FieldKind::Formula => {
-                let format = codec::fields::FORMULA_FORMATS
-                    .get(self.formula_format)
-                    .map_or("", |f| f.1);
-                let precision = match self.formula_precision {
-                    0 => String::new(),
-                    n => format!("%pr{}", n - 1),
-                };
                 let (formula, objects) = indexed_object_ids(self.formula.trim());
                 let body = format!("\\AcExpr ({formula})");
-                match format!("{format}{precision}") {
+                match self.number_picture() {
                     f if f.is_empty() => (body, objects),
                     f => (format!("{body} \\f \"{f}\""), objects),
                 }
@@ -719,13 +712,29 @@ impl FieldDialogState {
                 None => ("\\AcObjProp".into(), vec![]),
             },
             FieldKind::Object => match (&self.object, self.object_prop) {
-                (Some((handle, _)), Some(prop)) => (
-                    format!("\\AcObjProp Object(%<\\_ObjIdx 0>%).{prop}"),
-                    vec![*handle],
-                ),
+                (Some((handle, _)), Some(prop)) => {
+                    let body = format!("\\AcObjProp Object(%<\\_ObjIdx 0>%).{prop}");
+                    match self.number_picture() {
+                        f if f.is_empty() => (body, vec![*handle]),
+                        f => (format!("{body} \\f \"{f}\""), vec![*handle]),
+                    }
+                }
                 _ => ("\\AcObjProp".into(), vec![]),
             },
         }
+    }
+
+    /// The number format and precision picked for a formula or an object
+    /// property (`%lu2%pr3`), empty for the drawing's own units.
+    fn number_picture(&self) -> String {
+        let format = codec::fields::FORMULA_FORMATS
+            .get(self.formula_format)
+            .map_or("", |f| f.1);
+        let precision = match self.formula_precision {
+            0 => String::new(),
+            n => format!("%pr{}", n - 1),
+        };
+        format!("{format}{precision}")
     }
 
     /// The field can be inserted (an object field needs its object and
@@ -1057,50 +1066,7 @@ fn format_panel<'a>(state: &'a FieldDialogState) -> Element<'a, Message> {
         ]
         .spacing(8)
         .into(),
-        FieldKind::Formula => {
-            let formats: Vec<Pick> = codec::fields::FORMULA_FORMATS
-                .iter()
-                .enumerate()
-                .map(|(i, (n, _))| Pick(i, t!(*n).into_owned()))
-                .collect();
-            let precisions: Vec<Pick> = FORMULA_PRECISIONS
-                .iter()
-                .enumerate()
-                .map(|(i, n)| Pick(i, t!(*n).into_owned()))
-                .collect();
-            column![
-                row![
-                    text(t!("Format")).size(12).width(Length::Fixed(80.0)),
-                    pick_list(
-                        Some(formats[state.formula_format].clone()),
-                        formats.clone(),
-                        |p: &Pick| p.1.clone()
-                    )
-                    .on_select(|p| msg(FieldDialogMsg::FormulaFormat(p.0)))
-                    .text_size(12)
-                    .padding([5, 8])
-                    .width(Fill),
-                ]
-                .spacing(8)
-                .align_y(iced::Center),
-                row![
-                    text(t!("Precision")).size(12).width(Length::Fixed(80.0)),
-                    pick_list(
-                        Some(precisions[state.formula_precision].clone()),
-                        precisions.clone(),
-                        |p: &Pick| p.1.clone(),
-                    )
-                    .on_select(|p| msg(FieldDialogMsg::FormulaPrecision(p.0)))
-                    .text_size(12)
-                    .padding([5, 8])
-                    .width(Fill),
-                ]
-                .spacing(8)
-                .align_y(iced::Center),
-            ]
-            .spacing(8)
-            .into()
-        }
+        FieldKind::Formula => number_format_rows(state),
         FieldKind::Hyperlink => column![
             row![
                 text(t!("Text to display"))
@@ -1402,10 +1368,57 @@ fn format_panel<'a>(state: &'a FieldDialogState) -> Element<'a, Message> {
                     .collect(),
                 180.0,
             ),
+            number_format_rows(state),
         ]
         .spacing(8)
         .into(),
     }
+}
+
+/// Format and Precision of a number, for a formula or an object property.
+fn number_format_rows(state: &FieldDialogState) -> Element<'_, Message> {
+    let formats: Vec<Pick> = codec::fields::FORMULA_FORMATS
+        .iter()
+        .enumerate()
+        .map(|(i, (n, _))| Pick(i, t!(*n).into_owned()))
+        .collect();
+    let precisions: Vec<Pick> = FORMULA_PRECISIONS
+        .iter()
+        .enumerate()
+        .map(|(i, n)| Pick(i, t!(*n).into_owned()))
+        .collect();
+    column![
+        row![
+            text(t!("Format")).size(12).width(Length::Fixed(80.0)),
+            pick_list(
+                Some(formats[state.formula_format].clone()),
+                formats.clone(),
+                |p: &Pick| p.1.clone()
+            )
+            .on_select(|p| msg(FieldDialogMsg::FormulaFormat(p.0)))
+            .text_size(12)
+            .padding([5, 8])
+            .width(Fill),
+        ]
+        .spacing(8)
+        .align_y(iced::Center),
+        row![
+            text(t!("Precision")).size(12).width(Length::Fixed(80.0)),
+            pick_list(
+                Some(precisions[state.formula_precision].clone()),
+                precisions.clone(),
+                |p: &Pick| p.1.clone(),
+            )
+            .on_select(|p| msg(FieldDialogMsg::FormulaPrecision(p.0)))
+            .text_size(12)
+            .padding([5, 8])
+            .width(Fill),
+        ]
+        .spacing(8)
+        .align_y(iced::Center),
+    ]
+    .spacing(8)
+    .into()
 }
 
 pub fn view<'a>(
