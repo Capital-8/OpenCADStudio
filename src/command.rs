@@ -1227,11 +1227,15 @@ impl CadCommand for FromPointCommand {
         let mut guide = WireModel::solid_f64(
             "from_guide".to_string(),
             vec![base.to_array(), pt.to_array()],
-            WireModel::CYAN,
+            [0.2, 0.9, 0.5, 1.0],
             false,
         );
-        guide.pattern_length = 0.8;
-        guide.pattern = [0.5, -0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let [dash, gap] = crate::ui::overlay::TRACKING_DASH_PX;
+        guide.pattern_length = dash + gap;
+        guide.pattern = [dash, -gap, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        // The renderer converts the tracking cadence to world units per viewport.
+        guide.dash_from_start = true;
+        guide.set_fixed_screen_width(1.5);
         vec![guide]
     }
 }

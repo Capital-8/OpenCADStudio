@@ -1613,6 +1613,25 @@ fn render_signature(
     h.finish()
 }
 
+/// FROM uses the overlay tracking cadence in pixels, independent of zoom and
+/// annotation / paper-space linetype scaling. GPU wire patterns are world units.
+fn scale_from_guide_dashes(wires: &mut [WireModel], world_per_pixel: f32, linetype_scale: f32) {
+    let raw_scale = world_per_pixel / linetype_scale;
+    let scale = raw_scale.max(1e-6);
+    for wire in wires.iter_mut().filter(|wire| wire.name == "from_guide") {
+        if scale > raw_scale {
+            // Keep GPU dash activation above its epsilon, with equivalent stations.
+            let length = wire.point_world(0, 1.0).distance(wire.point_world(1, 1.0));
+            let station = (length * (scale / raw_scale) as f64) as f32;
+            wire.pattern_stations = vec![0.0, station, station];
+        }
+        wire.pattern_length *= scale;
+        for element in &mut wire.pattern {
+            *element *= scale;
+        }
+    }
+}
+
 /// The overlay Vec is rebuilt by build_primitive even on unrelated UI events.
 /// Hash rendered content, never its allocation address. Include low residuals
 /// (UTM-scale motion), style and analytical curves as well as high coordinates.
@@ -1775,6 +1794,27 @@ fn physical_viewport(rect: Rectangle, window: Size<u32>) -> PhysicalViewport {
 mod preview_signature_tests {
     use super::*;
     use std::hash::Hasher;
+
+    #[test]
+    fn from_guide_uses_tracking_pixel_dashes_at_each_viewport_scale() {
+        use crate::command::CadCommand;
+        let mut command = crate::command::FromPointCommand::new(None);
+        command.on_point(glam::DVec3::ZERO);
+        for world_per_pixel in [1e-8_f32, 0.001, 1.0, 10000.0] {
+            for linetype_scale in [0.25_f32, 1.0, 16.0] {
+                let mut wires = command.on_preview_wires(glam::DVec3::new(100.0, 0.0, 0.0));
+                scale_from_guide_dashes(&mut wires, world_per_pixel, linetype_scale);
+                let guide = &wires[0];
+                let station_scale = guide.pattern_stations.get(1).copied().unwrap_or(100.0) / 100.0;
+                let pixels = |world: f32| world * linetype_scale / world_per_pixel / station_scale;
+                assert!((pixels(guide.pattern_length) - 10.0).abs() < 1e-4);
+                assert!((pixels(guide.pattern[0]) - 6.0).abs() < 1e-4);
+                assert!((pixels(guide.pattern[1]) + 4.0).abs() < 1e-4);
+                assert!(guide.pattern[1].abs() * linetype_scale >= world_per_pixel);
+                assert!(guide.dash_from_start);
+            }
+        }
+    }
 
     fn signature(wires: &[WireModel]) -> u64 {
         let mut h = rustc_hash::FxHasher::default();
@@ -4845,7 +4885,7 @@ impl Scene {
         } else {
             Vec::new()
         };
-        let preview_wires = if !show_live_overlay
+        let mut preview_wires = if !show_live_overlay
             || (self.interim_wire.is_none()
                 && self.preview_wires.is_empty()
                 && self.constraint_hover_wires.is_empty()
@@ -4929,6 +4969,13 @@ impl Scene {
                     uniforms.linetype_scale = (1.0 / viewport_scale) as f32;
                 }
             }
+        }
+        if preview_wires.iter().any(|wire| wire.name == "from_guide") {
+            scale_from_guide_dashes(
+                Arc::make_mut(&mut preview_wires).as_mut_slice(),
+                uniforms.world_per_pixel,
+                uniforms.linetype_scale,
+            );
         }
         // Crop the rotation-only RTE view-projection to the visible sub-rect.
         uniforms.view_rot = crop_view_proj(uniforms.view_rot, uo, vo, us, vs);
