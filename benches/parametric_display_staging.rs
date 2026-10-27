@@ -21,7 +21,7 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use ocs_plugin_api::host::{
-    HorizontalSegmentSpecies, MAX_PLUGIN_LIVE_ENTITIES, ParametricChain, ParametricPlane,
+    HorizontalSegmentSpecies, ParametricChain, ParametricPlane,
     ParametricSegment, ParametricSpecies,
 };
 use OpenCADStudio::parametric::{

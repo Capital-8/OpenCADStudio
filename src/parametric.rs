@@ -408,7 +408,9 @@ fn plan_local_theta(species: &HorizontalSegmentSpecies, vitals: &Vitals, s: f64)
 }
 
 /// 16-node Gauss-Legendre nodes (on [-1, 1]) and weights, hard-coded
-/// constants so evaluation is bit-deterministic.
+/// constants so evaluation is bit-deterministic. The nodes are quoted
+/// verbatim from the reference table (digit-for-digit), hence the allow.
+#[allow(clippy::excessive_precision)]
 const GL16_Z: [f64; 16] = [
     -0.98940093499164995,
     -0.94457502307323258,
@@ -615,16 +617,17 @@ fn evaluate_segment_at(
 /// direction (the record model's continuity tolerances). Refuses with the
 /// audited pair named, nothing staged. Returns the validated vitals so the
 /// staging pass never re-validates.
-pub(crate) fn audit_chain(chain: &ParametricChain) -> Result<Vec<Vitals>, String> {
+fn audit_chain(chain: &ParametricChain) -> Result<Vec<Vitals>, String> {
     let mut vitals = Vec::with_capacity(chain.segments.len());
     for (index, segment) in chain.segments.iter().enumerate() {
         let v =
             validate_segment(chain.plane, segment).map_err(|e| format!("segment {index}: {e}"))?;
         vitals.push(v);
     }
-    for index in 0..chain.segments.len().saturating_sub(1) {
-        let (segment, next) = (&chain.segments[index], &chain.segments[index + 1]);
-        let end = evaluate_segment_at(chain.plane, segment, &vitals[index], segment.length);
+    for (index, (pair, v)) in chain.segments.windows(2).zip(vitals.iter()).enumerate() {
+        let segment = &pair[0];
+        let next = &pair[1];
+        let end = evaluate_segment_at(chain.plane, segment, v, segment.length);
         if !next.start_point.iter().all(|c| c.is_finite()) {
             return Err(format!(
                 "seam segment {index} to {}: the declared start point is not finite",
@@ -1014,7 +1017,12 @@ fn v_abs(v: f64) -> f64 {
 
 /// The profile CIRCULARARC carrier: the exact planar circle of the
 /// (run, elevation) sheet; radius |R|, angles per the same signed-radius
-/// mapping as the plan arc.
+/// mapping as the plan arc. The drawn angular span is the run law's own:
+/// sin(theta(u)) = sin(theta0) + u/R puts the end tangent at
+/// theta1 = asin(sin(theta0) + L/R), so the entity spans
+/// [theta0 - pi/2, theta1 - pi/2] (positive radii, CCW) and the same point
+/// set recomputed from the closing side (negative radii, CW) — NOT
+/// run/|R|, which differs from the true span for every real gradient pair.
 fn profile_arc(segment: &ParametricSegment, vitals: &Vitals) -> Arc {
     let r = vitals.radius;
     let theta0 = vitals.theta_start;
@@ -1022,20 +1030,20 @@ fn profile_arc(segment: &ParametricSegment, vitals: &Vitals) -> Arc {
         segment.start_point[0] - theta0.sin() * r,
         segment.start_point[1] + theta0.cos() * r,
     ];
+    let sine1 = theta0.sin() + vitals.length / r;
+    // The validated segment keeps |sine1| < 1; the clamp only guards the
+    // asin against a NaN-fence drift.
+    let theta1 = sine1.clamp(-1.0, 1.0).asin();
     let (start_angle, end_angle) = if r > 0.0 {
-        let a0 = theta0 - 0.5 * PI;
-        let sweep = vitals.length / v_abs(r);
-        (a0, a0 + sweep)
+        (theta0 - 0.5 * PI, theta1 - 0.5 * PI)
     } else {
-        let a1 = theta0 + 0.5 * PI;
-        let sweep = vitals.length / v_abs(r);
-        (a1 - sweep, a1)
+        (theta1 + 0.5 * PI, theta0 + 0.5 * PI)
     };
     Arc::from_center_radius_angles(
         Vector3::new(center[0], center[1], 0.0),
         v_abs(r),
-        start_angle,
-        end_angle,
+        normalize_angle(start_angle),
+        normalize_angle(end_angle),
     )
 }
 
@@ -1590,6 +1598,67 @@ mod tests {
     }
 
     #[test]
+    fn profile_arc_entity_draws_the_run_law_angular_span() {
+        // The staged vertical circle's ARC must span exactly the run law's
+        // angular interval: sweep = |theta1 - theta0| where
+        // sin(theta1) = sin(theta0) + L/R — NOT L/|R|, which falls short of
+        // the declared end point for every real gradient pair.
+        for r in [800.0f64, -800.0] {
+            let l = 200.0f64;
+            let g0 = 0.04f64;
+            let s0 = g0.atan().sin();
+            let s1 = s0 + l / r;
+            assert!(s1.abs() < 1.0, "fixture stays in the sloped range");
+            let g1 = s1.asin().tan();
+            let chain = ParametricChain {
+                plane: ParametricPlane::Profile,
+                segments: vec![profile_segment(
+                    ParametricSpecies::Vertical(VerticalSegmentSpecies::CircularArc),
+                    [100.0, 105.0],
+                    l,
+                    g0,
+                    g1,
+                    r,
+                    0.0,
+                )],
+                layer: String::new(),
+            };
+            let (entities, carriers) = build_display_entities(&chain, 1e-3).unwrap();
+            assert!(matches!(carriers[0], StagedCarrier::Exact));
+            let EntityType::Arc(arc) = &entities[0] else {
+                panic!("the vertical circle stages an arc");
+            };
+            let theta0 = g0.atan();
+            let theta1 = s1.asin();
+            assert_eq!(arc.radius, r.abs());
+            let expected_sweep = (theta1 - theta0).abs();
+            assert!(
+                (arc.sweep_angle() - expected_sweep).abs() < 1e-9,
+                "the drawn sweep {} must be the run law's angular span {} on R={r}",
+                arc.sweep_angle(),
+                expected_sweep
+            );
+            // The entity's drawn endpoints are the law's segment endpoints
+            // (start-side for CCW positive radii, swapped for CW negative).
+            let law_start = (100.0f64, 105.0f64);
+            let law_end = (100.0 + l, 105.0 + r * (theta0.cos() - theta1.cos()));
+            let (begin, finish) = if r > 0.0 {
+                (law_start, law_end)
+            } else {
+                (law_end, law_start)
+            };
+            assert!((arc.start_point().x - begin.0).abs() < 1e-9, "begin x R={r}");
+            assert!((arc.start_point().y - begin.1).abs() < 1e-9, "begin y R={r}");
+            assert!((arc.end_point().x - finish.0).abs() < 1e-9, "finish x R={r}");
+            assert!((arc.end_point().y - finish.1).abs() < 1e-9, "finish y R={r}");
+            // And the drawn midpoint rides the same circle.
+            let mid = arc.midpoint();
+            let radial = ((mid.x - arc.center.x).powi(2) + (mid.y - arc.center.y).powi(2)).sqrt();
+            assert!((radial - r.abs()).abs() < 1e-6, "the drawn midpoint leaves the circle");
+        }
+    }
+
+    #[test]
     fn vertical_clothoid_without_curvature_ends_is_refused() {
         let chain = ParametricChain {
             plane: ParametricPlane::Profile,
@@ -1805,7 +1874,7 @@ mod tests {
         // ride the shared drawing model, and the record model's XRecords —
         // the plugins' declared truth — survive the SAME file round trip.
         // Loss reports must stay empty for both formats.
-        use codec::{Dwg, Dxf, Format};
+        use codec::Format;
 
         // 1) Declare + stage.
         let plan = demo_plan_chain();

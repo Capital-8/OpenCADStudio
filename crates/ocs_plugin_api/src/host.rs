@@ -1695,7 +1695,7 @@ pub trait HostApi {
 /// Helix is a 3D constant-pitch space spiral, and a plan clothoid is a 2D
 /// curve with linear curvature — staging one for the other would be
 /// mathematically wrong.
-
+///
 /// The plane a parametric chain lives in. A chain is single-plane; its
 /// segments' species must belong to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
