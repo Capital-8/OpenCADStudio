@@ -1244,6 +1244,30 @@ impl OpenCADStudio {
         Some(self.feed_command(StepInput::SelectionComplete(handles)))
     }
 
+    /// A typed coordinate in world space: relative to the last point when it
+    /// starts with `@`, through the active UCS otherwise.
+    fn typed_wcs(&self, i: usize, token: &str) -> Option<glam::DVec3> {
+        let (coord, kind) = crate::app::helpers::parse_coord(token)?;
+        let ucs = &self.tabs[i].active_ucs;
+        Some(
+            match (
+                matches!(kind, crate::app::helpers::CoordKind::Relative),
+                self.last_point,
+            ) {
+                (true, Some(base)) => {
+                    base + match ucs {
+                        Some(value) => crate::app::helpers::ucs_rotate_vec(coord, value),
+                        None => coord,
+                    }
+                }
+                _ => match ucs {
+                    Some(value) => crate::app::helpers::ucs_to_wcs(coord, value),
+                    None => coord,
+                },
+            },
+        )
+    }
+
     pub(in crate::app) fn feed_active_cmd(&mut self, token: &str) -> Task<Message> {
         let i = self.active_tab;
         let trimmed = token.trim();
@@ -1277,24 +1301,36 @@ impl OpenCADStudio {
                 .active_cmd
                 .as_ref()
                 .is_some_and(|command| command.entity_pick_accepts_points());
+            // A typed coordinate while objects are gathered picks the
+            // object under it, as a click there would.
+            if self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .is_some_and(|command| command.is_selection_gathering())
+            {
+                if let Some(wcs) = self.typed_wcs(i, token) {
+                    let owner = self.tabs[i]
+                        .current_parametric_scope()
+                        .owner_handle(&self.tabs[i].scene.document);
+                    if let Some(handle) =
+                        entity_at_typed_point(&self.tabs[i].scene.document, owner, wcs)
+                    {
+                        self.last_point = Some(wcs);
+                        self.last_pick = Some((vec![handle], false));
+                        self.tabs[i].scene.select_entity(handle, false);
+                        self.refresh_properties();
+                        let handles: Vec<Handle> = self.tabs[i]
+                            .scene
+                            .selected_entities()
+                            .into_iter()
+                            .map(|(h, _)| h)
+                            .collect();
+                        return self.feed_command(StepInput::SelectionComplete(handles));
+                    }
+                }
+            }
             if accepts_points {
-                if let Some((coord, kind)) = crate::app::helpers::parse_coord(token) {
-                    let ucs = self.tabs[i].active_ucs.clone();
-                    let wcs = match (
-                        matches!(kind, crate::app::helpers::CoordKind::Relative),
-                        self.last_point,
-                    ) {
-                        (true, Some(base)) => {
-                            base + match &ucs {
-                                Some(value) => crate::app::helpers::ucs_rotate_vec(coord, value),
-                                None => coord,
-                            }
-                        }
-                        _ => match &ucs {
-                            Some(value) => crate::app::helpers::ucs_to_wcs(coord, value),
-                            None => coord,
-                        },
-                    };
+                if let Some(wcs) = self.typed_wcs(i, token) {
                     if self.command_point_allowed(i, wcs) {
                         self.last_point = Some(wcs);
                         self.push_ucs_to_cmd(i);

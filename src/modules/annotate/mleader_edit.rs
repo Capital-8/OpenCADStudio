@@ -846,6 +846,35 @@ fn point_segment_distance_xy(point: Vector3, start: Vector3, end: Vector3) -> f6
     .distance
 }
 
+/// How far `point` is from a multileader's leader lines and landings, the
+/// parts a pick box catches.
+pub(crate) fn mleader_pick_distance(ml: &MultiLeader, point: Vector3) -> f64 {
+    let mut distance = f64::INFINITY;
+    for root in &ml.context.leader_roots {
+        let d = &root.direction;
+        let len = (d.x * d.x + d.y * d.y).sqrt();
+        if len > 1.0e-12 && ml.enable_landing && ml.enable_dogleg {
+            let reach = root.landing_distance.max(0.0) / len;
+            let end = Vector3::new(
+                root.connection_point.x + d.x * reach,
+                root.connection_point.y + d.y * reach,
+                root.connection_point.z,
+            );
+            distance = distance.min(point_segment_distance_xy(point, root.connection_point, end));
+        }
+        for line in &root.lines {
+            for segment in line.points.windows(2) {
+                distance = distance.min(point_segment_distance_xy(point, segment[0], segment[1]));
+            }
+            if let Some(last) = line.points.last().copied() {
+                distance =
+                    distance.min(point_segment_distance_xy(point, last, root.connection_point));
+            }
+        }
+    }
+    distance
+}
+
 // Silence unused-import warning for MultiLeader and LeaderLine if not used in all paths
 fn _uses_ml_types(_ml: &MultiLeader, _ll: &LeaderLine) {}
 

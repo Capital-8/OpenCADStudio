@@ -1857,6 +1857,16 @@ fn entity_at_typed_point(
         let distance =
             match crate::scene::viewport_dimension_pick::planar_pick_distance(entity, point) {
                 Some(distance) => distance,
+                // A multileader answers by its leader lines and landings.
+                None if matches!(entity, codec::EntityType::MultiLeader(_)) => match entity {
+                    codec::EntityType::MultiLeader(ml) => {
+                        crate::modules::annotate::mleader_edit::mleader_pick_distance(
+                            ml,
+                            codec::types::Vector3::new(point.x, point.y, point.z),
+                        )
+                    }
+                    _ => continue,
+                },
                 // A text or an ellipse answers by its extent, the way a click
                 // inside it picks it.
                 None if matches!(
