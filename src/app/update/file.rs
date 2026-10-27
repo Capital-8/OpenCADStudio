@@ -7184,7 +7184,11 @@ impl OpenCADStudio {
         };
         // The file's factor is per the layout's paper unit; the picker's are
         // per the drawing's scale-family unit (see `plot_settings_from_dialog`).
-        let target_factor = if stored_factor.is_finite() && stored_factor > 0.0 {
+        // A Layout plot is always 1:1 paper, whatever the family unit: a
+        // metre drawing showed it as 1:1000 (#2219).
+        let target_factor = if d.area == "Layout" {
+            1.0
+        } else if stored_factor.is_finite() && stored_factor > 0.0 {
             stored_factor * plot_paper_unit_mm(ps.paper_units) / family_unit_mm
         } else {
             1.0
