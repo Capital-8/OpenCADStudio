@@ -2905,7 +2905,6 @@ impl OpenCADStudio {
         self.sync_view_state_for_save(i);
         sync_annotation_scale_header(&mut self.tabs[i].scene);
         self.stamp_header_sysvars(i);
-        self.tabs[i].scene.document.header.user_real1 = self.tabs[i].scene.annotation_scale as f64;
         self.sync_solid_models_for_save(i);
         self.tabs[i].scene.sync_native_parametric_graph();
         self.stamp_sheet_set_data(i);
@@ -9539,5 +9538,21 @@ impl OpenCADStudio {
             )
             .as_ref(),
         );
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod save_header_tests {
+    use crate::app::OpenCADStudio;
+
+    /// USERR1 is a user variable: a save stores the annotation scale in
+    /// CANNOSCALE, not in USERR1, and keeps the value the user gave it.
+    #[test]
+    fn save_keeps_userr1() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].scene.document.header.user_real1 = 7.5;
+        app.tabs[0].scene.annotation_scale = 0.02;
+        app.prepare_snapshot_save(0);
+        assert_eq!(app.tabs[0].scene.document.header.user_real1, 7.5);
     }
 }

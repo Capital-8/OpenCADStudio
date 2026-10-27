@@ -642,7 +642,7 @@ pub struct GridParams {
 /// the axis extent (in world units along the active UCS axes) that the wrapper
 /// uses to size the coloured UCS axes overlay. Returned from `grid_segments` so
 /// the renderer-free geometry construction can be unit-tested and benchmarked
-/// without an iced `Renderer` (Mission #1, 2026-08-26 bench-first plan).
+/// without an iced `Renderer`.
 #[doc(hidden)]
 pub struct GridGeometry {
     pub segments: Vec<(Point, Point)>,
@@ -666,16 +666,13 @@ impl GridGeometry {
     }
 }
 
-/// Cache key for the grid overlay. Identical `GridParams` for every pane plus
-/// identical overlay `bounds` ⇒ byte-identical grid geometry; that is the
-/// invariant the key encodes.
+/// Cache key for one pane's grid overlay. Identical `GridParams` plus the
+/// identical pane clip rectangle and `GridStyle` ⇒ byte-identical pane
+/// geometry; that is the invariant the key encodes.
 ///
-/// Bounds are part of the key, not the only key: a tile layout can pan/zoom
-/// inside a single bounds rect, so bounds-only reuse (iced's
-/// `geometry::Cache`) would serve a stale grid. The full per-pane
-/// `GridParams` set is required for correctness.
-///
-/// Added 2026-08-26 by Mission #1 (grid overlay cache, Tier 1 #1).
+/// Bounds are part of the key, not the only key: a pane can pan/zoom inside a
+/// single clip rect, so a bounds-only reuse (iced's `geometry::Cache`) would
+/// serve a stale grid. The full `GridParams` is required for correctness.
 #[doc(hidden)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct GridKey {
@@ -685,7 +682,8 @@ pub struct GridKey {
 }
 
 impl GridKey {
-    /// Build a key from the per-pane `GridParams`, overlay bounds, and grid style.
+    /// Build a key from the pane's `GridParams`, its clip rectangle, and the
+    /// grid style.
     #[doc(hidden)]
     pub fn from_grids(grids: &[GridParams], bounds: iced::Rectangle, style: GridStyle) -> Self {
         Self {
@@ -698,8 +696,7 @@ impl GridKey {
 
 /// Cache hit decision: `true` iff `cached` is `Some` and structurally equal to
 /// `new`. Reference-based to avoid moving the (potentially large) `Vec` of
-/// per-pane params; the caller borrows from `RefCell<Option<GridKey>>` on
-/// both sides.
+/// per-pane params; the caller borrows from the pane entry on both sides.
 #[doc(hidden)]
 pub fn should_reuse(cached: Option<&GridKey>, new: &GridKey) -> bool {
     match cached {
@@ -708,21 +705,108 @@ pub fn should_reuse(cached: Option<&GridKey>, new: &GridKey) -> bool {
     }
 }
 
-/// `Program::State` for `GridCanvas`. Stores the `GridKey` of the geometry
-/// currently in the cache and the `canvas::Cache` itself.
+/// One pane's cached grid geometry plus the key that produced it.
+struct PaneCache {
+    key: GridKey,
+    cache: canvas::Cache<iced::Renderer>,
+}
+
+impl PaneCache {
+    fn new(key: GridKey) -> Self {
+        Self {
+            key,
+            cache: canvas::Cache::default(),
+        }
+    }
+}
+
+/// `Program::State` for `GridCanvas`: one cache entry per pane so a navigation
+/// in one tile only rebuilds that tile's geometry.
 ///
-/// `RefCell<Option<GridKey>>` because `Program::draw` takes `&self`; the key
-/// is updated on every frame regardless of hit/miss. The `canvas::Cache`
-/// provides an Arc-clone hit path when the iced-level bounds match, and we
-/// use `clear()` on a params-key miss to force a real rebuild even if the
-/// bounds happen to be unchanged (e.g. a pan within the same canvas size).
-///
-/// Added 2026-08-26 by Mission #1 (grid overlay cache, Tier 1 #1).
+/// `RefCell<Vec<...>>` because `Program::draw` takes `&self`; the vec is
+/// resized to the current pane count on every frame. Pane identity is the vec
+/// index — a layout change that moves a pane to another slot changes that
+/// slot's key and forces a rebuild rather than replaying stale geometry.
 #[doc(hidden)]
 #[derive(Default)]
 pub struct GridCanvasState {
-    pub key: RefCell<Option<GridKey>>,
-    pub cache: canvas::Cache<iced::Renderer>,
+    panes: RefCell<Vec<Option<PaneCache>>>,
+}
+
+impl GridCanvasState {
+    /// Match the per-pane storage to the current pane count: drop caches for
+    /// panes that no longer exist and leave new panes empty (first draw misses).
+    fn resize_panes(&self, count: usize) {
+        self.panes.borrow_mut().resize_with(count, || None);
+    }
+
+    /// `true` when this pane's stored key still describes the request.
+    #[doc(hidden)]
+    pub fn pane_reuses(&self, index: usize, key: &GridKey) -> bool {
+        self.panes
+            .borrow()
+            .get(index)
+            .and_then(Option::as_ref)
+            .is_some_and(|pane| should_reuse(Some(&pane.key), key))
+    }
+
+    /// Bench/test seam: install `key` for pane `index` without a renderer.
+    /// Decision-only — the pane's cache stays empty, so this exercises
+    /// `pane_reuses` but a later `draw_cached` on such a pane would replay
+    /// empty geometry.
+    #[doc(hidden)]
+    pub fn store_pane_key(&self, index: usize, key: GridKey) {
+        self.resize_panes(index + 1);
+        self.panes.borrow_mut()[index] = Some(PaneCache::new(key));
+    }
+
+    /// Arc-clone the cached pane geometry; the fork short-circuits on a bounds
+    /// match and never invokes the closure.
+    fn draw_cached(
+        &self,
+        index: usize,
+        renderer: &iced::Renderer,
+        clip: iced::Rectangle,
+    ) -> canvas::Geometry {
+        let panes = self.panes.borrow();
+        let pane = panes[index]
+            .as_ref()
+            .expect("pane cache present after pane_reuses");
+        pane.cache.draw_with_bounds(renderer, clip, |_frame| {})
+    }
+
+    /// Rebuild one pane: store its new key, clear its cache (so the closure
+    /// runs even when the clip rect is unchanged) and draw only that pane.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_pane(
+        &self,
+        index: usize,
+        renderer: &iced::Renderer,
+        clip: iced::Rectangle,
+        params: &GridParams,
+        style: GridStyle,
+        key: GridKey,
+    ) -> canvas::Geometry {
+        let mut panes = self.panes.borrow_mut();
+        let pane = panes[index].get_or_insert_with(|| PaneCache::new(key.clone()));
+        pane.key = key;
+        pane.cache.clear();
+        pane.cache.draw_with_bounds(renderer, clip, |frame| {
+            draw_grid(
+                frame,
+                params.view_rot,
+                params.eye,
+                params.bounds,
+                params.step_x,
+                params.step_y,
+                params.major_every,
+                params.origin,
+                params.axes,
+                params.limits,
+                style,
+            )
+        })
+    }
 }
 
 /// Compute the adaptive grid step size (world units) from camera zoom.
@@ -958,61 +1042,37 @@ impl canvas::Program<Message> for GridCanvas {
         bounds: iced::Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        let key = GridKey::from_grids(&self.grid, bounds, self.style);
+        state.resize_panes(self.grid.len());
 
-        // Hit check: same params, same bounds, same style ⇒ the cached geometry is still
-        // valid. The key includes bounds and style, so a `should_reuse` match implies
-        // both are equal, and the fork's `draw_with_bounds` will return the
-        // cached `Arc` clone (essentially free).
-        let hit = should_reuse(state.key.borrow().as_ref(), &key);
+        let mut layers = Vec::with_capacity(self.grid.len());
+        for (index, g) in self.grid.iter().enumerate() {
+            let gb = g.bounds;
+            let cx0 = gb.x.max(0.0);
+            let cy0 = gb.y.max(0.0);
+            let cx1 = (gb.x + gb.width).min(bounds.width);
+            let cy1 = (gb.y + gb.height).min(bounds.height);
+            if cx1 <= cx0 || cy1 <= cy0 {
+                continue;
+            }
+            let clip = iced::Rectangle {
+                x: cx0,
+                y: cy0,
+                width: cx1 - cx0,
+                height: cy1 - cy0,
+            };
 
-        let geometry = if hit {
-            // No-op closure: the fork short-circuits on bounds match and
-            // returns the cached geometry without invoking the closure.
-            state.cache.draw_with_bounds(renderer, bounds, |_frame| {})
-        } else {
-            // Params, style, or bounds changed. Clear so the closure runs even when
-            // bounds happen to match the previously-cached frame.
-            state.cache.clear();
-            state.cache.draw_with_bounds(renderer, bounds, |frame| {
-                for g in &self.grid {
-                    let gb = g.bounds;
-                    let cx0 = gb.x.max(0.0);
-                    let cy0 = gb.y.max(0.0);
-                    let cx1 = (gb.x + gb.width).min(bounds.width);
-                    let cy1 = (gb.y + gb.height).min(bounds.height);
-                    if cx1 <= cx0 || cy1 <= cy0 {
-                        continue;
-                    }
-                    let clip = iced::Rectangle {
-                        x: cx0,
-                        y: cy0,
-                        width: cx1 - cx0,
-                        height: cy1 - cy0,
-                    };
-                    frame.with_clip(clip, |f| {
-                        draw_grid(
-                            f,
-                            g.view_rot,
-                            g.eye,
-                            gb,
-                            g.step_x,
-                            g.step_y,
-                            g.major_every,
-                            g.origin,
-                            g.axes,
-                            g.limits,
-                            self.style,
-                        )
-                    });
-                }
-            })
-        };
-
-        // Update the stored key.
-        *state.key.borrow_mut() = Some(key);
-
-        vec![geometry]
+            // Hit: this pane's params, clip and the style are unchanged, so its
+            // cached geometry is still valid. Other panes are unaffected by a
+            // change here — that is the per-pane win.
+            let key = GridKey::from_grids(std::slice::from_ref(g), clip, self.style);
+            let geometry = if state.pane_reuses(index, &key) {
+                state.draw_cached(index, renderer, clip)
+            } else {
+                state.draw_pane(index, renderer, clip, g, self.style, key)
+            };
+            layers.push(geometry);
+        }
+        layers
     }
 }
 
@@ -3316,8 +3376,7 @@ fn draw_grid(
 /// Captured inputs and derived clip-space constants for one grid projection.
 ///
 /// Pure data: every method below is one phase of the former monolithic
-/// `grid_segments` body, moved verbatim so each can be tested in isolation
-/// (Mission #10).
+/// `grid_segments` body, moved verbatim so each can be tested in isolation.
 struct GridProjection {
     view_rot: Mat4,
     eye: glam::DVec3,
@@ -4073,10 +4132,10 @@ impl GridProjection {
 /// `(Point, Point)` segments plus the axis extent (in world units along the
 /// active UCS axes) used by `draw_grid` to size the coloured UCS axes overlay.
 ///
-/// Extracted from `draw_grid` (2026-08-26, Mission #1 step 1) so the geometry
-/// construction can be unit-tested and benchmarked without an iced
-/// `Renderer`. Behaviour is identical to the inlined version that preceded it.
-/// The phases live on `GridProjection` (Mission #10); this orchestrator only
+/// Extracted from `draw_grid` so the geometry construction can be unit-tested
+/// and benchmarked without an iced `Renderer`. Behaviour is identical to the
+/// inlined version that preceded it.
+/// The phases live on `GridProjection`; this orchestrator only
 /// validates the inputs, samples the plane and picks the LIMITS or infinite
 /// branch.
 #[doc(hidden)]
@@ -6058,61 +6117,113 @@ mod grid_segments_tests {
 mod grid_canvas_state_tests {
     use super::*;
 
-    /// A freshly-defaulted `GridCanvasState` must have no cached key — the
-    /// first draw of a session always misses. This pins the `Default` impl
-    /// to a usable empty state (no need for the wrapper to special-case it).
-    #[test]
-    fn default_state_has_no_cached_key() {
-        let state = GridCanvasState::default();
-        assert!(state.key.borrow().is_none());
+    fn params(step_x: f32) -> GridParams {
+        GridParams {
+            view_rot: Mat4::IDENTITY,
+            eye: glam::DVec3::ZERO,
+            bounds: iced::Rectangle {
+                x: 0.0,
+                y: 0.0,
+                width: 640.0,
+                height: 360.0,
+            },
+            step_x,
+            step_y: 10.0,
+            major_every: 5,
+            origin: glam::DVec3::ZERO,
+            axes: (Vec3::X, Vec3::Y, Vec3::Z),
+            limits: None,
+        }
     }
 
-    /// After manually storing a key in the state (the same way `draw` will
-    /// on a miss), `should_reuse` must return `true` for the stored key and
-    /// `false` for a key built from different inputs. This exercises the
-    /// state → decision wiring end-to-end without a real iced `Renderer`.
+    fn clip(x: f32) -> iced::Rectangle {
+        iced::Rectangle {
+            x,
+            y: 0.0,
+            width: 320.0,
+            height: 360.0,
+        }
+    }
+
+    fn pane_key(params: &GridParams, clip: iced::Rectangle) -> GridKey {
+        GridKey::from_grids(std::slice::from_ref(params), clip, GridStyle::default())
+    }
+
+    fn store(state: &GridCanvasState, index: usize, key: GridKey) {
+        state.resize_panes(index + 1);
+        state.panes.borrow_mut()[index] = Some(PaneCache::new(key));
+    }
+
+    /// A fresh state has no per-pane entries, so the first draw of a session
+    /// misses on every pane instead of replaying geometry it never built.
     #[test]
-    fn stored_key_is_recognized_by_should_reuse() {
-        let view_rot = Mat4::from_rotation_x(0.15) * Mat4::from_rotation_y(0.05);
-        let eye = glam::DVec3::new(4.0, 3.5, 9.0);
-        let bounds = iced::Rectangle {
-            x: 0.0,
-            y: 0.0,
-            width: 1280.0,
-            height: 720.0,
-        };
-        let grid_origin = glam::DVec3::new(0.0, 0.0, 0.0);
-        let grid_axes = (Vec3::X, Vec3::Y, Vec3::Z);
-        let limits: Option<(glam::DVec2, glam::DVec2)> = None;
-
-        let params = GridParams {
-            view_rot,
-            eye,
-            bounds,
-            step_x: 80.0,
-            step_y: 80.0,
-            major_every: 5,
-            origin: grid_origin,
-            axes: grid_axes,
-            limits,
-        };
-        let key = GridKey::from_grids(&[params], bounds, GridStyle::default());
-
+    fn default_state_has_no_pane_caches() {
         let state = GridCanvasState::default();
-        *state.key.borrow_mut() = Some(key.clone());
+        assert!(state.panes.borrow().is_empty());
+    }
 
-        // Same key in the cache and in the request ⇒ reuse.
-        assert!(should_reuse(state.key.borrow().as_ref(), &key));
+    /// Resizing follows the pane count: growing appends empty slots, shrinking
+    /// drops the tail, and surviving entries stay cached under their index.
+    #[test]
+    fn resizing_tracks_the_pane_count_and_keeps_existing_entries() {
+        let state = GridCanvasState::default();
+        let first = pane_key(&params(10.0), clip(0.0));
+        store(&state, 0, first.clone());
+        state.resize_panes(3);
+        assert_eq!(state.panes.borrow().len(), 3);
+        assert!(state.panes.borrow()[0].is_some());
+        assert!(state.panes.borrow()[1].is_none());
+        state.resize_panes(1);
+        assert_eq!(state.panes.borrow().len(), 1);
+        assert!(state.pane_reuses(0, &first));
+    }
 
-        // Different bounds on the same params ⇒ different key, do not reuse.
-        let other_bounds = iced::Rectangle {
-            x: 0.0,
-            y: 0.0,
-            width: 640.0,
-            height: 480.0,
-        };
-        let other_key = GridKey::from_grids(&[params], other_bounds, GridStyle::default());
-        assert!(!should_reuse(state.key.borrow().as_ref(), &other_key));
+    /// The point of the per-pane cache: a change in one tile must not
+    /// invalidate the other tile's cached geometry.
+    #[test]
+    fn a_changed_pane_misses_while_the_other_pane_hits() {
+        let state = GridCanvasState::default();
+        let other = pane_key(&params(20.0), clip(320.0));
+        store(&state, 0, pane_key(&params(10.0), clip(0.0)));
+        store(&state, 1, other.clone());
+        let changed = pane_key(&params(11.0), clip(0.0));
+        assert!(!state.pane_reuses(0, &changed), "pane 0 changed");
+        assert!(state.pane_reuses(1, &other), "pane 1 unchanged");
+    }
+
+    /// Style is part of every pane's key: a colour/opacity change repaints all.
+    #[test]
+    fn a_style_change_misses_the_pane() {
+        let state = GridCanvasState::default();
+        let p = params(10.0);
+        store(&state, 0, pane_key(&p, clip(0.0)));
+        let mut style = GridStyle::default();
+        style.opacity = 50;
+        let styled = GridKey::from_grids(std::slice::from_ref(&p), clip(0.0), style);
+        assert!(!state.pane_reuses(0, &styled));
+    }
+
+    /// The clip rect is part of the key, so a resize or tile-layout change
+    /// cannot replay geometry that was clipped for a different rectangle.
+    #[test]
+    fn a_clip_change_misses_the_pane() {
+        let state = GridCanvasState::default();
+        let p = params(10.0);
+        store(&state, 0, pane_key(&p, clip(0.0)));
+        assert!(!state.pane_reuses(0, &pane_key(&p, clip(320.0))));
+    }
+
+    /// Pane identity is the vec index; after a layout change moves a pane to a
+    /// different index, that slot must miss rather than replay stale geometry.
+    #[test]
+    fn reordered_panes_miss_instead_of_replaying_stale_geometry() {
+        let state = GridCanvasState::default();
+        let a = params(10.0);
+        let b = params(20.0);
+        store(&state, 0, pane_key(&a, clip(0.0)));
+        store(&state, 1, pane_key(&b, clip(320.0)));
+        assert!(!state.pane_reuses(0, &pane_key(&b, clip(0.0))));
+        assert!(!state.pane_reuses(1, &pane_key(&a, clip(320.0))));
     }
 }
 

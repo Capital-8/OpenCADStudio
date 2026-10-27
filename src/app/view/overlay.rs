@@ -867,6 +867,9 @@ fn mtext_editor_content<'a>(
         // directions so a taller-than-view text scrolls vertically and a
         // wider-than-view multi-column text scrolls horizontally.
         use iced::widget::scrollable::{Direction, Scrollbar};
+        // Typing into the preview goes through the platform input method, so
+        // Chinese, Japanese and Korean text can be entered (#2231).
+        let cv = crate::ui::ime_zone::ime_zone(cv, Message::CommandAppendChar);
         container(
             iced::widget::scrollable(cv)
                 .direction(Direction::Both {

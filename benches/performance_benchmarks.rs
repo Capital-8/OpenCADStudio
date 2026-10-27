@@ -59,7 +59,7 @@ use OpenCADStudio::scene::{ChangeKind, Scene};
 use OpenCADStudio::snap::Snapper;
 use OpenCADStudio::ui::icons::{self, CHECK};
 use OpenCADStudio::ui::overlay::{
-    grid_segments, selection_overlay, should_reuse, CrosshairOptions, GridCanvasState, GridKey,
+    grid_segments, selection_overlay, CrosshairOptions, GridCanvasState, GridKey,
     GridParams, GridStyle, GripMarker, NavCursor, OstTrackPoint, SelectionVisualOptions,
     UcsIconParams,
 };
@@ -1009,21 +1009,43 @@ fn bench_ui_grid_geometry(runner: &mut BenchmarkRunner) {
             limits: limits2,
         };
         let grids = vec![params1, params2];
-        let canvas_bounds = Rectangle {
-            x: 0.0,
-            y: 0.0,
-            width: 1920.0,
-            height: 720.0,
+        // Pane clip rects, as `GridCanvas::draw` derives them from each pane's
+        // bounds intersected with the canvas bounds.
+        let clips = [
+            Rectangle {
+                x: 0.0,
+                y: 0.0,
+                width: 1280.0,
+                height: 720.0,
+            },
+            Rectangle {
+                x: 1280.0,
+                y: 0.0,
+                width: 640.0,
+                height: 720.0,
+            },
+        ];
+        let key_for = |pane: usize| {
+            GridKey::from_grids(std::slice::from_ref(&grids[pane]), clips[pane], GridStyle::default())
         };
 
         let state = GridCanvasState::default();
-        let stored_key = GridKey::from_grids(&grids, canvas_bounds, GridStyle::default());
-        *state.key.borrow_mut() = Some(stored_key);
+        for pane in 0..clips.len() {
+            state.store_pane_key(pane, key_for(pane));
+        }
 
+        // The per-frame write path: one key per pane, then one hit decision
+        // per pane. An unchanged pane hits while a changed one misses.
+        let mut changed = grids[0];
+        changed.step_x *= 1.5;
         for _ in 0..50 {
-            let key = GridKey::from_grids(&grids, canvas_bounds, GridStyle::default());
-            let hit = should_reuse(state.key.borrow().as_ref(), &key);
-            black_box(hit);
+            let changed_key = GridKey::from_grids(
+                std::slice::from_ref(&changed),
+                clips[0],
+                GridStyle::default(),
+            );
+            black_box(state.pane_reuses(0, &changed_key));
+            black_box(state.pane_reuses(1, &key_for(1)));
         }
 
         let n = if runner.quick_mode { 1_000 } else { 10_000 };
@@ -1034,16 +1056,25 @@ fn bench_ui_grid_geometry(runner: &mut BenchmarkRunner) {
             let t0 = Instant::now();
             let mut hit_count = 0u32;
             for _ in 0..n {
-                let key = GridKey::from_grids(
-                    black_box(&grids),
-                    black_box(canvas_bounds),
+                let key0 = GridKey::from_grids(
+                    std::slice::from_ref(black_box(&changed)),
+                    black_box(clips[0]),
                     GridStyle::default(),
                 );
-                if should_reuse(state.key.borrow().as_ref(), &key) {
+                let key1 = GridKey::from_grids(
+                    std::slice::from_ref(black_box(&grids[1])),
+                    black_box(clips[1]),
+                    GridStyle::default(),
+                );
+                if state.pane_reuses(0, &key0) {
+                    hit_count += 1;
+                }
+                if state.pane_reuses(1, &key1) {
                     hit_count += 1;
                 }
             }
-            assert_eq!(hit_count as usize, n);
+            // Exactly the unchanged pane hits on every iteration.
+            assert_eq!(hit_count, n);
             let per_ns = (t0.elapsed().as_nanos() as f64) / (n as f64);
             samples.push(per_ns);
         }
@@ -1051,7 +1082,7 @@ fn bench_ui_grid_geometry(runner: &mut BenchmarkRunner) {
         let median_ns = samples[samples.len() / 2];
         runner.record(
             "ui_grid_cache_hit_evaluation",
-            "Grid overlay cache key construction + reuse hit decision",
+            "Per-pane grid overlay key construction + reuse decision (2 panes, 1 changed)",
             "ns",
             samples,
             Some((1_000_000_000.0 / median_ns, "evals/s")),

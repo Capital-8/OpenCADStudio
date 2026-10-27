@@ -605,6 +605,37 @@ enum DependencyKind {
     DimStyle,
 }
 
+/// The render roots an entity contributes to a dependency target. Kept as a
+/// borrow rather than a collected set so the common direct-render case adds
+/// its single handle without allocating.
+#[derive(Clone, Copy)]
+enum RenderHandles<'a> {
+    SelfOnly(Handle),
+    /// The entity lives inside a block definition; it renders through the
+    /// outer references that draw that block. `None` when the definition has
+    /// no root users yet.
+    Block(Option<&'a HashSet<Handle>>),
+}
+
+impl RenderHandles<'_> {
+    fn extend_into(&self, target: &mut DependencyTargets, source: Handle) {
+        match self {
+            RenderHandles::SelfOnly(handle) => {
+                target.render_handles.insert(*handle);
+                target.source_handles.insert(source);
+            }
+            RenderHandles::Block(roots) => {
+                target.source_handles.insert(source);
+                target.touches_block_definition = true;
+                if let Some(roots) = roots {
+                    target.render_handles.extend(roots.iter().copied());
+                    target.block_users.extend(roots.iter().copied());
+                }
+            }
+        }
+    }
+}
+
 #[derive(Default)]
 struct SceneDependencyIndex {
     layers: HashMap<String, DependencyTargets>,
@@ -13464,11 +13495,29 @@ vis_index={:.1} visible_probe={:.1}",
     }
 
     fn entity_dependency_signature(&self, entity: &EntityType) -> u64 {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.entity_dependency_signature_with(
+            entity,
+            &render_graph::entity_block_uses(&self.document, entity, 1.0),
+            &normalize_name(&entity.common().layer),
+        )
+    }
+
+    /// `block_uses` must be exactly what `entity_block_uses` returns for this
+    /// entity, and `normalized_layer` the uppercased common layer. The rebuild
+    /// passes what its roots loop already collected instead of recomputing
+    /// them for every entity a second time. The hash feeds only in-memory
+    /// cache-invalidation comparisons, so the hasher choice is free.
+    fn entity_dependency_signature_with(
+        &self,
+        entity: &EntityType,
+        block_uses: &[render_graph::BlockUse],
+        normalized_layer: &str,
+    ) -> u64 {
+        let mut hasher = rustc_hash::FxHasher::default();
         let common = entity.common();
         common.handle.hash(&mut hasher);
         common.owner_handle.hash(&mut hasher);
-        normalize_name(&common.layer).hash(&mut hasher);
+        normalized_layer.hash(&mut hasher);
 
         let category = match entity {
             EntityType::Point(_) => 1_u8,
@@ -13489,7 +13538,7 @@ vis_index={:.1} visible_probe={:.1}",
         category.hash(&mut hasher);
         crate::scene::annotative::is_annotative(&self.document, entity).hash(&mut hasher);
 
-        for block_use in render_graph::entity_block_uses(&self.document, entity, 1.0) {
+        for block_use in block_uses {
             block_use.block.hash(&mut hasher);
             normalize_name(&block_use.insert.block_name).hash(&mut hasher);
             block_use.role.hash(&mut hasher);
@@ -13567,6 +13616,18 @@ vis_index={:.1} visible_probe={:.1}",
         }
     }
 
+    /// doc(hidden) public only so `benches/dependency_index_rebuild.rs` can
+    /// time the real production rebuild that follows an edit-dropped cache.
+    #[doc(hidden)]
+    pub fn dependency_index_rebuild_for_bench(&self) -> (usize, usize, usize) {
+        let index = self.rebuild_dependency_index();
+        (
+            index.layers.len(),
+            index.text_styles.len(),
+            index.block_roots.values().map(|roots| roots.len()).sum(),
+        )
+    }
+
     fn rebuild_dependency_index(&self) -> SceneDependencyIndex {
         let mut layout_blocks: HashSet<Handle> = self
             .document
@@ -13614,6 +13675,7 @@ vis_index={:.1} visible_probe={:.1}",
 
         let mut roots: HashMap<String, HashSet<Handle>> = HashMap::default();
         let mut parents: HashMap<String, HashSet<String>> = HashMap::default();
+        let mut block_uses_of: HashMap<Handle, Vec<render_graph::BlockUse>> = HashMap::default();
         for entity in self.document.entities() {
             let common = entity.common();
             let owner = if common.owner_handle.is_null() {
@@ -13624,7 +13686,8 @@ vis_index={:.1} visible_probe={:.1}",
             } else {
                 common.owner_handle
             };
-            for block_use in render_graph::entity_block_uses(&self.document, entity, 1.0) {
+            let block_uses = render_graph::entity_block_uses(&self.document, entity, 1.0);
+            for block_use in &block_uses {
                 let target = normalize_name(&block_use.insert.block_name);
                 if target.is_empty() {
                     continue;
@@ -13634,6 +13697,9 @@ vis_index={:.1} visible_probe={:.1}",
                 } else if let Some(parent) = block_names.get(&owner) {
                     parents.entry(target).or_default().insert(parent.clone());
                 }
+            }
+            if !block_uses.is_empty() {
+                block_uses_of.insert(common.handle, block_uses);
             }
         }
         // Propagate root users through nested block references.
@@ -13654,11 +13720,10 @@ vis_index={:.1} visible_probe={:.1}",
         }
 
         let mut index = SceneDependencyIndex::default();
+        index.signatures.reserve(self.document.entity_count());
+        let mut normalized_layers: HashMap<&str, String> = HashMap::default();
         for entity in self.document.entities() {
             let common = entity.common();
-            index
-                .signatures
-                .insert(common.handle, self.entity_dependency_signature(entity));
             let owner = if common.owner_handle.is_null() {
                 membership
                     .get(&common.handle)
@@ -13668,25 +13733,26 @@ vis_index={:.1} visible_probe={:.1}",
                 common.owner_handle
             };
             let inside_block = !owner.is_null() && !layout_blocks.contains(&owner);
-            let render_handles: HashSet<Handle> = if inside_block {
-                block_names
-                    .get(&owner)
-                    .and_then(|name| roots.get(name))
-                    .cloned()
-                    .unwrap_or_default()
+            let render_handles = if inside_block {
+                RenderHandles::Block(block_names.get(&owner).and_then(|name| roots.get(name)))
             } else {
-                std::iter::once(common.handle).collect()
+                RenderHandles::SelfOnly(common.handle)
             };
-            let extend_category = |target: &mut DependencyTargets| {
-                target.render_handles.extend(render_handles.iter().copied());
-                target.source_handles.insert(common.handle);
-                target.touches_block_definition |= inside_block;
-                if inside_block {
-                    target.block_users.extend(render_handles.iter().copied());
-                }
-            };
+            let block_uses = block_uses_of
+                .get(&common.handle)
+                .map(|uses| uses.as_slice())
+                .unwrap_or(&[]);
+            // Layers repeat across the document; memoize the uppercased key
+            // instead of allocating it once per entity.
+            let normalized_layer = normalized_layers
+                .entry(common.layer.as_str())
+                .or_insert_with(|| normalize_name(&common.layer));
+            index.signatures.insert(
+                common.handle,
+                self.entity_dependency_signature_with(entity, block_uses, normalized_layer),
+            );
             if matches!(entity, EntityType::Point(_)) {
-                extend_category(&mut index.points);
+                render_handles.extend_into(&mut index.points, common.handle);
             }
             if matches!(
                 entity,
@@ -13702,21 +13768,22 @@ vis_index={:.1} visible_probe={:.1}",
                     | EntityType::Shape(_)
             ) || matches!(entity, EntityType::Insert(insert) if !insert.attributes.is_empty())
             {
-                extend_category(&mut index.text_geometry);
+                render_handles.extend_into(&mut index.text_geometry, common.handle);
             }
             if matches!(entity, EntityType::Hatch(_))
                 || crate::scene::annotative::is_annotative(&self.document, entity)
             {
-                extend_category(&mut index.annotation_geometry);
+                render_handles.extend_into(&mut index.annotation_geometry, common.handle);
             }
+            // The raw-name probe avoids a normalized-name allocation per
+            // entity; a miss still inserts under the normalized key, so
+            // case-variant names keep resolving to the same entry.
             let add = |map: &mut HashMap<String, DependencyTargets>, name: &str| {
-                let target = map.entry(normalize_name(name)).or_default();
-                target.render_handles.extend(render_handles.iter().copied());
-                target.source_handles.insert(common.handle);
-                target.touches_block_definition |= inside_block;
-                if inside_block {
-                    target.block_users.extend(render_handles.iter().copied());
-                }
+                let target = match map.get_mut(name) {
+                    Some(target) => target,
+                    None => map.entry(normalize_name(name)).or_default(),
+                };
+                render_handles.extend_into(target, common.handle);
             };
             let add_handle = |map: &mut HashMap<Handle, DependencyTargets>,
                               handle: Option<Handle>| {
@@ -13724,12 +13791,7 @@ vis_index={:.1} visible_probe={:.1}",
                     return;
                 };
                 let target = map.entry(handle).or_default();
-                target.render_handles.extend(render_handles.iter().copied());
-                target.source_handles.insert(common.handle);
-                target.touches_block_definition |= inside_block;
-                if inside_block {
-                    target.block_users.extend(render_handles.iter().copied());
-                }
+                render_handles.extend_into(target, common.handle);
             };
             add(&mut index.layers, &common.layer);
             match entity {
