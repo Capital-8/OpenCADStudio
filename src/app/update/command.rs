@@ -995,6 +995,9 @@ impl OpenCADStudio {
                 }
             }
 
+            if let Some(task) = self.typed_object_pick(&text) {
+                return task;
+            }
             if let Some((coord, kind)) = parse_coord(&text) {
                 // Command-line coordinates are absolute by default,
                 // independent of DYN: `@` forces relative, `#` forces

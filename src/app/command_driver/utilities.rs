@@ -1268,6 +1268,50 @@ impl OpenCADStudio {
         )
     }
 
+    /// A typed coordinate at an object prompt picks the object under it, as
+    /// a click there would: while objects are gathered it adds the object
+    /// found there, and at a single-object prompt that takes no points it
+    /// is the pick itself. `None` when the token is no coordinate or the
+    /// prompt reads it some other way. Shared by the command line and the
+    /// token feeder so both read a typed point the same.
+    pub(in crate::app) fn typed_object_pick(&mut self, token: &str) -> Option<Task<Message>> {
+        let i = self.active_tab;
+        let (gathering, picks_entity) = self.tabs[i].active_cmd.as_ref().map(|command| {
+            (
+                command.is_selection_gathering(),
+                command.needs_entity_pick() && command.typed_point_picks_entity(),
+            )
+        })?;
+        if !gathering && !picks_entity {
+            return None;
+        }
+        let wcs = self.typed_wcs(i, token)?;
+        let owner = self.tabs[i]
+            .current_parametric_scope()
+            .owner_handle(&self.tabs[i].scene.document);
+        let found = entity_at_typed_point(&self.tabs[i].scene.document, owner, wcs);
+        if gathering {
+            let handle = found?;
+            self.last_point = Some(wcs);
+            self.last_pick = Some((vec![handle], false));
+            self.tabs[i].scene.select_entity(handle, false);
+            self.refresh_properties();
+            let handles: Vec<Handle> = self.tabs[i]
+                .scene
+                .selected_entities()
+                .into_iter()
+                .map(|(h, _)| h)
+                .collect();
+            return Some(self.feed_command(StepInput::SelectionComplete(handles)));
+        }
+        if !self.command_point_allowed(i, wcs) {
+            return Some(Task::none());
+        }
+        self.last_point = Some(wcs);
+        self.push_ucs_to_cmd(i);
+        Some(self.feed_command(StepInput::EntityPick(found.unwrap_or(Handle::NULL), wcs)))
+    }
+
     pub(in crate::app) fn feed_active_cmd(&mut self, token: &str) -> Task<Message> {
         let i = self.active_tab;
         let trimmed = token.trim();
@@ -1297,58 +1341,18 @@ impl OpenCADStudio {
             if let Some(task) = self.try_selection_keyword(token) {
                 return task;
             }
+            if let Some(task) = self.typed_object_pick(token) {
+                return task;
+            }
             let accepts_points = self.tabs[i]
                 .active_cmd
                 .as_ref()
                 .is_some_and(|command| command.entity_pick_accepts_points());
-            // A typed coordinate while objects are gathered picks the
-            // object under it, as a click there would.
-            if self.tabs[i]
-                .active_cmd
-                .as_ref()
-                .is_some_and(|command| command.is_selection_gathering())
-            {
-                if let Some(wcs) = self.typed_wcs(i, token) {
-                    let owner = self.tabs[i]
-                        .current_parametric_scope()
-                        .owner_handle(&self.tabs[i].scene.document);
-                    if let Some(handle) =
-                        entity_at_typed_point(&self.tabs[i].scene.document, owner, wcs)
-                    {
-                        self.last_point = Some(wcs);
-                        self.last_pick = Some((vec![handle], false));
-                        self.tabs[i].scene.select_entity(handle, false);
-                        self.refresh_properties();
-                        let handles: Vec<Handle> = self.tabs[i]
-                            .scene
-                            .selected_entities()
-                            .into_iter()
-                            .map(|(h, _)| h)
-                            .collect();
-                        return self.feed_command(StepInput::SelectionComplete(handles));
-                    }
-                }
-            }
-            let picks_entity = self.tabs[i]
-                .active_cmd
-                .as_ref()
-                .is_some_and(|command| command.typed_point_picks_entity());
-            if accepts_points || picks_entity {
+            if accepts_points {
                 if let Some(wcs) = self.typed_wcs(i, token) {
                     if self.command_point_allowed(i, wcs) {
                         self.last_point = Some(wcs);
                         self.push_ucs_to_cmd(i);
-                        // A typed coordinate at an object prompt is a pick at
-                        // that point, as in the reference.
-                        if picks_entity {
-                            let owner = self.tabs[i]
-                                .current_parametric_scope()
-                                .owner_handle(&self.tabs[i].scene.document);
-                            let handle =
-                                entity_at_typed_point(&self.tabs[i].scene.document, owner, wcs)
-                                    .unwrap_or(Handle::NULL);
-                            return self.feed_command(StepInput::EntityPick(handle, wcs));
-                        }
                         return self.feed_command(StepInput::Point(wcs));
                     }
                     return Task::none();
