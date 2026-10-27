@@ -1398,7 +1398,10 @@ impl OpenCADStudio {
                                     .block_records
                                     .iter()
                                     .find(|record| !handle.is_null() && record.handle == handle)
-                                    .map_or_else(|| "ClosedFilled".to_string(), |record| record.name.clone())
+                                    .map_or_else(
+                                        || "ClosedFilled".to_string(),
+                                        |record| record.name.clone(),
+                                    )
                             };
                             vec![
                                 ("DIMBLK".to_string(), block(style.dimblk)),
