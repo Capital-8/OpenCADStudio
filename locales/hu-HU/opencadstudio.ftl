@@ -892,6 +892,17 @@ common =
     .slice-could-not-determine-the-solid-s-extent = SLICE: nem tudta meghatározni a szilárdtest kiterjedését.
     .slice-cut-at-ax-value-kept-the-half = SLICE: vágás a __ocs_fmt_0__=__ocs_fmt_1__ pontnál, a __ocs_fmt_2__ felét megtartotta.
     .slice-select-exactly-one-solid-created-this-se = SLICE: válasszon pontosan egy, ebben a munkamenetben létrehozott testet.
+    .nav-style-freecad = FreeCAD CAD: middle + left button orbits
+    .nav-style-gesture = Gesture: left button orbits, right button pans
+    .nav-style-maya = Maya-Gesture: Alt + mouse buttons
+    .nav-style-opencascade = OpenCascade: Ctrl + right button orbits
+    .nav-style-openinventor = OpenInventor: left button orbits
+    .nav-style-openscad = OpenSCAD: left button orbits, right button pans
+    .nav-style-revit = Revit: Shift + middle button orbits
+    .nav-style-siemensnx = Siemens NX: middle button orbits, Shift pans
+    .nav-style-solidworks = SolidWorks: middle button orbits, Ctrl pans
+    .nav-style-tinkercad = TinkerCAD: right button orbits
+    .nav-style-touchpad = Touchpad: Shift pans, Alt orbits
    .slice-the-plane-does-not-cross-the-solid-on-th = SLICE: a sík nem keresztezi a szilárdtestet a megtartott oldalon.
     .both = Mindkettő
     .slice-select-at-least-one-target = SLICE: válasszon legalább egy testet vagy felületet.

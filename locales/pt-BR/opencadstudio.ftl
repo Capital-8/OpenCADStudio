@@ -888,6 +888,17 @@ common =
     .slice-could-not-determine-the-solid-s-extent = SLICE: não foi possível determinar a extensão do sólido.
     .slice-cut-at-ax-value-kept-the-half = SLICE: corte em __ocs_fmt_0__=__ocs_fmt_1__, metade __ocs_fmt_2__ mantida.
     .slice-select-exactly-one-solid-created-this-se = SLICE: selecione exatamente um sólido criado nesta sessão.
+    .nav-style-freecad = FreeCAD CAD: middle + left button orbits
+    .nav-style-gesture = Gesture: left button orbits, right button pans
+    .nav-style-maya = Maya-Gesture: Alt + mouse buttons
+    .nav-style-opencascade = OpenCascade: Ctrl + right button orbits
+    .nav-style-openinventor = OpenInventor: left button orbits
+    .nav-style-openscad = OpenSCAD: left button orbits, right button pans
+    .nav-style-revit = Revit: Shift + middle button orbits
+    .nav-style-siemensnx = Siemens NX: middle button orbits, Shift pans
+    .nav-style-solidworks = SolidWorks: middle button orbits, Ctrl pans
+    .nav-style-tinkercad = TinkerCAD: right button orbits
+    .nav-style-touchpad = Touchpad: Shift pans, Alt orbits
    .slice-the-plane-does-not-cross-the-solid-on-th = SLICE: o plano não atravessa o sólido no lado mantido.
     .both = Both
     .slice-select-at-least-one-target = SLICE: select at least one solid or surface.

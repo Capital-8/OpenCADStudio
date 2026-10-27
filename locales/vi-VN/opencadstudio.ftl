@@ -1122,6 +1122,17 @@ common =
     .prefix = Tiền tố
     .suffix = Hậu tố
     .select-objects-or-settings-short = Select objects or [Settings]:
+    .nav-style-freecad = FreeCAD CAD: middle + left button orbits
+    .nav-style-gesture = Gesture: left button orbits, right button pans
+    .nav-style-maya = Maya-Gesture: Alt + mouse buttons
+    .nav-style-opencascade = OpenCascade: Ctrl + right button orbits
+    .nav-style-openinventor = OpenInventor: left button orbits
+    .nav-style-openscad = OpenSCAD: left button orbits, right button pans
+    .nav-style-revit = Revit: Shift + middle button orbits
+    .nav-style-siemensnx = Siemens NX: middle button orbits, Shift pans
+    .nav-style-solidworks = SolidWorks: middle button orbits, Ctrl pans
+    .nav-style-tinkercad = TinkerCAD: right button orbits
+    .nav-style-touchpad = Touchpad: Shift pans, Alt orbits
 
     .crossing-specify-first-corner = Cắt ngang: chỉ định góc thứ nhất.
     .window-specify-first-corner = Cửa sổ: chỉ định góc đầu tiên.

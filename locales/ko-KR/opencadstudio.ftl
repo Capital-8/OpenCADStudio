@@ -887,6 +887,17 @@ common =
     .slice-could-not-determine-the-solid-s-extent = SLICE: 솔리드의 범위를 확인할 수 없습니다.
     .slice-cut-at-ax-value-kept-the-half = SLICE: __ocs_fmt_0__=__ocs_fmt_1__에서 절단하고 __ocs_fmt_2__ 절반을 유지합니다.
     .slice-select-exactly-one-solid-created-this-se = SLICE: 이번 세션에서 생성된 정확히 하나의 솔리드를 선택합니다.
+    .nav-style-freecad = FreeCAD CAD: middle + left button orbits
+    .nav-style-gesture = Gesture: left button orbits, right button pans
+    .nav-style-maya = Maya-Gesture: Alt + mouse buttons
+    .nav-style-opencascade = OpenCascade: Ctrl + right button orbits
+    .nav-style-openinventor = OpenInventor: left button orbits
+    .nav-style-openscad = OpenSCAD: left button orbits, right button pans
+    .nav-style-revit = Revit: Shift + middle button orbits
+    .nav-style-siemensnx = Siemens NX: middle button orbits, Shift pans
+    .nav-style-solidworks = SolidWorks: middle button orbits, Ctrl pans
+    .nav-style-tinkercad = TinkerCAD: right button orbits
+    .nav-style-touchpad = Touchpad: Shift pans, Alt orbits
    .slice-the-plane-does-not-cross-the-solid-on-th = SLICE: 평면이 유지된 측면의 솔리드를 교차하지 않습니다.
     .both = Both
     .slice-select-at-least-one-target = SLICE: select at least one solid or surface.

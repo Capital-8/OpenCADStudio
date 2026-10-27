@@ -871,6 +871,20 @@ impl Camera {
         self.snap_to_face(dir, ucs);
     }
 
+    /// Free (arcball) rotation by a screen drag about the view target: the
+    /// model follows the pointer, about an axis in the screen plane, with no
+    /// fixed up direction.
+    pub fn trackball(&mut self, delta_x: f32, delta_y: f32) {
+        let length = delta_x.hypot(delta_y);
+        if !(length > 1e-6) || !length.is_finite() {
+            return;
+        }
+        let axis = Vec3::new(-delta_y, -delta_x, 0.0) / length;
+        self.rotation =
+            (self.rotation * Quat::from_axis_angle(axis, length * 0.005)).normalize();
+        self.sync_yaw_pitch();
+    }
+
     /// Roll the camera about its own view axis by `angle` radians. The gaze
     /// direction is unchanged; only the up-sense twists.
     pub fn roll_by(&mut self, angle: f32) {

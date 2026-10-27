@@ -4809,27 +4809,37 @@ impl OpenCADStudio {
                 Task::none()
             }
 
-            // CATIA navigation: the left button pressed during a middle drag
-            // turns the drag into an orbit instead of starting a pick.
-            Message::ViewportLeftPressAt(_)
+            // The navigation style may take a left or right press (and its
+            // release) for a view drag; otherwise it runs its normal path.
+            message @ (Message::ViewportLeftPressAt(_)
             | Message::ViewportLeftPress
             | Message::PanePress(_)
-            | Message::PanePressAt(..)
-                if self.navigation_style == crate::app::settings::NavigationStyle::Catia
-                    && self.tabs[self.active_tab]
-                        .scene
-                        .selection
-                        .borrow()
-                        .input
-                        .middle_down =>
+            | Message::PanePressAt(..))
+                if !self.nav_replay =>
             {
-                self.nav_left_with_middle = true;
-                Task::none()
+                match self.nav_press(true, &message) {
+                    Some(task) => task,
+                    None => self.update_navigation_passthrough(message),
+                }
             }
-            Message::ViewportLeftRelease | Message::PaneRelease(_) if self.nav_left_with_middle => {
-                self.nav_left_with_middle = false;
-                Task::none()
+            message @ (Message::ViewportLeftRelease | Message::PaneRelease(_))
+                if !self.nav_replay =>
+            {
+                match self.nav_release(true) {
+                    Some(task) => task,
+                    None => self.update_navigation_passthrough(message),
+                }
             }
+            Message::ViewportRightPress if !self.nav_replay => {
+                match self.nav_press(false, &Message::ViewportRightPress) {
+                    Some(task) => task,
+                    None => self.update_navigation_passthrough(Message::ViewportRightPress),
+                }
+            }
+            Message::ViewportRightRelease if !self.nav_replay => match self.nav_release(false) {
+                Some(task) => task,
+                None => self.update_navigation_passthrough(Message::ViewportRightRelease),
+            },
 
             Message::ViewportMove(p) => self.on_viewport_move(p),
 
@@ -5074,12 +5084,45 @@ impl OpenCADStudio {
 
             Message::ViewportMiddlePress => {
                 self.graphic_attributes.open_menu = None;
+                let i = self.active_tab;
+                self.nav_resync_held();
+                self.nav_held.middle = true;
+                self.nav_drag_by_button = false;
+                self.nav_middle_press = self.tabs[i].scene.selection.borrow().input.last_move_pos;
                 self.on_viewport_middle_press()
             }
 
             Message::ViewportMiddleRelease => {
-                self.nav_left_with_middle = false;
+                self.nav_held.middle = false;
+                self.nav_zoom_latched = false;
                 let i = self.active_tab;
+                // FreeCAD CAD: once the right button is down the orbit goes
+                // on without the middle one.
+                if self.nav_claimed.right
+                    && self
+                        .navigation_style
+                        .action(
+                            self.nav_held,
+                            self.shift_down,
+                            self.ctrl_down,
+                            self.alt_down,
+                            true,
+                        )
+                        .is_some()
+                {
+                    self.nav_drag_by_button = true;
+                    return Task::none();
+                }
+                let at = self.tabs[i].scene.selection.borrow().input.last_move_pos;
+                let click = matches!(
+                    (self.nav_middle_press.take(), at),
+                    (Some(from), Some(at)) if (at.x - from.x).hypot(at.y - from.y) < 3.0
+                );
+                if click && self.navigation_style.middle_click_recenters() {
+                    if let Some(at) = at {
+                        self.nav_recenter_at(i, at);
+                    }
+                }
                 let mut sel = self.tabs[i].scene.selection.borrow_mut();
                 sel.input.middle_down = false;
                 sel.input.middle_last_pos = None;
@@ -7174,7 +7217,8 @@ impl OpenCADStudio {
                 Task::none()
             }
 
-            Message::SetModifiers { shift, ctrl } => {
+            Message::SetModifiers { shift, ctrl, alt } => {
+                self.alt_down = alt;
                 let ctrl_changed = self.ctrl_down != ctrl;
                 self.shift_down = shift;
                 self.ctrl_down = ctrl;

@@ -267,21 +267,154 @@ pub fn zoom_notch_percent(factor: i32) -> f32 {
     (1.0 - ratio) * 100.0
 }
 
-/// Which mouse gestures pan and orbit the model view.
+/// Which mouse gestures pan and orbit the model view. Besides the own CAD
+/// default, the styles follow the programs they are named after, as FreeCAD
+/// offers them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NavigationStyle {
     /// Middle button pans; Shift + middle button orbits.
     #[default]
     Cad,
-    /// Middle button orbits; Shift + middle button pans.
+    /// Middle button orbits; Shift + middle button, or left + right, pans.
     Blender,
-    /// Middle button pans; middle and left buttons together orbit.
+    /// Middle button pans; middle with the right (or left) button orbits
+    /// about the screen centre; a right click during a middle drag zooms.
     Catia,
+    /// Middle button pans; middle with the left or right button orbits.
+    FreeCad,
+    /// Left button orbits, right button pans, both together tilt.
+    Gesture,
+    /// Alt + left orbits, Alt + middle pans, Alt + right zooms.
+    MayaGesture,
+    /// Middle pans; middle + right or Ctrl + right orbits; Ctrl + left zooms.
+    OpenCascade,
+    /// Left button orbits, middle pans, middle + left zooms.
+    OpenInventor,
+    /// Left button orbits, right pans, middle (or Shift + right) zooms.
+    OpenScad,
+    /// Middle pans; Shift + middle or middle + right orbits; left + right pans.
+    Revit,
+    /// Middle orbits; Shift + middle or middle + right pans; middle + left zooms.
+    SiemensNx,
+    /// Middle orbits; Ctrl + middle pans; Shift + middle zooms.
+    SolidWorks,
+    /// Right button orbits, middle pans.
+    TinkerCad,
+    /// No button needed: Shift pans, Alt orbits, Ctrl + Shift zooms.
+    Touchpad,
+}
+
+/// What a navigation drag does to the view.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NavAction {
+    Pan,
+    Orbit,
+    Zoom,
+    /// Turn about the view axis.
+    Roll,
+}
+
+/// The mouse buttons held down.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NavButtons {
+    pub left: bool,
+    pub middle: bool,
+    pub right: bool,
 }
 
 impl NavigationStyle {
-    pub const ALL: [NavigationStyle; 3] = [Self::Cad, Self::Blender, Self::Catia];
+    pub const ALL: [NavigationStyle; 14] = [
+        Self::Cad,
+        Self::Blender,
+        Self::Catia,
+        Self::FreeCad,
+        Self::Gesture,
+        Self::MayaGesture,
+        Self::OpenCascade,
+        Self::OpenInventor,
+        Self::OpenScad,
+        Self::Revit,
+        Self::SiemensNx,
+        Self::SolidWorks,
+        Self::TinkerCad,
+        Self::Touchpad,
+    ];
+
+    /// What dragging with `held` and the modifiers does, `None` when the
+    /// buttons do not navigate (a left drag selects, a right click opens the
+    /// menu). `dragging` is true while a navigation drag is under way, for
+    /// the styles where a button keeps one going that would not start it.
+    pub fn action(
+        self,
+        held: NavButtons,
+        shift: bool,
+        ctrl: bool,
+        alt: bool,
+        dragging: bool,
+    ) -> Option<NavAction> {
+        use NavAction::*;
+        let NavButtons {
+            left,
+            middle,
+            right,
+        } = held;
+        match (self, left, middle, right) {
+            (Self::Cad, false, true, false) => Some(if shift { Orbit } else { Pan }),
+            (Self::Blender, false, true, false) => Some(if shift { Pan } else { Orbit }),
+            (Self::Blender, true, false, true) => Some(Pan),
+            (Self::Catia, false, true, false) => Some(Pan),
+            (Self::Catia, _, true, _) => Some(Orbit),
+            (Self::FreeCad, false, true, false) => Some(Pan),
+            (Self::FreeCad, _, true, _) => Some(Orbit),
+            // The middle button may be let go once the right one is down.
+            (Self::FreeCad, false, false, true) if dragging => Some(Orbit),
+            (Self::Gesture, true, false, false) => Some(Orbit),
+            (Self::Gesture, false, false, true) => Some(Pan),
+            (Self::Gesture, true, false, true) => Some(Roll),
+            (Self::MayaGesture, true, false, false) if alt => Some(Orbit),
+            (Self::MayaGesture, false, true, false) if alt => Some(Pan),
+            (Self::MayaGesture, false, false, true) if alt => Some(Zoom),
+            (Self::MayaGesture, true, false, true) if alt => Some(Roll),
+            (Self::OpenCascade, true, false, false) if ctrl => Some(Zoom),
+            (Self::OpenCascade, false, false, true) if ctrl => Some(Orbit),
+            (Self::OpenCascade, false, true, true) => Some(Orbit),
+            (Self::OpenCascade, false, true, false) => Some(Pan),
+            (Self::OpenInventor, true, false, false) if !shift && !ctrl => Some(Orbit),
+            (Self::OpenInventor, false, true, false) => Some(Pan),
+            (Self::OpenInventor, true, true, false) => Some(Zoom),
+            (Self::OpenScad, true, false, false) => Some(Orbit),
+            (Self::OpenScad, false, false, true) => Some(if shift { Zoom } else { Pan }),
+            (Self::OpenScad, false, true, false) => Some(Zoom),
+            (Self::OpenScad, false, true, true) => Some(Orbit),
+            (Self::Revit, false, true, false) => Some(if shift { Orbit } else { Pan }),
+            (Self::Revit, false, true, true) => Some(Orbit),
+            (Self::Revit, true, false, true) => Some(Pan),
+            (Self::SiemensNx, false, true, false) => Some(if shift { Pan } else { Orbit }),
+            (Self::SiemensNx, false, true, true) => Some(Pan),
+            (Self::SiemensNx, true, true, false) => Some(Zoom),
+            (Self::SolidWorks, false, true, false) => Some(if ctrl {
+                Pan
+            } else if shift {
+                Zoom
+            } else {
+                Orbit
+            }),
+            (Self::TinkerCad, false, false, true) => Some(Orbit),
+            (Self::TinkerCad, false, true, false) => Some(Pan),
+            (Self::Touchpad, false, false, false) if ctrl && shift => Some(Zoom),
+            (Self::Touchpad, false, false, false) if shift => Some(Pan),
+            (Self::Touchpad, false, false, false) if alt => Some(Orbit),
+            (Self::Touchpad, true, false, false) if shift => Some(Orbit),
+            _ => None,
+        }
+    }
+
+    /// A middle click (no drag) brings the point under the pointer to the
+    /// centre of the view.
+    pub fn middle_click_recenters(self) -> bool {
+        !matches!(self, Self::Cad | Self::OpenCascade | Self::Touchpad)
+    }
 }
 
 impl std::fmt::Display for NavigationStyle {
@@ -290,6 +423,17 @@ impl std::fmt::Display for NavigationStyle {
             Self::Cad => crate::t!("CAD: Shift + middle button orbits"),
             Self::Blender => crate::t!("Blender: middle button orbits, Shift pans"),
             Self::Catia => crate::t!("CATIA: middle + left button orbits"),
+            Self::FreeCad => crate::t!("FreeCAD CAD: middle + left button orbits"),
+            Self::Gesture => crate::t!("Gesture: left button orbits, right button pans"),
+            Self::MayaGesture => crate::t!("Maya-Gesture: Alt + mouse buttons"),
+            Self::OpenCascade => crate::t!("OpenCascade: Ctrl + right button orbits"),
+            Self::OpenInventor => crate::t!("OpenInventor: left button orbits"),
+            Self::OpenScad => crate::t!("OpenSCAD: left button orbits, right button pans"),
+            Self::Revit => crate::t!("Revit: Shift + middle button orbits"),
+            Self::SiemensNx => crate::t!("Siemens NX: middle button orbits, Shift pans"),
+            Self::SolidWorks => crate::t!("SolidWorks: middle button orbits, Ctrl pans"),
+            Self::TinkerCad => crate::t!("TinkerCAD: right button orbits"),
+            Self::Touchpad => crate::t!("Touchpad: Shift pans, Alt orbits"),
         })
     }
 }

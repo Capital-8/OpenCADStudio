@@ -1641,6 +1641,7 @@ impl OpenCADStudio {
         let i = self.active_tab;
         self.tabs[i].measurement.live_visible = true;
         self.tabs[i].scene.selection.borrow_mut().input.pointer_away = false;
+        self.nav_pointer_moved(i, p);
         if let Some(task) = self.start_drag_move(i, p) {
             return Task::batch([task, self.on_viewport_move(p)]);
         }
@@ -1809,12 +1810,17 @@ impl OpenCADStudio {
                         dx = 0.0;
                     }
                 }
-                if self.tabs[i].zoom_dynamic_mode {
+                use crate::app::settings::NavAction;
+                let action = self.nav_drag_action(i);
+                if action == NavAction::Zoom {
                     let bounds = self.tabs[i]
                         .scene
                         .active_model_tile_bounds(vp_size.0, vp_size.1);
                     drop(sel);
                     let zoom_delta = -dy * 0.03;
+                    // ZOOM Dynamic also pans sideways; a style's zoom drag
+                    // only zooms.
+                    let dx = if self.tabs[i].zoom_dynamic_mode { dx } else { 0.0 };
                     if self.tabs[i].scene.active_viewport.is_some()
                         && !self.tabs[i].scene.navigation_locked()
                     {
@@ -1853,11 +1859,63 @@ impl OpenCADStudio {
                 // — the requested Zoom=wheel / Pan=MMB / Rotate=Shift+MMB
                 // scheme (#229). Floating viewports and paper keep the
                 // plain MMB pan.
-                if self.middle_drag_orbits(i) && constrained_from.is_none() {
+                if action == NavAction::Roll {
+                    drop(sel);
+                    let scene = &self.tabs[i].scene;
+                    if scene.active_viewport.is_none() && scene.current_layout == "Model" {
+                        scene.camera.borrow_mut().roll_by(dx * 0.005);
+                        self.tabs[i].scene.camera_generation += 1;
+                    }
+                    self.tabs[i]
+                        .scene
+                        .selection
+                        .borrow_mut()
+                        .input
+                        .middle_last_pos = Some(p);
+                    return Task::none();
+                }
+                if action == NavAction::Orbit && constrained_from.is_none() {
                     if self.tabs[i].scene.active_viewport.is_some() {
                         // Orbit the floating viewport's own model view.
                         drop(sel);
                         self.tabs[i].scene.orbit_active_viewport(dx, dy);
+                        self.tabs[i].scene.camera_generation += 1;
+                        self.tabs[i]
+                            .scene
+                            .record_nav_perf(crate::scene::NavPerfOp::Rotate, move_started);
+                        self.tabs[i]
+                            .scene
+                            .selection
+                            .borrow_mut()
+                            .input
+                            .middle_last_pos = Some(p);
+                        return Task::none();
+                    } else if self.tabs[i].scene.current_layout == "Model"
+                        && self.navigation_style == crate::app::settings::NavigationStyle::Catia
+                        && !self.tabs[i].orbit_mode
+                    {
+                        // CATIA turns the view about the screen centre: an
+                        // arcball inside a ring of 42 % of the smaller side,
+                        // a roll about the view axis outside it.
+                        drop(sel);
+                        let bounds = self.tabs[i]
+                            .scene
+                            .active_model_tile_bounds(vp_size.0, vp_size.1);
+                        let center = Point::new(
+                            bounds.x + bounds.width * 0.5,
+                            bounds.y + bounds.height * 0.5,
+                        );
+                        let ring = 0.42 * bounds.width.min(bounds.height);
+                        let (ax, ay) = (last.x - center.x, last.y - center.y);
+                        let (bx, by) = (p.x - center.x, p.y - center.y);
+                        {
+                            let mut camera = self.tabs[i].scene.camera.borrow_mut();
+                            if ax.hypot(ay) <= ring {
+                                camera.trackball(dx, dy);
+                            } else {
+                                camera.roll_by((ax * by - ay * bx).atan2(ax * bx + ay * by));
+                            }
+                        }
                         self.tabs[i].scene.camera_generation += 1;
                         self.tabs[i]
                             .scene
@@ -4153,16 +4211,254 @@ impl OpenCADStudio {
         Task::none()
     }
 
-    /// Whether a middle-button drag orbits rather than pans, by the
-    /// navigation style (an armed orbit tool always orbits).
-    fn middle_drag_orbits(&self, i: usize) -> bool {
-        use crate::app::settings::NavigationStyle;
-        self.tabs[i].orbit_mode
-            || match self.navigation_style {
-                NavigationStyle::Cad => self.shift_down,
-                NavigationStyle::Blender => !self.shift_down,
-                NavigationStyle::Catia => self.nav_left_with_middle,
+    /// The navigation style's action for `held` and the modifiers now down.
+    fn nav_style_action(
+        &self,
+        held: crate::app::settings::NavButtons,
+        dragging: bool,
+    ) -> Option<crate::app::settings::NavAction> {
+        self.navigation_style.action(
+            held,
+            self.shift_down,
+            self.ctrl_down,
+            self.alt_down,
+            dragging,
+        )
+    }
+
+    /// What the navigation drag under way does: an armed tool decides, then
+    /// CATIA's zoom latch, then the style for the buttons held. A drag the
+    /// style has no meaning for pans.
+    fn nav_drag_action(&self, i: usize) -> crate::app::settings::NavAction {
+        use crate::app::settings::NavAction;
+        let tab = &self.tabs[i];
+        if tab.zoom_dynamic_mode {
+            NavAction::Zoom
+        } else if tab.orbit_mode {
+            NavAction::Orbit
+        } else if tab.pan_mode {
+            NavAction::Pan
+        } else if self.nav_zoom_latched {
+            NavAction::Zoom
+        } else {
+            self.nav_style_action(self.nav_held, true)
+                .unwrap_or(NavAction::Pan)
+        }
+    }
+
+    /// Starts the drag a pending left/right press turns into once it moves,
+    /// and the modifier-held drag of the Touchpad style (ended when its keys
+    /// are up).
+    fn nav_pointer_moved(&mut self, i: usize, p: Point) {
+        use crate::app::settings::{NavButtons, NavigationStyle};
+        if let Some((_, from, _)) = &self.nav_pending {
+            let (dx, dy) = (p.x - from.x, p.y - from.y);
+            if dx * dx + dy * dy > 16.0 {
+                let from = *from;
+                self.nav_pending = None;
+                self.nav_start_drag(i, from);
             }
+            return;
+        }
+        if self.navigation_style != NavigationStyle::Touchpad
+            || self.nav_held != NavButtons::default()
+        {
+            return;
+        }
+        let keyed = self.nav_style_action(NavButtons::default(), false).is_some();
+        let (dragging, previous) = {
+            let sel = self.tabs[i].scene.selection.borrow();
+            (sel.input.middle_down, sel.input.last_move_pos)
+        };
+        if keyed && !dragging {
+            if let Some(previous) = previous {
+                self.nav_start_drag(i, previous);
+            }
+        } else if !keyed && dragging && self.nav_drag_by_button {
+            self.nav_end_drag(i);
+        }
+    }
+
+    /// Run a navigation drag from `from` on the middle-button movement path,
+    /// dropping whatever the left or right button had begun.
+    fn nav_start_drag(&mut self, i: usize, from: Point) {
+        self.clear_navigation_hover(i);
+        self.tabs[i].scene.remember_current_view();
+        let mut sel = self.tabs[i].scene.selection.borrow_mut();
+        sel.clear_left_selection_gesture();
+        sel.input.left_down = false;
+        sel.input.right_down = false;
+        sel.input.middle_down = true;
+        sel.input.middle_last_pos = Some(from);
+        sel.input.middle_pan_from = None;
+        drop(sel);
+        self.nav_drag_by_button = true;
+    }
+
+    fn nav_end_drag(&mut self, i: usize) {
+        let mut sel = self.tabs[i].scene.selection.borrow_mut();
+        sel.input.middle_down = false;
+        sel.input.middle_last_pos = None;
+        sel.orbit.pivot = None;
+        drop(sel);
+        self.nav_drag_by_button = false;
+        self.nav_zoom_latched = false;
+        self.arm_hover_after_navigation(i);
+    }
+
+    /// A left (`left`) or right press: the navigation style takes it when
+    /// the buttons now held drag the view. A press that may still be a
+    /// click waits for the pointer to move. `None` lets the press run its
+    /// normal path.
+    pub(in crate::app) fn nav_press(
+        &mut self,
+        left: bool,
+        press: &Message,
+    ) -> Option<Task<Message>> {
+        self.nav_resync_held();
+        if left {
+            self.nav_held.left = true;
+        } else {
+            self.nav_held.right = true;
+        }
+        let i = self.active_tab;
+        let tab = &self.tabs[i];
+        if tab.orbit_mode || tab.pan_mode || tab.zoom_dynamic_mode || tab.is_start {
+            return None;
+        }
+        let (pos, dragging) = {
+            let sel = tab.scene.selection.borrow();
+            (sel.input.last_move_pos?, sel.input.middle_down)
+        };
+        let held = self.nav_held;
+        if dragging {
+            self.nav_style_action(held, true)?;
+            if !left && held.middle {
+                self.nav_right_press = Some(pos);
+            }
+        } else {
+            self.nav_style_action(held, false)?;
+            let other_held = if left { held.right } else { held.left };
+            if other_held {
+                // Both buttons together navigate at once; whatever the
+                // other one had begun gives way.
+                if left {
+                    self.nav_claimed.right = true;
+                } else {
+                    self.nav_claimed.left = true;
+                }
+                self.nav_pending = None;
+                self.nav_start_drag(i, pos);
+            } else {
+                self.nav_pending = Some((left, pos, press.clone()));
+            }
+        }
+        if left {
+            self.nav_claimed.left = true;
+        } else {
+            self.nav_claimed.right = true;
+        }
+        Some(Task::none())
+    }
+
+    /// A left (`left`) or right release. Navigation keeps the release of a
+    /// press it took: a press that never moved is replayed as the click it
+    /// was. `None` lets the release run its normal path.
+    pub(in crate::app) fn nav_release(&mut self, left: bool) -> Option<Task<Message>> {
+        use crate::app::settings::NavigationStyle;
+        if left {
+            self.nav_held.left = false;
+        } else {
+            self.nav_held.right = false;
+        }
+        let claimed = if left {
+            &mut self.nav_claimed.left
+        } else {
+            &mut self.nav_claimed.right
+        };
+        if !std::mem::take(claimed) {
+            return None;
+        }
+        let i = self.active_tab;
+        if let Some((_, _, press)) = self.nav_pending.take_if(|(l, _, _)| *l == left) {
+            let release = if left {
+                Message::ViewportLeftRelease
+            } else {
+                Message::ViewportRightRelease
+            };
+            self.nav_replay = true;
+            let tasks = [self.update(press), self.update(release)];
+            self.nav_replay = false;
+            return Some(Task::batch(tasks));
+        }
+        let (at, dragging) = {
+            let sel = self.tabs[i].scene.selection.borrow();
+            (sel.input.last_move_pos, sel.input.middle_down)
+        };
+        // CATIA: a right click while the middle button drags turns it into
+        // a zoom.
+        if let (false, Some(from), Some(at)) = (left, self.nav_right_press.take(), at) {
+            let (dx, dy) = (at.x - from.x, at.y - from.y);
+            if self.navigation_style == NavigationStyle::Catia
+                && self.nav_held.middle
+                && dx * dx + dy * dy < 9.0
+            {
+                self.nav_zoom_latched = true;
+            }
+        }
+        if dragging
+            && self.nav_drag_by_button
+            && self.nav_style_action(self.nav_held, true).is_none()
+        {
+            self.nav_end_drag(i);
+        }
+        Some(Task::none())
+    }
+
+    /// Forget a left or right button whose release never arrived (let go
+    /// outside the window): one is held only while its normal press is
+    /// down or navigation holds its release.
+    pub(in crate::app) fn nav_resync_held(&mut self) {
+        let sel = self.tabs[self.active_tab].scene.selection.borrow();
+        self.nav_held.left &= sel.input.left_down || self.nav_claimed.left;
+        self.nav_held.right &= sel.input.right_down || self.nav_claimed.right;
+    }
+
+    /// Run a press or release the navigation style passed on through its
+    /// normal handler.
+    pub(in crate::app) fn update_navigation_passthrough(
+        &mut self,
+        message: Message,
+    ) -> Task<Message> {
+        self.nav_replay = true;
+        let task = self.update(message);
+        self.nav_replay = false;
+        task
+    }
+
+    /// Bring the point under `p` to the centre of the model view.
+    pub(in crate::app) fn nav_recenter_at(&mut self, i: usize, p: Point) {
+        let scene = &self.tabs[i].scene;
+        if scene.active_viewport.is_some() || scene.current_layout != "Model" {
+            return;
+        }
+        let (width, height) = scene.selection.borrow().view.vp_size;
+        let bounds = scene.active_model_tile_bounds(width, height);
+        let local = Point::new(p.x - bounds.x, p.y - bounds.y);
+        let local_bounds = iced::Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: bounds.width,
+            height: bounds.height,
+        };
+        {
+            let mut camera = scene.camera.borrow_mut();
+            let target = camera.pick_on_target_plane(local, local_bounds);
+            if target.is_finite() {
+                camera.target = target;
+            }
+        }
+        self.tabs[i].scene.camera_generation += 1;
     }
 
     pub(crate) fn on_viewport_exit(&mut self) -> Task<Message> {
@@ -11007,4 +11303,77 @@ pub(in crate::app) struct BoxSelectTiming {
     pub wires: f64,
     pub hatch: f64,
     pub hit: f64,
+}
+
+#[cfg(test)]
+mod navigation_style_tests {
+    use super::*;
+    use crate::app::settings::{NavAction, NavButtons, NavigationStyle};
+
+    fn app(style: NavigationStyle) -> OpenCADStudio {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800.0, 600.0);
+        app.navigation_style = style;
+        let _ = app.update(Message::ViewportMove(Point::new(400.0, 300.0)));
+        app
+    }
+
+    fn rotation(app: &OpenCADStudio) -> glam::Quat {
+        app.tabs[app.active_tab].scene.camera.borrow().rotation
+    }
+
+    #[test]
+    fn the_cad_default_still_pans_and_orbits_with_shift() {
+        let middle = NavButtons {
+            middle: true,
+            ..Default::default()
+        };
+        let cad = NavigationStyle::Cad;
+        assert_eq!(cad.action(middle, false, false, false, true), Some(NavAction::Pan));
+        assert_eq!(cad.action(middle, true, false, false, true), Some(NavAction::Orbit));
+        let left = NavButtons {
+            left: true,
+            ..Default::default()
+        };
+        assert_eq!(cad.action(left, false, false, false, false), None);
+    }
+
+    #[test]
+    fn a_gesture_left_drag_orbits_and_a_left_click_stays_a_click() {
+        let mut app = app(NavigationStyle::Gesture);
+        let before = rotation(&app);
+        let _ = app.update(Message::ViewportLeftPress);
+        let _ = app.update(Message::ViewportMove(Point::new(440.0, 300.0)));
+        let _ = app.update(Message::ViewportLeftRelease);
+        assert_ne!(rotation(&app), before);
+        {
+            let sel = app.tabs[app.active_tab].scene.selection.borrow();
+            assert!(!sel.input.middle_down && !sel.input.left_down);
+            assert!(sel.gesture.box_anchor.is_none());
+        }
+        let turned = rotation(&app);
+        let _ = app.update(Message::ViewportLeftPress);
+        assert!(app.nav_pending.is_some());
+        let _ = app.update(Message::ViewportLeftRelease);
+        assert!(app.nav_pending.is_none() && app.nav_held == NavButtons::default());
+        assert_eq!(rotation(&app), turned);
+    }
+
+    #[test]
+    fn a_catia_right_click_during_a_middle_drag_zooms() {
+        let mut app = app(NavigationStyle::Catia);
+        let i = app.active_tab;
+        let _ = app.update(Message::ViewportMiddlePress);
+        let _ = app.update(Message::ViewportRightPress);
+        let _ = app.update(Message::ViewportRightRelease);
+        assert_eq!(app.nav_drag_action(i), NavAction::Zoom);
+        let distance = app.tabs[i].scene.camera.borrow().distance;
+        let _ = app.update(Message::ViewportMove(Point::new(400.0, 260.0)));
+        assert_ne!(app.tabs[i].scene.camera.borrow().distance, distance);
+        let _ = app.update(Message::ViewportMiddleRelease);
+        assert!(!app.nav_zoom_latched);
+        assert!(!app.tabs[i].scene.selection.borrow().input.middle_down);
+    }
 }

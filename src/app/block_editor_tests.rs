@@ -5471,14 +5471,14 @@ fn block_grip_cycling_ctrl_edges_use_saved_order_during_classic_insertion() {
     let _=app.dispatch_command("BCLOSE");
     let _=app.dispatch_command("-INSERT");
     feed(&mut app,"EDIT_ME");
-    let _=app.update(Message::SetModifiers { shift:false,ctrl:true });
+    let _=app.update(Message::SetModifiers { shift:false,ctrl:true,alt:false });
     let prompt=app.tabs[i].active_cmd.as_ref().unwrap().prompt();
     assert!(prompt.contains("(2/3)"),"{prompt}");
-    let _=app.update(Message::SetModifiers { shift:false,ctrl:true });
+    let _=app.update(Message::SetModifiers { shift:false,ctrl:true,alt:false });
     assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().prompt(),prompt);
-    let _=app.update(Message::SetModifiers { shift:false,ctrl:false });
+    let _=app.update(Message::SetModifiers { shift:false,ctrl:false,alt:false });
     assert_eq!(app.tabs[i].active_cmd.as_ref().unwrap().prompt(),prompt);
-    let _=app.update(Message::SetModifiers { shift:false,ctrl:true });
+    let _=app.update(Message::SetModifiers { shift:false,ctrl:true,alt:false });
     assert!(app.tabs[i].active_cmd.as_ref().unwrap().prompt().contains("(3/3)"));
     feed(&mut app,"100,200");
     for _ in 0..3 { let _=app.feed_command(crate::command::StepInput::Enter); }

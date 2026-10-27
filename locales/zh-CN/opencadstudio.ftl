@@ -875,6 +875,17 @@ common =
     .slice-could-not-determine-the-solid-s-extent = SLICE:无法确定固体的大小。
     .slice-cut-at-ax-value-kept-the-half = SLICE: 切到__ocs_fmt_0__=__ocs_fmt_1__, 保留__ocs_fmt_2__的一半。
     .slice-select-exactly-one-solid-created-this-se = SLICE:选择一个创建此会话的正体 。
+    .nav-style-freecad = FreeCAD CAD: middle + left button orbits
+    .nav-style-gesture = Gesture: left button orbits, right button pans
+    .nav-style-maya = Maya-Gesture: Alt + mouse buttons
+    .nav-style-opencascade = OpenCascade: Ctrl + right button orbits
+    .nav-style-openinventor = OpenInventor: left button orbits
+    .nav-style-openscad = OpenSCAD: left button orbits, right button pans
+    .nav-style-revit = Revit: Shift + middle button orbits
+    .nav-style-siemensnx = Siemens NX: middle button orbits, Shift pans
+    .nav-style-solidworks = SolidWorks: middle button orbits, Ctrl pans
+    .nav-style-tinkercad = TinkerCAD: right button orbits
+    .nav-style-touchpad = Touchpad: Shift pans, Alt orbits
    .slice-the-plane-does-not-cross-the-solid-on-th = SLICE: 飞机不会越过所保存的一侧的固体。
     .both = Both
     .slice-select-at-least-one-target = SLICE: select at least one solid or surface.

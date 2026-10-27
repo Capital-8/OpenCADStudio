@@ -785,9 +785,27 @@ pub(super) struct OpenCADStudio {
     zoom_wheel_reversed: bool,
     /// Which mouse gestures pan and orbit the model view.
     navigation_style: crate::app::settings::NavigationStyle,
-    /// CATIA navigation: the left button went down while the middle one was
-    /// held, so the middle drag orbits until it is released.
-    nav_left_with_middle: bool,
+    /// The mouse buttons held over the view, for the navigation style.
+    nav_held: crate::app::settings::NavButtons,
+    /// A left (`true`) or right button press a navigation style may turn
+    /// into a drag: where it went down and the message it was, replayed as a
+    /// click when the button comes up without a drag.
+    nav_pending: Option<(bool, iced::Point, Message)>,
+    /// The left/right buttons whose release navigation keeps for itself.
+    nav_claimed: crate::app::settings::NavButtons,
+    /// The navigation drag under way was started by the left or right
+    /// button (or a Touchpad modifier), not the middle one.
+    nav_drag_by_button: bool,
+    /// Where the middle button went down, to tell a click from a drag.
+    nav_middle_press: Option<iced::Point>,
+    /// Where the right button went down during a middle drag (CATIA zoom).
+    nav_right_press: Option<iced::Point>,
+    /// CATIA: a right click during the middle drag made it zoom.
+    nav_zoom_latched: bool,
+    /// A pending press is being replayed through the normal path.
+    nav_replay: bool,
+    /// True while Alt is held (Maya-Gesture and Touchpad navigation).
+    alt_down: bool,
     /// UCSDETECT: a command's first point on a planar solid face sets the
     /// UCS to that face until the command ends.
     dynamic_ucs: bool,
@@ -4599,6 +4617,7 @@ pub enum Message {
     SetModifiers {
         shift: bool,
         ctrl: bool,
+        alt: bool,
     },
     // ── In-place MText editor ───────────────────────────────────────────
     /// Text-area edit action from the multi-line editor widget.
@@ -5345,7 +5364,15 @@ impl OpenCADStudio {
             polar_increment_deg: 45.0,
             zoom_wheel_reversed: false,
             navigation_style: Default::default(),
-            nav_left_with_middle: false,
+            nav_held: Default::default(),
+            nav_pending: None,
+            nav_claimed: Default::default(),
+            nav_drag_by_button: false,
+            nav_middle_press: None,
+            nav_right_press: None,
+            nav_zoom_latched: false,
+            nav_replay: false,
+            alt_down: false,
             dynamic_ucs: true,
             dynamic_ucs_restore: None,
             // A Mac's built-in trackpad is the common case there.

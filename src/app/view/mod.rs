@@ -3242,6 +3242,7 @@ impl OpenCADStudio {
                         Some(Message::SetModifiers {
                             shift: m.shift(),
                             ctrl: m.command() || m.control(),
+                            alt: m.alt(),
                         })
                     }
                     iced::Event::Keyboard(keyboard::Event::KeyPressed {
