@@ -6337,6 +6337,11 @@ pub fn run_web() -> iced::Result {
     })
     .theme(|state: &OpenCADStudio| state.active_theme.clone())
     .backend(iced::Backend::Hardware(iced::backend::Api::OpenGL))
+    // No MSAA for canvas geometry: WebGL resolves the multisampled target with
+    // the last draw's scissor still on, so only that rectangle came through.
+    // Pattern previews stayed blank, stale crosshairs and grips lingered over
+    // other panels (#2248, #2249, #2250).
+    .antialiasing(false)
     .font(iced_aw::ICED_AW_FONT_BYTES)
     .run()
 }
