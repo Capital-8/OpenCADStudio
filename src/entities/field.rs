@@ -318,6 +318,48 @@ fn epoch_secs() -> i64 {
     }
 }
 
+/// The one field a text is made of, as FIELD inserts it: the field's code
+/// and the objects it reads. `None` when the text has no field, or text
+/// around or between its fields.
+pub fn whole_text_field(document: &Document, host: Handle) -> Option<(String, Vec<Handle>)> {
+    let owner = |handle: Handle| -> Option<Handle> {
+        if let Some(field) = document.fields.get(&handle) {
+            return Some(field.owner);
+        }
+        match document.objects.get(&handle)? {
+            codec::objects::ObjectType::Dictionary(dictionary) => Some(dictionary.owner),
+            _ => None,
+        }
+    };
+    // The text container sits a few dictionaries below its host.
+    let hosted_by = |mut handle: Handle| {
+        for _ in 0..12 {
+            match owner(handle) {
+                Some(next) if next == host => return true,
+                Some(next) => handle = next,
+                None => return false,
+            }
+        }
+        false
+    };
+    let container = document
+        .fields
+        .values()
+        .find(|field| field.evaluator == "_text" && hosted_by(field.handle))?;
+    if container.code.trim() != "%<\\_FldIdx 0>%" {
+        return None;
+    }
+    let mut children = document
+        .fields
+        .values()
+        .filter(|field| field.owner == container.handle);
+    let child = children.next()?;
+    children
+        .next()
+        .is_none()
+        .then(|| (child.code.clone(), child.objects.clone()))
+}
+
 /// Attach `field` (its code and referenced objects) to `host`, showing
 /// `value`; `None` removes the host's field.
 pub fn set_text_field(

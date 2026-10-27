@@ -147,7 +147,7 @@ impl OpenCADStudio {
     /// Open the Field dialog for `target`.
     pub(in crate::app) fn open_field_dialog(&mut self, target: FieldTarget) {
         let mut state = FieldDialogState::new(target);
-        if !matches!(target, FieldTarget::NewText) {
+        if matches!(target, FieldTarget::AttdefDefault | FieldTarget::AttdefEdit) {
             state.placeholder_block = self.tabs[self.active_tab]
                 .active_block_edit_session()
                 .map(|session| session.block_name.clone());
@@ -175,6 +175,39 @@ impl OpenCADStudio {
         self.fill_named_objects();
         self.refresh_field_preview();
         self.active_modal = Some(crate::app::ModalKind::Field);
+    }
+
+    /// Open the Field dialog on the field text `host` is made of, so OK
+    /// changes that field in place. False when `host` is not such a text.
+    pub(in crate::app) fn open_field_edit(&mut self, host: codec::Handle) -> bool {
+        let i = self.active_tab;
+        let Some((code, objects)) =
+            crate::entities::field::whole_text_field(&self.tabs[i].scene.document, host)
+        else {
+            return false;
+        };
+        self.open_field_dialog(FieldTarget::EditText(host));
+        let document = &self.tabs[i].scene.document;
+        if let Some(state) = self.field_dialog.as_mut() {
+            let property = state.seed_from_code(&code, &objects);
+            let object = objects.first().and_then(|handle| document.get_entity(*handle));
+            if let (Some(property), Some(entity)) = (property, object) {
+                let props = object_properties(entity);
+                state.object = Some((
+                    entity.common().handle,
+                    crate::t!(crate::entities::names::ui_name(entity)).into_owned(),
+                ));
+                state.object_prop = props
+                    .iter()
+                    .copied()
+                    .find(|known| known.eq_ignore_ascii_case(&property))
+                    .or_else(|| props.first().copied());
+                state.object_props = props;
+            }
+        }
+        self.fill_named_objects();
+        self.refresh_field_preview();
+        true
     }
 
     fn field_value(&self, code: &str, objects: &[codec::Handle]) -> String {
@@ -447,6 +480,22 @@ impl OpenCADStudio {
                 }
                 self.active_modal = Some(crate::app::ModalKind::AttDef);
             }
+            FieldTarget::EditText(host) => {
+                self.close_active_modal();
+                self.push_undo_snapshot(i, "FIELD");
+                crate::entities::field::set_text_field(
+                    &mut self.tabs[i].scene.document,
+                    host,
+                    field,
+                    &value,
+                );
+                self.tabs[i]
+                    .scene
+                    .bump_entities(&[(host, crate::scene::ChangeKind::Modified)]);
+                self.tabs[i].dirty = true;
+                self.refresh_properties();
+                return Task::none();
+            }
             FieldTarget::AttdefEdit => {
                 if let Some(edit) = self.attdef_edit.as_mut() {
                     edit.default = value;
@@ -515,5 +564,53 @@ fn text_case(value: &str, case: usize) -> String {
             .collect::<Vec<_>>()
             .join(" "),
         _ => value.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::app::OpenCADStudio;
+    use crate::ui::window::field_dialog::{FieldDialogMsg, FieldTarget};
+    use codec::entities::{EntityType, LwPolyline, MText};
+
+    #[test]
+    fn a_field_text_opens_its_field_and_ok_changes_it_in_place() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        let mut square = LwPolyline::new();
+        for (x, y) in [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)] {
+            square.add_point(codec::types::Vector2::new(x, y));
+        }
+        square.is_closed = true;
+        let document = &mut app.tabs[i].scene.document;
+        let polyline = document.add_entity(EntityType::LwPolyline(square)).unwrap();
+        let text = document.add_entity(EntityType::MText(Box::new(MText::new()))).unwrap();
+        crate::entities::field::set_text_field(
+            document,
+            text,
+            Some((
+                "\\AcObjProp Object(%<\\_ObjIdx 0>%).Area \\f \"%lu2%pr1\"".to_string(),
+                vec![polyline],
+            )),
+            "4.0",
+        );
+
+        let _ = app.begin_text_edit(text);
+        let state = app.field_dialog.as_ref().expect("the Field dialog opens");
+        assert_eq!(state.target, FieldTarget::EditText(text));
+        assert_eq!((state.name, state.object_prop), ("Object", Some("Area")));
+        assert_eq!((state.formula_format, state.formula_precision), (2, 2));
+
+        let _ = app.on_field_dialog(FieldDialogMsg::FormulaPrecision(4));
+        let _ = app.on_field_dialog(FieldDialogMsg::Ok);
+        let (code, objects) =
+            crate::entities::field::whole_text_field(&app.tabs[i].scene.document, text).unwrap();
+        assert!(code.ends_with("\\f \"%lu2%pr3\""), "{code}");
+        assert_eq!(objects, vec![polyline]);
+        let Some(EntityType::MText(shown)) = app.tabs[i].scene.document.get_entity(text) else {
+            panic!("the text stays");
+        };
+        assert_eq!(shown.value, "4.000");
     }
 }

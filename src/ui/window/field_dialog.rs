@@ -22,6 +22,8 @@ pub enum FieldTarget {
     AttdefDefault,
     /// The Default of the Edit Attribute Definition dialog.
     AttdefEdit,
+    /// The field a text already shows, edited in place.
+    EditText(codec::Handle),
 }
 
 /// The categories the dialog offers, with their fields (only the ones the
@@ -724,6 +726,68 @@ impl FieldDialogState {
         }
     }
 
+    /// Open on the field `code` a text already shows: its name and the
+    /// settings its code spells. An Object field returns the property it
+    /// reads, for the caller to match against the object's own list.
+    pub fn seed_from_code(&mut self, code: &str, objects: &[codec::Handle]) -> Option<String> {
+        let code = code.trim();
+        let (body, picture) = match code.find(" \\f \"") {
+            Some(at) => (code[..at].trim(), code[at + 4..].trim().trim_matches('"')),
+            None => (code, ""),
+        };
+        self.category = 0;
+        self.formula_format = codec::fields::FORMULA_FORMATS
+            .iter()
+            .position(|(_, format)| !format.is_empty() && picture.contains(format))
+            .unwrap_or(0);
+        let digits = |after: &str| -> Option<usize> {
+            let tail = picture.split(after).nth(1)?;
+            let digits: String = tail.chars().take_while(char::is_ascii_digit).collect();
+            digits.parse().ok()
+        };
+        self.formula_precision =
+            digits("%pr").map_or(0, |n| (n + 1).min(FORMULA_PRECISIONS.len() - 1));
+        if let Some(case) = digits("%tc") {
+            self.text_case = case;
+        }
+        let (evaluator, rest) = body.split_once(' ').unwrap_or((body, ""));
+        let rest = rest.trim();
+        if evaluator.starts_with("\\AcExpr") {
+            self.name = "Formula";
+            let inner = rest
+                .strip_prefix('(')
+                .and_then(|inner| inner.strip_suffix(')'))
+                .unwrap_or(rest);
+            self.formula = typed_object_ids(inner, objects);
+        } else if evaluator.starts_with("\\AcObjProp") {
+            let property = rest.rsplit_once(").").map(|(_, property)| property.trim())?;
+            if property == "Name" {
+                self.name = "NamedObject";
+                return None;
+            }
+            self.name = "Object";
+            return Some(property.to_string());
+        } else if evaluator == "\\AcDiesel" {
+            self.name = "DieselExpression";
+            self.diesel = rest.to_string();
+        } else if evaluator.starts_with("\\AcVar") {
+            let variable = rest.split_whitespace().next().unwrap_or("");
+            if let Some(name) = fields_of(0)
+                .into_iter()
+                .find(|name| name.eq_ignore_ascii_case(variable))
+            {
+                self.name = name;
+                if kind_of(name) == FieldKind::Date && !picture.is_empty() {
+                    self.date_format = picture.to_string();
+                }
+            } else if !variable.is_empty() {
+                self.name = "SystemVariable";
+                self.sysvar = variable.to_string();
+            }
+        }
+        None
+    }
+
     /// The number format and precision picked for a formula or an object
     /// property (`%lu2%pr3`), empty for the drawing's own units.
     fn number_picture(&self) -> String {
@@ -754,6 +818,30 @@ impl FieldDialogState {
 
 /// Table references in a formula are typed as `%<\_ObjId HANDLE>%`; the stored
 /// code numbers them (`%<\_ObjIdx n>%`) and lists the objects.
+/// The stored, numbered object references of a formula (`%<\_ObjIdx 0>%`)
+/// back as the typed ones the dialog edits (`%<\_ObjId 2A>%`).
+fn typed_object_ids(formula: &str, objects: &[codec::Handle]) -> String {
+    let mut out = String::new();
+    let mut rest = formula;
+    while let Some(start) = rest.find("%<\\_ObjIdx ") {
+        let after = &rest[start + "%<\\_ObjIdx ".len()..];
+        let Some(end) = after.find(">%") else { break };
+        let Some(handle) = after[..end]
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .and_then(|index| objects.get(index))
+        else {
+            break;
+        };
+        out.push_str(&rest[..start]);
+        out.push_str(&format!("%<\\_ObjId {:X}>%", handle.value()));
+        rest = &after[end + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
 fn indexed_object_ids(formula: &str) -> (String, Vec<codec::Handle>) {
     let mut out = String::new();
     let mut objects: Vec<codec::Handle> = Vec::new();
