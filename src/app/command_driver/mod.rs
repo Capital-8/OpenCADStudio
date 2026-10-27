@@ -889,6 +889,14 @@ impl OpenCADStudio {
             CmdResult::EditDimensionJog { dimension, point } => {
                 self.handle_edit_dimension_jog(dimension, point);
             }
+            CmdResult::ReassociateDimension {
+                dimension,
+                target,
+                first_change,
+                last,
+            } => {
+                self.handle_reassociate_dimension(dimension, target, first_change, last);
+            }
             CmdResult::SpaceDimensions {
                 base,
                 others,
