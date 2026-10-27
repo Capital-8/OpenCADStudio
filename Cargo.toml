@@ -323,6 +323,10 @@ harness = false
 name = "mesh_export"
 harness = false
 
+[[bench]]
+name = "hatch_pattern_segments"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
