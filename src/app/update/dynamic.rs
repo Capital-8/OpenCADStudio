@@ -882,7 +882,8 @@ impl OpenCADStudio {
         }
         let parameter_preview = self.block_parameter_geometry_preview(i, cur);
         let mut parameter_hidden = None;
-        let mut previews = if let Some((wires, hidden)) = self.point_modifier_preview(i, cur, None) {
+        let mut previews = if let Some((wires, hidden)) = self.point_modifier_preview(i, cur, None)
+        {
             parameter_hidden = Some(hidden);
             wires
         } else if let Some(preview) = parameter_preview {
@@ -976,26 +977,39 @@ mod tests {
                 let _ = app.automation_op(r#"{"op":"new"}"#);
                 let i = app.active_tab;
                 let source = WireModel::solid_f64(
-                    "source".into(), vec![[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
-                    WireModel::WHITE, false,
+                    "source".into(),
+                    vec![[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
+                    WireModel::WHITE,
+                    false,
                 );
                 let mut parent: Box<dyn CadCommand> = if moving {
                     Box::new(crate::modules::draw::modify::translate::MoveCommand::new(
-                        vec![], vec![source],
+                        vec![],
+                        vec![source],
                     ))
                 } else {
                     Box::new(crate::modules::draw::draw::line::LineCommand::new())
                 };
                 parent.on_point(DVec3::ZERO);
                 app.tabs[i].active_cmd = Some(parent);
-                if from { app.start_from_modifier(i); } else { app.start_mtp_modifier(i); }
+                if from {
+                    app.start_from_modifier(i);
+                } else {
+                    app.start_mtp_modifier(i);
+                }
                 for second_step in [false, true] {
                     if second_step {
-                        app.tabs[i].active_cmd.as_mut().unwrap()
+                        app.tabs[i]
+                            .active_cmd
+                            .as_mut()
+                            .unwrap()
                             .on_point(DVec3::new(3.0, 7.0, 0.0));
                     }
                     for cursor in [DVec3::new(10.0, 20.0, 0.0), DVec3::new(40.0, 50.0, 0.0)] {
-                        let expected = app.tabs[i].suspended_cmd.as_mut().unwrap()
+                        let expected = app.tabs[i]
+                            .suspended_cmd
+                            .as_mut()
+                            .unwrap()
                             .on_preview_wires(cursor);
                         app.tabs[i].last_cursor_world = cursor;
                         app.refresh_active_cmd_preview(i);
@@ -1006,9 +1020,19 @@ mod tests {
                             assert_eq!(wire.color, expected.color);
                         }
                         assert!(!expected.is_empty());
-                        assert_eq!(actual.len(), expected.len() + if second_step {
-                            if from { 1 } else { 2 }
-                        } else { 0 });
+                        assert_eq!(
+                            actual.len(),
+                            expected.len()
+                                + if second_step {
+                                    if from {
+                                        1
+                                    } else {
+                                        2
+                                    }
+                                } else {
+                                    0
+                                }
+                        );
                         if from && second_step {
                             let guide = actual.last().unwrap();
                             assert_eq!(guide.name, "from_guide");
@@ -1022,18 +1046,38 @@ mod tests {
 
     #[test]
     fn point_modifier_preserves_stationary_ghost_persistence_and_hidden_sources() {
-        struct Parent { hidden: [codec::Handle; 1] }
+        struct Parent {
+            hidden: [codec::Handle; 1],
+        }
         impl CadCommand for Parent {
-            fn name(&self) -> &'static str { "test_parent" }
-            fn prompt(&self) -> String { String::new() }
-            fn on_point(&mut self, _: DVec3) -> CmdResult { CmdResult::NeedPoint }
-            fn on_enter(&mut self) -> CmdResult { CmdResult::Cancel }
-            fn preview_hidden_handles(&self) -> &[codec::Handle] { &self.hidden }
-            fn persistent_preview_wires(&self) -> Vec<WireModel> {
-                vec![WireModel::solid_f64("shadow".into(), vec![[0.0; 3], [1.0; 3]],
-                    [0.67, 0.79, 0.84, 0.38], false)]
+            fn name(&self) -> &'static str {
+                "test_parent"
             }
-            fn preview_entities(&mut self, _: &codec::Document, pt: DVec3) -> Vec<codec::EntityType> {
+            fn prompt(&self) -> String {
+                String::new()
+            }
+            fn on_point(&mut self, _: DVec3) -> CmdResult {
+                CmdResult::NeedPoint
+            }
+            fn on_enter(&mut self) -> CmdResult {
+                CmdResult::Cancel
+            }
+            fn preview_hidden_handles(&self) -> &[codec::Handle] {
+                &self.hidden
+            }
+            fn persistent_preview_wires(&self) -> Vec<WireModel> {
+                vec![WireModel::solid_f64(
+                    "shadow".into(),
+                    vec![[0.0; 3], [1.0; 3]],
+                    [0.67, 0.79, 0.84, 0.38],
+                    false,
+                )]
+            }
+            fn preview_entities(
+                &mut self,
+                _: &codec::Document,
+                pt: DVec3,
+            ) -> Vec<codec::EntityType> {
                 vec![codec::EntityType::Line(codec::Line::from_points(
                     codec::types::Vector3::ZERO,
                     codec::types::Vector3::new(pt.x, pt.y, pt.z),
@@ -1043,10 +1087,14 @@ mod tests {
         let mut app = OpenCADStudio::new_for_test();
         let _ = app.automation_op(r#"{"op":"new"}"#);
         let i = app.active_tab;
-        app.tabs[i].suspended_cmd = Some(Box::new(Parent { hidden: [codec::Handle::new(123)] }));
+        app.tabs[i].suspended_cmd = Some(Box::new(Parent {
+            hidden: [codec::Handle::new(123)],
+        }));
         app.tabs[i].active_cmd = Some(Box::new(FromPointCommand::new(None)));
         app.tabs[i].last_cursor_world = DVec3::new(10.0, 20.0, 0.0);
-        let (_, hidden) = app.point_modifier_preview(i, DVec3::new(10.0, 20.0, 0.0), None).unwrap();
+        let (_, hidden) = app
+            .point_modifier_preview(i, DVec3::new(10.0, 20.0, 0.0), None)
+            .unwrap();
         assert_eq!(hidden, vec![codec::Handle::new(123)]);
         app.refresh_active_cmd_preview(i);
         let scene = &app.tabs[i].scene;
@@ -1065,7 +1113,9 @@ mod tests {
         let _ = app.feed_command(StepInput::Point(DVec3::ZERO));
         let _ = app.feed_command(StepInput::Point(DVec3::new(10.0, 0.0, 0.0)));
         app.tabs[i].last_cursor_world = DVec3::new(10.0, 20.0, 0.0);
-        let expected = app.dimension_preview_wires(i, app.tabs[i].last_cursor_world).unwrap();
+        let expected = app
+            .dimension_preview_wires(i, app.tabs[i].last_cursor_world)
+            .unwrap();
         assert!(!expected.is_empty());
         app.start_from_modifier(i);
         let actual = &app.tabs[i].scene.preview_wires;
@@ -1084,22 +1134,35 @@ mod tests {
         let mut app = OpenCADStudio::new_for_test();
         let _ = app.automation_op(r#"{"op":"new"}"#);
         let i = app.active_tab;
-        let handle = app.tabs[i].scene.add_entity(codec::EntityType::Line(codec::Line::from_points(
-            codec::types::Vector3::ZERO, codec::types::Vector3::new(2.0, 0.0, 0.0),
-        )));
+        let handle =
+            app.tabs[i]
+                .scene
+                .add_entity(codec::EntityType::Line(codec::Line::from_points(
+                    codec::types::Vector3::ZERO,
+                    codec::types::Vector3::new(2.0, 0.0, 0.0),
+                )));
         let source = app.tabs[i].scene.wire_models_for(&[handle]);
         let mut parent = crate::modules::draw::modify::stretch::StretchCommand::preselected(
-            vec![handle], source, (DVec3::splat(-1.0), DVec3::splat(3.0)),
+            vec![handle],
+            source,
+            (DVec3::splat(-1.0), DVec3::splat(3.0)),
         );
         parent.on_point(DVec3::ZERO);
         app.tabs[i].active_cmd = Some(Box::new(parent));
         app.start_from_modifier(i);
-        let (wires, hidden) = app.point_modifier_preview(i, DVec3::new(10.0, 20.0, 0.0), None).unwrap();
+        let (wires, hidden) = app
+            .point_modifier_preview(i, DVec3::new(10.0, 20.0, 0.0), None)
+            .unwrap();
         assert_eq!(hidden, vec![handle]);
         assert!(!wires.is_empty());
         app.tabs[i].last_cursor_world = DVec3::new(10.0, 20.0, 0.0);
         app.refresh_active_cmd_preview(i);
-        let shadow = app.tabs[i].scene.preview_wires.iter().find(|wire| wire.reference_only).unwrap();
+        let shadow = app.tabs[i]
+            .scene
+            .preview_wires
+            .iter()
+            .find(|wire| wire.reference_only)
+            .unwrap();
         assert_eq!(shadow.color, [0.67, 0.79, 0.84, 0.38]);
         assert_eq!(shadow.points[0], [0.0; 3]);
         assert_eq!(shadow.points[1], [2.0, 0.0, 0.0]);
