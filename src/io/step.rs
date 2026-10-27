@@ -20,6 +20,9 @@ pub fn build_step(meshes: &[&MeshModel]) -> Option<String> {
     }
 
     let mut data = String::new();
+    // Start past the first growth doublings; the fixed header block alone is
+    // already a couple of kilobytes.
+    data.reserve(1 << 16);
     let mut next_id: usize = 1;
     let mut alloc = || {
         let id = next_id;
@@ -117,12 +120,17 @@ pub fn build_step(meshes: &[&MeshModel]) -> Option<String> {
         let mut edges: std::collections::HashMap<(usize, usize), (usize, usize)> =
             std::collections::HashMap::new();
         let mut faces = Vec::new();
+        // Per-face scratch for the comma-joined entity ids: reused across
+        // faces so a large mesh does not allocate a formatted String per
+        // oriented edge and bound.
+        let mut edge_ids = String::new();
+        let mut bound_ids = String::new();
         // A face bounded by `loops` (vertex rings, the outer one first) on
         // the plane through its first vertex with normal `n`.
         let mut write_face = |loops: &[Vec<usize>], n: [f64; 3], data: &mut String| {
-            let mut bounds = Vec::with_capacity(loops.len());
+            bound_ids.clear();
             for (index, ring) in loops.iter().enumerate() {
-                let mut oriented = Vec::with_capacity(ring.len());
+                edge_ids.clear();
                 for k in 0..ring.len() {
                     let (from, to) = (ring[k], ring[(k + 1) % ring.len()]);
                     let key = (from.min(to), from.max(to));
@@ -162,13 +170,19 @@ pub fn build_step(meshes: &[&MeshModel]) -> Option<String> {
                     let id = alloc();
                     let sense = if from == key.0 { ".T." } else { ".F." };
                     writeln!(data, "#{id} = ORIENTED_EDGE('',*,*,#{curve},{sense});").ok();
-                    oriented.push(format!("#{id}"));
+                    if !edge_ids.is_empty() {
+                        edge_ids.push(',');
+                    }
+                    write!(edge_ids, "#{id}").ok();
                 }
                 let (lp, bound) = (alloc(), alloc());
-                writeln!(data, "#{lp} = EDGE_LOOP('',({}));", oriented.join(",")).ok();
+                writeln!(data, "#{lp} = EDGE_LOOP('',({edge_ids}));").ok();
                 let kind = if index == 0 { "FACE_OUTER_BOUND" } else { "FACE_BOUND" };
                 writeln!(data, "#{bound} = {kind}('',#{lp},.T.);").ok();
-                bounds.push(format!("#{bound}"));
+                if !bound_ids.is_empty() {
+                    bound_ids.push(',');
+                }
+                write!(bound_ids, "#{bound}").ok();
             }
             let (normal, reference, placement, plane, face) =
                 (alloc(), alloc(), alloc(), alloc(), alloc());
@@ -202,7 +216,11 @@ pub fn build_step(meshes: &[&MeshModel]) -> Option<String> {
             )
             .ok();
             writeln!(data, "#{plane} = PLANE('',#{placement});").ok();
-            writeln!(data, "#{face} = ADVANCED_FACE('',({}),#{plane},.T.);", bounds.join(",")).ok();
+            writeln!(
+                data,
+                "#{face} = ADVANCED_FACE('',({bound_ids}),#{plane},.T.);"
+            )
+            .ok();
             faces.push(face);
         };
 
@@ -243,11 +261,19 @@ pub fn build_step(meshes: &[&MeshModel]) -> Option<String> {
             }
         }
         let mut groups: Vec<(usize, Vec<usize>)> = Vec::new();
+        // Root -> index into `groups`. A linear find here made the grouping
+        // quadratic: with one face per triangle it re-scanned every earlier
+        // group for each triangle of a large mesh.
+        let mut group_of_root: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
         for t in 0..tris.len() {
             let r = root(&mut parent, t);
-            match groups.iter_mut().find(|(g, _)| *g == r) {
-                Some((_, members)) => members.push(t),
-                None => groups.push((r, vec![t])),
+            match group_of_root.get(&r) {
+                Some(&index) => groups[index].1.push(t),
+                None => {
+                    group_of_root.insert(r, groups.len());
+                    groups.push((r, vec![t]));
+                }
             }
         }
         for (_, members) in &groups {
@@ -263,19 +289,21 @@ pub fn build_step(meshes: &[&MeshModel]) -> Option<String> {
             }
         }
 
-        let face_list = faces
-            .iter()
-            .map(|id| format!("#{id}"))
-            .collect::<Vec<_>>()
-            .join(",");
+        let mut face_ids = String::new();
+        for id in &faces {
+            if !face_ids.is_empty() {
+                face_ids.push(',');
+            }
+            write!(face_ids, "#{id}").ok();
+        }
         let closed = edges.values().all(|(_, uses)| *uses == 2);
         let (shell, item) = (alloc(), alloc());
         if closed {
-            writeln!(data, "#{shell} = CLOSED_SHELL('',({face_list}));").ok();
+            writeln!(data, "#{shell} = CLOSED_SHELL('',({face_ids}));").ok();
             writeln!(data, "#{item} = MANIFOLD_SOLID_BREP('',#{shell});").ok();
         } else {
             all_solids = false;
-            writeln!(data, "#{shell} = OPEN_SHELL('',({face_list}));").ok();
+            writeln!(data, "#{shell} = OPEN_SHELL('',({face_ids}));").ok();
             writeln!(data, "#{item} = SHELL_BASED_SURFACE_MODEL('',(#{shell}));").ok();
         }
         items.push(item);
@@ -347,11 +375,13 @@ pub fn build_step(meshes: &[&MeshModel]) -> Option<String> {
          REPRESENTATION_CONTEXT('Context3D','3D Context with 1e-06 uncertainty'));"
     )
     .ok();
-    let item_list = items
-        .iter()
-        .map(|id| format!("#{id}"))
-        .collect::<Vec<_>>()
-        .join(",");
+    let mut item_ids = String::new();
+    for id in &items {
+        if !item_ids.is_empty() {
+            item_ids.push(',');
+        }
+        write!(item_ids, "#{id}").ok();
+    }
     // Surface models are not B-rep solids, so a mixed export stays a plain
     // shape representation.
     let kind = if all_solids {
@@ -361,7 +391,7 @@ pub fn build_step(meshes: &[&MeshModel]) -> Option<String> {
     };
     writeln!(
         data,
-        "#{representation} = {kind}('OpenCADStudio',({item_list}),#{context});"
+        "#{representation} = {kind}('OpenCADStudio',({item_ids}),#{context});"
     )
     .ok();
     writeln!(

@@ -319,6 +319,10 @@ harness = false
 name = "dependency_index_rebuild"
 harness = false
 
+[[bench]]
+name = "mesh_export"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
