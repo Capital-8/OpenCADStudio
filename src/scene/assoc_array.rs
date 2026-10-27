@@ -1187,3 +1187,48 @@ pub fn create_from_spec(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use codec::objects::{AssociativeData, ObjectType};
+
+    #[test]
+    fn saved_array_networks_keep_the_dxf_name_autocad_reads() {
+        let mut scene = crate::scene::Scene::new();
+        let circle = scene.add_entity(codec::EntityType::Circle(
+            codec::entities::Circle::from_coords(0.0, 0.0, 0.0, 5.0),
+        ));
+        let spec = AssocArraySpec::Rectangular {
+            columns: 3,
+            rows: 3,
+            column_spacing: 20.0,
+            row_spacing: 20.0,
+        };
+        create_from_spec(&mut scene, &[circle], DVec3::ZERO, &spec).unwrap();
+        // Saving rebuilds the networks around the array action.
+        scene.sync_native_parametric_graph();
+
+        let names: Vec<_> = scene
+            .document
+            .objects
+            .values()
+            .filter_map(|object| match object {
+                ObjectType::Associative(object)
+                    if matches!(object.data, AssociativeData::Network(_)) =>
+                {
+                    Some(object.dxf_name.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(names, ["ACDBASSOCNETWORK", "ACDBASSOCNETWORK"]);
+
+        let dxf = codec::DxfWriter::new(&scene.document)
+            .write_to_vec()
+            .unwrap();
+        let text = String::from_utf8_lossy(&dxf).replace("\r\n", "\n");
+        assert!(!text.contains("\n  0\nASSOCNETWORK\n"), "dxf object name");
+        assert_eq!(text.matches("\n  0\nACDBASSOCNETWORK\n").count(), 2);
+    }
+}
