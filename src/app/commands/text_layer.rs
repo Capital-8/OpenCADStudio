@@ -42,7 +42,11 @@ impl OpenCADStudio {
             let value = value.trim_matches('"').trim();
             // A layer name never has these characters; nothing at all is
             // refused too ("." is the current layer).
-            if value.is_empty() || value.contains(['<', '>', '/', '\\', '"', ':', ';', '?', '*', '|', ',', '=', '`']) {
+            if value.is_empty()
+                || value.contains([
+                    '<', '>', '/', '\\', '"', ':', ';', '?', '*', '|', ',', '=', '`',
+                ])
+            {
                 self.command_line
                     .push_error(crate::t!("Cannot set TEXTLAYER to that value.").as_ref());
                 let current = self

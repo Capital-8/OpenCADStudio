@@ -1528,8 +1528,12 @@ impl OpenCADStudio {
                                     ReassociateKind::Angular2
                                 }
                                 codec::entities::Dimension::Radius(_)
-                                | codec::entities::Dimension::Diameter(_) => ReassociateKind::Radial,
-                                codec::entities::Dimension::Ordinate(_) => ReassociateKind::Ordinate,
+                                | codec::entities::Dimension::Diameter(_) => {
+                                    ReassociateKind::Radial
+                                }
+                                codec::entities::Dimension::Ordinate(_) => {
+                                    ReassociateKind::Ordinate
+                                }
                                 _ => return None,
                             };
                             Some((handle, kind))
