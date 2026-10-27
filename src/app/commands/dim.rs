@@ -1421,7 +1421,38 @@ impl OpenCADStudio {
                             .eq_ignore_ascii_case(&document.header.current_dimstyle_name)
                     })
                     .cloned();
-                let cmd = DimOverrideCommand::new(style);
+                let named = crate::modules::annotate::dimoverride::NamedValues {
+                    defaults: style
+                        .as_ref()
+                        .map(|style| {
+                            let block = |handle: codec::Handle| {
+                                document
+                                    .block_records
+                                    .iter()
+                                    .find(|record| !handle.is_null() && record.handle == handle)
+                                    .map_or_else(|| "ClosedFilled".to_string(), |record| record.name.clone())
+                            };
+                            vec![
+                                ("DIMBLK".to_string(), block(style.dimblk)),
+                                ("DIMBLK1".to_string(), block(style.dimblk1)),
+                                ("DIMBLK2".to_string(), block(style.dimblk2)),
+                                ("DIMLDRBLK".to_string(), block(style.dimldrblk)),
+                                ("DIMTXSTY".to_string(), style.dimtxsty.clone()),
+                            ]
+                        })
+                        .unwrap_or_default(),
+                    blocks: document
+                        .block_records
+                        .iter()
+                        .map(|record| record.name.clone())
+                        .collect(),
+                    text_styles: document
+                        .text_styles
+                        .iter()
+                        .map(|style| style.name.clone())
+                        .collect(),
+                };
+                let cmd = DimOverrideCommand::new(style, named);
                 self.command_line.push_info(&cmd.prompt());
                 self.command_line.set_step_options(cmd.options());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
@@ -1429,11 +1460,61 @@ impl OpenCADStudio {
 
             cmd if cmd.starts_with("DIMOVERRIDE_APPLY ") => {
                 let spec = cmd.trim_start_matches("DIMOVERRIDE_APPLY ").trim();
+                // Arrowhead blocks and the text style are written as handles,
+                // resolved (a standard arrowhead's block made) once here.
+                use crate::modules::annotate::dimoverride::NAMED_VALUE_VARS;
+                let mut handle_values = Vec::new();
+                let spec: String = spec
+                    .split(';')
+                    .filter(|entry| {
+                        let (name, value) = entry.split_once('=').unwrap_or((entry, ""));
+                        let name = name.trim().to_ascii_uppercase();
+                        if !NAMED_VALUE_VARS.contains(&name.as_str()) {
+                            return true;
+                        }
+                        handle_values.push((name, value.trim().to_string()));
+                        false
+                    })
+                    .collect::<Vec<_>>()
+                    .join(";");
+                let spec = spec.as_str();
+                let mut resolved_handles = Vec::new();
+                for (name, value) in handle_values {
+                    use crate::entities::dim_override as dov;
+                    let doc = &mut self.tabs[i].scene.document;
+                    let (code, handle) = if name == "DIMTXSTY" {
+                        let found = doc
+                            .text_styles
+                            .iter()
+                            .find(|style| style.name.eq_ignore_ascii_case(&value))
+                            .map(|style| style.handle);
+                        (dov::DIMTXSTY, found)
+                    } else {
+                        let code = match name.as_str() {
+                            "DIMBLK" => dov::DIMBLK,
+                            "DIMBLK1" => dov::DIMBLK1,
+                            "DIMBLK2" => dov::DIMBLK2,
+                            _ => dov::DIMLDRBLK,
+                        };
+                        let block = crate::entities::arrowheads::typed_standard_block(&value)
+                            .map(str::to_string)
+                            .unwrap_or(value.clone());
+                        (code, crate::entities::arrowheads::resolve(doc, &block))
+                    };
+                    if let Some(handle) = handle {
+                        resolved_handles.push((code, codec::xdata::XDataValue::Handle(handle)));
+                    }
+                }
                 let values = if spec.eq_ignore_ascii_case("CLEAR") {
                     Vec::new()
+                } else if spec.trim().is_empty() {
+                    resolved_handles.clone()
                 } else {
                     match crate::modules::annotate::dimoverride::parse_spec(spec) {
-                        Ok(values) if !values.is_empty() => values,
+                        Ok(mut values) if !values.is_empty() || !resolved_handles.is_empty() => {
+                            values.extend(resolved_handles.iter().cloned());
+                            values
+                        }
                         Ok(_) => return Some(self.finish_dispatch(cmd)),
                         Err(entry) => {
                             self.command_line.push_error(
@@ -1543,14 +1624,30 @@ impl OpenCADStudio {
                         DimReassociateCommand, ReassociateKind,
                     };
                     let scene = &self.tabs[i].scene;
-                    let items: Vec<_> = handles
+                    let v = |p: codec::types::Vector3| glam::DVec3::new(p.x, p.y, p.z);
+                    let (items, points): (Vec<_>, Vec<_>) = handles
                         .iter()
                         .filter_map(|&handle| {
-                            let kind = match scene
+                            let dimension = scene
                                 .document
                                 .get_entity(handle)
-                                .and_then(crate::entities::dimension::as_dimension)?
-                            {
+                                .and_then(crate::entities::dimension::as_dimension)?;
+                            let points = match dimension {
+                                codec::entities::Dimension::Linear(d) => {
+                                    vec![v(d.first_point), v(d.second_point)]
+                                }
+                                codec::entities::Dimension::Aligned(d) => {
+                                    vec![v(d.first_point), v(d.second_point)]
+                                }
+                                codec::entities::Dimension::Angular3Pt(d) => {
+                                    vec![v(d.angle_vertex), v(d.first_point), v(d.second_point)]
+                                }
+                                codec::entities::Dimension::Ordinate(d) => {
+                                    vec![v(d.feature_location)]
+                                }
+                                _ => Vec::new(),
+                            };
+                            let kind = match dimension {
                                 codec::entities::Dimension::Linear(_)
                                 | codec::entities::Dimension::Aligned(_) => ReassociateKind::Linear,
                                 codec::entities::Dimension::Angular3Pt(_) => {
@@ -1564,12 +1661,12 @@ impl OpenCADStudio {
                                 codec::entities::Dimension::Ordinate(_) => ReassociateKind::Ordinate,
                                 _ => return None,
                             };
-                            Some((handle, kind))
+                            Some(((handle, kind), points))
                         })
-                        .collect();
+                        .unzip();
                     self.tabs[i].scene.deselect_all();
                     if !items.is_empty() {
-                        let command = DimReassociateCommand::new(items);
+                        let command = DimReassociateCommand::new(items, points);
                         self.command_line.push_info(&command.prompt());
                         self.command_line.set_step_options(command.options());
                         self.tabs[i].active_cmd = Some(Box::new(command));

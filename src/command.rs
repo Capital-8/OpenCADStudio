@@ -3319,6 +3319,12 @@ pub trait CadCommand: Send {
         vec![]
     }
 
+    /// Every change the command makes while it runs is one undo step: the
+    /// message boundary leaves its history transaction open.
+    fn groups_undo(&self) -> bool {
+        false
+    }
+
     /// Opt in to transient measurement text; unrelated Measurement users keep
     /// their existing command-line-only behavior.
     fn has_measurement_readout(&self) -> bool {

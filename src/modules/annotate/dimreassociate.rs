@@ -6,6 +6,7 @@ use codec::{EntityType, Handle};
 use glam::DVec3;
 
 use crate::command::{CadCommand, CmdOption, CmdResult, InputKind, ReassociateTarget};
+use crate::scene::model::wire_model::WireModel;
 
 /// Which definition points a dimension asks for.
 #[derive(Clone, Copy, PartialEq)]
@@ -34,6 +35,8 @@ impl ReassociateKind {
 
 pub struct DimReassociateCommand {
     items: Vec<(Handle, ReassociateKind)>,
+    /// Each dimension's definition points, for the X shown at the one asked.
+    points: Vec<Vec<DVec3>>,
     item: usize,
     step: usize,
     /// "Select object" / "Select arc or circle" was chosen at the first prompt.
@@ -42,9 +45,10 @@ pub struct DimReassociateCommand {
 }
 
 impl DimReassociateCommand {
-    pub fn new(items: Vec<(Handle, ReassociateKind)>) -> Self {
+    pub fn new(items: Vec<(Handle, ReassociateKind)>, points: Vec<Vec<DVec3>>) -> Self {
         Self {
             items,
+            points,
             item: 0,
             step: 0,
             select_object: false,
@@ -92,6 +96,43 @@ impl DimReassociateCommand {
 impl CadCommand for DimReassociateCommand {
     fn name(&self) -> &'static str {
         "DIMREASSOCIATE"
+    }
+
+    fn groups_undo(&self) -> bool {
+        true
+    }
+
+    /// An X on the definition point being asked.
+    fn persistent_preview_wires(&self) -> Vec<WireModel> {
+        if self.picks_object() {
+            return Vec::new();
+        }
+        let Some(points) = self.points.get(self.item) else {
+            return Vec::new();
+        };
+        let Some(&at) = points.get(self.step) else {
+            return Vec::new();
+        };
+        // A twentieth of the dimension's own extent, so the X reads at the
+        // scale the dimension is drawn.
+        let extent = points
+            .iter()
+            .flat_map(|a| points.iter().map(move |b| a.distance(*b)))
+            .fold(0.0_f64, f64::max);
+        let half = (extent / 20.0).max(1.0e-6);
+        let corner = |dx: f64, dy: f64| [at.x + dx * half, at.y + dy * half, at.z];
+        vec![WireModel::solid_f64(
+            "dimreassociate_x".into(),
+            vec![
+                corner(-1.0, -1.0),
+                corner(1.0, 1.0),
+                [f64::NAN, f64::NAN, f64::NAN],
+                corner(-1.0, 1.0),
+                corner(1.0, -1.0),
+            ],
+            WireModel::WHITE,
+            false,
+        )]
     }
 
     fn prompt(&self) -> String {
