@@ -106,14 +106,16 @@ impl OpenCADStudio {
 
     fn open_dim_inspect(&mut self, i: usize, handles: Vec<Handle>) {
         let doc = &self.tabs[i].scene.document;
-        let any_inspected = handles.iter().any(|&h| {
+        // The first selected dimension that has an inspection shows its
+        // values; otherwise the window's last values.
+        let current = handles.iter().find_map(|&h| {
             doc.get_entity(h)
-                .is_some_and(|e| inspect::read(&e.common().extended_data).is_some())
+                .and_then(|e| inspect::read(&e.common().extended_data))
         });
         let s = &self.dim_inspect_settings;
-        self.dim_inspect_dialog = Some(DimInspectState {
+        let mut state = DimInspectState {
             handles,
-            any_inspected,
+            any_inspected: current.is_some(),
             shape: match s.shape {
                 1 => Shape::Angular,
                 2 => Shape::None,
@@ -123,7 +125,19 @@ impl OpenCADStudio {
             label: s.label.clone(),
             rate_on: s.rate_on,
             rate: s.rate.clone(),
-        });
+        };
+        if let Some(current) = current {
+            state.shape = current.shape;
+            state.label_on = current.label.is_some();
+            if let Some(label) = current.label {
+                state.label = label;
+            }
+            state.rate_on = current.rate.is_some();
+            if let Some(rate) = current.rate {
+                state.rate = rate;
+            }
+        }
+        self.dim_inspect_dialog = Some(state);
         self.active_modal = Some(crate::app::ModalKind::DimInspect);
     }
 
