@@ -7431,5 +7431,3 @@ dim-prompt-steps =
     .reassoc-not = Ölçü noktası yeniden ilişkilendirilmedi.
     .no-style-found = Stil bulunamadı.
     .block-not-defined = "__ocs_fmt_0__" bloğu tanımlı değil
-dim-cmd-msg =
-    .value-positive = Değer pozitif olmalıdır.
