@@ -315,6 +315,10 @@ harness = false
 name = "i18n_label_render"
 harness = false
 
+[[bench]]
+name = "dependency_index_rebuild"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
