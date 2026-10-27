@@ -102,6 +102,10 @@ impl CadCommand for DimReassociateCommand {
         true
     }
 
+    fn on_preview_wires(&mut self, _pt: DVec3) -> Vec<WireModel> {
+        self.persistent_preview_wires()
+    }
+
     /// An X on the definition point being asked.
     fn persistent_preview_wires(&self) -> Vec<WireModel> {
         if self.picks_object() {
