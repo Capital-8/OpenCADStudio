@@ -47,6 +47,21 @@ fn standard_by_label(label: &str) -> Option<&'static str> {
         .map(|(_, name)| *name)
 }
 
+/// A standard arrowhead's block typed by name, in any case and with or
+/// without its leading underscore (`_DOT`, `dot`); `.` and `ClosedFilled`
+/// are the closed filled default (an empty name).
+pub(crate) fn typed_standard_block(value: &str) -> Option<&'static str> {
+    let value = value.trim();
+    if value.is_empty() || value == "." || value.eq_ignore_ascii_case("ClosedFilled") {
+        return Some("");
+    }
+    let bare = value.trim_start_matches('_');
+    STANDARD
+        .iter()
+        .map(|(_, name)| *name)
+        .find(|name| !name.is_empty() && name.trim_start_matches('_').eq_ignore_ascii_case(bare))
+}
+
 /// The block name a picker value stands for: a standard name's block, or
 /// the value itself (a user arrow block).
 pub(crate) fn block_name(value: &str) -> &str {

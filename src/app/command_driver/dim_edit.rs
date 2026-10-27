@@ -30,7 +30,7 @@ impl OpenCADStudio {
     }
 
     /// One answer of DIMREASSOCIATE: the point (or object) is applied at
-    /// once, as its own undo step.
+    /// once; the whole command is one undo step.
     pub(super) fn handle_reassociate_dimension(
         &mut self,
         dimension: Handle,
@@ -38,7 +38,9 @@ impl OpenCADStudio {
         last: bool,
     ) {
         let i = self.active_tab;
-        self.push_undo_snapshot(i, "DIMREASSOCIATE");
+        if self.tabs[i].history.pending.is_none() {
+            self.push_undo_snapshot(i, "DIMREASSOCIATE");
+        }
         if self.tabs[i].scene.reassociate_dimension(dimension, &target) {
             self.invalidate_property_targets(i, &[dimension]);
             self.tabs[i].dirty = true;
@@ -368,6 +370,7 @@ fn apply_dimbreak(
 
     let crossing_handles: Vec<Handle> = match &operation {
         DimensionBreakOperation::Objects(handles) => handles.clone(),
+        DimensionBreakOperation::Object(handle) => vec![*handle],
         DimensionBreakOperation::Auto => scene
             .document
             .entities()
@@ -409,7 +412,9 @@ fn apply_dimbreak(
             DimensionBreakOperation::Manual(first, second) => {
                 references.push(break_reference(references.len() as i32, 2, first, second));
             }
-            DimensionBreakOperation::Auto | DimensionBreakOperation::Objects(_) => {
+            DimensionBreakOperation::Auto
+            | DimensionBreakOperation::Objects(_)
+            | DimensionBreakOperation::Object(_) => {
                 let dimension_segments = wire_segments(&scene.wire_models_for(&[*dimension]));
                 let mut intersections = Vec::new();
                 for dim_segment in &dimension_segments {
@@ -444,6 +449,7 @@ fn apply_dimbreak(
     }
 
     let reserved = match operation {
+        DimensionBreakOperation::Object(handle) => handle,
         DimensionBreakOperation::Objects(handles) => {
             handles.first().copied().unwrap_or(Handle::NULL)
         }

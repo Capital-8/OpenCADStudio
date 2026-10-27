@@ -7508,5 +7508,7 @@ dim-prompt-steps =
     .reassoc-arc = DIMREASSOCIATE  Select arc or circle <next>:
     .reassoc-feature = DIMREASSOCIATE  Specify feature location <next>:
     .reassoc-not = Dimension point not reassociated.
+    .no-style-found = No style found.
+    .block-not-defined = Block "__ocs_fmt_0__" not defined
 dim-cmd-msg =
     .value-positive = Value must be positive.

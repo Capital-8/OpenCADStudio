@@ -1785,6 +1785,8 @@ pub enum DimensionBreakOperation {
     Auto,
     /// Break where the picked objects cross.
     Objects(Vec<Handle>),
+    /// Break where this one object crosses.
+    Object(Handle),
     Manual(DVec3, DVec3),
     Remove,
 }
@@ -3401,6 +3403,12 @@ pub trait CadCommand: Send {
     /// `on_hover_entity` on viewport moves.
     fn persistent_preview_wires(&self) -> Vec<WireModel> {
         vec![]
+    }
+
+    /// Every change the command makes while it runs is one undo step: the
+    /// message boundary leaves its history transaction open.
+    fn groups_undo(&self) -> bool {
+        false
     }
 
     /// Opt in to transient measurement text; unrelated Measurement users keep

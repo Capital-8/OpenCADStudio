@@ -7428,5 +7428,7 @@ dim-prompt-steps =
     .reassoc-arc = DIMREASSOCIATE  Yay veya daire seçin <next>:
     .reassoc-feature = DIMREASSOCIATE  Özellik konumunu belirtin <next>:
     .reassoc-not = Ölçü noktası yeniden ilişkilendirilmedi.
+    .no-style-found = Stil bulunamadı.
+    .block-not-defined = "__ocs_fmt_0__" bloğu tanımlı değil
 dim-cmd-msg =
     .value-positive = Değer pozitif olmalıdır.

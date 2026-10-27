@@ -5727,6 +5727,8 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "DIMREASSOCIATE  Select arc or circle <next>:" => Some(("dim-prompt-steps", "reassoc-arc")),
         "DIMREASSOCIATE  Specify feature location <next>:" => Some(("dim-prompt-steps", "reassoc-feature")),
         "Dimension point not reassociated." => Some(("dim-prompt-steps", "reassoc-not")),
+        "No style found." => Some(("dim-prompt-steps", "no-style-found")),
+        "Block \"{value}\" not defined" => Some(("dim-prompt-steps", "block-not-defined")),
         "DIMBREAK  Specify first break point:" => Some(("common", "dimbreak-specify-first-break-point")),
         "DIMBREAK  Specify second break point:" => Some(("common", "dimbreak-specify-second-break-point")),
         "DIMBREAK: no editable dimensions were selected." => Some(("common", "dimbreak-no-editable-dimensions-were-selected")),

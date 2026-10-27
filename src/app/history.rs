@@ -424,7 +424,11 @@ impl OpenCADStudio {
         for i in 0..self.tabs.len() {
             // A plugin's scope spans the commands its running request drives;
             // the message boundary after the request closes it.
-            if !self.joins_plugin_scope(i) {
+            let grouping = self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .is_some_and(|command| command.groups_undo());
+            if !self.joins_plugin_scope(i) && !grouping {
                 self.finish_pending_history(i);
             }
         }
