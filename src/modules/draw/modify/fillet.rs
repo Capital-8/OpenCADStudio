@@ -1039,6 +1039,7 @@ fn join_poly_fillet(
     seg_idx: usize,
     moved: &LwPolyline,
     other: &EntityType,
+    other_seg: Option<(&LwPolyline, usize)>,
     fillet: Option<&EntityType>,
 ) -> Option<LwPolyline> {
     let n = poly.vertices.len();
@@ -1094,24 +1095,37 @@ fn join_poly_fillet(
                 (-quarter, vec![(p0, 0.0)])
             }
         }
-        // Another open polyline whose end segment the fillet trimmed: its
-        // vertices follow on from that end (#1422).
-        EntityType::LwPolyline(other) if !other.is_closed && other.vertices.len() >= 2 => {
-            let v = &other.vertices;
-            let m = v.len();
-            if near(xy(&v[0]), t2) {
-                let chain = (1..m)
-                    .map(|k| (xy(&v[k]), if k + 1 < m { v[k].bulge } else { 0.0 }))
-                    .collect();
-                (v[0].bulge, chain)
-            } else if near(xy(&v[m - 1]), t2) {
-                let chain = (0..m - 1)
+        // Another polyline, `other_seg` being it before the fillet and the
+        // segment the fillet trimmed: it is cut there like this one, keeping
+        // the picked side, and its vertices follow on from the cut (#1422).
+        EntityType::LwPolyline(other) => {
+            let (orig, s) = other_seg?;
+            let m = orig.vertices.len();
+            if m < 2 || other.vertices.len() != m || orig.vertices[s].bulge.abs() > 1e-12 {
+                return None;
+            }
+            // A closed polyline is opened at its closing segment first.
+            let mut v = orig.vertices.clone();
+            if orig.is_closed {
+                let mut last = v[0].clone();
+                last.bulge = 0.0;
+                v.push(last);
+            }
+            let end_moved = !near(
+                xy(&orig.vertices[(s + 1) % m]),
+                xy(&other.vertices[(s + 1) % m]),
+            );
+            if end_moved {
+                let chain = (0..=s)
                     .rev()
                     .map(|k| (xy(&v[k]), if k > 0 { -v[k - 1].bulge } else { 0.0 }))
                     .collect();
-                (-v[m - 2].bulge, chain)
+                (0.0, chain)
             } else {
-                return None;
+                let chain = (s + 1..v.len())
+                    .map(|k| (xy(&v[k]), if k + 1 < v.len() { v[k].bulge } else { 0.0 }))
+                    .collect();
+                (0.0, chain)
             }
         }
         _ => return None,
@@ -2030,6 +2044,7 @@ impl CadCommand for FilletCommand {
                                     *seg_idx,
                                     moved,
                                     other,
+                                    None,
                                     maybe_arc.as_ref(),
                                 )
                                 .map(|poly| {
@@ -2041,7 +2056,11 @@ impl CadCommand for FilletCommand {
                                 // Two polylines join into the first one.
                                 (
                                     FilletEntity::LwPoly { poly, seg_idx, .. },
-                                    FilletEntity::LwPoly { .. },
+                                    FilletEntity::LwPoly {
+                                        poly: poly2,
+                                        seg_idx: seg2,
+                                        ..
+                                    },
                                     EntityType::LwPolyline(moved),
                                     other,
                                 ) if !same_entity => join_poly_fillet(
@@ -2049,6 +2068,7 @@ impl CadCommand for FilletCommand {
                                     *seg_idx,
                                     moved,
                                     other,
+                                    Some((poly2, *seg2)),
                                     maybe_arc.as_ref(),
                                 )
                                 .map(|poly| {
@@ -2067,6 +2087,7 @@ impl CadCommand for FilletCommand {
                                     *seg_idx,
                                     moved,
                                     other,
+                                    None,
                                     maybe_arc.as_ref(),
                                 )
                                 .map(|poly| {
@@ -3010,11 +3031,17 @@ mod tests {
             EntityType::LwPolyline(p)
         };
         let first = [[0.0, 10.0], [0.0, 3.0]];
-        let second = [[3.0, 0.0], [10.0, 0.0], [10.0, 5.0]];
+        // The fillet on the second one's end segment, or on a middle one:
+        // the part past the fillet point is dropped.
+        let seconds: [&[[f64; 2]]; 2] = [
+            &[[3.0, 0.0], [10.0, 0.0], [10.0, 5.0]],
+            &[[3.0, -5.0], [3.0, 0.0], [10.0, 0.0], [10.0, 5.0]],
+        ];
         // Each polyline drawn either way round.
-        for (flip_first, flip_second) in
+        for (second, flip_first, flip_second) in seconds.iter().flat_map(|second| {
             [(false, false), (true, false), (false, true), (true, true)]
-        {
+                .map(|(a, b)| (*second, a, b))
+        }) {
             let mut a = first.to_vec();
             let mut b = second.to_vec();
             if flip_first {
