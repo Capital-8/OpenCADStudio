@@ -66,11 +66,17 @@
       // worker starts capturing this visit's asset requests as early as
       // possible. sw.js never reloads the page on update: a new worker
       // waits until every tab on the old version has closed.
+      // A sandboxed iframe without allow-same-origin has an opaque origin:
+      // there even reading navigator.serviceWorker throws (#2257).
       (() => {
-        if (!("serviceWorker" in navigator)) return;
-        navigator.serviceWorker.register("sw.js").catch(error => {
-          console.warn("service worker registration failed; offline support disabled:", error);
-        });
+        if (self.origin === "null" || !("serviceWorker" in navigator)) return;
+        try {
+          navigator.serviceWorker.register("sw.js").catch(error => {
+            console.warn("service worker registration failed; offline support disabled:", error);
+          });
+        } catch (error) {
+          console.warn("service worker unavailable; offline support disabled:", error);
+        }
       })();
     </script>
     <script>
