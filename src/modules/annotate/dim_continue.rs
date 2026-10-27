@@ -94,6 +94,8 @@ pub struct DimContinueCommand {
     injected: Option<EntityType>,
     history: Vec<ContinueState>,
     preserve_base_style: bool,
+    /// Run from DIM's Continue option: its own wording.
+    in_dim: bool,
 }
 
 impl DimContinueCommand {
@@ -103,11 +105,17 @@ impl DimContinueCommand {
             injected: None,
             history: Vec::new(),
             preserve_base_style,
+            in_dim: false,
         };
         if let Some(entity) = recent {
             let _ = command.install_base(&entity, None);
         }
         command
+    }
+
+    /// DIM's Continue: the dimension to continue is picked.
+    pub fn run_from_dim(&mut self) {
+        self.in_dim = true;
     }
 
     fn install_base(&mut self, entity: &EntityType, pick_world: Option<DVec3>) -> bool {
@@ -326,6 +334,15 @@ impl CadCommand for DimContinueCommand {
     }
 
     fn prompt(&self) -> String {
+        if self.in_dim {
+            return match &self.base {
+                None => crate::tr!("dim-cmd", "continue-first"),
+                Some(base) if matches!(&base.kind, ContinueKind::Ordinate { .. }) => {
+                    crate::tr!("dim-cmd", "continue-ordinate")
+                }
+                Some(_) => crate::tr!("dim-cmd", "continue-second"),
+            };
+        }
         if self.base.is_none() {
             crate::t!("DIMCONTINUE  Select continued dimension:").into_owned()
         } else if self

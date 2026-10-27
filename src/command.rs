@@ -2325,6 +2325,13 @@ pub enum CmdResult {
         others: Vec<Handle>,
         spacing: Option<f64>,
     },
+    /// DIM's Distribute: `offset` steps the dimensions away from `base`;
+    /// `None` spaces them evenly between the outermost two.
+    DistributeDimensions {
+        base: Option<Handle>,
+        dimensions: Vec<Handle>,
+        offset: Option<f64>,
+    },
     /// Cancel: discard any preview and end the command.
     Cancel,
     /// Cleanly end the command without reporting cancellation.

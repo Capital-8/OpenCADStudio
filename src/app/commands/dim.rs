@@ -538,45 +538,13 @@ impl OpenCADStudio {
             }
 
             "DIMCONTINUE" => {
-                use crate::modules::annotate::dim_continue::DimContinueCommand;
-                let scene = &self.tabs[i].scene;
-                let recent = scene
-                    .last_created_dimension
-                    .filter(|handle| scene.entity_belongs_to_active_space(*handle))
-                    .and_then(|handle| scene.document.get_entity(handle))
-                    .cloned();
-                let cmd = DimContinueCommand::new(recent, self.dimension_continue_mode == 1);
+                let cmd = self.dim_continue_command(i, false);
                 self.command_line.push_info(&cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
             }
 
             "DIMBASELINE" => {
-                use crate::modules::annotate::dim_baseline::DimBaselineCommand;
-                let scene = &self.tabs[i].scene;
-                let recent = scene
-                    .last_created_dimension
-                    .filter(|handle| scene.entity_belongs_to_active_space(*handle))
-                    .and_then(|handle| scene.document.get_entity(handle))
-                    .cloned();
-                let dimdli_by_style = scene
-                    .document
-                    .dim_styles
-                    .iter()
-                    .map(|style| (style.name.to_ascii_lowercase(), style.dimdli))
-                    .collect();
-                let fallback_dimdli = if scene.document.header.measurement == 1 {
-                    3.75
-                } else {
-                    0.38
-                };
-                let current_style_name = scene.document.header.current_dimstyle_name.clone();
-                let cmd = DimBaselineCommand::new(
-                    recent,
-                    dimdli_by_style,
-                    current_style_name,
-                    fallback_dimdli,
-                    self.dimension_continue_mode == 1,
-                );
+                let cmd = self.dim_baseline_command(i, false);
                 self.command_line.push_info(&cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
             }
