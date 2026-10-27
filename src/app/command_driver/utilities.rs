@@ -1303,17 +1303,7 @@ impl OpenCADStudio {
                     return Some(Task::none());
                 };
                 self.last_point = Some(second);
-                // Left to right is a window, right to left a crossing, as a
-                // dragged box. ponytail: compared along world X, which is the
-                // screen direction in plan views only.
-                let crossing = second.x < first.x;
-                let path = vec![
-                    [first.x, first.y],
-                    [second.x, first.y],
-                    [second.x, second.y],
-                    [first.x, second.y],
-                ];
-                return Some(self.handle_select_by_path(path, true, crossing));
+                return Some(self.select_typed_window(first, second));
             }
         }
         if !gathering && !picks_entity {

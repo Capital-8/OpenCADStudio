@@ -1365,6 +1365,31 @@ impl OpenCADStudio {
         closed: bool,
         crossing: bool,
     ) -> Task<Message> {
+        let path: Vec<glam::DVec3> = path.iter().map(|p| glam::DVec3::new(p[0], p[1], 0.0)).collect();
+        self.select_by_path(&path, closed, Some(crossing))
+    }
+
+    /// A window between two typed corners: a box upright on the screen,
+    /// the same as a dragged one, so in a twisted or 3D view its sides
+    /// follow the screen, not the drawing axes. Window or crossing follows
+    /// the dragged-box rule.
+    pub(super) fn select_typed_window(
+        &mut self,
+        first: glam::DVec3,
+        second: glam::DVec3,
+    ) -> Task<Message> {
+        self.select_by_path(&[first, second], true, None)
+    }
+
+    /// Selects with a world path seen through the current view. `crossing`
+    /// `None` takes `path` as the two corners of a screen box and decides
+    /// window or crossing the way a dragged box does.
+    fn select_by_path(
+        &mut self,
+        path: &[glam::DVec3],
+        closed: bool,
+        crossing: Option<bool>,
+    ) -> Task<Message> {
         let i = self.active_tab;
         // The command picked the path; the hit test lives here, where
         // the camera and the drawing's geometry are. Everything after
@@ -1381,17 +1406,29 @@ impl OpenCADStudio {
             .viewport_edit_frame(canvas)
             .map(|(cam, _)| cam);
         let (view_rot, eye, all_wires) = self.pick_view(i, &edit_cam, bounds);
-        let screen: Vec<iced::Point> = path
+        let mut screen: Vec<iced::Point> = path
             .iter()
-            .map(|p| {
-                crate::scene::pick::hit_test::world_to_screen(
-                    glam::DVec3::new(p[0], p[1], 0.0),
-                    view_rot,
-                    eye,
-                    bounds,
-                )
-            })
+            .map(|p| crate::scene::pick::hit_test::world_to_screen(*p, view_rot, eye, bounds))
             .collect();
+        let crossing = match crossing {
+            Some(crossing) => crossing,
+            None => {
+                let (a, p) = (screen[0], screen[1]);
+                screen = vec![a, iced::Point::new(p.x, a.y), p, iced::Point::new(a.x, p.y)];
+                // A Window / Crossing keyword holds for this one box, as
+                // for a dragged one.
+                let mut selection = self.tabs[i].scene.selection.borrow_mut();
+                let gesture = &mut selection.gesture;
+                let crossing = if gesture.box_crossing_locked {
+                    gesture.box_crossing
+                } else {
+                    crate::scene::selection_box_crossing(a, p)
+                };
+                gesture.box_crossing = false;
+                gesture.box_crossing_locked = false;
+                crossing
+            }
+        };
         let handles = self.tabs[i].scene.path_hit_handles(
             &screen,
             crossing,
