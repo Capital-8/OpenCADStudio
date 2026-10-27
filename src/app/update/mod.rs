@@ -5413,6 +5413,12 @@ impl OpenCADStudio {
             }
             Message::ToggleProperties => {
                 let id = crate::ui::dock::PanelId::Properties;
+                // Open but tucked away (an auto-hiding edge, another group
+                // shown): the shortcut brings it into view (#2251).
+                if self.dock_panel_visible(id) && !self.dock_panel_on_screen(id) {
+                    self.dock_reveal(id);
+                    return Task::none();
+                }
                 let open = !self.dock_panel_visible(id);
                 if self.clean_screen {
                     // Shown over clean screen without changing the panel's

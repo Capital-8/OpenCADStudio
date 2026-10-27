@@ -800,18 +800,24 @@ fn layer_row<'a>(
     } else {
         // ~6 px per glyph at the 10 px row font — track the column width.
         let name_budget = ((name_col_w / 6.0) as usize).max(8);
-        let name_btn =
-            button(text(crate::ui::text_util::elide(&layer.name, name_budget)).size(FONT_SZ))
-                .on_press(Message::LayerRenameStart(lname.clone()))
-                .style(cell_button_style(is_selected, index))
-                .padding(Padding {
-                    top: COMBO_PAD_V,
-                    bottom: COMBO_PAD_V,
-                    left: 4.0,
-                    right: 4.0,
-                })
-                .height(Length::Fixed(ROW_H))
-                .width(Length::Fixed(name_col_w));
+        // One line, cut at the cell: the glyph estimate can run over a narrow
+        // column, and a wrapped name spilled into the rows below (#2251).
+        let name_btn = button(
+            text(crate::ui::text_util::elide(&layer.name, name_budget))
+                .size(FONT_SZ)
+                .wrapping(iced::widget::text::Wrapping::None),
+        )
+        .clip(true)
+        .on_press(Message::LayerRenameStart(lname.clone()))
+        .style(cell_button_style(is_selected, index))
+        .padding(Padding {
+            top: COMBO_PAD_V,
+            bottom: COMBO_PAD_V,
+            left: 4.0,
+            right: 4.0,
+        })
+        .height(Length::Fixed(ROW_H))
+        .width(Length::Fixed(name_col_w));
         // When the name is truncated, reveal the full text on hover so the
         // user can still read it without widening the column.
         if layer.name.chars().count() > name_budget {
