@@ -1798,7 +1798,32 @@ fn render_group<'a>(
         compact,
     };
 
-    for item in &group.tools {
+    let mut tools = group.tools.iter().peekable();
+    while let Some(item) = tools.next() {
+        // Dimensions: the small tools after the style / layer lists are their
+        // bottom row (Linear, Quick, Continue), not a column of their own.
+        if !compact
+            && matches!(
+                item,
+                RibbonItem::StyleComboGroup {
+                    style_key: crate::modules::StyleKey::DimStyle,
+                    ..
+                }
+            )
+        {
+            flush_small_col(&mut small_buf, &mut items_row);
+            let mut below = Vec::new();
+            while let Some(next) = tools.next_if(|next| {
+                matches!(
+                    next,
+                    RibbonItem::LabeledTool(_) | RibbonItem::LabeledDropdown { .. }
+                )
+            }) {
+                below.push(widgets::render_row_item(next, active_tool, open_dd, last_cmd, state));
+            }
+            items_row.push(widgets::render_large_with(item, &ctx, below));
+            continue;
+        }
         let is_large = match item {
             RibbonItem::LargeTool(_) | RibbonItem::LargeDropdown { .. } => !compact,
             RibbonItem::ToolGrid { .. }
