@@ -1765,10 +1765,26 @@ pub enum DimensionEditOperation {
     Oblique(f64),
 }
 
-#[derive(Clone, Copy)]
+/// What DIMREASSOCIATE moves a dimension's definition points onto.
+#[derive(Clone, Debug)]
+pub enum ReassociateTarget {
+    /// The definition point `index` goes to `point`, on the object there.
+    Point { index: usize, point: DVec3 },
+    /// Both extension line origins go to the ends of a line or arc.
+    Ends(Handle),
+    /// A three-point angle takes an arc's centre and ends.
+    Arc(Handle),
+    /// One of a two-line angle's lines.
+    Line { index: usize, object: Handle },
+    /// A radius or diameter dimension measures this arc or circle.
+    Radial(Handle),
+}
+
+#[derive(Clone)]
 pub enum DimensionBreakOperation {
     Auto,
-    Object(Handle),
+    /// Break where the picked objects cross.
+    Objects(Vec<Handle>),
     Manual(DVec3, DVec3),
     Remove,
 }
@@ -2297,6 +2313,12 @@ pub enum CmdResult {
     EditDimensionJog {
         dimension: Handle,
         point: Option<DVec3>,
+    },
+    /// DIMREASSOCIATE answered one prompt of `dimension`; `last` ends it.
+    ReassociateDimension {
+        dimension: Handle,
+        target: ReassociateTarget,
+        last: bool,
     },
     SpaceDimensions {
         base: Handle,

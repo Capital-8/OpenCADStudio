@@ -12,15 +12,45 @@ use crate::t;
 
 pub struct DimOverrideCommand {
     vars: Vec<(String, String)>,
-    pending: Option<(String, VarKind)>,
+    /// The variable whose value is asked, and the value Enter keeps.
+    pending: Option<(String, VarKind, String)>,
+    /// The current dimension style, whose values are the defaults.
+    style: Option<codec::tables::DimStyle>,
 }
 
 impl DimOverrideCommand {
-    pub fn new() -> Self {
+    pub fn new(style: Option<codec::tables::DimStyle>) -> Self {
         Self {
             vars: Vec::new(),
             pending: None,
+            style,
         }
+    }
+
+    /// Record `value` for the variable being asked, or say why it is refused.
+    fn accept(&mut self, value: &str) -> CmdResult {
+        let Some((name, kind, current)) = self.pending.take() else {
+            return CmdResult::NeedPoint;
+        };
+        let refused = match (kind, parse_var_value(kind, value)) {
+            (_, None) if kind == VarKind::Real => {
+                Some(t!("Requires numeric distance or two points.").into_owned())
+            }
+            (_, None) => Some(t!("DIMOVERRIDE: invalid value for this variable.").into_owned()),
+            (_, Some(codec::xdata::XDataValue::Real(number)))
+                if number <= 0.0 && matches!(name.as_str(), "DIMASZ" | "DIMTXT" | "DIMTSZ") =>
+            {
+                (number < 0.0).then(|| t!("Value must be positive.").into_owned())
+            }
+            _ => None,
+        };
+        if let Some(message) = refused {
+            self.pending = Some((name, kind, current));
+            return CmdResult::ReportError(message);
+        }
+        self.vars.retain(|(known, _)| *known != name);
+        self.vars.push((name, value.to_string()));
+        CmdResult::NeedPoint
     }
 }
 
@@ -31,11 +61,15 @@ impl CadCommand for DimOverrideCommand {
 
     fn prompt(&self) -> String {
         match &self.pending {
-            None => {
+            None if self.vars.is_empty() => {
                 t!("DIMOVERRIDE  Enter dimension variable name to override or [Clear overrides]:")
                     .into_owned()
             }
-            Some((name, _)) => crate::tf!("DIMOVERRIDE  Enter new value for {name}:").into_owned(),
+            None => t!("DIMOVERRIDE  Enter dimension variable name to override:").into_owned(),
+            Some((_, _, current)) => crate::tf!(
+                "DIMOVERRIDE  Enter new value for dimension variable <{current}>:"
+            )
+            .into_owned(),
         }
     }
 
@@ -47,7 +81,7 @@ impl CadCommand for DimOverrideCommand {
     }
 
     fn input_kind(&self) -> InputKind {
-        if matches!(self.pending, Some((_, VarKind::Text))) {
+        if matches!(self.pending, Some((_, VarKind::Text, _))) {
             InputKind::FreeText
         } else {
             InputKind::SingleToken
@@ -60,33 +94,33 @@ impl CadCommand for DimOverrideCommand {
 
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
         let value = text.trim();
+        if self.pending.is_some() {
+            if value.is_empty() {
+                return None;
+            }
+            return Some(self.accept(value));
+        }
         if value.is_empty() {
             return None;
         }
-        let Some((name, kind)) = self.pending.take() else {
-            let upper = value.to_ascii_uppercase();
-            if self.vars.is_empty() && matches!(upper.as_str(), "C" | "CLEAR") {
-                return Some(CmdResult::Dispatch("DIMOVERRIDE_APPLY CLEAR".to_string()));
-            }
-            return Some(match named_var(&upper) {
-                Some((_, kind)) => {
-                    self.pending = Some((upper, kind));
-                    CmdResult::NeedPoint
-                }
-                None => CmdResult::ReportError(
-                    crate::tf!("DIMOVERRIDE: unknown dimension variable \"{upper}\".").into_owned(),
-                ),
-            });
-        };
-        if parse_var_value(kind, value).is_none() {
-            self.pending = Some((name, kind));
-            return Some(CmdResult::ReportError(
-                t!("DIMOVERRIDE: invalid value for this variable.").into_owned(),
-            ));
+        let upper = value.to_ascii_uppercase();
+        if self.vars.is_empty() && matches!(upper.trim_start_matches('_'), "C" | "CLEAR") {
+            return Some(CmdResult::Dispatch("DIMOVERRIDE_APPLY CLEAR".to_string()));
         }
-        self.vars.retain(|(known, _)| *known != name);
-        self.vars.push((name, value.to_string()));
-        Some(CmdResult::NeedPoint)
+        Some(match named_var(&upper) {
+            Some((code, kind)) => {
+                let current = self
+                    .style
+                    .as_ref()
+                    .and_then(|style| crate::entities::dim_override::style_value_text(style, code))
+                    .unwrap_or_default();
+                self.pending = Some((upper, kind, current));
+                CmdResult::NeedPoint
+            }
+            None => CmdResult::ReportError(
+                crate::tf!("Variable \"{upper}\" not found.").into_owned(),
+            ),
+        })
     }
 
     fn on_point(&mut self, _point: DVec3) -> CmdResult {
@@ -94,7 +128,12 @@ impl CadCommand for DimOverrideCommand {
     }
 
     fn on_enter(&mut self) -> CmdResult {
-        if self.pending.is_some() || self.vars.is_empty() {
+        // Enter at the value keeps the current one.
+        if let Some((_, _, current)) = &self.pending {
+            let current = current.clone();
+            return self.accept(&current);
+        }
+        if self.vars.is_empty() {
             return CmdResult::Cancel;
         }
         let spec: Vec<String> = self

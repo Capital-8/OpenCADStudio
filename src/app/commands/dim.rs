@@ -1411,7 +1411,17 @@ impl OpenCADStudio {
 
             "DIMOVERRIDE" => {
                 use crate::modules::annotate::dimoverride::DimOverrideCommand;
-                let cmd = DimOverrideCommand::new();
+                let document = &self.tabs[i].scene.document;
+                let style = document
+                    .dim_styles
+                    .iter()
+                    .find(|style| {
+                        style
+                            .name
+                            .eq_ignore_ascii_case(&document.header.current_dimstyle_name)
+                    })
+                    .cloned();
+                let cmd = DimOverrideCommand::new(style);
                 self.command_line.push_info(&cmd.prompt());
                 self.command_line.set_step_options(cmd.options());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
@@ -1528,50 +1538,41 @@ impl OpenCADStudio {
                     self.command_line
                         .push_output(crate::tf!("{count} disassociated.").as_ref());
                 } else {
-                    self.push_undo_snapshot(i, "DIMREASSOCIATE");
-                    let (mut count, mut partial) = (0, 0);
-                    for &handle in &handles {
-                        let scene = &mut self.tabs[i].scene;
-                        let owner_of = |handle: codec::Handle| {
-                            scene.document.get_entity(handle).map(|e| e.common().owner_handle)
-                        };
-                        // Only geometry in the dimension's own space may anchor it.
-                        let owner = owner_of(handle);
-                        let sources: Vec<_> = scene
-                            .infer_dimension_sources(handle)
-                            .into_iter()
-                            .map(|source| source.filter(|source| owner_of(*source) == owner))
-                            .collect();
-                        if sources.iter().all(Option::is_none) {
-                            continue;
-                        }
-                        let complete = sources.iter().all(Option::is_some);
-                        scene.detach_dimension_association(handle);
-                        scene.attach_dimension_association(handle, sources);
-                        if scene.dimension_association(handle).is_some() {
-                            if complete {
-                                count += 1;
-                            } else {
-                                partial += 1;
-                            }
-                        }
-                    }
-                    self.invalidate_property_targets(i, &handles);
-                    self.tabs[i].dirty |= count + partial > 0;
-                    self.command_line.push_output(
-                        crate::tf!(
-                            "DIMREASSOCIATE: {count} of {} dimension(s) associated.",
-                            handles.len()
-                        )
-                        .as_ref(),
-                    );
-                    if partial > 0 {
-                        self.command_line.push_output(
-                            crate::tf!(
-                                "DIMREASSOCIATE: {partial} dimension(s) only partially associated (no object at some definition points)."
-                            )
-                            .as_ref(),
-                        );
+                    // Each dimension's definition points are asked in turn.
+                    use crate::modules::annotate::dimreassociate::{
+                        DimReassociateCommand, ReassociateKind,
+                    };
+                    let scene = &self.tabs[i].scene;
+                    let items: Vec<_> = handles
+                        .iter()
+                        .filter_map(|&handle| {
+                            let kind = match scene
+                                .document
+                                .get_entity(handle)
+                                .and_then(crate::entities::dimension::as_dimension)?
+                            {
+                                codec::entities::Dimension::Linear(_)
+                                | codec::entities::Dimension::Aligned(_) => ReassociateKind::Linear,
+                                codec::entities::Dimension::Angular3Pt(_) => {
+                                    ReassociateKind::Angular3
+                                }
+                                codec::entities::Dimension::Angular2Ln(_) => {
+                                    ReassociateKind::Angular2
+                                }
+                                codec::entities::Dimension::Radius(_)
+                                | codec::entities::Dimension::Diameter(_) => ReassociateKind::Radial,
+                                codec::entities::Dimension::Ordinate(_) => ReassociateKind::Ordinate,
+                                _ => return None,
+                            };
+                            Some((handle, kind))
+                        })
+                        .collect();
+                    self.tabs[i].scene.deselect_all();
+                    if !items.is_empty() {
+                        let command = DimReassociateCommand::new(items);
+                        self.command_line.push_info(&command.prompt());
+                        self.command_line.set_step_options(command.options());
+                        self.tabs[i].active_cmd = Some(Box::new(command));
                     }
                 }
             }

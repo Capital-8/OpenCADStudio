@@ -29,6 +29,32 @@ impl OpenCADStudio {
         self.tabs[i].snap_result = None;
     }
 
+    /// One answer of DIMREASSOCIATE: the point (or object) is applied at
+    /// once, as its own undo step.
+    pub(super) fn handle_reassociate_dimension(
+        &mut self,
+        dimension: Handle,
+        target: crate::command::ReassociateTarget,
+        last: bool,
+    ) {
+        let i = self.active_tab;
+        self.push_undo_snapshot(i, "DIMREASSOCIATE");
+        if self.tabs[i].scene.reassociate_dimension(dimension, &target) {
+            self.invalidate_property_targets(i, &[dimension]);
+            self.tabs[i].dirty = true;
+        } else {
+            self.command_line
+                .push_info(crate::t!("Dimension point not reassociated.").as_ref());
+        }
+        if last {
+            self.tabs[i].active_cmd = None;
+            self.tabs[i].snap_result = None;
+            self.command_line.set_step_options(Vec::new());
+        } else {
+            let _ = self.handle_need_point();
+        }
+    }
+
     pub(super) fn handle_edit_dimension_jog(
         &mut self,
         dimension: Handle,
@@ -303,17 +329,13 @@ fn apply_dimbreak(
             .filter(|handle| remove_dimension_break_data(&mut scene.document, *handle))
             .collect();
         return DimBreakResult {
-            message: crate::tf!(
-                "DIMBREAK: removed breaks from {} dimension(s).",
-                changed.len()
-            )
-            .into_owned(),
+            message: objects_modified(changed.len()),
             changed,
         };
     }
 
-    let crossing_handles: Vec<Handle> = match operation {
-        DimensionBreakOperation::Object(handle) => vec![handle],
+    let crossing_handles: Vec<Handle> = match &operation {
+        DimensionBreakOperation::Objects(handles) => handles.clone(),
         DimensionBreakOperation::Auto => scene
             .document
             .entities()
@@ -355,7 +377,7 @@ fn apply_dimbreak(
             DimensionBreakOperation::Manual(first, second) => {
                 references.push(break_reference(references.len() as i32, 2, first, second));
             }
-            DimensionBreakOperation::Auto | DimensionBreakOperation::Object(_) => {
+            DimensionBreakOperation::Auto | DimensionBreakOperation::Objects(_) => {
                 let dimension_segments = wire_segments(&scene.wire_models_for(&[*dimension]));
                 let mut intersections = Vec::new();
                 for dim_segment in &dimension_segments {
@@ -390,7 +412,9 @@ fn apply_dimbreak(
     }
 
     let reserved = match operation {
-        DimensionBreakOperation::Object(handle) => handle,
+        DimensionBreakOperation::Objects(handles) => {
+            handles.first().copied().unwrap_or(Handle::NULL)
+        }
         _ => Handle::NULL,
     };
     let changed: Vec<_> = pending
@@ -401,12 +425,17 @@ fn apply_dimbreak(
         })
         .collect();
     DimBreakResult {
-        message: if changed.is_empty() {
-            crate::t!("DIMBREAK: no intersections were found.").into_owned()
-        } else {
-            crate::tf!("DIMBREAK: updated {} dimension(s).", changed.len()).into_owned()
-        },
+        message: objects_modified(changed.len()),
         changed,
+    }
+}
+
+/// The count line DIMBREAK ends with.
+fn objects_modified(count: usize) -> String {
+    if count == 1 {
+        crate::t!("1 object modified").into_owned()
+    } else {
+        crate::tf!("{count} objects modified").into_owned()
     }
 }
 

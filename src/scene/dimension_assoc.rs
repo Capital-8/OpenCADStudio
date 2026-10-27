@@ -1962,6 +1962,159 @@ impl Scene {
         }
     }
 
+    /// DIMREASSOCIATE: move the definition point(s) `target` names onto
+    /// their object and associate the dimension with what now lies under
+    /// its points. False when no object lies there.
+    pub(crate) fn reassociate_dimension(
+        &mut self,
+        dimension: Handle,
+        target: &crate::command::ReassociateTarget,
+    ) -> bool {
+        use crate::command::ReassociateTarget as T;
+        let Some(owner) = self
+            .document
+            .get_entity(dimension)
+            .map(|entity| entity.common().owner_handle)
+        else {
+            return false;
+        };
+        let object = |handle: Handle| {
+            self.document
+                .get_entity(handle)
+                .filter(|entity| entity.common().owner_handle == owner && handle != dimension)
+                .cloned()
+        };
+        let ends = |entity: &EntityType| match entity {
+            EntityType::Line(line) => Some((line.start, line.end)),
+            EntityType::Arc(arc) => Some((arc.start_point_wcs(), arc.end_point_wcs())),
+            _ => None,
+        };
+        let point = |value: glam::DVec3| Vector3::new(value.x, value.y, value.z);
+        // Each change: (index into the inference points, new location).
+        let mut moves: Vec<(usize, Vector3)> = Vec::new();
+        let mut radial: Option<(Vector3, f64)> = None;
+        match target {
+            T::Point { index, point: at } => {
+                let at = point(*at);
+                let tolerance = (at.x.abs() + at.y.abs() + at.z.abs()).max(1.0) * 1e-9;
+                let found = self.document.entities().any(|entity| {
+                    entity.common().owner_handle == owner
+                        && entity.common().handle != dimension
+                        && !matches!(entity, EntityType::Dimension(_))
+                        && source_distance_squared(entity, at)
+                            .is_some_and(|distance| distance <= tolerance * tolerance)
+                });
+                if !found {
+                    return false;
+                }
+                moves.push((*index, at));
+            }
+            T::Ends(handle) => {
+                let Some((start, end)) = object(*handle).as_ref().and_then(ends) else {
+                    return false;
+                };
+                moves.extend([(0, start), (1, end)]);
+            }
+            T::Arc(handle) => {
+                let Some(EntityType::Arc(arc)) = object(*handle) else {
+                    return false;
+                };
+                moves.extend([
+                    (0, arc.center),
+                    (1, arc.start_point_wcs()),
+                    (2, arc.end_point_wcs()),
+                ]);
+            }
+            T::Line { index, object: handle } => {
+                let Some(EntityType::Line(line)) = object(*handle) else {
+                    return false;
+                };
+                let first = index * 2;
+                moves.extend([(first, line.start), (first + 1, line.end)]);
+            }
+            T::Radial(handle) => match object(*handle) {
+                Some(EntityType::Circle(circle)) => radial = Some((circle.center, circle.radius)),
+                Some(EntityType::Arc(arc)) => radial = Some((arc.center, arc.radius)),
+                _ => return false,
+            },
+        }
+        let Some(EntityType::Dimension(entity)) = self.document.get_entity_mut(dimension) else {
+            return false;
+        };
+        let along = |from: Vector3, to: Vector3| {
+            let (dx, dy, dz) = (to.x - from.x, to.y - from.y, to.z - from.z);
+            let length = (dx * dx + dy * dy + dz * dz).sqrt();
+            if length > 1e-12 {
+                (dx / length, dy / length, dz / length)
+            } else {
+                (1.0, 0.0, 0.0)
+            }
+        };
+        let offset = |center: Vector3, direction: (f64, f64, f64), distance: f64| {
+            Vector3::new(
+                center.x + direction.0 * distance,
+                center.y + direction.1 * distance,
+                center.z + direction.2 * distance,
+            )
+        };
+        match &mut **entity {
+            Dimension::Radius(radius) => {
+                let Some((center, size)) = radial else {
+                    return false;
+                };
+                let direction = along(radius.angle_vertex, radius.definition_point);
+                radius.angle_vertex = center;
+                radius.definition_point = offset(center, direction, size);
+            }
+            Dimension::Diameter(diameter) => {
+                let Some((center, size)) = radial else {
+                    return false;
+                };
+                let direction = along(diameter.definition_point, diameter.angle_vertex);
+                diameter.angle_vertex = offset(center, direction, size);
+                diameter.definition_point = offset(center, direction, -size);
+            }
+            other => {
+                for (index, at) in moves {
+                    let slot = match (&mut *other, index) {
+                        (Dimension::Linear(d), 0) => &mut d.first_point,
+                        (Dimension::Linear(d), 1) => &mut d.second_point,
+                        (Dimension::Aligned(d), 0) => &mut d.first_point,
+                        (Dimension::Aligned(d), 1) => &mut d.second_point,
+                        (Dimension::Angular3Pt(d), 0) => &mut d.angle_vertex,
+                        (Dimension::Angular3Pt(d), 1) => &mut d.first_point,
+                        (Dimension::Angular3Pt(d), 2) => &mut d.second_point,
+                        (Dimension::Angular2Ln(d), 0) => &mut d.first_point,
+                        (Dimension::Angular2Ln(d), 1) => &mut d.second_point,
+                        (Dimension::Angular2Ln(d), 2) => &mut d.angle_vertex,
+                        (Dimension::Angular2Ln(d), 3) => &mut d.definition_point,
+                        (Dimension::Ordinate(d), 0) => &mut d.feature_location,
+                        _ => return false,
+                    };
+                    *slot = at;
+                }
+            }
+        }
+        self.invalidate_dim_block_recorded(dimension);
+        let sources: Vec<Option<Handle>> = self
+            .infer_dimension_sources(dimension)
+            .into_iter()
+            .map(|source| {
+                source.filter(|source| {
+                    self.document
+                        .get_entity(*source)
+                        .is_some_and(|entity| entity.common().owner_handle == owner)
+                })
+            })
+            .collect();
+        self.detach_dimension_association(dimension);
+        if sources.iter().any(Option::is_some) {
+            self.attach_dimension_association(dimension, sources);
+        }
+        self.bump_entities(&[(dimension, ChangeKind::Modified)]);
+        true
+    }
+
     pub(crate) fn infer_dimension_sources(&self, dimension: Handle) -> Vec<Option<Handle>> {
         let Some(EntityType::Dimension(entity)) = self.document.get_entity(dimension) else {
             return Vec::new();

@@ -1,0 +1,223 @@
+// DIMREASSOCIATE — after the selection, each dimension's definition points
+// are asked in turn. A point (or a picked object) moves that point onto the
+// object and associates it; Enter (<next>) leaves the point as it is.
+
+use codec::{EntityType, Handle};
+use glam::DVec3;
+
+use crate::command::{CadCommand, CmdOption, CmdResult, InputKind, ReassociateTarget};
+
+/// Which definition points a dimension asks for.
+#[derive(Clone, Copy, PartialEq)]
+pub enum ReassociateKind {
+    /// Linear and aligned: two extension line origins, or one object.
+    Linear,
+    /// Three-point angular: vertex and two endpoints, or an arc or circle.
+    Angular3,
+    /// Two-line angular: the two lines.
+    Angular2,
+    /// Radius and diameter: the arc or circle.
+    Radial,
+    /// Ordinate: the feature location.
+    Ordinate,
+}
+
+impl ReassociateKind {
+    fn steps(self) -> usize {
+        match self {
+            Self::Linear | Self::Angular2 => 2,
+            Self::Angular3 => 3,
+            Self::Radial | Self::Ordinate => 1,
+        }
+    }
+}
+
+pub struct DimReassociateCommand {
+    items: Vec<(Handle, ReassociateKind)>,
+    item: usize,
+    step: usize,
+    /// "Select object" / "Select arc or circle" was chosen at the first prompt.
+    select_object: bool,
+    picked: Option<EntityType>,
+}
+
+impl DimReassociateCommand {
+    pub fn new(items: Vec<(Handle, ReassociateKind)>) -> Self {
+        Self {
+            items,
+            item: 0,
+            step: 0,
+            select_object: false,
+            picked: None,
+        }
+    }
+
+    fn kind(&self) -> Option<ReassociateKind> {
+        self.items.get(self.item).map(|(_, kind)| *kind)
+    }
+
+    /// The next prompt, or the end once every dimension has been asked.
+    fn advance(&mut self, whole_dimension: bool) -> bool {
+        self.select_object = false;
+        let steps = self.kind().map_or(0, ReassociateKind::steps);
+        if whole_dimension || self.step + 1 >= steps {
+            self.item += 1;
+            self.step = 0;
+        } else {
+            self.step += 1;
+        }
+        self.item < self.items.len()
+    }
+
+    fn apply(&mut self, target: ReassociateTarget, whole_dimension: bool) -> CmdResult {
+        let dimension = self.items[self.item].0;
+        let more = self.advance(whole_dimension);
+        CmdResult::ReassociateDimension {
+            dimension,
+            target,
+            last: !more,
+        }
+    }
+
+    /// Whether the current prompt picks an object rather than a point.
+    fn picks_object(&self) -> bool {
+        self.select_object
+            || matches!(
+                self.kind(),
+                Some(ReassociateKind::Radial | ReassociateKind::Angular2)
+            )
+    }
+}
+
+impl CadCommand for DimReassociateCommand {
+    fn name(&self) -> &'static str {
+        "DIMREASSOCIATE"
+    }
+
+    fn prompt(&self) -> String {
+        if self.select_object {
+            return crate::t!("DIMREASSOCIATE  Select object:").into_owned();
+        }
+        let text = match (self.kind(), self.step) {
+            (Some(ReassociateKind::Linear), 0) => {
+                "DIMREASSOCIATE  Specify first extension line origin or [Select object] <next>:"
+            }
+            (Some(ReassociateKind::Linear), _) => {
+                "DIMREASSOCIATE  Specify second extension line origin <next>:"
+            }
+            (Some(ReassociateKind::Angular3), 0) => {
+                "DIMREASSOCIATE  Specify angle vertex or [Select arc or circle] <next>:"
+            }
+            (Some(ReassociateKind::Angular3), 1) => {
+                "DIMREASSOCIATE  Specify first angle endpoint <next>:"
+            }
+            (Some(ReassociateKind::Angular3), _) => {
+                "DIMREASSOCIATE  Specify second angle endpoint <next>:"
+            }
+            (Some(ReassociateKind::Angular2), 0) => "DIMREASSOCIATE  Select first line <next>:",
+            (Some(ReassociateKind::Angular2), _) => "DIMREASSOCIATE  Select second line <next>:",
+            (Some(ReassociateKind::Radial), _) => "DIMREASSOCIATE  Select arc or circle <next>:",
+            (Some(ReassociateKind::Ordinate), _) => {
+                "DIMREASSOCIATE  Specify feature location <next>:"
+            }
+            (None, _) => "",
+        };
+        crate::t!(text).into_owned()
+    }
+
+    fn options(&self) -> Vec<CmdOption> {
+        match (self.kind(), self.step, self.select_object) {
+            (Some(ReassociateKind::Linear), 0, false) => {
+                vec![CmdOption::new("Select object", "S")]
+            }
+            (Some(ReassociateKind::Angular3), 0, false) => {
+                vec![CmdOption::new("Select arc or circle", "S")]
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn input_kind(&self) -> InputKind {
+        InputKind::Point
+    }
+
+    fn wants_text_input(&self) -> bool {
+        true
+    }
+
+    fn point_step_accepts_keywords(&self) -> bool {
+        true
+    }
+
+    fn needs_entity_pick(&self) -> bool {
+        self.picks_object()
+    }
+
+    fn inject_before_entity_pick(&self) -> bool {
+        self.picks_object()
+    }
+
+    fn inject_picked_entity(&mut self, entity: EntityType) {
+        self.picked = Some(entity);
+    }
+
+    fn on_entity_pick(&mut self, handle: Handle, _point: DVec3) -> CmdResult {
+        if handle.is_null() || self.picked.take().is_none() {
+            return CmdResult::NeedPoint;
+        }
+        let (kind, step, whole) = (self.kind(), self.step, self.select_object);
+        match kind {
+            Some(ReassociateKind::Linear) if whole => {
+                self.apply(ReassociateTarget::Ends(handle), true)
+            }
+            Some(ReassociateKind::Angular3) if whole => {
+                self.apply(ReassociateTarget::Arc(handle), true)
+            }
+            Some(ReassociateKind::Angular2) => {
+                self.apply(ReassociateTarget::Line { index: step, object: handle }, false)
+            }
+            Some(ReassociateKind::Radial) => self.apply(ReassociateTarget::Radial(handle), true),
+            _ => CmdResult::NeedPoint,
+        }
+    }
+
+    fn on_point(&mut self, point: DVec3) -> CmdResult {
+        if self.picks_object() {
+            return CmdResult::NeedPoint;
+        }
+        let index = self.step;
+        self.apply(ReassociateTarget::Point { index, point }, false)
+    }
+
+    fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        let word = text.trim().trim_start_matches('_').to_ascii_uppercase();
+        let selectable = self.step == 0
+            && !self.select_object
+            && matches!(
+                self.kind(),
+                Some(ReassociateKind::Linear | ReassociateKind::Angular3)
+            );
+        if selectable && matches!(word.as_str(), "S" | "SELECT") {
+            self.select_object = true;
+            return Some(CmdResult::NeedPoint);
+        }
+        None
+    }
+
+    /// <next>: this point stays as it is.
+    fn on_enter(&mut self) -> CmdResult {
+        if self.select_object {
+            self.select_object = false;
+            return CmdResult::NeedPoint;
+        }
+        if self.advance(false) {
+            CmdResult::NeedPoint
+        } else {
+            CmdResult::Measurement(String::new())
+        }
+    }
+
+    fn on_escape(&mut self) -> CmdResult {
+        CmdResult::Cancel
+    }
+}

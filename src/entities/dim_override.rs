@@ -392,6 +392,93 @@ const NAMED_VARS: &[(&str, i16, VarKind)] = named_vars! {
     Text: DIMPOST, DIMAPOST, DIMALTMZS, DIMMZS;
 };
 
+/// How DIMOVERRIDE shows a variable's current value (`<2.5000>`): reals to
+/// four places, colours by name for ByBlock and ByLayer.
+pub fn style_value_text(style: &codec::tables::DimStyle, code: i16) -> Option<String> {
+    fn color_name(index: i16) -> String {
+        match index {
+            0 => "BYBLOCK".to_string(),
+            256 => "BYLAYER".to_string(),
+            other => other.to_string(),
+        }
+    }
+    Some(match code {
+        DIMSCALE => format!("{:.4}", style.dimscale),
+        DIMASZ => format!("{:.4}", style.dimasz),
+        DIMEXO => format!("{:.4}", style.dimexo),
+        DIMDLI => format!("{:.4}", style.dimdli),
+        DIMEXE => format!("{:.4}", style.dimexe),
+        DIMRND => format!("{:.4}", style.dimrnd),
+        DIMDLE => format!("{:.4}", style.dimdle),
+        DIMTP => format!("{:.4}", style.dimtp),
+        DIMTM => format!("{:.4}", style.dimtm),
+        DIMFXL => format!("{:.4}", style.dimfxl),
+        DIMJOGANG => format!("{:.4}", style.dimjogang),
+        DIMTXT => format!("{:.4}", style.dimtxt),
+        DIMCEN => format!("{:.4}", style.dimcen),
+        DIMTSZ => format!("{:.4}", style.dimtsz),
+        DIMALTF => format!("{:.4}", style.dimaltf),
+        DIMLFAC => format!("{:.4}", style.dimlfac),
+        DIMTVP => format!("{:.4}", style.dimtvp),
+        DIMTFAC => format!("{:.4}", style.dimtfac),
+        DIMGAP => format!("{:.4}", style.dimgap),
+        DIMALTRND => format!("{:.4}", style.dimaltrnd),
+        DIMALTMZF => format!("{:.4}", style.dimaltmzf),
+        DIMMZF => format!("{:.4}", style.dimmzf),
+        DIMTOL => i16::from(style.dimtol).to_string(),
+        DIMLIM => i16::from(style.dimlim).to_string(),
+        DIMTIH => i16::from(style.dimtih).to_string(),
+        DIMTOH => i16::from(style.dimtoh).to_string(),
+        DIMSE1 => i16::from(style.dimse1).to_string(),
+        DIMSE2 => i16::from(style.dimse2).to_string(),
+        DIMALT => i16::from(style.dimalt).to_string(),
+        DIMTOFL => i16::from(style.dimtofl).to_string(),
+        DIMSAH => i16::from(style.dimsah).to_string(),
+        DIMTIX => i16::from(style.dimtix).to_string(),
+        DIMSOXD => i16::from(style.dimsoxd).to_string(),
+        DIMSD1 => i16::from(style.dimsd1).to_string(),
+        DIMSD2 => i16::from(style.dimsd2).to_string(),
+        DIMUPT => i16::from(style.dimupt).to_string(),
+        DIMFXLON => i16::from(style.dimfxlon).to_string(),
+        DIMTXTDIRECTION => i16::from(style.dimtxtdirection).to_string(),
+        DIMZIN => style.dimzin.to_string(),
+        DIMTAD => style.dimtad.to_string(),
+        DIMAZIN => style.dimazin.to_string(),
+        DIMARCSYM => style.dimarcsym.to_string(),
+        DIMADEC => style.dimadec.to_string(),
+        DIMALTD => style.dimaltd.to_string(),
+        DIMDEC => style.dimdec.to_string(),
+        DIMTDEC => style.dimtdec.to_string(),
+        DIMALTU => style.dimaltu.to_string(),
+        DIMALTTD => style.dimalttd.to_string(),
+        DIMAUNIT => style.dimaunit.to_string(),
+        DIMFRAC => style.dimfrac.to_string(),
+        DIMLUNIT => style.dimlunit.to_string(),
+        DIMDSEP => style.dimdsep.to_string(),
+        DIMTMOVE => style.dimtmove.to_string(),
+        DIMJUST => style.dimjust.to_string(),
+        DIMTOLJ => style.dimtolj.to_string(),
+        DIMTZIN => style.dimtzin.to_string(),
+        DIMALTZ => style.dimaltz.to_string(),
+        DIMALTTZ => style.dimalttz.to_string(),
+        DIMATFIT => style.dimatfit.to_string(),
+        DIMTFILL => style.dimtfill.to_string(),
+        DIMLWD => style.dimlwd.to_string(),
+        DIMLWE => style.dimlwe.to_string(),
+        DIMCLRD => color_name(style.dimclrd),
+        DIMCLRE => color_name(style.dimclre),
+        DIMCLRT => color_name(style.dimclrt),
+        DIMTFILLCLR => color_name(style.dimtfillclr),
+        // "<>" is the measurement itself, shown as no suffix.
+        DIMPOST => style.dimpost.replace("<>", ""),
+        DIMAPOST => style.dimapost.clone(),
+        DIMALTMZS => style.dimaltmzs.clone(),
+        DIMMZS => style.dimmzs.clone(),
+        DIMTALN => "0".to_string(),
+        _ => return None,
+    })
+}
+
 /// The group code and storage kind of the dimension variable `name`.
 pub fn named_var(name: &str) -> Option<(i16, VarKind)> {
     NAMED_VARS
