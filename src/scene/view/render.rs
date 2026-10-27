@@ -4952,11 +4952,16 @@ impl Scene {
             uniforms.lineweight_scale = paper_units_per_mm / paper_per_pixel / MM_TO_PX;
         }
 
-        // Model space: scale linetypes using the current annotation scale so their
-        // appearance can match a paper-space viewport at the same drawing scale.
+        // Model space: scale linetypes by the current annotation scale's ratio
+        // (1:100 draws them 100 times longer) so they match a paper-space
+        // viewport at that scale. The ratio alone: a linetype is defined in
+        // drawing units, so the paper-millimetre conversion that
+        // `annotation_scale` carries shrank a metre drawing's dashes 1000
+        // times, below a pixel, and they drew solid (#2036).
         if self.current_layout == "Model" {
-            if self.annotation_scale.is_finite() && self.annotation_scale > 1e-9 {
-                uniforms.linetype_scale = self.annotation_scale;
+            let ratio = 1.0 / self.document.header.annotation_scale_value;
+            if ratio.is_finite() && ratio > 1e-9 {
+                uniforms.linetype_scale = ratio as f32;
             }
         } else if self.document.header.paper_space_linetype_scaling
             && !inst.paper_sheet
