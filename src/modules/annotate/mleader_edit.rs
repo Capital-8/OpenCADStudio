@@ -461,12 +461,9 @@ impl CadCommand for MLeaderAlignCommand {
     }
 
     fn on_selection_complete(&mut self, handles: Vec<Handle>) -> CmdResult {
-        if handles.is_empty() {
-            return CmdResult::Cancel;
-        }
+        // Each pick adds to the set; Enter ends the selection.
         self.handles = handles;
-        self.step = self.mode_step();
-        CmdResult::ReportMeasurement(self.mode_line())
+        CmdResult::NeedPoint
     }
 
     fn needs_entity_pick(&self) -> bool {
@@ -572,6 +569,11 @@ impl CadCommand for MLeaderAlignCommand {
 
     fn on_enter(&mut self) -> CmdResult {
         match self.step {
+            AlignStep::Gathering if self.handles.is_empty() => CmdResult::Cancel,
+            AlignStep::Gathering => {
+                self.step = self.mode_step();
+                CmdResult::ReportMeasurement(self.mode_line())
+            }
             AlignStep::Options => {
                 self.step = self.mode_step();
                 CmdResult::NeedPoint
@@ -724,11 +726,8 @@ impl CadCommand for MLeaderCollectCommand {
     }
 
     fn on_selection_complete(&mut self, handles: Vec<Handle>) -> CmdResult {
-        if handles.is_empty() {
-            return CmdResult::Cancel;
-        }
+        // Each pick adds to the set; Enter ends the selection.
         self.handles = handles;
-        self.step = CollectStep::Location;
         CmdResult::NeedPoint
     }
 
@@ -783,6 +782,13 @@ impl CadCommand for MLeaderCollectCommand {
     }
 
     fn on_enter(&mut self) -> CmdResult {
+        if self.step == CollectStep::Gathering {
+            if self.handles.is_empty() {
+                return CmdResult::Cancel;
+            }
+            self.step = CollectStep::Location;
+            return CmdResult::NeedPoint;
+        }
         if self.step == CollectStep::WrapWidth {
             self.step = CollectStep::Location;
             return CmdResult::NeedPoint;
