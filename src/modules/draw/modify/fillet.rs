@@ -1072,14 +1072,15 @@ fn join_poly_fillet(
         None => (t, None),
     };
 
-    // The other object from T2 to its far end, with the bulge that runs it
-    // in that direction.
-    let (far, far_bulge) = match other {
+    // The other object from T2 to its far end: the bulge of its first
+    // segment and the vertices after T2, each with the bulge of the segment
+    // that leaves it, in that direction.
+    let (first_bulge, chain): (f64, Vec<([f64; 2], f64)>) = match other {
         EntityType::Line(l) => {
             let a = [l.start.x, l.start.y];
             let b = [l.end.x, l.end.y];
             let dist = |p: [f64; 2]| (p[0] - t2[0]).hypot(p[1] - t2[1]);
-            (if dist(a) > dist(b) { a } else { b }, 0.0)
+            (0.0, vec![(if dist(a) > dist(b) { a } else { b }, 0.0)])
         }
         EntityType::Arc(a) if a.normal.z > 0.0 => {
             let (c, r, sa, ea, _) = arc_geom(a);
@@ -1088,9 +1089,29 @@ fn join_poly_fillet(
             let quarter = (arc_span(sa, ea) / 4.0).tan();
             let dist = |p: [f64; 2]| (p[0] - t2[0]).hypot(p[1] - t2[1]);
             if dist(p0) <= dist(p1) {
-                (p1, quarter)
+                (quarter, vec![(p1, 0.0)])
             } else {
-                (p0, -quarter)
+                (-quarter, vec![(p0, 0.0)])
+            }
+        }
+        // Another open polyline whose end segment the fillet trimmed: its
+        // vertices follow on from that end (#1422).
+        EntityType::LwPolyline(other) if !other.is_closed && other.vertices.len() >= 2 => {
+            let v = &other.vertices;
+            let m = v.len();
+            if near(xy(&v[0]), t2) {
+                let chain = (1..m)
+                    .map(|k| (xy(&v[k]), if k + 1 < m { v[k].bulge } else { 0.0 }))
+                    .collect();
+                (v[0].bulge, chain)
+            } else if near(xy(&v[m - 1]), t2) {
+                let chain = (0..m - 1)
+                    .rev()
+                    .map(|k| (xy(&v[k]), if k > 0 { -v[k - 1].bulge } else { 0.0 }))
+                    .collect();
+                (-v[m - 2].bulge, chain)
+            } else {
+                return None;
             }
         }
         _ => return None,
@@ -1116,16 +1137,21 @@ fn join_poly_fillet(
         let bulge = fillet_center.map_or(0.0, |c| compute_bulge(t, t2, c));
         vertices.push(vertex(t, bulge));
         if fillet_center.is_some() {
-            vertices.push(vertex(t2, far_bulge));
+            vertices.push(vertex(t2, first_bulge));
         } else if let Some(last) = vertices.last_mut() {
-            last.bulge = far_bulge;
+            last.bulge = first_bulge;
         }
-        vertices.push(vertex(far, 0.0));
+        vertices.extend(chain.iter().map(|&(p, b)| vertex(p, b)));
     } else {
-        // Keep the end side: the other object, the fillet, then T and the
-        // vertices after the segment.
-        let other_back = -far_bulge;
-        vertices.push(vertex(far, other_back));
+        // Keep the end side: the other object run backwards, the fillet,
+        // then T and the vertices after the segment. Running backwards, a
+        // vertex takes the negated bulge of the segment that arrived at it.
+        let arriving: Vec<f64> = std::iter::once(first_bulge)
+            .chain(chain.iter().map(|&(_, b)| b))
+            .collect();
+        for (k, &(p, _)) in chain.iter().enumerate().rev() {
+            vertices.push(vertex(p, -arriving[k]));
+        }
         if let Some(c) = fillet_center {
             vertices.push(vertex(t2, compute_bulge(t2, t, c)));
         }
@@ -1997,6 +2023,25 @@ impl CadCommand for FilletCommand {
                                 (
                                     FilletEntity::LwPoly { poly, seg_idx, .. },
                                     FilletEntity::Line(_) | FilletEntity::Arc(_),
+                                    EntityType::LwPolyline(moved),
+                                    other,
+                                ) if !same_entity => join_poly_fillet(
+                                    poly,
+                                    *seg_idx,
+                                    moved,
+                                    other,
+                                    maybe_arc.as_ref(),
+                                )
+                                .map(|poly| {
+                                    vec![
+                                        (h1, vec![EntityType::LwPolyline(poly)]),
+                                        (handle, Vec::new()),
+                                    ]
+                                }),
+                                // Two polylines join into the first one.
+                                (
+                                    FilletEntity::LwPoly { poly, seg_idx, .. },
+                                    FilletEntity::LwPoly { .. },
                                     EntityType::LwPolyline(moved),
                                     other,
                                 ) if !same_entity => join_poly_fillet(
@@ -2950,6 +2995,77 @@ mod tests {
         command.on_document_undone(&doc);
         assert_eq!(command.all_entities.len(), 1);
         assert_eq!(command.all_entities[0].common().handle, Handle::new(7));
+    }
+
+    /// Filleting two open polylines at their end segments joins them into
+    /// one polyline through the fillet arc, as the reference does (#1422).
+    #[test]
+    fn fillet_joins_two_polylines_into_one() {
+        let polyline = |handle: u64, points: &[[f64; 2]]| {
+            let mut p = LwPolyline::new();
+            for &[x, y] in points {
+                p.add_point(codec::types::Vector2::new(x, y));
+            }
+            p.common.handle = Handle::new(handle);
+            EntityType::LwPolyline(p)
+        };
+        let first = [[0.0, 10.0], [0.0, 3.0]];
+        let second = [[3.0, 0.0], [10.0, 0.0], [10.0, 5.0]];
+        // Each polyline drawn either way round.
+        for (flip_first, flip_second) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let mut a = first.to_vec();
+            let mut b = second.to_vec();
+            if flip_first {
+                a.reverse();
+            }
+            if flip_second {
+                b.reverse();
+            }
+            let all = vec![polyline(1, &a), polyline(2, &b)];
+            let mut command = FilletCommand::new(1.0, all);
+            let _ = command.on_entity_pick(Handle::new(1), DVec3::new(0.0, 6.0, 0.0));
+            let CmdResult::ReplaceMany(replacements, _) =
+                command.on_entity_pick(Handle::new(2), DVec3::new(6.0, 0.0, 0.0))
+            else {
+                panic!("FILLET should replace the polylines");
+            };
+            let joined = replacements
+                .iter()
+                .find(|(handle, _)| *handle == Handle::new(1))
+                .expect("the first polyline is replaced");
+            assert!(replacements
+                .iter()
+                .any(|(handle, entities)| *handle == Handle::new(2) && entities.is_empty()));
+            let [EntityType::LwPolyline(p)] = joined.1.as_slice() else {
+                panic!("one polyline");
+            };
+            let points: Vec<[f64; 2]> =
+                p.vertices.iter().map(|v| [v.location.x, v.location.y]).collect();
+            let mut expected = vec![[0.0, 10.0], [0.0, 1.0], [1.0, 0.0], [10.0, 0.0], [10.0, 5.0]];
+            // The polyline runs whichever way the first one ran.
+            let fillet_start = if flip_first {
+                expected.reverse();
+                2
+            } else {
+                1
+            };
+            assert_eq!(points.len(), expected.len(), "{flip_first} {flip_second}: {points:?}");
+            for (got, want) in points.iter().zip(&expected) {
+                assert!(
+                    (got[0] - want[0]).abs() < 1e-9 && (got[1] - want[1]).abs() < 1e-9,
+                    "{flip_first} {flip_second}: {points:?}"
+                );
+            }
+            // Only the fillet segment is curved, turning the same way both ways.
+            for (k, v) in p.vertices.iter().enumerate() {
+                let curved = v.bulge.abs() > 1e-12;
+                assert_eq!(curved, k == fillet_start, "{flip_first} {flip_second}: {k}");
+            }
+            let turn = p.vertices[fillet_start].bulge.signum();
+            assert_eq!(turn, if flip_first { -1.0 } else { 1.0 }, "{flip_first} {flip_second}");
+        }
     }
 
     #[test]
