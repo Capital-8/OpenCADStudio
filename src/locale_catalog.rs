@@ -3,6 +3,8 @@
 
 pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static str)> {
     match source {
+        "Requires numeric distance or second point." => Some(("text-panel", "numeric-distance-or-second-point")),
+        "Cannot set TEXTLAYER to that value." => Some(("text-panel", "cannot-set-textlayer")),
         "Import Styles" => Some(("style-manager", "import-styles")),
         "Select Drawing to Import Styles From" => Some(("style-manager", "select-drawing-to-import-styles-from")),
         "Select the styles to import" => Some(("style-manager", "select-the-styles-to-import")),

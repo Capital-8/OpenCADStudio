@@ -39,7 +39,21 @@ impl OpenCADStudio {
                 .push_output(&crate::tr!("text-layer", "prompt", current = current));
             self.pending_setvar = Some(NAME.to_string());
         } else {
-            self.set_text_layer(i, value.trim_matches('"'));
+            let value = value.trim_matches('"').trim();
+            // A layer name never has these characters; nothing at all is
+            // refused too ("." is the current layer).
+            if value.is_empty() || value.contains(['<', '>', '/', '\\', '"', ':', ';', '?', '*', '|', ',', '=', '`']) {
+                self.command_line
+                    .push_error(crate::t!("Cannot set TEXTLAYER to that value.").as_ref());
+                let current = self
+                    .text_layer(i)
+                    .unwrap_or_else(|| crate::tr!("text-layer", "use-current"));
+                self.command_line
+                    .push_output(&crate::tr!("text-layer", "prompt", current = current));
+                self.pending_setvar = Some(NAME.to_string());
+            } else {
+                self.set_text_layer(i, value);
+            }
         }
         Some(Task::none())
     }
