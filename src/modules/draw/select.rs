@@ -292,7 +292,7 @@ impl CadCommand for SelectObjectsCommand {
     // the on-screen keyboard-less case needs.
     fn options(&self) -> Vec<CmdOption> {
         if self.settings.is_some() && self.pick.is_none() {
-            return vec![CmdOption::new("SEttings", "SE")];
+            return vec![CmdOption::new(t!("Settings").as_ref(), "SE")];
         }
         if let (Some((label, keyword, _)), None) = (self.keyword, self.pick.as_ref()) {
             return vec![CmdOption::new(label, keyword)];

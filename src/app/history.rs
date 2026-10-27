@@ -225,6 +225,7 @@ impl OpenCADStudio {
             dirty_before,
             dirty_after: true,
             active_layer: None,
+            layiso_state: None,
             structure: (!objects.is_empty()).then_some(StructureSnapshot::Objects(objects)),
             parametric_constraints: Vec::new(),
             reference_designations: Vec::new(),
@@ -399,6 +400,7 @@ impl OpenCADStudio {
             dirty_after,
             active_layer: (pending.active_layer != active_layer_after)
                 .then_some((pending.active_layer, active_layer_after)),
+            layiso_state: None,
             structure: structure_changed
                 .then_some(StructureSnapshot::Full(pending.structure_before)),
             parametric_constraints,
@@ -591,6 +593,7 @@ impl OpenCADStudio {
             dirty_before: pending.dirty_before,
             dirty_after: self.tabs[i].dirty,
             active_layer: None,
+            layiso_state: None,
             structure: Some(StructureSnapshot::Layers(entries)),
             parametric_constraints: Vec::new(),
             reference_designations: Vec::new(),
@@ -650,6 +653,7 @@ impl OpenCADStudio {
             dirty_before: pending.dirty_before,
             dirty_after: self.tabs[i].dirty,
             active_layer: None,
+            layiso_state: None,
             structure: Some(StructureSnapshot::TextStyles(entries)),
             parametric_constraints: Vec::new(),
             reference_designations: Vec::new(),
@@ -709,6 +713,7 @@ impl OpenCADStudio {
             dirty_before: pending.dirty_before,
             dirty_after: self.tabs[i].dirty,
             active_layer: None,
+            layiso_state: None,
             structure: Some(StructureSnapshot::DimStyles(entries)),
             parametric_constraints: Vec::new(),
             reference_designations: Vec::new(),
@@ -776,6 +781,7 @@ impl OpenCADStudio {
             dirty_before: pending.dirty_before,
             dirty_after: self.tabs[i].dirty,
             active_layer: None,
+            layiso_state: None,
             structure: Some(StructureSnapshot::Objects(entries)),
             parametric_constraints: Vec::new(),
             reference_designations: Vec::new(),
@@ -807,6 +813,7 @@ impl OpenCADStudio {
             dirty_before,
             dirty_after: true,
             active_layer: None,
+            layiso_state: None,
             structure: Some(StructureSnapshot::Styles {
                 before,
                 after,
@@ -1014,6 +1021,7 @@ impl OpenCADStudio {
             dirty_before: pending.dirty_before,
             dirty_after,
             active_layer: None,
+            layiso_state: None,
             structure,
             parametric_constraints,
             reference_designations,
@@ -1248,6 +1256,9 @@ impl OpenCADStudio {
         };
         if let Some((before, after)) = &d.active_layer {
             self.tabs[i].active_layer = if undo { before } else { after }.clone();
+        }
+        if let Some((before, after)) = &d.layiso_state {
+            self.tabs[i].layiso_state = if undo { before } else { after }.clone();
         }
         self.tabs[i].dirty = dirty;
         changes

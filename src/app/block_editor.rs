@@ -272,6 +272,7 @@ impl OpenCADStudio {
             dirty_before: checkpoint.dirty,
             dirty_after: true,
             active_layer,
+            layiso_state: None,
             structure,
             parametric_constraints,
             reference_designations: Vec::new(),
