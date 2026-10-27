@@ -23,6 +23,10 @@ use super::OpenCADStudio;
 pub(super) const VIS_GRIP_ID: usize = usize::MAX;
 pub(super) const TABLE_GRIP_ID: usize = usize::MAX - 1;
 
+/// The visibility and lookup grips open a list, so their triangle points down
+/// as a list arrow does; it does not turn with the block.
+pub(super) const LIST_GRIP_DIR: glam::DVec3 = glam::DVec3::NEG_Y;
+
 /// Resolved visibility info for the active tab's selected dynamic-block INSERT.
 #[derive(Clone, Debug)]
 pub(super) struct VisibilityGrip {
@@ -200,7 +204,7 @@ impl OpenCADStudio {
             world: glam::DVec3::new(wp.x - wo[0], wp.y - wo[1], wp.z - wo[2]),
             is_midpoint: false,
             shape: GripShape::Triangle,
-            dir: None,
+            dir: Some(LIST_GRIP_DIR),
             axis: None,
         });
         self.tabs[i].selected_grip_handles.push(handle);
@@ -344,7 +348,7 @@ impl OpenCADStudio {
             world: glam::DVec3::new(wp.x - wo[0], wp.y - wo[1], wp.z - wo[2]),
             is_midpoint: false,
             shape: GripShape::Triangle,
-            dir: None,
+            dir: Some(LIST_GRIP_DIR),
             axis: None,
         });
         self.tabs[i].selected_grip_handles.push(handle);

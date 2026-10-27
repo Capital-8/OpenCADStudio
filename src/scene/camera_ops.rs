@@ -460,9 +460,14 @@ impl Scene {
         view
     }
 
-    /// Zoom the model-space camera in/out by a percentage.
+    /// Zoom the active view in/out by a percentage.
     /// factor > 1 = zoom out, factor < 1 = zoom in.
     pub fn zoom_camera(&mut self, factor: f32) {
+        if self.active_viewport.is_some() && self.current_layout != "Model" {
+            self.scale_active_viewport(factor as f64, None);
+            self.camera_generation += 1;
+            return;
+        }
         let mut cam = self.camera.borrow_mut();
         cam.distance = (cam.distance * factor).max(0.001);
         drop(cam);
@@ -674,6 +679,10 @@ impl Scene {
         let min = p1.min(p2);
         let max = p1.max(p2);
         if min == max {
+            return;
+        }
+        if self.active_viewport.is_some() && self.current_layout != "Model" {
+            self.fit_active_viewport_to_window(min, max);
             return;
         }
         let aspect = self.active_camera_aspect();
