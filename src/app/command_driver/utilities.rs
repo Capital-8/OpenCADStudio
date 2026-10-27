@@ -1418,6 +1418,11 @@ impl OpenCADStudio {
         // Keywords, distances and points fed here (option buttons, the
         // context menu, scripts) join the Recent Input list like typed ones.
         self.command_line.record_recent_input(token);
+        if token.trim_start_matches('_').eq_ignore_ascii_case("FROM") && self.point_modifier_step(i)
+        {
+            self.start_from_modifier(i);
+            return Task::none();
+        }
         let is_mtp = token.trim_start_matches('_').eq_ignore_ascii_case("MTP")
             || token.trim_start_matches('_').eq_ignore_ascii_case("M2P");
         if is_mtp {
@@ -1440,7 +1445,7 @@ impl OpenCADStudio {
             let ucs = self.tabs[i].active_ucs.clone();
             let wcs = match (
                 matches!(kind, crate::app::helpers::CoordKind::Relative),
-                self.last_point,
+                self.relative_input_base(i),
             ) {
                 (true, Some(base)) => {
                     base + match &ucs {

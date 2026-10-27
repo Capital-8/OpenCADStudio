@@ -1424,7 +1424,8 @@ impl OpenCADStudio {
                 Task::none()
             }
 
-            Message::SnapOverrideMtp => {
+            Message::SnapOverrideMtp | Message::SnapOverrideFrom => {
+                let from = matches!(msg, Message::SnapOverrideFrom);
                 self.snap_override_popup = None;
                 self.tabs[self.active_tab]
                     .scene
@@ -1439,10 +1440,20 @@ impl OpenCADStudio {
                         && !c.needs_entity_pick()
                 });
                 if allowed {
-                    self.start_mtp_modifier(i);
+                    if from {
+                        self.start_from_modifier(i);
+                    } else {
+                        self.start_mtp_modifier(i);
+                    }
                 } else {
-                    self.command_line
-                        .push_info(crate::t!("MTP needs an active point prompt.").as_ref());
+                    self.command_line.push_info(
+                        crate::t!(if from {
+                            "FROM needs an active point prompt."
+                        } else {
+                            "MTP needs an active point prompt."
+                        })
+                        .as_ref(),
+                    );
                 }
                 Task::none()
             }

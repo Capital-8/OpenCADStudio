@@ -2093,7 +2093,7 @@ mod tests {
             "a start-tab-free app does not announce spurious opens: {log:?}"
         );
     }
-    use crate::app::OpenCADStudio;
+    use crate::app::{Message, OpenCADStudio};
     use serde_json::{json, Value};
 
     #[test]
@@ -4283,6 +4283,147 @@ mod tests {
             app.tabs[0].active_cmd.as_ref().map(|c| c.name()),
             Some("MTP")
         );
+    }
+
+    #[test]
+    fn from_relative_offset_starts_line() {
+        let mut app = from_line_test_app();
+        for token in ["FROM", "10,10", "@5,0"] {
+            from_submit(&mut app, token);
+        }
+        assert!(app.tabs[0].scene.document.entities().next().is_none());
+        assert_eq!(
+            app.tabs[0].active_cmd.as_ref().unwrap().resolved_anchor(),
+            Some(glam::DVec3::new(15.0, 10.0, 0.0))
+        );
+        assert_eq!(app.last_point, Some(glam::DVec3::new(15.0, 10.0, 0.0)));
+        assert!(app.tabs[0].suspended_cmd.is_none());
+    }
+
+    #[test]
+    fn from_polar_offset_starts_line() {
+        let mut app = from_line_test_app();
+        for token in ["_FROM", "0,0", "@10<90"] {
+            from_submit(&mut app, token);
+        }
+        assert!(app.tabs[0].scene.document.entities().next().is_none());
+        let anchor = app.tabs[0]
+            .active_cmd
+            .as_ref()
+            .unwrap()
+            .resolved_anchor()
+            .unwrap();
+        assert!((anchor - glam::DVec3::new(0.0, 10.0, 0.0)).length() < 1e-9);
+    }
+
+    #[test]
+    fn from_direct_distance_starts_line() {
+        for tracked in [false, true] {
+            let mut app = from_line_test_app();
+            for token in ["FROM", "0,0"] {
+                from_submit(&mut app, token);
+            }
+            app.tabs[0].last_cursor_world = glam::DVec3::new(20.0, 0.0, 0.0);
+            if tracked {
+                app.otrack_active = Some((glam::DVec3::splat(100.0), glam::DVec3::Y));
+            }
+            from_submit(&mut app, "7");
+            assert!(app.tabs[0].scene.document.entities().next().is_none());
+            assert_eq!(
+                app.tabs[0].active_cmd.as_ref().unwrap().resolved_anchor(),
+                Some(glam::DVec3::new(7.0, 0.0, 0.0))
+            );
+        }
+    }
+
+    #[test]
+    fn from_escape_offset_restores_parent() {
+        let mut app = from_line_test_app();
+        for previous in [None, Some(glam::DVec3::new(3.0, 4.0, 0.0))] {
+            app.last_point = previous;
+            let prompt = app.tabs[0].active_cmd.as_ref().unwrap().prompt();
+            for token in ["FROM", "10,10"] {
+                from_submit(&mut app, token);
+            }
+            let _ = app.update(Message::CommandEscape);
+            assert_eq!(
+                app.tabs[0].active_cmd.as_ref().map(|c| c.name()),
+                Some("LINE")
+            );
+            assert_eq!(app.tabs[0].active_cmd.as_ref().unwrap().prompt(), prompt);
+            assert!(app.tabs[0]
+                .active_cmd
+                .as_ref()
+                .unwrap()
+                .resolved_anchor()
+                .is_none());
+            assert_eq!(app.last_point, previous);
+            assert!(app.tabs[0].suspended_cmd.is_none());
+            assert!(app.tabs[0].scene.document.entities().next().is_none());
+        }
+    }
+
+    #[test]
+    fn from_script_offset_uses_rotated_ucs() {
+        let mut app = from_line_test_app();
+        let mut ucs = codec::tables::Ucs::new("FROM-test");
+        ucs.origin = codec::types::Vector3::new(100.0, 200.0, 0.0);
+        ucs.x_axis = codec::types::Vector3::new(0.0, 1.0, 0.0);
+        ucs.y_axis = codec::types::Vector3::new(-1.0, 0.0, 0.0);
+        app.tabs[0].active_ucs = Some(ucs);
+        for token in ["_FROM", "0,0", "@5,0"] {
+            let _ = app.feed_active_cmd(token);
+        }
+        assert!(app.tabs[0].scene.document.entities().next().is_none());
+        assert_eq!(
+            app.tabs[0].active_cmd.as_ref().unwrap().resolved_anchor(),
+            Some(glam::DVec3::new(100.0, 205.0, 0.0))
+        );
+    }
+
+    #[test]
+    fn from_cancel_preserves_existing_line_anchor() {
+        for enter in [false, true] {
+            for pick_base in [false, true] {
+                let mut app = from_line_test_app();
+                from_submit(&mut app, "3,4");
+                let prompt = app.tabs[0].active_cmd.as_ref().unwrap().prompt();
+                from_submit(&mut app, "FROM");
+                if pick_base {
+                    from_submit(&mut app, "10,10");
+                }
+                if enter {
+                    from_submit(&mut app, "");
+                } else {
+                    let _ = app.update(Message::CommandEscape);
+                }
+                assert_eq!(
+                    app.tabs[0].active_cmd.as_ref().map(|c| c.name()),
+                    Some("LINE")
+                );
+                assert_eq!(app.tabs[0].active_cmd.as_ref().unwrap().prompt(), prompt);
+                assert_eq!(
+                    app.tabs[0].active_cmd.as_ref().unwrap().resolved_anchor(),
+                    Some(glam::DVec3::new(3.0, 4.0, 0.0))
+                );
+                assert_eq!(app.last_point, Some(glam::DVec3::new(3.0, 4.0, 0.0)));
+                assert!(app.tabs[0].scene.document.entities().next().is_none());
+            }
+        }
+    }
+
+    fn from_submit(app: &mut OpenCADStudio, token: &str) {
+        let _ = app.update(Message::CommandInput(token.to_string()));
+        let _ = app.update(Message::CommandSubmit);
+    }
+
+    fn from_line_test_app() -> OpenCADStudio {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        app.tabs[0].scene.selection.borrow_mut().view.vp_size = (1920.0, 1080.0);
+        app.tabs[0].scene.sync_tiles_from_panes(1920.0, 1080.0);
+        from_submit(&mut app, "LINE");
+        app
     }
 
     #[test]

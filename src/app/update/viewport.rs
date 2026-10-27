@@ -3026,7 +3026,12 @@ impl OpenCADStudio {
                 hit.screen.y += tile_b.y;
             }
             self.tabs[i].snap_result = snap;
-            if refresh_stretch_preview {
+            if refresh_stretch_preview
+                || self.tabs[i]
+                    .active_cmd
+                    .as_ref()
+                    .is_some_and(|cmd| matches!(cmd.name(), "FROM" | "MTP"))
+            {
                 // Rebuild only the command overlay, not the resident drawing;
                 // the full snap pass still waits for the normal dwell tick.
                 self.refresh_active_cmd_preview(i);
@@ -3638,7 +3643,17 @@ impl OpenCADStudio {
             self.push_ucs_to_cmd(i);
             self.push_ctrl_to_cmd(i);
             let preview_started = perf_move.then(Instant::now);
-            let mut previews = if needs_structure {
+            let modifier_tangent = self.tabs[i]
+                .snap_result
+                .filter(|s| s.snap_type == crate::snap::SnapType::Tangent)
+                .and_then(|s| s.tangent_obj);
+            let mut modifier_hidden = None;
+            let mut previews = if let Some((wires, hidden)) =
+                self.point_modifier_preview(i, effective, modifier_tangent)
+            {
+                modifier_hidden = Some(hidden);
+                wires
+            } else if needs_structure {
                 let mut p = self.tabs[i]
                     .active_cmd
                     .as_ref()
@@ -4072,11 +4087,13 @@ impl OpenCADStudio {
                     previews.push(guide);
                 }
             }
-            let preview_hidden = self.tabs[i]
-                .active_cmd
-                .as_ref()
-                .map(|command| command.preview_hidden_handles().to_vec())
-                .unwrap_or_default();
+            let preview_hidden = modifier_hidden.unwrap_or_else(|| {
+                self.tabs[i]
+                    .active_cmd
+                    .as_ref()
+                    .map(|command| command.preview_hidden_handles().to_vec())
+                    .unwrap_or_default()
+            });
             self.tabs[i]
                 .scene
                 .set_command_preview_hidden(&preview_hidden);
@@ -8942,6 +8959,56 @@ mod rapid_drawing_tests {
             )
             .unwrap();
         Point::new(p.x, p.y)
+    }
+
+    #[test]
+    fn point_modifier_mouse_moves_keep_the_parent_live_on_full_and_fast_paths() {
+        use crate::command::StepInput;
+        for from in [false, true] {
+            let mut app = drawing_app("LINE");
+            let i = app.active_tab;
+            let _ = app.feed_command(StepInput::Point(glam::DVec3::ZERO));
+            if from {
+                app.start_from_modifier(i);
+            } else {
+                app.start_mtp_modifier(i);
+            }
+            for second_step in [false, true] {
+                if second_step {
+                    let _ = app.feed_command(StepInput::Point(glam::DVec3::new(3.0, 7.0, 0.0)));
+                }
+                // No pending dwell takes the full path; the next move takes the fast path.
+                app.snap_dwell = None;
+                for target in [
+                    glam::DVec3::new(10.0, 20.0, 0.0),
+                    glam::DVec3::new(25.0, 30.0, 0.0),
+                ] {
+                    let at = screen(&app, target);
+                    let _ = app.update(Message::ViewportMove(at));
+                    let cursor = app.tabs[i].last_cursor_world;
+                    let expected = app.tabs[i]
+                        .suspended_cmd
+                        .as_mut()
+                        .unwrap()
+                        .on_preview_wires(cursor);
+                    let actual = &app.tabs[i].scene.preview_wires;
+                    assert!(!expected.is_empty());
+                    assert_eq!(actual.first().unwrap().points, expected[0].points);
+                    assert_eq!(
+                        actual.len(),
+                        1 + if second_step {
+                            if from {
+                                1
+                            } else {
+                                2
+                            }
+                        } else {
+                            0
+                        }
+                    );
+                }
+            }
+        }
     }
 
     #[test]

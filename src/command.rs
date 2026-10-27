@@ -1165,6 +1165,83 @@ inventory::submit!(CommandRegistration {
     names: &["MTP", "M2P"],
 });
 
+/// Point-entry modifier that returns an offset point to the parked command.
+#[derive(Debug)]
+pub struct FromPointCommand {
+    base: Option<DVec3>,
+    previous_point: Option<DVec3>,
+}
+
+impl FromPointCommand {
+    pub fn new(previous_point: Option<DVec3>) -> Self {
+        Self {
+            base: None,
+            previous_point,
+        }
+    }
+}
+
+impl CadCommand for FromPointCommand {
+    fn name(&self) -> &'static str {
+        "FROM"
+    }
+
+    fn prompt(&self) -> String {
+        crate::t!(if self.base.is_none() {
+            "Base point:"
+        } else {
+            "<Offset>:"
+        })
+        .into_owned()
+    }
+
+    fn on_point(&mut self, pt: DVec3) -> CmdResult {
+        if self.base.is_some() {
+            CmdResult::ReturnPoint(pt)
+        } else {
+            self.base = Some(pt);
+            CmdResult::NeedPoint
+        }
+    }
+
+    fn resolved_anchor(&self) -> Option<DVec3> {
+        self.base
+    }
+
+    fn modifier_restore_point(&self) -> Option<Option<DVec3>> {
+        Some(self.previous_point)
+    }
+
+    fn on_enter(&mut self) -> CmdResult {
+        CmdResult::Cancel
+    }
+
+    fn on_escape(&mut self) -> CmdResult {
+        CmdResult::Cancel
+    }
+
+    fn on_preview_wires(&mut self, pt: DVec3) -> Vec<WireModel> {
+        let Some(base) = self.base else {
+            return Vec::new();
+        };
+        let mut guide = WireModel::solid_f64(
+            "from_guide".to_string(),
+            vec![base.to_array(), pt.to_array()],
+            [0.2, 0.9, 0.5, 1.0],
+            false,
+        );
+        let [dash, gap] = crate::ui::overlay::TRACKING_DASH_PX;
+        guide.pattern_length = dash + gap;
+        guide.pattern = [dash, -gap, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        // The renderer converts the tracking cadence to world units per viewport.
+        guide.dash_from_start = true;
+        guide.set_fixed_screen_width(1.5);
+        vec![guide]
+    }
+}
+
+inventory::submit!(CommandRegistration { names: &["FROM"] });
+
 /// Generic interactive front-end for a keyword command that operates on the
 /// current selection (CHPROP, ADJUST, XDATA, UNDERLAY, DRAWORDER…). If nothing
 /// is selected when it starts it first gathers a selection (Enter confirms),
@@ -3641,6 +3718,12 @@ pub trait CadCommand: Send {
     /// point. `None` keeps the picked point. Only consulted after
     /// `on_point_with_tangent` handled the pick. (#274)
     fn resolved_anchor(&self) -> Option<DVec3> {
+        None
+    }
+
+    /// Last point to restore when a point modifier is cancelled; outer None
+    /// leaves it unchanged, while Some(None) restores an unset last point.
+    fn modifier_restore_point(&self) -> Option<Option<DVec3>> {
         None
     }
 
