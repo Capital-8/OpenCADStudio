@@ -1117,6 +1117,49 @@ impl HostApi for V4PluginHostApi {
             Err(error) => Err(error.to_string()),
         }
     }
+
+    fn stage_parametric_chain(
+        &mut self,
+        reference_name: &str,
+        chain: &crate::host::ParametricChain,
+        tolerance: f64,
+    ) -> Result<Vec<Handle>, String> {
+        // API v14: declared chain in, reference-only display handles out.
+        // A staged write mutates the document: the cached snapshot invalidates
+        // like every write path.
+        match self.request(PluginRequest::StageParametricChain {
+            reference_name: reference_name.to_string(),
+            chain: chain.clone(),
+            tolerance,
+        }) {
+            Ok(PluginResponse::StageParametricChainResult(result)) => {
+                if result.is_ok() {
+                    self.document_cache = OnceCell::new();
+                }
+                result
+            }
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected parametric staging response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn sample_parametric(
+        &self,
+        chain: &crate::host::ParametricChain,
+        s: f64,
+    ) -> Result<Option<crate::host::ParametricSample>, String> {
+        // API v14: pure evaluation, no write, no cache effect.
+        match self.request(PluginRequest::SampleParametric {
+            chain: chain.clone(),
+            s,
+        }) {
+            Ok(PluginResponse::SampleParametricResult(result)) => result,
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!("unexpected parametric sample response: {other:?}")),
+            Err(error) => Err(error.to_string()),
+        }
+    }
 }
 
 #[cfg(test)]

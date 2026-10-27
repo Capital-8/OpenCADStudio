@@ -1,0 +1,1998 @@
+//! Parametric-chain engine (API v14): IFC 4.3.2.0 alignment species
+//! evaluation, chain audits and reference-only display staging builders.
+//!
+//! The record layer's DECLARED parameters (species enum, start point and
+//! direction, signed radii, gradients, length) are the only truth; this
+//! module turns them into plane geometry on demand. The species physics
+//! follow the IFC 4.3.2.0 base formulas on the
+//! `IfcAlignmentHorizontalSegmentTypeEnum` and
+//! `IfcAlignmentVerticalSegmentTypeEnum` lexics pages: every transition
+//! species is a curvature law between the segment's end curvatures and the
+//! species differ only in the blend shape. With s = arc position,
+//! L = segment length, xi = s/L and kappa1/kappa2 = signed end curvatures
+//! (dkappa = kappa2 - kappa1):
+//!
+//! | Species | Plane | Law (IFC 4.3.2.0 lexics) | Carrier |
+//! |---|---|---|---|
+//! | LINE | H | kappa = 0 | `Line` (exact) |
+//! | CIRCULARARC | H | kappa = 1/R over the arc | `Arc` (exact) |
+//! | CLOTHOID | H | kappa(s) = kappa1 + xi*dkappa | chords (declared tolerance) |
+//! | BLOSSCURVE | H | kappa(s) = kappa1 + (3-2*xi)*xi^2*dkappa | chords |
+//! | COSINECURVE | H | kappa(s) = kappa1 + (1-cos(pi*xi))/2*dkappa | chords |
+//! | CUBIC | H | y = x^3/(6*R*L) | `Spline` degree 3 (exact) |
+//! | SINECURVE | H | kappa(s) = kappa1 + (xi - sin(2*pi*xi)/(2*pi))*dkappa | chords |
+//! | HELMERTCURVE | H | two quadratic halves | chords |
+//! | VIENNESEBEND | H | xi^4 quintic blend + bank correction | chords |
+//! | CONSTANTGRADIENT | V | constant gradient | `Line` (exact) |
+//! | CIRCULARARC | V | the exact circle in the (run, elevation) plane | `Arc` (exact) |
+//! | PARABOLICARC | V | gradient linear in the run: g(u) = g1 + u/R | `Spline` degree 2 (exact) |
+//! | CLOTHOID | V | kappa_v(s) = kappa_v1 + xi*dkappa_v | chords |
+//!
+//! Evaluation rules:
+//!
+//! - the tangent direction integrates the curvature law in closed form;
+//! - the position integrates `(cos theta, sin theta)` by composite
+//!   16-node Gauss-Legendre, sub-intervals following the total tangent
+//!   deflection — one deterministic integrator for every transcendental
+//!   species (road and rail ranges evaluate in one to five sub-intervals);
+//! - the vertical circle is the exact circle in the (run, elevation) plane,
+//!   sin(theta(u)) = sin(theta0) + u/R, h(u) = h0 + R*(cos(theta0) -
+//!   cos(theta(u))); the vertical parabola h(u) = h0 + g0*u + u^2/(2*R)
+//!   realizes the record model's mean-gradient law h(L) = h0 + L*(g1+g2)/2
+//!   exactly;
+//! - every blend law integrates to half the curvature change over the
+//!   segment (W(1) = 1/2), so a transition deflects through L/(2*R) exactly
+//!   like the clothoid law.
+//!
+//! Chain discipline: the declared data is validated BEFORE any geometry is
+//! built (finite fields, non-negative lengths, radii present where the
+//! species needs them, IFC self-consistency of constants such as the
+//! parabolic vertex radius R = L/(g2-g1)); chains are audited seam-to-seam
+//! against the record model's continuity tolerances (points 1e-6 m,
+//! directions 1e-9 rad, gradients 1e-6) and refused with the audited pair
+//! named; a chain that would stage more display entities than
+//! `MAX_PLUGIN_LIVE_ENTITIES` publishes nothing. A HELIX entity is never
+//! produced: the codec's Helix is a 3D constant-pitch space spiral, while a
+//! plan clothoid is a 2D curve with linear curvature — staging one for the
+//! other would be mathematically wrong.
+
+use std::f64::consts::PI;
+
+use codec::entities::{Arc, EntityType, Line, LwPolyline, LwVertex, Spline};
+use codec::types::{Vector2, Vector3};
+use ocs_plugin_api::host::{
+    HorizontalSegmentSpecies, MAX_PLUGIN_LIVE_ENTITIES, ParametricChain, ParametricPlane,
+    ParametricSample, ParametricSegment, ParametricSpecies, VerticalSegmentSpecies,
+};
+
+const TWO_PI: f64 = std::f64::consts::TAU;
+
+/// Seam continuity tolerance for points, in meters: the record model's own
+/// alignment point tolerance.
+pub const SEAM_POINT_EPS: f64 = 1.0e-6;
+/// Seam continuity tolerance for directions, in radians: the record model's
+/// own alignment direction tolerance.
+pub const SEAM_DIRECTION_EPS: f64 = 1.0e-9;
+/// Seam continuity tolerance for gradients, in decimal fractions: the
+/// record model's own alignment gradient tolerance.
+pub const SEAM_GRADIENT_EPS: f64 = 1.0e-6;
+
+/// Upper chord count per segment: once the refinement loop would exceed
+/// this, the tolerance is judged unattainable and staging refuses instead
+/// of looping.
+const MAX_CHORDS_PER_SEGMENT: usize = 50_000;
+
+/// Normalize a start direction into [0, 2*pi). Declared directions are
+/// +-2*pi-legal (any winding is accepted by the record layer); the engine
+/// normalizes once at the segment boundary.
+fn normalize_angle(angle: f64) -> f64 {
+    angle.rem_euclid(TWO_PI)
+}
+
+/// Unsigned angular distance between two (possibly differently wound)
+/// angles.
+fn angle_distance(a: f64, b: f64) -> f64 {
+    let d = (normalize_angle(a) - normalize_angle(b)).rem_euclid(TWO_PI);
+    if d > PI {
+        TWO_PI - d
+    } else {
+        d
+    }
+}
+
+/// Validated derived data of one declared segment.
+#[derive(Debug, Clone, Copy)]
+struct Vitals {
+    /// Declared length: arc length for plan transitions, the horizontal run
+    /// for CUBIC and every profile species (the record model's reading).
+    length: f64,
+    /// Plan: bearing in [0, 2*pi). Profile: slope angle atan(start_gradient).
+    theta_start: f64,
+    /// Signed start curvature kappa1 (1/R1; 0 for a flat end).
+    kappa_start: f64,
+    /// Signed end curvature kappa2 (0 = flat end).
+    kappa_end: f64,
+    /// Signed radius carried by arc/parabola species; 0 = none.
+    radius: f64,
+    /// Bank-angle change (radians) of the Viennese gravity-center term.
+    bank_change: f64,
+    /// Gravity-centre line height of the Viennese correction.
+    gravity_height: f64,
+}
+
+/// Validate one declared segment per its species and derive the evaluation
+/// vitals. Every refusal names the species and the offending field.
+fn validate_segment(plane: ParametricPlane, segment: &ParametricSegment) -> Result<Vitals, String> {
+    let fields = [
+        segment.start_point[0],
+        segment.start_point[1],
+        segment.start_direction,
+        segment.start_gradient,
+        segment.end_gradient,
+        segment.length,
+        segment.start_radius,
+        segment.end_radius,
+        segment.end_curvature,
+        segment.bank_change,
+        segment.gravity_height,
+    ];
+    if !fields.iter().all(|f| f.is_finite()) {
+        return Err(format!(
+            "segment species {:?}: a declared field is not finite",
+            segment.species
+        ));
+    }
+    if segment.length < 0.0 {
+        return Err(format!(
+            "segment species {:?}: length is negative",
+            segment.species
+        ));
+    }
+    let plane_matches = match segment.species {
+        ParametricSpecies::Horizontal(_) => plane == ParametricPlane::Plan,
+        ParametricSpecies::Vertical(_) => plane == ParametricPlane::Profile,
+    };
+    if !plane_matches {
+        return Err(format!(
+            "segment species {:?} does not belong to the {:?} chain",
+            segment.species, plane
+        ));
+    }
+    let mut vitals = Vitals {
+        length: segment.length,
+        theta_start: normalize_angle(segment.start_direction),
+        kappa_start: 0.0,
+        kappa_end: 0.0,
+        radius: 0.0,
+        bank_change: 0.0,
+        gravity_height: 0.0,
+    };
+    match segment.species {
+        ParametricSpecies::Horizontal(species) => match species {
+            HorizontalSegmentSpecies::Line => {}
+            HorizontalSegmentSpecies::CircularArc => {
+                if segment.start_radius == 0.0 {
+                    return Err(
+                        "plan circular arc requires a declared (non-zero) radius".to_owned()
+                    );
+                }
+                if segment.end_radius != 0.0 && segment.end_radius != segment.start_radius {
+                    return Err(format!(
+                        "plan circular arc: start and end radii disagree ({} vs {})",
+                        segment.start_radius, segment.end_radius
+                    ));
+                }
+                let sweep = segment.length / segment.start_radius.abs();
+                if sweep >= TWO_PI {
+                    return Err(format!(
+                        "plan circular arc sweeps {sweep} rad: a segment cannot sweep a full turn or more"
+                    ));
+                }
+                vitals.radius = segment.start_radius;
+                vitals.kappa_start = 1.0 / segment.start_radius;
+                vitals.kappa_end = vitals.kappa_start;
+            }
+            HorizontalSegmentSpecies::Cubic => {
+                if segment.end_radius == 0.0 {
+                    return Err("plan cubic parabola requires a declared end radius".to_owned());
+                }
+                if segment.start_radius != 0.0 {
+                    return Err(
+                        "the cubic parabola starts flat; declare CLOTHOID for a curved start"
+                            .to_owned(),
+                    );
+                }
+                vitals.kappa_end = 1.0 / segment.end_radius;
+            }
+            HorizontalSegmentSpecies::BlossCurve
+            | HorizontalSegmentSpecies::Clothoid
+            | HorizontalSegmentSpecies::CosineCurve
+            | HorizontalSegmentSpecies::HelmertCurve
+            | HorizontalSegmentSpecies::SineCurve
+            | HorizontalSegmentSpecies::VienneseBend => {
+                if segment.end_radius == 0.0 {
+                    return Err(format!(
+                        "plan {species:?} requires a declared (non-zero) end radius"
+                    ));
+                }
+                vitals.kappa_start = if segment.start_radius == 0.0 {
+                    0.0
+                } else {
+                    1.0 / segment.start_radius
+                };
+                vitals.kappa_end = 1.0 / segment.end_radius;
+                if species == HorizontalSegmentSpecies::VienneseBend {
+                    vitals.bank_change = segment.bank_change;
+                    vitals.gravity_height = segment.gravity_height;
+                }
+            }
+        },
+        ParametricSpecies::Vertical(species) => match species {
+            VerticalSegmentSpecies::ConstantGradient => {
+                // IFC 4.3.2.0 lexics: for CONSTANTGRADIENT the end gradient
+                // is the same value as the start gradient.
+                if (segment.end_gradient - segment.start_gradient).abs() > SEAM_GRADIENT_EPS {
+                    return Err(format!(
+                        "vertical constant gradient: declared end gradient {} differs from start {}",
+                        segment.end_gradient, segment.start_gradient
+                    ));
+                }
+                vitals.theta_start = segment.start_gradient.atan();
+            }
+            VerticalSegmentSpecies::ParabolicArc => {
+                // The record model's signed relation R = L/(g2-g1) is the
+                // IFC reading of the parabolic vertex radius.
+                if segment.start_radius == 0.0 {
+                    return Err(
+                        "vertical parabolic arc requires a (non-zero) vertex radius".to_owned()
+                    );
+                }
+                if (segment.length / segment.start_radius
+                    - (segment.end_gradient - segment.start_gradient))
+                .abs()
+                    > SEAM_GRADIENT_EPS
+                {
+                    return Err(format!(
+                        "vertical parabolic arc: vertex radius {} disagrees with gradients {}..{} over run {}",
+                        segment.start_radius,
+                        segment.start_gradient,
+                        segment.end_gradient,
+                        segment.length
+                    ));
+                }
+                vitals.radius = segment.start_radius;
+                vitals.theta_start = segment.start_gradient.atan();
+            }
+            VerticalSegmentSpecies::CircularArc => {
+                if segment.start_radius == 0.0 {
+                    return Err("vertical circular arc requires a (non-zero) radius".to_owned());
+                }
+                // The circle's exact run law must realize the declared end
+                // gradient: the record carries the gradient pair per
+                // segment, so an inconsistency here means the declared
+                // radius disagrees with them.
+                let theta0 = segment.start_gradient.atan();
+                let s1 = theta0.sin() + segment.length / segment.start_radius;
+                if !(s1 > -1.0 && s1 < 1.0) {
+                    return Err(format!(
+                        "vertical circular arc: run {} with radius {} leaves the sloped range",
+                        segment.length, segment.start_radius
+                    ));
+                }
+                let realized_gradient = s1.asin().tan();
+                let declared = segment.end_gradient;
+                if (realized_gradient - declared).abs()
+                    > SEAM_GRADIENT_EPS * (1.0 + declared.abs() * declared.abs())
+                {
+                    return Err(format!(
+                        "vertical circular arc: radius {} realizes end gradient {realized_gradient:.9} but the record declares {declared}",
+                        segment.start_radius
+                    ));
+                }
+                vitals.radius = segment.start_radius;
+                vitals.theta_start = theta0;
+            }
+            VerticalSegmentSpecies::Clothoid => {
+                // The vertical record model carries no radius for CLOTHOID;
+                // the consumer declares the curvature ends: start_radius =
+                // the incoming run's curvature basis (0 = straight run) and
+                // end_curvature = the outgoing end value (signed 1/R).
+                vitals.kappa_start = if segment.start_radius == 0.0 {
+                    0.0
+                } else {
+                    1.0 / segment.start_radius
+                };
+                if segment.end_curvature == 0.0 {
+                    return Err(
+                        "vertical clothoid needs declared curvature ends (start_radius, end_curvature); the record model carries none yet"
+                            .to_owned(),
+                    );
+                }
+                vitals.kappa_end = segment.end_curvature;
+                vitals.theta_start = segment.start_gradient.atan();
+            }
+        },
+    }
+    Ok(vitals)
+}
+
+/// The blend integral W(xi) of every plan blend's curvature law, normalized
+/// with W(0) = 0 and W(1) = 1/2 (a one-sided straight to circle transition
+/// always deflects through L/(2*R)):
+///
+/// - CLOTHOID: W = xi^2/2 (the curvature is linear in the arc length);
+/// - BLOSSCURVE: the IFC law kappa = kappa1 + (3-2*xi)*xi^2*dkappa
+///   integrates to W = xi^3 - xi^4/2;
+/// - COSINECURVE: kappa = kappa1 + (1-cos(pi*xi))/2*dkappa integrates to
+///   W = xi/2 - sin(pi*xi)/(2*pi);
+/// - SINECURVE: kappa = kappa1 + (xi - sin(2*pi*xi)/(2*pi))*dkappa
+///   integrates to W = xi^2/2 + (cos(2*pi*xi) - 1)/(4*pi^2);
+/// - HELMERTCURVE: the two quadratic halves kappa = kappa1 + 2*xi^2*dkappa
+///   (xi <= 1/2) respectively kappa = kappa1 + (1 - 2*(1-xi)^2)*dkappa
+///   (xi > 1/2) integrate to W = 2*xi^3/3 on the first half and
+///   W = 1/12 + (xi - 1/2) + (2/3)*((1-xi)^3 - 1/8) on the second;
+/// - VIENNESEBEND: the quintic xi^4*(35 - 84*xi + 70*xi^2 - 20*xi^3)
+///   integrates to 7*xi^5 - 14*xi^6 + 10*xi^7 - 2.5*xi^8.
+fn blend_integral(species: HorizontalSegmentSpecies, xi: f64) -> f64 {
+    match species {
+        HorizontalSegmentSpecies::Clothoid => xi * xi * 0.5,
+        HorizontalSegmentSpecies::BlossCurve => {
+            let xi2 = xi * xi;
+            xi2 * xi - xi2 * xi2 * 0.5
+        }
+        HorizontalSegmentSpecies::CosineCurve => xi * 0.5 - (PI * xi).sin() / TWO_PI,
+        HorizontalSegmentSpecies::SineCurve => {
+            xi * xi * 0.5 + ((TWO_PI * xi).cos() - 1.0) / (4.0 * PI * PI)
+        }
+        HorizontalSegmentSpecies::HelmertCurve => {
+            if xi <= 0.5 {
+                2.0 * xi * xi * xi / 3.0
+            } else {
+                let u = 1.0 - xi;
+                1.0 / 12.0 + (xi - 0.5) + 2.0 * (u * u * u - 0.125) / 3.0
+            }
+        }
+        HorizontalSegmentSpecies::VienneseBend => {
+            let xi2 = xi * xi;
+            let xi4 = xi2 * xi2;
+            7.0 * xi4 * xi - 14.0 * xi4 * xi2 + 10.0 * xi4 * xi2 * xi - 2.5 * xi4 * xi2 * xi2
+        }
+        _ => unreachable!("blend_integral called for a non-blend species"),
+    }
+}
+
+/// Whether a plan species is a blend (integrated-curvature) species.
+fn is_plan_blend(species: &HorizontalSegmentSpecies) -> bool {
+    matches!(
+        species,
+        HorizontalSegmentSpecies::BlossCurve
+            | HorizontalSegmentSpecies::Clothoid
+            | HorizontalSegmentSpecies::CosineCurve
+            | HorizontalSegmentSpecies::HelmertCurve
+            | HorizontalSegmentSpecies::SineCurve
+            | HorizontalSegmentSpecies::VienneseBend
+    )
+}
+
+/// The plan tangent angle at arc position s, relative to the segment's
+/// local frame (+x along the declared start direction).
+fn plan_local_theta(species: &HorizontalSegmentSpecies, vitals: &Vitals, s: f64) -> f64 {
+    match species {
+        HorizontalSegmentSpecies::Line => 0.0,
+        HorizontalSegmentSpecies::CircularArc => vitals.kappa_start * s,
+        HorizontalSegmentSpecies::Cubic => {
+            // Cubic parabola y = x^3/(6*R*L): slope g(x) = x^2/(2*R*L).
+            if vitals.length == 0.0 {
+                0.0
+            } else {
+                let slope = s * s / (2.0 * (1.0 / vitals.kappa_end) * vitals.length);
+                slope.atan()
+            }
+        }
+        _ => {
+            let xi = if vitals.length > 0.0 { s / vitals.length } else { 0.0 };
+            let dk = vitals.kappa_end - vitals.kappa_start;
+            let mut theta =
+                vitals.kappa_start * s + dk * vitals.length * blend_integral(*species, xi);
+            if species == &HorizontalSegmentSpecies::VienneseBend {
+                // Gravity-center correction term of the banked bend (IFC
+                // 4.3.2.0 lexics); zero without a cant coupling, and the
+                // correction integrates to zero over the full segment.
+                let c = 420.0 * vitals.gravity_height * vitals.bank_change
+                    / (vitals.length * vitals.length);
+                theta -= c * xi * xi * (1.0 - 4.0 * xi + 5.0 * xi * xi - 2.0 * xi * xi * xi);
+            }
+            theta
+        }
+    }
+}
+
+/// 16-node Gauss-Legendre nodes (on [-1, 1]) and weights, hard-coded
+/// constants so evaluation is bit-deterministic.
+const GL16_Z: [f64; 16] = [
+    -0.98940093499164995,
+    -0.94457502307323258,
+    -0.86563120238783174,
+    -0.75540440835500303,
+    -0.61787624440264375,
+    -0.45801677765722739,
+    -0.28160355077925891,
+    -0.09501250983763744,
+    0.09501250983763744,
+    0.28160355077925891,
+    0.45801677765722739,
+    0.61787624440264375,
+    0.75540440835500303,
+    0.86563120238783174,
+    0.94457502307323258,
+    0.98940093499164995,
+];
+const GL16_W: [f64; 16] = [
+    0.0271524594117541,
+    0.0622535239386479,
+    0.0951585116824928,
+    0.1246289712555339,
+    0.1495959888165767,
+    0.1691565193950025,
+    0.1826034150449236,
+    0.1894506104550685,
+    0.1894506104550685,
+    0.1826034150449236,
+    0.1691565193950025,
+    0.1495959888165767,
+    0.1246289712555339,
+    0.0951585116824928,
+    0.0622535239386479,
+    0.0271524594117541,
+];
+
+/// Composite 16-node Gauss-Legendre over [0, domain], subdivided by the
+/// integrand's total phase swing (one sub-interval per half-radian of
+/// deflection). Deterministic and allocation-light.
+fn integrate(mut f: impl FnMut(f64) -> f64, domain: f64, total_swing: f64) -> f64 {
+    if domain == 0.0 {
+        return 0.0;
+    }
+    let mut sub_intervals = 1.0f64.max(total_swing.abs() / (PI * 0.5)).ceil() as usize;
+    sub_intervals = sub_intervals.max(1);
+    let h = domain / sub_intervals as f64;
+    let mut sum = 0.0;
+    for i in 0..sub_intervals {
+        let a = i as f64 * h;
+        for (z, w) in GL16_Z.iter().zip(GL16_W.iter()) {
+            let t = a + 0.5 * h * (z + 1.0);
+            sum += w * f(t);
+        }
+    }
+    sum * 0.5 * h
+}
+
+/// Plan blend species position at arc position u: the local-frame (x, y)
+/// integrals of (cos theta(t), sin theta(t)).
+fn integrate_plan_curve(
+    species: &HorizontalSegmentSpecies,
+    vitals: &Vitals,
+    u: f64,
+) -> (f64, f64) {
+    let swing = plan_local_theta(species, vitals, u) - plan_local_theta(species, vitals, 0.0);
+    let theta = |t: f64| plan_local_theta(species, vitals, t);
+    let x = integrate(|t| theta(t).cos(), u, swing);
+    let y = integrate(|t| theta(t).sin(), u, swing);
+    (x, y)
+}
+
+/// Evaluate one plan segment at arc position u, in plane (world)
+/// coordinates.
+fn evaluate_plan(
+    species: &HorizontalSegmentSpecies,
+    segment: &ParametricSegment,
+    vitals: &Vitals,
+    u: f64,
+) -> ParametricSample {
+    let (lx, ly) = match species {
+        HorizontalSegmentSpecies::Line => (u, 0.0),
+        HorizontalSegmentSpecies::CircularArc => {
+            let r = vitals.radius;
+            (r * (u / r).sin(), r * (1.0 - (u / r).cos()))
+        }
+        HorizontalSegmentSpecies::Cubic => {
+            // Cubic parabola in the run parameter.
+            let r = 1.0 / vitals.kappa_end;
+            (u, u * u * u / (6.0 * r * vitals.length))
+        }
+        _ => integrate_plan_curve(species, vitals, u),
+    };
+    let dir_angle = vitals.theta_start
+        + match species {
+            HorizontalSegmentSpecies::Line => 0.0,
+            HorizontalSegmentSpecies::CircularArc => u / vitals.radius,
+            HorizontalSegmentSpecies::Cubic => {
+                let r = 1.0 / vitals.kappa_end;
+                (u * u / (2.0 * r * vitals.length)).atan()
+            }
+            _ => plan_local_theta(species, vitals, u),
+        };
+    let cos0 = vitals.theta_start.cos();
+    let sin0 = vitals.theta_start.sin();
+    ParametricSample {
+        point: [
+            segment.start_point[0] + cos0 * lx - sin0 * ly,
+            segment.start_point[1] + sin0 * lx + cos0 * ly,
+        ],
+        direction: [dir_angle.cos(), dir_angle.sin()],
+    }
+}
+
+/// The vertical clothoid's slope angle on the run:
+/// theta(u) = theta0 + kappa1*u + dkappa*u^2/(2*L) (the linear-curvature
+/// law, IFC 4.3.2.0 lexics).
+fn profile_clothoid_theta(vitals: &Vitals, u: f64) -> f64 {
+    let dk = vitals.kappa_end - vitals.kappa_start;
+    vitals.theta_start + vitals.kappa_start * u
+        + dk * u * u / (2.0 * vitals.length.max(f64::MIN_POSITIVE))
+}
+
+/// Evaluate the vertical clothoid at run position u, in the (station,
+/// elevation) sheet.
+fn evaluate_profile_clothoid(
+    segment: &ParametricSegment,
+    vitals: &Vitals,
+    u: f64,
+) -> ParametricSample {
+    let theta_u = profile_clothoid_theta(vitals, u);
+    let swing = theta_u - segment.start_gradient.atan();
+    let height = segment.start_point[1] + integrate(|t| profile_clothoid_theta(vitals, t).tan(), u, swing);
+    let gradient = theta_u.tan();
+    let norm = (1.0 + gradient * gradient).sqrt();
+    ParametricSample {
+        point: [segment.start_point[0] + u, height],
+        direction: [1.0 / norm, gradient / norm],
+    }
+}
+
+/// Evaluate one profile segment at run position u, in the (station,
+/// elevation) sheet (x = distance along the horizontal, y = height — the
+/// IfcAlignmentVerticalSegment frame, no rotation applies).
+fn evaluate_profile(
+    species: &VerticalSegmentSpecies,
+    segment: &ParametricSegment,
+    vitals: &Vitals,
+    u: f64,
+) -> ParametricSample {
+    let g0 = segment.start_gradient;
+    let station0 = segment.start_point[0];
+    let h0 = segment.start_point[1];
+    let theta0 = vitals.theta_start;
+    let (run, height, gradient) = match species {
+        VerticalSegmentSpecies::ConstantGradient => (u, h0 + g0 * u, g0),
+        VerticalSegmentSpecies::ParabolicArc => {
+            let r = vitals.radius;
+            (u, h0 + g0 * u + u * u / (2.0 * r), g0 + u / r)
+        }
+        VerticalSegmentSpecies::CircularArc => {
+            // The exact circle in the sheet:
+            // sin(theta(u)) = sin(theta0) + u/R,
+            // h(u) = h0 + R*(cos(theta0) - cos(theta(u))).
+            let sine = theta0.sin() + u / vitals.radius;
+            let theta = sine.asin();
+            (
+                u,
+                h0 + vitals.radius * (theta0.cos() - theta.cos()),
+                theta.tan(),
+            )
+        }
+        VerticalSegmentSpecies::Clothoid => {
+            let sample = evaluate_profile_clothoid(segment, vitals, u);
+            (
+                u,
+                sample.point[1],
+                sample.direction[1] / sample.direction[0],
+            )
+        }
+    };
+    let norm = (1.0 + gradient * gradient).sqrt();
+    ParametricSample {
+        point: [station0 + run, height],
+        direction: [1.0 / norm, gradient / norm],
+    }
+}
+
+/// Evaluate one (already validated) segment at local position u.
+fn evaluate_segment_at(
+    _plane: ParametricPlane,
+    segment: &ParametricSegment,
+    vitals: &Vitals,
+    u: f64,
+) -> ParametricSample {
+    match segment.species {
+        ParametricSpecies::Horizontal(species) => evaluate_plan(&species, segment, vitals, u),
+        ParametricSpecies::Vertical(species) => evaluate_profile(&species, segment, vitals, u),
+    }
+}
+
+/// Audit every declared segment pair seam-to-seam: the evaluated end of
+/// segment i must equal the declared start of segment i+1 in point, and in
+/// direction (the record model's continuity tolerances). Refuses with the
+/// audited pair named, nothing staged. Returns the validated vitals so the
+/// staging pass never re-validates.
+pub(crate) fn audit_chain(chain: &ParametricChain) -> Result<Vec<Vitals>, String> {
+    let mut vitals = Vec::with_capacity(chain.segments.len());
+    for (index, segment) in chain.segments.iter().enumerate() {
+        let v =
+            validate_segment(chain.plane, segment).map_err(|e| format!("segment {index}: {e}"))?;
+        vitals.push(v);
+    }
+    for index in 0..chain.segments.len().saturating_sub(1) {
+        let (segment, next) = (&chain.segments[index], &chain.segments[index + 1]);
+        let end = evaluate_segment_at(chain.plane, segment, &vitals[index], segment.length);
+        if !next.start_point.iter().all(|c| c.is_finite()) {
+            return Err(format!(
+                "seam segment {index} to {}: the declared start point is not finite",
+                index + 1
+            ));
+        }
+        let gap = ((end.point[0] - next.start_point[0]).powi(2)
+            + (end.point[1] - next.start_point[1]).powi(2))
+        .sqrt();
+        if gap > SEAM_POINT_EPS {
+            return Err(format!(
+                "seam segment {index} to {}: the evaluated end ({:.6}, {:.6}) is {gap:.9} m away from the next segment's declared start ({:.6}, {:.6}); the chain is not continuous",
+                index + 1,
+                end.point[0],
+                end.point[1],
+                next.start_point[0],
+                next.start_point[1]
+            ));
+        }
+        match chain.plane {
+            ParametricPlane::Plan => {
+                let realized = end.direction[1].atan2(end.direction[0]);
+                let turn = angle_distance(realized, next.start_direction);
+                if turn > SEAM_DIRECTION_EPS {
+                    return Err(format!(
+                        "seam segment {index} to {}: the evaluated end direction ({realized:.12} rad) does not restate the declared start direction ({:.12} rad) of the next segment; the chain is not tangentially continuous",
+                        index + 1,
+                        next.start_direction
+                    ));
+                }
+            }
+            ParametricPlane::Profile => {
+                // The realized end slope vs the next segment's declared
+                // start gradient — the record model's tangential-continuity
+                // check in the gradient form the records carry.
+                let realized_gradient = end.direction[1] / end.direction[0];
+                let declared = next.start_gradient;
+                if (realized_gradient - declared).abs()
+                    > SEAM_GRADIENT_EPS * (1.0 + declared.abs() * declared.abs())
+                {
+                    return Err(format!(
+                        "seam segment {index} to {}: the evaluated end gradient ({realized_gradient:.9}) does not restate the declared start gradient ({declared:.9}) of the next segment",
+                        index + 1
+                    ));
+                }
+            }
+        }
+    }
+    Ok(vitals)
+}
+
+/// Sample a declared chain at chain position s (measured along the chain's
+/// declared segment lengths). Pure evaluation: no document state, no undo,
+/// no publish. Outside the chain (s < 0 or past the end) the answer is
+/// `None`.
+pub fn sample_chain(chain: &ParametricChain, s: f64) -> Result<Option<ParametricSample>, String> {
+    if !s.is_finite() {
+        return Err("sample position is not finite".to_owned());
+    }
+    let mut vitals = Vec::with_capacity(chain.segments.len());
+    let mut total = 0.0;
+    for (index, segment) in chain.segments.iter().enumerate() {
+        let v =
+            validate_segment(chain.plane, segment).map_err(|e| format!("segment {index}: {e}"))?;
+        total += v.length;
+        vitals.push(v);
+    }
+    if s < 0.0 || total == 0.0 || s > total {
+        return Ok(None);
+    }
+    let mut acc = 0.0;
+    for (index, segment) in chain.segments.iter().enumerate() {
+        let span = vitals[index].length;
+        if span == 0.0 {
+            continue;
+        }
+        if s <= acc + span || index + 1 == chain.segments.len() {
+            let u = (s - acc).clamp(0.0, span);
+            return Ok(Some(evaluate_segment_at(
+                chain.plane,
+                segment,
+                &vitals[index],
+                u,
+            )));
+        }
+        acc += span;
+    }
+    Ok(None)
+}
+
+/// Chord count seed from the curvature-bound sagitta law: a chord of arc
+/// span ds on curvature kappa bulges at most ds^2*kappa/8, so
+/// n >= L*sqrt(kappa/(8*tolerance)). The measured deviation check is the
+/// real law; this bound only seeds it.
+fn chord_seed(species: &HorizontalSegmentSpecies, vitals: &Vitals, tolerance: f64) -> usize {
+    let mut bound = vitals.kappa_start.abs() + (vitals.kappa_end - vitals.kappa_start).abs();
+    if species == &HorizontalSegmentSpecies::VienneseBend && vitals.length > 0.0 {
+        // The banked correction can overshoot the monotone bound: sample
+        // the realized law.
+        let dk = vitals.kappa_end - vitals.kappa_start;
+        let mut sampled = bound;
+        for k in 0..=48usize {
+            let xi = k as f64 / 48.0;
+            let quintic =
+                xi * xi * xi * xi * (35.0 - 84.0 * xi + 70.0 * xi * xi - 20.0 * xi * xi * xi);
+            let mut kappa = vitals.kappa_start + dk * quintic;
+            kappa -= 420.0 * vitals.gravity_height * vitals.bank_change
+                / (vitals.length * vitals.length)
+                * xi
+                * xi
+                * (1.0 - 4.0 * xi + 5.0 * xi * xi - 2.0 * xi * xi * xi);
+            sampled = sampled.max(kappa.abs());
+        }
+        bound = sampled;
+    }
+    if bound <= 0.0 {
+        return 2;
+    }
+    let n = (vitals.length * (bound / (8.0 * tolerance)).sqrt()).ceil() as usize;
+    n.max(2)
+}
+
+/// Chord polyline with the max-deviation tolerance contract: seeded from
+/// the sagitta bound, refined by measured deviation until the measured
+/// maximum sits within the declared tolerance. Refuses with the reached
+/// numbers when the refinement ceiling keeps the fit above the tolerance.
+fn chord_polyline(
+    eval: &dyn Fn(f64) -> ParametricSample,
+    length: f64,
+    mut count: usize,
+    tolerance: f64,
+    label: &str,
+) -> Result<(LwPolyline, usize), String> {
+    loop {
+        let polyline = chords_for(eval, length, count);
+        let worst = measured_deviation(&polyline, eval, length);
+        if worst <= tolerance {
+            return Ok((polyline, count));
+        }
+        if count >= MAX_CHORDS_PER_SEGMENT {
+            return Err(format!(
+                "{label}: {count} chords still deviate by {worst:.3e} m at a {tolerance} tolerance; the tolerance is unattainable, nothing staged for it"
+            ));
+        }
+        count = count.saturating_mul(2).max(4);
+    }
+}
+
+fn chords_for(eval: &dyn Fn(f64) -> ParametricSample, length: f64, count: usize) -> LwPolyline {
+    let mut polyline = LwPolyline::new();
+    for i in 0..=count {
+        let u = length * i as f64 / count as f64;
+        let sample = eval(u);
+        polyline.add_vertex(LwVertex::new(Vector2::new(sample.point[0], sample.point[1])));
+    }
+    polyline
+}
+
+/// The measured max deviation of the chord polyline vs the true curve:
+/// three quarter-points sampled per chord, the distance to the chord line.
+fn measured_deviation(
+    polyline: &LwPolyline,
+    eval: &dyn Fn(f64) -> ParametricSample,
+    length: f64,
+) -> f64 {
+    let count = polyline.vertices.len().saturating_sub(1).max(1);
+    let vertices: Vec<(f64, f64)> = polyline
+        .vertices
+        .iter()
+        .map(|v| (v.location.x, v.location.y))
+        .collect();
+    let mut worst = 0.0f64;
+    for i in 0..count {
+        let (ax, ay) = vertices[i];
+        let (bx, by) = vertices[i + 1];
+        let (dx, dy) = (bx - ax, by - ay);
+        let chord_len = (dx * dx + dy * dy).sqrt();
+        let (ux, uy) = if chord_len == 0.0 { (1.0, 0.0) } else { (dx / chord_len, dy / chord_len) };
+        for k in 1..4 {
+            let frac = k as f64 / 4.0;
+            let u = length * (i as f64 + frac) / count as f64;
+            let sample = eval(u);
+            let px = sample.point[0] - ax;
+            let py = sample.point[1] - ay;
+            let along = px * ux + py * uy;
+            let dist = ((px - along * ux).powi(2) + (py - along * uy).powi(2)).sqrt();
+            worst = worst.max(dist);
+        }
+    }
+    worst
+}
+
+/// Which carrier answered for one staged segment (diagnostics).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StagedCarrier {
+    /// One exact standard entity.
+    Exact,
+    /// A chord polyline with this many chords.
+    Chords(usize),
+}
+
+/// Build the display entities for a declared, audited chain. Every staged
+/// entity carries the chain's layer (when set); the reference-only
+/// designation is applied by the host session, not here. Returns the
+/// entities and the per-segment carriers.
+pub fn build_display_entities(
+    chain: &ParametricChain,
+    tolerance: f64,
+) -> Result<(Vec<EntityType>, Vec<StagedCarrier>), String> {
+    if !tolerance.is_finite() || tolerance <= 0.0 {
+        return Err("a positive finite tolerance is required".to_owned());
+    }
+    let vitals = audit_chain(chain)?;
+    // Cap pre-check (the published ceiling): nothing is staged when the
+    // chain's display footprint would exceed the live-entity cap.
+    let mut estimate = 0usize;
+    for (index, segment) in chain.segments.iter().enumerate() {
+        let v = vitals[index];
+        if v.length == 0.0 {
+            continue;
+        }
+        estimate += match &segment.species {
+            ParametricSpecies::Horizontal(species) => {
+                if is_plan_blend(species) {
+                    chord_seed(species, &v, tolerance)
+                } else {
+                    1
+                }
+            }
+            ParametricSpecies::Vertical(species) => {
+                if species == &VerticalSegmentSpecies::Clothoid {
+                    chord_seed(&HorizontalSegmentSpecies::Clothoid, &v, tolerance)
+                } else {
+                    1
+                }
+            }
+        };
+    }
+    if estimate > MAX_PLUGIN_LIVE_ENTITIES {
+        return Err(format!(
+            "a {}-segment chain at tolerance {tolerance} needs {estimate} display entities, above the MAX_PLUGIN_LIVE_ENTITIES ({MAX_PLUGIN_LIVE_ENTITIES}) ceiling; nothing staged",
+            chain.segments.len()
+        ));
+    }
+    let mut entities: Vec<EntityType> = Vec::new();
+    let mut carriers = Vec::with_capacity(chain.segments.len());
+    for (index, segment) in chain.segments.iter().enumerate() {
+        let v = vitals[index];
+        if v.length == 0.0 {
+            // A terminator segment stages nothing (the record layer's
+            // zero-length terminators are legal but carry no geometry).
+            carriers.push(StagedCarrier::Exact);
+            continue;
+        }
+        match &segment.species {
+            ParametricSpecies::Horizontal(species) => match species {
+                HorizontalSegmentSpecies::Line => {
+                    entities.push(EntityType::Line(plan_line(segment, &v)));
+                    carriers.push(StagedCarrier::Exact);
+                }
+                HorizontalSegmentSpecies::CircularArc => {
+                    entities.push(EntityType::Arc(plan_arc(segment, &v)));
+                    carriers.push(StagedCarrier::Exact);
+                }
+                HorizontalSegmentSpecies::Cubic => {
+                    entities.push(EntityType::Spline(cubic_spline(segment, &v)));
+                    carriers.push(StagedCarrier::Exact);
+                }
+                _ => {
+                    let eval = |u: f64| evaluate_plan(species, segment, &v, u);
+                    let seed = chord_seed(species, &v, tolerance);
+                    let (polyline, count) = chord_polyline(
+                        &eval,
+                        v.length,
+                        seed,
+                        tolerance,
+                        &format!("segment {index} ({species:?})"),
+                    )?;
+                    entities.push(EntityType::LwPolyline(polyline));
+                    carriers.push(StagedCarrier::Chords(count));
+                }
+            },
+            ParametricSpecies::Vertical(species) => match species {
+                VerticalSegmentSpecies::ConstantGradient => {
+                    entities.push(EntityType::Line(profile_line(segment, &v)));
+                    carriers.push(StagedCarrier::Exact);
+                }
+                VerticalSegmentSpecies::ParabolicArc => {
+                    entities.push(EntityType::Spline(parabola_spline(segment, &v)));
+                    carriers.push(StagedCarrier::Exact);
+                }
+                VerticalSegmentSpecies::CircularArc => {
+                    entities.push(EntityType::Arc(profile_arc(segment, &v)));
+                    carriers.push(StagedCarrier::Exact);
+                }
+                VerticalSegmentSpecies::Clothoid => {
+                    let eval = |u: f64| evaluate_profile_clothoid(segment, &v, u);
+                    let seed = chord_seed(&HorizontalSegmentSpecies::Clothoid, &v, tolerance);
+                    let (polyline, count) = chord_polyline(
+                        &eval,
+                        v.length,
+                        seed,
+                        tolerance,
+                        &format!("segment {index} (vertical clothoid)"),
+                    )?;
+                    entities.push(EntityType::LwPolyline(polyline));
+                    carriers.push(StagedCarrier::Chords(count));
+                }
+            },
+        }
+    }
+    if !chain.layer.is_empty() {
+        for entity in &mut entities {
+            set_common_layer(entity, &chain.layer);
+        }
+    }
+    Ok((entities, carriers))
+}
+
+/// Apply the chain layer to one entity.
+fn set_common_layer(entity: &mut EntityType, layer: &str) {
+    if !layer.is_empty() {
+        entity.common_mut().layer = layer.to_string();
+    }
+}
+
+/// The plan LINE carrier: endpoints the exact evaluations.
+fn plan_line(segment: &ParametricSegment, vitals: &Vitals) -> Line {
+    let dir = [vitals.theta_start.cos(), vitals.theta_start.sin()];
+    Line::from_points(
+        Vector3::new(segment.start_point[0], segment.start_point[1], 0.0),
+        Vector3::new(
+            segment.start_point[0] + dir[0] * vitals.length,
+            segment.start_point[1] + dir[1] * vitals.length,
+            0.0,
+        ),
+    )
+}
+
+/// The profile CONSTANTGRADIENT carrier.
+fn profile_line(segment: &ParametricSegment, vitals: &Vitals) -> Line {
+    Line::from_points(
+        Vector3::new(segment.start_point[0], segment.start_point[1], 0.0),
+        Vector3::new(
+            segment.start_point[0] + vitals.length,
+            segment.start_point[1] + segment.start_gradient * vitals.length,
+            0.0,
+        ),
+    )
+}
+
+/// The plan CIRCULARARC carrier: an exact arc entity. The record's signed
+/// radius convention maps to the entity's positive radius with the
+/// start/end angles chosen so the drawn point set is identical: positive
+/// (CCW) radii sweep from theta0 - pi/2 forward by L/|R|; negative (CW)
+/// radii draw the same point set with the span angles recomputed from the
+/// CW side.
+fn plan_arc(segment: &ParametricSegment, vitals: &Vitals) -> Arc {
+    let r = vitals.radius;
+    let theta0 = vitals.theta_start;
+    // The center sits |R| perpendicular to the tangent, the turn side the
+    // signed radius encodes: center = P0 + R*(-sin, cos).
+    let center = [
+        segment.start_point[0] - r * theta0.sin(),
+        segment.start_point[1] + r * theta0.cos(),
+    ];
+    let (start_angle, end_angle) = if r > 0.0 {
+        let a0 = theta0 - 0.5 * PI;
+        let sweep = vitals.length / r;
+        (a0, a0 + sweep)
+    } else {
+        let a1 = theta0 + 0.5 * PI;
+        let sweep = vitals.length / v_abs(r);
+        (a1 - sweep, a1)
+    };
+    Arc::from_center_radius_angles(
+        Vector3::new(center[0], center[1], 0.0),
+        v_abs(r),
+        start_angle,
+        end_angle,
+    )
+}
+
+fn v_abs(v: f64) -> f64 {
+    v.abs()
+}
+
+/// The profile CIRCULARARC carrier: the exact planar circle of the
+/// (run, elevation) sheet; radius |R|, angles per the same signed-radius
+/// mapping as the plan arc.
+fn profile_arc(segment: &ParametricSegment, vitals: &Vitals) -> Arc {
+    let r = vitals.radius;
+    let theta0 = vitals.theta_start;
+    let center = [
+        segment.start_point[0] - theta0.sin() * r,
+        segment.start_point[1] + theta0.cos() * r,
+    ];
+    let (start_angle, end_angle) = if r > 0.0 {
+        let a0 = theta0 - 0.5 * PI;
+        let sweep = vitals.length / v_abs(r);
+        (a0, a0 + sweep)
+    } else {
+        let a1 = theta0 + 0.5 * PI;
+        let sweep = vitals.length / v_abs(r);
+        (a1 - sweep, a1)
+    };
+    Arc::from_center_radius_angles(
+        Vector3::new(center[0], center[1], 0.0),
+        v_abs(r),
+        start_angle,
+        end_angle,
+    )
+}
+
+/// The plan CUBIC carrier: the exact single-span clamped degree-3 spline of
+/// the cubic parabola y = x^3/(6*R*L). The Bernstein form is exact:
+/// x(t) = L*t through control x = [0, L/3, 2L/3, L] (the degree-elevated
+/// linear), y(t) = (L^2/(6R))*t^3 through y = [0, 0, 0, L^2/(6R)].
+fn cubic_spline(segment: &ParametricSegment, vitals: &Vitals) -> Spline {
+    let theta0 = vitals.theta_start;
+    let cos0 = theta0.cos();
+    let sin0 = theta0.sin();
+    let l = vitals.length;
+    let r = 1.0 / vitals.kappa_end;
+    let y_end = l * l / (6.0 * r);
+    let local = [(0.0, 0.0), (l / 3.0, 0.0), (2.0 * l / 3.0, 0.0), (l, y_end)];
+    let points: Vec<Vector3> = local
+        .iter()
+        .map(|p| {
+            Vector3::new(
+                segment.start_point[0] + cos0 * p.0 - sin0 * p.1,
+                segment.start_point[1] + sin0 * p.0 + cos0 * p.1,
+                0.0,
+            )
+        })
+        .collect();
+    let theta_end = theta0 + (l / (2.0 * r)).atan();
+    let mut spline = Spline::from_control_points(3, points);
+    spline.flags.planar = true;
+    spline.begin_tangent = Vector3::new(cos0, sin0, 0.0);
+    spline.end_tangent = Vector3::new(theta_end.cos(), theta_end.sin(), 0.0);
+    spline
+}
+
+/// The profile PARABOLICARC carrier: the exact single-span clamped degree-2
+/// spline of h(u) = h0 + g0*u + u^2/(2*R) in the (station, elevation)
+/// sheet. Control points: x = [0, L/2, L] (the degree-elevated linear),
+/// y = [h0, h0 + g0*L/2 + L^2/(8R), h0 + L*(g0+g1)/2] — the Bernstein form
+/// is exact.
+fn parabola_spline(segment: &ParametricSegment, vitals: &Vitals) -> Spline {
+    let (station0, h0) = (segment.start_point[0], segment.start_point[1]);
+    let l = vitals.length;
+    let g0 = segment.start_gradient;
+    let r = vitals.radius;
+    // The degree-2 Bernstein coefficients of h(u) = h0 + g0*u + u^2/(2*R):
+    // c0 = h0, c1 = h0 + g0*L/2 (the start-tangent line's value at the mid
+    // station — NOT the curve's own midpoint), c2 = h0 + L*(g0+g1)/2.
+    let mid = h0 + g0 * l * 0.5;
+    let end = h0 + g0 * l + l * l / (2.0 * r);
+    let local = [(0.0, h0), (l * 0.5, mid), (l, end)];
+    let points: Vec<Vector3> = local
+        .iter()
+        .map(|p| Vector3::new(station0 + p.0, p.1, 0.0))
+        .collect();
+    let g1 = g0 + l / r;
+    let mut spline = Spline::from_control_points(2, points);
+    spline.flags.planar = true;
+    spline.begin_tangent = Vector3::new(1.0, g0, 0.0);
+    spline.end_tangent = Vector3::new(1.0, g1, 0.0);
+    spline
+}
+
+/// The classical clothoid (Euler spiral / Fresnel) position series — the
+/// power expansion of cos/sin(theta) with theta(s) = b*s^2, where
+/// b = dkappa/(2*L) = 1/(2*R*L) for a flat-to-R transition (the signed
+/// radius included, so a right-hand spiral's y grows negative):
+/// x = sum_k (-1)^k b^(2k) s^(4k+1) / ((2k)! (4k+1)),
+/// y = sum_k (-1)^k b^(2k+1) s^(4k+3) / ((2k+1)! (4k+3)).
+///
+/// Used to place the demo chains' welded seams and as the tests'
+/// independent oracle against the engine's Gauss-Legendre integrator.
+fn fresnel_pos(b: f64, s: f64) -> (f64, f64) {
+    fn factorial(n: usize) -> f64 {
+        (1..=n as u64).fold(1u128, |acc: u128, v| acc.saturating_mul(v as u128)) as f64
+    }
+    let mut x = 0.0f64;
+    let mut y = 0.0f64;
+    for k in 0..12usize {
+        let sign = if k % 2 == 0 { 1.0 } else { -1.0 };
+        x += sign * b.powi(2 * k as i32)
+            * s.powi(4 * k as i32 + 1)
+            / (factorial(2 * k) * (4.0 * k as f64 + 1.0));
+        y += sign * b.powi(2 * k as i32 + 1)
+            * s.powi(4 * k as i32 + 3)
+            / (factorial(2 * k + 1) * (4.0 * k as f64 + 3.0));
+    }
+    (x, y)
+}
+
+/// The commission's demo plan chain: LINE + CLOTHOID(R=-300, L=60) + LINE
+/// with exact welded seams (the closing line starts at the clothoid's own
+/// Fresnel-series end, at its end bearing). The demo fixture for the API
+/// surface, the tests and the budget bench.
+pub fn commission_demo_plan_chain() -> ParametricChain {
+    let l = 60.0f64;
+    let big_r = -300.0f64;
+    let dkappa = 1.0 / big_r;
+    let (x_end, y_end) = fresnel_pos(dkappa / (2.0 * l), l);
+    let theta_end = dkappa * l / 2.0;
+    ParametricChain {
+        plane: ParametricPlane::Plan,
+        segments: vec![
+            ParametricSegment {
+                species: ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Line),
+                start_point: [0.0, 0.0],
+                start_direction: 0.0,
+                start_gradient: 0.0,
+                end_gradient: 0.0,
+                length: 40.0,
+                start_radius: 0.0,
+                end_radius: 0.0,
+                end_curvature: 0.0,
+                bank_change: 0.0,
+                gravity_height: 0.0,
+            },
+            ParametricSegment {
+                species: ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Clothoid),
+                start_point: [40.0, 0.0],
+                start_direction: 0.0,
+                start_gradient: 0.0,
+                end_gradient: 0.0,
+                length: l,
+                start_radius: 0.0,
+                end_radius: big_r,
+                end_curvature: 0.0,
+                bank_change: 0.0,
+                gravity_height: 0.0,
+            },
+            ParametricSegment {
+                species: ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Line),
+                start_point: [40.0 + x_end, y_end],
+                start_direction: theta_end,
+                start_gradient: 0.0,
+                end_gradient: 0.0,
+                length: 30.0,
+                start_radius: 0.0,
+                end_radius: 0.0,
+                end_curvature: 0.0,
+                bank_change: 0.0,
+                gravity_height: 0.0,
+            },
+        ],
+        layer: "CVI_DISPLAY".to_string(),
+    }
+}
+
+/// The commission's demo profile chain: CONSTANTGRADIENT + PARABOLICARC
+/// (g = 0 to +10% over an 80 m run) with the mean-gradient law exact at
+/// the seams.
+pub fn commission_demo_profile_chain() -> ParametricChain {
+    ParametricChain {
+        plane: ParametricPlane::Profile,
+        segments: vec![
+            ParametricSegment {
+                species: ParametricSpecies::Vertical(VerticalSegmentSpecies::ConstantGradient),
+                start_point: [0.0, 100.0],
+                start_direction: 0.0,
+                start_gradient: 0.0,
+                end_gradient: 0.0,
+                length: 60.0,
+                start_radius: 0.0,
+                end_radius: 0.0,
+                end_curvature: 0.0,
+                bank_change: 0.0,
+                gravity_height: 0.0,
+            },
+            ParametricSegment {
+                species: ParametricSpecies::Vertical(VerticalSegmentSpecies::ParabolicArc),
+                start_point: [60.0, 100.0],
+                start_direction: 0.0,
+                start_gradient: 0.0,
+                end_gradient: 0.1,
+                length: 80.0,
+                start_radius: 800.0,
+                end_radius: 0.0,
+                end_curvature: 0.0,
+                bank_change: 0.0,
+                gravity_height: 0.0,
+            },
+        ],
+        layer: "CVI_PROFILE".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// dof-points helper: build a declared plan segment with all defaults.
+    fn plan_segment(
+        species: ParametricSpecies,
+        start: [f64; 2],
+        direction: f64,
+        length: f64,
+        start_radius: f64,
+        end_radius: f64,
+    ) -> ParametricSegment {
+        ParametricSegment {
+            species,
+            start_point: start,
+            start_direction: direction,
+            start_gradient: 0.0,
+            end_gradient: 0.0,
+            length,
+            start_radius,
+            end_radius,
+            end_curvature: 0.0,
+            bank_change: 0.0,
+            gravity_height: 0.0,
+        }
+    }
+
+    fn profile_segment(
+        species: ParametricSpecies,
+        start: [f64; 2],
+        length: f64,
+        g0: f64,
+        g1: f64,
+        radius: f64,
+        end_curvature: f64,
+    ) -> ParametricSegment {
+        ParametricSegment {
+            species,
+            start_point: start,
+            start_direction: g0.atan(),
+            start_gradient: g0,
+            end_gradient: g1,
+            length,
+            start_radius: radius,
+            end_radius: 0.0,
+            end_curvature,
+            bank_change: 0.0,
+            gravity_height: 0.0,
+        }
+    }
+
+    /// The demo chains live in the module body (the API surface's demo
+    /// fixture, shared with the budget bench).
+    use super::{commission_demo_plan_chain, commission_demo_profile_chain};
+
+    fn demo_plan_chain() -> ParametricChain {
+        commission_demo_plan_chain()
+    }
+
+    fn demo_profile_chain() -> ParametricChain {
+        commission_demo_profile_chain()
+    }
+
+    /// The Fresnel oracle for one flat-to-R clothoid entity at position s.
+    fn fresnel_oracle(r: f64, l: f64, s: f64) -> (f64, f64) {
+        super::fresnel_pos(1.0 / (2.0 * r * l), s)
+    }
+
+    #[test]
+    fn plan_line_and_circular_arc_carry_exactly() {
+        let chain = ParametricChain {
+            plane: ParametricPlane::Plan,
+            segments: vec![
+                plan_segment(
+                    ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Line),
+                    [0.0, 0.0],
+                    0.0,
+                    40.0,
+                    0.0,
+                    0.0,
+                ),
+                plan_segment(
+                    ParametricSpecies::Horizontal(HorizontalSegmentSpecies::CircularArc),
+                    [40.0, 0.0],
+                    0.0,
+                    45.0, // arc of 0.15 rad on R=300: a gentle sample sweep
+                    -300.0,
+                    -300.0,
+                ),
+            ],
+            layer: String::new(),
+        };
+        let (entities, carriers) = build_display_entities(&chain, 1e-3).unwrap();
+        assert_eq!(carriers.len(), 2);
+        assert!(matches!(carriers[0], StagedCarrier::Exact));
+        assert!(matches!(carriers[1], StagedCarrier::Exact));
+        assert!(matches!(&entities[0], EntityType::Line(_)));
+        assert!(matches!(&entities[1], EntityType::Arc(_)));
+
+        // The line's endpoints are the exact evaluations.
+        let samples = [
+            sample_chain(&chain, 0.0).unwrap().unwrap(),
+            sample_chain(&chain, 40.0).unwrap().unwrap(),
+        ];
+        assert_eq!(samples[0].point, [0.0, 0.0]);
+        assert_eq!(samples[1].point, [40.0, 0.0]);
+
+        // The arc: the mid-point against the exact circle law. The declared
+        // arc is CW (R = -300) with an arc length of 45 on |R| 300.
+        let mid = sample_chain(&chain, 40.0 + 45.0 / 2.0).unwrap().unwrap();
+        let u = 22.5f64;
+        let r = -300.0f64;
+        let expected_x = 40.0 + r * (u / r).sin();
+        let expected_y = r * (1.0 - (u / r).cos());
+        assert!((mid.point[0] - expected_x).abs() < 1e-9, "arc x off");
+        assert!((mid.point[1] - expected_y).abs() < 1e-9, "arc y off");
+    }
+
+    #[test]
+    fn parabolic_carrier_is_exact_quadratic_spline() {
+        let chain = demo_profile_chain();
+        let (entities, carriers) = build_display_entities(&chain, 1e-3).unwrap();
+        assert!(matches!(carriers[0], StagedCarrier::Exact));
+        assert!(matches!(carriers[1], StagedCarrier::Exact));
+        let EntityType::Spline(spline) = &entities[1] else {
+            panic!("parabolic segment must stage a spline");
+        };
+        assert_eq!(spline.degree, 2);
+        assert_eq!(spline.control_points.len(), 3);
+        assert!(!spline.knots.is_empty(), "clamped knot vector present");
+
+        // Evaluate the degree-2 Bezier at the knot span params and compare
+        // with the closed quadratic law h = h0 + g0*u + u^2/(2R).
+        let p = |t: f64| {
+            let (q0, q1, q2) = (
+                spline.control_points[0],
+                spline.control_points[1],
+                spline.control_points[2],
+            );
+            let loc = |tt: f64| q0 * (1.0 - tt) * (1.0 - tt) + q1 * 2.0 * tt * (1.0 - tt) + q2 * tt * tt;
+            loc(t)
+        };
+        for t in [0.0f64, 0.25, 0.5, 0.75, 1.0] {
+            let u = 80.0 * t;
+            let expected = (60.0 + u, 100.0 + 0.0 + u * u / (2.0 * 800.0));
+            let got = p(t);
+            assert!((got.x - expected.0).abs() < 1e-9, "station off at {t}");
+            assert!((got.y - expected.1).abs() < 1e-9, "height off at {t}");
+        }
+
+        // The mean-gradient law at the end is EXACT: h(L) = h0 + L(g0+g1)/2.
+        let vec_end = p(1.0);
+        assert!((vec_end.y - 104.0).abs() < 1e-9, "mean-gradient law must be exact");
+    }
+
+    #[test]
+    fn cubic_carrier_is_exact_cubic_spline() {
+        let chain = ParametricChain {
+            plane: ParametricPlane::Plan,
+            segments: vec![plan_segment(
+                ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Cubic),
+                [0.0, 0.0],
+                0.0,
+                80.0,
+                0.0,
+                300.0,
+            )],
+            layer: String::new(),
+        };
+        let l = 80.0f64;
+        let r = 300.0f64;
+        let (entities, _) = build_display_entities(&chain, 1e-3).unwrap();
+        let EntityType::Spline(spline) = &entities[0] else {
+            panic!("cubic must stage a spline");
+        };
+        assert_eq!(spline.degree, 3);
+        assert_eq!(spline.control_points.len(), 4);
+        let p = |t: f64| {
+            let c = &spline.control_points;
+            let b3 = |i: usize, tt: f64| {
+                let one_minus = 1.0 - tt;
+                match i {
+                    0 => one_minus * one_minus * one_minus,
+                    1 => 3.0 * tt * one_minus * one_minus,
+                    2 => 3.0 * tt * tt * one_minus,
+                    _ => tt * tt * tt,
+                }
+            };
+            let mut x = 0.0f64;
+            for (i, point) in c.iter().enumerate() {
+                x += b3(i, t) * point.x;
+            }
+            let mut y = 0.0f64;
+            for (i, point) in c.iter().enumerate() {
+                y += b3(i, t) * point.y;
+            }
+            (x, y)
+        };
+        for t in [0.0f64, 0.2, 0.5, 0.8, 1.0] {
+            let x = l * t;
+            let expected_y = x * x * x / (6.0 * r * l);
+            let got = p(t);
+            assert!((got.0 - x).abs() < 1e-9, "the x parametrization must stay linear");
+            assert!((got.1 - expected_y).abs() < 1e-9, "cubic parabola off at {t}");
+        }
+    }
+
+    #[test]
+    fn gauss_legendre_constants_sum_to_two() {
+        // The 16 weights must sum to the full [-1,1] interval's integral of
+        // the constant 1: 2.0 (the first debug-cycle caught a mis-entered
+        // tail pair; the guard stays).
+        let total: f64 = GL16_W.iter().sum();
+        assert!((total - 2.0).abs() < 1e-6, "the 16 weights must sum to 2: {total}");
+    }
+
+    #[test]
+    fn clothoid_matches_fresnel_series() {
+        // The engine's Gauss-Legendre integrator against the closed Fresnel
+        // series: independent evaluation paths must agree to ~1e-10.
+        let l = 60.0f64;
+        let r = -300.0f64;
+        let chain = ParametricChain {
+            plane: ParametricPlane::Plan,
+            segments: vec![plan_segment(
+                ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Clothoid),
+                [0.0, 0.0],
+                0.0,
+                l,
+                0.0,
+                r,
+            )],
+            layer: String::new(),
+        };
+        for frac in [0.25f64, 0.5, 0.9, 1.0] {
+            let u = l * frac;
+            let got = sample_chain(&chain, u).unwrap().unwrap();
+            let (x_series, y_series) = fresnel_oracle(r, l, u);
+            assert!(
+                (got.point[0] - x_series).abs() < 1e-9,
+                "clothoid x at s={u}: {} vs series {x_series}",
+                got.point[0]
+            );
+            assert!(
+                (got.point[1] - y_series).abs() < 1e-9,
+                "clothoid y at s={u}: {} vs series {y_series}",
+                got.point[1]
+            );
+        }
+        // The end deflection is exactly L/(2R).
+        let end = sample_chain(&chain, l).unwrap().unwrap();
+        let theta = end.direction[1].atan2(end.direction[0]);
+        assert!((theta - l / (2.0 * r)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn transition_species_stay_within_declared_chord_tolerance() {
+        // Tolerance matrix over representative road-curve parameters: the
+        // staged chords must never deviate more than the declared tolerance.
+        for tolerance in [1e-2f64, 1e-3] {
+            for big_r in [300.0f64, 600.0, 1000.0, 2000.0] {
+                for l in [40.0f64, 80.0, 200.0] {
+                    for species in [
+                        HorizontalSegmentSpecies::Clothoid,
+                        HorizontalSegmentSpecies::BlossCurve,
+                        HorizontalSegmentSpecies::CosineCurve,
+                        HorizontalSegmentSpecies::SineCurve,
+                        HorizontalSegmentSpecies::HelmertCurve,
+                        HorizontalSegmentSpecies::VienneseBend,
+                    ] {
+                        let chain = ParametricChain {
+                            plane: ParametricPlane::Plan,
+                            segments: vec![plan_segment(
+                                ParametricSpecies::Horizontal(species),
+                                [0.0, 0.0],
+                                0.0,
+                                l,
+                                0.0,
+                                big_r,
+                            )],
+                            layer: String::new(),
+                        };
+                        let (entities, carriers) =
+                            build_display_entities(&chain, tolerance).unwrap();
+                        let EntityType::LwPolyline(polyline) = &entities[0] else {
+                            panic!("blend species must stage chords");
+                        };
+                        let st = match carriers[0] {
+                            StagedCarrier::Chords(count) => count,
+                            other => panic!("expected chords, got {other:?}"),
+                        };
+                        assert!(st <= MAX_PLUGIN_LIVE_ENTITIES, "chord plan within the cap");
+                        let eval = |u: f64| {
+                            let vitals = validate_segment(chain.plane, &chain.segments[0]).unwrap();
+                            evaluate_plan(&species, &chain.segments[0], &vitals, u)
+                        };
+                        let worst = measured_deviation(polyline, &eval, l);
+                        assert!(
+                            worst <= tolerance,
+                            "{species:?} R={big_r} L={l} t={tolerance}: worst {worst:.3e} m"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn vertical_species_follow_their_laws() {
+        // Constant gradient: exact line.
+        let chain = demo_profile_chain();
+        let sample = sample_chain(&chain, 30.0).unwrap().unwrap();
+        assert!((sample.point[1] - 100.0).abs() < 1e-12);
+
+        // Vertical circular arc: exact circle carries the end gradient.
+        let r = -500.0f64;
+        let l = 90.0f64;
+        let g0 = 0.02f64;
+        // sin(theta1) = sin(theta0) + L/R determines the consistent g1.
+        let s0 = g0.atan().sin();
+        let s1 = s0 + l / r;
+        let g1 = s1.asin().tan();
+        let chain_v = ParametricChain {
+            plane: ParametricPlane::Profile,
+            segments: vec![profile_segment(
+                ParametricSpecies::Vertical(VerticalSegmentSpecies::CircularArc),
+                [100.0, 105.0],
+                l,
+                g0,
+                g1,
+                r,
+                0.0,
+            )],
+            layer: String::new(),
+        };
+        let eval_u = 45.0f64;
+        let vitals = validate_segment(chain_v.plane, &chain_v.segments[0]).unwrap();
+        let sample = evaluate_segment_at(chain_v.plane, &chain_v.segments[0], &vitals, eval_u);
+        let theta = (g0.atan().sin() + eval_u / r).asin();
+        assert!(
+            (sample.point[1] - (105.0 + r * (g0.atan().cos() - theta.cos()))).abs() < 1e-9,
+            "the vertical circle's exact height law"
+        );
+
+        // Vertical clothoid: gradient ends realized by the declared
+        // curvatures (the record model's law once it carries them).
+        let g0 = -0.05f64;
+        let g1 = 0.05f64;
+        let l = 100.0f64;
+        let dtheta = g1.atan() - g0.atan();
+        let end_curvature = 2.0 * dtheta / l;
+        let chain_vc = ParametricChain {
+            plane: ParametricPlane::Profile,
+            segments: vec![profile_segment(
+                ParametricSpecies::Vertical(VerticalSegmentSpecies::Clothoid),
+                [0.0, 10.0],
+                l,
+                g0,
+                g1,
+                0.0,
+                end_curvature,
+            )],
+            layer: String::new(),
+        };
+        let sample = sample_chain(&chain_vc, l).unwrap().unwrap();
+        let realized = sample.direction[1] / sample.direction[0];
+        assert!((realized - g1).abs() < 1e-6, "the end gradient is realized exactly");
+    }
+
+    #[test]
+    fn vertical_clothoid_without_curvature_ends_is_refused() {
+        let chain = ParametricChain {
+            plane: ParametricPlane::Profile,
+            segments: vec![profile_segment(
+                ParametricSpecies::Vertical(VerticalSegmentSpecies::Clothoid),
+                [0.0, 10.0],
+                100.0,
+                -0.05,
+                0.05,
+                0.0,
+                0.0,
+            )],
+            layer: String::new(),
+        };
+        let err = build_display_entities(&chain, 1e-3).unwrap_err();
+        assert!(err.contains("curvature ends"), "{err}");
+    }
+
+    #[test]
+    fn demo_chains_audit_green_and_sample_continuous() {
+        let plan = demo_plan_chain();
+        audit_chain(&plan).expect("the demo plan chain audits (seams exact)");
+        let profile = demo_profile_chain();
+        audit_chain(&profile)
+            .expect("the demo profile chain audits (the mean-gradient seam is exact)");
+
+        // The samples weld at the seams: hovering either epsilon side of the
+        // LINE->CLOTHOID boundary answers the same welded point.
+        let acc0 = plan.segments[0].length;
+        let end0 = sample_chain(&plan, acc0 - 1e-9).unwrap().unwrap();
+        let start1 = sample_chain(&plan, acc0 + 1e-9).unwrap().unwrap();
+        assert!(
+            ((end0.point[0] - start1.point[0]).abs() + (end0.point[1] - start1.point[1]).abs())
+                < 1e-6,
+            "the sample welds at the LINE->CLOTHOID seam"
+        );
+
+        // The chain end samples the declared tail's end exactly: the third
+        // segment (a line of L=30) extends its declared start by 30*dir.
+        let total: f64 = plan.segments.iter().map(|s| s.length).sum();
+        let tail = sample_chain(&plan, total).unwrap().unwrap();
+        let start = plan.segments[2].start_point;
+        let dir = plan.segments[2].start_direction;
+        let expected = [start[0] + 30.0 * dir.cos(), start[1] + 30.0 * dir.sin()];
+        assert!((tail.point[0] - expected[0]).abs() < 1e-9, "tail x");
+        assert!((tail.point[1] - expected[1]).abs() < 1e-9, "tail y");
+    }
+
+    #[test]
+    fn sample_chain_outside_answers_none() {
+        let chain = demo_profile_chain();
+        assert!(sample_chain(&chain, -0.1).unwrap().is_none());
+        let total: f64 = chain.segments.iter().map(|s| s.length).sum();
+        assert!(sample_chain(&chain, total + 1e-3).unwrap().is_none());
+        assert!(sample_chain(&chain, f64::NAN).is_err());
+        assert!(sample_chain(&chain, f64::INFINITY).is_err());
+    }
+
+    #[test]
+    fn seam_refusal_names_the_pair() {
+        let mut chain = demo_plan_chain();
+        // Break the seam: the second line starts 1e-4 m away from the
+        // clothoid's evaluated end.
+        chain.segments[2].start_point[0] += 1e-4;
+        let err = build_display_entities(&chain, 1e-3).unwrap_err();
+        assert!(err.contains("seam segment 1 to 2"), "names the audited pair: {err}");
+        assert!(err.contains("not continuous"), "{err}");
+
+        // A tangential break refuses too: flip the second line's direction.
+        let mut chain = demo_plan_chain();
+        chain.segments[2].start_direction = -0.1 + 1e-4;
+        let err = build_display_entities(&chain, 1e-3).unwrap_err();
+        assert!(
+            err.contains("tangentially continuous"),
+            "the direction break is named: {err}"
+        );
+    }
+
+    #[test]
+    fn viennese_without_cant_matches_the_quintic_law() {
+        // Without the cant coupling (bank_change = gravity_height = 0) the
+        // Viennese bend evaluates just its quintic base law: the deflection
+        // ends at L/(2*R) and the halfway deflection is W(1/2) of the
+        // quintic integral (0.06835...).
+        let chain = ParametricChain {
+            plane: ParametricPlane::Plan,
+            segments: vec![plan_segment(
+                ParametricSpecies::Horizontal(HorizontalSegmentSpecies::VienneseBend),
+                [0.0, 0.0],
+                0.0,
+                100.0,
+                0.0,
+                -400.0,
+            )],
+            layer: String::new(),
+        };
+        let vitals = validate_segment(chain.plane, &chain.segments[0]).unwrap();
+        let species = HorizontalSegmentSpecies::VienneseBend;
+        let theta_end = plan_local_theta(&species, &vitals, 100.0);
+        assert!((theta_end - (100.0 / (2.0 * -400.0))).abs() < 1e-12);
+        let theta_mid = plan_local_theta(&species, &vitals, 50.0);
+        let w_mid = blend_integral(species, 0.5);
+        assert!(
+            (theta_mid - w_mid * (1.0 / -400.0) * 100.0).abs() < 1e-12,
+            "the halfway integral is the quintic's own W(1/2)"
+        );
+    }
+
+    #[test]
+    fn helmert_blends_the_two_quadratic_halves() {
+        let chain = ParametricChain {
+            plane: ParametricPlane::Plan,
+            segments: vec![plan_segment(
+                ParametricSpecies::Horizontal(HorizontalSegmentSpecies::HelmertCurve),
+                [0.0, 0.0],
+                0.0,
+                120.0,
+                0.0,
+                -500.0,
+            )],
+            layer: String::new(),
+        };
+        let vitals = validate_segment(chain.plane, &chain.segments[0]).unwrap();
+        let species = HorizontalSegmentSpecies::HelmertCurve;
+        // The piecewise halves join continuously at the mid: theta(L/2) =
+        // dTheta/6 for the flat-to-R law (W(1/2) = 1/12 integrates to a
+        // sixth of the total L/(2R) deflection).
+        let theta_mid = plan_local_theta(&species, &vitals, 60.0);
+        assert!((theta_mid - (120.0 / (2.0 * -500.0)) / 6.0).abs() < 1e-9);
+        // W(1) = 1/2: the end deflection is L/(2R) exactly.
+        let theta_end = plan_local_theta(&species, &vitals, 120.0);
+        assert!((theta_end - 120.0 / (2.0 * -500.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn cap_refuses_over_budget_chains() {
+        // A 50-segment chain (short lines welded to clothoids, seams exact
+        // by construction) at a 1e-4 tolerance: the chord plans sum far
+        // above the live cap, so nothing publishes.
+        let mut segments = Vec::new();
+        let mut cursor = [0.0f64, 0.0];
+        let mut heading = 0.0f64;
+        for _ in 0..25 {
+            segments.push(plan_segment(
+                ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Line),
+                cursor,
+                heading,
+                2.0,
+                0.0,
+                0.0,
+            ));
+            cursor = [
+                cursor[0] + 2.0 * heading.cos(),
+                cursor[1] + 2.0 * heading.sin(),
+            ];
+            segments.push(plan_segment(
+                ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Clothoid),
+                cursor,
+                heading,
+                60.0,
+                0.0,
+                -300.0,
+            ));
+            let dtheta = 60.0 / (2.0 * -300.0);
+            let end = {
+                let chain = ParametricChain {
+                    plane: ParametricPlane::Plan,
+                    segments: vec![segments.last().unwrap().clone()],
+                    layer: String::new(),
+                };
+                let vitals = audit_chain(&chain).unwrap();
+                evaluate_segment_at(chain.plane, &chain.segments[0], &vitals[0], 60.0)
+            };
+            cursor = end.point;
+            heading += dtheta;
+        }
+        let chain = ParametricChain {
+            plane: ParametricPlane::Plan,
+            segments,
+            layer: String::new(),
+        };
+        audit_chain(&chain).expect("the welded 50-segment chain audits");
+        let result = build_display_entities(&chain, 1e-4);
+        let err = result.err().expect("the chain's footprint is over the cap");
+        assert!(err.contains("MAX_PLUGIN_LIVE_ENTITIES"), "{err}");
+        assert!(err.contains("nothing staged"), "{err}");
+    }
+
+    #[test]
+    fn helix_never_stages_a_plan_clothoid() {
+        // The contract's negative: a plan clothoid is a 2D curve with linear
+        // curvature; a Helix is a 3D constant-pitch space spiral. The staged
+        // carrier set only ever contains the four supported types.
+        let chain = demo_plan_chain();
+        let (entities, _) = build_display_entities(&chain, 1e-3).unwrap();
+        for entity in &entities {
+            assert!(
+                matches!(
+                    entity,
+                    EntityType::Line(_)
+                        | EntityType::Arc(_)
+                        | EntityType::LwPolyline(_)
+                        | EntityType::Spline(_)
+                ),
+                "only line/arc/spline/polyline carriers exist in this contract"
+            );
+        }
+    }
+
+    #[test]
+    fn staged_chain_and_xrecords_survive_dxf_and_dwg_round_trips() {
+        // THE entity contract of this surface: the staged display entities
+        // ride the shared drawing model, and the record model's XRecords —
+        // the plugins' declared truth — survive the SAME file round trip.
+        // Loss reports must stay empty for both formats.
+        use codec::{Dwg, Dxf, Format};
+
+        // 1) Declare + stage.
+        let plan = demo_plan_chain();
+        let profile = demo_profile_chain();
+        let mut all_entities = Vec::new();
+        all_entities.extend(build_display_entities(&plan, 1e-3).unwrap().0);
+        all_entities.extend(build_display_entities(&profile, 1e-3).unwrap().0);
+        // One staged entity carries the record model's XDATA (the placement
+        // class the entity-bound records ride in).
+        if let EntityType::LwPolyline(polyline) = &mut all_entities[1] {
+            let mut record = codec::xdata::ExtendedDataRecord::new("CVIFC");
+            record.add_value(codec::xdata::XDataValue::String("alignment display carrier".into()));
+            record.add_value(codec::xdata::XDataValue::Real(104.0));
+            polyline.common.extended_data.add_record(record);
+        }
+
+        // 2) A document + the staged set + the record model's XRecords.
+        let mut document = codec::Document::new();
+        // 2b) The display layers are registered entries of the document's
+        // layer table (the plugin consumer creates its display layers
+        // before staging; an unregistered layer name falls back to "0" on
+        // read, by the model's own contract).
+        document
+            .layers
+            .add(codec::tables::Layer::new("CVI_DISPLAY"))
+            .unwrap();
+        document
+            .layers
+            .add(codec::tables::Layer::new("CVI_PROFILE"))
+            .unwrap();
+        let mut staged_handles = Vec::new();
+        for entity in all_entities {
+            staged_handles.push(document.add_entity(entity).unwrap());
+        }
+        let appid = codec::tables::AppId::new("CVIFC");
+        document.app_ids.add(appid).unwrap();
+        let nod_handle = document.header.named_objects_dict_handle;
+        let dict_handle = document.allocate_handle();
+        let record_handle = document.allocate_handle();
+        let mut record = codec::objects::XRecord::named("CVIFC_ALIGN_DISPLAY");
+        record.handle = record_handle;
+        record.owner = dict_handle;
+        record.entries = vec![
+            codec::objects::XRecordEntry::string(1, "parametric chain v14"),
+            codec::objects::XRecordEntry::double(140, 104.0),
+            codec::objects::XRecordEntry::int32(420, 7),
+        ];
+        document
+            .objects
+            .insert(record_handle, codec::objects::ObjectType::XRecord(record));
+        let mut dict = codec::objects::Dictionary::new();
+        dict.handle = dict_handle;
+        dict.owner = nod_handle;
+        dict.hard_owner = true;
+        // The record's name and its dictionary key are ONE name (the DWG
+        // canonical semantics: the XRecord's identity rides the owning
+        // dictionary).
+        dict.add_entry("CVIFC_ALIGN_DISPLAY", record_handle);
+        document
+            .objects
+            .insert(dict_handle, codec::objects::ObjectType::Dictionary(dict));
+        if let Some(codec::objects::ObjectType::Dictionary(nod)) = document.objects.get_mut(&nod_handle) {
+            nod.add_entry("CVIFC", dict_handle);
+        }
+
+        // 3) Round trips.
+        let original_record =
+            document.objects.get(&record_handle).cloned().expect("record present");
+        let original_kind_of = |h: codec::Handle| {
+            document.get_entity(h).map(|e| std::mem::discriminant(e))
+        };
+        let expected_kinds: Vec<_> = staged_handles
+            .iter()
+            .map(|h| original_kind_of(*h).expect("handle present"))
+            .collect();
+
+        let (dxf_bytes, dxf_losses) = codec::Dxf.write(&document).unwrap();
+        assert!(dxf_losses.is_empty(), "DXF write must not lose anything: {dxf_losses:?}");
+        let (dxf_doc, dxf_read_losses) = codec::Dxf.read(&dxf_bytes).unwrap();
+        assert!(
+            dxf_read_losses.is_empty(),
+            "DXF read must not lose anything: {dxf_read_losses:?}"
+        );
+        assert_staged(&dxf_doc, &staged_handles, &expected_kinds);
+        assert_record_model(&dxf_doc, &original_record);
+
+        let (dwg_bytes, dwg_losses) = codec::Dwg.write(&document).unwrap();
+        assert!(dwg_losses.is_empty(), "DWG write must not lose anything: {dwg_losses:?}");
+        let (dwg_doc, dwg_read_losses) = codec::Dwg.read(&dwg_bytes).unwrap();
+        assert!(
+            dwg_read_losses.is_empty(),
+            "DWG read must not lose anything: {dwg_read_losses:?}"
+        );
+        assert_staged(&dwg_doc, &staged_handles, &expected_kinds);
+        assert_record_model(&dwg_doc, &original_record);
+
+        // 4) The entity-bound record rides too: the staged polyline's XDATA
+        // (the CVIFC app record) survives, values verbatim.
+        let assert_xdata = |document: &codec::Document, stage: &str| {
+            let entity = document
+                .get_entity(staged_handles[1])
+                .expect("staged polyline present");
+            if let EntityType::LwPolyline(polyline) = entity {
+                let record = polyline
+                    .common
+                    .extended_data
+                    .get_record("CVIFC")
+                    .unwrap_or_else(|| panic!("{stage}: the CVIFC XDATA lost"));
+                assert_eq!(record.values.len(), 2);
+            } else {
+                panic!("{stage}: entity 1 became another type");
+            }
+        };
+        assert_xdata(&dxf_doc, "DXF");
+        assert_xdata(&dwg_doc, "DWG");
+
+        // 5) The second hop (file -> document -> file) must be stationary.
+        let (dxf_bytes2, dxf_losses2) = codec::Dxf.write(&dxf_doc).unwrap();
+        assert!(dxf_losses2.is_empty());
+        let (dxf_doc2, _) = codec::Dxf.read(&dxf_bytes2).unwrap();
+        assert_record_model(&dxf_doc2, &original_record);
+        assert_staged(&dxf_doc2, &staged_handles, &expected_kinds);
+
+        fn assert_staged(
+            document: &codec::Document,
+            staged: &[codec::Handle],
+            kinds: &[std::mem::Discriminant<codec::EntityType>],
+        ) {
+            for (i, (handle, kind)) in staged.iter().zip(kinds.iter()).enumerate() {
+                let entity = document
+                    .get_entity(*handle)
+                    .unwrap_or_else(|| panic!("staged entity {handle:?} lost in the round trip"));
+                assert_eq!(std::mem::discriminant(entity), *kind, "type drifted");
+                // The chain's layer attribution survives the file hop: the
+                // demo plan stages on CVI_DISPLAY, the demo profile on
+                // CVI_PROFILE.
+                let expected = if i < 3 { "CVI_DISPLAY" } else { "CVI_PROFILE" };
+                assert_eq!(entity.common().layer, expected, "layer attribution lost");
+            }
+        }
+
+        fn assert_record_model(document: &codec::Document, original: &codec::objects::ObjectType) {
+            // The XRecord's entries must survive BYTE-IDENTICAL, alongside
+            // its dictionary and the NOD linkage (record + display live and
+            // die together in the same file).
+            let codec::objects::ObjectType::XRecord(original_record) = original else {
+                panic!("expected an XRecord");
+            };
+            let read = document
+                .objects
+                .get(&original_record.handle)
+                .unwrap_or_else(|| panic!("XRecord lost in the round trip"));
+            let codec::objects::ObjectType::XRecord(read_record) = read else {
+                panic!("XRecord became another object");
+            };
+            assert_eq!(read_record.entries, original_record.entries, "entries must be byte-identical");
+            assert_eq!(read_record.name, original_record.name);
+            // The extension dictionary survived with its entries.
+            let dict_read = document
+                .objects
+                .get(&original_record.owner)
+                .expect("the record's dictionary survived");
+            let codec::objects::ObjectType::Dictionary(dict) = dict_read else {
+                panic!("dictionary became another object");
+            };
+            assert!(
+                dict.entries
+                    .iter()
+                    .any(|(name, _)| name == "CVIFC_ALIGN_DISPLAY"),
+                "the dictionary entry survived"
+            );
+        }
+    }
+
+    #[test]
+    fn entity_layers_ride_the_chain_payload() {
+        let chain = demo_plan_chain();
+        let (entities, _) = build_display_entities(&chain, 1e-3).unwrap();
+        for entity in &entities {
+            assert_eq!(entity.common().layer, "CVI_DISPLAY");
+        }
+        let mut chain = demo_plan_chain();
+        chain.layer = String::new();
+        let (entities, _) = build_display_entities(&chain, 1e-3).unwrap();
+        for entity in &entities {
+            // An empty layer name keeps the codec default.
+            assert_eq!(entity.common().layer, "0");
+        }
+    }
+}

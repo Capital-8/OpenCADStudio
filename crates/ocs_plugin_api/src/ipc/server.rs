@@ -222,5 +222,17 @@ pub fn handle_plugin_request(
             let path: Vec<&str> = dictionary_path.iter().map(|s| s.as_str()).collect();
             PluginResponse::ListXRecordsWithEntriesResult(host.list_xrecords_with_entries(&path))
         }
+        StageParametricChain {
+            reference_name,
+            chain,
+            tolerance,
+        } => PluginResponse::StageParametricChainResult(host.stage_parametric_chain(
+            &reference_name,
+            &chain,
+            tolerance,
+        )),
+        SampleParametric { chain, s } => {
+            PluginResponse::SampleParametricResult(host.sample_parametric(&chain, s))
+        }
     }
 }

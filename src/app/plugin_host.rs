@@ -3463,6 +3463,64 @@ impl<'a> HostSession<'a> {
         request.app.drive_headless_task(task)
     }
 
+    /// Turn a declared parametric chain into reference-only display geometry
+    /// (API v14, additive) — the engine lives in `crate::parametric`; the
+    /// species evaluation, the seam audit and the entity builds happen
+    /// before any change, so every refusal leaves the document untouched
+    /// and records no undo step. `reference_name` is the caller's identity
+    /// for the staged set (echoed in refusals); the host keeps no registry.
+    pub fn stage_parametric_chain(
+        &mut self,
+        reference_name: &str,
+        chain: &ocs_plugin_api::host::ParametricChain,
+        tolerance: f64,
+    ) -> Result<Vec<Handle>, String> {
+        if chain.segments.is_empty() {
+            return Err(format!(
+                "chain {reference_name:?} stages nothing: the chain carries no segments"
+            ));
+        }
+        let (entities, _carriers) =
+            crate::parametric::build_display_entities(chain, tolerance).map_err(|e| {
+                format!("chain {reference_name:?}: {e}")
+            })?;
+        if entities.is_empty() {
+            // Every segment was a zero-length terminator: nothing to stage,
+            // nothing to record.
+            return Ok(Vec::new());
+        }
+        let own_scope = self.ensure_xrecord_undo_scope("Stage parametric chain");
+        let handles = self.add_entities(entities);
+        for handle in &handles {
+            // Designation one-by-one inside the SAME scope, with the
+            // before-image pending-scoped the way set_reference_only does.
+            let before = self.app.tabs[self.tab].scene.reference_only.is_marked(*handle);
+            self.app
+                .record_reference_designation_before_pending(self.tab, *handle, before);
+            self.app
+                .tabs[self.tab]
+                .scene
+                .set_reference_only_membership(*handle, true);
+        }
+        self.bump_geometry();
+        self.set_dirty();
+        self.publish_document_view();
+        if own_scope {
+            self.app.finish_pending_history(self.tab);
+        }
+        Ok(handles)
+    }
+
+    /// Evaluate a declared parametric chain at chain position `s` (API v14,
+    /// additive): a pure read — no document state, no undo, no publish.
+    pub fn sample_parametric(
+        &self,
+        chain: &ocs_plugin_api::host::ParametricChain,
+        s: f64,
+    ) -> Result<Option<ocs_plugin_api::host::ParametricSample>, String> {
+        crate::parametric::sample_chain(chain, s)
+    }
+
     /// Read several XRecords in one call (API v13): per-entry results, `Err`
     /// per missing path/name instead of failing the whole batch.
     pub fn read_xrecords(
@@ -3999,6 +4057,21 @@ impl HostApi for HostSession<'_> {
         dictionary_path: &[&str],
     ) -> Result<Vec<(String, Vec<ocs_plugin_api::host::XRecordEntry>)>, String> {
         self.list_xrecords_with_entries(dictionary_path)
+    }
+    fn stage_parametric_chain(
+        &mut self,
+        reference_name: &str,
+        chain: &ocs_plugin_api::host::ParametricChain,
+        tolerance: f64,
+    ) -> Result<Vec<Handle>, String> {
+        self.stage_parametric_chain(reference_name, chain, tolerance)
+    }
+    fn sample_parametric(
+        &self,
+        chain: &ocs_plugin_api::host::ParametricChain,
+        s: f64,
+    ) -> Result<Option<ocs_plugin_api::host::ParametricSample>, String> {
+        self.sample_parametric(chain, s)
     }
 }
 
@@ -15057,5 +15130,157 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         let initial_grid = host.app.show_grid;
         assert!(host.execute_command("GRID\n"));
         assert_eq!(host.app.show_grid, !initial_grid);
+    }
+
+    /// The demo profile chain the commission pins, expressed against the
+    /// API v14 wire types (rebuilt here so the session tests stay
+    /// independent of the engine module's own fixtures).
+    fn staging_profile_chain() -> ocs_plugin_api::host::ParametricChain {
+        ocs_plugin_api::host::ParametricChain {
+            plane: ocs_plugin_api::host::ParametricPlane::Profile,
+            segments: vec![ocs_plugin_api::host::ParametricSegment {
+                species: ocs_plugin_api::host::ParametricSpecies::Vertical(
+                    ocs_plugin_api::host::VerticalSegmentSpecies::ParabolicArc,
+                ),
+                start_point: [0.0, 100.0],
+                start_direction: 0.0,
+                start_gradient: 0.0,
+                end_gradient: 0.1,
+                length: 80.0,
+                start_radius: 800.0,
+                end_radius: 0.0,
+                end_curvature: 0.0,
+                bank_change: 0.0,
+                gravity_height: 0.0,
+            }],
+            layer: "CVI_PROFILE".to_string(),
+        }
+    }
+
+    fn staging_plan_chain() -> ocs_plugin_api::host::ParametricChain {
+        ocs_plugin_api::host::ParametricChain {
+            plane: ocs_plugin_api::host::ParametricPlane::Plan,
+            segments: vec![ocs_plugin_api::host::ParametricSegment {
+                species: ocs_plugin_api::host::ParametricSpecies::Horizontal(
+                    ocs_plugin_api::host::HorizontalSegmentSpecies::Clothoid,
+                ),
+                start_point: [0.0, 0.0],
+                start_direction: 0.0,
+                start_gradient: 0.0,
+                end_gradient: 0.0,
+                length: 60.0,
+                start_radius: 0.0,
+                end_radius: -300.0,
+                end_curvature: 0.0,
+                bank_change: 0.0,
+                gravity_height: 0.0,
+            }],
+            layer: "CVI_DISPLAY".to_string(),
+        }
+    }
+
+    #[test]
+    fn parametric_staging_is_reference_only_in_one_undo_step() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let chain = staging_plan_chain();
+        let handles;
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            handles = host
+                .stage_parametric_chain("align-1", &chain, 1e-3)
+                .expect("the demo plan chain stages");
+            assert!(!handles.is_empty());
+            for handle in &handles {
+                assert!(
+                    host.app.tabs[0].scene.is_reference_only(*handle),
+                    "staged display data must be reference-only"
+                );
+                assert!(host.document().get_entity(*handle).is_some());
+            }
+        }
+        app.finish_pending_history(0);
+        // The whole staging (add + designations) = ONE undo step.
+        assert_eq!(app.tabs[0].history.undo_stack.len(), 1);
+        app.undo_steps(1);
+        for handle in &handles {
+            assert!(
+                app.tabs[0].scene.document.get_entity(*handle).is_none(),
+                "undo removed the staged display set (byte-exact restore)"
+            );
+            assert!(
+                !app.tabs[0].scene.is_reference_only(*handle),
+                "the designation rolled back with the entities"
+            );
+        }
+        // Redo re-applies the whole step.
+        app.redo_steps(1);
+        for handle in &handles {
+            assert!(app.tabs[0].scene.document.get_entity(*handle).is_some());
+            assert!(app.tabs[0].scene.is_reference_only(*handle));
+        }
+    }
+
+    #[test]
+    fn parametric_staging_refusals_change_nothing_and_record_no_steps() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let mut broken = staging_plan_chain();
+        let mut host = HostSession::new(&mut app, 0);
+        // Broken tolerances refuse before anything changes.
+        assert!(host.stage_parametric_chain("bad", &broken, 0.0).is_err());
+        assert!(host.stage_parametric_chain("bad", &broken, -1.0).is_err());
+        // Broken declared data refuses too.
+        broken.segments[0].length = -1.0;
+        let epoch_before = host.app.tabs[0].scene.geometry_epoch;
+        // Broken tolerances refuse before anything changes.
+        assert!(host.stage_parametric_chain("bad", &broken, 0.0).is_err());
+        assert!(host.stage_parametric_chain("bad", &broken, -1.0).is_err());
+        // Broken declared data refuses too.
+        broken.segments[0].length = -1.0;
+        assert!(host.stage_parametric_chain("bad", &broken, 1e-3).is_err());
+        assert_eq!(host.document().entities().count(), 0);
+        assert_eq!(host.app.tabs[0].scene.geometry_epoch, epoch_before);
+    }
+
+    #[test]
+    fn parametric_sample_is_a_pure_read() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let chain = staging_profile_chain();
+        {
+            let host = HostSession::new(&mut app, 0);
+            let epoch_before = host.app.tabs[0].scene.geometry_epoch;
+            // The profile parabola h(s) = 100 + s^2/(2*800): the midpoint value.
+            let mid = host.sample_parametric(&chain, 40.0).unwrap().unwrap();
+            assert!((mid.point[1] - 101.0).abs() < 1e-9);
+            assert!((mid.point[0] - 40.0).abs() < 1e-9);
+            // The tangent stays (1, g)/|..| with g = s/800.
+            assert!((mid.direction[1] / mid.direction[0] - 0.05).abs() < 1e-9);
+            assert!(host.sample_parametric(&chain, -1.0).unwrap().is_none());
+            assert!(host.sample_parametric(&chain, 141.0).unwrap().is_none());
+            assert_eq!(host.app.tabs[0].scene.geometry_epoch, epoch_before);
+        }
+        assert_eq!(app.tabs[0].history.undo_stack.len(), 0, "the sample records nothing");
+    }
+
+    #[test]
+    fn parametric_staging_joins_a_plugin_scope() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        let plan = staging_plan_chain();
+        let profile = staging_profile_chain();
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            host.push_undo("CVI: refresh alignment display");
+            let _ = host.stage_parametric_chain("plan", &plan, 1e-3).unwrap();
+            let _ = host.stage_parametric_chain("profile", &profile, 1e-3).unwrap();
+        }
+        app.finish_pending_history(0);
+        assert_eq!(
+            app.tabs[0].history.undo_stack.len(),
+            1,
+            "the plugin's scope carried both stagings"
+        );
     }
 }

@@ -59,7 +59,17 @@
 /// DIRTY REGIONS (`DocumentChangedRegions`: touched entities + record
 /// pairs), and record walks batch (`read_xrecords` / `update_xrecords` /
 /// `list_xrecords_with_entries` — one frame per pass, not per record).
-pub const API_VERSION: u32 = 13;
+///
+/// **API v14** (additive): `stage_parametric_chain` — a declared IFC 4.3
+/// alignment chain (species + parameters) turns into reference-only display
+/// geometry staged by the host (exact Line/Arc/spline carriers for the
+/// exactly-representable species, curvature-bounded chords within the
+/// declared tolerance for the transcendental ones), audited seam-to-seam
+/// before anything is staged and capped by
+/// [`MAX_PLUGIN_LIVE_ENTITIES`](crate::host::MAX_PLUGIN_LIVE_ENTITIES); and
+/// `sample_parametric` — the same engine exposed as a pure placement
+/// evaluation.
+pub const API_VERSION: u32 = 14;
 
 /// Oldest plugin API major the current host still loads. This keeps previously
 /// compiled cdylibs usable as long as their vtable layout is a prefix of the

@@ -1626,6 +1626,210 @@ pub trait HostApi {
     ) -> Result<Vec<(String, Vec<XRecordEntry>)>, String> {
         Err("XRecord listing with entries is not supported by this host".to_owned())
     }
+
+    /// Turn a DECLARED parametric alignment chain into reference-only display
+    /// geometry (API v14, additive).
+    ///
+    /// The chain carries the record layer's truth — species enum plus declared
+    /// parameters (start point/direction, radii, gradients, length) — and the
+    /// host does the evaluation math: the segment species' curvature laws
+    /// (IFC 4.3.2.0 base formulas) integrated into position/direction. Staged
+    /// carriers: an exact standard entity where one exists (LINE and
+    /// CONSTANTGRADIENT as lines, CIRCULARARC as an arc, PARABOLICARC and
+    /// CUBIC as exact single-span splines, degree 2 and 3) and bounded
+    /// LwPolyline chords within `tolerance` otherwise (CLOTHOID and the
+    /// transition blends — transcendental curves without an exact standard
+    /// carrier). Chains are audited seam-to-seam BEFORE anything is staged
+    /// (refused with the audited pair named on mismatch), and a chain that
+    /// would need more display entities than
+    /// [`MAX_PLUGIN_LIVE_ENTITIES`](self::MAX_PLUGIN_LIVE_ENTITIES) publishes
+    /// nothing.
+    ///
+    /// Undo composition follows the entity-write contract: inside a
+    /// plugin-opened `push_undo` scope the staged set joins that scope; with
+    /// no scope open it is one step of its own; a refusal records no step.
+    /// Staged entities are marked reference-only (plugin-owned display
+    /// data). The designation is scene state: like every designation it is
+    /// not persisted in the file, so the marking plugin re-applies it on
+    /// reopen.
+    fn stage_parametric_chain(
+        &mut self,
+        _reference_name: &str,
+        _chain: &ParametricChain,
+        _tolerance: f64,
+    ) -> Result<Vec<Handle>, String> {
+        Err("Parametric chain staging is not supported by this host".to_owned())
+    }
+
+    /// Evaluate a DECLARED parametric chain at chain position `s` (API v14,
+    /// additive): the same engine the staging builds from, exposed for
+    /// placement and basis-curve reads. Pure evaluation — no document state,
+    /// no undo, no publish. `s` is measured along the chain's declared
+    /// segment lengths from the chain start; outside the chain it answers
+    /// `None`.
+    fn sample_parametric(
+        &self,
+        _chain: &ParametricChain,
+        _s: f64,
+    ) -> Result<Option<ParametricSample>, String> {
+        Err("Parametric chain sampling is not supported by this host".to_owned())
+    }
+}
+
+/// **Parametric-chain staging types (API v14, additive).**
+///
+/// The declared-data contract for alignment chains whose species are richer
+/// than the LINE/ARC pair a DWG polyline carries exactly (IFC 4.3.2.0
+/// road/rail alignment species — IfcAlignmentHorizontalSegmentTypeEnum and
+/// IfcAlignmentVerticalSegmentTypeEnum; the IfcAlignmentCantSegmentTypeEnum
+/// family joins the same contract later). The wire carries the record layer's
+/// DECLARED truth only; the host owns the evaluation (curve integrals) and the
+/// reference-only display staging.
+///
+/// Supported carriers per segment species: LINE/CONSTANTGRADIENT as `Line`,
+/// CIRCULARARC (either plane) as `Arc`, PARABOLICARC as an exact degree-2
+/// clamped spline, CUBIC as an exact degree-3 clamped spline, and the
+/// transcendental species (CLOTHOID, BLOSSCURVE, COSINECURVE, SINECURVE,
+/// HELMERTCURVE, VIENNESEBEND, vertical CLOTHOID) as LwPolyline chords within
+/// the declared tolerance. A HELIX entity is never produced: the codec's
+/// Helix is a 3D constant-pitch space spiral, and a plan clothoid is a 2D
+/// curve with linear curvature — staging one for the other would be
+/// mathematically wrong.
+
+/// The plane a parametric chain lives in. A chain is single-plane; its
+/// segments' species must belong to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ParametricPlane {
+    /// Plan view: world (x, y) coordinates in the drawing's model plane,
+    /// bearings in radians CCW from +x (±2π-legal, normalized by the host).
+    Plan,
+    /// Profile sheet: (station, elevation) coordinates — x = the distance
+    /// along the horizontal alignment, y = height, exactly the
+    /// IfcAlignmentVerticalSegment frame. No rotation applies.
+    Profile,
+}
+
+/// IFC 4.3.2.0 alignment segment species (API v14, additive), grouped by the
+/// segment-enum plane each value belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ParametricSpecies {
+    /// A value of IfcAlignmentHorizontalSegmentTypeEnum (IFC4X3_ADD2).
+    Horizontal(HorizontalSegmentSpecies),
+    /// A value of IfcAlignmentVerticalSegmentTypeEnum (IFC4X3_ADD2).
+    Vertical(VerticalSegmentSpecies),
+}
+
+/// Horizontal segment species (IFC4X3_ADD2, additive-safe ordering follows
+/// the lexical enum). Exact standard carriers: LINE and CIRCULARARC.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HorizontalSegmentSpecies {
+    /// `.LINE.`
+    Line,
+    /// `.CIRCULARARC.`
+    CircularArc,
+    /// `.BLOSSCURVE.`
+    BlossCurve,
+    /// `.CLOTHOID.`
+    Clothoid,
+    /// `.COSINECURVE.`
+    CosineCurve,
+    /// `.CUBIC.`
+    Cubic,
+    /// `.HELMERTCURVE.`
+    HelmertCurve,
+    /// `.SINECURVE.`
+    SineCurve,
+    /// `.VIENNESEBEND.`
+    VienneseBend,
+}
+
+/// Vertical segment species (IFC4X3_ADD2). Exact standard carriers:
+/// CONSTANTGRADIENT and CIRCULARARC.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VerticalSegmentSpecies {
+    /// `.CONSTANTGRADIENT.`
+    ConstantGradient,
+    /// `.CIRCULARARC.`
+    CircularArc,
+    /// `.PARABOLICARC.`
+    ParabolicArc,
+    /// `.CLOTHOID.`
+    Clothoid,
+}
+
+/// One declared segment of a parametric chain (API v14, additive).
+///
+/// Fields mirror the record model's declared parameters. Radii are SIGNED
+/// (positive = CCW turn, negative = CW; 0 = infinite radius), the parameter
+/// convention the record layer already encodes. Species read the fields they
+/// need; a species with a required field missing is refused with a reason.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ParametricSegment {
+    /// The segment species (must match the chain's plane).
+    pub species: ParametricSpecies,
+    /// Start point: plan = world (x, y); profile = (station, elevation).
+    pub start_point: [f64; 2],
+    /// Declared start direction, radians, ±2π-legal. Plan: bearing. Profile:
+    /// the slope angle atan(start_gradient) as declared (restated; the
+    /// gradient fields below are the record's authoritative vertical reads).
+    pub start_direction: f64,
+    /// Declared start gradient, decimal fraction (vertical species;
+    /// uphill positive). 0 for plan species.
+    pub start_gradient: f64,
+    /// Declared end gradient, decimal fraction (vertical species). For
+    /// CONSTANTGRADIENT must equal the start gradient (the IFC reading).
+    pub end_gradient: f64,
+    /// Declared segment length: plan species = the arc length (CUBIC = the
+    /// chord run per the IFC cubic-parabola reading); profile = the
+    /// horizontal run (IfcAlignmentVerticalSegment.HorizontalLength).
+    /// 0 = terminator segment (stages nothing, checked for consistency).
+    pub length: f64,
+    /// Signed start radius; 0 = infinite radius (the flat transition start).
+    /// Vertical CIRCULARARC: the signed basis-circle radius;
+    /// PARABOLICARC: the signed vertex radius (Ifc RadiusOfCurvature);
+    /// vertical CLOTHOID: the incoming run's curvature (0 = straight run);
+    /// plan transitions: the start radius R1 (0 = infinite).
+    pub start_radius: f64,
+    /// Signed end radius; 0 when the species carries none.
+    pub end_radius: f64,
+    /// Vertical clothoid only: the outgoing run's curvature end value
+    /// (signed, = 1/R at the closing run). The vertical record model carries
+    /// no radius for CLOTHOID yet; until it does the consumer declares the
+    /// curvature ends here and the record layer owns the reading. 0 = not
+    /// declared (the clothoid law is then not realizable — refused).
+    pub end_curvature: f64,
+    /// Plan VIENNESEBEND only: the bank-angle change Δψ across the segment
+    /// (radians, from the cant layout) — the curvature law's
+    /// gravity-center correction term. 0 = the no-cant reading.
+    pub bank_change: f64,
+    /// Plan VIENNESEBEND only: the gravity-centre line height h (the
+    /// horizontal record's gravity_center_line_height). Pairs with
+    /// `bank_change`.
+    pub gravity_height: f64,
+}
+
+/// The declared chain (API v14, additive): the record layer's truth, turned
+/// into display geometry by the host.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ParametricChain {
+    /// The plane the chain lives in.
+    pub plane: ParametricPlane,
+    /// The declared segments, start to end (at least one, even if 0-length).
+    pub segments: Vec<ParametricSegment>,
+    /// Layer name for the staged display entities (the consumer's own
+    /// display convention). Empty = the host's default layer.
+    pub layer: String,
+}
+
+/// One evaluated point of a parametric chain (API v14, additive).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ParametricSample {
+    /// Plane coordinates of the point (plan = world (x, y); profile =
+    /// (station, elevation)).
+    pub point: [f64; 2],
+    /// Unit tangent in plane coordinates (plan = (cos θ, sin θ); profile =
+    /// (1, gradient) / |(1, gradient)|).
+    pub direction: [f64; 2],
 }
 
 /// One XRecord addressed by dictionary path + name (API v13, additive).

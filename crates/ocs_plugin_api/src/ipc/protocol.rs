@@ -304,6 +304,18 @@ pub enum PluginRequest {
     ListXRecordsWithEntries {
         dictionary_path: Vec<String>,
     },
+    /// V14 (additive): turn a declared parametric chain into reference-only
+    /// display geometry (one publish, the entity-write undo contract).
+    StageParametricChain {
+        reference_name: String,
+        chain: crate::host::ParametricChain,
+        tolerance: f64,
+    },
+    /// V14 (additive): evaluate a declared chain at `s` — a pure read.
+    SampleParametric {
+        chain: crate::host::ParametricChain,
+        s: f64,
+    },
 }
 
 /// Responses the host sends back for `PluginRequest`.
@@ -368,6 +380,10 @@ pub enum PluginResponse {
     UpdateXRecordsResult(Result<Vec<Result<Handle, String>>, String>),
     /// V13 (additive): dictionary XRecords with their entries.
     ListXRecordsWithEntriesResult(Result<Vec<(String, Vec<XRecordEntry>)>, String>),
+    /// V14 (additive): handles of the staged display entities.
+    StageParametricChainResult(Result<Vec<Handle>, String>),
+    /// V14 (additive): the evaluated chain point, `None` outside the chain.
+    SampleParametricResult(Result<Option<crate::host::ParametricSample>, String>),
 }
 
 /// Messages sent from the host to the plugin runner.

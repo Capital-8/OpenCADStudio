@@ -561,6 +561,81 @@ mod tests {
     }
 
     #[test]
+    fn parametric_chain_requests_roundtrip() {
+        // The V14 declared-chain payload survives one bincode hop intact:
+        // species, declared parameters, and the sampled answer's shape.
+        let chain = crate::host::ParametricChain {
+            plane: crate::host::ParametricPlane::Plan,
+            segments: vec![crate::host::ParametricSegment {
+                species: crate::host::ParametricSpecies::Horizontal(
+                    crate::host::HorizontalSegmentSpecies::Clothoid,
+                ),
+                start_point: [40.0, 0.0],
+                start_direction: 0.0,
+                start_gradient: 0.0,
+                end_gradient: 0.0,
+                length: 60.0,
+                start_radius: 0.0,
+                end_radius: -300.0,
+                end_curvature: 0.0,
+                bank_change: 0.0,
+                gravity_height: 0.0,
+            }],
+            layer: "CVI_DISPLAY".to_string(),
+        };
+        let bytes = bincode::serialize(&PluginRequest::StageParametricChain {
+            reference_name: "align-1".to_string(),
+            chain: chain.clone(),
+            tolerance: 1e-3,
+        })
+        .unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginRequest>(&bytes).unwrap(),
+            PluginRequest::StageParametricChain { reference_name, chain: got, tolerance }
+                if reference_name == "align-1" && got == chain && tolerance == 1e-3)
+        );
+        let bytes = bincode::serialize(&PluginRequest::SampleParametric { chain: chain.clone(), s: 30.0 })
+            .unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginRequest>(&bytes).unwrap(),
+            PluginRequest::SampleParametric { chain: got, s } if got == chain && s == 30.0)
+        );
+        let bytes = bincode::serialize(&PluginResponse::StageParametricChainResult(Ok(vec![
+            codec::Handle::new(0x2A),
+        ])))
+        .unwrap();
+        assert!(matches!(
+            bincode::deserialize::<PluginResponse>(&bytes).unwrap(),
+            PluginResponse::StageParametricChainResult(Ok(handles)) if handles.len() == 1
+        ));
+        let bytes = bincode::serialize(&PluginResponse::StageParametricChainResult(Err(
+            "seam segment 1 to 2: not continuous".to_owned(),
+        )))
+        .unwrap();
+        assert!(matches!(
+            bincode::deserialize::<PluginResponse>(&bytes).unwrap(),
+            PluginResponse::StageParametricChainResult(Err(_))
+        ));
+        let bytes = bincode::serialize(&PluginResponse::SampleParametricResult(Ok(Some(
+            crate::host::ParametricSample {
+                point: [100.0, -0.2],
+                direction: [0.995, -0.0998],
+            },
+        ))))
+        .unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginResponse>(&bytes).unwrap(),
+            PluginResponse::SampleParametricResult(Ok(Some(sample))) if sample.point == [100.0, -0.2])
+        );
+        let bytes =
+            bincode::serialize(&PluginResponse::SampleParametricResult(Ok(None))).unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginResponse>(&bytes).unwrap(),
+            PluginResponse::SampleParametricResult(Ok(None)))
+        );
+    }
+
+    #[test]
     fn unknown_notification_deserializes_as_unknown() {
         // Build a payload with an unknown discriminant (99) followed by some
         // bytes. The custom deserializer should return Unknown(raw_bytes).
