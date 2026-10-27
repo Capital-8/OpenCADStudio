@@ -353,26 +353,27 @@ pub fn drawing_dimdli(doc: &Document) -> f64 {
     }
 }
 
-/// A DIMDLI set for the drawing that differs from the dimension's own
-/// style goes on the new dimension as an override.
-pub fn apply_drawing_dimdli(doc: &mut Document, handle: codec::Handle) {
-    let Some(EntityType::Dimension(dimension)) = doc.get_entity(handle) else {
+/// A DIMDLI set for the drawing that differs from the current dimension
+/// style goes on a new dimension as an override. Written before the
+/// dimension is committed, so the override is part of the added object and
+/// its undo step.
+pub fn apply_drawing_dimdli(doc: &Document, entity: &mut EntityType) {
+    if !matches!(entity, EntityType::Dimension(_)) {
         return;
-    };
-    let name = dimension.base().style_name.clone();
+    }
+    let current = &doc.header.current_dimstyle_name;
     let Some(style_value) = doc
         .dim_styles
         .iter()
-        .find(|style| style.name.eq_ignore_ascii_case(&name))
+        .find(|style| style.name.eq_ignore_ascii_case(current))
         .map(|style| style.dimdli)
     else {
         return;
     };
     let drawing = drawing_dimdli(doc);
     if (drawing - style_value).abs() > 1.0e-9 {
-        crate::entities::dim_override::set(
-            doc,
-            handle,
+        crate::entities::dim_override::set_on_entity(
+            entity,
             crate::entities::dim_override::DIMDLI,
             Some(codec::xdata::XDataValue::Real(drawing)),
         );

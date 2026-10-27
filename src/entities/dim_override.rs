@@ -226,14 +226,28 @@ pub fn set(doc: &mut Document, handle: Handle, code: i16, value: Option<XDataVal
     let Some(entity) = doc.get_entity(handle) else {
         return;
     };
-    let mut kept: Vec<(i16, XDataValue)> = pairs(&entity.common().extended_data)
-        .into_iter()
-        .filter(|(c, _)| *c != code)
-        .collect();
-    if let Some(v) = value {
-        kept.push((code, v));
-    }
+    let kept = with_pair(pairs(&entity.common().extended_data), code, value);
     write_pairs(doc, handle, kept);
+}
+
+/// `pairs` with `code` set to `value` in its own place (appended when new),
+/// or removed with `None`. Rewriting an override keeps the record's order,
+/// so a dimension refreshed to the same values compares equal to what it was.
+fn with_pair(
+    mut pairs: Vec<(i16, XDataValue)>,
+    code: i16,
+    value: Option<XDataValue>,
+) -> Vec<(i16, XDataValue)> {
+    let at = pairs.iter().position(|(c, _)| *c == code);
+    match (at, value) {
+        (Some(i), Some(v)) => pairs[i].1 = v,
+        (Some(i), None) => {
+            pairs.remove(i);
+        }
+        (None, Some(v)) => pairs.push((code, v)),
+        (None, None) => {}
+    }
+    pairs
 }
 
 /// Set — or, with `value: None`, clear — a single override on an entity that
@@ -252,13 +266,7 @@ pub fn set_on_entity(entity: &mut EntityType, code: i16, value: Option<XDataValu
 /// [`set_on_entity`] for an entity reached through its own type, such as a
 /// `Dimension` rather than its `EntityType`.
 pub fn set_on_common(common: &mut EntityCommon, code: i16, value: Option<XDataValue>) {
-    let mut kept: Vec<(i16, XDataValue)> = pairs(&common.extended_data)
-        .into_iter()
-        .filter(|(c, _)| *c != code)
-        .collect();
-    if let Some(v) = value {
-        kept.push((code, v));
-    }
+    let kept = with_pair(pairs(&common.extended_data), code, value);
 
     let legacy = common.extended_data.get_record("ACAD_DSTYLE").is_some()
         && common.extended_data.get_record("ACAD").is_some_and(
@@ -282,18 +290,25 @@ pub fn set_on_common(common: &mut EntityCommon, code: i16, value: Option<XDataVa
         Some(vals)
     };
 
-    let mut rebuilt = ExtendedData::new();
-    for record in common.extended_data.records() {
-        if record.application_name != app && !(!legacy && record.application_name == "ACAD_DSTYLE")
-        {
-            rebuilt.add_record(record.clone());
-        }
-    }
-    if let Some(vals) = values {
+    // The new record takes the old one's place among the entity's records.
+    let mut record = values.map(|vals| {
         let mut record = codec::xdata::ExtendedDataRecord::new(app);
         for v in vals {
             record.add_value(v);
         }
+        record
+    });
+    let mut rebuilt = ExtendedData::new();
+    for existing in common.extended_data.records() {
+        let replaced = existing.application_name == app
+            || (!legacy && existing.application_name == "ACAD_DSTYLE");
+        if !replaced {
+            rebuilt.add_record(existing.clone());
+        } else if let Some(record) = record.take() {
+            rebuilt.add_record(record);
+        }
+    }
+    if let Some(record) = record {
         rebuilt.add_record(record);
     }
     rebuilt.raw_dwg_eed = common.extended_data.raw_dwg_eed.clone();

@@ -405,17 +405,18 @@ impl OpenCADStudio {
                 }
                 pending
             } else {
+                let mut entity = entity;
+                if !preserve_base_style {
+                    crate::scene::creation_style::apply_drawing_dimdli(
+                        &self.tabs[i].scene.document,
+                        &mut entity,
+                    );
+                }
                 let delta_safe = self.delta_add_safe(i, &entity);
                 let pending = self.begin_undo(i, label, 1, delta_safe);
                 if let Some(handle) =
                     self.commit_entity_handle_with_dimension_policy(entity, preserve_base_style)
                 {
-                    if !preserve_base_style {
-                        crate::scene::creation_style::apply_drawing_dimdli(
-                            &mut self.tabs[i].scene.document,
-                            handle,
-                        );
-                    }
                     committed = Some(handle);
                     if association_mode == 2 && association_allowed {
                         let mut changes = vec![(handle, crate::scene::ChangeKind::Modified)];
