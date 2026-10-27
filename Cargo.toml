@@ -311,6 +311,10 @@ harness = false
 name = "paper_viewport_hidden_handles"
 harness = false
 
+[[bench]]
+name = "i18n_label_render"
+harness = false
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
