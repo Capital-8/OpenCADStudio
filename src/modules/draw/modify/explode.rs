@@ -114,6 +114,7 @@ pub fn explode_entity(entity: &EntityType, document: &Document) -> Vec<EntityTyp
         EntityType::MLine(ml) => explode_mline(ml),
         EntityType::Dimension(dim) => explode_dimension(dim, document),
         EntityType::Leader(leader) => explode_leader(leader, document),
+        EntityType::MultiLeader(leader) => explode_multileader(leader, document),
         EntityType::MText(t) => crate::entities::mtext::explode_mtext(t, document),
         EntityType::Region(region) => explode_region(region),
         EntityType::Hatch(hatch) => explode_hatch(hatch),
@@ -182,6 +183,147 @@ fn explode_leader(leader: &codec::entities::Leader, doc: &Document) -> Vec<Entit
     // Reuse the live path (including spline leaders), hook and all arrow kinds.
     // The document-only explode API bakes at annotation scale 1.
     let model = leader.tessellate(doc, Handle::NULL, false, [1.0; 4], 1.0, 1.0);
+    explode_leader_wire(&model, common)
+}
+
+fn explode_multileader(ml: &codec::entities::MultiLeader, doc: &Document) -> Vec<EntityType> {
+    use crate::entities::multileader::{
+        active_vertical_attachment, block_content_insert, mleader_v_anchor, MultiLeaderTess,
+    };
+    use crate::entities::text_support::MTextVAnchor;
+    use codec::entities::{
+        mtext::{AttachmentPoint, DrawingDirection},
+        multileader::TextAttachmentPointType,
+        LeaderContentType,
+    };
+    // Match color_or_inherit: ByLayer/ByBlock inherit the host's colour.
+    let common_for = |color: codec::types::Color| {
+        let mut common = dim_common(&ml.common, 0, -1);
+        common.owner_handle = Handle::NULL;
+        common.reactors.clear();
+        if color.rgb().is_some() {
+            common.color = color;
+            common.color_name = None;
+            common.color_book_handle = None;
+        }
+        common
+    };
+    let mut common = with_dim_linetype(
+        common_for(ml.line_color),
+        doc,
+        ml.line_type_handle.unwrap_or(Handle::NULL),
+    );
+    if let codec::types::LineWeight::Value(v) = ml.line_weight {
+        if v >= 0 {
+            common.line_weight = ml.line_weight;
+        }
+    }
+    // Render only leader geometry: keep text as MTEXT and blocks as INSERTs.
+    // The document-only API bakes the active stored context at annotation scale 1.
+    let mut geometry = ml.clone();
+    geometry.content_type = LeaderContentType::None;
+    let models = geometry.tessellate(
+        doc,
+        Handle::NULL,
+        false,
+        [1.0; 4],
+        1.0,
+        1.0,
+        None,
+        None,
+        None,
+        None,
+        None,
+        [0.0; 4],
+    );
+    let mut pieces = models
+        .first()
+        .map(|model| explode_leader_wire(model, common))
+        .unwrap_or_default();
+    let ctx = &ml.context;
+    if ml.content_type == LeaderContentType::MText && !ctx.text_string.is_empty() {
+        let mut text = codec::entities::MText::with_value(&ctx.text_string, ctx.text_location);
+        text.common = common_for(ctx.text_color);
+        text.height = if ctx.text_height > 0.0 {
+            ctx.text_height
+        } else {
+            let scale = if ml.scale_factor.abs() > 1e-12 {
+                ml.scale_factor
+            } else {
+                1.0
+            };
+            ml.text_height * scale
+        };
+        text.rectangle_width = ctx.text_width;
+        let td = ctx.text_direction;
+        text.rotation = if td.x.abs() > 1e-9 || td.y.abs() > 1e-9 {
+            td.y.atan2(td.x)
+        } else {
+            ctx.text_rotation
+        };
+        if ml.text_direction_negative {
+            text.rotation += std::f64::consts::PI;
+        }
+        // Level horizontal contexts store the box's top corner; the renderer
+        // anchors those at the landing. Rotated/vertical text uses the stored anchor.
+        let row = if ml.text_attachment_direction
+            == codec::entities::TextAttachmentDirectionType::Horizontal
+            && text.rotation.abs() < 1e-3
+            && !ctx.leader_roots.is_empty()
+        {
+            0
+        } else {
+            match mleader_v_anchor(active_vertical_attachment(ml)) {
+                MTextVAnchor::Top => 0,
+                MTextVAnchor::Bottom | MTextVAnchor::BottomOfTopLine => 6,
+                _ => 3,
+            }
+        };
+        let col = match ctx.text_attachment_point {
+            TextAttachmentPointType::Left => 0,
+            TextAttachmentPointType::Center => 1,
+            TextAttachmentPointType::Right => 2,
+        };
+        text.attachment_point = [
+            AttachmentPoint::TopLeft,
+            AttachmentPoint::TopCenter,
+            AttachmentPoint::TopRight,
+            AttachmentPoint::MiddleLeft,
+            AttachmentPoint::MiddleCenter,
+            AttachmentPoint::MiddleRight,
+            AttachmentPoint::BottomLeft,
+            AttachmentPoint::BottomCenter,
+            AttachmentPoint::BottomRight,
+        ][row + col];
+        text.style = ctx
+            .text_style_handle
+            .and_then(|h| doc.text_styles.iter().find(|s| s.handle == h))
+            .map(|s| s.name.clone())
+            .unwrap_or_else(|| "STANDARD".into());
+        text.normal = ctx.text_normal;
+        text.line_spacing_factor = ctx.line_spacing_factor;
+        text.line_spacing_style = ctx.line_spacing_style;
+        text.drawing_direction = match ctx.text_flow_direction {
+            codec::entities::FlowDirectionType::Vertical => DrawingDirection::TopToBottom,
+            codec::entities::FlowDirectionType::ByStyle => DrawingDirection::ByStyle,
+            _ => DrawingDirection::LeftToRight,
+        };
+        pieces.push(EntityType::MText(Box::new(text)));
+    } else if ml.block_attributes.is_empty() {
+        // The render helper resolves the block's extents anchor, scale and rotation.
+        // Per-instance block attribute overrides are not representable by this INSERT.
+        if let Some(mut insert) = block_content_insert(doc, ml) {
+            insert.common = common_for(ml.block_content_color);
+            pieces.push(EntityType::Insert(insert));
+        }
+    }
+    pieces
+}
+
+fn explode_leader_wire(
+    model: &crate::scene::model::wire_model::WireModel,
+    common: EntityCommon,
+) -> Vec<EntityType> {
     let restore = |high: &[[f32; 3]], low: &[[f32; 3]]| -> Vec<Vector3> {
         high.iter()
             .enumerate()
@@ -3029,6 +3171,159 @@ mod tests {
                 codec::types::LineWeight::from_value(50)
             );
         }
+    }
+
+    #[test]
+    fn multileader_explode_mtext_keeps_path_landing_arrow_and_content() {
+        use codec::entities::mtext::AttachmentPoint;
+        let ml = explode_test_multileader();
+        let pieces = explode_entity(
+            &EntityType::MultiLeader(Box::new(ml.clone())),
+            &Document::new(),
+        );
+        assert_eq!(pieces.len(), 4, "path, landing, filled arrow and MTEXT");
+        let lines: Vec<_> = pieces
+            .iter()
+            .filter_map(|e| match e {
+                EntityType::Line(line) => Some((line.start, line.end)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            lines,
+            vec![
+                (Vector3::ZERO, Vector3::new(10.0, 5.0, 0.0)),
+                (Vector3::new(10.0, 5.0, 0.0), Vector3::new(12.0, 5.0, 0.0)),
+            ]
+        );
+        let arrow = pieces
+            .iter()
+            .find_map(|e| match e {
+                EntityType::Solid(solid) => Some(solid),
+                _ => None,
+            })
+            .expect("closed filled arrow must become a SOLID");
+        assert_eq!(arrow.first_corner, Vector3::ZERO);
+        assert_ne!(arrow.second_corner, arrow.third_corner);
+        for corner in [arrow.second_corner, arrow.third_corner] {
+            assert!(corner.x * 10.0 + corner.y * 5.0 > 0.0);
+        }
+        let text = pieces
+            .iter()
+            .find_map(|e| match e {
+                EntityType::MText(text) => Some(text),
+                _ => None,
+            })
+            .expect("content must remain MTEXT");
+        assert_eq!(text.value, ml.context.text_string);
+        assert_eq!(text.insertion_point, ml.context.text_location);
+        assert_eq!(text.height, ml.context.text_height);
+        assert_eq!(text.rectangle_width, ml.context.text_width);
+        assert_eq!(text.attachment_point, AttachmentPoint::TopLeft);
+        for piece in &pieces {
+            assert_eq!(piece.common().layer, ml.common.layer);
+            assert_eq!(piece.common().color, ml.common.color);
+            assert_eq!(piece.common().line_weight, ml.common.line_weight);
+            assert_eq!(piece.common().handle, Handle::NULL);
+        }
+    }
+
+    fn explode_test_multileader() -> codec::entities::MultiLeader {
+        use codec::entities::multileader::TextAttachmentPointType;
+        let mut ml = codec::entities::MultiLeader::with_text(
+            "note",
+            Vector3::new(13.0, 6.0, 0.0),
+            vec![Vector3::ZERO],
+        );
+        ml.common.layer = "MLEADERS".into();
+        ml.common.color = codec::types::Color::from_index(3);
+        ml.common.line_weight = codec::types::LineWeight::from_value(35);
+        ml.context.text_height = 2.0;
+        ml.context.text_width = 20.0;
+        ml.context.text_attachment_point = TextAttachmentPointType::Left;
+        ml.context.arrowhead_size = 2.0;
+        let root = &mut ml.context.leader_roots[0];
+        root.connection_point = Vector3::new(10.0, 5.0, 0.0);
+        root.direction = Vector3::new(1.0, 0.0, 0.0);
+        root.landing_distance = 2.0;
+        ml
+    }
+
+    #[test]
+    fn multileader_explode_arrow_off_keeps_lines_and_mtext_attributes() {
+        let doc = Document::new();
+        let mut ml = explode_test_multileader();
+        ml.context.arrowhead_size = 0.0;
+        ml.line_color = codec::types::Color::from_rgb(12, 34, 56);
+        ml.line_weight = codec::types::LineWeight::from_value(50);
+        ml.common.linetype = "DASHED".into();
+        let style = doc.text_styles.iter().next().expect("default text style");
+        ml.context.text_style_handle = Some(style.handle);
+        let style_name = style.name.clone();
+        ml.context.text_direction = Vector3::new(0.0, 1.0, 0.0);
+        let pieces = explode_entity(&EntityType::MultiLeader(Box::new(ml.clone())), &doc);
+        assert_eq!(pieces.len(), 3, "two LINEs and MTEXT even without an arrow");
+        assert!(!pieces.iter().any(|e| matches!(e, EntityType::Solid(_))));
+        assert_eq!(
+            pieces
+                .iter()
+                .filter(|e| matches!(e, EntityType::Line(_)))
+                .count(),
+            2
+        );
+        for piece in &pieces {
+            match piece {
+                EntityType::Line(line) => {
+                    assert_eq!(line.common.color, ml.line_color);
+                    assert_eq!(line.common.line_weight, ml.line_weight);
+                    assert_eq!(line.common.linetype, "Continuous");
+                }
+                EntityType::MText(text) => {
+                    assert_eq!(text.value, "note");
+                    assert_eq!(text.insertion_point, ml.context.text_location);
+                    assert_eq!(text.rotation, std::f64::consts::FRAC_PI_2);
+                    assert_eq!(
+                        text.attachment_point,
+                        codec::entities::mtext::AttachmentPoint::MiddleLeft
+                    );
+                    assert_eq!(text.style, style_name);
+                    assert_eq!(text.common.color, ml.common.color);
+                }
+                _ => panic!("unexpected replacement"),
+            }
+        }
+    }
+
+    #[test]
+    fn multileader_explode_replacements_erase_only_replaced_source() {
+        let mut scene = crate::scene::Scene::new();
+        let ml = scene.add_entity(EntityType::MultiLeader(
+            Box::new(explode_test_multileader()),
+        ));
+        let untouched = scene.add_entity(EntityType::MText(Box::new(
+            codec::entities::MText::with_value("unselected", Vector3::new(100.0, 100.0, 0.0)),
+        )));
+        let unsupported = scene.add_entity(EntityType::Line(LineEnt::new()));
+        let handles = [ml, unsupported];
+        let selected: Vec<_> = handles
+            .iter()
+            .map(|h| (*h, scene.document.get_entity(*h).unwrap()))
+            .collect();
+        let replacements = plan_explode(&selected, &scene.document);
+        assert_eq!(replacements.len(), 1);
+        assert_eq!(replacements[0].0, ml);
+        assert_eq!(apply_explode_replacements(&mut scene, replacements), 1);
+        assert!(scene.document.get_entity(ml).is_none());
+        assert!(scene.document.get_entity(untouched).is_some());
+        assert!(scene.document.get_entity(unsupported).is_some());
+        assert_eq!(
+            scene
+                .document
+                .entities()
+                .filter(|e| matches!(e, EntityType::MText(text) if text.value == "note"))
+                .count(),
+            1
+        );
     }
 
     #[test]
