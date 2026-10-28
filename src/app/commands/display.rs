@@ -2215,11 +2215,13 @@ pub(crate) fn apply_link_rows(
 ) {
     let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
     while table.row_count() < rows.len() {
-        // A new row is as tall as the row above it.
-        let height = table.rows.last().map(|row| row.height);
-        let row = table.add_row();
-        if let Some(height) = height {
-            row.height = height;
+        // A new row repeats the row above it (height, cell formats); its
+        // texts are written below.
+        match table.rows.last().cloned() {
+            Some(row) => table.rows.push(row),
+            None => {
+                table.add_row();
+            }
         }
     }
     while table.row_count() > rows.len() {
