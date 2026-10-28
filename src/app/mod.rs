@@ -674,6 +674,8 @@ pub(super) struct OpenCADStudio {
     selection_cycling: bool,
     /// OSNAPZ (see `Settings::osnap_z`).
     osnap_z: bool,
+    /// SELECTSIMILARMODE (see `Settings::select_similar_mode`).
+    select_similar_mode: u16,
     /// PICKADD (#226): true (default) = clicks accumulate; false = OS-style
     /// replace-on-click with Shift toggling.
     pick_add: bool,
@@ -697,6 +699,8 @@ pub(super) struct OpenCADStudio {
     block_definition_open_editor: Option<String>,
     block_edit_picker: Option<crate::ui::window::block_edit_picker::State>,
     rename_dialog: Option<crate::ui::window::rename::State>,
+    /// Select Similar settings being edited.
+    select_similar_settings: Option<u16>,
     block_save_as: Option<crate::ui::window::block_save_as::State>,
     block_visibility: Option<crate::ui::window::block_visibility::State>,
     block_lookup: Option<crate::ui::window::block_lookup::State>,
@@ -2811,6 +2815,7 @@ pub enum ModalKind {
     BlockEditChanges,
     BlockEditPicker,
     Rename,
+    SelectSimilarSettings,
     BlockSaveAs,
     BlockVisibility,
     BlockLookup,
@@ -3539,6 +3544,9 @@ pub enum Message {
     BlockEditPickerSelect(String),
     BlockEditPickerApply,
     Rename(crate::ui::window::rename::RenameMsg),
+    /// Select Similar settings: flip one SELECTSIMILARMODE bit.
+    SelectSimilarSettingsToggle(u16),
+    SelectSimilarSettingsOk,
     // ── AEC / unsupported-object drop warning (lossy Save-As) ──────────────
     /// Save as the source DWG version so the unsupported objects survive.
     AecDropSameVersion,
@@ -5387,6 +5395,7 @@ impl OpenCADStudio {
             quick_properties_anchor: Point::new(12.0, 12.0),
             selection_cycling: false,
             osnap_z: false,
+            select_similar_mode: crate::scene::SELECT_SIMILAR_DEFAULT,
             pick_add: true,
             select_remove_mode: false,
             last_layer_translation: None,
@@ -5396,6 +5405,7 @@ impl OpenCADStudio {
             block_definition_open_editor: None,
             block_edit_picker: None,
             rename_dialog: None,
+            select_similar_settings: None,
             block_save_as: None,
             block_visibility: None,
             block_lookup: None,

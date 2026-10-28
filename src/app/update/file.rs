@@ -831,6 +831,7 @@ impl OpenCADStudio {
             ucs_icon_at_origin: self.ucs_icon_at_origin,
             selection_cycling: self.selection_cycling,
             osnap_z: self.osnap_z,
+            select_similar_mode: self.select_similar_mode,
             double_click_block_refedit: self.double_click_block_refedit,
             double_click_block_attedit: self.double_click_block_attedit,
             right_click_mode: self.right_click_mode,
@@ -999,6 +1000,7 @@ impl OpenCADStudio {
         self.ucs_icon_at_origin = s.ucs_icon_at_origin;
         self.selection_cycling = s.selection_cycling;
         self.osnap_z = s.osnap_z;
+        self.select_similar_mode = s.select_similar_mode & 255;
         self.double_click_block_refedit = s.double_click_block_refedit;
         self.double_click_block_attedit = s.double_click_block_attedit;
         self.right_click_mode = s.right_click_mode;

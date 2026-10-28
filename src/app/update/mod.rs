@@ -262,6 +262,7 @@ impl OpenCADStudio {
             Some(AttMan) => self.attman = None,
             Some(BlockEditPicker) => self.block_edit_picker = None,
             Some(Rename) => self.rename_dialog = None,
+            Some(SelectSimilarSettings) => self.select_similar_settings = None,
             Some(BlockSaveAs) => self.block_save_as = None,
             Some(BlockVisibility) => self.block_visibility = None,
             Some(BlockLookup) => self.block_lookup = None,
@@ -8186,7 +8187,7 @@ impl OpenCADStudio {
             Message::SelectSimilar => {
                 let i = self.active_tab;
                 self.tabs[i].scene.selection.borrow_mut().menu.open_at = None;
-                let added = self.tabs[i].scene.select_similar();
+                let added = self.tabs[i].scene.select_similar(self.select_similar_mode);
                 self.command_line
                     .push_output(crate::tf!("Select Similar: {} added.", added).as_ref());
                 self.refresh_properties();
@@ -11864,6 +11865,20 @@ impl OpenCADStudio {
             }
             Message::BlockEditPickerApply => self.apply_bedit_dialog(),
             Message::Rename(msg) => self.on_rename_dialog(msg),
+            Message::SelectSimilarSettingsToggle(bit) => {
+                if let Some(mode) = self.select_similar_settings.as_mut() {
+                    *mode ^= bit;
+                }
+                Task::none()
+            }
+            Message::SelectSimilarSettingsOk => {
+                if let Some(mode) = self.select_similar_settings {
+                    self.select_similar_mode = mode;
+                    self.persist_settings_if_changed();
+                }
+                self.close_active_modal();
+                Task::none()
+            }
             Message::BlockEditChangesDiscard => self.resolve_block_edit_close(false),
             Message::BlockEditChangesCancel => {
                 self.cancel_block_edit_close();

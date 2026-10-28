@@ -862,6 +862,10 @@ pub struct UserSettings {
     /// OSNAPZ: object snaps take the current elevation instead of the
     /// snapped object's Z.
     pub osnap_z: bool,
+    /// SELECTSIMILARMODE: the properties besides the type that Select
+    /// Similar matches (1 colour, 2 layer, 4 linetype, 8 linetype scale,
+    /// 16 lineweight, 32 plot style, 64 object style, 128 name).
+    pub select_similar_mode: u16,
     /// CURSORTYPE: crosshair or the platform pointer over the drawing.
     pub cursor_type: CursorType,
     /// Explicit crosshair RGB. `None` keeps automatic background contrast.
@@ -1317,6 +1321,7 @@ impl Default for UserSettings {
             ucs_icon_at_origin: true,
             selection_cycling: false,
             osnap_z: false,
+            select_similar_mode: crate::scene::SELECT_SIMILAR_DEFAULT,
             double_click_block_refedit: false,
             double_click_block_attedit: true,
             right_click_mode: RightClickMode::ShortcutMenu,

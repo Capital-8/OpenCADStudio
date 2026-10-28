@@ -83,6 +83,7 @@ mod project;
 pub mod reference_only;
 mod scene_markers;
 mod selection;
+pub use selection::SELECT_SIMILAR_DEFAULT;
 pub mod viewport_dimension_pick;
 pub mod viewport_ref;
 pub(crate) use selection::pe_url_of;

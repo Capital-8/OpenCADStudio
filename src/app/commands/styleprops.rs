@@ -1243,6 +1243,7 @@ impl OpenCADStudio {
                     | "PELLIPSE"
                     | "SELECTIONCYCLING"
                     | "OSNAPZ"
+                    | "SELECTSIMILARMODE"
                     | "UCSDETECT"
                     | "SURFACEASSOCIATIVITY"
                     | "DGNIMPORTMODE"
@@ -1880,6 +1881,34 @@ impl OpenCADStudio {
                             Some(None) => {
                                 self.command_line
                                     .push_error(crate::t!("Requires 0 or 1 only.").as_ref());
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    if name == "SELECTSIMILARMODE" {
+                        let current = self.select_similar_mode;
+                        let prompt = format!("Enter new value for SELECTSIMILARMODE <{current}>:");
+                        match value
+                            .as_deref()
+                            .map(|v| v.trim().parse::<u16>().ok().filter(|v| *v <= 255))
+                        {
+                            Some(Some(mode)) => {
+                                if self.select_similar_mode != mode {
+                                    self.select_similar_mode = mode;
+                                    self.persist_settings_if_changed();
+                                }
+                            }
+                            Some(None) => {
+                                let (min, max) = (0, 255);
+                                self.command_line.push_error(&crate::tf!(
+                                    "Requires an integer between {min} and {max}."
+                                ));
                                 self.command_line.push_output(&prompt);
                                 self.pending_setvar = Some(name.clone());
                             }

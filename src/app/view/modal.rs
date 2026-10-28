@@ -108,6 +108,7 @@ impl OpenCADStudio {
             Some(K::BlockEditChanges) => crate::t!("Block Editor").into_owned(),
             Some(K::BlockEditPicker) => crate::t!("Edit Block Definition").into_owned(),
             Some(K::Rename) => crate::tr!("rename-dialog", "title"),
+            Some(K::SelectSimilarSettings) => crate::tr!("select-similar", "title"),
             Some(K::BlockVisibility) => crate::t!("Visibility States").into_owned(),
             Some(K::BlockLookup) => crate::t!("Property Lookup Table").into_owned(),
             Some(K::BlockPropertiesTable) => crate::t!("Block Properties Table").into_owned(),
@@ -420,6 +421,9 @@ impl OpenCADStudio {
                 sized_flow(ex, 540, 380, |flow| {
                     crate::ui::window::block_edit_picker::view(state, flow)
                 })
+            }
+            super::super::ModalKind::SelectSimilarSettings => {
+                crate::ui::window::select_similar::view_window(self.select_similar_settings?)
             }
             super::super::ModalKind::Rename => {
                 let state = self.rename_dialog.as_ref()?;

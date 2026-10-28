@@ -342,36 +342,49 @@ impl Scene {
     /// layout that matches one of the selected entities by `(variant,
     /// layer)`. The seed selection stays selected. No-op when nothing is
     /// selected. Returns the number of newly-added entities.
-    pub fn select_similar(&mut self) -> usize {
+    /// Add every object of the active layout that has the type of a
+    /// selected object and the same properties `mode` names (the
+    /// SELECTSIMILARMODE bits, see [`SIMILAR_FIELDS`]).
+    pub fn select_similar(&mut self, mode: u16) -> usize {
         use crate::entities::traits::entity_type_name;
         if self.selected.is_empty() {
             return 0;
         }
-        let pairs: rustc_hash::FxHashSet<(&str, String)> = self
-            .selected
-            .iter()
-            .filter_map(|h| self.document.get_entity(*h))
-            .map(|e| (entity_type_name(e), e.as_entity().layer().to_string()))
-            .collect();
-        let handles = self.current_layout_entity_handles();
-        let mut added = 0;
-        for h in handles {
-            if self.selected.contains(&h) {
-                continue;
-            }
-            if let Some(e) = self.document.get_entity(h) {
-                let key = (entity_type_name(e), e.as_entity().layer().to_string());
-                if pairs.contains(&key) {
-                    self.selected.insert(h);
-                    self.selected_order.push(h);
-                    added += 1;
-                }
-            }
+        let key = |e: &codec::EntityType| -> Vec<Option<String>> {
+            SIMILAR_FIELDS
+                .iter()
+                .filter(|(bit, _)| mode & bit != 0)
+                .map(|(_, fields)| {
+                    fields
+                        .iter()
+                        .find_map(|field| self.entity_property_value(e, field))
+                })
+                .collect()
+        };
+        let mut keys: rustc_hash::FxHashMap<&str, rustc_hash::FxHashSet<Vec<Option<String>>>> =
+            Default::default();
+        for e in self.selected.iter().filter_map(|h| self.document.get_entity(*h)) {
+            keys.entry(entity_type_name(e)).or_default().insert(key(e));
         }
-        if added > 0 {
+        let matches: Vec<Handle> = self
+            .current_layout_entity_handles()
+            .into_iter()
+            .filter(|h| !self.selected.contains(h))
+            .filter(|h| {
+                self.document.get_entity(*h).is_some_and(|e| {
+                    keys.get(entity_type_name(e))
+                        .is_some_and(|wanted| wanted.contains(&key(e)))
+                })
+            })
+            .collect();
+        for &h in &matches {
+            self.selected.insert(h);
+            self.selected_order.push(h);
+        }
+        if !matches.is_empty() {
             self.bump_selection_set();
         }
-        added
+        matches.len()
     }
 
     /// Replace the selection with its complement: every selectable object
@@ -1303,6 +1316,22 @@ impl Scene {
     }
 }
 
+/// SELECTSIMILARMODE's default: layer and name.
+pub const SELECT_SIMILAR_DEFAULT: u16 = 130;
+
+/// The SELECTSIMILARMODE bits and the property each compares; the first
+/// field an object has is its value.
+const SIMILAR_FIELDS: &[(u16, &[&str])] = &[
+    (1, &["color"]),
+    (2, &["layer"]),
+    (4, &["linetype"]),
+    (8, &["linetype_scale"]),
+    (16, &["lineweight"]),
+    (32, &["plot_style"]),
+    (64, &["style", "style_name", "dimension_style"]),
+    (128, &["block"]),
+];
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1632,3 +1661,5 @@ mod tests {
         assert_eq!(scene.selection_fingerprint(), fingerprint);
     }
 }
+
+
