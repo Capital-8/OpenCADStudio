@@ -5428,6 +5428,7 @@ impl OpenCADStudio {
             return Task::none();
         };
         let worker_path = path.clone();
+        let open_when_done = self.plot_dialog.open_when_done;
         let work = move || {
             // SVG shares the plot page with PDF: pick the writer from the
             // chosen extension.
@@ -5439,6 +5440,10 @@ impl OpenCADStudio {
             } else {
                 crate::io::pdf_export::export_pdf(&page, &worker_path)
             };
+            if result.is_ok() && open_when_done {
+                // A viewer that cannot start leaves the file written all the same.
+                let _ = crate::io::print_to_printer::open_in_viewer(&worker_path);
+            }
             result
                 .map(|_| crate::tf!("Exported: {}", worker_path.display()).into_owned())
                 .map_err(|e| crate::tf!("Export failed: {e}").into_owned())
@@ -5464,6 +5469,7 @@ impl OpenCADStudio {
         };
         let worker_path = path.clone();
         self.close_active_modal();
+        let open_when_done = self.plot_dialog.open_when_done;
         let work = move || {
             let result = if worker_path
                 .extension()
@@ -5473,6 +5479,10 @@ impl OpenCADStudio {
             } else {
                 crate::io::pdf_export::export_pdf(&page, &worker_path)
             };
+            if result.is_ok() && open_when_done {
+                // A viewer that cannot start leaves the file written all the same.
+                let _ = crate::io::print_to_printer::open_in_viewer(&worker_path);
+            }
             result
                 .map(|_| {
                     crate::tf!(
@@ -6784,6 +6794,7 @@ impl OpenCADStudio {
                     PlotFlag::Stamp => d.stamp = !d.stamp,
                     PlotFlag::HidePaperspace => d.hide_paperspace = !d.hide_paperspace,
                     PlotFlag::SaveToLayout => d.save_to_layout = !d.save_to_layout,
+                    PlotFlag::OpenWhenDone => d.open_when_done = !d.open_when_done,
                     _ => {}
                 }
                 Task::none()

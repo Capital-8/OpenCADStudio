@@ -5888,6 +5888,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__: očekává se 0 nebo 1.
 
 plot =
+    .open-when-done = Open in viewer when done
     .no-page-setups = (žádná nastavení stránky)
     .none = <žádné>
     .previous = <předchozí>

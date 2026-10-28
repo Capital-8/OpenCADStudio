@@ -5890,6 +5890,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__: 0 또는 1이 필요합니다.
 
 plot =
+    .open-when-done = Open in viewer when done
     .no-page-setups = (페이지 설정 없음)
     .none = <없음>
     .previous = <이전>

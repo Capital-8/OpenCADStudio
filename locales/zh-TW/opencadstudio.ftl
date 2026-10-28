@@ -5886,6 +5886,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__:預期為0或1。
 
 plot =
+    .open-when-done = Open in viewer when done
     .no-page-setups = （無頁面設定）
     .none = <無>
     .previous = <上一次>

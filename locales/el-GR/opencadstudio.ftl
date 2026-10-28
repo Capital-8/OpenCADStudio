@@ -5891,6 +5891,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__: αναμενόταν 0 ή 1.
 
 plot =
+    .open-when-done = Open in viewer when done
     .no-page-setups = (δεν υπάρχουν διαμορφώσεις σελίδας)
     .none = <καμία>
     .previous = <προηγούμενη>

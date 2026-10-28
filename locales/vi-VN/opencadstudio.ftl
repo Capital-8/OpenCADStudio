@@ -5898,6 +5898,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__: cần 0 hoặc 1.
 
 plot =
+    .open-when-done = Open in viewer when done
     .no-page-setups = (không có thiết lập trang)
     .none = <không có>
     .previous = <trước>

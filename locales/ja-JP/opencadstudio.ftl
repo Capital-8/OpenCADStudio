@@ -5879,6 +5879,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__: 0 または 1 が必要です。
 
 plot =
+    .open-when-done = Open in viewer when done
     .no-page-setups = （ページ設定なし）
     .none = <なし>
     .previous = <前回>

@@ -5880,6 +5880,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__: 0 vagy 1 szükséges.
 
 plot =
+    .open-when-done = Open in viewer when done
     .no-page-setups = (nincs oldalbeállítás)
     .none = <nincs>
     .previous = <előző>

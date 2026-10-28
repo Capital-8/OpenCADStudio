@@ -5831,6 +5831,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__: 0 veya 1 bekleniyordu.
 
 plot =
+    .open-when-done = PDF bitince görüntüleyicide aç
     .no-page-setups = (sayfa ayarı yok)
     .none = <yok>
     .previous = <önceki>

@@ -5879,6 +5879,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__: 0 या 1 उम्मीद है।
 
 plot =
+    .open-when-done = Open in viewer when done
     .no-page-setups = (कोई पृष्ठ सेटअप नहीं)
     .none = <कोई नहीं>
     .previous = <पिछला>

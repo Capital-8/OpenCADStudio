@@ -5903,6 +5903,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__: المتوقع 0 أو 1.
 
 plot =
+    .open-when-done = Open in viewer when done
     .no-page-setups = (لا توجد إعدادات صفحة)
     .none = <لا شيء>
     .previous = <السابق>

@@ -5890,6 +5890,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__: odotettu 0 tai 1.
 
 plot =
+    .open-when-done = Open in viewer when done
     .no-page-setups = (ei sivuasetuksia)
     .none = <ei mitään>
     .previous = <edellinen>

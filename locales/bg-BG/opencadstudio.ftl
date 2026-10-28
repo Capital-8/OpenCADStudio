@@ -5891,6 +5891,7 @@ styles =
     .expected-0-or-1 = __ocs_fmt_0__: очаквано 0 или 1.
 
 plot =
+    .open-when-done = Open in viewer when done
     .no-page-setups = (няма настройки на страница)
     .none = <няма>
     .previous = <предишен>
