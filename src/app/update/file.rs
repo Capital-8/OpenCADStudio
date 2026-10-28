@@ -4070,6 +4070,15 @@ impl OpenCADStudio {
             return Task::none();
         }
         let i = self.active_tab;
+        // DXEVAL: a save may first offer (or make) outdated extraction
+        // table updates.
+        if let Some(task) = self.evaluate_extraction_tables(
+            i,
+            crate::app::commands::extraction_eval::EVENT_SAVE,
+            Some(Message::SaveFile),
+        ) {
+            return task;
+        }
         // Web serializes immediately below. Native preparation happens
         // once after the destination/version is known.
         #[cfg(target_arch = "wasm32")]
@@ -7341,6 +7350,17 @@ impl OpenCADStudio {
                 crate::tf!("Plot style table '{}' is not loaded.", d.style_name).as_ref(),
             );
             return Task::none();
+        }
+        // DXEVAL: a plot may first offer (or make) outdated extraction
+        // table updates.
+        if !preview {
+            if let Some(task) = self.evaluate_extraction_tables(
+                self.active_tab,
+                crate::app::commands::extraction_eval::EVENT_PLOT,
+                Some(Message::PlotDlg(crate::ui::window::plot::PlotDlgMsg::Commit)),
+            ) {
+                return task;
+            }
         }
         // Remember the user's print preferences across sessions.
         self.save_config();

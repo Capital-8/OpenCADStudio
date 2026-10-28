@@ -311,6 +311,96 @@ pub(crate) fn stamp_data_link(link: &mut DataLink) {
     link.millisecond = elapsed.subsec_millis() as i16;
 }
 
+/// Stamps the last-update time of the link at `handle`.
+pub(crate) fn stamp_data_link_handle(doc: &mut Document, handle: Handle) {
+    if let Some(link) = data_link_mut(doc, handle) {
+        stamp_data_link(link);
+    }
+}
+
+/// DXEVAL: the events that compare extraction tables with their data —
+/// 1 open, 2 save, 4 plot, 8 publish, 16 eTransmit/archive — and, shifted
+/// five bits up, the same events updating them without asking. Kept in the
+/// drawing; 12 (plot and publish) until set.
+pub(crate) fn dxeval(doc: &Document) -> i32 {
+    crate::io::drawing_variable(doc, "DXEVAL")
+        .and_then(|value| value.trim().parse().ok())
+        .unwrap_or(12)
+}
+
+/// An extraction table whose data no longer matches the drawing.
+#[derive(Debug, Clone)]
+pub(crate) struct OutdatedExtraction {
+    pub table: Handle,
+    pub link: Handle,
+    /// The settings file the extraction runs from.
+    pub settings: String,
+    /// What the table shows once updated: its title over the new data.
+    pub rows: Vec<Vec<String>>,
+}
+
+/// The rows an extraction table shows from its data now, under its title
+/// row; `None` when `link` is not an extraction link.
+pub(crate) fn extraction_table_rows(
+    doc: &Document,
+    doc_path: Option<&Path>,
+    table: Handle,
+    link: Handle,
+) -> Option<Result<Vec<Vec<String>>, String>> {
+    let settings = extraction_link_settings(doc, link)?;
+    Some(rerun_extraction(doc, doc_path, &settings).map(|rows| {
+        let title = match doc.get_entity(table) {
+            Some(EntityType::Table(table)) => table.cell_text(0, 0).unwrap_or_default().to_string(),
+            _ => String::new(),
+        };
+        std::iter::once(vec![title]).chain(rows).collect()
+    }))
+}
+
+/// The extraction tables of the drawing whose cells differ from what their
+/// extraction gives now.
+pub(crate) fn outdated_extraction_tables(
+    doc: &Document,
+    doc_path: Option<&Path>,
+) -> Vec<OutdatedExtraction> {
+    let mut outdated = Vec::new();
+    for entity in doc.entities() {
+        let EntityType::Table(table) = entity else {
+            continue;
+        };
+        let Some(link) = table
+            .rows
+            .iter()
+            .flat_map(|row| row.cells.iter())
+            .find_map(|cell| cell.data_link_handle)
+        else {
+            continue;
+        };
+        let handle = entity.common().handle;
+        let Some(Ok(rows)) = extraction_table_rows(doc, doc_path, handle, link) else {
+            continue;
+        };
+        let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
+        let current = table.row_count() == rows.len()
+            && table.column_count() == columns
+            && rows.iter().enumerate().all(|(r, values)| {
+                (0..columns).all(|c| {
+                    table.cell_text(r, c).unwrap_or_default()
+                        == values.get(c).map(String::as_str).unwrap_or("")
+                })
+            });
+        if !current {
+            outdated.push(OutdatedExtraction {
+                table: handle,
+                link,
+                settings: extraction_link_settings(doc, link).unwrap_or_default(),
+                rows,
+            });
+        }
+    }
+    outdated
+}
+
 /// Renames a link (filing it in the dictionary when it was outside it).
 fn rename_data_link(doc: &mut Document, handle: Handle, name: &str) {
     put_data_link_entry(doc, handle, name);
