@@ -437,6 +437,7 @@ impl OpenCADStudio {
         crate::ui::properties::set_light_canvas(crate::ui::style::common::canvas_is_light(
             tab.scene.current_bg(),
         ));
+        crate::ui::color_select::set_recent_colors(&tab.recent_colors);
         let thumbnail_capture_clean = self.thumbnail_capture_clean;
         let theme_text = self.active_theme.palette().background.base.text;
         let viewcube_text_color = [theme_text.r, theme_text.g, theme_text.b, theme_text.a];

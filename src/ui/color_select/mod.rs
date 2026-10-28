@@ -32,6 +32,21 @@ pub struct ColorExtras {
     pub background: bool,
 }
 
+thread_local! {
+    static RECENT: std::cell::RefCell<Vec<AcadColor>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The active drawing's recently picked colours, newest first. The view
+/// seeds it so every colour list offers them.
+pub fn set_recent_colors(colors: &[AcadColor]) {
+    RECENT.with(|recent| {
+        let mut recent = recent.borrow_mut();
+        if recent.as_slice() != colors {
+            *recent = colors.to_vec();
+        }
+    });
+}
+
 /// Encode a colour as the ACI integer string the style editors store
 /// (ByBlock=0, ByLayer=256, indexed 1-255). True colours are mapped to the
 /// closest ACI entry because these fields cannot store RGB values.
@@ -298,6 +313,25 @@ pub fn color_list<'a>(
     }
     for i in 1u8..=9 {
         list = list.push(named_row(AcadColor::Index(i)));
+    }
+    // Colours picked recently beyond the nine standard ones.
+    let recent = RECENT.with(|recent| recent.borrow().clone());
+    for color in recent
+        .into_iter()
+        .filter(|color| !matches!(color, AcadColor::Index(1..=9)))
+    {
+        let (bg, _) = acad_color_display(color);
+        list = list.push(
+            button(
+                row![swatch(bg), text(color_display_name(color)).size(11)]
+                    .spacing(5)
+                    .align_y(iced::Center),
+            )
+            .on_press(on_select(color))
+            .style(list_row_style)
+            .padding([2, 4])
+            .width(Length::Fill),
+        );
     }
     list = list.push(
         button(text(t!("Select Color...")).size(11))
