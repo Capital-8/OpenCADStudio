@@ -9,7 +9,6 @@ use crate::ui::style::row_button::{cell_button_style, header_button_style};
 use crate::ui::ROW_H;
 use codec::tables::layer::Layer as DocLayer;
 use codec::tables::Table;
-use codec::types::aci_table::aci_to_rgb;
 use codec::types::{Color as AcadColor, LineWeight};
 use codec::Handle;
 use iced::widget::{
@@ -1009,12 +1008,8 @@ fn layer_row<'a>(
 
 pub fn iced_color_from_acad(c: &AcadColor) -> Color {
     match c {
-        AcadColor::Index(i) => {
-            let (r, g, b) = aci_to_rgb(*i).unwrap_or((200, 200, 200));
-            Color::from_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
-        }
-        AcadColor::Rgb { r, g, b } => {
-            Color::from_rgb(*r as f32 / 255.0, *g as f32 / 255.0, *b as f32 / 255.0)
+        AcadColor::Index(_) | AcadColor::Rgb { .. } => {
+            crate::ui::properties::acad_color_display(*c).0
         }
         _ => Color::WHITE,
     }

@@ -434,6 +434,9 @@ impl OpenCADStudio {
         crate::entities::common::set_unit_context(
             crate::entities::common::UnitContext::from_header(&tab.scene.document.header),
         );
+        crate::ui::properties::set_light_canvas(crate::ui::style::common::canvas_is_light(
+            tab.scene.current_bg(),
+        ));
         let thumbnail_capture_clean = self.thumbnail_capture_clean;
         let theme_text = self.active_theme.palette().background.base.text;
         let viewcube_text_color = [theme_text.r, theme_text.g, theme_text.b, theme_text.a];

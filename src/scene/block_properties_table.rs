@@ -560,7 +560,7 @@ fn encode_fields(
         vec![int(90, 2), text(300, "Block Table1"), text(301, "")]
     };
     fields.push(int(91, columns.len() as i64));
-    for (index, column) in columns.iter().enumerate() {
+    for column in columns {
         let mut metadata = previous
             .as_ref()
             .and_then(|previous| {

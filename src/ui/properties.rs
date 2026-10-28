@@ -2296,6 +2296,14 @@ fn prop_row_with_active<'a>(
 
 // ── Color display helper ──────────────────────────────────────────────────
 
+/// Whether the drawing canvas is light, so colour 7 (white on a dark
+/// canvas) shows black in swatches as it does in the drawing.
+static LIGHT_CANVAS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) fn set_light_canvas(light: bool) {
+    LIGHT_CANVAS.store(light, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Returns an (iced::Color swatch_bg, display_label) pair for an AcadColor.
 pub fn acad_color_display(c: AcadColor) -> (Color, &'static str) {
     match c {
@@ -2318,6 +2326,9 @@ pub fn acad_color_display(c: AcadColor) -> (Color, &'static str) {
             },
             "ByBlock",
         ),
+        AcadColor::Index(7) if LIGHT_CANVAS.load(std::sync::atomic::Ordering::Relaxed) => {
+            (Color::BLACK, aci_label(7))
+        }
         AcadColor::Index(i) => {
             let (r, g, b) = codec::types::aci_table::aci_to_rgb(i).unwrap_or((200, 200, 200));
             (
