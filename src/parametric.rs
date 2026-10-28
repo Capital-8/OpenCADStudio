@@ -2064,4 +2064,249 @@ mod tests {
             assert_eq!(entity.common().layer, "0");
         }
     }
+
+    #[test]
+    fn grip_edits_rederive_within_the_audited_contract() {
+        // The grip-edit correctness arc (engine level): a grip drag revises
+        // one DECLARED parameter, the plugin's honest re-declare propagates
+        // the moved JOINT from the engine's own sampling (no duplicated
+        // math), and the audited chain law holds on the edited set before
+        // any carrier is rebuilt. No timing asserts — the bench owns the
+        // budgets; this pins the edit -> re-derive -> audit -> carrier path.
+
+        // ── the vertical crest fixture ────────────────────────────────
+        // [CONSTANTGRADIENT g0=0.01 L=100 → PARABOLICARC g0=0.01 g1=0.06
+        // L=200 (R=4000) → CONSTANTGRADIENT g0=0.06 L=80 at the exact end
+        // (300, 8.0)], the chain entering at (0, 0).
+        let vertical = ParametricChain {
+            plane: ParametricPlane::Profile,
+            segments: vec![
+                profile_segment(
+                    ParametricSpecies::Vertical(VerticalSegmentSpecies::ConstantGradient),
+                    [0.0, 0.0],
+                    100.0,
+                    0.01,
+                    0.01,
+                    0.0,
+                    0.0,
+                ),
+                profile_segment(
+                    ParametricSpecies::Vertical(VerticalSegmentSpecies::ParabolicArc),
+                    [100.0, 1.0],
+                    200.0,
+                    0.01,
+                    0.06,
+                    4000.0,
+                    0.0,
+                ),
+                profile_segment(
+                    ParametricSpecies::Vertical(VerticalSegmentSpecies::ConstantGradient),
+                    [300.0, 8.0],
+                    80.0,
+                    0.06,
+                    0.06,
+                    0.0,
+                    0.0,
+                ),
+            ],
+            layer: String::new(),
+        };
+        audit_chain(&vertical).expect("the crest fixture audits (the mean-gradient seams are exact)");
+
+        // THE DRAG: the crest's end gradient 0.06 -> 0.09, so the honest
+        // vertex radius R = L/(g1-g0) = 2500. The JOINT moved; the stale
+        // downstream start is refused — the chain-level law a drag cannot
+        // dodge, exactly the check the plugin's records ride.
+        let mut edited = vertical.clone();
+        edited.segments[1].end_gradient = 0.09;
+        edited.segments[1].start_radius = edited.segments[1].length / (0.09 - 0.01);
+        let err = audit_chain(&edited).unwrap_err();
+        assert!(
+            err.contains("seam segment 1 to 2"),
+            "the stale joint refuses with the audited pair: {err}"
+        );
+
+        // The plugin's honest re-declare: the propagated joint comes from
+        // sample_chain at the edited front chain's end (s = 300) — the
+        // engine's own evaluation, never a re-typed constant.
+        let front = ParametricChain {
+            plane: ParametricPlane::Profile,
+            segments: edited.segments[..2].to_vec(),
+            layer: String::new(),
+        };
+        let joint = sample_chain(&front, 300.0)
+            .expect("the front samples")
+            .expect("the joint sits at the edited front chain's end");
+        assert!((joint.point[0] - 300.0).abs() < 1e-9);
+        assert!(
+            (joint.point[1] - 11.0).abs() < 1e-9,
+            "the crest height moved to the new mean-gradient end ({})",
+            joint.point[1]
+        );
+        let joint_gradient = joint.direction[1] / joint.direction[0];
+        assert!(
+            (joint_gradient - 0.09).abs() < 1e-9,
+            "the joint slope restates the edited end gradient"
+        );
+        edited.segments[2].start_point = joint.point;
+        edited.segments[2].start_gradient = joint_gradient;
+        edited.segments[2].end_gradient = joint_gradient;
+        edited.segments[2].start_direction = joint_gradient.atan();
+        audit_chain(&edited).expect("the honest re-declare audits green");
+
+        // The drag propagates the whole way: the tail's end rides the moved
+        // joint (h = 11 + 0.09*80 = 18.2).
+        let tail_end = sample_chain(&edited, 380.0).expect("the edited chain samples").unwrap();
+        assert!(
+            (tail_end.point[1] - (11.0 + 0.09 * 80.0)).abs() < 1e-9,
+            "the edited tail's end follows the moved joint"
+        );
+
+        // The carrier path follows: three exact carriers again, and the
+        // crest spline's last control point rides the new crest height.
+        let (entities, carriers) = build_display_entities(&edited, 1e-3).expect("the edited crest stages");
+        assert_eq!(entities.len(), 3);
+        assert!(matches!(carriers[0], StagedCarrier::Exact));
+        assert!(matches!(carriers[1], StagedCarrier::Exact));
+        assert!(matches!(carriers[2], StagedCarrier::Exact));
+        let EntityType::Spline(spline) = &entities[1] else {
+            panic!("the crest stages an exact degree-2 spline");
+        };
+        assert_eq!(spline.degree, 2);
+        let crest = &spline.control_points[2];
+        assert!((crest.x - 300.0).abs() < 1e-9);
+        assert!(
+            (crest.y - 11.0).abs() < 1e-9,
+            "the crest control point rides the edited height"
+        );
+
+        // REFUSAL 1 — the degenerate parabola: driving g1 back to g0 makes
+        // the honest vertex radius L/(g1-g0) infinite; the engine refuses
+        // the non-finite declared field instead of staging a phantom
+        // species (the honest solver's division by zero must stop at the
+        // validation gate).
+        let mut degenerate = vertical.clone();
+        degenerate.segments[1].end_gradient = degenerate.segments[1].start_gradient;
+        let flat_delta = degenerate.segments[1].end_gradient - degenerate.segments[1].start_gradient;
+        degenerate.segments[1].start_radius = degenerate.segments[1].length / flat_delta;
+        let err = audit_chain(&degenerate).unwrap_err();
+        assert!(
+            err.contains("not finite"),
+            "the degenerate crest refuses at the validation gate: {err}"
+        );
+
+        // REFUSAL 2 — the out-of-range vertical drag: the sheet plane's run
+        // law cannot carry a drag whose radius drives the realized slope
+        // past the sloped range (sin(theta1) >= 1). This is the vertical
+        // family's own range law (the circular run: sin(theta1) =
+        // sin(theta0) + L/R); the parabola's and the vertical clothoid's
+        // atan-based slope laws have no range to leave.
+        let out_of_range = ParametricChain {
+            plane: ParametricPlane::Profile,
+            segments: vec![profile_segment(
+                ParametricSpecies::Vertical(VerticalSegmentSpecies::CircularArc),
+                [100.0, 1.0],
+                200.0,
+                0.01,
+                0.99,
+                150.0,
+                0.0,
+            )],
+            layer: String::new(),
+        };
+        let err = audit_chain(&out_of_range).unwrap_err();
+        assert!(
+            err.contains("leaves the sloped range"),
+            "the out-of-range vertical drag refuses: {err}"
+        );
+
+        // ── the plan ramp mirror ──────────────────────────────────────
+        // [LINE 60 → CLOTHOID R=-300 L=60 → LINE 40], the closing line
+        // starting at the clothoid's own Fresnel-series end (the demo
+        // chains' welded-seam arithmetic).
+        let l = 60.0f64;
+        let big_r = -300.0f64;
+        let dkappa = 1.0 / big_r;
+        let (x_end, y_end) = fresnel_pos(dkappa / (2.0 * l), l);
+        let theta_end = dkappa * l / 2.0;
+        let ramp = ParametricChain {
+            plane: ParametricPlane::Plan,
+            segments: vec![
+                plan_segment(
+                    ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Line),
+                    [0.0, 0.0],
+                    0.0,
+                    60.0,
+                    0.0,
+                    0.0,
+                ),
+                plan_segment(
+                    ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Clothoid),
+                    [60.0, 0.0],
+                    0.0,
+                    l,
+                    0.0,
+                    big_r,
+                ),
+                plan_segment(
+                    ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Line),
+                    [60.0 + x_end, y_end],
+                    theta_end,
+                    40.0,
+                    0.0,
+                    0.0,
+                ),
+            ],
+            layer: String::new(),
+        };
+        audit_chain(&ramp).expect("the ramp fixture audits");
+
+        // THE DRAG (mirror): the clothoid's end radius -300 -> -240. The
+        // joint moved; the stale downstream start refuses, same law.
+        let mut edited_ramp = ramp.clone();
+        edited_ramp.segments[1].end_radius = -240.0;
+        let err = audit_chain(&edited_ramp).unwrap_err();
+        assert!(
+            err.contains("seam segment 1 to 2"),
+            "the stale ramp joint refuses: {err}"
+        );
+
+        // The honest propagation: the sampled (Fresnel-law) end of the
+        // edited front chain re-anchors the tail, and the sample is
+        // cross-checked against the series once.
+        let front_ramp = ParametricChain {
+            plane: ParametricPlane::Plan,
+            segments: edited_ramp.segments[..2].to_vec(),
+            layer: String::new(),
+        };
+        let ramp_joint = sample_chain(&front_ramp, 120.0).expect("the front samples").unwrap();
+        let dk2 = 1.0 / -240.0f64;
+        let (fx, fy) = fresnel_pos(dk2 / (2.0 * l), l);
+        assert!(
+            (ramp_joint.point[0] - (60.0 + fx)).abs() < 1e-6,
+            "the sampled end restates the Fresnel end (x): {} vs {}",
+            ramp_joint.point[0],
+            60.0 + fx
+        );
+        assert!((ramp_joint.point[1] - fy).abs() < 1e-6, "the sampled end restates the Fresnel end (y)");
+        assert!(
+            (ramp_joint.direction[1].atan2(ramp_joint.direction[0]) - dk2 * l / 2.0).abs() < 1e-9,
+            "the end bearing is the exact L/(2R) deflection"
+        );
+        edited_ramp.segments[2].start_point = ramp_joint.point;
+        edited_ramp.segments[2].start_direction =
+            ramp_joint.direction[1].atan2(ramp_joint.direction[0]);
+        audit_chain(&edited_ramp).expect("the plan mirror's honest re-declare audits green");
+
+        // The edited plan set rebuilds: the same carrier SHAPES (line,
+        // chords, line) with the new chord plan measuring within its
+        // declared tolerance — the carrier path for the transcendental
+        // species follows the edit too.
+        let (ramp_entities, ramp_carriers) =
+            build_display_entities(&edited_ramp, 1e-3).expect("the edited ramp stages");
+        assert_eq!(ramp_entities.len(), 3);
+        assert!(matches!(ramp_carriers[0], StagedCarrier::Exact));
+        assert!(matches!(ramp_carriers[1], StagedCarrier::Chords(_)));
+        assert!(matches!(ramp_carriers[2], StagedCarrier::Exact));
+    }
 }

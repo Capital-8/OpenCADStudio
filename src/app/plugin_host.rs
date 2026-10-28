@@ -15646,4 +15646,234 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
             "the plugin's scope carried both stagings"
         );
     }
+
+    /// The grip-edit restage fixture (the domain crest in wire terms):
+    /// [CONSTANTGRADIENT g0=0.01 L=100 -> PARABOLICARC g0=0.01 g1=0.06
+    /// L=200 (R=4000) -> CONSTANTGRADIENT g0=0.06 L=80 at the exact end
+    /// (300, 8.0)], entering at (0, 0). Every segment stages the count-
+    /// stable exact carrier (line, degree-2 spline, line).
+    fn crest_profile_chain() -> ocs_plugin_api::host::ParametricChain {
+        ocs_plugin_api::host::ParametricChain {
+            plane: ocs_plugin_api::host::ParametricPlane::Profile,
+            segments: vec![
+                ocs_plugin_api::host::ParametricSegment {
+                    species: ocs_plugin_api::host::ParametricSpecies::Vertical(
+                        ocs_plugin_api::host::VerticalSegmentSpecies::ConstantGradient,
+                    ),
+                    start_point: [0.0, 0.0],
+                    start_direction: 0.0,
+                    start_gradient: 0.01,
+                    end_gradient: 0.01,
+                    length: 100.0,
+                    start_radius: 0.0,
+                    end_radius: 0.0,
+                    end_curvature: 0.0,
+                    bank_change: 0.0,
+                    gravity_height: 0.0,
+                },
+                ocs_plugin_api::host::ParametricSegment {
+                    species: ocs_plugin_api::host::ParametricSpecies::Vertical(
+                        ocs_plugin_api::host::VerticalSegmentSpecies::ParabolicArc,
+                    ),
+                    start_point: [100.0, 1.0],
+                    start_direction: 0.01f64.atan(),
+                    start_gradient: 0.01,
+                    end_gradient: 0.06,
+                    length: 200.0,
+                    start_radius: 4000.0,
+                    end_radius: 0.0,
+                    end_curvature: 0.0,
+                    bank_change: 0.0,
+                    gravity_height: 0.0,
+                },
+                ocs_plugin_api::host::ParametricSegment {
+                    species: ocs_plugin_api::host::ParametricSpecies::Vertical(
+                        ocs_plugin_api::host::VerticalSegmentSpecies::ConstantGradient,
+                    ),
+                    start_point: [300.0, 8.0],
+                    start_direction: 0.06f64.atan(),
+                    start_gradient: 0.06,
+                    end_gradient: 0.06,
+                    length: 80.0,
+                    start_radius: 0.0,
+                    end_radius: 0.0,
+                    end_curvature: 0.0,
+                    bank_change: 0.0,
+                    gravity_height: 0.0,
+                },
+            ],
+            layer: "CVI_PROFILE".to_string(),
+        }
+    }
+
+    #[test]
+    fn grip_edit_restage_updates_the_display_set_in_place() {
+        // The grip-edit restage arc (session level): a drag edits the
+        // declared crest parameter, the lane re-derives the edited design's
+        // entity set, and the honest restage applies it over the SAME
+        // handles through `update_entities_transaction`. Read semantics
+        // (this test pins them): the transaction preserves the reference-
+        // only designation by construction (it is scene state keyed by
+        // handle and the write never touches it), and the XDATA identity
+        // stamp survives because the honest lane bases the replacement on
+        // the stamped clone and patches only geometry — no re-stamping.
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        install_class_owner();
+        let handles;
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+            let mut instance = traverse_instance();
+            instance.design = ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(
+                crest_profile_chain(),
+            );
+            instance.tolerance = 1e-3;
+            handles = host
+                .stage_plugin_class_instance("CVIFC", &instance)
+                .expect("the crest instance stages");
+            assert_eq!(handles.len(), 3, "three exact carriers (line, spline, line)");
+            let EntityType::Spline(spline) = host.document().get_entity(handles[1]).expect("live")
+            else {
+                panic!("the crest stages a degree-2 spline");
+            };
+            assert_eq!(spline.degree, 2);
+            assert!((spline.control_points[2].y - 8.0).abs() < 1e-9, "the declared crest height");
+        }
+        app.finish_pending_history(0);
+        assert_eq!(app.tabs[0].history.undo_stack.len(), 1, "staging stays one step");
+
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            // THE DRAG (host-local, v16 policy): the crest's end gradient
+            // 0.06 -> 0.09 (R = 2500); the joint re-derived from the
+            // engine's sampling and the honest upstream re-declared.
+            let mut edited = crest_profile_chain();
+            edited.segments[1].end_gradient = 0.09;
+            edited.segments[1].start_radius = edited.segments[1].length / (0.09 - 0.01);
+            let front = ocs_plugin_api::host::ParametricChain {
+                plane: ocs_plugin_api::host::ParametricPlane::Profile,
+                segments: edited.segments[..2].to_vec(),
+                layer: String::new(),
+            };
+            let joint = host
+                .sample_parametric(&front, 300.0)
+                .expect("the front samples")
+                .expect("the joint sits at the front chain's end");
+            assert!((joint.point[1] - 11.0).abs() < 1e-9, "the crest moved to 11.0");
+            let joint_gradient = joint.direction[1] / joint.direction[0];
+            edited.segments[2].start_point = joint.point;
+            edited.segments[2].start_gradient = joint_gradient;
+            edited.segments[2].end_gradient = joint_gradient;
+            edited.segments[2].start_direction = joint_gradient.atan();
+
+            // Re-derive the edited design's entity set: same carriers, same
+            // count, in the same order (the staging builds per segment).
+            let (new_entities, carriers) =
+                crate::parametric::build_display_entities(&edited, 1e-3).expect("the edited design derives");
+            assert_eq!(new_entities.len(), handles.len(), "the edited set is count-stable");
+            assert!(matches!(carriers[1], crate::parametric::StagedCarrier::Exact));
+            let EntityType::Spline(fresh) = &new_entities[1] else {
+                panic!("the edited crest still carries the exact spline carrier");
+            };
+            assert!((fresh.control_points[2].y - 11.0).abs() < 1e-9);
+
+            // The honest lane: clone the live entities (identity, layer and
+            // the XDATA stamp ride along) and patch ONLY the geometry from
+            // the re-derived carriers.
+            let mut restaged: Vec<EntityType> = handles
+                .iter()
+                .map(|h| {
+                    host.document()
+                        .get_entity(*h)
+                        .expect("the staged entity is live")
+                        .clone()
+                })
+                .collect();
+            for (slot, fresh) in restaged.iter_mut().zip(new_entities.iter()) {
+                match (slot, fresh) {
+                    (EntityType::Line(old), EntityType::Line(newer)) => {
+                        old.start = newer.start;
+                        old.end = newer.end;
+                    }
+                    (EntityType::Spline(old), EntityType::Spline(newer)) => {
+                        old.degree = newer.degree;
+                        old.control_points = newer.control_points.clone();
+                        old.knots = newer.knots.clone();
+                        old.weights = newer.weights.clone();
+                        old.begin_tangent = newer.begin_tangent;
+                        old.end_tangent = newer.end_tangent;
+                    }
+                    _ => panic!("the re-derived set keeps the staged carrier shape"),
+                }
+            }
+            host.update_entities_transaction("CVIFC: grip edit", restaged)
+                .expect("the restage applies over the same handles");
+        }
+        app.finish_pending_history(0);
+        assert_eq!(
+            app.tabs[0].history.undo_stack.len(),
+            2,
+            "the restage composes as exactly one more undo step"
+        );
+
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            assert_eq!(
+                host.document().entities().count(),
+                3,
+                "the restage updates the display set in place"
+            );
+            // The changed carrier vertices are the document's state now...
+            let EntityType::Spline(spline) =
+                host.document().get_entity(handles[1]).expect("the spline keeps its handle")
+            else {
+                panic!("the carrier keeps its kind over the restage");
+            };
+            assert!((spline.control_points[2].y - 11.0).abs() < 1e-9, "the edited crest rides");
+            let EntityType::Line(tail) = host.document().get_entity(handles[2]).expect("live") else {
+                panic!("the tail keeps its kind");
+            };
+            assert!(
+                (tail.end.y - (11.0 + 0.09 * 80.0)).abs() < 1e-9,
+                "the tail line follows the moved joint"
+            );
+            for handle in &handles {
+                // ... and the designations and the identity stamps are
+                // intact (the in-place policy: no re-stamp, no re-designate).
+                assert!(
+                    host.app.tabs[0].scene.is_reference_only(*handle),
+                    "the designated display set stays reference-only"
+                );
+                let stamped = host.read_record(*handle, "CVI_ALIGN_DISPLAY").expect("the stamp");
+                assert_eq!(stamped.values.len(), 2, "the identity stamp survives the restage");
+            }
+        }
+
+        // ONE undo step round-trips the original display set.
+        app.undo_steps(1);
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            assert_eq!(host.document().entities().count(), 3, "nothing added or removed");
+            let EntityType::Spline(spline) =
+                host.document().get_entity(handles[1]).expect("the spline keeps its handle")
+            else {
+                panic!("the carrier keeps its kind over the undo");
+            };
+            assert!(
+                (spline.control_points[2].y - 8.0).abs() < 1e-9,
+                "the original crest is back after the one undo step"
+            );
+            for handle in &handles {
+                assert!(
+                    host.app.tabs[0].scene.is_reference_only(*handle),
+                    "the designations survive the undo round trip"
+                );
+                assert!(
+                    host.read_record(*handle, "CVI_ALIGN_DISPLAY").is_some(),
+                    "the identity stamp survives the undo round trip"
+                );
+            }
+        }
+    }
 }
