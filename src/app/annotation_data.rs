@@ -2797,12 +2797,12 @@ impl OpenCADStudio {
             std::slice::from_ref(&title)
         };
         let heights: Vec<f64> = std::iter::once(row_height(0, title_texts))
-        .chain(
-            body.iter()
-                .enumerate()
-                .map(|(row_index, row)| row_height(slot_of(row_index), row)),
-        )
-        .collect();
+            .chain(
+                body.iter()
+                    .enumerate()
+                    .map(|(row_index, row)| row_height(slot_of(row_index), row)),
+            )
+            .collect();
         for (row, height) in table.rows.iter_mut().zip(&heights) {
             row.height = *height;
         }
