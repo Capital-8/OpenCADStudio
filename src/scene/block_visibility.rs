@@ -526,6 +526,98 @@ impl Scene {
         let record = self.document.block_records.get_mut(&name)?;
         record.flags.anonymous = true;
         let copy = record.handle;
+        // Include inline ATTRIBs: define_block_raw gives them new handles too.
+        let mut pairs = Vec::new();
+        for (from, to) in originals.into_iter().zip(members(&self.document, copy)) {
+            let (Some(source), Some(target)) =
+                (self.document.get_entity(from), self.document.get_entity(to))
+            else {
+                continue;
+            };
+            pairs.push((source.common().clone(), to, None));
+            if let (EntityType::Insert(source), EntityType::Insert(target)) = (source, target) {
+                pairs.extend(
+                    source
+                        .attributes
+                        .iter()
+                        .zip(&target.attributes)
+                        .enumerate()
+                        .map(|(k, (a, b))| (a.common.clone(), b.common.handle, Some((to, k)))),
+                );
+            }
+        }
+        let mapping: rustc_hash::FxHashMap<_, _> = pairs
+            .iter()
+            .map(|(common, to, _)| (common.handle, *to))
+            .collect();
+        let scales = pairs
+            .iter()
+            .map(|(common, _, attribute)| {
+                if attribute.is_some() {
+                    Vec::new()
+                } else {
+                    super::annotative::annotation_scale_handles_for_entity(
+                        &self.document,
+                        common.handle,
+                    )
+                }
+            })
+            .collect::<Vec<_>>();
+        let roots = pairs
+            .iter()
+            .zip(&scales)
+            .map(|((common, _, _), scales)| {
+                (
+                    common.handle,
+                    if scales.is_empty() {
+                        common.xdictionary_handle
+                    } else {
+                        None
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        let (cross, owner_of) = self.prepare_xdict_copies(&roots);
+        let mut created = Vec::new();
+        // Block records and cloned objects require full-snapshot undo, like COPY.
+        self.poison_undo_recording();
+        for ((common, to, attribute), scales) in pairs.iter().zip(scales) {
+            let root = if scales.is_empty() {
+                common.xdictionary_handle.and_then(|root| {
+                    Self::clone_xdict_tree(
+                        &mut self.document,
+                        common.handle,
+                        root,
+                        *to,
+                        &cross,
+                        &owner_of,
+                        &mut created,
+                    )
+                })
+            } else {
+                None
+            };
+            if let Some((parent, k)) = attribute {
+                if let Some(EntityType::Insert(insert)) = self.document.get_entity_mut(*parent) {
+                    if let Some(attribute) = insert.attributes.get_mut(*k) {
+                        attribute.common.xdictionary_handle = root;
+                        attribute.common.owner_handle = *parent;
+                        attribute.common.reactors = common
+                            .reactors
+                            .iter()
+                            .filter_map(|h| mapping.get(h).copied())
+                            .collect();
+                    }
+                }
+            } else if let Some(entity) = self.document.get_entity_mut(*to) {
+                entity.common_mut().xdictionary_handle = root;
+            }
+            for scale in scales {
+                super::annotative::create_annotation_context(&mut self.document, *to, scale);
+            }
+        }
+        super::modify::remap_copied_reactors(&mut self.document, &mapping);
+        super::modify::remap_copied_xdict_cross_refs(&mut self.document, &mapping, &created);
         // The copies keep their element ids, now naming themselves.
         super::block_authoring::retag_members(&mut self.document, copy);
         let mut tag = ExtendedDataRecord::new(REPRESENTATION_TAG);
@@ -832,5 +924,111 @@ mod placement_fixtures {
             );
             eprintln!("{filename}: DWG/DXF placement roundtrips; {} existing graphs protected; source unchanged", protected.len());
         }
+    }
+}
+
+#[cfg(test)]
+mod representation_xdict_tests {
+    use super::*;
+    use codec::entities::{Insert, Line};
+    use codec::objects::{XRecord, XRecordValue};
+
+    #[test]
+    fn visibility_representation_deep_clones_member_xdict() {
+        let mut scene = Scene::new();
+        scene.define_block_raw(
+            "V",
+            Vector3::ZERO,
+            vec![
+                EntityType::Line(Line::from_points(Vector3::ZERO, Vector3::UNIT_X)),
+                EntityType::Line(Line::from_points(Vector3::ZERO, Vector3::UNIT_Y)),
+            ],
+        );
+        let definition = scene.document.block_records.get("V").unwrap().handle;
+        let originals = members(&scene.document, definition);
+        let source = originals[0];
+        let root = scene.document.ensure_extension_dictionary(source);
+        let record = scene.document.allocate_handle();
+        let mut xrecord = XRecord::named("TEST");
+        xrecord.handle = record;
+        xrecord.owner = root;
+        xrecord.reactors.push(root);
+        xrecord.add_string(1, "payload");
+        xrecord.add_handle(330, root);
+        xrecord.add_handle(340, source);
+        xrecord.add_handle(350, originals[1]);
+        scene
+            .document
+            .objects
+            .insert(record, ObjectType::XRecord(xrecord));
+        if let Some(ObjectType::Dictionary(dictionary)) = scene.document.objects.get_mut(&root) {
+            dictionary.add_entry("TEST", record);
+            dictionary.reactors.push(source);
+        }
+        let parameter = create(&mut scene.document, definition, Vector3::ZERO).unwrap();
+        let other = add_state(&mut scene.document, parameter, "Other", 0).unwrap();
+        set_visible(
+            &mut scene.document,
+            parameter,
+            other,
+            &[originals[1]],
+            false,
+        );
+        finish_editing(&mut scene.document, definition);
+        let insert = scene.add_entity(EntityType::Insert(Insert::new("V", Vector3::ZERO)));
+        scene
+            .document
+            .get_entity_mut(source)
+            .unwrap()
+            .common_mut()
+            .reactors = vec![originals[1], insert];
+        let before = scene.document.get_entity(source).unwrap().clone();
+        let root_before = scene.document.objects[&root].clone();
+        let record_before = scene.document.objects[&record].clone();
+        scene.begin_undo_recording();
+        let name = scene
+            .visibility_representation(insert)
+            .expect("anonymous representation");
+        assert!(name.starts_with("*U"));
+        let copy_definition = scene.document.block_records.get(&name).unwrap().handle;
+        let copies = members(&scene.document, copy_definition);
+        let copy = scene.document.get_entity(copies[0]).unwrap();
+        let copy_root = copy.common().xdictionary_handle.expect("copied dictionary");
+        assert_ne!(
+            copy_root, root,
+            "copy must not share the source extension dictionary"
+        );
+        assert_eq!(copy.common().reactors, vec![copies[1]]);
+        let Some(ObjectType::Dictionary(dictionary)) = scene.document.objects.get(&copy_root)
+        else {
+            panic!("copied extension dictionary must exist");
+        };
+        assert_eq!(dictionary.handle, copy_root);
+        assert_eq!(dictionary.owner, copies[0]);
+        assert_eq!(dictionary.reactors, vec![copies[0]]);
+        let copy_record = dictionary
+            .entries
+            .iter()
+            .find(|(key, _)| key == "TEST")
+            .unwrap()
+            .1;
+        assert_ne!(copy_record, record);
+        let Some(ObjectType::XRecord(xrecord)) = scene.document.objects.get(&copy_record) else {
+            panic!("copied TEST XRECORD must exist");
+        };
+        assert_eq!(xrecord.handle, copy_record);
+        assert_eq!(xrecord.owner, copy_root);
+        assert_eq!(xrecord.reactors, vec![copy_root]);
+        assert_eq!(xrecord.get_string(1), Some("payload"));
+        for (code, handle) in [(330, copy_root), (340, copies[0]), (350, copies[1])] {
+            assert!(xrecord
+                .entries
+                .iter()
+                .any(|entry| entry.code == code && entry.value == XRecordValue::Handle(handle)));
+        }
+        assert_eq!(scene.document.get_entity(source), Some(&before));
+        assert_eq!(scene.document.objects.get(&root), Some(&root_before));
+        assert_eq!(scene.document.objects.get(&record), Some(&record_before));
+        assert!(scene.take_undo_recording().unwrap().is_poisoned());
     }
 }
