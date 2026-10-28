@@ -983,6 +983,8 @@ pub enum DockDrag {
     },
     /// Sizing the Layer Manager's Name column.
     LayerColumn,
+    /// Moving the floating Quick Properties panel.
+    QuickProperties,
 }
 
 impl DockDrag {

@@ -140,7 +140,9 @@ impl OpenCADStudio {
                 .interaction(match self.dock_drag {
                     Some(DockDrag::FloatSize { edge, .. }) => edge.interaction(),
                     Some(DockDrag::Split { .. }) => iced::mouse::Interaction::ResizingVertically,
-                    Some(DockDrag::Move { .. }) => iced::mouse::Interaction::Grabbing,
+                    Some(DockDrag::Move { .. } | DockDrag::QuickProperties) => {
+                        iced::mouse::Interaction::Grabbing
+                    }
                     // Widths, the Layer Manager column and the xref drags.
                     _ => iced::mouse::Interaction::ResizingHorizontally,
                 });

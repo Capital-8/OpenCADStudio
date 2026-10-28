@@ -946,7 +946,7 @@ fn mtext_editor_content<'a>(
 /// flip logic runs (e.g. to put a specific row of a menu under the pointer).
 /// When the shifted panel does not fit it flips to the other side of the
 /// *original* anchor, so the pointer never ends up over an unintended row.
-fn position_canvas_overlay_clamped<'a>(
+pub(super) fn position_canvas_overlay_clamped<'a>(
     anchor: iced::Point,
     bottom_inset: f32,
     offset: Vector,

@@ -1005,6 +1005,11 @@ pub struct UserSettings {
     pub pick_drag_rect: bool,
     /// Show the floating Quick Properties panel when objects are selected.
     pub quick_properties: bool,
+    /// QPLOCATION 1: the Quick Properties panel floats where it was last
+    /// dragged instead of following the cursor.
+    pub quick_properties_float: bool,
+    /// Where the floating Quick Properties panel sits (top-left).
+    pub quick_properties_pos: [f32; 2],
     /// Interface language preference. `System` negotiates against the
     /// platform locale on every launch.
     pub language: crate::i18n::Language,
@@ -1402,6 +1407,8 @@ impl Default for UserSettings {
             pick_add: true,
             pick_drag_rect: false,
             quick_properties: false,
+            quick_properties_float: false,
+            quick_properties_pos: [40.0, 40.0],
             language: crate::i18n::Language::default(),
             cliprompt_lines: 3,
             commandline_fade_ms: 3000,

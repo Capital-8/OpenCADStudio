@@ -7338,6 +7338,23 @@ impl OpenCADStudio {
                 }
                 Task::none()
             }
+            Message::DraftingSettingsQuickPropsFloat(float) => {
+                if let Some(state) = &mut self.drafting_settings_state {
+                    state.quick_props_float = float;
+                }
+                Task::none()
+            }
+            Message::QuickPropertiesGrab => {
+                if !self.quick_properties_float {
+                    // Lift the panel from the cursor where it was drawn.
+                    self.quick_properties_float = true;
+                    self.quick_properties_pos =
+                        self.quick_properties_anchor + iced::Vector::new(12.0, 12.0);
+                }
+                self.dock_drag = Some(crate::ui::dock::DockDrag::QuickProperties);
+                self.dock_drag_last = None;
+                Task::none()
+            }
             Message::DraftingSettingsToggleSelCycling => {
                 if let Some(state) = &mut self.drafting_settings_state {
                     state.selection_cycling_on = !state.selection_cycling_on;

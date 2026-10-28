@@ -924,6 +924,8 @@ impl OpenCADStudio {
             pick_add: self.pick_add,
             pick_drag_rect: self.pick_drag_rect,
             quick_properties: self.quick_properties,
+            quick_properties_float: self.quick_properties_float,
+            quick_properties_pos: [self.quick_properties_pos.x, self.quick_properties_pos.y],
             language: self.language,
             cliprompt_lines: crate::app::settings::clamp_clipromptlines(self.cliprompt_lines),
             command_line_opacity: self.command_line.opacity_percent(),
@@ -1125,6 +1127,11 @@ impl OpenCADStudio {
         self.pick_add = s.pick_add;
         self.pick_drag_rect = s.pick_drag_rect;
         self.quick_properties = s.quick_properties;
+        self.quick_properties_float = s.quick_properties_float;
+        self.quick_properties_pos = iced::Point::new(
+            s.quick_properties_pos[0].max(0.0),
+            s.quick_properties_pos[1].max(0.0),
+        );
         if crate::i18n::set_language(s.language).is_ok() {
             self.language = s.language;
         }

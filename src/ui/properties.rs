@@ -822,6 +822,10 @@ impl PropertiesPanel {
         })
         .width(Length::Fill)
         .padding([4, 10]);
+        // The title bar moves the panel.
+        let title = iced::widget::mouse_area(title)
+            .on_press(Message::QuickPropertiesGrab)
+            .interaction(iced::mouse::Interaction::Grab);
 
         let mut sections = column![].spacing(0);
         self.rendering_quick.set(true);

@@ -669,6 +669,9 @@ pub(super) struct OpenCADStudio {
     quick_properties: bool,
     /// Canvas-space cursor position where Quick Properties was last opened.
     quick_properties_anchor: Point,
+    /// QPLOCATION (see `Settings::quick_properties_float`).
+    quick_properties_float: bool,
+    quick_properties_pos: Point,
     /// Selection cycling: clicking where objects overlap opens a list box
     /// to pick which one; the pick is added to the current selection.
     selection_cycling: bool,
@@ -4243,6 +4246,10 @@ pub enum Message {
     DraftingSettingsToggle3dOsnap,
     DraftingSettingsToggleDynInput,
     DraftingSettingsToggleQuickProps,
+    /// Quick Properties palette location: floating (true) or by the cursor.
+    DraftingSettingsQuickPropsFloat(bool),
+    /// The Quick Properties title bar was pressed: start moving the panel.
+    QuickPropertiesGrab,
     DraftingSettingsToggleSelCycling,
     DraftingSettingsApply,
     DraftingSettingsOk,
@@ -5400,6 +5407,8 @@ impl OpenCADStudio {
             clean_screen_properties: false,
             quick_properties: false,
             quick_properties_anchor: Point::new(12.0, 12.0),
+            quick_properties_float: false,
+            quick_properties_pos: Point::new(40.0, 40.0),
             selection_cycling: false,
             osnap_z: false,
             select_similar_mode: crate::scene::SELECT_SIMILAR_DEFAULT,

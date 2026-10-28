@@ -10,7 +10,7 @@ impl OpenCADStudio {
                     .unwrap_or(cmd)
                     .split_whitespace()
                     .next(),
-                Some("PERSPECTIVE" | "GRIDMODE" | "GRIDUNIT" | "QPMODE")
+                Some("PERSPECTIVE" | "GRIDMODE" | "GRIDUNIT" | "QPMODE" | "QPLOCATION")
             ) =>
             {
                 let mut words = cmd.strip_prefix("SETVAR ").unwrap_or(cmd).splitn(2, ' ');
@@ -24,6 +24,7 @@ impl OpenCADStudio {
                     }
                     "GRIDMODE" => (self.show_grid as i32).to_string(),
                     "QPMODE" => (self.quick_properties as i32).to_string(),
+                    "QPLOCATION" => (self.quick_properties_float as i32).to_string(),
                     _ => format!("{},{}", self.grid_spacing_x, self.grid_spacing_y),
                 };
                 let Some(value) = value else {
@@ -46,6 +47,12 @@ impl OpenCADStudio {
                     ("QPMODE", "0" | "1" | "2") => {
                         if (value != "0") != self.quick_properties {
                             return Some(Task::done(Message::ToggleQuickProperties));
+                        }
+                    }
+                    ("QPLOCATION", "0" | "1") => {
+                        if (value == "1") != self.quick_properties_float {
+                            self.quick_properties_float = value == "1";
+                            self.persist_settings_if_changed();
                         }
                     }
                     ("GRIDUNIT", _) => {

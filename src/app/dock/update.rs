@@ -277,7 +277,12 @@ impl OpenCADStudio {
                 };
             }
             Some(DockDrag::Move { .. } | DockDrag::LayerColumn) | None => {}
-            Some(DockDrag::Width(_) | DockDrag::Split { .. } | DockDrag::FloatSize { .. }) => {
+            Some(
+                DockDrag::Width(_)
+                | DockDrag::Split { .. }
+                | DockDrag::FloatSize { .. }
+                | DockDrag::QuickProperties,
+            ) => {
                 changed = true;
             }
         }
@@ -412,6 +417,11 @@ impl OpenCADStudio {
                 });
                 self.dock
                     .resize_float(panel, edge, start, point.x - origin.x, point.y - origin.y);
+            }
+            DockDrag::QuickProperties => {
+                let Some(last) = last else { return };
+                let pos = self.quick_properties_pos + (point - last);
+                self.quick_properties_pos = iced::Point::new(pos.x.max(0.0), pos.y.max(0.0));
             }
             DockDrag::LayerColumn => {
                 let Some(last) = last else { return };

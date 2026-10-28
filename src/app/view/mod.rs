@@ -2368,13 +2368,23 @@ bg={bg_ms:.1}ms n={view_count}"
             }
             // Quick Properties: stay near the selection cursor, flipping around
             // it as needed to remain inside the visible drawing area.
+            // Floating (QPLOCATION 1): where it was last dragged.
             if self.quick_properties && !tab.is_start {
                 if let Some(panel) = tab.properties.quick_view() {
-                    viewport_stack = viewport_stack.push(position_canvas_overlay_near_cursor(
-                        self.quick_properties_anchor,
-                        command_line_inset,
-                        panel,
-                    ));
+                    viewport_stack = viewport_stack.push(if self.quick_properties_float {
+                        overlay::position_canvas_overlay_clamped(
+                            self.quick_properties_pos,
+                            command_line_inset,
+                            iced::Vector::ZERO,
+                            panel,
+                        )
+                    } else {
+                        position_canvas_overlay_near_cursor(
+                            self.quick_properties_anchor,
+                            command_line_inset,
+                            panel,
+                        )
+                    });
                 }
             }
 
