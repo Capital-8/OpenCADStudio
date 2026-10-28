@@ -29,6 +29,55 @@ pub fn tool() -> ToolDef {
     }
 }
 
+/// The dimensions DIM's Baseline and Continue take by a typed point on one
+/// of their extension line origins, and how near the point has to be.
+#[derive(Clone, Default)]
+pub struct OriginPicks {
+    dimensions: Vec<EntityType>,
+    tolerance: f64,
+}
+
+impl OriginPicks {
+    pub fn new(dimensions: Vec<EntityType>, tolerance: f64) -> Self {
+        Self {
+            dimensions,
+            tolerance,
+        }
+    }
+
+    /// The dimension with an extension line origin nearest `point`, within
+    /// the tolerance; any other point (the dimension line, empty space)
+    /// picks nothing.
+    pub(super) fn at(&self, point: DVec3) -> Option<&EntityType> {
+        let mut nearest: Option<(f64, &EntityType)> = None;
+        for entity in &self.dimensions {
+            let EntityType::Dimension(dimension) = entity else {
+                continue;
+            };
+            let origins = match &**dimension {
+                Dimension::Linear(d) => vec![d.first_point, d.second_point],
+                Dimension::Aligned(d) => vec![d.first_point, d.second_point],
+                Dimension::Angular2Ln(d) => vec![
+                    d.first_point,
+                    d.second_point,
+                    d.angle_vertex,
+                    d.definition_point,
+                ],
+                Dimension::Angular3Pt(d) => vec![d.first_point, d.second_point],
+                Dimension::Ordinate(d) => vec![d.definition_point],
+                _ => continue,
+            };
+            for origin in origins {
+                let distance = DVec3::new(origin.x, origin.y, origin.z).distance(point);
+                if distance <= self.tolerance && nearest.is_none_or(|(best, _)| distance < best) {
+                    nearest = Some((distance, entity));
+                }
+            }
+        }
+        nearest.map(|(_, entity)| entity)
+    }
+}
+
 /// What a baseline or continued dimension takes from its base dimension.
 #[derive(Clone)]
 pub(super) struct SourceStyle {
@@ -123,6 +172,8 @@ pub struct DimBaselineCommand {
     offset_override: Option<f64>,
     /// The drawing's DIMDLI: the spacing of the series.
     dimdli: f64,
+    /// DIM's Baseline: dimensions a typed extension line origin picks.
+    origin_picks: OriginPicks,
 }
 
 impl DimBaselineCommand {
@@ -138,11 +189,19 @@ impl DimBaselineCommand {
             offset_pending: false,
             offset_override: None,
             dimdli,
+            origin_picks: OriginPicks::default(),
         };
         if let Some(entity) = recent {
             let _ = command.install_base(&entity, None);
         }
         command
+    }
+
+    /// The dimensions a typed point on an extension line origin picks as
+    /// the base (DIM's Baseline).
+    pub fn with_origin_picks(mut self, origin_picks: OriginPicks) -> Self {
+        self.origin_picks = origin_picks;
+        self
     }
 
     /// DIM's Baseline: the base is picked, and Offset sets the spacing.
@@ -517,8 +576,20 @@ impl CadCommand for DimBaselineCommand {
         CmdResult::NeedPoint
     }
 
+    fn entity_pick_accepts_points(&self) -> bool {
+        self.in_dim
+    }
+
     fn on_point(&mut self, point: DVec3) -> CmdResult {
         if self.offset_pending {
+            return CmdResult::NeedPoint;
+        }
+        // DIM's Baseline: a typed extension line origin picks its dimension
+        // as the base; any other point asks again.
+        if self.base.is_none() {
+            if let Some(entity) = self.origin_picks.at(point).cloned() {
+                let _ = self.install_base(&entity, Some(point));
+            }
             return CmdResult::NeedPoint;
         }
         let Some(dimension) = self.build_dimension(point) else {

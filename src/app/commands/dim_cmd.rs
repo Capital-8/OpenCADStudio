@@ -90,6 +90,37 @@ impl OpenCADStudio {
         command
     }
 
+    /// The dimensions of the current space a typed extension line origin
+    /// picks, within the distance a typed point picks an object by
+    /// (0.002 of the space's extent).
+    fn dimension_origin_picks(
+        &self,
+        i: usize,
+    ) -> crate::modules::annotate::dim_baseline::OriginPicks {
+        let document = &self.tabs[i].scene.document;
+        let owner = self.tabs[i]
+            .current_parametric_scope()
+            .owner_handle(document);
+        let mut extent = 0.0f64;
+        let mut dimensions = Vec::new();
+        for entity in document
+            .entities()
+            .filter(|entity| entity.common().owner_handle == owner)
+        {
+            let bounds = entity.as_entity().bounding_box();
+            extent = extent
+                .max((bounds.max.x - bounds.min.x).abs())
+                .max((bounds.max.y - bounds.min.y).abs());
+            if matches!(entity, codec::EntityType::Dimension(_)) {
+                dimensions.push(entity.clone());
+            }
+        }
+        crate::modules::annotate::dim_baseline::OriginPicks::new(
+            dimensions,
+            (extent * 0.002).max(1.0e-9),
+        )
+    }
+
     fn dim_offset_settings(&mut self, i: usize) {
         let offset = self.current_dimdli(i);
         self.command_line.push_output(
@@ -125,13 +156,17 @@ impl OpenCADStudio {
             }
             "DIM_BASELINE" => {
                 self.dim_offset_settings(i);
-                let series = self.dim_baseline_command(i, true);
+                let series = self
+                    .dim_baseline_command(i, true)
+                    .with_origin_picks(self.dimension_origin_picks(i));
                 let mut command = DimCommand::new(self.dim_layer_label(i));
                 command.adopt(Box::new(series), false);
                 self.install_dim(i, command);
             }
             "DIM_CONTINUE" => {
-                let series = self.dim_continue_command(i, true);
+                let series = self
+                    .dim_continue_command(i, true)
+                    .with_origin_picks(self.dimension_origin_picks(i));
                 let mut command = DimCommand::new(self.dim_layer_label(i));
                 command.adopt(Box::new(series), true);
                 self.install_dim(i, command);
