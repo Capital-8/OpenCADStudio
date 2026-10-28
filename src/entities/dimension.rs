@@ -3903,6 +3903,20 @@ fn tessellate_dimension_inner(
     };
 
     let text_layout = dimension_text_layout(dim, style, dim_txt, dim_scale);
+    let moved_text = dimtmove_one_text(
+        dim,
+        style,
+        dim_txt as f64,
+        dim_scale,
+        dimension_text_bare_width(&text_layout),
+    );
+    // Text out on its own leader leaves the dimension line as DIMTMOVE 2
+    // does: no line chasing it, no turn toward it.
+    let text_movement = if moved_text.as_ref().is_some_and(|moved| !moved.lines.is_empty()) {
+        2
+    } else {
+        style.map(|s| s.dimtmove).unwrap_or(0)
+    };
 
     let mut geom = dimension_geometry(
         dim,
@@ -3933,7 +3947,7 @@ fn tessellate_dimension_inner(
             text_position: text_layout.position,
             horizontal_text: text_layout.horizontal,
             text_lifted: style.map(|s| s.dimtad).unwrap_or(1) != 0,
-            text_movement: style.map(|s| s.dimtmove).unwrap_or(0),
+            text_movement,
             text_break: text_layout.break_box,
             leader_anchor: style
                 .filter(|s| s.dimtmove == 1)
@@ -3965,7 +3979,11 @@ fn tessellate_dimension_inner(
 
     // DIMTMOVE=1 connects the dimension line to rendered text.
     if let Some(s) = style {
-        if s.dimtmove == 1 {
+        if let Some(moved) = moved_text.as_ref() {
+            for (start, end) in &moved.lines {
+                add_segment(&mut geom.dim_lines, vec3_local(*start), vec3_local(*end));
+            }
+        } else if s.dimtmove == 1 {
             if let Some((anchor, txt, under_text)) = dimtmove_leader_endpoints(dim, text_layout) {
                 let gap = dim_txt as f32 * 0.5;
                 if under_text || (txt - anchor).length() > gap * 2.0 {
@@ -4615,57 +4633,195 @@ fn split_ext_lines(points: &[[f32; 3]]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
     (first, rest)
 }
 
-/// Endpoints for the DIMTMOVE=1 leader.
+/// DIMTMOVE 1 text the user placed on a linear, aligned or angular
+/// dimension, laid out from its stored point.
+struct MovedText {
+    /// The text's middle.
+    center: Vector3,
+    /// The leader from the dimension and the hook along the text; none while
+    /// the text stays on its dimension line.
+    lines: Vec<(Vector3, Vector3)>,
+}
+
+/// Where DIMTMOVE 1 puts user-placed text and its leader.
+///
+/// Within `max(DIMASZ + DIMGAP, DIMTXT / 2 + DIMGAP + DIMEXE)` of the
+/// dimension line the text stays on the line: the stored point is its
+/// middle, lifted by DIMTAD. Further away a leader runs from the middle of
+/// the dimension line (of the arc for an angular dimension) to a hook along
+/// the text:
+/// * linear and aligned: the stored point is where the text's near edge
+///   meets the hook line. The hook starts a gap before it and, with the text
+///   above or below it (DIMTAD), runs a gap past the far edge; with centred
+///   text (DIMTAD 0) it is two gaps long and ends a gap before the text.
+///   Text turned by its own rotation starts at the stored point unlifted.
+/// * horizontal text beyond the extension lines of a dimension that is not
+///   horizontal: the dimension line runs on to the hook's height and the hook
+///   turns along it to a gap past the far edge of the text, which is centred
+///   on the stored point but keeps an arrow and a gap from the turn.
+/// * angular: the stored point is the text's middle; a hook one arrow long
+///   ends a gap before the text.
+fn dimtmove_one_text(
+    dim: &Dimension,
+    style: Option<&DimStyle>,
+    text_height: f64,
+    dim_scale: f64,
+    text_width: f64,
+) -> Option<MovedText> {
+    let s = style.filter(|s| s.dimtmove == 1)?;
+    let base = dim.base();
+    if !base.text_user_positioned {
+        return None;
+    }
+    let point = stored_text_point(dim)?;
+    let gap = s.dimgap.abs() * dim_scale;
+    let arrow = s.dimasz * dim_scale;
+    let reach = (arrow + gap).max(text_height * 0.5 + gap + s.dimexe * dim_scale);
+    let lift = match s.dimtad {
+        0 => 0.0,
+        tad => {
+            let half = dimension_text_extent_height(dim, style, text_height) * 0.5 + gap;
+            if tad == 4 {
+                -half
+            } else {
+                half
+            }
+        }
+    };
+    let turned = base.text_rotation.abs() > 1e-9;
+    let angle = if turned {
+        let mut plain = dim.clone();
+        plain.base_mut().text_rotation = 0.0;
+        dimension_text_rotation(&plain, style)
+    } else {
+        dimension_text_rotation(dim, style)
+    };
+    let u = [angle.cos(), angle.sin()];
+    let v = [-u[1], u[0]];
+    let p = [point.x, point.y];
+    let at = |o: [f64; 2], d: [f64; 2], k: f64| [o[0] + d[0] * k, o[1] + d[1] * k];
+    let dot = |a: [f64; 2], b: [f64; 2]| a[0] * b[0] + a[1] * b[1];
+    let sub = |a: [f64; 2], b: [f64; 2]| [a[0] - b[0], a[1] - b[1]];
+    let v3 = |q: [f64; 2]| Vector3::new(q[0], q[1], point.z);
+    let lifted = |q: [f64; 2]| v3(at(q, v, lift));
+
+    if let Some((vertex, start, end, radius)) = angular_dimension_frame(dim) {
+        if !matches!(dim, Dimension::Angular2Ln(_) | Dimension::Angular3Pt(_)) {
+            return None;
+        }
+        let mid = ((start + end) * 0.5) as f64;
+        let m = [
+            vertex.x as f64 + radius as f64 * mid.cos(),
+            vertex.y as f64 + radius as f64 * mid.sin(),
+        ];
+        // The reference keeps angular text on its arc somewhat further out
+        // than this linear reach; its own angular rule is not known.
+        if dot(sub(p, m), sub(p, m)).sqrt() < reach {
+            return Some(MovedText {
+                center: point,
+                lines: Vec::new(),
+            });
+        }
+        let side = if dot(sub(p, m), u) >= 0.0 { 1.0 } else { -1.0 };
+        let hook_end = at(p, u, -side * (text_width * 0.5 + gap));
+        let hook_start = at(hook_end, u, -side * arrow);
+        return Some(MovedText {
+            center: point,
+            lines: vec![(v3(m), v3(hook_start)), (v3(hook_start), v3(hook_end))],
+        });
+    }
+
+    let (first, second, definition, axis) = match dim {
+        Dimension::Linear(d) => (
+            d.first_point,
+            d.second_point,
+            d.definition_point,
+            [d.rotation.cos(), d.rotation.sin()],
+        ),
+        Dimension::Aligned(d) => {
+            let dx = d.second_point.x - d.first_point.x;
+            let dy = d.second_point.y - d.first_point.y;
+            let len = dx.hypot(dy);
+            if len < 1e-12 {
+                return None;
+            }
+            (
+                d.first_point,
+                d.second_point,
+                d.definition_point,
+                [dx / len, dy / len],
+            )
+        }
+        _ => return None,
+    };
+    let dline = [definition.x, definition.y];
+    let foot = |q: Vector3| at(dline, axis, dot(sub([q.x, q.y], dline), axis));
+    let (d1, d2) = (foot(first), foot(second));
+    let m = [(d1[0] + d2[0]) * 0.5, (d1[1] + d2[1]) * 0.5];
+    let normal = [-axis[1], axis[0]];
+    if dot(sub(p, dline), normal).abs() < reach {
+        return Some(MovedText {
+            center: lifted(p),
+            lines: Vec::new(),
+        });
+    }
+    let span = sub(d2, d1);
+    let length = dot(span, span).sqrt();
+    let along = if length > 1e-12 {
+        dot(sub(p, d1), span) / length
+    } else {
+        0.0
+    };
+    let crosses = (u[0] * axis[1] - u[1] * axis[0]).abs() > 1e-3;
+    if crosses && !turned && length > 1e-12 && (along < 0.0 || along > length) {
+        let (end, out) = if along < 0.0 {
+            (d1, [-span[0] / length, -span[1] / length])
+        } else {
+            (d2, [span[0] / length, span[1] / length])
+        };
+        let rise = dot(out, v);
+        let travel = dot(sub(p, end), v) / rise;
+        if rise.abs() > 1e-9 && travel >= 0.0 {
+            let elbow = at(end, out, travel);
+            let mut offset = dot(sub(p, elbow), u);
+            let side = if offset >= 0.0 { 1.0 } else { -1.0 };
+            let clear = arrow + gap;
+            if side * offset - text_width * 0.5 < clear {
+                offset = side * (clear + text_width * 0.5);
+            }
+            let hook_end = at(elbow, u, offset + side * (text_width * 0.5 + gap));
+            return Some(MovedText {
+                center: lifted(at(elbow, u, offset)),
+                lines: vec![(v3(end), v3(elbow)), (v3(elbow), v3(hook_end))],
+            });
+        }
+    }
+    let side = if dot(sub(p, m), u) >= 0.0 { 1.0 } else { -1.0 };
+    let (hook_start, hook_end) = if s.dimtad == 0 {
+        (at(p, u, -side * 3.0 * gap), at(p, u, -side * gap))
+    } else {
+        (at(p, u, -side * gap), at(p, u, side * (text_width + gap)))
+    };
+    let center = if turned {
+        let r = [base.text_rotation.cos(), base.text_rotation.sin()];
+        v3(at(p, r, side * text_width * 0.5))
+    } else {
+        lifted(at(p, u, side * text_width * 0.5))
+    };
+    Some(MovedText {
+        center,
+        lines: vec![(v3(m), v3(hook_start)), (v3(hook_start), v3(hook_end))],
+    })
+}
+
+/// Endpoints for the DIMTMOVE=1 leader of a diameter or jogged radius
+/// (linear, aligned and angular text: [`dimtmove_one_text`]).
 fn dimtmove_leader_endpoints(
     dim: &Dimension,
     text: DimensionTextLayout,
 ) -> Option<(Vec3, Vec3, bool)> {
     let lv = |v| vec3_local(v);
     let txt = text.position;
-    let linear = |first: Vec3, second: Vec3, definition: Vec3, axis: [f64; 2]| {
-        let bounds = text.break_box?;
-        let xy = |point: Vec3| [point.x as f64, point.y as f64];
-        let (leader, under_text) = kernel::geom2d::linear_dimension_leader(
-            kernel::geom2d::Line {
-                start: xy(first),
-                end: xy(second),
-            },
-            xy(definition),
-            axis,
-            xy(txt),
-            [
-                (bounds.half_width + bounds.padding) as f64,
-                (bounds.half_height + bounds.padding) as f64,
-            ],
-            bounds.rotation,
-        )?;
-        let point = |p: [f64; 2]| Vec3::new(p[0] as f32, p[1] as f32, first.z);
-        Some((point(leader.start), point(leader.end), under_text))
-    };
-    match dim {
-        Dimension::Linear(d) => {
-            return linear(
-                lv(d.first_point),
-                lv(d.second_point),
-                lv(d.definition_point),
-                [d.rotation.cos(), d.rotation.sin()],
-            );
-        }
-        Dimension::Aligned(d) => {
-            let first = lv(d.first_point);
-            let second = lv(d.second_point);
-            return linear(
-                first,
-                second,
-                lv(d.definition_point),
-                [
-                    d.second_point.x - d.first_point.x,
-                    d.second_point.y - d.first_point.y,
-                ],
-            );
-        }
-        _ => {}
-    }
     let anchor = match dim {
         Dimension::Radius(_) => return None,
         Dimension::Diameter(d) => {
@@ -4677,8 +4833,6 @@ fn dimtmove_leader_endpoints(
                 far_chord
             }
         }
-        Dimension::Angular2Ln(d) => lv(d.dimension_arc),
-        Dimension::Angular3Pt(d) => lv(d.definition_point),
         Dimension::LargeRadial(d) => {
             let chord = lv(d.chord_point);
             let jog = lv(d.jog_point);
@@ -4820,6 +4974,14 @@ struct DimensionTextLayout {
     width: f32,
     break_box: Option<TextBreak>,
     horizontal: bool,
+}
+
+/// The text's own width, without the gap on each side.
+fn dimension_text_bare_width(layout: &DimensionTextLayout) -> f64 {
+    layout
+        .break_box
+        .map(|text| text.half_width as f64 * 2.0)
+        .unwrap_or(0.0)
 }
 
 fn dimension_text_layout(
@@ -8336,6 +8498,11 @@ fn dimension_text_pos_f64(
     // DIMTOH: text that lands outside reads horizontally.
     let horizontal_outside = style.is_some_and(|style| style.dimtoh);
 
+    if let Some(moved) =
+        dimtmove_one_text(dim, style, text_height, dim_scale, (text_w - 2.0 * dimgap).max(0.0))
+    {
+        return moved.center;
+    }
     if let Some(point) = stored_text_point(dim) {
         return match dim {
             // DIMTMOVE 1 stores where the leader's hook starts: one arrow of
