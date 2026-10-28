@@ -12080,6 +12080,14 @@ impl OpenCADStudio {
             Message::PrintAllOptions => self.on_print_all_options(),
             Message::PrintAllPdf => {
                 let i = self.active_tab;
+                // DXEVAL: publishing compares extraction tables as it starts.
+                if let Some(task) = self.evaluate_extraction_tables(
+                    i,
+                    crate::app::commands::extraction_eval::EVENT_PUBLISH,
+                    Some(Message::PrintAllPdf),
+                ) {
+                    return task;
+                }
                 let stem = self.tabs[i]
                     .current_path
                     .as_deref()
@@ -12113,7 +12121,17 @@ impl OpenCADStudio {
             }
             Message::PrintAllPdfPath(None) => Task::none(),
             Message::PrintAllPdfPath(Some(path)) => self.on_print_all_pdf_path_some(path),
-            Message::PrintAllPrint => self.on_print_all_print(),
+            Message::PrintAllPrint => {
+                // DXEVAL: publishing compares extraction tables as it starts.
+                match self.evaluate_extraction_tables(
+                    self.active_tab,
+                    crate::app::commands::extraction_eval::EVENT_PUBLISH,
+                    Some(Message::PrintAllPrint),
+                ) {
+                    Some(task) => task,
+                    None => self.on_print_all_print(),
+                }
+            }
             Message::PrintAllFinished(result) => {
                 match result {
                     Ok(message) => self.command_line.push_info(&message),

@@ -7351,17 +7351,6 @@ impl OpenCADStudio {
             );
             return Task::none();
         }
-        // DXEVAL: a plot may first offer (or make) outdated extraction
-        // table updates.
-        if !preview {
-            if let Some(task) = self.evaluate_extraction_tables(
-                self.active_tab,
-                crate::app::commands::extraction_eval::EVENT_PLOT,
-                Some(Message::PlotDlg(crate::ui::window::plot::PlotDlgMsg::Commit)),
-            ) {
-                return task;
-            }
-        }
         // Remember the user's print preferences across sessions.
         self.save_config();
         // A preview never touches the layout; a sent plot writes the dialog

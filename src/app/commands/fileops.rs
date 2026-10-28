@@ -245,13 +245,6 @@ impl OpenCADStudio {
             // collected from the session's bytes registries and delivered as a
             // "<name>_transmit.zip" download (`archive_web` below).
             "ARCHIVE" | "ETRANSMIT" => {
-                if let Some(task) = self.evaluate_extraction_tables(
-                    i,
-                    super::extraction_eval::EVENT_ARCHIVE,
-                    Some(Message::Command(cmd.to_string())),
-                ) {
-                    return Some(task);
-                }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     use std::path::PathBuf;

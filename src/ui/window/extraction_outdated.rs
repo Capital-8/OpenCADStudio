@@ -1,4 +1,4 @@
-//! The window an open, save, plot, publish or archive raises (DXEVAL) when
+//! The window an open, save, plot or publish raises (DXEVAL) when
 //! an extraction table no longer shows the drawing's data: update it, all of
 //! them, or leave it / all of them as they are.
 

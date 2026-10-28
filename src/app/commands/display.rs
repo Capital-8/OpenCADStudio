@@ -964,18 +964,20 @@ impl OpenCADStudio {
             // PLOT / PRINT open the full plot dialog (printer, paper, scale,
             // options); EXPORT / EXPORTPDF stay a direct PDF export.
             "PLOT" | "PRINT" => {
+                // DXEVAL: the plot command compares extraction tables
+                // before its dialog opens; -PLOT does not.
+                if let Some(task) = self.evaluate_extraction_tables(
+                    i,
+                    super::extraction_eval::EVENT_PLOT,
+                    Some(Message::Command(cmd.to_string())),
+                ) {
+                    return Some(task);
+                }
                 return Some(Task::done(Message::PlotDialogOpen));
             }
             // PUBLISH: the layouts of the drawing, each with its own page
             // setup, into one multi-page PDF or to the printer.
             "PRINTALL" | "PUBLISH" => {
-                if let Some(task) = self.evaluate_extraction_tables(
-                    i,
-                    super::extraction_eval::EVENT_PUBLISH,
-                    Some(Message::PrintAllOpen),
-                ) {
-                    return Some(task);
-                }
                 return Some(Task::done(Message::PrintAllOpen));
             }
             // PRINTERS — what the system reports about printing, on the

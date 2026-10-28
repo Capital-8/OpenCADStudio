@@ -2864,7 +2864,7 @@ pub enum ModalKind {
     TdsMaterial,
     /// A texture map a 3D Studio import did not find, one window per map.
     TdsMissingMap,
-    /// An extraction table outdated at open/save/plot/publish/archive.
+    /// An extraction table outdated at open/save/plot/publish.
     ExtractionOutdated,
     /// Web: a crash-recovery autosave snapshot newer than the drawing's last
     /// save awaits a restore/discard decision. Distinct from the corrupt-file

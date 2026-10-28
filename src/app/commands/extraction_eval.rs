@@ -1,20 +1,22 @@
-//! DXEVAL: opening, saving, plotting, publishing or archiving a drawing
-//! compares its extraction tables with the data they were made from. An
-//! outdated table is either updated at once or offered in a window, by the
-//! event's bits in DXEVAL.
+//! DXEVAL: opening, saving, plotting or publishing a drawing compares its
+//! extraction tables with the data they were made from. An outdated table is
+//! either updated at once or offered in a window, by the event's bits in
+//! DXEVAL. The open check runs as the drawing opens, the plot check as the
+//! PLOT command starts (not -PLOT or a plot through automation), the publish
+//! check as publishing starts. The archive bits (16, 256) are kept in the
+//! value but packaging a drawing does not compare its tables.
 
 use crate::app::annotation_data::{self, OutdatedExtraction};
 use crate::app::{ExtractionPrompt, Message, ModalKind, OpenCADStudio};
 use crate::ui::window::extraction_outdated::OutdatedChoice;
 use iced::Task;
 
-/// DXEVAL event bits. Save, plot, publish and archive shifted four bits up
-/// (32, 64, 128, 256) update without asking; an open only asks.
+/// DXEVAL event bits. Save, plot and publish shifted four bits up (32, 64,
+/// 128) update without asking; an open only asks.
 pub(crate) const EVENT_OPEN: i32 = 1;
 pub(crate) const EVENT_SAVE: i32 = 2;
 pub(crate) const EVENT_PLOT: i32 = 4;
 pub(crate) const EVENT_PUBLISH: i32 = 8;
-pub(crate) const EVENT_ARCHIVE: i32 = 16;
 
 impl OpenCADStudio {
     /// Writes `rows` into each linked table (from `first_linked_row` on) and
