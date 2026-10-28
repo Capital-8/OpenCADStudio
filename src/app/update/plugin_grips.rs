@@ -690,6 +690,11 @@ impl OpenCADStudio {
                 self.tabs[i]
                     .plugin_grips
                     .retain_alive(|plugin| visible(plugin));
+                // API v15: the class registry reaps with the same liveness —
+                // a dead plugin's declarations must not outlive it.
+                self.tabs[i]
+                    .plugin_classes
+                    .retain_alive(|plugin| visible(plugin));
             }
             let dying_drag = self
                 .active_plugin_grip()

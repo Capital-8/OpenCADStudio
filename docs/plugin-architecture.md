@@ -498,6 +498,77 @@ shape and an axis — nothing else. What a grip *means* (an alignment's implied
 PI, a pipe endpoint, a widening handle) is entirely the declaring plugin's,
 resolved in its own `on_custom_grip_event` from the event's grip id and point.
 
+## Derived display, parametric chains, and plugin class objects (API v14–v15)
+
+The parametric display split (API v14) established the pattern the class
+objects (API v15) generalize. One law governs both: **the record layer is the
+file's only truth, the host derives the display, and the plugins never run
+the derivation math.**
+
+**Parametric chains (v14).** `stage_parametric_chain(reference, chain,
+tolerance)` carries declared parameters only — species enum (the IFC 4.3.2.0
+alignment segment species: 9 horizontal, 4 vertical), start point, start
+direction (radians, ±2π-legal), signed radii, gradients, lengths, curvature
+ends — never evaluated geometry. The host validates every segment against
+its species' lexics law, then audits seams *at the record-model tolerances*
+(the evaluated end of segment i must restate segment i+1's declared start —
+point, direction/gradient); a refusal names the audited pair and changes
+nothing (no entities, no undo step). Passing designs stage as exact carriers
+(`Line`/`Arc`/exact degree-2·3 clamped splines — e.g. the cubic parabola y =
+x³/(6·R·L) as a true cubic Bézier) or as `LwPolyline` chords refined to the
+declared tolerance (every transcendental species: the transition-curve
+integrals run through a hard-coded 16-node Gauss–Legendre table, and the
+Fresnel series is the oracle). The staged set is **reference-only** (picks
+pass through, box selections skip it, no grips/edges; the designation
+applies through the same pending-scope machinery as `set_reference_only`)
+and the undo composition is the entity-write contract: the plugin's open
+`push_undo` scope is joined, otherwise one labeled step ("Stage parametric
+chain"). `sample_parametric(chain, s)` exposes the same engine as a pure
+read (point/direction at chain position *s*; validates + audits per call;
+no document state, no undo, no publish). Regulations: `MAX_PLUGIN_LIVE_
+ENTITIES` caps the staged set; a zero-geometry chain answers `Ok(vec![])`
+and records nothing. The lane's bench (`cargo bench --bench
+parametric_display_staging`) pins the budgets: 50-segment staging far under
+5 ms, sampling at sub-µs scale.
+
+**Plugin class objects (v15).** `register_plugin_class(plugin_id,
+declaration)` declares a plugin-owned entity class: a stable identity key
+(the XDATA class key staged instances carry), a monotone schema version, a
+class-scoped grip schema (grip id → the parameter name of the class the grip
+drives), and the parameter set lives in the plugin's own record layer. The
+registry is tab-scoped display-session state — **the store dies with its
+plugin's process** (re-declared per load; nothing persists) — and is keyed
+by declaring plugin: the plugin id never travels the wire (the runner
+supplies the serving process's own id, the grip anti-impersonation rule).
+Re-registration is idempotent for an equal schema and refuses a mismatch: a
+schema change is a *re-stage of the instances*, never a hot swap.
+`stage_plugin_class_instance(plugin_id, instance)` stages one instance whose
+payload is identity only — class id, schema version, layer, `design_record`
+linkage — plus a **host-evaluated design descriptor**
+(`PluginDisplayDescriptor`): the v14 engine is the first host-known kind
+(`ParametricChain`), so a chain design stages through exactly the
+audited-seam / cap / refusal / undo contract above; the descriptor enum
+appends kinds at the end (an unknown — newer — kind refuses at the contract
+instead of guessing). The staged set is reference-only and XDATA-stamped
+with the class identity key (the stamp carries the schema version and the
+record linkage; `write_record` auto-registers the APPID so DXF/DWG round
+trips keep the stamp byte-identical).
+
+**Grip editing on the derived path.** Custom-grip drags stream per-move
+geometry today (the v11/v12 lane: the plugin answers `CustomGripEvent`s
+with `preview` wires and `live_entities`, the host coalesces moves, settle
+stays the plugin's one write window). `CustomGripResponse.descriptor` (API
+v15, a serde-default field — the `live_entities` precedent) is the wire hook
+for the next step: a Begin answer can hand the host a live *design*, letting
+the host re-derive the preview per cursor move with **zero Move frames
+crossing the IPC**. Measured on the bench's grip-edit section: even the
+worst case (a clothoid's Fresnel re-integration + chord refinement per
+move) sits at ~30 µs against a 16.7 ms frame, so host-local re-derivation
+wins on both latency and traffic; the drag-pipeline plumbing is the planned
+follow-up. Editing class parameters travels the records, not the descriptor:
+a parameter write goes through `update_xrecords`, the plugin sees the
+record-dirty notification and re-stages from its own schema.
+
 ## HostApi vs MCP — the two surfaces
 
 The host exposes exactly two programmatic surfaces, and they are separate
@@ -526,6 +597,8 @@ Which surface carries what:
 | Notifications | `events` (the session journal) | `on_notification` (`DocumentChanged`, `DocumentChangedRegions`, …) |
 | Viewport automation | `click`, `pointer`, `getpoint`, `user_select`, `view_focus`, `capture` | — (a plugin's grip events are its gestures) |
 | Reference-only designation | — | `set_reference_only` |
+| Parametric chain staging / sampling (v14) | — (`query` reads the staged entities) | `stage_parametric_chain` / `sample_parametric` |
+| Plugin class objects (v15) | — (future: a class/instance browser view) | `register_plugin_class` / `stage_plugin_class_instance` |
 | Files | `new/open/save/save_verified/wblock/plot` | `document_path`, tab lifecycle |
 
 Semantic traps worth knowing before writing a consumer on either side:
@@ -697,6 +770,12 @@ Done:
       `app::serve`). This closes the "drive OCS headless from a process" goal
       of issue #29; this line previously and incorrectly listed it as not yet
       started.
+- [x] Batched record walks + dirty regions + deterministic attach (v13).
+- [x] Parametric display staging + sampling: IFC 4.3.2.0 alignment species,
+      audited seams, exact carriers, reference-only derived display (v14).
+- [x] Plugin class objects: tab-scoped class registry, host-evaluated design
+      descriptors (the chain kind first), XDATA identity stamps (v15); the
+      grip-edit descriptor hook rides `CustomGripResponse` (inert default).
 
 Next:
 
@@ -704,6 +783,13 @@ Next:
 - [ ] `#[repr(C)]` vtable / strict handshake for cross-toolchain binaries.
 - [ ] Trust: checksums / signatures before spawning plugin processes.
 - [ ] Interchange (LandXML / SWMM) and live `on_entity_committed` hooks.
+- [ ] Descriptor-backed grip drags: consume the Begin descriptor per coalesced
+      move (zero Move frames; the v15 hook already rides the wire) — measured
+      trivially inside the frame budget by the staging bench's grip section.
+- [ ] Properties-panel parameter editing for plugin class entities: a
+      `PluginClassParameter` schema on the declaration, the panel section bound
+      to selected class-stamped entities, edits through `update_xrecords`, the
+      plugin re-stages from the record-dirty notification.
 
 ---
 

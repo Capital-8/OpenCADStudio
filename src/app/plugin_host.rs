@@ -16,10 +16,6 @@ pub(crate) struct HostSession<'a> {
     app: &'a mut OpenCADStudio,
     tab: usize,
     doc_store: Option<DocumentSnapshotStore<DocumentViewData>>,
-    /// API v15: this session's registered plugin classes — session state
-    /// exactly like the grip sets; the file keeps only instance stamps and
-    /// records.
-    plugin_classes: Vec<ocs_plugin_api::host::PluginClassDeclaration>,
 }
 
 /// A plugin request that drives commands: sets `plugin_request_active` (the
@@ -74,7 +70,6 @@ impl<'a> HostSession<'a> {
             app,
             tab,
             doc_store: None,
-            plugin_classes: Vec::new(),
         }
     }
 
@@ -3528,11 +3523,16 @@ impl<'a> HostSession<'a> {
 
     // ── API v15: plugin class objects (additive) ─────────────────────────
 
-    /// Register a plugin-scoped entity class (API v15, additive): session
-    /// state only. Re-registering the same identity with an equal schema is
-    /// idempotent; a mismatch refuses without touching the live class — a
-    /// parameter-set change re-stages the instances, it never hot-swaps a
-    /// schema under live entities.
+    /// Register a plugin-scoped entity class (API v15, additive): TAB-SCOPED
+    /// display-session state (the class survives across requests of the
+    /// owning plugin's session — unlike a session-local registry, the store
+    /// rides the tab like the grip sets do; nothing persists: entries die
+    /// with the plugin, re-declared per load). Re-registering the same
+    /// identity with an equal schema is idempotent; a mismatch refuses
+    /// without touching the live class — a parameter-set change re-stages
+    /// the instances, it never hot-swaps a schema under live entities. The
+    /// plugin id never travels the wire: the runner supplies the serving
+    /// process's own id, so a plugin can only declare in its own name.
     pub fn register_plugin_class(
         &mut self,
         plugin_id: &str,
@@ -3570,35 +3570,20 @@ impl<'a> HostSession<'a> {
                 class.class_id
             ));
         }
-        if let Some(existing) = self
+        self.app.tabs[self.tab]
             .plugin_classes
-            .iter()
-            .find(|entry| entry.class_id == class.class_id)
-        {
-            if existing.schema_version == class.schema_version
-                && existing.grip_schema == class.grip_schema
-            {
-                return Ok(());
-            }
-            return Err(format!(
-                "class {} is already registered with a different schema ({}); re-stage its \
-                 instances instead",
-                class.class_id, existing.schema_version
-            ));
-        }
-        self.plugin_classes.push(class.clone());
-        Ok(())
+            .declare(plugin_id, class.clone())
     }
 
-    /// Stage one instance of a session-registered plugin class (API v15,
-    /// additive) — [`HostSession::stage_parametric_chain`]'s contract
-    /// generalized: the design descriptor is host-evaluated before any
-    /// change (the v14 engine for the `ParametricChain` kind; a kind the
-    /// host does not know refuses at the contract), the staged set carries
-    /// the class identity key in XDATA and a reference-only designation,
-    /// and the undo composition is the entity-write contract. The plugin id
-    /// never travels the wire: the session confirms the caller owns the
-    /// class.
+    /// Stage one instance of a plugin-registered class (API v15, additive) —
+    /// [`HostSession::stage_parametric_chain`]'s contract generalized: the
+    /// design descriptor is host-evaluated before any change (the v14 engine
+    /// for the `ParametricChain` kind; a kind the host does not know refuses
+    /// at the contract), the staged set carries the class identity key in
+    /// XDATA and a reference-only designation, and the undo composition is
+    /// the entity-write contract. The caller must be the class's owner (the
+    /// store is keyed by declaring plugin; the plugin id never travels the
+    /// wire — the server supplies the process's own id).
     pub fn stage_plugin_class_instance(
         &mut self,
         plugin_id: &str,
@@ -3611,16 +3596,23 @@ impl<'a> HostSession<'a> {
                  by their owner"
             ));
         }
-        let registered = self
-            .plugin_classes
-            .iter()
-            .find(|entry| entry.class_id == instance.class_id)
+        let registry = &self.app.tabs[self.tab].plugin_classes;
+        let registered = registry
+            .find(plugin_id, &instance.class_id)
             .ok_or_else(|| {
-                format!(
-                    "class {:?} is not registered in this session; register it before staging \
-                     instances",
-                    instance.class_id
-                )
+                let owner = registry.owner_of(&instance.class_id);
+                match owner {
+                    Some(owner) => format!(
+                        "class {:?} is owned by plugin {owner:?}; instances must be staged by \
+                         their owner",
+                        instance.class_id
+                    ),
+                    None => format!(
+                        "class {:?} is not registered in this session; register it before \
+                         staging instances",
+                        instance.class_id
+                    ),
+                }
             })?;
         if registered.schema_version != instance.schema_version {
             return Err(format!(
@@ -15461,13 +15453,16 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         // Register, then re-register identical: idempotent, still one entry.
         assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
         assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
-        assert_eq!(host.plugin_classes.len(), 1);
+        assert_eq!(host.app.tabs[0].plugin_classes.total(), 1);
         // A different schema refuses without touching the live class.
         let mut bumped = traverse_class();
         bumped.schema_version = 5;
         let err = host.register_plugin_class("CVIFC", &bumped).unwrap_err();
         assert!(err.contains("different schema"), "got: {err}");
-        assert_eq!(host.plugin_classes[0].schema_version, 4);
+        assert_eq!(
+            host.app.tabs[0].plugin_classes.find("CVIFC", "CVI_ALIGN_DISPLAY").expect("live entry").schema_version,
+            4
+        );
         // Malformed declarations refuse: empty identity, unnamed grip
         // parameter, duplicate grip ids.
         let mut empty = traverse_class();
@@ -15482,7 +15477,48 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
             param_name: "other".to_string(),
         });
         assert!(host.register_plugin_class("CVIFC", &dup).is_err());
-        assert_eq!(host.plugin_classes.len(), 1);
+        assert_eq!(host.app.tabs[0].plugin_classes.total(), 1);
+    }
+
+    #[test]
+    fn plugin_class_registry_survives_across_request_sessions() {
+        // The registry is TAB state, not session state: HostSession lives one
+        // request; the class declaration must outlive the dropping session
+        // (this is the regression for the per-session-registry defect).
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        install_class_owner();
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+        }
+        // Session B: a DIFFERENT HostSession over the same tab (the IPC
+        // server's per-request reality) stages the instance.
+        let mut host = HostSession::new(&mut app, 0);
+        let handles = host
+            .stage_plugin_class_instance("CVIFC", &traverse_instance())
+            .expect("the class outlives its declaring session");
+        assert!(!handles.is_empty());
+        assert!(host.app.tabs[0].scene.is_reference_only(handles[0]));
+    }
+
+    #[test]
+    fn plugin_class_instances_refuse_foreign_owners() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        install_class_owner();
+        let mut host = HostSession::new(&mut app, 0);
+        assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+        // Another alive plugin sees the class but cannot stage it.
+        crate::plugin::grip_points::install_in_process_sink("CVIB", |_host, _event| {
+            ocs_plugin_api::host::CustomGripResponse::default()
+        });
+        let err = host
+            .stage_plugin_class_instance("CVIB", &traverse_instance())
+            .unwrap_err();
+        assert!(err.contains("owned by plugin"), "got: {err}");
+        assert!(err.contains("CVIFC"), "got: {err}");
+        assert_eq!(host.document().entities().count(), 0);
     }
 
     #[test]
