@@ -1299,6 +1299,7 @@ mod tests {
                     payload: HostResponse::CustomGrip(crate::host::CustomGripResponse {
                         preview: Vec::new(),
                         live_entities: Vec::new(),
+                        descriptor: None,
                     }),
                 },
             )

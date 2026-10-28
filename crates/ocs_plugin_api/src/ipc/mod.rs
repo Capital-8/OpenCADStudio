@@ -259,6 +259,7 @@ mod tests {
             discriminant(&HostResponse::CustomGrip(crate::host::CustomGripResponse {
                 preview: Vec::new(),
                 live_entities: Default::default(),
+                descriptor: Default::default(),
             })),
             8
         );
@@ -346,6 +347,7 @@ mod tests {
                     codec::types::Vector3::new(3.0, 0.0, 0.0),
                 )),
             )],
+            descriptor: None,
         });
         let bytes = bincode::serialize(&answer).unwrap();
         let got: HostResponse = bincode::deserialize(&bytes).unwrap();
@@ -388,10 +390,12 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
-        // And a v11-shaped answer (no live_entities) still decodes.
+        // And a v11-shaped answer (no live_entities, no descriptor) still
+        // decodes: both later fields deserialize to their defaults.
         let old = HostResponse::CustomGrip(crate::host::CustomGripResponse {
             preview: Vec::new(),
             live_entities: Default::default(),
+            descriptor: Default::default(),
         });
         let bytes = bincode::serialize(&old).unwrap();
         let got: HostResponse = bincode::deserialize(&bytes).unwrap();
