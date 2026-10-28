@@ -166,7 +166,7 @@ fn cell_text_style(
 /// The face each text style draws with, resolved the way text of that style
 /// resolves anywhere else (a .shx file on disk before the built-in stroke
 /// font of its name), so a table's cells match the text of its picture.
-fn table_style_fonts(document: &codec::Document) -> HashMap<codec::Handle, String> {
+fn table_style_fonts(document: &codec::Document) -> rustc_hash::FxHashMap<codec::Handle, String> {
     document
         .text_styles
         .iter()
