@@ -1274,7 +1274,7 @@ impl Scene {
     /// drop point. The geometry comes from the clipboard rather than live
     /// entities, so there is nothing to stage or erase. (#129)
     /// Register a new image's shared definition and exclusively owned reactor.
-    pub(super) fn ensure_image_definition(&mut self, entity: &mut EntityType) {
+    pub(crate) fn ensure_image_definition(&mut self, entity: &mut EntityType) {
         let EntityType::RasterImage(img) = entity else {
             return;
         };
