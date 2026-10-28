@@ -730,6 +730,105 @@ impl Scene {
         }
     }
 
+    /// Give each block-member copy (and each inline ATTRIB of a copied INSERT)
+    /// its own deep copy of the source's extension dictionary tree, owned by
+    /// the copy, with reactors and handles inside the tree remapped, as COPY
+    /// does. `originals` and `copies` are parallel lists.
+    pub(super) fn own_copied_xdicts(&mut self, originals: Vec<Handle>, copies: Vec<Handle>) {
+        // Include inline ATTRIBs: define_block_raw gives them new handles too.
+        let mut pairs = Vec::new();
+        for (from, to) in originals.into_iter().zip(copies) {
+            let (Some(source), Some(target)) =
+                (self.document.get_entity(from), self.document.get_entity(to))
+            else {
+                continue;
+            };
+            pairs.push((source.common().clone(), to, None));
+            if let (EntityType::Insert(source), EntityType::Insert(target)) = (source, target) {
+                pairs.extend(
+                    source
+                        .attributes
+                        .iter()
+                        .zip(&target.attributes)
+                        .enumerate()
+                        .map(|(k, (a, b))| (a.common.clone(), b.common.handle, Some((to, k)))),
+                );
+            }
+        }
+        let mapping: rustc_hash::FxHashMap<_, _> = pairs
+            .iter()
+            .map(|(common, to, _)| (common.handle, *to))
+            .collect();
+        let scales = pairs
+            .iter()
+            .map(|(common, _, attribute)| {
+                if attribute.is_some() {
+                    Vec::new()
+                } else {
+                    super::annotative::annotation_scale_handles_for_entity(
+                        &self.document,
+                        common.handle,
+                    )
+                }
+            })
+            .collect::<Vec<_>>();
+        let roots = pairs
+            .iter()
+            .zip(&scales)
+            .map(|((common, _, _), scales)| {
+                (
+                    common.handle,
+                    if scales.is_empty() {
+                        common.xdictionary_handle
+                    } else {
+                        None
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        let (cross, owner_of) = self.prepare_xdict_copies(&roots);
+        let mut created = Vec::new();
+        // Block records and cloned objects require full-snapshot undo, like COPY.
+        self.poison_undo_recording();
+        for ((common, to, attribute), scales) in pairs.iter().zip(scales) {
+            let root = if scales.is_empty() {
+                common.xdictionary_handle.and_then(|root| {
+                    Self::clone_xdict_tree(
+                        &mut self.document,
+                        common.handle,
+                        root,
+                        *to,
+                        &cross,
+                        &owner_of,
+                        &mut created,
+                    )
+                })
+            } else {
+                None
+            };
+            if let Some((parent, k)) = attribute {
+                if let Some(EntityType::Insert(insert)) = self.document.get_entity_mut(*parent) {
+                    if let Some(attribute) = insert.attributes.get_mut(*k) {
+                        attribute.common.xdictionary_handle = root;
+                        attribute.common.owner_handle = *parent;
+                        attribute.common.reactors = common
+                            .reactors
+                            .iter()
+                            .filter_map(|h| mapping.get(h).copied())
+                            .collect();
+                    }
+                }
+            } else if let Some(entity) = self.document.get_entity_mut(*to) {
+                entity.common_mut().xdictionary_handle = root;
+            }
+            for scale in scales {
+                super::annotative::create_annotation_context(&mut self.document, *to, scale);
+            }
+        }
+        remap_copied_reactors(&mut self.document, &mapping);
+        remap_copied_xdict_cross_refs(&mut self.document, &mapping, &created);
+    }
+
     /// Preallocate COPY's object-tree mapping before cloning any sibling tree.
     pub(super) fn prepare_xdict_copies(
         &mut self,

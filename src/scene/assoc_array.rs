@@ -1185,8 +1185,19 @@ pub fn create(
     }
     register_array_classes(&mut scene.document);
 
+    let originals: Vec<Handle> = sources
+        .iter()
+        .copied()
+        .filter(|handle| scene.document.get_entity(*handle).is_some())
+        .collect();
     let source_name = next_anonymous_name(&scene.document);
     scene.define_block_raw(&source_name, codec::types::Vector3::ZERO, entities);
+    // The copies must not keep the sources' extension dictionaries.
+    if let Some(record) = scene.document.block_records.get(&source_name) {
+        let copies = record.entity_handles.clone();
+        scene.own_copied_xdicts(originals, copies);
+    }
+
     let item = |offset: DMat4| {
         let position = offset.w_axis.truncate();
         let mut insert = codec::entities::Insert::new(
@@ -1543,3 +1554,198 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod xdict_tests {
+    use super::*;
+    use crate::scene::Scene;
+    use codec::entities::{AttributeEntity, Insert, Line};
+    use codec::objects::{XRecord, XRecordValue};
+    use codec::types::Vector3;
+    use codec::EntityType;
+
+    fn attach_test_record(scene: &mut Scene, owner: Handle, peer: Handle) -> (Handle, Handle) {
+        let root = scene.document.ensure_extension_dictionary(owner);
+        let record = scene.document.allocate_handle();
+        let mut xrecord = XRecord::named("TEST");
+        xrecord.handle = record;
+        xrecord.owner = root;
+        xrecord.reactors.push(root);
+        xrecord.add_string(1, "payload");
+        for (code, handle) in [(330, root), (340, owner), (350, peer), (360, record)] {
+            xrecord.add_handle(code, handle);
+        }
+        scene
+            .document
+            .objects
+            .insert(record, ObjectType::XRecord(xrecord));
+        let Some(ObjectType::Dictionary(dictionary)) = scene.document.objects.get_mut(&root) else {
+            panic!("extension dictionary must exist");
+        };
+        dictionary.add_entry("TEST", record);
+        dictionary.reactors.push(owner);
+        (root, record)
+    }
+
+    fn assert_tree(scene: &Scene, owner: Handle, root: Handle, peer: Handle) {
+        let Some(ObjectType::Dictionary(dictionary)) = scene.document.objects.get(&root) else {
+            panic!("copied dictionary must exist");
+        };
+        assert_eq!(dictionary.handle, root);
+        assert_eq!(dictionary.owner, owner);
+        assert_eq!(dictionary.reactors, vec![owner]);
+        let record = dictionary.get("TEST").expect("TEST entry preserved");
+        let Some(ObjectType::XRecord(xrecord)) = scene.document.objects.get(&record) else {
+            panic!("copied TEST XRECORD must exist");
+        };
+        assert_eq!(xrecord.handle, record);
+        assert_eq!(xrecord.owner, root);
+        assert_eq!(xrecord.reactors, vec![root]);
+        assert_eq!(xrecord.get_string(1), Some("payload"));
+        for (code, handle) in [(330, root), (340, owner), (350, peer), (360, record)] {
+            assert!(xrecord
+                .entries
+                .iter()
+                .any(|entry| entry.code == code && entry.value == XRecordValue::Handle(handle)));
+        }
+    }
+
+    #[test]
+    fn associative_array_deep_clones_member_xdict() {
+        for spec in [
+            AssocArraySpec::Rectangular {
+                columns: 2,
+                rows: 2,
+                column_spacing: 20.0,
+                row_spacing: 20.0,
+            },
+            AssocArraySpec::Polar {
+                center: DVec3::ZERO,
+                items: 4,
+                fill_angle: std::f64::consts::TAU,
+            },
+        ] {
+            let mut scene = Scene::new();
+            let a = scene.add_entity(EntityType::Line(Line::from_points(
+                Vector3::ZERO,
+                Vector3::UNIT_X,
+            )));
+            let b = scene.add_entity(EntityType::Line(Line::from_points(
+                Vector3::ZERO,
+                Vector3::UNIT_Y,
+            )));
+            let (root, record) = attach_test_record(&mut scene, a, b);
+            scene
+                .document
+                .get_entity_mut(a)
+                .unwrap()
+                .common_mut()
+                .reactors = vec![b, root];
+            let root_before = scene.document.objects[&root].clone();
+            let record_before = scene.document.objects[&record].clone();
+            scene.begin_undo_recording();
+            let insert = create_from_spec(&mut scene, &[a, b], DVec3::ZERO, &spec).unwrap();
+            let array = array_of_insert(&scene.document, insert).unwrap();
+            let copies = scene
+                .document
+                .block_records
+                .iter()
+                .find(|r| r.handle == array.source_block)
+                .unwrap()
+                .entity_handles
+                .clone();
+            assert_eq!(copies.len(), 2);
+            let copy = scene.document.get_entity(copies[0]).unwrap();
+            let copy_root = copy.common().xdictionary_handle.expect("copied dictionary");
+            assert_ne!(
+                copy_root, root,
+                "copy must not share the source extension dictionary"
+            );
+            assert_eq!(copy.common().reactors, vec![copies[1]]);
+            assert_tree(&scene, copies[0], copy_root, copies[1]);
+            let Some(ObjectType::Dictionary(dictionary)) = scene.document.objects.get(&copy_root)
+            else {
+                unreachable!();
+            };
+            assert_ne!(dictionary.get("TEST"), Some(record));
+            assert!(scene.document.get_entity(a).is_none());
+            assert!(scene.document.get_entity(b).is_none());
+            assert_eq!(scene.document.objects.get(&root), Some(&root_before));
+            assert_eq!(scene.document.objects.get(&record), Some(&record_before));
+            assert!(scene.take_undo_recording().unwrap().is_poisoned());
+            let copy_tree = scene.document.objects[&copy_root].clone();
+            update(&mut scene, &array, &[("Items", 3.0)]).unwrap();
+            assert_eq!(scene.document.objects.get(&copy_root), Some(&copy_tree));
+            assert_tree(&scene, copies[0], copy_root, copies[1]);
+            for entity in scene.document.entities() {
+                if let Some(dictionary) = entity.common().xdictionary_handle {
+                    assert_ne!(
+                        dictionary, root,
+                        "no live entity may claim the consumed source's dictionary"
+                    );
+                    let Some(ObjectType::Dictionary(d)) = scene.document.objects.get(&dictionary)
+                    else {
+                        panic!("live extension dictionary must exist");
+                    };
+                    assert_eq!(d.owner, entity.common().handle);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn associative_array_deep_clones_inline_attribute_xdict() {
+        let mut scene = Scene::new();
+        scene.define_block_raw("B", Vector3::ZERO, vec![]);
+        let source = scene.add_entity(EntityType::Insert(Insert::new("B", Vector3::ZERO)));
+        let attribute = scene.document.allocate_handle();
+        let (root, record) = attach_test_record(&mut scene, attribute, source);
+        let mut att = AttributeEntity::new("TAG".into(), "value".into());
+        att.common.handle = attribute;
+        att.common.owner_handle = source;
+        att.common.xdictionary_handle = Some(root);
+        att.common.reactors = vec![source];
+        let Some(EntityType::Insert(insert)) = scene.document.get_entity_mut(source) else {
+            unreachable!();
+        };
+        insert.attributes.push(att);
+        let result = create_from_spec(
+            &mut scene,
+            &[source],
+            DVec3::ZERO,
+            &AssocArraySpec::Rectangular {
+                columns: 2,
+                rows: 2,
+                column_spacing: 20.0,
+                row_spacing: 20.0,
+            },
+        )
+        .unwrap();
+        let array = array_of_insert(&scene.document, result).unwrap();
+        let copy = scene
+            .document
+            .block_records
+            .iter()
+            .find(|r| r.handle == array.source_block)
+            .unwrap()
+            .entity_handles[0];
+        let Some(EntityType::Insert(insert)) = scene.document.get_entity(copy) else {
+            unreachable!();
+        };
+        let att = &insert.attributes[0];
+        let copy_root = att.common.xdictionary_handle.unwrap();
+        assert_ne!(att.common.handle, attribute);
+        assert_ne!(copy_root, root);
+        assert_eq!(att.common.owner_handle, copy);
+        assert_eq!(att.common.reactors, vec![copy]);
+        assert_tree(&scene, att.common.handle, copy_root, copy);
+        let Some(ObjectType::Dictionary(dictionary)) = scene.document.objects.get(&copy_root)
+        else {
+            unreachable!();
+        };
+        assert_ne!(dictionary.get("TEST"), Some(record));
+        assert!(scene
+            .document
+            .entities()
+            .all(|entity| entity.common().xdictionary_handle != Some(root)));
+    }
+}
