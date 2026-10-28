@@ -559,6 +559,8 @@ pub struct ArrayPathCommand {
     /// Measure (items a fixed distance apart) rather than Divide.
     measure: bool,
     default_spacing: f64,
+    associative: bool,
+    plane: WorkingPlane,
 }
 
 /// The Method option button, labelled with the current method.
@@ -585,7 +587,39 @@ impl ArrayPathCommand {
             pick_pt: DVec3::ZERO,
             measure: defaults::get_array_path_measure() != 0.0,
             default_spacing: defaults::get_array_path_spacing(),
+            associative: defaults::get_array_assoc() != 0.0,
+            plane: WorkingPlane::default(),
         }
+    }
+
+    /// Whether the pick chose the path's far end as the start.
+    fn picked_end(&self, entity: &EntityType) -> bool {
+        let Some(curve) = entity_curve(entity) else {
+            return false;
+        };
+        let start = DVec3::from_array(curve.point_at_distance(0.0));
+        let end = DVec3::from_array(curve.point_at_distance(curve.length()));
+        self.pick_pt.distance_squared(end) < self.pick_pt.distance_squared(start)
+    }
+
+    /// The array as an associative path array, when that is on and the
+    /// working plane is the world's.
+    fn associative_result(
+        &self,
+        path_entity: &EntityType,
+        items: u32,
+        spacing: f64,
+    ) -> Option<CmdResult> {
+        (self.associative && world_plane(self.plane)).then(|| CmdResult::AssocArray {
+            handles: self.handles.clone(),
+            spec: crate::scene::assoc_array::AssocArraySpec::Path {
+                path: path_entity.common().handle,
+                items,
+                spacing,
+                divide: !self.measure,
+                reversed: self.picked_end(path_entity),
+            },
+        })
     }
 
     /// The step after the path is known, by the current method.
@@ -849,10 +883,14 @@ impl CadCommand for ArrayPathCommand {
     fn options(&self) -> Vec<crate::command::CmdOption> {
         match self.step {
             PathStep::Count { .. } | PathStep::Spacing { .. } => {
-                vec![method_option(self.measure)]
+                vec![method_option(self.measure), associative_option(self.associative)]
             }
             _ => Vec::new(),
         }
+    }
+
+    fn set_working_plane(&mut self, plane: WorkingPlane) {
+        self.plane = plane;
     }
 
     fn needs_entity_pick(&self) -> bool {
@@ -915,6 +953,11 @@ impl CadCommand for ArrayPathCommand {
     }
 
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
+        if is_associative_keyword(text) && !matches!(self.step, PathStep::SelectPath) {
+            self.associative = !self.associative;
+            defaults::set_array_assoc(f64::from(u8::from(self.associative)));
+            return None;
+        }
         if matches!(text.trim().to_ascii_uppercase().as_str(), "M" | "METHOD" | "_M")
             && matches!(self.step, PathStep::Count { .. } | PathStep::Spacing { .. })
         {
@@ -964,6 +1007,9 @@ impl CadCommand for ArrayPathCommand {
                         _ => return None,
                     }
                 };
+                if let Some(result) = self.associative_result(path_entity, count, *spacing) {
+                    return Some(result);
+                }
                 let pts = self.spaced_samples(path_entity, *spacing, count as usize);
                 return Some(self.result(&pts));
             }
@@ -983,6 +1029,9 @@ impl CadCommand for ArrayPathCommand {
             self.default_count = v;
             v
         };
+        if let Some(result) = self.associative_result(path_entity, count, 0.0) {
+            return Some(result);
+        }
         let pts = self.oriented_samples(path_entity, count as usize);
         Some(self.result(&pts))
     }

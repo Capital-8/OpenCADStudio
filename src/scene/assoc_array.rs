@@ -4,6 +4,7 @@
 //! anonymous block holding the source objects (read). The action's value
 //! parameters (Items, ItemSpacing, Rows, …) define where the items go.
 
+use codec::EntityType;
 use codec::objects::{
     AssocAction, AssocArrayActionBody, AssocDependency, AssocEvalValue, AssocValueParam,
     AssociativeData, ObjectType,
@@ -86,7 +87,16 @@ pub fn array_of_insert(document: &Document, insert: Handle) -> Option<AssocArray
             ) {
                 (true, true) if dependency.dependent_on == insert => owns_insert = true,
                 (false, true) => array_block = dependency.dependent_on,
-                (true, false) if source_block.is_null() => source_block = dependency.dependent_on,
+                // A path array also reads its path; the source is the block.
+                (true, false)
+                    if source_block.is_null()
+                        && document
+                            .block_records
+                            .iter()
+                            .any(|record| record.handle == dependency.dependent_on) =>
+                {
+                    source_block = dependency.dependent_on
+                }
                 _ => {}
             }
         }
@@ -341,6 +351,90 @@ pub fn polar_items(
     items
 }
 
+/// The curve a path array follows: what its read dependency on a drawing
+/// object (not the source block) watches.
+pub fn path_entity(document: &Document, array: &AssocArray) -> Option<(Handle, EntityType)> {
+    action(document, array.action)?
+        .dependencies
+        .iter()
+        .find_map(|link| {
+            let dependency = dependency(document, link.dependency)?;
+            if !dependency.is_read_dependency
+                || dependency.is_write_dependency
+                || dependency.dependent_on == array.source_block
+            {
+                return None;
+            }
+            let entity = document.get_entity(dependency.dependent_on)?;
+            Some((dependency.dependent_on, entity.clone()))
+        })
+}
+
+/// The items of a path array along `path`: `Items` of them `ItemSpacing`
+/// apart from the path's start (its end when `PathDirection` is 0), spread
+/// over the whole path when `Method` is 0 (Divide), turned to the travel
+/// direction when `AlignItems` is set. Rows step to the left of the path
+/// and levels up.
+pub fn path_items(params: &[AssocValueParam], path: &EntityType) -> Vec<([i32; 3], DMat4)> {
+    let get = |name: &str, default: f64| param_value(params, name).unwrap_or(default);
+    let Some(curve) = crate::entities::curve::entity_curve(path) else {
+        return Vec::new();
+    };
+    let length = curve.length();
+    if !length.is_finite() || length <= 0.0 {
+        return Vec::new();
+    }
+    let at = |distance: f64| DVec3::from_array(curve.point_at_distance(distance.clamp(0.0, length)));
+    let count = get("Items", 1.0).clamp(1.0, 100_000.0) as i32;
+    let (rows, levels) = (
+        get("Rows", 1.0).clamp(1.0, 1000.0) as i32,
+        get("Levels", 1.0).clamp(1.0, 1000.0) as i32,
+    );
+    let divide = param_value(params, "Method") == Some(0.0);
+    let spacing = if !divide {
+        get("ItemSpacing", 0.0)
+    } else if curve.is_closed() {
+        length / f64::from(count)
+    } else if count > 1 {
+        length / f64::from(count - 1)
+    } else {
+        0.0
+    };
+    let reversed = get("PathDirection", 1.0) == 0.0;
+    let align = get("AlignItems", 1.0) != 0.0;
+    let step = (length * 1e-6).max(1e-9);
+    let mut items = Vec::with_capacity((count * rows * levels).max(0) as usize);
+    for level in 0..levels {
+        for row in 0..rows {
+            for item in 0..count {
+                let along = (spacing * f64::from(item)).min(length);
+                let distance = if reversed { length - along } else { along };
+                let mut tangent = at(distance + step) - at(distance - step);
+                if reversed {
+                    tangent = -tangent;
+                }
+                let tangent = tangent.truncate().try_normalize().unwrap_or(glam::DVec2::X);
+                let left = DVec3::new(-tangent.y, tangent.x, 0.0);
+                let position = at(distance)
+                    + left * (f64::from(row) * get("RowSpacing", 0.0))
+                    + DVec3::Z
+                        * (f64::from(row) * get("RowElevation", 0.0)
+                            + f64::from(level) * get("LevelSpacing", 0.0));
+                let placement = if align {
+                    DMat4::from_rotation_translation(
+                        glam::DQuat::from_rotation_z(tangent.y.atan2(tangent.x)),
+                        position,
+                    )
+                } else {
+                    DMat4::from_translation(position)
+                };
+                items.push(([item, row, level], placement));
+            }
+        }
+    }
+    items
+}
+
 /// The rows the Properties palette shows for an array: (field, parameter,
 /// label, kind) where kind 0 is a count, 1 a length and 2 an angle.
 fn property_rows(kind: ArrayKind) -> &'static [(&'static str, &'static str, &'static str, u8)] {
@@ -393,8 +487,7 @@ fn property_rows(kind: ArrayKind) -> &'static [(&'static str, &'static str, &'st
     }
 }
 
-/// The Properties section of an associative array. Path arrays are shown
-/// read-only: their items follow a curve this does not re-place yet.
+/// The Properties section of an associative array.
 pub fn property_section(
     document: &Document,
     array: &AssocArray,
@@ -402,6 +495,8 @@ pub fn property_section(
     use crate::entities::common::{format_angle, format_length};
     use crate::scene::model::object::{PropSection, PropValue, Property};
     let params = value_params(document, array);
+    // A path array whose path is gone keeps its items as they are.
+    let fixed = array.kind == ArrayKind::Path && path_entity(document, array).is_none();
     let props = property_rows(array.kind)
         .iter()
         .filter_map(|&(field, name, label, kind)| {
@@ -414,7 +509,7 @@ pub fn property_section(
             Some(Property {
                 label: crate::t!(label).into_owned(),
                 field,
-                value: if array.kind == ArrayKind::Path {
+                value: if fixed {
                     PropValue::ReadOnly(text)
                 } else {
                     PropValue::EditText(text)
@@ -470,10 +565,6 @@ pub fn update(
     changes: &[(&str, f64)],
 ) -> Result<(), String> {
     use codec::objects::AssocArrayItem;
-    use codec::EntityType;
-    if array.kind == ArrayKind::Path {
-        return Err("path arrays cannot be edited yet".into());
-    }
     let document = &scene.document;
     let mut params = value_params(document, array).to_vec();
     let center = match array.kind {
@@ -500,13 +591,31 @@ pub fn update(
         set_param_value(&mut params, "ItemSpacing", spacing);
     }
     let normal = base_normal(document, array);
+    let path = (array.kind == ArrayKind::Path)
+        .then(|| path_entity(document, array))
+        .flatten();
     let placements: Vec<([i32; 3], DMat4)> = match array.kind {
         ArrayKind::Rectangular => rectangular_items(&params, column_axis(document, array), normal)
             .into_iter()
             .map(|(location, offset)| (location, DMat4::from_translation(offset)))
             .collect(),
-        _ => polar_items(&params, center, normal),
+        ArrayKind::Polar => polar_items(&params, center, normal),
+        ArrayKind::Path => {
+            let (_, path) = path.as_ref().ok_or("the array's path is gone")?;
+            // Divide keeps the count and spreads it over the path.
+            if param_value(&params, "Method") == Some(0.0) {
+                if let Some(curve) = crate::entities::curve::entity_curve(path) {
+                    let gaps = param_value(&params, "Items").unwrap_or(1.0)
+                        - if curve.is_closed() { 0.0 } else { 1.0 };
+                    set_param_value(&mut params, "ItemSpacing", curve.length() / gaps.max(1.0));
+                }
+            }
+            path_items(&params, path)
+        }
     };
+    if placements.is_empty() {
+        return Err("the array has no items to place".into());
+    }
     let current = body(document, array.body).ok_or("array body missing")?;
     let template = current
         .items
@@ -597,6 +706,27 @@ pub fn update(
             }
         }
     }
+    // The path's cached curve follows the path.
+    if let Some((_, path)) = &path {
+        if let Some((action_type, subcurve_kind, curve)) =
+            crate::scene::model::sweep_model::assoc_edge_curve(path)
+        {
+            let owned = action(document, array.action)
+                .map(|action| action.owned_parameters.clone())
+                .unwrap_or_default();
+            for handle in owned {
+                if let Some(ObjectType::Associative(object)) = document.objects.get_mut(&handle) {
+                    if let AssociativeData::EdgeActionParam(edge) = &mut object.data {
+                        if edge.single_dependency.action_param.name == "RowProfile" {
+                            edge.action_type = action_type;
+                            edge.subcurve_kind = subcurve_kind;
+                            edge.curve = curve.clone();
+                        }
+                    }
+                }
+            }
+        }
+    }
     scene.bump_geometry();
     Ok(())
 }
@@ -634,6 +764,12 @@ const ARRAY_CLASSES: &[(&str, &str, i32, i32)] = &[
     (
         "ACDBASSOCARRAYPOLARPARAMETERS",
         "AcDbAssocArrayPolarParameters",
+        29,
+        55,
+    ),
+    (
+        "ACDBASSOCARRAYPATHPARAMETERS",
+        "AcDbAssocArrayPathParameters",
         29,
         55,
     ),
@@ -877,7 +1013,87 @@ pub fn polar_params(
     ]
 }
 
-/// What ARRAYRECT / ARRAYPOLAR ask for an associative array.
+impl crate::scene::Scene {
+    /// Place again the items of every path array whose path is among
+    /// `changes`, so the array follows its path. Returns the array
+    /// references it re-placed.
+    pub(crate) fn refresh_associative_path_arrays(
+        &mut self,
+        changes: &[(Handle, crate::scene::ChangeKind)],
+    ) -> Vec<(Handle, crate::scene::ChangeKind)> {
+        let mut arrays: Vec<AssocArray> = Vec::new();
+        for (handle, kind) in changes {
+            if matches!(kind, crate::scene::ChangeKind::Removed) {
+                continue;
+            }
+            let Some(entity) = self.document.get_entity(*handle) else {
+                continue;
+            };
+            for reactor in &entity.common().reactors {
+                let Some(ObjectType::Associative(object)) = self.document.objects.get(reactor)
+                else {
+                    continue;
+                };
+                let AssociativeData::Dependency(watch) = &object.data else {
+                    continue;
+                };
+                if !watch.is_read_dependency || watch.is_write_dependency {
+                    continue;
+                }
+                // The array reference is what the action both reads and writes.
+                let insert = action(&self.document, object.owner).and_then(|action| {
+                    action.dependencies.iter().find_map(|link| {
+                        let link = dependency(&self.document, link.dependency)?;
+                        (link.is_read_dependency && link.is_write_dependency)
+                            .then_some(link.dependent_on)
+                    })
+                });
+                let Some(array) = insert.and_then(|insert| array_of_insert(&self.document, insert))
+                else {
+                    continue;
+                };
+                if array.kind == ArrayKind::Path && !arrays.iter().any(|a| a.insert == array.insert)
+                {
+                    arrays.push(array);
+                }
+            }
+        }
+        if arrays.is_empty() {
+            return Vec::new();
+        }
+        // The items are rebuilt outside the entity delta.
+        self.poison_undo_recording();
+        arrays
+            .into_iter()
+            .filter(|array| update(self, array, &[]).is_ok())
+            .map(|array| (array.insert, crate::scene::ChangeKind::Modified))
+            .collect()
+    }
+}
+
+/// The value parameters of a new path array, in the order the reference
+/// product writes them. Measure keeps `spacing`; Divide (Method 0, the path
+/// filled) derives it from the path's length.
+pub fn path_params(items: u32, spacing: f64, divide: bool, reversed: bool) -> Vec<AssocValueParam> {
+    vec![
+        value_param("ItemSpacing", 1, spacing, false),
+        value_param("Items", 0, f64::from(items.max(1)), true),
+        value_param("LevelSpacing", 1, 1.0, false),
+        value_param("Levels", 0, 1.0, true),
+        value_param("RowElevation", 1, 1.0, false),
+        value_param("RowSpacing", 1, spacing.abs().max(1.0), false),
+        value_param("Rows", 0, 1.0, true),
+        value_param("PathDirection", 0, if reversed { 0.0 } else { 1.0 }, true),
+        value_param("AlignItems", 0, 1.0, true),
+        value_param("FillPath", 0, if divide { 1.0 } else { 0.0 }, false),
+        value_param("MaintainZ", 0, 1.0, false),
+        value_param("TangentOrientationAngle", 0, 0.0, false),
+        value_param("Orientation", 0, 1.0, true),
+        value_param("Method", 0, if divide { 0.0 } else { 1.0 }, true),
+    ]
+}
+
+/// What ARRAYRECT / ARRAYPOLAR / ARRAYPATH ask for an associative array.
 #[derive(Clone, Debug, PartialEq)]
 pub enum AssocArraySpec {
     Rectangular {
@@ -890,6 +1106,13 @@ pub enum AssocArraySpec {
         center: DVec3,
         items: u32,
         fill_angle: f64,
+    },
+    Path {
+        path: Handle,
+        items: u32,
+        spacing: f64,
+        divide: bool,
+        reversed: bool,
     },
 }
 
@@ -906,12 +1129,12 @@ pub fn create(
     base: DVec3,
     kind: ArrayKind,
     params: Vec<AssocValueParam>,
+    path: Option<Handle>,
 ) -> Result<Handle, String> {
     use codec::objects::{
         AssocActionBody, AssocActionDependency, AssocActionParam, AssocArrayItem,
         AssocSingleDependencyActionParam, AssocVertexActionParam,
     };
-    use codec::EntityType;
     let normal = DVec3::Z;
     let placements: Vec<([i32; 3], DMat4)> = match kind {
         ArrayKind::Rectangular => rectangular_items(&params, DVec3::X, normal)
@@ -919,8 +1142,16 @@ pub fn create(
             .map(|(location, offset)| (location, DMat4::from_translation(offset)))
             .collect(),
         ArrayKind::Polar => polar_items(&params, DVec3::ZERO, normal),
-        ArrayKind::Path => return Err("path arrays cannot be created yet".into()),
+        ArrayKind::Path => {
+            let curve = path
+                .and_then(|path| scene.document.get_entity(path))
+                .ok_or("the path is gone")?;
+            path_items(&params, curve)
+        }
     };
+    if placements.is_empty() {
+        return Err("the array has no items to place".into());
+    }
     let mut entities: Vec<EntityType> = sources
         .iter()
         .filter_map(|handle| scene.document.get_entity(*handle).cloned())
@@ -929,11 +1160,28 @@ pub fn create(
         return Err("nothing to array".into());
     }
     let layer = scene.document.header.current_layer_name.clone();
+    // The source block holds the objects as the first item draws them: a
+    // path array's first item sits on the path, turned to it, so the
+    // objects keep where they are drawn.
+    let to_block = match kind {
+        ArrayKind::Path => {
+            let first = placements[0].1;
+            let turn = first.x_axis.y.atan2(first.x_axis.x);
+            vec![
+                crate::command::EntityTransform::Translate(-first.w_axis.truncate()),
+                crate::command::EntityTransform::Rotate {
+                    center: DVec3::ZERO,
+                    axis: DVec3::Z,
+                    angle_rad: -turn,
+                },
+            ]
+        }
+        _ => vec![crate::command::EntityTransform::Translate(-source_point)],
+    };
     for entity in &mut entities {
-        crate::scene::view::dispatch::apply_transform(
-            entity,
-            &crate::command::EntityTransform::Translate(-source_point),
-        );
+        for transform in &to_block {
+            crate::scene::view::dispatch::apply_transform(entity, transform);
+        }
     }
     register_array_classes(&mut scene.document);
 
@@ -993,6 +1241,7 @@ pub fn create(
     let network = model_space_network(document);
     let [action, body, write_dep, read_dep, both_dep] =
         std::array::from_fn(|_| document.allocate_handle());
+    let path_dep = path.map(|_| document.allocate_handle());
     let mut owned_parameters = Vec::new();
     let vertex_params = [
         ("BaseNormal", normal),
@@ -1023,11 +1272,53 @@ pub fn create(
         );
         owned_parameters.push(handle);
     }
-    for (handle, read, write, order, target, id) in [
-        (write_dep, false, true, 0, array_block, 1),
-        (read_dep, true, false, 0, source_block, 2),
-        (both_dep, true, true, i32::MIN, insert, 3),
-    ] {
+    // A path array reads its path first, as the reference lists it, and
+    // keeps the path's curve in its RowProfile parameter.
+    let mut links = Vec::new();
+    if let (Some(path), Some(path_dep)) = (path, path_dep) {
+        links.push((path_dep, true, false, 0, path));
+        if let Some(entity) = document.get_entity_mut(path) {
+            entity.common_mut().reactors.push(path_dep);
+        }
+        let curve = document
+            .get_entity(path)
+            .and_then(crate::scene::model::sweep_model::assoc_edge_curve);
+        if let Some((action_type, subcurve_kind, curve)) = curve {
+            let handle = document.allocate_handle();
+            document.objects.insert(
+                handle,
+                associative(
+                    handle,
+                    action,
+                    "ACDBASSOCEDGEACTIONPARAM",
+                    "AcDbAssocEdgeActionParam",
+                    AssociativeData::EdgeActionParam(codec::objects::AssocEdgeActionParam {
+                        single_dependency: AssocSingleDependencyActionParam {
+                            action_param: AssocActionParam {
+                                is_r2013: 1,
+                                version: 0,
+                                name: "RowProfile".to_string(),
+                            },
+                            dependency: path_dep,
+                            ..Default::default()
+                        },
+                        parameter: Handle::NULL,
+                        has_action: true,
+                        action_type,
+                        subcurve_kind,
+                        curve,
+                    }),
+                ),
+            );
+            owned_parameters.push(handle);
+        }
+    }
+    links.extend([
+        (write_dep, false, true, 0, array_block),
+        (read_dep, true, false, 0, source_block),
+        (both_dep, true, true, i32::MIN, insert),
+    ]);
+    for (id, (handle, read, write, order, target)) in (1..).zip(links.iter().copied()) {
         document.objects.insert(
             handle,
             associative(
@@ -1079,7 +1370,8 @@ pub fn create(
         .collect();
     let parameter_block = match kind {
         ArrayKind::Polar => "AcDbAssocArrayPolarParameters",
-        _ => "AcDbAssocArrayRectangularParameters",
+        ArrayKind::Path => "AcDbAssocArrayPathParameters",
+        ArrayKind::Rectangular => "AcDbAssocArrayRectangularParameters",
     };
     document.objects.insert(
         body,
@@ -1125,13 +1417,14 @@ pub fn create(
                 owning_network: network,
                 action_body: body,
                 action_index,
-                max_dependency_index: 3,
-                dependencies: [write_dep, read_dep, both_dep]
-                    .map(|dependency| AssocActionDependency {
+                max_dependency_index: links.len() as i32,
+                dependencies: links
+                    .iter()
+                    .map(|&(dependency, ..)| AssocActionDependency {
                         is_owned: true,
                         dependency,
                     })
-                    .to_vec(),
+                    .collect(),
                 owned_parameters,
                 values: params,
                 ..Default::default()
@@ -1163,6 +1456,7 @@ pub fn create_from_spec(
             source_point,
             ArrayKind::Rectangular,
             rectangular_params(columns, rows, column_spacing, row_spacing),
+            None,
         ),
         AssocArraySpec::Polar {
             center,
@@ -1183,8 +1477,24 @@ pub fn create_from_spec(
                 center,
                 ArrayKind::Polar,
                 params,
+                None,
             )
         }
+        AssocArraySpec::Path {
+            path,
+            items,
+            spacing,
+            divide,
+            reversed,
+        } => create(
+            scene,
+            sources,
+            source_point,
+            DVec3::ZERO,
+            ArrayKind::Path,
+            path_params(items, spacing, divide, reversed),
+            Some(path),
+        ),
     }
 }
 
@@ -1232,3 +1542,4 @@ mod tests {
         assert_eq!(text.matches("\n  0\nACDBASSOCNETWORK\n").count(), 2);
     }
 }
+

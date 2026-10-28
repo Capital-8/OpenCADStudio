@@ -4340,6 +4340,8 @@ impl Scene {
             Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
             let refreshed = self.refresh_associative_surfaces(&changes);
             Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
+            let refreshed = self.refresh_associative_path_arrays(&changes);
+            Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
             if solve_parametric && !self.parametric_constraints.is_empty() {
                 let refreshed = self.refresh_parametric_constraints_with_initial_policy(
                     &changes,
