@@ -7765,6 +7765,10 @@ impl OpenCADStudio {
                 self.mtext_stack_selection();
                 Task::none()
             }
+            Message::MTextScript(superscript) => {
+                self.mtext_script_selection(superscript);
+                Task::none()
+            }
             Message::MTextClearFormatting => {
                 self.mtext_clear_formatting();
                 Task::none()

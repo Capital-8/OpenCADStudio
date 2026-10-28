@@ -622,6 +622,14 @@ fn mtext_editor_content<'a>(
             .on_press(Message::MTextStack)
             .padding(3)
             .style(btn_style),
+        icon_btn(
+            include_bytes!("../../../assets/icons/mt_superscript.svg"),
+            Message::MTextScript(true)
+        ),
+        icon_btn(
+            include_bytes!("../../../assets/icons/mt_subscript.svg"),
+            Message::MTextScript(false)
+        ),
         button(lbl("Clear"))
             .on_press(Message::MTextClearFormatting)
             .padding(3)

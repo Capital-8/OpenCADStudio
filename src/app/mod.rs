@@ -4712,6 +4712,8 @@ pub enum Message {
     MTextRedo,
     /// Convert the selected numerator/separator/denominator to a stacked run.
     MTextStack,
+    /// Superscript (true) or subscript (false) the selection.
+    MTextScript(bool),
     /// Remove inline character formatting from the selection (or all text).
     MTextClearFormatting,
     /// Insert a predefined symbol or field token at the caret.
