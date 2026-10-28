@@ -3557,10 +3557,23 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
         } else if !preserve_entity_layer {
             // DIMLAYER and MLEADERLAYER put new dimensions and
             // multileaders on their own layers.
+            let xref = match &entity {
+                codec::EntityType::Insert(insert) => self.tabs[i]
+                    .scene
+                    .document
+                    .block_records
+                    .get(&insert.block_name)
+                    .is_some_and(|record| record.flags.is_xref),
+                _ => false,
+            };
             let layer = if matches!(entity, codec::EntityType::Dimension(_)) {
                 self.new_dimension_layer(i)
             } else if matches!(entity, codec::EntityType::MultiLeader(_)) {
                 self.new_mleader_layer(i)
+            } else if matches!(entity, codec::EntityType::Hatch(_)) {
+                self.new_variable_layer(i, "HATCHLAYER")
+            } else if xref {
+                self.new_variable_layer(i, "XREFLAYER")
             } else {
                 self.tabs[i].active_layer.clone()
             };
