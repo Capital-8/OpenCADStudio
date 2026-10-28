@@ -1058,7 +1058,7 @@ impl Scene {
     }
 
     /// Replace only planned sources, preserving annotations or leaders not exploded.
-    pub(crate) fn erase_entities_exact(&mut self, handles: &[Handle]) {
+    pub fn erase_entities_exact(&mut self, handles: &[Handle]) {
         self.remove_entities(handles, true, true, false);
     }
 

@@ -278,7 +278,7 @@ fn plan_explode_drops_empty_and_keeps_order() {
 /// Frozen reference implementation of the pre-refactor EXPLODE command arm.
 fn legacy_apply(scene: &mut Scene, replacements: &[(Handle, Vec<EntityType>)]) {
     for (handle, pieces) in replacements {
-        scene.erase_entities(&[*handle]);
+        scene.erase_entities_exact(&[*handle]);
         for piece in pieces {
             scene.add_entity(piece.clone());
         }
@@ -360,9 +360,9 @@ fn build_differential_scene() -> (Scene, FixtureHandles) {
     l2.annotation_handle = poly;
     let leader2 = scene.add_entity(EntityType::Leader(l2));
 
-    // User-style selection: survivor + all three explodable sources (the
-    // two leaders ride along through annotation expansion when poly is
-    // selected; they are never planned, only coupling-erased).
+    // User-style selection: survivor + three explodable sources; the two
+    // leaders ride along through annotation expansion when poly is selected
+    // and explode into their own pieces.
     scene.select_entity(survivor, false);
     scene.select_entity(poly, false);
     scene.select_entity(mline, false);
@@ -403,12 +403,18 @@ fn apply_explode_replacements_matches_legacy_loop() {
 
     let replacements = plan_from_selection(&scene_legacy);
     assert!(
-        replacements.len() >= 3,
-        "poly, mline, insert must be planned"
+        replacements.len() >= 5,
+        "poly, both leaders, mline, insert must be planned"
     );
     assert_eq!(
         replacements.iter().map(|(h, _)| *h).collect::<Vec<_>>(),
-        vec![handles.poly, handles.mline, handles.insert],
+        vec![
+            handles.poly,
+            handles.leader1,
+            handles.leader2,
+            handles.mline,
+            handles.insert
+        ],
         "planning must preserve selection order poly → mline → insert — this \
          multi-source ordering is the guard that a mis-ordered flattened add \
          fails the document_state comparison below"
@@ -444,11 +450,11 @@ fn apply_explode_replacements_matches_legacy_loop() {
         );
         assert!(
             scene.document.get_entity(handles.leader1).is_none(),
-            "leader coupling L1"
+            "leader L1 exploded"
         );
         assert!(
             scene.document.get_entity(handles.leader2).is_none(),
-            "leader coupling L2"
+            "leader L2 exploded"
         );
         assert!(
             scene.document.get_entity(handles.survivor).is_some(),

@@ -9354,7 +9354,6 @@ mod arch_format_tests {
 #[cfg(test)]
 mod dimtmove_leader_tests {
     use super::*;
-    use codec::entities::DimensionLinear;
     use codec::types::Vector3;
 
     fn v(x: f64, y: f64) -> Vector3 {
@@ -9376,70 +9375,6 @@ mod dimtmove_leader_tests {
         }
     }
 
-    /// Text outside along the axis → the dim line extends underneath the text.
-    #[test]
-    fn text_outside_extends_dim_line_under_text() {
-        let mut d = DimensionLinear::horizontal(v(0.0, 0.0), v(20.0, 0.0));
-        d.definition_point = v(0.0, -5.0); // dimension line at y=-5
-        let dim = Dimension::Linear(d);
-        // text anchor outside on the right: centre x=30, half width 3 → far edge 33
-        let txt = vec3_local(v(30.0, -3.0));
-        let (anchor, end, under) =
-            dimtmove_leader_endpoints(&dim, layout(txt, 3.0)).expect("leader");
-        assert!(under, "outside text extends the dimension line");
-        assert!(
-            (anchor.x - 20.0).abs() < 1e-4 && (anchor.y + 5.0).abs() < 1e-4,
-            "near end should be the dim line's right end (20,-5), got {anchor:?}"
-        );
-        assert!(
-            (end.x - 33.0).abs() < 1e-4 && (end.y + 5.0).abs() < 1e-4,
-            "far end should be the text's far edge (33,-5), got {end:?}"
-        );
-    }
-
-    /// Text outside on the left → extends leftwards.
-    #[test]
-    fn text_outside_left_extends_leftwards() {
-        let mut d = DimensionLinear::horizontal(v(0.0, 0.0), v(20.0, 0.0));
-        d.definition_point = v(0.0, -5.0);
-        let dim = Dimension::Linear(d);
-        let txt = vec3_local(v(-12.0, -3.0));
-        let (anchor, end, under) =
-            dimtmove_leader_endpoints(&dim, layout(txt, 2.0)).expect("leader");
-        assert!(under);
-        assert!(
-            (anchor.x - 0.0).abs() < 1e-4,
-            "near end should be the dim line's left end, got {anchor:?}"
-        );
-        assert!(
-            (end.x + 14.0).abs() < 1e-4,
-            "far end should be the text's far edge at -14, got {end:?}"
-        );
-    }
-
-    /// Text still inside (only moved up/down) → leader from the dim line to the text.
-    #[test]
-    fn text_inside_connects_to_text() {
-        let mut d = DimensionLinear::horizontal(v(0.0, 0.0), v(20.0, 0.0));
-        d.definition_point = v(0.0, -5.0);
-        let dim = Dimension::Linear(d);
-        let txt = vec3_local(v(10.0, 2.0));
-        let (anchor, end, under) =
-            dimtmove_leader_endpoints(&dim, layout(txt, 3.0)).expect("leader");
-        assert!(
-            !under,
-            "inside → keep the connect-to-text leader (text break allowed)"
-        );
-        assert!(
-            (anchor.x - 10.0).abs() < 1e-4 && (anchor.y + 5.0).abs() < 1e-4,
-            "anchor should be the dim line point facing the text, got {anchor:?}"
-        );
-        assert!(
-            (end.y - 2.0).abs() < 1e-4,
-            "end should be the text position, got {end:?}"
-        );
-    }
-
     /// Radius dimensions draw no leader (unchanged).
     #[test]
     fn radius_has_no_leader() {
@@ -9449,22 +9384,6 @@ mod dimtmove_leader_tests {
             layout(vec3_local(v(0.0, 8.0)), 2.0)
         )
         .is_none());
-    }
-
-    #[test]
-    fn extension_does_not_draw_through_text() {
-        let mut d = DimensionLinear::horizontal(v(0.0, 0.0), v(20.0, 0.0));
-        d.definition_point = v(0.0, -5.0);
-        let text = layout(Vec3::new(30.0, -5.0, 0.0), 3.0);
-        let (start, end, outside) = dimtmove_leader_endpoints(&Dimension::Linear(d), text).unwrap();
-        assert!(outside);
-        let mut points = Vec::new();
-        add_segment_with_text_break(&mut points, start, end, text.break_box);
-        let finite: Vec<_> = points
-            .into_iter()
-            .filter(|point| point[0].is_finite())
-            .collect();
-        assert_eq!(finite, vec![[20.0, -5.0, 0.0], [27.0, -5.0, 0.0]]);
     }
 }
 
@@ -10135,8 +10054,10 @@ mod layout_parity_tests {
     }
 
     #[test]
-    fn dimtmove_two_does_not_chase_moved_linear_text() {
-        let make = |movement| {
+    fn dimtmove_one_hangs_far_text_on_a_leader_from_the_line_middle() {
+        // Dimension line y=2 from x=0 to 0.8; text three units above it, beyond
+        // max(DIMASZ + DIMGAP, DIMTXT / 2 + DIMGAP + DIMEXE) of the line.
+        let make = |movement, text_y| {
             let mut document = document();
             document.dim_styles.get_mut("Standard").unwrap().dimtmove = movement;
             let mut d = DimensionLinear::horizontal(
@@ -10144,30 +10065,27 @@ mod layout_parity_tests {
                 Vector3::new(0.8, 0.0, 0.0),
             );
             d.definition_point = Vector3::new(0.0, 2.0, 0.0);
-            d.base.text_middle_point = Vector3::new(2.5, 2.0, 0.0);
+            d.base.text_middle_point = Vector3::new(0.4, text_y, 0.0);
+            d.base.text_user_positioned = true;
             drawn(&document, &Dimension::Linear(d)).0
         };
-        let with_leader = make(1);
-        let without_leader = make(2);
-        assert!(
-            with_leader.len() > without_leader.len(),
-            "DIMTMOVE=1 should add a leader: {} vs {} points",
-            with_leader.len(),
-            without_leader.len()
-        );
-        // DIMTMOVE=1 reaches the moved text; DIMTMOVE=2 keeps only the
-        // legitimate arrow-outside stub and never chases the text.
-        assert!(
-            with_leader
+        let leader_start = |points: &[DVec3]| {
+            points
                 .iter()
-                .any(|p| p.x >= 2.0 && (p.y - 2.0).abs() <= 1e-6),
-            "DIMTMOVE=1 should reach the moved text: {with_leader:?}"
+                .any(|p| (p.x - 0.4).abs() <= 1e-6 && (p.y - 2.0).abs() <= 1e-6)
+        };
+        let far = make(1, 5.0);
+        assert!(
+            leader_start(&far),
+            "DIMTMOVE=1 leader starts at the dimension line's middle: {far:?}"
         );
         assert!(
-            without_leader
-                .iter()
-                .all(|p| p.x <= 1.5 || (p.y - 2.0).abs() > 1e-6),
-            "DIMTMOVE=2 must not reach the moved text: {without_leader:?}"
+            !leader_start(&make(2, 5.0)),
+            "DIMTMOVE=2 never draws a leader"
+        );
+        assert!(
+            !leader_start(&make(1, 2.1)),
+            "text near its dimension line keeps to it without a leader"
         );
     }
 
