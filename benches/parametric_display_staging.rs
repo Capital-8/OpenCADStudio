@@ -13,6 +13,10 @@
 //! 3. `sample_chain`'s per-call latency over the welded chain (the
 //!    placement/basis-curve read path). The commission's budget: under
 //!    1 microsecond per sample.
+//! 4. The grip-edit review (v16 policy input): per-move host-local
+//!    re-derivation cost when a drag revises the section's end radius —
+//!    the Fresnel/chord extreme (CLOTHOID) against the exact Bézier-spline
+//!    extreme (CUBIC), plus the point-projection tier on the same design.
 //!
 //! Deterministic: fixed fixtures, no randomness. Run:
 //! `cargo bench --bench parametric_display_staging`
@@ -34,6 +38,7 @@ const WARMUP: usize = 2;
 const SAMPLES: usize = 2000;
 const WELDED_PAIRS: usize = 25;
 const CHORD_PAIRS: usize = 5;
+const GRIP_MOVES: usize = 1000;
 
 fn stepped(point: [f64; 2], direction: f64, length: f64) -> [f64; 2] {
     [
@@ -190,4 +195,110 @@ fn main() {
     println!("sample: {SAMPLES} calls in {elapsed:?} -> {per_sample:?} per call");
     println!("sample: digest {acc:.3} over {total} m of chain");
     black_box(acc);
+
+    // Grip-edit review (the v16 policy decision input).
+    //
+    // Per-move cost of HOST-LOCAL re-derivation for a grip edit: the drag
+    // revises one declared parameter (the section's end radius) and the host
+    // re-derives the live display set per coalesced cursor move — no IPC —
+    // instead of the plugin streaming preview/live-entity geometry per move
+    // (the v12 semantics). Two species at the derivation-cost extremes:
+    //
+    // - CLOTHOID: the transcendental case — every move re-runs the
+    //   Fresnel/GL integration and the measured-deviation chord refinement.
+    // - CUBIC: the exact degree-3 Bezier spline carrier — closed-form
+    //   control points, the cheapest possible per-move re-derivation.
+    //
+    // The point-projection tier (`sample_chain` at the cursor's station) is
+    // measured on the same dragged design: the cheap preview without the
+    // materialized entity set.
+    for (label, species, base_r) in [
+        (
+            "clothoid",
+            ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Clothoid),
+            -300.0f64,
+        ),
+        (
+            "bezier-carrier cubic",
+            ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Cubic),
+            -300.0f64,
+        ),
+    ] {
+        let mut chain = grip_edit_chain(species, base_r);
+        let (entities, _) =
+            build_display_entities(&chain, 1e-3).expect("the grip fixture stages");
+        let per_move_count = entities.len();
+        // (a) Full re-derivation per move; the drag sweeps +-3% around the
+        // base end radius, deterministic.
+        let mut build_total = Duration::ZERO;
+        let mut digest = 0.0f64;
+        for m in 0..GRIP_MOVES {
+            let t = m as f64 / GRIP_MOVES as f64;
+            chain.segments[1].end_radius = base_r * (1.0 + 0.03 * (2.0 * t - 1.0));
+            let start = Instant::now();
+            black_box(build_display_entities(&chain, 1e-3).expect("move re-derivation stages"));
+            build_total += start.elapsed();
+            digest += (chain.segments[1].end_radius + 1.0) * 0.001;
+        }
+        let per_move = build_total / GRIP_MOVES as u32;
+        assert!(
+            per_move < Duration::from_millis(5),
+            "grip-edit re-derivation blew the frame budget: {per_move:?} per move"
+        );
+        println!(
+            "grip_edit ({label}): {GRIP_MOVES} host-local re-derivations, {per_move_count} \
+             entities per move, mean {per_move:?} per move (60 fps frame = 16.7 ms)",
+        );
+        // (b) The projection tier on the same dragged design.
+        let mut sample_total = Duration::ZERO;
+        for m in 0..GRIP_MOVES {
+            let t = m as f64 / GRIP_MOVES as f64;
+            chain.segments[1].end_radius = base_r * (1.0 + 0.03 * (2.0 * t - 1.0));
+            let start = Instant::now();
+            black_box(sample_chain(&chain, 30.0).unwrap());
+            sample_total += start.elapsed();
+        }
+        let per_projection = sample_total / GRIP_MOVES as u32;
+        println!("grip_edit ({label}): projection tier mean {per_projection:?} per move");
+        println!("grip_edit ({label}): digest {digest:.3}");
+        black_box(digest);
+    }
+}
+
+/// A {line, species} plan chain with the species section carrying its end
+/// radius as the dragged parameter. The species section is the LAST segment:
+/// no downstream seam restates its end, so the re-derivation cost is the
+/// pure per-species derivation.
+fn grip_edit_chain(species: ParametricSpecies, end_radius: f64) -> ParametricChain {
+    let mut segments = vec![ParametricSegment {
+        species: ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Line),
+        start_point: [0.0; 2],
+        start_direction: 0.0,
+        start_gradient: 0.0,
+        end_gradient: 0.0,
+        length: 2.0,
+        start_radius: 0.0,
+        end_radius: 0.0,
+        end_curvature: 0.0,
+        bank_change: 0.0,
+        gravity_height: 0.0,
+    }];
+    segments.push(ParametricSegment {
+        species,
+        start_point: stepped([0.0; 2], 0.0, 2.0),
+        start_direction: 0.0,
+        start_gradient: 0.0,
+        end_gradient: 0.0,
+        length: 60.0,
+        start_radius: 0.0,
+        end_radius,
+        end_curvature: 0.0,
+        bank_change: 0.0,
+        gravity_height: 0.0,
+    });
+    ParametricChain {
+        plane: ParametricPlane::Plan,
+        segments,
+        layer: String::new(),
+    }
 }
