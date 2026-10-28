@@ -827,7 +827,7 @@ impl Scene {
                                 PropValue::PluginParam { .. } => {
                                     // A class parameter's record value is text to the
                                     // quick-select reader; the committed edit stays on
-                                    // the class's own record path (API v16).
+                                    // the class's own record path (API v14).
                                     QSelectValueEditor::Text
                                 }
                                 PropValue::BlockNumber { .. }

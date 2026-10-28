@@ -690,7 +690,7 @@ impl OpenCADStudio {
                 self.tabs[i]
                     .plugin_grips
                     .retain_alive(|plugin| visible(plugin));
-                // API v15: the class registry reaps with the same liveness —
+                // API v14: the class registry reaps with the same liveness —
                 // a dead plugin's declarations must not outlive it.
                 self.tabs[i]
                     .plugin_classes

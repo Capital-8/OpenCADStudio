@@ -1,4 +1,4 @@
-//! Plugin-declared entity class registry (API v15).
+//! Plugin-declared entity class registry (API v14).
 //!
 //! One rule, copied from the grip sets: plugin-DECLARE, plugin-OWN,
 //! tab-scoped display-session state. A class entry dies with its owning

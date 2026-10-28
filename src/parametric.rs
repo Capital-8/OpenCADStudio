@@ -61,8 +61,9 @@ use std::f64::consts::PI;
 use codec::entities::{Arc, EntityType, Line, LwPolyline, LwVertex, Spline};
 use codec::types::{Vector2, Vector3};
 use ocs_plugin_api::host::{
-    HorizontalSegmentSpecies, MAX_PLUGIN_LIVE_ENTITIES, ParametricChain, ParametricPlane,
-    ParametricSample, ParametricSegment, ParametricSpecies, VerticalSegmentSpecies,
+    DeclaredKappaRamp, HorizontalSegmentSpecies, MAX_PLUGIN_LIVE_ENTITIES, ParametricChain,
+    ParametricPlane, ParametricSample, ParametricSegment, ParametricSpecies,
+    VerticalSegmentSpecies,
 };
 
 const TWO_PI: f64 = std::f64::consts::TAU;
@@ -221,7 +222,27 @@ fn validate_segment(plane: ParametricPlane, segment: &ParametricSegment) -> Resu
                     1.0 / segment.start_radius
                 };
                 vitals.kappa_end = 1.0 / segment.end_radius;
-                if species == HorizontalSegmentSpecies::VienneseBend {
+                if is_banked_bend(&species) {
+                    vitals.bank_change = segment.bank_change;
+                    vitals.gravity_height = segment.gravity_height;
+                }
+            }
+            HorizontalSegmentSpecies::Declared(ramp) => {
+                // The declared law states kappa directly: k0 =
+                // 1/start_radius (0 = a straight entry) and k1 =
+                // end_curvature — a Declared blend may end flat (k1 = 0),
+                // unlike the IFC blends, which always exit into a circle;
+                // end_radius is ignored for a Declared law.
+                validate_declared_ramp(&ramp).map_err(|reason| {
+                    format!("plan declared blend: {reason}")
+                })?;
+                vitals.kappa_start = if segment.start_radius == 0.0 {
+                    0.0
+                } else {
+                    1.0 / segment.start_radius
+                };
+                vitals.kappa_end = segment.end_curvature;
+                if matches!(ramp, DeclaredKappaRamp::Viennese) {
                     vitals.bank_change = segment.bank_change;
                     vitals.gravity_height = segment.gravity_height;
                 }
@@ -311,6 +332,28 @@ fn validate_segment(plane: ParametricPlane, segment: &ParametricSegment) -> Resu
                 vitals.kappa_end = segment.end_curvature;
                 vitals.theta_start = segment.start_gradient.atan();
             }
+            VerticalSegmentSpecies::Declared(ramp) => {
+                // The vertical record model carries no radius for blended
+                // species: k0 = 1/start_radius (0 = a straight run) and k1
+                // = end_curvature, the vertical clothoid's rule verbatim
+                // (k1 = 0 restates PARABOLICARC — declare that instead).
+                validate_declared_ramp(&ramp).map_err(|reason| {
+                    format!("vertical declared blend: {reason}")
+                })?;
+                if segment.end_curvature == 0.0 {
+                    return Err(
+                        "vertical declared blend needs declared curvature ends (start_radius, end_curvature); k1 = 0 restates PARABOLICARC"
+                            .to_owned(),
+                    );
+                }
+                vitals.kappa_start = if segment.start_radius == 0.0 {
+                    0.0
+                } else {
+                    1.0 / segment.start_radius
+                };
+                vitals.kappa_end = segment.end_curvature;
+                vitals.theta_start = segment.start_gradient.atan();
+            }
         },
     }
     Ok(vitals)
@@ -333,31 +376,47 @@ fn validate_segment(plane: ParametricPlane, segment: &ParametricSegment) -> Resu
 ///   W = 1/12 + (xi - 1/2) + (2/3)*((1-xi)^3 - 1/8) on the second;
 /// - VIENNESEBEND: the quintic xi^4*(35 - 84*xi + 70*xi^2 - 20*xi^3)
 ///   integrates to 7*xi^5 - 14*xi^6 + 10*xi^7 - 2.5*xi^8.
+///
+/// The banked-bend species: the plan ramp whose gravity-center correction
+/// term applies (the hard-coded VIENNESEBEND or its Declared restatement).
+fn is_banked_bend(species: &HorizontalSegmentSpecies) -> bool {
+    matches!(
+        species,
+        HorizontalSegmentSpecies::VienneseBend
+            | HorizontalSegmentSpecies::Declared(DeclaredKappaRamp::Viennese)
+    )
+}
+
+/// The fixed-shape gravity-center correction of the banked bend (IFC
+/// 4.3.2.0 lexics), driven by the declared gravity_height/bank_change
+/// pair: zero without a cant coupling, and it integrates to zero over the
+/// full segment.
+fn banked_bend_correction(vitals: &Vitals, xi: f64) -> f64 {
+    let c = 420.0 * vitals.gravity_height * vitals.bank_change / (vitals.length * vitals.length);
+    c * xi * xi * (1.0 - 4.0 * xi + 5.0 * xi * xi - 2.0 * xi * xi * xi)
+}
+
 fn blend_integral(species: HorizontalSegmentSpecies, xi: f64) -> f64 {
+    match species_ramp(&species) {
+        Some(ramp) => declared_ramp_integral(&ramp, xi),
+        // The closed species (Line/Arc/Cubic) never reach the integrator.
+        None => unreachable!("blend_integral called for a non-blend species"),
+    }
+}
+
+/// The declared ramp each blend species restates (the one formula table:
+/// the hard-coded species and the Declared species share it, so the two
+/// cannot drift).
+fn species_ramp(species: &HorizontalSegmentSpecies) -> Option<DeclaredKappaRamp> {
     match species {
-        HorizontalSegmentSpecies::Clothoid => xi * xi * 0.5,
-        HorizontalSegmentSpecies::BlossCurve => {
-            let xi2 = xi * xi;
-            xi2 * xi - xi2 * xi2 * 0.5
-        }
-        HorizontalSegmentSpecies::CosineCurve => xi * 0.5 - (PI * xi).sin() / TWO_PI,
-        HorizontalSegmentSpecies::SineCurve => {
-            xi * xi * 0.5 + ((TWO_PI * xi).cos() - 1.0) / (4.0 * PI * PI)
-        }
-        HorizontalSegmentSpecies::HelmertCurve => {
-            if xi <= 0.5 {
-                2.0 * xi * xi * xi / 3.0
-            } else {
-                let u = 1.0 - xi;
-                1.0 / 12.0 + (xi - 0.5) + 2.0 * (u * u * u - 0.125) / 3.0
-            }
-        }
-        HorizontalSegmentSpecies::VienneseBend => {
-            let xi2 = xi * xi;
-            let xi4 = xi2 * xi2;
-            7.0 * xi4 * xi - 14.0 * xi4 * xi2 + 10.0 * xi4 * xi2 * xi - 2.5 * xi4 * xi2 * xi2
-        }
-        _ => unreachable!("blend_integral called for a non-blend species"),
+        HorizontalSegmentSpecies::Clothoid => Some(DeclaredKappaRamp::Linear),
+        HorizontalSegmentSpecies::BlossCurve => Some(DeclaredKappaRamp::Bloss),
+        HorizontalSegmentSpecies::CosineCurve => Some(DeclaredKappaRamp::Cosine),
+        HorizontalSegmentSpecies::SineCurve => Some(DeclaredKappaRamp::Sine),
+        HorizontalSegmentSpecies::HelmertCurve => Some(DeclaredKappaRamp::Helmert),
+        HorizontalSegmentSpecies::VienneseBend => Some(DeclaredKappaRamp::Viennese),
+        HorizontalSegmentSpecies::Declared(ramp) => Some(*ramp),
+        _ => None,
     }
 }
 
@@ -371,7 +430,160 @@ fn is_plan_blend(species: &HorizontalSegmentSpecies) -> bool {
             | HorizontalSegmentSpecies::HelmertCurve
             | HorizontalSegmentSpecies::SineCurve
             | HorizontalSegmentSpecies::VienneseBend
+            | HorizontalSegmentSpecies::Declared(_)
     )
+}
+
+/// The normalized declared ramp r(xi) in [0, 1] (ramp(0) = 0, ramp(1) = 1):
+/// kappa(xi) = kappa_start + (kappa_end - kappa_start) * r(xi) — the
+/// Declared head's shape, executed by the generic integrator as data.
+fn declared_ramp_value(ramp: &DeclaredKappaRamp, xi: f64) -> f64 {
+    match ramp {
+        DeclaredKappaRamp::Linear => xi,
+        DeclaredKappaRamp::Bloss => 3.0 * xi * xi - 2.0 * xi * xi * xi,
+        DeclaredKappaRamp::Cosine => (1.0 - (PI * xi).cos()) * 0.5,
+        DeclaredKappaRamp::Sine => xi - (TWO_PI * xi).sin() / TWO_PI,
+        DeclaredKappaRamp::Helmert => {
+            if xi <= 0.5 {
+                2.0 * xi * xi
+            } else {
+                let w = 1.0 - xi;
+                1.0 - 2.0 * w * w
+            }
+        }
+        DeclaredKappaRamp::Viennese => {
+            let xi2 = xi * xi;
+            let xi4 = xi2 * xi2;
+            xi4 * (35.0 - 84.0 * xi + 70.0 * xi2 - 20.0 * xi2 * xi)
+        }
+        DeclaredKappaRamp::Piecewise { count, knots } => {
+            match active_knots(*count, knots) {
+                Some(active) => piecewise_value(active, xi),
+                // An invalid table cannot reach evaluation (validation
+                // refuses it first); integrate nothing rather than guess.
+                None => 0.0,
+            }
+        }
+    }
+}
+
+/// The blend integral W(xi) of a piecewise-linear ramp through the active
+/// knots: per interval the quadratic r0*h + slope*h^2/2 accumulation. The
+/// active slice is validated at declaration (first = (0, 0), last =
+/// (1, 1), ascending), so W(1) = 1/2 holds by construction.
+fn piecewise_value(knots: &[(f64, f64)], xi: f64) -> f64 {
+    let mut acc = 0.0;
+    for pair in knots.windows(2) {
+        let (xi0, r0) = pair[0];
+        let (xi1, r1) = pair[1];
+        let h = (xi1 - xi0).max(f64::MIN_POSITIVE);
+        let span = (xi - xi0).min(h).max(0.0);
+        acc += r0 * span + (r1 - r0) * span * span / (2.0 * h);
+        if span < h {
+            break;
+        }
+    }
+    acc
+}
+
+/// The declared ramp's blend integral W(xi) — the closed antiderivative
+/// per entry (the same formulas the hard-coded species carry, with the
+/// Piecewise case summed per interval).
+fn declared_ramp_integral(ramp: &DeclaredKappaRamp, xi: f64) -> f64 {
+    match ramp {
+        DeclaredKappaRamp::Linear => xi * xi * 0.5,
+        DeclaredKappaRamp::Bloss => {
+            let xi2 = xi * xi;
+            xi2 * xi - xi2 * xi2 * 0.5
+        }
+        DeclaredKappaRamp::Cosine => xi * 0.5 - (PI * xi).sin() / TWO_PI,
+        DeclaredKappaRamp::Sine => {
+            xi * xi * 0.5 + ((TWO_PI * xi).cos() - 1.0) / (4.0 * PI * PI)
+        }
+        DeclaredKappaRamp::Helmert => {
+            if xi <= 0.5 {
+                2.0 * xi * xi * xi / 3.0
+            } else {
+                let w = 1.0 - xi;
+                1.0 / 12.0 + (xi - 0.5) + 2.0 * (w * w * w - 0.125) / 3.0
+            }
+        }
+        DeclaredKappaRamp::Viennese => {
+            let xi2 = xi * xi;
+            let xi4 = xi2 * xi2;
+            7.0 * xi4 * xi - 14.0 * xi4 * xi2 + 10.0 * xi4 * xi2 * xi - 2.5 * xi4 * xi2 * xi2
+        }
+        DeclaredKappaRamp::Piecewise { count, knots } => {
+            match active_knots(*count, knots) {
+                Some(active) => piecewise_value(active, xi),
+                // An invalid knot table cannot reach evaluation (validation
+                // refuses it first); integrate nothing rather than guess.
+                None => 0.0,
+            }
+        }
+    }
+}
+
+/// The Declared law's own validation: every unit ramp is total; the
+/// Piecewise table must carry a valid active knot slice — the first knot
+/// (0, 0), the last active knot (1, 1), strictly ascending finite xi with
+/// every active ramp value finite in [0, 1]. The head stays bounded like
+/// the grip caps: the audit surface is the declared data, nothing else.
+fn validate_declared_ramp(ramp: &DeclaredKappaRamp) -> Result<(), String> {
+    let DeclaredKappaRamp::Piecewise { count, knots } = ramp else {
+        return Ok(());
+    };
+    let count = *count as usize;
+    if count == 0 || count > knots.len() {
+        return Err(format!(
+            "the piecewise knot count {count} is not a valid knot count (1..={})",
+            knots.len()
+        ));
+    }
+    let active = &knots[..count];
+    if active[0] != (0.0, 0.0) {
+        return Err(format!(
+            "the piecewise ramp must start at the knot (0, 0); got {:?}",
+            active[0]
+        ));
+    }
+    let last = active[active.len() - 1];
+    if last.0 != 1.0 || last.1 != 1.0 {
+        return Err(format!(
+            "the piecewise ramp must end at the knot (1, 1); got {last:?}"
+        ));
+    }
+    for pair in active.windows(2) {
+        let ((xi0, r0), (xi1, r1)) = (pair[0], pair[1]);
+        if !(xi0.is_finite() && xi1.is_finite() && r0.is_finite() && r1.is_finite()) {
+            return Err("the piecewise knots must be finite".to_owned());
+        }
+        if xi1 <= xi0 {
+            return Err(format!(
+                "the piecewise knots must ascend strictly; the knot xi {xi0} repeats"
+            ));
+        }
+        if !(
+            (0.0..=1.0).contains(&r0)
+                && (0.0..=1.0).contains(&r1)
+        ) {
+            return Err(format!(
+                "the piecewise ramp values must stay in [0, 1]; got ({xi0}, {r0}) .. ({xi1}, {r1})"
+            ));
+        }
+    }
+    Ok(())
+}
+
+
+/// The slice of the piecewise knot table that is active law; `None` when
+/// the count is not a valid knot count.
+fn active_knots(count: u32, knots: &[(f64, f64); 6]) -> Option<&[(f64, f64)]> {
+    let count = count as usize;
+    if count == 0 || count > knots.len() {
+        return None;
+    }
+    Some(&knots[..count])
 }
 
 /// The plan tangent angle at arc position s, relative to the segment's
@@ -394,13 +606,11 @@ fn plan_local_theta(species: &HorizontalSegmentSpecies, vitals: &Vitals, s: f64)
             let dk = vitals.kappa_end - vitals.kappa_start;
             let mut theta =
                 vitals.kappa_start * s + dk * vitals.length * blend_integral(*species, xi);
-            if species == &HorizontalSegmentSpecies::VienneseBend {
+            if is_banked_bend(species) {
                 // Gravity-center correction term of the banked bend (IFC
                 // 4.3.2.0 lexics); zero without a cant coupling, and the
                 // correction integrates to zero over the full segment.
-                let c = 420.0 * vitals.gravity_height * vitals.bank_change
-                    / (vitals.length * vitals.length);
-                theta -= c * xi * xi * (1.0 - 4.0 * xi + 5.0 * xi * xi - 2.0 * xi * xi * xi);
+                theta -= banked_bend_correction(vitals, xi);
             }
             theta
         }
@@ -541,7 +751,30 @@ fn evaluate_profile_clothoid(
     vitals: &Vitals,
     u: f64,
 ) -> ParametricSample {
-    let theta_u = profile_clothoid_theta(vitals, u);
+    evaluate_profile_blend(segment, vitals, u, None)
+}
+
+/// Generalized profile blend: the declared ramp's run law
+/// theta(u) = theta0 + k0*u + (k1-k0)*L*W(s/L) — the vertical clothoid's
+/// shape with W from the declared ramp (W = xi^2/2 = the clothoid's own);
+/// the height integrates the realized slope via the generic integrator.
+fn evaluate_profile_blend(
+    segment: &ParametricSegment,
+    vitals: &Vitals,
+    u: f64,
+    ramp: Option<DeclaredKappaRamp>,
+) -> ParametricSample {
+    let theta_u = match ramp {
+        None => profile_clothoid_theta(vitals, u),
+        Some(ramp) => {
+            let xi = if vitals.length > 0.0 { u / vitals.length } else { 0.0 };
+            vitals.theta_start
+                + vitals.kappa_start * u
+                + (vitals.kappa_end - vitals.kappa_start)
+                    * vitals.length
+                    * declared_ramp_integral(&ramp, xi)
+        }
+    };
     let swing = theta_u - segment.start_gradient.atan();
     let height = segment.start_point[1] + integrate(|t| profile_clothoid_theta(vitals, t).tan(), u, swing);
     let gradient = theta_u.tan();
@@ -585,6 +818,14 @@ fn evaluate_profile(
         }
         VerticalSegmentSpecies::Clothoid => {
             let sample = evaluate_profile_clothoid(segment, vitals, u);
+            (
+                u,
+                sample.point[1],
+                sample.direction[1] / sample.direction[0],
+            )
+        }
+        VerticalSegmentSpecies::Declared(ramp) => {
+            let sample = evaluate_profile_blend(segment, vitals, u, Some(*ramp));
             (
                 u,
                 sample.point[1],
@@ -724,21 +965,21 @@ pub fn sample_chain(chain: &ParametricChain, s: f64) -> Result<Option<Parametric
 /// real law; this bound only seeds it.
 fn chord_seed(species: &HorizontalSegmentSpecies, vitals: &Vitals, tolerance: f64) -> usize {
     let mut bound = vitals.kappa_start.abs() + (vitals.kappa_end - vitals.kappa_start).abs();
-    if species == &HorizontalSegmentSpecies::VienneseBend && vitals.length > 0.0 {
+    if is_banked_bend(species) && vitals.length > 0.0 {
         // The banked correction can overshoot the monotone bound: sample
-        // the realized law.
-        let dk = vitals.kappa_end - vitals.kappa_start;
+        // the realized law (the declared ramp or the Viennese shape).
+        let band = vitals.kappa_end - vitals.kappa_start;
+        let ramp = species_ramp(species);
         let mut sampled = bound;
         for k in 0..=48usize {
             let xi = k as f64 / 48.0;
-            let quintic =
-                xi * xi * xi * xi * (35.0 - 84.0 * xi + 70.0 * xi * xi - 20.0 * xi * xi * xi);
-            let mut kappa = vitals.kappa_start + dk * quintic;
-            kappa -= 420.0 * vitals.gravity_height * vitals.bank_change
-                / (vitals.length * vitals.length)
-                * xi
-                * xi
-                * (1.0 - 4.0 * xi + 5.0 * xi * xi - 2.0 * xi * xi * xi);
+            let mut kappa = match ramp {
+                Some(ramp) => {
+                    vitals.kappa_start + band * declared_ramp_value(&ramp, xi)
+                }
+                None => vitals.kappa_start,
+            };
+            kappa -= banked_bend_correction(vitals, xi);
             sampled = sampled.max(kappa.abs());
         }
         bound = sampled;
@@ -858,7 +1099,10 @@ pub fn build_display_entities(
                 }
             }
             ParametricSpecies::Vertical(species) => {
-                if species == &VerticalSegmentSpecies::Clothoid {
+                if matches!(
+                    species,
+                    VerticalSegmentSpecies::Clothoid | VerticalSegmentSpecies::Declared(_)
+                ) {
                     chord_seed(&HorizontalSegmentSpecies::Clothoid, &v, tolerance)
                 } else {
                     1
@@ -932,6 +1176,22 @@ pub fn build_display_entities(
                         seed,
                         tolerance,
                         &format!("segment {index} (vertical clothoid)"),
+                    )?;
+                    entities.push(EntityType::LwPolyline(polyline));
+                    carriers.push(StagedCarrier::Chords(count));
+                }
+                VerticalSegmentSpecies::Declared(ramp) => {
+                    let eval =
+                        |u: f64| evaluate_profile_blend(segment, &v, u, Some(*ramp));
+                    // The bounded declared kappa (ramp in [0, 1]) seeds the
+                    // chord plan with the same sagitta bound.
+                    let seed = chord_seed(&HorizontalSegmentSpecies::Clothoid, &v, tolerance);
+                    let (polyline, count) = chord_polyline(
+                        &eval,
+                        v.length,
+                        seed,
+                        tolerance,
+                        &format!("segment {index} (vertical declared blend)"),
                     )?;
                     entities.push(EntityType::LwPolyline(polyline));
                     carriers.push(StagedCarrier::Chords(count));
@@ -2308,5 +2568,310 @@ mod tests {
         assert!(matches!(ramp_carriers[0], StagedCarrier::Exact));
         assert!(matches!(ramp_carriers[1], StagedCarrier::Chords(_)));
         assert!(matches!(ramp_carriers[2], StagedCarrier::Exact));
+    }
+
+    #[test]
+    fn declared_ramp_restates_every_blend_species() {
+        // The declared vocabulary must cover the frozen IFC blend set
+        // exactly: each blend species restated as (ramp, k0 = 1/start_radius,
+        // k1 = end_curvature) evaluates IDENTICALLY through the full
+        // evaluation path (the species and the Declared head share the one
+        // formula table; a drift between them breaks this at 1e-12).
+        let cases: [(HorizontalSegmentSpecies, DeclaredKappaRamp); 6] = [
+            (
+                HorizontalSegmentSpecies::Clothoid,
+                DeclaredKappaRamp::Linear,
+            ),
+            (
+                HorizontalSegmentSpecies::BlossCurve,
+                DeclaredKappaRamp::Bloss,
+            ),
+            (
+                HorizontalSegmentSpecies::CosineCurve,
+                DeclaredKappaRamp::Cosine,
+            ),
+            (
+                HorizontalSegmentSpecies::SineCurve,
+                DeclaredKappaRamp::Sine,
+            ),
+            (
+                HorizontalSegmentSpecies::HelmertCurve,
+                DeclaredKappaRamp::Helmert,
+            ),
+            (
+                HorizontalSegmentSpecies::VienneseBend,
+                DeclaredKappaRamp::Viennese,
+            ),
+        ];
+        for (hardcoded, ramp) in cases {
+            // A straight-entry, circle-exit blend: the hard-coded law reads
+            // k1 from the end radius, the Declared law states it directly
+            // (the same value either way).
+            let mut frozen = plan_segment(
+                ParametricSpecies::Horizontal(hardcoded),
+                [0.0, 0.0],
+                0.0,
+                60.0,
+                0.0,
+                -300.0,
+            );
+            frozen.end_curvature = 1.0 / frozen.end_radius;
+            let mut declared = plan_segment(
+                ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Declared(ramp)),
+                [0.0, 0.0],
+                0.0,
+                60.0,
+                0.0,
+                0.0,
+            );
+            declared.end_curvature = 1.0 / -300.0;
+            for k in 0..=20usize {
+                let u = 60.0 * k as f64 / 20.0;
+                let frozen_sample = evaluate_plan(&hardcoded, &frozen, &vitals_of(&frozen), u);
+                let declared_sample = evaluate_plan(
+                    &HorizontalSegmentSpecies::Declared(ramp),
+                    &declared,
+                    &vitals_of(&declared),
+                    u,
+                );
+                for axis in 0..2 {
+                    assert!(
+                        (frozen_sample.point[axis] - declared_sample.point[axis]).abs() < 1e-12,
+                        "{ramp:?} drifts from {hardcoded:?} (point axis {axis} at u = {u})"
+                    );
+                    assert!(
+                        (frozen_sample.direction[axis] - declared_sample.direction[axis]).abs()
+                            < 1e-12,
+                        "{ramp:?} drifts from {hardcoded:?} (direction axis {axis} at u = {u})"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn declared_piecewise_blend_stages_end_to_end() {
+        // The genuinely-custom primitive: a piecewise-linear ramp through
+        // three knots declares a blend the host does not hard-code; it
+        // audits, stages chords within the tolerance and samples per the
+        // law's own end heading.
+        let mut knots = [(0.0, 0.0); 6];
+        knots[0] = (0.0, 0.0);
+        knots[1] = (0.5, 1.0);
+        knots[2] = (1.0, 1.0);
+        let mut segment = plan_segment(
+            ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Declared(
+                DeclaredKappaRamp::Piecewise { count: 3, knots },
+            )),
+            [0.0, 0.0],
+            0.0,
+            60.0,
+            0.0,
+            0.0,
+        );
+        segment.end_curvature = 1.0 / 500.0;
+        audit_chain(&single_chain(ParametricPlane::Plan, &segment)).expect("the declared law audits");
+        let (entities, carriers) =
+            build_display_entities(&single_chain(ParametricPlane::Plan, &segment), 1e-3).expect("the declared law stages");
+        assert_eq!(entities.len(), 1);
+        assert!(matches!(carriers[0], StagedCarrier::Chords(_)));
+        // The law's own end heading: theta(1) = k0*L + (k1-k0)*L*W(1) with
+        // THIS table's W(1) = 0.25 (the ramp 0->1 over half the run) +
+        // 0.5 (the flat 1 over the other half) = 0.75 — a custom ramp's
+        // deflection is its own integral (only the endpoint VALUE is the
+        // declared k1 = 1/500; the 1/2 normalization is the IFC species'
+        // own property). theta(1) = 60 * (1/500) * 0.75 = 0.09 rad.
+        let sample =
+            sample_chain(&single_chain(ParametricPlane::Plan, &segment), 60.0).unwrap().unwrap();
+        assert!(
+            (sample.direction[1].atan2(sample.direction[0]) - 0.09).abs() < 1e-9
+        );
+    }
+
+    #[test]
+    fn declared_vertical_blend_reads_the_sheet_law() {
+        // The vertical Declared head: the straight-run entry (start_radius
+        // = 0), the declared end curvature (the vertical clothoid's record
+        // rule verbatim), the theta run law and the height integral ride
+        // the generic executor; the seamed chain audits end to end.
+        let mut blend = profile_segment(
+            ParametricSpecies::Vertical(VerticalSegmentSpecies::Declared(
+                DeclaredKappaRamp::Sine,
+            )),
+            [0.0, 0.0],
+            100.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        );
+        blend.end_curvature = 0.004;
+        let front = single_chain(ParametricPlane::Profile, &blend);
+        let joint = sample_chain(&front, 100.0).unwrap().unwrap();
+        // theta(1) = k0*L + dk*L*W(1) = 0.004 * 100 * 0.5 = 0.2 rad.
+        let end_gradient = joint.direction[1] / joint.direction[0];
+        assert!((end_gradient - 0.2f64.tan()).abs() < 1e-9);
+        blend.end_gradient = end_gradient;
+        // Chain it into a constant-gradient tail via the propagation
+        // idiom, audit green.
+        let tail = profile_segment(
+            ParametricSpecies::Vertical(VerticalSegmentSpecies::ConstantGradient),
+            joint.point,
+            80.0,
+            end_gradient,
+            end_gradient,
+            0.0,
+            0.0,
+        );
+        let chain = ParametricChain {
+            plane: ParametricPlane::Profile,
+            segments: vec![blend, tail],
+            layer: String::new(),
+        };
+        audit_chain(&chain).expect("the declared vertical chain audits");
+        assert!(
+            matches!(
+                build_display_entities(&chain, 1e-3).expect("stages").1[0],
+                StagedCarrier::Chords(_)
+            ),
+            "the declared vertical blend stages chords"
+        );
+    }
+
+    #[test]
+    fn declared_blend_refusals() {
+        // The Declared head's validation refusals, each before any change.
+        let mut knots = [(0.0, 0.0); 6];
+        knots[0] = (0.0, 0.0);
+        knots[1] = (0.5, 1.0);
+        knots[2] = (1.0, 1.0);
+        // The count gate (0 and past-the-table both refuse).
+        for count in [0u32, 7u32] {
+            let mut seg = plan_piecewise_segment(count, knots);
+            seg.start_radius = 0.0;
+            let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+            assert!(
+                err.contains("valid knot count"),
+                "count {count} refuses honestly: {err}"
+            );
+        }
+        // The knot-table gates: the non-ascending interior knot (with the
+        // valid (1, 1) end), the non-zero origin, the unnormalized end,
+        // the out-of-range ramp values.
+        let mut bad = knots;
+        bad[1] = (0.0, 0.5);
+        bad[2] = (1.0, 1.0);
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &plan_piecewise_segment(3, bad))).unwrap_err();
+        assert!(err.contains("ascend"), "non-ascending knots refuse: {err}");
+        let mut bad = knots;
+        bad[0] = (0.1, 0.0);
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &plan_piecewise_segment(3, bad))).unwrap_err();
+        assert!(err.contains("(0, 0)"), "a non-zero origin refuses: {err}");
+        let mut bad = knots;
+        bad[2] = (1.0, 0.5);
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &plan_piecewise_segment(3, bad))).unwrap_err();
+        assert!(err.contains("(1, 1)"), "an unnormalized end refuses: {err}");
+        let mut bad = knots;
+        bad[1] = (0.5, 1.5);
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &plan_piecewise_segment(3, bad))).unwrap_err();
+        assert!(
+            err.contains("in [0, 1]"),
+            "an out-of-range ramp value refuses: {err}"
+        );
+        // The vertical Declared's k1 = 0 refusal (the record-model rule:
+        // the flat-out blend restates PARABOLICARC).
+        let mut flat_out = profile_segment(
+            ParametricSpecies::Vertical(VerticalSegmentSpecies::Declared(
+                DeclaredKappaRamp::Linear,
+            )),
+            [0.0, 0.0],
+            100.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        );
+        flat_out.end_curvature = 0.0;
+        let err = audit_chain(&single_chain(ParametricPlane::Profile, &flat_out)).unwrap_err();
+        assert!(err.contains("restates PARABOLICARC"), "k1 = 0 refuses: {err}");
+    }
+
+    #[test]
+    fn declared_blend_seams_with_hardcoded_species() {
+        // The audited chain across a Declared/hard-coded seam: the
+        // Declared head's end direction feeds the arc's start, propagated
+        // from the engine's own sampling; the mixed chain audits green.
+        let mut blend = plan_segment(
+            ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Declared(
+                DeclaredKappaRamp::Cosine,
+            )),
+            [60.0, 0.0],
+            0.0,
+            60.0,
+            0.0,
+            0.0,
+        );
+        blend.end_curvature = 1.0 / -300.0;
+        let front = ParametricChain {
+            plane: ParametricPlane::Plan,
+            segments: vec![
+                plan_segment(
+                    ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Line),
+                    [0.0, 0.0],
+                    0.0,
+                    60.0,
+                    0.0,
+                    0.0,
+                ),
+                blend,
+            ],
+            layer: String::new(),
+        };
+        audit_chain(&front).expect("the front audits");
+        let joint = sample_chain(&front, 120.0).unwrap().unwrap();
+        let arc = plan_segment(
+            ParametricSpecies::Horizontal(HorizontalSegmentSpecies::CircularArc),
+            joint.point,
+            joint.direction[1].atan2(joint.direction[0]),
+            40.0,
+            -300.0,
+            -300.0,
+        );
+        let mut chain = front;
+        chain.segments.push(arc);
+        audit_chain(&chain).expect("the mixed chain audits green");
+    }
+
+    /// A one-segment chain around `segment` (the Declared laws' fixture
+    /// wrapper).
+    /// A one-segment chain around `segment` (the Declared laws' fixture
+    /// wrapper), in the segment's plane.
+    fn single_chain(plane: ParametricPlane, segment: &ParametricSegment) -> ParametricChain {
+        ParametricChain {
+            plane,
+            segments: vec![*segment],
+            layer: String::new(),
+        }
+    }
+
+    /// The piecewise-knots plan Declared segment for the refusal fixtures.
+    fn plan_piecewise_segment(count: u32, knots: [(f64, f64); 6]) -> ParametricSegment {
+        let mut segment = plan_segment(
+            ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Declared(
+                DeclaredKappaRamp::Piecewise { count, knots },
+            )),
+            [0.0, 0.0],
+            0.0,
+            60.0,
+            0.0,
+            0.0,
+        );
+        segment.end_curvature = 1.0 / 500.0;
+        segment
+    }
+
+    /// The vitals of a single segment (the parity harness's direct call).
+    fn vitals_of(segment: &ParametricSegment) -> Vitals {
+        validate_segment(ParametricPlane::Plan, segment).expect("the parity segment validates")
     }
 }

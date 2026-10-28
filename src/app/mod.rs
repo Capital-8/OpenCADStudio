@@ -4267,7 +4267,7 @@ pub enum Message {
     },
     /// User committed a block-attribute value edit (Enter pressed).
     PropAttrCommit(String),
-    /// User is typing in a plugin class parameter value field (API v16,
+    /// User is typing in a plugin class parameter value field (API v14,
     /// live buffer update), keyed by the declared parameter name.
     PropPluginParamInput {
         name: String,

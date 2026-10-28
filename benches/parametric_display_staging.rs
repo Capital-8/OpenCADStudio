@@ -13,10 +13,13 @@
 //! 3. `sample_chain`'s per-call latency over the welded chain (the
 //!    placement/basis-curve read path). The commission's budget: under
 //!    1 microsecond per sample.
-//! 4. The grip-edit review (v16 policy input): per-move host-local
+//! 4. The grip-edit review (the drag-policy decision input): per-move host-local
 //!    re-derivation cost when a drag revises the section's end radius —
 //!    the Fresnel/chord extreme (CLOTHOID) against the exact Bézier-spline
 //!    extreme (CUBIC), plus the point-projection tier on the same design.
+//! 5. The Declared curvature-law head (the plugin-declared ramp executed
+//!    by the generic integrator): the staging budget re-measured for the
+//!    declared shape — data-driven heads, one shared kernel.
 //!
 //! Deterministic: fixed fixtures, no randomness. Run:
 //! `cargo bench --bench parametric_display_staging`
@@ -25,7 +28,7 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use ocs_plugin_api::host::{
-    HorizontalSegmentSpecies, ParametricChain, ParametricPlane,
+    DeclaredKappaRamp, HorizontalSegmentSpecies, ParametricChain, ParametricPlane,
     ParametricSegment, ParametricSpecies,
 };
 use OpenCADStudio::parametric::{
@@ -196,7 +199,29 @@ fn main() {
     println!("sample: digest {acc:.3} over {total} m of chain");
     black_box(acc);
 
-    // Grip-edit review (the v16 policy decision input).
+    // Budget 5: the Declared curvature-law head — the plugin-declared ramp
+    // executed by the generic integrator. The same staging budget as the
+    // hard-coded blends: the Declared head is data, the kernel is shared.
+    let declared_chain = declared_blend_chain();
+    let (entities, _) =
+        build_display_entities(&declared_chain, 1e-3).expect("declared chain stages");
+    let declared_count = entities.len();
+    for _ in 0..WARMUP {
+        black_box(build_display_entities(&declared_chain, 1e-3)).expect("warmup stages");
+    }
+    let mut declared_total = Duration::ZERO;
+    for _ in 0..RUNS {
+        let start = Instant::now();
+        black_box(build_display_entities(&declared_chain, 1e-3)).expect("stages");
+        declared_total += start.elapsed();
+    }
+    println!(
+        "staging (declared ramp, {declared_count} entities): mean {:?} over {RUNS} runs",
+        declared_total / RUNS as u32
+    );
+    black_box(declared_total);
+
+    // Grip-edit review (the drag-policy decision input).
     //
     // Per-move cost of HOST-LOCAL re-derivation for a grip edit: the drag
     // revises one declared parameter (the section's end radius) and the host
@@ -269,6 +294,61 @@ fn main() {
 /// radius as the dragged parameter. The species section is the LAST segment:
 /// no downstream seam restates its end, so the re-derivation cost is the
 /// pure per-species derivation.
+/// A plan segment of the given species at (start, length), straight entry.
+fn plan_species_segment(
+    species: HorizontalSegmentSpecies,
+    start: [f64; 2],
+    length: f64,
+) -> ParametricSegment {
+    ParametricSegment {
+        species: ParametricSpecies::Horizontal(species),
+        start_point: start,
+        start_direction: 0.0,
+        start_gradient: 0.0,
+        end_gradient: 0.0,
+        length,
+        start_radius: 0.0,
+        end_radius: 0.0,
+        end_curvature: 0.0,
+        bank_change: 0.0,
+        gravity_height: 0.0,
+    }
+}
+
+/// The declared-law fixture: a straight entry into two declared blends
+/// (the Cosine half-wave and a custom piecewise ramp), seamed by the
+/// engine's own sampling.
+fn declared_blend_chain() -> ParametricChain {
+    let mut knots = [(0.0, 0.0); 6];
+    knots[0] = (0.0, 0.0);
+    knots[1] = (0.5, 1.0);
+    knots[2] = (1.0, 1.0);
+    let mut cosine = plan_species_segment(
+        HorizontalSegmentSpecies::Declared(DeclaredKappaRamp::Cosine),
+        [60.0, 0.0],
+        60.0,
+    );
+    cosine.end_curvature = 1.0 / -300.0;
+    let front = ParametricChain {
+        plane: ParametricPlane::Plan,
+        segments: vec![cosine.clone()],
+        layer: String::new(),
+    };
+    let joint = sample_chain(&front, 60.0).unwrap().unwrap();
+    let mut piecewise = plan_species_segment(
+        HorizontalSegmentSpecies::Declared(DeclaredKappaRamp::Piecewise { count: 3, knots }),
+        joint.point,
+        60.0,
+    );
+    piecewise.start_direction = joint.direction[1].atan2(joint.direction[0]);
+    piecewise.end_curvature = 1.0 / -300.0;
+    ParametricChain {
+        plane: ParametricPlane::Plan,
+        segments: vec![cosine, piecewise],
+        layer: String::new(),
+    }
+}
+
 fn grip_edit_chain(species: ParametricSpecies, end_radius: f64) -> ParametricChain {
     let mut segments = vec![ParametricSegment {
         species: ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Line),

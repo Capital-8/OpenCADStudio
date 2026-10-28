@@ -4645,7 +4645,7 @@ impl OpenCADStudio {
         Task::none()
     }
 
-    /// Commit one plugin class parameter's edit (API v16): the stamped
+    /// Commit one plugin class parameter's edit (API v14): the stamped
     /// selection writes through the session's class-parameter path — one
     /// undo step inside the record update, the declaring plugin re-stages
     /// from the record's dirty notification; a refusal (unknown or

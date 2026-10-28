@@ -758,7 +758,7 @@ impl HostApi for PluginHostApi {
         _plugin_id: &str,
         class: &crate::host::PluginClassDeclaration,
     ) -> Result<(), String> {
-        // API v15: declared class in; session registry state (no document
+        // API v14: declared class in; session registry state (no document
         // mutation, no cache effect).
         match self.client.request(PluginRequest::RegisterPluginClass {
             class: class.clone(),
@@ -775,7 +775,7 @@ impl HostApi for PluginHostApi {
         _plugin_id: &str,
         instance: &crate::host::PluginClassInstance,
     ) -> Result<Vec<Handle>, String> {
-        // API v15: identity + design descriptor in, reference-only display
+        // API v14: identity + design descriptor in, reference-only display
         // handles out. A staged write mutates the document: the cached
         // snapshot invalidates like every write path.
         match self.client.request(PluginRequest::StagePluginClassInstance {

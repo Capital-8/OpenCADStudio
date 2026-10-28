@@ -60,7 +60,8 @@
 /// pairs), and record walks batch (`read_xrecords` / `update_xrecords` /
 /// `list_xrecords_with_entries` — one frame per pass, not per record).
 ///
-/// **API v14** (additive): `stage_parametric_chain` — a declared IFC 4.3
+/// **API v14** (additive — one step over v13; the branch's arc layers were
+/// squashed into it): `stage_parametric_chain` — a declared IFC 4.3
 /// alignment chain (species + parameters) turns into reference-only display
 /// geometry staged by the host (exact Line/Arc/spline carriers for the
 /// exactly-representable species, curvature-bounded chords within the
@@ -68,38 +69,39 @@
 /// before anything is staged and capped by
 /// [`MAX_PLUGIN_LIVE_ENTITIES`](crate::host::MAX_PLUGIN_LIVE_ENTITIES); and
 /// `sample_parametric` — the same engine exposed as a pure placement
-/// evaluation.
-///
-/// **API v15** (additive): plugin-scoped class objects —
+/// evaluation. It adds plugin-scoped class objects —
 /// `register_plugin_class` / `stage_plugin_class_instance`: a declared
-/// entity class (schema version + grip schema) whose instances carry only
-/// identity and a host-evaluated display descriptor (the v14 parametric
-/// engine is the first host-known kind; kinds append at the end); the
-/// staged display set is reference-only and stamped with the class identity
-/// key. Class declarations are session state (like the grip sets); records
-/// stay the only file truth. `CustomGripResponse` gains the
+/// entity class (schema version + grip schema + parameter schema) whose
+/// instances carry only identity and a host-evaluated display descriptor
+/// (the parametric engine is the first host-known kind; kinds append at
+/// the end); the staged display set is reference-only and stamped with the
+/// class identity key. Class declarations are session state (like the grip
+/// sets); records stay the only file truth. `CustomGripResponse` gains the
 /// `descriptor` field (serde default): a Begin answer can hand the host a
 /// live design so the host re-derives preview geometry locally per move
-/// instead of the plugin streaming it (older hosts read `None` and keep the
-/// v12 semantics).
-///
-/// **API v16** (additive): class parameter schemas — a
-/// [`PluginClassDeclaration`]
-/// declares its record layer's parameters
-/// ([`PluginClassParameter`](crate::host::PluginClassParameter): name +
+/// instead of the plugin streaming it (older hosts read `None` and keep
+/// the v12 semantics). The declaration's parameter schema —
+/// [`PluginClassParameter`](crate::host::PluginClassParameter): name +
 /// value kind + editability, serde default so declarations without the
-/// field read as an empty schema). The session gains the properties pair
-/// (`plugin_class_instance_properties` / `update_plugin_class_instance_parameter`):
-/// the reading surface for a stamped instance's declared rows and — for
-/// rows the declaration marks editable — the host-side write path that
-/// patches the (name, value) entry pair on the instance's design record
-/// row through the existing XRecord update machinery (one undo step, the
-/// record's dirty notification re-stages the declaring plugin). The values
-/// stay the records' truth; the host renders and writes only what the
-/// declaration spells, never inventing semantics for a name or kind it
-/// does not know. The host's properties panel rides the same core for
-/// selections whose XDATA carries a registered class key.
-pub const API_VERSION: u32 = 16;
+/// field read as an empty schema — and the session's properties pair
+/// (`plugin_class_instance_properties` / `update_plugin_class_instance_parameter`)
+/// turn a stamped instance's record rows into readable/writable
+/// properties: the reading surface renders the declared rows; for rows the
+/// declaration marks editable the write path patches the (name, value)
+/// entry pair on the instance's design record row through the existing
+/// XRecord update machinery (one undo step, the record's dirty
+/// notification re-stages the declaring plugin). The values stay the
+/// records' truth; the host renders and writes only what the declaration
+/// spells, never inventing semantics for a name or kind it does not know.
+/// The host's properties panel rides the same core for selections whose
+/// XDATA carries a registered class key. The Declared species head extends
+/// the set WITHOUT hard-coding: a segment declares its normalized
+/// curvature ramp ([`DeclaredKappaRamp`](crate::host::DeclaredKappaRamp) —
+/// the vocabulary the IFC blends restate exactly, plus a bounded
+/// piecewise primitive for genuinely custom blends) and the host's
+/// generic Gaussian integrator executes it; new blend shapes join as
+/// declared data, never as per-shape host code.
+pub const API_VERSION: u32 = 14;
 
 /// Oldest plugin API major the current host still loads. This keeps previously
 /// compiled cdylibs usable as long as their vtable layout is a prefix of the

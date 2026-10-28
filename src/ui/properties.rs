@@ -414,7 +414,7 @@ pub enum FieldKey {
     BlockParameter(crate::scene::model::object::BlockParameterKey),
     /// A block attribute value field, keyed by its tag.
     Attr(String),
-    /// A plugin class parameter value field (API v16), keyed by the
+    /// A plugin class parameter value field (API v14), keyed by the
     /// declared parameter name.
     PluginParam(String),
     /// One column of one named-parameter row, keyed by its stable

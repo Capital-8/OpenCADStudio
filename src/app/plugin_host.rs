@@ -3521,9 +3521,9 @@ impl<'a> HostSession<'a> {
         crate::parametric::sample_chain(chain, s)
     }
 
-    // ── API v15: plugin class objects (additive) ─────────────────────────
+    // ── API v14: plugin class objects (additive) ─────────────────────────
 
-    /// Register a plugin-scoped entity class (API v15, additive): TAB-SCOPED
+    /// Register a plugin-scoped entity class (API v14, additive): TAB-SCOPED
     /// display-session state (the class survives across requests of the
     /// owning plugin's session — unlike a session-local registry, the store
     /// rides the tab like the grip sets do; nothing persists: entries die
@@ -3591,7 +3591,7 @@ impl<'a> HostSession<'a> {
             .declare(plugin_id, class.clone())
     }
 
-    /// Stage one instance of a plugin-registered class (API v15, additive) —
+    /// Stage one instance of a plugin-registered class (API v14, additive) —
     /// [`HostSession::stage_parametric_chain`]'s contract generalized: the
     /// design descriptor is host-evaluated before any change (the v14 engine
     /// for the `ParametricChain` kind; a kind the host does not know refuses
@@ -3637,7 +3637,7 @@ impl<'a> HostSession<'a> {
                 instance.class_id, instance.schema_version, registered.schema_version
             ));
         }
-        // The exhaustive match is the v15 expand-velocity point: a newer
+        // The exhaustive match is the expand-velocity point: a newer
         // plugin kind lands here as a compile-time arm, never as a guess.
         let (entities, _carriers) = match &instance.design {
             ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(chain) => {
@@ -3688,7 +3688,7 @@ impl<'a> HostSession<'a> {
         Ok(handles)
     }
 
-    /// Read a class instance's declared parameter rows (API v16, additive):
+    /// Read a class instance's declared parameter rows (API v14, additive):
     /// the identity stamp (XDATA class key) resolves against the tab's
     /// registry, the design-record linkage resolves under the NOD (root
     /// pass, then one sub-dictionary level), and every declared parameter
@@ -3698,8 +3698,9 @@ impl<'a> HostSession<'a> {
     /// linkage or a stale stamp refuses — the caller re-stages); the host's
     /// properties panel renders through the shared core directly, with the
     /// graceful declared-rows-with-absent-values view. No wire frame
-    /// carries the read yet (v16 ships the panel surface); the
-    /// plugin-side wire pass appends it — hence the dead-code allowance.
+    /// carries the read yet (the squashed v14 surface ships the properties
+    /// panel in-process); a follow-up wire pass appends it — hence the
+    /// dead-code allowance.
     #[allow(dead_code)]
     pub fn plugin_class_instance_properties(
         &self,
@@ -3711,7 +3712,7 @@ impl<'a> HostSession<'a> {
         rows_from_entries(&binding, &entries)
     }
 
-    /// Write one declared, editable parameter's (name, value) pair (API v16,
+    /// Write one declared, editable parameter's (name, value) pair (API v14,
     /// additive): the design record's entries are patched in place through
     /// the session's XRecord update path — one undo step of its own (a
     /// scope-less call), the record marked dirty so the declaring plugin
@@ -3870,7 +3871,7 @@ impl<'a> HostSession<'a> {
 }
 
 /// The resolved binding of an entity stamped as a plugin class instance
-/// (API v16): the registered class, its live declared parameter schema, and
+/// (API v14): the registered class, its live declared parameter schema, and
 /// the design-record linkage the identity stamp carries.
 pub(in crate::app) struct PluginClassInstanceBinding {
     pub class_id: String,
@@ -3878,7 +3879,7 @@ pub(in crate::app) struct PluginClassInstanceBinding {
     pub design_record: String,
 }
 
-/// One read row of a class instance's declared parameters (API v16). The
+/// One read row of a class instance's declared parameters (API v14). The
 /// value is exactly what the record row carries — only the declared kind's
 /// own reading, never a unit or semantic conversion; `None` = the record
 /// does not carry this parameter's pair yet.
@@ -3889,7 +3890,7 @@ pub(crate) struct PluginClassParameterRow {
     pub value: Option<String>,
 }
 
-/// Resolve an entity stamped as a plugin class instance (API v16 core,
+/// Resolve an entity stamped as a plugin class instance (API v14 core,
 /// shared by the session pair and the properties panel): the first XDATA
 /// record whose application name is a registered class key wins; its
 /// Integer32 schema version and String design-record linkage read like
@@ -3949,7 +3950,7 @@ pub(in crate::app) fn resolve_plugin_class_binding(
     ))
 }
 
-/// Resolve the design record the binding links (API v16 core): NOD root
+/// Resolve the design record the binding links (API v14 core): NOD root
 /// first, then one sub-dictionary level (the civil lane keeps its CVIFC
 /// records under one) — the identity stamp names the record, never its
 /// path, so the resolver searches rather than invents a layout. Returns the
@@ -4000,7 +4001,7 @@ pub(in crate::app) fn find_design_record_entries(
     ))
 }
 
-/// The declared schema as rows with absent values (API v16 core, the
+/// The declared schema as rows with absent values (API v14 core, the
 /// panel's base view: the host renders the declaration, the record fills
 /// the values).
 pub(in crate::app) fn rows_from_schema(
@@ -4085,7 +4086,7 @@ pub(in crate::app) fn rows_from_entries(
 }
 
 /// Patch one declared parameter's (name, value) pair in the design record's
-/// entries (API v16 core): the value entry's group code and its neighbours
+/// entries (API v14 core): the value entry's group code and its neighbours
 /// stay untouched; nothing is created in the plugin's record layer.
 pub(in crate::app) fn update_parameter_pair(
     binding: &PluginClassInstanceBinding,
@@ -4149,7 +4150,7 @@ fn find_parameter_pair(
     Ok(found)
 }
 
-/// Parse one parameter value per its declared kind (API v16 core): Real =
+/// Parse one parameter value per its declared kind (API v14 core): Real =
 /// a finite double, Integer = an integer carried Int32-when-it-fits,
 /// Text = the string verbatim.
 fn parse_parameter_value(
@@ -15810,7 +15811,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         assert_eq!(host.app.tabs[0].scene.geometry_epoch, epoch_before);
     }
 
-    // ── API v15: plugin class objects ──────────────────────────────────────
+    // ── API v14: plugin class objects ──────────────────────────────────────
 
     /// Becomes the owner plugin in these tests: the in-process sink installs
     /// the thread-local liveness the visibility predicate consults in tests.
@@ -16148,7 +16149,8 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
 
         {
             let mut host = HostSession::new(&mut app, 0);
-            // THE DRAG (host-local, v16 policy): the crest's end gradient
+            // THE DRAG (host-local, the grip-edit policy): the crest's end
+            // gradient
             // 0.06 -> 0.09 (R = 2500); the joint re-derived from the
             // engine's sampling and the honest upstream re-declared.
             let mut edited = crest_profile_chain();
@@ -16282,7 +16284,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
 
     #[test]
     fn plugin_class_parameters_read_write_and_refuse() {
-        // The v16 session pair over a host-staged instance: the declared
+        // The session pair over a host-staged instance: the declared
         // schema renders rows straight from the design record; an editable
         // parameter writes through the record's (name, value) pair in ONE
         // undo step; unknown names, read-only rows, and unparseable values
@@ -16421,7 +16423,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
 
     #[test]
     fn plugin_class_parameters_panel_binds_and_commits() {
-        // The panel surface (API v16): a stamped selectable entity (the
+        // The panel surface (API v14): a stamped selectable entity (the
         // v10/v12 lane's own anchor) rides its class's declared rows, and
         // the commit route writes the record row through the session pair.
         let mut app = OpenCADStudio::new_for_test();
@@ -16500,11 +16502,11 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         }
 
         // The commit route: typing + Enter === the record row writes.
-        app.update(crate::app::Message::PropPluginParamInput {
+        let _ = app.update(crate::app::Message::PropPluginParamInput {
             name: "peak_gradient".to_string(),
             value: "0.09".to_string(),
         });
-        app.update(crate::app::Message::PropPluginParamCommit(
+        let _ = app.update(crate::app::Message::PropPluginParamCommit(
             "peak_gradient".to_string(),
         ));
         {

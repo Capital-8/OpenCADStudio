@@ -101,7 +101,7 @@ pub enum PropValue {
     /// an editable text_input. Unlike the other rows the routing key is the
     /// tag carried here, not the row's `&'static str` field.
     AttrText { tag: String, value: String },
-    /// One plugin class parameter row (API v16): the declared name is the
+    /// One plugin class parameter row (API v14): the declared name is the
     /// routing key (the AttrText precedent) and routes the commit to the
     /// class-parameter record path. `editable` decides between the text
     /// input and a read-only rendering — a reference-only (host-staged)

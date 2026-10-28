@@ -498,12 +498,12 @@ shape and an axis — nothing else. What a grip *means* (an alignment's implied
 PI, a pipe endpoint, a widening handle) is entirely the declaring plugin's,
 resolved in its own `on_custom_grip_event` from the event's grip id and point.
 
-## Derived display, parametric chains, and plugin class objects (API v14–v16)
+## Derived display, parametric chains, and plugin class objects (API v14)
 
-The parametric display split (API v14) established the pattern the class
-objects (API v15) generalize. One law governs both: **the record layer is the
-file's only truth, the host derives the display, and the plugins never run
-the derivation math.**
+The parametric display split established the pattern the class objects
+generalize. One law governs both: **the record layer is the file's only
+truth, the host derives the display, and the plugins never run the
+derivation math.**
 
 **Parametric chains (v14).** `stage_parametric_chain(reference, chain,
 tolerance)` carries declared parameters only — species enum (the IFC 4.3.2.0
@@ -531,7 +531,7 @@ and records nothing. The lane's bench (`cargo bench --bench
 parametric_display_staging`) pins the budgets: 50-segment staging far under
 5 ms, sampling at sub-µs scale.
 
-**Plugin class objects (v15).** `register_plugin_class(plugin_id,
+**Plugin class objects.** `register_plugin_class(plugin_id,
 declaration)` declares a plugin-owned entity class: a stable identity key
 (the XDATA class key staged instances carry), a monotone schema version, a
 class-scoped grip schema (grip id → the parameter name of the class the grip
@@ -557,8 +557,8 @@ trips keep the stamp byte-identical).
 **Grip editing on the derived path.** Custom-grip drags stream per-move
 geometry today (the v11/v12 lane: the plugin answers `CustomGripEvent`s
 with `preview` wires and `live_entities`, the host coalesces moves, settle
-stays the plugin's one write window). `CustomGripResponse.descriptor` (API
-v15, a serde-default field — the `live_entities` precedent) is the wire hook
+stays the plugin's one write window). `CustomGripResponse.descriptor` (a
+serde-default field — the `live_entities` precedent) is the wire hook
 for the next step: a Begin answer can hand the host a live *design*, letting
 the host re-derive the preview per cursor move with **zero Move frames
 crossing the IPC**. Measured on the bench's grip-edit section: even the
@@ -576,7 +576,7 @@ the display set re-applies over the SAME handles in place — count-stable,
 stamps and reference-only designations intact, one undo step round-tripping
 the original.
 
-**Class parameter schema and the properties pair (v16).** A declaration can
+**Class parameter schema and the properties pair.** A declaration can
 now declare its parameters in the schema (`PluginClassParameter`: name +
 value kind — `Real`/`Integer`/`Text`, appended at the end — + `editable`;
 serde default, so declarations without the field read as an empty schema;
@@ -602,6 +602,27 @@ renders the declared rows and the owning-record source line; an editable
 row commits through the same one-undo-step write; host-staged
 (reference-only) instances render read-only; the host never invents
 semantics for a name or a value kind the declaration does not spell.
+
+**The declared curvature-law kernel.** The blend species are not hard-coded
+math walls: the plan's transcendental path is one generic Gauss–Legendre
+executor over a per-species heading law, and the Declared species head
+(`HorizontalSegmentSpecies::Declared` / `VerticalSegmentSpecies::Declared`
+with `DeclaredKappaRamp`) lets a plugin declare that law as DATA — the
+vocabulary the IFC blends restate exactly (Linear/Bloss/Cosine/Sine/Helmert/
+Viennese, whose tests are the oracles) plus a bounded piecewise-linear
+primitive (up to six knots) for genuinely custom shapes. kappa(s) = k0 +
+(k1-k0) * ramp(s/L): k0 = 1/start_radius (0 = straight entry), k1 =
+end_curvature declared directly (a Declared plan blend may end flat; the
+vertical Declared keeps the vertical clothoid's record rule that k1 != 0 —
+k1 = 0 restates PARABOLICARC). The audit, the sloped-range/finite gates,
+the seam laws, the carriers and the caps apply unchanged, because they
+live around the head, not in it; a Declared plan blend's deflection is its
+own ramp's integral (only the endpoint value is the declared k1 — the 1/2
+normalization is the IFC species' own property). The banked-bend
+gravity-centre correction applies verbatim to the Declared Viennese ramp
+(the declared gravity_height/bank_change pair drives it). New blend
+shapes — the cant family, custom transitions — join as declared data,
+never as per-shape host code.
 
 ## HostApi vs MCP — the two surfaces
 
@@ -632,7 +653,7 @@ Which surface carries what:
 | Viewport automation | `click`, `pointer`, `getpoint`, `user_select`, `view_focus`, `capture` | — (a plugin's grip events are its gestures) |
 | Reference-only designation | — | `set_reference_only` |
 | Parametric chain staging / sampling (v14) | — (`query` reads the staged entities) | `stage_parametric_chain` / `sample_parametric` |
-| Plugin class objects (v15) | — (future: a class/instance browser view) | `register_plugin_class` / `stage_plugin_class_instance` |
+| Plugin class objects | — (future: a class/instance browser view) | `register_plugin_class` / `stage_plugin_class_instance` |
 | Files | `new/open/save/save_verified/wblock/plot` | `document_path`, tab lifecycle |
 
 Semantic traps worth knowing before writing a consumer on either side:
@@ -808,8 +829,9 @@ Done:
 - [x] Parametric display staging + sampling: IFC 4.3.2.0 alignment species,
       audited seams, exact carriers, reference-only derived display (v14).
 - [x] Plugin class objects: tab-scoped class registry, host-evaluated design
-      descriptors (the chain kind first), XDATA identity stamps (v15); the
-      grip-edit descriptor hook rides `CustomGripResponse` (inert default).
+      descriptors (the chain kind first), XDATA identity stamps (squashed
+      into the API v14 arc); the grip-edit descriptor hook rides
+      `CustomGripResponse` (inert default).
 
 Next:
 
@@ -818,12 +840,18 @@ Next:
 - [ ] Trust: checksums / signatures before spawning plugin processes.
 - [ ] Interchange (LandXML / SWMM) and live `on_entity_committed` hooks.
 - [ ] Descriptor-backed grip drags: consume the Begin descriptor per coalesced
-      move (zero Move frames; the v15 hook already rides the wire) — measured
-      trivially inside the frame budget by the staging bench's grip section.
-- [ ] Properties-panel parameter editing for plugin class entities: a
-      `PluginClassParameter` schema on the declaration, the panel section bound
-      to selected class-stamped entities, edits through `update_xrecords`, the
-      plugin re-stages from the record-dirty notification.
+      move (zero Move frames; the descriptor hook already rides the wire) —
+      measured trivially inside the frame budget by the staging bench's grip
+      section.
+- [x] Properties-panel parameter editing for plugin class entities: a
+      `PluginClassParameter` schema on the declaration, the panel section
+      bound to selected class-stamped entities, edits through the session's
+      `update_plugin_class_instance_parameter` (XRecord update; one undo
+      step), the plugin re-stages from the record-dirty notification.
+- [x] The Declared curvature-law kernel: the blend species' formulas
+      collapse into one shared ramp table the Declared species head
+      declares as data — the IFC blends restate exactly (their tests are
+      the oracles) and custom blends join without host-code changes.
 
 ---
 

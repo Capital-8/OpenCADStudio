@@ -197,7 +197,7 @@ pub(super) struct DocumentTab {
     /// display state only — never persisted, never host-interpreted.
     #[cfg(not(target_arch = "wasm32"))]
     pub(super) plugin_grips: crate::plugin::grip_points::PluginGripStore,
-    /// Plugin-declared entity class registry (API v15): tab-scoped
+    /// Plugin-declared entity class registry (API v14): tab-scoped
     /// display-session state — entries die with their plugin (re-declared
     /// per load) and are never persisted; the staged instances stamp XDATA
     /// identity keys + record linkages instead.

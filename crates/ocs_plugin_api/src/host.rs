@@ -1067,7 +1067,7 @@ pub struct CustomGripResponse {
     pub preview: Vec<PreviewWire>,
     #[serde(default)]
     pub live_entities: Vec<(Handle, EntityType)>,
-    /// A descriptor-backed live design for the dragged instance (API v15,
+    /// A descriptor-backed live design for the dragged instance (API v14,
     /// additive). Some on the Begin answer tells the host to derive the live
     /// preview ITSELF from this design for the rest of the drag — re-evaluated
     /// locally per coalesced cursor move, no further Move frames crossing the
@@ -1686,7 +1686,7 @@ pub trait HostApi {
         Err("Parametric chain sampling is not supported by this host".to_owned())
     }
 
-    /// Register a plugin-scoped entity class (API v15, additive).
+    /// Register a plugin-scoped entity class (API v14, additive).
     ///
     /// The declaration is session state, exactly like the grip sets: the
     /// drawing file keeps only what the instances stamp (XDATA identity keys,
@@ -1711,7 +1711,7 @@ pub trait HostApi {
         Err("Plugin class registration is not supported by this host".to_owned())
     }
 
-    /// Stage one instance of a session-registered plugin class (API v15,
+    /// Stage one instance of a session-registered plugin class (API v14,
     /// additive).
     ///
     /// The generalized form of [`HostApi::stage_parametric_chain`]: the
@@ -1771,7 +1771,7 @@ pub enum ParametricPlane {
 
 /// IFC 4.3.2.0 alignment segment species (API v14, additive), grouped by the
 /// segment-enum plane each value belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ParametricSpecies {
     /// A value of IfcAlignmentHorizontalSegmentTypeEnum (IFC4X3_ADD2).
     Horizontal(HorizontalSegmentSpecies),
@@ -1781,7 +1781,7 @@ pub enum ParametricSpecies {
 
 /// Horizontal segment species (IFC4X3_ADD2, additive-safe ordering follows
 /// the lexical enum). Exact standard carriers: LINE and CIRCULARARC.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum HorizontalSegmentSpecies {
     /// `.LINE.`
     Line,
@@ -1801,11 +1801,59 @@ pub enum HorizontalSegmentSpecies {
     SineCurve,
     /// `.VIENNESEBEND.`
     VienneseBend,
+    /// A DECLARED curvature law: the segment states its normalized ramp and
+    /// the host's generic integrator executes it (no per-shape host code).
+    /// Every IFC blend species above restates exactly as one of these ramps;
+    /// the kind is the extension point for blends the host does not
+    /// hard-code (the cant family, custom blend shapes). kappa(s) =
+    /// k0 + (k1-k0) * ramp(s/L) with k0 = 1/start_radius (0 = straight
+    /// entry) and k1 = end_curvature declared DIRECTLY — a Declared blend
+    /// may end flat (k1 = 0), unlike the IFC blends, which always exit into
+    /// a circle. `end_radius` is ignored for a Declared law.
+    Declared(DeclaredKappaRamp),
+}
+
+/// The declared curvature-ramp vocabulary (the Declared species' head,
+/// executed as declared data by the host's generic Gaussian integrator):
+/// kappa(xi) = k0 + (k1-k0) * ramp(xi), xi = s/L in [0, 1]. Every entry
+/// satisfies ramp(0) = 0, ramp(1) = 1, ramp(xi) in [0, 1], so the blend
+/// integral W has W(1) = 1/2 — a straight-to-curve transition deflects
+/// through L/(2R), the IFC lexics' own normalization.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum DeclaredKappaRamp {
+    /// kappa(xi) = xi (the straight-to-circle ramp; the CLOTHOID shape).
+    Linear,
+    /// kappa(xi) = 3*xi^2 - 2*xi^3 (the BLOSSCURVE shape).
+    Bloss,
+    /// kappa(xi) = (1 - cos(pi*xi)) / 2 (the COSINECURVE half-wave).
+    Cosine,
+    /// kappa(xi) = xi - sin(2*pi*xi)/(2*pi) (the SINECURVE shape).
+    Sine,
+    /// The HELMERTCURVE's two quadratic halves: 2*xi^2 up to xi = 1/2,
+    /// then 1 - 2*(1-xi)^2.
+    Helmert,
+    /// The VIENNESEBEND's cubic-quintic ramp (35xi^4 - 84xi^5 + 70xi^6 -
+    /// 20xi^7): the banked-bend gravity-centre correction applies verbatim
+    /// (the declared `gravity_height` / `bank_change` fields drive it; zero
+    /// fields = no correction).
+    Viennese,
+    /// A continuous piecewise-LINEAR ramp through up to six declared knots.
+    /// `count` knots of `knots` are active (1..=6; the rest are padding):
+    /// knots[0] = (0.0, 0.0) and knots[count-1] = (1.0, 1.0) are required,
+    /// xi strictly ascending, every active ramp value finite in [0, 1].
+    /// The genuinely-custom blend primitive: the host intergrates through
+    /// these knots; the shape itself is plugin-owned data.
+    Piecewise {
+        /// The active knot count.
+        count: u32,
+        /// The knot table; only the first `count` entries are the law.
+        knots: [(f64, f64); 6],
+    },
 }
 
 /// Vertical segment species (IFC4X3_ADD2). Exact standard carriers:
 /// CONSTANTGRADIENT and CIRCULARARC.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum VerticalSegmentSpecies {
     /// `.CONSTANTGRADIENT.`
     ConstantGradient,
@@ -1815,6 +1863,12 @@ pub enum VerticalSegmentSpecies {
     ParabolicArc,
     /// `.CLOTHOID.`
     Clothoid,
+    /// A DECLARED curvature law (see `DeclaredKappaRamp`): the run law is
+    /// theta(u) = theta0 + k0*u + (k1-k0)*L*W(s/L), k0 = 1/start_radius
+    /// (0 = straight run) and k1 = end_curvature REQUIRED non-zero (the
+    /// vertical clothoid's record-model rule verbatim — the record carries
+    /// no radius for blended verticals, and k1 = 0 restates PARABOLICARC).
+    Declared(DeclaredKappaRamp),
 }
 
 /// One declared segment of a parametric chain (API v14, additive).
@@ -1892,7 +1946,7 @@ pub struct ParametricSample {
     pub direction: [f64; 2],
 }
 
-/// **Plugin class-object staging types (API v15, additive).**
+/// **Plugin class-object staging types (API v14, additive).**
 ///
 /// The generalization of the parametric staging contract: a plugin-declared
 /// entity CLASS whose instances carry only identity (class id, schema
@@ -1902,7 +1956,7 @@ pub struct ParametricSample {
 /// `ParametricChain` descriptor kind: a class instance whose design is a
 /// chain stages through [`HostApi::stage_parametric_chain`]'s audited-seam,
 /// cap, refusal, undo and reference-only discipline verbatim. Older hosts
-/// simply answer both v15 methods with the standard degradation error.
+/// simply answer the class methods with the standard degradation error.
 ///
 /// The class declaration itself is session state like the v11 grip sets —
 /// never written to the drawing file; instances stamp only XDATA identity
@@ -1910,7 +1964,7 @@ pub struct ParametricSample {
 /// staged (standard-entity) display and reads its records, it just has no
 /// re-marking, re-staging or grip semantics until the plugin loads again.
 ///
-/// A plugin-declared entity class (API v15).
+/// A plugin-declared entity class (API v14).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PluginClassDeclaration {
     /// Stable identity key the host stamps on instances (XDATA class key —
@@ -1928,7 +1982,7 @@ pub struct PluginClassDeclaration {
     /// instances). The host uses it for instance validation; grip
     /// interpretation stays the declaring plugin's per the v11 law.
     pub grip_schema: Vec<PluginGripSchemaEntry>,
-    /// The class's parameter schema (API v16, additive; serde default keeps
+    /// The class's parameter schema (API v14, additive; serde default keeps
     /// earlier declarations readable): WHAT the parameters are — names, value
     /// kinds, and which rows host surfaces (the properties panel) may write.
     /// Declaring parameters turns the record layer's truth into named
@@ -1939,7 +1993,7 @@ pub struct PluginClassDeclaration {
     pub parameters: Vec<PluginClassParameter>,
 }
 
-/// One grip in a class's schema (API v15): which parameter of the class
+/// One grip in a class's schema (API v14): which parameter of the class
 /// schema this grip drives. Drag semantics remain the declaring plugin's.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PluginGripSchemaEntry {
@@ -1951,7 +2005,7 @@ pub struct PluginGripSchemaEntry {
     pub param_name: String,
 }
 
-/// One declared class parameter (API v16, additive): a name, a value kind,
+/// One declared class parameter (API v14, additive): a name, a value kind,
 /// and an editability. The schema lets host surfaces render a class
 /// instance's parameters without the plugin's source: the value lives on
 /// the instance's design record row (the record layer stays the only
@@ -1971,7 +2025,7 @@ pub struct PluginClassParameter {
     pub editable: bool,
 }
 
-/// The value kind of one declared class parameter (API v16, additive).
+/// The value kind of one declared class parameter (API v14, additive).
 /// Kinds append at the END only (the wire encodes a variant by its
 /// position).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1985,7 +2039,7 @@ pub enum PluginClassParameterKind {
     Text,
 }
 
-/// One staged instance of a registered plugin class (API v15): identity plus
+/// One staged instance of a registered plugin class (API v14): identity plus
 /// a host-evaluated design descriptor. Records carry the truth; the host
 /// never re-interprets anything the plugin does not declare here.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2010,7 +2064,7 @@ pub struct PluginClassInstance {
     pub design_record: String,
 }
 
-/// Host-evaluated display descriptor kinds (API v15, additive).
+/// Host-evaluated display descriptor kinds (API v14, additive).
 ///
 /// Kinds append at the END only (the wire encodes a variant by its
 /// position); the first host-known kind is the v14 parametric engine for

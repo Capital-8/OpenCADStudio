@@ -495,7 +495,7 @@ mod tests {
 
     #[test]
     fn plugin_class_requests_roundtrip() {
-        // API v15: the class frames keep the same wire discipline — serialize
+        // API v14: the class frames keep the same wire discipline — serialize
         // then deserialize byte-clean, in declared order.
         let class = crate::host::PluginClassDeclaration {
             class_id: "CVI_ALIGN_DISPLAY".to_string(),
@@ -504,7 +504,7 @@ mod tests {
                 grip_id: 1,
                 param_name: "peak_gradient".to_string(),
             }],
-            // API v16: the parameter schema rides the same frame byte-clean.
+            // API v14: the parameter schema rides the same frame byte-clean.
             parameters: vec![crate::host::PluginClassParameter {
                 name: "peak_gradient".to_string(),
                 value_kind: crate::host::PluginClassParameterKind::Real,
@@ -577,7 +577,7 @@ mod tests {
             matches!(bincode::deserialize::<PluginResponse>(&bytes).unwrap(),
             PluginResponse::StagePluginClassInstanceResult(Err(_)))
         );
-        // The v15 descriptor hook rides the v11 response additively: the
+        // The descriptor hook rides the v11 response additively: the
         // default round-trips as None, and a set descriptor survives.
         let bytes = bincode::serialize(&crate::host::CustomGripResponse::default()).unwrap();
         assert!(
@@ -585,7 +585,7 @@ mod tests {
                 bincode::deserialize::<crate::host::CustomGripResponse>(&bytes).unwrap().descriptor,
                 None
             ),
-            "a v15-free response stays descriptor-free"
+            "a default response stays descriptor-free"
         );
         let bytes = bincode::serialize(&crate::host::CustomGripResponse {
             preview: Vec::new(),

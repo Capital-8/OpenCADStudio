@@ -1832,7 +1832,7 @@ impl OpenCADStudio {
         (sections, title)
     }
 
-    /// The "Plugin class parameters" section (API v16): binds to ONE
+    /// The "Plugin class parameters" section (API v14): binds to ONE
     /// selected entity whose XDATA carries a registered class key. The
     /// section exists only when the stamp resolves to the LIVE declaration
     /// (schema match — a stale stamp re-stages instead of rendering). A
@@ -2881,7 +2881,7 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
             // `PropSyncActive`; derived from `sections`, so rebuild it here.
             panel.field_key_by_id = crate::ui::properties::build_field_key_map(&panel.sections);
             let new_handles: Vec<codec::Handle> = selected.iter().map(|(h, _)| *h).collect();
-            // The plugin class parameter surface (API v16): one stamped
+            // The plugin class parameter surface (API v14): one stamped
             // selection rides its class's declared rows. Only the native build
             // carries plugin classes (the wasm build has no plugin registry the
             // section could bind to).
