@@ -2215,7 +2215,12 @@ pub(crate) fn apply_link_rows(
 ) {
     let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
     while table.row_count() < rows.len() {
-        table.add_row();
+        // A new row is as tall as the row above it.
+        let height = table.rows.last().map(|row| row.height);
+        let row = table.add_row();
+        if let Some(height) = height {
+            row.height = height;
+        }
     }
     while table.row_count() > rows.len() {
         table.remove_row(table.row_count() - 1);
