@@ -82,9 +82,16 @@ pub(super) fn default_bindings() -> BTreeMap<String, String> {
         ("RIGHT".to_string(), "CARETRIGHT"),
     ]
     .into_iter()
+    .chain(PLATFORM_BINDINGS.iter().map(|(key, action)| (key.to_string(), *action)))
     .map(|(key, action)| (key, action.to_string()))
     .collect()
 }
+
+/// Bindings a platform expects of every application.
+#[cfg(target_os = "macos")]
+pub(super) const PLATFORM_BINDINGS: &[(&str, &str)] = &[("CMD+,", "OPTIONS")];
+#[cfg(not(target_os = "macos"))]
+pub(super) const PLATFORM_BINDINGS: &[(&str, &str)] = &[];
 
 /// Canonical form used by the editor, command interface, config and key event
 /// resolver. Modifier order is stable so equivalent user input shares one row.
