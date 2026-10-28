@@ -10060,7 +10060,17 @@ impl OpenCADStudio {
                 self.persist_settings_if_changed();
                 Task::none()
             }
+            Message::StartTemplates(open) => {
+                self.start_templates = open.then(|| self.template_folder_files());
+                if self.start_templates.as_ref().is_some_and(Vec::is_empty) {
+                    // No folder of templates: ask for one the usual way.
+                    self.start_templates = None;
+                    return self.dispatch_command("NEW");
+                }
+                Task::none()
+            }
             Message::NewFromTemplate(Some(path)) => {
+                self.start_templates = None;
                 let task = self.update(Message::TabNew);
                 let idx = self.active_tab;
                 match self.apply_template(&path.to_string_lossy()) {

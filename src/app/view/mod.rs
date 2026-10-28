@@ -530,6 +530,7 @@ impl OpenCADStudio {
                 self.recent_view,
                 self.start_action_w.clone(),
                 self.start_section,
+                self.start_templates.as_deref(),
             )
         } else if is_paper {
             shader(ViewportPane::model(
@@ -3807,6 +3808,7 @@ pub(super) fn start_page_view<'a>(
     recent_view: super::RecentView,
     action_width_out: std::sync::Arc<std::sync::atomic::AtomicU32>,
     active: super::StartSection,
+    templates: Option<&'a [std::path::PathBuf]>,
 ) -> Element<'a, Message> {
     responsive(move |size| {
         start_page_content(
@@ -3824,6 +3826,7 @@ pub(super) fn start_page_view<'a>(
             size.width,
             action_width_out.clone(),
             active,
+            templates,
         )
     })
     .into()
@@ -3844,6 +3847,7 @@ fn start_page_content<'a>(
     avail_w: f32,
     action_width_out: std::sync::Arc<std::sync::atomic::AtomicU32>,
     active: super::StartSection,
+    templates: Option<&'a [std::path::PathBuf]>,
 ) -> Element<'a, Message> {
     let headline = text("Open CAD Studio").size(40).style(start_primary_style);
 
@@ -3891,15 +3895,54 @@ fn start_page_content<'a>(
 
     let primary_row = WrapFlow::new(vec![
         outline_btn(crate::tr!("start", "new-drawing"), Message::TabNew).into(),
-        // NEW asks which template to start from (.dwt, .dwg or .dxf).
-        outline_btn(
-            crate::tr!("start", "new-from-template"),
-            Message::RibbonToolClick {
-                tool_id: "NEW".to_string(),
-                event: crate::modules::ModuleEvent::Command("NEW".to_string()),
-            },
-        )
-        .into(),
+        // The templates beside the default one, then Browse (NEW asks for a
+        // .dwt, .dwg or .dxf); straight to NEW when there is no such folder.
+        {
+            let head = outline_btn(
+                crate::tr!("start", "new-from-template"),
+                Message::StartTemplates(templates.is_none()),
+            );
+            match templates {
+                Some(templates) => {
+                    let mut list = column![].spacing(1);
+                    for path in templates {
+                        let name = path
+                            .file_stem()
+                            .map(|stem| stem.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        list = list.push(
+                            button(text(name).size(13))
+                                .on_press(Message::NewFromTemplate(Some(path.clone())))
+                                .style(crate::ui::color_select::list_row_style)
+                                .padding([4, 10])
+                                .width(Fill),
+                        );
+                    }
+                    list = list.push(
+                        button(text(crate::t!("Browse...")).size(13))
+                            .on_press(Message::RibbonToolClick {
+                                tool_id: "NEW".to_string(),
+                                event: crate::modules::ModuleEvent::Command("NEW".to_string()),
+                            })
+                            .style(crate::ui::color_select::list_row_style)
+                            .padding([4, 10])
+                            .width(Fill),
+                    );
+                    let height = ((templates.len() + 1) as f32 * 26.0).min(360.0);
+                    let popup = container(scrollable(list).height(height))
+                        .style(crate::ui::color_select::popup_panel_style)
+                        .padding(2);
+                    crate::ui::drop_down_fit::drop_down_fit(
+                        iced_aw::DropDown::new(head, popup, true)
+                            .width(iced::Length::Fixed(260.0))
+                            .alignment(iced_aw::drop_down::Alignment::Bottom)
+                            .offset(2.0)
+                            .on_dismiss(Message::StartTemplates(false)),
+                    )
+                }
+                None => head.into(),
+            }
+        },
         outline_btn(crate::tr!("start", "open-file"), Message::OpenFile).into(),
         donate_btn.into(),
     ])
@@ -4947,6 +4990,7 @@ mod tests {
             800.0,
             std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
             super::super::StartSection::default(),
+            None,
         );
     }
 }

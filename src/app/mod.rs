@@ -1467,6 +1467,9 @@ pub(super) struct OpenCADStudio {
     font_source_url: String,
     /// Template a new drawing starts from (QNEW); empty = blank.
     qnew_template: String,
+    /// The start page's template list, while it is open: the drawing
+    /// templates beside the default one.
+    start_templates: Option<Vec<std::path::PathBuf>>,
     /// Editable copy of `font_source_url` shown in the missing-fonts prompt.
     font_source_input: String,
     donation_prompt_version: String,
@@ -3248,6 +3251,8 @@ pub enum Message {
     QnewTemplateBrowse,
     /// NEW: the picked template a new drawing starts from (`None` = cancelled).
     NewFromTemplate(Option<std::path::PathBuf>),
+    /// Open (true) or close the start page's template list.
+    StartTemplates(bool),
     /// Set the default type/version used when first saving a new drawing.
     DefaultSaveFormatChanged(String),
     /// Select one of Iced's built-in themes or the editable Custom theme.
@@ -5742,6 +5747,7 @@ impl OpenCADStudio {
             check_missing_fonts: true,
             font_source_url: String::new(),
             qnew_template: String::new(),
+            start_templates: None,
             font_source_input: String::new(),
             donation_prompt_version: String::new(),
             read_only: false,
