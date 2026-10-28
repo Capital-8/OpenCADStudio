@@ -8,7 +8,8 @@ use crate::app::{ExtractionPrompt, Message, ModalKind, OpenCADStudio};
 use crate::ui::window::extraction_outdated::OutdatedChoice;
 use iced::Task;
 
-/// DXEVAL event bits; each shifted five up updates without asking.
+/// DXEVAL event bits. Save, plot, publish and archive shifted four bits up
+/// (32, 64, 128, 256) update without asking; an open only asks.
 pub(crate) const EVENT_OPEN: i32 = 1;
 pub(crate) const EVENT_SAVE: i32 = 2;
 pub(crate) const EVENT_PLOT: i32 = 4;
@@ -64,7 +65,7 @@ impl OpenCADStudio {
             return None;
         }
         let dxeval = annotation_data::dxeval(&self.tabs[i].scene.document);
-        let automatic = dxeval & (event << 5) != 0;
+        let automatic = event != EVENT_OPEN && dxeval & (event << 4) != 0;
         if !automatic && dxeval & event == 0 {
             return None;
         }

@@ -319,9 +319,9 @@ pub(crate) fn stamp_data_link_handle(doc: &mut Document, handle: Handle) {
 }
 
 /// DXEVAL: the events that compare extraction tables with their data —
-/// 1 open, 2 save, 4 plot, 8 publish, 16 eTransmit/archive — and, shifted
-/// five bits up, the same events updating them without asking. Kept in the
-/// drawing; 12 (plot and publish) until set.
+/// 1 open, 2 save, 4 plot, 8 publish, 16 eTransmit/archive — and 32 save,
+/// 64 plot, 128 publish, 256 eTransmit/archive updating them without
+/// asking. Kept in the drawing; 12 (plot and publish) until set.
 pub(crate) fn dxeval(doc: &Document) -> i32 {
     crate::io::drawing_variable(doc, "DXEVAL")
         .and_then(|value| value.trim().parse().ok())
