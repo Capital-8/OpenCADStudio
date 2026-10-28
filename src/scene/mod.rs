@@ -9385,7 +9385,7 @@ impl Scene {
         })
     }
 
-    fn interaction_block_handle(&self) -> Handle {
+    pub(crate) fn interaction_block_handle(&self) -> Handle {
         if self.block_edit_block.is_none() && self.active_viewport.is_some() {
             self.model_space_block_handle()
         } else {

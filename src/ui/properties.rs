@@ -1879,7 +1879,7 @@ fn coord_suffix(label: &str) -> Option<(&str, usize)> {
 
 /// Length of the coordinate group starting at `idx`: consecutive text rows
 /// labelled "<Base> X", "<Base> Y" and optionally "<Base> Z". 0/1 = no group.
-fn coord_group_len(props: &[crate::scene::model::object::Property], idx: usize) -> usize {
+pub(crate) fn coord_group_len(props: &[crate::scene::model::object::Property], idx: usize) -> usize {
     if matches!(props[idx].field, "pl3_vertex_x" | "pm_vx") {
         return 0;
     }
@@ -1909,12 +1909,12 @@ fn coord_group_len(props: &[crate::scene::model::object::Property], idx: usize) 
     }
 }
 
-fn coord_base(label: &str) -> &str {
+pub(crate) fn coord_base(label: &str) -> &str {
     coord_suffix(label).map(|(b, _)| b).unwrap_or(label)
 }
 
 /// Short component label for an expanded row ("Position X" → indented "X").
-fn coord_component(label: &str) -> &'static str {
+pub(crate) fn coord_component(label: &str) -> &'static str {
     match coord_suffix(label) {
         Some((_, 0)) => "    X",
         Some((_, 1)) => "    Y",

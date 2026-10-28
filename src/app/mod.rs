@@ -56,7 +56,7 @@ mod measurement;
 mod model_ops;
 mod mtext_editor;
 mod navigation;
-mod node_graph;
+pub(crate) mod node_graph;
 mod options_session;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod plugin_host;
