@@ -4643,6 +4643,36 @@ struct MovedText {
     lines: Vec<(Vector3, Vector3)>,
 }
 
+/// How far DIMTMOVE 1 text may move off its dimension line before it hangs
+/// on a leader: `max(DIMASZ + DIMGAP, DIMTXT / 2 + DIMGAP + DIMEXE)`.
+fn moved_text_reach(style: &DimStyle, text_height: f64, dim_scale: f64) -> f64 {
+    let gap = style.dimgap.abs() * dim_scale;
+    (style.dimasz * dim_scale + gap).max(text_height * 0.5 + gap + style.dimexe * dim_scale)
+}
+
+/// DIMTMOVE 1 text placed on a leader off an angular dimension, which reads
+/// horizontally.
+fn angular_text_on_leader(dim: &Dimension, style: Option<&DimStyle>) -> bool {
+    let Some(s) = style.filter(|s| s.dimtmove == 1) else {
+        return false;
+    };
+    if !matches!(dim, Dimension::Angular2Ln(_) | Dimension::Angular3Pt(_))
+        || !dim.base().text_user_positioned
+    {
+        return false;
+    }
+    let (Some(point), Some((vertex, start, end, radius))) =
+        (stored_text_point(dim), angular_dimension_frame(dim))
+    else {
+        return false;
+    };
+    let scale = if s.dimscale > 1e-9 { s.dimscale } else { 1.0 };
+    let mid = ((start + end) * 0.5) as f64;
+    let dx = point.x - (vertex.x as f64 + radius as f64 * mid.cos());
+    let dy = point.y - (vertex.y as f64 + radius as f64 * mid.sin());
+    dx.hypot(dy) >= moved_text_reach(s, s.dimtxt * scale, scale)
+}
+
 /// Where DIMTMOVE 1 puts user-placed text and its leader.
 ///
 /// Within `max(DIMASZ + DIMGAP, DIMTXT / 2 + DIMGAP + DIMEXE)` of the
@@ -4676,7 +4706,7 @@ fn dimtmove_one_text(
     let point = stored_text_point(dim)?;
     let gap = s.dimgap.abs() * dim_scale;
     let arrow = s.dimasz * dim_scale;
-    let reach = (arrow + gap).max(text_height * 0.5 + gap + s.dimexe * dim_scale);
+    let reach = moved_text_reach(s, text_height, dim_scale);
     let lift = match s.dimtad {
         0 => 0.0,
         tad => {
@@ -6794,6 +6824,8 @@ fn dimension_text_rotation(dim: &Dimension, style: Option<&DimStyle>) -> f64 {
         base.text_rotation
     } else if matches!(dim, Dimension::Ordinate(_)) {
         dimension_text_natural_rotation(dim)
+    } else if angular_text_on_leader(dim, style) {
+        base.horizontal_direction
     } else if (outside && dimtoh) || (!outside && dimtih) {
         // Text forced horizontal reads along the dimension's horizontal
         // direction; text aligned with the dimension line ignores it.
