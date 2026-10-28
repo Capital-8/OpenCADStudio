@@ -195,7 +195,9 @@ impl V4Connection {
                     // communicates (including periodic keep-alive heartbeats
                     // while paused in an interactive debugger).
                     deadline = Instant::now() + timeout;
-                    if tab_id.is_none_or(|request_tab| request_tab == host.tab_id()) {
+                    if matches!(*payload, PluginRequest::GetTabId)
+                        || tab_id.is_none_or(|request_tab| request_tab == host.tab_id() || host.tab_id() == 0)
+                    {
                         self.respond_to_plugin_request(host, rid, payload, on_start_interactive)?;
                     } else {
                         self.deferred
