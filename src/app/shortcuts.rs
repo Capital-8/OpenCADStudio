@@ -54,6 +54,7 @@ pub(super) fn default_bindings() -> BTreeMap<String, String> {
         (format!("{ACCEL}+N"), "QNEW"),
         (format!("{ACCEL}+O"), "OPEN"),
         (format!("{ACCEL}+P"), "PLOT"),
+        (format!("{ACCEL}+W"), "TOGGLESELECTIONCYCLING"),
         (format!("{ACCEL}+Q"), "QUIT"),
         (format!("{ACCEL}+S"), "SAVE"),
         (format!("{ACCEL}+SHIFT+S"), "SAVEAS"),
@@ -190,6 +191,7 @@ pub(super) const INPUT_ACTIONS: &[&str] = &[
     "TOGGLEDUCS",
     "OTRACK",
     "DYNINPUT",
+    "TOGGLESELECTIONCYCLING",
     "SELECTALL",
     "PASTECLIP",
 ];
@@ -349,6 +351,7 @@ impl OpenCADStudio {
             "TOGGLEDUCS" => Message::ToggleDynamicUcs,
             "OTRACK" => Message::ToggleOTrack,
             "DYNINPUT" => Message::ToggleDynInput,
+            "TOGGLESELECTIONCYCLING" => Message::ToggleSelectionCycling,
             "SELECTALL" => Message::SelectAllShortcut,
             "PASTECLIP" => Message::PasteShortcut,
 
