@@ -3221,6 +3221,14 @@ impl OpenCADStudio {
                         crate::ui::ribbon::keytip_pointer_pressed();
                         Some(Message::PropPointerPressed)
                     }
+                    iced::Event::Mouse(
+                        iced::mouse::Event::ButtonPressed(_)
+                        | iced::mouse::Event::ButtonReleased(_)
+                        | iced::mouse::Event::WheelScrolled { .. },
+                    ) => {
+                        crate::ui::ribbon::keytip_pointer_pressed();
+                        None
+                    }
                     iced::Event::Window(window::Event::CloseRequested) => {
                         Some(Message::WindowCloseRequested(win_id))
                     }

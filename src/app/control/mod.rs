@@ -1619,6 +1619,7 @@ impl OpenCADStudio {
         if previous < self.tabs.len() {
             self.active_tab = previous;
         }
+        crate::ui::ribbon::keytip_note_command_finished();
     }
     pub(super) fn control_measure(&self, req: &Value) -> Value {
         let tab = &self.tabs[self.active_tab];

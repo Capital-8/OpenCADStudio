@@ -84,6 +84,12 @@ pub(super) struct State {
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 /// Alt is down and nothing else was pressed since.
 static ALT_ALONE: AtomicBool = AtomicBool::new(false);
+/// Timestamp (ms) when a lone Alt was pressed down.
+static ALT_PRESSED_AT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Timestamp (ms) of the last window focus gain or loss.
+static LAST_FOCUS_CHANGE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Timestamp (ms) of the last command, pick, or automation operation completion.
+static LAST_COMMAND_FINISH_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 thread_local! {
     /// Anchors that carried a code in the last drawn frame.
@@ -186,10 +192,17 @@ pub fn key_pressed(
 ) -> Option<Option<Message>> {
     let alt = matches!(key, Key::Named(Named::Alt));
     if !repeat {
-        ALT_ALONE.store(
-            alt && !modifiers.control() && !modifiers.shift() && !modifiers.logo(),
-            Ordering::Relaxed,
-        );
+        let is_lone_alt = alt && !modifiers.control() && !modifiers.shift() && !modifiers.logo();
+        ALT_ALONE.store(is_lone_alt, Ordering::Relaxed);
+        if is_lone_alt {
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            ALT_PRESSED_AT_MS.store(now_ms, Ordering::Relaxed);
+        } else {
+            ALT_PRESSED_AT_MS.store(0, Ordering::Relaxed);
+        }
     }
     if !active() {
         return None;
@@ -210,13 +223,56 @@ pub fn key_pressed(
 
 /// Keyboard listener hook for a key release: a lone Alt toggles the tips.
 pub fn key_released(key: &Key) -> Option<Message> {
-    (matches!(key, Key::Named(Named::Alt)) && ALT_ALONE.swap(false, Ordering::Relaxed))
-        .then_some(Message::KeyTip(KeyTipInput::AltTap))
+    if matches!(key, Key::Named(Named::Alt)) && ALT_ALONE.swap(false, Ordering::Relaxed) {
+        let pressed_at = ALT_PRESSED_AT_MS.swap(0, Ordering::Relaxed);
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let last_focus = LAST_FOCUS_CHANGE_MS.load(Ordering::Relaxed);
+        let last_cmd = LAST_COMMAND_FINISH_MS.load(Ordering::Relaxed);
+        // Suppress Alt if focus changed or a command/debugging step finished within the last 1.2s.
+        // Synthetic events, Alt-Tab window switching, and completion tails must never trigger keytips.
+        if now_ms.saturating_sub(last_focus) < 1200 || now_ms.saturating_sub(last_cmd) < 1200 {
+            return None;
+        }
+        // Key tips only open on an intentional, quick tap of lone Alt (<= 500ms).
+        if pressed_at > 0 && now_ms.saturating_sub(pressed_at) <= 500 {
+            return Some(Message::KeyTip(KeyTipInput::AltTap));
+        }
+    }
+    None
+}
+
+/// Clear any pending lone-Alt state.
+pub fn clear_alt_alone() {
+    ALT_ALONE.store(false, Ordering::Relaxed);
+    ALT_PRESSED_AT_MS.store(0, Ordering::Relaxed);
+}
+
+/// Note that window focus changed (gained or lost), suppressing any Alt release artifacts.
+pub fn note_focus_changed() {
+    clear_alt_alone();
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    LAST_FOCUS_CHANGE_MS.store(now_ms, Ordering::Relaxed);
+}
+
+/// Note that a command, pick session, or automation operation finished.
+pub fn note_command_finished() {
+    clear_alt_alone();
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    LAST_COMMAND_FINISH_MS.store(now_ms, Ordering::Relaxed);
 }
 
 /// A pointer press ends a lone Alt.
 pub fn pointer_pressed() {
-    ALT_ALONE.store(false, Ordering::Relaxed);
+    clear_alt_alone();
 }
 
 /// Codes of the ribbon tabs, by module id.
