@@ -4278,6 +4278,29 @@ impl Scene {
                         Some(EntityType::Table(t)) if t.block_record_handle.is_none()
                     )
                 {
+                    // Cell edits request this rebuild by dropping the handle.
+                    // The codec then refills the block by name: drop the name
+                    // too when another table still uses that block.
+                    let name = match self.document.get_entity(*handle) {
+                        Some(EntityType::Table(t)) => t.block_name.clone(),
+                        _ => String::new(),
+                    };
+                    let shared = !name.is_empty()
+                        && self.document.entities().any(|e| {
+                            e.common().handle != *handle
+                                && matches!(e, EntityType::Table(o)
+                                    if o.block_name.eq_ignore_ascii_case(&name))
+                        });
+                    if shared {
+                        if let Some(EntityType::Table(t)) = self.document.get_entity_mut(*handle) {
+                            t.block_name.clear();
+                        }
+                    }
+                    // A fresh picture adds block records and entities outside
+                    // the table's entity delta; undo needs the full snapshot.
+                    if name.is_empty() || shared {
+                        self.poison_undo_recording();
+                    }
                     rebuilt |= self.document.refresh_table_block(*handle);
                     rebuilt |= !crate::entities::field::refresh_table_formulas(
                         &mut self.document,
