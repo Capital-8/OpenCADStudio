@@ -1227,12 +1227,18 @@ fn trailing_letter_gap(atom: &LayoutAtom, entity_h: f32, base_wf: f32, base_font
     })
 }
 
-/// The left side bearing of a TrueType line's first glyph. An MTEXT line
-/// starts at its first glyph's ink (measured: the box of an `o` begins at its
-/// bowl, the box of each line of a paragraph at that line's first ink), so a
-/// positive bearing is dropped; a negative one and stroke fonts keep their
-/// pen start.
-fn leading_bearing(atom: &LayoutAtom, entity_h: f32, base_wf: f32, base_font: &str) -> f32 {
+/// The side bearings a TrueType line drops at its ends: the first glyph's
+/// left bearing and the last glyph's right bearing. An MTEXT line spans its
+/// ink (measured: the box of an `o` runs from bowl to bowl, and a centred or
+/// right-aligned line puts that ink on the anchor), so positive bearings are
+/// dropped; negative ones and stroke fonts keep their pen extent.
+fn side_bearing(
+    atom: &LayoutAtom,
+    entity_h: f32,
+    base_wf: f32,
+    base_font: &str,
+    trailing: bool,
+) -> f32 {
     let AtomKind::Word(text) = &atom.kind else {
         return 0.0;
     };
@@ -1241,18 +1247,26 @@ fn leading_bearing(atom: &LayoutAtom, entity_h: f32, base_wf: f32, base_font: &s
     if face.ttf_family().is_none() {
         return 0.0;
     }
-    let Some(glyph) = text.chars().find(|c| *c != LRM).and_then(|c| face.glyph(c)) else {
+    let mut chars = text.chars().filter(|c| *c != LRM);
+    let ch = if trailing { chars.last() } else { chars.next() };
+    let Some(glyph) = ch.and_then(|c| face.glyph(c)) else {
         return 0.0;
     };
-    let ink = glyph
-        .strokes
-        .iter()
-        .flatten()
-        .chain(glyph.fill_tris.iter())
-        .map(|point| point[0])
-        .fold(f32::INFINITY, f32::min);
-    if ink.is_finite() && ink > 0.0 {
-        ink * run_scale(&atom.state, entity_h, base_wf)
+    let xs = || {
+        glyph
+            .strokes
+            .iter()
+            .flatten()
+            .chain(glyph.fill_tris.iter())
+            .map(|point| point[0])
+    };
+    let bearing = if trailing {
+        glyph.advance - xs().fold(f32::NEG_INFINITY, f32::max)
+    } else {
+        xs().fold(f32::INFINITY, f32::min)
+    };
+    if bearing.is_finite() && bearing > 0.0 {
+        bearing * run_scale(&atom.state, entity_h, base_wf)
     } else {
         0.0
     }
@@ -2339,15 +2353,19 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
         - sub.atoms[..visible_atoms]
             .last()
             .map_or(0.0, |atom| trailing_letter_gap(atom, entity_h, base_wf, &base_font_name));
-        // A TrueType line starts at its first glyph's ink.
-        let lead = if opts.vertical_text {
-            0.0
+        // A TrueType line spans its glyphs' ink.
+        let (lead, trail) = if opts.vertical_text {
+            (0.0, 0.0)
         } else {
-            sub.atoms[..visible_atoms]
-                .first()
-                .map_or(0.0, |atom| leading_bearing(atom, entity_h, base_wf, &base_font_name))
+            let visible = &sub.atoms[..visible_atoms];
+            let bearing = |atom: Option<&LayoutAtom>, trailing| {
+                atom.map_or(0.0, |atom| {
+                    side_bearing(atom, entity_h, base_wf, &base_font_name, trailing)
+                })
+            };
+            (bearing(visible.first(), false), bearing(visible.last(), true))
         };
-        let line_w = line_w - lead;
+        let line_w = line_w - lead - trail;
         line_widths.push(line_w);
 
         let cursor_start = if rect_w > 0.0 {
