@@ -41,7 +41,7 @@ fn control_lineweight(value: &Value) -> Result<codec::types::LineWeight, Value> 
 }
 
 fn color_value(color: codec::types::Color) -> Value {
-    if let Some((r, g, b)) = color.rgb() {
+    if let Some((r, g, b)) = color.true_color_rgb() {
         json!({"rgb":[r,g,b]})
     } else {
         json!(color.index())
