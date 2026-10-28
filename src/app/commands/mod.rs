@@ -626,6 +626,7 @@ impl OpenCADStudio {
     /// did not early-return. Focuses the command line whenever a command just
     /// became active.
     fn finish_dispatch(&mut self, cmd: &str) -> Task<Message> {
+        crate::ui::ribbon::keytip_note_command_finished();
         let i = self.active_tab;
         if self.tabs[i].active_cmd.is_some() {
             self.tabs[i].last_cmd = Some(cmd.to_string());

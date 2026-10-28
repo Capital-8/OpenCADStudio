@@ -40,8 +40,10 @@ use crate::ui::wrap_bar::{PosReport, WrapBar, WrapFlow};
 pub use collapse::CollapseMode;
 use collapse::{CollapsePanels, Panel};
 pub use keytips::{
-    KeyTipInput, KeyTipStep, active as keytips_active, key_pressed as keytip_key_pressed,
-    key_released as keytip_key_released, pointer_pressed as keytip_pointer_pressed,
+    KeyTipInput, KeyTipStep, active as keytips_active, clear_alt_alone as keytip_clear_alt_alone,
+    key_pressed as keytip_key_pressed, key_released as keytip_key_released,
+    note_command_finished as keytip_note_command_finished,
+    note_focus_changed as keytip_note_focus_changed, pointer_pressed as keytip_pointer_pressed,
 };
 
 pub(crate) fn tooltip_content(text: String) -> Element<'static, Message> {

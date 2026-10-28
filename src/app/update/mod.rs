@@ -907,11 +907,10 @@ impl OpenCADStudio {
                 if Some(id) == self.main_window {
                     self.spacemouse_focused = focused;
                 }
-                // Key tips close when the window loses the focus, and an Alt
-                // held while it left (Alt+Tab) no longer counts as a lone tap.
-                if !focused {
-                    crate::ui::ribbon::keytip_pointer_pressed();
-                }
+                // Key tips close when the window loses focus, and an Alt
+                // held while it left or arrived (Alt+Tab, window activation)
+                // no longer counts as a lone tap.
+                crate::ui::ribbon::keytip_note_focus_changed();
                 if !focused && self.ribbon.keytips_active() {
                     return self.hide_keytips();
                 }

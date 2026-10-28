@@ -1226,6 +1226,7 @@ impl OpenCADStudio {
         } else {
             self.focus_cmd_input()
         };
+        crate::ui::ribbon::keytip_note_command_finished();
         Task::batch([dispatched, focus])
     }
 
@@ -1292,6 +1293,7 @@ impl OpenCADStudio {
     }
 
     fn handle_done(&mut self) {
+        crate::ui::ribbon::keytip_note_command_finished();
         let i = self.active_tab;
         self.tabs[i].scene.clear_preview_wire();
         if self.tabs[i].suspended_cmd.is_some() {
@@ -1316,6 +1318,7 @@ impl OpenCADStudio {
     }
 
     fn handle_cancel(&mut self, cancel: CmdResult) {
+        crate::ui::ribbon::keytip_note_command_finished();
         let i = self.active_tab;
         self.tabs[i].pending_parameter_set_follow_up = None;
         self.tabs[i].pending_xy_box_set = None;
