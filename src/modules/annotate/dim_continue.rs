@@ -1,5 +1,5 @@
 use codec::entities::{
-    Dimension, DimensionAngular2Ln, DimensionAngular3Pt, DimensionBase, DimensionLinear,
+    Dimension, DimensionAngular2Ln, DimensionAngular3Pt, DimensionLinear,
     DimensionOrdinate,
 };
 use codec::types::Vector3;
@@ -14,6 +14,7 @@ use kernel::space::Plane;
 use crate::command::{
     CadCommand, CmdOption, CmdResult, DimensionAssociationInput, DimensionPreview,
 };
+use super::dim_baseline::SourceStyle;
 use crate::modules::{IconKind, ModuleEvent, ToolDef};
 use crate::scene::model::wire_model::WireModel;
 
@@ -25,35 +26,6 @@ pub fn tool() -> ToolDef {
         label: "Continue",
         icon: ICON,
         event: ModuleEvent::Command("DIMCONTINUE".to_string()),
-    }
-}
-
-#[derive(Clone)]
-struct SourceStyle {
-    layer: String,
-    style_name: String,
-    normal: Vector3,
-    text_rotation: f64,
-    horizontal_direction: f64,
-}
-
-impl SourceStyle {
-    fn from_base(base: &DimensionBase) -> Self {
-        Self {
-            layer: base.common.layer.clone(),
-            style_name: base.style_name.clone(),
-            normal: base.normal,
-            text_rotation: base.text_rotation,
-            horizontal_direction: base.horizontal_direction,
-        }
-    }
-
-    fn apply(&self, base: &mut DimensionBase) {
-        base.common.layer = self.layer.clone();
-        base.style_name = self.style_name.clone();
-        base.normal = self.normal;
-        base.text_rotation = self.text_rotation;
-        base.horizontal_direction = self.horizontal_direction;
     }
 }
 
@@ -292,7 +264,9 @@ impl DimContinueCommand {
                 Dimension::Ordinate(result)
             }
         };
-        state.style.apply(dimension.base_mut());
+        state
+            .style
+            .apply(dimension.base_mut(), self.preserve_base_style);
         refresh_measurement(&mut dimension, state.plane);
         dimension.base_mut().common.handle = Handle::NULL;
         dimension.base_mut().block_name.clear();
