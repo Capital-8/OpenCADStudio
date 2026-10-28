@@ -75,7 +75,15 @@ impl OpenCADStudio {
 
     pub(crate) fn dim_continue_command(&self, i: usize, in_dim: bool) -> DimContinueCommand {
         let recent = if in_dim { None } else { self.recent_dimension(i) };
-        let mut command = DimContinueCommand::new(recent, self.dimension_continue_mode == 1);
+        let style_text_move = self.tabs[i]
+            .scene
+            .document
+            .dim_styles
+            .iter()
+            .map(|style| (style.name.clone(), style.dimtmove))
+            .collect();
+        let mut command = DimContinueCommand::new(recent, self.dimension_continue_mode == 1)
+            .with_style_text_move(style_text_move);
         if in_dim {
             command.run_from_dim();
         }
