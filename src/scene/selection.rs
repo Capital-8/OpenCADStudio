@@ -1054,7 +1054,12 @@ impl Scene {
     // ── Erase ─────────────────────────────────────────────────────────────
 
     pub fn erase_entities(&mut self, handles: &[Handle]) {
-        self.remove_entities(handles, true, true);
+        self.remove_entities(handles, true, true, true);
+    }
+
+    /// Replace only planned sources, preserving annotations or leaders not exploded.
+    pub(crate) fn erase_entities_exact(&mut self, handles: &[Handle]) {
+        self.remove_entities(handles, true, true, false);
     }
 
     /// Like [`erase_entities`](Self::erase_entities) but without the
@@ -1062,7 +1067,7 @@ impl Scene {
     /// removes them through the plugin host API; locked-layer policy stays
     /// enforced either way.
     pub fn erase_entities_plugin(&mut self, handles: &[Handle]) {
-        self.remove_entities(handles, true, false);
+        self.remove_entities(handles, true, false, true);
     }
 
     /// Roll back entities created by the current command after a downstream
@@ -1071,7 +1076,7 @@ impl Scene {
     /// The shared removal path keeps first-touch undo state, history objects,
     /// groups, selection, and derived caches coherent.
     pub(crate) fn rollback_new_entities(&mut self, handles: &[Handle]) {
-        self.remove_entities(handles, false, false);
+        self.remove_entities(handles, false, false, true);
     }
 
     fn remove_entities(
@@ -1079,8 +1084,13 @@ impl Scene {
         handles: &[Handle],
         respect_layer_locks: bool,
         respect_reference_only: bool,
+        expand_linked: bool,
     ) {
-        let erase_handles = self.handles_expanded_for_leader_annotations(handles);
+        let erase_handles = if expand_linked {
+            self.handles_expanded_for_leader_annotations(handles)
+        } else {
+            handles.to_vec()
+        };
 
         // One pass over document.objects instead of a scan per erased handle.
         let mut managers_by_section: HashMap<Handle, Vec<Handle>> = HashMap::default();

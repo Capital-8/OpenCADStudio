@@ -113,6 +113,7 @@ pub fn explode_entity(entity: &EntityType, document: &Document) -> Vec<EntityTyp
             .collect(),
         EntityType::MLine(ml) => explode_mline(ml),
         EntityType::Dimension(dim) => explode_dimension(dim, document),
+        EntityType::Leader(leader) => explode_leader(leader, document),
         EntityType::MText(t) => crate::entities::mtext::explode_mtext(t, document),
         EntityType::Region(region) => explode_region(region),
         EntityType::Hatch(hatch) => explode_hatch(hatch),
@@ -145,9 +146,8 @@ pub fn plan_explode(
         .collect()
 }
 
-/// Apply precomputed EXPLODE replacements. Initial version is a
-/// byte-for-byte extraction of the command arm's loop (erase one handle,
-/// add pieces one at a time); optimizations change its internals only.
+/// Apply precomputed EXPLODE replacements, erasing only sources with pieces.
+/// Linked annotations or leaders without their own replacements stay intact.
 /// Returns the number of exploded sources.
 pub fn apply_explode_replacements(
     scene: &mut crate::scene::Scene,
@@ -155,13 +155,71 @@ pub fn apply_explode_replacements(
 ) -> usize {
     let exploded = replacements.len();
     let handles: Vec<Handle> = replacements.iter().map(|(h, _)| *h).collect();
-    scene.erase_entities(&handles);
+    scene.erase_entities_exact(&handles);
     for (_, pieces) in replacements {
         for piece in pieces {
             scene.add_entity(piece);
         }
     }
     exploded
+}
+
+fn explode_leader(leader: &codec::entities::Leader, doc: &Document) -> Vec<EntityType> {
+    use crate::entities::{dim_override as dov, leader::LeaderTess};
+    let style = doc.dim_styles.iter().find(|s| {
+        s.name.eq_ignore_ascii_case(&leader.dimension_style)
+            || (leader.dimension_style.trim().is_empty() && s.name.eq_ignore_ascii_case("Standard"))
+    });
+    let xd = &leader.common.extended_data;
+    let clr = dov::int(xd, dov::DIMCLRD)
+        .or_else(|| style.map(|s| s.dimclrd))
+        .unwrap_or(0);
+    // Match LeaderTess: only a concrete per-object DIMLWD changes the weight.
+    let lw = dov::int(xd, dov::DIMLWD).unwrap_or(-1);
+    let mut common = dim_common(&leader.common, clr, lw);
+    common.owner_handle = Handle::NULL;
+    common.reactors.clear();
+    // Reuse the live path (including spline leaders), hook and all arrow kinds.
+    // The document-only explode API bakes at annotation scale 1.
+    let model = leader.tessellate(doc, Handle::NULL, false, [1.0; 4], 1.0, 1.0);
+    let restore = |high: &[[f32; 3]], low: &[[f32; 3]]| -> Vec<Vector3> {
+        high.iter()
+            .enumerate()
+            .map(|(i, h)| {
+                let l = low.get(i).copied().unwrap_or([0.0; 3]);
+                Vector3::new(
+                    h[0] as f64 + l[0] as f64,
+                    h[1] as f64 + l[1] as f64,
+                    h[2] as f64 + l[2] as f64,
+                )
+            })
+            .collect()
+    };
+    let points = restore(&model.points, &model.points_low);
+    let fill = restore(&model.fill_tris, &model.fill_tris_low);
+    let mut pieces = Vec::new();
+    for (index, run) in points.split(|p| p.x.is_nan()).enumerate() {
+        for pair in run.windows(2) {
+            // Filled arrows also emit wire outlines; the SOLID owns those edges.
+            if index != 0
+                && fill.chunks_exact(3).any(|tri| {
+                    (0..3).any(|i| {
+                        let (a, b) = (tri[i], tri[(i + 1) % 3]);
+                        (pair[0] == a && pair[1] == b) || (pair[0] == b && pair[1] == a)
+                    })
+                })
+            {
+                continue;
+            }
+            pieces.push(dim_seg(pair[0], pair[1], &common));
+        }
+    }
+    for tri in fill.chunks_exact(3) {
+        let mut solid = codec::entities::Solid::triangle(tri[0], tri[1], tri[2]);
+        solid.common = common.clone();
+        pieces.push(EntityType::Solid(solid));
+    }
+    pieces
 }
 
 fn explode_polyline(p: &Polyline) -> Vec<EntityType> {
@@ -2887,6 +2945,163 @@ mod tests {
                 ),
                 None => panic!("baked child {h:?} missing"),
             }
+        }
+    }
+
+    fn explode_test_leader(arrow_enabled: bool) -> codec::entities::Leader {
+        let mut leader = codec::entities::Leader::new();
+        leader.vertices = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 5.0, 0.0)];
+        leader.path_type = codec::entities::LeaderPathType::StraightLine;
+        leader.creation_type = codec::entities::LeaderCreationType::NoAnnotation;
+        leader.hookline_enabled = false;
+        leader.arrow_enabled = arrow_enabled;
+        leader.text_height = 1.0;
+        leader
+    }
+
+    #[test]
+    fn leader_explode_default_arrow_keeps_path_and_solid_at_first_vertex() {
+        let leader = explode_test_leader(true);
+        let pieces = explode_entity(&EntityType::Leader(leader.clone()), &Document::new());
+        assert_eq!(pieces.len(), 2, "one path and one filled arrowhead");
+        let EntityType::Line(path) = &pieces[0] else {
+            panic!("expected leader path")
+        };
+        assert_eq!(path.start, leader.vertices[0]);
+        assert_eq!(path.end, leader.vertices[1]);
+        let EntityType::Solid(arrow) = &pieces[1] else {
+            panic!("expected filled arrow")
+        };
+        assert_eq!(arrow.first_corner, leader.vertices[0]);
+        for corner in [arrow.second_corner, arrow.third_corner] {
+            let (dx, dy) = (corner.x - path.start.x, corner.y - path.start.y);
+            assert!(dx * 10.0 + dy * 5.0 > 0.0, "arrow body must face the path");
+        }
+        assert_ne!(arrow.second_corner, arrow.third_corner);
+    }
+
+    #[test]
+    fn leader_explode_arrow_off_keeps_only_path_and_attributes() {
+        let mut leader = explode_test_leader(false);
+        leader.common.layer = "LEADERS".into();
+        leader.common.color = codec::types::Color::from_index(3);
+        leader.common.linetype = "DASHED".into();
+        leader.common.line_weight = codec::types::LineWeight::from_value(35);
+        let pieces = explode_entity(&EntityType::Leader(leader.clone()), &Document::new());
+        assert_eq!(pieces.len(), 1);
+        let EntityType::Line(path) = &pieces[0] else {
+            panic!("expected leader path")
+        };
+        assert_eq!(path.start, leader.vertices[0]);
+        assert_eq!(path.end, leader.vertices[1]);
+        assert_eq!(path.common.handle, Handle::NULL);
+        assert_eq!(path.common.layer, leader.common.layer);
+        assert_eq!(path.common.color, leader.common.color);
+        assert_eq!(path.common.linetype, leader.common.linetype);
+        assert_eq!(path.common.line_weight, leader.common.line_weight);
+    }
+
+    #[test]
+    fn leader_explode_hookline_and_dimstyle_overrides_match_render() {
+        use crate::entities::dim_override as dov;
+        use codec::xdata::XDataValue;
+        let mut leader = explode_test_leader(false);
+        leader.hookline_enabled = true;
+        for (code, value) in [
+            (dov::DIMASZ, XDataValue::Real(2.0)),
+            (dov::DIMSCALE, XDataValue::Real(1.0)),
+            (dov::DIMCLRD, XDataValue::Integer16(1)),
+            (dov::DIMLWD, XDataValue::Integer16(50)),
+        ] {
+            dov::set_on_common(&mut leader.common, code, Some(value));
+        }
+        let pieces = explode_entity(&EntityType::Leader(leader), &Document::new());
+        assert_eq!(pieces.len(), 2);
+        let EntityType::Line(hook) = &pieces[1] else {
+            panic!("expected hookline")
+        };
+        assert_eq!(hook.start, Vector3::new(10.0, 5.0, 0.0));
+        assert_eq!(hook.end, Vector3::new(12.0, 5.0, 0.0));
+        for piece in pieces {
+            assert_eq!(piece.common().color, codec::types::Color::from_index(1));
+            assert_eq!(
+                piece.common().line_weight,
+                codec::types::LineWeight::from_value(50)
+            );
+        }
+    }
+
+    #[test]
+    fn leader_explode_replacements_preserve_unexploded_linked_entities() {
+        for (explode_leader, explode_annotation) in [(true, true), (true, false), (false, true)] {
+            let mut scene = crate::scene::Scene::new();
+            let mut mtext = codec::entities::MText::new();
+            mtext.value = "note".into();
+            let annotation = scene.add_entity(EntityType::MText(Box::new(mtext)));
+            let mut leader = explode_test_leader(true);
+            leader.annotation_handle = annotation;
+            let leader_handle = scene.add_entity(EntityType::Leader(leader));
+            // This linked leader is also selected but cannot produce any pieces.
+            let mut empty = codec::entities::Leader::new();
+            empty.vertices.clear();
+            empty.annotation_handle = annotation;
+            let empty_handle = scene.add_entity(EntityType::Leader(empty));
+            let mut handles = vec![empty_handle];
+            if explode_leader {
+                handles.push(leader_handle);
+            }
+            if explode_annotation {
+                handles.push(annotation);
+            }
+            let selected: Vec<_> = handles
+                .iter()
+                .map(|&h| (h, scene.document.get_entity(h).unwrap()))
+                .collect();
+            let replacements = plan_explode(&selected, &scene.document);
+            assert_eq!(
+                replacements.len(),
+                explode_leader as usize + explode_annotation as usize
+            );
+            apply_explode_replacements(&mut scene, replacements);
+            assert_eq!(
+                scene.document.get_entity(leader_handle).is_none(),
+                explode_leader
+            );
+            assert_eq!(
+                scene.document.get_entity(annotation).is_none(),
+                explode_annotation
+            );
+            assert!(scene.document.get_entity(empty_handle).is_some());
+            let entities: Vec<_> = scene.document.entities().collect();
+            assert_eq!(
+                entities
+                    .iter()
+                    .filter(|e| matches!(e, EntityType::Line(_)))
+                    .count(),
+                explode_leader as usize
+            );
+            assert_eq!(
+                entities
+                    .iter()
+                    .filter(|e| matches!(e, EntityType::Solid(_)))
+                    .count(),
+                explode_leader as usize
+            );
+            let notes: Vec<_> = entities
+                .iter()
+                .filter_map(|e| match e {
+                    EntityType::Text(text) => Some(text.value.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                notes,
+                if explode_annotation {
+                    vec!["note"]
+                } else {
+                    vec![]
+                }
+            );
         }
     }
 }
