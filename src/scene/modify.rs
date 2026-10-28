@@ -724,6 +724,65 @@ impl Scene {
         }
     }
 
+    /// Preallocate COPY's object-tree mapping before cloning any sibling tree.
+    pub(super) fn prepare_xdict_copies(
+        &mut self,
+        roots: &[(Handle, Option<Handle>)],
+    ) -> (
+        rustc_hash::FxHashMap<Handle, Handle>,
+        rustc_hash::FxHashMap<Handle, Handle>,
+    ) {
+        let mut owner_of = rustc_hash::FxHashMap::default();
+        let mut cross = rustc_hash::FxHashMap::default();
+        for (src_handle, src_xdict) in roots {
+            if let Some(root) = *src_xdict {
+                owner_of.insert(root, *src_handle);
+            }
+        }
+        let mut claimed = rustc_hash::FxHashSet::default();
+        for (src_handle, src_xdict) in roots {
+            let Some(root) = *src_xdict else {
+                continue;
+            };
+            let mut stack = vec![root];
+            while let Some(h) = stack.pop() {
+                if owner_of.get(&h).is_some_and(|&o| o != *src_handle) {
+                    continue;
+                }
+                if !claimed.insert(h) {
+                    continue;
+                }
+                owner_of.entry(h).or_insert(*src_handle);
+                let Some(obj) = self.document.objects.get(&h) else {
+                    continue;
+                };
+                match obj {
+                    codec::objects::ObjectType::Dictionary(d) => {
+                        for (_, child) in &d.entries {
+                            stack.push(*child);
+                        }
+                        if let Some(xd) = d.xdictionary_handle {
+                            stack.push(xd);
+                        }
+                    }
+                    codec::objects::ObjectType::XRecord(x) => {
+                        if let Some(xd) = x.xdictionary_handle {
+                            stack.push(xd);
+                        }
+                    }
+                    codec::objects::ObjectType::Field(f) => {
+                        stack.extend(f.child_fields.iter().copied());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for &h in owner_of.keys() {
+            cross.insert(h, self.document.allocate_handle());
+        }
+        (cross, owner_of)
+    }
+
     /// Deep-clone the extension-dictionary tree rooted at `src_root` (owned by
     /// the entity `src_owner`) and return the clone's root, wired for
     /// `new_owner`. In-drawing COPY parity: the copy gets its own tree, so
@@ -1057,54 +1116,11 @@ impl Scene {
         // sibling's tree refs it, and every other object is claimed by the
         // first traversal that reaches it, so ownership stays consistent
         // with the walker below regardless of selection order.
-        let mut owner_of = rustc_hash::FxHashMap::default();
-        let mut cross = rustc_hash::FxHashMap::default();
-        for (src_handle, _, _, src_xdict) in &clones {
-            if let Some(root) = *src_xdict {
-                owner_of.insert(root, *src_handle);
-            }
-        }
-        let mut claimed = rustc_hash::FxHashSet::default();
-        for (src_handle, _, _, src_xdict) in &clones {
-            let Some(root) = *src_xdict else {
-                continue;
-            };
-            let mut stack = vec![root];
-            while let Some(h) = stack.pop() {
-                if owner_of.get(&h).is_some_and(|&o| o != *src_handle) {
-                    continue;
-                }
-                if !claimed.insert(h) {
-                    continue;
-                }
-                owner_of.entry(h).or_insert(*src_handle);
-                let Some(obj) = self.document.objects.get(&h) else {
-                    continue;
-                };
-                match obj {
-                    codec::objects::ObjectType::Dictionary(d) => {
-                        for (_, child) in &d.entries {
-                            stack.push(*child);
-                        }
-                        if let Some(xd) = d.xdictionary_handle {
-                            stack.push(xd);
-                        }
-                    }
-                    codec::objects::ObjectType::XRecord(x) => {
-                        if let Some(xd) = x.xdictionary_handle {
-                            stack.push(xd);
-                        }
-                    }
-                    codec::objects::ObjectType::Field(f) => {
-                        stack.extend(f.child_fields.iter().copied());
-                    }
-                    _ => {}
-                }
-            }
-        }
-        for &h in owner_of.keys() {
-            cross.insert(h, self.document.allocate_handle());
-        }
+        let roots = clones
+            .iter()
+            .map(|(h, _, _, root)| (*h, *root))
+            .collect::<Vec<_>>();
+        let (cross, owner_of) = self.prepare_xdict_copies(&roots);
         let mut created_objects = Vec::new();
         for (src_handle, mut entity, annotation_scales, src_xdict) in clones {
             let text_orient = if preserve_text_orientation {
@@ -2943,7 +2959,7 @@ pub(crate) fn remap_copied_viewport_clips(
 /// against the shared prealloc map inside `clone_xdict_tree`; this pass only
 /// rewrites refs to copied entities, which may not have existed yet when an
 /// earlier tree in the same call was cloned.
-fn remap_copied_xdict_cross_refs(
+pub(super) fn remap_copied_xdict_cross_refs(
     document: &mut codec::Document,
     handle_map: &rustc_hash::FxHashMap<Handle, Handle>,
     created: &[Handle],
