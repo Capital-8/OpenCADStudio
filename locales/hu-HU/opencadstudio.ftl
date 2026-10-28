@@ -903,6 +903,7 @@ common =
     .nav-style-solidworks = SolidWorks: middle button orbits, Ctrl pans
     .nav-style-tinkercad = TinkerCAD: right button orbits
     .nav-style-touchpad = Touchpad: Shift pans, Alt orbits
+    .add-row = Add row
    .slice-the-plane-does-not-cross-the-solid-on-th = SLICE: a sík nem keresztezi a szilárdtestet a megtartott oldalon.
     .both = Mindkettő
     .slice-select-at-least-one-target = SLICE: válasszon legalább egy testet vagy felületet.

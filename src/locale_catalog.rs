@@ -5198,6 +5198,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "SolidWorks: middle button orbits, Ctrl pans" => Some(("common", "nav-style-solidworks")),
         "TinkerCAD: right button orbits" => Some(("common", "nav-style-tinkercad")),
         "Touchpad: Shift pans, Alt orbits" => Some(("common", "nav-style-touchpad")),
+        "Add row" => Some(("common", "add-row")),
         "Dynamic UCS: on" => Some(("common", "dynamic-ucs-on")),
         "Dynamic UCS: off" => Some(("common", "dynamic-ucs-off")),
         "Touchpad: scroll pans, Ctrl+scroll or pinch zooms" => Some(("common", "touchpad-scroll-pans-ctrl-scroll-or-pinch-zooms")),

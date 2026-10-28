@@ -1576,6 +1576,7 @@ common =
     .nav-style-solidworks = SolidWorks: middle button orbits, Ctrl pans
     .nav-style-tinkercad = TinkerCAD: right button orbits
     .nav-style-touchpad = Touchpad: Shift pans, Alt orbits
+    .add-row = Add row
     .dynamic-ucs-on = Dynamic UCS: on
     .dynamic-ucs-off = Dynamic UCS: off
     .touchpad-scroll-pans-ctrl-scroll-or-pinch-zooms = Touchpad: scroll pans, Ctrl+scroll or pinch zooms

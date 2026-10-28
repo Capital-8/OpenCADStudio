@@ -523,15 +523,16 @@ impl PluginPanelState {
                 let is_collapsed = self.collapsed_sections.contains(id);
 
                 if let Some(t) = title {
-                    let arrow_char = if is_collapsed { "▶" } else { "▼" };
                     let pid = panel_id.clone();
                     let cid = id.clone();
 
                     let header_btn = button(
                         row![
-                            text(arrow_char).size(10).style(|theme: &Theme| text::Style {
-                                color: Some(theme.palette().background.base.text.scale_alpha(0.7)),
-                            }),
+                            if is_collapsed {
+                                    crate::ui::icons::themed_arrow_right(10.0)
+                                } else {
+                                    crate::ui::icons::themed_arrow_down(10.0)
+                                },
                             text(t).size(12),
                         ]
                         .spacing(6)
@@ -695,11 +696,7 @@ impl PluginPanelState {
                             let pid = panel_id.clone();
                             let tid = id.clone();
                             let del_btn = button(
-                                text("✕")
-                                    .size(10)
-                                    .style(|theme: &Theme| text::Style {
-                                        color: Some(theme.palette().danger.base.color),
-                                    })
+                                crate::ui::icons::themed_secondary(crate::ui::icons::CLOSE, 10.0)
                             )
                             .on_press(Message::PluginPanelTableRemoveRow(pid, tid, r_idx))
                             .style(button::text)
@@ -760,7 +757,7 @@ impl PluginPanelState {
                 if *allow_add {
                     let pid = panel_id.clone();
                     let tid = id.clone();
-                    let add_btn = button(text("+ Add Row").size(11))
+                    let add_btn = button(text(crate::t!("Add row").into_owned()).size(11))
                         .on_press(Message::PluginPanelTableAddRow(pid, tid))
                         .style(button_style(false))
                         .padding([4, 10]);

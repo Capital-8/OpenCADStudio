@@ -1133,6 +1133,7 @@ common =
     .nav-style-solidworks = SolidWorks: middle button orbits, Ctrl pans
     .nav-style-tinkercad = TinkerCAD: right button orbits
     .nav-style-touchpad = Touchpad: Shift pans, Alt orbits
+    .add-row = Add row
 
     .crossing-specify-first-corner = Cắt ngang: chỉ định góc thứ nhất.
     .window-specify-first-corner = Cửa sổ: chỉ định góc đầu tiên.

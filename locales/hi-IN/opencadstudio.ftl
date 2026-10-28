@@ -887,6 +887,7 @@ common =
     .nav-style-solidworks = SolidWorks: middle button orbits, Ctrl pans
     .nav-style-tinkercad = TinkerCAD: right button orbits
     .nav-style-touchpad = Touchpad: Shift pans, Alt orbits
+    .add-row = Add row
    .slice-the-plane-does-not-cross-the-solid-on-th = SLICE: विमान को रखा पक्ष पर ठोस पार नहीं किया जाता है।
     .both = Both
     .slice-select-at-least-one-target = SLICE: select at least one solid or surface.

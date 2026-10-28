@@ -1563,6 +1563,7 @@ common =
     .nav-style-solidworks = SolidWorks: orta tuş döndürür, Ctrl kaydırır
     .nav-style-tinkercad = TinkerCAD: sağ tuş döndürür
     .nav-style-touchpad = Touchpad: Shift kaydırır, Alt döndürür
+    .add-row = Satır ekle
     .dynamic-ucs-on = Dinamik UCS: açık
     .dynamic-ucs-off = Dinamik UCS: kapalı
     .touchpad-scroll-pans-ctrl-scroll-or-pinch-zooms = Dokunmatik yüzey: kaydırma kaydırır, Ctrl+kaydırma veya sıkıştırma yakınlaştırır
