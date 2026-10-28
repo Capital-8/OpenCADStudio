@@ -6397,6 +6397,8 @@ fn block_alignment_runtime_grip_events_preview_history_and_native_roundtrips() {
             app.tabs[i].scene.bump_geometry();
             app.tabs[i].scene.selection.borrow_mut().view.vp_size = (1000., 800.);
             app.tabs[i].scene.camera.borrow_mut().fit_to_bounds_f64(DVec3::new(-20., -30., 0.), DVec3::new(50., 30., 0.), 1.25);
+            // The destination is a point along the line, not one of its ends.
+            app.snapper.enabled.insert(crate::snap::SnapType::Nearest);
             let select = |app: &mut OpenCADStudio| {
                 app.tabs[i].scene.select_entity(insert, true);
                 app.tabs[i].selected_handle = Some(insert);

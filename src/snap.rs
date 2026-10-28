@@ -391,7 +391,6 @@ impl Default for Snapper {
         enabled.insert(SnapType::Node);
         enabled.insert(SnapType::Quadrant);
         enabled.insert(SnapType::Intersection);
-        enabled.insert(SnapType::Nearest);
         let mut enabled3d = HashSet::default();
         enabled3d.insert(SnapType::Vertex);
         enabled3d.insert(SnapType::EdgeMidpoint);

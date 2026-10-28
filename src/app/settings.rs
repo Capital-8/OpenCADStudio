@@ -1362,11 +1362,12 @@ impl Default for UserSettings {
             plugin_repos: Vec::new(),
             literal_spaces: false,
             command_history_height: crate::ui::command_line::HISTORY_HEIGHT_DEFAULT,
-            // Snapper::default(): END|MID|CEN|NODE|QUAD|INT|NEA (575), master
-            // on. Object snap is a drafting aid users expect to be live from
-            // the first click; the suppress bit (16384) is left for the user
-            // to set via the status-bar pill or OSNAP.
-            osmode: 575,
+            // Snapper::default(): END|MID|CEN|NODE|QUAD|INT (63), master on.
+            // Object snap is a drafting aid users expect to be live from the
+            // first click; the suppress bit (16384) is left for the user to
+            // set via the status-bar pill or OSNAP. Nearest is off: on, it is
+            // nearer than any point the object under the cursor offers (#1914).
+            osmode: 63,
             texteditmode: false,
             quick_dimension_snap_priority: 0,
             dimension_continue_mode: 1,
