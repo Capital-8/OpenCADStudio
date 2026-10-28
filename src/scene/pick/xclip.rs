@@ -379,9 +379,13 @@ fn dict_entry(doc: &Document, dict: Handle, key: &str) -> Option<Handle> {
 /// Build the clip boundary as a closed world-space ring in the same f32 XY
 /// space as the emitted wires (i.e. with `world_offset` already subtracted).
 ///
-/// Boundary points are stored in the clip-definition coordinate system. The
-/// `inverse_block_transform` maps them into the block's coordinate system, then
-/// the INSERT transform maps that to world — `world = T_insert · (M⁻¹ · vert)`.
+/// Boundary points are stored in the clip boundary's coordinate system. The
+/// clip boundary transform maps block-reference points into that system, so
+/// its inverse brings the vertices back; the `inverse_block_transform` maps
+/// them into the block's coordinate system, then the INSERT transform maps
+/// that to world — `world = T_insert · M⁻¹ · B⁻¹ · vert`. Clips made here or
+/// by the reference product store `B` as the identity; other writers keep the
+/// insert's rotation there.
 /// (For a clip made against the current insert, `M⁻¹` is the insert's own
 /// inverse and the two transforms cancel, leaving the vertices in WCS; when the
 /// insert was later rescaled the stored `M⁻¹` still places the clip correctly.)
@@ -402,6 +406,9 @@ fn world_clip_polygon_f64(sf: &SpatialFilter, ins: &Insert) -> Vec<[f64; 2]> {
 /// the on-disk column-major 4x3 layout into row-major `Matrix4`.
 pub fn world_clip_polygon_for_transform(sf: &SpatialFilter, xform: &Transform) -> Vec<[f64; 2]> {
     let inv_block = &sf.inverse_block_transform;
+    let from_boundary =
+        crate::scene::inverse_affine(&Transform::from_matrix(sf.clip_bound_transform))
+            .unwrap_or_else(Transform::identity);
     let local: Vec<[f64; 2]> = if sf.boundary_points.len() == 2 {
         let a = sf.boundary_points[0];
         let b = sf.boundary_points[1];
@@ -412,7 +419,8 @@ pub fn world_clip_polygon_for_transform(sf: &SpatialFilter, xform: &Transform) -
     local
         .into_iter()
         .map(|[x, y]| {
-            let block = inv_block.transform_point(Vector3::new(x, y, 0.0));
+            let reference = from_boundary.apply(Vector3::new(x, y, 0.0));
+            let block = inv_block.transform_point(reference);
             let w = xform.apply(block);
             [w.x, w.y]
         })
