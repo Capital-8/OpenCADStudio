@@ -10650,6 +10650,7 @@ impl OpenCADStudio {
                     MovableFolder::PlotStyles => {
                         crate::io::plot_style::set_plot_styles_folder(path)
                     }
+                    MovableFolder::Support => crate::io::font_repo::set_support_folder(path),
                 }
                 self.save_config();
                 Task::none()

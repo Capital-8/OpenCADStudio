@@ -102,6 +102,7 @@ pub struct AppPrefs {
 pub enum MovableFolder {
     Fonts,
     PlotStyles,
+    Support,
 }
 
 /// The locations the Files page lists.
@@ -122,6 +123,8 @@ pub struct Folders {
     /// The fonts / plot styles folder was chosen in Options.
     pub fonts_moved: bool,
     pub plot_styles_moved: bool,
+    /// The user's support files folder, when one is chosen.
+    pub support: Option<String>,
 }
 
 /// Values read from the current drawing's header rather than from preferences.
@@ -1900,6 +1903,13 @@ pub fn view_window<'a>(
             folders.fonts.clone(),
             movable(MovableFolder::Fonts, folders.fonts_moved),
         ),
+        Space::new().height(12),
+        folder_row(
+            crate::tr!("support-folder", "label").into(),
+            folders.support.clone(),
+            movable(MovableFolder::Support, folders.support.is_some()),
+        ),
+        text(crate::tr!("support-folder", "hint")).size(11),
         Space::new().height(12),
         folder_row(
             crate::t!("Color book locations"),

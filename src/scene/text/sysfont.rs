@@ -39,7 +39,10 @@ fn fonts() -> &'static SysFonts {
             db.load_system_fonts();
             // TrueType files dropped into the Fonts folder resolve like
             // installed ones, as the folder's SHX fonts already do (#925).
-            if let Some(dir) = crate::io::font_repo::fonts_dir() {
+            for dir in crate::io::font_repo::fonts_dir()
+                .into_iter()
+                .chain(crate::io::font_repo::support_folder())
+            {
                 db.load_fonts_dir(dir);
             }
             db

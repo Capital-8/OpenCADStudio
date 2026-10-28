@@ -829,6 +829,8 @@ pub struct UserSettings {
     /// Fonts and plot styles kept in a chosen folder (`None`: the default).
     pub fonts_folder: Option<String>,
     pub plot_styles_folder: Option<String>,
+    /// The user's support files folder (patterns, linetypes, fonts).
+    pub support_folder: Option<String>,
     /// The file type ATTACH's picker was last left on (1-based).
     pub attach_filter: u32,
     /// SURFACEASSOCIATIVITY: new surfaces stay associative to their sources.
@@ -1344,6 +1346,7 @@ impl Default for UserSettings {
             trim_extend_quick: true,
             fonts_folder: None,
             plot_styles_folder: None,
+            support_folder: None,
             attach_filter: 7,
             surface_associativity: true,
             ucs_ortho: true,

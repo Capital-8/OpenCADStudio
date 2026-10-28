@@ -861,6 +861,8 @@ impl OpenCADStudio {
             #[cfg(not(target_arch = "wasm32"))]
             plot_styles_folder: crate::io::plot_style::plot_styles_folder()
                 .map(|p| p.display().to_string()),
+            support_folder: crate::io::font_repo::support_folder()
+                .map(|p| p.display().to_string()),
             #[cfg(target_arch = "wasm32")]
             fonts_folder: None,
             #[cfg(target_arch = "wasm32")]
@@ -1033,6 +1035,7 @@ impl OpenCADStudio {
             crate::io::plot_style::set_plot_styles_folder(
                 s.plot_styles_folder.as_ref().map(Into::into),
             );
+            crate::io::font_repo::set_support_folder(s.support_folder.as_ref().map(Into::into));
         }
         crate::sys::set_attach_filter(s.attach_filter);
         crate::scene::model::sweep_model::set_surface_associativity(s.surface_associativity);
