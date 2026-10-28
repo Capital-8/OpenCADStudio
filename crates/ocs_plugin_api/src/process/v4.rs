@@ -1425,6 +1425,7 @@ mod tests {
         std::env::set_var("OCS_PLUGIN_CALL_TIMEOUT_SECS", "1");
 
         let (runner_end, host_end) = connect_pair();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
         let runner = thread::spawn(move || {
             let mut stream = runner_end;
             let frame = recv::<HostToPluginV4>(&mut stream).expect("dispatch frame");
@@ -1461,6 +1462,9 @@ mod tests {
                 },
             )
             .expect("dispatch response");
+            // Hold the stream open until the host thread has verified the
+            // connection survived the debug pause.
+            let _ = done_rx.recv_timeout(Duration::from_secs(10));
         });
 
         let conn = V4Connection::new(host_end, Arc::new(|_, _| {})).expect("connection");
@@ -1476,6 +1480,7 @@ mod tests {
             .expect("periodic plugin requests should refresh deadline and prevent timeout");
         assert!(matches!(resp, HostResponse::Bool(true)));
         assert!(conn.is_alive());
+        let _ = done_tx.send(());
         runner.join().expect("runner thread finished");
         std::env::remove_var("OCS_PLUGIN_CALL_TIMEOUT_SECS");
         restore_test_env();

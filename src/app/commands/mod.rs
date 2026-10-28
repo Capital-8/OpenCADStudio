@@ -473,14 +473,21 @@ impl OpenCADStudio {
             }
         });
         if let Some((panel_id, title)) = panel_match {
-            use ocs_plugin_api::host::HostApi;
-            let mut host = crate::app::plugin_host::HostSession::new(self, i);
-            let toggled = host.toggle_panel(&panel_id, None);
-            if toggled {
-                self.command_line.push_info(&format!("{title} palette toggled."));
-                self.tabs[i].last_cmd = Some(cmd.to_string());
-                self.command_line.record_recent(cmd);
-                return Some(self.finish_dispatch(cmd));
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                use ocs_plugin_api::host::HostApi;
+                let mut host = crate::app::plugin_host::HostSession::new(self, i);
+                let toggled = host.toggle_panel(&panel_id, None);
+                if toggled {
+                    self.command_line.push_info(&format!("{title} palette toggled."));
+                    self.tabs[i].last_cmd = Some(cmd.to_string());
+                    self.command_line.record_recent(cmd);
+                    return Some(self.finish_dispatch(cmd));
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = (panel_id, title);
             }
         }
 
