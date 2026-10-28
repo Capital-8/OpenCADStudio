@@ -61,6 +61,7 @@ mod options_session;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod plugin_host;
 mod presspull_ops;
+mod rename_dialog;
 mod properties;
 mod quick_calc;
 #[cfg(test)]
@@ -695,6 +696,7 @@ pub(super) struct OpenCADStudio {
     /// editor" on; it opens once the definition is committed.
     block_definition_open_editor: Option<String>,
     block_edit_picker: Option<crate::ui::window::block_edit_picker::State>,
+    rename_dialog: Option<crate::ui::window::rename::State>,
     block_save_as: Option<crate::ui::window::block_save_as::State>,
     block_visibility: Option<crate::ui::window::block_visibility::State>,
     block_lookup: Option<crate::ui::window::block_lookup::State>,
@@ -2808,6 +2810,7 @@ pub enum ModalKind {
     Unsaved,
     BlockEditChanges,
     BlockEditPicker,
+    Rename,
     BlockSaveAs,
     BlockVisibility,
     BlockLookup,
@@ -3535,6 +3538,7 @@ pub enum Message {
     BlockEditPickerName(String),
     BlockEditPickerSelect(String),
     BlockEditPickerApply,
+    Rename(crate::ui::window::rename::RenameMsg),
     // ── AEC / unsupported-object drop warning (lossy Save-As) ──────────────
     /// Save as the source DWG version so the unsupported objects survive.
     AecDropSameVersion,
@@ -5389,6 +5393,7 @@ impl OpenCADStudio {
             block_definition: None,
             block_definition_open_editor: None,
             block_edit_picker: None,
+            rename_dialog: None,
             block_save_as: None,
             block_visibility: None,
             block_lookup: None,

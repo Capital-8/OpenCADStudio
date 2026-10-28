@@ -107,6 +107,7 @@ impl OpenCADStudio {
             Some(K::Unsaved) => crate::tr!("modal", "unsaved-changes"),
             Some(K::BlockEditChanges) => crate::t!("Block Editor").into_owned(),
             Some(K::BlockEditPicker) => crate::t!("Edit Block Definition").into_owned(),
+            Some(K::Rename) => crate::tr!("rename-dialog", "title"),
             Some(K::BlockVisibility) => crate::t!("Visibility States").into_owned(),
             Some(K::BlockLookup) => crate::t!("Property Lookup Table").into_owned(),
             Some(K::BlockPropertiesTable) => crate::t!("Block Properties Table").into_owned(),
@@ -419,6 +420,10 @@ impl OpenCADStudio {
                 sized_flow(ex, 540, 380, |flow| {
                     crate::ui::window::block_edit_picker::view(state, flow)
                 })
+            }
+            super::super::ModalKind::Rename => {
+                let state = self.rename_dialog.as_ref()?;
+                sized_flow(ex, 520, 420, |flow| crate::ui::window::rename::view(state, flow))
             }
             super::super::ModalKind::BlockLookup => {
                 let state = self.block_lookup.as_ref()?;

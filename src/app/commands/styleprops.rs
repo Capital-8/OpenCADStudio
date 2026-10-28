@@ -3894,7 +3894,8 @@ impl OpenCADStudio {
             // Bare RENAME prompts step by step (type → old → new); the argument
             // form below both handles a fully-typed line and is the target the
             // stepped front-end dispatches to.
-            "RENAME" | "-RENAME" => {
+            "RENAME" => self.open_rename_dialog(),
+            "-RENAME" => {
                 use crate::command::RenameCommand;
                 let c = RenameCommand::new();
                 self.command_line.push_info(&c.prompt());
@@ -3913,97 +3914,7 @@ impl OpenCADStudio {
                         crate::t!("Usage: RENAME <type> <old> <new>  (types: LAYER BLOCK STYLE DIMSTYLE LINETYPE UCS VIEW)").as_ref()
                     );
                 } else {
-                    // Snapshot BEFORE mutating (undo must restore the old
-                    // name); dropped again if nothing was renamed.
-                    let block = type_str == "BLOCK";
-                    let label = if block {
-                        format!("Rename block {old_name} to {new_name}")
-                    } else {
-                        "RENAME".to_string()
-                    };
-                    self.push_undo_snapshot(i, label);
-                    let known = matches!(
-                        type_str.as_str(),
-                        "LAYER"
-                            | "BLOCK"
-                            | "STYLE"
-                            | "TEXTSTYLE"
-                            | "DIMSTYLE"
-                            | "LINETYPE"
-                            | "LT"
-                            | "UCS"
-                            | "VIEW"
-                    );
-                    // The block path's refusal text comes from the shared
-                    // service, so the command line, the palette, the plugin
-                    // API and the control op all word it the same way.
-                    let mut block_error: Option<String> = None;
-                    let ok = if block {
-                        let open_edits: Vec<codec::Handle> = self.tabs[i]
-                            .block_edits
-                            .iter()
-                            .map(|session| session.br_handle)
-                            .collect();
-                        // Re-keys the record, syncs the Block marker and every
-                        // INSERT reference; refuses anonymous/xref sources,
-                        // protected records and invalid/taken names.
-                        match crate::scene::block_service::rename(
-                            &mut self.tabs[i].scene,
-                            &old_name,
-                            &new_name,
-                            &open_edits,
-                        ) {
-                            Ok(_) => true,
-                            Err(error) => {
-                                block_error = Some(error.to_string());
-                                false
-                            }
-                        }
-                    } else if type_str == "LAYER" {
-                        self.tabs[i].rename_layer(&old_name, &new_name)
-                    } else if known {
-                        rename_symbol(
-                            &mut self.tabs[i].scene.document,
-                            &type_str,
-                            &old_name,
-                            &new_name,
-                        )
-                    } else {
-                        false
-                    };
-                    if ok {
-                        if type_str != "LAYER" {
-                            self.tabs[i].scene.bump_geometry_no_blocks();
-                        }
-                        if type_str == "UCS" {
-                            self.tabs[i].scene.bump_ucs_epoch();
-                            if let Some(active) = self.tabs[i].active_ucs.as_mut() {
-                                if active.name.eq_ignore_ascii_case(&old_name) {
-                                    active.name = new_name.clone();
-                                    self.tabs[i].persist_active_ucs();
-                                }
-                            }
-                        }
-                        self.tabs[i].dirty = true;
-                        if type_str == "LAYER" {
-                            self.refresh_layer_panel();
-                        }
-                        self.command_line.push_output(
-                            crate::tf!("RENAME: '{}' → '{}'.", old_name, new_name).as_ref(),
-                        );
-                    } else {
-                        self.discard_last_undo_entry(i);
-                        if let Some(message) = block_error {
-                            self.command_line.push_error(&message);
-                        } else if !known {
-                            self.command_line.push_error(crate::tf!("RENAME: unknown type '{}'. Use LAYER BLOCK STYLE DIMSTYLE LINETYPE UCS VIEW", type_str).as_ref());
-                        } else {
-                            self.command_line.push_error(crate::tf!(
-                                "RENAME: could not rename '{}' in {} — not found or protected, or '{}' is invalid or taken.",
-                                old_name, type_str, new_name
-                            ).as_ref());
-                        }
-                    }
+                    self.rename_named_object(i, &type_str, &old_name, &new_name);
                 }
             }
 
@@ -4399,6 +4310,112 @@ impl OpenCADStudio {
             _ => return None,
         }
         Some(self.finish_dispatch(cmd))
+    }
+}
+
+impl OpenCADStudio {
+    /// Rename a named object of `type_str` (LAYER BLOCK STYLE DIMSTYLE
+    /// LINETYPE UCS VIEW) as one undo step, reporting on the command line.
+    pub(crate) fn rename_named_object(
+        &mut self,
+        i: usize,
+        type_str: &str,
+        old_name: &str,
+        new_name: &str,
+    ) -> bool {
+        let (old_name, new_name) = (old_name.to_string(), new_name.to_string());
+        // Snapshot BEFORE mutating (undo must restore the old
+        // name); dropped again if nothing was renamed.
+        let block = type_str == "BLOCK";
+        let label = if block {
+            format!("Rename block {old_name} to {new_name}")
+        } else {
+            "RENAME".to_string()
+        };
+        self.push_undo_snapshot(i, label);
+        let known = matches!(
+            type_str,
+            "LAYER"
+                | "BLOCK"
+                | "STYLE"
+                | "TEXTSTYLE"
+                | "DIMSTYLE"
+                | "LINETYPE"
+                | "LT"
+                | "UCS"
+                | "VIEW"
+        );
+        // The block path's refusal text comes from the shared
+        // service, so the command line, the palette, the plugin
+        // API and the control op all word it the same way.
+        let mut block_error: Option<String> = None;
+        let ok = if block {
+            let open_edits: Vec<codec::Handle> = self.tabs[i]
+                .block_edits
+                .iter()
+                .map(|session| session.br_handle)
+                .collect();
+            // Re-keys the record, syncs the Block marker and every
+            // INSERT reference; refuses anonymous/xref sources,
+            // protected records and invalid/taken names.
+            match crate::scene::block_service::rename(
+                &mut self.tabs[i].scene,
+                &old_name,
+                &new_name,
+                &open_edits,
+            ) {
+                Ok(_) => true,
+                Err(error) => {
+                    block_error = Some(error.to_string());
+                    false
+                }
+            }
+        } else if type_str == "LAYER" {
+            self.tabs[i].rename_layer(&old_name, &new_name)
+        } else if known {
+            rename_symbol(
+                &mut self.tabs[i].scene.document,
+                &type_str,
+                &old_name,
+                &new_name,
+            )
+        } else {
+            false
+        };
+        if ok {
+            if type_str != "LAYER" {
+                self.tabs[i].scene.bump_geometry_no_blocks();
+            }
+            if type_str == "UCS" {
+                self.tabs[i].scene.bump_ucs_epoch();
+                if let Some(active) = self.tabs[i].active_ucs.as_mut() {
+                    if active.name.eq_ignore_ascii_case(&old_name) {
+                        active.name = new_name.clone();
+                        self.tabs[i].persist_active_ucs();
+                    }
+                }
+            }
+            self.tabs[i].dirty = true;
+            if type_str == "LAYER" {
+                self.refresh_layer_panel();
+            }
+            self.command_line.push_output(
+                crate::tf!("RENAME: '{}' → '{}'.", old_name, new_name).as_ref(),
+            );
+        } else {
+            self.discard_last_undo_entry(i);
+            if let Some(message) = block_error {
+                self.command_line.push_error(&message);
+            } else if !known {
+                self.command_line.push_error(crate::tf!("RENAME: unknown type '{}'. Use LAYER BLOCK STYLE DIMSTYLE LINETYPE UCS VIEW", type_str).as_ref());
+            } else {
+                self.command_line.push_error(crate::tf!(
+                    "RENAME: could not rename '{}' in {} — not found or protected, or '{}' is invalid or taken.",
+                    old_name, type_str, new_name
+                ).as_ref());
+            }
+        }
+        ok
     }
 }
 

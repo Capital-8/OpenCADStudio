@@ -261,6 +261,7 @@ impl OpenCADStudio {
             Some(BlockDefinition) => self.block_definition = None,
             Some(AttMan) => self.attman = None,
             Some(BlockEditPicker) => self.block_edit_picker = None,
+            Some(Rename) => self.rename_dialog = None,
             Some(BlockSaveAs) => self.block_save_as = None,
             Some(BlockVisibility) => self.block_visibility = None,
             Some(BlockLookup) => self.block_lookup = None,
@@ -11858,6 +11859,7 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::BlockEditPickerApply => self.apply_bedit_dialog(),
+            Message::Rename(msg) => self.on_rename_dialog(msg),
             Message::BlockEditChangesDiscard => self.resolve_block_edit_close(false),
             Message::BlockEditChangesCancel => {
                 self.cancel_block_edit_close();
