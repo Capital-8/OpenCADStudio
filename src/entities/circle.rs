@@ -18,10 +18,16 @@ use crate::scene::model::wire_model::TangentGeom;
 pub fn circle_segments(radius: f64, wpp: Option<f32>) -> usize {
     const MIN_SEGMENTS: usize = 48;
     const MAX_SEGMENTS: usize = 4096;
+    let r = radius.abs();
     let Some(w) = wpp.filter(|&w| w.is_finite() && w > 0.0) else {
+        // The zoom-independent set draws circles up to the analytical cap on
+        // the GPU; a larger one is drawn from these points at every zoom, so
+        // its chords must stay within ~2e-8 of the radius.
+        if r > crate::scene::pipeline::circle_gpu::ANALYTIC_MAX_RADIUS && r.is_finite() {
+            return 16384;
+        }
         return MIN_SEGMENTS;
     };
-    let r = radius.abs();
     if !r.is_finite() || r <= 0.0 {
         return MIN_SEGMENTS;
     }
