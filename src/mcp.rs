@@ -33,9 +33,10 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 /// `block_delete` gained its optional `force` parameter. With API v11
 /// `grip_drag` became optional-`handle` (built-in entity grips) plus optional
 /// `plugin` (dragging a plugin-declared custom grip, routed to its owner).
-/// Sixteen generated intent tools now follow the four facades.
+/// Sixteen generated intent tools now follow the four facades. `node_graph`
+/// joined the execute ops.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "3d94fffb82a516e539c1622f2f6bda16dd348419adb2fccfaefa14997a685460";
+const TOOL_SCHEMA_DIGEST: &str = "96465f8fe6b3f76ef05b76b1f462bcc4db0c5af6254e8b7cc3b7bd073257142c";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
@@ -99,6 +100,7 @@ const EXECUTE_OPS: &[&str] = &[
     "entities_create",
     "entities_delete",
     "entities_transform",
+    "node_graph",
     "text_replace",
     "block_define",
     "block_delete",

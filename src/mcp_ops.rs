@@ -1030,6 +1030,50 @@ pub static MEASURE: OpDef = OpDef {
     example: r#"{"op":"measure","handles":["2A"]}"#,
 };
 
+pub static NODE_GRAPH: OpDef = OpDef {
+    name: "node_graph",
+    doc: "Drive the node graph of the active drawing: list node types (action library), read nodes with their ports, values and links (state), and edit it — add, remove, connect, disconnect, set an input, fold a section or coordinate group (toggle), show/hide the panel, clear, run, save/load an .ocg file. Every action answers with the graph state; edits are one undo step each.",
+    batchable: true,
+    params: &[
+        opt(
+            "action",
+            Ty::EnumCi(&[
+                "library", "state", "show", "hide", "add", "remove", "connect", "disconnect",
+                "set", "toggle", "clear", "run", "save", "load",
+            ]),
+            "What to do; defaults to state.",
+        ),
+        opt("type", Ty::Str, "Node type to add, as listed by action library (e.g. Line, Point, Move, Selected Objects)."),
+        opt(
+            "kind",
+            Ty::EnumCi(&["object", "operation"]),
+            "Which node a type names when it is both (Point: the drawing object or the coordinate).",
+        ),
+        opt("node", Ty::Int, "Node id for remove, set and toggle."),
+        opt(
+            "field",
+            Ty::Str,
+            "Port field for set and toggle: a row (start_x), a coordinate group (start_x|start_y|start_z, value a point) or a section port (section:color, value an object of fields). toggle also takes a section title.",
+        ),
+        opt("value", Ty::Raw(r#"{"description":"Any JSON value: number, text, boolean, point {x,y,z}, object {handle} or list"}"#), "Value for set."),
+        opt("from", Ty::Raw(r#"{"type":"object","properties":{"node":{"type":"integer","minimum":1},"field":{"type":"string"}},"required":["node","field"],"additionalProperties":false}"#), "Output port {node, field} for connect."),
+        opt("to", Ty::Raw(r#"{"type":"object","properties":{"node":{"type":"integer","minimum":1},"field":{"type":"string"}},"required":["node","field"],"additionalProperties":false}"#), "Input port {node, field} for connect and disconnect."),
+        opt("position", Ty::Point, "Canvas position of an added node."),
+        opt("path", Ty::Str, "Absolute .ocg path for save and load."),
+    ],
+    rules: &[
+        Rule::RequiredWhen { key: "action", equals: "add", then: &["type"] },
+        Rule::RequiredWhen { key: "action", equals: "remove", then: &["node"] },
+        Rule::RequiredWhen { key: "action", equals: "connect", then: &["from", "to"] },
+        Rule::RequiredWhen { key: "action", equals: "disconnect", then: &["to"] },
+        Rule::RequiredWhen { key: "action", equals: "set", then: &["node", "field", "value"] },
+        Rule::RequiredWhen { key: "action", equals: "toggle", then: &["node", "field"] },
+        Rule::RequiredWhen { key: "action", equals: "save", then: &["path"] },
+        Rule::RequiredWhen { key: "action", equals: "load", then: &["path"] },
+    ],
+    example: r#"{"op":"node_graph","action":"add","type":"Line"}"#,
+};
+
 pub static OPS: &[&OpDef] = &[
     &NEW,
     &OPEN,
@@ -1054,6 +1098,7 @@ pub static OPS: &[&OpDef] = &[
     &ENTITIES_CREATE,
     &ENTITIES_DELETE,
     &ENTITIES_TRANSFORM,
+    &NODE_GRAPH,
     &TEXT_REPLACE,
     &BLOCK_DEFINE,
     &BLOCK_DELETE,

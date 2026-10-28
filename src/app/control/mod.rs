@@ -1254,6 +1254,7 @@ impl OpenCADStudio {
             "entities_create" => self.control_entities_create(req)?,
             "entities_delete" => self.control_entities_delete(req)?,
             "entities_transform" => self.control_entities_transform(req)?,
+            "node_graph" => self.control_node_graph(req)?,
             "entities_copy_to" => self.control_entities_copy_to(req)?,
             "text_replace" => self.control_text_replace(req)?,
             "xdata_set" => self.control_xdata_set(req)?,
@@ -1949,6 +1950,7 @@ mod entities;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod http_bridge;
 mod interactive;
+mod node_graph;
 mod sheets;
 pub(crate) use sheets::new_guid_v4;
 pub(crate) mod block_ops;

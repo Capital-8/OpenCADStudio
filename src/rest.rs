@@ -69,6 +69,7 @@ const ENVELOPE_OPS: &[&str] = &[
     "entities_create",
     "entities_delete",
     "entities_transform",
+    "node_graph",
     "block_define",
     "block_delete",
     "file_identity",
