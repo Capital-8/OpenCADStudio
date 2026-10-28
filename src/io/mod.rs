@@ -2083,7 +2083,8 @@ pub async fn pick_plot_style() -> Result<Option<plot_style::PlotStyleTable>, Str
     {
         let name = handle.file_name();
         let bytes: std::sync::Arc<Vec<u8>> = std::sync::Arc::new(handle.read().await);
-        let table = plot_style::PlotStyleTable::from_bytes(&name, &bytes)?;
+        let table = plot_style::PlotStyleTable::from_bytes(&name, &bytes)
+            .map_err(|e| e.to_string())?;
         plot_style::register_session_table(&name, bytes);
         Ok(Some(table))
     }

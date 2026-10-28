@@ -479,6 +479,9 @@ fn generate_type_registry(out_dir: &Path) {
             trace_simple::<codec::entities::WipeoutClipType>,
         ),
         ("WireType", trace_simple::<codec::entities::WireType>),
+        ("ArchKind", trace_simple::<codec::classes::arch::ArchKind>),
+        ("NumberRole", trace_simple::<codec::classes::arch::NumberRole>),
+        ("PreviewRecord", trace_simple::<codec::classes::arch::PreviewRecord>),
     ];
     for (name, trace) in enums {
         trace(&mut tracer);
