@@ -4667,10 +4667,65 @@ fn angular_text_on_leader(dim: &Dimension, style: Option<&DimStyle>) -> bool {
         return false;
     };
     let scale = if s.dimscale > 1e-9 { s.dimscale } else { 1.0 };
+    let height = s.dimtxt * scale;
+    let width = dimension_text_cells(dim, style)
+        .map(|cells| cells * height * CELL_WIDTH)
+        .unwrap_or(0.0);
     let mid = ((start + end) * 0.5) as f64;
-    let dx = point.x - (vertex.x as f64 + radius as f64 * mid.cos());
-    let dy = point.y - (vertex.y as f64 + radius as f64 * mid.sin());
-    dx.hypot(dy) >= moved_text_reach(s, s.dimtxt * scale, scale)
+    let direction = dim.base().horizontal_direction;
+    !angular_text_meets_arc(
+        [vertex.x as f64, vertex.y as f64],
+        radius as f64,
+        mid,
+        [point.x, point.y],
+        [direction.cos(), direction.sin()],
+        width,
+        height,
+        s,
+        scale,
+    )
+}
+
+/// Whether DIMTMOVE 1 angular text at `point` still sits on its arc: the
+/// text box, with the hook (a gap and an arrow) on the side facing the arc's
+/// middle, comes within DIMEXE of the arc's circle. Measured against the
+/// reference for radial and diagonal moves; moves along the arc and wide
+/// text over large sweeps hang on the leader somewhat earlier there.
+#[allow(clippy::too_many_arguments)]
+fn angular_text_meets_arc(
+    vertex: [f64; 2],
+    radius: f64,
+    mid: f64,
+    point: [f64; 2],
+    u: [f64; 2],
+    width: f64,
+    height: f64,
+    style: &DimStyle,
+    dim_scale: f64,
+) -> bool {
+    let hook = (style.dimasz + style.dimgap.abs()) * dim_scale;
+    let exe = style.dimexe * dim_scale;
+    let v = [-u[1], u[0]];
+    let to_mid = [
+        vertex[0] + radius * mid.cos() - point[0],
+        vertex[1] + radius * mid.sin() - point[1],
+    ];
+    let half = width * 0.5;
+    let (u0, u1) = if to_mid[0] * u[0] + to_mid[1] * u[1] <= 0.0 {
+        (-half - hook, half)
+    } else {
+        (-half, half + hook)
+    };
+    let (v0, v1) = (-height * 0.5, height * 0.5);
+    let o = [vertex[0] - point[0], vertex[1] - point[1]];
+    let ou = o[0] * u[0] + o[1] * u[1];
+    let ov = o[0] * v[0] + o[1] * v[1];
+    let near = (ou - ou.clamp(u0, u1)).hypot(ov - ov.clamp(v0, v1));
+    let far = [(u0, v0), (u0, v1), (u1, v0), (u1, v1)]
+        .iter()
+        .map(|(cu, cv)| (ou - cu).hypot(ov - cv))
+        .fold(0.0_f64, f64::max);
+    near < radius + exe && far > radius - exe
 }
 
 /// Where DIMTMOVE 1 puts user-placed text and its leader.
@@ -4688,9 +4743,12 @@ fn angular_text_on_leader(dim: &Dimension, style: Option<&DimStyle>) -> bool {
 /// * horizontal text beyond the extension lines of a dimension that is not
 ///   horizontal: the dimension line runs on to the hook's height and the hook
 ///   turns along it to a gap past the far edge of the text, which is centred
-///   on the stored point but keeps an arrow and a gap from the turn.
-/// * angular: the stored point is the text's middle; a hook one arrow long
-///   ends a gap before the text.
+///   on the stored point but keeps an arrow and a gap from the turn. Text
+///   turned by its own rotation stays centred on the stored point, unlifted,
+///   and the hook stops a gap before it.
+/// * angular: the text leaves its arc once its box, with the hook, clears the
+///   arc's circle by DIMEXE (`angular_text_meets_arc`); the stored point is
+///   the text's middle and a hook one arrow long ends a gap before it.
 fn dimtmove_one_text(
     dim: &Dimension,
     style: Option<&DimStyle>,
@@ -4719,10 +4777,10 @@ fn dimtmove_one_text(
         }
     };
     let turned = base.text_rotation.abs() > 1e-9;
+    // Text turned by its own rotation hangs from a hook along the
+    // dimension's horizontal direction, like horizontal text does.
     let angle = if turned {
-        let mut plain = dim.clone();
-        plain.base_mut().text_rotation = 0.0;
-        dimension_text_rotation(&plain, style)
+        base.horizontal_direction
     } else {
         dimension_text_rotation(dim, style)
     };
@@ -4744,9 +4802,7 @@ fn dimtmove_one_text(
             vertex.x as f64 + radius as f64 * mid.cos(),
             vertex.y as f64 + radius as f64 * mid.sin(),
         ];
-        // The reference keeps angular text on its arc somewhat further out
-        // than this linear reach; its own angular rule is not known.
-        if dot(sub(p, m), sub(p, m)).sqrt() < reach {
+        if !angular_text_on_leader(dim, style) {
             return Some(MovedText {
                 center: point,
                 lines: Vec::new(),
@@ -4803,7 +4859,7 @@ fn dimtmove_one_text(
         0.0
     };
     let crosses = (u[0] * axis[1] - u[1] * axis[0]).abs() > 1e-3;
-    if crosses && !turned && length > 1e-12 && (along < 0.0 || along > length) {
+    if crosses && length > 1e-12 && (along < 0.0 || along > length) {
         let (end, out) = if along < 0.0 {
             (d1, [-span[0] / length, -span[1] / length])
         } else {
@@ -4819,9 +4875,16 @@ fn dimtmove_one_text(
             if side * offset - text_width * 0.5 < clear {
                 offset = side * (clear + text_width * 0.5);
             }
-            let hook_end = at(elbow, u, offset + side * (text_width * 0.5 + gap));
+            // Turned text sits on the stored point unlifted and the hook
+            // stops a gap before it; level text sits on the hook.
+            let (reach_past, center) = if turned {
+                (-side * (text_width * 0.5 + gap), v3(at(elbow, u, offset)))
+            } else {
+                (side * (text_width * 0.5 + gap), lifted(at(elbow, u, offset)))
+            };
+            let hook_end = at(elbow, u, offset + reach_past);
             return Some(MovedText {
-                center: lifted(at(elbow, u, offset)),
+                center,
                 lines: vec![(v3(end), v3(elbow)), (v3(elbow), v3(hook_end))],
             });
         }
