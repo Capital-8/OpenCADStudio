@@ -3165,7 +3165,11 @@ modify =
     .array3d-enter-row-count = ARRAY3D  Insira o número de linhas:
     .array3d-level-spacing-rows-cols-levels-r-rs-c = ARRAY3D  Espaçamento de níveis [__ocs_arg_rows__×__ocs_arg_cols__×__ocs_arg_levels__, l=__ocs_arg_rs__ c=__ocs_arg_cs__]:
     .array3d-row-spacing-rows-cols-levels = ARRAY3D  Espaçamento de linhas [__ocs_arg_rows__×__ocs_arg_cols__×__ocs_arg_levels__]:
+    .arraypath-enter-distance-between-items = ARRAYPATH  Enter distance between items along path <__ocs_fmt_0__>:
     .arraypath-enter-item-count = ARRAYPATH  Insira o número de itens <__ocs_fmt_0__>:
+    .arraypath-enter-number-of-items-maximum = ARRAYPATH  Enter number of items <__ocs_fmt_0__>  [maximum __ocs_fmt_1__]:
+    .arraypath-method-divide = Method: Divide
+    .arraypath-method-measure = Method: Measure
     .arraypath-select-path-entity-objects = ARRAYPATH  Selecione a entidade do caminho [__ocs_fmt_0__ objetos]:
     .arraypolar-enter-item-count = ARRAYPOLAR  Insira o número de itens <__ocs_fmt_0__>:
     .arraypolar-enter-total-angle-in-degrees-0-coun = ARRAYPOLAR  Insira o ângulo total em graus <__ocs_fmt_0__> [__ocs_fmt_1__ itens]:

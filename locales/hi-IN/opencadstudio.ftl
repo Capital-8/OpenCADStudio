@@ -3153,7 +3153,11 @@ modify =
     .array3d-enter-row-count = ARRAY3D पंक्ति गिनती दर्ज करें:
     .array3d-level-spacing-rows-cols-levels-r-rs-c = ARRAY3D स्तर रिक्ति [__ocs_arg_rows__ × __ocs_arg_cols__ × __ocs_arg_levels__, r=__ocs_arg_rs__ c=__ocs_arg_cs__]:
     .array3d-row-spacing-rows-cols-levels = ARRAY3D पंक्ति रिक्ति [__ocs_arg_rows__ × __ocs_arg_cols__ × __ocs_arg_levels__]:
+    .arraypath-enter-distance-between-items = ARRAYPATH  Enter distance between items along path <__ocs_fmt_0__>:
     .arraypath-enter-item-count = ARRAYPATH आइटम की संख्या दर्ज करें <__ocs_fmt_0__>:
+    .arraypath-enter-number-of-items-maximum = ARRAYPATH  Enter number of items <__ocs_fmt_0__>  [maximum __ocs_fmt_1__]:
+    .arraypath-method-divide = Method: Divide
+    .arraypath-method-measure = Method: Measure
     .arraypath-select-path-entity-objects = ARRAYPATH पथ ऑब्जेक्ट चुनें [__ocs_fmt_0__ ऑब्जेक्ट]:
     .arraypolar-enter-item-count = ARRAYPOLAR आइटम की संख्या दर्ज करें <__ocs_fmt_0__>:
     .arraypolar-enter-total-angle-in-degrees-0-coun = ARRAYPOLAR कुल कोण (डिग्री में) दर्ज करें <__ocs_fmt_0__> [__ocs_fmt_1__ आइटम]:

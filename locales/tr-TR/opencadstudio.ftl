@@ -3147,7 +3147,11 @@ modify =
     .array3d-enter-row-count = ARRAY3D  Satır sayısını girin:
     .array3d-level-spacing-rows-cols-levels-r-rs-c = ARRAY3D  Düzey aralığı [__ocs_arg_rows__×__ocs_arg_cols__×__ocs_arg_levels__, r=__ocs_arg_rs__ c=__ocs_arg_cs__]:
     .array3d-row-spacing-rows-cols-levels = ARRAY3D  Satır aralığı [__ocs_arg_rows__×__ocs_arg_cols__×__ocs_arg_levels__]:
+    .arraypath-enter-distance-between-items = ARRAYPATH  Yol boyunca öğeler arası mesafeyi girin <__ocs_fmt_0__>:
     .arraypath-enter-item-count = ARRAYPATH  Öğe sayısını girin <__ocs_fmt_0__>:
+    .arraypath-enter-number-of-items-maximum = ARRAYPATH  Öğe sayısını girin <__ocs_fmt_0__>  [en fazla __ocs_fmt_1__]:
+    .arraypath-method-divide = Yöntem: Böl
+    .arraypath-method-measure = Yöntem: Ölç
     .arraypath-select-path-entity-objects = ARRAYPATH  Yol nesnesini seçin [__ocs_fmt_0__ nesne]:
     .arraypolar-enter-item-count = ARRAYPOLAR  Öğe sayısını girin <__ocs_fmt_0__>:
     .arraypolar-enter-total-angle-in-degrees-0-coun = ARRAYPOLAR  Toplam açıyı derece cinsinden girin <__ocs_fmt_0__> [__ocs_fmt_1__ öğe]:

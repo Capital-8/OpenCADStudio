@@ -3165,7 +3165,11 @@ modify =
     .array3d-enter-row-count = ARRAY3D Aantal rijen invoeren:
     .array3d-level-spacing-rows-cols-levels-r-rs-c = ARRAY3D Niveauafstand [__ocs_arg_rows__×__ocs_arg_cols__×__ocs_arg_levels__, r=__ocs_arg_rs__ c=__ocs_arg_cs__]:
     .array3d-row-spacing-rows-cols-levels = ARRAY3D Rijafstand [__ocs_arg_rows__×__ocs_arg_cols__×__ocs_arg_levels__]:
+    .arraypath-enter-distance-between-items = ARRAYPATH  Enter distance between items along path <__ocs_fmt_0__>:
     .arraypath-enter-item-count = ARRAYPATH  Aantal items <__ocs_fmt_0__> invoeren:
+    .arraypath-enter-number-of-items-maximum = ARRAYPATH  Enter number of items <__ocs_fmt_0__>  [maximum __ocs_fmt_1__]:
+    .arraypath-method-divide = Method: Divide
+    .arraypath-method-measure = Method: Measure
     .arraypath-select-path-entity-objects = ARRAYPATH Selecteer het padobject [__ocs_fmt_0__ objecten]:
     .arraypolar-enter-item-count = ARRAYPOLAR  Aantal items <__ocs_fmt_0__> invoeren:
     .arraypolar-enter-total-angle-in-degrees-0-coun = ARRAYPOLAR  Voer de totale hoek in graden <__ocs_fmt_0__> [__ocs_fmt_1__ items] in:

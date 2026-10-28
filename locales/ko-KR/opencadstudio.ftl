@@ -3164,7 +3164,11 @@ modify =
     .array3d-enter-row-count = ARRAY3D Enter 행 수:
     .array3d-level-spacing-rows-cols-levels-r-rs-c = ARRAY3D 레벨 간격 [__ocs_arg_rows__×__ocs_arg_cols__×__ocs_arg_levels__, r=__ocs_arg_rs__ c=__ocs_arg_cs__]:
     .array3d-row-spacing-rows-cols-levels =ARRAY3D 행 간격 [__ocs_arg_rows__×__ocs_arg_cols__×__ocs_arg_levels__]:
+    .arraypath-enter-distance-between-items = ARRAYPATH  Enter distance between items along path <__ocs_fmt_0__>:
     .arraypath-enter-item-count = ARRAYPATH Enter 아이템 수 <__ocs_fmt_0__>:
+    .arraypath-enter-number-of-items-maximum = ARRAYPATH  Enter number of items <__ocs_fmt_0__>  [maximum __ocs_fmt_1__]:
+    .arraypath-method-divide = Method: Divide
+    .arraypath-method-measure = Method: Measure
     .arraypath-select-path-entity-objects = ARRAYPATH 경로 도면요소 선택 [__ocs_fmt_0__ 객체]:
     .arraypolar-enter-item-count = ARRAYPOLAR Enter 아이템 수 <__ocs_fmt_0__>:
     .arraypolar-enter-total-angle-in-degrees-0-coun = ARRAYPOLAR Enter 총 각도(도) <__ocs_fmt_0__> [__ocs_fmt_1__ 항목]:
