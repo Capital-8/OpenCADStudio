@@ -504,6 +504,12 @@ mod tests {
                 grip_id: 1,
                 param_name: "peak_gradient".to_string(),
             }],
+            // API v16: the parameter schema rides the same frame byte-clean.
+            parameters: vec![crate::host::PluginClassParameter {
+                name: "peak_gradient".to_string(),
+                value_kind: crate::host::PluginClassParameterKind::Real,
+                editable: true,
+            }],
         };
         let bytes = bincode::serialize(&PluginRequest::RegisterPluginClass {
             class: class.clone(),

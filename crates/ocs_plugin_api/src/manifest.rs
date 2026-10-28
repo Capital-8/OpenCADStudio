@@ -82,7 +82,24 @@
 /// live design so the host re-derives preview geometry locally per move
 /// instead of the plugin streaming it (older hosts read `None` and keep the
 /// v12 semantics).
-pub const API_VERSION: u32 = 15;
+///
+/// **API v16** (additive): class parameter schemas — a
+/// [`PluginClassDeclaration`]
+/// declares its record layer's parameters
+/// ([`PluginClassParameter`](crate::host::PluginClassParameter): name +
+/// value kind + editability, serde default so declarations without the
+/// field read as an empty schema). The session gains the properties pair
+/// (`plugin_class_instance_properties` / `update_plugin_class_instance_parameter`):
+/// the reading surface for a stamped instance's declared rows and — for
+/// rows the declaration marks editable — the host-side write path that
+/// patches the (name, value) entry pair on the instance's design record
+/// row through the existing XRecord update machinery (one undo step, the
+/// record's dirty notification re-stages the declaring plugin). The values
+/// stay the records' truth; the host renders and writes only what the
+/// declaration spells, never inventing semantics for a name or kind it
+/// does not know. The host's properties panel rides the same core for
+/// selections whose XDATA carries a registered class key.
+pub const API_VERSION: u32 = 16;
 
 /// Oldest plugin API major the current host still loads. This keeps previously
 /// compiled cdylibs usable as long as their vtable layout is a prefix of the

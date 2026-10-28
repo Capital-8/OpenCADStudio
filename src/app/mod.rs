@@ -4267,6 +4267,14 @@ pub enum Message {
     },
     /// User committed a block-attribute value edit (Enter pressed).
     PropAttrCommit(String),
+    /// User is typing in a plugin class parameter value field (API v16,
+    /// live buffer update), keyed by the declared parameter name.
+    PropPluginParamInput {
+        name: String,
+        value: String,
+    },
+    /// User committed a plugin class parameter value edit (Enter pressed).
+    PropPluginParamCommit(String),
     /// Reports the currently keyboard-focused widget (if any) after a
     /// [`sync_active_field_task`](crate::ui::properties::sync_active_field_task)
     /// sweep, so the update handler can keep the active-row marker reconciled

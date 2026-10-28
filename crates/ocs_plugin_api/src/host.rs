@@ -1928,6 +1928,15 @@ pub struct PluginClassDeclaration {
     /// instances). The host uses it for instance validation; grip
     /// interpretation stays the declaring plugin's per the v11 law.
     pub grip_schema: Vec<PluginGripSchemaEntry>,
+    /// The class's parameter schema (API v16, additive; serde default keeps
+    /// earlier declarations readable): WHAT the parameters are — names, value
+    /// kinds, and which rows host surfaces (the properties panel) may write.
+    /// Declaring parameters turns the record layer's truth into named
+    /// properties; the values themselves stay on the instance's design
+    /// record row. Names must be unique and non-empty (registering refuses
+    /// otherwise).
+    #[serde(default)]
+    pub parameters: Vec<PluginClassParameter>,
 }
 
 /// One grip in a class's schema (API v15): which parameter of the class
@@ -1940,6 +1949,40 @@ pub struct PluginGripSchemaEntry {
     /// Parameter name in the class's record layer this grip drives
     /// (e.g. `"peak_gradient"`).
     pub param_name: String,
+}
+
+/// One declared class parameter (API v16, additive): a name, a value kind,
+/// and an editability. The schema lets host surfaces render a class
+/// instance's parameters without the plugin's source: the value lives on
+/// the instance's design record row (the record layer stays the only
+/// truth); the declaration only says what kinds exist and which rows the
+/// host's property surfaces may write. The host never invents parameter
+/// semantics for a name or kind it does not know.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginClassParameter {
+    /// The parameter's name as the record row and host surfaces address it.
+    pub name: String,
+    /// The value kind the record row carries.
+    pub value_kind: PluginClassParameterKind,
+    /// Whether host property surfaces may write this row. A write composes
+    /// as one undo step through the session's XRecord update path, and the
+    /// declaring plugin re-stages from the record's dirty notification.
+    /// Read-only rows render but never write.
+    pub editable: bool,
+}
+
+/// The value kind of one declared class parameter (API v16, additive).
+/// Kinds append at the END only (the wire encodes a variant by its
+/// position).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PluginClassParameterKind {
+    /// A floating-point quantity; the record row carries an XRecord double
+    /// (an integral reading casts to one).
+    Real,
+    /// A count; the record row carries an XRecord integer.
+    Integer,
+    /// Free text; the record row carries an XRecord string.
+    Text,
 }
 
 /// One staged instance of a registered plugin class (API v15): identity plus

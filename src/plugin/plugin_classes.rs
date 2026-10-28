@@ -59,6 +59,7 @@ impl PluginClassStore {
         {
             if existing.schema_version == class.schema_version
                 && existing.grip_schema == class.grip_schema
+                && existing.parameters == class.parameters
             {
                 return Ok(());
             }
@@ -117,6 +118,7 @@ mod tests {
             class_id: id.to_string(),
             schema_version: version,
             grip_schema: vec![],
+            parameters: vec![],
         }
     }
 

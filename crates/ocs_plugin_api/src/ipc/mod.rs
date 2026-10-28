@@ -298,7 +298,11 @@ mod tests {
             grip_id: 42,
             anchor: Some(codec::Handle::from(0x8A)),
             point: [12.5, -3.25, 0.0],
-            axis: Some([0.7071067811865476, 0.7071067811865476, 0.0]),
+            axis: Some([
+                std::f64::consts::FRAC_1_SQRT_2,
+                std::f64::consts::FRAC_1_SQRT_2,
+                0.0,
+            ]),
             shape: crate::host::PluginGripShape::Triangle,
         }];
         let req = crate::ipc::protocol::PluginRequest::SetPluginGrips { grips };

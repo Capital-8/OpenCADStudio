@@ -3570,6 +3570,22 @@ impl<'a> HostSession<'a> {
                 class.class_id
             ));
         }
+        for parameter in &class.parameters {
+            if parameter.name.is_empty() {
+                return Err(format!(
+                    "class {}: a declared parameter needs its name",
+                    class.class_id
+                ));
+            }
+        }
+        let mut sorted: Vec<&str> = class.parameters.iter().map(|p| p.name.as_str()).collect();
+        sorted.sort_unstable();
+        if sorted.len() > 1 && sorted.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(format!(
+                "class {} declares duplicate parameter names in its schema",
+                class.class_id
+            ));
+        }
         self.app.tabs[self.tab]
             .plugin_classes
             .declare(plugin_id, class.clone())
@@ -3670,6 +3686,69 @@ impl<'a> HostSession<'a> {
             self.app.finish_pending_history(self.tab);
         }
         Ok(handles)
+    }
+
+    /// Read a class instance's declared parameter rows (API v16, additive):
+    /// the identity stamp (XDATA class key) resolves against the tab's
+    /// registry, the design-record linkage resolves under the NOD (root
+    /// pass, then one sub-dictionary level), and every declared parameter
+    /// reads its (name, value) entry pair. Values print exactly what the
+    /// record row carries — the host never invents units or semantics for a
+    /// name or kind it does not declare. Strict on purpose (a broken
+    /// linkage or a stale stamp refuses — the caller re-stages); the host's
+    /// properties panel renders through the shared core directly, with the
+    /// graceful declared-rows-with-absent-values view. No wire frame
+    /// carries the read yet (v16 ships the panel surface); the
+    /// plugin-side wire pass appends it — hence the dead-code allowance.
+    #[allow(dead_code)]
+    pub fn plugin_class_instance_properties(
+        &self,
+        handle: Handle,
+    ) -> Result<Vec<PluginClassParameterRow>, String> {
+        let binding = resolve_plugin_class_binding(self.app, self.tab, handle)?;
+        let (_, entries) =
+            find_design_record_entries(self.app, self.tab, handle, &binding.design_record)?;
+        rows_from_entries(&binding, &entries)
+    }
+
+    /// Write one declared, editable parameter's (name, value) pair (API v16,
+    /// additive): the design record's entries are patched in place through
+    /// the session's XRecord update path — one undo step of its own (a
+    /// scope-less call), the record marked dirty so the declaring plugin
+    /// re-stages. Refusals — absent entity, no registered class key, a
+    /// stale schema, an unknown or non-editable parameter, a value that
+    /// does not parse per the declared kind, a record without the
+    /// parameter's pair — all happen before any change.
+    pub fn update_plugin_class_instance_parameter(
+        &mut self,
+        handle: Handle,
+        name: &str,
+        value: &str,
+    ) -> Result<(), String> {
+        let binding = resolve_plugin_class_binding(self.app, self.tab, handle)?;
+        let parameter = binding
+            .parameters
+            .iter()
+            .find(|p| p.name == name)
+            .ok_or_else(|| {
+                format!(
+                    "class {:?} has no parameter named {:?}; the host never invents parameter \
+                     semantics",
+                    binding.class_id, name
+                )
+            })?;
+        if !parameter.editable {
+            return Err(format!(
+                "parameter {name:?} of class {:?} is declared read-only; its row never writes",
+                binding.class_id
+            ));
+        }
+        let (path, entries) =
+            find_design_record_entries(self.app, self.tab, handle, &binding.design_record)?;
+        let entries = update_parameter_pair(&binding, name, parameter.value_kind, value, entries)?;
+        let path: Vec<&str> = path.iter().map(String::as_str).collect();
+        self.update_xrecord(&path, &binding.design_record, entries)?;
+        Ok(())
     }
 
     /// Read several XRecords in one call (API v13): per-entry results, `Err`
@@ -3787,6 +3866,329 @@ impl<'a> HostSession<'a> {
             return Err(format!("dictionary entry {name:?} is not an XRecord"));
         }
         Ok((dictionary, name, handle))
+    }
+}
+
+/// The resolved binding of an entity stamped as a plugin class instance
+/// (API v16): the registered class, its live declared parameter schema, and
+/// the design-record linkage the identity stamp carries.
+pub(in crate::app) struct PluginClassInstanceBinding {
+    pub class_id: String,
+    pub parameters: Vec<ocs_plugin_api::host::PluginClassParameter>,
+    pub design_record: String,
+}
+
+/// One read row of a class instance's declared parameters (API v16). The
+/// value is exactly what the record row carries — only the declared kind's
+/// own reading, never a unit or semantic conversion; `None` = the record
+/// does not carry this parameter's pair yet.
+pub(crate) struct PluginClassParameterRow {
+    pub name: String,
+    pub value_kind: ocs_plugin_api::host::PluginClassParameterKind,
+    pub editable: bool,
+    pub value: Option<String>,
+}
+
+/// Resolve an entity stamped as a plugin class instance (API v16 core,
+/// shared by the session pair and the properties panel): the first XDATA
+/// record whose application name is a registered class key wins; its
+/// Integer32 schema version and String design-record linkage read like
+/// staging wrote them; a stale schema refuses (the record layer stays
+/// authoritative — the stamp re-stages instead of rendering).
+pub(in crate::app) fn resolve_plugin_class_binding(
+    app: &OpenCADStudio,
+    tab: usize,
+    handle: codec::Handle,
+) -> Result<PluginClassInstanceBinding, String> {
+    let Some(entity) = app.tabs[tab].scene.document.get_entity(handle) else {
+        return Err(format!("entity {handle:?} does not exist"));
+    };
+    let registry = &app.tabs[tab].plugin_classes;
+    for record in entity.common().extended_data.records() {
+        if record.application_name.is_empty() {
+            continue;
+        }
+        let Some(owner) = registry.owner_of(&record.application_name) else {
+            continue;
+        };
+        let Some(declaration) = registry.find(owner, &record.application_name) else {
+            continue;
+        };
+        let Some(codec::xdata::XDataValue::Integer32(schema)) = record.values.first() else {
+            return Err(format!(
+                "entity {handle:?} carries the class stamp {:?} without its schema version",
+                record.application_name
+            ));
+        };
+        let schema = u32::try_from(*schema).map_err(|_| {
+            format!(
+                "entity {handle:?} carries class stamp {:?} with a version that is not a \
+                 version number",
+                record.application_name
+            )
+        })?;
+        let design_record = match record.values.get(1) {
+            Some(codec::xdata::XDataValue::String(linkage)) => linkage.clone(),
+            _ => String::new(),
+        };
+        if schema != declaration.schema_version {
+            return Err(format!(
+                "entity {handle:?} carries an instance of class {:?} authored for schema \
+                 version {schema}, the session declares {}",
+                declaration.class_id, declaration.schema_version
+            ));
+        }
+        return Ok(PluginClassInstanceBinding {
+            class_id: record.application_name.clone(),
+            parameters: declaration.parameters.clone(),
+            design_record,
+        });
+    }
+    Err(format!(
+        "entity {handle:?} carries no registered plugin class key in its XDATA"
+    ))
+}
+
+/// Resolve the design record the binding links (API v16 core): NOD root
+/// first, then one sub-dictionary level (the civil lane keeps its CVIFC
+/// records under one) — the identity stamp names the record, never its
+/// path, so the resolver searches rather than invents a layout. Returns the
+/// dictionary path (usable by the XRecord update) and the entries.
+pub(in crate::app) fn find_design_record_entries(
+    app: &OpenCADStudio,
+    tab: usize,
+    _handle: codec::Handle,
+    name: &str,
+) -> Result<(Vec<String>, Vec<codec::objects::XRecordEntry>), String> {
+    use codec::objects::ObjectType;
+    let name = validated_symbol_name(name, "a design record name")?;
+    let doc = &app.tabs[tab].scene.document;
+    let root = doc.header.named_objects_dict_handle;
+    let is_dictionary = |candidate: codec::Handle| {
+        matches!(doc.objects.get(&candidate), Some(ObjectType::Dictionary(_)))
+    };
+    if is_dictionary(root) {
+        let Some(ObjectType::Dictionary(root_dict)) = doc.objects.get(&root) else {
+            unreachable!("checked by is_dictionary");
+        };
+        if let Some(record) = root_dict.get(&name) {
+            return match doc.objects.get(&record) {
+                Some(ObjectType::XRecord(xrecord)) => Ok((Vec::new(), xrecord.entries.clone())),
+                _ => Err(format!("dictionary entry {name:?} is not an XRecord")),
+            };
+        }
+        for (key, child) in &root_dict.entries {
+            if !is_dictionary(*child) {
+                continue;
+            }
+            let Some(ObjectType::Dictionary(sub)) = doc.objects.get(child) else {
+                unreachable!("checked by is_dictionary");
+            };
+            if let Some(record) = sub.get(&name) {
+                return match doc.objects.get(&record) {
+                    Some(ObjectType::XRecord(xrecord)) => {
+                        Ok((vec![key.clone()], xrecord.entries.clone()))
+                    }
+                    _ => Err(format!("dictionary entry {name:?} is not an XRecord")),
+                };
+            }
+        }
+    }
+    Err(format!(
+        "the design record {name:?} cannot be resolved from the NOD root or one level of its \
+         sub-dictionaries; the identity stamp names the record, not its path"
+    ))
+}
+
+/// The declared schema as rows with absent values (API v16 core, the
+/// panel's base view: the host renders the declaration, the record fills
+/// the values).
+pub(in crate::app) fn rows_from_schema(
+    binding: &PluginClassInstanceBinding,
+) -> Vec<PluginClassParameterRow> {
+    binding
+        .parameters
+        .iter()
+        .map(|parameter| PluginClassParameterRow {
+            name: parameter.name.clone(),
+            value_kind: parameter.value_kind,
+            editable: parameter.editable,
+            value: None,
+        })
+        .collect()
+}
+
+/// The rows read the declared layout: alternating (String name, value)
+/// entries from the record's first entry — the pair layout the declaration
+/// owns; names the schema does not declare are the plugin's own pairs and
+/// stay untouched by the reader.
+pub(in crate::app) fn rows_from_entries(
+    binding: &PluginClassInstanceBinding,
+    entries: &[codec::objects::XRecordEntry],
+) -> Result<Vec<PluginClassParameterRow>, String> {
+    use codec::objects::XRecordValue;
+    use ocs_plugin_api::host::PluginClassParameterKind;
+    let mut rows = rows_from_schema(binding);
+    let mut index = 0usize;
+    while index + 1 < entries.len() {
+        let codec::objects::XRecordValue::String(pair_name) = &entries[index].value else {
+            return Err(format!(
+                "the design record of class {:?} breaks its alternating (name, value) pair \
+                 layout at entry {index}",
+                binding.class_id
+            ));
+        };
+        let value_entry = &entries[index + 1];
+        if let Some(row) = rows.iter_mut().find(|row| row.name == *pair_name) {
+            let printed = match row.value_kind {
+                PluginClassParameterKind::Real => match &value_entry.value {
+                    XRecordValue::Double(v) => Some(v.to_string()),
+                    XRecordValue::Int16(v) => Some(f64::from(*v).to_string()),
+                    XRecordValue::Int32(v) => Some(f64::from(*v).to_string()),
+                    XRecordValue::Int64(v) => Some((*v as f64).to_string()),
+                    other => {
+                        return Err(format!(
+                            "parameter {:?} of class {:?} is declared a Real; the record row \
+                             carries {other:?}",
+                            row.name, binding.class_id
+                        ))
+                    }
+                },
+                PluginClassParameterKind::Integer => match &value_entry.value {
+                    XRecordValue::Int16(v) => Some(i64::from(*v).to_string()),
+                    XRecordValue::Int32(v) => Some(i64::from(*v).to_string()),
+                    XRecordValue::Int64(v) => Some(v.to_string()),
+                    other => {
+                        return Err(format!(
+                            "parameter {:?} of class {:?} is declared an Integer; the record \
+                             row carries {other:?}",
+                            row.name, binding.class_id
+                        ))
+                    }
+                },
+                PluginClassParameterKind::Text => match &value_entry.value {
+                    XRecordValue::String(v) => Some(v.clone()),
+                    other => {
+                        return Err(format!(
+                            "parameter {:?} of class {:?} is declared Text; the record row \
+                             carries {other:?}",
+                            row.name, binding.class_id
+                        ))
+                    }
+                },
+            };
+            row.value = printed;
+        }
+        index += 2;
+    }
+    Ok(rows)
+}
+
+/// Patch one declared parameter's (name, value) pair in the design record's
+/// entries (API v16 core): the value entry's group code and its neighbours
+/// stay untouched; nothing is created in the plugin's record layer.
+pub(in crate::app) fn update_parameter_pair(
+    binding: &PluginClassInstanceBinding,
+    name: &str,
+    value_kind: ocs_plugin_api::host::PluginClassParameterKind,
+    value: &str,
+    entries: Vec<codec::objects::XRecordEntry>,
+) -> Result<Vec<codec::objects::XRecordEntry>, String> {
+    let Some(name_index) =
+        find_parameter_pair(&binding.class_id, &binding.design_record, name, &entries)?
+    else {
+        return Err(format!(
+            "the design record {:?} of class {:?} does not carry {:?}; the host creates \
+             nothing in the plugin's record layer",
+            binding.design_record, binding.class_id, name
+        ));
+    };
+    let parsed = parse_parameter_value(value_kind, value, &binding.class_id, name)?;
+    let value_index = name_index + 1;
+    let code = entries[value_index].code;
+    let mut entries = entries;
+    entries[value_index] = codec::objects::XRecordEntry::new(code, parsed);
+    Ok(entries)
+}
+
+/// Locate the named pair in the alternating (name, value) layout: the index
+/// of the name entry whose value entry follows. Duplicates and a name
+/// without its value refuse.
+fn find_parameter_pair(
+    class_id: &str,
+    record_name: &str,
+    name: &str,
+    entries: &[codec::objects::XRecordEntry],
+) -> Result<Option<usize>, String> {
+    let mut found: Option<usize> = None;
+    let mut index = 0usize;
+    while index < entries.len() {
+        let codec::objects::XRecordValue::String(pair_name) = &entries[index].value else {
+            return Err(format!(
+                "the design record {record_name:?} of class {class_id:?} breaks its \
+                 alternating (name, value) pair layout at entry {index}"
+            ));
+        };
+        if pair_name == name {
+            if found.is_some() {
+                return Err(format!(
+                    "the design record {record_name:?} of class {class_id:?} names {name:?} \
+                     more than once"
+                ));
+            }
+            if index + 1 >= entries.len() {
+                return Err(format!(
+                    "the design record {record_name:?} of class {class_id:?} carries {name:?} \
+                     without its value pair"
+                ));
+            }
+            found = Some(index);
+        }
+        index += 2;
+    }
+    Ok(found)
+}
+
+/// Parse one parameter value per its declared kind (API v16 core): Real =
+/// a finite double, Integer = an integer carried Int32-when-it-fits,
+/// Text = the string verbatim.
+fn parse_parameter_value(
+    value_kind: ocs_plugin_api::host::PluginClassParameterKind,
+    value: &str,
+    class_id: &str,
+    name: &str,
+) -> Result<codec::objects::XRecordValue, String> {
+    use codec::objects::XRecordValue;
+    use ocs_plugin_api::host::PluginClassParameterKind;
+    match value_kind {
+        PluginClassParameterKind::Real => {
+            let parsed: f64 = value.trim().parse().map_err(|_| {
+                format!(
+                    "parameter {name:?} of class {class_id:?} needs a number; {value:?} does \
+                     not parse"
+                )
+            })?;
+            if !parsed.is_finite() {
+                return Err(format!(
+                    "parameter {name:?} of class {class_id:?} writes a finite number only"
+                ));
+            }
+            Ok(XRecordValue::Double(parsed))
+        }
+        PluginClassParameterKind::Integer => {
+            let parsed: i64 = value.trim().parse().map_err(|_| {
+                format!(
+                    "parameter {name:?} of class {class_id:?} needs an integer; {value:?} \
+                     does not parse"
+                )
+            })?;
+            if (i32::MIN as i64..=i32::MAX as i64).contains(&parsed) {
+                Ok(XRecordValue::Int32(parsed as i32))
+            } else {
+                Ok(XRecordValue::Int64(parsed))
+            }
+        }
+        PluginClassParameterKind::Text => Ok(XRecordValue::String(value.to_string())),
     }
 }
 
@@ -15426,6 +15828,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
                 grip_id: 1,
                 param_name: "peak_gradient".to_string(),
             }],
+            parameters: vec![],
         }
     }
 
@@ -15875,5 +16278,267 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
                 );
             }
         }
+    }
+
+    #[test]
+    fn plugin_class_parameters_read_write_and_refuse() {
+        // The v16 session pair over a host-staged instance: the declared
+        // schema renders rows straight from the design record; an editable
+        // parameter writes through the record's (name, value) pair in ONE
+        // undo step; unknown names, read-only rows, and unparseable values
+        // refuse before any change.
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        install_class_owner();
+        let handles;
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            let mut declaration = traverse_class();
+            declaration.parameters = vec![
+                ocs_plugin_api::host::PluginClassParameter {
+                    name: "peak_gradient".to_string(),
+                    value_kind: ocs_plugin_api::host::PluginClassParameterKind::Real,
+                    editable: true,
+                },
+                ocs_plugin_api::host::PluginClassParameter {
+                    name: "segments".to_string(),
+                    value_kind: ocs_plugin_api::host::PluginClassParameterKind::Integer,
+                    editable: true,
+                },
+                ocs_plugin_api::host::PluginClassParameter {
+                    name: "locked_note".to_string(),
+                    value_kind: ocs_plugin_api::host::PluginClassParameterKind::Text,
+                    editable: false,
+                },
+            ];
+            host.register_plugin_class("CVIFC", &declaration)
+                .expect("the parameter schema registers");
+            let mut instance = traverse_instance();
+            instance.design = ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(
+                crest_profile_chain(),
+            );
+            handles = host
+                .stage_plugin_class_instance("CVIFC", &instance)
+                .expect("the instance stages");
+            // The declared (name, value) pair layout: alternating String
+            // name / value entries — the layout the declaration owns.
+            host.create_xrecord(
+                &["CVIFC"],
+                "CVIFC_ALIGN_DISPLAY",
+                vec![
+                    codec::objects::XRecordEntry::string(1, "peak_gradient"),
+                    codec::objects::XRecordEntry::new(
+                        140,
+                        codec::objects::XRecordValue::Double(0.06),
+                    ),
+                    codec::objects::XRecordEntry::string(1, "segments"),
+                    codec::objects::XRecordEntry::new(
+                        90,
+                        codec::objects::XRecordValue::Int32(3),
+                    ),
+                    codec::objects::XRecordEntry::string(1, "locked_note"),
+                    codec::objects::XRecordEntry::string(1, "per alignment sheet"),
+                ],
+            )
+            .expect("the design record seeds its namespace");
+        }
+        app.finish_pending_history(0);
+        let undo_before = app.tabs[0].history.undo_stack.len();
+        assert_eq!(undo_before, 2, "staging + record seeding compose as two steps");
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            host.update_plugin_class_instance_parameter(handles[0], "peak_gradient", "0.09")
+                .expect("the editable row writes");
+        }
+        app.finish_pending_history(0);
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            assert_eq!(
+                host.app.tabs[0].history.undo_stack.len(),
+                undo_before + 1,
+                "the parameter write composes as exactly one more undo step"
+            );
+            let rows = host
+                .plugin_class_instance_properties(handles[0])
+                .expect("the rows re-read");
+            assert_eq!(
+                rows[0].value.as_deref(),
+                Some("0.09"),
+                "the written pair is the read truth"
+            );
+            // The record's OTHER pairs (and the plugin's own layout) stayed
+            // exactly as the plugin laid them.
+            let entries = host
+                .read_xrecord(&["CVIFC"], "CVIFC_ALIGN_DISPLAY")
+                .expect("the record");
+            assert_eq!(entries.len(), 6);
+            assert_eq!(format!("{:?}", entries[3].value), "Int32(3)");
+            assert_eq!(format!("{:?}", entries[5].value), "String(\"per alignment sheet\")");
+
+            // REFUSALS: unknown name, read-only row, unparseable and
+            // non-finite values — each before any change, each recording
+            // nothing.
+            let steps_before = host.app.tabs[0].history.undo_stack.len();
+            assert!(
+                host.update_plugin_class_instance_parameter(handles[0], "not_a_parameter", "2.0")
+                    .unwrap_err()
+                    .contains("has no parameter named"),
+                "an unknown parameter refuses honestly"
+            );
+            assert!(
+                host.update_plugin_class_instance_parameter(handles[0], "locked_note", "edited")
+                    .unwrap_err()
+                    .contains("read-only"),
+                "a read-only row never writes"
+            );
+            assert!(
+                host.update_plugin_class_instance_parameter(handles[0], "peak_gradient", "abc")
+                    .unwrap_err()
+                    .contains("does not parse"),
+                "a non-numerical value refuses honestly"
+            );
+            assert!(
+                host.update_plugin_class_instance_parameter(handles[0], "peak_gradient", "inf")
+                    .unwrap_err()
+                    .contains("finite"),
+                "a non-finite value refuses honestly"
+            );
+            assert_eq!(
+                host.app.tabs[0].history.undo_stack.len(),
+                steps_before,
+                "refusals record nothing"
+            );
+            let entries_after = host
+                .read_xrecord(&["CVIFC"], "CVIFC_ALIGN_DISPLAY")
+                .expect("the record");
+            assert_eq!(entries_after.len(), entries.len(), "refusals changed nothing");
+            for (before, after) in entries.iter().zip(entries_after.iter()) {
+                assert_eq!(before.code, after.code, "refusals changed nothing");
+                assert_eq!(format!("{:?}", before.value), format!("{:?}", after.value));
+            }
+        }
+    }
+
+    #[test]
+    fn plugin_class_parameters_panel_binds_and_commits() {
+        // The panel surface (API v16): a stamped selectable entity (the
+        // v10/v12 lane's own anchor) rides its class's declared rows, and
+        // the commit route writes the record row through the session pair.
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        install_class_owner();
+        let handle;
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            let mut declaration = traverse_class();
+            declaration.parameters = vec![ocs_plugin_api::host::PluginClassParameter {
+                name: "peak_gradient".to_string(),
+                value_kind: ocs_plugin_api::host::PluginClassParameterKind::Real,
+                editable: true,
+            }];
+            host.register_plugin_class("CVIFC", &declaration)
+                .expect("the parameter schema registers");
+            handle = host.add_entity(EntityType::Point(Point::at(codec::types::Vector3::new(
+                12.0, 3.0, 0.0,
+            ))));
+            let mut stamp = codec::xdata::ExtendedDataRecord::new("CVI_ALIGN_DISPLAY");
+            stamp.add_value(codec::xdata::XDataValue::Integer32(4));
+            stamp.add_value(codec::xdata::XDataValue::String(
+                "CVIFC_ALIGN_DISPLAY".to_string(),
+            ));
+            assert!(host.write_record(handle, stamp), "the stamp rides");
+            host.create_xrecord(
+                &["CVIFC"],
+                "CVIFC_ALIGN_DISPLAY",
+                vec![
+                    codec::objects::XRecordEntry::string(1, "peak_gradient"),
+                    codec::objects::XRecordEntry::new(
+                        140,
+                        codec::objects::XRecordValue::Double(0.06),
+                    ),
+                ],
+            )
+            .expect("the design record seeds its namespace");
+        }
+        app.finish_pending_history(0);
+
+        // Select the anchor entity; the panel builds the section.
+        app.tabs[0].scene.selected.insert(handle);
+        app.refresh_properties();
+        {
+            let panel = &app.tabs[0].properties;
+            let section = panel
+                .sections
+                .iter()
+                .find(|section| {
+                    section.title == crate::t!("Plugin class parameters").into_owned()
+                })
+                .expect("the stamped selection rides its class's rows");
+            assert_eq!(section.props.len(), 2, "the source line + the declared row");
+            assert_eq!(section.props[0].label, "Source");
+            assert!(
+                matches!(
+                    &section.props[0].value,
+                    crate::scene::model::object::PropValue::ReadOnly(source)
+                        if source.contains("CVIFC_ALIGN_DISPLAY")
+                ),
+                "the derived-view line points at the owning record row"
+            );
+            let row = &section.props[1];
+            assert_eq!(row.label, "peak_gradient");
+            assert!(
+                matches!(
+                    &row.value,
+                    crate::scene::model::object::PropValue::PluginParam {
+                        name,
+                        value,
+                        editable: true,
+                    } if name == "peak_gradient" && value == "0.06"
+                ),
+                "a selectable lane entity rides editable rows"
+            );
+        }
+
+        // The commit route: typing + Enter === the record row writes.
+        app.update(crate::app::Message::PropPluginParamInput {
+            name: "peak_gradient".to_string(),
+            value: "0.09".to_string(),
+        });
+        app.update(crate::app::Message::PropPluginParamCommit(
+            "peak_gradient".to_string(),
+        ));
+        {
+            let host = HostSession::new(&mut app, 0);
+            let rows = host
+                .plugin_class_instance_properties(handle)
+                .expect("the rows record the commit");
+            assert_eq!(
+                rows[0].value.as_deref(),
+                Some("0.09"),
+                "the committed value landed on the record row"
+            );
+        }
+
+        // A selection without a registered class stamp renders no section.
+        let mut plain = OpenCADStudio::new_for_test();
+        plain.tabs[0].is_start = false;
+        {
+            let mut host = HostSession::new(&mut plain, 0);
+            let unstamped = host
+                .add_entity(EntityType::Point(Point::at(codec::types::Vector3::new(
+                    1.0, 1.0, 0.0,
+                ))));
+            plain.tabs[0].scene.selected.insert(unstamped);
+        }
+        plain.refresh_properties();
+        assert!(
+            plain
+                .tabs[0]
+                .properties
+                .sections
+                .iter()
+                .all(|section| section.title != crate::t!("Plugin class parameters").into_owned()),
+            "an unstamped selection rides no class rows"
+        );
     }
 }

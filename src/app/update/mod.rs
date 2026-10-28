@@ -8365,6 +8365,16 @@ impl OpenCADStudio {
 
             Message::PropAttrCommit(tag) => self.on_prop_attr_commit(tag),
 
+            Message::PropPluginParamInput { name, value } => {
+                self.tabs[self.active_tab]
+                    .properties
+                    .edit_buf
+                    .insert(crate::ui::properties::plugin_param_edit_key(&name), value);
+                Task::none()
+            }
+
+            Message::PropPluginParamCommit(name) => self.on_prop_plugin_param_commit(name),
+
             Message::PropPointerPressed => {
                 // A press anywhere ends typing in QuickCalc; its own
                 // buttons set it again after their release.

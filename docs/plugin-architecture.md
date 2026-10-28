@@ -498,7 +498,7 @@ shape and an axis — nothing else. What a grip *means* (an alignment's implied
 PI, a pipe endpoint, a widening handle) is entirely the declaring plugin's,
 resolved in its own `on_custom_grip_event` from the event's grip id and point.
 
-## Derived display, parametric chains, and plugin class objects (API v14–v15)
+## Derived display, parametric chains, and plugin class objects (API v14–v16)
 
 The parametric display split (API v14) established the pattern the class
 objects (API v15) generalize. One law governs both: **the record layer is the
@@ -567,7 +567,41 @@ move) sits at ~30 µs against a 16.7 ms frame, so host-local re-derivation
 wins on both latency and traffic; the drag-pipeline plumbing is the planned
 follow-up. Editing class parameters travels the records, not the descriptor:
 a parameter write goes through `update_xrecords`, the plugin sees the
-record-dirty notification and re-stages from its own schema.
+record-dirty notification and re-stages from its own schema. The grip-edit
+correctness contract is pinned engine-side and session-side (no new code —
+the tests): a grip drag revises one DECLARED parameter, the plugin's honest
+re-declare propagates the moved joint from `sample_parametric` (never a
+duplicated constant), the audited seam law holds on the edited chain, and
+the display set re-applies over the SAME handles in place — count-stable,
+stamps and reference-only designations intact, one undo step round-tripping
+the original.
+
+**Class parameter schema and the properties pair (v16).** A declaration can
+now declare its parameters in the schema (`PluginClassParameter`: name +
+value kind — `Real`/`Integer`/`Text`, appended at the end — + `editable`;
+serde default, so declarations without the field read as an empty schema;
+empty/duplicate names refuse at registration). The declaration says WHAT
+the parameters are; the values stay on the instance's design record row —
+the record layer keeps the truth, the schema only makes it addressable. Two
+session methods ride the same core the host's properties panel uses:
+`plugin_class_instance_properties(handle)` reads a stamped entity's
+declared rows (the design record resolves under the NOD root, then one
+sub-dictionary level — the identity stamp names the record, never its
+path), and `update_plugin_class_instance_parameter(handle, name, value)`
+writes ONE declared, editable parameter's (name, value) pair in place: the
+layout is alternating (String name, value) entries — the pair layout the
+declaration owns — the value entry's group code and everything else on the
+record stay untouched, the write composes as one undo step through the
+existing XRecord update path, and the record's dirty notification asks the
+declaring plugin to re-stage. Refusals — unknown name, read-only row, an
+unparseable or non-finite value, a stale stamp, an unresolvable record —
+happen before any change and record nothing. The properties panel (a user
+surface, not a plugin call) reuses the core for selections whose XDATA
+carries a registered class key: a "Plugin class parameters" section
+renders the declared rows and the owning-record source line; an editable
+row commits through the same one-undo-step write; host-staged
+(reference-only) instances render read-only; the host never invents
+semantics for a name or a value kind the declaration does not spell.
 
 ## HostApi vs MCP — the two surfaces
 

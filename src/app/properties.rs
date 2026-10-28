@@ -1832,6 +1832,63 @@ impl OpenCADStudio {
         (sections, title)
     }
 
+    /// The "Plugin class parameters" section (API v16): binds to ONE
+    /// selected entity whose XDATA carries a registered class key. The
+    /// section exists only when the stamp resolves to the LIVE declaration
+    /// (schema match — a stale stamp re-stages instead of rendering). A
+    /// reference-only (host-staged) instance renders every row read-only;
+    /// the source line points at the owning record row either way — the
+    /// values live on the record layer, the host never invents semantics
+    /// for a name or kind the declaration does not spell.
+    fn plugin_class_parameter_section(
+        &self,
+        i: usize,
+        handle: codec::Handle,
+    ) -> Option<crate::scene::model::object::PropSection> {
+        use crate::scene::model::object::{PropSection, PropValue, Property};
+        let binding =
+            crate::app::plugin_host::resolve_plugin_class_binding(self, i, handle).ok()?;
+        let reference_only = self.tabs[i].scene.is_reference_only(handle);
+        let mut rows = crate::app::plugin_host::rows_from_schema(&binding);
+        if !binding.design_record.is_empty() {
+            if let Ok((_, entries)) = crate::app::plugin_host::find_design_record_entries(
+                self, i, handle, &binding.design_record,
+            ) {
+                if let Ok(read_rows) =
+                    crate::app::plugin_host::rows_from_entries(&binding, &entries)
+                {
+                    rows = read_rows;
+                }
+            }
+        }
+        let mut props = Vec::new();
+        let source = if binding.design_record.is_empty() {
+            crate::t!("No record linkage on the identity stamp").into_owned()
+        } else {
+            crate::tf!("Values on record {}", binding.design_record).into_owned()
+        };
+        props.push(Property {
+            label: crate::t!("Source").into_owned(),
+            field: "plugin_class_source",
+            value: PropValue::ReadOnly(source),
+        });
+        for row in rows {
+            props.push(Property {
+                label: row.name.clone(),
+                field: "plugin_class_parameter",
+                value: PropValue::PluginParam {
+                    name: row.name,
+                    value: row.value.unwrap_or_default(),
+                    editable: row.editable && !reference_only,
+                },
+            });
+        }
+        Some(PropSection {
+            title: crate::t!("Plugin class parameters").into_owned(),
+            props,
+        })
+    }
+
     pub(super) fn refresh_properties(&mut self) {
         // A 186 468-entity selection spends ~112 ms in here. Split it into the
         // three phases that can own that: resolving the selected handles,
@@ -2823,6 +2880,15 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
             // `PropSyncActive`; derived from `sections`, so rebuild it here.
             panel.field_key_by_id = crate::ui::properties::build_field_key_map(&panel.sections);
             let new_handles: Vec<codec::Handle> = selected.iter().map(|(h, _)| *h).collect();
+            // The plugin class parameter surface (API v16): one stamped
+            // selection rides its class's declared rows.
+            if new_handles.len() == 1 {
+                if let Some(section) = self.plugin_class_parameter_section(i, new_handles[0]) {
+                    panel.sections.push(section);
+                    panel.field_key_by_id =
+                        crate::ui::properties::build_field_key_map(&panel.sections);
+                }
+            }
             // Carry the in-progress edits only when the selection is unchanged
             // (a commit-triggered rebuild); a genuine selection change starts
             // with a clean buffer so no stale value leaks onto the new entity.
@@ -3846,6 +3912,7 @@ fn make_sections_read_only(
             }
             PropValue::Stepper { display, .. } => display.clone(),
             PropValue::AttrText { value, .. } => value.clone(),
+            PropValue::PluginParam { value, .. } => value.clone(),
             // The Constraints/Parameters sections aren't per-entity editable
             // fields to begin with (a constraint link is a navigation
             // action, not a value; a parameter belongs to the whole
