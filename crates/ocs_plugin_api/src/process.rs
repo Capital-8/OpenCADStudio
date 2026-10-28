@@ -253,6 +253,7 @@ pub(crate) fn request_kind(req: &HostRequest) -> &'static str {
             crate::host::CustomGripPhase::Settle => "CustomGripSettle",
             crate::host::CustomGripPhase::Cancel => "CustomGripCancel",
         },
+        HostRequest::GetModalDialog { .. } => "GetModalDialog",
         HostRequest::Shutdown => "Shutdown",
     }
 }
@@ -876,6 +877,34 @@ impl PluginProcess {
                 "cursor_move",
                 |resp| match resp {
                     HostResponse::PreviewWires(w) => Ok(w),
+                    other => Err(Box::new(other)),
+                },
+            )
+        }
+    }
+
+    /// Ask the plugin process whether an interactive command has an active modal dialog.
+    pub fn get_modal_dialog(
+        &self,
+        command_id: u64,
+    ) -> Result<Option<crate::dialog::DialogDef>, PluginError> {
+        if let Some(v4) = &self.v4 {
+            let resp = v4.call(
+                &mut NullHost,
+                HostRequest::GetModalDialog { command_id },
+                &mut |_| {},
+            )?;
+            match resp {
+                HostResponse::ModalDialog(d) => Ok(d),
+                other => Err(PluginError::UnexpectedResponse(Box::new(other))),
+            }
+        } else {
+            self.call_simple(
+                HostRequest::GetModalDialog { command_id },
+                "GetModalDialog",
+                "get_modal_dialog",
+                |resp| match resp {
+                    HostResponse::ModalDialog(d) => Ok(d),
                     other => Err(Box::new(other)),
                 },
             )

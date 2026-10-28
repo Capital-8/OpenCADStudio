@@ -126,6 +126,11 @@ impl OpenCADStudio {
                 .as_ref()
                 .map(|d| d.title())
                 .unwrap_or_default(),
+            Some(K::PluginDialog) => self
+                .plugin_dialog_state
+                .as_ref()
+                .map(|s| s.title())
+                .unwrap_or_else(|| "Plugin Dialog".to_string()),
             None => String::new(),
         }
     }
@@ -1882,6 +1887,11 @@ impl OpenCADStudio {
                     autosave_restore_dialog_window(&name, pending, session_drawings, flow)
                 })
             }
+            super::super::ModalKind::PluginDialog => {
+                let state = self.plugin_dialog_state.as_ref()?;
+                automatic_flow(ex, |_flow| state.view())
+            }
+
         })
     }
 

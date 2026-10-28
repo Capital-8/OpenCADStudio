@@ -547,6 +547,13 @@ impl OpenCADStudio {
                         }
                     }
                     PanelId::QuickCalc => self.quick_calc.show = true,
+                    PanelId::Plugin(num) => {
+                        if let Some(panel_id) = self.plugin_panel_by_num.get(&num) {
+                            if let Some(panel) = self.plugin_panels.get_mut(panel_id) {
+                                panel.visible = true;
+                            }
+                        }
+                    }
                 }
             }
             self.dock_reveal(id);
@@ -588,6 +595,13 @@ impl OpenCADStudio {
                 self.ribbon.set_graphic_attributes(false);
                 self.graphic_attributes.close_popups();
                 self.save_config();
+            }
+            PanelId::Plugin(num) => {
+                if let Some(panel_id) = self.plugin_panel_by_num.get(&num) {
+                    if let Some(panel) = self.plugin_panels.get_mut(panel_id) {
+                        panel.visible = false;
+                    }
+                }
             }
         }
         self.dock_unpeek(id);
@@ -675,6 +689,13 @@ impl OpenCADStudio {
             }
             PanelId::QuickCalc => self.quick_calc.show,
             PanelId::GraphicAttributes => self.show_graphic_attributes,
+            PanelId::Plugin(num) => {
+                if let Some(panel_id) = self.plugin_panel_by_num.get(&num) {
+                    self.plugin_panels.get(panel_id).map(|p| p.visible).unwrap_or(false)
+                } else {
+                    false
+                }
+            }
         }
     }
 

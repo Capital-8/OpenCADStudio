@@ -6615,6 +6615,17 @@ impl OpenCADStudio {
                 }
             };
 
+            let panel_updates = self.tabs[i]
+                .active_cmd
+                .as_mut()
+                .map(|c| c.take_pending_panel_updates())
+                .unwrap_or_default();
+            for (panel_id, values) in panel_updates {
+                if let Some(panel) = self.plugin_panels.get_mut(&panel_id) {
+                    panel.update_values(values);
+                }
+            }
+
             self.sync_dimension_snaps(i);
             if let Some(r) = result {
                 let task = self.apply_cmd_result(r);

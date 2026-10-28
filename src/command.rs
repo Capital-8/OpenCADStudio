@@ -3254,6 +3254,16 @@ pub trait CadCommand: Send {
 
     fn on_editor_display_height(&mut self, _height: f64) {}
 
+    /// Return modal dialog definition if this command requires a GUI dialog.
+    fn modal_dialog(&self) -> Option<ocs_plugin_api::dialog::DialogDef> {
+        None
+    }
+
+    /// Called when a modal dialog is submitted or cancelled.
+    fn on_dialog_response(&mut self, _response: ocs_plugin_api::dialog::DialogResponse) -> CmdResult {
+        CmdResult::Cancel
+    }
+
     /// Called when the user clicks and `needs_entity_pick()` is true.
     /// `handle` is the nearest wire's entity handle (Handle::NULL if nothing found).
     fn on_entity_pick(&mut self, _handle: Handle, _pt: DVec3) -> CmdResult {
@@ -3843,6 +3853,11 @@ pub trait CadCommand: Send {
     /// centred. The view projects it with the active camera.
     fn dyn_label_point(&self, _cursor: DVec3) -> Option<DVec3> {
         None
+    }
+
+    /// Pending panel updates buffered during interactive command execution.
+    fn take_pending_panel_updates(&mut self) -> Vec<(String, std::collections::HashMap<String, ocs_plugin_api::dialog::DialogValue>)> {
+        Vec::new()
     }
 }
 

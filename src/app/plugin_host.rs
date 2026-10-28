@@ -3845,8 +3845,12 @@ impl HostApi for HostSession<'_> {
         self.push_error(msg)
     }
     fn start_interactive(&mut self, command: Box<dyn ocs_plugin_api::host::InteractiveCommand>) {
+        let dialog = command.modal_dialog();
         self.app.tabs[self.tab].active_cmd =
             Some(Box::new(PluginInteractiveAdapter { inner: command }));
+        if let Some(def) = dialog {
+            self.app.open_plugin_dialog(def);
+        }
     }
     fn plugin_state_any(&self, plugin_id: &str) -> Option<&(dyn Any + Send + Sync)> {
         self.app.tabs[self.tab]
@@ -4000,6 +4004,116 @@ impl HostApi for HostSession<'_> {
     ) -> Result<Vec<(String, Vec<ocs_plugin_api::host::XRecordEntry>)>, String> {
         self.list_xrecords_with_entries(dictionary_path)
     }
+
+    fn show_dialog(&mut self, dialog: ocs_plugin_api::dialog::DialogDef) -> ocs_plugin_api::dialog::DialogResponse {
+        self.app.open_plugin_dialog(dialog);
+        ocs_plugin_api::dialog::DialogResponse::Cancelled
+    }
+    fn register_panel(&mut self, panel: ocs_plugin_api::dialog::PanelDef) -> bool {
+        let id = panel.id.clone();
+        let cmd_opt = panel.command.clone();
+        let num = if let Some(&existing_num) = self.app.plugin_panel_ids.get(&id) {
+            existing_num
+        } else {
+            let next_num = (self.app.plugin_panel_ids.len() as u32) + 1;
+            self.app.plugin_panel_ids.insert(id.clone(), next_num);
+            self.app.plugin_panel_by_num.insert(next_num, id.clone());
+            next_num
+        };
+
+        let panel_enum = crate::ui::dock::PanelId::Plugin(num);
+        if self.app.dock.location(panel_enum).is_none() {
+            self.app.dock.dock(panel_enum, crate::app::config::DockSide::Right, usize::MAX);
+        }
+        if let Some(w) = panel.width {
+            let mut panel_settings = self.app.dock.settings(panel_enum);
+            panel_settings.width = w;
+            self.app.dock.panels.insert(panel_enum, panel_settings);
+        }
+
+        let state = crate::ui::window::plugin_panel::PluginPanelState::from_def(panel);
+        self.app.plugin_panels.insert(id.clone(), state);
+
+        // Keep command line autocomplete updated with dynamic panel commands
+        if let Some(ref c) = cmd_opt {
+            let cu = c.to_uppercase();
+            if !self.app.command_line.dynamic_commands.contains(&cu) {
+                self.app.command_line.dynamic_commands.push(cu);
+            }
+        }
+        let id_u = id.to_uppercase();
+        if !self.app.command_line.dynamic_commands.contains(&id_u) {
+            self.app.command_line.dynamic_commands.push(id_u);
+        }
+
+        true
+    }
+    fn update_panel(
+        &mut self,
+        panel_id: &str,
+        values: std::collections::HashMap<String, ocs_plugin_api::dialog::DialogValue>,
+    ) -> bool {
+        if let Some(panel) = self.app.plugin_panels.get_mut(panel_id) {
+            panel.update_values(values);
+            return true;
+        }
+        let lower = panel_id.to_lowercase();
+        if let Some((_, panel)) = self.app.plugin_panels.iter_mut().find(|(k, _)| k.to_lowercase() == lower) {
+            panel.update_values(values);
+            return true;
+        }
+        false
+    }
+    fn toggle_panel(&mut self, panel_id: &str, show: Option<bool>) -> bool {
+        let matched_id = if self.app.plugin_panel_ids.contains_key(panel_id) {
+            Some(panel_id.to_string())
+        } else {
+            let lower = panel_id.to_lowercase();
+            let stripped = lower.replace([' ', '_', '-'], "");
+            self.app.plugin_panel_ids.keys().find(|k| {
+                k.to_lowercase() == lower || k.replace([' ', '_', '-'], "").to_lowercase() == stripped
+            }).cloned().or_else(|| {
+                self.app.plugin_panels.iter().find(|(k, state)| {
+                    k.to_lowercase() == lower
+                        || k.replace([' ', '_', '-'], "").to_lowercase() == stripped
+                        || state.def.title.to_lowercase() == lower
+                        || state.def.title.replace([' ', '_', '-'], "").to_lowercase() == stripped
+                        || state.def.command.as_ref().is_some_and(|c| {
+                            c.to_lowercase() == lower || c.replace([' ', '_', '-'], "").to_lowercase() == stripped
+                        })
+                }).map(|(k, _)| k.clone())
+            })
+        };
+
+        if let Some(ref id) = matched_id {
+            if let Some(&num) = self.app.plugin_panel_ids.get(id) {
+                let panel_enum = crate::ui::dock::PanelId::Plugin(num);
+                let is_currently_open = self.app.plugin_panels.get(id).map(|p| p.visible).unwrap_or(false);
+
+                let new_visible = if let Some(s) = show {
+                    s
+                } else {
+                    !is_currently_open
+                };
+
+                if let Some(panel) = self.app.plugin_panels.get_mut(id) {
+                    panel.visible = new_visible;
+                }
+
+                if new_visible {
+                    if self.app.dock.location(panel_enum).is_none() {
+                        self.app.dock.dock(panel_enum, crate::app::config::DockSide::Right, usize::MAX);
+                    }
+                    self.app.dock_reveal(panel_enum);
+                } else {
+                    let _ = self.app.dock_set_open(panel_enum, false);
+                }
+                return true;
+            }
+        }
+        false
+
+    }
 }
 
 /// Bridges a plugin's [`InteractiveCommand`](ocs_plugin_api::host::InteractiveCommand)
@@ -4013,6 +4127,12 @@ struct PluginInteractiveAdapter {
 impl crate::command::CadCommand for PluginInteractiveAdapter {
     fn name(&self) -> &'static str {
         "PLUGIN"
+    }
+    fn preserve_commit_style(&self) -> bool {
+        true
+    }
+    fn preserve_commit_layer(&self) -> bool {
+        true
     }
     // Every call into the plugin runs under a panic guard (#145): a buggy plugin
     // that panics mid-command leaves the host running — the command just ends.
@@ -4085,6 +4205,23 @@ impl crate::command::CadCommand for PluginInteractiveAdapter {
     fn entity_pick_highlights_hover(&self) -> bool {
         self.needs_entity_pick() || self.is_selection_gathering()
     }
+    fn modal_dialog(&self) -> Option<ocs_plugin_api::dialog::DialogDef> {
+        crate::plugin::guard("InteractiveCommand::modal_dialog", || self.inner.modal_dialog())
+            .unwrap_or(None)
+    }
+    fn on_dialog_response(&mut self, response: ocs_plugin_api::dialog::DialogResponse) -> crate::command::CmdResult {
+        crate::plugin::guard("InteractiveCommand::on_dialog_response", || {
+            self.inner.on_dialog_response(response)
+        })
+        .map(plugin_step_to_result)
+        .unwrap_or(crate::command::CmdResult::Cancel)
+    }
+    fn take_pending_panel_updates(&mut self) -> Vec<(String, std::collections::HashMap<String, ocs_plugin_api::dialog::DialogValue>)> {
+        crate::plugin::guard("InteractiveCommand::take_pending_panel_updates", || {
+            self.inner.take_pending_panel_updates()
+        })
+        .unwrap_or_default()
+    }
 }
 
 /// Bridges an out-of-process plugin's interactive command to the host's
@@ -4155,6 +4292,12 @@ impl Drop for PluginProcessInteractiveAdapter {
 impl crate::command::CadCommand for PluginProcessInteractiveAdapter {
     fn name(&self) -> &'static str {
         "PLUGIN"
+    }
+    fn preserve_commit_style(&self) -> bool {
+        true
+    }
+    fn preserve_commit_layer(&self) -> bool {
+        true
     }
     fn prompt(&self) -> String {
         self.prompt.clone().unwrap_or_default()
@@ -4277,6 +4420,30 @@ impl crate::command::CadCommand for PluginProcessInteractiveAdapter {
     }
     fn selection_rejects_locked_layers(&self) -> bool {
         self.selection_rejects_locked_layers.unwrap_or(false)
+    }
+    fn modal_dialog(&self) -> Option<ocs_plugin_api::dialog::DialogDef> {
+        self.process.get_modal_dialog(self.command_id).ok().flatten()
+    }
+    fn on_dialog_response(&mut self, response: ocs_plugin_api::dialog::DialogResponse) -> crate::command::CmdResult {
+        use ocs_plugin_api::ipc::protocol::InteractiveEvent;
+        let result = self
+            .process
+            .interactive_event(self.command_id, InteractiveEvent::DialogResponse(response))
+            .map(plugin_step_to_result)
+            .unwrap_or(crate::command::CmdResult::Cancel);
+        if matches!(
+            result,
+            crate::command::CmdResult::CommitAndExit(_)
+                | crate::command::CmdResult::CommitEntitiesAndExit(_)
+                | crate::command::CmdResult::Done
+                | crate::command::CmdResult::Script(_)
+                | crate::command::CmdResult::Cancel
+        ) {
+            self.is_done = true;
+        } else {
+            self.refresh();
+        }
+        result
     }
 }
 
@@ -14900,39 +15067,39 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         let mut app = OpenCADStudio::new_for_test();
         app.tabs[0].is_start = false;
 
-        // Verify COGO_LINES does not exist initially
-        assert!(!app.tabs[0].scene.document.layers.contains("COGO_LINES"));
+        // Verify DYNAMIC_PLUGIN_LINES does not exist initially
+        assert!(!app.tabs[0].scene.document.layers.contains("DYNAMIC_PLUGIN_LINES"));
         assert!(!app
             .ribbon
             .layer_infos
             .iter()
-            .any(|l| l.name == "COGO_LINES"));
+            .any(|l| l.name == "DYNAMIC_PLUGIN_LINES"));
 
         // 1. Add entity via HostSession (simulating plugin add_entity / add_line)
         {
             let mut host = HostSession::new(&mut app, 0);
             let mut line = codec::entities::Line::from_coords(0.0, 0.0, 0.0, 10.0, 10.0, 0.0);
-            line.common.layer = "COGO_LINES".to_string();
+            line.common.layer = "DYNAMIC_PLUGIN_LINES".to_string();
             let handle = host.add_entity(codec::EntityType::Line(line));
             assert_ne!(handle, codec::Handle::NULL);
         }
 
         // Verify layer is created in document AND refreshed in ribbon + layer panel
-        assert!(app.tabs[0].scene.document.layers.contains("COGO_LINES"));
+        assert!(app.tabs[0].scene.document.layers.contains("DYNAMIC_PLUGIN_LINES"));
         assert!(
             app.ribbon
                 .layer_infos
                 .iter()
-                .any(|l| l.name == "COGO_LINES"),
-            "Ribbon layers should contain COGO_LINES after add_entity"
+                .any(|l| l.name == "DYNAMIC_PLUGIN_LINES"),
+            "Ribbon layers should contain DYNAMIC_PLUGIN_LINES after add_entity"
         );
         assert!(
             app.tabs[0]
                 .layers
                 .layers
                 .iter()
-                .any(|l| l.name == "COGO_LINES"),
-            "Layer panel should contain COGO_LINES after add_entity"
+                .any(|l| l.name == "DYNAMIC_PLUGIN_LINES"),
+            "Layer panel should contain DYNAMIC_PLUGIN_LINES after add_entity"
         );
 
         // 2. Commit entity via command driver (simulating interactive tool / palette commit)

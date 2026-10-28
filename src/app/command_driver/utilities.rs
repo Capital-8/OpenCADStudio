@@ -897,13 +897,13 @@ impl OpenCADStudio {
         };
         let is_escape = matches!(&input, StepInput::Escape);
         let keyed = matches!(&input, StepInput::Text(_) | StepInput::Enter);
-        let result: Option<CmdResult> = {
+        let (result, panel_updates): (Option<CmdResult>, Vec<_>) = {
             let Some(cmd) = self.tabs[i].active_cmd.as_mut() else {
                 return (Task::none(), false);
             };
             cmd.set_ctrl(ctrl);
             cmd.set_shift(shift);
-            match input {
+            let res = match input {
                 StepInput::Point(p) => Some(cmd.on_point(p)),
                 StepInput::Text(s) => cmd.on_text_input(&s),
                 StepInput::EntityPick(h, p) => Some(cmd.on_entity_pick(h, p)),
@@ -913,8 +913,15 @@ impl OpenCADStudio {
                 StepInput::EditorClosed(c) => Some(cmd.on_editor_closed(c)),
                 StepInput::Enter => Some(cmd.on_enter()),
                 StepInput::Escape => Some(cmd.on_escape()),
-            }
+            };
+            let updates = cmd.take_pending_panel_updates();
+            (res, updates)
         };
+        for (panel_id, values) in panel_updates {
+            if let Some(panel) = self.plugin_panels.get_mut(&panel_id) {
+                panel.update_values(values);
+            }
+        }
         if let Some(handle) = picked_handle {
             self.record_dimension_entity_points(i, None, handle, Vec::new());
         }
@@ -1007,6 +1014,9 @@ impl OpenCADStudio {
         if !self.suppress_plugin_dispatch && crate::plugin::try_dispatch(self, i, cmd) {
             self.tabs[i].last_cmd = Some(cmd.to_string());
             self.command_line.record_recent(cmd);
+            if cmd.trim().starts_with('(') {
+                return self.finish_dispatch(cmd);
+            }
             let toks: Vec<String> = tokens.iter().map(|s| s.to_string()).collect();
             return self.finish_active_command(&toks, finish);
         }

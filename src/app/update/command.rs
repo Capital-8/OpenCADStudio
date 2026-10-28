@@ -874,20 +874,22 @@ impl OpenCADStudio {
                 .map(|c| c.is_free_text_step())
                 .unwrap_or(false);
             let raw = self.command_line.input.clone();
-            let toks: Vec<String> = raw.split_whitespace().map(String::from).collect();
-            if toks.len() > 1 && !wants_spaces {
-                self.command_line.input.clear();
-                if self.tabs[i].active_cmd.is_some() {
-                    let mut tasks = Vec::new();
-                    for tok in &toks {
-                        if self.tabs[i].active_cmd.is_none() {
-                            break;
+            if !raw.trim().starts_with('(') {
+                let toks: Vec<String> = raw.split_whitespace().map(String::from).collect();
+                if toks.len() > 1 && !wants_spaces {
+                    self.command_line.input.clear();
+                    if self.tabs[i].active_cmd.is_some() {
+                        let mut tasks = Vec::new();
+                        for tok in &toks {
+                            if self.tabs[i].active_cmd.is_none() {
+                                break;
+                            }
+                            tasks.push(self.feed_active_cmd(tok));
                         }
-                        tasks.push(self.feed_active_cmd(tok));
+                        return Task::batch(tasks);
                     }
-                    return Task::batch(tasks);
+                    return self.run_command_line(&raw);
                 }
-                return self.run_command_line(&raw);
             }
         }
         // With the command line empty, a typed dynamic-input value
