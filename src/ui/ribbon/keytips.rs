@@ -195,10 +195,7 @@ pub fn key_pressed(
         let is_lone_alt = alt && !modifiers.control() && !modifiers.shift() && !modifiers.logo();
         ALT_ALONE.store(is_lone_alt, Ordering::Relaxed);
         if is_lone_alt {
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
+            let now_ms = now_ms();
             ALT_PRESSED_AT_MS.store(now_ms, Ordering::Relaxed);
         } else {
             ALT_PRESSED_AT_MS.store(0, Ordering::Relaxed);
@@ -225,10 +222,7 @@ pub fn key_pressed(
 pub fn key_released(key: &Key) -> Option<Message> {
     if matches!(key, Key::Named(Named::Alt)) && ALT_ALONE.swap(false, Ordering::Relaxed) {
         let pressed_at = ALT_PRESSED_AT_MS.swap(0, Ordering::Relaxed);
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        let now_ms = now_ms();
         let last_focus = LAST_FOCUS_CHANGE_MS.load(Ordering::Relaxed);
         let last_cmd = LAST_COMMAND_FINISH_MS.load(Ordering::Relaxed);
         // Suppress Alt if focus changed or a command/debugging step finished within the last 1.2s.
@@ -244,6 +238,14 @@ pub fn key_released(key: &Key) -> Option<Message> {
     None
 }
 
+/// Milliseconds since the first call. `iced::time::Instant` also runs in the
+/// browser, where `std::time::SystemTime::now` panics.
+fn now_ms() -> u64 {
+    static START: std::sync::OnceLock<iced::time::Instant> = std::sync::OnceLock::new();
+    // Starts at 1 so that 0 keeps meaning "not set" for the timestamps.
+    START.get_or_init(iced::time::Instant::now).elapsed().as_millis() as u64 + 1
+}
+
 /// Clear any pending lone-Alt state.
 pub fn clear_alt_alone() {
     ALT_ALONE.store(false, Ordering::Relaxed);
@@ -253,20 +255,14 @@ pub fn clear_alt_alone() {
 /// Note that window focus changed (gained or lost), suppressing any Alt release artifacts.
 pub fn note_focus_changed() {
     clear_alt_alone();
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
+    let now_ms = now_ms();
     LAST_FOCUS_CHANGE_MS.store(now_ms, Ordering::Relaxed);
 }
 
 /// Note that a command, pick session, or automation operation finished.
 pub fn note_command_finished() {
     clear_alt_alone();
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
+    let now_ms = now_ms();
     LAST_COMMAND_FINISH_MS.store(now_ms, Ordering::Relaxed);
 }
 
