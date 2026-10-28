@@ -1343,6 +1343,8 @@ pub fn create(
     if let Some(EntityType::Insert(array)) = document.get_entity_mut(insert) {
         array.common.reactors.push(both_dep);
     }
+    document.add_object_reactor(array_block, write_dep);
+    document.add_object_reactor(source_block, read_dep);
     let items = placements
         .iter()
         .zip(&item_handles)
@@ -1540,6 +1542,76 @@ mod tests {
         let text = String::from_utf8_lossy(&dxf).replace("\r\n", "\n");
         assert!(!text.contains("\n  0\nASSOCNETWORK\n"), "dxf object name");
         assert_eq!(text.matches("\n  0\nACDBASSOCNETWORK\n").count(), 2);
+    }
+
+    fn assert_block_dependency_reactors(document: &Document, insert: Handle) {
+        let array = array_of_insert(document, insert).unwrap();
+        let action = action(document, array.action).unwrap();
+        for (block, read, write, label) in [
+            (array.array_block, false, true, "item"),
+            (array.source_block, true, false, "source"),
+        ] {
+            assert!(
+                document
+                    .block_records
+                    .iter()
+                    .any(|record| { record.handle == block && record.flags.anonymous }),
+                "{label} must be an anonymous BLOCK_RECORD"
+            );
+            let dependency_handle = action
+                .dependencies
+                .iter()
+                .find_map(|link| {
+                    let dep = dependency(document, link.dependency)?;
+                    (dep.dependent_on == block
+                        && dep.is_read_dependency == read
+                        && dep.is_write_dependency == write)
+                        .then_some(link.dependency)
+                })
+                .expect("array block dependency");
+            assert!(
+                document.object_reactors(block).contains(&dependency_handle),
+                "{label} BLOCK_RECORD must carry its dependency reactor",
+            );
+        }
+    }
+
+    #[test]
+    fn rectangular_array_block_records_carry_their_dependency_reactors() {
+        let mut scene = crate::scene::Scene::new();
+        let source = scene.add_entity(codec::EntityType::Circle(
+            codec::entities::Circle::from_coords(0.0, 0.0, 0.0, 2.0),
+        ));
+        let spec = AssocArraySpec::Rectangular {
+            columns: 2,
+            rows: 2,
+            column_spacing: 20.0,
+            row_spacing: 20.0,
+        };
+        let insert = create_from_spec(&mut scene, &[source], DVec3::ZERO, &spec).unwrap();
+        assert_block_dependency_reactors(&scene.document, insert);
+    }
+
+    #[test]
+    fn path_array_block_records_carry_their_dependency_reactors() {
+        for divide in [true, false] {
+            let mut scene = crate::scene::Scene::new();
+            let source = scene.add_entity(codec::EntityType::Circle(
+                codec::entities::Circle::from_coords(0.0, 0.0, 0.0, 2.0),
+            ));
+            let path = scene.add_entity(codec::EntityType::Line(
+                codec::entities::Line::from_coords(0.0, 0.0, 0.0, 60.0, 0.0, 0.0),
+            ));
+            let spec = AssocArraySpec::Path {
+                path,
+                items: 3,
+                spacing: 20.0,
+                divide,
+                reversed: false,
+            };
+            let insert = create_from_spec(&mut scene, &[source], DVec3::ZERO, &spec).unwrap();
+            assert_block_dependency_reactors(&scene.document, insert);
+        }
     }
 }
 
