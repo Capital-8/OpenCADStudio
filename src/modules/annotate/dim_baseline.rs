@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::f64::consts::PI;
 
 use codec::entities::{
@@ -30,32 +29,48 @@ pub fn tool() -> ToolDef {
     }
 }
 
+/// What a baseline or continued dimension takes from its base dimension.
 #[derive(Clone)]
-struct SourceStyle {
+pub(super) struct SourceStyle {
     layer: String,
     style_name: String,
-    normal: Vector3,
+    pub(super) normal: Vector3,
     text_rotation: f64,
-    horizontal_direction: f64,
+    pub(super) horizontal_direction: f64,
+    /// The base dimension's dimension variable overrides.
+    overrides: Vec<(i16, codec::xdata::XDataValue)>,
 }
 
 impl SourceStyle {
-    fn from_base(base: &DimensionBase) -> Self {
+    pub(super) fn from_base(base: &DimensionBase) -> Self {
         Self {
             layer: base.common.layer.clone(),
             style_name: base.style_name.clone(),
             normal: base.normal,
             text_rotation: base.text_rotation,
             horizontal_direction: base.horizontal_direction,
+            overrides: crate::entities::dim_override::pairs(&base.common.extended_data),
         }
     }
 
-    fn apply(&self, base: &mut DimensionBase) {
+    /// With DIMCONTINUEMODE 1 (`with_overrides`) the new dimension also
+    /// carries every override of its base; with 0 it gets the drawing's like
+    /// any new dimension.
+    pub(super) fn apply(&self, base: &mut DimensionBase, with_overrides: bool) {
         base.common.layer = self.layer.clone();
         base.style_name = self.style_name.clone();
         base.normal = self.normal;
         base.text_rotation = self.text_rotation;
         base.horizontal_direction = self.horizontal_direction;
+        if with_overrides {
+            for (code, value) in &self.overrides {
+                crate::entities::dim_override::set_on_common(
+                    &mut base.common,
+                    *code,
+                    Some(value.clone()),
+                );
+            }
+        }
     }
 }
 
@@ -99,9 +114,6 @@ struct BaselineState {
 pub struct DimBaselineCommand {
     base: Option<BaselineState>,
     injected: Option<EntityType>,
-    dimdli_by_style: HashMap<String, f64>,
-    current_style_name: String,
-    fallback_dimdli: f64,
     preserve_base_style: bool,
     committed: usize,
     /// Run from DIM's Baseline option: its own wording and an Offset option.
@@ -109,29 +121,23 @@ pub struct DimBaselineCommand {
     /// The Offset distance is being asked.
     offset_pending: bool,
     offset_override: Option<f64>,
+    /// The drawing's DIMDLI: the spacing of the series.
     dimdli: f64,
 }
 
 impl DimBaselineCommand {
-    pub fn new(
-        recent: Option<EntityType>,
-        dimdli_by_style: HashMap<String, f64>,
-        current_style_name: String,
-        fallback_dimdli: f64,
-        preserve_base_style: bool,
-    ) -> Self {
+    /// `dimdli` is the drawing's DIMDLI: baseline dimensions are spaced by
+    /// it whatever the base dimension's own value is.
+    pub fn new(recent: Option<EntityType>, dimdli: f64, preserve_base_style: bool) -> Self {
         let mut command = Self {
             base: None,
             injected: None,
-            dimdli_by_style,
-            current_style_name,
-            fallback_dimdli,
             preserve_base_style,
             committed: 0,
             in_dim: false,
             offset_pending: false,
             offset_override: None,
-            dimdli: fallback_dimdli,
+            dimdli,
         };
         if let Some(entity) = recent {
             let _ = command.install_base(&entity, None);
@@ -179,21 +185,8 @@ impl DimBaselineCommand {
         }
     }
 
-    fn effective_increment(&self, style_name: &str) -> f64 {
-        if let Some(offset) = self.offset_override {
-            return offset.abs();
-        }
-        let style_name = if self.preserve_base_style {
-            style_name
-        } else {
-            &self.current_style_name
-        };
-        self.dimdli_by_style
-            .get(&style_name.to_ascii_lowercase())
-            .copied()
-            .filter(|value| value.is_finite() && value.abs() > 1.0e-9)
-            .unwrap_or(self.fallback_dimdli)
-            .abs()
+    fn effective_increment(&self) -> f64 {
+        self.offset_override.unwrap_or(self.dimdli).abs()
     }
 
     fn install_base(&mut self, entity: &EntityType, pick: Option<DVec3>) -> bool {
@@ -201,7 +194,7 @@ impl DimBaselineCommand {
             return false;
         };
         let style = SourceStyle::from_base(dimension.base());
-        let increment = self.effective_increment(&style.style_name);
+        let increment = self.effective_increment();
         let plane = plane_from_normal(dimension.base().definition_point, style.normal);
         let pick = pick.and_then(|point| plane.project(point.to_array()).map(Vec2::from));
         let kind = match &**dimension {
@@ -392,7 +385,9 @@ impl DimBaselineCommand {
                 Dimension::Ordinate(result)
             }
         };
-        state.style.apply(dimension.base_mut());
+        state
+            .style
+            .apply(dimension.base_mut(), self.preserve_base_style);
         refresh_measurement(&mut dimension, state.plane);
         dimension.base_mut().common.handle = Handle::NULL;
         dimension.base_mut().block_name.clear();

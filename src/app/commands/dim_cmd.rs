@@ -59,25 +59,12 @@ impl OpenCADStudio {
     /// DIMBASELINE; from DIM (`in_dim`) the base is picked rather than taken
     /// from the last dimension.
     pub(crate) fn dim_baseline_command(&self, i: usize, in_dim: bool) -> DimBaselineCommand {
-        let scene = &self.tabs[i].scene;
         let recent = if in_dim { None } else { self.recent_dimension(i) };
-        let dimdli_by_style = scene
-            .document
-            .dim_styles
-            .iter()
-            .map(|style| (style.name.to_ascii_lowercase(), style.dimdli))
-            .collect();
-        let fallback_dimdli = if scene.document.header.measurement == 1 {
-            3.75
-        } else {
-            0.38
-        };
-        let current_style_name = scene.document.header.current_dimstyle_name.clone();
+        // Baseline dimensions are spaced by the drawing's DIMDLI, whatever
+        // the base dimension's own value is (DIMCONTINUEMODE included).
         let mut command = DimBaselineCommand::new(
             recent,
-            dimdli_by_style,
-            current_style_name,
-            fallback_dimdli,
+            self.current_dimdli(i),
             self.dimension_continue_mode == 1,
         );
         if in_dim {
